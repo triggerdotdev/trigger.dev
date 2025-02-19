@@ -118,6 +118,9 @@ export class SpanPresenter extends BasePresenter {
         metadata: true,
         metadataType: true,
         maxAttempts: true,
+        output: true,
+        outputType: true,
+        error: true,
         project: {
           include: {
             organization: true,
@@ -162,31 +165,13 @@ export class SpanPresenter extends BasePresenter {
 
     const isFinished = isFinalRunStatus(run.status);
 
-    const finishedAttempt = isFinished
-      ? await this._replica.taskRunAttempt.findFirst({
-          select: {
-            output: true,
-            outputType: true,
-            error: true,
-          },
-          where: {
-            status: { in: FINAL_ATTEMPT_STATUSES },
-            taskRunId: run.id,
-          },
-          orderBy: {
-            createdAt: "desc",
-          },
-        })
-      : null;
-
-    const output =
-      finishedAttempt === null
-        ? undefined
-        : finishedAttempt.outputType === "application/store"
-        ? `/resources/packets/${run.runtimeEnvironment.id}/${finishedAttempt.output}`
-        : typeof finishedAttempt.output !== "undefined" && finishedAttempt.output !== null
-        ? await prettyPrintPacket(finishedAttempt.output, finishedAttempt.outputType ?? undefined)
-        : undefined;
+    const output = !isFinished
+      ? undefined
+      : run.outputType === "application/store"
+      ? `/resources/packets/${run.runtimeEnvironment.id}/${run.output}`
+      : typeof run.output !== "undefined" && run.output !== null
+      ? await prettyPrintPacket(run.output, run.outputType ?? undefined)
+      : undefined;
 
     const payload =
       run.payloadType === "application/store"
@@ -196,14 +181,14 @@ export class SpanPresenter extends BasePresenter {
         : undefined;
 
     let error: TaskRunError | undefined = undefined;
-    if (finishedAttempt?.error) {
-      const result = TaskRunError.safeParse(finishedAttempt.error);
+    if (run?.error) {
+      const result = TaskRunError.safeParse(run.error);
       if (result.success) {
         error = result.data;
       } else {
         error = {
           type: "CUSTOM_ERROR",
-          raw: JSON.stringify(finishedAttempt.error),
+          raw: JSON.stringify(run.error),
         };
       }
     }
@@ -300,7 +285,7 @@ export class SpanPresenter extends BasePresenter {
       payload,
       payloadType: run.payloadType,
       output,
-      outputType: finishedAttempt?.outputType ?? "application/json",
+      outputType: run?.outputType ?? "application/json",
       error,
       relationships: {
         root: run.rootTaskRun

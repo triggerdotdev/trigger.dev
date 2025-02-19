@@ -2,7 +2,7 @@ import { CoordinatorToPlatformMessages, ManualCheckpointMetadata } from "@trigge
 import type { InferSocketMessageSchema } from "@trigger.dev/core/v3/zodSocket";
 import type { Checkpoint, CheckpointRestoreEvent } from "@trigger.dev/database";
 import { logger } from "~/services/logger.server";
-import { marqs } from "~/v3/marqs/index.server";
+import { marqs, MarQSPriorityLevel } from "~/v3/marqs/index.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { isFreezableAttemptStatus, isFreezableRunStatus } from "../taskStatus";
 import { BaseService } from "./baseService.server";
@@ -174,7 +174,8 @@ export class CreateCheckpointService extends BaseService {
               resumableAttemptId: attempt.id,
               checkpointEventId: checkpointEvent.id,
             },
-            restoreAtUnixTimeMs
+            restoreAtUnixTimeMs,
+            MarQSPriorityLevel.resume
           );
 
           return {
@@ -301,6 +302,7 @@ export class CreateCheckpointService extends BaseService {
             {
               checkpointEventId: checkpointEvent.id,
             },
+            undefined,
             undefined,
             true
           );

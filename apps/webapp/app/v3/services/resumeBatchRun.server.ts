@@ -1,6 +1,6 @@
 import { PrismaClientOrTransaction } from "~/db.server";
 import { workerQueue } from "~/services/worker.server";
-import { marqs } from "~/v3/marqs/index.server";
+import { marqs, MarQSPriorityLevel } from "~/v3/marqs/index.server";
 import { BaseService } from "./baseService.server";
 import { logger } from "~/services/logger.server";
 import { BatchTaskRun } from "@trigger.dev/database";
@@ -152,6 +152,8 @@ export class ResumeBatchRunService extends BaseService {
             queue: true,
             taskIdentifier: true,
             concurrencyKey: true,
+            createdAt: true,
+            queueTimestamp: true,
           },
         },
       },
@@ -186,6 +188,7 @@ export class ResumeBatchRunService extends BaseService {
           dependentTaskAttemptId: dependentTaskAttempt.id,
         });
 
+        // TODO: use the new priority queue thingie
         await marqs?.enqueueMessage(
           environment,
           dependentRun.queue,
@@ -200,7 +203,10 @@ export class ResumeBatchRunService extends BaseService {
             environmentId: environment.id,
             environmentType: environment.type,
           },
-          dependentRun.concurrencyKey ?? undefined
+          dependentRun.concurrencyKey ?? undefined,
+          dependentRun.queueTimestamp ?? dependentRun.createdAt,
+          undefined,
+          MarQSPriorityLevel.resume
         );
 
         return "COMPLETED";
@@ -246,16 +252,25 @@ export class ResumeBatchRunService extends BaseService {
           hasCheckpointEvent: !!batchRun.checkpointEventId,
         });
 
-        await marqs?.replaceMessage(dependentRun.id, {
-          type: "RESUME",
-          completedAttemptIds: batchRun.items.map((item) => item.taskRunAttemptId).filter(Boolean),
-          resumableAttemptId: dependentTaskAttempt.id,
-          checkpointEventId: batchRun.checkpointEventId ?? undefined,
-          taskIdentifier: dependentTaskAttempt.taskRun.taskIdentifier,
-          projectId: environment.projectId,
-          environmentId: environment.id,
-          environmentType: environment.type,
-        });
+        await marqs?.replaceMessage(
+          dependentRun.id,
+          {
+            type: "RESUME",
+            completedAttemptIds: batchRun.items
+              .map((item) => item.taskRunAttemptId)
+              .filter(Boolean),
+            resumableAttemptId: dependentTaskAttempt.id,
+            checkpointEventId: batchRun.checkpointEventId ?? undefined,
+            taskIdentifier: dependentTaskAttempt.taskRun.taskIdentifier,
+            projectId: environment.projectId,
+            environmentId: environment.id,
+            environmentType: environment.type,
+          },
+          (
+            dependentTaskAttempt.taskRun.queueTimestamp ?? dependentTaskAttempt.taskRun.createdAt
+          ).getTime(),
+          MarQSPriorityLevel.resume
+        );
 
         return "COMPLETED";
       } else {

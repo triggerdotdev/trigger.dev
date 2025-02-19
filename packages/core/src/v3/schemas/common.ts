@@ -172,6 +172,7 @@ export const TaskRunInternalError = z.object({
     "POD_UNKNOWN_ERROR",
     "OUTDATED_SDK_VERSION",
     "TASK_DID_CONCURRENT_WAIT",
+    "RECURSIVE_WAIT_DEADLOCK",
   ]),
   message: z.string().optional(),
   stackTrace: z.string().optional(),

@@ -22,7 +22,7 @@ import { env } from "~/env.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { safeJsonParse } from "~/utils/json";
-import { marqs } from "~/v3/marqs/index.server";
+import { marqs, MarQSPriorityLevel } from "~/v3/marqs/index.server";
 import { createExceptionPropertiesFromError, eventRepository } from "../eventRepository.server";
 import { FailedTaskRunRetryHelper } from "../failedTaskRun.server";
 import { FAILED_RUN_STATUSES, isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
@@ -476,7 +476,8 @@ export class CompleteAttemptService extends BaseService {
           checkpointEventId: this.opts.supportsRetryCheckpoints ? checkpointEventId : undefined,
           retryCheckpointsDisabled: !this.opts.supportsRetryCheckpoints,
         },
-        executionRetry.timestamp
+        executionRetry.timestamp,
+        MarQSPriorityLevel.retry
       );
     };
 
@@ -614,8 +615,13 @@ export class CompleteAttemptService extends BaseService {
     });
 
     if (environment.type === "DEVELOPMENT") {
-      // This is already an EXECUTE message so we can just NACK
-      await marqs?.nackMessage(taskRunAttempt.taskRunId, executionRetry.timestamp);
+      marqs.replaceMessage(
+        taskRunAttempt.taskRunId,
+        {},
+        executionRetry.timestamp,
+        MarQSPriorityLevel.retry
+      );
+
       return "RETRIED";
     }
 
