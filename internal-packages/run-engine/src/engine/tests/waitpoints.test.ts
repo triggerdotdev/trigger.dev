@@ -102,7 +102,7 @@ describe("RunEngine Waitpoints", () => {
       const executionData = await engine.getRunExecutionData({ runId: run.id });
       expect(executionData?.snapshot.executionStatus).toBe("EXECUTING_WITH_WAITPOINTS");
 
-      await setTimeout(1_500);
+      await setTimeout(2_000);
 
       const waitpoint = await prisma.waitpoint.findFirst({
         where: {
