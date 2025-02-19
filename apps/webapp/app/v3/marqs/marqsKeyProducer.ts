@@ -14,8 +14,8 @@ const constants = {
   PRIORITY_PART: "priority",
 } as const;
 
-const ORG_REGEX = /org:(\w+):/;
-const ENV_REGEX = /env:(\w+):/;
+const ORG_REGEX = /org:([^:]+):/;
+const ENV_REGEX = /env:([^:]+):/;
 const QUEUE_REGEX = /queue:([^:]+)(?::|$)/;
 const CONCURRENCY_KEY_REGEX = /ck:([^:]+)(?::|$)/;
 const PRIORITY_REGEX = /priority:(\d+)(?::|$)/;
@@ -101,6 +101,18 @@ export class MarQSShortKeyProducer implements MarQSKeyProducer {
     }
   }
 
+  queueKeyFromQueue(queue: string, priority?: number): string {
+    const descriptor = this.queueDescriptorFromQueue(queue);
+
+    return this.queueKey(
+      descriptor.organization,
+      descriptor.environment,
+      descriptor.name,
+      descriptor.concurrencyKey,
+      descriptor.priority ?? priority
+    );
+  }
+
   envSharedQueueKey(env: MarQSKeyProducerEnv) {
     if (env.type === "DEVELOPMENT") {
       return [
@@ -117,50 +129,53 @@ export class MarQSShortKeyProducer implements MarQSKeyProducer {
     return constants.SHARED_QUEUE;
   }
 
-  concurrencyLimitKeyFromQueue(queue: string) {
-    const concurrencyQueueName = queue.replace(/:ck:.+$/, "");
+  queueConcurrencyLimitKeyFromQueue(queue: string) {
+    const descriptor = this.queueDescriptorFromQueue(queue);
 
-    return `${concurrencyQueueName}:${constants.CONCURRENCY_LIMIT_PART}`;
+    return this.queueConcurrencyLimitKeyFromDescriptor(descriptor);
   }
 
-  // TODO: if the queue passed in has a priority, we need to strip that out
-  // before adding the currentConcurrency part
-  currentConcurrencyKeyFromQueue(queue: string) {
-    return `${queue}:${constants.CURRENT_CONCURRENCY_PART}`;
+  queueCurrentConcurrencyKeyFromQueue(queue: string) {
+    const descriptor = this.queueDescriptorFromQueue(queue);
+    return this.currentConcurrencyKeyFromDescriptor(descriptor);
   }
 
-  // TODO: if the queue passed in has a priority, we need to strip that out
-  // before adding the currentConcurrency part
   queueReserveConcurrencyKeyFromQueue(queue: string) {
-    return `${queue}:${constants.RESERVE_CONCURRENCY_PART}`;
+    const descriptor = this.queueDescriptorFromQueue(queue);
+
+    return this.queueReserveConcurrencyKeyFromDescriptor(descriptor);
   }
 
-  currentConcurrencyKey(env: MarQSKeyProducerEnv, queue: string, concurrencyKey?: string): string {
+  queueCurrentConcurrencyKey(
+    env: MarQSKeyProducerEnv,
+    queue: string,
+    concurrencyKey?: string
+  ): string {
     return [this.queueKey(env, queue, concurrencyKey), constants.CURRENT_CONCURRENCY_PART].join(
       ":"
     );
   }
 
   envConcurrencyLimitKeyFromQueue(queue: string) {
-    const envId = this.normalizeQueue(queue).split(":")[3];
+    const descriptor = this.queueDescriptorFromQueue(queue);
 
-    return `${constants.ENV_PART}:${envId}:${constants.CONCURRENCY_LIMIT_PART}`;
+    return `${constants.ENV_PART}:${descriptor.environment}:${constants.CONCURRENCY_LIMIT_PART}`;
   }
 
   envCurrentConcurrencyKeyFromQueue(queue: string) {
-    const envId = this.normalizeQueue(queue).split(":")[3];
+    const descriptor = this.queueDescriptorFromQueue(queue);
 
-    return `${constants.ENV_PART}:${envId}:${constants.CURRENT_CONCURRENCY_PART}`;
+    return `${constants.ENV_PART}:${descriptor.environment}:${constants.CURRENT_CONCURRENCY_PART}`;
   }
 
   envReserveConcurrencyKeyFromQueue(queue: string) {
-    const envId = this.normalizeQueue(queue).split(":")[3];
+    const descriptor = this.queueDescriptorFromQueue(queue);
 
-    return this.envReserveConcurrencyKey(envId);
+    return this.envReserveConcurrencyKey(descriptor.environment);
   }
 
   envReserveConcurrencyKey(envId: string): string {
-    return `${constants.ENV_PART}:${envId}:${constants.RESERVE_CONCURRENCY_PART}`;
+    return `${constants.ENV_PART}:${this.shortId(envId)}:${constants.RESERVE_CONCURRENCY_PART}`;
   }
 
   envCurrentConcurrencyKey(envId: string): string;
@@ -173,9 +188,9 @@ export class MarQSShortKeyProducer implements MarQSKeyProducer {
   }
 
   envQueueKeyFromQueue(queue: string) {
-    const envId = this.normalizeQueue(queue).split(":")[3];
+    const descriptor = this.queueDescriptorFromQueue(queue);
 
-    return `${constants.ENV_PART}:${envId}:${constants.QUEUE_PART}`;
+    return `${constants.ENV_PART}:${descriptor.environment}:${constants.QUEUE_PART}`;
   }
 
   envQueueKey(env: MarQSKeyProducerEnv): string {
@@ -191,18 +206,22 @@ export class MarQSShortKeyProducer implements MarQSKeyProducer {
   }
 
   orgIdFromQueue(queue: string) {
-    return this.normalizeQueue(queue).split(":")[1];
+    const descriptor = this.queueDescriptorFromQueue(queue);
+
+    return descriptor.organization;
   }
 
   envIdFromQueue(queue: string) {
-    return this.normalizeQueue(queue).split(":")[3];
+    const descriptor = this.queueDescriptorFromQueue(queue);
+
+    return descriptor.environment;
   }
 
   queueDescriptorFromQueue(queue: string): QueueDescriptor {
     const match = queue.match(QUEUE_REGEX);
 
     if (!match) {
-      throw new Error(`Invalid queue: ${queue}`);
+      throw new Error(`Invalid queue: ${queue}, no queue name found`);
     }
 
     const [, queueName] = match;
@@ -210,7 +229,7 @@ export class MarQSShortKeyProducer implements MarQSKeyProducer {
     const envMatch = queue.match(ENV_REGEX);
 
     if (!envMatch) {
-      throw new Error(`Invalid queue: ${queue}`);
+      throw new Error(`Invalid queue: ${queue}, no environment found`);
     }
 
     const [, envId] = envMatch;
@@ -218,7 +237,7 @@ export class MarQSShortKeyProducer implements MarQSKeyProducer {
     const orgMatch = queue.match(ORG_REGEX);
 
     if (!orgMatch) {
-      throw new Error(`Invalid queue: ${queue}`);
+      throw new Error(`Invalid queue: ${queue}, no organization found`);
     }
 
     const [, orgId] = orgMatch;
@@ -265,12 +284,29 @@ export class MarQSShortKeyProducer implements MarQSKeyProducer {
     return `${constants.PRIORITY_PART}:${priority}`;
   }
 
-  // This removes the leading prefix from the queue name if it exists
-  private normalizeQueue(queue: string) {
-    if (queue.startsWith(this._prefix)) {
-      return queue.slice(this._prefix.length);
-    }
+  private currentConcurrencyKeyFromDescriptor(descriptor: QueueDescriptor) {
+    return [
+      this.queueKey(
+        descriptor.organization,
+        descriptor.environment,
+        descriptor.name,
+        descriptor.concurrencyKey
+      ),
+      constants.CURRENT_CONCURRENCY_PART,
+    ].join(":");
+  }
 
-    return queue;
+  private queueReserveConcurrencyKeyFromDescriptor(descriptor: QueueDescriptor) {
+    return [
+      this.queueKey(descriptor.organization, descriptor.environment, descriptor.name),
+      constants.RESERVE_CONCURRENCY_PART,
+    ].join(":");
+  }
+
+  private queueConcurrencyLimitKeyFromDescriptor(descriptor: QueueDescriptor) {
+    return [
+      this.queueKey(descriptor.organization, descriptor.environment, descriptor.name),
+      constants.CONCURRENCY_LIMIT_PART,
+    ].join(":");
   }
 }

@@ -356,5 +356,33 @@ describe("EnvPriorityDequeuingStrategy", () => {
         "org:org1:env:env1:queue:queue3:ck:shared-key:priority:1",
       ]);
     });
+
+    it("should only return the highest priority queue of the same queue", async () => {
+      const inputQueues: EnvQueues[] = [
+        {
+          envId: "env1",
+          queues: [
+            "org:org1:env:env1:queue:queue1",
+            "org:org1:env:env1:queue:queue1:priority:1",
+            "org:org1:env:env1:queue:queue1:priority:2",
+            "org:org1:env:env1:queue:queue1:priority:3",
+            "org:org1:env:env1:queue:queue2",
+          ],
+        },
+      ];
+
+      const delegate = new TestDelegate(inputQueues);
+      const strategy = new EnvPriorityDequeuingStrategy({
+        delegate,
+        keys: keyProducer,
+      });
+
+      const result = await strategy.distributeFairQueuesFromParentQueue("parentQueue", "consumer1");
+
+      expect(result[0].queues).toEqual([
+        "org:org1:env:env1:queue:queue1:priority:3",
+        "org:org1:env:env1:queue:queue2",
+      ]);
+    });
   });
 });

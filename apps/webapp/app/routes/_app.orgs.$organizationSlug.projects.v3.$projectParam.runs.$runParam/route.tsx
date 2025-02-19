@@ -10,7 +10,6 @@ import {
   MagnifyingGlassPlusIcon,
   StopCircleIcon,
 } from "@heroicons/react/20/solid";
-import type { Location } from "@remix-run/react";
 import { useLoaderData, useParams, useRevalidator } from "@remix-run/react";
 import { LoaderFunctionArgs, SerializeFrom, json } from "@remix-run/server-runtime";
 import { Virtualizer } from "@tanstack/react-virtual";
@@ -66,7 +65,9 @@ import { useProject } from "~/hooks/useProject";
 import { useReplaceSearchParams } from "~/hooks/useReplaceSearchParams";
 import { Shortcut, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { useUser } from "~/hooks/useUser";
-import { Run, RunPresenter } from "~/presenters/v3/RunPresenter.server";
+import { RunPresenter } from "~/presenters/v3/RunPresenter.server";
+import { getImpersonationId } from "~/services/impersonation.server";
+import { getResizableSnapshot } from "~/services/resizablePanel.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { lerp } from "~/utils/lerp";
@@ -79,10 +80,8 @@ import {
   v3RunStreamingPath,
   v3RunsPath,
 } from "~/utils/pathBuilder";
-import { SpanView } from "../resources.orgs.$organizationSlug.projects.v3.$projectParam.runs.$runParam.spans.$spanParam/route";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
-import { getResizableSnapshot } from "~/services/resizablePanel.server";
-import { getImpersonationId } from "~/services/impersonation.server";
+import { SpanView } from "../resources.orgs.$organizationSlug.projects.v3.$projectParam.runs.$runParam.spans.$spanParam/route";
 
 const resizableSettings = {
   parent: {
@@ -205,7 +204,7 @@ export default function Page() {
                 LeadingIcon={ArrowUturnLeftIcon}
                 shortcut={{ key: "R" }}
               >
-                Replay run…
+                Replay run
               </Button>
             </DialogTrigger>
             <ReplayRunDialog

@@ -1,6 +1,6 @@
 import { PrismaClientOrTransaction } from "~/db.server";
 import { workerQueue } from "~/services/worker.server";
-import { marqs } from "~/v3/marqs/index.server";
+import { MarQS, marqs, MarQSPriorityLevel } from "~/v3/marqs/index.server";
 import { BaseService } from "./baseService.server";
 import { logger } from "~/services/logger.server";
 
@@ -66,7 +66,9 @@ export class ResumeTaskDependencyService extends BaseService {
           environmentType: dependency.taskRun.runtimeEnvironment.type,
         },
         dependentRun.concurrencyKey ?? undefined,
-        dependentRun.createdAt.getTime()
+        dependentRun.queueTimestamp ?? dependentRun.createdAt,
+        undefined,
+        MarQSPriorityLevel.resume
       );
     } else {
       logger.debug("Task dependency resume: Attempt is not paused or there's no checkpoint event", {
@@ -99,7 +101,8 @@ export class ResumeTaskDependencyService extends BaseService {
           environmentId: dependency.taskRun.runtimeEnvironment.id,
           environmentType: dependency.taskRun.runtimeEnvironment.type,
         },
-        dependentRun.createdAt.getTime()
+        (dependentRun.queueTimestamp ?? dependentRun.createdAt).getTime(),
+        MarQSPriorityLevel.resume
       );
     }
   }

@@ -9,7 +9,7 @@ import { PerformRunExecutionV3Service } from "~/services/runs/performRunExecutio
 import { singleton } from "~/utils/singleton";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { MarQS } from "./index.server";
-import { MarQSShortKeyProducer } from "./marqsKeyProducer.server";
+import { MarQSShortKeyProducer } from "./marqsKeyProducer";
 import { RequeueV2Message } from "./requeueV2Message.server";
 import { VisibilityTimeoutStrategy } from "./types";
 import Redis from "ioredis";

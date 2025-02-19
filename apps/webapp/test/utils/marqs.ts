@@ -1,5 +1,5 @@
 import { MarQSKeyProducer } from "~/v3/marqs/types";
-import { MarQSShortKeyProducer } from "~/v3/marqs/marqsKeyProducer.server.js";
+import { MarQSShortKeyProducer } from "~/v3/marqs/marqsKeyProducer.js";
 import Redis from "ioredis";
 
 export function createKeyProducer(prefix: string): MarQSKeyProducer {

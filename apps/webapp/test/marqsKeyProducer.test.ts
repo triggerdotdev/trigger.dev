@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { MarQSShortKeyProducer } from "../app/v3/marqs/marqsKeyProducer.server.js";
+import { MarQSShortKeyProducer } from "../app/v3/marqs/marqsKeyProducer.js";
 import { MarQSKeyProducerEnv } from "~/v3/marqs/types.js";
 
 describe("MarQSShortKeyProducer", () => {
@@ -81,6 +81,41 @@ describe("MarQSShortKeyProducer", () => {
     });
   });
 
+  describe("queueKeyFromQueue", () => {
+    it("should generate queue key", () => {
+      expect(producer.queueKeyFromQueue("org:765432109876:env:345678901234:queue:testQueue")).toBe(
+        "org:765432109876:env:345678901234:queue:testQueue"
+      );
+    });
+
+    it("should include concurrency key when provided", () => {
+      expect(
+        producer.queueKeyFromQueue("org:765432109876:env:345678901234:queue:testQueue:ck:concKey")
+      ).toBe("org:765432109876:env:345678901234:queue:testQueue:ck:concKey");
+    });
+
+    it("should include priority when provided", () => {
+      expect(
+        producer.queueKeyFromQueue("org:765432109876:env:345678901234:queue:testQueue", 1)
+      ).toBe("org:765432109876:env:345678901234:queue:testQueue:priority:1");
+    });
+
+    it("should NOT include priority when provided with 0", () => {
+      expect(
+        producer.queueKeyFromQueue("org:765432109876:env:345678901234:queue:testQueue", 0)
+      ).toBe("org:765432109876:env:345678901234:queue:testQueue");
+    });
+
+    it("should NOT change the priority when provided", () => {
+      expect(
+        producer.queueKeyFromQueue(
+          "org:765432109876:env:345678901234:queue:testQueue:priority:1",
+          10
+        )
+      ).toBe("org:765432109876:env:345678901234:queue:testQueue:priority:1");
+    });
+  });
+
   describe("envSharedQueueKey", () => {
     it("should return organization-specific shared queue for development environment", () => {
       expect(producer.envSharedQueueKey(devEnv)).toBe(
@@ -140,15 +175,117 @@ describe("MarQSShortKeyProducer", () => {
 
   describe("currentConcurrencyKey", () => {
     it("should generate correct current concurrency key", () => {
-      expect(producer.currentConcurrencyKey(sampleEnv, "testQueue")).toBe(
+      expect(producer.queueCurrentConcurrencyKey(sampleEnv, "testQueue")).toBe(
         "org:765432109876:env:345678901234:queue:testQueue:currentConcurrency"
       );
     });
 
     it("should include concurrency key when provided", () => {
-      expect(producer.currentConcurrencyKey(sampleEnv, "testQueue", "concKey")).toBe(
+      expect(producer.queueCurrentConcurrencyKey(sampleEnv, "testQueue", "concKey")).toBe(
         "org:765432109876:env:345678901234:queue:testQueue:ck:concKey:currentConcurrency"
       );
+    });
+  });
+
+  describe("currentConcurrencyKeyFromQueue", () => {
+    it("should generate correct current concurrency key", () => {
+      expect(
+        producer.queueCurrentConcurrencyKeyFromQueue(
+          "org:765432109876:env:345678901234:queue:testQueue"
+        )
+      ).toBe("org:765432109876:env:345678901234:queue:testQueue:currentConcurrency");
+    });
+
+    it("should include concurrency key when provided", () => {
+      expect(
+        producer.queueCurrentConcurrencyKeyFromQueue(
+          "org:765432109876:env:345678901234:queue:testQueue:ck:concKey"
+        )
+      ).toBe("org:765432109876:env:345678901234:queue:testQueue:ck:concKey:currentConcurrency");
+    });
+
+    it("should remove the priority bit when provided", () => {
+      expect(
+        producer.queueCurrentConcurrencyKeyFromQueue(
+          "org:765432109876:env:345678901234:queue:testQueue:priority:1"
+        )
+      ).toBe("org:765432109876:env:345678901234:queue:testQueue:currentConcurrency");
+    });
+
+    it("should remove the priority bit when provided, but keep the concurrency key", () => {
+      expect(
+        producer.queueCurrentConcurrencyKeyFromQueue(
+          "org:765432109876:env:345678901234:queue:testQueue:ck:concKey:priority:1"
+        )
+      ).toBe("org:765432109876:env:345678901234:queue:testQueue:ck:concKey:currentConcurrency");
+    });
+  });
+
+  describe("queueReserveConcurrencyKeyFromQueue", () => {
+    it("should generate correct queue reserve concurrency key", () => {
+      expect(
+        producer.queueReserveConcurrencyKeyFromQueue(
+          "org:765432109876:env:345678901234:queue:testQueue"
+        )
+      ).toBe("org:765432109876:env:345678901234:queue:testQueue:reserveConcurrency");
+    });
+
+    it("should NOT include the concurrency key when provided", () => {
+      expect(
+        producer.queueReserveConcurrencyKeyFromQueue(
+          "org:765432109876:env:345678901234:queue:testQueue:ck:concKey"
+        )
+      ).toBe("org:765432109876:env:345678901234:queue:testQueue:reserveConcurrency");
+    });
+
+    it("should remove the priority bit when provided", () => {
+      expect(
+        producer.queueReserveConcurrencyKeyFromQueue(
+          "org:765432109876:env:345678901234:queue:testQueue:priority:1"
+        )
+      ).toBe("org:765432109876:env:345678901234:queue:testQueue:reserveConcurrency");
+    });
+
+    it("should remove the priority bit when provided, AND remove the concurrency key", () => {
+      expect(
+        producer.queueReserveConcurrencyKeyFromQueue(
+          "org:765432109876:env:345678901234:queue:testQueue:ck:concKey:priority:1"
+        )
+      ).toBe("org:765432109876:env:345678901234:queue:testQueue:reserveConcurrency");
+    });
+  });
+
+  describe("queueConcurrencyLimitKeyFromQueue", () => {
+    it("should generate correct queue concurrency limit key", () => {
+      expect(
+        producer.queueConcurrencyLimitKeyFromQueue(
+          "org:765432109876:env:345678901234:queue:testQueue"
+        )
+      ).toBe("org:765432109876:env:345678901234:queue:testQueue:concurrency");
+    });
+
+    it("should NOT include the concurrency key when provided", () => {
+      expect(
+        producer.queueConcurrencyLimitKeyFromQueue(
+          "org:765432109876:env:345678901234:queue:testQueue:ck:concKey"
+        )
+      ).toBe("org:765432109876:env:345678901234:queue:testQueue:concurrency");
+    });
+
+    it("should remove the priority bit when provided", () => {
+      expect(
+        producer.queueConcurrencyLimitKeyFromQueue(
+          "org:765432109876:env:345678901234:queue:testQueue:priority:1"
+        )
+      ).toBe("org:765432109876:env:345678901234:queue:testQueue:concurrency");
+    });
+
+    it("should remove the priority bit when provided, AND remove the concurrency key", () => {
+      expect(
+        producer.queueConcurrencyLimitKeyFromQueue(
+          "org:765432109876:env:345678901234:queue:testQueue:ck:concKey:priority:1"
+        )
+      ).toBe("org:765432109876:env:345678901234:queue:testQueue:concurrency");
     });
   });
 

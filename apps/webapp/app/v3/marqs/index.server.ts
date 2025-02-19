@@ -22,11 +22,12 @@ import { concurrencyTracker } from "../services/taskRunConcurrencyTracker.server
 import { attributesFromAuthenticatedEnv, tracer } from "../tracer.server";
 import { AsyncWorker } from "./asyncWorker.server";
 import { FairDequeuingStrategy } from "./fairDequeuingStrategy.server";
-import { MarQSShortKeyProducer } from "./marqsKeyProducer.server";
+import { MarQSShortKeyProducer } from "./marqsKeyProducer";
 import {
   EnqueueMessageReserveConcurrencyOptions,
   MarQSFairDequeueStrategy,
   MarQSKeyProducer,
+  MarQSKeyProducerEnv,
   MessagePayload,
   MessageQueueSubscriber,
   VisibilityTimeoutStrategy,
@@ -63,6 +64,11 @@ export type MarQSOptions = {
   verbose?: boolean;
   subscriber?: MessageQueueSubscriber;
 };
+
+export const MarQSPriorityLevel = {
+  resume: 100,
+  retry: 10,
+} as const;
 
 /**
  * MarQS - Multitenant Asynchronous Reliable Queueing System (pronounced "markus")
@@ -115,13 +121,13 @@ export class MarQS {
     });
   }
 
-  public async getQueueConcurrencyLimit(env: AuthenticatedEnvironment, queue: string) {
+  public async getQueueConcurrencyLimit(env: MarQSKeyProducerEnv, queue: string) {
     const result = await this.redis.get(this.keys.queueConcurrencyLimitKey(env, queue));
 
     return result ? Number(result) : undefined;
   }
 
-  public async getEnvConcurrencyLimit(env: AuthenticatedEnvironment) {
+  public async getEnvConcurrencyLimit(env: MarQSKeyProducerEnv) {
     const result = await this.redis.get(this.keys.envConcurrencyLimitKey(env));
 
     return result ? Number(result) : this.options.defaultEnvConcurrency;
@@ -135,7 +141,7 @@ export class MarQS {
     return this.redis.zcard(this.keys.queueKey(env, queue, concurrencyKey));
   }
 
-  public async lengthOfEnvQueue(env: AuthenticatedEnvironment) {
+  public async lengthOfEnvQueue(env: MarQSKeyProducerEnv) {
     return this.redis.zcard(this.keys.envQueueKey(env));
   }
 
@@ -160,15 +166,29 @@ export class MarQS {
   }
 
   public async currentConcurrencyOfQueue(
-    env: AuthenticatedEnvironment,
+    env: MarQSKeyProducerEnv,
     queue: string,
     concurrencyKey?: string
   ) {
-    return this.redis.scard(this.keys.currentConcurrencyKey(env, queue, concurrencyKey));
+    return this.redis.scard(this.keys.queueCurrentConcurrencyKey(env, queue, concurrencyKey));
   }
 
-  public async currentConcurrencyOfEnvironment(env: AuthenticatedEnvironment) {
+  public async reserveConcurrencyOfQueue(
+    env: MarQSKeyProducerEnv,
+    queue: string,
+    concurrencyKey?: string
+  ) {
+    return this.redis.scard(
+      this.keys.queueReserveConcurrencyKeyFromQueue(this.keys.queueKey(env, queue, concurrencyKey))
+    );
+  }
+
+  public async currentConcurrencyOfEnvironment(env: MarQSKeyProducerEnv) {
     return this.redis.scard(this.keys.envCurrentConcurrencyKey(env));
+  }
+
+  public async reserveConcurrencyOfEnvironment(env: MarQSKeyProducerEnv) {
+    return this.redis.scard(this.keys.envReserveConcurrencyKey(env.id));
   }
 
   public async enqueueMessage(
@@ -241,6 +261,7 @@ export class MarQS {
     messageId: string,
     messageData: Record<string, unknown>,
     timestamp?: number,
+    priority?: number,
     inplace?: boolean
   ) {
     return this.#trace(
@@ -252,8 +273,10 @@ export class MarQS {
           return;
         }
 
+        const queue = this.keys.queueKeyFromQueue(oldMessage.queue, priority);
+
         span.setAttributes({
-          [SemanticAttributes.QUEUE]: oldMessage.queue,
+          [SemanticAttributes.QUEUE]: queue,
           [SemanticAttributes.MESSAGE_ID]: oldMessage.messageId,
           [SemanticAttributes.CONCURRENCY_KEY]: oldMessage.concurrencyKey,
           [SemanticAttributes.PARENT_QUEUE]: oldMessage.parentQueue,
@@ -267,8 +290,8 @@ export class MarQS {
         const newMessage: MessagePayload = {
           version: "1",
           // preserve original trace context
-          data: { ...oldMessage.data, ...messageData, ...traceContext },
-          queue: oldMessage.queue,
+          data: { ...oldMessage.data, ...messageData, ...traceContext, queue },
+          queue,
           concurrencyKey: oldMessage.concurrencyKey,
           timestamp: timestamp ?? Date.now(),
           messageId,
@@ -579,21 +602,12 @@ export class MarQS {
         });
 
         if (updates) {
-          await this.replaceMessage(messageId, updates, retryAt, true);
+          await this.replaceMessage(messageId, updates, retryAt, undefined, true);
         }
 
         await this.options.visibilityTimeoutStrategy.cancelHeartbeat(messageId);
 
-        await this.#callNackMessage({
-          messageKey: this.keys.messageKey(messageId),
-          messageQueue: message.queue,
-          parentQueue: message.parentQueue,
-          concurrencyKey: this.keys.currentConcurrencyKeyFromQueue(message.queue),
-          envConcurrencyKey: this.keys.envCurrentConcurrencyKeyFromQueue(message.queue),
-          nackCounterKey: this.keys.nackCounterKey(messageId),
-          messageId,
-          messageScore: retryAt,
-        });
+        await this.#callNackMessage(messageId, message, retryAt);
 
         await this.options.subscriber?.messageNacked(message);
 
@@ -882,7 +896,7 @@ export class MarQS {
     const queueKey = message.queue;
     const parentQueueKey = message.parentQueue;
     const messageKey = this.keys.messageKey(message.messageId);
-    const queueCurrentConcurrencyKey = this.keys.currentConcurrencyKeyFromQueue(message.queue);
+    const queueCurrentConcurrencyKey = this.keys.queueCurrentConcurrencyKeyFromQueue(message.queue);
     const queueReserveConcurrencyKey = this.keys.queueReserveConcurrencyKeyFromQueue(message.queue);
     const envCurrentConcurrencyKey = this.keys.envCurrentConcurrencyKeyFromQueue(message.queue);
     const envReserveConcurrencyKey = this.keys.envReserveConcurrencyKeyFromQueue(message.queue);
@@ -1009,7 +1023,7 @@ export class MarQS {
 
       return true;
     } else {
-      const queueConcurrencyLimitKey = this.keys.concurrencyLimitKeyFromQueue(message.queue);
+      const queueConcurrencyLimitKey = this.keys.queueConcurrencyLimitKeyFromQueue(message.queue);
 
       logger.debug("Calling enqueueMessageWithReservingConcurrencyForRecursiveQueue", {
         service: this.name,
@@ -1082,20 +1096,33 @@ export class MarQS {
     messageQueue: string;
     parentQueue: string;
   }) {
-    const concurrencyLimitKey = this.keys.concurrencyLimitKeyFromQueue(messageQueue);
-    const currentConcurrencyKey = this.keys.currentConcurrencyKeyFromQueue(messageQueue);
+    const queueConcurrencyLimitKey = this.keys.queueConcurrencyLimitKeyFromQueue(messageQueue);
+    const queueCurrentConcurrencyKey = this.keys.queueCurrentConcurrencyKeyFromQueue(messageQueue);
     const envConcurrencyLimitKey = this.keys.envConcurrencyLimitKeyFromQueue(messageQueue);
     const envCurrentConcurrencyKey = this.keys.envCurrentConcurrencyKeyFromQueue(messageQueue);
     const envReserveConcurrencyKey = this.keys.envReserveConcurrencyKeyFromQueue(messageQueue);
     const queueReserveConcurrencyKey = this.keys.queueReserveConcurrencyKeyFromQueue(messageQueue);
     const envQueueKey = this.keys.envQueueKeyFromQueue(messageQueue);
 
+    logger.debug("Calling dequeueMessage", {
+      messageQueue,
+      parentQueue,
+      queueConcurrencyLimitKey,
+      envConcurrencyLimitKey,
+      queueCurrentConcurrencyKey,
+      queueReserveConcurrencyKey,
+      envCurrentConcurrencyKey,
+      envReserveConcurrencyKey,
+      envQueueKey,
+      service: this.name,
+    });
+
     const result = await this.redis.dequeueMessage(
       messageQueue,
       parentQueue,
-      concurrencyLimitKey,
+      queueConcurrencyLimitKey,
       envConcurrencyLimitKey,
-      currentConcurrencyKey,
+      queueCurrentConcurrencyKey,
       queueReserveConcurrencyKey,
       envCurrentConcurrencyKey,
       envReserveConcurrencyKey,
@@ -1146,7 +1173,7 @@ export class MarQS {
     messageId: string;
   }) {
     const messageKey = this.keys.messageKey(messageId);
-    const concurrencyKey = this.keys.currentConcurrencyKeyFromQueue(messageQueue);
+    const concurrencyKey = this.keys.queueCurrentConcurrencyKeyFromQueue(messageQueue);
     const envConcurrencyKey = this.keys.envCurrentConcurrencyKeyFromQueue(messageQueue);
     const envReserveConcurrencyKey = this.keys.envReserveConcurrencyKeyFromQueue(messageQueue);
     const queueReserveConcurrencyKey = this.keys.queueReserveConcurrencyKeyFromQueue(messageQueue);
@@ -1177,46 +1204,38 @@ export class MarQS {
     );
   }
 
-  async #callNackMessage({
-    messageKey,
-    messageQueue,
-    parentQueue,
-    concurrencyKey,
-    envConcurrencyKey,
-    nackCounterKey,
-    messageId,
-    messageScore,
-  }: {
-    messageKey: string;
-    messageQueue: string;
-    parentQueue: string;
-    concurrencyKey: string;
-    envConcurrencyKey: string;
-    nackCounterKey: string;
-    messageId: string;
-    messageScore: number;
-  }) {
+  async #callNackMessage(messageId: string, message: MessagePayload, messageScore: number) {
+    const messageKey = this.keys.messageKey(message.messageId);
+    const queueKey = message.queue;
+    const parentQueueKey = message.parentQueue;
+    const queueCurrentConcurrencyKey = this.keys.queueCurrentConcurrencyKeyFromQueue(message.queue);
+    const envCurrentConcurrencyKey = this.keys.envCurrentConcurrencyKeyFromQueue(message.queue);
+    const nackCounterKey = this.keys.nackCounterKey(message.messageId);
+    const envQueueKey = this.keys.envQueueKeyFromQueue(message.queue);
+    const queueName = message.queue;
+
     logger.debug("Calling nackMessage", {
       messageKey,
-      messageQueue,
-      parentQueue,
-      concurrencyKey,
-      envConcurrencyKey,
+      queueKey,
+      parentQueueKey,
+      queueCurrentConcurrencyKey,
+      envCurrentConcurrencyKey,
       nackCounterKey,
       messageId,
       messageScore,
+      envQueueKey,
       service: this.name,
     });
 
     return this.redis.nackMessage(
       messageKey,
-      messageQueue,
-      parentQueue,
-      concurrencyKey,
-      envConcurrencyKey,
-      this.keys.envQueueKeyFromQueue(messageQueue),
+      queueKey,
+      parentQueueKey,
+      queueCurrentConcurrencyKey,
+      envCurrentConcurrencyKey,
+      envQueueKey,
       nackCounterKey,
-      messageQueue,
+      queueName,
       messageId,
       String(Date.now()),
       String(messageScore)
@@ -1444,17 +1463,17 @@ return true
     this.redis.defineCommand("dequeueMessage", {
       numberOfKeys: 9,
       lua: `
-local childQueue = KEYS[1]
-local parentQueue = KEYS[2]
-local concurrencyLimitKey = KEYS[3]
+local queueKey = KEYS[1]
+local parentQueueKey = KEYS[2]
+local queueConcurrencyLimitKey = KEYS[3]
 local envConcurrencyLimitKey = KEYS[4]
-local currentConcurrencyKey = KEYS[5]
+local queueCurrentConcurrencyKey = KEYS[5]
 local queueReserveConcurrencyKey = KEYS[6]
 local envCurrentConcurrencyKey = KEYS[7]
 local envReserveConcurrencyKey = KEYS[8]
 local envQueueKey = KEYS[9]
 
-local childQueueName = ARGV[1]
+local queueName = ARGV[1]
 local currentTime = tonumber(ARGV[2])
 local defaultEnvConcurrencyLimit = ARGV[3]
 
@@ -1469,18 +1488,18 @@ if envCurrentConcurrency >= totalEnvConcurrencyLimit then
 end
 
 -- Check current queue concurrency against the limit
-local currentConcurrency = tonumber(redis.call('SCARD', currentConcurrencyKey) or '0')
-local concurrencyLimit = math.min(tonumber(redis.call('GET', concurrencyLimitKey) or '1000000'), envConcurrencyLimit)
+local queueCurrentConcurrency = tonumber(redis.call('SCARD', queueCurrentConcurrencyKey) or '0')
+local queueConcurrencyLimit = math.min(tonumber(redis.call('GET', queueConcurrencyLimitKey) or '1000000'), envConcurrencyLimit)
 local queueReserveConcurrency = tonumber(redis.call('SCARD', queueReserveConcurrencyKey) or '0')
-local totalQueueConcurrencyLimit = concurrencyLimit + queueReserveConcurrency
+local totalQueueConcurrencyLimit = queueConcurrencyLimit + queueReserveConcurrency
 
 -- Check condition only if concurrencyLimit exists
-if currentConcurrency >= totalQueueConcurrencyLimit then
+if queueCurrentConcurrency >= totalQueueConcurrencyLimit then
     return nil
 end
 
 -- Attempt to dequeue the next message
-local messages = redis.call('ZRANGEBYSCORE', childQueue, '-inf', currentTime, 'WITHSCORES', 'LIMIT', 0, 1)
+local messages = redis.call('ZRANGEBYSCORE', queueKey, '-inf', currentTime, 'WITHSCORES', 'LIMIT', 0, 1)
 
 if #messages == 0 then
     return nil
@@ -1490,9 +1509,9 @@ local messageId = messages[1]
 local messageScore = tonumber(messages[2])
 
 -- Remove the message from the queue and update concurrency
-redis.call('ZREM', childQueue, messageId)
+redis.call('ZREM', queueKey, messageId)
 redis.call('ZREM', envQueueKey, messageId)
-redis.call('SADD', currentConcurrencyKey, messageId)
+redis.call('SADD', queueCurrentConcurrencyKey, messageId)
 redis.call('SADD', envCurrentConcurrencyKey, messageId)
 
 -- Remove the message from the reserve concurrency set
@@ -1502,11 +1521,11 @@ redis.call('SREM', envReserveConcurrencyKey, messageId)
 redis.call('SREM', queueReserveConcurrencyKey, messageId)
 
 -- Rebalance the parent queue
-local earliestMessage = redis.call('ZRANGE', childQueue, 0, 0, 'WITHSCORES')
+local earliestMessage = redis.call('ZRANGE', queueKey, 0, 0, 'WITHSCORES')
 if #earliestMessage == 0 then
-    redis.call('ZREM', parentQueue, childQueueName)
+    redis.call('ZREM', parentQueueKey, queueName)
 else
-    redis.call('ZADD', parentQueue, earliestMessage[2], childQueueName)
+    redis.call('ZADD', parentQueueKey, earliestMessage[2], queueName)
 end
 
 return {messageId, messageScore} -- Return message details
@@ -1535,45 +1554,36 @@ redis.call('SET', messageKey, messageData, 'GET')
     this.redis.defineCommand("acknowledgeMessage", {
       numberOfKeys: 8,
       lua: `
-local parentQueue = KEYS[1]
+local parentQueueKey = KEYS[1]
 local messageKey = KEYS[2]
-local messageQueue = KEYS[3]
-local concurrencyKey = KEYS[4]
+local queueKey = KEYS[3]
+local queueConcurrencyKey = KEYS[4]
 local queueReserveConcurrencyKey = KEYS[5]
 local envCurrentConcurrencyKey = KEYS[6]
 local envReserveConcurrencyKey = KEYS[7]
 local envQueueKey = KEYS[8]
 
--- Args: messageId, messageQueueName
 local messageId = ARGV[1]
-local messageQueueName = ARGV[2]
-
--- Remove the message from the message key
-redis.call('DEL', messageKey)
+local queueName = ARGV[2]
 
 -- Remove the message from the queue
-redis.call('ZREM', messageQueue, messageId)
-
--- Remove the message from the env queue
-redis.call('ZREM', envQueueKey, messageId)
-
--- Remove the message from the reserve concurrency set
-redis.call('SREM', envReserveConcurrencyKey, messageId)
-
--- Remove the message from the queue reserve concurrency set
-redis.call('SREM', queueReserveConcurrencyKey, messageId)
+redis.call('ZREM', queueKey, messageId)
 
 -- Rebalance the parent queue
-local earliestMessage = redis.call('ZRANGE', messageQueue, 0, 0, 'WITHSCORES')
+local earliestMessage = redis.call('ZRANGE', queueKey, 0, 0, 'WITHSCORES')
 if #earliestMessage == 0 then
-    redis.call('ZREM', parentQueue, messageQueueName)
+    redis.call('ZREM', parentQueueKey, queueName)
 else
-    redis.call('ZADD', parentQueue, earliestMessage[2], messageQueueName)
+    redis.call('ZADD', parentQueueKey, earliestMessage[2], queueName)
 end
 
 -- Update the concurrency keys
-redis.call('SREM', concurrencyKey, messageId)
+redis.call('SREM', queueConcurrencyKey, messageId)
 redis.call('SREM', envCurrentConcurrencyKey, messageId)
+redis.call('SREM', envReserveConcurrencyKey, messageId)
+redis.call('SREM', queueReserveConcurrencyKey, messageId)
+redis.call('ZREM', envQueueKey, messageId)
+redis.call('DEL', messageKey)
 `,
     });
 
@@ -1581,25 +1591,24 @@ redis.call('SREM', envCurrentConcurrencyKey, messageId)
       numberOfKeys: 7,
       lua: `
 local messageKey = KEYS[1]
-local childQueueKey = KEYS[2]
+local queueKey = KEYS[2]
 local parentQueueKey = KEYS[3]
-local concurrencyKey = KEYS[4]
-local envConcurrencyKey = KEYS[5]
+local queueCurrentConcurrencyKey = KEYS[4]
+local envCurrentConcurrencyKey = KEYS[5]
 local envQueueKey = KEYS[6]
 local nackCounterKey = KEYS[7]
 
--- Args: childQueueName, messageId, currentTime, messageScore
-local childQueueName = ARGV[1]
+local queueName = ARGV[1]
 local messageId = ARGV[2]
 local currentTime = tonumber(ARGV[3])
 local messageScore = tonumber(ARGV[4])
 
--- Update the concurrency keys
-redis.call('SREM', concurrencyKey, messageId)
-redis.call('SREM', envConcurrencyKey, messageId)
+-- Update the current concurrency keys
+redis.call('SREM', queueCurrentConcurrencyKey, messageId)
+redis.call('SREM', envCurrentConcurrencyKey, messageId)
 
 -- Enqueue the message into the queue
-redis.call('ZADD', childQueueKey, messageScore, messageId)
+redis.call('ZADD', queueKey, messageScore, messageId)
 
 -- Enqueue the message into the env queue
 redis.call('ZADD', envQueueKey, messageScore, messageId)
@@ -1609,11 +1618,11 @@ redis.call('INCR', nackCounterKey)
 redis.call('EXPIRE', nackCounterKey, 2592000)
 
 -- Rebalance the parent queue
-local earliestMessage = redis.call('ZRANGE', childQueueKey, 0, 0, 'WITHSCORES')
+local earliestMessage = redis.call('ZRANGE', queueKey, 0, 0, 'WITHSCORES')
 if #earliestMessage == 0 then
-    redis.call('ZREM', parentQueueKey, childQueueName)
+    redis.call('ZREM', parentQueueKey, queueName)
 else
-    redis.call('ZADD', parentQueueKey, earliestMessage[2], childQueueName)
+    redis.call('ZADD', parentQueueKey, earliestMessage[2], queueName)
 end
 `,
     });
@@ -1719,16 +1728,16 @@ declare module "ioredis" {
     ): Result<string, Context>;
 
     dequeueMessage(
-      childQueue: string,
-      parentQueue: string,
-      concurrencyLimitKey: string,
+      queueKey: string,
+      parentQueueKey: string,
+      queueConcurrencyLimitKey: string,
       envConcurrencyLimitKey: string,
-      currentConcurrencyKey: string,
+      queueCurrentConcurrencyKey: string,
       queueReserveConcurrencyKey: string,
       envCurrentConcurrencyKey: string,
       envReserveConcurrencyKey: string,
       envQueueKey: string,
-      childQueueName: string,
+      queueName: string,
       currentTime: string,
       defaultEnvConcurrencyLimit: string,
       callback?: Callback<[string, string]>
@@ -1756,13 +1765,13 @@ declare module "ioredis" {
 
     nackMessage(
       messageKey: string,
-      childQueueKey: string,
+      queueKey: string,
       parentQueueKey: string,
-      concurrencyKey: string,
-      envConcurrencyKey: string,
+      queueCurrentConcurrencyKey: string,
+      envCurrentConcurrencyKey: string,
       envQueueKey: string,
       nackCounterKey: string,
-      childQueueName: string,
+      queueName: string,
       messageId: string,
       currentTime: string,
       messageScore: string,
@@ -1829,17 +1838,20 @@ function getMarQSClient() {
         maximumEnvCount: env.MARQS_MAXIMUM_ENV_COUNT,
       }),
     }),
-    envQueuePriorityStrategy: new FairDequeuingStrategy({
-      tracer: tracer,
-      redis,
-      parentQueueLimit: env.MARQS_DEV_QUEUE_LIMIT,
+    envQueuePriorityStrategy: new EnvPriorityDequeuingStrategy({
       keys: keysProducer,
-      defaultEnvConcurrency: env.DEFAULT_ENV_EXECUTION_CONCURRENCY_LIMIT,
-      biases: {
-        concurrencyLimitBias: 0.0,
-        availableCapacityBias: 0.0,
-        queueAgeRandomization: 0.1,
-      },
+      delegate: new FairDequeuingStrategy({
+        tracer: tracer,
+        redis,
+        parentQueueLimit: env.MARQS_DEV_QUEUE_LIMIT,
+        keys: keysProducer,
+        defaultEnvConcurrency: env.DEFAULT_ENV_EXECUTION_CONCURRENCY_LIMIT,
+        biases: {
+          concurrencyLimitBias: 0.0,
+          availableCapacityBias: 0.0,
+          queueAgeRandomization: 0.1,
+        },
+      }),
     }),
     workers: 1,
     redis,

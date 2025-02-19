@@ -1,4 +1,4 @@
-import { RuntimeEnvironmentType } from "@trigger.dev/database";
+import type { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { z } from "zod";
 
 export type QueueRange = { offset: number; count: number };
@@ -42,14 +42,20 @@ export interface MarQSKeyProducer {
     priority?: number
   ): string;
 
+  queueKeyFromQueue(queue: string, priority?: number): string;
+
   envQueueKey(env: MarQSKeyProducerEnv): string;
   envSharedQueueKey(env: MarQSKeyProducerEnv): string;
   sharedQueueKey(): string;
   sharedQueueScanPattern(): string;
   queueCurrentConcurrencyScanPattern(): string;
-  concurrencyLimitKeyFromQueue(queue: string): string;
-  currentConcurrencyKeyFromQueue(queue: string): string;
-  currentConcurrencyKey(env: MarQSKeyProducerEnv, queue: string, concurrencyKey?: string): string;
+  queueConcurrencyLimitKeyFromQueue(queue: string): string;
+  queueCurrentConcurrencyKeyFromQueue(queue: string): string;
+  queueCurrentConcurrencyKey(
+    env: MarQSKeyProducerEnv,
+    queue: string,
+    concurrencyKey?: string
+  ): string;
   envConcurrencyLimitKeyFromQueue(queue: string): string;
   envCurrentConcurrencyKeyFromQueue(queue: string): string;
   envReserveConcurrencyKeyFromQueue(queue: string): string;
