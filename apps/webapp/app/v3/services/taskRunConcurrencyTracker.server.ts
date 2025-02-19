@@ -121,11 +121,10 @@ class TaskRunConcurrencyTracker implements MessageQueueSubscriber {
     });
   }
 
-  async messageRequeued(oldQueue: string, message: MessagePayload): Promise<void> {
+  async messageRequeued(message: MessagePayload): Promise<void> {
     logger.debug("TaskRunConcurrencyTracker.messageRequeued()", {
       data: message.data,
       messageId: message.messageId,
-      oldQueue,
     });
 
     const data = this.getMessageData(message);

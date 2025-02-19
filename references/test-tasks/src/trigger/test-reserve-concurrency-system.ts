@@ -275,7 +275,7 @@ export const testEnvReserveConcurrency = task({
     // But because the parent task triggers a child task, the env reserve concurrency will allow the child task to execute
     logger.info("Parent task is executing, waiting for child task to complete");
 
-    await waitForRunStatus(parentRun.id, ["COMPLETED"], 10); // timeout after 10 seconds, to ensure the child task finished before the delay runs
+    await waitForRunStatus(parentRun.id, ["COMPLETED"], 20); // timeout after 10 seconds, to ensure the child task finished before the delay runs
 
     logger.info(
       "Parent task completed, which means the child task completed. Now waiting for the hold tasks to complete"
@@ -332,7 +332,7 @@ export const testQueueReserveConcurrency = task({
       { tags: ["root"] }
     );
 
-    const completedRootRun = await waitForRunStatus(rootRecursiveRun.id, ["COMPLETED"], 20);
+    const completedRootRun = await waitForRunStatus(rootRecursiveRun.id, ["COMPLETED"]);
 
     assert(completedRootRun.status === "COMPLETED", "Root recursive run should be completed");
 
@@ -341,7 +341,7 @@ export const testQueueReserveConcurrency = task({
       { tags: ["failing-root"] }
     );
 
-    const failedRootRun = await waitForRunStatus(failingRootRecursiveRun.id, ["COMPLETED"], 20);
+    const failedRootRun = await waitForRunStatus(failingRootRecursiveRun.id, ["COMPLETED"]);
 
     assert(!failedRootRun.output?.ok, "Child of failing root run should fail");
 

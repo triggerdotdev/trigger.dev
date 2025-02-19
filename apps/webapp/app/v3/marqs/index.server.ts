@@ -10,9 +10,10 @@ import {
 } from "@opentelemetry/api";
 import {
   SEMATTRS_MESSAGE_ID,
-  SEMATTRS_MESSAGING_OPERATION,
   SEMATTRS_MESSAGING_SYSTEM,
+  SEMATTRS_MESSAGING_OPERATION,
 } from "@opentelemetry/semantic-conventions";
+import { flattenAttributes } from "@trigger.dev/core/v3";
 import Redis, { type Callback, type Result } from "ioredis";
 import { env } from "~/env.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
@@ -28,13 +29,13 @@ import {
   MarQSFairDequeueStrategy,
   MarQSKeyProducer,
   MarQSKeyProducerEnv,
+  MarQSPriorityLevel,
   MessagePayload,
   MessageQueueSubscriber,
   VisibilityTimeoutStrategy,
 } from "./types";
 import { V3LegacyRunEngineWorkerVisibilityTimeout } from "./v3VisibilityTimeout.server";
-import { flattenAttributes } from "@trigger.dev/core/v3";
-import { EnvPriorityDequeuingStrategy } from "./envPriorityDequeuingStrategy.server";
+import { legacyRunEngineWorker } from "../legacyRunEngineWorker.server";
 
 const KEY_PREFIX = "marqs:";
 
@@ -64,11 +65,6 @@ export type MarQSOptions = {
   verbose?: boolean;
   subscriber?: MessageQueueSubscriber;
 };
-
-export const MarQSPriorityLevel = {
-  resume: 100,
-  retry: 10,
-} as const;
 
 /**
  * MarQS - Multitenant Asynchronous Reliable Queueing System (pronounced "markus")
@@ -199,12 +195,12 @@ export class MarQS {
     concurrencyKey?: string,
     timestamp?: number | Date,
     reserve?: EnqueueMessageReserveConcurrencyOptions,
-    priority?: number
+    priority?: MarQSPriorityLevel
   ) {
     return await this.#trace(
       "enqueueMessage",
       async (span) => {
-        const messageQueue = this.keys.queueKey(env, queue, concurrencyKey, priority);
+        const messageQueue = this.keys.queueKey(env, queue, concurrencyKey);
 
         const parentQueue = this.keys.envSharedQueueKey(env);
 
@@ -223,6 +219,7 @@ export class MarQS {
               : timestamp.getTime(),
           messageId,
           parentQueue,
+          priority,
         };
 
         span.setAttributes({
@@ -292,9 +289,10 @@ export class MarQS {
           timestamp: timestamp ?? Date.now(),
           messageId,
           parentQueue: oldMessage.parentQueue,
+          priority: oldMessage.priority,
         };
 
-        await this.#callReplaceMessage(newMessage);
+        await this.#saveMessageIfExists(newMessage);
       },
       {
         kind: SpanKind.CONSUMER,
@@ -311,7 +309,7 @@ export class MarQS {
     messageId: string,
     messageData: Record<string, unknown>,
     timestamp?: number,
-    priority?: number
+    priority?: MarQSPriorityLevel
   ) {
     return this.#trace(
       "requeueMessage",
@@ -322,10 +320,8 @@ export class MarQS {
           return;
         }
 
-        const queue = this.keys.queueKeyFromQueue(oldMessage.queue, priority);
-
         span.setAttributes({
-          [SemanticAttributes.QUEUE]: queue,
+          [SemanticAttributes.QUEUE]: oldMessage.queue,
           [SemanticAttributes.MESSAGE_ID]: oldMessage.messageId,
           [SemanticAttributes.CONCURRENCY_KEY]: oldMessage.concurrencyKey,
           [SemanticAttributes.PARENT_QUEUE]: oldMessage.parentQueue,
@@ -339,19 +335,43 @@ export class MarQS {
         const newMessage: MessagePayload = {
           version: "1",
           // preserve original trace context
-          data: { ...oldMessage.data, ...messageData, ...traceContext, queue },
-          queue,
+          data: {
+            ...oldMessage.data,
+            ...messageData,
+            ...traceContext,
+            queue: oldMessage.queue,
+          },
+          queue: oldMessage.queue,
           concurrencyKey: oldMessage.concurrencyKey,
           timestamp: timestamp ?? Date.now(),
           messageId,
           parentQueue: oldMessage.parentQueue,
+          priority: priority ?? oldMessage.priority,
         };
 
         await this.options.visibilityTimeoutStrategy.cancelHeartbeat(messageId);
+        await this.#saveMessage(newMessage);
 
-        await this.#callRequeueMessage(oldMessage.queue, newMessage);
+        // If the message timestamp is enough in the future (e.g. more than 500ms from now),
+        // we will schedule it to be requeued in the future using the legacy run engine redis worker
+        // If not, we just requeue it immediately
+        if (timestamp && timestamp > Date.now() + 500) {
+          logger.debug(`Scheduling requeue for message`, {
+            timestamp,
+            service: this.name,
+            newMessage,
+          });
 
-        await this.options.subscriber?.messageRequeued(oldMessage.queue, newMessage);
+          // Schedule the requeue in the future
+          await legacyRunEngineWorker.enqueue({
+            id: `marqs-requeue-${messageId}`,
+            job: "scheduleRequeueMessage",
+            payload: { messageId },
+            availableAt: new Date(timestamp - 150), // 150ms before the timestamp
+          });
+        } else {
+          await this.#callRequeueMessage(newMessage);
+        }
       },
       {
         kind: SpanKind.CONSUMER,
@@ -362,6 +382,54 @@ export class MarQS {
         },
       }
     );
+  }
+
+  public async requeueMessageById(messageId: string) {
+    return this.#trace(
+      "requeueMessageById",
+      async (span) => {
+        const message = await this.readMessage(messageId);
+
+        if (!message) {
+          return;
+        }
+
+        span.setAttributes({
+          [SemanticAttributes.QUEUE]: message.queue,
+          [SemanticAttributes.MESSAGE_ID]: message.messageId,
+          [SemanticAttributes.CONCURRENCY_KEY]: message.concurrencyKey,
+          [SemanticAttributes.PARENT_QUEUE]: message.parentQueue,
+        });
+
+        logger.debug(`Requeueing message by id`, { messageId, message, service: this.name });
+
+        await this.#callRequeueMessage(message);
+      },
+      {
+        kind: SpanKind.CONSUMER,
+        attributes: {
+          [SEMATTRS_MESSAGING_OPERATION]: "requeue_by_id",
+          [SEMATTRS_MESSAGE_ID]: messageId,
+          [SEMATTRS_MESSAGING_SYSTEM]: "marqs",
+        },
+      }
+    );
+  }
+
+  async #saveMessage(message: MessagePayload) {
+    logger.debug(`Saving message`, { message, service: this.name });
+
+    const messageKey = this.keys.messageKey(message.messageId);
+
+    await this.redis.set(messageKey, JSON.stringify(message));
+  }
+
+  async #saveMessageIfExists(message: MessagePayload) {
+    logger.debug(`Saving message if exists`, { message, service: this.name });
+
+    const messageKey = this.keys.messageKey(message.messageId);
+
+    await this.redis.set(messageKey, JSON.stringify(message), "XX"); // XX means only set if key exists
   }
 
   public async dequeueMessageInEnv(env: AuthenticatedEnvironment) {
@@ -719,6 +787,21 @@ export class MarQS {
     );
   }
 
+  #nudgeTimestampForPriority(timestamp: number, priority?: MarQSPriorityLevel) {
+    if (!priority) {
+      return timestamp;
+    }
+
+    switch (priority) {
+      case "resume": {
+        return timestamp - 31_556_952 * 1000; // 1 year
+      }
+      case "retry": {
+        return timestamp - 15_778_476 * 1000; // 6 months
+      }
+    }
+  }
+
   async #getNackCount(messageId: string): Promise<number> {
     const result = await this.redis.get(this.keys.nackCounterKey(messageId));
 
@@ -943,7 +1026,9 @@ export class MarQS {
     const queueName = message.queue;
     const messageId = message.messageId;
     const messageData = JSON.stringify(message);
-    const messageScore = String(message.timestamp);
+    const messageScore = String(
+      this.#nudgeTimestampForPriority(message.timestamp, message.priority)
+    );
 
     if (!reserve) {
       logger.debug("Calling enqueueMessage", {
@@ -1189,21 +1274,8 @@ export class MarQS {
     };
   }
 
-  async #callReplaceMessage(message: MessagePayload) {
-    logger.debug("Calling replaceMessage", {
-      messagePayload: message,
-      service: this.name,
-    });
-
-    return this.redis.replaceMessage(
-      this.keys.messageKey(message.messageId),
-      JSON.stringify(message)
-    );
-  }
-
-  async #callRequeueMessage(oldQueue: string, message: MessagePayload) {
+  async #callRequeueMessage(message: MessagePayload) {
     const queueKey = message.queue;
-    const oldQueueKey = oldQueue;
     const parentQueueKey = message.parentQueue;
     const messageKey = this.keys.messageKey(message.messageId);
     const queueCurrentConcurrencyKey = this.keys.queueCurrentConcurrencyKeyFromQueue(message.queue);
@@ -1213,15 +1285,15 @@ export class MarQS {
     const envQueueKey = this.keys.envQueueKeyFromQueue(message.queue);
 
     const queueName = message.queue;
-    const oldQueueName = oldQueue;
     const messageId = message.messageId;
     const messageData = JSON.stringify(message);
-    const messageScore = String(message.timestamp);
+    const messageScore = String(
+      this.#nudgeTimestampForPriority(message.timestamp, message.priority)
+    );
 
     logger.debug("Calling requeueMessage", {
       service: this.name,
       queueKey,
-      oldQueueKey,
       parentQueueKey,
       messageKey,
       queueCurrentConcurrencyKey,
@@ -1230,7 +1302,6 @@ export class MarQS {
       envReserveConcurrencyKey,
       envQueueKey,
       queueName,
-      oldQueueName,
       messageId,
       messageData,
       messageScore,
@@ -1238,7 +1309,6 @@ export class MarQS {
 
     const result = await this.redis.requeueMessage(
       queueKey,
-      oldQueueKey,
       parentQueueKey,
       messageKey,
       queueCurrentConcurrencyKey,
@@ -1247,7 +1317,6 @@ export class MarQS {
       envReserveConcurrencyKey,
       envQueueKey,
       queueName,
-      oldQueueName,
       messageId,
       messageData,
       messageScore
@@ -1269,6 +1338,8 @@ export class MarQS {
       messageScore,
       result,
     });
+
+    await this.options.subscriber?.messageRequeued(message);
 
     return true;
   }
@@ -1642,25 +1713,6 @@ return {messageId, messageScore} -- Return message details
       `,
     });
 
-    this.redis.defineCommand("replaceMessage", {
-      numberOfKeys: 1,
-      lua: `
-local messageKey = KEYS[1]
-local messageData = ARGV[1]
-
--- Check if message exists
-local existingMessage = redis.call('GET', messageKey)
-
--- Do nothing if it doesn't
-if #existingMessage == nil then
-    return nil
-end
-
--- Replace the message
-redis.call('SET', messageKey, messageData, 'GET')
-      `,
-    });
-
     this.redis.defineCommand("acknowledgeMessage", {
       numberOfKeys: 8,
       lua: `
@@ -1698,48 +1750,35 @@ redis.call('DEL', messageKey)
     });
 
     this.redis.defineCommand("requeueMessage", {
-      numberOfKeys: 9,
+      numberOfKeys: 8,
       lua: `
 local queueKey = KEYS[1]
-local oldQueueKey = KEYS[2]
-local parentQueueKey = KEYS[3]
-local messageKey = KEYS[4]
-local queueCurrentConcurrencyKey = KEYS[5]
-local queueReserveConcurrencyKey = KEYS[6]
-local envCurrentConcurrencyKey = KEYS[7]
-local envReserveConcurrencyKey = KEYS[8]
-local envQueueKey = KEYS[9]
+local parentQueueKey = KEYS[2]
+local messageKey = KEYS[3]
+local queueCurrentConcurrencyKey = KEYS[4]
+local queueReserveConcurrencyKey = KEYS[5]
+local envCurrentConcurrencyKey = KEYS[6]
+local envReserveConcurrencyKey = KEYS[7]
+local envQueueKey = KEYS[8]
 
 local queueName = ARGV[1]
-local oldQueueName = ARGV[2]
-local messageId = ARGV[3]
-local messageData = ARGV[4]
-local messageScore = ARGV[5]
-
--- First remove the message from the old queue
-redis.call('ZREM', oldQueueKey, messageId)
+local messageId = ARGV[2]
+local messageData = ARGV[3]
+local messageScore = ARGV[4]
 
 -- Write the new message data
 redis.call('SET', messageKey, messageData)
 
--- Add the message to the new queue with a new score
+-- Add the message to the queue with a new score
 redis.call('ZADD', queueKey, messageScore, messageId)
 redis.call('ZADD', envQueueKey, messageScore, messageId)
 
--- Rebalance the parent queue (for the new queue)
+-- Rebalance the parent queue
 local earliestMessage = redis.call('ZRANGE', queueKey, 0, 0, 'WITHSCORES')
 if #earliestMessage == 0 then
     redis.call('ZREM', parentQueueKey, queueName)
 else
     redis.call('ZADD', parentQueueKey, earliestMessage[2], queueName)
-end
-
--- Rebalance the parent queue (for the old queue)
-local earliestMessage = redis.call('ZRANGE', oldQueueKey, 0, 0, 'WITHSCORES')
-if #earliestMessage == 0 then
-    redis.call('ZREM', parentQueueKey, oldQueueName)
-else
-    redis.call('ZADD', parentQueueKey, earliestMessage[2], oldQueueName)
 end
 
 -- Clear all concurrency sets (combined from both scripts)
@@ -1908,15 +1947,8 @@ declare module "ioredis" {
       callback?: Callback<[string, string]>
     ): Result<[string, string] | null, Context>;
 
-    replaceMessage(
-      messageKey: string,
-      messageData: string,
-      callback?: Callback<void>
-    ): Result<void, Context>;
-
     requeueMessage(
       queueKey: string,
-      oldQueueKey: string,
       parentQueueKey: string,
       messageKey: string,
       queueCurrentConcurrencyKey: string,
@@ -1925,7 +1957,6 @@ declare module "ioredis" {
       envReserveConcurrencyKey: string,
       envQueueKey: string,
       queueName: string,
-      oldQueueName: string,
       messageId: string,
       messageData: string,
       messageScore: string,
@@ -2004,37 +2035,31 @@ function getMarQSClient() {
     tracer: trace.getTracer("marqs"),
     keysProducer,
     visibilityTimeoutStrategy: new V3LegacyRunEngineWorkerVisibilityTimeout(),
-    queuePriorityStrategy: new EnvPriorityDequeuingStrategy({
+    queuePriorityStrategy: new FairDequeuingStrategy({
+      tracer: tracer,
+      redis,
+      parentQueueLimit: env.MARQS_SHARED_QUEUE_LIMIT,
       keys: keysProducer,
-      delegate: new FairDequeuingStrategy({
-        tracer: tracer,
-        redis,
-        parentQueueLimit: env.MARQS_SHARED_QUEUE_LIMIT,
-        keys: keysProducer,
-        defaultEnvConcurrency: env.DEFAULT_ENV_EXECUTION_CONCURRENCY_LIMIT,
-        biases: {
-          concurrencyLimitBias: env.MARQS_CONCURRENCY_LIMIT_BIAS,
-          availableCapacityBias: env.MARQS_AVAILABLE_CAPACITY_BIAS,
-          queueAgeRandomization: env.MARQS_QUEUE_AGE_RANDOMIZATION_BIAS,
-        },
-        reuseSnapshotCount: env.MARQS_REUSE_SNAPSHOT_COUNT,
-        maximumEnvCount: env.MARQS_MAXIMUM_ENV_COUNT,
-      }),
+      defaultEnvConcurrency: env.DEFAULT_ENV_EXECUTION_CONCURRENCY_LIMIT,
+      biases: {
+        concurrencyLimitBias: env.MARQS_CONCURRENCY_LIMIT_BIAS,
+        availableCapacityBias: env.MARQS_AVAILABLE_CAPACITY_BIAS,
+        queueAgeRandomization: env.MARQS_QUEUE_AGE_RANDOMIZATION_BIAS,
+      },
+      reuseSnapshotCount: env.MARQS_REUSE_SNAPSHOT_COUNT,
+      maximumEnvCount: env.MARQS_MAXIMUM_ENV_COUNT,
     }),
-    envQueuePriorityStrategy: new EnvPriorityDequeuingStrategy({
+    envQueuePriorityStrategy: new FairDequeuingStrategy({
+      tracer: tracer,
+      redis,
+      parentQueueLimit: env.MARQS_DEV_QUEUE_LIMIT,
       keys: keysProducer,
-      delegate: new FairDequeuingStrategy({
-        tracer: tracer,
-        redis,
-        parentQueueLimit: env.MARQS_DEV_QUEUE_LIMIT,
-        keys: keysProducer,
-        defaultEnvConcurrency: env.DEFAULT_ENV_EXECUTION_CONCURRENCY_LIMIT,
-        biases: {
-          concurrencyLimitBias: 0.0,
-          availableCapacityBias: 0.0,
-          queueAgeRandomization: 0.1,
-        },
-      }),
+      defaultEnvConcurrency: env.DEFAULT_ENV_EXECUTION_CONCURRENCY_LIMIT,
+      biases: {
+        concurrencyLimitBias: 0.0,
+        availableCapacityBias: 0.0,
+        queueAgeRandomization: 0.1,
+      },
     }),
     workers: 1,
     redis,
