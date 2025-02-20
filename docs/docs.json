@@ -157,7 +157,13 @@
         "groups": [
           {
             "group": "API reference",
-            "pages": ["management/overview"]
+            "pages": [
+              "management/overview",
+              "management/authentication",
+              "management/errors-and-retries",
+              "management/auto-pagination",
+              "management/advanced-usage"
+            ]
           },
           {
             "group": "Tasks API",
