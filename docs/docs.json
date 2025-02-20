@@ -203,10 +203,6 @@
               "management/envvars/update",
               "management/envvars/delete"
             ]
-          },
-          {
-            "group": "Projects API",
-            "pages": ["management/projects/runs"]
           }
         ]
       },
@@ -498,6 +494,10 @@
     {
       "source": "/frontend/react-hooks",
       "destination": "/frontend/react-hooks/overview"
+    },
+    {
+      "source": "/management/projects/runs",
+      "destination": "/management/overview"
     }
   ]
 }
