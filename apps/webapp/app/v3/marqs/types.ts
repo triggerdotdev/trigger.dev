@@ -8,7 +8,6 @@ export type QueueDescriptor = {
   environment: string;
   name: string;
   concurrencyKey?: string;
-  priority?: number;
 };
 
 export type MarQSKeyProducerEnv = {
@@ -28,21 +27,10 @@ export interface MarQSKeyProducer {
 
   envReserveConcurrencyKey(envId: string): string;
 
-  queueKey(
-    orgId: string,
-    envId: string,
-    queue: string,
-    concurrencyKey?: string,
-    priority?: number
-  ): string;
-  queueKey(
-    env: MarQSKeyProducerEnv,
-    queue: string,
-    concurrencyKey?: string,
-    priority?: number
-  ): string;
+  queueKey(orgId: string, envId: string, queue: string, concurrencyKey?: string): string;
+  queueKey(env: MarQSKeyProducerEnv, queue: string, concurrencyKey?: string): string;
 
-  queueKeyFromQueue(queue: string, priority?: number): string;
+  queueKeyFromQueue(queue: string): string;
 
   envQueueKey(env: MarQSKeyProducerEnv): string;
   envSharedQueueKey(env: MarQSKeyProducerEnv): string;
@@ -75,6 +63,10 @@ export type EnvQueues = {
   queues: string[];
 };
 
+const MarQSPriorityLevel = z.enum(["resume", "retry"]);
+
+export type MarQSPriorityLevel = z.infer<typeof MarQSPriorityLevel>;
+
 export interface MarQSFairDequeueStrategy {
   distributeFairQueuesFromParentQueue(
     parentQueue: string,
@@ -90,6 +82,9 @@ export const MessagePayload = z.object({
   timestamp: z.number(),
   parentQueue: z.string(),
   concurrencyKey: z.string().optional(),
+  priority: MarQSPriorityLevel.optional(),
+  availableAt: z.number().optional(),
+  enqueueMethod: z.enum(["enqueue", "requeue", "replace"]).default("enqueue"),
 });
 
 export type MessagePayload = z.infer<typeof MessagePayload>;
@@ -100,10 +95,11 @@ export interface MessageQueueSubscriber {
   messageAcked(message: MessagePayload): Promise<void>;
   messageNacked(message: MessagePayload): Promise<void>;
   messageReplaced(message: MessagePayload): Promise<void>;
-  messageRequeued(oldQueue: string, message: MessagePayload): Promise<void>;
+  messageRequeued(message: MessagePayload): Promise<void>;
 }
 
 export interface VisibilityTimeoutStrategy {
+  startHeartbeat(messageId: string, timeoutInMs: number): Promise<void>;
   heartbeat(messageId: string, timeoutInMs: number): Promise<void>;
   cancelHeartbeat(messageId: string): Promise<void>;
 }

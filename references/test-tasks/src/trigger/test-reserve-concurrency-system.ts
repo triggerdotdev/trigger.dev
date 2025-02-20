@@ -1,10 +1,18 @@
-import { BatchResult, logger, queue, task, wait } from "@trigger.dev/sdk/v3";
+import { logger, task } from "@trigger.dev/sdk/v3";
 import assert from "assert";
 import {
+  getEnvironmentStats,
   updateEnvironmentConcurrencyLimit,
   waitForRunStatus,
-  getEnvironmentStats,
 } from "../utils.js";
+import {
+  retryTask,
+  resumeParentTask,
+  durationWaitTask,
+  delayTask,
+  genericParentTask,
+  recursiveTask,
+} from "./helpers.js";
 
 export const describeReserveConcurrencySystem = task({
   id: "describe/reserve-concurrency-system",
@@ -12,7 +20,7 @@ export const describeReserveConcurrencySystem = task({
     maxAttempts: 1,
   },
   run: async (payload: any, { ctx }) => {
-    await testRetryPriority.triggerAndWait({ holdDelayMs: 10_000 }).unwrap();
+    await testRetryPriority.triggerAndWait({}).unwrap();
 
     logger.info("✅ Tested retry priority, now testing resume priority");
 
@@ -58,8 +66,10 @@ export const testRetryPriority = task({
   retry: {
     maxAttempts: 1,
   },
-  run: async ({ holdDelayMs = 10_000 }: { holdDelayMs: number }, { ctx }) => {
+  run: async (payload: any, { ctx }) => {
     const startEnvStats = await getEnvironmentStats(ctx.environment.id);
+
+    const retryDelayMs = ctx.environment.type === "DEVELOPMENT" ? 10_000 : 61_000;
 
     // We need to test the reserve concurrency system
     // 1. Retries are prioritized over new runs
@@ -70,7 +80,7 @@ export const testRetryPriority = task({
     //           Once the retry completes successfully, the 3rd run should be dequeued
 
     const failureRun = await retryTask.trigger(
-      { delayMs: 0, throwError: true, failureCount: 1 },
+      { delayMs: 0, throwError: true, failureCount: 1, retryDelayMs },
       { tags: ["failure"] }
     );
     await waitForRunStatus(failureRun.id, ["EXECUTING", "REATTEMPTING"]);
@@ -78,7 +88,7 @@ export const testRetryPriority = task({
     logger.info("Failure run is executing, triggering a run that will hit the concurrency limit");
 
     const holdRun = await retryTask.trigger(
-      { delayMs: holdDelayMs, throwError: false, failureCount: 0 },
+      { delayMs: retryDelayMs + 2_000, throwError: false, failureCount: 0 },
       { tags: ["hold"] }
     );
     await waitForRunStatus(holdRun.id, ["EXECUTING"]);
@@ -94,16 +104,24 @@ export const testRetryPriority = task({
 
     const completedFailureRun = await waitForRunStatus(failureRun.id, ["COMPLETED"]);
     const completedQueuedRun = await waitForRunStatus(queuedRun.id, ["COMPLETED"]);
+    const completedHoldRun = await waitForRunStatus(holdRun.id, ["COMPLETED"]);
 
     logger.info("Runs completed", {
       completedFailureRun,
       completedQueuedRun,
+      completedHoldRun,
     });
 
     // Now we need to assert the completedFailureRun.completedAt is before completedQueuedRun.completedAt
     assert(
       completedFailureRun.finishedAt! < completedQueuedRun.finishedAt!,
       "Failure run should complete before queued run"
+    );
+
+    // Lets also make sure the completedFailureRun.finishedAt is AFTER the completedHoldRun.finishedAt
+    assert(
+      completedFailureRun.finishedAt! > completedHoldRun.finishedAt!,
+      "Failure run should complete after hold run"
     );
 
     // Now lets make sure all the runs are completed
@@ -191,11 +209,16 @@ export const testResumeDurationPriority = task({
       "Resume run is executing, triggering a run that will hold the concurrency until both the resume run and the queued run are in the queue"
     );
 
+    let holdRunId: string | undefined;
+
     if (ctx.environment.type !== "DEVELOPMENT") {
       const holdRun = await durationWaitTask.trigger(
         { waitDurationInSeconds: waitDurationInSeconds + 10, doWait: false },
         { tags: ["hold"] }
       );
+
+      holdRunId = holdRun.id;
+
       await waitForRunStatus(holdRun.id, ["EXECUTING"]);
 
       logger.info("Hold run is executing, triggering a run that should be queued");
@@ -220,6 +243,16 @@ export const testResumeDurationPriority = task({
       completedResumeRun.finishedAt! < completedQueuedRun.finishedAt!,
       "Resume run should complete before queued run"
     );
+
+    if (holdRunId) {
+      const completedHoldRun = await waitForRunStatus(holdRunId, ["COMPLETED"]);
+
+      // Lets also make sure the completedResumeRun.finishedAt is AFTER the completedHoldRun.finishedAt
+      assert(
+        completedResumeRun.finishedAt! > completedHoldRun.finishedAt!,
+        "Resume run should complete after hold run"
+      );
+    }
 
     const envStats = await getEnvironmentStats(ctx.environment.id);
 
@@ -275,7 +308,7 @@ export const testEnvReserveConcurrency = task({
     // But because the parent task triggers a child task, the env reserve concurrency will allow the child task to execute
     logger.info("Parent task is executing, waiting for child task to complete");
 
-    await waitForRunStatus(parentRun.id, ["COMPLETED"], 10); // timeout after 10 seconds, to ensure the child task finished before the delay runs
+    await waitForRunStatus(parentRun.id, ["COMPLETED"], 20); // timeout after 10 seconds, to ensure the child task finished before the delay runs
 
     logger.info(
       "Parent task completed, which means the child task completed. Now waiting for the hold tasks to complete"
@@ -332,7 +365,7 @@ export const testQueueReserveConcurrency = task({
       { tags: ["root"] }
     );
 
-    const completedRootRun = await waitForRunStatus(rootRecursiveRun.id, ["COMPLETED"], 20);
+    const completedRootRun = await waitForRunStatus(rootRecursiveRun.id, ["COMPLETED"]);
 
     assert(completedRootRun.status === "COMPLETED", "Root recursive run should be completed");
 
@@ -341,7 +374,7 @@ export const testQueueReserveConcurrency = task({
       { tags: ["failing-root"] }
     );
 
-    const failedRootRun = await waitForRunStatus(failingRootRecursiveRun.id, ["COMPLETED"], 20);
+    const failedRootRun = await waitForRunStatus(failingRootRecursiveRun.id, ["COMPLETED"]);
 
     assert(!failedRootRun.output?.ok, "Child of failing root run should fail");
 
@@ -361,185 +394,5 @@ export const testQueueReserveConcurrency = task({
       envStats.queueReserveConcurrency === 0,
       "queue-reserve-concurrency reserve concurrency should be 0"
     );
-  },
-});
-
-export const recursiveTask = task({
-  id: "recursive-task",
-  queue: {
-    concurrencyLimit: 1,
-  },
-  retry: {
-    maxAttempts: 1,
-  },
-  run: async (
-    { delayMs, depth, useBatch = false }: { delayMs: number; depth: number; useBatch: boolean },
-    { ctx }
-  ) => {
-    if (depth === 0) {
-      return;
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, delayMs));
-
-    if (useBatch) {
-      const batchResult = await recursiveTask.batchTriggerAndWait([
-        {
-          payload: { delayMs, depth: depth - 1, useBatch },
-          options: { tags: ["recursive"] },
-        },
-      ]);
-
-      const firstRun = batchResult.runs[0] as any;
-
-      return {
-        ok: firstRun.ok,
-      };
-    } else {
-      const result = (await recursiveTask.triggerAndWait({
-        delayMs,
-        depth: depth - 1,
-        useBatch,
-      })) as any;
-
-      return {
-        ok: result.ok,
-      };
-    }
-  },
-});
-
-export const singleQueue = queue({
-  name: "single-queue",
-  concurrencyLimit: 1,
-});
-
-export const delayTask = task({
-  id: "delay-task",
-  retry: {
-    maxAttempts: 1,
-  },
-  run: async (payload: { delayMs: number }, { ctx }) => {
-    await new Promise((resolve) => setTimeout(resolve, payload.delayMs));
-  },
-});
-
-export const retryTask = task({
-  id: "retry-task",
-  queue: singleQueue,
-  retry: {
-    maxAttempts: 10,
-    minTimeoutInMs: 5_000, // Will retry in 5 seconds
-    maxTimeoutInMs: 5_000,
-  },
-  run: async (payload: { delayMs: number; throwError: boolean; failureCount: number }, { ctx }) => {
-    await new Promise((resolve) => setTimeout(resolve, payload.delayMs));
-
-    if (payload.throwError && ctx.attempt.number <= payload.failureCount) {
-      throw new Error("Error");
-    }
-  },
-});
-
-export const durationWaitTask = task({
-  id: "duration-wait-task",
-  queue: {
-    concurrencyLimit: 1,
-  },
-  run: async (
-    {
-      waitDurationInSeconds = 5,
-      doWait = true,
-    }: { waitDurationInSeconds: number; doWait: boolean },
-    { ctx }
-  ) => {
-    if (doWait) {
-      await wait.for({ seconds: waitDurationInSeconds });
-    } else {
-      await new Promise((resolve) => setTimeout(resolve, waitDurationInSeconds * 1000));
-    }
-  },
-});
-
-export const resumeParentTask = task({
-  id: "resume-parent-task",
-  queue: {
-    concurrencyLimit: 1,
-  },
-  run: async (
-    {
-      delayMs = 5_000,
-      triggerChildTask,
-      useBatch = false,
-    }: { delayMs: number; triggerChildTask: boolean; useBatch: boolean },
-    { ctx }
-  ) => {
-    if (triggerChildTask) {
-      if (useBatch) {
-        const batchResult = await resumeChildTask.batchTriggerAndWait([
-          {
-            payload: { delayMs },
-            options: { tags: ["resume-child"] },
-          },
-        ]);
-
-        unwrapBatchResult(batchResult);
-      } else {
-        await resumeChildTask.triggerAndWait({ delayMs }, { tags: ["resume-child"] }).unwrap();
-      }
-    } else {
-      await new Promise((resolve) => setTimeout(resolve, delayMs));
-    }
-  },
-});
-
-export const resumeChildTask = task({
-  id: "resume-child-task",
-  run: async (payload: { delayMs: number }, { ctx }) => {
-    await new Promise((resolve) => setTimeout(resolve, payload.delayMs));
-  },
-});
-
-export const genericParentTask = task({
-  id: "generic-parent-task",
-  run: async (
-    {
-      delayMs = 5_000,
-      triggerChildTask,
-      useBatch = false,
-    }: { delayMs: number; triggerChildTask: boolean; useBatch: boolean },
-    { ctx }
-  ) => {
-    if (triggerChildTask) {
-      if (useBatch) {
-        const batchResult = await genericChildTask.batchTriggerAndWait([
-          {
-            payload: { delayMs },
-            options: { tags: ["resume-child"] },
-          },
-        ]);
-
-        return unwrapBatchResult(batchResult);
-      } else {
-        await genericChildTask.triggerAndWait({ delayMs }, { tags: ["resume-child"] }).unwrap();
-      }
-    } else {
-      await new Promise((resolve) => setTimeout(resolve, delayMs));
-    }
-  },
-});
-
-function unwrapBatchResult(batchResult: BatchResult<string, any>) {
-  if (batchResult.runs.some((run) => !run.ok)) {
-    throw new Error(`Child task failed: ${batchResult.runs.find((run) => !run.ok)?.error}`);
-  }
-
-  return batchResult.runs;
-}
-
-export const genericChildTask = task({
-  id: "generic-child-task",
-  run: async (payload: { delayMs: number }, { ctx }) => {
-    await new Promise((resolve) => setTimeout(resolve, payload.delayMs));
   },
 });

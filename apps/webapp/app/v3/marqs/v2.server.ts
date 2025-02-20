@@ -20,6 +20,10 @@ const KEY_PREFIX = "marqsv2:";
 const SHARED_QUEUE_NAME = "sharedQueue";
 
 export class V2VisibilityTimeout implements VisibilityTimeoutStrategy {
+  async startHeartbeat(messageId: string, timeoutInMs: number): Promise<void> {
+    RequeueV2Message.enqueue(messageId, new Date(Date.now() + timeoutInMs));
+  }
+
   async heartbeat(messageId: string, timeoutInMs: number): Promise<void> {
     RequeueV2Message.enqueue(messageId, new Date(Date.now() + timeoutInMs));
   }

@@ -6,7 +6,8 @@ export type RunStatus = Awaited<ReturnType<typeof runs.retrieve>>["status"];
 export async function waitForRunStatus(
   id: string,
   statuses: RunStatus[],
-  timeoutInSeconds?: number
+  timeoutInSeconds?: number,
+  pollIntervalMs = 1_000
 ) {
   const run = await runs.retrieve(id);
 
@@ -23,7 +24,7 @@ export async function waitForRunStatus(
       return run;
     }
 
-    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
   }
 
   throw new Error(

@@ -11,14 +11,12 @@ const constants = {
   CONCURRENCY_KEY_PART: "ck",
   MESSAGE_PART: "message",
   RESERVE_CONCURRENCY_PART: "reserveConcurrency",
-  PRIORITY_PART: "priority",
 } as const;
 
 const ORG_REGEX = /org:([^:]+):/;
 const ENV_REGEX = /env:([^:]+):/;
 const QUEUE_REGEX = /queue:([^:]+)(?::|$)/;
 const CONCURRENCY_KEY_REGEX = /ck:([^:]+)(?::|$)/;
-const PRIORITY_REGEX = /priority:(\d+)(?::|$)/;
 
 export class MarQSShortKeyProducer implements MarQSKeyProducer {
   constructor(private _prefix: string) {}
@@ -52,25 +50,13 @@ export class MarQSShortKeyProducer implements MarQSKeyProducer {
     ].join(":");
   }
 
-  queueKey(
-    orgId: string,
-    envId: string,
-    queue: string,
-    concurrencyKey?: string,
-    priority?: number
-  ): string;
-  queueKey(
-    env: MarQSKeyProducerEnv,
-    queue: string,
-    concurrencyKey?: string,
-    priority?: number
-  ): string;
+  queueKey(orgId: string, envId: string, queue: string, concurrencyKey?: string): string;
+  queueKey(env: MarQSKeyProducerEnv, queue: string, concurrencyKey?: string): string;
   queueKey(
     envOrOrgId: MarQSKeyProducerEnv | string,
     queueOrEnvId: string,
     queueOrConcurrencyKey: string,
-    concurrencyKeyOrPriority?: string | number,
-    priority?: number
+    concurrencyKeyOrPriority?: string | number
   ): string {
     if (typeof envOrOrgId === "string") {
       return [
@@ -83,7 +69,6 @@ export class MarQSShortKeyProducer implements MarQSKeyProducer {
             ? this.concurrencyKeySection(concurrencyKeyOrPriority)
             : []
         )
-        .concat(typeof priority === "number" && priority ? this.prioritySection(priority) : [])
         .join(":");
     } else {
       return [
@@ -92,24 +77,18 @@ export class MarQSShortKeyProducer implements MarQSKeyProducer {
         this.queueSection(queueOrEnvId),
       ]
         .concat(queueOrConcurrencyKey ? this.concurrencyKeySection(queueOrConcurrencyKey) : [])
-        .concat(
-          typeof concurrencyKeyOrPriority === "number" && concurrencyKeyOrPriority
-            ? this.prioritySection(concurrencyKeyOrPriority)
-            : []
-        )
         .join(":");
     }
   }
 
-  queueKeyFromQueue(queue: string, priority?: number): string {
+  queueKeyFromQueue(queue: string): string {
     const descriptor = this.queueDescriptorFromQueue(queue);
 
     return this.queueKey(
       descriptor.organization,
       descriptor.environment,
       descriptor.name,
-      descriptor.concurrencyKey,
-      descriptor.priority ?? priority
+      descriptor.concurrencyKey
     );
   }
 
@@ -246,16 +225,11 @@ export class MarQSShortKeyProducer implements MarQSKeyProducer {
 
     const concurrencyKey = concurrencyKeyMatch ? concurrencyKeyMatch[1] : undefined;
 
-    const priorityMatch = queue.match(PRIORITY_REGEX);
-
-    const priority = priorityMatch ? parseInt(priorityMatch[1], 10) : undefined;
-
     return {
       name: queueName,
       environment: envId,
       organization: orgId,
       concurrencyKey,
-      priority,
     };
   }
 
@@ -278,10 +252,6 @@ export class MarQSShortKeyProducer implements MarQSKeyProducer {
 
   private concurrencyKeySection(concurrencyKey: string) {
     return `${constants.CONCURRENCY_KEY_PART}:${concurrencyKey}`;
-  }
-
-  private prioritySection(priority: number) {
-    return `${constants.PRIORITY_PART}:${priority}`;
   }
 
   private currentConcurrencyKeyFromDescriptor(descriptor: QueueDescriptor) {

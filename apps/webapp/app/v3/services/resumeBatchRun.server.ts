@@ -1,6 +1,6 @@
 import { PrismaClientOrTransaction } from "~/db.server";
 import { workerQueue } from "~/services/worker.server";
-import { marqs, MarQSPriorityLevel } from "~/v3/marqs/index.server";
+import { marqs } from "~/v3/marqs/index.server";
 import { BaseService } from "./baseService.server";
 import { logger } from "~/services/logger.server";
 import { BatchTaskRun } from "@trigger.dev/database";
@@ -188,8 +188,7 @@ export class ResumeBatchRunService extends BaseService {
           dependentTaskAttemptId: dependentTaskAttempt.id,
         });
 
-        // TODO: use the new priority queue thingie
-        await marqs?.enqueueMessage(
+        await marqs.enqueueMessage(
           environment,
           dependentRun.queue,
           dependentRun.id,
@@ -206,7 +205,7 @@ export class ResumeBatchRunService extends BaseService {
           dependentRun.concurrencyKey ?? undefined,
           dependentRun.queueTimestamp ?? dependentRun.createdAt,
           undefined,
-          MarQSPriorityLevel.resume
+          "resume"
         );
 
         return "COMPLETED";
@@ -252,7 +251,7 @@ export class ResumeBatchRunService extends BaseService {
           hasCheckpointEvent: !!batchRun.checkpointEventId,
         });
 
-        await marqs?.requeueMessage(
+        await marqs.requeueMessage(
           dependentRun.id,
           {
             type: "RESUME",
@@ -269,7 +268,7 @@ export class ResumeBatchRunService extends BaseService {
           (
             dependentTaskAttempt.taskRun.queueTimestamp ?? dependentTaskAttempt.taskRun.createdAt
           ).getTime(),
-          MarQSPriorityLevel.resume
+          "resume"
         );
 
         return "COMPLETED";

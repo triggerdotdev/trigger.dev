@@ -22,7 +22,7 @@ import { env } from "~/env.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { safeJsonParse } from "~/utils/json";
-import { marqs, MarQSPriorityLevel } from "~/v3/marqs/index.server";
+import { marqs } from "~/v3/marqs/index.server";
 import { createExceptionPropertiesFromError, eventRepository } from "../eventRepository.server";
 import { FailedTaskRunRetryHelper } from "../failedTaskRun.server";
 import { FAILED_RUN_STATUSES, isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
@@ -467,8 +467,7 @@ export class CompleteAttemptService extends BaseService {
     const retryViaQueue = () => {
       logger.debug("[CompleteAttemptService] Enqueuing retry attempt", { runId: run.id });
 
-      // We have to replace a potential RESUME with EXECUTE to correctly retry the attempt
-      return marqs?.requeueMessage(
+      return marqs.requeueMessage(
         run.id,
         {
           type: "EXECUTE",
@@ -477,7 +476,7 @@ export class CompleteAttemptService extends BaseService {
           retryCheckpointsDisabled: !this.opts.supportsRetryCheckpoints,
         },
         executionRetry.timestamp,
-        MarQSPriorityLevel.retry
+        "retry"
       );
     };
 
@@ -615,12 +614,7 @@ export class CompleteAttemptService extends BaseService {
     });
 
     if (environment.type === "DEVELOPMENT") {
-      marqs.requeueMessage(
-        taskRunAttempt.taskRunId,
-        {},
-        executionRetry.timestamp,
-        MarQSPriorityLevel.retry
-      );
+      await marqs.requeueMessage(taskRunAttempt.taskRunId, {}, executionRetry.timestamp, "retry");
 
       return "RETRIED";
     }
