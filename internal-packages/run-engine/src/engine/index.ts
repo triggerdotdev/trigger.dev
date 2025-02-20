@@ -119,13 +119,6 @@ const workerCatalog = {
     }),
     visibilityTimeoutMs: 10_000,
   },
-  timeoutWaitpoint: {
-    schema: z.object({
-      waitpointId: z.string(),
-      timeout: z.coerce.date(),
-    }),
-    visibilityTimeoutMs: 10_000,
-  },
 };
 
 type EngineWorker = Worker<typeof workerCatalog>;
@@ -205,12 +198,6 @@ export class RunEngine {
         continueRunIfUnblocked: async ({ payload }) => {
           await this.#continueRunIfUnblocked({
             runId: payload.runId,
-          });
-        },
-        timeoutWaitpoint: async ({ payload }) => {
-          await this.#timeoutWaitpoint({
-            waitpointId: payload.waitpointId,
-            timeout: payload.timeout,
           });
         },
       },
@@ -1815,9 +1802,15 @@ export class RunEngine {
     //schedule the timeout
     if (timeout) {
       await this.worker.enqueue({
-        id: `timeoutWaitpoint.${waitpoint.id}`,
-        job: "timeoutWaitpoint",
-        payload: { waitpointId: waitpoint.id, timeout },
+        id: `finishWaitpoint.${waitpoint.id}`,
+        job: "finishWaitpoint",
+        payload: {
+          waitpointId: waitpoint.id,
+          error: JSON.stringify({
+            code: WAITPOINT_TIMEOUT_ERROR_CODE,
+            message: `Waitpoint timed out at ${timeout.toISOString()}`,
+          }),
+        },
         availableAt: timeout,
       });
     }
@@ -2054,7 +2047,13 @@ export class RunEngine {
           await this.worker.enqueue({
             id: `finishWaitpoint.${waitpoint}`,
             job: "finishWaitpoint",
-            payload: { waitpointId: waitpoint, error: "Waitpoint timed out" },
+            payload: {
+              waitpointId: waitpoint,
+              error: JSON.stringify({
+                code: WAITPOINT_TIMEOUT_ERROR_CODE,
+                message: `Waitpoint timed out at ${failAfter.toISOString()}`,
+              }),
+            },
             availableAt: failAfter,
           });
         }
@@ -3552,19 +3551,6 @@ export class RunEngine {
     return {
       success: true,
     };
-  }
-
-  async #timeoutWaitpoint({ waitpointId, timeout }: { waitpointId: string; timeout: Date }) {
-    await this.completeWaitpoint({
-      id: waitpointId,
-      output: {
-        value: JSON.stringify({
-          code: WAITPOINT_TIMEOUT_ERROR_CODE,
-          message: `Waitpoint timed out at ${timeout.toISOString()}`,
-        }),
-        isError: true,
-      },
-    });
   }
 
   async #clearBlockingWaitpoints({ runId, tx }: { runId: string; tx?: PrismaClientOrTransaction }) {
