@@ -101,55 +101,7 @@
               "realtime/subscribe-to-batch"
             ]
           },
-          {
-            "group": "API reference",
-            "pages": [
-              "management/overview",
-              {
-                "group": "Tasks API",
-                "pages": ["management/tasks/trigger", "management/tasks/batch-trigger"]
-              },
-              {
-                "group": "Runs API",
-                "pages": [
-                  "management/runs/list",
-                  "management/runs/retrieve",
-                  "management/runs/replay",
-                  "management/runs/cancel",
-                  "management/runs/reschedule",
-                  "management/runs/update-metadata"
-                ]
-              },
-              {
-                "group": "Schedules API",
-                "pages": [
-                  "management/schedules/list",
-                  "management/schedules/create",
-                  "management/schedules/retrieve",
-                  "management/schedules/update",
-                  "management/schedules/delete",
-                  "management/schedules/deactivate",
-                  "management/schedules/activate",
-                  "management/schedules/timezones"
-                ]
-              },
-              {
-                "group": "Env Vars API",
-                "pages": [
-                  "management/envvars/list",
-                  "management/envvars/import",
-                  "management/envvars/create",
-                  "management/envvars/retrieve",
-                  "management/envvars/update",
-                  "management/envvars/delete"
-                ]
-              },
-              {
-                "group": "Projects API",
-                "pages": ["management/projects/runs"]
-              }
-            ]
-          },
+
           {
             "group": "CLI",
             "pages": [
@@ -170,16 +122,6 @@
             ]
           },
           {
-            "group": "Open source",
-            "pages": [
-              "open-source-self-hosting",
-              "open-source-contributing",
-              "github-repo",
-              "changelog",
-              "roadmap"
-            ]
-          },
-          {
             "group": "Troubleshooting",
             "pages": [
               "troubleshooting",
@@ -193,16 +135,81 @@
             ]
           },
           {
+            "group": "Open source",
+            "pages": [
+              "open-source-self-hosting",
+              "open-source-contributing",
+              "github-repo",
+              "changelog",
+              "roadmap"
+            ]
+          },
+          {
             "group": "Help",
             "pages": ["community", "help-slack", "help-email"]
           }
         ]
       },
       {
+        "dropdown": "API reference",
+        "description": "The Trigger.dev API",
+        "icon": "code",
+        "groups": [
+          {
+            "group": "API reference",
+            "pages": [
+              "management/overview",
+              "management/authentication",
+              "management/errors-and-retries",
+              "management/auto-pagination",
+              "management/advanced-usage"
+            ]
+          },
+          {
+            "group": "Tasks API",
+            "pages": ["management/tasks/trigger", "management/tasks/batch-trigger"]
+          },
+          {
+            "group": "Runs API",
+            "pages": [
+              "management/runs/list",
+              "management/runs/retrieve",
+              "management/runs/replay",
+              "management/runs/cancel",
+              "management/runs/reschedule",
+              "management/runs/update-metadata"
+            ]
+          },
+          {
+            "group": "Schedules API",
+            "pages": [
+              "management/schedules/list",
+              "management/schedules/create",
+              "management/schedules/retrieve",
+              "management/schedules/update",
+              "management/schedules/delete",
+              "management/schedules/deactivate",
+              "management/schedules/activate",
+              "management/schedules/timezones"
+            ]
+          },
+          {
+            "group": "Env Vars API",
+            "pages": [
+              "management/envvars/list",
+              "management/envvars/import",
+              "management/envvars/create",
+              "management/envvars/retrieve",
+              "management/envvars/update",
+              "management/envvars/delete"
+            ]
+          }
+        ]
+      },
+      {
         "dropdown": "Guides & examples",
         "description": "A great way to get started",
-        "icon": "book",
-
+        "icon": "books",
         "groups": [
           {
             "group": "Introduction",
@@ -487,6 +494,10 @@
     {
       "source": "/frontend/react-hooks",
       "destination": "/frontend/react-hooks/overview"
+    },
+    {
+      "source": "/management/projects/runs",
+      "destination": "/management/overview"
     }
   ]
 }
