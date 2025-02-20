@@ -99,6 +99,7 @@ export interface MessageQueueSubscriber {
 }
 
 export interface VisibilityTimeoutStrategy {
+  startHeartbeat(messageId: string, timeoutInMs: number): Promise<void>;
   heartbeat(messageId: string, timeoutInMs: number): Promise<void>;
   cancelHeartbeat(messageId: string): Promise<void>;
 }

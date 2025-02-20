@@ -499,7 +499,7 @@ export class MarQS {
             return;
           }
 
-          await this.options.visibilityTimeoutStrategy.heartbeat(
+          await this.options.visibilityTimeoutStrategy.startHeartbeat(
             messageData.messageId,
             this.visibilityTimeoutInMs
           );
@@ -588,7 +588,7 @@ export class MarQS {
 
                 await this.options.subscriber?.messageDequeued(message);
 
-                await this.options.visibilityTimeoutStrategy.heartbeat(
+                await this.options.visibilityTimeoutStrategy.startHeartbeat(
                   messageData.messageId,
                   this.visibilityTimeoutInMs
                 );
