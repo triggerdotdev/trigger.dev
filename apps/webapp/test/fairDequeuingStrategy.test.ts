@@ -9,6 +9,7 @@ import {
 } from "./utils/marqs.js";
 import { trace } from "@opentelemetry/api";
 import { EnvQueues } from "~/v3/marqs/types.js";
+import { MARQS_RESUME_PRIORITY_TIMESTAMP_OFFSET } from "~/v3/marqs/constants.server.js";
 
 const tracer = trace.getTracer("test");
 
@@ -771,6 +772,135 @@ describe("FairDequeuingStrategy", () => {
           queues: [
             { age: 5000 }, // Average age: 5000
             { age: 5000 },
+          ],
+        },
+        {
+          envId: "env-3",
+          queues: [
+            { age: 2000 }, // Average age: 2000
+            { age: 2000 },
+          ],
+        },
+        {
+          envId: "env-4",
+          queues: [
+            { age: 500 }, // Average age: 500
+            { age: 500 },
+          ],
+        },
+      ];
+
+      // Setup queues and concurrency for each org
+      for (const setup of envSetups) {
+        await setupConcurrency({
+          redis,
+          keyProducer,
+          env: { id: setup.envId, currentConcurrency: 0, limit: 5 },
+        });
+
+        for (let i = 0; i < setup.queues.length; i++) {
+          await setupQueue({
+            redis,
+            keyProducer,
+            parentQueue: "parent-queue",
+            score: now - setup.queues[i].age,
+            queueId: `queue-${setup.envId}-${i}`,
+            orgId: `org-${setup.envId}`,
+            envId: setup.envId,
+          });
+        }
+      }
+
+      // Run multiple iterations to verify consistent behavior
+      const iterations = 100;
+      const selectedEnvCounts: Record<string, number> = {};
+
+      for (let i = 0; i < iterations; i++) {
+        const envResult = await strategy.distributeFairQueuesFromParentQueue(
+          "parent-queue",
+          `consumer-${i}`
+        );
+        const result = flattenResults(envResult);
+
+        // Track which orgs were included in the result
+        const selectedEnvs = new Set(result.map((queueId) => keyProducer.envIdFromQueue(queueId)));
+
+        // Verify we never get more than maximumOrgCount orgs
+        expect(selectedEnvs.size).toBeLessThanOrEqual(2);
+
+        for (const envId of selectedEnvs) {
+          selectedEnvCounts[envId] = (selectedEnvCounts[envId] || 0) + 1;
+        }
+      }
+
+      console.log("Environment selection counts:", selectedEnvCounts);
+
+      // org-2 should be selected most often (highest average age)
+      expect(selectedEnvCounts["env-2"]).toBeGreaterThan(selectedEnvCounts["env-4"] || 0);
+
+      // org-4 should be selected least often (lowest average age)
+      const env4Count = selectedEnvCounts["env-4"] || 0;
+      expect(env4Count).toBeLessThan(selectedEnvCounts["env-2"]);
+
+      // Verify that envs with higher average queue age are selected more frequently
+      const sortedEnvs = Object.entries(selectedEnvCounts).sort((a, b) => b[1] - a[1]);
+      console.log("Sorted environment frequencies:", sortedEnvs);
+
+      // The top 2 most frequently selected orgs should be env-2 and env-3
+      // as they have the highest average queue ages
+      const topTwoEnvs = new Set([sortedEnvs[0][0], sortedEnvs[1][0]]);
+      expect(topTwoEnvs).toContain("env-2"); // Highest average age
+      expect(topTwoEnvs).toContain("env-3"); // Second highest average age
+
+      // Calculate selection percentages
+      const totalSelections = Object.values(selectedEnvCounts).reduce((a, b) => a + b, 0);
+      const selectionPercentages = Object.entries(selectedEnvCounts).reduce(
+        (acc, [orgId, count]) => {
+          acc[orgId] = (count / totalSelections) * 100;
+          return acc;
+        },
+        {} as Record<string, number>
+      );
+
+      console.log("Environment selection percentages:", selectionPercentages);
+
+      // Verify that env-2 (highest average age) gets selected in at least 40% of iterations
+      expect(selectionPercentages["env-2"]).toBeGreaterThan(40);
+
+      // Verify that env-4 (lowest average age) gets selected in less than 20% of iterations
+      expect(selectionPercentages["env-4"] || 0).toBeLessThan(20);
+    }
+  );
+
+  redisTest(
+    "should not overly bias picking environments when queue have priority offset ages",
+    async ({ redis }) => {
+      const keyProducer = createKeyProducer("test");
+      const strategy = new FairDequeuingStrategy({
+        tracer,
+        redis,
+        keys: keyProducer,
+        defaultEnvConcurrency: 5,
+        parentQueueLimit: 100,
+        seed: "test-seed-max-orgs",
+        maximumEnvCount: 2, // Only select top 2 orgs
+      });
+
+      const now = Date.now();
+
+      // Setup 4 envs with different queue age profiles
+      const envSetups = [
+        {
+          envId: "env-1",
+          queues: [
+            { age: 1000 }, // Average age: 1000
+          ],
+        },
+        {
+          envId: "env-2",
+          queues: [
+            { age: 5000 + MARQS_RESUME_PRIORITY_TIMESTAMP_OFFSET }, // Average age: 5000 + 1 year
+            { age: 5000 + MARQS_RESUME_PRIORITY_TIMESTAMP_OFFSET },
           ],
         },
         {

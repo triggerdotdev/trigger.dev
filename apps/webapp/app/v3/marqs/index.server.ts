@@ -36,6 +36,10 @@ import {
 } from "./types";
 import { V3LegacyRunEngineWorkerVisibilityTimeout } from "./v3VisibilityTimeout.server";
 import { legacyRunEngineWorker } from "../legacyRunEngineWorker.server";
+import {
+  MARQS_RESUME_PRIORITY_TIMESTAMP_OFFSET,
+  MARQS_RETRY_PRIORITY_TIMESTAMP_OFFSET,
+} from "./constants.server";
 
 const KEY_PREFIX = "marqs:";
 
@@ -794,10 +798,10 @@ export class MarQS {
 
     switch (priority) {
       case "resume": {
-        return timestamp - 31_556_952 * 1000; // 1 year
+        return timestamp - MARQS_RESUME_PRIORITY_TIMESTAMP_OFFSET;
       }
       case "retry": {
-        return timestamp - 15_778_476 * 1000; // 6 months
+        return timestamp - MARQS_RETRY_PRIORITY_TIMESTAMP_OFFSET;
       }
     }
   }
