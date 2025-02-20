@@ -817,4 +817,323 @@ describe("RunEngine Waitpoints", () => {
       }
     }
   );
+
+  containerTest(
+    "Manual waitpoint with idempotency",
+    { timeout: 15_000 },
+    async ({ prisma, redisOptions }) => {
+      //create environment
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      const engine = new RunEngine({
+        prisma,
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+        },
+        runLock: {
+          redis: redisOptions,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0001,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      try {
+        const taskIdentifier = "test-task";
+
+        //create background worker
+        await setupBackgroundWorker(prisma, authenticatedEnvironment, taskIdentifier);
+
+        //trigger the run
+        const run = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: "run_p1234",
+            environment: authenticatedEnvironment,
+            taskIdentifier,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t12345",
+            spanId: "s12345",
+            masterQueue: "main",
+            queueName: "task/test-task",
+            isTest: false,
+            tags: [],
+          },
+          prisma
+        );
+
+        //dequeue the run
+        const dequeued = await engine.dequeueFromMasterQueue({
+          consumerId: "test_12345",
+          masterQueue: run.masterQueue,
+          maxRunCount: 10,
+        });
+
+        //create an attempt
+        const attemptResult = await engine.startRunAttempt({
+          runId: dequeued[0].run.id,
+          snapshotId: dequeued[0].snapshot.id,
+        });
+        expect(attemptResult.snapshot.executionStatus).toBe("EXECUTING");
+
+        const idempotencyKey = "a-key";
+
+        //create a manual waitpoint with timeout
+        const waitpoint = await engine.createManualWaitpoint({
+          environmentId: authenticatedEnvironment.id,
+          projectId: authenticatedEnvironment.projectId,
+          idempotencyKey,
+        });
+        expect(waitpoint.status).toBe("PENDING");
+        expect(waitpoint.idempotencyKey).toBe(idempotencyKey);
+        expect(waitpoint.userProvidedIdempotencyKey).toBe(true);
+
+        //block the run
+        await engine.blockRunWithWaitpoint({
+          runId: run.id,
+          waitpoints: waitpoint.id,
+          environmentId: authenticatedEnvironment.id,
+          projectId: authenticatedEnvironment.projectId,
+        });
+
+        const executionData = await engine.getRunExecutionData({ runId: run.id });
+        expect(executionData?.snapshot.executionStatus).toBe("EXECUTING_WITH_WAITPOINTS");
+
+        //check there is a waitpoint blocking the parent run
+        const runWaitpointBefore = await prisma.taskRunWaitpoint.findFirst({
+          where: {
+            taskRunId: run.id,
+          },
+          include: {
+            waitpoint: true,
+          },
+        });
+        expect(runWaitpointBefore?.waitpointId).toBe(waitpoint.id);
+
+        let event: EventBusEventArgs<"workerNotification">[0] | undefined = undefined;
+        engine.eventBus.on("workerNotification", (result) => {
+          event = result;
+        });
+
+        //complete the waitpoint
+        await engine.completeWaitpoint({
+          id: waitpoint.id,
+        });
+
+        await setTimeout(200);
+
+        const executionData2 = await engine.getRunExecutionData({ runId: run.id });
+        expect(executionData2?.snapshot.executionStatus).toBe("EXECUTING");
+
+        assertNonNullable(event);
+        const notificationEvent = event as EventBusEventArgs<"workerNotification">[0];
+        expect(notificationEvent.run.id).toBe(run.id);
+
+        //check there are no waitpoints blocking the parent run
+        const runWaitpoint = await prisma.taskRunWaitpoint.findFirst({
+          where: {
+            taskRunId: run.id,
+          },
+          include: {
+            waitpoint: true,
+          },
+        });
+        expect(runWaitpoint).toBeNull();
+
+        const waitpoint2 = await prisma.waitpoint.findUnique({
+          where: {
+            id: waitpoint.id,
+          },
+        });
+        assertNonNullable(waitpoint2);
+        expect(waitpoint2.status).toBe("COMPLETED");
+        expect(waitpoint2.outputIsError).toBe(false);
+      } finally {
+        engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "Manual waitpoint with idempotency and ttl",
+    { timeout: 15_000 },
+    async ({ prisma, redisOptions }) => {
+      //create environment
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      const engine = new RunEngine({
+        prisma,
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+        },
+        runLock: {
+          redis: redisOptions,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0001,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      try {
+        const taskIdentifier = "test-task";
+
+        //create background worker
+        await setupBackgroundWorker(prisma, authenticatedEnvironment, taskIdentifier);
+
+        //trigger the run
+        const run = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: "run_p1234",
+            environment: authenticatedEnvironment,
+            taskIdentifier,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t12345",
+            spanId: "s12345",
+            masterQueue: "main",
+            queueName: "task/test-task",
+            isTest: false,
+            tags: [],
+          },
+          prisma
+        );
+
+        //dequeue the run
+        const dequeued = await engine.dequeueFromMasterQueue({
+          consumerId: "test_12345",
+          masterQueue: run.masterQueue,
+          maxRunCount: 10,
+        });
+
+        //create an attempt
+        const attemptResult = await engine.startRunAttempt({
+          runId: dequeued[0].run.id,
+          snapshotId: dequeued[0].snapshot.id,
+        });
+        expect(attemptResult.snapshot.executionStatus).toBe("EXECUTING");
+
+        const idempotencyKey = "a-key";
+
+        //create a manual waitpoint with timeout
+        const waitpoint = await engine.createManualWaitpoint({
+          environmentId: authenticatedEnvironment.id,
+          projectId: authenticatedEnvironment.projectId,
+          idempotencyKey,
+          idempotencyKeyExpiresAt: new Date(Date.now() + 200),
+        });
+        expect(waitpoint.status).toBe("PENDING");
+        expect(waitpoint.idempotencyKey).toBe(idempotencyKey);
+        expect(waitpoint.userProvidedIdempotencyKey).toBe(true);
+
+        const sameWaitpoint = await engine.createManualWaitpoint({
+          environmentId: authenticatedEnvironment.id,
+          projectId: authenticatedEnvironment.projectId,
+          idempotencyKey,
+          idempotencyKeyExpiresAt: new Date(Date.now() + 200),
+        });
+        expect(sameWaitpoint.id).toBe(waitpoint.id);
+
+        //block the run
+        await engine.blockRunWithWaitpoint({
+          runId: run.id,
+          waitpoints: waitpoint.id,
+          environmentId: authenticatedEnvironment.id,
+          projectId: authenticatedEnvironment.projectId,
+        });
+
+        const executionData = await engine.getRunExecutionData({ runId: run.id });
+        expect(executionData?.snapshot.executionStatus).toBe("EXECUTING_WITH_WAITPOINTS");
+
+        //check there is a waitpoint blocking the parent run
+        const runWaitpointBefore = await prisma.taskRunWaitpoint.findFirst({
+          where: {
+            taskRunId: run.id,
+          },
+          include: {
+            waitpoint: true,
+          },
+        });
+        expect(runWaitpointBefore?.waitpointId).toBe(waitpoint.id);
+
+        let event: EventBusEventArgs<"workerNotification">[0] | undefined = undefined;
+        engine.eventBus.on("workerNotification", (result) => {
+          event = result;
+        });
+
+        //complete the waitpoint
+        await engine.completeWaitpoint({
+          id: waitpoint.id,
+        });
+
+        await setTimeout(200);
+
+        const executionData2 = await engine.getRunExecutionData({ runId: run.id });
+        expect(executionData2?.snapshot.executionStatus).toBe("EXECUTING");
+
+        assertNonNullable(event);
+        const notificationEvent = event as EventBusEventArgs<"workerNotification">[0];
+        expect(notificationEvent.run.id).toBe(run.id);
+
+        //check there are no waitpoints blocking the parent run
+        const runWaitpoint = await prisma.taskRunWaitpoint.findFirst({
+          where: {
+            taskRunId: run.id,
+          },
+          include: {
+            waitpoint: true,
+          },
+        });
+        expect(runWaitpoint).toBeNull();
+
+        const waitpoint2 = await prisma.waitpoint.findUnique({
+          where: {
+            id: waitpoint.id,
+          },
+        });
+        assertNonNullable(waitpoint2);
+        expect(waitpoint2.status).toBe("COMPLETED");
+        expect(waitpoint2.outputIsError).toBe(false);
+      } finally {
+        engine.quit();
+      }
+    }
+  );
 });
