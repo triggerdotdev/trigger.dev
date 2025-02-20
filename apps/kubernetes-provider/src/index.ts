@@ -517,6 +517,10 @@ class KubernetesTaskOperations implements TaskOperations {
           },
         },
       },
+      {
+        name: "SCHEDULED_AT_MS",
+        value: Date.now().toString(),
+      },
       ...this.#coordinatorEnvVars,
     ];
   }
