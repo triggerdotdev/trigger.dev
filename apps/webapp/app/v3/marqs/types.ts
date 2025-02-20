@@ -83,6 +83,8 @@ export const MessagePayload = z.object({
   parentQueue: z.string(),
   concurrencyKey: z.string().optional(),
   priority: MarQSPriorityLevel.optional(),
+  availableAt: z.number().optional(),
+  enqueueMethod: z.enum(["enqueue", "requeue", "replace"]).default("enqueue"),
 });
 
 export type MessagePayload = z.infer<typeof MessagePayload>;

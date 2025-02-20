@@ -37,8 +37,10 @@ import {
 import { V3LegacyRunEngineWorkerVisibilityTimeout } from "./v3VisibilityTimeout.server";
 import { legacyRunEngineWorker } from "../legacyRunEngineWorker.server";
 import {
+  MARQS_DELAYED_REQUEUE_THRESHOLD_IN_MS,
   MARQS_RESUME_PRIORITY_TIMESTAMP_OFFSET,
   MARQS_RETRY_PRIORITY_TIMESTAMP_OFFSET,
+  MARQS_SCHEDULED_REQUEUE_AVAILABLE_AT_THRESHOLD_IN_MS,
 } from "./constants.server";
 
 const KEY_PREFIX = "marqs:";
@@ -210,20 +212,24 @@ export class MarQS {
 
         propagation.inject(context.active(), messageData);
 
+        const $timestamp =
+          typeof timestamp === "undefined"
+            ? Date.now()
+            : typeof timestamp === "number"
+            ? timestamp
+            : timestamp.getTime();
+
         const messagePayload: MessagePayload = {
           version: "1",
           data: messageData,
           queue: messageQueue,
           concurrencyKey,
-          timestamp:
-            typeof timestamp === "undefined"
-              ? Date.now()
-              : typeof timestamp === "number"
-              ? timestamp
-              : timestamp.getTime(),
+          timestamp: $timestamp,
           messageId,
           parentQueue,
           priority,
+          availableAt: Date.now(),
+          enqueueMethod: "enqueue",
         };
 
         span.setAttributes({
@@ -294,6 +300,7 @@ export class MarQS {
           messageId,
           parentQueue: oldMessage.parentQueue,
           priority: oldMessage.priority,
+          enqueueMethod: "replace",
         };
 
         await this.#saveMessageIfExists(newMessage);
@@ -336,6 +343,8 @@ export class MarQS {
           tracestate: oldMessage.data.tracestate,
         };
 
+        const $timestamp = timestamp ?? Date.now();
+
         const newMessage: MessagePayload = {
           version: "1",
           // preserve original trace context
@@ -347,32 +356,21 @@ export class MarQS {
           },
           queue: oldMessage.queue,
           concurrencyKey: oldMessage.concurrencyKey,
-          timestamp: timestamp ?? Date.now(),
+          timestamp: $timestamp,
           messageId,
           parentQueue: oldMessage.parentQueue,
           priority: priority ?? oldMessage.priority,
+          availableAt: $timestamp,
+          enqueueMethod: "requeue",
         };
 
         await this.options.visibilityTimeoutStrategy.cancelHeartbeat(messageId);
-        await this.#saveMessage(newMessage);
 
         // If the message timestamp is enough in the future (e.g. more than 500ms from now),
         // we will schedule it to be requeued in the future using the legacy run engine redis worker
         // If not, we just requeue it immediately
-        if (timestamp && timestamp > Date.now() + 500) {
-          logger.debug(`Scheduling requeue for message`, {
-            timestamp,
-            service: this.name,
-            newMessage,
-          });
-
-          // Schedule the requeue in the future
-          await legacyRunEngineWorker.enqueue({
-            id: `marqs-requeue-${messageId}`,
-            job: "scheduleRequeueMessage",
-            payload: { messageId },
-            availableAt: new Date(timestamp - 150), // 150ms before the timestamp
-          });
+        if ($timestamp > Date.now() + MARQS_DELAYED_REQUEUE_THRESHOLD_IN_MS) {
+          await this.#callDelayedRequeueMessage(newMessage);
         } else {
           await this.#callRequeueMessage(newMessage);
         }
@@ -478,7 +476,11 @@ export class MarQS {
               [SemanticAttributes.PARENT_QUEUE]: message.parentQueue,
               attempted_queues: queues.indexOf(messageQueue) + 1, // How many queues we tried before success
               message_timestamp: message.timestamp,
-              message_age: Date.now() - message.timestamp,
+              message_age: this.#calculateMessageAge(message),
+              message_priority: message.priority,
+              message_enqueue_method: message.enqueueMethod,
+              message_available_at: message.availableAt,
+              ...flattenAttributes(message.data, "message.data"),
             });
 
             await this.options.subscriber?.messageDequeued(message);
@@ -568,20 +570,20 @@ export class MarQS {
               const message = await this.readMessage(messageData.messageId);
 
               if (message) {
-                const ageOfMessageInMs = Date.now() - message.timestamp;
-
                 span.setAttributes({
                   [SEMATTRS_MESSAGE_ID]: message.messageId,
                   [SemanticAttributes.QUEUE]: message.queue,
                   [SemanticAttributes.MESSAGE_ID]: message.messageId,
                   [SemanticAttributes.CONCURRENCY_KEY]: message.concurrencyKey,
                   [SemanticAttributes.PARENT_QUEUE]: message.parentQueue,
-                  age_in_seconds: ageOfMessageInMs / 1000,
                   attempted_queues: attemptedQueues, // How many queues we tried before success
                   attempted_envs: attemptedEnvs, // How many environments we tried before success
                   message_timestamp: message.timestamp,
-                  message_age: Date.now() - message.timestamp,
-                  ...flattenAttributes(message.data, "message"),
+                  message_age: this.#calculateMessageAge(message),
+                  message_priority: message.priority,
+                  message_enqueue_method: message.enqueueMethod,
+                  message_available_at: message.availableAt,
+                  ...flattenAttributes(message.data, "message.data"),
                 });
 
                 await this.options.subscriber?.messageDequeued(message);
@@ -804,6 +806,12 @@ export class MarQS {
         return timestamp - MARQS_RETRY_PRIORITY_TIMESTAMP_OFFSET;
       }
     }
+  }
+
+  #calculateMessageAge(message: MessagePayload) {
+    const $timestamp = message.availableAt ?? message.timestamp;
+
+    return Date.now() - $timestamp;
   }
 
   async #getNackCount(messageId: string): Promise<number> {
@@ -1348,6 +1356,67 @@ export class MarQS {
     return true;
   }
 
+  async #callDelayedRequeueMessage(message: MessagePayload) {
+    const messageKey = this.keys.messageKey(message.messageId);
+    const queueCurrentConcurrencyKey = this.keys.queueCurrentConcurrencyKeyFromQueue(message.queue);
+    const queueReserveConcurrencyKey = this.keys.queueReserveConcurrencyKeyFromQueue(message.queue);
+    const envCurrentConcurrencyKey = this.keys.envCurrentConcurrencyKeyFromQueue(message.queue);
+    const envReserveConcurrencyKey = this.keys.envReserveConcurrencyKeyFromQueue(message.queue);
+
+    const messageId = message.messageId;
+    const messageData = JSON.stringify(message);
+
+    logger.debug("Calling delayedRequeueMessage", {
+      service: this.name,
+      messageKey,
+      queueCurrentConcurrencyKey,
+      queueReserveConcurrencyKey,
+      envCurrentConcurrencyKey,
+      envReserveConcurrencyKey,
+      messageId,
+      messageData,
+    });
+
+    const result = await this.redis.delayedRequeueMessage(
+      messageKey,
+      queueCurrentConcurrencyKey,
+      queueReserveConcurrencyKey,
+      envCurrentConcurrencyKey,
+      envReserveConcurrencyKey,
+      messageId,
+      messageData
+    );
+
+    logger.debug("delayedRequeueMessage result", {
+      service: this.name,
+      messageKey,
+      queueCurrentConcurrencyKey,
+      queueReserveConcurrencyKey,
+      envCurrentConcurrencyKey,
+      envReserveConcurrencyKey,
+      messageId,
+      messageData,
+      result,
+    });
+
+    logger.debug("Enqueuing scheduleRequeueMessage in LRE worker", {
+      service: this.name,
+      message,
+    });
+
+    // Schedule the requeue in the future
+    await legacyRunEngineWorker.enqueue({
+      id: `marqs-requeue-${messageId}`,
+      job: "scheduleRequeueMessage",
+      payload: { messageId },
+      availableAt: new Date(
+        message.timestamp - MARQS_SCHEDULED_REQUEUE_AVAILABLE_AT_THRESHOLD_IN_MS
+      ),
+    });
+
+    return true;
+  }
+
   async #callAcknowledgeMessage({
     parentQueue,
     messageQueue,
@@ -1795,6 +1864,31 @@ return true
 `,
     });
 
+    this.redis.defineCommand("delayedRequeueMessage", {
+      numberOfKeys: 5,
+      lua: `
+local messageKey = KEYS[1]
+local queueCurrentConcurrencyKey = KEYS[2]
+local queueReserveConcurrencyKey = KEYS[3]
+local envCurrentConcurrencyKey = KEYS[4]
+local envReserveConcurrencyKey = KEYS[5]
+
+local messageId = ARGV[1]
+local messageData = ARGV[2]
+
+-- Write the new message data
+redis.call('SET', messageKey, messageData)
+
+-- Clear all concurrency sets
+redis.call('SREM', queueCurrentConcurrencyKey, messageId)
+redis.call('SREM', queueReserveConcurrencyKey, messageId)
+redis.call('SREM', envCurrentConcurrencyKey, messageId)
+redis.call('SREM', envReserveConcurrencyKey, messageId)
+
+return true
+`,
+    });
+
     this.redis.defineCommand("nackMessage", {
       numberOfKeys: 7,
       lua: `
@@ -1964,6 +2058,17 @@ declare module "ioredis" {
       messageId: string,
       messageData: string,
       messageScore: string,
+      callback?: Callback<string>
+    ): Result<string, Context>;
+
+    delayedRequeueMessage(
+      messageKey: string,
+      queueCurrentConcurrencyKey: string,
+      queueReserveConcurrencyKey: string,
+      envCurrentConcurrencyKey: string,
+      envReserveConcurrencyKey: string,
+      messageId: string,
+      messageData: string,
       callback?: Callback<string>
     ): Result<string, Context>;
 

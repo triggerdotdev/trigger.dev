@@ -614,8 +614,7 @@ export class CompleteAttemptService extends BaseService {
     });
 
     if (environment.type === "DEVELOPMENT") {
-      // TODO: move the scheduling of this into the LRE redis worker
-      marqs.requeueMessage(taskRunAttempt.taskRunId, {}, executionRetry.timestamp, "retry");
+      await marqs.requeueMessage(taskRunAttempt.taskRunId, {}, executionRetry.timestamp, "retry");
 
       return "RETRIED";
     }

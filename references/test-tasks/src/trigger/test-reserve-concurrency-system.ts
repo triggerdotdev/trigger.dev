@@ -12,7 +12,7 @@ export const describeReserveConcurrencySystem = task({
     maxAttempts: 1,
   },
   run: async (payload: any, { ctx }) => {
-    await testRetryPriority.triggerAndWait({ holdDelayMs: 10_000 }).unwrap();
+    await testRetryPriority.triggerAndWait({}).unwrap();
 
     logger.info("✅ Tested retry priority, now testing resume priority");
 
@@ -58,8 +58,10 @@ export const testRetryPriority = task({
   retry: {
     maxAttempts: 1,
   },
-  run: async ({ holdDelayMs = 10_000 }: { holdDelayMs: number }, { ctx }) => {
+  run: async (payload: any, { ctx }) => {
     const startEnvStats = await getEnvironmentStats(ctx.environment.id);
+
+    const retryDelayMs = ctx.environment.type === "DEVELOPMENT" ? 10_000 : 61_000;
 
     // We need to test the reserve concurrency system
     // 1. Retries are prioritized over new runs
@@ -70,7 +72,7 @@ export const testRetryPriority = task({
     //           Once the retry completes successfully, the 3rd run should be dequeued
 
     const failureRun = await retryTask.trigger(
-      { delayMs: 0, throwError: true, failureCount: 1 },
+      { delayMs: 0, throwError: true, failureCount: 1, retryDelayMs },
       { tags: ["failure"] }
     );
     await waitForRunStatus(failureRun.id, ["EXECUTING", "REATTEMPTING"]);
@@ -78,7 +80,7 @@ export const testRetryPriority = task({
     logger.info("Failure run is executing, triggering a run that will hit the concurrency limit");
 
     const holdRun = await retryTask.trigger(
-      { delayMs: holdDelayMs, throwError: false, failureCount: 0 },
+      { delayMs: retryDelayMs + 2_000, throwError: false, failureCount: 0 },
       { tags: ["hold"] }
     );
     await waitForRunStatus(holdRun.id, ["EXECUTING"]);
@@ -94,16 +96,24 @@ export const testRetryPriority = task({
 
     const completedFailureRun = await waitForRunStatus(failureRun.id, ["COMPLETED"]);
     const completedQueuedRun = await waitForRunStatus(queuedRun.id, ["COMPLETED"]);
+    const completedHoldRun = await waitForRunStatus(holdRun.id, ["COMPLETED"]);
 
     logger.info("Runs completed", {
       completedFailureRun,
       completedQueuedRun,
+      completedHoldRun,
     });
 
     // Now we need to assert the completedFailureRun.completedAt is before completedQueuedRun.completedAt
     assert(
       completedFailureRun.finishedAt! < completedQueuedRun.finishedAt!,
       "Failure run should complete before queued run"
+    );
+
+    // Lets also make sure the completedFailureRun.finishedAt is AFTER the completedHoldRun.finishedAt
+    assert(
+      completedFailureRun.finishedAt! > completedHoldRun.finishedAt!,
+      "Failure run should complete after hold run"
     );
 
     // Now lets make sure all the runs are completed
@@ -191,11 +201,16 @@ export const testResumeDurationPriority = task({
       "Resume run is executing, triggering a run that will hold the concurrency until both the resume run and the queued run are in the queue"
     );
 
+    let holdRunId: string | undefined;
+
     if (ctx.environment.type !== "DEVELOPMENT") {
       const holdRun = await durationWaitTask.trigger(
         { waitDurationInSeconds: waitDurationInSeconds + 10, doWait: false },
         { tags: ["hold"] }
       );
+
+      holdRunId = holdRun.id;
+
       await waitForRunStatus(holdRun.id, ["EXECUTING"]);
 
       logger.info("Hold run is executing, triggering a run that should be queued");
@@ -220,6 +235,16 @@ export const testResumeDurationPriority = task({
       completedResumeRun.finishedAt! < completedQueuedRun.finishedAt!,
       "Resume run should complete before queued run"
     );
+
+    if (holdRunId) {
+      const completedHoldRun = await waitForRunStatus(holdRunId, ["COMPLETED"]);
+
+      // Lets also make sure the completedResumeRun.finishedAt is AFTER the completedHoldRun.finishedAt
+      assert(
+        completedResumeRun.finishedAt! > completedHoldRun.finishedAt!,
+        "Resume run should complete after hold run"
+      );
+    }
 
     const envStats = await getEnvironmentStats(ctx.environment.id);
 
@@ -428,15 +453,27 @@ export const retryTask = task({
   id: "retry-task",
   queue: singleQueue,
   retry: {
-    maxAttempts: 10,
-    minTimeoutInMs: 5_000, // Will retry in 5 seconds
-    maxTimeoutInMs: 5_000,
+    maxAttempts: 2,
   },
-  run: async (payload: { delayMs: number; throwError: boolean; failureCount: number }, { ctx }) => {
+  run: async (
+    payload: { delayMs: number; throwError: boolean; failureCount: number; retryDelayMs?: number },
+    { ctx }
+  ) => {
     await new Promise((resolve) => setTimeout(resolve, payload.delayMs));
 
     if (payload.throwError && ctx.attempt.number <= payload.failureCount) {
       throw new Error("Error");
+    }
+  },
+  handleError: async (payload, error, { ctx }) => {
+    if (!payload.throwError) {
+      return {
+        skipRetrying: true,
+      };
+    } else {
+      return {
+        retryDelayInMs: payload.retryDelayMs,
+      };
     }
   },
 });
