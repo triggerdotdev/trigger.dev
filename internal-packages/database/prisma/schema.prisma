@@ -2051,6 +2051,9 @@ model Waitpoint {
   /// If this is true then we can show it in the dashboard/return it from the SDK
   userProvidedIdempotencyKey Boolean
 
+  /// If there's a user provided idempotency key, this is the time it expires at
+  idempotencyKeyExpiresAt DateTime?
+
   //todo
   /// Will automatically deactivate the idempotencyKey when the waitpoint is completed
   /// "Deactivating" means moving it to the inactiveIdempotencyKey field and generating a random new one for the main column
