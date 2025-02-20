@@ -10,6 +10,8 @@ import {
   CreateEnvironmentVariableRequestBody,
   CreateScheduleOptions,
   CreateUploadPayloadUrlResponseBody,
+  CreateWaitpointRequestBody,
+  CreateWaitpointResponseBody,
   DeletedScheduleObject,
   EnvironmentVariableResponseBody,
   EnvironmentVariableValue,
@@ -630,6 +632,19 @@ export class ApiClient {
       {
         method: "GET",
         headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  createResumeToken(options: CreateWaitpointRequestBody, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      CreateWaitpointResponseBody,
+      `${this.baseUrl}/api/v1/waitpoints`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(options),
       },
       mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );

@@ -887,20 +887,35 @@ export type SubscribeRealtimeStreamChunkRawShape = z.infer<
   typeof SubscribeRealtimeStreamChunkRawShape
 >;
 
+export const TimePeriod = z.string().or(z.coerce.date());
+export type TimePeriod = z.infer<typeof TimePeriod>;
+
 export const CreateWaitpointRequestBody = z.object({
-  /** An optional idempotency key for the waitpoint. If you provide one. */
+  /**
+   * An optional idempotency key for the waitpoint.
+   * If you use the same key twice (and the key hasn't expired), you will get the original waitpoint back.
+   *
+   * Note: This waitpoint may already be complete, in which case when you wait for it, it will immediately continue.
+   */
   idempotencyKey: z.string().optional(),
-  /** The TTL for the idempotency key. */
+  /**
+   * When set, this means the passed in idempotency key will expire after this time.
+   * This means after that time if you pass the same idempotency key again, you will get a new waitpoint.
+   */
   idempotencyKeyTTL: z.string().optional(),
-  /** If the waitpoint hasn't been completed by this timeout, it will fail with a timeout error. */
-  timeout: z.string().or(z.coerce.date()).optional(),
+  /** The resume token will timeout after this time.
+   * If you are waiting for the token in a run, the token will return a result where `ok` is false.
+   *
+   * You can pass a `Date` object, or a string in this format: "30s", "1m", "2h", "3d", "4w".
+   */
+  timeout: TimePeriod.optional(),
 });
 export type CreateWaitpointRequestBody = z.infer<typeof CreateWaitpointRequestBody>;
 
-export const CreateWaitpointResponse = z.object({
+export const CreateWaitpointResponseBody = z.object({
   id: z.string(),
 });
-export type CreateWaitpointResponse = z.infer<typeof CreateWaitpointResponse>;
+export type CreateWaitpointResponseBody = z.infer<typeof CreateWaitpointResponseBody>;
 
 export const WAITPOINT_TIMEOUT_ERROR_CODE = "TRIGGER_WAITPOINT_TIMEOUT";
 
