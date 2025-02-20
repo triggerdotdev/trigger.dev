@@ -5,7 +5,15 @@ export const resumeToken = task({
   run: async (payload: any, { ctx }) => {
     logger.log("Hello, world", { payload });
 
-    const token = await resumeTokens.create();
+    const idempotencyKey = "a";
+
+    const token = await resumeTokens.create({
+      idempotencyKey,
+      timeout: new Date(Date.now() + 5_000),
+    });
     logger.log("Token", token);
+
+    const token2 = await resumeTokens.create({ idempotencyKey, timeout: "10s" });
+    logger.log("Token2", token2);
   },
 });

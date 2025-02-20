@@ -914,6 +914,7 @@ export type CreateWaitpointRequestBody = z.infer<typeof CreateWaitpointRequestBo
 
 export const CreateWaitpointResponseBody = z.object({
   id: z.string(),
+  isCached: z.boolean(),
 });
 export type CreateWaitpointResponseBody = z.infer<typeof CreateWaitpointResponseBody>;
 

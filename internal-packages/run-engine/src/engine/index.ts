@@ -1744,7 +1744,7 @@ export class RunEngine {
     idempotencyKey?: string;
     idempotencyKeyExpiresAt?: Date;
     timeout?: Date;
-  }): Promise<Waitpoint> {
+  }): Promise<{ waitpoint: Waitpoint; isCached: boolean }> {
     const existingWaitpoint = idempotencyKey
       ? await this.prisma.waitpoint.findUnique({
           where: {
@@ -1775,7 +1775,7 @@ export class RunEngine {
 
         //let it fall through to create a new waitpoint
       } else {
-        return existingWaitpoint;
+        return { waitpoint: existingWaitpoint, isCached: true };
       }
     }
 
@@ -1815,7 +1815,7 @@ export class RunEngine {
       });
     }
 
-    return waitpoint;
+    return { waitpoint, isCached: false };
   }
 
   /** This block a run with a BATCH waitpoint.

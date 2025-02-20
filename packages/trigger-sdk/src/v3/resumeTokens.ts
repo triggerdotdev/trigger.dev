@@ -19,6 +19,19 @@ function createResumeToken(
       tracer,
       name: "resumeTokens.create()",
       icon: "wait",
+      attributes: {
+        idempotencyKey: options?.idempotencyKey,
+        idempotencyKeyTTL: options?.idempotencyKeyTTL,
+        timeout: options?.timeout
+          ? typeof options.timeout === "string"
+            ? options.timeout
+            : options.timeout.toISOString()
+          : undefined,
+      },
+      onResponseBody: (body: CreateWaitpointResponseBody, span) => {
+        span.setAttribute("id", body.id);
+        span.setAttribute("isCached", body.isCached);
+      },
     },
     requestOptions
   );
