@@ -93,6 +93,99 @@ export class CreateCheckpointService extends BaseService {
       };
     }
 
+    const { reason } = params;
+
+    // Check if we should accept this checkpoint
+    switch (reason.type) {
+      case "MANUAL": {
+        // Always accept manual checkpoints
+        break;
+      }
+      case "WAIT_FOR_DURATION": {
+        // Always accept duration checkpoints
+        break;
+      }
+      case "WAIT_FOR_TASK": {
+        const childRun = await this._prisma.taskRun.findFirst({
+          where: {
+            friendlyId: reason.friendlyId,
+          },
+          select: {
+            dependency: {
+              select: {
+                resumedAt: true,
+              },
+            },
+          },
+        });
+
+        if (!childRun) {
+          logger.error("CreateCheckpointService: Pre-check - WAIT_FOR_TASK child run not found", {
+            friendlyId: reason.friendlyId,
+            params,
+          });
+
+          return {
+            success: false,
+            keepRunAlive: false,
+          };
+        }
+
+        if (childRun.dependency?.resumedAt) {
+          logger.error("CreateCheckpointService: Child run already resumed", {
+            childRun,
+            params,
+          });
+
+          return {
+            success: false,
+            keepRunAlive: true,
+          };
+        }
+
+        break;
+      }
+      case "WAIT_FOR_BATCH": {
+        const batchRun = await this._prisma.batchTaskRun.findFirst({
+          where: {
+            friendlyId: reason.batchFriendlyId,
+          },
+          select: {
+            resumedAt: true,
+          },
+        });
+
+        if (!batchRun) {
+          logger.error("CreateCheckpointService: Pre-check - Batch not found", {
+            batchFriendlyId: reason.batchFriendlyId,
+            params,
+          });
+
+          return {
+            success: false,
+            keepRunAlive: false,
+          };
+        }
+
+        if (batchRun.resumedAt) {
+          logger.error("CreateCheckpointService: Batch already resumed", {
+            batchRun,
+            params,
+          });
+
+          return {
+            success: false,
+            keepRunAlive: true,
+          };
+        }
+
+        break;
+      }
+      default: {
+        break;
+      }
+    }
+
     //sleep to test slow checkpoints
     // Sleep a random value between 4 and 30 seconds
     // await new Promise((resolve) => {
@@ -145,8 +238,6 @@ export class CreateCheckpointService extends BaseService {
         },
       },
     });
-
-    const { reason } = params;
 
     let checkpointEvent: CheckpointRestoreEvent | undefined;
 

@@ -1917,6 +1917,7 @@ model TaskRunDependency {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  resumedAt DateTime?
 
   @@index([dependentAttemptId])
   @@index([dependentBatchRunId])

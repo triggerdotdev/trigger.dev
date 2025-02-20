@@ -35,6 +35,11 @@ const TASK_RUN_COMPLETED_WITH_ACK_TIMEOUT_MS =
 const TASK_RUN_COMPLETED_WITH_ACK_MAX_RETRIES =
   parseInt(process.env.TASK_RUN_COMPLETED_WITH_ACK_MAX_RETRIES || "") || 7;
 
+const WAIT_FOR_TASK_CHECKPOINT_DELAY_MS =
+  parseInt(process.env.WAIT_FOR_TASK_CHECKPOINT_DELAY_MS || "") || 0;
+const WAIT_FOR_BATCH_CHECKPOINT_DELAY_MS =
+  parseInt(process.env.WAIT_FOR_BATCH_CHECKPOINT_DELAY_MS || "") || 0;
+
 const logger = new SimpleStructuredLogger("coordinator", undefined, { nodeName: NODE_NAME });
 const chaosMonkey = new ChaosMonkey(
   !!process.env.CHAOS_MONKEY_ENABLED,
@@ -143,6 +148,7 @@ class TaskCoordinator {
       authToken: PLATFORM_SECRET,
       logHandlerPayloads: false,
       handlers: {
+        // This is used by resumeAttempt
         RESUME_AFTER_DEPENDENCY: async (message) => {
           const log = platformLogger.child({
             eventName: "RESUME_AFTER_DEPENDENCY",
@@ -168,11 +174,15 @@ class TaskCoordinator {
 
           await chaosMonkey.call();
 
-          // In case the task resumed faster than we could checkpoint
-          this.#cancelCheckpoint(message.runId);
+          // In case the task resumes before the checkpoint is created
+          this.#cancelCheckpoint(message.runId, {
+            event: "RESUME_AFTER_DEPENDENCY",
+            completions: message.completions.length,
+          });
 
           taskSocket.emit("RESUME_AFTER_DEPENDENCY", message);
         },
+        // This is used by sharedQueueConsumer
         RESUME_AFTER_DEPENDENCY_WITH_ACK: async (message) => {
           const log = platformLogger.child({
             eventName: "RESUME_AFTER_DEPENDENCY_WITH_ACK",
@@ -218,8 +228,11 @@ class TaskCoordinator {
 
           await chaosMonkey.call();
 
-          // In case the task resumed faster than we could checkpoint
-          this.#cancelCheckpoint(message.runId);
+          // In case the task resumes before the checkpoint is created
+          this.#cancelCheckpoint(message.runId, {
+            event: "RESUME_AFTER_DEPENDENCY_WITH_ACK",
+            completions: message.completions.length,
+          });
 
           taskSocket.emit("RESUME_AFTER_DEPENDENCY", message);
 
@@ -287,7 +300,7 @@ class TaskCoordinator {
           log.addFields({ socketId: taskSocket.id, socketData: taskSocket.data });
           log.log("Found task socket for REQUEST_RUN_CANCELLATION");
 
-          this.#cancelCheckpoint(message.runId);
+          this.#cancelCheckpoint(message.runId, { event: "REQUEST_RUN_CANCELLATION", ...message });
 
           if (message.delayInMs) {
             taskSocket.emit("REQUEST_EXIT", {
@@ -721,7 +734,10 @@ class TaskCoordinator {
             const { completion, execution } = message;
 
             // Cancel all in-progress checkpoints (if any)
-            this.#cancelCheckpoint(socket.data.runId);
+            this.#cancelCheckpoint(socket.data.runId, {
+              event: "TASK_RUN_COMPLETED",
+              attemptNumber: execution.attempt.number,
+            });
 
             await chaosMonkey.call({ throwErrors: false });
 
@@ -906,7 +922,10 @@ class TaskCoordinator {
 
           try {
             // Cancel all in-progress checkpoints (if any)
-            this.#cancelCheckpoint(socket.data.runId);
+            this.#cancelCheckpoint(socket.data.runId, {
+              event: "TASK_RUN_FAILED_TO_RUN",
+              errorType: completion.error.type,
+            });
 
             this.#platformSocket?.send("TASK_RUN_FAILED_TO_RUN", {
               version: "v1",
@@ -959,12 +978,15 @@ class TaskCoordinator {
 
           try {
             if (message.version === "v1") {
-              this.#cancelCheckpoint(socket.data.runId);
+              this.#cancelCheckpoint(socket.data.runId, { event: "CANCEL_CHECKPOINT", ...message });
               // v1 has no callback
               return;
             }
 
-            const checkpointCanceled = this.#cancelCheckpoint(socket.data.runId);
+            const checkpointCanceled = this.#cancelCheckpoint(socket.data.runId, {
+              event: "CANCEL_CHECKPOINT",
+              ...message,
+            });
 
             callback({ version: "v2", checkpointCanceled });
           } catch (error) {
@@ -1008,11 +1030,14 @@ class TaskCoordinator {
               return;
             }
 
+            const runId = socket.data.runId;
+            const attemptNumber = getAttemptNumber();
+
             const checkpoint = await this.#checkpointer.checkpointAndPush({
-              runId: socket.data.runId,
+              runId,
               projectRef: socket.data.projectRef,
               deploymentVersion: socket.data.deploymentVersion,
-              attemptNumber: getAttemptNumber(),
+              attemptNumber,
             });
 
             if (!checkpoint) {
@@ -1038,6 +1063,13 @@ class TaskCoordinator {
 
             if (ack?.keepRunAlive) {
               log.log("keeping run alive after duration checkpoint");
+
+              if (checkpoint.docker && willSimulate) {
+                // The container is still paused so we need to unpause it
+                log.log("unpausing container after duration checkpoint");
+                this.#checkpointer.unpause(runId, attemptNumber);
+              }
+
               return;
             }
 
@@ -1096,12 +1128,18 @@ class TaskCoordinator {
               }
             }
 
-            const checkpoint = await this.#checkpointer.checkpointAndPush({
-              runId: socket.data.runId,
-              projectRef: socket.data.projectRef,
-              deploymentVersion: socket.data.deploymentVersion,
-              attemptNumber: getAttemptNumber(),
-            });
+            const runId = socket.data.runId;
+            const attemptNumber = getAttemptNumber();
+
+            const checkpoint = await this.#checkpointer.checkpointAndPush(
+              {
+                runId,
+                projectRef: socket.data.projectRef,
+                deploymentVersion: socket.data.deploymentVersion,
+                attemptNumber,
+              },
+              WAIT_FOR_TASK_CHECKPOINT_DELAY_MS
+            );
 
             if (!checkpoint) {
               log.error("Failed to checkpoint");
@@ -1131,6 +1169,13 @@ class TaskCoordinator {
             if (ack?.keepRunAlive) {
               socket.data.requiresCheckpointResumeWithMessage = undefined;
               log.log("keeping run alive after task checkpoint");
+
+              if (checkpoint.docker && willSimulate) {
+                // The container is still paused so we need to unpause it
+                log.log("unpausing container after duration checkpoint");
+                this.#checkpointer.unpause(runId, attemptNumber);
+              }
+
               return;
             }
 
@@ -1189,12 +1234,18 @@ class TaskCoordinator {
               }
             }
 
-            const checkpoint = await this.#checkpointer.checkpointAndPush({
-              runId: socket.data.runId,
-              projectRef: socket.data.projectRef,
-              deploymentVersion: socket.data.deploymentVersion,
-              attemptNumber: getAttemptNumber(),
-            });
+            const runId = socket.data.runId;
+            const attemptNumber = getAttemptNumber();
+
+            const checkpoint = await this.#checkpointer.checkpointAndPush(
+              {
+                runId,
+                projectRef: socket.data.projectRef,
+                deploymentVersion: socket.data.deploymentVersion,
+                attemptNumber,
+              },
+              WAIT_FOR_BATCH_CHECKPOINT_DELAY_MS
+            );
 
             if (!checkpoint) {
               log.error("Failed to checkpoint");
@@ -1225,6 +1276,13 @@ class TaskCoordinator {
             if (ack?.keepRunAlive) {
               socket.data.requiresCheckpointResumeWithMessage = undefined;
               log.log("keeping run alive after batch checkpoint");
+
+              if (checkpoint.docker && willSimulate) {
+                // The container is still paused so we need to unpause it
+                log.log("unpausing container after batch checkpoint");
+                this.#checkpointer.unpause(runId, attemptNumber);
+              }
+
               return;
             }
 
@@ -1412,7 +1470,9 @@ class TaskCoordinator {
     });
   }
 
-  #cancelCheckpoint(runId: string): boolean {
+  #cancelCheckpoint(runId: string, reason?: any): boolean {
+    logger.log("cancelCheckpoint: call", { runId, reason });
+
     const checkpointWait = this.#checkpointableTasks.get(runId);
 
     if (checkpointWait) {
@@ -1421,9 +1481,14 @@ class TaskCoordinator {
     }
 
     // Cancel checkpointing procedure
-    const checkpointCanceled = this.#checkpointer.cancelCheckpoint(runId);
+    const checkpointCanceled = this.#checkpointer.cancelAllCheckpointsForRun(runId);
 
-    logger.log("cancelCheckpoint()", { runId, checkpointCanceled });
+    logger.log("cancelCheckpoint: result", {
+      runId,
+      reason,
+      checkpointCanceled,
+      hadCheckpointWait: !!checkpointWait,
+    });
 
     return checkpointCanceled;
   }
