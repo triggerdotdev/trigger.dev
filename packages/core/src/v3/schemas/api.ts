@@ -9,7 +9,7 @@ import {
 } from "./common.js";
 import { BackgroundWorkerMetadata } from "./resources.js";
 import { QueueOptions } from "./schemas.js";
-import { DequeuedMessage, MachineResources } from "./runEngine.js";
+import { DequeuedMessage, MachineResources, WaitpointStatus } from "./runEngine.js";
 
 export const RunEngineVersion = z.union([z.literal("V1"), z.literal("V2")]);
 
@@ -886,3 +886,29 @@ export const SubscribeRealtimeStreamChunkRawShape = z.object({
 export type SubscribeRealtimeStreamChunkRawShape = z.infer<
   typeof SubscribeRealtimeStreamChunkRawShape
 >;
+
+export const CreateWaitpointRequestBody = z.object({
+  /** An optional idempotency key for the waitpoint. If you provide one. */
+  idempotencyKey: z.string().optional(),
+  /** The TTL for the idempotency key. */
+  idempotencyKeyTTL: z.string().optional(),
+  /** If the waitpoint hasn't been completed by this timeout, it will fail with a timeout error. */
+  timeout: z.string().or(z.coerce.date()).optional(),
+});
+export type CreateWaitpointRequestBody = z.infer<typeof CreateWaitpointRequestBody>;
+
+export const CreateWaitpointResponse = z.object({
+  id: z.string(),
+});
+export type CreateWaitpointResponse = z.infer<typeof CreateWaitpointResponse>;
+
+export const WAITPOINT_TIMEOUT_ERROR_CODE = "TRIGGER_WAITPOINT_TIMEOUT";
+
+export function isWaitpointOutputTimeout(output: string): boolean {
+  try {
+    const json = JSON.parse(output);
+    return json.code === WAITPOINT_TIMEOUT_ERROR_CODE;
+  } catch (e) {
+    return false;
+  }
+}

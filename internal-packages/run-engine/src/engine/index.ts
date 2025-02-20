@@ -23,6 +23,7 @@ import {
   TaskRunInternalError,
   TaskRunSuccessfulExecutionResult,
   WaitForDurationResult,
+  WAITPOINT_TIMEOUT_ERROR_CODE,
 } from "@trigger.dev/core/v3";
 import {
   BatchId,
@@ -118,6 +119,13 @@ const workerCatalog = {
     }),
     visibilityTimeoutMs: 10_000,
   },
+  timeoutWaitpoint: {
+    schema: z.object({
+      waitpointId: z.string(),
+      timeout: z.coerce.date(),
+    }),
+    visibilityTimeoutMs: 10_000,
+  },
 };
 
 type EngineWorker = Worker<typeof workerCatalog>;
@@ -197,6 +205,12 @@ export class RunEngine {
         continueRunIfUnblocked: async ({ payload }) => {
           await this.#continueRunIfUnblocked({
             runId: payload.runId,
+          });
+        },
+        timeoutWaitpoint: async ({ payload }) => {
+          await this.#timeoutWaitpoint({
+            waitpointId: payload.waitpointId,
+            timeout: payload.timeout,
           });
         },
       },
@@ -1735,10 +1749,14 @@ export class RunEngine {
     environmentId,
     projectId,
     idempotencyKey,
+    idempotencyKeyExpiresAt,
+    timeout,
   }: {
     environmentId: string;
     projectId: string;
     idempotencyKey?: string;
+    idempotencyKeyExpiresAt?: Date;
+    timeout?: Date;
   }): Promise<Waitpoint> {
     const existingWaitpoint = idempotencyKey
       ? await this.prisma.waitpoint.findUnique({
@@ -1752,19 +1770,59 @@ export class RunEngine {
       : undefined;
 
     if (existingWaitpoint) {
-      return existingWaitpoint;
+      if (
+        existingWaitpoint.idempotencyKeyExpiresAt &&
+        new Date() > existingWaitpoint.idempotencyKeyExpiresAt
+      ) {
+        //the idempotency key has expired
+        //remove the waitpoint idempotencyKey
+        await this.prisma.waitpoint.update({
+          where: {
+            id: existingWaitpoint.id,
+          },
+          data: {
+            idempotencyKey: nanoid(24),
+            inactiveIdempotencyKey: existingWaitpoint.idempotencyKey,
+          },
+        });
+
+        //let it fall through to create a new waitpoint
+      } else {
+        return existingWaitpoint;
+      }
     }
 
-    return this.prisma.waitpoint.create({
-      data: {
+    const waitpoint = await this.prisma.waitpoint.upsert({
+      where: {
+        environmentId_idempotencyKey: {
+          environmentId,
+          idempotencyKey: idempotencyKey ?? nanoid(24),
+        },
+      },
+      create: {
         ...WaitpointId.generate(),
         type: "MANUAL",
         idempotencyKey: idempotencyKey ?? nanoid(24),
+        idempotencyKeyExpiresAt,
         userProvidedIdempotencyKey: !!idempotencyKey,
         environmentId,
         projectId,
+        completedAfter: timeout,
       },
+      update: {},
     });
+
+    //schedule the timeout
+    if (timeout) {
+      await this.worker.enqueue({
+        id: `timeoutWaitpoint.${waitpoint.id}`,
+        job: "timeoutWaitpoint",
+        payload: { waitpointId: waitpoint.id, timeout },
+        availableAt: timeout,
+      });
+    }
+
+    return waitpoint;
   }
 
   /** This block a run with a BATCH waitpoint.
@@ -2032,14 +2090,6 @@ export class RunEngine {
       isError: boolean;
     };
   }): Promise<Waitpoint> {
-    const waitpoint = await this.prisma.waitpoint.findUnique({
-      where: { id },
-    });
-
-    if (!waitpoint) {
-      throw new Error(`Waitpoint ${id} not found`);
-    }
-
     const result = await $transaction(
       this.prisma,
       async (tx) => {
@@ -2051,23 +2101,32 @@ export class RunEngine {
 
         if (affectedTaskRuns.length === 0) {
           this.logger.warn(`No TaskRunWaitpoints found for waitpoint`, {
-            waitpoint,
+            waitpointId: id,
           });
         }
 
-        // 2. Update the waitpoint to completed
-        const updatedWaitpoint = await tx.waitpoint.update({
-          where: { id },
-          data: {
-            status: "COMPLETED",
-            completedAt: new Date(),
-            output: output?.value,
-            outputType: output?.type,
-            outputIsError: output?.isError,
-          },
-        });
+        // 2. Update the waitpoint to completed (only if it's pending)
+        const waitpoint = await tx.waitpoint
+          .update({
+            where: { id, status: "PENDING" },
+            data: {
+              status: "COMPLETED",
+              completedAt: new Date(),
+              output: output?.value,
+              outputType: output?.type,
+              outputIsError: output?.isError,
+            },
+          })
+          .catch(async (error) => {
+            if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
+              return tx.waitpoint.findUnique({
+                where: { id },
+              });
+            }
+            throw error;
+          });
 
-        return { updatedWaitpoint, affectedTaskRuns };
+        return { waitpoint, affectedTaskRuns };
       },
       (error) => {
         this.logger.error(`Error completing waitpoint ${id}, retrying`, { error });
@@ -2077,6 +2136,10 @@ export class RunEngine {
 
     if (!result) {
       throw new Error(`Waitpoint couldn't be updated`);
+    }
+
+    if (!result.waitpoint) {
+      throw new Error(`Waitpoint ${id} not found`);
     }
 
     //schedule trying to continue the runs
@@ -2100,7 +2163,7 @@ export class RunEngine {
       }
     }
 
-    return result.updatedWaitpoint;
+    return result.waitpoint;
   }
 
   async createCheckpoint({
@@ -3489,6 +3552,19 @@ export class RunEngine {
     return {
       success: true,
     };
+  }
+
+  async #timeoutWaitpoint({ waitpointId, timeout }: { waitpointId: string; timeout: Date }) {
+    await this.completeWaitpoint({
+      id: waitpointId,
+      output: {
+        value: JSON.stringify({
+          code: WAITPOINT_TIMEOUT_ERROR_CODE,
+          message: `Waitpoint timed out at ${timeout.toISOString()}`,
+        }),
+        isError: true,
+      },
+    });
   }
 
   async #clearBlockingWaitpoints({ runId, tx }: { runId: string; tx?: PrismaClientOrTransaction }) {

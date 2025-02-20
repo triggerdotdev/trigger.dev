@@ -48,6 +48,15 @@ export const WaitpointType = {
 
 export type WaitpointType = (typeof WaitpointType)[keyof typeof WaitpointType];
 
+const WaitpointStatusValues = {
+  PENDING: "PENDING",
+  COMPLETED: "COMPLETED",
+} satisfies Enum<DB_TYPES.WaitpointStatus>;
+export const WaitpointStatus = z.enum(
+  Object.values(WaitpointStatusValues) as [DB_TYPES.WaitpointStatus]
+);
+export type WaitpointStatus = z.infer<typeof WaitpointStatus>;
+
 export const RuntimeEnvironmentType = {
   PRODUCTION: "PRODUCTION",
   STAGING: "STAGING",
