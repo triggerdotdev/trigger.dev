@@ -1,5 +1,74 @@
-import { SemanticInternalAttributes, accessoryAttributes, runtime } from "@trigger.dev/core/v3";
+import {
+  SemanticInternalAttributes,
+  accessoryAttributes,
+  runtime,
+  apiClientManager,
+  ApiPromise,
+  ApiRequestOptions,
+  conditionallyExportPacket,
+  CreateWaitpointTokenRequestBody,
+  CreateWaitpointTokenResponseBody,
+  mergeRequestOptions,
+  stringifyIO,
+  CompleteWaitpointTokenResponseBody,
+} from "@trigger.dev/core/v3";
 import { tracer } from "./tracer.js";
+
+function createToken(
+  options?: CreateWaitpointTokenRequestBody,
+  requestOptions?: ApiRequestOptions
+): ApiPromise<CreateWaitpointTokenResponseBody> {
+  const apiClient = apiClientManager.clientOrThrow();
+
+  const $requestOptions = mergeRequestOptions(
+    {
+      tracer,
+      name: "wait.createToken()",
+      icon: "wait-token",
+      attributes: {
+        idempotencyKey: options?.idempotencyKey,
+        idempotencyKeyTTL: options?.idempotencyKeyTTL,
+        timeout: options?.timeout
+          ? typeof options.timeout === "string"
+            ? options.timeout
+            : options.timeout.toISOString()
+          : undefined,
+      },
+      onResponseBody: (body: CreateWaitpointTokenResponseBody, span) => {
+        span.setAttribute("id", body.id);
+        span.setAttribute("isCached", body.isCached);
+      },
+    },
+    requestOptions
+  );
+
+  return apiClient.createWaitpointToken(options ?? {}, $requestOptions);
+}
+
+async function completeToken<T>(
+  token: { id: string },
+  data: T,
+  requestOptions?: ApiRequestOptions
+) {
+  const apiClient = apiClientManager.clientOrThrow();
+
+  const $requestOptions = mergeRequestOptions(
+    {
+      tracer,
+      name: "wait.completeToken()",
+      icon: "wait-token",
+      attributes: {
+        id: token.id,
+      },
+      onResponseBody: (body: CompleteWaitpointTokenResponseBody, span) => {
+        span.setAttribute("success", body.success);
+      },
+    },
+    requestOptions
+  );
+
+  return apiClient.completeResumeToken(token.id, { data }, $requestOptions);
+}
 
 export type WaitOptions =
   | {
@@ -80,6 +149,8 @@ export const wait = {
       }
     );
   },
+  createToken,
+  completeToken,
 };
 
 function nameForWaitOptions(options: WaitOptions): string {

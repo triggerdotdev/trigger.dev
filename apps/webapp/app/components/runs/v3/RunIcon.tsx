@@ -10,6 +10,7 @@ import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { TaskCachedIcon } from "~/assets/icons/TaskCachedIcon";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
 import { cn } from "~/utils/cn";
+import { WaitTokenIcon } from "~/assets/icons/WaitTokenIcon";
 
 type TaskIconProps = {
   name: string | undefined;
@@ -54,6 +55,8 @@ export function RunIcon({ name, className, spanName }: TaskIconProps) {
       return <Squares2X2Icon className={cn(className, "text-text-dimmed")} />;
     case "tag":
       return <TagIcon className={cn(className, "text-text-dimmed")} />;
+    case "wait-token":
+      return <WaitTokenIcon className={cn(className, "text-text-dimmed")} />;
     //log levels
     case "debug":
     case "log":

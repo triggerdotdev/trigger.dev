@@ -1,6 +1,9 @@
 import { json } from "@remix-run/server-runtime";
-import { CreateWaitpointRequestBody, CreateWaitpointResponseBody } from "@trigger.dev/core/v3";
-import { ResumeTokenId, WaitpointId } from "@trigger.dev/core/v3/apps";
+import {
+  CreateWaitpointTokenRequestBody,
+  CreateWaitpointTokenResponseBody,
+} from "@trigger.dev/core/v3";
+import { WaitpointId } from "@trigger.dev/core/v3/apps";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { parseDelay } from "~/utils/delays";
 import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
@@ -8,7 +11,7 @@ import { engine } from "~/v3/runEngine.server";
 
 const { action } = createActionApiRoute(
   {
-    body: CreateWaitpointRequestBody,
+    body: CreateWaitpointTokenRequestBody,
     maxContentLength: 1024 * 10, // 10KB
     method: "POST",
   },
@@ -27,12 +30,9 @@ const { action } = createActionApiRoute(
       timeout,
     });
 
-    //result is a waitpoint but we want to make it look like a resume token
-    const resumeTokenFriendlyId = ResumeTokenId.toFriendlyId(result.waitpoint.id);
-
-    return json<CreateWaitpointResponseBody>(
+    return json<CreateWaitpointTokenResponseBody>(
       {
-        id: resumeTokenFriendlyId,
+        id: WaitpointId.toFriendlyId(result.waitpoint.id),
         isCached: result.isCached,
       },
       { status: 200 }

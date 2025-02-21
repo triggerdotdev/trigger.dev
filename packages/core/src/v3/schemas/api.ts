@@ -890,7 +890,7 @@ export type SubscribeRealtimeStreamChunkRawShape = z.infer<
 export const TimePeriod = z.string().or(z.coerce.date());
 export type TimePeriod = z.infer<typeof TimePeriod>;
 
-export const CreateWaitpointRequestBody = z.object({
+export const CreateWaitpointTokenRequestBody = z.object({
   /**
    * An optional idempotency key for the waitpoint.
    * If you use the same key twice (and the key hasn't expired), you will get the original waitpoint back.
@@ -910,13 +910,23 @@ export const CreateWaitpointRequestBody = z.object({
    */
   timeout: TimePeriod.optional(),
 });
-export type CreateWaitpointRequestBody = z.infer<typeof CreateWaitpointRequestBody>;
+export type CreateWaitpointTokenRequestBody = z.infer<typeof CreateWaitpointTokenRequestBody>;
 
-export const CreateWaitpointResponseBody = z.object({
+export const CreateWaitpointTokenResponseBody = z.object({
   id: z.string(),
   isCached: z.boolean(),
 });
-export type CreateWaitpointResponseBody = z.infer<typeof CreateWaitpointResponseBody>;
+export type CreateWaitpointTokenResponseBody = z.infer<typeof CreateWaitpointTokenResponseBody>;
+
+export const CompleteWaitpointTokenRequestBody = z.object({
+  data: z.any().nullish(),
+});
+export type CompleteWaitpointTokenRequestBody = z.infer<typeof CompleteWaitpointTokenRequestBody>;
+
+export const CompleteWaitpointTokenResponseBody = z.object({
+  success: z.literal(true),
+});
+export type CompleteWaitpointTokenResponseBody = z.infer<typeof CompleteWaitpointTokenResponseBody>;
 
 export const WAITPOINT_TIMEOUT_ERROR_CODE = "TRIGGER_WAITPOINT_TIMEOUT";
 

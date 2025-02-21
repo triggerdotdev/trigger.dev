@@ -12,7 +12,6 @@ export * from "./tags.js";
 export * from "./metadata.js";
 export * from "./timeout.js";
 export * from "./waitUntil.js";
-export * from "./resumeTokens.js";
 export type { Context };
 
 import type { Context } from "./shared.js";

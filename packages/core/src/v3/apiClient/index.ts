@@ -7,11 +7,13 @@ import {
   BatchTriggerTaskV3RequestBody,
   BatchTriggerTaskV3Response,
   CanceledRunResponse,
+  CompleteWaitpointTokenRequestBody,
+  CompleteWaitpointTokenResponseBody,
   CreateEnvironmentVariableRequestBody,
   CreateScheduleOptions,
   CreateUploadPayloadUrlResponseBody,
-  CreateWaitpointRequestBody,
-  CreateWaitpointResponseBody,
+  CreateWaitpointTokenRequestBody,
+  CreateWaitpointTokenResponseBody,
   DeletedScheduleObject,
   EnvironmentVariableResponseBody,
   EnvironmentVariableValue,
@@ -637,10 +639,27 @@ export class ApiClient {
     );
   }
 
-  createResumeToken(options: CreateWaitpointRequestBody, requestOptions?: ZodFetchOptions) {
+  createWaitpointToken(options: CreateWaitpointTokenRequestBody, requestOptions?: ZodFetchOptions) {
     return zodfetch(
-      CreateWaitpointResponseBody,
-      `${this.baseUrl}/api/v1/waitpoints`,
+      CreateWaitpointTokenResponseBody,
+      `${this.baseUrl}/api/v1/waitpoints/tokens`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(options),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  completeResumeToken(
+    friendlyId: string,
+    options: CompleteWaitpointTokenRequestBody,
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      CompleteWaitpointTokenResponseBody,
+      `${this.baseUrl}/api/v1/waitpoints/tokens/${friendlyId}/complete`,
       {
         method: "POST",
         headers: this.#getHeaders(false),
