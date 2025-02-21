@@ -399,6 +399,11 @@ const EnvironmentSchema = z.object({
   MAX_BATCH_AND_WAIT_V2_TRIGGER_ITEMS: z.coerce.number().int().default(500),
 
   REALTIME_STREAM_VERSION: z.enum(["v1", "v2"]).default("v1"),
+  REALTIME_STREAM_MAX_LENGTH: z.coerce.number().int().default(1000),
+  REALTIME_STREAM_TTL: z.coerce
+    .number()
+    .int()
+    .default(60 * 60 * 24), // 1 day in seconds
   BATCH_METADATA_OPERATIONS_FLUSH_INTERVAL_MS: z.coerce.number().int().default(1000),
   BATCH_METADATA_OPERATIONS_FLUSH_ENABLED: z.string().default("1"),
   BATCH_METADATA_OPERATIONS_FLUSH_LOGGING_ENABLED: z.string().default("1"),
