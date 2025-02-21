@@ -127,7 +127,7 @@ When a run is canceled:
 
 ### Time-to-live (TTL)
 
-You can set a TTL when triggering a run:
+TTL is a time-to-live setting that defines the maximum duration a run can remain in a queued state before being automatically expired. You can set a TTL when triggering a run:
 
 ```ts
 await yourTask.trigger({ foo: "bar" }, { ttl: "10m" });
