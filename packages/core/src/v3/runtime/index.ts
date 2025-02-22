@@ -4,6 +4,8 @@ import {
   BatchTaskRunExecutionResult,
   TaskRunContext,
   TaskRunExecutionResult,
+  WaitForWaitpointTokenRequestBody,
+  WaitpointTokenResult,
 } from "../schemas/index.js";
 import { getGlobal, registerGlobal, unregisterGlobal } from "../utils/globals.js";
 import { type RuntimeManager } from "./manager.js";
@@ -39,6 +41,15 @@ export class RuntimeAPI {
 
   public waitForTask(params: { id: string; ctx: TaskRunContext }): Promise<TaskRunExecutionResult> {
     return usage.pauseAsync(() => this.#getRuntimeManager().waitForTask(params));
+  }
+
+  public waitForToken(
+    waitpointFriendlyId: string,
+    options?: WaitForWaitpointTokenRequestBody
+  ): Promise<WaitpointTokenResult> {
+    return usage.pauseAsync(() =>
+      this.#getRuntimeManager().waitForToken(waitpointFriendlyId, options)
+    );
   }
 
   public waitForBatch(params: {

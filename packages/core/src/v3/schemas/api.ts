@@ -928,6 +928,22 @@ export const CompleteWaitpointTokenResponseBody = z.object({
 });
 export type CompleteWaitpointTokenResponseBody = z.infer<typeof CompleteWaitpointTokenResponseBody>;
 
+export const WaitForWaitpointTokenRequestBody = z.object({
+  /**
+   * The maximum amount of time to wait for the token to be completed.
+   * If this is exceeded, the waitpoint will timeout and will return `ok` of `false`.
+   *
+   * You can pass a `Date` object, or a string in this format: "30s", "1m", "2h", "3d", "4w".
+   */
+  timeout: TimePeriod.optional(),
+});
+export type WaitForWaitpointTokenRequestBody = z.infer<typeof WaitForWaitpointTokenRequestBody>;
+
+export const WaitForWaitpointTokenResponseBody = z.object({
+  success: z.boolean(),
+});
+export type WaitForWaitpointTokenResponseBody = z.infer<typeof WaitForWaitpointTokenResponseBody>;
+
 export const WAITPOINT_TIMEOUT_ERROR_CODE = "TRIGGER_WAITPOINT_TIMEOUT";
 
 export function isWaitpointOutputTimeout(output: string): boolean {

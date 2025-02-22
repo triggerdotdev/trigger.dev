@@ -32,6 +32,8 @@ import {
   UpdateMetadataRequestBody,
   UpdateMetadataResponseBody,
   UpdateScheduleOptions,
+  WaitForWaitpointTokenRequestBody,
+  WaitForWaitpointTokenResponseBody,
 } from "../schemas/index.js";
 import { taskContext } from "../task-context-api.js";
 import { AnyRunTypes, TriggerJwtOptions } from "../types/tasks.js";
@@ -664,6 +666,24 @@ export class ApiClient {
         method: "POST",
         headers: this.#getHeaders(false),
         body: JSON.stringify(options),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  waitForWaitpointToken(
+    runFriendlyId: string,
+    waitpointFriendlyId: string,
+    options?: WaitForWaitpointTokenRequestBody,
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      WaitForWaitpointTokenResponseBody,
+      `${this.baseUrl}/api/v1/runs/${runFriendlyId}/waitpoints/tokens/${waitpointFriendlyId}/wait`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(options ?? {}),
       },
       mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );

@@ -6,6 +6,8 @@ import {
   TaskRunExecutionResult,
   TaskRunFailedExecutionResult,
   TaskRunSuccessfulExecutionResult,
+  WaitForWaitpointTokenRequestBody,
+  WaitpointTokenResult,
 } from "../schemas/index.js";
 import { ExecutorToWorkerProcessConnection } from "../zodIpc.js";
 import { RuntimeManager } from "./manager.js";
@@ -92,6 +94,23 @@ export class ManagedRuntimeManager implements RuntimeManager {
     };
   }
 
+  async waitForToken(
+    waitpointFriendlyId: string,
+    options?: WaitForWaitpointTokenRequestBody
+  ): Promise<WaitpointTokenResult> {
+    const promise = new Promise<CompletedWaitpoint>((resolve) => {
+      this.resolversByWaitId.set(waitpointFriendlyId, resolve);
+    });
+
+    const waitpoint = await promise;
+
+    return {
+      ok: !waitpoint.outputIsError,
+      output: waitpoint.output,
+      outputType: waitpoint.outputType,
+    };
+  }
+
   associateWaitWithWaitpoint(waitId: string, waitpointId: string) {
     this.resolversByWaitpoint.set(waitpointId, waitId);
   }
@@ -115,6 +134,8 @@ export class ManagedRuntimeManager implements RuntimeManager {
       //no waitpoint resolves associated with batch completions
       //a batch completion isn't when all the runs from a batch are completed
       return;
+    } else if (waitpoint.type === "MANUAL") {
+      waitId = waitpoint.friendlyId;
     } else {
       waitId = this.resolversByWaitpoint.get(waitpoint.id);
     }

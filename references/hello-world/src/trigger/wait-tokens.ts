@@ -12,15 +12,34 @@ export const waitToken = task({
     const idempotencyKey = "a";
 
     const token = await wait.createToken({
-      idempotencyKey,
+      // idempotencyKey,
       timeout: new Date(Date.now() + 5_000),
     });
     logger.log("Token", token);
 
-    const token2 = await wait.createToken({ idempotencyKey, timeout: "10s" });
+    const token2 = await wait.createToken({
+      // idempotencyKey,
+      timeout: "10s" });
     logger.log("Token2", token2);
 
-    //complete the token
-    const result = await wait.completeToken<Token>(token, { status: "approved" });
+    //todo test with an already completed token
+    await completeWaitToken.trigger({ token: token.id, delay: 4 });
+
+
+    //wait for the token
+    const result = await wait.forToken<{ foo: string }>(token);
+    if (!result.ok) {
+
+    }
+
+    logger.log("Token completed", result);
+  },
+})
+
+export const completeWaitToken = task({
+  id: "wait-token-complete",
+  run: async (payload: { token: string; delay: number }) => {
+    await wait.for({ seconds: payload.delay });
+    await wait.completeToken<Token>(payload.token, { status: "approved" });
   },
 });

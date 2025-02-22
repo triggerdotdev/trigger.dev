@@ -2067,8 +2067,8 @@ export class RunEngine {
           id: `continueRunIfUnblocked:${runId}`,
           job: "continueRunIfUnblocked",
           payload: { runId: runId },
-          //100ms in the future
-          availableAt: new Date(Date.now() + 100),
+          //in the near future
+          availableAt: new Date(Date.now() + 50),
         });
       }
 
@@ -2099,13 +2099,15 @@ export class RunEngine {
         });
 
         if (affectedTaskRuns.length === 0) {
-          this.logger.warn(`No TaskRunWaitpoints found for waitpoint`, {
+          this.logger.warn(`completeWaitpoint: No TaskRunWaitpoints found for waitpoint`, {
             waitpointId: id,
           });
         }
 
         // 2. Update the waitpoint to completed (only if it's pending)
-        const waitpoint = await tx.waitpoint
+        let waitpoint: Waitpoint | null = null;
+        try {
+        waitpoint = await tx.waitpoint
           .update({
             where: { id, status: "PENDING" },
             data: {
@@ -2116,19 +2118,21 @@ export class RunEngine {
               outputIsError: output?.isError,
             },
           })
-          .catch(async (error) => {
-            if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
-              return tx.waitpoint.findUnique({
-                where: { id },
-              });
-            }
+        } catch(error) {
+          if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
+            waitpoint = await tx.waitpoint.findFirst({
+              where: { id },
+            });
+          } else {
+            this.logger.log('completeWaitpoint: error updating waitpoint:', {error});
             throw error;
-          });
+          }
+        };
 
         return { waitpoint, affectedTaskRuns };
       },
       (error) => {
-        this.logger.error(`Error completing waitpoint ${id}, retrying`, { error });
+        this.logger.error(`completeWaitpoint: Error completing waitpoint ${id}, retrying`, { error });
         throw error;
       }
     );

@@ -11,8 +11,14 @@ import {
   mergeRequestOptions,
   stringifyIO,
   CompleteWaitpointTokenResponseBody,
+  WaitForWaitpointTokenRequestBody,
+  WaitpointTokenTypedResult,
+  Prettify,
+  taskContext,
 } from "@trigger.dev/core/v3";
 import { tracer } from "./tracer.js";
+import { conditionallyImportPacket } from "../../../core/dist/commonjs/v3/index.js";
+import { conditionallyImportAndParsePacket } from "@trigger.dev/core/v3/utils/ioSerialization";
 
 function createToken(
   options?: CreateWaitpointTokenRequestBody,
@@ -46,11 +52,13 @@ function createToken(
 }
 
 async function completeToken<T>(
-  token: { id: string },
+  token: string | { id: string },
   data: T,
   requestOptions?: ApiRequestOptions
 ) {
   const apiClient = apiClientManager.clientOrThrow();
+
+  const tokenId = typeof token === "string" ? token : token.id;
 
   const $requestOptions = mergeRequestOptions(
     {
@@ -58,7 +66,7 @@ async function completeToken<T>(
       name: "wait.completeToken()",
       icon: "wait-token",
       attributes: {
-        id: token.id,
+        id: tokenId,
       },
       onResponseBody: (body: CompleteWaitpointTokenResponseBody, span) => {
         span.setAttribute("success", body.success);
@@ -67,7 +75,7 @@ async function completeToken<T>(
     requestOptions
   );
 
-  return apiClient.completeResumeToken(token.id, { data }, $requestOptions);
+  return apiClient.completeResumeToken(tokenId, { data }, $requestOptions);
 }
 
 export type WaitOptions =
@@ -151,6 +159,67 @@ export const wait = {
   },
   createToken,
   completeToken,
+  forToken: async <T>(
+    token: string | { id: string },
+    options?: WaitForWaitpointTokenRequestBody
+  ): Promise<Prettify<WaitpointTokenTypedResult<T>>> => {
+    const ctx = taskContext.ctx;
+
+    if (!ctx) {
+      throw new Error("wait.forToken can only be used from inside a task.run()");
+    }
+
+    const apiClient = apiClientManager.clientOrThrow();
+
+    const tokenId = typeof token === "string" ? token : token.id;
+
+    return tracer.startActiveSpan(
+      `wait.forToken()`,
+      async (span) => {
+        const response = await apiClient.waitForWaitpointToken(ctx.run.id, tokenId, options);
+
+        if (!response.success) {
+          throw new Error(`Failed to wait for wait token ${tokenId}`);
+        }
+
+        const result = await runtime.waitForToken(tokenId, options);
+
+        const data = result.output
+          ? await conditionallyImportAndParsePacket(
+              { data: result.output, dataType: result.outputType ?? "application/json" },
+              apiClient
+            )
+          : undefined;
+
+        if (result.ok) {
+          return {
+            ok: result.ok,
+            output: data,
+          } as WaitpointTokenTypedResult<T>;
+        } else {
+          return {
+            ok: result.ok,
+            error: data,
+          } as WaitpointTokenTypedResult<T>;
+        }
+      },
+      {
+        attributes: {
+          [SemanticInternalAttributes.STYLE_ICON]: "wait-token",
+          id: tokenId,
+          ...accessoryAttributes({
+            items: [
+              {
+                text: tokenId,
+                variant: "normal",
+              },
+            ],
+            style: "codepath",
+          }),
+        },
+      }
+    );
+  },
 };
 
 function nameForWaitOptions(options: WaitOptions): string {

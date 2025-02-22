@@ -385,6 +385,23 @@ export const BatchTaskRunExecutionResult = z.object({
 
 export type BatchTaskRunExecutionResult = z.infer<typeof BatchTaskRunExecutionResult>;
 
+export const WaitpointTokenResult = z.object({
+  ok: z.boolean(),
+  output: z.string().optional(),
+  outputType: z.string().optional(),
+});
+export type WaitpointTokenResult = z.infer<typeof WaitpointTokenResult>;
+
+export type WaitpointTokenTypedResult<T> =
+  | {
+      ok: true;
+      output: T;
+    }
+  | {
+      ok: false;
+      error: string;
+    };
+
 export const SerializedError = z.object({
   message: z.string(),
   name: z.string().optional(),

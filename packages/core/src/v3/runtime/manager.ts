@@ -2,6 +2,8 @@ import {
   BatchTaskRunExecutionResult,
   TaskRunContext,
   TaskRunExecutionResult,
+  WaitForWaitpointTokenRequestBody,
+  WaitpointTokenResult,
 } from "../schemas/index.js";
 
 export interface RuntimeManager {
@@ -14,4 +16,8 @@ export interface RuntimeManager {
     runCount: number;
     ctx: TaskRunContext;
   }): Promise<BatchTaskRunExecutionResult>;
+  waitForToken(
+    waitpointFriendlyId: string,
+    options?: WaitForWaitpointTokenRequestBody
+  ): Promise<WaitpointTokenResult>;
 }

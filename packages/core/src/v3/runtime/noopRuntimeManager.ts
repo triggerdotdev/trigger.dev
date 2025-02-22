@@ -3,6 +3,8 @@ import {
   TaskRunContext,
   TaskRunErrorCodes,
   TaskRunExecutionResult,
+  WaitForWaitpointTokenRequestBody,
+  WaitpointTokenResult,
 } from "../schemas/index.js";
 import { RuntimeManager } from "./manager.js";
 
@@ -38,6 +40,16 @@ export class NoopRuntimeManager implements RuntimeManager {
     return Promise.resolve({
       id: params.id,
       items: [],
+    });
+  }
+
+  waitForToken(
+    waitpointFriendlyId: string,
+    options?: WaitForWaitpointTokenRequestBody
+  ): Promise<WaitpointTokenResult> {
+    return Promise.resolve({
+      ok: true,
+      outputType: "application/json",
     });
   }
 }
