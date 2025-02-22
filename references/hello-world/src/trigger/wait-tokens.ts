@@ -6,19 +6,19 @@ type Token = {
 
 export const waitToken = task({
   id: "wait-token",
-  run: async ({ completeBeforeWaiting}: { completeBeforeWaiting: boolean }, { ctx }) => {
+  run: async ({ completeBeforeWaiting = false, idempotencyKey, idempotencyKeyTTL }: { completeBeforeWaiting?: boolean, idempotencyKey?: string, idempotencyKeyTTL?: string },) => {
     logger.log("Hello, world", { completeBeforeWaiting });
 
-    const idempotencyKey = "a";
-
     const token = await wait.createToken({
-      // idempotencyKey,
+      idempotencyKey,
+      idempotencyKeyTTL,
       timeout: new Date(Date.now() + 10_000),
     });
     logger.log("Token", token);
 
     const token2 = await wait.createToken({
-      // idempotencyKey,
+      idempotencyKey,
+      idempotencyKeyTTL,
       timeout: "10s" });
     logger.log("Token2", token2);
 
