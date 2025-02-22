@@ -6,14 +6,14 @@ type Token = {
 
 export const waitToken = task({
   id: "wait-token",
-  run: async (payload: any, { ctx }) => {
-    logger.log("Hello, world", { payload });
+  run: async ({ completeBeforeWaiting}: { completeBeforeWaiting: boolean }, { ctx }) => {
+    logger.log("Hello, world", { completeBeforeWaiting });
 
     const idempotencyKey = "a";
 
     const token = await wait.createToken({
       // idempotencyKey,
-      timeout: new Date(Date.now() + 5_000),
+      timeout: new Date(Date.now() + 10_000),
     });
     logger.log("Token", token);
 
@@ -22,17 +22,22 @@ export const waitToken = task({
       timeout: "10s" });
     logger.log("Token2", token2);
 
-    //todo test with an already completed token
-    await completeWaitToken.trigger({ token: token.id, delay: 4 });
+    if (completeBeforeWaiting) {
+      await wait.completeToken<Token>(token.id, { status: "approved" });
+      await wait.for({ seconds: 10 });
+    } else {
+      await completeWaitToken.trigger({ token: token.id, delay: 4 });
+    }
 
 
     //wait for the token
     const result = await wait.forToken<{ foo: string }>(token);
     if (!result.ok) {
-
+      logger.log("Token timeout", result);
+    } else {
+      logger.log("Token completed", result);
     }
 
-    logger.log("Token completed", result);
   },
 })
 
