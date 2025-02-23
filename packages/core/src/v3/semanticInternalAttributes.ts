@@ -25,6 +25,8 @@ export const SemanticInternalAttributes = {
   MACHINE_PRESET_CENTS_PER_MS: "ctx.machine.centsPerMs",
   SPAN_PARTIAL: "$span.partial",
   SPAN_ID: "$span.span_id",
+  ENTITY_TYPE: "$entity.type",
+  ENTITY_ID: "$entity.id",
   OUTPUT: "$output",
   OUTPUT_TYPE: "$mime_type_output",
   STYLE: "$style",

@@ -188,7 +188,7 @@ function SpanBody({
             className="h-4 min-h-4 w-4 min-w-4"
           />
           <Header2 className={cn("overflow-x-hidden")}>
-            <SpanTitle {...span} size="large" />
+            <SpanTitle {...span} size="large" hideAccessory />
           </Header2>
         </div>
         {runParam && closePanel && (
@@ -385,14 +385,7 @@ function SpanBody({
                 )}
               </Property.Table>
               {span.events.length > 0 && <SpanEvents spanEvents={span.events} />}
-              {span.properties !== undefined && (
-                <CodeBlock
-                  rowTitle="Properties"
-                  code={span.properties}
-                  maxLines={20}
-                  showLineNumbers={false}
-                />
-              )}
+              <SpanEntity span={span} />
             </div>
           )}
         </div>
@@ -1216,4 +1209,82 @@ function SpanLinkElement({ link }: { link: SpanLink }) {
   }
 
   return null;
+}
+
+function SpanEntity({ span }: { span: Span }) {
+  switch (span.entityType) {
+    case "waitpoint": {
+      if (!span.waitpoint) {
+        return <Paragraph>No waitpoint found: {span.entity.id}</Paragraph>;
+      }
+
+      return (
+        <>
+          <Property.Table>
+            <Property.Item>
+              <Property.Label>Waitpoint ID</Property.Label>
+              <Property.Value className="whitespace-pre-wrap">
+                {span.waitpoint?.friendlyId}
+              </Property.Value>
+            </Property.Item>
+            <Property.Item>
+              <Property.Label>Waitpoint status</Property.Label>
+              <Property.Value>
+                <TaskRunAttemptStatusCombo
+                  status={
+                    span.waitpoint.status === "PENDING"
+                      ? "EXECUTING"
+                      : span.waitpoint.outputIsError
+                      ? "FAILED"
+                      : "COMPLETED"
+                  }
+                  className="text-sm"
+                />
+              </Property.Value>
+            </Property.Item>
+            <Property.Item>
+              <Property.Label>Waitpoint idempotency key</Property.Label>
+              <Property.Value>
+                {span.waitpoint.userProvidedIdempotencyKey ? span.waitpoint.idempotencyKey : "–"}
+              </Property.Value>
+            </Property.Item>
+            <Property.Item>
+              <Property.Label>Waitpoint idempotency key expires at</Property.Label>
+              <Property.Value>
+                {span.waitpoint.idempotencyKeyExpiresAt ? (
+                  <DateTime date={span.waitpoint.idempotencyKeyExpiresAt} />
+                ) : (
+                  "–"
+                )}
+              </Property.Value>
+            </Property.Item>
+          </Property.Table>
+          {span.waitpoint.status === "PENDING" ? (
+            <div>Manually complete waitpoint</div>
+          ) : span.waitpoint.output ? (
+            <PacketDisplay
+              title="Waitpoint output"
+              data={span.waitpoint.output}
+              dataType={span.waitpoint.outputType}
+            />
+          ) : (
+            "No output"
+          )}
+        </>
+      );
+    }
+    default: {
+      if (span.properties !== undefined)
+        return (
+          <CodeBlock
+            rowTitle="Properties"
+            code={span.properties}
+            maxLines={20}
+            showLineNumbers={false}
+          />
+        );
+    }
+  }
+
+  return <></>;
 }

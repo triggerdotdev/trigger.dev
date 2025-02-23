@@ -423,12 +423,41 @@ export class SpanPresenter extends BasePresenter {
       },
     });
 
-    return {
+    const data = {
       ...span,
       events: span.events,
       properties: span.properties ? JSON.stringify(span.properties, null, 2) : undefined,
       triggeredRuns,
       showActionBar: span.show?.actions === true,
     };
+
+    switch (span.entity.type) {
+      case "waitpoint":
+        const waitpoint = await this._replica.waitpoint.findFirst({
+          where: {
+            friendlyId: span.entity.id,
+          },
+          select: {
+            friendlyId: true,
+            type: true,
+            status: true,
+            idempotencyKey: true,
+            userProvidedIdempotencyKey: true,
+            idempotencyKeyExpiresAt: true,
+            output: true,
+            outputType: true,
+            outputIsError: true,
+          },
+        });
+
+        return {
+          ...data,
+          entityType: "waitpoint" as const,
+          waitpoint,
+        };
+
+      default:
+        return { ...data, entityType: "span" as const };
+    }
   }
 }

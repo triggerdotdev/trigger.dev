@@ -624,6 +624,14 @@ export class EventRepository {
         SemanticInternalAttributes.ORIGINAL_RUN_ID
       );
 
+      const entity = {
+        type: rehydrateAttribute<string>(
+          spanEvent.properties,
+          SemanticInternalAttributes.ENTITY_TYPE
+        ),
+        id: rehydrateAttribute<string>(spanEvent.properties, SemanticInternalAttributes.ENTITY_ID),
+      };
+
       return {
         ...spanEvent,
         ...span.data,
@@ -634,6 +642,7 @@ export class EventRepository {
         show,
         links,
         originalRun,
+        entity,
       };
     });
   }

@@ -206,6 +206,8 @@ export const wait = {
       {
         attributes: {
           [SemanticInternalAttributes.STYLE_ICON]: "wait-token",
+          [SemanticInternalAttributes.ENTITY_TYPE]: "waitpoint",
+          [SemanticInternalAttributes.ENTITY_ID]: tokenId,
           id: tokenId,
           ...accessoryAttributes({
             items: [
