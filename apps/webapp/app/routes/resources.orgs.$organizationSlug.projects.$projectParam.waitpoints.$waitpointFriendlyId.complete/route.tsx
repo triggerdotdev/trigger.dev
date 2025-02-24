@@ -1,15 +1,20 @@
 import { parse } from "@conform-to/zod";
+import { InformationCircleIcon } from "@heroicons/react/20/solid";
 import { Form, useNavigation, useSubmit } from "@remix-run/react";
 import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { Waitpoint } from "@trigger.dev/database";
 import { useCallback, useRef } from "react";
 import { z } from "zod";
+import { CodeBlock } from "~/components/code/CodeBlock";
+import { InlineCode } from "~/components/code/InlineCode";
 import { JSONEditor } from "~/components/code/JSONEditor";
 import { Button } from "~/components/primitives/Buttons";
+import { Callout } from "~/components/primitives/Callout";
 import { Fieldset } from "~/components/primitives/Fieldset";
-import { Header2 } from "~/components/primitives/Headers";
+import { Header3 } from "~/components/primitives/Headers";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
+import { Paragraph } from "~/components/primitives/Paragraph";
 import { prisma } from "~/db.server";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -90,7 +95,7 @@ export function CompleteWaitpointForm({ waitpoint }: { waitpoint: FormWaitpoint 
   const isLoading = navigation.state !== "idle";
   const organization = useOrganization();
   const project = useProject();
-  const currentJson = useRef<string>("");
+  const currentJson = useRef<string>("{\n\n}");
   const formAction = `/resources/orgs/${organization.slug}/projects/${project.slug}/waitpoints/${waitpoint.friendlyId}/complete`;
 
   const submitForm = useCallback(
@@ -114,52 +119,62 @@ export function CompleteWaitpointForm({ waitpoint }: { waitpoint: FormWaitpoint 
   );
 
   return (
-    <Form
-      action={formAction}
-      method="post"
-      onSubmit={(e) => submitForm(e)}
-      className="grid h-full max-h-full grid-rows-[2.5rem_1fr_3.25rem] overflow-hidden bg-background-bright"
-    >
-      <div className="mx-3 flex items-center justify-between gap-2 border-b border-grid-dimmed">
-        <Header2 className={cn("whitespace-nowrap")}>Complete waitpoint</Header2>
-      </div>
-      <div className="overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-        <div className="p-3">
+    <div className="space-y-3">
+      <Form
+        action={formAction}
+        method="post"
+        onSubmit={(e) => submitForm(e)}
+        className="grid h-full max-h-full grid-rows-[2.5rem_1fr_2.5rem] overflow-hidden rounded-md border border-grid-bright"
+      >
+        <div className="mx-3 flex items-center">
+          <Header3 className={cn("whitespace-nowrap")}>Manually complete this waitpoint</Header3>
+        </div>
+        <div className="overflow-y-auto border-t border-grid-dimmed bg-charcoal-900 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
           <input type="hidden" name="type" value={waitpoint.type} />
-          <Fieldset>
-            <InputGroup>
-              <Label>Payload</Label>
-              <JSONEditor
-                autoFocus
-                defaultValue={currentJson.current}
-                readOnly={false}
-                basicSetup
-                onChange={(v) => {
-                  currentJson.current = v;
-                }}
-                showClearButton={false}
-                showCopyButton={false}
-                height="100%"
-                min-height="100%"
-                max-height="100%"
-              />
-            </InputGroup>
-          </Fieldset>
+          <div className="max-h-[70vh] min-h-40 overflow-y-auto bg-charcoal-900 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+            <JSONEditor
+              autoFocus
+              defaultValue={currentJson.current}
+              readOnly={false}
+              basicSetup
+              onChange={(v) => {
+                currentJson.current = v;
+              }}
+              showClearButton={false}
+              showCopyButton={false}
+              height="100%"
+              min-height="100%"
+              max-height="100%"
+            />
+          </div>
         </div>
-      </div>
-      <div className="flex items-center justify-end gap-2 border-t border-grid-dimmed px-2">
-        <div className="flex items-center gap-4">
-          <Button
-            variant="primary/medium"
-            type="submit"
-            disabled={isLoading}
-            shortcut={{ key: "enter", modifiers: ["mod"] }}
-            LeadingIcon={isLoading ? "spinner" : undefined}
-          >
-            {isLoading ? "Completing…" : "Complete"}
-          </Button>
+        <div className="bg-charcoal-900 px-2">
+          <div className="mb-2 flex items-center justify-end gap-2 border-t border-grid-dimmed pt-2">
+            <Button
+              variant="secondary/small"
+              type="submit"
+              disabled={isLoading}
+              LeadingIcon={isLoading ? "spinner" : undefined}
+            >
+              {isLoading ? "Completing…" : "Complete waitpoint"}
+            </Button>
+          </div>
         </div>
+      </Form>
+      <div className="rounded-md border border-charcoal-700 bg-charcoal-800">
+        <div className="flex items-center gap-2 px-2 pt-2">
+          <InformationCircleIcon className="h-5 w-5 shrink-0 text-text-dimmed" />
+          <Paragraph variant="small">To complete this waitpoint in your code use:</Paragraph>
+        </div>
+        <CodeBlock
+          code={`
+await wait.completeToken<YourType>(tokenId,
+  output
+);`}
+          className="mt-1 max-w-full border-0 pl-1"
+          showLineNumbers={false}
+        />
       </div>
-    </Form>
+    </div>
   );
 }
