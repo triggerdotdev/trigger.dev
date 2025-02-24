@@ -1121,12 +1121,18 @@ function SpanEntity({ span }: { span: Span }) {
               <Property.Label>Idempotency key</Property.Label>
               <Property.Value>
                 <div>
-                  {span.waitpoint.userProvidedIdempotencyKey ? span.waitpoint.idempotencyKey : "–"}
-                  {span.waitpoint.idempotencyKeyExpiresAt ? (
-                    <>
-                      Expires at: <DateTime date={span.waitpoint.idempotencyKeyExpiresAt} />
-                    </>
-                  ) : null}
+                  <div>
+                    {span.waitpoint.userProvidedIdempotencyKey
+                      ? span.waitpoint.idempotencyKey
+                      : "–"}
+                  </div>
+                  <div>
+                    {span.waitpoint.idempotencyKeyExpiresAt ? (
+                      <>
+                        TTL: <DateTime date={span.waitpoint.idempotencyKeyExpiresAt} />
+                      </>
+                    ) : null}
+                  </div>
                 </div>
               </Property.Value>
             </Property.Item>

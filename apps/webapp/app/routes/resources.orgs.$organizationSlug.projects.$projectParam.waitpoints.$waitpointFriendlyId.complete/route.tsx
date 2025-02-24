@@ -127,7 +127,7 @@ export function CompleteWaitpointForm({ waitpoint }: { waitpoint: FormWaitpoint 
         className="grid h-full max-h-full grid-rows-[2.5rem_1fr_2.5rem] overflow-hidden rounded-md border border-grid-bright"
       >
         <div className="mx-3 flex items-center">
-          <Header3 className={cn("whitespace-nowrap")}>Manually complete this waitpoint</Header3>
+          <Paragraph variant="small/bright">Manually complete this waitpoint</Paragraph>
         </div>
         <div className="overflow-y-auto border-t border-grid-dimmed bg-charcoal-900 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
           <input type="hidden" name="type" value={waitpoint.type} />
