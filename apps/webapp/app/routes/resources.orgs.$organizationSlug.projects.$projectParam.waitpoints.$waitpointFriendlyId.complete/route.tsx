@@ -3,25 +3,22 @@ import { InformationCircleIcon } from "@heroicons/react/20/solid";
 import { Form, useNavigation, useSubmit } from "@remix-run/react";
 import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { Waitpoint } from "@trigger.dev/database";
+import { motion } from "framer-motion";
 import { useCallback, useRef } from "react";
 import { z } from "zod";
+import { AnimatedHourglassIcon } from "~/assets/icons/AnimatedHourglassIcon";
 import { CodeBlock } from "~/components/code/CodeBlock";
-import { InlineCode } from "~/components/code/InlineCode";
 import { JSONEditor } from "~/components/code/JSONEditor";
 import { Button } from "~/components/primitives/Buttons";
-import { Callout } from "~/components/primitives/Callout";
-import { Fieldset } from "~/components/primitives/Fieldset";
-import { Header3 } from "~/components/primitives/Headers";
-import { InputGroup } from "~/components/primitives/InputGroup";
-import { Label } from "~/components/primitives/Label";
+import { DateTime } from "~/components/primitives/DateTime";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { LiveCountdown } from "~/components/runs/v3/LiveTimer";
 import { prisma } from "~/db.server";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
-import { cn } from "~/utils/cn";
 import { ProjectParamSchema, v3SchedulesPath } from "~/utils/pathBuilder";
 import { UpsertSchedule } from "~/v3/schedules";
 import { UpsertTaskScheduleService } from "~/v3/services/upsertTaskSchedule.server";
@@ -118,6 +115,8 @@ export function CompleteWaitpointForm({ waitpoint }: { waitpoint: FormWaitpoint 
     [currentJson]
   );
 
+  const endTime = new Date(Date.now() + 60_000 * 113);
+
   return (
     <div className="space-y-3">
       <Form
@@ -174,6 +173,43 @@ await wait.completeToken<YourType>(tokenId,
 );`}
         showLineNumbers={false}
       />
+      <Form
+        action={formAction}
+        method="post"
+        onSubmit={(e) => submitForm(e)}
+        className="grid h-full max-h-full grid-rows-[2.5rem_1fr_2.5rem] overflow-hidden rounded-md border border-grid-bright"
+      >
+        <div className="mx-3 flex items-center">
+          <Paragraph variant="small/bright">Manually skip this waitpoint</Paragraph>
+        </div>
+        <div className="border-t border-grid-dimmed">
+          <input type="hidden" name="type" value={waitpoint.type} />
+          <div className="flex flex-wrap items-center justify-between gap-1 p-2 text-sm tabular-nums">
+            <div className="flex items-center gap-1">
+              <AnimatedHourglassIcon
+                className="text-dimmed-dimmed size-4"
+                delay={(endTime.getMilliseconds() - Date.now()) / 1000}
+              />
+              <span className="mt-0.5 ">
+                <LiveCountdown endTime={endTime} />
+              </span>
+            </div>
+            <DateTime date={endTime} />
+          </div>
+        </div>
+        <div className="px-2">
+          <div className="mb-2 flex items-center justify-end gap-2 border-t border-grid-dimmed pt-2">
+            <Button
+              variant="secondary/small"
+              type="submit"
+              disabled={isLoading}
+              LeadingIcon={isLoading ? "spinner" : undefined}
+            >
+              {isLoading ? "Completing…" : "Skip waitpoint"}
+            </Button>
+          </div>
+        </div>
+      </Form>
     </div>
   );
 }
