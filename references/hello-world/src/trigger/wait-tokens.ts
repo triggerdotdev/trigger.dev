@@ -6,29 +6,39 @@ type Token = {
 
 export const waitToken = task({
   id: "wait-token",
-  run: async ({ completeBeforeWaiting = false, idempotencyKey, idempotencyKeyTTL }: { completeBeforeWaiting?: boolean, idempotencyKey?: string, idempotencyKeyTTL?: string },) => {
+  run: async ({
+    completeBeforeWaiting = false,
+    idempotencyKey,
+    idempotencyKeyTTL,
+    completionDelay,
+  }: {
+    completeBeforeWaiting?: boolean;
+    idempotencyKey?: string;
+    idempotencyKeyTTL?: string;
+    completionDelay?: number;
+  }) => {
     logger.log("Hello, world", { completeBeforeWaiting });
 
     const token = await wait.createToken({
       idempotencyKey,
       idempotencyKeyTTL,
-      timeout: new Date(Date.now() + 10_000),
+      timeout: completionDelay ? undefined : new Date(Date.now() + 10_000),
     });
     logger.log("Token", token);
 
     const token2 = await wait.createToken({
       idempotencyKey,
       idempotencyKeyTTL,
-      timeout: "10s" });
+      timeout: "10s",
+    });
     logger.log("Token2", token2);
 
     if (completeBeforeWaiting) {
       await wait.completeToken<Token>(token.id, { status: "approved" });
-      await wait.for({ seconds: 10 });
+      await wait.for({ seconds: 5 });
     } else {
-      await completeWaitToken.trigger({ token: token.id, delay: 4 });
+      await completeWaitToken.trigger({ token: token.id, delay: completionDelay });
     }
-
 
     //wait for the token
     const result = await wait.forToken<{ foo: string }>(token);
@@ -37,14 +47,13 @@ export const waitToken = task({
     } else {
       logger.log("Token completed", result);
     }
-
   },
-})
+});
 
 export const completeWaitToken = task({
   id: "wait-token-complete",
-  run: async (payload: { token: string; delay: number }) => {
-    await wait.for({ seconds: payload.delay });
+  run: async (payload: { token: string; delay?: number }) => {
+    await wait.for({ seconds: payload.delay ?? 10 });
     await wait.completeToken<Token>(payload.token, { status: "approved" });
   },
 });

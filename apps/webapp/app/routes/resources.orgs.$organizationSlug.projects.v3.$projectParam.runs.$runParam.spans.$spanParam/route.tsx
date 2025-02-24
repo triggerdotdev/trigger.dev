@@ -66,6 +66,7 @@ import {
   v3TraceSpanPath,
 } from "~/utils/pathBuilder";
 import { SpanLink } from "~/v3/eventRepository.server";
+import { CompleteWaitpointForm } from "../resources.orgs.$organizationSlug.projects.$projectParam.waitpoints.$waitpointFriendlyId.complete/route";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -1260,7 +1261,7 @@ function SpanEntity({ span }: { span: Span }) {
             </Property.Item>
           </Property.Table>
           {span.waitpoint.status === "PENDING" ? (
-            <div>Manually complete waitpoint</div>
+            <CompleteWaitpointForm waitpoint={span.waitpoint} />
           ) : span.waitpoint.output ? (
             <PacketDisplay
               title="Waitpoint output"
