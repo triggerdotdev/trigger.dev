@@ -161,20 +161,19 @@ export function CompleteWaitpointForm({ waitpoint }: { waitpoint: FormWaitpoint 
           </div>
         </div>
       </Form>
-      <div className="rounded-md border border-charcoal-700 bg-charcoal-800">
-        <div className="flex items-center gap-2 px-2 pt-2">
-          <InformationCircleIcon className="h-5 w-5 shrink-0 text-text-dimmed" />
-          <Paragraph variant="small">To complete this waitpoint in your code use:</Paragraph>
-        </div>
-        <CodeBlock
-          code={`
+      <CodeBlock
+        rowTitle={
+          <div className="-ml-1 flex items-center gap-1 text-text-dimmed">
+            <InformationCircleIcon className="size-5 shrink-0 text-text-dimmed" />
+            To complete this waitpoint in your code use:
+          </div>
+        }
+        code={`
 await wait.completeToken<YourType>(tokenId,
   output
 );`}
-          className="mt-1 max-w-full border-0 pl-1"
-          showLineNumbers={false}
-        />
-      </div>
+        showLineNumbers={false}
+      />
     </div>
   );
 }

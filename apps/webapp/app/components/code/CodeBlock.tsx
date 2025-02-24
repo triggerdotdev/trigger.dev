@@ -50,7 +50,7 @@ type CodeBlockProps = {
   fileName?: string;
 
   /** title text for the Title row */
-  rowTitle?: string;
+  rowTitle?: ReactNode;
 };
 
 const dimAmount = 0.5;
