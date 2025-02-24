@@ -288,104 +288,6 @@ function SpanBody({
             </div>
           ) : (
             <div className="flex flex-col gap-4 pt-3">
-              {span.level === "TRACE" ? (
-                <>
-                  <div className="border-b border-grid-bright pb-3">
-                    <TaskRunAttemptStatusCombo
-                      status={
-                        span.isCancelled
-                          ? "CANCELED"
-                          : span.isError
-                          ? "FAILED"
-                          : span.isPartial
-                          ? "EXECUTING"
-                          : "COMPLETED"
-                      }
-                      className="text-sm"
-                    />
-                  </div>
-                  <SpanTimeline
-                    startTime={new Date(span.startTime)}
-                    duration={span.duration}
-                    inProgress={span.isPartial}
-                    isError={span.isError}
-                  />
-                </>
-              ) : (
-                <div className="min-w-fit max-w-80">
-                  <RunTimelineEvent
-                    title="Timestamp"
-                    subtitle={<DateTimeAccurate date={span.startTime} />}
-                    state="complete"
-                  />
-                </div>
-              )}
-              <Property.Table>
-                <Property.Item>
-                  <Property.Label>Message</Property.Label>
-                  <Property.Value className="whitespace-pre-wrap">{span.message}</Property.Value>
-                </Property.Item>
-                {span.triggeredRuns.length > 0 && (
-                  <Property.Item>
-                    <div className="flex flex-col gap-1.5">
-                      <Header3>Triggered runs</Header3>
-                      <Table containerClassName="max-h-[12.5rem]">
-                        <TableHeader className="bg-background-bright">
-                          <TableRow>
-                            <TableHeaderCell>Run #</TableHeaderCell>
-                            <TableHeaderCell>Task</TableHeaderCell>
-                            <TableHeaderCell>Version</TableHeaderCell>
-                            <TableHeaderCell>Created at</TableHeaderCell>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {span.triggeredRuns.map((run) => {
-                            const path = v3RunSpanPath(
-                              organization,
-                              project,
-                              { friendlyId: run.friendlyId },
-                              { spanId: run.spanId }
-                            );
-                            return (
-                              <TableRow key={run.friendlyId}>
-                                <TableCell
-                                  to={path}
-                                  actionClassName="py-1.5"
-                                  rowHoverStyle="bright"
-                                >
-                                  {run.number}
-                                </TableCell>
-                                <TableCell
-                                  to={path}
-                                  actionClassName="py-1.5"
-                                  rowHoverStyle="bright"
-                                >
-                                  {run.taskIdentifier}
-                                </TableCell>
-                                <TableCell
-                                  to={path}
-                                  actionClassName="py-1.5"
-                                  rowHoverStyle="bright"
-                                >
-                                  {run.lockedToVersion?.version ?? "–"}
-                                </TableCell>
-                                <TableCell
-                                  to={path}
-                                  actionClassName="py-1.5"
-                                  rowHoverStyle="bright"
-                                >
-                                  <DateTime date={run.createdAt} />
-                                </TableCell>
-                              </TableRow>
-                            );
-                          })}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  </Property.Item>
-                )}
-              </Property.Table>
-              {span.events.length > 0 && <SpanEvents spanEvents={span.events} />}
               <SpanEntity span={span} />
             </div>
           )}
@@ -1159,21 +1061,6 @@ function SpanTimeline({ startTime, duration, inProgress, isError }: TimelineProp
   );
 }
 
-function VerticalBar({ state }: { state: TimelineState }) {
-  return <div className={cn("h-3 w-0.75 rounded-full", classNameForState(state))}></div>;
-}
-
-function DottedLine() {
-  return (
-    <div className="flex h-0.75 flex-1 items-center justify-evenly">
-      <div className="h-0.75 w-0.75 bg-pending" />
-      <div className="h-0.75 w-0.75 bg-pending" />
-      <div className="h-0.75 w-0.75 bg-pending" />
-      <div className="h-0.75 w-0.75 bg-pending" />
-    </div>
-  );
-}
-
 function classNameForState(state: TimelineState) {
   switch (state) {
     case "pending": {
@@ -1186,30 +1073,6 @@ function classNameForState(state: TimelineState) {
       return "bg-error";
     }
   }
-}
-
-function SpanLinkElement({ link }: { link: SpanLink }) {
-  const organization = useOrganization();
-  const project = useProject();
-
-  switch (link.type) {
-    case "run": {
-      return (
-        <TextLink to={v3RunPath(organization, project, { friendlyId: link.runId })}>
-          {link.title}
-        </TextLink>
-      );
-    }
-    case "span": {
-      return (
-        <TextLink to={v3TraceSpanPath(organization, project, link.traceId, link.spanId)}>
-          {link.title}
-        </TextLink>
-      );
-    }
-  }
-
-  return null;
 }
 
 function SpanEntity({ span }: { span: Span }) {
@@ -1275,17 +1138,100 @@ function SpanEntity({ span }: { span: Span }) {
       );
     }
     default: {
-      if (span.properties !== undefined)
-        return (
-          <CodeBlock
-            rowTitle="Properties"
-            code={span.properties}
-            maxLines={20}
-            showLineNumbers={false}
-          />
-        );
+      return (
+        <>
+          {span.level === "TRACE" ? (
+            <>
+              <div className="border-b border-grid-bright pb-3">
+                <TaskRunAttemptStatusCombo
+                  status={
+                    span.isCancelled
+                      ? "CANCELED"
+                      : span.isError
+                      ? "FAILED"
+                      : span.isPartial
+                      ? "EXECUTING"
+                      : "COMPLETED"
+                  }
+                  className="text-sm"
+                />
+              </div>
+              <SpanTimeline
+                startTime={new Date(span.startTime)}
+                duration={span.duration}
+                inProgress={span.isPartial}
+                isError={span.isError}
+              />
+            </>
+          ) : (
+            <div className="min-w-fit max-w-80">
+              <RunTimelineEvent
+                title="Timestamp"
+                subtitle={<DateTimeAccurate date={span.startTime} />}
+                state="complete"
+              />
+            </div>
+          )}
+          <Property.Table>
+            <Property.Item>
+              <Property.Label>Message</Property.Label>
+              <Property.Value className="whitespace-pre-wrap">{span.message}</Property.Value>
+            </Property.Item>
+            {span.triggeredRuns.length > 0 && (
+              <Property.Item>
+                <div className="flex flex-col gap-1.5">
+                  <Header3>Triggered runs</Header3>
+                  <Table containerClassName="max-h-[12.5rem]">
+                    <TableHeader className="bg-background-bright">
+                      <TableRow>
+                        <TableHeaderCell>Run #</TableHeaderCell>
+                        <TableHeaderCell>Task</TableHeaderCell>
+                        <TableHeaderCell>Version</TableHeaderCell>
+                        <TableHeaderCell>Created at</TableHeaderCell>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {span.triggeredRuns.map((run) => {
+                        const path = v3RunSpanPath(
+                          organization,
+                          project,
+                          { friendlyId: run.friendlyId },
+                          { spanId: run.spanId }
+                        );
+                        return (
+                          <TableRow key={run.friendlyId}>
+                            <TableCell to={path} actionClassName="py-1.5" rowHoverStyle="bright">
+                              {run.number}
+                            </TableCell>
+                            <TableCell to={path} actionClassName="py-1.5" rowHoverStyle="bright">
+                              {run.taskIdentifier}
+                            </TableCell>
+                            <TableCell to={path} actionClassName="py-1.5" rowHoverStyle="bright">
+                              {run.lockedToVersion?.version ?? "–"}
+                            </TableCell>
+                            <TableCell to={path} actionClassName="py-1.5" rowHoverStyle="bright">
+                              <DateTime date={run.createdAt} />
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              </Property.Item>
+            )}
+          </Property.Table>
+          {span.events.length > 0 && <SpanEvents spanEvents={span.events} />}
+          {span.properties !== undefined ? (
+            <CodeBlock
+              rowTitle="Properties"
+              code={span.properties}
+              maxLines={20}
+              showLineNumbers={false}
+            />
+          ) : null}
+        </>
+      );
     }
   }
-
-  return <></>;
 }

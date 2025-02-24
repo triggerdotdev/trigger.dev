@@ -1,53 +1,25 @@
-import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { CheckIcon, XMarkIcon } from "@heroicons/react/20/solid";
-import { Form, useActionData, useLocation, useNavigation, useSubmit } from "@remix-run/react";
+import { Form, useNavigation, useSubmit } from "@remix-run/react";
 import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
-import { useVirtualizer } from "@tanstack/react-virtual";
-import { parseExpression } from "cron-parser";
-import cronstrue from "cronstrue";
-import { useCallback, useRef, useState } from "react";
-import {
-  environmentTextClassName,
-  environmentTitle,
-} from "~/components/environments/EnvironmentLabel";
-import { Button, LinkButton } from "~/components/primitives/Buttons";
-import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
-import { DateTime } from "~/components/primitives/DateTime";
+import { Waitpoint } from "@trigger.dev/database";
+import { useCallback, useRef } from "react";
+import { z } from "zod";
+import { JSONEditor } from "~/components/code/JSONEditor";
+import { Button } from "~/components/primitives/Buttons";
 import { Fieldset } from "~/components/primitives/Fieldset";
-import { FormError } from "~/components/primitives/FormError";
-import { Header2, Header3 } from "~/components/primitives/Headers";
-import { Hint } from "~/components/primitives/Hint";
-import { Input } from "~/components/primitives/Input";
+import { Header2 } from "~/components/primitives/Headers";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
-import { Paragraph } from "~/components/primitives/Paragraph";
-import { Select, SelectItem } from "~/components/primitives/Select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableHeaderCell,
-  TableRow,
-} from "~/components/primitives/Table";
-import { TextLink } from "~/components/primitives/TextLink";
 import { prisma } from "~/db.server";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
-import { EditableScheduleElements } from "~/presenters/v3/EditSchedulePresenter.server";
+import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { ProjectParamSchema, docsPath, v3SchedulesPath } from "~/utils/pathBuilder";
-import { CronPattern, UpsertSchedule } from "~/v3/schedules";
+import { ProjectParamSchema, v3SchedulesPath } from "~/utils/pathBuilder";
+import { UpsertSchedule } from "~/v3/schedules";
 import { UpsertTaskScheduleService } from "~/v3/services/upsertTaskSchedule.server";
-import { AIGeneratedCronField } from "../resources.orgs.$organizationSlug.projects.$projectParam.schedules.new.natural-language";
-import { TimezoneList } from "~/components/scheduled/timezones";
-import { logger } from "~/services/logger.server";
-import { Waitpoint } from "@trigger.dev/database";
-import { z } from "zod";
-import { JSONEditor } from "~/components/code/JSONEditor";
 
 const CompleteWaitpointFormData = z.discriminatedUnion("type", [
   z.object({
