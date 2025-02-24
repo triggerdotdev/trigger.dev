@@ -316,6 +316,8 @@ export class DevQueueConsumer {
       return;
     }
 
+    const dequeuedStart = Date.now();
+
     const messageBody = MessageBody.safeParse(message.data);
 
     if (!messageBody.success) {
@@ -472,6 +474,14 @@ export class DevQueueConsumer {
         runId: lockedTaskRun.friendlyId,
         messageId: lockedTaskRun.id,
         isTest: lockedTaskRun.isTest,
+        metrics: [
+          {
+            name: "start",
+            event: "dequeue",
+            timestamp: dequeuedStart,
+            duration: Date.now() - dequeuedStart,
+          },
+        ],
       };
 
       try {

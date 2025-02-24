@@ -1,6 +1,7 @@
 import { millisecondsToNanoseconds } from "@trigger.dev/core/v3";
 import { createTreeFromFlatItems, flattenTree } from "~/components/primitives/TreeView/TreeView";
-import { PrismaClient, prisma } from "~/db.server";
+import { createTimelineSpanEventsFromSpanEvents } from "~/components/run/RunTimeline";
+import { prisma, PrismaClient } from "~/db.server";
 import { getUsername } from "~/utils/username";
 import { eventRepository } from "~/v3/eventRepository.server";
 import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
@@ -138,6 +139,10 @@ export class RunPresenter {
             ...n,
             data: {
               ...n.data,
+              timelineEvents: createTimelineSpanEventsFromSpanEvents(
+                n.data.events,
+                treeRootStartTimeMs
+              ),
               //set partial nodes to null duration
               duration: n.data.isPartial ? null : n.data.duration,
               offset,

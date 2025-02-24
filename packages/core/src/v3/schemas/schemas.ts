@@ -8,10 +8,24 @@ import { MachineConfig, MachinePreset, MachinePresetName, TaskRunExecution } fro
 export const EnvironmentType = z.enum(["PRODUCTION", "STAGING", "DEVELOPMENT", "PREVIEW"]);
 export type EnvironmentType = z.infer<typeof EnvironmentType>;
 
+export const TaskRunExecutionMetric = z.object({
+  name: z.string(),
+  event: z.string(),
+  timestamp: z.number(),
+  duration: z.number(),
+});
+
+export type TaskRunExecutionMetric = z.infer<typeof TaskRunExecutionMetric>;
+
+export const TaskRunExecutionMetrics = z.array(TaskRunExecutionMetric);
+
+export type TaskRunExecutionMetrics = z.infer<typeof TaskRunExecutionMetrics>;
+
 export const TaskRunExecutionPayload = z.object({
   execution: TaskRunExecution,
   traceContext: z.record(z.unknown()),
   environment: z.record(z.string()).optional(),
+  metrics: TaskRunExecutionMetrics.optional(),
 });
 
 export type TaskRunExecutionPayload = z.infer<typeof TaskRunExecutionPayload>;
@@ -247,6 +261,7 @@ export const TaskRunExecutionLazyAttemptPayload = z.object({
   isTest: z.boolean(),
   traceContext: z.record(z.unknown()),
   environment: z.record(z.string()).optional(),
+  metrics: TaskRunExecutionMetrics.optional(),
 });
 
 export type TaskRunExecutionLazyAttemptPayload = z.infer<typeof TaskRunExecutionLazyAttemptPayload>;

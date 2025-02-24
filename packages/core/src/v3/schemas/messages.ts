@@ -13,6 +13,7 @@ import {
   ProdTaskRunExecution,
   ProdTaskRunExecutionPayload,
   TaskRunExecutionLazyAttemptPayload,
+  TaskRunExecutionMetrics,
   WaitReason,
 } from "./schemas.js";
 
@@ -202,6 +203,7 @@ export const WorkerToExecutorMessageCatalog = {
       execution: TaskRunExecution,
       traceContext: z.record(z.unknown()),
       metadata: ServerBackgroundWorker,
+      metrics: TaskRunExecutionMetrics.optional(),
     }),
   },
   TASK_RUN_COMPLETED_NOTIFICATION: {

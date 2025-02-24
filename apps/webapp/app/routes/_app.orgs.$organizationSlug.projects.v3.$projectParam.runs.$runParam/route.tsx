@@ -31,6 +31,7 @@ import { PageBody } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
+import { DateTimeShort } from "~/components/primitives/DateTime";
 import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
 import { Header3 } from "~/components/primitives/Headers";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
@@ -64,7 +65,7 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useReplaceSearchParams } from "~/hooks/useReplaceSearchParams";
 import { Shortcut, useShortcutKeys } from "~/hooks/useShortcutKeys";
-import { useUser } from "~/hooks/useUser";
+import { useHasAdminAccess, useUser } from "~/hooks/useUser";
 import { RunPresenter } from "~/presenters/v3/RunPresenter.server";
 import { getImpersonationId } from "~/services/impersonation.server";
 import { getResizableSnapshot } from "~/services/resizablePanel.server";
@@ -740,6 +741,7 @@ function TimelineView({
   showDurations,
   treeScrollRef,
 }: TimelineViewProps) {
+  const isAdmin = useHasAdminAccess();
   const timelineContainerRef = useRef<HTMLDivElement>(null);
   const initialTimelineDimensions = useInitialDimensions(timelineContainerRef);
   const minTimelineWidth = initialTimelineDimensions?.width ?? 300;
@@ -760,6 +762,9 @@ function TimelineView({
     return () => clearInterval(interval);
   }, [totalDuration, rootSpanStatus]);
 
+  console.log("nodes", nodes);
+  console.log("events", events);
+
   return (
     <div
       className="h-full overflow-x-auto overflow-y-hidden scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
@@ -773,7 +778,7 @@ function TimelineView({
         maxWidth={maxTimelineWidth}
       >
         {/* Follows the cursor */}
-        <CurrentTimeIndicator totalDuration={duration} />
+        <CurrentTimeIndicator totalDuration={duration} rootStartedAt={rootStartedAt} />
 
         <Timeline.Row className="grid h-full grid-rows-[2rem_1fr]">
           {/* The duration labels */}
@@ -888,16 +893,63 @@ function TimelineView({
                     }}
                   >
                     {node.data.level === "TRACE" ? (
-                      <SpanWithDuration
-                        showDuration={state.selected ? true : showDurations}
-                        startMs={nanosecondsToMilliseconds(node.data.offset)}
-                        durationMs={
-                          node.data.duration
-                            ? nanosecondsToMilliseconds(node.data.duration)
-                            : nanosecondsToMilliseconds(duration - node.data.offset)
-                        }
-                        node={node}
-                      />
+                      <>
+                        {/* Add a span for the line, Make the vertical line the first one with 1px wide, and full height */}
+                        {node.data.timelineEvents
+                          ?.filter((event) => !event.adminOnly || isAdmin)
+                          .map((event, eventIndex) =>
+                            eventIndex === 0 ? (
+                              <Timeline.Point
+                                key={eventIndex}
+                                ms={nanosecondsToMilliseconds(event.offset)}
+                              >
+                                {(ms) => (
+                                  <motion.div
+                                    className="-ml-[0.5px] h-4 w-[1px] rounded-none bg-text-dimmed"
+                                    layoutId={`${node.id}-${event.name}`}
+                                  />
+                                )}
+                              </Timeline.Point>
+                            ) : (
+                              <Timeline.Point
+                                key={eventIndex}
+                                ms={nanosecondsToMilliseconds(event.offset)}
+                              >
+                                {(ms) => (
+                                  <motion.div
+                                    className="border-1 -ml-1 h-2 w-2 rounded-full border-background-bright bg-text-dimmed"
+                                    layoutId={`${node.id}-${event.name}`}
+                                  />
+                                )}
+                              </Timeline.Point>
+                            )
+                          )}
+                        {node.data.timelineEvents &&
+                        node.data.timelineEvents[0] &&
+                        node.data.timelineEvents[0].offset < node.data.offset ? (
+                          <Timeline.Span
+                            startMs={nanosecondsToMilliseconds(node.data.timelineEvents[0].offset)}
+                            durationMs={nanosecondsToMilliseconds(
+                              node.data.offset - node.data.timelineEvents[0].offset
+                            )}
+                          >
+                            <motion.div
+                              className="h-[1px] w-full rounded-none bg-text-dimmed"
+                              layoutId={`mark-${node.id}`}
+                            />
+                          </Timeline.Span>
+                        ) : null}
+                        <SpanWithDuration
+                          showDuration={state.selected ? true : showDurations}
+                          startMs={nanosecondsToMilliseconds(node.data.offset)}
+                          durationMs={
+                            node.data.duration
+                              ? nanosecondsToMilliseconds(node.data.duration)
+                              : nanosecondsToMilliseconds(duration - node.data.offset)
+                          }
+                          node={node}
+                        />
+                      </>
                     ) : (
                       <Timeline.Point ms={nanosecondsToMilliseconds(node.data.offset)}>
                         {(ms) => (
@@ -1110,7 +1162,13 @@ function SpanWithDuration({
 
 const edgeBoundary = 0.05;
 
-function CurrentTimeIndicator({ totalDuration }: { totalDuration: number }) {
+function CurrentTimeIndicator({
+  totalDuration,
+  rootStartedAt,
+}: {
+  totalDuration: number;
+  rootStartedAt: Date | undefined;
+}) {
   return (
     <Timeline.FollowCursor>
       {(ms) => {
@@ -1122,6 +1180,9 @@ function CurrentTimeIndicator({ totalDuration }: { totalDuration: number }) {
           offset = lerp(0.5, 1, (ratio - (1 - edgeBoundary)) / edgeBoundary);
         }
 
+        const currentTime = rootStartedAt ? new Date(rootStartedAt.getTime() + ms) : undefined;
+        const currentTimeComponent = currentTime ? <DateTimeShort date={currentTime} /> : <></>;
+
         return (
           <div className="relative z-50 flex h-full flex-col">
             <div className="relative flex h-6 items-end">
@@ -1132,10 +1193,25 @@ function CurrentTimeIndicator({ totalDuration }: { totalDuration: number }) {
                   transform: `translateX(-${offset * 100}%)`,
                 }}
               >
-                {formatDurationMilliseconds(ms, {
-                  style: "short",
-                  maxDecimalPoints: ms < 1000 ? 0 : 1,
-                })}
+                {currentTimeComponent ? (
+                  <span>
+                    {formatDurationMilliseconds(ms, {
+                      style: "short",
+                      maxDecimalPoints: ms < 1000 ? 0 : 1,
+                    })}
+
+                    <span className="ml-1 text-text-dimmed"> - </span>
+
+                    {currentTimeComponent}
+                  </span>
+                ) : (
+                  <>
+                    {formatDurationMilliseconds(ms, {
+                      style: "short",
+                      maxDecimalPoints: ms < 1000 ? 0 : 1,
+                    })}
+                  </>
+                )}
               </div>
             </div>
             <div className="w-px grow border-r border-charcoal-600" />

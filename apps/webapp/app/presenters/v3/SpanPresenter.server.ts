@@ -40,7 +40,7 @@ export class SpanPresenter extends BasePresenter {
       throw new Error("Project not found");
     }
 
-    const run = await this.getRun(spanId);
+    const run = await this.#getRun(spanId);
     if (run) {
       return {
         type: "run" as const,
@@ -49,7 +49,7 @@ export class SpanPresenter extends BasePresenter {
     }
 
     //get the run
-    const span = await this.getSpan(runFriendlyId, spanId);
+    const span = await this.#getSpan(runFriendlyId, spanId);
 
     if (!span) {
       throw new Error("Span not found");
@@ -61,7 +61,7 @@ export class SpanPresenter extends BasePresenter {
     };
   }
 
-  async getRun(spanId: string) {
+  async #getRun(spanId: string) {
     const run = await this._replica.taskRun.findFirst({
       select: {
         id: true,
@@ -192,14 +192,6 @@ export class SpanPresenter extends BasePresenter {
         };
       }
     }
-
-    const span = await eventRepository.getSpan(
-      getTaskEventStoreTableForRun(run),
-      spanId,
-      run.traceId,
-      run.rootTaskRun?.createdAt ?? run.createdAt,
-      run.completedAt ?? undefined
-    );
 
     const metadata = run.metadata
       ? await prettyPrintPacket(run.metadata, run.metadataType, {
@@ -332,7 +324,7 @@ export class SpanPresenter extends BasePresenter {
     };
   }
 
-  async getSpan(runFriendlyId: string, spanId: string) {
+  async #getSpan(runFriendlyId: string, spanId: string) {
     const run = await this._prisma.taskRun.findFirst({
       select: {
         traceId: true,
