@@ -163,10 +163,10 @@ export function CompleteWaitpointForm({ waitpoint }: { waitpoint: FormWaitpoint 
       </Form>
       <CodeBlock
         rowTitle={
-          <div className="-ml-1 flex items-center gap-1 text-text-dimmed">
+          <span className="-ml-1 flex items-center gap-1 text-text-dimmed">
             <InformationCircleIcon className="size-5 shrink-0 text-text-dimmed" />
             To complete this waitpoint in your code use:
-          </div>
+          </span>
         }
         code={`
 await wait.completeToken<YourType>(tokenId,
