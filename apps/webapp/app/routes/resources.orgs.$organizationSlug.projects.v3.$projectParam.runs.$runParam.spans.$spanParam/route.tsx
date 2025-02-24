@@ -56,6 +56,7 @@ import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { formatCurrencyAccurate } from "~/utils/numberFormatter";
 import {
+  docsPath,
   v3BatchPath,
   v3RunDownloadLogsPath,
   v3RunPath,
@@ -1076,6 +1077,9 @@ function classNameForState(state: TimelineState) {
 }
 
 function SpanEntity({ span }: { span: Span }) {
+  const organization = useOrganization();
+  const project = useProject();
+
   switch (span.entityType) {
     case "waitpoint": {
       if (!span.waitpoint) {
@@ -1084,15 +1088,16 @@ function SpanEntity({ span }: { span: Span }) {
 
       return (
         <>
+          <div className="">
+            <Header2>Waitpoint</Header2>
+            <Paragraph variant="small">
+              A waitpoint pauses your code from continuing until the conditions are met.{" "}
+              <TextLink to={docsPath("wait")}>View docs</TextLink>.
+            </Paragraph>
+          </div>
           <Property.Table>
             <Property.Item>
-              <Property.Label>Waitpoint ID</Property.Label>
-              <Property.Value className="whitespace-pre-wrap">
-                {span.waitpoint?.friendlyId}
-              </Property.Value>
-            </Property.Item>
-            <Property.Item>
-              <Property.Label>Waitpoint status</Property.Label>
+              <Property.Label>Status</Property.Label>
               <Property.Value>
                 <TaskRunAttemptStatusCombo
                   status={
@@ -1107,19 +1112,22 @@ function SpanEntity({ span }: { span: Span }) {
               </Property.Value>
             </Property.Item>
             <Property.Item>
-              <Property.Label>Waitpoint idempotency key</Property.Label>
-              <Property.Value>
-                {span.waitpoint.userProvidedIdempotencyKey ? span.waitpoint.idempotencyKey : "–"}
+              <Property.Label>ID</Property.Label>
+              <Property.Value className="whitespace-pre-wrap">
+                {span.waitpoint?.friendlyId}
               </Property.Value>
             </Property.Item>
             <Property.Item>
-              <Property.Label>Waitpoint idempotency key expires at</Property.Label>
+              <Property.Label>Idempotency key</Property.Label>
               <Property.Value>
-                {span.waitpoint.idempotencyKeyExpiresAt ? (
-                  <DateTime date={span.waitpoint.idempotencyKeyExpiresAt} />
-                ) : (
-                  "–"
-                )}
+                <div>
+                  {span.waitpoint.userProvidedIdempotencyKey ? span.waitpoint.idempotencyKey : "–"}
+                  {span.waitpoint.idempotencyKeyExpiresAt ? (
+                    <>
+                      Expires at: <DateTime date={span.waitpoint.idempotencyKeyExpiresAt} />
+                    </>
+                  ) : null}
+                </div>
               </Property.Value>
             </Property.Item>
           </Property.Table>
@@ -1127,7 +1135,7 @@ function SpanEntity({ span }: { span: Span }) {
             <CompleteWaitpointForm waitpoint={span.waitpoint} />
           ) : span.waitpoint.output ? (
             <PacketDisplay
-              title="Waitpoint output"
+              title="Output"
               data={span.waitpoint.output}
               dataType={span.waitpoint.outputType}
             />
