@@ -1965,6 +1965,9 @@ importers:
       '@trigger.dev/build':
         specifier: workspace:*
         version: link:../../packages/build
+      '@trigger.dev/python':
+        specifier: workspace:*
+        version: link:../../packages/python
       '@types/email-reply-parser':
         specifier: ^1.4.2
         version: 1.4.2
