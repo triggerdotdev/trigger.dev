@@ -42,8 +42,6 @@ import {
   WorkloadRunAttemptStartRequestBody,
   WorkloadRunAttemptStartResponseBody,
   WorkloadRunLatestSnapshotResponseBody,
-  WorkloadWaitForDurationRequestBody,
-  WorkloadWaitForDurationResponseBody,
 } from "@trigger.dev/core/v3/workers";
 
 export class CliApiClient {
@@ -399,7 +397,6 @@ export class CliApiClient {
       heartbeatRun: this.devHeartbeatRun.bind(this),
       startRunAttempt: this.devStartRunAttempt.bind(this),
       completeRunAttempt: this.devCompleteRunAttempt.bind(this),
-      waitForDuration: this.devWaitForDuration.bind(this),
     };
   }
 
@@ -608,26 +605,6 @@ export class CliApiClient {
         headers: {
           Authorization: `Bearer ${this.accessToken}`,
           Accept: "application/json",
-        },
-        body: JSON.stringify(body),
-      }
-    );
-  }
-
-  private async devWaitForDuration(
-    runId: string,
-    snapshotId: string,
-    body: WorkloadWaitForDurationRequestBody
-  ) {
-    return wrapZodFetch(
-      WorkloadWaitForDurationResponseBody,
-      `${this.apiURL}/api/v1/dev/runs/${runId}/snapshots/${snapshotId}/wait/duration`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${this.accessToken}`,
-          Accept: "application/json",
-          "Content-Type": "application/json",
         },
         body: JSON.stringify(body),
       }

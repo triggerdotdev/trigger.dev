@@ -6,7 +6,6 @@ import {
   StartRunAttemptResult,
   CompleteRunAttemptResult,
   RunExecutionData,
-  WaitForDurationResult,
   CheckpointInput,
   ExecutionResult,
 } from "../../schemas/runEngine.js";
@@ -124,18 +123,6 @@ export type WorkerApiRunLatestSnapshotResponseBody = z.infer<
 export const WorkerApiDequeueFromVersionResponseBody = DequeuedMessage.array();
 export type WorkerApiDequeueFromVersionResponseBody = z.infer<
   typeof WorkerApiDequeueFromVersionResponseBody
->;
-
-export const WorkerApiWaitForDurationRequestBody = z.object({
-  date: z.coerce.date(),
-});
-export type WorkerApiWaitForDurationRequestBody = z.infer<
-  typeof WorkerApiWaitForDurationRequestBody
->;
-
-export const WorkerApiWaitForDurationResponseBody = WaitForDurationResult;
-export type WorkerApiWaitForDurationResponseBody = z.infer<
-  typeof WorkerApiWaitForDurationResponseBody
 >;
 
 const AttributeValue = z.union([

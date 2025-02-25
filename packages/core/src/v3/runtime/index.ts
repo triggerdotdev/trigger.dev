@@ -31,24 +31,19 @@ export class RuntimeAPI {
     return this._instance;
   }
 
-  public waitForDuration(ms: number): Promise<void> {
-    return usage.pauseAsync(() => this.#getRuntimeManager().waitForDuration(ms));
-  }
-
-  public waitUntil(date: Date): Promise<void> {
-    return usage.pauseAsync(() => this.#getRuntimeManager().waitUntil(date));
+  public waitUntil(waitpointFriendlyId: string, finishDate?: Date): Promise<WaitpointTokenResult> {
+    return usage.pauseAsync(() =>
+      this.#getRuntimeManager().waitForWaitpoint({ waitpointFriendlyId, finishDate })
+    );
   }
 
   public waitForTask(params: { id: string; ctx: TaskRunContext }): Promise<TaskRunExecutionResult> {
     return usage.pauseAsync(() => this.#getRuntimeManager().waitForTask(params));
   }
 
-  public waitForToken(
-    waitpointFriendlyId: string,
-    options?: WaitForWaitpointTokenRequestBody
-  ): Promise<WaitpointTokenResult> {
+  public waitForToken(waitpointFriendlyId: string): Promise<WaitpointTokenResult> {
     return usage.pauseAsync(() =>
-      this.#getRuntimeManager().waitForToken(waitpointFriendlyId, options)
+      this.#getRuntimeManager().waitForWaitpoint({ waitpointFriendlyId })
     );
   }
 

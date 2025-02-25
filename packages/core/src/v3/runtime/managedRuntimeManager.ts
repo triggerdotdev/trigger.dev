@@ -36,27 +36,6 @@ export class ManagedRuntimeManager implements RuntimeManager {
     // do nothing
   }
 
-  async waitForDuration(ms: number): Promise<void> {
-    const wait = {
-      type: "DATETIME",
-      id: crypto.randomUUID(),
-      date: new Date(Date.now() + ms),
-    } satisfies RuntimeWait;
-
-    const promise = new Promise<CompletedWaitpoint>((resolve) => {
-      this.resolversByWaitId.set(wait.id, resolve);
-    });
-
-    // Send wait to parent process
-    this.ipc.send("WAIT", { wait });
-
-    await promise;
-  }
-
-  async waitUntil(date: Date): Promise<void> {
-    return this.waitForDuration(date.getTime() - Date.now());
-  }
-
   async waitForTask(params: { id: string; ctx: TaskRunContext }): Promise<TaskRunExecutionResult> {
     const promise = new Promise<CompletedWaitpoint>((resolve) => {
       this.resolversByWaitId.set(params.id, resolve);
@@ -94,10 +73,13 @@ export class ManagedRuntimeManager implements RuntimeManager {
     };
   }
 
-  async waitForToken(
-    waitpointFriendlyId: string,
-    options?: WaitForWaitpointTokenRequestBody
-  ): Promise<WaitpointTokenResult> {
+  async waitForWaitpoint({
+    waitpointFriendlyId,
+    finishDate,
+  }: {
+    waitpointFriendlyId: string;
+    finishDate?: Date;
+  }): Promise<WaitpointTokenResult> {
     const promise = new Promise<CompletedWaitpoint>((resolve) => {
       this.resolversByWaitId.set(waitpointFriendlyId, resolve);
     });
@@ -134,7 +116,7 @@ export class ManagedRuntimeManager implements RuntimeManager {
       //no waitpoint resolves associated with batch completions
       //a batch completion isn't when all the runs from a batch are completed
       return;
-    } else if (waitpoint.type === "MANUAL") {
+    } else if (waitpoint.type === "MANUAL" || waitpoint.type === "DATETIME") {
       waitId = waitpoint.friendlyId;
     } else {
       waitId = this.resolversByWaitpoint.get(waitpoint.id);

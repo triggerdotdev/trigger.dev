@@ -14,8 +14,6 @@ import {
   WorkerApiRunHeartbeatRequestBody,
   WorkerApiRunHeartbeatResponseBody,
   WorkerApiRunLatestSnapshotResponseBody,
-  WorkerApiWaitForDurationRequestBody,
-  WorkerApiWaitForDurationResponseBody,
   WorkerApiDebugLogBody,
 } from "./schemas.js";
 import { SupervisorClientCommonOptions } from "./types.js";
@@ -206,27 +204,6 @@ export class SupervisorHttpClient {
     } catch (error) {
       console.error("Failed to send debug log", { error });
     }
-  }
-
-  async waitForDuration(
-    runId: string,
-    snapshotId: string,
-    body: WorkerApiWaitForDurationRequestBody,
-    runnerId?: string
-  ) {
-    return wrapZodFetch(
-      WorkerApiWaitForDurationResponseBody,
-      `${this.apiUrl}/api/v1/worker-actions/runs/${runId}/snapshots/${snapshotId}/wait/duration`,
-      {
-        method: "POST",
-        headers: {
-          ...this.defaultHeaders,
-          ...this.runnerIdHeader(runnerId),
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(body),
-      }
-    );
   }
 
   async continueRunExecution(runId: string, snapshotId: string, runnerId?: string) {

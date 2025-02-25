@@ -944,6 +944,35 @@ export const WaitForWaitpointTokenResponseBody = z.object({
 });
 export type WaitForWaitpointTokenResponseBody = z.infer<typeof WaitForWaitpointTokenResponseBody>;
 
+export const WaitForDurationRequestBody = z.object({
+  /**
+   * An optional idempotency key for the waitpoint.
+   * If you use the same key twice (and the key hasn't expired), you will get the original waitpoint back.
+   *
+   * Note: This waitpoint may already be complete, in which case when you wait for it, it will immediately continue.
+   */
+  idempotencyKey: z.string().optional(),
+  /**
+   * When set, this means the passed in idempotency key will expire after this time.
+   * This means after that time if you pass the same idempotency key again, you will get a new waitpoint.
+   */
+  idempotencyKeyTTL: z.string().optional(),
+  date: z.coerce.date(),
+});
+export type WaitForDurationRequestBody = z.infer<typeof WaitForDurationRequestBody>;
+
+export const WaitForDurationResponseBody = z.object({
+  /**
+      If you pass an idempotencyKey, you may actually not need to wait.
+      Use this date to determine when to continue.
+  */
+  waitUntil: z.coerce.date(),
+  waitpoint: z.object({
+    id: z.string(),
+  }),
+});
+export type WaitForDurationResponseBody = z.infer<typeof WaitForDurationResponseBody>;
+
 export const WAITPOINT_TIMEOUT_ERROR_CODE = "TRIGGER_WAITPOINT_TIMEOUT";
 
 export function isWaitpointOutputTimeout(output: string): boolean {

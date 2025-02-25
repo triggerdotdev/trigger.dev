@@ -22,7 +22,6 @@ import {
   TaskRunFailedExecutionResult,
   TaskRunInternalError,
   TaskRunSuccessfulExecutionResult,
-  WaitForDurationResult,
   WAITPOINT_TIMEOUT_ERROR_CODE,
 } from "@trigger.dev/core/v3";
 import {
@@ -412,6 +411,7 @@ export class RunEngine {
               waitpoints: associatedWaitpoint.id,
               environmentId: associatedWaitpoint.environmentId,
               projectId: associatedWaitpoint.projectId,
+              organizationId: environment.organization.id,
               batch,
               workerId,
               runnerId,
@@ -497,17 +497,18 @@ export class RunEngine {
           }
 
           if (taskRun.delayUntil) {
-            const delayWaitpoint = await this.#createDateTimeWaitpoint(prisma, {
+            const delayWaitpointResult = await this.createDateTimeWaitpoint({
               projectId: environment.project.id,
               environmentId: environment.id,
               completedAfter: taskRun.delayUntil,
+              tx: prisma,
             });
 
             await prisma.taskRunWaitpoint.create({
               data: {
                 taskRunId: taskRun.id,
-                waitpointId: delayWaitpoint.id,
-                projectId: delayWaitpoint.projectId,
+                waitpointId: delayWaitpointResult.waitpoint.id,
+                projectId: delayWaitpointResult.waitpoint.projectId,
               },
             });
           }
@@ -1391,110 +1392,6 @@ export class RunEngine {
     }
   }
 
-  async waitForDuration({
-    runId,
-    snapshotId,
-    date,
-    releaseConcurrency = true,
-    idempotencyKey,
-    workerId,
-    runnerId,
-    tx,
-  }: {
-    runId: string;
-    snapshotId: string;
-    date: Date;
-    releaseConcurrency?: boolean;
-    idempotencyKey?: string;
-    workerId?: string;
-    runnerId?: string;
-    tx?: PrismaClientOrTransaction;
-  }): Promise<WaitForDurationResult> {
-    const prisma = tx ?? this.prisma;
-
-    return await this.runLock.lock([runId], 5_000, async (signal) => {
-      const snapshot = await getLatestExecutionSnapshot(prisma, runId);
-
-      if (snapshot.id !== snapshotId) {
-        throw new ServiceValidationError("Snapshot ID doesn't match the latest snapshot", 400);
-      }
-
-      const run = await prisma.taskRun.findFirst({
-        select: {
-          runtimeEnvironment: {
-            select: {
-              id: true,
-              organizationId: true,
-            },
-          },
-          projectId: true,
-        },
-        where: { id: runId },
-      });
-
-      if (!run) {
-        throw new ServiceValidationError("TaskRun not found", 404);
-      }
-
-      let waitpoint = idempotencyKey
-        ? await prisma.waitpoint.findUnique({
-            where: {
-              environmentId_idempotencyKey: {
-                environmentId: run.runtimeEnvironment.id,
-                idempotencyKey,
-              },
-            },
-          })
-        : undefined;
-
-      if (!waitpoint) {
-        waitpoint = await this.#createDateTimeWaitpoint(prisma, {
-          projectId: run.projectId,
-          environmentId: run.runtimeEnvironment.id,
-          completedAfter: date,
-          idempotencyKey,
-        });
-      }
-
-      //waitpoint already completed, so we don't need to wait
-      if (waitpoint.status === "COMPLETED") {
-        return {
-          waitUntil: waitpoint.completedAt ?? new Date(),
-          waitpoint: {
-            id: waitpoint.id,
-          },
-          ...executionResultFromSnapshot(snapshot),
-        };
-      }
-
-      //block the run
-      const blockResult = await this.blockRunWithWaitpoint({
-        runId,
-        waitpoints: waitpoint.id,
-        environmentId: waitpoint.environmentId,
-        projectId: waitpoint.projectId,
-        workerId,
-        runnerId,
-        tx: prisma,
-      });
-
-      //release concurrency
-      await this.runQueue.releaseConcurrency(
-        run.runtimeEnvironment.organizationId,
-        runId,
-        releaseConcurrency
-      );
-
-      return {
-        waitUntil: date,
-        waitpoint: {
-          id: waitpoint.id,
-        },
-        ...executionResultFromSnapshot(blockResult),
-      };
-    });
-  }
-
   /**
   Call this to cancel a run.
   If the run is in-progress it will change it's state to PENDING_CANCEL and notify the worker.
@@ -1729,6 +1626,91 @@ export class RunEngine {
     return this.runQueue.lengthOfEnvQueue(environment);
   }
 
+  /**
+   * This creates a DATETIME waitpoint, that will be completed automatically when the specified date is reached.
+   * If you pass an `idempotencyKey`, the waitpoint will be created only if it doesn't already exist.
+   */
+  async createDateTimeWaitpoint({
+    projectId,
+    environmentId,
+    completedAfter,
+    idempotencyKey,
+    idempotencyKeyExpiresAt,
+    tx,
+  }: {
+    projectId: string;
+    environmentId: string;
+    completedAfter: Date;
+    idempotencyKey?: string;
+    idempotencyKeyExpiresAt?: Date;
+    tx?: PrismaClientOrTransaction;
+  }) {
+    const prisma = tx ?? this.prisma;
+
+    const existingWaitpoint = idempotencyKey
+      ? await prisma.waitpoint.findUnique({
+          where: {
+            environmentId_idempotencyKey: {
+              environmentId,
+              idempotencyKey,
+            },
+          },
+        })
+      : undefined;
+
+    if (existingWaitpoint) {
+      if (
+        existingWaitpoint.idempotencyKeyExpiresAt &&
+        new Date() > existingWaitpoint.idempotencyKeyExpiresAt
+      ) {
+        //the idempotency key has expired
+        //remove the waitpoint idempotencyKey
+        await prisma.waitpoint.update({
+          where: {
+            id: existingWaitpoint.id,
+          },
+          data: {
+            idempotencyKey: nanoid(24),
+            inactiveIdempotencyKey: existingWaitpoint.idempotencyKey,
+          },
+        });
+
+        //let it fall through to create a new waitpoint
+      } else {
+        return { waitpoint: existingWaitpoint, isCached: true };
+      }
+    }
+
+    const waitpoint = await prisma.waitpoint.upsert({
+      where: {
+        environmentId_idempotencyKey: {
+          environmentId,
+          idempotencyKey: idempotencyKey ?? nanoid(24),
+        },
+      },
+      create: {
+        ...WaitpointId.generate(),
+        type: "DATETIME",
+        idempotencyKey: idempotencyKey ?? nanoid(24),
+        idempotencyKeyExpiresAt,
+        userProvidedIdempotencyKey: !!idempotencyKey,
+        environmentId,
+        projectId,
+        completedAfter,
+      },
+      update: {},
+    });
+
+    await this.worker.enqueue({
+      id: `finishWaitpoint.${waitpoint.id}`,
+      job: "finishWaitpoint",
+      payload: { waitpointId: waitpoint.id },
+      availableAt: completedAfter,
+    });
+
+    return { waitpoint, isCached: false };
+  }
+
   /** This creates a MANUAL waitpoint, that can be explicitly completed (or failed).
    * If you pass an `idempotencyKey` and it already exists, it will return the existing waitpoint.
    */
@@ -1826,12 +1808,14 @@ export class RunEngine {
     batchId,
     environmentId,
     projectId,
+    organizationId,
     tx,
   }: {
     runId: string;
     batchId: string;
     environmentId: string;
     projectId: string;
+    organizationId: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<Waitpoint | null> {
     const prisma = tx ?? this.prisma;
@@ -1854,6 +1838,7 @@ export class RunEngine {
         waitpoints: waitpoint.id,
         environmentId,
         projectId,
+        organizationId,
         batch: { id: batchId },
         tx: prisma,
       });
@@ -1960,6 +1945,8 @@ export class RunEngine {
     runId,
     waitpoints,
     projectId,
+    organizationId,
+    releaseConcurrency,
     failAfter,
     spanIdToComplete,
     batch,
@@ -1971,6 +1958,10 @@ export class RunEngine {
     waitpoints: string | string[];
     environmentId: string;
     projectId: string;
+    organizationId: string;
+    releaseConcurrency?: {
+      releaseQueue: boolean;
+    };
     failAfter?: Date;
     spanIdToComplete?: string;
     batch?: { id: string; index?: number };
@@ -2070,6 +2061,15 @@ export class RunEngine {
           //in the near future
           availableAt: new Date(Date.now() + 50),
         });
+      } else {
+        if (releaseConcurrency) {
+          //release concurrency
+          await this.runQueue.releaseConcurrency(
+            organizationId,
+            runId,
+            releaseConcurrency.releaseQueue === true
+          );
+        }
       }
 
       return snapshot;
@@ -2107,8 +2107,7 @@ export class RunEngine {
         // 2. Update the waitpoint to completed (only if it's pending)
         let waitpoint: Waitpoint | null = null;
         try {
-        waitpoint = await tx.waitpoint
-          .update({
+          waitpoint = await tx.waitpoint.update({
             where: { id, status: "PENDING" },
             data: {
               status: "COMPLETED",
@@ -2117,22 +2116,24 @@ export class RunEngine {
               outputType: output?.type,
               outputIsError: output?.isError,
             },
-          })
-        } catch(error) {
+          });
+        } catch (error) {
           if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
             waitpoint = await tx.waitpoint.findFirst({
               where: { id },
             });
           } else {
-            this.logger.log('completeWaitpoint: error updating waitpoint:', {error});
+            this.logger.log("completeWaitpoint: error updating waitpoint:", { error });
             throw error;
           }
-        };
+        }
 
         return { waitpoint, affectedTaskRuns };
       },
       (error) => {
-        this.logger.error(`completeWaitpoint: Error completing waitpoint ${id}, retrying`, { error });
+        this.logger.error(`completeWaitpoint: Error completing waitpoint ${id}, retrying`, {
+          error,
+        });
         throw error;
       }
     );
@@ -3482,38 +3483,6 @@ export class RunEngine {
         completedByTaskRunId,
       },
     });
-  }
-
-  async #createDateTimeWaitpoint(
-    tx: PrismaClientOrTransaction,
-    {
-      projectId,
-      environmentId,
-      completedAfter,
-      idempotencyKey,
-    }: { projectId: string; environmentId: string; completedAfter: Date; idempotencyKey?: string }
-  ) {
-    const waitpoint = await tx.waitpoint.create({
-      data: {
-        ...WaitpointId.generate(),
-        type: "DATETIME",
-        status: "PENDING",
-        idempotencyKey: idempotencyKey ?? nanoid(24),
-        userProvidedIdempotencyKey: !!idempotencyKey,
-        projectId,
-        environmentId,
-        completedAfter,
-      },
-    });
-
-    await this.worker.enqueue({
-      id: `finishWaitpoint.${waitpoint.id}`,
-      job: "finishWaitpoint",
-      payload: { waitpointId: waitpoint.id },
-      availableAt: completedAfter,
-    });
-
-    return waitpoint;
   }
 
   async #rescheduleDateTimeWaitpoint(

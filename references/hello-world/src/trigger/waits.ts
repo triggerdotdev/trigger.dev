@@ -1,4 +1,4 @@
-import { logger, wait, task } from "@trigger.dev/sdk/v3";
+import { logger, wait, task, retry } from "@trigger.dev/sdk/v3";
 
 type Token = {
   status: "approved" | "pending" | "rejected";
@@ -55,5 +55,24 @@ export const completeWaitToken = task({
   run: async (payload: { token: string; delay?: number }) => {
     await wait.for({ seconds: payload.delay ?? 10 });
     await wait.completeToken<Token>(payload.token, { status: "approved" });
+  },
+});
+
+export const waitForDuration = task({
+  id: "wait-duration",
+  run: async ({ duration = 4 }: { duration?: number }) => {
+    await wait.for({ seconds: duration });
+    await wait.until({ date: new Date(Date.now() + duration * 1000) });
+
+    await retry.fetch("https://example.com/404/", { method: "GET" });
+
+    await retry.onThrow(
+      async () => {
+        throw new Error("This is an error");
+      },
+      {
+        maxAttempts: 3,
+      }
+    );
   },
 });

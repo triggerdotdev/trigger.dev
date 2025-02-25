@@ -8,8 +8,6 @@ import {
   WorkerApiRunAttemptStartResponseBody,
   WorkerApiRunLatestSnapshotResponseBody,
   WorkerApiDequeueFromVersionResponseBody,
-  WorkerApiWaitForDurationRequestBody,
-  WorkerApiWaitForDurationResponseBody,
   WorkerApiContinueRunExecutionRequestBody,
   WorkerApiDebugLogBody,
 } from "../supervisor/schemas.js";
@@ -65,12 +63,4 @@ export type WorkloadDebugLogRequestBody = z.infer<typeof WorkloadDebugLogRequest
 export const WorkloadDequeueFromVersionResponseBody = WorkerApiDequeueFromVersionResponseBody;
 export type WorkloadDequeueFromVersionResponseBody = z.infer<
   typeof WorkloadDequeueFromVersionResponseBody
->;
-
-export const WorkloadWaitForDurationRequestBody = WorkerApiWaitForDurationRequestBody;
-export type WorkloadWaitForDurationRequestBody = z.infer<typeof WorkloadWaitForDurationRequestBody>;
-
-export const WorkloadWaitForDurationResponseBody = WorkerApiWaitForDurationResponseBody;
-export type WorkloadWaitForDurationResponseBody = z.infer<
-  typeof WorkloadWaitForDurationResponseBody
 >;

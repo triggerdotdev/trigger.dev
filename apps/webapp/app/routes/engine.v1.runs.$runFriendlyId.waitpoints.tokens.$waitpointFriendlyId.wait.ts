@@ -52,6 +52,7 @@ const { action } = createActionApiRoute(
         waitpoints: [waitpointId],
         environmentId: authentication.environment.id,
         projectId: authentication.environment.project.id,
+        organizationId: authentication.environment.organization.id,
         failAfter: timeout,
       });
 

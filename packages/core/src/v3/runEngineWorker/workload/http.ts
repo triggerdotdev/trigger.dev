@@ -8,8 +8,6 @@ import {
   WorkloadRunLatestSnapshotResponseBody,
   WorkloadDequeueFromVersionResponseBody,
   WorkloadRunAttemptStartRequestBody,
-  WorkloadWaitForDurationRequestBody,
-  WorkloadWaitForDurationResponseBody,
   WorkloadSuspendRunResponseBody,
   WorkloadContinueRunExecutionResponseBody,
   WorkloadDebugLogRequestBody,
@@ -150,25 +148,6 @@ export class WorkloadHttpClient {
     } catch (error) {
       console.error("Failed to send debug log", { error });
     }
-  }
-
-  async waitForDuration(
-    runId: string,
-    snapshotId: string,
-    body: WorkloadWaitForDurationRequestBody
-  ) {
-    return wrapZodFetch(
-      WorkloadWaitForDurationResponseBody,
-      `${this.apiUrl}/api/v1/workload-actions/runs/${runId}/snapshots/${snapshotId}/wait/duration`,
-      {
-        method: "POST",
-        headers: {
-          ...this.defaultHeaders,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(body),
-      }
-    );
   }
 
   async dequeue() {

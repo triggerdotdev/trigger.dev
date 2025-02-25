@@ -718,24 +718,6 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     });
   }
 
-  async waitForDuration({
-    runFriendlyId,
-    snapshotFriendlyId,
-    date,
-  }: {
-    runFriendlyId: string;
-    snapshotFriendlyId: string;
-    date: Date;
-  }): Promise<WaitForDurationResult> {
-    return await this._engine.waitForDuration({
-      runId: fromFriendlyId(runFriendlyId),
-      snapshotId: fromFriendlyId(snapshotFriendlyId),
-      date,
-      workerId: this.workerInstanceId,
-      runnerId: this.runnerId,
-    });
-  }
-
   async getLatestSnapshot({ runFriendlyId }: { runFriendlyId: string }) {
     return await this._engine.getRunExecutionData({
       runId: fromFriendlyId(runFriendlyId),

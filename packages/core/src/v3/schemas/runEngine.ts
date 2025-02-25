@@ -247,20 +247,6 @@ export const RunExecutionData = z.object({
 });
 export type RunExecutionData = z.infer<typeof RunExecutionData>;
 
-export const WaitForDurationResult = z
-  .object({
-    /**
-        If you pass an idempotencyKey, you may actually not need to wait.
-        Use this date to determine when to continue.
-    */
-    waitUntil: z.coerce.date(),
-    waitpoint: z.object({
-      id: z.string(),
-    }),
-  })
-  .and(ExecutionResult);
-export type WaitForDurationResult = z.infer<typeof WaitForDurationResult>;
-
 export const CreateCheckpointResult = z.discriminatedUnion("ok", [
   z
     .object({
