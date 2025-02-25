@@ -74,7 +74,6 @@ export class TaskRunProcess {
   public onIsBeingKilled: Evt<TaskRunProcess> = new Evt();
   public onReadyToDispose: Evt<TaskRunProcess> = new Evt();
 
-  public onWaitForDuration: Evt<OnWaitForDurationMessage> = new Evt();
   public onWaitForTask: Evt<OnWaitForTaskMessage> = new Evt();
   public onWaitForBatch: Evt<OnWaitForBatchMessage> = new Evt();
   public onWait: Evt<OnWaitMessage> = new Evt();
@@ -186,14 +185,8 @@ export class TaskRunProcess {
         WAIT_FOR_BATCH: async (message) => {
           this.onWaitForBatch.post(message);
         },
-        WAIT_FOR_DURATION: async (message) => {
-          this.onWaitForDuration.post(message);
-        },
         UNCAUGHT_EXCEPTION: async (message) => {
           logger.debug(`[${this.runId}] uncaught exception in task run process`, { ...message });
-        },
-        WAIT: async (message) => {
-          this.onWait.post(message);
         },
       },
     });

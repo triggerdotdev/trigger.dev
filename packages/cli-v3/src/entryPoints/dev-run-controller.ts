@@ -11,7 +11,7 @@ import {
 import { type WorkloadRunAttemptStartResponseBody } from "@trigger.dev/core/v3/workers";
 import { setTimeout as sleep } from "timers/promises";
 import { CliApiClient } from "../apiClient.js";
-import { OnWaitMessage, TaskRunProcess } from "../executions/taskRunProcess.js";
+import { TaskRunProcess } from "../executions/taskRunProcess.js";
 import { assertExhaustive } from "../utilities/assertExhaustive.js";
 import { logger } from "../utilities/logger.js";
 import { sanitizeEnvVars } from "../utilities/sanitizeEnvVars.js";
@@ -598,8 +598,6 @@ export class DevRunController {
       messageId: run.friendlyId,
     });
 
-    this.taskRunProcess.onWait.attach(this.handleWait.bind(this));
-
     await this.taskRunProcess.initialize();
 
     logger.debug("executing task run process", {
@@ -727,41 +725,6 @@ export class DevRunController {
     }
 
     assertExhaustive(attemptStatus);
-  }
-
-  private async handleWait({ wait }: OnWaitMessage) {
-    if (!this.runFriendlyId || !this.snapshotFriendlyId) {
-      logger.debug("[DevRunController] Ignoring wait, no run ID or snapshot ID");
-      return;
-    }
-
-    switch (wait.type) {
-      case "DATETIME": {
-        logger.debug("Waiting for duration", { wait });
-
-        const waitpoint = await this.httpClient.dev.waitForDuration(
-          this.runFriendlyId,
-          this.snapshotFriendlyId,
-          {
-            date: wait.date,
-          }
-        );
-
-        if (!waitpoint.success) {
-          logger.debug("Failed to wait for datetime", { error: waitpoint.error });
-          return;
-        }
-
-        logger.debug("Waitpoint created", { waitpointData: waitpoint.data });
-
-        this.taskRunProcess?.waitpointCreated(wait.id, waitpoint.data.waitpoint.id);
-
-        break;
-      }
-      default: {
-        logger.debug("Wait type not implemented", { wait });
-      }
-    }
   }
 
   private async runFinished() {

@@ -1,5 +1,5 @@
 import { logger } from "../utilities/logger.js";
-import { OnWaitMessage, TaskRunProcess } from "../executions/taskRunProcess.js";
+import { TaskRunProcess } from "../executions/taskRunProcess.js";
 import { env as stdEnv } from "std-env";
 import { z } from "zod";
 import { randomUUID } from "crypto";
@@ -832,8 +832,6 @@ class ManagedRunController {
       messageId: run.friendlyId,
     });
 
-    this.taskRunProcess.onWait.attach(this.handleWait.bind(this));
-
     await this.taskRunProcess.initialize();
 
     logger.log("executing task run process", {
@@ -951,41 +949,6 @@ class ManagedRunController {
     }
 
     assertExhaustive(attemptStatus);
-  }
-
-  private async handleWait({ wait }: OnWaitMessage) {
-    if (!this.runFriendlyId || !this.snapshotFriendlyId) {
-      logger.debug("[ManagedRunController] Ignoring wait, no run ID or snapshot ID");
-      return;
-    }
-
-    switch (wait.type) {
-      case "DATETIME": {
-        logger.log("Waiting for duration", { wait });
-
-        const waitpoint = await this.httpClient.waitForDuration(
-          this.runFriendlyId,
-          this.snapshotFriendlyId,
-          {
-            date: wait.date,
-          }
-        );
-
-        if (!waitpoint.success) {
-          console.error("Failed to wait for datetime", { error: waitpoint.error });
-          return;
-        }
-
-        logger.log("Waitpoint created", { waitpointData: waitpoint.data });
-
-        this.taskRunProcess?.waitpointCreated(wait.id, waitpoint.data.waitpoint.id);
-
-        break;
-      }
-      default: {
-        console.error("Wait type not implemented", { wait });
-      }
-    }
   }
 
   async cancelAttempt(runId: string) {
