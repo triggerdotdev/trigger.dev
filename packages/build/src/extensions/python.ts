@@ -165,7 +165,13 @@ export const runInline = async (scriptContent: string, options: Partial<XOptions
   try {
     return await runScript(tmpFile, [], options);
   } finally {
-    await fs.promises.unlink(tmpFile);
+    try {
+      await fs.promises.unlink(tmpFile);
+    } catch (error) {
+      logger.warn(`Failed to clean up temporary file ${tmpFile}:`, {
+        error: (error as Error).stack || (error as Error).message,
+      });
+    }
   }
 };
 
