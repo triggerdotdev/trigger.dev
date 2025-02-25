@@ -357,7 +357,7 @@ const EnvironmentSchema = z.object({
   MARQS_AVAILABLE_CAPACITY_BIAS: z.coerce.number().default(0.3),
   MARQS_QUEUE_AGE_RANDOMIZATION_BIAS: z.coerce.number().default(0.25),
   MARQS_REUSE_SNAPSHOT_COUNT: z.coerce.number().int().default(0),
-  MARQS_MAXIMUM_ORG_COUNT: z.coerce.number().int().optional(),
+  MARQS_MAXIMUM_ENV_COUNT: z.coerce.number().int().optional(),
 
   PROD_TASK_HEARTBEAT_INTERVAL_MS: z.coerce.number().int().optional(),
 
@@ -399,6 +399,11 @@ const EnvironmentSchema = z.object({
   MAX_BATCH_AND_WAIT_V2_TRIGGER_ITEMS: z.coerce.number().int().default(500),
 
   REALTIME_STREAM_VERSION: z.enum(["v1", "v2"]).default("v1"),
+  REALTIME_STREAM_MAX_LENGTH: z.coerce.number().int().default(1000),
+  REALTIME_STREAM_TTL: z.coerce
+    .number()
+    .int()
+    .default(60 * 60 * 24), // 1 day in seconds
   BATCH_METADATA_OPERATIONS_FLUSH_INTERVAL_MS: z.coerce.number().int().default(1000),
   BATCH_METADATA_OPERATIONS_FLUSH_ENABLED: z.string().default("1"),
   BATCH_METADATA_OPERATIONS_FLUSH_LOGGING_ENABLED: z.string().default("1"),

@@ -1731,6 +1731,8 @@ model TaskRun {
 
   taskEventStore String @default("taskEvent")
 
+  queueTimestamp DateTime?
+
   batchItems             BatchTaskRunItem[]
   dependency             TaskRunDependency?
   CheckpointRestoreEvent CheckpointRestoreEvent[]
@@ -1915,6 +1917,7 @@ model TaskRunDependency {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  resumedAt DateTime?
 
   @@index([dependentAttemptId])
   @@index([dependentBatchRunId])
@@ -2208,6 +2211,7 @@ model BatchTaskRun {
 enum BatchTaskRunStatus {
   PENDING
   COMPLETED
+  ABORTED
 }
 
 model BatchTaskRunItem {

@@ -5,7 +5,7 @@ export const CIRCULAR_REFERENCE_SENTINEL = "$@circular((";
 
 export function flattenAttributes(
   obj: Record<string, unknown> | Array<unknown> | string | boolean | number | null | undefined,
-  prefix?: string ,
+  prefix?: string,
   seen: WeakSet<object> = new WeakSet()
 ): Attributes {
   const result: Attributes = {};
@@ -51,14 +51,13 @@ export function flattenAttributes(
     seen.add(obj);
   }
 
-
   for (const [key, value] of Object.entries(obj)) {
     const newPrefix = `${prefix ? `${prefix}.` : ""}${Array.isArray(obj) ? `[${key}]` : key}`;
     if (Array.isArray(value)) {
       for (let i = 0; i < value.length; i++) {
         if (typeof value[i] === "object" && value[i] !== null) {
           // update null check here as well
-          Object.assign(result, flattenAttributes(value[i], `${newPrefix}.[${i}]`,seen));
+          Object.assign(result, flattenAttributes(value[i], `${newPrefix}.[${i}]`, seen));
         } else {
           if (value[i] === null) {
             result[`${newPrefix}.[${i}]`] = NULL_SENTINEL;
@@ -152,7 +151,6 @@ export function unflattenAttributes(
 
     if (lastPart !== undefined) {
       current[lastPart] = rehydrateNull(rehydrateCircular(value));
-
     }
   }
 

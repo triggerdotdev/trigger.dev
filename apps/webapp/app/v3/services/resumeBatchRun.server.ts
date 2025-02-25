@@ -152,6 +152,8 @@ export class ResumeBatchRunService extends BaseService {
             queue: true,
             taskIdentifier: true,
             concurrencyKey: true,
+            createdAt: true,
+            queueTimestamp: true,
           },
         },
       },
@@ -186,7 +188,7 @@ export class ResumeBatchRunService extends BaseService {
           dependentTaskAttemptId: dependentTaskAttempt.id,
         });
 
-        await marqs?.enqueueMessage(
+        await marqs.enqueueMessage(
           environment,
           dependentRun.queue,
           dependentRun.id,
@@ -200,7 +202,10 @@ export class ResumeBatchRunService extends BaseService {
             environmentId: environment.id,
             environmentType: environment.type,
           },
-          dependentRun.concurrencyKey ?? undefined
+          dependentRun.concurrencyKey ?? undefined,
+          dependentRun.queueTimestamp ?? dependentRun.createdAt,
+          undefined,
+          "resume"
         );
 
         return "COMPLETED";
@@ -246,16 +251,25 @@ export class ResumeBatchRunService extends BaseService {
           hasCheckpointEvent: !!batchRun.checkpointEventId,
         });
 
-        await marqs?.replaceMessage(dependentRun.id, {
-          type: "RESUME",
-          completedAttemptIds: batchRun.items.map((item) => item.taskRunAttemptId).filter(Boolean),
-          resumableAttemptId: dependentTaskAttempt.id,
-          checkpointEventId: batchRun.checkpointEventId ?? undefined,
-          taskIdentifier: dependentTaskAttempt.taskRun.taskIdentifier,
-          projectId: environment.projectId,
-          environmentId: environment.id,
-          environmentType: environment.type,
-        });
+        await marqs.requeueMessage(
+          dependentRun.id,
+          {
+            type: "RESUME",
+            completedAttemptIds: batchRun.items
+              .map((item) => item.taskRunAttemptId)
+              .filter(Boolean),
+            resumableAttemptId: dependentTaskAttempt.id,
+            checkpointEventId: batchRun.checkpointEventId ?? undefined,
+            taskIdentifier: dependentTaskAttempt.taskRun.taskIdentifier,
+            projectId: environment.projectId,
+            environmentId: environment.id,
+            environmentType: environment.type,
+          },
+          (
+            dependentTaskAttempt.taskRun.queueTimestamp ?? dependentTaskAttempt.taskRun.createdAt
+          ).getTime(),
+          "resume"
+        );
 
         return "COMPLETED";
       } else {

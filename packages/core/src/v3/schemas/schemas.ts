@@ -250,3 +250,12 @@ export const TaskRunExecutionLazyAttemptPayload = z.object({
 });
 
 export type TaskRunExecutionLazyAttemptPayload = z.infer<typeof TaskRunExecutionLazyAttemptPayload>;
+
+export const ManualCheckpointMetadata = z.object({
+  /** NOT a friendly ID */
+  attemptId: z.string(),
+  previousRunStatus: z.string(),
+  previousAttemptStatus: z.string(),
+});
+
+export type ManualCheckpointMetadata = z.infer<typeof ManualCheckpointMetadata>;

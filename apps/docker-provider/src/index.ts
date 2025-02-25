@@ -122,6 +122,7 @@ class DockerTaskOperations implements TaskOperations {
       `--env=POD_NAME=${containerName}`,
       `--env=COORDINATOR_HOST=${COORDINATOR_HOST}`,
       `--env=COORDINATOR_PORT=${COORDINATOR_PORT}`,
+      `--env=SCHEDULED_AT_MS=${Date.now()}`,
       `--name=${containerName}`,
     ];
 

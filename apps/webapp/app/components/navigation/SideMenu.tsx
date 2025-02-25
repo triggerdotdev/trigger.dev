@@ -90,34 +90,6 @@ type SideMenuProps = {
   defaultValue?: FeedbackType;
 };
 
-function V2Countdown() {
-  const [days, setDays] = useState(0);
-
-  useEffect(() => {
-    const targetDate = new Date("2025-01-31T00:00:00Z");
-
-    const calculateDays = () => {
-      const now = new Date();
-      const difference = targetDate.getTime() - now.getTime();
-      return Math.floor(difference / (1000 * 60 * 60 * 24));
-    };
-
-    const timer = setInterval(() => {
-      setDays(calculateDays());
-    }, 1000 * 60 * 60); // Update every hour
-
-    setDays(calculateDays()); // Initial calculation
-
-    return () => clearInterval(timer);
-  }, []);
-
-  return (
-    <Header2 className="flex-wrap gap-4 text-error">
-      V2 goes offline in <span className="tabular-nums">{days}d</span>
-    </Header2>
-  );
-}
-
 export function SideMenu({ user, project, organization, organizations }: SideMenuProps) {
   const borderRef = useRef<HTMLDivElement>(null);
   const [showHeaderDivider, setShowHeaderDivider] = useState(false);
@@ -239,30 +211,6 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
               data-action="organization-settings"
             />
           </div>
-        </div>
-        <div className="m-2">
-          {project.version === "V2" && (
-            <div className="flex flex-col gap-3 rounded border border-error/50 bg-error/5 p-3">
-              <V2Countdown />
-              <Paragraph variant="small/bright">
-                This is a v2 project. V2 will be deprecated on January 31, 2025.{" "}
-                <TextLink
-                  className="text-text-bright underline decoration-text-dimmed underline-offset-2 transition hover:text-text-bright hover:decoration-text-bright"
-                  to="https://trigger.dev/blog/v2-end-of-life-announcement"
-                >
-                  Learn more
-                </TextLink>
-                .
-              </Paragraph>
-              <LinkButton
-                variant="primary/medium"
-                to="https://trigger.dev/docs/v3/upgrading-from-v2"
-                fullWidth
-              >
-                Upgrade to v3
-              </LinkButton>
-            </div>
-          )}
         </div>
         <div className="flex flex-col gap-1 border-t border-grid-bright p-1">
           <HelpAndFeedback />

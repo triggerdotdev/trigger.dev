@@ -94,6 +94,14 @@ await tasks.batchTrigger("my-task", [
 
 ## `idempotencyKeyTTL` option
 
+The `idempotencyKeyTTL` option defines a time window during which a task with the same idempotency key will only run once. Here's how it works:
+
+1. When you trigger a task with an idempotency key and set `idempotencyKeyTTL: "5m"`, it creates a 5-minute window.
+2. During this window, any subsequent triggers with the same idempotency key will return the original task run instead of creating a new one.
+3. Once the TTL window expires, the next trigger with that idempotency key will create a new task run and start a new time window.
+
+![idempotency-key-ttl](/images/idempotency-key-ttl.png)
+
 By default idempotency keys are stored for 30 days. You can change this by passing the `idempotencyKeyTTL` option when triggering a task:
 
 ```ts

@@ -17,6 +17,7 @@ import {
 import { ReactNode, useEffect } from "react";
 import { typedjson, useTypedFetcher } from "remix-typedjson";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
+import { AdminDebugRun } from "~/components/admin/debugRun";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { Feedback } from "~/components/Feedback";
@@ -790,6 +791,7 @@ function RunBody({
             </LinkButton>
           )}
         </div>
+        <AdminDebugRun friendlyId={run.friendlyId} />
         <div className="flex items-center gap-4">
           {run.logsDeletedAt === null ? (
             <LinkButton

@@ -95,6 +95,8 @@ export type EventBuilder = {
   traceId: string;
   spanId: string;
   setAttribute: SetAttribute<TraceAttributes>;
+  stop: () => void;
+  failWithError: (error: TaskRunError) => void;
 };
 
 export type EventRepoConfig = {
@@ -916,6 +918,9 @@ export class EventRepository {
           ]
         : [];
 
+    let isStopped = false;
+    let failedWithError: TaskRunError | undefined;
+
     const eventBuilder = {
       traceId,
       spanId,
@@ -933,9 +938,19 @@ export class EventRepository {
           }
         }
       },
+      stop: () => {
+        isStopped = true;
+      },
+      failWithError: (error: TaskRunError) => {
+        failedWithError = error;
+      },
     };
 
     const result = await callback(eventBuilder, traceContext, propagatedContext?.traceparent);
+
+    if (isStopped) {
+      return result;
+    }
 
     const duration = process.hrtime.bigint() - start;
 
@@ -970,13 +985,14 @@ export class EventRepository {
       parentId,
       tracestate,
       duration: options.incomplete ? 0 : duration,
-      isPartial: options.incomplete,
+      isPartial: failedWithError ? false : options.incomplete,
+      isError: !!failedWithError,
       message: message,
       serviceName: "api server",
       serviceNamespace: "trigger.dev",
       level: "TRACE",
       kind: options.kind,
-      status: "OK",
+      status: failedWithError ? "ERROR" : "OK",
       startTime,
       environmentId: options.environment.id,
       environmentType: options.environment.type,
@@ -1004,6 +1020,17 @@ export class EventRepository {
       payload: options.attributes.payload,
       payloadType: options.attributes.payloadType,
       idempotencyKey: options.attributes.idempotencyKey,
+      events: failedWithError
+        ? [
+            {
+              name: "exception",
+              time: new Date(),
+              properties: {
+                exception: createExceptionPropertiesFromError(failedWithError),
+              },
+            },
+          ]
+        : undefined,
     };
 
     if (options.immediate) {
