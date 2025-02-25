@@ -241,19 +241,16 @@ const zodIpc = new ZodIpcConnection({
       }
 
       try {
-        const perfImportStart = Date.now();
-
-        await import(normalizeImportPath(taskManifest.entryPoint));
-
-        runTimelineMetrics.registerMetric({
-          name: "trigger.dev/start",
-          event: "import",
-          attributes: {
+        await runTimelineMetrics.measureMetric(
+          "trigger.dev/start",
+          "import",
+          {
             entryPoint: taskManifest.entryPoint,
-            duration: Date.now() - perfImportStart,
           },
-          timestamp: perfImportStart,
-        });
+          async () => {
+            await import(normalizeImportPath(taskManifest.entryPoint));
+          }
+        );
       } catch (err) {
         console.error(`Failed to import task ${execution.task.id}`, err);
 

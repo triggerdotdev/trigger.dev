@@ -49,6 +49,7 @@ export const ProdTaskRunExecutionPayload = z.object({
   execution: ProdTaskRunExecution,
   traceContext: z.record(z.unknown()),
   environment: z.record(z.string()).optional(),
+  metrics: TaskRunExecutionMetrics.optional(),
 });
 
 export type ProdTaskRunExecutionPayload = z.infer<typeof ProdTaskRunExecutionPayload>;

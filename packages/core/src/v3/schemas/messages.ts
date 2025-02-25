@@ -53,6 +53,7 @@ export const BackgroundWorkerServerMessages = z.discriminatedUnion("type", [
     orgId: z.string(),
     projectId: z.string(),
     runId: z.string(),
+    dequeuedAt: z.number().optional(),
   }),
   z.object({
     type: z.literal("EXECUTE_RUN_LAZY_ATTEMPT"),
@@ -674,6 +675,7 @@ export const ProdWorkerToCoordinatorMessages = {
       version: z.literal("v1").default("v1"),
       runId: z.string(),
       totalCompletions: z.number(),
+      startTime: z.number().optional(),
     }),
   },
   READY_FOR_RESUME: {

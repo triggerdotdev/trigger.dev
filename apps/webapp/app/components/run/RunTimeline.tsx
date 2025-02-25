@@ -360,6 +360,12 @@ function getFriendlyNameForEvent(event: string): string {
     case "import": {
       return "Imported task file";
     }
+    case "lazy_payload": {
+      return "Lazy attempt initialized";
+    }
+    case "pod_scheduled": {
+      return "Pod scheduled";
+    }
     default: {
       return event;
     }
@@ -378,6 +384,12 @@ function getAdminOnlyForEvent(event: string): boolean {
       return true;
     }
     case "import": {
+      return true;
+    }
+    case "lazy_payload": {
+      return true;
+    }
+    case "pod_scheduled": {
       return true;
     }
     default: {
