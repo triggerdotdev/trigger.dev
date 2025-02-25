@@ -88,6 +88,7 @@ export class SpanPresenter extends BasePresenter {
         //status + duration
         status: true,
         startedAt: true,
+        executedAt: true,
         createdAt: true,
         updatedAt: true,
         queuedAt: true,
@@ -249,6 +250,7 @@ export class SpanPresenter extends BasePresenter {
       status: run.status,
       createdAt: run.createdAt,
       startedAt: run.startedAt,
+      executedAt: run.executedAt,
       updatedAt: run.updatedAt,
       delayUntil: run.delayUntil,
       expiredAt: run.expiredAt,

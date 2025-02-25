@@ -3,6 +3,7 @@ import {
   RunTimelineEvent,
   SpanTimeline,
   SpanTimelineProps,
+  TimelineSpanRun,
 } from "~/components/run/RunTimeline";
 import { Header2 } from "~/components/primitives/Headers";
 
@@ -102,12 +103,50 @@ const spanTimelines = [
   },
 ] satisfies SpanTimelineProps[];
 
+const runTimelines = [
+  {
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    isFinished: false,
+    isError: false,
+  },
+  {
+    createdAt: new Date(Date.now() - 1000 * 60),
+    updatedAt: new Date(),
+    startedAt: new Date(Date.now() - 1000 * 30),
+    executedAt: new Date(Date.now() - 1000 * 20),
+    completedAt: new Date(Date.now() - 1000 * 15),
+    isFinished: true,
+    isError: false,
+  },
+  {
+    createdAt: new Date(Date.now() - 1000 * 60),
+    updatedAt: new Date(),
+    startedAt: new Date(Date.now() - 1000 * 30),
+    completedAt: new Date(Date.now() - 1000 * 15),
+    isFinished: true,
+    isError: false,
+  },
+  {
+    createdAt: new Date(Date.now() - 1000 * 60),
+    updatedAt: new Date(),
+    delayUntil: new Date(Date.now() + 1000 * 60),
+    ttl: "1m",
+    isFinished: false,
+    isError: false,
+  },
+] satisfies TimelineSpanRun[];
+
 export default function Story() {
   return (
     <div className="flex flex-col items-start gap-y-4 p-4">
       <Header2>Span Timeline</Header2>
       {spanTimelines.map((props, index) => (
         <SpanTimeline key={index} {...props} />
+      ))}
+      <Header2>Run Timeline</Header2>
+      {runTimelines.map((run, index) => (
+        <RunTimeline key={index} run={run} />
       ))}
     </div>
   );

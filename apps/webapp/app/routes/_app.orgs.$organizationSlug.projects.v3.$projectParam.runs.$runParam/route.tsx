@@ -762,9 +762,6 @@ function TimelineView({
     return () => clearInterval(interval);
   }, [totalDuration, rootSpanStatus]);
 
-  console.log("nodes", nodes);
-  console.log("events", events);
-
   return (
     <div
       className="h-full overflow-x-auto overflow-y-hidden scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
