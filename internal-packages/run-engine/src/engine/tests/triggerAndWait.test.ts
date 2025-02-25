@@ -373,6 +373,7 @@ describe("RunEngine triggerAndWait", () => {
           waitpoints: childRunWithWaitpoint.associatedWaitpoint!.id,
           environmentId: authenticatedEnvironment.id,
           projectId: authenticatedEnvironment.project.id,
+          organizationId: authenticatedEnvironment.organizationId,
           tx: prisma,
         });
         expect(blockedResult.executionStatus).toBe("EXECUTING_WITH_WAITPOINTS");

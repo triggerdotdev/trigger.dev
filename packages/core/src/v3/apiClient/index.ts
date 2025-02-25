@@ -32,6 +32,8 @@ import {
   UpdateMetadataRequestBody,
   UpdateMetadataResponseBody,
   UpdateScheduleOptions,
+  WaitForDurationRequestBody,
+  WaitForDurationResponseBody,
   WaitForWaitpointTokenRequestBody,
   WaitForWaitpointTokenResponseBody,
 } from "../schemas/index.js";
@@ -654,7 +656,7 @@ export class ApiClient {
     );
   }
 
-  completeResumeToken(
+  completeWaitpointToken(
     friendlyId: string,
     options: CompleteWaitpointTokenRequestBody,
     requestOptions?: ZodFetchOptions
@@ -679,11 +681,28 @@ export class ApiClient {
   ) {
     return zodfetch(
       WaitForWaitpointTokenResponseBody,
-      `${this.baseUrl}/api/v1/runs/${runFriendlyId}/waitpoints/tokens/${waitpointFriendlyId}/wait`,
+      `${this.baseUrl}/engine/v1/runs/${runFriendlyId}/waitpoints/tokens/${waitpointFriendlyId}/wait`,
       {
         method: "POST",
         headers: this.#getHeaders(false),
         body: JSON.stringify(options ?? {}),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  async waitForDuration(
+    runId: string,
+    body: WaitForDurationRequestBody,
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      WaitForDurationResponseBody,
+      `${this.baseUrl}/engine/v1/runs/${runId}/wait/duration`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body),
       },
       mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );

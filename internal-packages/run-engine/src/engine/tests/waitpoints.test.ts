@@ -90,28 +90,38 @@ describe("RunEngine Waitpoints", () => {
 
       //waitForDuration
       const date = new Date(Date.now() + durationMs);
-      const result = await engine.waitForDuration({
-        runId: run.id,
-        snapshotId: attemptResult.snapshot.id,
-        date,
-        releaseConcurrency: false,
+      const { waitpoint } = await engine.createDateTimeWaitpoint({
+        projectId: authenticatedEnvironment.project.id,
+        environmentId: authenticatedEnvironment.id,
+        completedAfter: date,
       });
-      expect(result.waitUntil.toISOString()).toBe(date.toISOString());
-      expect(result.snapshot.executionStatus).toBe("EXECUTING_WITH_WAITPOINTS");
-      expect(result.run.status).toBe("EXECUTING");
+      expect(waitpoint.completedAfter!.toISOString()).toBe(date.toISOString());
+
+      const result = await engine.blockRunWithWaitpoint({
+        runId: run.id,
+        waitpoints: [waitpoint.id],
+        environmentId: authenticatedEnvironment.id,
+        projectId: authenticatedEnvironment.project.id,
+        organizationId: authenticatedEnvironment.organization.id,
+        releaseConcurrency: {
+          releaseQueue: true,
+        },
+      });
+      expect(result.executionStatus).toBe("EXECUTING_WITH_WAITPOINTS");
+      expect(result.runStatus).toBe("EXECUTING");
 
       const executionData = await engine.getRunExecutionData({ runId: run.id });
       expect(executionData?.snapshot.executionStatus).toBe("EXECUTING_WITH_WAITPOINTS");
 
       await setTimeout(2_000);
 
-      const waitpoint = await prisma.waitpoint.findFirst({
+      const waitpoint2 = await prisma.waitpoint.findFirst({
         where: {
-          id: result.waitpoint.id,
+          id: waitpoint.id,
         },
       });
-      expect(waitpoint?.status).toBe("COMPLETED");
-      expect(waitpoint?.completedAt?.getTime()).toBeLessThanOrEqual(date.getTime() + 200);
+      expect(waitpoint2?.status).toBe("COMPLETED");
+      expect(waitpoint2?.completedAt?.getTime()).toBeLessThanOrEqual(date.getTime() + 200);
 
       const executionDataAfter = await engine.getRunExecutionData({ runId: run.id });
       expect(executionDataAfter?.snapshot.executionStatus).toBe("EXECUTING");
@@ -199,11 +209,19 @@ describe("RunEngine Waitpoints", () => {
 
         //waitForDuration
         const date = new Date(Date.now() + 60_000);
-        const result = await engine.waitForDuration({
+        const { waitpoint } = await engine.createDateTimeWaitpoint({
+          projectId: authenticatedEnvironment.project.id,
+          environmentId: authenticatedEnvironment.id,
+          completedAfter: date,
+        });
+        expect(waitpoint.completedAfter!.toISOString()).toBe(date.toISOString());
+
+        const result = await engine.blockRunWithWaitpoint({
           runId: run.id,
-          snapshotId: attemptResult.snapshot.id,
-          date,
-          releaseConcurrency: false,
+          waitpoints: [waitpoint.id],
+          environmentId: authenticatedEnvironment.id,
+          projectId: authenticatedEnvironment.project.id,
+          organizationId: authenticatedEnvironment.organization.id,
         });
 
         const executionData = await engine.getRunExecutionData({ runId: run.id });
@@ -335,18 +353,19 @@ describe("RunEngine Waitpoints", () => {
         expect(attemptResult.snapshot.executionStatus).toBe("EXECUTING");
 
         //create a manual waitpoint
-        const waitpoint = await engine.createManualWaitpoint({
+        const result = await engine.createManualWaitpoint({
           environmentId: authenticatedEnvironment.id,
           projectId: authenticatedEnvironment.projectId,
         });
-        expect(waitpoint.status).toBe("PENDING");
+        expect(result.waitpoint.status).toBe("PENDING");
 
         //block the run
         await engine.blockRunWithWaitpoint({
           runId: run.id,
-          waitpoints: waitpoint.id,
+          waitpoints: result.waitpoint.id,
           environmentId: authenticatedEnvironment.id,
           projectId: authenticatedEnvironment.projectId,
+          organizationId: authenticatedEnvironment.organizationId,
         });
 
         const executionData = await engine.getRunExecutionData({ runId: run.id });
@@ -361,7 +380,7 @@ describe("RunEngine Waitpoints", () => {
             waitpoint: true,
           },
         });
-        expect(runWaitpointBefore?.waitpointId).toBe(waitpoint.id);
+        expect(runWaitpointBefore?.waitpointId).toBe(result.waitpoint.id);
 
         let event: EventBusEventArgs<"workerNotification">[0] | undefined = undefined;
         engine.eventBus.on("workerNotification", (result) => {
@@ -370,7 +389,7 @@ describe("RunEngine Waitpoints", () => {
 
         //complete the waitpoint
         await engine.completeWaitpoint({
-          id: waitpoint.id,
+          id: result.waitpoint.id,
         });
 
         await setTimeout(200);
@@ -476,7 +495,7 @@ describe("RunEngine Waitpoints", () => {
         expect(attemptResult.snapshot.executionStatus).toBe("EXECUTING");
 
         //create a manual waitpoint
-        const waitpoint = await engine.createManualWaitpoint({
+        const result = await engine.createManualWaitpoint({
           environmentId: authenticatedEnvironment.id,
           projectId: authenticatedEnvironment.projectId,
         });
@@ -484,9 +503,10 @@ describe("RunEngine Waitpoints", () => {
         //block the run
         await engine.blockRunWithWaitpoint({
           runId: run.id,
-          waitpoints: waitpoint.id,
+          waitpoints: result.waitpoint.id,
           environmentId: authenticatedEnvironment.id,
           projectId: authenticatedEnvironment.projectId,
+          organizationId: authenticatedEnvironment.organizationId,
           //fail after 200ms
           failAfter: new Date(Date.now() + 200),
         });
@@ -600,7 +620,7 @@ describe("RunEngine Waitpoints", () => {
           const waitpointCount = 5;
 
           //create waitpoints
-          const waitpoints = await Promise.all(
+          const results = await Promise.all(
             Array.from({ length: waitpointCount }).map(() =>
               engine.createManualWaitpoint({
                 environmentId: authenticatedEnvironment.id,
@@ -611,12 +631,13 @@ describe("RunEngine Waitpoints", () => {
 
           //block the run with them
           await Promise.all(
-            waitpoints.map((waitpoint) =>
+            results.map((result) =>
               engine.blockRunWithWaitpoint({
                 runId: run.id,
-                waitpoints: waitpoint.id,
+                waitpoints: result.waitpoint.id,
                 environmentId: authenticatedEnvironment.id,
                 projectId: authenticatedEnvironment.projectId,
+                organizationId: authenticatedEnvironment.organizationId,
               })
             )
           );
@@ -637,9 +658,9 @@ describe("RunEngine Waitpoints", () => {
 
           //complete the waitpoints
           await Promise.all(
-            waitpoints.map((waitpoint) =>
+            results.map((result) =>
               engine.completeWaitpoint({
-                id: waitpoint.id,
+                id: result.waitpoint.id,
               })
             )
           );
@@ -746,20 +767,21 @@ describe("RunEngine Waitpoints", () => {
 
         //create a manual waitpoint with timeout
         const timeout = new Date(Date.now() + 1_000);
-        const waitpoint = await engine.createManualWaitpoint({
+        const result = await engine.createManualWaitpoint({
           environmentId: authenticatedEnvironment.id,
           projectId: authenticatedEnvironment.projectId,
           timeout,
         });
-        expect(waitpoint.status).toBe("PENDING");
-        expect(waitpoint.completedAfter).toStrictEqual(timeout);
+        expect(result.waitpoint.status).toBe("PENDING");
+        expect(result.waitpoint.completedAfter).toStrictEqual(timeout);
 
         //block the run
         await engine.blockRunWithWaitpoint({
           runId: run.id,
-          waitpoints: waitpoint.id,
+          waitpoints: result.waitpoint.id,
           environmentId: authenticatedEnvironment.id,
           projectId: authenticatedEnvironment.projectId,
+          organizationId: authenticatedEnvironment.organizationId,
         });
 
         const executionData = await engine.getRunExecutionData({ runId: run.id });
@@ -774,7 +796,7 @@ describe("RunEngine Waitpoints", () => {
             waitpoint: true,
           },
         });
-        expect(runWaitpointBefore?.waitpointId).toBe(waitpoint.id);
+        expect(runWaitpointBefore?.waitpointId).toBe(result.waitpoint.id);
 
         let event: EventBusEventArgs<"workerNotification">[0] | undefined = undefined;
         engine.eventBus.on("workerNotification", (result) => {
@@ -803,7 +825,7 @@ describe("RunEngine Waitpoints", () => {
 
         const waitpoint2 = await prisma.waitpoint.findUnique({
           where: {
-            id: waitpoint.id,
+            id: result.waitpoint.id,
           },
         });
         assertNonNullable(waitpoint2);
@@ -898,21 +920,22 @@ describe("RunEngine Waitpoints", () => {
         const idempotencyKey = "a-key";
 
         //create a manual waitpoint with timeout
-        const waitpoint = await engine.createManualWaitpoint({
+        const result = await engine.createManualWaitpoint({
           environmentId: authenticatedEnvironment.id,
           projectId: authenticatedEnvironment.projectId,
           idempotencyKey,
         });
-        expect(waitpoint.status).toBe("PENDING");
-        expect(waitpoint.idempotencyKey).toBe(idempotencyKey);
-        expect(waitpoint.userProvidedIdempotencyKey).toBe(true);
+        expect(result.waitpoint.status).toBe("PENDING");
+        expect(result.waitpoint.idempotencyKey).toBe(idempotencyKey);
+        expect(result.waitpoint.userProvidedIdempotencyKey).toBe(true);
 
         //block the run
         await engine.blockRunWithWaitpoint({
           runId: run.id,
-          waitpoints: waitpoint.id,
+          waitpoints: result.waitpoint.id,
           environmentId: authenticatedEnvironment.id,
           projectId: authenticatedEnvironment.projectId,
+          organizationId: authenticatedEnvironment.organizationId,
         });
 
         const executionData = await engine.getRunExecutionData({ runId: run.id });
@@ -927,7 +950,7 @@ describe("RunEngine Waitpoints", () => {
             waitpoint: true,
           },
         });
-        expect(runWaitpointBefore?.waitpointId).toBe(waitpoint.id);
+        expect(runWaitpointBefore?.waitpointId).toBe(result.waitpoint.id);
 
         let event: EventBusEventArgs<"workerNotification">[0] | undefined = undefined;
         engine.eventBus.on("workerNotification", (result) => {
@@ -936,7 +959,7 @@ describe("RunEngine Waitpoints", () => {
 
         //complete the waitpoint
         await engine.completeWaitpoint({
-          id: waitpoint.id,
+          id: result.waitpoint.id,
         });
 
         await setTimeout(200);
@@ -961,7 +984,7 @@ describe("RunEngine Waitpoints", () => {
 
         const waitpoint2 = await prisma.waitpoint.findUnique({
           where: {
-            id: waitpoint.id,
+            id: result.waitpoint.id,
           },
         });
         assertNonNullable(waitpoint2);
@@ -1053,30 +1076,31 @@ describe("RunEngine Waitpoints", () => {
         const idempotencyKey = "a-key";
 
         //create a manual waitpoint with timeout
-        const waitpoint = await engine.createManualWaitpoint({
+        const result = await engine.createManualWaitpoint({
           environmentId: authenticatedEnvironment.id,
           projectId: authenticatedEnvironment.projectId,
           idempotencyKey,
           idempotencyKeyExpiresAt: new Date(Date.now() + 200),
         });
-        expect(waitpoint.status).toBe("PENDING");
-        expect(waitpoint.idempotencyKey).toBe(idempotencyKey);
-        expect(waitpoint.userProvidedIdempotencyKey).toBe(true);
+        expect(result.waitpoint.status).toBe("PENDING");
+        expect(result.waitpoint.idempotencyKey).toBe(idempotencyKey);
+        expect(result.waitpoint.userProvidedIdempotencyKey).toBe(true);
 
-        const sameWaitpoint = await engine.createManualWaitpoint({
+        const sameWaitpointResult = await engine.createManualWaitpoint({
           environmentId: authenticatedEnvironment.id,
           projectId: authenticatedEnvironment.projectId,
           idempotencyKey,
           idempotencyKeyExpiresAt: new Date(Date.now() + 200),
         });
-        expect(sameWaitpoint.id).toBe(waitpoint.id);
+        expect(sameWaitpointResult.waitpoint.id).toBe(result.waitpoint.id);
 
         //block the run
         await engine.blockRunWithWaitpoint({
           runId: run.id,
-          waitpoints: waitpoint.id,
+          waitpoints: result.waitpoint.id,
           environmentId: authenticatedEnvironment.id,
           projectId: authenticatedEnvironment.projectId,
+          organizationId: authenticatedEnvironment.organizationId,
         });
 
         const executionData = await engine.getRunExecutionData({ runId: run.id });
@@ -1091,7 +1115,7 @@ describe("RunEngine Waitpoints", () => {
             waitpoint: true,
           },
         });
-        expect(runWaitpointBefore?.waitpointId).toBe(waitpoint.id);
+        expect(runWaitpointBefore?.waitpointId).toBe(result.waitpoint.id);
 
         let event: EventBusEventArgs<"workerNotification">[0] | undefined = undefined;
         engine.eventBus.on("workerNotification", (result) => {
@@ -1100,7 +1124,7 @@ describe("RunEngine Waitpoints", () => {
 
         //complete the waitpoint
         await engine.completeWaitpoint({
-          id: waitpoint.id,
+          id: result.waitpoint.id,
         });
 
         await setTimeout(200);
@@ -1125,7 +1149,7 @@ describe("RunEngine Waitpoints", () => {
 
         const waitpoint2 = await prisma.waitpoint.findUnique({
           where: {
-            id: waitpoint.id,
+            id: result.waitpoint.id,
           },
         });
         assertNonNullable(waitpoint2);

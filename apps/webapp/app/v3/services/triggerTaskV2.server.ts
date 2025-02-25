@@ -160,6 +160,7 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
                     : undefined,
                   environmentId: environment.id,
                   projectId: environment.projectId,
+                  organizationId: environment.organizationId,
                   tx: this._prisma,
                 });
               }
