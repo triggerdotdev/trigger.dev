@@ -1136,18 +1136,25 @@ function SpanEntity({ span }: { span: Span }) {
                 </div>
               </Property.Value>
             </Property.Item>
+            {span.waitpoint.status === "PENDING" ? (
+              <CompleteWaitpointForm waitpoint={span.waitpoint} />
+            ) : span.waitpoint.output ? (
+              <PacketDisplay
+                title="Output"
+                data={span.waitpoint.output}
+                dataType={span.waitpoint.outputType}
+              />
+            ) : span.waitpoint.completedAfter ? (
+              <Property.Item>
+                <Property.Label>Completed at</Property.Label>
+                <Property.Value>
+                  <DateTimeAccurate date={span.waitpoint.completedAfter} />
+                </Property.Value>
+              </Property.Item>
+            ) : (
+              "Completed with no output"
+            )}
           </Property.Table>
-          {span.waitpoint.status === "PENDING" ? (
-            <CompleteWaitpointForm waitpoint={span.waitpoint} />
-          ) : span.waitpoint.output ? (
-            <PacketDisplay
-              title="Output"
-              data={span.waitpoint.output}
-              dataType={span.waitpoint.outputType}
-            />
-          ) : (
-            "No output"
-          )}
         </>
       );
     }
