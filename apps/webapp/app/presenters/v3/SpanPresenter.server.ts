@@ -447,6 +447,7 @@ export class SpanPresenter extends BasePresenter {
             output: true,
             outputType: true,
             outputIsError: true,
+            completedAfter: true,
           },
         });
 
