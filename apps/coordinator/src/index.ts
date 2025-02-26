@@ -410,6 +410,7 @@ class TaskCoordinator {
           setSocketDataFromHeader("runId", "x-trigger-run-id");
           setSocketDataFromHeader("attemptFriendlyId", "x-trigger-attempt-friendly-id", false);
           setSocketDataFromHeader("attemptNumber", "x-trigger-attempt-number", false);
+          setSocketDataFromHeader("env", "x-trigger-env");
           setSocketDataFromHeader("envId", "x-trigger-env-id");
           setSocketDataFromHeader("deploymentId", "x-trigger-deployment-id");
           setSocketDataFromHeader("deploymentVersion", "x-trigger-deployment-version");

@@ -202,6 +202,10 @@ class KubernetesTaskOperations implements TaskOperations {
                   name: "TRIGGER_RUN_ID",
                   value: opts.runId,
                 },
+                {
+                  name: "TRIGGER_ENV",
+                  value: opts.envType,
+                },
               ],
               volumeMounts: [
                 {

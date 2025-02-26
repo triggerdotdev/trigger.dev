@@ -55,6 +55,7 @@ cliLogger.debug("Starting prod worker", {
 class ProdWorker {
   private contentHash = env.TRIGGER_CONTENT_HASH!;
   private projectRef = env.TRIGGER_PROJECT_REF!;
+  private env = env.TRIGGER_ENV!;
   private envId = env.TRIGGER_ENV_ID!;
   private runId = env.TRIGGER_RUN_ID!;
   private deploymentId = env.TRIGGER_DEPLOYMENT_ID!;
@@ -661,6 +662,7 @@ class ProdWorker {
       "x-trigger-content-hash": this.contentHash,
       "x-trigger-project-ref": this.projectRef,
       "x-trigger-env-id": this.envId,
+      "x-trigger-env": this.env,
       "x-trigger-deployment-id": this.deploymentId,
       "x-trigger-run-id": this.runId,
       "x-trigger-deployment-version": this.deploymentVersion,

@@ -118,6 +118,7 @@ class DockerTaskOperations implements TaskOperations {
       "--detach",
       `--env=TRIGGER_ENV_ID=${opts.envId}`,
       `--env=TRIGGER_RUN_ID=${opts.runId}`,
+      `--env=TRIGGER_ENV=${opts.envType}`,
       `--env=OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT}`,
       `--env=POD_NAME=${containerName}`,
       `--env=COORDINATOR_HOST=${COORDINATOR_HOST}`,
