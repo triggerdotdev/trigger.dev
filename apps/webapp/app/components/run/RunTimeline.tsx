@@ -32,7 +32,7 @@ export type TimelineEventDefinition = {
   title: string;
   date?: Date;
   previousDate: Date | undefined;
-  state: TimelineEventState;
+  state?: TimelineEventState;
   shouldRender: boolean;
   variant: TimelineEventVariant;
 };
@@ -41,7 +41,7 @@ export type TimelineLineDefinition = {
   type: "line";
   id: string;
   title: React.ReactNode;
-  state: TimelineEventState;
+  state?: TimelineEventState;
   shouldRender: boolean;
   variant: TimelineLineVariant;
 };
@@ -91,10 +91,18 @@ export function RunTimeline({ run }: { run: TimelineSpanRun }) {
                 ) : null
               }
               state={item.state as "complete" | "error"}
+              variant={item.variant}
             />
           );
         } else {
-          return <RunTimelineLine key={item.id} title={item.title} state={item.state} />;
+          return (
+            <RunTimelineLine
+              key={item.id}
+              title={item.title}
+              state={item.state}
+              variant={item.variant}
+            />
+          );
         }
       })}
     </div>
@@ -103,6 +111,7 @@ export function RunTimeline({ run }: { run: TimelineSpanRun }) {
 
 // Centralized function to build all timeline items
 function buildTimelineItems(run: TimelineSpanRun): TimelineItem[] {
+  const state = run.isError ? "error" : run.isFinished ? "complete" : "inprogress";
   const items: TimelineItem[] = [];
 
   // 1. Triggered Event
@@ -112,7 +121,7 @@ function buildTimelineItems(run: TimelineSpanRun): TimelineItem[] {
     title: "Triggered",
     date: run.createdAt,
     previousDate: undefined,
-    state: "complete",
+    state,
     shouldRender: true,
     variant: "start-cap",
   });
@@ -131,7 +140,7 @@ function buildTimelineItems(run: TimelineSpanRun): TimelineItem[] {
           </span>
         </span>
       ),
-      state: "delayed",
+      state,
       shouldRender: true,
       variant: "light",
     });
@@ -141,7 +150,7 @@ function buildTimelineItems(run: TimelineSpanRun): TimelineItem[] {
       type: "line",
       id: "waiting-to-dequeue",
       title: formatDuration(run.createdAt, run.startedAt),
-      state: "complete",
+      state,
       shouldRender: true,
       variant: "light",
     });
@@ -151,7 +160,7 @@ function buildTimelineItems(run: TimelineSpanRun): TimelineItem[] {
       type: "line",
       id: "waiting-to-dequeue",
       title: formatDuration(run.createdAt, run.expiredAt),
-      state: "complete",
+      state,
       shouldRender: true,
       variant: "light",
     });
@@ -169,7 +178,7 @@ function buildTimelineItems(run: TimelineSpanRun): TimelineItem[] {
           {run.ttl && <>(TTL {run.ttl})</>}
         </>
       ),
-      state: "inprogress",
+      state,
       shouldRender: true,
       variant: "light",
     });
@@ -183,7 +192,7 @@ function buildTimelineItems(run: TimelineSpanRun): TimelineItem[] {
       title: "Dequeued",
       date: run.startedAt,
       previousDate: run.createdAt,
-      state: "complete",
+      state,
       shouldRender: true,
       variant: "dot-hollow",
     });
@@ -199,7 +208,7 @@ function buildTimelineItems(run: TimelineSpanRun): TimelineItem[] {
         type: "line",
         id: "waiting-to-execute",
         title: formatDuration(run.startedAt, run.executedAt),
-        state: "complete",
+        state,
         shouldRender: true,
         variant: "light",
       });
@@ -211,7 +220,7 @@ function buildTimelineItems(run: TimelineSpanRun): TimelineItem[] {
         title: "Started",
         date: run.executedAt,
         previousDate: run.startedAt,
-        state: "complete",
+        state,
         shouldRender: true,
         variant: "start-cap-thick",
       });
@@ -222,7 +231,7 @@ function buildTimelineItems(run: TimelineSpanRun): TimelineItem[] {
           type: "line",
           id: "executing",
           title: formatDuration(run.executedAt, run.updatedAt),
-          state: "complete",
+          state,
           shouldRender: true,
           variant: "normal",
         });
@@ -238,7 +247,7 @@ function buildTimelineItems(run: TimelineSpanRun): TimelineItem[] {
               </span>
             </span>
           ),
-          state: "inprogress",
+          state,
           shouldRender: true,
           variant: "normal",
         });
@@ -252,7 +261,7 @@ function buildTimelineItems(run: TimelineSpanRun): TimelineItem[] {
           type: "line",
           id: "legacy-executing",
           title: formatDuration(run.startedAt, run.updatedAt),
-          state: "complete",
+          state,
           shouldRender: true,
           variant: "normal",
         });
@@ -269,7 +278,7 @@ function buildTimelineItems(run: TimelineSpanRun): TimelineItem[] {
               </span>
             </span>
           ),
-          state: "inprogress",
+          state,
           shouldRender: true,
           variant: "normal",
         });
@@ -285,9 +294,9 @@ function buildTimelineItems(run: TimelineSpanRun): TimelineItem[] {
       title: "Finished",
       date: run.updatedAt,
       previousDate: run.executedAt ?? run.startedAt ?? undefined,
-      state: run.isError ? "error" : "complete",
+      state,
       shouldRender: true,
-      variant: "dot-solid",
+      variant: "end-cap-thick",
     });
   }
 
@@ -311,7 +320,7 @@ function buildTimelineItems(run: TimelineSpanRun): TimelineItem[] {
 export type RunTimelineEventProps = {
   title: ReactNode;
   subtitle?: ReactNode;
-  state: "complete" | "error";
+  state?: "complete" | "error" | "inprogress";
   variant?: TimelineEventVariant;
 };
 
@@ -341,7 +350,7 @@ function EventMarker({
   state,
 }: {
   variant: TimelineEventVariant;
-  state: TimelineEventState;
+  state?: TimelineEventState;
 }) {
   switch (variant) {
     case "start-cap":
@@ -354,6 +363,8 @@ function EventMarker({
                 ? "border-success"
                 : state === "error"
                 ? "border-error"
+                : state === "inprogress"
+                ? "border-pending"
                 : "border-text-dimmed"
             )}
           />
@@ -364,8 +375,19 @@ function EventMarker({
                 ? "bg-success"
                 : state === "error"
                 ? "bg-error"
+                : state === "inprogress"
+                ? "animate-tile-scroll bg-pending"
                 : "bg-text-dimmed"
             )}
+            style={
+              state === "inprogress"
+                ? {
+                    height: "100%",
+                    backgroundImage: `url(${tileBgPath})`,
+                    backgroundSize: "8px 8px",
+                  }
+                : undefined
+            }
           />
         </>
       );
@@ -409,7 +431,7 @@ function EventMarker({
         <div
           className={cn(
             "size-[0.3125rem] rounded-full",
-            state === "complete" ? "bg-success" : "bg-error"
+            state === "complete" ? "bg-success" : state === "error" ? "bg-error" : "bg-text-dimmed"
           )}
         />
       );
@@ -417,17 +439,33 @@ function EventMarker({
       return (
         <div
           className={cn(
-            "h-full w-[0.4375rem] rounded-t-sm",
-            state === "complete" ? "bg-success" : "bg-error"
+            "h-full w-[0.4375rem] rounded-t-[0.125rem]",
+            state === "complete"
+              ? "bg-success"
+              : state === "error"
+              ? "bg-error"
+              : state === "inprogress"
+              ? "animate-tile-move-offset bg-pending"
+              : "bg-text-dimmed"
           )}
+          style={
+            state === "inprogress"
+              ? {
+                  height: "100%",
+                  backgroundImage: `url(${tileBgPath})`,
+                  backgroundSize: "8px 8px",
+                  // backgroundPosition: "0px 2px",
+                }
+              : undefined
+          }
         />
       );
     case "end-cap-thick":
       return (
         <div
           className={cn(
-            "h-full w-[0.4375rem] rounded-b-sm",
-            state === "complete" ? "bg-success" : "bg-gradient-to-b from-success via-error to-error"
+            "h-full w-[0.4375rem] rounded-b-[0.125rem]",
+            state === "complete" ? "bg-success" : state === "error" ? "bg-error" : "bg-text-dimmed"
           )}
         />
       );
@@ -438,7 +476,7 @@ function EventMarker({
 
 export type RunTimelineLineProps = {
   title: ReactNode;
-  state: TimelineEventState;
+  state?: TimelineEventState;
   variant?: TimelineLineVariant;
 };
 
@@ -446,16 +484,37 @@ export function RunTimelineLine({ title, state, variant = "normal" }: RunTimelin
   return (
     <div className="grid h-6 grid-cols-[1.125rem_1fr] gap-1 text-xs">
       <div className="flex items-stretch justify-center">
+        <LineMarker state={state} variant={variant} />
+      </div>
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-text-dimmed">{title}</span>
+      </div>
+    </div>
+  );
+}
+
+function LineMarker({
+  state,
+  variant,
+}: {
+  state?: TimelineEventState;
+  variant: TimelineLineVariant;
+}) {
+  switch (variant) {
+    case "normal":
+      return (
         <div
           className={cn(
-            "w-px rounded-[2px]",
+            "w-[0.4375rem]",
             state === "complete"
-              ? "w-[7px] bg-success"
+              ? "bg-success"
+              : state === "error"
+              ? "bg-error"
               : state === "delayed"
               ? "bg-text-dimmed"
-              : "",
-            // id === "waiting-to-dequeue" && "w-[17px] bg-text-dimmed",
-            state === "inprogress" && "animate-tile-scroll bg-pending"
+              : state === "inprogress"
+              ? "animate-tile-scroll rounded-b-[0.125rem] bg-pending"
+              : "bg-text-dimmed"
           )}
           style={
             state === "inprogress"
@@ -467,12 +526,36 @@ export function RunTimelineLine({ title, state, variant = "normal" }: RunTimelin
               : undefined
           }
         />
-      </div>
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-text-dimmed">{title}</span>
-      </div>
-    </div>
-  );
+      );
+    case "light":
+      return (
+        <div
+          className={cn(
+            "w-px",
+            state === "complete"
+              ? "bg-success"
+              : state === "error"
+              ? "bg-error"
+              : state === "delayed"
+              ? "bg-text-dimmed"
+              : state === "inprogress"
+              ? "animate-tile-scroll bg-pending"
+              : "bg-text-dimmed"
+          )}
+          style={
+            state === "inprogress"
+              ? {
+                  height: "100%",
+                  backgroundImage: `url(${tileBgPath})`,
+                  backgroundSize: "8px 8px",
+                }
+              : undefined
+          }
+        />
+      );
+    default:
+      return <div className="w-px rounded-[0.125rem] bg-text-dimmed" />;
+  }
 }
 
 export type SpanTimelineProps = {
@@ -494,7 +577,7 @@ export function SpanTimeline({
   events,
   showAdminOnlyEvents,
 }: SpanTimelineProps) {
-  const state = isError ? "error" : inProgress ? "pending" : "complete";
+  const state = isError ? "error" : inProgress ? "inprogress" : undefined;
 
   // Filter events if needed
   const visibleEvents = events?.filter((event) => !event.adminOnly || showAdminOnlyEvents) ?? [];
@@ -511,8 +594,8 @@ export function SpanTimeline({
               <RunTimelineEvent
                 title={event.name}
                 subtitle={<DateTimeAccurate date={event.timestamp} previousDate={prevDate} />}
-                state={"complete"}
-                variant={event.variant}
+                variant={event.markerVariant}
+                state={state}
               />
               <RunTimelineLine
                 title={
@@ -522,7 +605,8 @@ export function SpanTimeline({
                     : // Calculate duration until next event
                       formatDuration(event.timestamp, visibleEvents[index + 1].timestamp)
                 }
-                state={"complete"}
+                variant={event.lineVariant}
+                state={state}
               />
             </Fragment>
           );
@@ -537,21 +621,14 @@ export function SpanTimeline({
               }
             />
           }
-          state="complete"
           variant={"start-cap-thick"}
+          state={state}
         />
-        {state === "pending" ? (
+        {state === "inprogress" ? (
           <RunTimelineLine
-            title={
-              <span className="flex items-center gap-1">
-                <Spinner className="size-4" />
-                <span>
-                  <LiveTimer startTime={startTime} />
-                </span>
-              </span>
-            }
-            state={"inprogress"}
-            variant={visibleEvents.length > 0 ? "normal" : "light"}
+            title={<LiveTimer startTime={startTime} />}
+            state={state}
+            variant={visibleEvents.length > 0 ? "light" : "normal"}
           />
         ) : (
           <>
@@ -560,8 +637,7 @@ export function SpanTimeline({
                 startTime,
                 new Date(startTime.getTime() + nanosecondsToMilliseconds(duration))
               )}
-              state={"complete"}
-              variant={visibleEvents.length > 0 ? "normal" : "light"}
+              variant="normal"
             />
             <RunTimelineEvent
               title="Finished"
@@ -571,8 +647,8 @@ export function SpanTimeline({
                   previousDate={startTime}
                 />
               }
-              state={isError ? "error" : "complete"}
-              variant={"end-cap-thick"}
+              state={isError ? "error" : undefined}
+              variant="end-cap-thick"
             />
           </>
         )}
@@ -588,7 +664,8 @@ export type TimelineSpanEvent = {
   duration?: number;
   helpText?: string;
   adminOnly: boolean;
-  variant: TimelineEventVariant;
+  markerVariant: TimelineEventVariant;
+  lineVariant: TimelineLineVariant;
 };
 
 export function createTimelineSpanEventsFromSpanEvents(
@@ -642,12 +719,12 @@ export function createTimelineSpanEventsFromSpanEvents(
         ? spanEvent.properties.event
         : spanEvent.name;
 
-    let variant: TimelineEventVariant = "dot-hollow";
+    let markerVariant: TimelineEventVariant = "dot-hollow";
 
     if (index === 0) {
-      variant = "start-cap";
+      markerVariant = "start-cap";
     } else if (index === matchingSpanEvents.length - 1) {
-      variant = "end-cap-thick";
+      markerVariant = "end-cap-thick";
     }
 
     return {
@@ -658,7 +735,8 @@ export function createTimelineSpanEventsFromSpanEvents(
       properties: spanEvent.properties,
       adminOnly: getAdminOnlyForEvent(name),
       helpText: getHelpTextForEvent(name),
-      variant,
+      markerVariant,
+      lineVariant: "light" as const,
     };
   });
 
