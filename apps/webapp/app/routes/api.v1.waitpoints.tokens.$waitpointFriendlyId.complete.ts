@@ -8,6 +8,7 @@ import {
 import { WaitpointId } from "@trigger.dev/core/v3/apps";
 import { z } from "zod";
 import { $replica } from "~/db.server";
+import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { engine } from "~/v3/runEngine.server";
@@ -18,7 +19,7 @@ const { action } = createActionApiRoute(
       waitpointFriendlyId: z.string(),
     }),
     body: CompleteWaitpointTokenRequestBody,
-    maxContentLength: 1024 * 10, // 10KB
+    maxContentLength: env.TASK_PAYLOAD_MAXIMUM_SIZE,
     method: "POST",
   },
   async ({ authentication, body, params }) => {
@@ -26,12 +27,6 @@ const { action } = createActionApiRoute(
     const waitpointId = WaitpointId.toId(params.waitpointFriendlyId);
 
     try {
-      const stringifiedData = await stringifyIO(body.data);
-      const finalData = await conditionallyExportPacket(
-        stringifiedData,
-        `${waitpointId}/waitpoint/token`
-      );
-
       //check permissions
       const waitpoint = await $replica.waitpoint.findFirst({
         where: {
@@ -43,6 +38,12 @@ const { action } = createActionApiRoute(
       if (!waitpoint) {
         throw json({ error: "Waitpoint not found" }, { status: 404 });
       }
+
+      const stringifiedData = await stringifyIO(body.data);
+      const finalData = await conditionallyExportPacket(
+        stringifiedData,
+        `${waitpointId}/waitpoint/token`
+      );
 
       const result = await engine.completeWaitpoint({
         id: waitpointId,

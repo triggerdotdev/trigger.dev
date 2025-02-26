@@ -2,9 +2,9 @@ import { parse } from "@conform-to/zod";
 import { InformationCircleIcon } from "@heroicons/react/20/solid";
 import { Form, useLocation, useNavigation, useSubmit } from "@remix-run/react";
 import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
+import { conditionallyExportPacket, stringifyIO } from "@trigger.dev/core/v3";
 import { WaitpointId } from "@trigger.dev/core/v3/apps";
 import { Waitpoint } from "@trigger.dev/database";
-import { motion } from "framer-motion";
 import { useCallback, useRef } from "react";
 import { z } from "zod";
 import { AnimatedHourglassIcon } from "~/assets/icons/AnimatedHourglassIcon";
@@ -14,16 +14,14 @@ import { Button } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { LiveCountdown } from "~/components/runs/v3/LiveTimer";
-import { $replica, prisma } from "~/db.server";
+import { $replica } from "~/db.server";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
-import { ProjectParamSchema, v3RunsPath, v3SchedulesPath } from "~/utils/pathBuilder";
+import { ProjectParamSchema, v3RunsPath } from "~/utils/pathBuilder";
 import { engine } from "~/v3/runEngine.server";
-import { UpsertSchedule } from "~/v3/schedules";
-import { UpsertTaskScheduleService } from "~/v3/services/upsertTaskSchedule.server";
 
 const CompleteWaitpointFormData = z.discriminatedUnion("type", [
   z.object({
@@ -106,8 +104,34 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         );
       }
       case "MANUAL": {
-        //todo packet
-        //todo completeWaitpoint
+        let data: any;
+        try {
+          data = JSON.parse(submission.value.payload);
+        } catch (e) {
+          return redirectWithErrorMessage(
+            submission.value.failureRedirect,
+            request,
+            "Invalid payload, must be valid JSON"
+          );
+        }
+        const stringifiedData = await stringifyIO(data);
+        const finalData = await conditionallyExportPacket(
+          stringifiedData,
+          `${waitpointId}/waitpoint/token`
+        );
+
+        const result = await engine.completeWaitpoint({
+          id: waitpointId,
+          output: finalData.data
+            ? { type: finalData.dataType, value: finalData.data, isError: false }
+            : undefined,
+        });
+
+        return redirectWithSuccessMessage(
+          submission.value.successRedirect,
+          request,
+          "Waitpoint completed"
+        );
       }
     }
   } catch (error: any) {
@@ -259,7 +283,7 @@ function CompleteManualWaitpointForm({ waitpoint }: { waitpoint: { friendlyId: s
         onSubmit={(e) => submitForm(e)}
         className="grid h-full max-h-full grid-rows-[2.5rem_1fr_2.5rem] overflow-hidden rounded-md border border-grid-bright"
       >
-        <input type="hidden" name="type" value={"DATETIME"} />
+        <input type="hidden" name="type" value={"MANUAL"} />
         <input
           type="hidden"
           name="successRedirect"
@@ -313,7 +337,7 @@ function CompleteManualWaitpointForm({ waitpoint }: { waitpoint: { friendlyId: s
         }
         code={`
 await wait.completeToken<YourType>(tokenId,
-output
+  output
 );`}
         showLineNumbers={false}
       />

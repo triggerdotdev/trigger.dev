@@ -71,7 +71,7 @@ export const waitForDuration = task({
         throw new Error("This is an error");
       },
       {
-        maxAttempts: 3,
+        maxAttempts: 2,
       }
     );
   },

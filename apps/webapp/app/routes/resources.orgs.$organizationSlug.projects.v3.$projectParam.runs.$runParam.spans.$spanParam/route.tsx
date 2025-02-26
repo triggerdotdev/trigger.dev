@@ -1080,12 +1080,106 @@ function SpanEntity({ span }: { span: Span }) {
   const organization = useOrganization();
   const project = useProject();
 
-  switch (span.entityType) {
-    case "waitpoint": {
-      if (!span.waitpoint) {
-        return <Paragraph>No waitpoint found: {span.entity.id}</Paragraph>;
-      }
+  if (!span.entity) {
+    //normal span
+    return (
+      <>
+        {span.level === "TRACE" ? (
+          <>
+            <div className="border-b border-grid-bright pb-3">
+              <TaskRunAttemptStatusCombo
+                status={
+                  span.isCancelled
+                    ? "CANCELED"
+                    : span.isError
+                    ? "FAILED"
+                    : span.isPartial
+                    ? "EXECUTING"
+                    : "COMPLETED"
+                }
+                className="text-sm"
+              />
+            </div>
+            <SpanTimeline
+              startTime={new Date(span.startTime)}
+              duration={span.duration}
+              inProgress={span.isPartial}
+              isError={span.isError}
+            />
+          </>
+        ) : (
+          <div className="min-w-fit max-w-80">
+            <RunTimelineEvent
+              title="Timestamp"
+              subtitle={<DateTimeAccurate date={span.startTime} />}
+              state="complete"
+            />
+          </div>
+        )}
+        <Property.Table>
+          <Property.Item>
+            <Property.Label>Message</Property.Label>
+            <Property.Value className="whitespace-pre-wrap">{span.message}</Property.Value>
+          </Property.Item>
+          {span.triggeredRuns.length > 0 && (
+            <Property.Item>
+              <div className="flex flex-col gap-1.5">
+                <Header3>Triggered runs</Header3>
+                <Table containerClassName="max-h-[12.5rem]">
+                  <TableHeader className="bg-background-bright">
+                    <TableRow>
+                      <TableHeaderCell>Run #</TableHeaderCell>
+                      <TableHeaderCell>Task</TableHeaderCell>
+                      <TableHeaderCell>Version</TableHeaderCell>
+                      <TableHeaderCell>Created at</TableHeaderCell>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {span.triggeredRuns.map((run) => {
+                      const path = v3RunSpanPath(
+                        organization,
+                        project,
+                        { friendlyId: run.friendlyId },
+                        { spanId: run.spanId }
+                      );
+                      return (
+                        <TableRow key={run.friendlyId}>
+                          <TableCell to={path} actionClassName="py-1.5" rowHoverStyle="bright">
+                            {run.number}
+                          </TableCell>
+                          <TableCell to={path} actionClassName="py-1.5" rowHoverStyle="bright">
+                            {run.taskIdentifier}
+                          </TableCell>
+                          <TableCell to={path} actionClassName="py-1.5" rowHoverStyle="bright">
+                            {run.lockedToVersion?.version ?? "–"}
+                          </TableCell>
+                          <TableCell to={path} actionClassName="py-1.5" rowHoverStyle="bright">
+                            <DateTime date={run.createdAt} />
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            </Property.Item>
+          )}
+        </Property.Table>
+        {span.events.length > 0 && <SpanEvents spanEvents={span.events} />}
+        {span.properties !== undefined ? (
+          <CodeBlock
+            rowTitle="Properties"
+            code={span.properties}
+            maxLines={20}
+            showLineNumbers={false}
+          />
+        ) : null}
+      </>
+    );
+  }
 
+  switch (span.entity.type) {
+    case "waitpoint": {
       return (
         <>
           <div className="">
@@ -1101,9 +1195,9 @@ function SpanEntity({ span }: { span: Span }) {
               <Property.Value>
                 <TaskRunAttemptStatusCombo
                   status={
-                    span.waitpoint.status === "PENDING"
+                    span.entity.object.status === "PENDING"
                       ? "EXECUTING"
-                      : span.waitpoint.outputIsError
+                      : span.entity.object.outputIsError
                       ? "FAILED"
                       : "COMPLETED"
                   }
@@ -1114,7 +1208,7 @@ function SpanEntity({ span }: { span: Span }) {
             <Property.Item>
               <Property.Label>ID</Property.Label>
               <Property.Value className="whitespace-pre-wrap">
-                {span.waitpoint?.friendlyId}
+                {span.entity.object.friendlyId}
               </Property.Value>
             </Property.Item>
             <Property.Item>
@@ -1122,33 +1216,33 @@ function SpanEntity({ span }: { span: Span }) {
               <Property.Value>
                 <div>
                   <div>
-                    {span.waitpoint.userProvidedIdempotencyKey
-                      ? span.waitpoint.idempotencyKey
+                    {span.entity.object.userProvidedIdempotencyKey
+                      ? span.entity.object.idempotencyKey
                       : "–"}
                   </div>
                   <div>
-                    {span.waitpoint.idempotencyKeyExpiresAt ? (
+                    {span.entity.object.idempotencyKeyExpiresAt ? (
                       <>
-                        TTL: <DateTime date={span.waitpoint.idempotencyKeyExpiresAt} />
+                        TTL: <DateTime date={span.entity.object.idempotencyKeyExpiresAt} />
                       </>
                     ) : null}
                   </div>
                 </div>
               </Property.Value>
             </Property.Item>
-            {span.waitpoint.status === "PENDING" ? (
-              <CompleteWaitpointForm waitpoint={span.waitpoint} />
-            ) : span.waitpoint.output ? (
+            {span.entity.object.status === "PENDING" ? (
+              <CompleteWaitpointForm waitpoint={span.entity.object} />
+            ) : span.entity.object.output ? (
               <PacketDisplay
                 title="Output"
-                data={span.waitpoint.output}
-                dataType={span.waitpoint.outputType}
+                data={span.entity.object.output}
+                dataType={span.entity.object.outputType}
               />
-            ) : span.waitpoint.completedAfter ? (
+            ) : span.entity.object.completedAfter ? (
               <Property.Item>
                 <Property.Label>Completed at</Property.Label>
                 <Property.Value>
-                  <DateTimeAccurate date={span.waitpoint.completedAfter} />
+                  <DateTimeAccurate date={span.entity.object.completedAfter} />
                 </Property.Value>
               </Property.Item>
             ) : (
@@ -1159,100 +1253,7 @@ function SpanEntity({ span }: { span: Span }) {
       );
     }
     default: {
-      return (
-        <>
-          {span.level === "TRACE" ? (
-            <>
-              <div className="border-b border-grid-bright pb-3">
-                <TaskRunAttemptStatusCombo
-                  status={
-                    span.isCancelled
-                      ? "CANCELED"
-                      : span.isError
-                      ? "FAILED"
-                      : span.isPartial
-                      ? "EXECUTING"
-                      : "COMPLETED"
-                  }
-                  className="text-sm"
-                />
-              </div>
-              <SpanTimeline
-                startTime={new Date(span.startTime)}
-                duration={span.duration}
-                inProgress={span.isPartial}
-                isError={span.isError}
-              />
-            </>
-          ) : (
-            <div className="min-w-fit max-w-80">
-              <RunTimelineEvent
-                title="Timestamp"
-                subtitle={<DateTimeAccurate date={span.startTime} />}
-                state="complete"
-              />
-            </div>
-          )}
-          <Property.Table>
-            <Property.Item>
-              <Property.Label>Message</Property.Label>
-              <Property.Value className="whitespace-pre-wrap">{span.message}</Property.Value>
-            </Property.Item>
-            {span.triggeredRuns.length > 0 && (
-              <Property.Item>
-                <div className="flex flex-col gap-1.5">
-                  <Header3>Triggered runs</Header3>
-                  <Table containerClassName="max-h-[12.5rem]">
-                    <TableHeader className="bg-background-bright">
-                      <TableRow>
-                        <TableHeaderCell>Run #</TableHeaderCell>
-                        <TableHeaderCell>Task</TableHeaderCell>
-                        <TableHeaderCell>Version</TableHeaderCell>
-                        <TableHeaderCell>Created at</TableHeaderCell>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {span.triggeredRuns.map((run) => {
-                        const path = v3RunSpanPath(
-                          organization,
-                          project,
-                          { friendlyId: run.friendlyId },
-                          { spanId: run.spanId }
-                        );
-                        return (
-                          <TableRow key={run.friendlyId}>
-                            <TableCell to={path} actionClassName="py-1.5" rowHoverStyle="bright">
-                              {run.number}
-                            </TableCell>
-                            <TableCell to={path} actionClassName="py-1.5" rowHoverStyle="bright">
-                              {run.taskIdentifier}
-                            </TableCell>
-                            <TableCell to={path} actionClassName="py-1.5" rowHoverStyle="bright">
-                              {run.lockedToVersion?.version ?? "–"}
-                            </TableCell>
-                            <TableCell to={path} actionClassName="py-1.5" rowHoverStyle="bright">
-                              <DateTime date={run.createdAt} />
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                </div>
-              </Property.Item>
-            )}
-          </Property.Table>
-          {span.events.length > 0 && <SpanEvents spanEvents={span.events} />}
-          {span.properties !== undefined ? (
-            <CodeBlock
-              rowTitle="Properties"
-              code={span.properties}
-              maxLines={20}
-              showLineNumbers={false}
-            />
-          ) : null}
-        </>
-      );
+      return <Paragraph variant="small">No span for {span.entity.type}</Paragraph>;
     }
   }
 }

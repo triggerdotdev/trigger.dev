@@ -11,6 +11,7 @@ import { machinePresetFromName } from "~/v3/machinePresets.server";
 import { FINAL_ATTEMPT_STATUSES, isFailedRunStatus, isFinalRunStatus } from "~/v3/taskStatus";
 import { BasePresenter } from "./basePresenter.server";
 import { getMaxDuration } from "@trigger.dev/core/v3/apps";
+import { logger } from "~/services/logger.server";
 
 type Result = Awaited<ReturnType<SpanPresenter["call"]>>;
 export type Span = NonNullable<NonNullable<Result>["span"]>;
@@ -43,6 +44,7 @@ export class SpanPresenter extends BasePresenter {
     const parentRun = await this._prisma.taskRun.findFirst({
       select: {
         traceId: true,
+        runtimeEnvironmentId: true,
       },
       where: {
         friendlyId: runFriendlyId,
@@ -64,7 +66,7 @@ export class SpanPresenter extends BasePresenter {
     }
 
     //get the run
-    const span = await this.getSpan(traceId, spanId);
+    const span = await this.getSpan(traceId, spanId, parentRun.runtimeEnvironmentId);
 
     if (!span) {
       throw new Error("Span not found");
@@ -399,7 +401,7 @@ export class SpanPresenter extends BasePresenter {
     };
   }
 
-  async getSpan(traceId: string, spanId: string) {
+  async getSpan(traceId: string, spanId: string, environmentId: string) {
     const span = await eventRepository.getSpan(spanId, traceId);
     if (!span) {
       return;
@@ -451,14 +453,42 @@ export class SpanPresenter extends BasePresenter {
           },
         });
 
+        if (!waitpoint) {
+          logger.error(`SpanPresenter: Waitpoint not found`, {
+            spanId,
+            waitpointFriendlyId: span.entity.id,
+          });
+          return { ...data, entity: null };
+        }
+
+        const output =
+          waitpoint.outputType === "application/store"
+            ? `/resources/packets/${environmentId}/${waitpoint.output}`
+            : typeof waitpoint.output !== "undefined" && waitpoint.output !== null
+            ? await prettyPrintPacket(waitpoint.output, waitpoint.outputType ?? undefined)
+            : undefined;
+
         return {
           ...data,
-          entityType: "waitpoint" as const,
-          waitpoint,
+          entity: {
+            type: "waitpoint" as const,
+            object: {
+              friendlyId: waitpoint.friendlyId,
+              type: waitpoint.type,
+              status: waitpoint.status,
+              idempotencyKey: waitpoint.idempotencyKey,
+              userProvidedIdempotencyKey: waitpoint.userProvidedIdempotencyKey,
+              idempotencyKeyExpiresAt: waitpoint.idempotencyKeyExpiresAt,
+              output: output,
+              outputType: waitpoint.outputType,
+              outputIsError: waitpoint.outputIsError,
+              completedAfter: waitpoint.completedAfter,
+            },
+          },
         };
 
       default:
-        return { ...data, entityType: "span" as const };
+        return { ...data, entity: null };
     }
   }
 }
