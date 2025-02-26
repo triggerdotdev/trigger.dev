@@ -1417,6 +1417,43 @@ importers:
         specifier: ^1.6.0
         version: 1.6.0(@types/node@20.14.14)
 
+  packages/python:
+    dependencies:
+      '@trigger.dev/build':
+        specifier: workspace:3.3.16
+        version: link:../build
+      '@trigger.dev/core':
+        specifier: workspace:3.3.16
+        version: link:../core
+      '@trigger.dev/sdk':
+        specifier: workspace:3.3.16
+        version: link:../trigger-sdk
+      tinyexec:
+        specifier: ^0.3.2
+        version: 0.3.2
+    devDependencies:
+      '@arethetypeswrong/cli':
+        specifier: ^0.15.4
+        version: 0.15.4
+      '@types/node':
+        specifier: 20.14.14
+        version: 20.14.14
+      esbuild:
+        specifier: ^0.23.0
+        version: 0.23.0
+      rimraf:
+        specifier: 6.0.1
+        version: 6.0.1
+      tshy:
+        specifier: ^3.0.2
+        version: 3.0.2
+      tsx:
+        specifier: 4.17.0
+        version: 4.17.0
+      typescript:
+        specifier: ^5.5.4
+        version: 5.5.4
+
   packages/react-hooks:
     dependencies:
       '@trigger.dev/core':
@@ -1928,6 +1965,9 @@ importers:
       '@trigger.dev/build':
         specifier: workspace:*
         version: link:../../packages/build
+      '@trigger.dev/python':
+        specifier: workspace:*
+        version: link:../../packages/python
       '@types/email-reply-parser':
         specifier: ^1.4.2
         version: 1.4.2
@@ -30666,6 +30706,10 @@ packages:
 
   /tinyexec@0.3.1:
     resolution: {integrity: sha512-WiCJLEECkO18gwqIp6+hJg0//p23HXp4S+gGtAKu3mI2F2/sXC4FvHvXvB0zJVVaTPhx1/tOwdbRsa1sOBIKqQ==}
+    dev: false
+
+  /tinyexec@0.3.2:
+    resolution: {integrity: sha512-KQQR9yN7R5+OSwaK0XQoj22pwHoTlgYqmUscPYoknOoWCWfj/5/ABTMRi69FrKU5ffPVh5QcFikpWJI/P1ocHA==}
     dev: false
 
   /tinyglobby@0.2.10:
