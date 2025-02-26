@@ -51,6 +51,10 @@ export class LoggerAPI implements TaskLogger {
     return this.#getTaskLogger().trace(name, fn, options);
   }
 
+  public startSpan(name: string, options?: SpanOptions): Span {
+    return this.#getTaskLogger().startSpan(name, options);
+  }
+
   #getTaskLogger(): TaskLogger {
     return getGlobal(API_NAME) ?? NOOP_TASK_LOGGER;
   }

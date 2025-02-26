@@ -1,9 +1,13 @@
-import fs from "node:fs";
-import assert from "node:assert";
+import {
+  AsyncIterableStream,
+  createAsyncIterableStreamFromAsyncIterable,
+  SemanticInternalAttributes,
+} from "@trigger.dev/core/v3";
 import { logger } from "@trigger.dev/sdk/v3";
-import { x, Options as XOptions, Result } from "tinyexec";
-import { SemanticInternalAttributes } from "@trigger.dev/core/v3";
-import { withTempFile } from "./utils/tempFiles.js";
+import assert from "node:assert";
+import fs from "node:fs";
+import { Result, x, Options as XOptions } from "tinyexec";
+import { createTempFileSync, withTempFile } from "./utils/tempFiles.js";
 
 export const python = {
   async run(scriptArgs: string[] = [], options: Partial<XOptions> = {}): Promise<Result> {
@@ -132,5 +136,96 @@ export const python = {
         },
       }
     );
+  },
+  // Stream namespace for streaming functions
+  stream: {
+    run(scriptArgs: string[] = [], options: Partial<XOptions> = {}): AsyncIterableStream<string> {
+      const pythonBin = process.env.PYTHON_BIN_PATH || "python";
+
+      const pythonProcess = x(pythonBin, scriptArgs, {
+        ...options,
+        throwOnError: false,
+      });
+
+      const span = logger.startSpan("python.stream.run()", {
+        attributes: {
+          pythonBin,
+          args: scriptArgs.join(" "),
+          [SemanticInternalAttributes.STYLE_ICON]: "brand-python",
+        },
+      });
+
+      return createAsyncIterableStreamFromAsyncIterable(pythonProcess, {
+        transform: (chunk, controller) => {
+          controller.enqueue(chunk);
+        },
+        flush: () => {
+          span.end();
+        },
+      });
+    },
+    runScript(
+      scriptPath: string,
+      scriptArgs: string[] = [],
+      options: Partial<XOptions> = {}
+    ): AsyncIterableStream<string> {
+      assert(scriptPath, "Script path is required");
+      assert(fs.existsSync(scriptPath), `Script does not exist: ${scriptPath}`);
+
+      const pythonBin = process.env.PYTHON_BIN_PATH || "python";
+
+      const pythonProcess = x(pythonBin, [scriptPath, ...scriptArgs], {
+        ...options,
+        throwOnError: false,
+      });
+
+      const span = logger.startSpan("python.stream.runScript()", {
+        attributes: {
+          pythonBin,
+          scriptPath,
+          args: scriptArgs.join(" "),
+          [SemanticInternalAttributes.STYLE_ICON]: "brand-python",
+        },
+      });
+
+      return createAsyncIterableStreamFromAsyncIterable(pythonProcess, {
+        transform: (chunk, controller) => {
+          controller.enqueue(chunk);
+        },
+        flush: () => {
+          span.end();
+        },
+      });
+    },
+    runInline(scriptContent: string, options: Partial<XOptions> = {}): AsyncIterableStream<string> {
+      assert(scriptContent, "Script content is required");
+
+      const pythonBin = process.env.PYTHON_BIN_PATH || "python";
+
+      const pythonScriptPath = createTempFileSync(`script_${Date.now()}.py`, scriptContent);
+
+      const pythonProcess = x(pythonBin, [pythonScriptPath], {
+        ...options,
+        throwOnError: false,
+      });
+
+      const span = logger.startSpan("python.stream.runInline()", {
+        attributes: {
+          pythonBin,
+          contentPreview:
+            scriptContent.substring(0, 100) + (scriptContent.length > 100 ? "..." : ""),
+          [SemanticInternalAttributes.STYLE_ICON]: "brand-python",
+        },
+      });
+
+      return createAsyncIterableStreamFromAsyncIterable(pythonProcess, {
+        transform: (chunk, controller) => {
+          controller.enqueue(chunk);
+        },
+        flush: () => {
+          span.end();
+        },
+      });
+    },
   },
 };

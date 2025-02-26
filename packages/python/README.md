@@ -76,6 +76,22 @@ export const myScript = task({
     return result.stdout;
   },
 });
+
+export const myStreamingScript = task({
+  id: "my-streaming-python-script",
+  run: async () => {
+    // You can also stream the output of the script
+    const result = python.stream.runScript("my_script.py", ["hello", "world"]);
+
+    // result is an async iterable/readable stream
+    for await (const chunk of streamingResult) {
+      logger.debug("convert-url-to-markdown", {
+        url: payload.url,
+        chunk,
+      });
+    }
+  },
+});
 ```
 
 ### Running Inline Python Code

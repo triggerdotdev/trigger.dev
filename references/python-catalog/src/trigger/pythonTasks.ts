@@ -1,4 +1,4 @@
-import { schemaTask, task } from "@trigger.dev/sdk/v3";
+import { logger, schemaTask, task } from "@trigger.dev/sdk/v3";
 import { python } from "@trigger.dev/python";
 import { z } from "zod";
 
@@ -10,7 +10,19 @@ export const convertUrlToMarkdown = schemaTask({
   run: async (payload) => {
     const result = await python.runScript("./src/python/html2text_url.py", [payload.url]);
 
-    return result.stdout;
+    logger.debug("convert-url-to-markdown", {
+      url: payload.url,
+      output: result.stdout,
+    });
+
+    const streamingResult = python.stream.runScript("./src/python/html2text_url.py", [payload.url]);
+
+    for await (const chunk of streamingResult) {
+      logger.debug("convert-url-to-markdown", {
+        url: payload.url,
+        chunk,
+      });
+    }
   },
 });
 
@@ -24,6 +36,22 @@ h = h2t.HTML2Text()
 
 print(h.handle("<p>Hello, <a href='https://www.google.com/earth/'>world</a>!"))
 `);
+
+    const streamingResult = python.stream.runInline(`
+import html2text as h2t
+
+h = h2t.HTML2Text()
+
+print(h.handle("<p>Hello, <a href='https://www.google.com/earth/'>world</a>!"))
+print(h.handle("<p>Hello, <a href='https://www.google.com/earth/'>world</a>!"))
+`);
+
+    for await (const chunk of streamingResult) {
+      logger.debug("python-run-inline", {
+        chunk,
+      });
+    }
+
     return result.stdout;
   },
 });

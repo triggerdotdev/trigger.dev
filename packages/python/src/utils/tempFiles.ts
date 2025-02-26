@@ -1,3 +1,4 @@
+import { mkdtempSync } from "node:fs";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -27,4 +28,12 @@ export async function withTempFile<T>(
     // Clean up
     await rm(tempDir, { recursive: true, force: true });
   }
+}
+
+export function createTempFileSync(filename: string, content: string | Buffer = ""): string {
+  const tempDir = mkdtempSync(join(tmpdir(), "app-"));
+  const tempFile = join(tempDir, filename);
+
+  writeFile(tempFile, content, { mode: 0o600 });
+  return tempFile;
 }
