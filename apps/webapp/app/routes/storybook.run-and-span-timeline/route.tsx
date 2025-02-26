@@ -38,6 +38,7 @@ const spanTimelines = [
         timestamp: new Date(Date.now() - 5000),
         duration: 4000,
         adminOnly: false,
+        variant: "start-cap",
       },
       {
         name: "Launched",
@@ -45,6 +46,7 @@ const spanTimelines = [
         timestamp: new Date(Date.now() - 1000),
         duration: 1000,
         adminOnly: false,
+        variant: "dot-hollow",
       },
       {
         name: "Imported task file",
@@ -52,6 +54,7 @@ const spanTimelines = [
         timestamp: new Date(Date.now() - 1000),
         duration: 1000,
         adminOnly: true,
+        variant: "dot-hollow",
       },
     ],
   },
@@ -68,6 +71,7 @@ const spanTimelines = [
         timestamp: new Date(Date.now() - 5000),
         duration: 4000,
         adminOnly: false,
+        variant: "start-cap",
       },
       {
         name: "Forked",
@@ -75,6 +79,7 @@ const spanTimelines = [
         timestamp: new Date(Date.now() - 1000),
         duration: 1000,
         adminOnly: true,
+        variant: "dot-hollow",
       },
     ],
   },
@@ -91,6 +96,7 @@ const spanTimelines = [
         timestamp: new Date(Date.now() - 25 * 60 * 60 * 1000),
         duration: 4000,
         adminOnly: false,
+        variant: "start-cap",
       },
       {
         name: "Forked",
@@ -98,6 +104,7 @@ const spanTimelines = [
         timestamp: new Date(Date.now() - 1000),
         duration: 1000,
         adminOnly: true,
+        variant: "dot-hollow",
       },
     ],
   },
@@ -139,7 +146,7 @@ const runTimelines = [
 
 export default function Story() {
   return (
-    <div className="flex flex-col items-start gap-y-4 p-4">
+    <div className="flex flex-col items-start gap-y-8 p-4">
       <Header2>Span Timeline</Header2>
       {spanTimelines.map((props, index) => (
         <SpanTimeline key={index} {...props} />
