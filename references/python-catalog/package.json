@@ -1,0 +1,20 @@
+{
+  "name": "references-python-catalog",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "trigger dev",
+    "deploy": "trigger deploy --self-hosted --load-image",
+    "install-python-deps": "uv pip sync requirements.txt"
+  },
+  "dependencies": {
+    "@trigger.dev/sdk": "workspace:*",
+    "@trigger.dev/python": "workspace:*",
+    "zod": "3.23.8"
+  },
+  "devDependencies": {
+    "@trigger.dev/build": "workspace:*",
+    "trigger.dev": "workspace:*",
+    "typescript": "^5.5.4"
+  }
+}

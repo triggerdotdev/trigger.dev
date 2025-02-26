@@ -14,7 +14,7 @@ This extension introduces the <code>pythonExtension</code> build extension, whic
   - <code>run</code>: Executes Python commands with proper environment setup.
   - <code>runInline</code>: Executes inline Python code directly from Node.
   - <code>runScript</code>: Executes standalone <code>.py</code> script files.
-- **Custom Python Path:** In development, you can configure <code>pythonBinaryPath</code> to point to a custom Python installation.
+- **Custom Python Path:** In development, you can configure <code>devPythonBinaryPath</code> to point to a custom Python installation.
 
 ## Usage
 
@@ -22,7 +22,7 @@ This extension introduces the <code>pythonExtension</code> build extension, whic
 
 ```typescript
 import { defineConfig } from "@trigger.dev/sdk/v3";
-import pythonExtension from "@trigger.dev/python/extension";
+import { pythonExtension } from "@trigger.dev/python/extension";
 
 export default defineConfig({
   project: "<project ref>",
@@ -30,8 +30,8 @@ export default defineConfig({
     extensions: [
       pythonExtension({
         requirementsFile: "./requirements.txt", // Optional: Path to your requirements file
-        pythonBinaryPath: path.join(rootDir, `.venv/bin/python`), // Optional: Custom Python binary path
-        scripts: ["my_script.py"], // List of Python scripts to include
+        devPythonBinaryPath: ".venv/bin/python", // Optional: Custom Python binary path
+        scripts: ["src/python/**/*.py"], // Glob pattern for Python scripts
       }),
     ],
   },
@@ -40,13 +40,34 @@ export default defineConfig({
 
 2. (Optional) Create a <code>requirements.txt</code> file in your project root with the necessary Python dependencies.
 
+```plaintext title="requirements.txt"
+pandas==1.3.3
+numpy==1.21.2
+```
+
+```typescript title="trigger.config.ts"
+import { defineConfig } from "@trigger.dev/sdk/v3";
+import { pythonExtension } from "@trigger.dev/python/extension";
+
+export default defineConfig({
+  project: "<project ref>",
+  build: {
+    extensions: [
+      pythonExtension({
+        requirementsFile: "./requirements.txt",
+      }),
+    ],
+  },
+});
+```
+
 3. Execute Python scripts within your tasks using one of the provided functions:
 
 ### Running a Python Script
 
 ```typescript
 import { task } from "@trigger.dev/sdk/v3";
-import python from "@trigger.dev/python";
+import { python } from "@trigger.dev/python";
 
 export const myScript = task({
   id: "my-python-script",
@@ -61,7 +82,7 @@ export const myScript = task({
 
 ```typescript
 import { task } from "@trigger.dev/sdk/v3";
-import python from "@trigger.dev/python";
+import { python } from "@trigger.dev/python";
 
 export const myTask = task({
   id: "to_datetime-task",
@@ -69,7 +90,7 @@ export const myTask = task({
     const result = await python.runInline(`
 import pandas as pd
 
-pandas.to_datetime("${+new Date() / 1000}")
+pd.to_datetime("${+new Date() / 1000}")
 `);
     return result.stdout;
   },
@@ -80,7 +101,7 @@ pandas.to_datetime("${+new Date() / 1000}")
 
 ```typescript
 import { task } from "@trigger.dev/sdk/v3";
-import python from "@trigger.dev/python";
+import { python } from "@trigger.dev/python";
 
 export const pythonVersionTask = task({
   id: "python-version-task",
@@ -94,7 +115,6 @@ export const pythonVersionTask = task({
 ## Limitations
 
 - This is a **partial implementation** and does not provide full Python support as an execution runtime for tasks.
-- Only basic Python script execution is supported; scripts are not automatically copied to staging/production containers.
 - Manual intervention may be required for installing and configuring binary dependencies in development environments.
 
 ## Additional Information
