@@ -880,6 +880,7 @@ export const ProdWorkerSocketData = z.object({
   contentHash: z.string(),
   projectRef: z.string(),
   envId: z.string(),
+  env: z.string(),
   runId: z.string(),
   attemptFriendlyId: z.string().optional(),
   attemptNumber: z.string().optional(),
