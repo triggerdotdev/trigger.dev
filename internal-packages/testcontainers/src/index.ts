@@ -97,7 +97,7 @@ const redisOptions = async (
     host: redisContainer.getHost(),
     port: redisContainer.getPort(),
     password: redisContainer.getPassword(),
-    maxRetriesPerRequest: 3, // Lower the retry attempts
+    maxRetriesPerRequest: 20, // Lower the retry attempts
     retryStrategy(times) {
       const delay = Math.min(times * 50, 2000);
       return delay;

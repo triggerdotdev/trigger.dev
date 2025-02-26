@@ -79,7 +79,7 @@ async function verifyRedisConnection(container: StartedRedisContainer) {
     host: container.getHost(),
     port: container.getPort(),
     password: container.getPassword(),
-    maxRetriesPerRequest: 3,
+    maxRetriesPerRequest: 20,
     connectTimeout: 10000,
     retryStrategy(times) {
       const delay = Math.min(times * 50, 2000);
