@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { isExecaChildProcess } from "./isExecaChildProcess.js";
+import { isExecaChildProcess } from "../apps/isExecaChildProcess.js";
 
 export type CheckpointTestResult =
   | {

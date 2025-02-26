@@ -58,7 +58,8 @@
       "./v3/prod": "./src/v3/prod/index.ts",
       "./v3/workers": "./src/v3/workers/index.ts",
       "./v3/schemas": "./src/v3/schemas/index.ts",
-      "./v3/runEngineWorker": "./src/v3/runEngineWorker/index.ts"
+      "./v3/runEngineWorker": "./src/v3/runEngineWorker/index.ts",
+      "./v3/checkpoints": "./src/v3/checkpoints/index.ts"
     },
     "sourceDialects": [
       "@triggerdotdev/source"
@@ -176,6 +177,9 @@
       ],
       "v3/runEngineWorker": [
         "dist/commonjs/v3/runEngineWorker/index.d.ts"
+      ],
+      "v3/checkpoints": [
+        "dist/commonjs/v3/checkpoints/index.d.ts"
       ]
     }
   },
@@ -657,6 +661,17 @@
       "require": {
         "types": "./dist/commonjs/v3/runEngineWorker/index.d.ts",
         "default": "./dist/commonjs/v3/runEngineWorker/index.js"
+      }
+    },
+    "./v3/checkpoints": {
+      "import": {
+        "@triggerdotdev/source": "./src/v3/checkpoints/index.ts",
+        "types": "./dist/esm/v3/checkpoints/index.d.ts",
+        "default": "./dist/esm/v3/checkpoints/index.js"
+      },
+      "require": {
+        "types": "./dist/commonjs/v3/checkpoints/index.d.ts",
+        "default": "./dist/commonjs/v3/checkpoints/index.js"
       }
     }
   },
