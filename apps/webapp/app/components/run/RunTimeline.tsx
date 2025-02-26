@@ -637,6 +637,7 @@ export function SpanTimeline({
                 startTime,
                 new Date(startTime.getTime() + nanosecondsToMilliseconds(duration))
               )}
+              state={isError ? "error" : undefined}
               variant="normal"
             />
             <RunTimelineEvent
