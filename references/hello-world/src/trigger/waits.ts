@@ -1,4 +1,4 @@
-import { logger, wait, task, retry } from "@trigger.dev/sdk/v3";
+import { logger, wait, task, retry, idempotencyKeys } from "@trigger.dev/sdk/v3";
 
 type Token = {
   status: "approved" | "pending" | "rejected";
@@ -62,11 +62,21 @@ export const completeWaitToken = task({
 
 export const waitForDuration = task({
   id: "wait-duration",
-  run: async ({ duration = 4 }: { duration?: number }) => {
-    await wait.for({ seconds: duration });
+  run: async ({
+    duration = 4,
+    idempotencyKey,
+    idempotencyKeyTTL,
+  }: {
+    duration?: number;
+    idempotencyKey?: string;
+    idempotencyKeyTTL?: string;
+  }) => {
+    const idempotency = idempotencyKey ? await idempotencyKeys.create(idempotencyKey) : undefined;
+
+    await wait.for({ seconds: duration, idempotencyKey: idempotency, idempotencyKeyTTL });
     await wait.until({ date: new Date(Date.now() + duration * 1000) });
 
-    await retry.fetch("https://example.com/404/", { method: "GET" });
+    await retry.fetch("https://example.com/404", { method: "GET" });
 
     await retry.onThrow(
       async () => {
