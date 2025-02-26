@@ -67,7 +67,10 @@ import {
   v3TraceSpanPath,
 } from "~/utils/pathBuilder";
 import { SpanLink } from "~/v3/eventRepository.server";
-import { CompleteWaitpointForm } from "../resources.orgs.$organizationSlug.projects.$projectParam.waitpoints.$waitpointFriendlyId.complete/route";
+import {
+  CompleteWaitpointForm,
+  ForceTimeout,
+} from "../resources.orgs.$organizationSlug.projects.$projectParam.waitpoints.$waitpointFriendlyId.complete/route";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -226,73 +229,67 @@ function SpanBody({
           </TabButton>
         </TabContainer>
       </div>
-      <div className="overflow-y-auto px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-        <div>
-          {tab === "detail" ? (
-            <div className="flex flex-col gap-4 pt-3">
-              <Property.Table>
+      <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+        {tab === "detail" ? (
+          <div className="flex flex-col gap-4 px-3 pt-3">
+            <Property.Table>
+              <Property.Item>
+                <Property.Label>Status</Property.Label>
+                <Property.Value>
+                  <TaskRunAttemptStatusCombo
+                    status={
+                      span.isCancelled
+                        ? "CANCELED"
+                        : span.isError
+                        ? "FAILED"
+                        : span.isPartial
+                        ? "EXECUTING"
+                        : "COMPLETED"
+                    }
+                    className="text-sm"
+                  />
+                </Property.Value>
+              </Property.Item>
+              <Property.Item>
+                <Property.Label>Task</Property.Label>
+                <Property.Value>
+                  <SimpleTooltip
+                    button={
+                      <TextLink to={v3RunsPath(organization, project, { tasks: [span.taskSlug] })}>
+                        {span.taskSlug}
+                      </TextLink>
+                    }
+                    content={`Filter runs by ${span.taskSlug}`}
+                  />
+                </Property.Value>
+              </Property.Item>
+              {span.idempotencyKey && (
                 <Property.Item>
-                  <Property.Label>Status</Property.Label>
-                  <Property.Value>
-                    <TaskRunAttemptStatusCombo
-                      status={
-                        span.isCancelled
-                          ? "CANCELED"
-                          : span.isError
-                          ? "FAILED"
-                          : span.isPartial
-                          ? "EXECUTING"
-                          : "COMPLETED"
-                      }
-                      className="text-sm"
-                    />
-                  </Property.Value>
+                  <Property.Label>Idempotency key</Property.Label>
+                  <Property.Value>{span.idempotencyKey}</Property.Value>
                 </Property.Item>
-                <Property.Item>
-                  <Property.Label>Task</Property.Label>
-                  <Property.Value>
-                    <SimpleTooltip
-                      button={
-                        <TextLink
-                          to={v3RunsPath(organization, project, { tasks: [span.taskSlug] })}
-                        >
-                          {span.taskSlug}
-                        </TextLink>
-                      }
-                      content={`Filter runs by ${span.taskSlug}`}
-                    />
-                  </Property.Value>
-                </Property.Item>
-                {span.idempotencyKey && (
-                  <Property.Item>
-                    <Property.Label>Idempotency key</Property.Label>
-                    <Property.Value>{span.idempotencyKey}</Property.Value>
-                  </Property.Item>
-                )}
-                <Property.Item>
-                  <Property.Label>Version</Property.Label>
-                  <Property.Value>
-                    {span.workerVersion ? (
-                      span.workerVersion
-                    ) : (
-                      <span className="flex items-center gap-1">
-                        <span>Never started</span>
-                        <InfoIconTooltip
-                          content={"Runs get locked to the latest version when they start."}
-                          contentClassName="normal-case tracking-normal"
-                        />
-                      </span>
-                    )}
-                  </Property.Value>
-                </Property.Item>
-              </Property.Table>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-4 pt-3">
-              <SpanEntity span={span} />
-            </div>
-          )}
-        </div>
+              )}
+              <Property.Item>
+                <Property.Label>Version</Property.Label>
+                <Property.Value>
+                  {span.workerVersion ? (
+                    span.workerVersion
+                  ) : (
+                    <span className="flex items-center gap-1">
+                      <span>Never started</span>
+                      <InfoIconTooltip
+                        content={"Runs get locked to the latest version when they start."}
+                        contentClassName="normal-case tracking-normal"
+                      />
+                    </span>
+                  )}
+                </Property.Value>
+              </Property.Item>
+            </Property.Table>
+          </div>
+        ) : (
+          <SpanEntity span={span} />
+        )}
       </div>
     </div>
   );
@@ -1083,7 +1080,7 @@ function SpanEntity({ span }: { span: Span }) {
   if (!span.entity) {
     //normal span
     return (
-      <>
+      <div className="flex flex-col gap-4 p-3">
         {span.level === "TRACE" ? (
           <>
             <div className="border-b border-grid-bright pb-3">
@@ -1174,82 +1171,110 @@ function SpanEntity({ span }: { span: Span }) {
             showLineNumbers={false}
           />
         ) : null}
-      </>
+      </div>
     );
   }
 
   switch (span.entity.type) {
     case "waitpoint": {
       return (
-        <>
-          <div className="">
-            <Header2>Waitpoint</Header2>
-            <Paragraph variant="small">
-              A waitpoint pauses your code from continuing until the conditions are met.{" "}
-              <TextLink to={docsPath("wait")}>View docs</TextLink>.
-            </Paragraph>
-          </div>
-          <Property.Table>
-            <Property.Item>
-              <Property.Label>Status</Property.Label>
-              <Property.Value>
-                <TaskRunAttemptStatusCombo
-                  status={
-                    span.entity.object.status === "PENDING"
-                      ? "EXECUTING"
-                      : span.entity.object.outputIsError
-                      ? "FAILED"
-                      : "COMPLETED"
-                  }
-                  className="text-sm"
-                />
-              </Property.Value>
-            </Property.Item>
-            <Property.Item>
-              <Property.Label>ID</Property.Label>
-              <Property.Value className="whitespace-pre-wrap">
-                {span.entity.object.friendlyId}
-              </Property.Value>
-            </Property.Item>
-            <Property.Item>
-              <Property.Label>Idempotency key</Property.Label>
-              <Property.Value>
-                <div>
-                  <div>
-                    {span.entity.object.userProvidedIdempotencyKey
-                      ? span.entity.object.idempotencyKey
-                      : "–"}
-                  </div>
-                  <div>
-                    {span.entity.object.idempotencyKeyExpiresAt ? (
-                      <>
-                        TTL: <DateTime date={span.entity.object.idempotencyKeyExpiresAt} />
-                      </>
-                    ) : null}
-                  </div>
-                </div>
-              </Property.Value>
-            </Property.Item>
-            {span.entity.object.status === "PENDING" ? (
-              <CompleteWaitpointForm waitpoint={span.entity.object} />
-            ) : span.entity.object.output ? (
-              <PacketDisplay
-                title="Output"
-                data={span.entity.object.output}
-                dataType={span.entity.object.outputType}
-              />
-            ) : span.entity.object.completedAfter ? (
+        <div className="grid h-full grid-rows-[1fr_auto]">
+          <div className="flex flex-col gap-4 overflow-y-auto px-3 pt-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+            <div>
+              <Header2>Waitpoint</Header2>
+              <Paragraph variant="small">
+                A waitpoint pauses your code from continuing until the conditions are met.{" "}
+                <TextLink to={docsPath("wait")}>View docs</TextLink>.
+              </Paragraph>
+            </div>
+            <Property.Table>
               <Property.Item>
-                <Property.Label>Completed at</Property.Label>
+                <Property.Label>Status</Property.Label>
                 <Property.Value>
-                  <DateTimeAccurate date={span.entity.object.completedAfter} />
+                  <TaskRunStatusCombo
+                    status={
+                      span.entity.object.isTimeout
+                        ? "TIMED_OUT"
+                        : span.entity.object.status === "PENDING"
+                        ? "EXECUTING"
+                        : span.entity.object.outputIsError
+                        ? "COMPLETED_WITH_ERRORS"
+                        : "COMPLETED_SUCCESSFULLY"
+                    }
+                    className="text-sm"
+                  />
                 </Property.Value>
               </Property.Item>
-            ) : (
-              "Completed with no output"
-            )}
-          </Property.Table>
-        </>
+              <Property.Item>
+                <Property.Label>ID</Property.Label>
+                <Property.Value className="whitespace-pre-wrap">
+                  {span.entity.object.friendlyId}
+                </Property.Value>
+              </Property.Item>
+              <Property.Item>
+                <Property.Label>Idempotency key</Property.Label>
+                <Property.Value>
+                  <div>
+                    <div>
+                      {span.entity.object.userProvidedIdempotencyKey
+                        ? span.entity.object.idempotencyKey
+                        : "–"}
+                    </div>
+                    <div>
+                      {span.entity.object.idempotencyKeyExpiresAt ? (
+                        <>
+                          TTL: <DateTime date={span.entity.object.idempotencyKeyExpiresAt} />
+                        </>
+                      ) : null}
+                    </div>
+                  </div>
+                </Property.Value>
+              </Property.Item>
+              {span.entity.object.type === "MANUAL" && (
+                <>
+                  <Property.Item>
+                    <Property.Label>Timeout at</Property.Label>
+                    <Property.Value>
+                      <div className="flex w-full items-center justify-between">
+                        {span.entity.object.completedAfter ? (
+                          <DateTimeAccurate date={span.entity.object.completedAfter} />
+                        ) : (
+                          "–"
+                        )}
+                        {span.entity.object.status === "PENDING" && (
+                          <ForceTimeout waitpoint={span.entity.object} />
+                        )}
+                      </div>
+                    </Property.Value>
+                  </Property.Item>
+                </>
+              )}
+              {span.entity.object.status === "PENDING" ? null : span.entity.object.isTimeout ? (
+                <></>
+              ) : span.entity.object.output ? (
+                <PacketDisplay
+                  title="Output"
+                  data={span.entity.object.output}
+                  dataType={span.entity.object.outputType}
+                />
+              ) : span.entity.object.completedAfter ? (
+                <Property.Item>
+                  <Property.Label>Completed at</Property.Label>
+                  <Property.Value>
+                    <DateTimeAccurate date={span.entity.object.completedAfter} />
+                  </Property.Value>
+                </Property.Item>
+              ) : (
+                "Completed with no output"
+              )}
+            </Property.Table>
+          </div>
+          {span.entity.object.status === "PENDING" && (
+            <div className="">
+              <CompleteWaitpointForm waitpoint={span.entity.object} />
+            </div>
+          )}
+        </div>
       );
     }
     default: {

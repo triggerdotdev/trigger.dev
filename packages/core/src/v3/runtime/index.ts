@@ -4,7 +4,6 @@ import {
   BatchTaskRunExecutionResult,
   TaskRunContext,
   TaskRunExecutionResult,
-  WaitForWaitpointTokenRequestBody,
   WaitpointTokenResult,
 } from "../schemas/index.js";
 import { getGlobal, registerGlobal, unregisterGlobal } from "../utils/globals.js";

@@ -2068,7 +2068,8 @@ model Waitpoint {
   completedByTaskRunId String?  @unique
   completedByTaskRun   TaskRun? @relation(fields: [completedByTaskRunId], references: [id], onDelete: SetNull)
 
-  /// If it's a DATETIME type waitpoint, this is the date
+  /// If it's a DATETIME type waitpoint, this is the date.
+  /// If it's a MANUAL waitpoint, this can be set as the `timeout`.
   completedAfter DateTime?
 
   /// If it's a BATCH type waitpoint, this is the associated batch

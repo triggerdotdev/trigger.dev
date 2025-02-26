@@ -498,6 +498,8 @@ describe("RunEngine Waitpoints", () => {
         const result = await engine.createManualWaitpoint({
           environmentId: authenticatedEnvironment.id,
           projectId: authenticatedEnvironment.projectId,
+          //fail after 200ms
+          timeout: new Date(Date.now() + 200),
         });
 
         //block the run
@@ -507,8 +509,6 @@ describe("RunEngine Waitpoints", () => {
           environmentId: authenticatedEnvironment.id,
           projectId: authenticatedEnvironment.projectId,
           organizationId: authenticatedEnvironment.organizationId,
-          //fail after 200ms
-          failAfter: new Date(Date.now() + 200),
         });
 
         const executionData = await engine.getRunExecutionData({ runId: run.id });

@@ -399,7 +399,7 @@ export type WaitpointTokenTypedResult<T> =
     }
   | {
       ok: false;
-      error: string;
+      error: Error;
     };
 
 export const SerializedError = z.object({

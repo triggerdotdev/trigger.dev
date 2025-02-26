@@ -1,4 +1,5 @@
 import {
+  isWaitpointOutputTimeout,
   MachinePresetName,
   parsePacket,
   prettyPrintPacket,
@@ -468,6 +469,13 @@ export class SpanPresenter extends BasePresenter {
             ? await prettyPrintPacket(waitpoint.output, waitpoint.outputType ?? undefined)
             : undefined;
 
+        let isTimeout = false;
+        if (waitpoint.outputIsError && output) {
+          if (isWaitpointOutputTimeout(output)) {
+            isTimeout = true;
+          }
+        }
+
         return {
           ...data,
           entity: {
@@ -483,6 +491,7 @@ export class SpanPresenter extends BasePresenter {
               outputType: waitpoint.outputType,
               outputIsError: waitpoint.outputIsError,
               completedAfter: waitpoint.completedAfter,
+              isTimeout,
             },
           },
         };

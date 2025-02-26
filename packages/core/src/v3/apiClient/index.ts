@@ -34,7 +34,6 @@ import {
   UpdateScheduleOptions,
   WaitForDurationRequestBody,
   WaitForDurationResponseBody,
-  WaitForWaitpointTokenRequestBody,
   WaitForWaitpointTokenResponseBody,
 } from "../schemas/index.js";
 import { taskContext } from "../task-context-api.js";
@@ -676,7 +675,6 @@ export class ApiClient {
   waitForWaitpointToken(
     runFriendlyId: string,
     waitpointFriendlyId: string,
-    options?: WaitForWaitpointTokenRequestBody,
     requestOptions?: ZodFetchOptions
   ) {
     return zodfetch(
@@ -685,7 +683,6 @@ export class ApiClient {
       {
         method: "POST",
         headers: this.#getHeaders(false),
-        body: JSON.stringify(options ?? {}),
       },
       mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );

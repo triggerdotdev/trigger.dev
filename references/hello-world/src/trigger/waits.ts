@@ -11,18 +11,20 @@ export const waitToken = task({
     idempotencyKey,
     idempotencyKeyTTL,
     completionDelay,
+    timeout,
   }: {
     completeBeforeWaiting?: boolean;
     idempotencyKey?: string;
     idempotencyKeyTTL?: string;
     completionDelay?: number;
+    timeout?: string;
   }) => {
     logger.log("Hello, world", { completeBeforeWaiting });
 
     const token = await wait.createToken({
       idempotencyKey,
       idempotencyKeyTTL,
-      timeout: completionDelay ? undefined : new Date(Date.now() + 10_000),
+      timeout,
     });
     logger.log("Token", token);
 

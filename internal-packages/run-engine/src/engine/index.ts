@@ -22,7 +22,7 @@ import {
   TaskRunFailedExecutionResult,
   TaskRunInternalError,
   TaskRunSuccessfulExecutionResult,
-  WAITPOINT_TIMEOUT_ERROR_CODE,
+  timeoutError,
 } from "@trigger.dev/core/v3";
 import {
   BatchId,
@@ -1788,10 +1788,7 @@ export class RunEngine {
         job: "finishWaitpoint",
         payload: {
           waitpointId: waitpoint.id,
-          error: JSON.stringify({
-            code: WAITPOINT_TIMEOUT_ERROR_CODE,
-            message: `Waitpoint timed out at ${timeout.toISOString()}`,
-          }),
+          error: JSON.stringify(timeoutError(timeout)),
         },
         availableAt: timeout,
       });
@@ -1947,7 +1944,7 @@ export class RunEngine {
     projectId,
     organizationId,
     releaseConcurrency,
-    failAfter,
+    timeout,
     spanIdToComplete,
     batch,
     workerId,
@@ -1962,7 +1959,7 @@ export class RunEngine {
     releaseConcurrency?: {
       releaseQueue: boolean;
     };
-    failAfter?: Date;
+    timeout?: Date;
     spanIdToComplete?: string;
     batch?: { id: string; index?: number };
     workerId?: string;
@@ -2033,19 +2030,16 @@ export class RunEngine {
         await this.#sendNotificationToWorker({ runId, snapshot });
       }
 
-      if (failAfter) {
+      if (timeout) {
         for (const waitpoint of $waitpoints) {
           await this.worker.enqueue({
             id: `finishWaitpoint.${waitpoint}`,
             job: "finishWaitpoint",
             payload: {
               waitpointId: waitpoint,
-              error: JSON.stringify({
-                code: WAITPOINT_TIMEOUT_ERROR_CODE,
-                message: `Waitpoint timed out at ${failAfter.toISOString()}`,
-              }),
+              error: JSON.stringify(timeoutError(timeout)),
             },
-            availableAt: failAfter,
+            availableAt: timeout,
           });
         }
       }

@@ -6,7 +6,6 @@ import {
   TaskRunExecutionResult,
   TaskRunFailedExecutionResult,
   TaskRunSuccessfulExecutionResult,
-  WaitForWaitpointTokenRequestBody,
   WaitpointTokenResult,
 } from "../schemas/index.js";
 import { ExecutorToWorkerProcessConnection } from "../zodIpc.js";

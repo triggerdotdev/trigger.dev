@@ -5,20 +5,17 @@ import {
   apiClientManager,
   ApiPromise,
   ApiRequestOptions,
-  conditionallyExportPacket,
   CreateWaitpointTokenRequestBody,
   CreateWaitpointTokenResponseBody,
   mergeRequestOptions,
-  stringifyIO,
   CompleteWaitpointTokenResponseBody,
-  WaitForWaitpointTokenRequestBody,
   WaitpointTokenTypedResult,
   Prettify,
   taskContext,
 } from "@trigger.dev/core/v3";
 import { tracer } from "./tracer.js";
-import { conditionallyImportPacket } from "../../../core/dist/commonjs/v3/index.js";
 import { conditionallyImportAndParsePacket } from "@trigger.dev/core/v3/utils/ioSerialization";
+import { SpanStatusCode } from "@opentelemetry/api";
 
 function createToken(
   options?: CreateWaitpointTokenRequestBody,
@@ -118,6 +115,13 @@ type WaitPeriod =
       years: number;
     };
 
+export class WaitpointTimeoutError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "WaitpointTimeoutError";
+  }
+}
+
 export const wait = {
   for: async (options: WaitForOptions) => {
     const ctx = taskContext.ctx;
@@ -203,8 +207,7 @@ export const wait = {
   createToken,
   completeToken,
   forToken: async <T>(
-    token: string | { id: string },
-    options?: WaitForWaitpointTokenRequestBody
+    token: string | { id: string }
   ): Promise<Prettify<WaitpointTokenTypedResult<T>>> => {
     const ctx = taskContext.ctx;
 
@@ -219,7 +222,7 @@ export const wait = {
     return tracer.startActiveSpan(
       `wait.forToken()`,
       async (span) => {
-        const response = await apiClient.waitForWaitpointToken(ctx.run.id, tokenId, options);
+        const response = await apiClient.waitForWaitpointToken(ctx.run.id, tokenId);
 
         if (!response.success) {
           throw new Error(`Failed to wait for wait token ${tokenId}`);
@@ -240,9 +243,16 @@ export const wait = {
             output: data,
           } as WaitpointTokenTypedResult<T>;
         } else {
+          const error = new WaitpointTimeoutError(data.message);
+
+          span.recordException(error);
+          span.setStatus({
+            code: SpanStatusCode.ERROR,
+          });
+
           return {
             ok: result.ok,
-            error: data,
+            error,
           } as WaitpointTokenTypedResult<T>;
         }
       },

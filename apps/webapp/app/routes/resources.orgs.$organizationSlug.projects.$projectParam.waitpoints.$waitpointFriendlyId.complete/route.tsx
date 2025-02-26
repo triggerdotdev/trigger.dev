@@ -1,18 +1,22 @@
 import { parse } from "@conform-to/zod";
-import { InformationCircleIcon } from "@heroicons/react/20/solid";
 import { Form, useLocation, useNavigation, useSubmit } from "@remix-run/react";
 import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
-import { conditionallyExportPacket, stringifyIO } from "@trigger.dev/core/v3";
+import {
+  conditionallyExportPacket,
+  IOPacket,
+  stringifyIO,
+  timeoutError,
+} from "@trigger.dev/core/v3";
 import { WaitpointId } from "@trigger.dev/core/v3/apps";
 import { Waitpoint } from "@trigger.dev/database";
 import { useCallback, useRef } from "react";
 import { z } from "zod";
 import { AnimatedHourglassIcon } from "~/assets/icons/AnimatedHourglassIcon";
-import { CodeBlock } from "~/components/code/CodeBlock";
 import { JSONEditor } from "~/components/code/JSONEditor";
 import { Button } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { InfoIconTooltip } from "~/components/primitives/Tooltip";
 import { LiveCountdown } from "~/components/runs/v3/LiveTimer";
 import { $replica } from "~/db.server";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -26,7 +30,8 @@ import { engine } from "~/v3/runEngine.server";
 const CompleteWaitpointFormData = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("MANUAL"),
-    payload: z.string(),
+    payload: z.string().optional(),
+    isTimeout: z.string().optional(),
     successRedirect: z.string(),
     failureRedirect: z.string(),
   }),
@@ -104,9 +109,51 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         );
       }
       case "MANUAL": {
-        let data: any;
+        if (submission.value.isTimeout) {
+          try {
+            const result = await engine.completeWaitpoint({
+              id: waitpointId,
+              output: {
+                type: "application/json",
+                value: JSON.stringify(timeoutError(new Date())),
+                isError: true,
+              },
+            });
+
+            return redirectWithSuccessMessage(
+              submission.value.successRedirect,
+              request,
+              "Waitpoint timed out"
+            );
+          } catch (e) {
+            return redirectWithErrorMessage(
+              submission.value.failureRedirect,
+              request,
+              "Invalid payload, must be valid JSON"
+            );
+          }
+        }
+
         try {
-          data = JSON.parse(submission.value.payload);
+          const data = submission.value.payload ? JSON.parse(submission.value.payload) : {};
+          const stringifiedData = await stringifyIO(data);
+          const finalData = await conditionallyExportPacket(
+            stringifiedData,
+            `${waitpointId}/waitpoint/token`
+          );
+
+          const result = await engine.completeWaitpoint({
+            id: waitpointId,
+            output: finalData.data
+              ? { type: finalData.dataType, value: finalData.data, isError: false }
+              : undefined,
+          });
+
+          return redirectWithSuccessMessage(
+            submission.value.successRedirect,
+            request,
+            "Waitpoint completed"
+          );
         } catch (e) {
           return redirectWithErrorMessage(
             submission.value.failureRedirect,
@@ -114,24 +161,6 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
             "Invalid payload, must be valid JSON"
           );
         }
-        const stringifiedData = await stringifyIO(data);
-        const finalData = await conditionallyExportPacket(
-          stringifiedData,
-          `${waitpointId}/waitpoint/token`
-        );
-
-        const result = await engine.completeWaitpoint({
-          id: waitpointId,
-          output: finalData.data
-            ? { type: finalData.dataType, value: finalData.data, isError: false }
-            : undefined,
-        });
-
-        return redirectWithSuccessMessage(
-          submission.value.successRedirect,
-          request,
-          "Waitpoint completed"
-        );
       }
     }
   } catch (error: any) {
@@ -199,7 +228,7 @@ function CompleteDateTimeWaitpointForm({
     <Form
       action={`/resources/orgs/${organization.slug}/projects/${project.slug}/waitpoints/${waitpoint.friendlyId}/complete`}
       method="post"
-      className="grid h-full max-h-full grid-rows-[2.5rem_1fr_2.5rem] overflow-hidden rounded-md border border-grid-bright"
+      className="grid h-full max-h-full grid-rows-[2.5rem_1fr_3.25rem] overflow-hidden border-t border-grid-bright"
     >
       <div className="mx-3 flex items-center">
         <Paragraph variant="small/bright">Manually skip this waitpoint</Paragraph>
@@ -229,17 +258,15 @@ function CompleteDateTimeWaitpointForm({
           <DateTime date={waitpoint.completedAfter} />
         </div>
       </div>
-      <div className="px-2">
-        <div className="mb-2 flex items-center justify-end gap-2 border-t border-grid-dimmed pt-2">
-          <Button
-            variant="secondary/small"
-            type="submit"
-            disabled={isLoading}
-            LeadingIcon={isLoading ? "spinner" : undefined}
-          >
-            {isLoading ? "Completing…" : "Skip waitpoint"}
-          </Button>
-        </div>
+      <div className="flex items-center justify-end border-t border-grid-dimmed bg-background-dimmed px-2">
+        <Button
+          variant="secondary/medium"
+          type="submit"
+          disabled={isLoading}
+          LeadingIcon={isLoading ? "spinner" : undefined}
+        >
+          {isLoading ? "Completing…" : "Skip waitpoint"}
+        </Button>
       </div>
     </Form>
   );
@@ -281,7 +308,7 @@ function CompleteManualWaitpointForm({ waitpoint }: { waitpoint: { friendlyId: s
         action={formAction}
         method="post"
         onSubmit={(e) => submitForm(e)}
-        className="grid h-full max-h-full grid-rows-[2.5rem_1fr_2.5rem] overflow-hidden rounded-md border border-grid-bright"
+        className="grid h-full max-h-full grid-rows-[2.5rem_1fr_3.25rem] overflow-hidden border-t border-grid-bright"
       >
         <input type="hidden" name="type" value={"MANUAL"} />
         <input
@@ -294,10 +321,16 @@ function CompleteManualWaitpointForm({ waitpoint }: { waitpoint: { friendlyId: s
           name="failureRedirect"
           value={`${location.pathname}${location.search}`}
         />
-        <div className="mx-3 flex items-center">
+        <div className="mx-3 flex items-center gap-1">
           <Paragraph variant="small/bright">Manually complete this waitpoint</Paragraph>
+          <InfoIconTooltip
+            content={
+              "This is will immediately complete this waitpoint with the payload you specify. This is useful during development for testing."
+            }
+            contentClassName="normal-case tracking-normal max-w-xs"
+          />
         </div>
-        <div className="overflow-y-auto border-t border-grid-dimmed bg-charcoal-900 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+        <div className="overflow-y-auto bg-charcoal-900 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
           <div className="max-h-[70vh] min-h-40 overflow-y-auto bg-charcoal-900 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
             <JSONEditor
               autoFocus
@@ -315,32 +348,51 @@ function CompleteManualWaitpointForm({ waitpoint }: { waitpoint: { friendlyId: s
             />
           </div>
         </div>
-        <div className="bg-charcoal-900 px-2">
-          <div className="mb-2 flex items-center justify-end gap-2 border-t border-grid-dimmed pt-2">
-            <Button
-              variant="secondary/small"
-              type="submit"
-              disabled={isLoading}
-              LeadingIcon={isLoading ? "spinner" : undefined}
-            >
-              {isLoading ? "Completing…" : "Complete waitpoint"}
-            </Button>
-          </div>
+        <div className="flex items-center justify-end gap-2 border-t border-grid-dimmed bg-background-dimmed px-2">
+          <Button
+            variant="secondary/medium"
+            type="submit"
+            disabled={isLoading}
+            LeadingIcon={isLoading ? "spinner" : undefined}
+          >
+            {isLoading ? "Completing…" : "Complete waitpoint"}
+          </Button>
         </div>
       </Form>
-      <CodeBlock
-        rowTitle={
-          <span className="-ml-1 flex items-center gap-1 text-text-dimmed">
-            <InformationCircleIcon className="size-5 shrink-0 text-text-dimmed" />
-            To complete this waitpoint in your code use:
-          </span>
-        }
-        code={`
-await wait.completeToken<YourType>(tokenId,
-  output
-);`}
-        showLineNumbers={false}
-      />
     </>
+  );
+}
+
+export function ForceTimeout({ waitpoint }: { waitpoint: { friendlyId: string } }) {
+  const location = useLocation();
+  const navigation = useNavigation();
+  const isLoading = navigation.state !== "idle";
+  const organization = useOrganization();
+  const project = useProject();
+  const formAction = `/resources/orgs/${organization.slug}/projects/${project.slug}/waitpoints/${waitpoint.friendlyId}/complete`;
+
+  return (
+    <Form action={formAction} method="post">
+      <input type="hidden" name="type" value={"MANUAL"} />
+      <input type="hidden" name="isTimeout" value={"1"} />
+      <input
+        type="hidden"
+        name="successRedirect"
+        value={`${location.pathname}${location.search}`}
+      />
+      <input
+        type="hidden"
+        name="failureRedirect"
+        value={`${location.pathname}${location.search}`}
+      />
+      <Button
+        variant="tertiary/small"
+        type="submit"
+        disabled={isLoading}
+        LeadingIcon={isLoading ? "spinner" : undefined}
+      >
+        {isLoading ? "Forcing timeout…" : "Force timeout"}
+      </Button>
+    </Form>
   );
 }
