@@ -1,3 +1,4 @@
+import { env } from "~/env.server";
 import { parse } from "@conform-to/zod";
 import { Form, useLocation, useNavigation, useSubmit } from "@remix-run/react";
 import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
@@ -135,6 +136,17 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         }
 
         try {
+          if (
+            submission.value.payload &&
+            submission.value.payload.length > env.TASK_PAYLOAD_MAXIMUM_SIZE
+          ) {
+            return redirectWithErrorMessage(
+              submission.value.failureRedirect,
+              request,
+              "Payload is too large"
+            );
+          }
+
           const data = submission.value.payload ? JSON.parse(submission.value.payload) : {};
           const stringifiedData = await stringifyIO(data);
           const finalData = await conditionallyExportPacket(
