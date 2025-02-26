@@ -128,6 +128,13 @@ const runTimelines = [
     createdAt: new Date(Date.now() - 1000 * 60),
     updatedAt: new Date(),
     startedAt: new Date(Date.now() - 1000 * 30),
+    isFinished: false,
+    isError: false,
+  },
+  {
+    createdAt: new Date(Date.now() - 1000 * 60),
+    updatedAt: new Date(),
+    startedAt: new Date(Date.now() - 1000 * 30),
     executedAt: new Date(Date.now() - 1000 * 20),
     completedAt: new Date(Date.now() - 1000 * 15),
     isFinished: true,
