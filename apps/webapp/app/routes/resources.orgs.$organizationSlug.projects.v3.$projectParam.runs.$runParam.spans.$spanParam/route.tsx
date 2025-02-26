@@ -1235,7 +1235,7 @@ function SpanEntity({ span }: { span: Span }) {
                   <Property.Item>
                     <Property.Label>Timeout at</Property.Label>
                     <Property.Value>
-                      <div className="flex w-full items-center justify-between">
+                      <div className="flex w-full flex-wrap items-center justify-between gap-1">
                         {span.entity.object.completedAfter ? (
                           <DateTimeAccurate date={span.entity.object.completedAfter} />
                         ) : (
