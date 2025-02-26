@@ -243,7 +243,7 @@ export class DevQueueConsumer {
       return;
     }
 
-    await this._redisClient.set(`connection:${this.env.id}`, this.id);
+    await this._redisClient.set(`connection:${this.env.id}`, this.id, "EX", 60 * 60 * 24); // 24 hours
 
     this._enabled = true;
     // Create the session
@@ -283,7 +283,7 @@ export class DevQueueConsumer {
 
     const currentConnection = await this._redisClient.get(`connection:${this.env.id}`);
 
-    if (currentConnection !== this.id) {
+    if (currentConnection && currentConnection !== this.id) {
       logger.debug("Another connection is active, stopping the consumer", {
         currentConnection,
         env: this.env,
