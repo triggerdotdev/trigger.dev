@@ -21,7 +21,7 @@ export function AnimatedHourglassIcon({
       ],
       { repeat: Infinity, delay }
     );
-  });
+  }, []);
 
   return <HourglassIcon ref={scope} className={className} />;
 }

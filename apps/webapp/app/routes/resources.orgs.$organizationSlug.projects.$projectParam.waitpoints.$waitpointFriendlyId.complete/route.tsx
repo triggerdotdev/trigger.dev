@@ -74,23 +74,27 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       throw new Error("Project not found");
     }
 
+    const waitpointId = WaitpointId.toId(waitpointFriendlyId);
+
+    const waitpoint = await $replica.waitpoint.findFirst({
+      select: {
+        projectId: true,
+      },
+      where: {
+        id: waitpointId,
+      },
+    });
+
+    if (waitpoint?.projectId !== project.id) {
+      return redirectWithErrorMessage(
+        submission.value.failureRedirect,
+        request,
+        "No waitpoint found"
+      );
+    }
+
     switch (submission.value.type) {
       case "DATETIME": {
-        const waitpointId = WaitpointId.toId(waitpointFriendlyId);
-
-        const waitpoint = await $replica.waitpoint.findFirst({
-          select: {
-            projectId: true,
-          },
-          where: {
-            id: waitpointId,
-          },
-        });
-
-        if (waitpoint?.projectId !== project.id) {
-          throw new Error("Waitpoint not found");
-        }
-
         const result = await engine.completeWaitpoint({
           id: waitpointId,
         });
@@ -102,6 +106,8 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         );
       }
       case "MANUAL": {
+        //todo packet
+        //todo completeWaitpoint
       }
     }
   } catch (error: any) {
@@ -124,28 +130,6 @@ export function CompleteWaitpointForm({ waitpoint }: { waitpoint: FormWaitpoint 
   const isLoading = navigation.state !== "idle";
   const organization = useOrganization();
   const project = useProject();
-  const currentJson = useRef<string>("{\n\n}");
-  const formAction = `/resources/orgs/${organization.slug}/projects/${project.slug}/waitpoints/${waitpoint.friendlyId}/complete`;
-
-  const submitForm = useCallback(
-    (e: React.FormEvent<HTMLFormElement>) => {
-      const formData = new FormData(e.currentTarget);
-      const data: Record<string, string> = {
-        type: formData.get("type") as string,
-        failedRedirect: formData.get("failedRedirect") as string,
-        successRedirect: formData.get("failedRedirect") as string,
-      };
-
-      data.payload = currentJson.current;
-
-      submit(data, {
-        action: formAction,
-        method: "post",
-      });
-      e.preventDefault();
-    },
-    [currentJson]
-  );
 
   return (
     <div className="space-y-3">
@@ -161,62 +145,7 @@ export function CompleteWaitpointForm({ waitpoint }: { waitpoint: FormWaitpoint 
           <>Waitpoint doesn't have a complete date</>
         )
       ) : (
-        <>
-          <Form
-            action={formAction}
-            method="post"
-            onSubmit={(e) => submitForm(e)}
-            className="grid h-full max-h-full grid-rows-[2.5rem_1fr_2.5rem] overflow-hidden rounded-md border border-grid-bright"
-          >
-            <input type="hidden" name="type" value={waitpoint.type} />
-            <div className="mx-3 flex items-center">
-              <Paragraph variant="small/bright">Manually complete this waitpoint</Paragraph>
-            </div>
-            <div className="overflow-y-auto border-t border-grid-dimmed bg-charcoal-900 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-              <div className="max-h-[70vh] min-h-40 overflow-y-auto bg-charcoal-900 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-                <JSONEditor
-                  autoFocus
-                  defaultValue={currentJson.current}
-                  readOnly={false}
-                  basicSetup
-                  onChange={(v) => {
-                    currentJson.current = v;
-                  }}
-                  showClearButton={false}
-                  showCopyButton={false}
-                  height="100%"
-                  min-height="100%"
-                  max-height="100%"
-                />
-              </div>
-            </div>
-            <div className="bg-charcoal-900 px-2">
-              <div className="mb-2 flex items-center justify-end gap-2 border-t border-grid-dimmed pt-2">
-                <Button
-                  variant="secondary/small"
-                  type="submit"
-                  disabled={isLoading}
-                  LeadingIcon={isLoading ? "spinner" : undefined}
-                >
-                  {isLoading ? "Completing…" : "Complete waitpoint"}
-                </Button>
-              </div>
-            </div>
-          </Form>
-          <CodeBlock
-            rowTitle={
-              <span className="-ml-1 flex items-center gap-1 text-text-dimmed">
-                <InformationCircleIcon className="size-5 shrink-0 text-text-dimmed" />
-                To complete this waitpoint in your code use:
-              </span>
-            }
-            code={`
-await wait.completeToken<YourType>(tokenId,
-  output
-);`}
-            showLineNumbers={false}
-          />
-        </>
+        <CompleteManualWaitpointForm waitpoint={waitpoint} />
       )}
     </div>
   );
@@ -229,7 +158,6 @@ function CompleteDateTimeWaitpointForm({
 }) {
   const location = useLocation();
   const navigation = useNavigation();
-  const submit = useSubmit();
   const isLoading = navigation.state !== "idle";
   const organization = useOrganization();
   const project = useProject();
@@ -290,5 +218,105 @@ function CompleteDateTimeWaitpointForm({
         </div>
       </div>
     </Form>
+  );
+}
+
+function CompleteManualWaitpointForm({ waitpoint }: { waitpoint: { friendlyId: string } }) {
+  const location = useLocation();
+  const navigation = useNavigation();
+  const submit = useSubmit();
+  const isLoading = navigation.state !== "idle";
+  const organization = useOrganization();
+  const project = useProject();
+  const currentJson = useRef<string>("{\n\n}");
+  const formAction = `/resources/orgs/${organization.slug}/projects/${project.slug}/waitpoints/${waitpoint.friendlyId}/complete`;
+
+  const submitForm = useCallback(
+    (e: React.FormEvent<HTMLFormElement>) => {
+      const formData = new FormData(e.currentTarget);
+      const data: Record<string, string> = {
+        type: formData.get("type") as string,
+        failureRedirect: formData.get("failureRedirect") as string,
+        successRedirect: formData.get("successRedirect") as string,
+      };
+
+      data.payload = currentJson.current;
+
+      submit(data, {
+        action: formAction,
+        method: "post",
+      });
+      e.preventDefault();
+    },
+    [currentJson]
+  );
+
+  return (
+    <>
+      <Form
+        action={formAction}
+        method="post"
+        onSubmit={(e) => submitForm(e)}
+        className="grid h-full max-h-full grid-rows-[2.5rem_1fr_2.5rem] overflow-hidden rounded-md border border-grid-bright"
+      >
+        <input type="hidden" name="type" value={"DATETIME"} />
+        <input
+          type="hidden"
+          name="successRedirect"
+          value={`${location.pathname}${location.search}`}
+        />
+        <input
+          type="hidden"
+          name="failureRedirect"
+          value={`${location.pathname}${location.search}`}
+        />
+        <div className="mx-3 flex items-center">
+          <Paragraph variant="small/bright">Manually complete this waitpoint</Paragraph>
+        </div>
+        <div className="overflow-y-auto border-t border-grid-dimmed bg-charcoal-900 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+          <div className="max-h-[70vh] min-h-40 overflow-y-auto bg-charcoal-900 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+            <JSONEditor
+              autoFocus
+              defaultValue={currentJson.current}
+              readOnly={false}
+              basicSetup
+              onChange={(v) => {
+                currentJson.current = v;
+              }}
+              showClearButton={false}
+              showCopyButton={false}
+              height="100%"
+              min-height="100%"
+              max-height="100%"
+            />
+          </div>
+        </div>
+        <div className="bg-charcoal-900 px-2">
+          <div className="mb-2 flex items-center justify-end gap-2 border-t border-grid-dimmed pt-2">
+            <Button
+              variant="secondary/small"
+              type="submit"
+              disabled={isLoading}
+              LeadingIcon={isLoading ? "spinner" : undefined}
+            >
+              {isLoading ? "Completing…" : "Complete waitpoint"}
+            </Button>
+          </div>
+        </div>
+      </Form>
+      <CodeBlock
+        rowTitle={
+          <span className="-ml-1 flex items-center gap-1 text-text-dimmed">
+            <InformationCircleIcon className="size-5 shrink-0 text-text-dimmed" />
+            To complete this waitpoint in your code use:
+          </span>
+        }
+        code={`
+await wait.completeToken<YourType>(tokenId,
+output
+);`}
+        showLineNumbers={false}
+      />
+    </>
   );
 }
