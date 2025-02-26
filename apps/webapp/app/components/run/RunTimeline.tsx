@@ -239,14 +239,7 @@ function buildTimelineItems(run: TimelineSpanRun): TimelineItem[] {
         items.push({
           type: "line",
           id: "executing",
-          title: (
-            <span className="flex items-center gap-1">
-              <Spinner className="size-4" />
-              <span>
-                <LiveTimer startTime={run.executedAt} />
-              </span>
-            </span>
-          ),
+          title: <LiveTimer startTime={run.executedAt} />,
           state,
           shouldRender: true,
           variant: "normal",
@@ -270,17 +263,10 @@ function buildTimelineItems(run: TimelineSpanRun): TimelineItem[] {
         items.push({
           type: "line",
           id: "legacy-waiting-or-executing",
-          title: (
-            <span className="flex items-center gap-1">
-              <Spinner className="size-4" />
-              <span>
-                <LiveTimer startTime={run.startedAt} />
-              </span>
-            </span>
-          ),
+          title: <LiveTimer startTime={run.startedAt} />,
           state,
           shouldRender: true,
-          variant: "normal",
+          variant: "light",
         });
       }
     }
@@ -454,7 +440,6 @@ function EventMarker({
                   height: "100%",
                   backgroundImage: `url(${tileBgPath})`,
                   backgroundSize: "8px 8px",
-                  // backgroundPosition: "0px 2px",
                 }
               : undefined
           }
