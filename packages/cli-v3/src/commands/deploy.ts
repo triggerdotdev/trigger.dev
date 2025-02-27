@@ -486,7 +486,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   setGithubActionsOutputAndEnvVars({
     envVars: {
       TRIGGER_DEPLOYMENT_VERSION: version,
-      TRIGGER_WORKER_VERSION: version,
+      TRIGGER_VERSION: version,
       TRIGGER_DEPLOYMENT_SHORT_CODE: deployment.shortCode,
       TRIGGER_DEPLOYMENT_URL: `${authorization.dashboardUrl}/projects/v3/${resolvedConfig.project}/deployments/${deployment.shortCode}`,
       TRIGGER_TEST_URL: `${authorization.dashboardUrl}/projects/v3/${

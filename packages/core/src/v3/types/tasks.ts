@@ -774,7 +774,7 @@ export type TriggerOptions = {
 
   /**
    * Specify the version of the deployed task to run. By default the "current" version is used at the time of execution,
-   * but you can specify a specific version to run here. You can also set the TRIGGER_WORKER_VERSION environment
+   * but you can specify a specific version to run here. You can also set the TRIGGER_VERSION environment
    * variables to run a specific version for all tasks.
    *
    * @example
