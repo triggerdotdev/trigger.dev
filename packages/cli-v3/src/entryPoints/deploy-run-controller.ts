@@ -39,6 +39,14 @@ const COORDINATOR_PORT = Number(env.COORDINATOR_PORT || 50080);
 const MACHINE_NAME = env.MACHINE_NAME || "local";
 const POD_NAME = env.POD_NAME || "some-pod";
 const SHORT_HASH = env.TRIGGER_CONTENT_HASH!.slice(0, 9);
+const TRIGGER_POD_SCHEDULED_AT_MS =
+  typeof env.TRIGGER_POD_SCHEDULED_AT_MS === "string"
+    ? parseInt(env.TRIGGER_POD_SCHEDULED_AT_MS, 10)
+    : undefined;
+const TRIGGER_RUN_DEQUEUED_AT_MS =
+  typeof env.TRIGGER_RUN_DEQUEUED_AT_MS === "string"
+    ? parseInt(env.TRIGGER_RUN_DEQUEUED_AT_MS, 10)
+    : undefined;
 
 const logger = new SimpleLogger(`[${MACHINE_NAME}][${SHORT_HASH}]`);
 
@@ -427,8 +435,9 @@ class ProdWorker {
 
   async #readyForLazyAttempt() {
     const idempotencyKey = randomUUID();
+    const startTime = Date.now();
 
-    logger.log("ready for lazy attempt", { idempotencyKey });
+    logger.log("ready for lazy attempt", { idempotencyKey, startTime });
 
     this.readyForLazyAttemptReplay = {
       idempotencyKey,
@@ -445,6 +454,7 @@ class ProdWorker {
         version: "v1",
         runId: this.runId,
         totalCompletions: this.completed.size,
+        startTime,
       });
 
       await timeout(delay.milliseconds);
@@ -833,6 +843,8 @@ class ProdWorker {
 
           this.executing = true;
 
+          const createAttemptStart = Date.now();
+
           const createAttempt = await defaultBackoff.execute(async ({ retry }) => {
             logger.log("Create task run attempt with backoff", {
               retry,
@@ -878,11 +890,45 @@ class ProdWorker {
             ...environment,
           };
 
+          const payload = {
+            ...createAttempt.result.executionPayload,
+            metrics: [
+              ...(createAttempt.result.executionPayload.metrics ?? []),
+              ...(message.lazyPayload.metrics ?? []),
+              {
+                name: "start",
+                event: "create_attempt",
+                timestamp: createAttemptStart,
+                duration: Date.now() - createAttemptStart,
+              },
+              ...(TRIGGER_POD_SCHEDULED_AT_MS && TRIGGER_RUN_DEQUEUED_AT_MS
+                ? [
+                    ...(TRIGGER_POD_SCHEDULED_AT_MS !== TRIGGER_RUN_DEQUEUED_AT_MS
+                      ? [
+                          {
+                            name: "start",
+                            event: "pod_scheduled",
+                            timestamp: TRIGGER_POD_SCHEDULED_AT_MS,
+                            duration: Date.now() - TRIGGER_POD_SCHEDULED_AT_MS,
+                          },
+                        ]
+                      : []),
+                    {
+                      name: "start",
+                      event: "dequeue",
+                      timestamp: TRIGGER_RUN_DEQUEUED_AT_MS,
+                      duration: TRIGGER_POD_SCHEDULED_AT_MS - TRIGGER_RUN_DEQUEUED_AT_MS,
+                    },
+                  ]
+                : []),
+            ],
+          };
+
           this._taskRunProcess = new TaskRunProcess({
             workerManifest: this.workerManifest,
             env,
             serverWorker: execution.worker,
-            payload: createAttempt.result.executionPayload,
+            payload,
             messageId: message.lazyPayload.messageId,
           });
 

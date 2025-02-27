@@ -206,6 +206,9 @@ class KubernetesTaskOperations implements TaskOperations {
                   name: "TRIGGER_ENV",
                   value: opts.envType,
                 },
+                ...(opts.dequeuedAt
+                  ? [{ name: "TRIGGER_RUN_DEQUEUED_AT_MS", value: String(opts.dequeuedAt) }]
+                  : []),
               ],
               volumeMounts: [
                 {
@@ -522,7 +525,7 @@ class KubernetesTaskOperations implements TaskOperations {
         },
       },
       {
-        name: "SCHEDULED_AT_MS",
+        name: "TRIGGER_POD_SCHEDULED_AT_MS",
         value: Date.now().toString(),
       },
       ...this.#coordinatorEnvVars,

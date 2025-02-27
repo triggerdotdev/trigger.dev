@@ -123,12 +123,16 @@ class DockerTaskOperations implements TaskOperations {
       `--env=POD_NAME=${containerName}`,
       `--env=COORDINATOR_HOST=${COORDINATOR_HOST}`,
       `--env=COORDINATOR_PORT=${COORDINATOR_PORT}`,
-      `--env=SCHEDULED_AT_MS=${Date.now()}`,
+      `--env=TRIGGER_POD_SCHEDULED_AT_MS=${Date.now()}`,
       `--name=${containerName}`,
     ];
 
     if (process.env.ENFORCE_MACHINE_PRESETS) {
       runArgs.push(`--cpus=${opts.machine.cpu}`, `--memory=${opts.machine.memory}G`);
+    }
+
+    if (opts.dequeuedAt) {
+      runArgs.push(`--env=TRIGGER_RUN_DEQUEUED_AT_MS=${opts.dequeuedAt}`);
     }
 
     runArgs.push(`${opts.image}`);

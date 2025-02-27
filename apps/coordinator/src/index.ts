@@ -664,9 +664,25 @@ class TaskCoordinator {
 
             await chaosMonkey.call();
 
+            const lazyPayload = {
+              ...lazyAttempt.lazyPayload,
+              metrics: [
+                ...(message.startTime
+                  ? [
+                      {
+                        name: "start",
+                        event: "lazy_payload",
+                        timestamp: message.startTime,
+                        duration: Date.now() - message.startTime,
+                      },
+                    ]
+                  : []),
+              ],
+            };
+
             socket.emit("EXECUTE_TASK_RUN_LAZY_ATTEMPT", {
               version: "v1",
-              lazyPayload: lazyAttempt.lazyPayload,
+              lazyPayload,
             });
           } catch (error) {
             if (error instanceof ChaosMonkey.Error) {

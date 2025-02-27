@@ -251,18 +251,23 @@ module.exports = {
           "0%": { "background-position": "0px" },
           "100%": { "background-position": "8px" },
         },
+        "tile-move-offset": {
+          "0%": { "background-position": "-1px" },
+          "100%": { "background-position": "7px" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
         "tile-scroll": "tile-move 0.5s infinite linear",
+        "tile-scroll-offset": "tile-move-offset 0.5s infinite linear",
       },
       backgroundImage: {
         "gradient-radial": "radial-gradient(closest-side, var(--tw-gradient-stops))",
         "gradient-primary": `linear-gradient(90deg, acid-500 0%, toxic-500 100%)`,
         "gradient-primary-hover": `linear-gradient(80deg, acid-600 0%, toxic-600 100%)`,
         "gradient-secondary": `linear-gradient(90deg, hsl(271 91 65) 0%, hsl(221 83 53) 100%)`,
-        "gradient-radial-secondary": `radial-gradient(hsl(271 91 65), hsl(221 83 53))`,
+        "gradient-radial-secondary ": `radial-gradient(hsl(271 91 65), hsl(221 83 53))`,
       },
       gridTemplateColumns: {
         carousel: "repeat(6, 200px)",

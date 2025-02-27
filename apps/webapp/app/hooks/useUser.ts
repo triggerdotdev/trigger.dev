@@ -3,6 +3,7 @@ import type { User } from "~/models/user.server";
 import { loader } from "~/root";
 import { useChanged } from "./useChanged";
 import { useTypedMatchesData } from "./useTypedMatchData";
+import { useIsImpersonating } from "./useOrganizations";
 
 export function useOptionalUser(matches?: UIMatch[]): User | undefined {
   const routeMatch = useTypedMatchesData<typeof loader>({
@@ -29,6 +30,7 @@ export function useUserChanged(callback: (user: User | undefined) => void) {
 
 export function useHasAdminAccess(matches?: UIMatch[]): boolean {
   const user = useOptionalUser(matches);
+  const isImpersonating = useIsImpersonating(matches);
 
-  return Boolean(user?.admin);
+  return Boolean(user?.admin) || isImpersonating;
 }
