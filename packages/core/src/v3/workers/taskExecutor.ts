@@ -2,15 +2,10 @@ import { SpanKind } from "@opentelemetry/api";
 import { VERSION } from "../../version.js";
 import { ApiError, RateLimitError } from "../apiClient/errors.js";
 import { ConsoleInterceptor } from "../consoleInterceptor.js";
-import {
-  InternalError,
-  isInternalError,
-  parseError,
-  sanitizeError,
-  TaskPayloadParsedError,
-} from "../errors.js";
+import { isInternalError, parseError, sanitizeError, TaskPayloadParsedError } from "../errors.js";
 import { runMetadata, TriggerConfig, waitUntil } from "../index.js";
 import { recordSpanException, TracingSDK } from "../otel/index.js";
+import { runTimelineMetrics } from "../run-timeline-metrics-api.js";
 import {
   ServerBackgroundWorker,
   TaskRunContext,
@@ -97,8 +92,10 @@ export class TaskExecutor {
           let initOutput: any;
 
           try {
-            const payloadPacket = await conditionallyImportPacket(originalPacket, this._tracer);
-            parsedPayload = await parsePacket(payloadPacket);
+            await runTimelineMetrics.measureMetric("trigger.dev/execution", "payload", async () => {
+              const payloadPacket = await conditionallyImportPacket(originalPacket, this._tracer);
+              parsedPayload = await parsePacket(payloadPacket);
+            });
           } catch (inputError) {
             recordSpanException(span, inputError);
 
@@ -230,6 +227,8 @@ export class TaskExecutor {
           } finally {
             await this.#callTaskCleanup(parsedPayload, ctx, initOutput, signal);
             await this.#blockForWaitUntil();
+
+            span.setAttributes(runTimelineMetrics.convertMetricsToSpanAttributes());
           }
         });
       },
@@ -238,7 +237,14 @@ export class TaskExecutor {
         attributes: {
           [SemanticInternalAttributes.STYLE_ICON]: "attempt",
           [SemanticInternalAttributes.SPAN_ATTEMPT]: true,
+          ...(execution.attempt.number === 1
+            ? runTimelineMetrics.convertMetricsToSpanAttributes()
+            : {}),
         },
+        events:
+          execution.attempt.number === 1
+            ? runTimelineMetrics.convertMetricsToSpanEvents()
+            : undefined,
       },
       this._tracer.extractContext(traceContext),
       signal
@@ -256,13 +262,18 @@ export class TaskExecutor {
     }
 
     if (!middlewareFn) {
-      return runFn(payload, { ctx, init, signal });
+      return runTimelineMetrics.measureMetric("trigger.dev/execution", "run", () =>
+        runFn(payload, { ctx, init, signal })
+      );
     }
 
     return middlewareFn(payload, {
       ctx,
       signal,
-      next: async () => runFn(payload, { ctx, init, signal }),
+      next: async () =>
+        runTimelineMetrics.measureMetric("trigger.dev/execution", "run", () =>
+          runFn(payload, { ctx, init, signal })
+        ),
     });
   }
 
@@ -278,7 +289,9 @@ export class TaskExecutor {
     return this._tracer.startActiveSpan(
       "init",
       async (span) => {
-        return await initFn(payload, { ctx, signal });
+        return await runTimelineMetrics.measureMetric("trigger.dev/execution", "init", () =>
+          initFn(payload, { ctx, signal })
+        );
       },
       {
         attributes: {
@@ -298,7 +311,11 @@ export class TaskExecutor {
     return this._tracer.startActiveSpan(
       "config.init",
       async (span) => {
-        return await initFn(payload, { ctx, signal });
+        return await runTimelineMetrics.measureMetric(
+          "trigger.dev/execution",
+          "config.init",
+          async () => initFn(payload, { ctx, signal })
+        );
       },
       {
         attributes: {
@@ -353,7 +370,9 @@ export class TaskExecutor {
       await this._tracer.startActiveSpan(
         name,
         async (span) => {
-          return await onSuccessFn(payload, output, { ctx, init: initOutput, signal });
+          return await runTimelineMetrics.measureMetric("trigger.dev/execution", name, () =>
+            onSuccessFn(payload, output, { ctx, init: initOutput, signal })
+          );
         },
         {
           attributes: {
@@ -411,7 +430,9 @@ export class TaskExecutor {
       return await this._tracer.startActiveSpan(
         name,
         async (span) => {
-          return await onFailureFn(payload, error, { ctx, init: initOutput, signal });
+          return await runTimelineMetrics.measureMetric("trigger.dev/execution", name, () =>
+            onFailureFn(payload, error, { ctx, init: initOutput, signal })
+          );
         },
         {
           attributes: {
@@ -472,7 +493,9 @@ export class TaskExecutor {
       await this._tracer.startActiveSpan(
         name,
         async (span) => {
-          return await onStartFn(payload, { ctx, signal });
+          return await runTimelineMetrics.measureMetric("trigger.dev/execution", name, () =>
+            onStartFn(payload, { ctx, signal })
+          );
         },
         {
           attributes: {

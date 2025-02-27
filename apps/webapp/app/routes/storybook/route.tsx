@@ -117,6 +117,10 @@ const stories: Story[] = [
     slug: "timeline",
   },
   {
+    name: "Run & Span timeline",
+    slug: "run-and-span-timeline",
+  },
+  {
     name: "Typography",
     slug: "typography",
   },

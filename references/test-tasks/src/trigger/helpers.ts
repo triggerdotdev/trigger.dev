@@ -1,4 +1,4 @@
-import { BatchResult, queue, task, wait } from "@trigger.dev/sdk/v3";
+import { BatchResult, logger, queue, task, wait } from "@trigger.dev/sdk/v3";
 
 export const recursiveTask = task({
   id: "recursive-task",
@@ -188,6 +188,8 @@ function unwrapBatchResult(batchResult: BatchResult<string, any>) {
 export const genericChildTask = task({
   id: "generic-child-task",
   run: async (payload: { delayMs: number }, { ctx }) => {
+    logger.debug("Running generic child task");
+
     await new Promise((resolve) => setTimeout(resolve, payload.delayMs));
   },
 });

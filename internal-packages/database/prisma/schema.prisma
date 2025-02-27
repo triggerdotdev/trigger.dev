@@ -1703,7 +1703,10 @@ model TaskRun {
 
   checkpoints Checkpoint[]
 
+  /// startedAt marks the point at which a run is dequeued from MarQS
   startedAt     DateTime?
+  /// executedAt is set when the first attempt is about to execute
+  executedAt    DateTime?
   completedAt   DateTime?
   machinePreset String?
 
@@ -1915,8 +1918,8 @@ model TaskRunDependency {
   dependentBatchRun   BatchTaskRun? @relation("dependentBatchRun", fields: [dependentBatchRunId], references: [id])
   dependentBatchRunId String?
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
   resumedAt DateTime?
 
   @@index([dependentAttemptId])
