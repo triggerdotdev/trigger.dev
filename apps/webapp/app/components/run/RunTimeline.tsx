@@ -115,7 +115,17 @@ export function RunTimeline({ run }: { run: TimelineSpanRun }) {
 
 // Centralized function to build all timeline items
 function buildTimelineItems(run: TimelineSpanRun): TimelineItem[] {
-  const state = run.isError ? "error" : run.isFinished ? "complete" : "inprogress";
+  let state: TimelineEventState;
+  if (run.isError) {
+    state = "error";
+  } else if (run.expiredAt) {
+    state = "error";
+  } else if (run.isFinished) {
+    state = "complete";
+  } else {
+    state = "inprogress";
+  }
+
   const items: TimelineItem[] = [];
 
   // 1. Triggered Event
@@ -745,8 +755,6 @@ export function createTimelineSpanEventsFromSpanEvents(
 
     if (index === 0) {
       markerVariant = "start-cap";
-    } else if (index === matchingSpanEvents.length - 1) {
-      markerVariant = "end-cap-thick";
     }
 
     return {
