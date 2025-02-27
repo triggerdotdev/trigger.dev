@@ -277,6 +277,7 @@ export class DevQueueConsumer {
       }
 
       setTimeout(() => this.#doWork(), 1000);
+      return;
     }
 
     this._connectionLostAt = undefined;
