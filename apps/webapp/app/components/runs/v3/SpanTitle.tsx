@@ -75,7 +75,7 @@ export function SpanCodePathAccessory({
           <span className={cn("truncate", "text-text-dimmed")}>{item.text}</span>
           {index < accessory.items.length - 1 && (
             <span className="text-text-dimmed">
-              <ChevronRightIcon className="h-4 w-4" />
+              <ChevronRightIcon className="size-4" />
             </span>
           )}
         </Fragment>
@@ -155,12 +155,12 @@ export function eventBorderClassName(event: RunEvent) {
 
   switch (event.level) {
     case "TRACE": {
-      return backgroundClassNameForVariant(event.style.variant, event.isPartial);
+      return borderClassNameForVariant(event.style.variant, event.isPartial);
     }
     case "LOG":
     case "INFO":
     case "DEBUG": {
-      return backgroundClassNameForVariant(event.style.variant, event.isPartial);
+      return borderClassNameForVariant(event.style.variant, event.isPartial);
     }
     case "WARN": {
       return "border-amber-400";
@@ -169,7 +169,7 @@ export function eventBorderClassName(event: RunEvent) {
       return "border-error";
     }
     default: {
-      return backgroundClassNameForVariant(event.style.variant, event.isPartial);
+      return borderClassNameForVariant(event.style.variant, event.isPartial);
     }
   }
 }
