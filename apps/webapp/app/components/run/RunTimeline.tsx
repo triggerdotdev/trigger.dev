@@ -8,7 +8,6 @@ import {
 import { Fragment, ReactNode, useState } from "react";
 import { cn } from "~/utils/cn";
 import { DateTime, DateTimeAccurate } from "../primitives/DateTime";
-import { Spinner } from "../primitives/Spinner";
 import { LiveTimer } from "../runs/v3/LiveTimer";
 import tileBgPath from "~/assets/images/error-banner-tile@2x.png";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
@@ -544,7 +543,7 @@ function LineMarker({
         <div className={cn("relative w-px", containerClass)}>
           {state === "inprogress" && (
             <div
-              className="absolute inset-0 h-full w-full animate-tile-scroll opacity-30"
+              className="absolute inset-0 h-full w-full animate-tile-scroll opacity-50"
               style={{
                 backgroundImage: `url(${tileBgPath})`,
                 backgroundSize: "8px 8px",
@@ -632,7 +631,7 @@ export function SpanTimeline({
           <RunTimelineLine
             title={<LiveTimer startTime={startTime} />}
             state={state}
-            variant={visibleEvents.length > 0 ? "light" : "normal"}
+            variant="normal"
             style={style}
           />
         ) : (
