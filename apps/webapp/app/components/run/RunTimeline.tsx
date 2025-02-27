@@ -387,8 +387,19 @@ function EventMarker({
                 ? "bg-success"
                 : state === "error"
                 ? "bg-error"
+                : state === "inprogress"
+                ? "animate-tile-scroll-offset bg-pending"
                 : "bg-text-dimmed"
             )}
+            style={
+              state === "inprogress"
+                ? {
+                    height: "100%",
+                    backgroundImage: `url(${tileBgPath})`,
+                    backgroundSize: "8px 8px",
+                  }
+                : undefined
+            }
           />
           <div
             className={cn(
@@ -397,6 +408,8 @@ function EventMarker({
                 ? "border-success"
                 : state === "error"
                 ? "border-error"
+                : state === "inprogress"
+                ? "border-pending"
                 : "border-text-dimmed"
             )}
           />
@@ -407,8 +420,19 @@ function EventMarker({
                 ? "bg-success"
                 : state === "error"
                 ? "bg-error"
+                : state === "inprogress"
+                ? "animate-tile-scroll-offset bg-pending"
                 : "bg-text-dimmed"
             )}
+            style={
+              state === "inprogress"
+                ? {
+                    height: "100%",
+                    backgroundImage: `url(${tileBgPath})`,
+                    backgroundSize: "8px 8px",
+                  }
+                : undefined
+            }
           />
         </>
       );
@@ -431,7 +455,7 @@ function EventMarker({
               : state === "error"
               ? "bg-error"
               : state === "inprogress"
-              ? "animate-tile-move-offset bg-pending"
+              ? "animate-tile-scroll-offset bg-pending"
               : "bg-text-dimmed"
           )}
           style={

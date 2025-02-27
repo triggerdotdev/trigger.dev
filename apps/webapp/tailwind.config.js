@@ -260,7 +260,7 @@ module.exports = {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
         "tile-scroll": "tile-move 0.5s infinite linear",
-        "tile-move-offset": "tile-move-offset 0.5s infinite linear",
+        "tile-scroll-offset": "tile-move-offset 0.5s infinite linear",
       },
       backgroundImage: {
         "gradient-radial": "radial-gradient(closest-side, var(--tw-gradient-stops))",
