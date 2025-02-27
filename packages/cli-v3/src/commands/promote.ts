@@ -27,9 +27,7 @@ export function configurePromoteCommand(program: Command) {
   return commonOptions(
     program
       .command("promote")
-      .description(
-        "Promote a previously deployed version to the current deployment:\n\n$ npx trigger.dev@latest promote [version]"
-      )
+      .description("Promote a previously deployed version to the current deployment")
       .argument("[version]", "The version to promote")
       .option("-c, --config <config file>", "The name of the config file, found at [path]")
       .option(
