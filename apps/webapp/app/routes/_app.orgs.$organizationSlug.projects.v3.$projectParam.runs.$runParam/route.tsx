@@ -168,7 +168,16 @@ export default function Page() {
               <span>Run #{run.number}</span>
               <EnvironmentLabel
                 size="large"
-                environment={run.environment}
+                environment={
+                  run.environment as {
+                    id: string;
+                    organizationId: string;
+                    type: RuntimeEnvironmentType;
+                    slug: string;
+                    userId: string;
+                    userName?: string;
+                  }
+                }
                 userName={usernameForEnv}
               />
             </div>
