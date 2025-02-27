@@ -902,7 +902,7 @@ function TimelineView({
                               >
                                 {(ms) => (
                                   <motion.div
-                                    className="-ml-[0.5px] h-4 w-[1px] rounded-none bg-text-dimmed"
+                                    className="-ml-[0.5px] h-[0.5625rem] w-px rounded-none bg-text-dimmed"
                                     layoutId={`${node.id}-${event.name}`}
                                   />
                                 )}
@@ -911,10 +911,11 @@ function TimelineView({
                               <Timeline.Point
                                 key={eventIndex}
                                 ms={nanosecondsToMilliseconds(event.offset)}
+                                className="z-10"
                               >
                                 {(ms) => (
                                   <motion.div
-                                    className="border-1 -ml-1 h-2 w-2 rounded-full border-background-bright bg-text-dimmed"
+                                    className="-ml-1 size-[0.3125rem] rounded-full border border-text-dimmed bg-background-bright"
                                     layoutId={`${node.id}-${event.name}`}
                                   />
                                 )}
