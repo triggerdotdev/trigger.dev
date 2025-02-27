@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -34,6 +34,6 @@ export function createTempFileSync(filename: string, content: string | Buffer = 
   const tempDir = mkdtempSync(join(tmpdir(), "app-"));
   const tempFile = join(tempDir, filename);
 
-  writeFile(tempFile, content, { mode: 0o600 });
+  writeFileSync(tempFile, content, { mode: 0o600 });
   return tempFile;
 }
