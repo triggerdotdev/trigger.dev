@@ -856,16 +856,16 @@ function getHelpTextForEvent(event: string): string | undefined {
       return "When the run was initially triggered";
     }
     case "Dequeued": {
-      return "When the run was taken from the queue for processing";
+      return "When the run is taken from the queue for processing";
     }
     case "Started": {
-      return "When the run began execution";
+      return "When the run begins executing";
     }
     case "Finished": {
-      return "The run completed execution";
+      return "When the run completes execution";
     }
     case "Expired": {
-      return "The run expired before it could be processed";
+      return "When the run expires before it can be processed";
     }
     default: {
       return undefined;
