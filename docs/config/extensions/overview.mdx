@@ -1,22 +1,14 @@
 ---
 title: "Build extensions"
+sidebarTitle: "Overview"
 description: "Customize how your project is built and deployed to Trigger.dev with build extensions"
 ---
 
-Build extension allow you to hook into the build system and customize the build process or the resulting bundle and container image (in the case of deploying). See our [trigger.config.ts reference](/config/config-file#extensions) for more information on how to install and use our built-in extensions. Build extensions can do the following:
+Build extensions allow you to hook into the build system and customize the build process or the resulting bundle and container image (in the case of deploying).
 
-- Add additional files to the build
-- Add dependencies to the list of externals
-- Add esbuild plugins
-- Add additional npm dependencies
-- Add additional system packages to the image build container
-- Add commands to run in the image build container
-- Add environment variables to the image build container
-- Sync environment variables to your Trigger.dev project
+You can use pre-built extensions by installing the `@trigger.dev/build` package into your `devDependencies`, or you can create your own.
 
-## Creating a build extension
-
-Build extensions are added to your `trigger.config.ts` file, with a required `name` and optional build hook functions. Here's a simple example of a build extension that just logs a message when the build starts:
+Build extensions are added to your `trigger.config.ts` file under the `build.extensions` property:
 
 ```ts
 import { defineConfig } from "@trigger.dev/sdk/v3";
@@ -36,344 +28,39 @@ export default defineConfig({
 });
 ```
 
-You can also extract that out into a function instead of defining it inline, in which case you will need to import the `BuildExtension` type from the `@trigger.dev/build` package:
-
-<Note>
-  You'll need to add the `@trigger.dev/build` package to your `devDependencies` before the below
-  code will work. Make sure it's version matches that of the installed `@trigger.dev/sdk` package.
-</Note>
+If you are using a pre-built extension, you can import it from the `@trigger.dev/build` package:
 
 ```ts
 import { defineConfig } from "@trigger.dev/sdk/v3";
-import { BuildExtension } from "@trigger.dev/build";
+import { ffmpeg } from "@trigger.dev/build/extensions/core";
 
 export default defineConfig({
   project: "my-project",
   build: {
-    extensions: [myExtension()],
-  },
-});
-
-function myExtension(): BuildExtension {
-  return {
-    name: "my-extension",
-    onBuildStart: async (context) => {
-      console.log("Build starting!");
-    },
-  };
-}
-```
-
-## Build hooks
-
-### externalsForTarget
-
-This allows the extension to add additional dependencies to the list of externals for the build. This is useful for dependencies that are not included in the bundle, but are expected to be available at runtime.
-
-```ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
-
-export default defineConfig({
-  project: "my-project",
-  build: {
-    extensions: [
-      {
-        name: "my-extension",
-        externalsForTarget: async (target) => {
-          return ["my-dependency"];
-        },
-      },
-    ],
+    extensions: [ffmpeg()],
   },
 });
 ```
 
-### onBuildStart
+## Built-in extensions
 
-This hook runs before the build starts. It receives the `BuildContext` object as an argument.
+Trigger.dev provides a set of built-in extensions that you can use to customize how your project is built and deployed. These extensions are available out of the box and can be configured in your `trigger.config.ts` file.
 
-```ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
+| Extension                                                             | Description                                                                    |
+| :-------------------------------------------------------------------- | :----------------------------------------------------------------------------- |
+| [prismaExtension](/config/extensions/prismaExtension)                 | Using prisma in your Trigger.dev tasks                                         |
+| [pythonExtension](/config/extensions/pythonExtension)                 | Execute Python scripts in your project                                         |
+| [puppeteer](/config/extensions/puppeteer)                             | Use Puppeteer in your Trigger.dev tasks                                        |
+| [ffmpeg](/config/extensions/ffmpeg)                                   | Use FFmpeg in your Trigger.dev tasks                                           |
+| [aptGet](/config/extensions/aptGet)                                   | Install system packages in your build image                                    |
+| [additionalFiles](/config/extensions/additionalFiles)                 | Copy additional files to your build image                                      |
+| [additionalPackages](/config/extensions/additionalPackages)           | Install additional npm packages in your build image                            |
+| [syncEnvVars](/config/extensions/syncEnvVars)                         | Automatically sync environment variables from external services to Trigger.dev |
+| [syncVercelEnvVars](/config/extensions/syncEnvVars#syncVercelEnvVars) | Automatically sync environment variables from Vercel to Trigger.dev            |
+| [esbuildPlugin](/config/extensions/esbuildPlugin)                     | Add existing or custom esbuild extensions to customize your build process      |
+| [emitDecoratorMetadata](/config/extensions/emitDecoratorMetadata)     | Enable `emitDecoratorMetadata` in your TypeScript build                        |
+| [audioWaveform](/config/extensions/audioWaveform)                     | Add Audio Waveform to your build image                                         |
 
-export default defineConfig({
-  project: "my-project",
-  build: {
-    extensions: [
-      {
-        name: "my-extension",
-        onBuildStart: async (context) => {
-          console.log("Build starting!");
-        },
-      },
-    ],
-  },
-});
-```
+## Custom extensions
 
-If you want to add an esbuild plugin, you must do so in the `onBuildStart` hook. Here's an example of adding a custom esbuild plugin:
-
-```ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
-
-export default defineConfig({
-  project: "my-project",
-  build: {
-    extensions: [
-      {
-        name: "my-extension",
-        onBuildStart: async (context) => {
-          context.registerPlugin({
-            name: "my-plugin",
-            setup(build) {
-              build.onLoad({ filter: /.*/, namespace: "file" }, async (args) => {
-                return {
-                  contents: "console.log('Hello, world!')",
-                  loader: "js",
-                };
-              });
-            },
-          });
-        },
-      },
-    ],
-  },
-});
-```
-
-You can use the `BuildContext.target` property to determine if the build is for `dev` or `deploy`:
-
-```ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
-
-export default defineConfig({
-  project: "my-project",
-  build: {
-    extensions: [
-      {
-        name: "my-extension",
-        onBuildStart: async (context) => {
-          if (context.target === "dev") {
-            console.log("Building for dev");
-          } else {
-            console.log("Building for deploy");
-          }
-        },
-      },
-    ],
-  },
-});
-```
-
-### onBuildComplete
-
-This hook runs after the build completes. It receives the `BuildContext` object and a `BuildManifest` object as arguments. This is where you can add in one or more `BuildLayer`'s to the context.
-
-```ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
-
-export default defineConfig({
-  project: "my-project",
-  build: {
-    extensions: [
-      {
-        name: "my-extension",
-        onBuildComplete: async (context, manifest) => {
-          context.addLayer({
-            id: "more-dependencies",
-            dependencies,
-          });
-        },
-      },
-    ],
-  },
-});
-```
-
-See the [addLayer](#addlayer) documentation for more information on how to use `addLayer`.
-
-## BuildTarget
-
-Can either be `dev` or `deploy`, matching the CLI command name that is being run.
-
-```sh
-npx trigger.dev@latest dev # BuildTarget is "dev"
-npx trigger.dev@latest deploy # BuildTarget is "deploy"
-```
-
-## BuildContext
-
-### addLayer()
-
-<ParamField path="layer" type="BuildLayer">
-  The layer to add to the build context. See the [BuildLayer](#buildlayer) documentation for more
-  information.
-</ParamField>
-
-### registerPlugin()
-
-<ParamField path="plugin" type="esbuild.Plugin" required>
-  The esbuild plugin to register.
-</ParamField>
-
-<ParamField path="options" type="object">
-  <Expandable title="properties">
-    <ResponseField name="target" type="BuildTarget">
-      An optional target to register the plugin for. If not provided, the plugin will be registered
-      for all targets.
-    </ResponseField>
-    <ResponseField name="placement" type="first | last">
-      An optional placement for the plugin. If not provided, the plugin will be registered in place.
-      This allows you to control the order of plugins.
-    </ResponseField>
-  </Expandable>
-</ParamField>
-
-### resolvePath()
-
-Resolves a path relative to the project's working directory.
-
-<ParamField path="path" type="string">
-  The path to resolve.
-</ParamField>
-
-```ts
-const resolvedPath = context.resolvePath("my-other-dependency");
-```
-
-### properties
-
-<ParamField path="target" type="BuildTarget">
-  The target of the build, either `dev` or `deploy`.
-</ParamField>
-
-<ParamField path="config" type="ResolvedConfig">
-  <Expandable title="properties">
-    <ResponseField name="runtime" type="string">
-      The runtime of the project (either node or bun)
-    </ResponseField>
-    <ResponseField name="project" type="string">
-      The project ref
-    </ResponseField>
-    <ResponseField name="dirs" type="string[]">
-      The trigger directories to search for tasks
-    </ResponseField>
-    <ResponseField name="build" type="object">
-      The build configuration object
-    </ResponseField>
-    <ResponseField name="workingDir" type="string">
-      The working directory of the project
-    </ResponseField>
-    <ResponseField name="workspaceDir" type="string">
-      The root workspace directory of the project
-    </ResponseField>
-    <ResponseField name="packageJsonPath" type="string">
-      The path to the package.json file
-    </ResponseField>
-    <ResponseField name="lockfilePath" type="string">
-      The path to the lockfile (package-lock.json, yarn.lock, or pnpm-lock.yaml)
-    </ResponseField>
-    <ResponseField name="configFile" type="string">
-      The path to the trigger.config.ts file
-    </ResponseField>
-    <ResponseField name="tsconfigPath" type="string">
-      The path to the tsconfig.json file
-    </ResponseField>
-  </Expandable>
-</ParamField>
-
-<ParamField path="logger" type="BuildLogger">
-  A logger object that can be used to log messages to the console.
-</ParamField>
-
-## BuildLayer
-
-<ParamField path="id" type="string">
-  A unique identifier for the layer.
-</ParamField>
-
-<ParamField path="commands" type="string[]">
-  An array of commands to run in the image build container.
-
-```ts
-commands: ["echo 'Hello, world!'"];
-```
-
-These commands are run after packages have been installed and the code copied into the container in the "build" stage of the Dockerfile. This means you cannot install system packages in these commands because they won't be available in the final stage. To do that, please use the `pkgs` property of the `image` object.
-
-</ParamField>
-
-<ParamField path="image" type="object">
-  <Expandable title="properties">
-    <ResponseField name="pkgs" type="string[]">
-      An array of system packages to install in the image build container.
-    </ResponseField>
-    <ResponseField name="instructions" type="string[]">
-      An array of instructions to add to the Dockerfile.
-    </ResponseField>
-  </Expandable>
-</ParamField>
-
-<ParamField path="build" type="object">
-  <Expandable title="properties">
-    <ResponseField name="env" type="Record<string, string>">
-      Environment variables to add to the image build container, but only during the "build" stage
-      of the Dockerfile. This is where you'd put environment variables that are needed when running
-      any of the commands in the `commands` array.
-    </ResponseField>
-  </Expandable>
-</ParamField>
-
-<ParamField path="deploy" type="object">
-  <Expandable title="properties">
-    <ResponseField name="env" type="Record<string, string>">
-      Environment variables that should sync to the Trigger.dev project, which will then be avalable
-      in your tasks at runtime. Importantly, these are NOT added to the image build container, but
-      are instead added to the Trigger.dev project and stored securely.
-    </ResponseField>
-  </Expandable>
-</ParamField>
-
-<ParamField path="dependencies" type="Record<string, string>">
-  An object of dependencies to add to the build. The key is the package name and the value is the
-  version.
-
-```ts
-dependencies: {
-  "my-dependency": "^1.0.0",
-};
-```
-
-</ParamField>
-
-### examples
-
-Add a command that will echo the value of an environment variable:
-
-```ts
-context.addLayer({
-  id: "my-layer",
-  commands: [`echo $MY_ENV_VAR`],
-  build: {
-    env: {
-      MY_ENV_VAR: "Hello, world!",
-    },
-  },
-});
-```
-
-## Troubleshooting
-
-When creating a build extension, you may run into issues with the build process. One thing that can help is turning on `debug` logging when running either `dev` or `deploy`:
-
-```sh
-npx trigger.dev@latest dev --log-level debug
-npx trigger.dev@latest deploy --log-level debug
-```
-
-Another helpful tool is the `--dry-run` flag on the `deploy` command, which will bundle your project and generate the Containerfile (e.g. the Dockerfile) without actually deploying it. This can help you see what the final image will look like and debug any issues with the build process.
-
-```sh
-npx trigger.dev@latest deploy --dry-run
-```
-
-You should also take a look at our built in extensions for inspiration on how to create your own. You can find them in in [the source code here](https://github.com/triggerdotdev/trigger.dev/tree/main/packages/build/src/extensions).
+If one of the built-in extensions doesn't meet your needs, you can create your own custom extension. See our [guide on creating custom build extensions](/config/extensions/custom) for more information.

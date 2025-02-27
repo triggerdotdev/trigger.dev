@@ -1,0 +1,30 @@
+---
+title: "Puppeteer"
+sidebarTitle: "puppeteer"
+description: "Use the puppeteer build extension to enable support for Puppeteer in your project"
+---
+
+<ScrapingWarning />
+
+To use Puppeteer in your project, add these build settings to your `trigger.config.ts` file:
+
+```ts trigger.config.ts
+import { defineConfig } from "@trigger.dev/sdk/v3";
+import { puppeteer } from "@trigger.dev/build/extensions/puppeteer";
+
+export default defineConfig({
+  project: "<project ref>",
+  // Your other config settings...
+  build: {
+    extensions: [puppeteer()],
+  },
+});
+```
+
+And add the following environment variable in your Trigger.dev dashboard on the Environment Variables page:
+
+```bash
+PUPPETEER_EXECUTABLE_PATH: "/usr/bin/google-chrome-stable",
+```
+
+Follow [this example](/guides/examples/puppeteer) to get setup with Trigger.dev and Puppeteer in your project.

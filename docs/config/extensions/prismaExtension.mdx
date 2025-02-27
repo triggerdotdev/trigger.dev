@@ -1,0 +1,157 @@
+---
+title: "Prisma"
+sidebarTitle: "prismaExtension"
+description: "Use the prismaExtension build extension to use Prisma with Trigger.dev"
+---
+
+If you are using Prisma, you should use the prisma build extension.
+
+- Automatically handles copying Prisma files to the build directory
+- Generates the Prisma client during the deploy process
+- Optionally will migrate the database during the deploy process
+- Support for TypedSQL and multiple schema files
+- You can use `prismaSchemaFolder` to specify just the directory containing your schema file, instead of the full path
+- You can add the extension twice if you have multiple separate schemas in the same project (example below)
+
+You can use it for a simple Prisma setup like this:
+
+```ts
+import { defineConfig } from "@trigger.dev/sdk/v3";
+import { prismaExtension } from "@trigger.dev/build/extensions/prisma";
+
+export default defineConfig({
+  project: "<project ref>",
+  // Your other config settings...
+  build: {
+    extensions: [
+      prismaExtension({
+        version: "5.19.0", // optional, we'll automatically detect the version if not provided
+        schema: "prisma/schema.prisma",
+      }),
+    ],
+  },
+});
+```
+
+<Note>
+  This does not have any effect when running the `dev` command, only when running the `deploy`
+  command.
+</Note>
+
+### Migrations
+
+If you want to also run migrations during the build process, you can pass in the `migrate` option:
+
+```ts
+import { defineConfig } from "@trigger.dev/sdk/v3";
+import { prismaExtension } from "@trigger.dev/build/extensions/prisma";
+
+export default defineConfig({
+  project: "<project ref>",
+  // Your other config settings...
+  build: {
+    extensions: [
+      prismaExtension({
+        schema: "prisma/schema.prisma",
+        migrate: true,
+        directUrlEnvVarName: "DATABASE_URL_UNPOOLED", // optional - the name of the environment variable that contains the direct database URL if you are using a direct database URL
+      }),
+    ],
+  },
+});
+```
+
+### clientGenerator
+
+If you have multiple `generator` statements defined in your schema file, you can pass in the `clientGenerator` option to specify the `prisma-client-js` generator, which will prevent other generators from being generated. Some examples where you may need to do this include when using the `prisma-kysely` or `prisma-json-types-generator` generators.
+
+<CodeGroup>
+
+```prisma schema.prisma
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL_UNPOOLED")
+}
+
+// We only want to generate the prisma-client-js generator
+generator client {
+  provider        = "prisma-client-js"
+}
+
+generator kysely {
+  provider     = "prisma-kysely"
+  output       = "../../src/kysely"
+  enumFileName = "enums.ts"
+  fileName     = "types.ts"
+}
+
+generator json {
+  provider = "prisma-json-types-generator"
+}
+```
+
+```ts trigger.config.ts
+import { defineConfig } from "@trigger.dev/sdk/v3";
+import { prismaExtension } from "@trigger.dev/build/extensions/prisma";
+
+export default defineConfig({
+  project: "<project ref>",
+  // Your other config settings...
+  build: {
+    extensions: [
+      prismaExtension({
+        schema: "prisma/schema.prisma",
+        clientGenerator: "client",
+      }),
+    ],
+  },
+});
+```
+
+</CodeGroup>
+
+### TypedSQL
+
+If you are using [TypedSQL](https://www.prisma.io/typedsql), you'll need to enable it via the `typedSql` option:
+
+```ts
+import { defineConfig } from "@trigger.dev/sdk/v3";
+
+export default defineConfig({
+  project: "<project ref>",
+  // Your other config settings...
+  build: {
+    extensions: [
+      prismaExtension({
+        schema: "prisma/schema.prisma",
+        typedSql: true,
+      }),
+    ],
+  },
+});
+```
+
+<Note>
+  The `prismaExtension` will inject the `DATABASE_URL` environment variable into the build process. Learn more about setting environment variables for deploying in our [Environment Variables](/deploy-environment-variables) guide.
+
+These environment variables are only used during the build process and are not embedded in the final container image.
+
+</Note>
+
+### Multiple schemas
+
+If you have multiple separate schemas in the same project you can add the extension multiple times:
+
+```ts
+prismaExtension({
+  schema: 'prisma/schema/main.prisma',
+  version: '6.2.0',
+  migrate: false,
+}),
+prismaExtension({
+  schema: 'prisma/schema/secondary.prisma',
+  version: '6.2.0',
+  migrate: false,
+}),
+```

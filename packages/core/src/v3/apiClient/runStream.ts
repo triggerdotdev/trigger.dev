@@ -16,12 +16,11 @@ import {
 } from "../utils/ioSerialization.js";
 import { ApiError } from "./errors.js";
 import { ApiClient } from "./index.js";
+import { LineTransformStream, zodShapeStream } from "./stream.js";
 import {
   AsyncIterableStream,
   createAsyncIterableReadable,
-  LineTransformStream,
-  zodShapeStream,
-} from "./stream.js";
+} from "../streams/asyncIterableStream.js";
 
 export type RunShape<TRunTypes extends AnyRunTypes> = TRunTypes extends AnyRunTypes
   ? {

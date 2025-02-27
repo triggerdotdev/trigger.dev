@@ -23,6 +23,7 @@
     "exports": {
       "./package.json": "./package.json",
       ".": "./src/index.ts",
+      "./internal": "./src/internal.ts",
       "./extensions": "./src/extensions/index.ts",
       "./extensions/core": "./src/extensions/core.ts",
       "./extensions/prisma": "./src/extensions/prisma.ts",
@@ -36,6 +37,9 @@
   },
   "typesVersions": {
     "*": {
+      "internal": [
+        "dist/commonjs/internal.d.ts"
+      ],
       "extensions": [
         "dist/commonjs/extensions/index.d.ts"
       ],
@@ -93,6 +97,17 @@
       "require": {
         "types": "./dist/commonjs/index.d.ts",
         "default": "./dist/commonjs/index.js"
+      }
+    },
+    "./internal": {
+      "import": {
+        "@triggerdotdev/source": "./src/internal.ts",
+        "types": "./dist/esm/internal.d.ts",
+        "default": "./dist/esm/internal.js"
+      },
+      "require": {
+        "types": "./dist/commonjs/internal.d.ts",
+        "default": "./dist/commonjs/internal.js"
       }
     },
     "./extensions": {

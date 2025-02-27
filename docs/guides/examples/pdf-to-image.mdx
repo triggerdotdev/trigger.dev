@@ -12,7 +12,7 @@ This example demonstrates how to use Trigger.dev to turn a PDF into a series of 
 
 ## Update your build configuration
 
-To use this example, add these build settings below to your `trigger.config.ts` file. They ensure that the `mutool` and `curl` packages are installed when you deploy your task. You can learn more about this and see more build settings [here](/config/config-file#aptget).
+To use this example, add these build settings below to your `trigger.config.ts` file. They ensure that the `mutool` and `curl` packages are installed when you deploy your task. You can learn more about this and see more build settings [here](/config/extensions/aptGet).
 
 ```ts trigger.config.ts
 export default defineConfig({
@@ -100,5 +100,3 @@ To test this task in the dashboard, you can use the following payload:
 ```
 
 <LocalDevelopment packages={"mupdf-tools from MuPDF"} />
-
-

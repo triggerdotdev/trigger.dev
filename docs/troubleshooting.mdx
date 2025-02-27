@@ -94,13 +94,14 @@ Your code is deployed separately from the rest of your app(s) so you need to mak
 
 ### `Error: @prisma/client did not initialize yet.`
 
-Prisma uses code generation to create the client from your schema file. This means you need to add a bit of config so we can generate this file before your tasks run: [Read the guide](/config/config-file#prisma).
+Prisma uses code generation to create the client from your schema file. This means you need to add a bit of config so we can generate this file before your tasks run: [Read the guide](/config/extensions/prismaExtension).
 
 ### `Parallel waits are not supported`
 
 In the current version, you can't perform more that one "wait" in parallel.
 
 Waits include:
+
 - `wait.for()`
 - `wait.until()`
 - `task.triggerAndWait()`

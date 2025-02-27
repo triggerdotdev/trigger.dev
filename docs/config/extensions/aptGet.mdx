@@ -1,0 +1,34 @@
+---
+title: "apt-get"
+sidebarTitle: "aptGet"
+description: "Use the aptGet build extension to install system packages into the deployed image"
+---
+
+You can install system packages into the deployed image using the `aptGet` extension:
+
+```ts
+import { defineConfig } from "@trigger.dev/sdk/v3";
+import { aptGet } from "@trigger.dev/build/extensions/core";
+
+export default defineConfig({
+  project: "<project ref>",
+  // Your other config settings...
+  build: {
+    extensions: [aptGet({ packages: ["ffmpeg"] })],
+  },
+});
+```
+
+If you want to install a specific version of a package, you can specify the version like this:
+
+```ts
+import { defineConfig } from "@trigger.dev/sdk/v3";
+
+export default defineConfig({
+  project: "<project ref>",
+  // Your other config settings...
+  build: {
+    extensions: [aptGet({ packages: ["ffmpeg=6.0-4"] })],
+  },
+});
+```

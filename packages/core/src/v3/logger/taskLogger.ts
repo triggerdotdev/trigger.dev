@@ -24,6 +24,7 @@ export interface TaskLogger {
   warn(message: string, properties?: Record<string, unknown>): void;
   error(message: string, properties?: Record<string, unknown>): void;
   trace<T>(name: string, fn: (span: Span) => Promise<T>, options?: SpanOptions): Promise<T>;
+  startSpan(name: string, options?: SpanOptions): Span;
 }
 
 export class OtelTaskLogger implements TaskLogger {
@@ -90,6 +91,10 @@ export class OtelTaskLogger implements TaskLogger {
     return this._config.tracer.startActiveSpan(name, fn, options);
   }
 
+  startSpan(name: string, options?: SpanOptions): Span {
+    return this._config.tracer.startSpan(name, options);
+  }
+
   #getTimestampInHrTime(): ClockTime {
     return clock.preciseNow();
   }
@@ -103,6 +108,9 @@ export class NoopTaskLogger implements TaskLogger {
   error() {}
   trace<T>(name: string, fn: (span: Span) => Promise<T>): Promise<T> {
     return fn({} as Span);
+  }
+  startSpan(): Span {
+    return {} as Span;
   }
 }
 

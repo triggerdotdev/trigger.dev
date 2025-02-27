@@ -1419,15 +1419,9 @@ importers:
 
   packages/python:
     dependencies:
-      '@trigger.dev/build':
-        specifier: workspace:3.3.16
-        version: link:../build
       '@trigger.dev/core':
         specifier: workspace:3.3.16
         version: link:../core
-      '@trigger.dev/sdk':
-        specifier: workspace:3.3.16
-        version: link:../trigger-sdk
       tinyexec:
         specifier: ^0.3.2
         version: 0.3.2
@@ -1435,6 +1429,12 @@ importers:
       '@arethetypeswrong/cli':
         specifier: ^0.15.4
         version: 0.15.4
+      '@trigger.dev/build':
+        specifier: workspace:3.3.16
+        version: link:../build
+      '@trigger.dev/sdk':
+        specifier: workspace:3.3.16
+        version: link:../trigger-sdk
       '@types/node':
         specifier: 20.14.14
         version: 20.14.14
@@ -1779,6 +1779,28 @@ importers:
         version: link:../../packages/cli-v3
       typescript:
         specifier: ^5
+        version: 5.5.4
+
+  references/python-catalog:
+    dependencies:
+      '@trigger.dev/python':
+        specifier: workspace:*
+        version: link:../../packages/python
+      '@trigger.dev/sdk':
+        specifier: workspace:*
+        version: link:../../packages/trigger-sdk
+      zod:
+        specifier: 3.23.8
+        version: 3.23.8
+    devDependencies:
+      '@trigger.dev/build':
+        specifier: workspace:*
+        version: link:../../packages/build
+      trigger.dev:
+        specifier: workspace:*
+        version: link:../../packages/cli-v3
+      typescript:
+        specifier: ^5.5.4
         version: 5.5.4
 
   references/test-tasks:

@@ -1,5 +1,5 @@
 import { DeserializedJson } from "../../schemas/json.js";
-import { AsyncIterableStream } from "../apiClient/stream.js";
+import { AsyncIterableStream } from "../streams/asyncIterableStream.js";
 import { getGlobal, registerGlobal } from "../utils/globals.js";
 import { ApiRequestOptions } from "../zodfetch.js";
 import { NoopRunMetadataManager } from "./noopManager.js";
