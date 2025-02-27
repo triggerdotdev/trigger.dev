@@ -905,42 +905,40 @@ function TimelineView({
                     {node.data.level === "TRACE" ? (
                       <>
                         {/* Add a span for the line, Make the vertical line the first one with 1px wide, and full height */}
-                        {node.data.timelineEvents
-                          ?.filter((event) => !event.adminOnly || isAdmin)
-                          .map((event, eventIndex) =>
-                            eventIndex === 0 ? (
-                              <Timeline.Point
-                                key={eventIndex}
-                                ms={nanosecondsToMilliseconds(event.offset)}
-                              >
-                                {(ms) => (
-                                  <motion.div
-                                    className={cn(
-                                      "-ml-[0.5px] h-[0.5625rem] w-px rounded-none",
-                                      eventBackgroundClassName(node.data)
-                                    )}
-                                    layoutId={`${node.id}-${event.name}`}
-                                  />
-                                )}
-                              </Timeline.Point>
-                            ) : (
-                              <Timeline.Point
-                                key={eventIndex}
-                                ms={nanosecondsToMilliseconds(event.offset)}
-                                className="z-10"
-                              >
-                                {(ms) => (
-                                  <motion.div
-                                    className={cn(
-                                      "-ml-1 size-[0.3125rem] rounded-full border bg-background-bright",
-                                      eventBorderClassName(node.data)
-                                    )}
-                                    layoutId={`${node.id}-${event.name}`}
-                                  />
-                                )}
-                              </Timeline.Point>
-                            )
-                          )}
+                        {node.data.timelineEvents.map((event, eventIndex) =>
+                          eventIndex === 0 ? (
+                            <Timeline.Point
+                              key={eventIndex}
+                              ms={nanosecondsToMilliseconds(event.offset)}
+                            >
+                              {(ms) => (
+                                <motion.div
+                                  className={cn(
+                                    "-ml-[0.5px] h-[0.5625rem] w-px rounded-none",
+                                    eventBackgroundClassName(node.data)
+                                  )}
+                                  layoutId={`${node.id}-${event.name}`}
+                                />
+                              )}
+                            </Timeline.Point>
+                          ) : (
+                            <Timeline.Point
+                              key={eventIndex}
+                              ms={nanosecondsToMilliseconds(event.offset)}
+                              className="z-10"
+                            >
+                              {(ms) => (
+                                <motion.div
+                                  className={cn(
+                                    "-ml-1 size-[0.3125rem] rounded-full border bg-background-bright",
+                                    eventBorderClassName(node.data)
+                                  )}
+                                  layoutId={`${node.id}-${event.name}`}
+                                />
+                              )}
+                            </Timeline.Point>
+                          )
+                        )}
                         {node.data.timelineEvents &&
                         node.data.timelineEvents[0] &&
                         node.data.timelineEvents[0].offset < node.data.offset ? (
