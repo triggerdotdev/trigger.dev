@@ -7,7 +7,7 @@ import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
 import { ChangeCurrentDeploymentService } from "~/v3/services/changeCurrentDeployment.server";
 
-export const rollbackSchema = z.object({
+export const promoteSchema = z.object({
   redirectUrl: z.string(),
 });
 
@@ -21,7 +21,7 @@ export const action: ActionFunction = async ({ request, params }) => {
   const { projectId, deploymentShortCode } = ParamSchema.parse(params);
 
   const formData = await request.formData();
-  const submission = parse(formData, { schema: rollbackSchema });
+  const submission = parse(formData, { schema: promoteSchema });
 
   if (!submission.value) {
     return json(submission);
@@ -62,8 +62,8 @@ export const action: ActionFunction = async ({ request, params }) => {
       );
     }
 
-    const rollbackService = new ChangeCurrentDeploymentService();
-    await rollbackService.call(deployment, "promote");
+    const promoteService = new ChangeCurrentDeploymentService();
+    await promoteService.call(deployment, "promote");
 
     return redirectWithSuccessMessage(
       submission.value.redirectUrl,
