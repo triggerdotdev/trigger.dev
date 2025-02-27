@@ -465,7 +465,7 @@ export class CliApiClient {
       throw new Error("devConfig: No access token");
     }
 
-    return wrapZodFetch(DevConfigResponseBody, `${this.apiURL}/api/v1/dev/config`, {
+    return wrapZodFetch(DevConfigResponseBody, `${this.apiURL}/engine/v1/dev/config`, {
       headers: {
         Authorization: `Bearer ${this.accessToken}`,
         Accept: "application/json",
@@ -478,7 +478,7 @@ export class CliApiClient {
       throw new Error("connectToPresence: No access token");
     }
 
-    const eventSource = new EventSource(`${this.apiURL}/api/v1/dev/presence`, {
+    const eventSource = new EventSource(`${this.apiURL}/engine/v1/dev/presence`, {
       fetch: (input, init) =>
         fetch(input, {
           ...init,
@@ -516,7 +516,7 @@ export class CliApiClient {
       throw new Error("devConfig: No access token");
     }
 
-    return wrapZodFetch(DevDequeueResponseBody, `${this.apiURL}/api/v1/dev/dequeue`, {
+    return wrapZodFetch(DevDequeueResponseBody, `${this.apiURL}/engine/v1/dev/dequeue`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${this.accessToken}`,
@@ -531,7 +531,7 @@ export class CliApiClient {
       throw new Error("devConfig: No access token");
     }
 
-    return wrapZodFetch(z.unknown(), `${this.apiURL}/api/v1/dev/runs/${runId}/logs/debug`, {
+    return wrapZodFetch(z.unknown(), `${this.apiURL}/engine/v1/dev/runs/${runId}/logs/debug`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${this.accessToken}`,
@@ -545,7 +545,7 @@ export class CliApiClient {
   private async devGetRunExecutionData(runId: string) {
     return wrapZodFetch(
       WorkloadRunLatestSnapshotResponseBody,
-      `${this.apiURL}/api/v1/dev/runs/${runId}/snapshots/latest`,
+      `${this.apiURL}/engine/v1/dev/runs/${runId}/snapshots/latest`,
       {
         method: "GET",
         headers: {
@@ -563,7 +563,7 @@ export class CliApiClient {
   ) {
     return wrapZodFetch(
       WorkloadHeartbeatResponseBody,
-      `${this.apiURL}/api/v1/dev/runs/${runId}/snapshots/${snapshotId}/heartbeat`,
+      `${this.apiURL}/engine/v1/dev/runs/${runId}/snapshots/${snapshotId}/heartbeat`,
       {
         method: "POST",
         headers: {
@@ -579,7 +579,7 @@ export class CliApiClient {
   private async devStartRunAttempt(runId: string, snapshotId: string) {
     return wrapZodFetch(
       WorkloadRunAttemptStartResponseBody,
-      `${this.apiURL}/api/v1/dev/runs/${runId}/snapshots/${snapshotId}/attempts/start`,
+      `${this.apiURL}/engine/v1/dev/runs/${runId}/snapshots/${snapshotId}/attempts/start`,
       {
         method: "POST",
         headers: {
@@ -599,7 +599,7 @@ export class CliApiClient {
   ) {
     return wrapZodFetch(
       WorkloadRunAttemptCompleteResponseBody,
-      `${this.apiURL}/api/v1/dev/runs/${runId}/snapshots/${snapshotId}/attempts/complete`,
+      `${this.apiURL}/engine/v1/dev/runs/${runId}/snapshots/${snapshotId}/attempts/complete`,
       {
         method: "POST",
         headers: {
