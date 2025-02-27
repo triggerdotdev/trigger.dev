@@ -52,7 +52,7 @@ export class SupervisorHttpClient {
   async connect(body: WorkerApiConnectRequestBody) {
     return wrapZodFetch(
       WorkerApiConnectResponseBody,
-      `${this.apiUrl}/api/v1/worker-actions/connect`,
+      `${this.apiUrl}/engine/v1/worker-actions/connect`,
       {
         method: "POST",
         headers: {
@@ -67,7 +67,7 @@ export class SupervisorHttpClient {
   async dequeue(body: WorkerApiDequeueRequestBody) {
     return wrapZodFetch(
       WorkerApiDequeueResponseBody,
-      `${this.apiUrl}/api/v1/worker-actions/dequeue`,
+      `${this.apiUrl}/engine/v1/worker-actions/dequeue`,
       {
         method: "POST",
         headers: {
@@ -82,7 +82,7 @@ export class SupervisorHttpClient {
   async dequeueFromVersion(deploymentId: string, maxRunCount = 1, runnerId?: string) {
     return wrapZodFetch(
       WorkerApiDequeueResponseBody,
-      `${this.apiUrl}/api/v1/worker-actions/deployments/${deploymentId}/dequeue?maxRunCount=${maxRunCount}`,
+      `${this.apiUrl}/engine/v1/worker-actions/deployments/${deploymentId}/dequeue?maxRunCount=${maxRunCount}`,
       {
         headers: {
           ...this.defaultHeaders,
@@ -95,7 +95,7 @@ export class SupervisorHttpClient {
   async heartbeatWorker(body: WorkerApiHeartbeatRequestBody) {
     return wrapZodFetch(
       WorkerApiHeartbeatResponseBody,
-      `${this.apiUrl}/api/v1/worker-actions/heartbeat`,
+      `${this.apiUrl}/engine/v1/worker-actions/heartbeat`,
       {
         method: "POST",
         headers: {
@@ -115,7 +115,7 @@ export class SupervisorHttpClient {
   ) {
     return wrapZodFetch(
       WorkerApiRunHeartbeatResponseBody,
-      `${this.apiUrl}/api/v1/worker-actions/runs/${runId}/snapshots/${snapshotId}/heartbeat`,
+      `${this.apiUrl}/engine/v1/worker-actions/runs/${runId}/snapshots/${snapshotId}/heartbeat`,
       {
         method: "POST",
         headers: {
@@ -136,7 +136,7 @@ export class SupervisorHttpClient {
   ) {
     return wrapZodFetch(
       WorkerApiRunAttemptStartResponseBody,
-      `${this.apiUrl}/api/v1/worker-actions/runs/${runId}/snapshots/${snapshotId}/attempts/start`,
+      `${this.apiUrl}/engine/v1/worker-actions/runs/${runId}/snapshots/${snapshotId}/attempts/start`,
       {
         method: "POST",
         headers: {
@@ -156,7 +156,7 @@ export class SupervisorHttpClient {
   ) {
     return wrapZodFetch(
       WorkerApiRunAttemptCompleteResponseBody,
-      `${this.apiUrl}/api/v1/worker-actions/runs/${runId}/snapshots/${snapshotId}/attempts/complete`,
+      `${this.apiUrl}/engine/v1/worker-actions/runs/${runId}/snapshots/${snapshotId}/attempts/complete`,
       {
         method: "POST",
         headers: {
@@ -171,7 +171,7 @@ export class SupervisorHttpClient {
   async getLatestSnapshot(runId: string, runnerId?: string) {
     return wrapZodFetch(
       WorkerApiRunLatestSnapshotResponseBody,
-      `${this.apiUrl}/api/v1/worker-actions/runs/${runId}/snapshots/latest`,
+      `${this.apiUrl}/engine/v1/worker-actions/runs/${runId}/snapshots/latest`,
       {
         method: "GET",
         headers: {
@@ -186,7 +186,7 @@ export class SupervisorHttpClient {
     try {
       const res = await wrapZodFetch(
         z.unknown(),
-        `${this.apiUrl}/api/v1/worker-actions/runs/${runId}/logs/debug`,
+        `${this.apiUrl}/engine/v1/worker-actions/runs/${runId}/logs/debug`,
         {
           method: "POST",
           headers: {
@@ -209,7 +209,7 @@ export class SupervisorHttpClient {
   async continueRunExecution(runId: string, snapshotId: string, runnerId?: string) {
     return wrapZodFetch(
       WorkerApiContinueRunExecutionRequestBody,
-      `${this.apiUrl}/api/v1/worker-actions/runs/${runId}/snapshots/${snapshotId}/continue`,
+      `${this.apiUrl}/engine/v1/worker-actions/runs/${runId}/snapshots/${snapshotId}/continue`,
       {
         method: "GET",
         headers: {
@@ -222,7 +222,7 @@ export class SupervisorHttpClient {
 
   getSuspendCompletionUrl(runId: string, snapshotId: string, runnerId?: string) {
     return {
-      url: `${this.apiUrl}/api/v1/worker-actions/runs/${runId}/snapshots/${snapshotId}/suspend`,
+      url: `${this.apiUrl}/engine/v1/worker-actions/runs/${runId}/snapshots/${snapshotId}/suspend`,
       headers: {
         ...this.defaultHeaders,
         ...this.runnerIdHeader(runnerId),
