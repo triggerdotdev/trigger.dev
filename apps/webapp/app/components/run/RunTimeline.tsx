@@ -11,6 +11,7 @@ import { DateTime, DateTimeAccurate } from "../primitives/DateTime";
 import { Spinner } from "../primitives/Spinner";
 import { LiveTimer } from "../runs/v3/LiveTimer";
 import tileBgPath from "~/assets/images/error-banner-tile@2x.png";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
 
 // Types for the RunTimeline component
 export type TimelineEventState = "complete" | "error" | "inprogress" | "delayed";
@@ -35,6 +36,7 @@ export type TimelineEventDefinition = {
   state?: TimelineEventState;
   shouldRender: boolean;
   variant: TimelineEventVariant;
+  helpText?: string;
 };
 
 export type TimelineLineDefinition = {
@@ -92,6 +94,7 @@ export function RunTimeline({ run }: { run: TimelineSpanRun }) {
               }
               state={item.state as "complete" | "error"}
               variant={item.variant}
+              helpText={item.helpText}
             />
           );
         } else {
@@ -124,6 +127,7 @@ function buildTimelineItems(run: TimelineSpanRun): TimelineItem[] {
     state,
     shouldRender: true,
     variant: "start-cap",
+    helpText: getHelpTextForEvent("Triggered"),
   });
 
   // 2. Waiting to dequeue line
@@ -195,6 +199,7 @@ function buildTimelineItems(run: TimelineSpanRun): TimelineItem[] {
       state,
       shouldRender: true,
       variant: "dot-hollow",
+      helpText: getHelpTextForEvent("Dequeued"),
     });
   }
 
@@ -223,6 +228,7 @@ function buildTimelineItems(run: TimelineSpanRun): TimelineItem[] {
         state,
         shouldRender: true,
         variant: "start-cap-thick",
+        helpText: getHelpTextForEvent("Started"),
       });
 
       // 4c. Show executing line if applicable
@@ -283,6 +289,7 @@ function buildTimelineItems(run: TimelineSpanRun): TimelineItem[] {
       state,
       shouldRender: true,
       variant: "end-cap-thick",
+      helpText: getHelpTextForEvent("Finished"),
     });
   }
 
@@ -297,6 +304,7 @@ function buildTimelineItems(run: TimelineSpanRun): TimelineItem[] {
       state: "error",
       shouldRender: true,
       variant: "dot-solid",
+      helpText: getHelpTextForEvent("Expired"),
     });
   }
 
@@ -308,6 +316,7 @@ export type RunTimelineEventProps = {
   subtitle?: ReactNode;
   state?: "complete" | "error" | "inprogress";
   variant?: TimelineEventVariant;
+  helpText?: string;
 };
 
 export function RunTimelineEvent({
@@ -315,6 +324,7 @@ export function RunTimelineEvent({
   subtitle,
   state,
   variant = "dot-hollow",
+  helpText,
 }: RunTimelineEventProps) {
   return (
     <div className="grid h-5 grid-cols-[1.125rem_1fr] gap-1 text-sm">
@@ -322,7 +332,18 @@ export function RunTimelineEvent({
         <EventMarker variant={variant} state={state} />
       </div>
       <div className="flex items-baseline justify-between gap-3">
-        <span className="font-medium text-text-bright">{title}</span>
+        <TooltipProvider disableHoverableContent>
+          <Tooltip>
+            <TooltipTrigger className="cursor-default">
+              <span className="font-medium text-text-bright">{title}</span>
+            </TooltipTrigger>
+            {helpText && (
+              <TooltipContent className="flex items-center gap-1 text-xs">
+                {helpText}
+              </TooltipContent>
+            )}
+          </Tooltip>
+        </TooltipProvider>
         {subtitle ? (
           <span className="text-xs tabular-nums text-text-dimmed">{subtitle}</span>
         ) : null}
@@ -605,6 +626,7 @@ export function SpanTimeline({
                 subtitle={<DateTimeAccurate date={event.timestamp} previousDate={prevDate} />}
                 variant={event.markerVariant}
                 state={state}
+                helpText={event.helpText}
               />
               <RunTimelineLine
                 title={
@@ -632,6 +654,7 @@ export function SpanTimeline({
           }
           variant={"start-cap-thick"}
           state={state}
+          helpText={getHelpTextForEvent("Started")}
         />
         {state === "inprogress" ? (
           <RunTimelineLine
@@ -659,6 +682,7 @@ export function SpanTimeline({
               }
               state={isError ? "error" : undefined}
               variant="end-cap-thick"
+              helpText={getHelpTextForEvent("Finished")}
             />
           </>
         )}
@@ -821,6 +845,27 @@ function getHelpTextForEvent(event: string): string | undefined {
     }
     case "import": {
       return "A task file was imported";
+    }
+    case "lazy_payload": {
+      return "The payload was initialized lazily";
+    }
+    case "pod_scheduled": {
+      return "The Kubernetes pod was scheduled to run the task";
+    }
+    case "Triggered": {
+      return "When the run was initially triggered";
+    }
+    case "Dequeued": {
+      return "When the run was taken from the queue for processing";
+    }
+    case "Started": {
+      return "When the run began execution";
+    }
+    case "Finished": {
+      return "The run completed execution";
+    }
+    case "Expired": {
+      return "The run expired before it could be processed";
     }
     default: {
       return undefined;
