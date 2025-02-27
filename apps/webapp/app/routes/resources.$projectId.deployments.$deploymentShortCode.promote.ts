@@ -7,7 +7,7 @@ import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
 import { ChangeCurrentDeploymentService } from "~/v3/services/changeCurrentDeployment.server";
 
-export const rollbackSchema = z.object({
+export const promoteSchema = z.object({
   redirectUrl: z.string(),
 });
 
@@ -20,11 +20,8 @@ export const action: ActionFunction = async ({ request, params }) => {
   const userId = await requireUserId(request);
   const { projectId, deploymentShortCode } = ParamSchema.parse(params);
 
-  console.log("projectId", projectId);
-  console.log("deploymentShortCode", deploymentShortCode);
-
   const formData = await request.formData();
-  const submission = parse(formData, { schema: rollbackSchema });
+  const submission = parse(formData, { schema: promoteSchema });
 
   if (!submission.value) {
     return json(submission);
@@ -65,17 +62,17 @@ export const action: ActionFunction = async ({ request, params }) => {
       );
     }
 
-    const rollbackService = new ChangeCurrentDeploymentService();
-    await rollbackService.call(deployment, "rollback");
+    const promoteService = new ChangeCurrentDeploymentService();
+    await promoteService.call(deployment, "promote");
 
     return redirectWithSuccessMessage(
       submission.value.redirectUrl,
       request,
-      "Rolled back deployment"
+      `Promoted deployment version ${deployment.version} to current.`
     );
   } catch (error) {
     if (error instanceof Error) {
-      logger.error("Failed to roll back deployment", {
+      logger.error("Failed to promote deployment", {
         error: {
           name: error.name,
           message: error.message,
@@ -85,7 +82,7 @@ export const action: ActionFunction = async ({ request, params }) => {
       submission.error = { runParam: error.message };
       return json(submission);
     } else {
-      logger.error("Failed to roll back deployment", { error });
+      logger.error("Failed to promote deployment", { error });
       submission.error = { runParam: JSON.stringify(error) };
       return json(submission);
     }

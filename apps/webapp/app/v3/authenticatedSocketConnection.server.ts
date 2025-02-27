@@ -43,7 +43,9 @@ export class AuthenticatedSocketConnection {
           });
         });
       },
-      canSendMessage: () => ws.readyState === WebSocket.OPEN,
+      canSendMessage() {
+        return ws.readyState === WebSocket.OPEN;
+      },
     });
 
     this._consumer = new DevQueueConsumer(this.id, authenticatedEnv, this._sender, {

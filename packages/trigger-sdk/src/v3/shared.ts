@@ -24,6 +24,7 @@ import {
   TaskRunExecutionResult,
   TaskRunPromise,
   TaskFromIdentifier,
+  getEnvVar,
 } from "@trigger.dev/core/v3";
 import { PollOptions, runs } from "./runs.js";
 import { tracer } from "./tracer.js";
@@ -614,6 +615,7 @@ export async function batchTriggerById<TTask extends AnyTask>(
               metadata: item.options?.metadata,
               maxDuration: item.options?.maxDuration,
               machine: item.options?.machine,
+              lockToVersion: item.options?.version ?? getEnvVar("TRIGGER_VERSION"),
             },
           } satisfies BatchTriggerTaskV2RequestBody["items"][0];
         })
@@ -950,6 +952,7 @@ export async function batchTriggerTasks<TTasks extends readonly AnyTask[]>(
               metadata: item.options?.metadata,
               maxDuration: item.options?.maxDuration,
               machine: item.options?.machine,
+              lockToVersion: item.options?.version ?? getEnvVar("TRIGGER_VERSION"),
             },
           } satisfies BatchTriggerTaskV2RequestBody["items"][0];
         })
@@ -1205,6 +1208,7 @@ async function trigger_internal<TRunTypes extends AnyRunTypes>(
         metadata: options?.metadata,
         maxDuration: options?.maxDuration,
         machine: options?.machine,
+        lockToVersion: options?.version ?? getEnvVar("TRIGGER_VERSION"),
       },
     },
     {
@@ -1265,6 +1269,7 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
               metadata: item.options?.metadata,
               maxDuration: item.options?.maxDuration,
               machine: item.options?.machine,
+              lockToVersion: item.options?.version ?? getEnvVar("TRIGGER_VERSION"),
             },
           } satisfies BatchTriggerTaskV2RequestBody["items"][0];
         })
