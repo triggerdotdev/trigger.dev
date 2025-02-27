@@ -18,6 +18,8 @@ export type TimelineEventState = "complete" | "error" | "inprogress" | "delayed"
 
 type TimelineLineVariant = "light" | "normal";
 
+type TimelineStyle = "normal" | "diminished";
+
 type TimelineEventVariant =
   | "start-cap"
   | "dot-hollow"
@@ -317,6 +319,7 @@ export type RunTimelineEventProps = {
   state?: "complete" | "error" | "inprogress";
   variant?: TimelineEventVariant;
   helpText?: string;
+  style?: TimelineStyle;
 };
 
 export function RunTimelineEvent({
@@ -325,11 +328,12 @@ export function RunTimelineEvent({
   state,
   variant = "dot-hollow",
   helpText,
+  style = "normal",
 }: RunTimelineEventProps) {
   return (
     <div className="grid h-5 grid-cols-[1.125rem_1fr] gap-1 text-sm">
       <div className="relative flex flex-col items-center justify-center">
-        <EventMarker variant={variant} state={state} />
+        <EventMarker variant={variant} state={state} style={style} />
       </div>
       <div className="flex items-baseline justify-between gap-3">
         <TooltipProvider disableHoverableContent>
@@ -355,38 +359,53 @@ export function RunTimelineEvent({
 function EventMarker({
   variant,
   state,
+  style,
 }: {
   variant: TimelineEventVariant;
   state?: TimelineEventState;
+  style?: TimelineStyle;
 }) {
+  let bgClass = "bg-text-dimmed";
+  switch (state) {
+    case "complete":
+      bgClass = "bg-success";
+      break;
+    case "error":
+      bgClass = "bg-error";
+      break;
+    case "delayed":
+      bgClass = "bg-text-dimmed";
+      break;
+    case "inprogress":
+      bgClass = style === "normal" ? "bg-pending" : "bg-text-dimmed";
+      break;
+  }
+
+  let borderClass = "border-text-dimmed";
+  switch (state) {
+    case "complete":
+      borderClass = "border-success";
+      break;
+    case "error":
+      borderClass = "border-error";
+      break;
+    case "delayed":
+      borderClass = "border-text-dimmed";
+      break;
+    case "inprogress":
+      borderClass = style === "normal" ? "border-pending" : "border-text-dimmed";
+      break;
+    default:
+      borderClass = "border-text-dimmed";
+      break;
+  }
+
   switch (variant) {
     case "start-cap":
       return (
         <>
-          <div
-            className={cn(
-              "h-full w-[0.4375rem] border-b",
-              state === "complete"
-                ? "border-success"
-                : state === "error"
-                ? "border-error"
-                : state === "inprogress"
-                ? "border-pending"
-                : "border-text-dimmed"
-            )}
-          />
-          <div
-            className={cn(
-              "relative h-full w-px",
-              state === "complete"
-                ? "bg-success"
-                : state === "error"
-                ? "bg-error"
-                : state === "inprogress"
-                ? "bg-pending"
-                : "bg-text-dimmed"
-            )}
-          >
+          <div className={cn("h-full w-[0.4375rem] border-b", borderClass)} />
+          <div className={cn("relative h-full w-px", bgClass)}>
             {state === "inprogress" && (
               <div
                 className="absolute inset-0 h-full w-full animate-tile-scroll opacity-30"
@@ -402,18 +421,7 @@ function EventMarker({
     case "dot-hollow":
       return (
         <>
-          <div
-            className={cn(
-              "relative h-full w-px",
-              state === "complete"
-                ? "bg-success"
-                : state === "error"
-                ? "bg-error"
-                : state === "inprogress"
-                ? "bg-pending"
-                : "bg-text-dimmed"
-            )}
-          >
+          <div className={cn("relative h-full w-px", bgClass)}>
             {state === "inprogress" && (
               <div
                 className="absolute inset-0 h-full w-full animate-tile-scroll-offset opacity-30"
@@ -425,29 +433,9 @@ function EventMarker({
             )}
           </div>
           <div
-            className={cn(
-              "size-[0.3125rem] min-h-[0.3125rem] rounded-full border",
-              state === "complete"
-                ? "border-success"
-                : state === "error"
-                ? "border-error"
-                : state === "inprogress"
-                ? "border-pending"
-                : "border-text-dimmed"
-            )}
+            className={cn("size-[0.3125rem] min-h-[0.3125rem] rounded-full border", borderClass)}
           />
-          <div
-            className={cn(
-              "relative h-full w-px",
-              state === "complete"
-                ? "bg-success"
-                : state === "error"
-                ? "bg-error"
-                : state === "inprogress"
-                ? "bg-pending"
-                : "bg-text-dimmed"
-            )}
-          >
+          <div className={cn("relative h-full w-px", bgClass)}>
             {state === "inprogress" && (
               <div
                 className="absolute inset-0 h-full w-full animate-tile-scroll-offset opacity-30"
@@ -461,28 +449,10 @@ function EventMarker({
         </>
       );
     case "dot-solid":
-      return (
-        <div
-          className={cn(
-            "size-[0.3125rem] rounded-full",
-            state === "complete" ? "bg-success" : state === "error" ? "bg-error" : "bg-text-dimmed"
-          )}
-        />
-      );
+      return <div className={cn("size-[0.3125rem] rounded-full", bgClass)} />;
     case "start-cap-thick":
       return (
-        <div
-          className={cn(
-            "relative h-full w-[0.4375rem] rounded-t-[0.125rem]",
-            state === "complete"
-              ? "bg-success"
-              : state === "error"
-              ? "bg-error"
-              : state === "inprogress"
-              ? "bg-pending"
-              : "bg-text-dimmed"
-          )}
-        >
+        <div className={cn("relative h-full w-[0.4375rem] rounded-t-[0.125rem]", bgClass)}>
           {state === "inprogress" && (
             <div
               className="absolute inset-0 h-full w-full animate-tile-scroll-offset opacity-30"
@@ -495,14 +465,7 @@ function EventMarker({
         </div>
       );
     case "end-cap-thick":
-      return (
-        <div
-          className={cn(
-            "h-full w-[0.4375rem] rounded-b-[0.125rem]",
-            state === "complete" ? "bg-success" : state === "error" ? "bg-error" : "bg-text-dimmed"
-          )}
-        />
-      );
+      return <div className={cn("h-full w-[0.4375rem] rounded-b-[0.125rem]", bgClass)} />;
     default:
       return <div className={cn("size-[0.3125rem] rounded-full bg-yellow-500")} />;
   }
@@ -512,13 +475,19 @@ export type RunTimelineLineProps = {
   title: ReactNode;
   state?: TimelineEventState;
   variant?: TimelineLineVariant;
+  style?: TimelineStyle;
 };
 
-export function RunTimelineLine({ title, state, variant = "normal" }: RunTimelineLineProps) {
+export function RunTimelineLine({
+  title,
+  state,
+  variant = "normal",
+  style = "normal",
+}: RunTimelineLineProps) {
   return (
     <div className="grid h-6 grid-cols-[1.125rem_1fr] gap-1 text-xs">
       <div className="flex items-stretch justify-center">
-        <LineMarker state={state} variant={variant} />
+        <LineMarker state={state} variant={variant} style={style} />
       </div>
       <div className="flex items-center justify-between gap-3">
         <span className="text-text-dimmed">{title}</span>
@@ -530,27 +499,35 @@ export function RunTimelineLine({ title, state, variant = "normal" }: RunTimelin
 function LineMarker({
   state,
   variant,
+  style,
 }: {
   state?: TimelineEventState;
   variant: TimelineLineVariant;
+  style?: TimelineStyle;
 }) {
+  let containerClass = "bg-text-dimmed";
+  switch (state) {
+    case "complete":
+      containerClass = "bg-success";
+      break;
+    case "error":
+      containerClass = "bg-error";
+      break;
+    case "delayed":
+      containerClass = "bg-text-dimmed";
+      break;
+    case "inprogress":
+      containerClass =
+        style === "normal"
+          ? "rounded-b-[0.125rem] bg-pending"
+          : "rounded-b-[0.125rem] bg-text-dimmed";
+      break;
+  }
+
   switch (variant) {
     case "normal":
       return (
-        <div
-          className={cn(
-            "relative w-[0.4375rem]",
-            state === "complete"
-              ? "bg-success"
-              : state === "error"
-              ? "bg-error"
-              : state === "delayed"
-              ? "bg-text-dimmed"
-              : state === "inprogress"
-              ? "rounded-b-[0.125rem] bg-pending"
-              : "bg-text-dimmed"
-          )}
-        >
+        <div className={cn("relative w-[0.4375rem]", containerClass)}>
           {state === "inprogress" && (
             <div
               className="absolute inset-0 h-full w-full animate-tile-scroll opacity-30"
@@ -564,20 +541,7 @@ function LineMarker({
       );
     case "light":
       return (
-        <div
-          className={cn(
-            "relative w-px",
-            state === "complete"
-              ? "bg-success"
-              : state === "error"
-              ? "bg-error"
-              : state === "delayed"
-              ? "bg-text-dimmed"
-              : state === "inprogress"
-              ? "bg-pending"
-              : "bg-text-dimmed"
-          )}
-        >
+        <div className={cn("relative w-px", containerClass)}>
           {state === "inprogress" && (
             <div
               className="absolute inset-0 h-full w-full animate-tile-scroll opacity-30"
@@ -600,6 +564,7 @@ export type SpanTimelineProps = {
   inProgress: boolean;
   isError: boolean;
   events?: TimelineSpanEvent[];
+  style?: TimelineStyle;
 };
 
 export type SpanTimelineState = "error" | "pending" | "complete";
@@ -610,6 +575,7 @@ export function SpanTimeline({
   inProgress,
   isError,
   events,
+  style = "diminished",
 }: SpanTimelineProps) {
   const state = isError ? "error" : inProgress ? "inprogress" : undefined;
 
@@ -630,6 +596,7 @@ export function SpanTimeline({
                 variant={event.markerVariant}
                 state={state}
                 helpText={event.helpText}
+                style={style}
               />
               <RunTimelineLine
                 title={
@@ -641,6 +608,7 @@ export function SpanTimeline({
                 }
                 variant={event.lineVariant}
                 state={state}
+                style={style}
               />
             </Fragment>
           );
@@ -658,12 +626,14 @@ export function SpanTimeline({
           variant={"start-cap-thick"}
           state={state}
           helpText={getHelpTextForEvent("Started")}
+          style={style}
         />
         {state === "inprogress" ? (
           <RunTimelineLine
             title={<LiveTimer startTime={startTime} />}
             state={state}
             variant={visibleEvents.length > 0 ? "light" : "normal"}
+            style={style}
           />
         ) : (
           <>
@@ -674,6 +644,7 @@ export function SpanTimeline({
               )}
               state={isError ? "error" : undefined}
               variant="normal"
+              style={style}
             />
             <RunTimelineEvent
               title="Finished"
@@ -686,6 +657,7 @@ export function SpanTimeline({
               state={isError ? "error" : undefined}
               variant="end-cap-thick"
               helpText={getHelpTextForEvent("Finished")}
+              style={style}
             />
           </>
         )}
