@@ -506,6 +506,22 @@ const EnvironmentSchema = z.object({
     .string()
     .default(process.env.REDIS_TLS_DISABLED ?? "false"),
 
+  //API Rate limiting
+  /**
+   * @example "60s"
+   * @example "1m"
+   * @example "1h"
+   * @example "1d"
+   * @example "1000ms"
+   * @example "1000s"
+   */
+  RUN_ENGINE_RATE_LIMIT_REFILL_INTERVAL: z.string().default("10s"), // refill 250 tokens every 10 seconds
+  RUN_ENGINE_RATE_LIMIT_MAX: z.coerce.number().int().default(1200), // allow bursts of 750 requests
+  RUN_ENGINE_RATE_LIMIT_REFILL_RATE: z.coerce.number().int().default(400), // refix 250 tokens every 10 seconds
+  RUN_ENGINE_RATE_LIMIT_REQUEST_LOGS_ENABLED: z.string().default("0"),
+  RUN_ENGINE_RATE_LIMIT_REJECTION_LOGS_ENABLED: z.string().default("1"),
+  RUN_ENGINE_RATE_LIMIT_LIMITER_LOGS_ENABLED: z.string().default("0"),
+
   /** How long should the presence ttl last */
   DEV_PRESENCE_TTL_MS: z.coerce.number().int().default(30_000),
   DEV_PRESENCE_POLL_INTERVAL_MS: z.coerce.number().int().default(5_000),

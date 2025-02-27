@@ -59,9 +59,6 @@ export const apiRateLimiter = authorizationRateLimitMiddleware({
     "/api/v1/usage/ingest",
     "/api/v1/auth/jwt/claims",
     /^\/api\/v1\/runs\/[^\/]+\/attempts$/, // /api/v1/runs/$runFriendlyId/attempts
-    // run engine DEV endpoints
-    "/api/v1/dev/dequeue",
-    "/api/v1/dev/presence",
   ],
   log: {
     rejections: env.API_RATE_LIMIT_REJECTION_LOGS_ENABLED === "1",
