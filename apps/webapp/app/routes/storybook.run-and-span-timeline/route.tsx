@@ -73,6 +73,30 @@ const spanTimelines = [
         lineVariant: "light",
       },
       {
+        name: "Launched",
+        offset: 0,
+        timestamp: new Date(Date.now() - 1000),
+        duration: 1000,
+        markerVariant: "dot-hollow",
+        lineVariant: "light",
+      },
+    ],
+  },
+  {
+    startTime: new Date(),
+    duration: 1000 * 1_000_000,
+    inProgress: false,
+    isError: false,
+    events: [
+      {
+        name: "Dequeued",
+        offset: 0,
+        timestamp: new Date(Date.now() - 5000),
+        duration: 4000,
+        markerVariant: "start-cap",
+        lineVariant: "light",
+      },
+      {
         name: "Forked",
         offset: 0,
         timestamp: new Date(Date.now() - 1000),
