@@ -690,7 +690,7 @@ function RunBody({
                       "–"
                     ) : (
                       <div className="mt-1 flex flex-wrap items-center gap-1 text-xs">
-                        {run.tags.map((tag) => (
+                        {run.tags.map((tag: string) => (
                           <SimpleTooltip
                             key={tag}
                             button={
