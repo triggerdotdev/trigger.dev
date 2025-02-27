@@ -318,7 +318,7 @@ function SpanBody({
                   <RunTimelineEvent
                     title="Timestamp"
                     subtitle={<DateTimeAccurate date={span.startTime} />}
-                    state="complete"
+                    variant="dot-solid"
                   />
                 </div>
               )}
