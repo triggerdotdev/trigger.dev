@@ -377,25 +377,26 @@ function EventMarker({
           />
           <div
             className={cn(
-              "h-full w-px",
+              "relative h-full w-px",
               state === "complete"
                 ? "bg-success"
                 : state === "error"
                 ? "bg-error"
                 : state === "inprogress"
-                ? "animate-tile-scroll bg-pending"
+                ? "bg-pending"
                 : "bg-text-dimmed"
             )}
-            style={
-              state === "inprogress"
-                ? {
-                    height: "100%",
-                    backgroundImage: `url(${tileBgPath})`,
-                    backgroundSize: "8px 8px",
-                  }
-                : undefined
-            }
-          />
+          >
+            {state === "inprogress" && (
+              <div
+                className="absolute inset-0 h-full w-full animate-tile-scroll opacity-30"
+                style={{
+                  backgroundImage: `url(${tileBgPath})`,
+                  backgroundSize: "8px 8px",
+                }}
+              />
+            )}
+          </div>
         </>
       );
     case "dot-hollow":
@@ -403,25 +404,26 @@ function EventMarker({
         <>
           <div
             className={cn(
-              "h-full w-px",
+              "relative h-full w-px",
               state === "complete"
                 ? "bg-success"
                 : state === "error"
                 ? "bg-error"
                 : state === "inprogress"
-                ? "animate-tile-scroll-offset bg-pending"
+                ? "bg-pending"
                 : "bg-text-dimmed"
             )}
-            style={
-              state === "inprogress"
-                ? {
-                    height: "100%",
-                    backgroundImage: `url(${tileBgPath})`,
-                    backgroundSize: "8px 8px",
-                  }
-                : undefined
-            }
-          />
+          >
+            {state === "inprogress" && (
+              <div
+                className="absolute inset-0 h-full w-full animate-tile-scroll-offset opacity-30"
+                style={{
+                  backgroundImage: `url(${tileBgPath})`,
+                  backgroundSize: "8px 8px",
+                }}
+              />
+            )}
+          </div>
           <div
             className={cn(
               "size-[0.3125rem] min-h-[0.3125rem] rounded-full border",
@@ -436,25 +438,26 @@ function EventMarker({
           />
           <div
             className={cn(
-              "h-full w-px",
+              "relative h-full w-px",
               state === "complete"
                 ? "bg-success"
                 : state === "error"
                 ? "bg-error"
                 : state === "inprogress"
-                ? "animate-tile-scroll-offset bg-pending"
+                ? "bg-pending"
                 : "bg-text-dimmed"
             )}
-            style={
-              state === "inprogress"
-                ? {
-                    height: "100%",
-                    backgroundImage: `url(${tileBgPath})`,
-                    backgroundSize: "8px 8px",
-                  }
-                : undefined
-            }
-          />
+          >
+            {state === "inprogress" && (
+              <div
+                className="absolute inset-0 h-full w-full animate-tile-scroll-offset opacity-30"
+                style={{
+                  backgroundImage: `url(${tileBgPath})`,
+                  backgroundSize: "8px 8px",
+                }}
+              />
+            )}
+          </div>
         </>
       );
     case "dot-solid":
@@ -470,25 +473,26 @@ function EventMarker({
       return (
         <div
           className={cn(
-            "h-full w-[0.4375rem] rounded-t-[0.125rem]",
+            "relative h-full w-[0.4375rem] rounded-t-[0.125rem]",
             state === "complete"
               ? "bg-success"
               : state === "error"
               ? "bg-error"
               : state === "inprogress"
-              ? "animate-tile-scroll-offset bg-pending"
+              ? "bg-pending"
               : "bg-text-dimmed"
           )}
-          style={
-            state === "inprogress"
-              ? {
-                  height: "100%",
-                  backgroundImage: `url(${tileBgPath})`,
-                  backgroundSize: "8px 8px",
-                }
-              : undefined
-          }
-        />
+        >
+          {state === "inprogress" && (
+            <div
+              className="absolute inset-0 h-full w-full animate-tile-scroll-offset opacity-30"
+              style={{
+                backgroundImage: `url(${tileBgPath})`,
+                backgroundSize: "8px 8px",
+              }}
+            />
+          )}
+        </div>
       );
     case "end-cap-thick":
       return (
@@ -535,7 +539,7 @@ function LineMarker({
       return (
         <div
           className={cn(
-            "w-[0.4375rem]",
+            "relative w-[0.4375rem]",
             state === "complete"
               ? "bg-success"
               : state === "error"
@@ -543,25 +547,26 @@ function LineMarker({
               : state === "delayed"
               ? "bg-text-dimmed"
               : state === "inprogress"
-              ? "animate-tile-scroll rounded-b-[0.125rem] bg-pending"
+              ? "rounded-b-[0.125rem] bg-pending"
               : "bg-text-dimmed"
           )}
-          style={
-            state === "inprogress"
-              ? {
-                  height: "100%",
-                  backgroundImage: `url(${tileBgPath})`,
-                  backgroundSize: "8px 8px",
-                }
-              : undefined
-          }
-        />
+        >
+          {state === "inprogress" && (
+            <div
+              className="absolute inset-0 h-full w-full animate-tile-scroll opacity-30"
+              style={{
+                backgroundImage: `url(${tileBgPath})`,
+                backgroundSize: "8px 8px",
+              }}
+            />
+          )}
+        </div>
       );
     case "light":
       return (
         <div
           className={cn(
-            "w-px",
+            "relative w-px",
             state === "complete"
               ? "bg-success"
               : state === "error"
@@ -569,19 +574,20 @@ function LineMarker({
               : state === "delayed"
               ? "bg-text-dimmed"
               : state === "inprogress"
-              ? "animate-tile-scroll bg-pending"
+              ? "bg-pending"
               : "bg-text-dimmed"
           )}
-          style={
-            state === "inprogress"
-              ? {
-                  height: "100%",
-                  backgroundImage: `url(${tileBgPath})`,
-                  backgroundSize: "8px 8px",
-                }
-              : undefined
-          }
-        />
+        >
+          {state === "inprogress" && (
+            <div
+              className="absolute inset-0 h-full w-full animate-tile-scroll opacity-30"
+              style={{
+                backgroundImage: `url(${tileBgPath})`,
+                backgroundSize: "8px 8px",
+              }}
+            />
+          )}
+        </div>
       );
     default:
       return <div className="w-px rounded-[0.125rem] bg-text-dimmed" />;

@@ -1146,7 +1146,7 @@ function SpanWithDuration({
     <Timeline.Span {...props}>
       <motion.div
         className={cn(
-          "relative flex h-4 w-full min-w-[2px] items-center rounded-sm",
+          "relative flex h-4 w-full min-w-0.5 items-center rounded-sm",
           eventBackgroundClassName(node.data)
         )}
         layoutId={node.id}
