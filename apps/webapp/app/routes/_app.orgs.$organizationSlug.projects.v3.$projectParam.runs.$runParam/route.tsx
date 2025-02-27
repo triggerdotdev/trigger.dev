@@ -1158,7 +1158,7 @@ function SpanWithDuration({
   );
 }
 
-const edgeBoundary = 0.05;
+const edgeBoundary = 0.17;
 
 function CurrentTimeIndicator({
   totalDuration,
@@ -1197,9 +1197,7 @@ function CurrentTimeIndicator({
                       style: "short",
                       maxDecimalPoints: ms < 1000 ? 0 : 1,
                     })}
-
-                    <span className="ml-1 text-text-dimmed"> - </span>
-
+                    <span className="mx-1 text-text-dimmed">–</span>
                     {currentTimeComponent}
                   </span>
                 ) : (
