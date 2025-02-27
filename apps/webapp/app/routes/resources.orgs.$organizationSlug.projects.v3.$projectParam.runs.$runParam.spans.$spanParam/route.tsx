@@ -310,8 +310,7 @@ function SpanBody({
                     duration={span.duration}
                     inProgress={span.isPartial}
                     isError={span.isError}
-                    showAdminOnlyEvents={isAdmin}
-                    events={createTimelineSpanEventsFromSpanEvents(span.events)}
+                    events={createTimelineSpanEventsFromSpanEvents(span.events, isAdmin)}
                   />
                 </>
               ) : (

@@ -123,6 +123,15 @@ export class RunPresenter {
       };
     }
 
+    const user = await this.#prismaClient.user.findFirst({
+      where: {
+        id: userId,
+      },
+      select: {
+        admin: true,
+      },
+    });
+
     //this tree starts at the passed in span (hides parent elements if there are any)
     const tree = createTreeFromFlatItems(traceSummary.spans, run.spanId);
 
@@ -141,6 +150,7 @@ export class RunPresenter {
               ...n.data,
               timelineEvents: createTimelineSpanEventsFromSpanEvents(
                 n.data.events,
+                user?.admin ?? false,
                 treeRootStartTimeMs
               ),
               //set partial nodes to null duration

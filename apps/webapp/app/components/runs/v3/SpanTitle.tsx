@@ -144,6 +144,36 @@ export function eventBackgroundClassName(event: RunEvent) {
   }
 }
 
+export function eventBorderClassName(event: RunEvent) {
+  if (event.isError) {
+    return "border-error";
+  }
+
+  if (event.isCancelled) {
+    return "border-charcoal-600";
+  }
+
+  switch (event.level) {
+    case "TRACE": {
+      return backgroundClassNameForVariant(event.style.variant, event.isPartial);
+    }
+    case "LOG":
+    case "INFO":
+    case "DEBUG": {
+      return backgroundClassNameForVariant(event.style.variant, event.isPartial);
+    }
+    case "WARN": {
+      return "border-amber-400";
+    }
+    case "ERROR": {
+      return "border-error";
+    }
+    default: {
+      return backgroundClassNameForVariant(event.style.variant, event.isPartial);
+    }
+  }
+}
+
 function textClassNameForVariant(variant: TaskEventStyle["variant"]) {
   switch (variant) {
     case "primary": {
@@ -165,6 +195,20 @@ function backgroundClassNameForVariant(variant: TaskEventStyle["variant"], isPar
     }
     default: {
       return "bg-charcoal-500";
+    }
+  }
+}
+
+function borderClassNameForVariant(variant: TaskEventStyle["variant"], isPartial: boolean) {
+  switch (variant) {
+    case "primary": {
+      if (isPartial) {
+        return "border-blue-500";
+      }
+      return "border-success";
+    }
+    default: {
+      return "border-charcoal-500";
     }
   }
 }

@@ -55,7 +55,11 @@ import { NodesState } from "~/components/primitives/TreeView/reducer";
 import { CancelRunDialog } from "~/components/runs/v3/CancelRunDialog";
 import { ReplayRunDialog } from "~/components/runs/v3/ReplayRunDialog";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
-import { SpanTitle, eventBackgroundClassName } from "~/components/runs/v3/SpanTitle";
+import {
+  SpanTitle,
+  eventBackgroundClassName,
+  eventBorderClassName,
+} from "~/components/runs/v3/SpanTitle";
 import { TaskRunStatusIcon, runStatusClassNameColor } from "~/components/runs/v3/TaskRunStatus";
 import { env } from "~/env.server";
 import { useDebounce } from "~/hooks/useDebounce";
@@ -911,7 +915,10 @@ function TimelineView({
                               >
                                 {(ms) => (
                                   <motion.div
-                                    className="-ml-[0.5px] h-[0.5625rem] w-px rounded-none bg-text-dimmed"
+                                    className={cn(
+                                      "-ml-[0.5px] h-[0.5625rem] w-px rounded-none",
+                                      eventBackgroundClassName(node.data)
+                                    )}
                                     layoutId={`${node.id}-${event.name}`}
                                   />
                                 )}
@@ -924,7 +931,10 @@ function TimelineView({
                               >
                                 {(ms) => (
                                   <motion.div
-                                    className="-ml-1 size-[0.3125rem] rounded-full border border-text-dimmed bg-background-bright"
+                                    className={cn(
+                                      "-ml-1 size-[0.3125rem] rounded-full border bg-background-bright",
+                                      eventBorderClassName(node.data)
+                                    )}
                                     layoutId={`${node.id}-${event.name}`}
                                   />
                                 )}
@@ -941,7 +951,7 @@ function TimelineView({
                             )}
                           >
                             <motion.div
-                              className="h-[1px] w-full rounded-none bg-text-dimmed"
+                              className={cn("h-px w-full", eventBackgroundClassName(node.data))}
                               layoutId={`mark-${node.id}`}
                             />
                           </Timeline.Span>
@@ -962,7 +972,7 @@ function TimelineView({
                         {(ms) => (
                           <motion.div
                             className={cn(
-                              "-ml-1 h-3 w-3 rounded-full border-2 border-background-bright",
+                              "-ml-1 size-3 rounded-full border-2 border-background-bright",
                               eventBackgroundClassName(node.data)
                             )}
                             layoutId={node.id}
@@ -1120,11 +1130,11 @@ function LiveReloadingStatus({
 
 function PulsingDot() {
   return (
-    <span className="relative flex h-2 w-2">
+    <span className="relative flex size-2">
       <span
         className={`absolute h-full w-full animate-ping rounded-full border border-blue-500 opacity-100 duration-1000`}
       />
-      <span className={`h-2 w-2 rounded-full bg-blue-500`} />
+      <span className={`size-2 rounded-full bg-blue-500`} />
     </span>
   );
 }

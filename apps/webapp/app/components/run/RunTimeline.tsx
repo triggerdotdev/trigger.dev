@@ -594,7 +594,6 @@ export type SpanTimelineProps = {
   inProgress: boolean;
   isError: boolean;
   events?: TimelineSpanEvent[];
-  showAdminOnlyEvents?: boolean;
 };
 
 export type SpanTimelineState = "error" | "pending" | "complete";
@@ -605,12 +604,10 @@ export function SpanTimeline({
   inProgress,
   isError,
   events,
-  showAdminOnlyEvents,
 }: SpanTimelineProps) {
   const state = isError ? "error" : inProgress ? "inprogress" : undefined;
 
-  // Filter events if needed
-  const visibleEvents = events?.filter((event) => !event.adminOnly || showAdminOnlyEvents) ?? [];
+  const visibleEvents = events ?? [];
 
   return (
     <>
@@ -697,13 +694,13 @@ export type TimelineSpanEvent = {
   timestamp: Date;
   duration?: number;
   helpText?: string;
-  adminOnly: boolean;
   markerVariant: TimelineEventVariant;
   lineVariant: TimelineLineVariant;
 };
 
 export function createTimelineSpanEventsFromSpanEvents(
   spanEvents: SpanEvent[],
+  isAdmin: boolean,
   relativeStartTime?: number
 ): Array<TimelineSpanEvent> {
   // Rest of function remains the same
@@ -730,14 +727,28 @@ export function createTimelineSpanEventsFromSpanEvents(
     return aTime.getTime() - bTime.getTime();
   });
 
+  const visibleSpanEvents = sortedSpanEvents.filter(
+    (spanEvent) =>
+      isAdmin ||
+      !getAdminOnlyForEvent(
+        "event" in spanEvent.properties && typeof spanEvent.properties.event === "string"
+          ? spanEvent.properties.event
+          : spanEvent.name
+      )
+  );
+
+  if (visibleSpanEvents.length === 0) {
+    return [];
+  }
+
   const firstEventTime =
-    typeof sortedSpanEvents[0].time === "string"
-      ? new Date(sortedSpanEvents[0].time)
-      : sortedSpanEvents[0].time;
+    typeof visibleSpanEvents[0].time === "string"
+      ? new Date(visibleSpanEvents[0].time)
+      : visibleSpanEvents[0].time;
 
   const $relativeStartTime = relativeStartTime ?? firstEventTime.getTime();
 
-  const events = matchingSpanEvents.map((spanEvent, index) => {
+  const events = visibleSpanEvents.map((spanEvent, index) => {
     const timestamp =
       typeof spanEvent.time === "string" ? new Date(spanEvent.time) : spanEvent.time;
 
@@ -767,7 +778,6 @@ export function createTimelineSpanEventsFromSpanEvents(
       timestamp,
       duration,
       properties: spanEvent.properties,
-      adminOnly: getAdminOnlyForEvent(name),
       helpText: getHelpTextForEvent(name),
       markerVariant,
       lineVariant: "light" as const,
@@ -835,13 +845,13 @@ function getAdminOnlyForEvent(event: string): boolean {
 function getHelpTextForEvent(event: string): string | undefined {
   switch (event) {
     case "dequeue": {
-      return "The task was dequeued from the queue";
+      return "The run was dequeued from the queue";
     }
     case "fork": {
       return "The process was created to run the task";
     }
     case "create_attempt": {
-      return "An attempt was created for the task";
+      return "An attempt was created for the run";
     }
     case "import": {
       return "A task file was imported";
@@ -850,22 +860,22 @@ function getHelpTextForEvent(event: string): string | undefined {
       return "The payload was initialized lazily";
     }
     case "pod_scheduled": {
-      return "The Kubernetes pod was scheduled to run the task";
+      return "The Kubernetes pod was scheduled to run";
     }
     case "Triggered": {
-      return "When the run was initially triggered";
+      return "The run was triggered";
     }
     case "Dequeued": {
-      return "When the run is taken from the queue for processing";
+      return "The run was dequeued from the queue";
     }
     case "Started": {
-      return "When the run begins executing";
+      return "The run began executing";
     }
     case "Finished": {
-      return "When the run completes execution";
+      return "The run completed execution";
     }
     case "Expired": {
-      return "When the run expires before it can be processed";
+      return "The run expired before it could be started";
     }
     default: {
       return undefined;
