@@ -1,23 +1,20 @@
 ---
-title: "Frameworks, guides and examples overview"
-sidebarTitle: "Introduction"
-description: "An ever growing list of guides and examples to help you get setup with Trigger.dev."
+title: "Frameworks, guides and examples"
+sidebarTitle: "Overview"
+description: "A growing list of guides and examples to get the most out of Trigger.dev."
+mode: "center"
 ---
-
-import CardBun from "/snippets/card-bun.mdx";
-import CardNodejs from "/snippets/card-nodejs.mdx";
-import CardNextjs from "/snippets/card-nextjs.mdx";
-import CardRemix from "/snippets/card-remix.mdx";
-import CardSupabase from "/snippets/card-supabase.mdx";
 
 ## Frameworks
 
 <CardGroup cols={3}>
-  <CardBun />
-  <CardNodejs />
-  <CardNextjs />
-  <CardRemix />
+  <Card title="Bun" img="/images/logo-bun.png" href="/guides/frameworks/bun"/>
+  <Card title="Next.js" img="/images/logo-nextjs.png" href="/guides/frameworks/nextjs"/>
+  <Card title="Node.js" img="/images/logo-nodejs.png" href="/guides/frameworks/nodejs"/>
+  <Card title="Remix" img="/images/logo-remix.png" href="/guides/frameworks/remix"/>
+  <Card title="SvelteKit" img="/images/logo-svelte.png" href="/guides/community/sveltekit"/>
 </CardGroup>
+
 
 ## Guides
 
@@ -25,6 +22,11 @@ Get set up fast using our detailed walk-through guides.
 
 | Guide                                                                                      | Description                                       |
 | :----------------------------------------------------------------------------------------- | :------------------------------------------------ |
+| [AI Agent: Generate and translate copy](/guides/ai-agents/generate-translate-copy)                   | Chain prompts to generate and translate content   |
+| [AI Agent: Route questions](/guides/ai-agents/route-question)                                        | Route questions to different models based on complexity |
+| [AI Agent: Content moderation](/guides/ai-agents/respond-and-check-content)                         | Parallel check content while responding to customers |
+| [AI Agent: News verification](/guides/ai-agents/verify-news-article)                                | Orchestrate fact checking of news articles        |
+| [AI Agent: Translation refinement](/guides/ai-agents/translate-and-refine)                          | Evaluate and refine translations with feedback    |
 | [Prisma](/guides/frameworks/prisma)                                                        | How to setup Prisma with Trigger.dev              |
 | [Sequin database triggers](/guides/frameworks/sequin)                                      | Trigger tasks from database changes using Sequin  |
 | [Supabase edge function hello world](/guides/frameworks/supabase-edge-functions-basic)     | Trigger tasks from Supabase edge function         |
@@ -37,11 +39,12 @@ Get set up fast using our detailed walk-through guides.
 
 Example projects are full projects with example repos you can fork and use. These are a great way of learning how to encorporate Trigger.dev into your project.
 
-| Example project                                                              | Description                                                                                                    | Framework | GitHub Repo                                                                                           |
-| :--------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------- | :-------- | :---------------------------------------------------------------------------------------------------- |
-| [Realtime Fal.ai image generation](/guides/example-projects/realtime-fal-ai) | Generate an image from a prompt using Fal.ai and show the progress of the task on the frontend using Realtime. | Next.js   | [View the repo](https://github.com/triggerdotdev/examples/tree/main/realtime-fal-ai-image-generation) |
-| [Batch LLM Evaluator](/guides/example-projects/batch-llm-evaluator)          | Evaluate multiple LLM models and stream the results to the frontend.                                           | Next.js   | [View the repo](https://github.com/triggerdotdev/examples/tree/main/batch-llm-evaluator)              |
-| [Realtime CSV Importer](/guides/example-projects/realtime-csv-importer)      | Upload a CSV file and see the progress of the task streamed to the frontend.                                   | Next.js   | [View the repo](https://github.com/triggerdotdev/examples/tree/main/realtime-csv-importer)            |
+| Example project                                                                         | Description                                                                                                    | Framework | GitHub                                                                                           |
+| :-------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------- | :-------- | :---------------------------------------------------------------------------------------------------- |
+| [Realtime Fal.ai image generation](/guides/example-projects/realtime-fal-ai)            | Generate an image from a prompt using Fal.ai and show the progress of the task on the frontend using Realtime. | Next.js   | [View repo](https://github.com/triggerdotdev/examples/tree/main/realtime-fal-ai-image-generation) |
+| [Batch LLM Evaluator](/guides/example-projects/batch-llm-evaluator)                     | Evaluate multiple LLM models and stream the results to the frontend.                                           | Next.js   | [View repo](https://github.com/triggerdotdev/examples/tree/main/batch-llm-evaluator)              |
+| [Realtime CSV Importer](/guides/example-projects/realtime-csv-importer)                 | Upload a CSV file and see the progress of the task streamed to the frontend.                                   | Next.js   | [View repo](https://github.com/triggerdotdev/examples/tree/main/realtime-csv-importer)            |
+| [Vercel AI SDK image generator](/guides/example-projects/vercel-ai-sdk-image-generator) | Use the Vercel AI SDK to generate images from a prompt.                                                        | Next.js   | [View repo](https://github.com/triggerdotdev/examples/tree/main/vercel-ai-sdk-image-generator)    |
 
 ## Example tasks
 

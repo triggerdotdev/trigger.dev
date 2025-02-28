@@ -1,0 +1,41 @@
+---
+title: "Vercel AI SDK image generator"
+sidebarTitle: "Vercel AI SDK image generator"
+description: "This example Next.js project uses the Vercel AI SDK to generate images from a prompt."
+---
+
+import RealtimeLearnMore from "/snippets/realtime-learn-more.mdx";
+
+## Overview
+
+This demo is a full stack example that uses the following:
+
+- A [Next.js](https://nextjs.org/) app using [shadcn](https://ui.shadcn.com/) for the UI
+- Our 'useRealtimeRun' [React hook](https://trigger.dev/docs/frontend/react-hooks/realtime) to subscribe to the run and show updates on the frontend
+- The [Vercel AI SDK](https://sdk.vercel.ai/docs/introduction) to [generate images](https://sdk.vercel.ai/docs/ai-sdk-core/image-generation) using OpenAI's DALL-E models
+
+## GitHub repo
+
+<Card
+  title="View the Vercel AI SDK image generator repo"
+  icon="GitHub"
+  href="https://github.com/triggerdotdev/examples/tree/main/vercel-ai-sdk-image-generator"
+>
+  Click here to view the full code for this project in our examples repository on GitHub. You can
+  fork it and use it as a starting point for your own project.
+</Card>
+
+## Video
+
+<video
+  controls
+  className="w-full aspect-video"
+  src="https://github.com/user-attachments/assets/960edcb6-e225-4983-a48c-6fa697295dec"
+></video>
+
+## Relevant code
+
+- View the Trigger.dev task code which generates the image using the Vercel AI SDK in [src/trigger/realtime-generate-image.ts](https://github.com/triggerdotdev/examples/tree/main/vercel-ai-sdk-image-generator/src/trigger/realtime-generate-image.ts).
+- We use a [useRealtimeRun](https://trigger.dev/docs/frontend/react-hooks/realtime#userealtimerun) hook to subscribe to the run in [src/app/processing/[id]/ProcessingContent.tsx](https://github.com/triggerdotdev/examples/tree/main/vercel-ai-sdk-image-generator/src/app/processing/[id]/ProcessingContent.tsx).
+
+<RealtimeLearnMore />

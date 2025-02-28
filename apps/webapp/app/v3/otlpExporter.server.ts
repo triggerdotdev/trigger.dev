@@ -25,6 +25,8 @@ import {
   CreatableEventEnvironmentType,
 } from "./eventRepository.server";
 import { logger } from "~/services/logger.server";
+import { trace, Tracer } from "@opentelemetry/api";
+import { startSpan } from "./tracing.server";
 
 export type OTLPExporterConfig = {
   batchSize: number;
@@ -32,51 +34,63 @@ export type OTLPExporterConfig = {
 };
 
 class OTLPExporter {
+  private _tracer: Tracer;
+
   constructor(
     private readonly _eventRepository: EventRepository,
     private readonly _verbose: boolean
-  ) {}
+  ) {
+    this._tracer = trace.getTracer("otlp-exporter");
+  }
 
   async exportTraces(
     request: ExportTraceServiceRequest,
     immediate: boolean = false
   ): Promise<ExportTraceServiceResponse> {
-    this.#logExportTracesVerbose(request);
+    return await startSpan(this._tracer, "exportTraces", async (span) => {
+      this.#logExportTracesVerbose(request);
 
-    const events = this.#filterResourceSpans(request.resourceSpans).flatMap((resourceSpan) => {
-      return convertSpansToCreateableEvents(resourceSpan);
+      const events = this.#filterResourceSpans(request.resourceSpans).flatMap((resourceSpan) => {
+        return convertSpansToCreateableEvents(resourceSpan);
+      });
+
+      this.#logEventsVerbose(events);
+
+      span.setAttribute("event_count", events.length);
+
+      if (immediate) {
+        await this._eventRepository.insertManyImmediate(events);
+      } else {
+        await this._eventRepository.insertMany(events);
+      }
+
+      return ExportTraceServiceResponse.create();
     });
-
-    this.#logEventsVerbose(events);
-
-    if (immediate) {
-      await this._eventRepository.insertManyImmediate(events);
-    } else {
-      await this._eventRepository.insertMany(events);
-    }
-
-    return ExportTraceServiceResponse.create();
   }
 
   async exportLogs(
     request: ExportLogsServiceRequest,
     immediate: boolean = false
   ): Promise<ExportLogsServiceResponse> {
-    this.#logExportLogsVerbose(request);
+    return await startSpan(this._tracer, "exportLogs", async (span) => {
+      this.#logExportLogsVerbose(request);
 
-    const events = this.#filterResourceLogs(request.resourceLogs).flatMap((resourceLog) => {
-      return convertLogsToCreateableEvents(resourceLog);
+      const events = this.#filterResourceLogs(request.resourceLogs).flatMap((resourceLog) => {
+        return convertLogsToCreateableEvents(resourceLog);
+      });
+
+      this.#logEventsVerbose(events);
+
+      span.setAttribute("event_count", events.length);
+
+      if (immediate) {
+        await this._eventRepository.insertManyImmediate(events);
+      } else {
+        await this._eventRepository.insertMany(events);
+      }
+
+      return ExportLogsServiceResponse.create();
     });
-
-    this.#logEventsVerbose(events);
-
-    if (immediate) {
-      await this._eventRepository.insertManyImmediate(events);
-    } else {
-      await this._eventRepository.insertMany(events);
-    }
-
-    return ExportLogsServiceResponse.create();
   }
 
   #logEventsVerbose(events: CreatableEvent[]) {

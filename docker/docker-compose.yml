@@ -5,6 +5,12 @@ volumes:
   database-data-alt:
   pgadmin-data:
   redis-data:
+  redis-cluster_data-0:
+  redis-cluster_data-1:
+  redis-cluster_data-2:
+  redis-cluster_data-3:
+  redis-cluster_data-4:
+  redis-cluster_data-5:
 
 networks:
   app_network:
@@ -35,24 +41,6 @@ services:
       - -c
       - shared_preload_libraries=pg_partman_bgw
 
-  pgadmin:
-    container_name: pgadmin
-    image: dpage/pgadmin4:8
-    restart: always
-    environment:
-      PGADMIN_DEFAULT_EMAIL: admin@example.com
-      PGADMIN_DEFAULT_PASSWORD: admin
-      PGADMIN_DISABLE_POSTFIX: "true"
-    volumes:
-      - pgadmin-data:/var/lib/pgadmin
-      - ./pgadmin/servers.json:/pgadmin4/servers.json
-    networks:
-      - app_network
-    ports:
-      - 5480:80
-    depends_on:
-      - database
-
   redis:
     container_name: redis
     image: redis:7
@@ -64,8 +52,95 @@ services:
     ports:
       - 6379:6379
 
+  # redis-node-0:
+  #   image: docker.io/bitnami/redis-cluster:7.0
+  #   container_name: redis-node-0
+  #   networks:
+  #     - app_network
+  #   ports:
+  #     - "6378:6379"
+  #   volumes:
+  #     - redis-cluster_data-0:/bitnami/redis/data
+  #   environment:
+  #     - "REDIS_PASSWORD=bitnami"
+  #     - "REDIS_NODES=redis-node-0 redis-node-1 redis-node-2 redis-node-3 redis-node-4 redis-node-5"
+
+  # redis-node-1:
+  #   image: docker.io/bitnami/redis-cluster:7.0
+  #   container_name: redis-node-1
+  #   networks:
+  #     - app_network
+  #   ports:
+  #     - "6380:6379"
+  #   volumes:
+  #     - redis-cluster_data-1:/bitnami/redis/data
+  #   environment:
+  #     - "REDIS_PASSWORD=bitnami"
+  #     - "REDIS_NODES=redis-node-0 redis-node-1 redis-node-2 redis-node-3 redis-node-4 redis-node-5"
+
+  # redis-node-2:
+  #   image: docker.io/bitnami/redis-cluster:7.0
+  #   container_name: redis-node-2
+  #   networks:
+  #     - app_network
+  #   ports:
+  #     - "6381:6379"
+  #   volumes:
+  #     - redis-cluster_data-2:/bitnami/redis/data
+  #   environment:
+  #     - "REDIS_PASSWORD=bitnami"
+  #     - "REDIS_NODES=redis-node-0 redis-node-1 redis-node-2 redis-node-3 redis-node-4 redis-node-5"
+
+  # redis-node-3:
+  #   image: docker.io/bitnami/redis-cluster:7.0
+  #   container_name: redis-node-3
+  #   networks:
+  #     - app_network
+  #   ports:
+  #     - "6382:6379"
+  #   volumes:
+  #     - redis-cluster_data-3:/bitnami/redis/data
+  #   environment:
+  #     - "REDIS_PASSWORD=bitnami"
+  #     - "REDIS_NODES=redis-node-0 redis-node-1 redis-node-2 redis-node-3 redis-node-4 redis-node-5"
+
+  # redis-node-4:
+  #   image: docker.io/bitnami/redis-cluster:7.0
+  #   container_name: redis-node-4
+  #   networks:
+  #     - app_network
+  #   ports:
+  #     - "6383:6379"
+  #   volumes:
+  #     - redis-cluster_data-4:/bitnami/redis/data
+  #   environment:
+  #     - "REDIS_PASSWORD=bitnami"
+  #     - "REDIS_NODES=redis-node-0 redis-node-1 redis-node-2 redis-node-3 redis-node-4 redis-node-5"
+
+  # redis-node-5:
+  #   image: docker.io/bitnami/redis-cluster:7.0
+  #   container_name: redis-node-5
+  #   networks:
+  #     - app_network
+  #   ports:
+  #     - "6384:6379"
+  #   volumes:
+  #     - redis-cluster_data-5:/bitnami/redis/data
+  #   depends_on:
+  #     - redis-node-0
+  #     - redis-node-1
+  #     - redis-node-2
+  #     - redis-node-3
+  #     - redis-node-4
+  #   environment:
+  #     - "REDIS_PASSWORD=bitnami"
+  #     - "REDISCLI_AUTH=bitnami"
+  #     - "REDIS_CLUSTER_REPLICAS=1"
+  #     - "REDIS_NODES=redis-node-0 redis-node-1 redis-node-2 redis-node-3 redis-node-4 redis-node-5"
+  #     - "REDIS_CLUSTER_CREATOR=yes"
+
   electric:
-    image: electricsql/electric:1.0.0-beta.1@sha256:2262f6f09caf5fa45f233731af97b84999128170a9529e5f9b9b53642308493f
+    image: electricsql/electric:1.0.0-beta.15@sha256:4ae0f895753b82684aa31ea1c708e9e86d0a9bca355acb7270dcb24062520810
     restart: always
     environment:
       DATABASE_URL: postgresql://postgres:postgres@database:5432/postgres?sslmode=disable

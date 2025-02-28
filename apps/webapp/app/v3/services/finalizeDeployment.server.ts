@@ -1,5 +1,4 @@
 import { FinalizeDeploymentRequestBody } from "@trigger.dev/core/v3/schemas";
-import { CURRENT_DEPLOYMENT_LABEL } from "~/consts";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { socketIo } from "../handleSocketIo.server";
@@ -7,7 +6,7 @@ import { marqs } from "../marqs/index.server";
 import { registryProxy } from "../registryProxy.server";
 import { PerformDeploymentAlertsService } from "./alerts/performDeploymentAlerts.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
-import { ExecuteTasksWaitingForDeployService } from "./executeTasksWaitingForDeploy";
+import { ChangeCurrentDeploymentService } from "./changeCurrentDeployment.server";
 import { projectPubSub } from "./projectPubSub.server";
 
 export class FinalizeDeploymentService extends BaseService {
@@ -16,7 +15,7 @@ export class FinalizeDeploymentService extends BaseService {
     id: string,
     body: FinalizeDeploymentRequestBody
   ) {
-    const deployment = await this._prisma.workerDeployment.findUnique({
+    const deployment = await this._prisma.workerDeployment.findFirst({
       where: {
         friendlyId: id,
         environmentId: authenticatedEnv.id,
@@ -43,9 +42,21 @@ export class FinalizeDeploymentService extends BaseService {
       throw new ServiceValidationError("Worker deployment does not have a worker");
     }
 
+    if (deployment.status === "DEPLOYED") {
+      logger.debug("Worker deployment is already deployed", { id });
+
+      return deployment;
+    }
+
     if (deployment.status !== "DEPLOYING") {
       logger.error("Worker deployment is not in DEPLOYING status", { id });
       throw new ServiceValidationError("Worker deployment is not in DEPLOYING status");
+    }
+
+    let imageReference = body.imageReference;
+
+    if (registryProxy && body.selfHosted !== true && body.skipRegistryProxy !== true) {
+      imageReference = registryProxy.rewriteImageReference(body.imageReference);
     }
 
     // Link the deployment with the background worker
@@ -56,30 +67,15 @@ export class FinalizeDeploymentService extends BaseService {
       data: {
         status: "DEPLOYED",
         deployedAt: new Date(),
-        imageReference:
-          registryProxy && body.selfHosted !== true
-            ? registryProxy.rewriteImageReference(body.imageReference)
-            : body.imageReference,
+        imageReference,
       },
     });
 
-    //set this deployment as the current deployment for this environment
-    await this._prisma.workerDeploymentPromotion.upsert({
-      where: {
-        environmentId_label: {
-          environmentId: authenticatedEnv.id,
-          label: CURRENT_DEPLOYMENT_LABEL,
-        },
-      },
-      create: {
-        deploymentId: finalizedDeployment.id,
-        environmentId: authenticatedEnv.id,
-        label: CURRENT_DEPLOYMENT_LABEL,
-      },
-      update: {
-        deploymentId: finalizedDeployment.id,
-      },
-    });
+    if (typeof body.skipPromotion === "undefined" || !body.skipPromotion) {
+      const promotionService = new ChangeCurrentDeploymentService();
+
+      await promotionService.call(finalizedDeployment, "promote");
+    }
 
     try {
       //send a notification that a new worker has been created
@@ -100,22 +96,21 @@ export class FinalizeDeploymentService extends BaseService {
       logger.error("Failed to publish WORKER_CREATED event", { err });
     }
 
-    if (deployment.imageReference) {
+    if (finalizedDeployment.imageReference) {
       socketIo.providerNamespace.emit("PRE_PULL_DEPLOYMENT", {
         version: "v1",
-        imageRef: deployment.imageReference,
-        shortCode: deployment.shortCode,
+        imageRef: finalizedDeployment.imageReference,
+        shortCode: finalizedDeployment.shortCode,
         // identifiers
-        deploymentId: deployment.id,
+        deploymentId: finalizedDeployment.id,
         envId: authenticatedEnv.id,
         envType: authenticatedEnv.type,
         orgId: authenticatedEnv.organizationId,
-        projectId: deployment.projectId,
+        projectId: finalizedDeployment.projectId,
       });
     }
 
-    await ExecuteTasksWaitingForDeployService.enqueue(deployment.worker.id, this._prisma);
-    await PerformDeploymentAlertsService.enqueue(deployment.id, this._prisma);
+    await PerformDeploymentAlertsService.enqueue(deployment.id);
 
     return finalizedDeployment;
   }

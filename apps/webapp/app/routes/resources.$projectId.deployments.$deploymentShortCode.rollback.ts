@@ -5,7 +5,7 @@ import { prisma } from "~/db.server";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
-import { RollbackDeploymentService } from "~/v3/services/rollbackDeployment.server";
+import { ChangeCurrentDeploymentService } from "~/v3/services/changeCurrentDeployment.server";
 
 export const rollbackSchema = z.object({
   redirectUrl: z.string(),
@@ -65,8 +65,8 @@ export const action: ActionFunction = async ({ request, params }) => {
       );
     }
 
-    const rollbackService = new RollbackDeploymentService();
-    await rollbackService.call(deployment);
+    const rollbackService = new ChangeCurrentDeploymentService();
+    await rollbackService.call(deployment, "rollback");
 
     return redirectWithSuccessMessage(
       submission.value.redirectUrl,

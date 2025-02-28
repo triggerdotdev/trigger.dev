@@ -6,6 +6,7 @@ import {
   serverWebsocketMessages,
   TaskManifest,
   TaskRunExecutionLazyAttemptPayload,
+  TaskRunExecutionMetrics,
   WorkerManifest,
 } from "@trigger.dev/core/v3";
 import { ResolvedConfig } from "@trigger.dev/core/v3/build";
@@ -19,7 +20,7 @@ import { WebSocket } from "partysocket";
 import { ClientOptions, WebSocket as wsWebSocket } from "ws";
 import { CliApiClient } from "../apiClient.js";
 import { DevCommandOptions } from "../commands/dev.js";
-import { chalkError, chalkTask } from "../utilities/cliOutput.js";
+import { chalkError, chalkTask, cliLink, prettyError } from "../utilities/cliOutput.js";
 import { resolveDotEnvVars } from "../utilities/dotEnv.js";
 import { eventBus } from "../utilities/eventBus.js";
 import { logger } from "../utilities/logger.js";
@@ -189,10 +190,15 @@ class DevWorkerRuntime implements WorkerRuntime {
       throw new Error("Could not initialize worker");
     }
 
-    const issues = validateWorkerManifest(backgroundWorker.manifest);
+    const validationIssue = validateWorkerManifest(backgroundWorker.manifest);
 
-    if (issues.length > 0) {
-      issues.forEach((issue) => logger.error(issue));
+    if (validationIssue) {
+      prettyError(
+        generationValidationIssueHeader(validationIssue),
+        generateValidationIssueMessage(validationIssue, backgroundWorker.manifest!, manifest),
+        generateValidationIssueFooter(validationIssue)
+      );
+
       stop();
       return;
     }
@@ -308,6 +314,8 @@ class DevWorkerRuntime implements WorkerRuntime {
   }
 
   async #executeTaskRunLazyAttempt(id: string, payload: TaskRunExecutionLazyAttemptPayload) {
+    const createAttemptStart = Date.now();
+
     const attemptResponse = await this.options.client.createTaskRunAttempt(payload.runId);
 
     if (!attemptResponse.success) {
@@ -320,7 +328,19 @@ class DevWorkerRuntime implements WorkerRuntime {
 
     const completion = await this.backgroundWorkerCoordinator.executeTaskRun(
       id,
-      { execution, traceContext: payload.traceContext, environment: payload.environment },
+      {
+        execution,
+        traceContext: payload.traceContext,
+        environment: payload.environment,
+        metrics: [
+          {
+            name: "start",
+            event: "create_attempt",
+            timestamp: createAttemptStart,
+            duration: Date.now() - createAttemptStart,
+          },
+        ].concat(payload.metrics ?? []),
+      },
       payload.messageId
     );
 
@@ -352,11 +372,20 @@ function gatherProcessEnv() {
   return Object.fromEntries(Object.entries($env).filter(([key, value]) => value !== undefined));
 }
 
-function validateWorkerManifest(manifest: WorkerManifest): string[] {
-  const issues: string[] = [];
+type ValidationIssue =
+  | {
+      type: "duplicateTaskId";
+      duplicationTaskIds: string[];
+    }
+  | {
+      type: "noTasksDefined";
+    };
+
+function validateWorkerManifest(manifest: WorkerManifest): ValidationIssue | undefined {
+  const issues: ValidationIssue[] = [];
 
   if (!manifest.tasks || manifest.tasks.length === 0) {
-    issues.push("No tasks defined. Make sure you are exporting tasks.");
+    return { type: "noTasksDefined" };
   }
 
   // Check for any duplicate task ids
@@ -364,10 +393,69 @@ function validateWorkerManifest(manifest: WorkerManifest): string[] {
   const duplicateTaskIds = taskIds.filter((id, index) => taskIds.indexOf(id) !== index);
 
   if (duplicateTaskIds.length > 0) {
-    issues.push(createDuplicateTaskIdOutputErrorMessage(duplicateTaskIds, manifest.tasks));
+    return { type: "duplicateTaskId", duplicationTaskIds: duplicateTaskIds };
   }
 
-  return issues;
+  return undefined;
+}
+
+function generationValidationIssueHeader(issue: ValidationIssue) {
+  switch (issue.type) {
+    case "duplicateTaskId": {
+      return `Duplicate task ids detected`;
+    }
+    case "noTasksDefined": {
+      return `No tasks exported from your trigger files`;
+    }
+  }
+}
+
+function generateValidationIssueFooter(issue: ValidationIssue) {
+  switch (issue.type) {
+    case "duplicateTaskId": {
+      return cliLink("View the task docs", "https://trigger.dev/docs/tasks/overview");
+    }
+    case "noTasksDefined": {
+      return cliLink("View the task docs", "https://trigger.dev/docs/tasks/overview");
+    }
+  }
+}
+
+function generateValidationIssueMessage(
+  issue: ValidationIssue,
+  manifest: WorkerManifest,
+  buildManifest: BuildManifest
+) {
+  switch (issue.type) {
+    case "duplicateTaskId": {
+      return createDuplicateTaskIdOutputErrorMessage(issue.duplicationTaskIds, manifest.tasks);
+    }
+    case "noTasksDefined": {
+      return `        
+        Files:
+        ${buildManifest.files.map((file) => file.entry).join("\n")}
+
+        Make sure you have at least one task exported from your trigger files.
+
+        You may have defined a task and forgot to add the export statement:
+
+        \`\`\`ts
+        import { task } from "@trigger.dev/sdk/v3";
+
+        👇 Don't forget this
+        export const myTask = task({
+          id: "myTask",
+          async run() {
+            // Your task logic here
+          }
+        });
+        \`\`\`
+      `.replace(/^ {8}/gm, "");
+    }
+    default: {
+      return `Unknown validation issue: ${issue}`;
+    }
+  }
 }
 
 function createDuplicateTaskIdOutputErrorMessage(

@@ -1,33 +1,37 @@
 import {
   IOPacket,
+  packetRequiresOffloading,
   QueueOptions,
   SemanticInternalAttributes,
+  taskRunErrorEnhancer,
+  taskRunErrorToString,
   TriggerTaskRequestBody,
-  packetRequiresOffloading,
 } from "@trigger.dev/core/v3";
+import { parseNaturalLanguageDuration } from "@trigger.dev/core/v3/apps";
+import { Prisma, TaskRun } from "@trigger.dev/database";
 import { env } from "~/env.server";
+import { sanitizeQueueName } from "~/models/taskQueue.server";
+import { createTag, MAX_TAGS_PER_RUN } from "~/models/taskRunTag.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { autoIncrementCounter } from "~/services/autoIncrementCounter.server";
-import { workerQueue } from "~/services/worker.server";
+import { logger } from "~/services/logger.server";
+import { getEntitlement } from "~/services/platform.v3.server";
+import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
+import { handleMetadataPacket } from "~/utils/packets";
 import { marqs } from "~/v3/marqs/index.server";
 import { eventRepository } from "../eventRepository.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
-import { uploadPacketToObjectStore } from "../r2.server";
-import { startActiveSpan } from "../tracer.server";
-import { getEntitlement } from "~/services/platform.v3.server";
-import { BaseService, ServiceValidationError } from "./baseService.server";
-import { logger } from "~/services/logger.server";
-import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
-import { createTag, MAX_TAGS_PER_RUN } from "~/models/taskRunTag.server";
 import { findCurrentWorkerFromEnvironment } from "../models/workerDeployment.server";
-import { handleMetadataPacket } from "~/utils/packets";
-import { parseNaturalLanguageDuration } from "@trigger.dev/core/v3/apps";
-import { ExpireEnqueuedRunService } from "./expireEnqueuedRun.server";
 import { guardQueueSizeLimitsForEnv } from "../queueSizeLimits.server";
+import { uploadPacketToObjectStore } from "../r2.server";
+import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
+import { startActiveSpan } from "../tracer.server";
 import { clampMaxDuration } from "../utils/maxDuration";
-import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
-import { Prisma } from "@trigger.dev/database";
-import { sanitizeQueueName } from "~/models/taskQueue.server";
+import { BaseService, ServiceValidationError } from "./baseService.server";
+import { EnqueueDelayedRunService } from "./enqueueDelayedRun.server";
+import { enqueueRun } from "./enqueueRun.server";
+import { ExpireEnqueuedRunService } from "./expireEnqueuedRun.server";
+import { getTaskEventStore } from "../taskEventStore.server";
 
 export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
@@ -49,15 +53,30 @@ export class OutOfEntitlementError extends Error {
   }
 }
 
+export type TriggerTaskServiceResult = {
+  run: TaskRun;
+  isCached: boolean;
+};
+
+const MAX_ATTEMPTS = 2;
+
 export class TriggerTaskService extends BaseService {
   public async call(
     taskId: string,
     environment: AuthenticatedEnvironment,
     body: TriggerTaskRequestBody,
-    options: TriggerTaskServiceOptions = {}
-  ) {
+    options: TriggerTaskServiceOptions = {},
+    attempt: number = 0
+  ): Promise<TriggerTaskServiceResult | undefined> {
     return await this.traceWithEnv("call()", environment, async (span) => {
       span.setAttribute("taskId", taskId);
+      span.setAttribute("attempt", attempt);
+
+      if (attempt > MAX_ATTEMPTS) {
+        throw new ServiceValidationError(
+          `Failed to trigger ${taskId} after ${MAX_ATTEMPTS} attempts.`
+        );
+      }
 
       // TODO: Add idempotency key expiring here
       const idempotencyKey = options.idempotencyKey ?? body.options?.idempotencyKey;
@@ -74,13 +93,11 @@ export class TriggerTaskService extends BaseService {
           : body.options?.ttl ?? (environment.type === "DEVELOPMENT" ? "10m" : undefined);
 
       const existingRun = idempotencyKey
-        ? await this._prisma.taskRun.findUnique({
+        ? await this._prisma.taskRun.findFirst({
             where: {
-              runtimeEnvironmentId_taskIdentifier_idempotencyKey: {
-                runtimeEnvironmentId: environment.id,
-                idempotencyKey,
-                taskIdentifier: taskId,
-              },
+              runtimeEnvironmentId: environment.id,
+              idempotencyKey,
+              taskIdentifier: taskId,
             },
           })
         : undefined;
@@ -103,7 +120,7 @@ export class TriggerTaskService extends BaseService {
         } else {
           span.setAttribute("runId", existingRun.friendlyId);
 
-          return existingRun;
+          return { run: existingRun, isCached: true };
         }
       }
 
@@ -161,7 +178,7 @@ export class TriggerTaskService extends BaseService {
         : undefined;
 
       const dependentAttempt = body.options?.dependentAttempt
-        ? await this._prisma.taskRunAttempt.findUnique({
+        ? await this._prisma.taskRunAttempt.findFirst({
             where: { friendlyId: body.options.dependentAttempt },
             include: {
               taskRun: {
@@ -171,6 +188,8 @@ export class TriggerTaskService extends BaseService {
                   taskIdentifier: true,
                   rootTaskRunId: true,
                   depth: true,
+                  queueTimestamp: true,
+                  queue: true,
                 },
               },
             },
@@ -198,7 +217,7 @@ export class TriggerTaskService extends BaseService {
       }
 
       const parentAttempt = body.options?.parentAttempt
-        ? await this._prisma.taskRunAttempt.findUnique({
+        ? await this._prisma.taskRunAttempt.findFirst({
             where: { friendlyId: body.options.parentAttempt },
             include: {
               taskRun: {
@@ -215,7 +234,7 @@ export class TriggerTaskService extends BaseService {
         : undefined;
 
       const dependentBatchRun = body.options?.dependentBatch
-        ? await this._prisma.batchTaskRun.findUnique({
+        ? await this._prisma.batchTaskRun.findFirst({
             where: { friendlyId: body.options.dependentBatch },
             include: {
               dependentTaskAttempt: {
@@ -227,6 +246,8 @@ export class TriggerTaskService extends BaseService {
                       taskIdentifier: true,
                       rootTaskRunId: true,
                       depth: true,
+                      queueTimestamp: true,
+                      queue: true,
                     },
                   },
                 },
@@ -259,7 +280,7 @@ export class TriggerTaskService extends BaseService {
       }
 
       const parentBatchRun = body.options?.parentBatch
-        ? await this._prisma.batchTaskRun.findUnique({
+        ? await this._prisma.batchTaskRun.findFirst({
             where: { friendlyId: body.options.parentBatch },
             include: {
               dependentTaskAttempt: {
@@ -279,7 +300,7 @@ export class TriggerTaskService extends BaseService {
         : undefined;
 
       try {
-        return await eventRepository.traceEvent(
+        const result = await eventRepository.traceEvent(
           taskId,
           {
             context: options.traceContext,
@@ -307,13 +328,11 @@ export class TriggerTaskService extends BaseService {
               `v3-run:${environment.id}:${taskId}`,
               async (num, tx) => {
                 const lockedToBackgroundWorker = body.options?.lockToVersion
-                  ? await tx.backgroundWorker.findUnique({
+                  ? await tx.backgroundWorker.findFirst({
                       where: {
-                        projectId_runtimeEnvironmentId_version: {
-                          projectId: environment.projectId,
-                          runtimeEnvironmentId: environment.id,
-                          version: body.options?.lockToVersion,
-                        },
+                        projectId: environment.projectId,
+                        runtimeEnvironmentId: environment.id,
+                        version: body.options?.lockToVersion,
                       },
                     })
                   : undefined;
@@ -354,6 +373,12 @@ export class TriggerTaskService extends BaseService {
                   ? dependentBatchRun.dependentTaskAttempt.taskRun.depth + 1
                   : 0;
 
+                const queueTimestamp =
+                  dependentAttempt?.taskRun.queueTimestamp ??
+                  dependentBatchRun?.dependentTaskAttempt?.taskRun.queueTimestamp ??
+                  delayUntil ??
+                  new Date();
+
                 const taskRun = await tx.taskRun.create({
                   data: {
                     status: delayUntil ? "DELAYED" : "PENDING",
@@ -381,7 +406,9 @@ export class TriggerTaskService extends BaseService {
                     isTest: body.options?.test ?? false,
                     delayUntil,
                     queuedAt: delayUntil ? undefined : new Date(),
+                    queueTimestamp,
                     maxAttempts: body.options?.maxAttempts,
+                    taskEventStore: getTaskEventStore(),
                     ttl,
                     tags:
                       tagIds.length === 0
@@ -450,7 +477,7 @@ export class TriggerTaskService extends BaseService {
                           ),
                           0
                         )
-                      : null;
+                      : body.options.queue?.concurrencyLimit;
 
                   let taskQueue = await tx.taskQueue.findFirst({
                     where: {
@@ -459,59 +486,11 @@ export class TriggerTaskService extends BaseService {
                     },
                   });
 
-                  const existingConcurrencyLimit =
-                    typeof taskQueue?.concurrencyLimit === "number"
-                      ? taskQueue.concurrencyLimit
-                      : undefined;
-
-                  if (taskQueue) {
-                    if (existingConcurrencyLimit !== concurrencyLimit) {
-                      taskQueue = await tx.taskQueue.update({
-                        where: {
-                          id: taskQueue.id,
-                        },
-                        data: {
-                          concurrencyLimit:
-                            typeof concurrencyLimit === "number" ? concurrencyLimit : null,
-                        },
-                      });
-
-                      if (typeof taskQueue.concurrencyLimit === "number") {
-                        logger.debug("TriggerTaskService: updating concurrency limit", {
-                          runId: taskRun.id,
-                          friendlyId: taskRun.friendlyId,
-                          taskQueue,
-                          orgId: environment.organizationId,
-                          projectId: environment.projectId,
-                          existingConcurrencyLimit,
-                          concurrencyLimit,
-                          queueOptions: body.options?.queue,
-                        });
-                        await marqs?.updateQueueConcurrencyLimits(
-                          environment,
-                          taskQueue.name,
-                          taskQueue.concurrencyLimit
-                        );
-                      } else {
-                        logger.debug("TriggerTaskService: removing concurrency limit", {
-                          runId: taskRun.id,
-                          friendlyId: taskRun.friendlyId,
-                          taskQueue,
-                          orgId: environment.organizationId,
-                          projectId: environment.projectId,
-                          existingConcurrencyLimit,
-                          concurrencyLimit,
-                          queueOptions: body.options?.queue,
-                        });
-                        await marqs?.removeQueueConcurrencyLimits(environment, taskQueue.name);
-                      }
-                    }
-                  } else {
-                    const queueId = generateFriendlyId("queue");
-
+                  if (!taskQueue) {
+                    // handle conflicts with existing queues
                     taskQueue = await tx.taskQueue.create({
                       data: {
-                        friendlyId: queueId,
+                        friendlyId: generateFriendlyId("queue"),
                         name: queueName,
                         concurrencyLimit,
                         runtimeEnvironmentId: environment.id,
@@ -519,30 +498,47 @@ export class TriggerTaskService extends BaseService {
                         type: "NAMED",
                       },
                     });
+                  }
 
-                    if (typeof taskQueue.concurrencyLimit === "number") {
-                      await marqs?.updateQueueConcurrencyLimits(
-                        environment,
-                        taskQueue.name,
-                        taskQueue.concurrencyLimit
-                      );
-                    }
+                  if (typeof concurrencyLimit === "number") {
+                    logger.debug("TriggerTaskService: updating concurrency limit", {
+                      runId: taskRun.id,
+                      friendlyId: taskRun.friendlyId,
+                      taskQueue,
+                      orgId: environment.organizationId,
+                      projectId: environment.projectId,
+                      concurrencyLimit,
+                      queueOptions: body.options?.queue,
+                    });
+
+                    await marqs?.updateQueueConcurrencyLimits(
+                      environment,
+                      taskQueue.name,
+                      concurrencyLimit
+                    );
+                  } else if (concurrencyLimit === null) {
+                    logger.debug("TriggerTaskService: removing concurrency limit", {
+                      runId: taskRun.id,
+                      friendlyId: taskRun.friendlyId,
+                      taskQueue,
+                      orgId: environment.organizationId,
+                      projectId: environment.projectId,
+                      queueOptions: body.options?.queue,
+                    });
+
+                    await marqs?.removeQueueConcurrencyLimits(environment, taskQueue.name);
                   }
                 }
 
                 if (taskRun.delayUntil) {
-                  await workerQueue.enqueue(
-                    "v3.enqueueDelayedRun",
-                    { runId: taskRun.id },
-                    { tx, runAt: delayUntil, jobKey: `v3.enqueueDelayedRun.${taskRun.id}` }
-                  );
+                  await EnqueueDelayedRunService.enqueue(taskRun.id, taskRun.delayUntil);
                 }
 
                 if (!taskRun.delayUntil && taskRun.ttl) {
                   const expireAt = parseNaturalLanguageDuration(taskRun.ttl);
 
                   if (expireAt) {
-                    await ExpireEnqueuedRunService.enqueue(taskRun.id, expireAt, tx);
+                    await ExpireEnqueuedRunService.enqueue(taskRun.id, expireAt);
                   }
                 }
 
@@ -564,44 +560,61 @@ export class TriggerTaskService extends BaseService {
               this._prisma
             );
 
-            //release the concurrency for the env and org, if part of a (batch)triggerAndWait
-            if (dependentAttempt) {
-              const isSameTask = dependentAttempt.taskRun.taskIdentifier === taskId;
-              await marqs?.releaseConcurrency(dependentAttempt.taskRun.id, isSameTask);
-            }
-            if (dependentBatchRun?.dependentTaskAttempt) {
-              const isSameTask =
-                dependentBatchRun.dependentTaskAttempt.taskRun.taskIdentifier === taskId;
-              await marqs?.releaseConcurrency(
-                dependentBatchRun.dependentTaskAttempt.taskRun.id,
-                isSameTask
-              );
-            }
-
             if (!run) {
               return;
             }
 
-            // We need to enqueue the task run into the appropriate queue. This is done after the tx completes to prevent a race condition where the task run hasn't been created yet by the time we dequeue.
+            // Now enqueue the run if it's not delayed
             if (run.status === "PENDING") {
-              await marqs?.enqueueMessage(
-                environment,
-                run.queue,
-                run.id,
-                {
-                  type: "EXECUTE",
-                  taskIdentifier: taskId,
-                  projectId: environment.projectId,
-                  environmentId: environment.id,
-                  environmentType: environment.type,
-                },
-                body.options?.concurrencyKey
-              );
+              const enqueueResult = await enqueueRun({
+                env: environment,
+                run,
+                dependentRun:
+                  dependentAttempt?.taskRun ?? dependentBatchRun?.dependentTaskAttempt?.taskRun,
+              });
+
+              if (!enqueueResult.ok) {
+                // Now we need to fail the run with enqueueResult.error and make sure and
+                // set the traced event to failed as well
+                await this._prisma.taskRun.update({
+                  where: { id: run.id },
+                  data: {
+                    status: "SYSTEM_FAILURE",
+                    completedAt: new Date(),
+                    error: enqueueResult.error,
+                  },
+                });
+
+                event.failWithError(enqueueResult.error);
+
+                return {
+                  run,
+                  isCached: false,
+                  error: enqueueResult.error,
+                };
+              }
             }
 
-            return run;
+            return { run, isCached: false };
           }
         );
+
+        if (result?.error) {
+          throw new ServiceValidationError(
+            taskRunErrorToString(taskRunErrorEnhancer(result.error))
+          );
+        }
+
+        const run = result?.run;
+
+        if (!run) {
+          return;
+        }
+
+        return {
+          run,
+          isCached: result?.isCached,
+        };
       } catch (error) {
         // Detect a prisma transaction Unique constraint violation
         if (error instanceof Prisma.PrismaClientKnownRequestError) {
@@ -623,6 +636,35 @@ export class TriggerTaskService extends BaseService {
               throw new ServiceValidationError(
                 `Cannot trigger ${taskId} with a one-time use token as it has already been used.`
               );
+            } else if (
+              Array.isArray(target) &&
+              target.length == 2 &&
+              typeof target[0] === "string" &&
+              typeof target[1] === "string" &&
+              target[0] == "runtimeEnvironmentId" &&
+              target[1] == "name" &&
+              error.message.includes("prisma.taskQueue.create")
+            ) {
+              throw new Error(
+                `Failed to trigger ${taskId} as the queue could not be created do to a unique constraint error, please try again.`
+              );
+            } else if (
+              Array.isArray(target) &&
+              target.length == 3 &&
+              typeof target[0] === "string" &&
+              typeof target[1] === "string" &&
+              typeof target[2] === "string" &&
+              target[0] == "runtimeEnvironmentId" &&
+              target[1] == "taskIdentifier" &&
+              target[2] == "idempotencyKey"
+            ) {
+              logger.debug("TriggerTask: Idempotency key violation, retrying...", {
+                taskId,
+                environmentId: environment.id,
+                idempotencyKey,
+              });
+              // We need to retry the task run creation as the idempotency key has been used
+              return await this.call(taskId, environment, body, options, attempt + 1);
             } else {
               throw new ServiceValidationError(
                 `Cannot trigger ${taskId} as it has already been triggered with the same idempotency key.`
@@ -654,12 +696,10 @@ export class TriggerTaskService extends BaseService {
       return defaultQueueName;
     }
 
-    const task = await this._prisma.backgroundWorkerTask.findUnique({
+    const task = await this._prisma.backgroundWorkerTask.findFirst({
       where: {
-        workerId_slug: {
-          workerId: worker.id,
-          slug: taskId,
-        },
+        workerId: worker.id,
+        slug: taskId,
       },
     });
 

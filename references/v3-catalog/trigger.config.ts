@@ -7,6 +7,7 @@ import { ffmpeg, syncEnvVars } from "@trigger.dev/build/extensions/core";
 import { puppeteer } from "@trigger.dev/build/extensions/puppeteer";
 import { prismaExtension } from "@trigger.dev/build/extensions/prisma";
 import { emitDecoratorMetadata } from "@trigger.dev/build/extensions/typescript";
+import { pythonExtension } from "@trigger.dev/python/extension";
 import { defineConfig } from "@trigger.dev/sdk/v3";
 
 export { handleError } from "./src/handleError.js";
@@ -18,8 +19,9 @@ export default defineConfig({
   instrumentations: [new OpenAIInstrumentation()],
   additionalFiles: ["wrangler/wrangler.toml"],
   maxDuration: 3600,
+  dirs: ["./src/trigger"],
   retries: {
-    enabledInDev: true,
+    enabledInDev: false,
     default: {
       maxAttempts: 10,
       minTimeoutInMs: 5_000,
@@ -85,6 +87,7 @@ export default defineConfig({
           value: secret.secretValue,
         }));
       }),
+      pythonExtension(),
       puppeteer(),
     ],
     external: ["re2"],

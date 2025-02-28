@@ -74,25 +74,25 @@ export const TriggerTaskRequestBody = z.object({
   context: z.any(),
   options: z
     .object({
-      dependentAttempt: z.string().optional(),
-      parentAttempt: z.string().optional(),
-      dependentBatch: z.string().optional(),
-      parentBatch: z.string().optional(),
-      lockToVersion: z.string().optional(),
-      queue: QueueOptions.optional(),
       concurrencyKey: z.string().optional(),
+      delay: z.string().or(z.coerce.date()).optional(),
+      dependentAttempt: z.string().optional(),
+      dependentBatch: z.string().optional(),
       idempotencyKey: z.string().optional(),
       idempotencyKeyTTL: z.string().optional(),
-      test: z.boolean().optional(),
-      payloadType: z.string().optional(),
-      delay: z.string().or(z.coerce.date()).optional(),
-      ttl: z.string().or(z.number().nonnegative().int()).optional(),
-      tags: RunTags.optional(),
+      lockToVersion: z.string().optional(),
+      machine: MachinePresetName.optional(),
       maxAttempts: z.number().int().optional(),
+      maxDuration: z.number().optional(),
       metadata: z.any(),
       metadataType: z.string().optional(),
-      maxDuration: z.number().optional(),
-      machine: MachinePresetName.optional(),
+      parentAttempt: z.string().optional(),
+      parentBatch: z.string().optional(),
+      payloadType: z.string().optional(),
+      queue: QueueOptions.optional(),
+      tags: RunTags.optional(),
+      test: z.boolean().optional(),
+      ttl: z.string().or(z.number().nonnegative().int()).optional(),
     })
     .optional(),
 });
@@ -118,22 +118,22 @@ export const BatchTriggerTaskItem = z.object({
   context: z.any(),
   options: z
     .object({
-      lockToVersion: z.string().optional(),
-      queue: QueueOptions.optional(),
       concurrencyKey: z.string().optional(),
+      delay: z.string().or(z.coerce.date()).optional(),
       idempotencyKey: z.string().optional(),
       idempotencyKeyTTL: z.string().optional(),
-      test: z.boolean().optional(),
-      payloadType: z.string().optional(),
-      delay: z.string().or(z.coerce.date()).optional(),
-      ttl: z.string().or(z.number().nonnegative().int()).optional(),
-      tags: RunTags.optional(),
+      lockToVersion: z.string().optional(),
+      machine: MachinePresetName.optional(),
       maxAttempts: z.number().int().optional(),
+      maxDuration: z.number().optional(),
       metadata: z.any(),
       metadataType: z.string().optional(),
-      maxDuration: z.number().optional(),
       parentAttempt: z.string().optional(),
-      machine: MachinePresetName.optional(),
+      payloadType: z.string().optional(),
+      queue: QueueOptions.optional(),
+      tags: RunTags.optional(),
+      test: z.boolean().optional(),
+      ttl: z.string().or(z.number().nonnegative().int()).optional(),
     })
     .optional(),
 });
@@ -222,6 +222,8 @@ export type StartDeploymentIndexingResponseBody = z.infer<
 export const FinalizeDeploymentRequestBody = z.object({
   imageReference: z.string(),
   selfHosted: z.boolean().optional(),
+  skipRegistryProxy: z.boolean().optional(),
+  skipPromotion: z.boolean().optional(),
 });
 
 export type FinalizeDeploymentRequestBody = z.infer<typeof FinalizeDeploymentRequestBody>;
@@ -276,6 +278,14 @@ export const FailDeploymentResponseBody = z.object({
 });
 
 export type FailDeploymentResponseBody = z.infer<typeof FailDeploymentResponseBody>;
+
+export const PromoteDeploymentResponseBody = z.object({
+  id: z.string(),
+  version: z.string(),
+  shortCode: z.string(),
+});
+
+export type PromoteDeploymentResponseBody = z.infer<typeof PromoteDeploymentResponseBody>;
 
 export const GetDeploymentResponseBody = z.object({
   id: z.string(),

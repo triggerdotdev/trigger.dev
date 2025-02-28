@@ -11,7 +11,6 @@ import {
   MagnifyingGlassPlusIcon,
   StopCircleIcon,
 } from "@heroicons/react/20/solid";
-import type { Location } from "@remix-run/react";
 import { useLoaderData, useParams, useRevalidator } from "@remix-run/react";
 import { LoaderFunctionArgs, SerializeFrom, json } from "@remix-run/server-runtime";
 import { Virtualizer } from "@tanstack/react-virtual";
@@ -33,6 +32,7 @@ import { PageBody } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
+import { DateTimeShort } from "~/components/primitives/DateTime";
 import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
 import { Header3 } from "~/components/primitives/Headers";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
@@ -56,7 +56,11 @@ import { NodesState } from "~/components/primitives/TreeView/reducer";
 import { CancelRunDialog } from "~/components/runs/v3/CancelRunDialog";
 import { ReplayRunDialog } from "~/components/runs/v3/ReplayRunDialog";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
-import { SpanTitle, eventBackgroundClassName } from "~/components/runs/v3/SpanTitle";
+import {
+  SpanTitle,
+  eventBackgroundClassName,
+  eventBorderClassName,
+} from "~/components/runs/v3/SpanTitle";
 import { TaskRunStatusIcon, runStatusClassNameColor } from "~/components/runs/v3/TaskRunStatus";
 import { env } from "~/env.server";
 import { useDebounce } from "~/hooks/useDebounce";
@@ -66,8 +70,10 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useReplaceSearchParams } from "~/hooks/useReplaceSearchParams";
 import { Shortcut, useShortcutKeys } from "~/hooks/useShortcutKeys";
-import { useUser } from "~/hooks/useUser";
-import { Run, RunPresenter } from "~/presenters/v3/RunPresenter.server";
+import { useHasAdminAccess, useUser } from "~/hooks/useUser";
+import { RunPresenter } from "~/presenters/v3/RunPresenter.server";
+import { getImpersonationId } from "~/services/impersonation.server";
+import { getResizableSnapshot } from "~/services/resizablePanel.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { lerp } from "~/utils/lerp";
@@ -80,10 +86,8 @@ import {
   v3RunStreamingPath,
   v3RunsPath,
 } from "~/utils/pathBuilder";
-import { SpanView } from "../resources.orgs.$organizationSlug.projects.v3.$projectParam.runs.$runParam.spans.$spanParam/route";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
-import { getResizableSnapshot } from "~/services/resizablePanel.server";
-import { getImpersonationId } from "~/services/impersonation.server";
+import { SpanView } from "../resources.orgs.$organizationSlug.projects.v3.$projectParam.runs.$runParam.spans.$spanParam/route";
 
 const resizableSettings = {
   parent: {
@@ -206,7 +210,7 @@ export default function Page() {
                 LeadingIcon={ArrowUturnLeftIcon}
                 shortcut={{ key: "R" }}
               >
-                Replay run…
+                Replay run
               </Button>
             </DialogTrigger>
             <ReplayRunDialog
@@ -742,6 +746,7 @@ function TimelineView({
   showDurations,
   treeScrollRef,
 }: TimelineViewProps) {
+  const isAdmin = useHasAdminAccess();
   const timelineContainerRef = useRef<HTMLDivElement>(null);
   const initialTimelineDimensions = useInitialDimensions(timelineContainerRef);
   const minTimelineWidth = initialTimelineDimensions?.width ?? 300;
@@ -775,7 +780,7 @@ function TimelineView({
         maxWidth={maxTimelineWidth}
       >
         {/* Follows the cursor */}
-        <CurrentTimeIndicator totalDuration={duration} />
+        <CurrentTimeIndicator totalDuration={duration} rootStartedAt={rootStartedAt} />
 
         <Timeline.Row className="grid h-full grid-rows-[2rem_1fr]">
           {/* The duration labels */}
@@ -890,22 +895,74 @@ function TimelineView({
                     }}
                   >
                     {node.data.level === "TRACE" ? (
-                      <SpanWithDuration
-                        showDuration={state.selected ? true : showDurations}
-                        startMs={nanosecondsToMilliseconds(node.data.offset)}
-                        durationMs={
-                          node.data.duration
-                            ? nanosecondsToMilliseconds(node.data.duration)
-                            : nanosecondsToMilliseconds(duration - node.data.offset)
-                        }
-                        node={node}
-                      />
+                      <>
+                        {/* Add a span for the line, Make the vertical line the first one with 1px wide, and full height */}
+                        {node.data.timelineEvents.map((event, eventIndex) =>
+                          eventIndex === 0 ? (
+                            <Timeline.Point
+                              key={eventIndex}
+                              ms={nanosecondsToMilliseconds(event.offset)}
+                            >
+                              {(ms) => (
+                                <motion.div
+                                  className={cn(
+                                    "-ml-[0.5px] h-[0.5625rem] w-px rounded-none",
+                                    eventBackgroundClassName(node.data)
+                                  )}
+                                  layoutId={`${node.id}-${event.name}`}
+                                />
+                              )}
+                            </Timeline.Point>
+                          ) : (
+                            <Timeline.Point
+                              key={eventIndex}
+                              ms={nanosecondsToMilliseconds(event.offset)}
+                              className="z-10"
+                            >
+                              {(ms) => (
+                                <motion.div
+                                  className={cn(
+                                    "-ml-1 size-[0.3125rem] rounded-full border bg-background-bright",
+                                    eventBorderClassName(node.data)
+                                  )}
+                                  layoutId={`${node.id}-${event.name}`}
+                                />
+                              )}
+                            </Timeline.Point>
+                          )
+                        )}
+                        {node.data.timelineEvents &&
+                        node.data.timelineEvents[0] &&
+                        node.data.timelineEvents[0].offset < node.data.offset ? (
+                          <Timeline.Span
+                            startMs={nanosecondsToMilliseconds(node.data.timelineEvents[0].offset)}
+                            durationMs={nanosecondsToMilliseconds(
+                              node.data.offset - node.data.timelineEvents[0].offset
+                            )}
+                          >
+                            <motion.div
+                              className={cn("h-px w-full", eventBackgroundClassName(node.data))}
+                              layoutId={`mark-${node.id}`}
+                            />
+                          </Timeline.Span>
+                        ) : null}
+                        <SpanWithDuration
+                          showDuration={state.selected ? true : showDurations}
+                          startMs={nanosecondsToMilliseconds(node.data.offset)}
+                          durationMs={
+                            node.data.duration
+                              ? nanosecondsToMilliseconds(node.data.duration)
+                              : nanosecondsToMilliseconds(duration - node.data.offset)
+                          }
+                          node={node}
+                        />
+                      </>
                     ) : (
                       <Timeline.Point ms={nanosecondsToMilliseconds(node.data.offset)}>
                         {(ms) => (
                           <motion.div
                             className={cn(
-                              "-ml-1 h-3 w-3 rounded-full border-2 border-background-bright",
+                              "-ml-1 size-3 rounded-full border-2 border-background-bright",
                               eventBackgroundClassName(node.data)
                             )}
                             layoutId={node.id}
@@ -1063,11 +1120,11 @@ function LiveReloadingStatus({
 
 function PulsingDot() {
   return (
-    <span className="relative flex h-2 w-2">
+    <span className="relative flex size-2">
       <span
         className={`absolute h-full w-full animate-ping rounded-full border border-blue-500 opacity-100 duration-1000`}
       />
-      <span className={`h-2 w-2 rounded-full bg-blue-500`} />
+      <span className={`size-2 rounded-full bg-blue-500`} />
     </span>
   );
 }
@@ -1081,7 +1138,7 @@ function SpanWithDuration({
     <Timeline.Span {...props}>
       <motion.div
         className={cn(
-          "relative flex h-4 w-full min-w-[2px] items-center rounded-sm",
+          "relative flex h-4 w-full min-w-0.5 items-center rounded-sm",
           eventBackgroundClassName(node.data)
         )}
         layoutId={node.id}
@@ -1110,9 +1167,15 @@ function SpanWithDuration({
   );
 }
 
-const edgeBoundary = 0.05;
+const edgeBoundary = 0.17;
 
-function CurrentTimeIndicator({ totalDuration }: { totalDuration: number }) {
+function CurrentTimeIndicator({
+  totalDuration,
+  rootStartedAt,
+}: {
+  totalDuration: number;
+  rootStartedAt: Date | undefined;
+}) {
   return (
     <Timeline.FollowCursor>
       {(ms) => {
@@ -1124,6 +1187,9 @@ function CurrentTimeIndicator({ totalDuration }: { totalDuration: number }) {
           offset = lerp(0.5, 1, (ratio - (1 - edgeBoundary)) / edgeBoundary);
         }
 
+        const currentTime = rootStartedAt ? new Date(rootStartedAt.getTime() + ms) : undefined;
+        const currentTimeComponent = currentTime ? <DateTimeShort date={currentTime} /> : <></>;
+
         return (
           <div className="relative z-50 flex h-full flex-col">
             <div className="relative flex h-6 items-end">
@@ -1134,10 +1200,23 @@ function CurrentTimeIndicator({ totalDuration }: { totalDuration: number }) {
                   transform: `translateX(-${offset * 100}%)`,
                 }}
               >
-                {formatDurationMilliseconds(ms, {
-                  style: "short",
-                  maxDecimalPoints: ms < 1000 ? 0 : 1,
-                })}
+                {currentTimeComponent ? (
+                  <span>
+                    {formatDurationMilliseconds(ms, {
+                      style: "short",
+                      maxDecimalPoints: ms < 1000 ? 0 : 1,
+                    })}
+                    <span className="mx-1 text-text-dimmed">–</span>
+                    {currentTimeComponent}
+                  </span>
+                ) : (
+                  <>
+                    {formatDurationMilliseconds(ms, {
+                      style: "short",
+                      maxDecimalPoints: ms < 1000 ? 0 : 1,
+                    })}
+                  </>
+                )}
               </div>
             </div>
             <div className="w-px grow border-r border-charcoal-600" />

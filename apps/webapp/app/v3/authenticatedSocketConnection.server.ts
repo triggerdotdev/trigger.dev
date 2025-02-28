@@ -43,9 +43,12 @@ export class AuthenticatedSocketConnection {
           });
         });
       },
+      canSendMessage() {
+        return ws.readyState === WebSocket.OPEN;
+      },
     });
 
-    this._consumer = new DevQueueConsumer(authenticatedEnv, this._sender, {
+    this._consumer = new DevQueueConsumer(this.id, authenticatedEnv, this._sender, {
       ipAddress: Array.isArray(this.ipAddress) ? this.ipAddress.join(", ") : this.ipAddress,
     });
 

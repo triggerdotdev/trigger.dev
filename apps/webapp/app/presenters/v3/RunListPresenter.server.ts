@@ -131,7 +131,7 @@ export class RunListPresenter extends BasePresenter {
 
     //bulk id
     if (bulkId) {
-      const bulkAction = await this._replica.bulkActionGroup.findUnique({
+      const bulkAction = await this._replica.bulkActionGroup.findFirst({
         select: {
           items: {
             select: {

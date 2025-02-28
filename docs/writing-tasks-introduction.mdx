@@ -1,21 +1,31 @@
 ---
-title: "Writing tasks: Introduction"
-sidebarTitle: "Introduction"
+title: "Writing tasks: Overview"
+sidebarTitle: "Overview"
 description: "Tasks are the core of Trigger.dev. They are long-running processes that are triggered by events."
 ---
+
+import ExamplesCards from "/snippets/examples-cards.mdx";
 
 Before digging deeper into the details of writing tasks, you should read the [fundamentals of tasks](/tasks/overview) to understand what tasks are and how they work.
 
 ## Writing tasks
 
-| Topic                                               | Description                                                                                                               |
-| :---------------------------------------------------| :------------------------------------------------------------------------------------------------------------------------ |
-| [Logging](/logging)                                 | View and send logs and traces from your tasks.                                                                            |
-| [Errors & retrying](/errors-retrying)               | How to deal with errors and write reliable tasks.                                                                         |
-| [Wait](/wait)                                       | Wait for periods of time or for external events to occur before continuing.                                               |
-| [Concurrency & Queues](/queue-concurrency)          | Configure what you want to happen when there is more than one run at a time.                                              |
-| [Versioning](/versioning)                           | How versioning works.                                                                                                     |
-| [Machines](/machines)                               | Configure the CPU and RAM of the machine your task runs on                                                                |
-| [Idempotency](/idempotency)                         | Protect against mutations happening twice.                                                                                |
-| [Replaying](/replaying)                             | You can replay a single task or many at once with a new version of your code.                                             |
-| [Notifications](/notifications)                     | Send realtime notifications from your task that you can subscribe to from your backend or frontend.                       |
+| Topic                                        | Description                                                                                         |
+| :------------------------------------------- | :-------------------------------------------------------------------------------------------------- |
+| [Logging](/logging)                          | View and send logs and traces from your tasks.                                                      |
+| [Errors & retrying](/errors-retrying)        | How to deal with errors and write reliable tasks.                                                   |
+| [Wait](/wait)                                | Wait for periods of time or for external events to occur before continuing.                         |
+| [Concurrency & Queues](/queue-concurrency)   | Configure what you want to happen when there is more than one run at a time.                        |
+| [Realtime notifications](/realtime/overview) | Send realtime notifications from your task that you can subscribe to from your backend or frontend. |
+| [Versioning](/versioning)                    | How versioning works.                                                                               |
+| [Machines](/machines)                        | Configure the CPU and RAM of the machine your task runs on                                          |
+| [Idempotency](/idempotency)                  | Protect against mutations happening twice.                                                          |
+| [Replaying](/replaying)                      | You can replay a single task or many at once with a new version of your code.                       |
+| [Max duration](/runs/max-duration)           | Set a maximum duration for your task to run.                                                        |
+| [Tags](/tags)                                | Tags allow you to easily filter runs in the dashboard and when using the SDK.                       |
+| [Metadata](/runs/metadata)                   | Attach a small amount of data to a run and update it as the run progresses.                         |
+| [Usage](/run-usage)                          | Get compute duration and cost from inside a run, or for a specific block of code.                   |
+| [Context](/context)                          | Access the context of the task run.                                                                 |
+| [Bulk actions](/bulk-actions)                | Run actions on many task runs at once.                                                              |
+
+<ExamplesCards />

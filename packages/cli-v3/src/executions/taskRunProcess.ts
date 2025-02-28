@@ -124,6 +124,7 @@ export class TaskRunProcess {
       // TODO: this will probably need to use something different for bun (maybe --preload?)
       NODE_OPTIONS: execOptionsForRuntime(workerManifest.runtime, workerManifest),
       PATH: process.env.PATH,
+      TRIGGER_PROCESS_FORK_START_TIME: String(Date.now()),
     };
 
     logger.debug(`[${this.runId}] initializing task run process`, {
@@ -214,7 +215,7 @@ export class TaskRunProcess {
     // @ts-expect-error - We know that the resolver and rejecter are defined
     this._attemptPromises.set(this.payload.execution.attempt.id, { resolver, rejecter });
 
-    const { execution, traceContext } = this.payload;
+    const { execution, traceContext, metrics } = this.payload;
 
     this._currentExecution = execution;
 
@@ -232,6 +233,7 @@ export class TaskRunProcess {
         execution,
         traceContext,
         metadata: this.options.serverWorker,
+        metrics,
       });
     }
 

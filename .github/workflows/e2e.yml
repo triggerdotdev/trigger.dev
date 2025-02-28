@@ -17,7 +17,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [buildjet-8vcpu-ubuntu-2204, windows-latest]
+        os: [ubuntu-latest, windows-latest]
         package-manager: ["npm", "pnpm"]
     steps:
       - name: ⬇️ Checkout repo

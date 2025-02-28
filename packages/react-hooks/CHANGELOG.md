@@ -1,5 +1,40 @@
 # @trigger.dev/react-hooks
 
+## 3.3.16
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@3.3.16`
+
+## 3.3.15
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@3.3.15`
+
+## 3.3.14
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@3.3.14`
+
+## 3.3.13
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@3.3.13`
+
+## 3.3.12
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@3.3.12`
+
 ## 3.3.11
 
 ### Patch Changes

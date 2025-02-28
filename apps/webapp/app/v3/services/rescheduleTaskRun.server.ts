@@ -1,9 +1,8 @@
+import { RescheduleRunRequestBody } from "@trigger.dev/core/v3";
 import { TaskRun } from "@trigger.dev/database";
 import { BaseService, ServiceValidationError } from "./baseService.server";
-import { RescheduleRunRequestBody } from "@trigger.dev/core/v3";
+import { EnqueueDelayedRunService } from "./enqueueDelayedRun.server";
 import { parseDelay } from "./triggerTask.server";
-import { $transaction } from "~/db.server";
-import { workerQueue } from "~/services/worker.server";
 
 export class RescheduleTaskRunService extends BaseService {
   public async call(taskRun: TaskRun, body: RescheduleRunRequestBody) {
@@ -17,23 +16,17 @@ export class RescheduleTaskRunService extends BaseService {
       throw new ServiceValidationError(`Invalid delay: ${body.delay}`);
     }
 
-    return await $transaction(this._prisma, async (tx) => {
-      const updatedRun = await tx.taskRun.update({
-        where: {
-          id: taskRun.id,
-        },
-        data: {
-          delayUntil: delay,
-        },
-      });
-
-      await workerQueue.enqueue(
-        "v3.enqueueDelayedRun",
-        { runId: taskRun.id },
-        { tx, runAt: delay, jobKey: `v3.enqueueDelayedRun.${taskRun.id}` }
-      );
-
-      return updatedRun;
+    const updatedRun = await this._prisma.taskRun.update({
+      where: {
+        id: taskRun.id,
+      },
+      data: {
+        delayUntil: delay,
+      },
     });
+
+    await EnqueueDelayedRunService.reschedule(taskRun.id, delay);
+
+    return updatedRun;
   }
 }

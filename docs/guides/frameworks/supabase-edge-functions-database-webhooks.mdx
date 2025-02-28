@@ -31,7 +31,7 @@ Supabase and Trigger.dev can be used together to create powerful workflows trigg
 - Since Supabase CLI version 1.123.4, you must have [Docker Desktop installed](https://supabase.com/docs/guides/functions/deploy#deploy-your-edge-functions) to deploy Edge Functions
 - Ensure TypeScript is installed
 - [Create a Trigger.dev account](https://cloud.trigger.dev)
-- [Create a new Trigger.dev project](/guides/dashboard/creating-a-project)
+- Create a new Trigger.dev project
 - [Create a new Deepgram account](https://deepgram.com/) and get your API key from the dashboard
 
 ## GitHub repo
@@ -269,6 +269,8 @@ export default defineConfig({
   You'll also need to add `@trigger.dev/build` to your `package.json` file under `devDependencies`
   if you don't already have it there.
 </Note>
+
+If you are modifying this example and using popular FFmpeg libraries like `fluent-ffmpeg` you'll also need to add them to [`external`](/config/config-file#external) in your `trigger.config.ts` file.
 
 ### Add your Deepgram and Supabase environment variables to your Trigger.dev project
 

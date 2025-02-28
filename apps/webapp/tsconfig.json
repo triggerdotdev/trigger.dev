@@ -32,7 +32,9 @@
       "emails": ["../../internal-packages/emails/src/index"],
       "emails/*": ["../../internal-packages/emails/src/*"],
       "@internal/zod-worker": ["../../internal-packages/zod-worker/src/index"],
-      "@internal/zod-worker/*": ["../../internal-packages/zod-worker/src/*"]
+      "@internal/zod-worker/*": ["../../internal-packages/zod-worker/src/*"],
+      "@internal/redis-worker": ["../../internal-packages/redis-worker/src/index"],
+      "@internal/redis-worker/*": ["../../internal-packages/redis-worker/src/*"]
     },
     "noEmit": true
   }

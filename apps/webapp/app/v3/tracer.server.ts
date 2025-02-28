@@ -8,10 +8,14 @@ import {
   SpanKind,
   SpanOptions,
   SpanStatusCode,
+  Tracer,
   diag,
   trace,
 } from "@opentelemetry/api";
+import { logs, SeverityNumber } from "@opentelemetry/api-logs";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
+import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
+import { BatchLogRecordProcessor, LoggerProvider } from "@opentelemetry/sdk-logs";
 import { type Instrumentation, registerInstrumentations } from "@opentelemetry/instrumentation";
 import { ExpressInstrumentation } from "@opentelemetry/instrumentation-express";
 import { HttpInstrumentation } from "@opentelemetry/instrumentation-http";
@@ -32,6 +36,8 @@ import { env } from "~/env.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { singleton } from "~/utils/singleton";
 import { LoggerSpanExporter } from "./telemetry/loggerExporter.server";
+import { logger } from "~/services/logger.server";
+import { flattenAttributes } from "@trigger.dev/core/v3";
 
 export const SEMINTATTRS_FORCE_RECORDING = "forceRecording";
 
@@ -77,7 +83,7 @@ class CustomWebappSampler implements Sampler {
   }
 }
 
-export const tracer = singleton("tracer", getTracer);
+export const { tracer, logger: otelLogger } = singleton("tracer", getTracer);
 
 export async function startActiveSpan<T>(
   name: string,
@@ -96,7 +102,12 @@ export async function startActiveSpan<T>(
         span.recordException(new Error(String(error)));
       }
 
-      span.setStatus({ code: SpanStatusCode.ERROR });
+      span.setStatus({
+        code: SpanStatusCode.ERROR,
+        message: error instanceof Error ? error.message : String(error),
+      });
+
+      logger.debug(`Error in span: ${name}`, { error });
 
       throw error;
     } finally {
@@ -105,11 +116,46 @@ export async function startActiveSpan<T>(
   });
 }
 
+export async function emitDebugLog(message: string, params: Record<string, unknown> = {}) {
+  otelLogger.emit({
+    severityNumber: SeverityNumber.DEBUG,
+    body: message,
+    attributes: { ...flattenAttributes(params, "params") },
+  });
+}
+
+export async function emitInfoLog(message: string, params: Record<string, unknown> = {}) {
+  otelLogger.emit({
+    severityNumber: SeverityNumber.INFO,
+    body: message,
+    attributes: { ...flattenAttributes(params, "params") },
+  });
+}
+
+export async function emitErrorLog(message: string, params: Record<string, unknown> = {}) {
+  otelLogger.emit({
+    severityNumber: SeverityNumber.ERROR,
+    body: message,
+    attributes: { ...flattenAttributes(params, "params") },
+  });
+}
+
+export async function emitWarnLog(message: string, params: Record<string, unknown> = {}) {
+  otelLogger.emit({
+    severityNumber: SeverityNumber.WARN,
+    body: message,
+    attributes: { ...flattenAttributes(params, "params") },
+  });
+}
+
 function getTracer() {
   if (env.INTERNAL_OTEL_TRACE_DISABLED === "1") {
     console.log(`🔦 Tracer disabled, returning a noop tracer`);
 
-    return trace.getTracer("trigger.dev", "3.0.0.dp.1");
+    return {
+      tracer: trace.getTracer("trigger.dev", "3.3.12"),
+      logger: logs.getLogger("trigger.dev", "3.3.12"),
+    };
   }
 
   diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.ERROR);
@@ -160,6 +206,40 @@ function getTracer() {
     }
   }
 
+  if (env.INTERNAL_OTEL_LOG_EXPORTER_URL) {
+    const headers = parseInternalTraceHeaders() ?? {};
+
+    const logExporter = new OTLPLogExporter({
+      url: env.INTERNAL_OTEL_LOG_EXPORTER_URL,
+      timeoutMillis: 15_000,
+      headers,
+    });
+
+    const loggerProvider = new LoggerProvider({
+      resource: new Resource({
+        [SEMRESATTRS_SERVICE_NAME]: env.SERVICE_NAME,
+      }),
+      logRecordLimits: {
+        attributeCountLimit: 1000,
+      },
+    });
+
+    loggerProvider.addLogRecordProcessor(
+      new BatchLogRecordProcessor(logExporter, {
+        maxExportBatchSize: 64,
+        scheduledDelayMillis: 200,
+        exportTimeoutMillis: 30000,
+        maxQueueSize: 512,
+      })
+    );
+
+    logs.setGlobalLoggerProvider(loggerProvider);
+
+    console.log(
+      `🔦 Tracer: OTLP log exporter enabled to ${env.INTERNAL_OTEL_LOG_EXPORTER_URL} (sampling = ${samplingRate})`
+    );
+  }
+
   provider.register();
 
   let instrumentations: Instrumentation[] = [
@@ -173,10 +253,14 @@ function getTracer() {
 
   registerInstrumentations({
     tracerProvider: provider,
+    loggerProvider: logs.getLoggerProvider(),
     instrumentations,
   });
 
-  return provider.getTracer("trigger.dev", "3.0.0.dp.1");
+  return {
+    tracer: provider.getTracer("trigger.dev", "3.3.12"),
+    logger: logs.getLogger("trigger.dev", "3.3.12"),
+  };
 }
 
 const SemanticEnvResources = {

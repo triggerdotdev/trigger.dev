@@ -1,79 +1,77 @@
+import type { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { z } from "zod";
-import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
-
-export type QueueCapacity = {
-  current: number;
-  limit: number;
-};
-
-export type QueueCapacities = {
-  queue: QueueCapacity;
-  env: QueueCapacity;
-  org: QueueCapacity;
-};
-
-export type QueueWithScores = {
-  queue: string;
-  capacities: QueueCapacities;
-  age: number;
-  size: number;
-};
 
 export type QueueRange = { offset: number; count: number };
 
+export type QueueDescriptor = {
+  organization: string;
+  environment: string;
+  name: string;
+  concurrencyKey?: string;
+};
+
+export type MarQSKeyProducerEnv = {
+  id: string;
+  organizationId: string;
+  type: RuntimeEnvironmentType;
+};
+
 export interface MarQSKeyProducer {
-  queueConcurrencyLimitKey(env: AuthenticatedEnvironment, queue: string): string;
-  envConcurrencyLimitKey(env: AuthenticatedEnvironment): string;
-  orgConcurrencyLimitKey(env: AuthenticatedEnvironment): string;
-  queueKey(env: AuthenticatedEnvironment, queue: string, concurrencyKey?: string): string;
-  envQueueKey(env: AuthenticatedEnvironment): string;
-  envSharedQueueKey(env: AuthenticatedEnvironment): string;
+  queueConcurrencyLimitKey(env: MarQSKeyProducerEnv, queue: string): string;
+
+  envConcurrencyLimitKey(envId: string): string;
+  envConcurrencyLimitKey(env: MarQSKeyProducerEnv): string;
+
+  envCurrentConcurrencyKey(envId: string): string;
+  envCurrentConcurrencyKey(env: MarQSKeyProducerEnv): string;
+
+  envReserveConcurrencyKey(envId: string): string;
+
+  queueKey(orgId: string, envId: string, queue: string, concurrencyKey?: string): string;
+  queueKey(env: MarQSKeyProducerEnv, queue: string, concurrencyKey?: string): string;
+
+  queueKeyFromQueue(queue: string): string;
+
+  envQueueKey(env: MarQSKeyProducerEnv): string;
+  envSharedQueueKey(env: MarQSKeyProducerEnv): string;
   sharedQueueKey(): string;
   sharedQueueScanPattern(): string;
   queueCurrentConcurrencyScanPattern(): string;
-  concurrencyLimitKeyFromQueue(queue: string): string;
-  currentConcurrencyKeyFromQueue(queue: string): string;
-  currentConcurrencyKey(
-    env: AuthenticatedEnvironment,
+  queueConcurrencyLimitKeyFromQueue(queue: string): string;
+  queueCurrentConcurrencyKeyFromQueue(queue: string): string;
+  queueCurrentConcurrencyKey(
+    env: MarQSKeyProducerEnv,
     queue: string,
     concurrencyKey?: string
   ): string;
-  disabledConcurrencyLimitKeyFromQueue(queue: string): string;
-  orgConcurrencyLimitKeyFromQueue(queue: string): string;
-  orgCurrentConcurrencyKeyFromQueue(queue: string): string;
   envConcurrencyLimitKeyFromQueue(queue: string): string;
   envCurrentConcurrencyKeyFromQueue(queue: string): string;
-  orgCurrentConcurrencyKey(env: AuthenticatedEnvironment): string;
-  envCurrentConcurrencyKey(env: AuthenticatedEnvironment): string;
+  envReserveConcurrencyKeyFromQueue(queue: string): string;
   envQueueKeyFromQueue(queue: string): string;
   messageKey(messageId: string): string;
   nackCounterKey(messageId: string): string;
   stripKeyPrefix(key: string): string;
+  orgIdFromQueue(queue: string): string;
+  envIdFromQueue(queue: string): string;
+
+  queueReserveConcurrencyKeyFromQueue(queue: string): string;
+  queueDescriptorFromQueue(queue: string): QueueDescriptor;
 }
 
-export type PriorityStrategyChoice = string | { abort: true };
+export type EnvQueues = {
+  envId: string;
+  queues: string[];
+};
 
-export interface MarQSQueuePriorityStrategy {
-  /**
-   * This function is called to get the next candidate selection for the queue
-   * The `range` is used to select the set of queues that will be considered for the next selection (passed to chooseQueue)
-   * The `selectionId` is used to identify the selection and should be passed to chooseQueue
-   *
-   * @param parentQueue The parent queue that holds the candidate queues
-   * @param consumerId The consumerId that is making the request
-   *
-   * @returns The scores and the selectionId for the next candidate selection
-   */
-  nextCandidateSelection(parentQueue: string, consumerId: string): Promise<{ range: QueueRange }>;
+const MarQSPriorityLevel = z.enum(["resume", "retry"]);
 
-  distributeQueues(queues: Array<QueueWithScores>): Array<string>;
+export type MarQSPriorityLevel = z.infer<typeof MarQSPriorityLevel>;
 
-  moveToNextRange(
+export interface MarQSFairDequeueStrategy {
+  distributeFairQueuesFromParentQueue(
     parentQueue: string,
-    consumerId: string,
-    currentRange: QueueRange,
-    queueSize: number
-  ): QueueRange;
+    consumerId: string
+  ): Promise<Array<EnvQueues>>;
 }
 
 export const MessagePayload = z.object({
@@ -84,6 +82,9 @@ export const MessagePayload = z.object({
   timestamp: z.number(),
   parentQueue: z.string(),
   concurrencyKey: z.string().optional(),
+  priority: MarQSPriorityLevel.optional(),
+  availableAt: z.number().optional(),
+  enqueueMethod: z.enum(["enqueue", "requeue", "replace"]).default("enqueue"),
 });
 
 export type MessagePayload = z.infer<typeof MessagePayload>;
@@ -94,9 +95,16 @@ export interface MessageQueueSubscriber {
   messageAcked(message: MessagePayload): Promise<void>;
   messageNacked(message: MessagePayload): Promise<void>;
   messageReplaced(message: MessagePayload): Promise<void>;
+  messageRequeued(message: MessagePayload): Promise<void>;
 }
 
 export interface VisibilityTimeoutStrategy {
+  startHeartbeat(messageId: string, timeoutInMs: number): Promise<void>;
   heartbeat(messageId: string, timeoutInMs: number): Promise<void>;
   cancelHeartbeat(messageId: string): Promise<void>;
 }
+
+export type EnqueueMessageReserveConcurrencyOptions = {
+  messageId: string;
+  recursiveQueue: boolean;
+};

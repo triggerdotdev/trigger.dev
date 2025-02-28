@@ -23,6 +23,15 @@
       "sourceMaps": true
     },
     {
+      "type": "node-terminal",
+      "request": "launch",
+      "name": "Debug fairDequeuingStrategy.test.ts",
+      "command": "pnpm run test -t FairDequeuingStrategy",
+      "envFile": "${workspaceFolder}/.env",
+      "cwd": "${workspaceFolder}/apps/webapp",
+      "sourceMaps": true
+    },
+    {
       "type": "chrome",
       "request": "launch",
       "name": "Chrome webapp",
@@ -34,6 +43,14 @@
       "request": "launch",
       "name": "Debug V3 init CLI",
       "command": "pnpm exec trigger init",
+      "cwd": "${workspaceFolder}/references/init-shell",
+      "sourceMaps": true
+    },
+    {
+      "type": "node-terminal",
+      "request": "launch",
+      "name": "Debug V3 init dev CLI",
+      "command": "pnpm exec trigger dev",
       "cwd": "${workspaceFolder}/references/init-shell",
       "sourceMaps": true
     },

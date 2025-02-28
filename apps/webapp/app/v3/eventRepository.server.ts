@@ -1,4 +1,4 @@
-import { Attributes, Link, TraceFlags } from "@opentelemetry/api";
+import { Attributes, Link, trace, TraceFlags, Tracer } from "@opentelemetry/api";
 import { RandomIdGenerator } from "@opentelemetry/sdk-trace-base";
 import { SemanticResourceAttributes } from "@opentelemetry/semantic-conventions";
 import {
@@ -20,7 +20,6 @@ import {
   unflattenAttributes,
 } from "@trigger.dev/core/v3";
 import { Prisma, TaskEvent, TaskEventStatus, type TaskEventKind } from "@trigger.dev/database";
-import Redis, { RedisOptions } from "ioredis";
 import { createHash } from "node:crypto";
 import { EventEmitter } from "node:stream";
 import { Gauge } from "prom-client";
@@ -32,6 +31,10 @@ import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
 import { DynamicFlushScheduler } from "./dynamicFlushScheduler.server";
 import { startActiveSpan } from "./tracer.server";
+import { createRedisClient, RedisClient, RedisWithClusterOptions } from "~/redis.server";
+import { startSpan } from "./tracing.server";
+import { nanoid } from "nanoid";
+import { TaskEventStore, TaskEventStoreTable } from "./taskEventStore.server";
 
 const MAX_FLUSH_DEPTH = 5;
 
@@ -92,13 +95,17 @@ export type EventBuilder = {
   traceId: string;
   spanId: string;
   setAttribute: SetAttribute<TraceAttributes>;
+  stop: () => void;
+  failWithError: (error: TaskRunError) => void;
 };
 
 export type EventRepoConfig = {
   batchSize: number;
   batchInterval: number;
-  redis: RedisOptions;
+  redis: RedisWithClusterOptions;
   retentionInDays: number;
+  partitioningEnabled: boolean;
+  tracer?: Tracer;
 };
 
 export type QueryOptions = Prisma.TaskEventWhereInput;
@@ -107,7 +114,6 @@ export type TaskEventRecord = TaskEvent;
 
 export type QueriedEvent = Prisma.TaskEventGetPayload<{
   select: {
-    id: true;
     spanId: true;
     parentId: true;
     runId: true;
@@ -151,7 +157,6 @@ export type SpanLink =
     };
 
 export type SpanSummary = {
-  recordId: string;
   id: string;
   parentId: string | undefined;
   runId: string;
@@ -178,38 +183,22 @@ export type UpdateEventOptions = {
   events?: SpanEvents;
 };
 
-type TaskEventSummary = Pick<
-  TaskEvent,
-  | "id"
-  | "spanId"
-  | "parentId"
-  | "runId"
-  | "idempotencyKey"
-  | "message"
-  | "style"
-  | "startTime"
-  | "duration"
-  | "isError"
-  | "isPartial"
-  | "isCancelled"
-  | "level"
-  | "events"
-  | "environmentType"
->;
-
 export class EventRepository {
   private readonly _flushScheduler: DynamicFlushScheduler<CreatableEvent>;
   private _randomIdGenerator = new RandomIdGenerator();
-  private _redisPublishClient: Redis;
+  private _redisPublishClient: RedisClient;
   private _subscriberCount = 0;
+  private _tracer: Tracer;
+  private _lastFlushedAt: Date | undefined;
+  private taskEventStore: TaskEventStore;
 
   get subscriberCount() {
     return this._subscriberCount;
   }
 
   constructor(
-    private db: PrismaClient = prisma,
-    private readReplica: PrismaReplicaClient = $replica,
+    db: PrismaClient = prisma,
+    readReplica: PrismaReplicaClient = $replica,
     private readonly _config: EventRepoConfig
   ) {
     this._flushScheduler = new DynamicFlushScheduler({
@@ -218,7 +207,11 @@ export class EventRepository {
       callback: this.#flushBatch.bind(this),
     });
 
-    this._redisPublishClient = new Redis(this._config.redis);
+    this._redisPublishClient = createRedisClient("trigger:eventRepoPublisher", this._config.redis);
+    this._tracer = _config.tracer ?? trace.getTracer("eventRepo", "0.0.1");
+
+    // Instantiate the store using the partitioning flag.
+    this.taskEventStore = new TaskEventStore(db, readReplica);
   }
 
   async insert(event: CreatableEvent) {
@@ -226,7 +219,7 @@ export class EventRepository {
   }
 
   async insertImmediate(event: CreatableEvent) {
-    await this.#flushBatch([event]);
+    await this.#flushBatch(nanoid(), [event]);
   }
 
   async insertMany(events: CreatableEvent[]) {
@@ -234,11 +227,22 @@ export class EventRepository {
   }
 
   async insertManyImmediate(events: CreatableEvent[]) {
-    return await this.#flushBatch(events);
+    return await this.#flushBatch(nanoid(), events);
   }
 
-  async completeEvent(spanId: string, options?: UpdateEventOptions) {
-    const events = await this.queryIncompleteEvents({ spanId });
+  async completeEvent(
+    storeTable: TaskEventStoreTable,
+    spanId: string,
+    startCreatedAt: Date,
+    endCreatedAt?: Date,
+    options?: UpdateEventOptions
+  ) {
+    const events = await this.queryIncompleteEvents(
+      storeTable,
+      { spanId },
+      startCreatedAt,
+      endCreatedAt
+    );
 
     if (events.length === 0) {
       logger.warn("No incomplete events found for spanId", { spanId, options });
@@ -356,22 +360,35 @@ export class EventRepository {
     });
   }
 
-  async queryEvents(queryOptions: QueryOptions): Promise<TaskEventRecord[]> {
-    return await this.readReplica.taskEvent.findMany({
-      where: queryOptions,
-    });
+  async #queryEvents(
+    storeTable: TaskEventStoreTable,
+    queryOptions: QueryOptions,
+    startCreatedAt: Date,
+    endCreatedAt?: Date
+  ): Promise<TaskEventRecord[]> {
+    return await this.taskEventStore.findMany(
+      storeTable,
+      queryOptions,
+      startCreatedAt,
+      endCreatedAt
+    );
   }
 
-  async queryIncompleteEvents(queryOptions: QueryOptions, allowCompleteDuplicate = false) {
+  async queryIncompleteEvents(
+    storeTable: TaskEventStoreTable,
+    queryOptions: QueryOptions,
+    startCreatedAt: Date,
+    endCreatedAt?: Date,
+    allowCompleteDuplicate = false
+  ) {
     // First we will find all the events that match the query options (selecting minimal data).
-    const taskEvents = await this.readReplica.taskEvent.findMany({
-      where: queryOptions,
-      select: {
-        spanId: true,
-        isPartial: true,
-        isCancelled: true,
-      },
-    });
+    const taskEvents = await this.taskEventStore.findMany(
+      storeTable,
+      queryOptions,
+      startCreatedAt,
+      endCreatedAt,
+      { spanId: true, isPartial: true, isCancelled: true }
+    );
 
     const filteredTaskEvents = taskEvents.filter((event) => {
       // Event must be partial
@@ -393,37 +410,31 @@ export class EventRepository {
       return !hasCompleteDuplicate;
     });
 
-    return this.queryEvents({
-      spanId: {
-        in: filteredTaskEvents.map((event) => event.spanId),
+    return this.#queryEvents(
+      storeTable,
+      {
+        spanId: {
+          in: filteredTaskEvents.map((event) => event.spanId),
+        },
       },
-    });
+      startCreatedAt,
+      endCreatedAt
+    );
   }
 
-  public async getTraceSummary(traceId: string): Promise<TraceSummary | undefined> {
+  public async getTraceSummary(
+    storeTable: TaskEventStoreTable,
+    traceId: string,
+    startCreatedAt: Date,
+    endCreatedAt?: Date
+  ): Promise<TraceSummary | undefined> {
     return await startActiveSpan("getTraceSummary", async (span) => {
-      const events = await this.readReplica.$queryRaw<TaskEventSummary[]>`
-        SELECT 
-          id,
-          "spanId",
-          "parentId",
-          "runId",
-          "idempotencyKey",
-          LEFT(message, 256) as message,
-          style,
-          "startTime",
-          duration,
-          "isError",
-          "isPartial",
-          "isCancelled",
-          level,
-          events,
-          "environmentType"
-        FROM "TaskEvent"
-        WHERE "traceId" = ${traceId}
-        ORDER BY "startTime" ASC
-        LIMIT ${env.MAXIMUM_TRACE_SUMMARY_VIEW_COUNT}
-      `;
+      const events = await this.taskEventStore.findTraceEvents(
+        storeTable,
+        traceId,
+        startCreatedAt,
+        endCreatedAt
+      );
 
       let preparedEvents: Array<PreparedEvent> = [];
       let rootSpanId: string | undefined;
@@ -463,7 +474,6 @@ export class EventRepository {
         );
 
         const span = {
-          recordId: event.id,
           id: event.spanId,
           parentId: event.parentId ?? undefined,
           runId: event.runId,
@@ -504,11 +514,22 @@ export class EventRepository {
     });
   }
 
-  public async getRunEvents(runId: string): Promise<RunPreparedEvent[]> {
+  public async getRunEvents(
+    storeTable: TaskEventStoreTable,
+    runId: string,
+    startCreatedAt: Date,
+    endCreatedAt?: Date
+  ): Promise<RunPreparedEvent[]> {
     return await startActiveSpan("getRunEvents", async (span) => {
-      const events = await this.readReplica.taskEvent.findMany({
-        select: {
-          id: true,
+      const events = await this.taskEventStore.findMany(
+        storeTable,
+        {
+          runId,
+          isPartial: false,
+        },
+        startCreatedAt,
+        endCreatedAt,
+        {
           spanId: true,
           parentId: true,
           runId: true,
@@ -524,15 +545,8 @@ export class EventRepository {
           events: true,
           environmentType: true,
           taskSlug: true,
-        },
-        where: {
-          runId,
-          isPartial: false,
-        },
-        orderBy: {
-          startTime: "asc",
-        },
-      });
+        }
+      );
 
       let preparedEvents: Array<PreparedEvent> = [];
 
@@ -546,9 +560,15 @@ export class EventRepository {
 
   // A Span can be cancelled if it is partial and has a parent that is cancelled
   // And a span's duration, if it is partial and has a cancelled parent, is the time between the start of the span and the time of the cancellation event of the parent
-  public async getSpan(spanId: string, traceId: string) {
+  public async getSpan(
+    storeTable: TaskEventStoreTable,
+    spanId: string,
+    traceId: string,
+    startCreatedAt: Date,
+    endCreatedAt?: Date
+  ) {
     return await startActiveSpan("getSpan", async (s) => {
-      const spanEvent = await this.#getSpanEvent(spanId);
+      const spanEvent = await this.#getSpanEvent(storeTable, spanId, startCreatedAt, endCreatedAt);
 
       if (!spanEvent) {
         return;
@@ -556,7 +576,12 @@ export class EventRepository {
 
       const preparedEvent = prepareEvent(spanEvent);
 
-      const span = await this.#createSpanFromEvent(preparedEvent);
+      const span = await this.#createSpanFromEvent(
+        storeTable,
+        preparedEvent,
+        startCreatedAt,
+        endCreatedAt
+      );
 
       const output = rehydrateJson(spanEvent.output);
       const payload = rehydrateJson(spanEvent.payload);
@@ -621,38 +646,48 @@ export class EventRepository {
     });
   }
 
-  async #createSpanFromEvent(event: PreparedEvent) {
+  async #createSpanFromEvent(
+    storeTable: TaskEventStoreTable,
+    event: PreparedEvent,
+    startCreatedAt: Date,
+    endCreatedAt?: Date
+  ) {
     return await startActiveSpan("createSpanFromEvent", async (s) => {
       let ancestorCancelled = false;
       let duration = event.duration;
 
       if (!event.isCancelled && event.isPartial) {
-        await this.#walkSpanAncestors(event, (ancestorEvent, level) => {
-          if (level >= 8) {
-            return { stop: true };
-          }
-
-          if (ancestorEvent.isCancelled) {
-            ancestorCancelled = true;
-
-            // We need to get the cancellation time from the cancellation span event
-            const cancellationEvent = ancestorEvent.events.find(
-              (event) => event.name === "cancellation"
-            );
-
-            if (cancellationEvent) {
-              duration = calculateDurationFromStart(event.startTime, cancellationEvent.time);
+        await this.#walkSpanAncestors(
+          storeTable,
+          event,
+          startCreatedAt,
+          endCreatedAt,
+          (ancestorEvent, level) => {
+            if (level >= 8) {
+              return { stop: true };
             }
 
-            return { stop: true };
-          }
+            if (ancestorEvent.isCancelled) {
+              ancestorCancelled = true;
 
-          return { stop: false };
-        });
+              // We need to get the cancellation time from the cancellation span event
+              const cancellationEvent = ancestorEvent.events.find(
+                (event) => event.name === "cancellation"
+              );
+
+              if (cancellationEvent) {
+                duration = calculateDurationFromStart(event.startTime, cancellationEvent.time);
+              }
+
+              return { stop: true };
+            }
+
+            return { stop: false };
+          }
+        );
       }
 
       const span = {
-        recordId: event.id,
         id: event.spanId,
         parentId: event.parentId ?? undefined,
         runId: event.runId,
@@ -676,7 +711,10 @@ export class EventRepository {
   }
 
   async #walkSpanAncestors(
+    storeTable: TaskEventStoreTable,
     event: PreparedEvent,
+    startCreatedAt: Date,
+    endCreatedAt: Date | undefined,
     callback: (event: PreparedEvent, level: number) => { stop: boolean }
   ) {
     const parentId = event.parentId;
@@ -685,7 +723,12 @@ export class EventRepository {
     }
 
     await startActiveSpan("walkSpanAncestors", async (s) => {
-      let parentEvent = await this.#getSpanEvent(parentId);
+      let parentEvent = await this.#getSpanEvent(
+        storeTable,
+        parentId,
+        startCreatedAt,
+        endCreatedAt
+      );
       let level = 1;
 
       while (parentEvent) {
@@ -701,49 +744,35 @@ export class EventRepository {
           return;
         }
 
-        parentEvent = await this.#getSpanEvent(preparedParentEvent.parentId);
+        parentEvent = await this.#getSpanEvent(
+          storeTable,
+          preparedParentEvent.parentId,
+          startCreatedAt,
+          endCreatedAt
+        );
 
         level++;
       }
     });
   }
 
-  async #getSpanAncestors(event: PreparedEvent, levels = 1): Promise<Array<PreparedEvent>> {
-    if (levels >= 8) {
-      return [];
-    }
-
-    if (!event.parentId) {
-      return [];
-    }
-
-    const parentEvent = await this.#getSpanEvent(event.parentId);
-
-    if (!parentEvent) {
-      return [];
-    }
-
-    const preparedParentEvent = prepareEvent(parentEvent);
-
-    if (!preparedParentEvent.parentId) {
-      return [preparedParentEvent];
-    }
-
-    const moreAncestors = await this.#getSpanAncestors(preparedParentEvent, levels + 1);
-
-    return [preparedParentEvent, ...moreAncestors];
-  }
-
-  async #getSpanEvent(spanId: string) {
+  async #getSpanEvent(
+    storeTable: TaskEventStoreTable,
+    spanId: string,
+    startCreatedAt: Date,
+    endCreatedAt?: Date
+  ) {
     return await startActiveSpan("getSpanEvent", async (s) => {
-      const events = await this.readReplica.taskEvent.findMany({
-        where: {
-          spanId,
-        },
-        orderBy: {
+      const events = await this.taskEventStore.findMany(
+        storeTable,
+        { spanId },
+        startCreatedAt,
+        endCreatedAt,
+        undefined,
+        {
           startTime: "asc",
-        },
-      });
+        }
+      );
 
       let finalEvent: TaskEvent | undefined;
 
@@ -889,6 +918,9 @@ export class EventRepository {
           ]
         : [];
 
+    let isStopped = false;
+    let failedWithError: TaskRunError | undefined;
+
     const eventBuilder = {
       traceId,
       spanId,
@@ -906,9 +938,19 @@ export class EventRepository {
           }
         }
       },
+      stop: () => {
+        isStopped = true;
+      },
+      failWithError: (error: TaskRunError) => {
+        failedWithError = error;
+      },
     };
 
     const result = await callback(eventBuilder, traceContext, propagatedContext?.traceparent);
+
+    if (isStopped) {
+      return result;
+    }
 
     const duration = process.hrtime.bigint() - start;
 
@@ -943,13 +985,14 @@ export class EventRepository {
       parentId,
       tracestate,
       duration: options.incomplete ? 0 : duration,
-      isPartial: options.incomplete,
+      isPartial: failedWithError ? false : options.incomplete,
+      isError: !!failedWithError,
       message: message,
       serviceName: "api server",
       serviceNamespace: "trigger.dev",
       level: "TRACE",
       kind: options.kind,
-      status: "OK",
+      status: failedWithError ? "ERROR" : "OK",
       startTime,
       environmentId: options.environment.id,
       environmentType: options.environment.type,
@@ -977,6 +1020,17 @@ export class EventRepository {
       payload: options.attributes.payload,
       payloadType: options.attributes.payloadType,
       idempotencyKey: options.attributes.idempotencyKey,
+      events: failedWithError
+        ? [
+            {
+              name: "exception",
+              time: new Date(),
+              properties: {
+                exception: createExceptionPropertiesFromError(failedWithError),
+              },
+            },
+          ]
+        : undefined,
     };
 
     if (options.immediate) {
@@ -989,12 +1043,12 @@ export class EventRepository {
   }
 
   async subscribeToTrace(traceId: string) {
-    const redis = new Redis(this._config.redis);
+    const redis = createRedisClient("trigger:eventRepoSubscriber", this._config.redis);
 
-    const channel = `events:${traceId}:*`;
+    const channel = `events:${traceId}`;
 
     // Subscribe to the channel.
-    await redis.psubscribe(channel);
+    await redis.subscribe(channel);
 
     // Increment the subscriber count.
     this._subscriberCount++;
@@ -1002,15 +1056,13 @@ export class EventRepository {
     const eventEmitter = new EventEmitter();
 
     // Define the message handler.
-    redis.on("pmessage", (pattern, channelReceived, message) => {
-      if (channelReceived.startsWith(`events:${traceId}:`)) {
-        eventEmitter.emit("message", message);
-      }
+    redis.on("message", (_, message) => {
+      eventEmitter.emit("message", message);
     });
 
     // Return a function that can be used to unsubscribe.
     const unsubscribe = async () => {
-      await redis.punsubscribe(channel);
+      await redis.unsubscribe(channel);
       redis.quit();
       this._subscriberCount--;
     };
@@ -1021,90 +1073,136 @@ export class EventRepository {
     };
   }
 
-  async #flushBatch(batch: CreatableEvent[]) {
-    const events = excludePartialEventsWithCorrespondingFullEvent(batch);
+  async #flushBatch(flushId: string, batch: CreatableEvent[]) {
+    return await startSpan(this._tracer, "flushBatch", async (span) => {
+      const events = excludePartialEventsWithCorrespondingFullEvent(batch);
 
-    const flushedEvents = await this.#doFlushBatch(events);
+      span.setAttribute("flush_id", flushId);
+      span.setAttribute("event_count", events.length);
+      span.setAttribute("partial_event_count", batch.length - events.length);
+      span.setAttribute(
+        "last_flush_in_ms",
+        this._lastFlushedAt ? new Date().getTime() - this._lastFlushedAt.getTime() : 0
+      );
 
-    if (flushedEvents.length !== events.length) {
-      logger.debug("[EventRepository][flushBatch] Failed to insert all events", {
-        attemptCount: events.length,
-        successCount: flushedEvents.length,
-      });
-    }
+      const flushedEvents = await this.#doFlushBatch(flushId, events);
 
-    this.#publishToRedis(flushedEvents);
-  }
+      this._lastFlushedAt = new Date();
 
-  async #doFlushBatch(events: CreatableEvent[], depth: number = 1): Promise<CreatableEvent[]> {
-    try {
-      await this.db.taskEvent.createMany({
-        data: events as Prisma.TaskEventCreateManyInput[],
-      });
-
-      return events;
-    } catch (error) {
-      if (error instanceof Prisma.PrismaClientUnknownRequestError) {
-        logger.error("Failed to insert events, most likely because of null characters", {
-          error: {
-            name: error.name,
-            message: error.message,
-            stack: error.stack,
-            clientVersion: error.clientVersion,
-          },
+      if (flushedEvents.length !== events.length) {
+        logger.debug("[EventRepository][flushBatch] Failed to insert all events", {
+          attemptCount: events.length,
+          successCount: flushedEvents.length,
         });
 
-        if (events.length === 1) {
-          logger.debug("Attempting to insert event individually and it failed", {
-            event: events[0],
-            error: {
-              name: error.name,
-              message: error.message,
-              stack: error.stack,
-              clientVersion: error.clientVersion,
-            },
-          });
-
-          return [];
-        }
-
-        if (depth > MAX_FLUSH_DEPTH) {
-          logger.error("Failed to insert events, reached maximum depth", {
-            error: {
-              name: error.name,
-              message: error.message,
-              stack: error.stack,
-              clientVersion: error.clientVersion,
-            },
-            depth,
-            eventsCount: events.length,
-          });
-
-          return [];
-        }
-
-        // Split the events into two batches, and recursively try to insert them.
-        const middle = Math.floor(events.length / 2);
-        const [firstHalf, secondHalf] = [events.slice(0, middle), events.slice(middle)];
-
-        const [firstHalfEvents, secondHalfEvents] = await Promise.all([
-          this.#doFlushBatch(firstHalf, depth + 1),
-          this.#doFlushBatch(secondHalf, depth + 1),
-        ]);
-
-        return firstHalfEvents.concat(secondHalfEvents);
+        span.setAttribute("failed_event_count", events.length - flushedEvents.length);
       }
 
-      throw error;
-    }
+      this.#publishToRedis(flushedEvents);
+    });
+  }
+
+  private get taskEventStoreTable(): TaskEventStoreTable {
+    return this._config.partitioningEnabled ? "taskEventPartitioned" : "taskEvent";
+  }
+
+  async #doFlushBatch(
+    flushId: string,
+    events: CreatableEvent[],
+    depth: number = 1
+  ): Promise<CreatableEvent[]> {
+    return await startSpan(this._tracer, "doFlushBatch", async (span) => {
+      try {
+        span.setAttribute("event_count", events.length);
+        span.setAttribute("depth", depth);
+        span.setAttribute("flush_id", flushId);
+
+        await this.taskEventStore.createMany(
+          this.taskEventStoreTable,
+          events as Prisma.TaskEventCreateManyInput[]
+        );
+
+        span.setAttribute("inserted_event_count", events.length);
+
+        return events;
+      } catch (error) {
+        if (error instanceof Prisma.PrismaClientUnknownRequestError) {
+          logger.error("Failed to insert events, most likely because of null characters", {
+            error: {
+              name: error.name,
+              message: error.message,
+              stack: error.stack,
+              clientVersion: error.clientVersion,
+            },
+          });
+
+          if (events.length === 1) {
+            logger.debug("Attempting to insert event individually and it failed", {
+              event: events[0],
+              error: {
+                name: error.name,
+                message: error.message,
+                stack: error.stack,
+                clientVersion: error.clientVersion,
+              },
+            });
+
+            span.setAttribute("failed_event_count", 1);
+
+            return [];
+          }
+
+          if (depth > MAX_FLUSH_DEPTH) {
+            logger.error("Failed to insert events, reached maximum depth", {
+              error: {
+                name: error.name,
+                message: error.message,
+                stack: error.stack,
+                clientVersion: error.clientVersion,
+              },
+              depth,
+              eventsCount: events.length,
+            });
+
+            span.setAttribute("reached_max_flush_depth", true);
+            span.setAttribute("failed_event_count", events.length);
+
+            return [];
+          }
+
+          // Split the events into two batches, and recursively try to insert them.
+          const middle = Math.floor(events.length / 2);
+          const [firstHalf, secondHalf] = [events.slice(0, middle), events.slice(middle)];
+
+          return await startSpan(this._tracer, "bisectBatch", async (span) => {
+            span.setAttribute("first_half_count", firstHalf.length);
+            span.setAttribute("second_half_count", secondHalf.length);
+            span.setAttribute("depth", depth);
+            span.setAttribute("flush_id", flushId);
+
+            const [firstHalfEvents, secondHalfEvents] = await Promise.all([
+              this.#doFlushBatch(flushId, firstHalf, depth + 1),
+              this.#doFlushBatch(flushId, secondHalf, depth + 1),
+            ]);
+
+            return firstHalfEvents.concat(secondHalfEvents);
+          });
+        }
+
+        throw error;
+      }
+    });
   }
 
   async #publishToRedis(events: CreatableEvent[]) {
     if (events.length === 0) return;
-    const uniqueTraceSpans = new Set(events.map((e) => `events:${e.traceId}:${e.spanId}`));
-    for (const id of uniqueTraceSpans) {
-      await this._redisPublishClient.publish(id, new Date().toISOString());
-    }
+    const uniqueTraces = new Set(events.map((e) => `events:${e.traceId}`));
+
+    await Promise.allSettled(
+      Array.from(uniqueTraces).map((traceId) =>
+        this._redisPublishClient.publish(traceId, new Date().toISOString())
+      )
+    );
   }
 
   public generateTraceId() {
@@ -1141,13 +1239,14 @@ function initializeEventRepo() {
     batchSize: env.EVENTS_BATCH_SIZE,
     batchInterval: env.EVENTS_BATCH_INTERVAL,
     retentionInDays: env.EVENTS_DEFAULT_LOG_RETENTION,
+    partitioningEnabled: env.TASK_EVENT_PARTITIONING_ENABLED === "1",
     redis: {
-      port: env.REDIS_PORT,
-      host: env.REDIS_HOST,
-      username: env.REDIS_USERNAME,
-      password: env.REDIS_PASSWORD,
-      enableAutoPipelining: true,
-      ...(env.REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
+      port: env.PUBSUB_REDIS_PORT,
+      host: env.PUBSUB_REDIS_HOST,
+      username: env.PUBSUB_REDIS_USERNAME,
+      password: env.PUBSUB_REDIS_PASSWORD,
+      tlsDisabled: env.PUBSUB_REDIS_TLS_DISABLED === "true",
+      clusterMode: env.PUBSUB_REDIS_CLUSTER_MODE_ENABLED === "1",
     },
   });
 
@@ -1366,35 +1465,6 @@ function findFirstCancelledAncestor(events: Map<string, PreparedEvent>, spanId: 
   return;
 }
 
-// Prioritize spans with the same id, keeping the completed spans over partial spans
-// Completed spans are either !isPartial or isCancelled
-function removeDuplicateEvents(events: PreparedEvent[]) {
-  const dedupedEvents = new Map<string, PreparedEvent>();
-
-  for (const event of events) {
-    const existingEvent = dedupedEvents.get(event.spanId);
-
-    if (!existingEvent) {
-      dedupedEvents.set(event.spanId, event);
-      continue;
-    }
-
-    if (event.isCancelled || !event.isPartial) {
-      dedupedEvents.set(event.spanId, event);
-    }
-  }
-
-  return Array.from(dedupedEvents.values());
-}
-
-function isEmptyJson(json: Prisma.JsonValue) {
-  if (json === null) {
-    return true;
-  }
-
-  return false;
-}
-
 function sanitizedAttributes(json: Prisma.JsonValue) {
   if (json === null || json === undefined) {
     return;
@@ -1469,18 +1539,6 @@ function transformException(
         })
       : undefined,
   };
-}
-
-function filteredAttributes(attributes: Attributes, prefix: string): Attributes {
-  const result: Attributes = {};
-
-  for (const [key, value] of Object.entries(attributes)) {
-    if (key.startsWith(prefix)) {
-      result[key] = value;
-    }
-  }
-
-  return result;
 }
 
 function calculateDurationFromStart(startTime: bigint, endTime: Date = new Date()) {

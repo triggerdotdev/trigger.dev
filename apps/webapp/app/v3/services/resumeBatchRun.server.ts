@@ -3,8 +3,11 @@ import { workerQueue } from "~/services/worker.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { BaseService } from "./baseService.server";
 import { logger } from "~/services/logger.server";
+import { BatchTaskRun } from "@trigger.dev/database";
 
 const finishedBatchRunStatuses = ["COMPLETED", "FAILED", "CANCELED"];
+
+type RetrieveBatchRunResult = NonNullable<Awaited<ReturnType<typeof retrieveBatchRun>>>;
 
 export class ResumeBatchRunService extends BaseService {
   public async call(batchRunId: string) {
@@ -39,6 +42,40 @@ export class ResumeBatchRunService extends BaseService {
       return "ERROR";
     }
 
+    if (batchRun.batchVersion === "v3") {
+      return await this.#handleV3BatchRun(batchRun);
+    } else {
+      return await this.#handleLegacyBatchRun(batchRun);
+    }
+  }
+
+  async #handleV3BatchRun(batchRun: RetrieveBatchRunResult) {
+    // V3 batch runs should already be complete by the time this is called
+    if (batchRun.status !== "COMPLETED") {
+      logger.debug("ResumeBatchRunService: Batch run is already completed", {
+        batchRunId: batchRun.id,
+        batchRun: {
+          id: batchRun.id,
+          status: batchRun.status,
+        },
+      });
+
+      return "ERROR";
+    }
+
+    // Even though we are in v3, we still need to check if the batch run has a dependent attempt
+    if (!batchRun.dependentTaskAttemptId) {
+      logger.debug("ResumeBatchRunService: Batch run doesn't have a dependent attempt", {
+        batchRunId: batchRun.id,
+      });
+
+      return "ERROR";
+    }
+
+    return await this.#handleDependentTaskAttempt(batchRun, batchRun.dependentTaskAttemptId);
+  }
+
+  async #handleLegacyBatchRun(batchRun: RetrieveBatchRunResult) {
     if (batchRun.status === "COMPLETED") {
       logger.debug("ResumeBatchRunService: Batch run is already completed", {
         batchRunId: batchRun.id,
@@ -95,9 +132,16 @@ export class ResumeBatchRunService extends BaseService {
       return "COMPLETED";
     }
 
+    return await this.#handleDependentTaskAttempt(batchRun, batchRun.dependentTaskAttemptId);
+  }
+
+  async #handleDependentTaskAttempt(
+    batchRun: RetrieveBatchRunResult,
+    dependentTaskAttemptId: string
+  ) {
     const dependentTaskAttempt = await this._prisma.taskRunAttempt.findFirst({
       where: {
-        id: batchRun.dependentTaskAttemptId,
+        id: dependentTaskAttemptId,
       },
       select: {
         status: true,
@@ -108,6 +152,8 @@ export class ResumeBatchRunService extends BaseService {
             queue: true,
             taskIdentifier: true,
             concurrencyKey: true,
+            createdAt: true,
+            queueTimestamp: true,
           },
         },
       },
@@ -134,7 +180,7 @@ export class ResumeBatchRunService extends BaseService {
       });
 
       // We need to update the batchRun status so we don't resume it again
-      const wasUpdated = await this.#setBatchToCompletedOnce(batchRun.id);
+      const wasUpdated = await this.#setBatchToResumedOnce(batchRun);
 
       if (wasUpdated) {
         logger.debug("ResumeBatchRunService: Resuming dependent run with checkpoint", {
@@ -142,7 +188,7 @@ export class ResumeBatchRunService extends BaseService {
           dependentTaskAttemptId: dependentTaskAttempt.id,
         });
 
-        await marqs?.enqueueMessage(
+        await marqs.enqueueMessage(
           environment,
           dependentRun.queue,
           dependentRun.id,
@@ -156,7 +202,10 @@ export class ResumeBatchRunService extends BaseService {
             environmentId: environment.id,
             environmentType: environment.type,
           },
-          dependentRun.concurrencyKey ?? undefined
+          dependentRun.concurrencyKey ?? undefined,
+          dependentRun.queueTimestamp ?? dependentRun.createdAt,
+          undefined,
+          "resume"
         );
 
         return "COMPLETED";
@@ -192,7 +241,7 @@ export class ResumeBatchRunService extends BaseService {
       }
 
       // We need to update the batchRun status so we don't resume it again
-      const wasUpdated = await this.#setBatchToCompletedOnce(batchRun.id);
+      const wasUpdated = await this.#setBatchToResumedOnce(batchRun);
 
       if (wasUpdated) {
         logger.debug("ResumeBatchRunService: Resuming dependent run without checkpoint", {
@@ -202,16 +251,25 @@ export class ResumeBatchRunService extends BaseService {
           hasCheckpointEvent: !!batchRun.checkpointEventId,
         });
 
-        await marqs?.replaceMessage(dependentRun.id, {
-          type: "RESUME",
-          completedAttemptIds: batchRun.items.map((item) => item.taskRunAttemptId).filter(Boolean),
-          resumableAttemptId: dependentTaskAttempt.id,
-          checkpointEventId: batchRun.checkpointEventId ?? undefined,
-          taskIdentifier: dependentTaskAttempt.taskRun.taskIdentifier,
-          projectId: environment.projectId,
-          environmentId: environment.id,
-          environmentType: environment.type,
-        });
+        await marqs.requeueMessage(
+          dependentRun.id,
+          {
+            type: "RESUME",
+            completedAttemptIds: batchRun.items
+              .map((item) => item.taskRunAttemptId)
+              .filter(Boolean),
+            resumableAttemptId: dependentTaskAttempt.id,
+            checkpointEventId: batchRun.checkpointEventId ?? undefined,
+            taskIdentifier: dependentTaskAttempt.taskRun.taskIdentifier,
+            projectId: environment.projectId,
+            environmentId: environment.id,
+            environmentType: environment.type,
+          },
+          (
+            dependentTaskAttempt.taskRun.queueTimestamp ?? dependentTaskAttempt.taskRun.createdAt
+          ).getTime(),
+          "resume"
+        );
 
         return "COMPLETED";
       } else {
@@ -227,10 +285,31 @@ export class ResumeBatchRunService extends BaseService {
     }
   }
 
-  async #setBatchToCompletedOnce(batchRunId: string) {
+  async #setBatchToResumedOnce(batchRun: BatchTaskRun) {
+    // v3 batches don't use the status for deciding whether a batch has been resumed
+    if (batchRun.batchVersion === "v3") {
+      const result = await this._prisma.batchTaskRun.updateMany({
+        where: {
+          id: batchRun.id,
+          resumedAt: null,
+        },
+        data: {
+          resumedAt: new Date(),
+        },
+      });
+
+      // Check if any records were updated
+      if (result.count > 0) {
+        // The status was changed, so we return true
+        return true;
+      } else {
+        return false;
+      }
+    }
+
     const result = await this._prisma.batchTaskRun.updateMany({
       where: {
-        id: batchRunId,
+        id: batchRun.id,
         status: {
           not: "COMPLETED", // Ensure the status is not already "COMPLETED"
         },
@@ -249,7 +328,12 @@ export class ResumeBatchRunService extends BaseService {
     }
   }
 
-  static async enqueue(batchRunId: string, tx: PrismaClientOrTransaction, runAt?: Date) {
+  static async enqueue(
+    batchRunId: string,
+    skipJobKey: boolean,
+    tx: PrismaClientOrTransaction,
+    runAt?: Date
+  ) {
     return await workerQueue.enqueue(
       "v3.resumeBatchRun",
       {
@@ -258,8 +342,30 @@ export class ResumeBatchRunService extends BaseService {
       {
         tx,
         runAt,
-        jobKey: `resumeBatchRun-${batchRunId}`,
+        jobKey: skipJobKey ? undefined : `resumeBatchRun-${batchRunId}`,
       }
     );
   }
+}
+
+async function retrieveBatchRun(id: string, prisma: PrismaClientOrTransaction) {
+  return await prisma.batchTaskRun.findFirst({
+    where: {
+      id,
+    },
+    include: {
+      runtimeEnvironment: {
+        include: {
+          project: true,
+          organization: true,
+        },
+      },
+      items: {
+        select: {
+          status: true,
+          taskRunAttemptId: true,
+        },
+      },
+    },
+  });
 }

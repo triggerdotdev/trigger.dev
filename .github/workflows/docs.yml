@@ -39,4 +39,4 @@ jobs:
             ${{ runner.os }}-mintlify
 
       - name: 🔗 Check for broken links
-        run: npx mintlify@4.0.222 broken-links
+        run: npx mintlify@4.0.393 broken-links

@@ -100,6 +100,7 @@ export class BatchListPresenter extends BasePresenter {
         status: BatchTaskRunStatus;
         createdAt: Date;
         updatedAt: Date;
+        completedAt: Date | null;
         runCount: BigInt;
         batchVersion: string;
       }[]
@@ -111,6 +112,7 @@ export class BatchListPresenter extends BasePresenter {
     b.status,
     b."createdAt",
     b."updatedAt",
+    b."completedAt",
     b."runCount",
     b."batchVersion"
 FROM
@@ -188,7 +190,7 @@ WHERE
           throw new Error(`Environment not found for Batch ${batch.id}`);
         }
 
-        const hasFinished = batch.status === "COMPLETED";
+        const hasFinished = batch.status !== "PENDING";
 
         return {
           id: batch.id,
@@ -196,7 +198,11 @@ WHERE
           createdAt: batch.createdAt.toISOString(),
           updatedAt: batch.updatedAt.toISOString(),
           hasFinished,
-          finishedAt: hasFinished ? batch.updatedAt.toISOString() : undefined,
+          finishedAt: batch.completedAt
+            ? batch.completedAt.toISOString()
+            : hasFinished
+            ? batch.updatedAt.toISOString()
+            : undefined,
           status: batch.status,
           environment: displayableEnvironment(environment, userId),
           runCount: Number(batch.runCount),

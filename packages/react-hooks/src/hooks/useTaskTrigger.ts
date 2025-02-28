@@ -85,6 +85,7 @@ export function useTaskTrigger<TTask extends AnyTask>(
         maxAttempts: options?.maxAttempts,
         metadata: options?.metadata,
         maxDuration: options?.maxDuration,
+        lockToVersion: options?.version,
       },
     });
 

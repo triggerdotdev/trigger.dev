@@ -11,6 +11,8 @@ module.exports = {
     /^remix-utils.*/,
     "marked",
     "axios",
+    "p-limit",
+    "yocto-queue",
     "@trigger.dev/core",
     "@trigger.dev/sdk",
     "@trigger.dev/platform",

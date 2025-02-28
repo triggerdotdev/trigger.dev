@@ -5,29 +5,30 @@ import {
   TaskRunExecutionRetry,
   TaskRunFailedExecutionResult,
 } from "@trigger.dev/core/v3";
-import { logger } from "~/services/logger.server";
-import { BaseService } from "./services/baseService.server";
-import { isFailableRunStatus, isFinalAttemptStatus } from "./taskStatus";
 import type { Prisma, TaskRun } from "@trigger.dev/database";
+import * as semver from "semver";
+import { logger } from "~/services/logger.server";
+import { sharedQueueTasks } from "./marqs/sharedQueueConsumer.server";
+import { BaseService } from "./services/baseService.server";
 import { CompleteAttemptService } from "./services/completeAttempt.server";
 import { CreateTaskRunAttemptService } from "./services/createTaskRunAttempt.server";
-import { sharedQueueTasks } from "./marqs/sharedQueueConsumer.server";
-import * as semver from "semver";
+import { isFailableRunStatus, isFinalAttemptStatus } from "./taskStatus";
 
-const includeAttempts = {
-  attempts: {
-    orderBy: {
-      createdAt: "desc",
+const FailedTaskRunRetryGetPayload = {
+  select: {
+    id: true,
+    attempts: {
+      orderBy: {
+        createdAt: "desc",
+      },
+      take: 1,
     },
-    take: 1,
+    lockedById: true, // task
+    lockedToVersionId: true, // worker
   },
-  lockedBy: true, // task
-  lockedToVersion: true, // worker
-} satisfies Prisma.TaskRunInclude;
+} as const;
 
-type TaskRunWithAttempts = Prisma.TaskRunGetPayload<{
-  include: typeof includeAttempts;
-}>;
+type TaskRunWithAttempts = Prisma.TaskRunGetPayload<typeof FailedTaskRunRetryGetPayload>;
 
 export class FailedTaskRunService extends BaseService {
   public async call(anyRunId: string, completion: TaskRunFailedExecutionResult) {
@@ -92,7 +93,7 @@ export class FailedTaskRunRetryHelper extends BaseService {
       where: {
         id: runId,
       },
-      include: includeAttempts,
+      ...FailedTaskRunRetryGetPayload,
     });
 
     if (!taskRun) {
@@ -179,13 +180,52 @@ export class FailedTaskRunRetryHelper extends BaseService {
     }
   }
 
-  static async getExecutionRetry({
+  static getExecutionRetry({
     run,
     execution,
   }: {
     run: TaskRunWithWorker;
     execution: TaskRunExecution;
-  }): Promise<TaskRunExecutionRetry | undefined> {
+  }): TaskRunExecutionRetry | undefined {
+    try {
+      const retryConfig = FailedTaskRunRetryHelper.getRetryConfig({ run, execution });
+      if (!retryConfig) {
+        return;
+      }
+
+      const delay = calculateNextRetryDelay(retryConfig, execution.attempt.number);
+
+      if (!delay) {
+        logger.debug("[FailedTaskRunRetryHelper] No more retries", {
+          run,
+          execution,
+        });
+
+        return;
+      }
+
+      return {
+        timestamp: Date.now() + delay,
+        delay,
+      };
+    } catch (error) {
+      logger.error("[FailedTaskRunRetryHelper] Failed to get execution retry", {
+        run,
+        execution,
+        error,
+      });
+
+      return;
+    }
+  }
+
+  static getRetryConfig({
+    run,
+    execution,
+  }: {
+    run: TaskRunWithWorker;
+    execution: TaskRunExecution;
+  }): RetryOptions | undefined {
     try {
       const retryConfig = run.lockedBy?.retryConfig;
 
@@ -246,21 +286,7 @@ export class FailedTaskRunRetryHelper extends BaseService {
         return;
       }
 
-      const delay = calculateNextRetryDelay(parsedRetryConfig.data, execution.attempt.number);
-
-      if (!delay) {
-        logger.debug("[FailedTaskRunRetryHelper] No more retries", {
-          run,
-          execution,
-        });
-
-        return;
-      }
-
-      return {
-        timestamp: Date.now() + delay,
-        delay,
-      };
+      return parsedRetryConfig.data;
     } catch (error) {
       logger.error("[FailedTaskRunRetryHelper] Failed to get execution retry", {
         run,

@@ -1,5 +1,49 @@
 # trigger.dev
 
+## 3.3.16
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/build@3.3.16`
+  - `@trigger.dev/core@3.3.16`
+
+## 3.3.15
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/build@3.3.15`
+  - `@trigger.dev/core@3.3.15`
+
+## 3.3.14
+
+### Patch Changes
+
+- Auto-fix /trigger or /src/trigger config.dirs to relative paths to prevent misconfiguration from preventing dev CLI from working ([#1665](https://github.com/triggerdotdev/trigger.dev/pull/1665))
+- Updated dependencies:
+  - `@trigger.dev/build@3.3.14`
+  - `@trigger.dev/core@3.3.14`
+
+## 3.3.13
+
+### Patch Changes
+
+- Fix "No tasks defined" issue because of misconfigured dir search paths. Also improve errors around no files or no tasks found during in dev" ([#1663](https://github.com/triggerdotdev/trigger.dev/pull/1663))
+- Fixed deploy timeout issues and improve the output of logs when deploying ([#1661](https://github.com/triggerdotdev/trigger.dev/pull/1661))
+- Updated dependencies:
+  - `@trigger.dev/core@3.3.13`
+  - `@trigger.dev/build@3.3.13`
+
+## 3.3.12
+
+### Patch Changes
+
+- Fix broken cloud deploys by using depot ephemeral registry ([#1637](https://github.com/triggerdotdev/trigger.dev/pull/1637))
+- Updated dependencies:
+  - `@trigger.dev/core@3.3.12`
+  - `@trigger.dev/build@3.3.12`
+
 ## 3.3.11
 
 ### Patch Changes

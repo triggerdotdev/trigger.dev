@@ -1,6 +1,5 @@
 import {
   CheckIcon,
-  ClockIcon,
   CloudArrowDownIcon,
   EnvelopeIcon,
   QueueListIcon,
@@ -8,15 +7,14 @@ import {
 import { Link } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import {
-  formatDuration,
   formatDurationMilliseconds,
-  nanosecondsToMilliseconds,
   TaskRunError,
   taskRunErrorEnhancer,
 } from "@trigger.dev/core/v3";
-import { ReactNode, useEffect } from "react";
+import { useEffect } from "react";
 import { typedjson, useTypedFetcher } from "remix-typedjson";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
+import { AdminDebugRun } from "~/components/admin/debugRun";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { Feedback } from "~/components/Feedback";
@@ -38,17 +36,22 @@ import {
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import { TextLink } from "~/components/primitives/TextLink";
 import { InfoIconTooltip, SimpleTooltip } from "~/components/primitives/Tooltip";
-import { LiveTimer } from "~/components/runs/v3/LiveTimer";
+import {
+  createTimelineSpanEventsFromSpanEvents,
+  RunTimeline,
+  RunTimelineEvent,
+  SpanTimeline,
+} from "~/components/run/RunTimeline";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
 import { RunTag } from "~/components/runs/v3/RunTag";
 import { SpanEvents } from "~/components/runs/v3/SpanEvents";
 import { SpanTitle } from "~/components/runs/v3/SpanTitle";
 import { TaskRunAttemptStatusCombo } from "~/components/runs/v3/TaskRunAttemptStatus";
-import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
+import { useHasAdminAccess } from "~/hooks/useUser";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { Span, SpanPresenter, SpanRun } from "~/presenters/v3/SpanPresenter.server";
 import { logger } from "~/services/logger.server";
@@ -57,16 +60,13 @@ import { cn } from "~/utils/cn";
 import { formatCurrencyAccurate } from "~/utils/numberFormatter";
 import {
   v3BatchPath,
-  v3BatchRunsPath,
   v3RunDownloadLogsPath,
   v3RunPath,
   v3RunSpanPath,
   v3RunsPath,
   v3SchedulePath,
   v3SpanParamsSchema,
-  v3TraceSpanPath,
 } from "~/utils/pathBuilder";
-import { SpanLink } from "~/v3/eventRepository.server";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -170,6 +170,7 @@ function SpanBody({
   runParam?: string;
   closePanel?: () => void;
 }) {
+  const isAdmin = useHasAdminAccess();
   const organization = useOrganization();
   const project = useProject();
   const { value, replace } = useSearchParams();
@@ -309,6 +310,7 @@ function SpanBody({
                     duration={span.duration}
                     inProgress={span.isPartial}
                     isError={span.isError}
+                    events={createTimelineSpanEventsFromSpanEvents(span.events, isAdmin)}
                   />
                 </>
               ) : (
@@ -316,7 +318,7 @@ function SpanBody({
                   <RunTimelineEvent
                     title="Timestamp"
                     subtitle={<DateTimeAccurate date={span.startTime} />}
-                    state="complete"
+                    variant="dot-solid"
                   />
                 </div>
               )}
@@ -687,7 +689,7 @@ function RunBody({
                       "–"
                     ) : (
                       <div className="mt-1 flex flex-wrap items-center gap-1 text-xs">
-                        {run.tags.map((tag) => (
+                        {run.tags.map((tag: string) => (
                           <SimpleTooltip
                             key={tag}
                             button={
@@ -794,6 +796,7 @@ function RunBody({
             </LinkButton>
           )}
         </div>
+        <AdminDebugRun friendlyId={run.friendlyId} />
         <div className="flex items-center gap-4">
           {run.logsDeletedAt === null ? (
             <LinkButton
@@ -807,151 +810,6 @@ function RunBody({
             </LinkButton>
           ) : null}
         </div>
-      </div>
-    </div>
-  );
-}
-
-function RunTimeline({ run }: { run: SpanRun }) {
-  return (
-    <div className="min-w-fit max-w-80">
-      <RunTimelineEvent
-        title="Triggered"
-        subtitle={<DateTimeAccurate date={run.createdAt} />}
-        state="complete"
-      />
-      {run.delayUntil && !run.expiredAt ? (
-        <RunTimelineLine
-          title={
-            run.startedAt ? (
-              <>{formatDuration(run.createdAt, run.delayUntil)} delay</>
-            ) : (
-              <span className="flex items-center gap-1">
-                <ClockIcon className="size-4" />
-                <span>
-                  Delayed until <DateTime date={run.delayUntil} /> {run.ttl && <>(TTL {run.ttl})</>}
-                </span>
-              </span>
-            )
-          }
-          state={run.startedAt ? "complete" : "delayed"}
-        />
-      ) : run.startedAt ? (
-        <RunTimelineLine title={formatDuration(run.createdAt, run.startedAt)} state={"complete"} />
-      ) : (
-        <RunTimelineLine
-          title={
-            <>
-              <LiveTimer
-                startTime={run.createdAt}
-                endTime={run.startedAt ?? run.expiredAt ?? undefined}
-              />{" "}
-              {run.ttl && <>(TTL {run.ttl})</>}
-            </>
-          }
-          state={run.startedAt || run.expiredAt ? "complete" : "inprogress"}
-        />
-      )}
-      {run.expiredAt ? (
-        <RunTimelineEvent
-          title="Expired"
-          subtitle={<DateTimeAccurate date={run.expiredAt} />}
-          state="error"
-        />
-      ) : run.startedAt ? (
-        <>
-          <RunTimelineEvent
-            title="Started"
-            subtitle={<DateTimeAccurate date={run.startedAt} />}
-            state="complete"
-          />
-          {run.isFinished ? (
-            <>
-              <RunTimelineLine
-                title={formatDuration(run.startedAt, run.updatedAt)}
-                state={"complete"}
-              />
-              <RunTimelineEvent
-                title="Finished"
-                subtitle={<DateTimeAccurate date={run.updatedAt} />}
-                state={run.isError ? "error" : "complete"}
-              />
-            </>
-          ) : (
-            <RunTimelineLine
-              title={
-                <span className="flex items-center gap-1">
-                  <Spinner className="size-4" />
-                  <span>
-                    <LiveTimer startTime={run.startedAt} />
-                  </span>
-                </span>
-              }
-              state={"inprogress"}
-            />
-          )}
-        </>
-      ) : null}
-    </div>
-  );
-}
-
-type RunTimelineItemProps = {
-  title: ReactNode;
-  subtitle?: ReactNode;
-  state: "complete" | "error";
-};
-
-function RunTimelineEvent({ title, subtitle, state }: RunTimelineItemProps) {
-  return (
-    <div className="grid h-5 grid-cols-[1.125rem_1fr] text-sm">
-      <div className="flex items-center justify-center">
-        <div
-          className={cn(
-            "size-[0.3125rem] rounded-full",
-            state === "complete" ? "bg-success" : "bg-error"
-          )}
-        ></div>
-      </div>
-      <div className="flex items-baseline justify-between gap-3">
-        <span className="font-medium text-text-bright">{title}</span>
-        {subtitle ? <span className="text-xs text-text-dimmed">{subtitle}</span> : null}
-      </div>
-    </div>
-  );
-}
-
-type RunTimelineLineProps = {
-  title: ReactNode;
-  state: "complete" | "delayed" | "inprogress";
-};
-
-function RunTimelineLine({ title, state }: RunTimelineLineProps) {
-  return (
-    <div className="grid h-6 grid-cols-[1.125rem_1fr] text-xs">
-      <div className="flex items-stretch justify-center">
-        <div
-          className={cn(
-            "w-px",
-            state === "complete" ? "bg-success" : state === "delayed" ? "bg-text-dimmed" : ""
-          )}
-          style={
-            state === "inprogress"
-              ? {
-                  width: "1px",
-                  height: "100%",
-                  background:
-                    "repeating-linear-gradient(to bottom, #3B82F6 0%, #3B82F6 50%, transparent 50%, transparent 100%)",
-                  backgroundSize: "1px 6px",
-                  maskImage: "linear-gradient(to bottom, black 50%, transparent 100%)",
-                  WebkitMaskImage: "linear-gradient(to bottom, black 50%, transparent 100%)",
-                }
-              : undefined
-          }
-        ></div>
-      </div>
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-text-dimmed">{title}</span>
       </div>
     </div>
   );
@@ -1066,113 +924,4 @@ function PacketDisplay({
       );
     }
   }
-}
-
-type TimelineProps = {
-  startTime: Date;
-  duration: number;
-  inProgress: boolean;
-  isError: boolean;
-};
-
-type TimelineState = "error" | "pending" | "complete";
-
-function SpanTimeline({ startTime, duration, inProgress, isError }: TimelineProps) {
-  const state = isError ? "error" : inProgress ? "pending" : "complete";
-  return (
-    <>
-      <div className="min-w-fit max-w-80">
-        <RunTimelineEvent
-          title="Started"
-          subtitle={<DateTimeAccurate date={startTime} />}
-          state="complete"
-        />
-        {state === "pending" ? (
-          <RunTimelineLine
-            title={
-              <span className="flex items-center gap-1">
-                <Spinner className="size-4" />
-                <span>
-                  <LiveTimer startTime={startTime} />
-                </span>
-              </span>
-            }
-            state={"inprogress"}
-          />
-        ) : (
-          <>
-            <RunTimelineLine
-              title={formatDuration(
-                startTime,
-                new Date(startTime.getTime() + nanosecondsToMilliseconds(duration))
-              )}
-              state={"complete"}
-            />
-            <RunTimelineEvent
-              title="Finished"
-              subtitle={
-                <DateTimeAccurate
-                  date={new Date(startTime.getTime() + nanosecondsToMilliseconds(duration))}
-                />
-              }
-              state={isError ? "error" : "complete"}
-            />
-          </>
-        )}
-      </div>
-    </>
-  );
-}
-
-function VerticalBar({ state }: { state: TimelineState }) {
-  return <div className={cn("h-3 w-0.75 rounded-full", classNameForState(state))}></div>;
-}
-
-function DottedLine() {
-  return (
-    <div className="flex h-0.75 flex-1 items-center justify-evenly">
-      <div className="h-0.75 w-0.75 bg-pending" />
-      <div className="h-0.75 w-0.75 bg-pending" />
-      <div className="h-0.75 w-0.75 bg-pending" />
-      <div className="h-0.75 w-0.75 bg-pending" />
-    </div>
-  );
-}
-
-function classNameForState(state: TimelineState) {
-  switch (state) {
-    case "pending": {
-      return "bg-pending";
-    }
-    case "complete": {
-      return "bg-success";
-    }
-    case "error": {
-      return "bg-error";
-    }
-  }
-}
-
-function SpanLinkElement({ link }: { link: SpanLink }) {
-  const organization = useOrganization();
-  const project = useProject();
-
-  switch (link.type) {
-    case "run": {
-      return (
-        <TextLink to={v3RunPath(organization, project, { friendlyId: link.runId })}>
-          {link.title}
-        </TextLink>
-      );
-    }
-    case "span": {
-      return (
-        <TextLink to={v3TraceSpanPath(organization, project, link.traceId, link.spanId)}>
-          {link.title}
-        </TextLink>
-      );
-    }
-  }
-
-  return null;
 }

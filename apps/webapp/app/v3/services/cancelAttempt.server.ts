@@ -5,6 +5,7 @@ import { eventRepository } from "../eventRepository.server";
 import { isCancellableRunStatus } from "../taskStatus";
 import { BaseService } from "./baseService.server";
 import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
+import { getTaskEventStoreTableForRun } from "../taskEventStore.server";
 
 export class CancelAttemptService extends BaseService {
   public async call(
@@ -28,7 +29,7 @@ export class CancelAttemptService extends BaseService {
       span.setAttribute("taskRunId", taskRunId);
       span.setAttribute("attemptId", attemptId);
 
-      const taskRunAttempt = await this._prisma.taskRunAttempt.findUnique({
+      const taskRunAttempt = await this._prisma.taskRunAttempt.findFirst({
         where: {
           friendlyId: attemptId,
         },
@@ -49,7 +50,7 @@ export class CancelAttemptService extends BaseService {
         return;
       }
 
-      await $transaction(this._prisma, async (tx) => {
+      await $transaction(this._prisma, "cancel attempt", async (tx) => {
         await tx.taskRunAttempt.update({
           where: {
             friendlyId: attemptId,
@@ -72,9 +73,14 @@ export class CancelAttemptService extends BaseService {
         });
       });
 
-      const inProgressEvents = await eventRepository.queryIncompleteEvents({
-        runId: taskRunAttempt.taskRun.friendlyId,
-      });
+      const inProgressEvents = await eventRepository.queryIncompleteEvents(
+        getTaskEventStoreTableForRun(taskRunAttempt.taskRun),
+        {
+          runId: taskRunAttempt.taskRun.friendlyId,
+        },
+        taskRunAttempt.taskRun.createdAt,
+        taskRunAttempt.taskRun.completedAt ?? undefined
+      );
 
       logger.debug("Cancelling in-progress events", {
         inProgressEvents: inProgressEvents.map((event) => event.id),
@@ -93,7 +99,7 @@ async function getAuthenticatedEnvironmentFromAttempt(
   friendlyId: string,
   prismaClient?: PrismaClientOrTransaction
 ) {
-  const taskRunAttempt = await (prismaClient ?? prisma).taskRunAttempt.findUnique({
+  const taskRunAttempt = await (prismaClient ?? prisma).taskRunAttempt.findFirst({
     where: {
       friendlyId,
     },

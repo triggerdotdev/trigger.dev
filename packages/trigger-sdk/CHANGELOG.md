@@ -1,5 +1,57 @@
 # @trigger.dev/sdk
 
+## 3.3.16
+
+### Patch Changes
+
+- You can add Alerts in the dashboard. One of these is a webhook, which this change greatly improves. ([#1703](https://github.com/triggerdotdev/trigger.dev/pull/1703))
+
+  The main change is that there's now an SDK function to verify and parse them (similar to Stripe SDK).
+
+  ```ts
+  const event = await webhooks.constructEvent(request, process.env.ALERT_WEBHOOK_SECRET!);
+  ```
+
+  If the signature you provide matches the one from the dashboard when you create the webhook, you will get a nicely typed object back for these three types:
+
+  - "alert.run.failed"
+  - "alert.deployment.success"
+  - "alert.deployment.failed"
+
+- Updated dependencies:
+  - `@trigger.dev/core@3.3.16`
+
+## 3.3.15
+
+### Patch Changes
+
+- Detect ffmpeg OOM errors, added manual OutOfMemoryError ([#1694](https://github.com/triggerdotdev/trigger.dev/pull/1694))
+- Updated dependencies:
+  - `@trigger.dev/core@3.3.15`
+
+## 3.3.14
+
+### Patch Changes
+
+- Added the ability to retry runs that fail with an Out Of Memory (OOM) error on a larger machine. ([#1691](https://github.com/triggerdotdev/trigger.dev/pull/1691))
+- Updated dependencies:
+  - `@trigger.dev/core@3.3.14`
+
+## 3.3.13
+
+### Patch Changes
+
+- Fixed issue with asResponse and withResponse not working on runs.retrieve ([#1648](https://github.com/triggerdotdev/trigger.dev/pull/1648))
+- Updated dependencies:
+  - `@trigger.dev/core@3.3.13`
+
+## 3.3.12
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@3.3.12`
+
 ## 3.3.11
 
 ### Patch Changes
