@@ -121,7 +121,9 @@ export class CliApiClient {
     );
   }
 
-  async createTaskRunAttempt(runFriendlyId: string) {
+  async createTaskRunAttempt(
+    runFriendlyId: string
+  ): Promise<ApiResult<z.infer<typeof TaskRunExecution>>> {
     if (!this.accessToken) {
       throw new Error("creatTaskRunAttempt: No access token");
     }

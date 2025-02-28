@@ -127,7 +127,11 @@ export class BackgroundWorkerCoordinator {
     });
   }
 
-  async executeTaskRun(id: string, payload: TaskRunExecutionPayload, messageId: string) {
+  async executeTaskRun(
+    id: string,
+    payload: TaskRunExecutionPayload,
+    messageId: string
+  ): Promise<TaskRunExecutionResult | undefined> {
     const worker = this._backgroundWorkers.get(id);
 
     if (!worker) {
