@@ -89,7 +89,7 @@ export function PromoteDeploymentDialog({
             name="redirectUrl"
             value={redirectPath}
             variant="primary/medium"
-            LeadingIcon={isLoading ? "spinner-white" : ArrowPathIcon}
+            LeadingIcon={isLoading ? SpinnerWhite : ArrowPathIcon}
             disabled={isLoading}
             shortcut={{ modifiers: ["mod"], key: "enter" }}
           >
