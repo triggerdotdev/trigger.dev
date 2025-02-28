@@ -1,5 +1,13 @@
 # @trigger.dev/react-hooks
 
+## 3.3.17
+
+### Patch Changes
+
+- Add support for two-phase deployments and task version pinning ([#1739](https://github.com/triggerdotdev/trigger.dev/pull/1739))
+- Updated dependencies:
+  - `@trigger.dev/core@3.3.17`
+
 ## 3.3.16
 
 ### Patch Changes

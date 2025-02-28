@@ -1,5 +1,12 @@
 # @trigger.dev/build
 
+## 3.3.17
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@3.3.17`
+
 ## 3.3.16
 
 ### Patch Changes

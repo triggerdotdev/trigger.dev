@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/python",
-  "version": "3.3.16",
+  "version": "3.3.17",
   "description": "Python runtime and build extension for Trigger.dev",
   "license": "MIT",
   "publishConfig": {
@@ -45,9 +45,9 @@
     "check-exports": "attw --pack ."
   },
   "dependencies": {
-    "@trigger.dev/build": "workspace:3.3.16",
-    "@trigger.dev/core": "workspace:3.3.16",
-    "@trigger.dev/sdk": "workspace:3.3.16",
+    "@trigger.dev/build": "workspace:3.3.17",
+    "@trigger.dev/core": "workspace:3.3.17",
+    "@trigger.dev/sdk": "workspace:3.3.17",
     "tinyexec": "^0.3.2"
   },
   "devDependencies": {
