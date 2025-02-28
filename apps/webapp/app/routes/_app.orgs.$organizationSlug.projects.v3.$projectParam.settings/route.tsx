@@ -1,5 +1,6 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
+import { FolderIcon } from "@heroicons/react/20/solid";
 import { Form, MetaFunction, useActionData, useNavigation } from "@remix-run/react";
 import { ActionFunction, json } from "@remix-run/server-runtime";
 import { z } from "zod";
@@ -18,6 +19,7 @@ import { Label } from "~/components/primitives/Label";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
+import { SpinnerWhite } from "~/components/primitives/Spinner";
 import { prisma } from "~/db.server";
 import { useProject } from "~/hooks/useProject";
 import { redirectWithSuccessMessage } from "~/models/message.server";
@@ -164,7 +166,7 @@ export default function Page() {
                     {...conform.input(projectName, { type: "text" })}
                     defaultValue={project.name}
                     placeholder="Your project name"
-                    icon="folder"
+                    icon={FolderIcon}
                     autoFocus
                   />
                   <FormError id={projectName.errorId}>{projectName.error}</FormError>
@@ -175,7 +177,7 @@ export default function Page() {
                       type="submit"
                       variant={"primary/small"}
                       disabled={isRenameLoading}
-                      LeadingIcon={isRenameLoading ? "spinner-white" : undefined}
+                      LeadingIcon={isRenameLoading ? SpinnerWhite : undefined}
                     >
                       Rename project
                     </Button>

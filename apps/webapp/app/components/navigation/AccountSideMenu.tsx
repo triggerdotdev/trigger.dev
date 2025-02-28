@@ -1,4 +1,4 @@
-import { ShieldCheckIcon } from "@heroicons/react/20/solid";
+import { ShieldCheckIcon, UserCircleIcon } from "@heroicons/react/20/solid";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { User } from "@trigger.dev/database";
 import { useFeatures } from "~/hooks/useFeatures";
@@ -36,7 +36,7 @@ export function AccountSideMenu({ user }: { user: User }) {
 
             <SideMenuItem
               name="Your profile"
-              icon="account"
+              icon={UserCircleIcon}
               activeIconColor="text-indigo-500"
               to={accountPath()}
               data-action="account"

@@ -1,11 +1,11 @@
 import { Prisma, type TaskRunStatus } from "@trigger.dev/database";
 import parse from "parse-duration";
-import { type Direction } from "~/components/runs/RunStatuses";
 import { sqlDatabaseSchema } from "~/db.server";
 import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { isCancellableRunStatus, isFinalRunStatus } from "~/v3/taskStatus";
 import { BasePresenter } from "./basePresenter.server";
 import { getAllTaskIdentifiers } from "~/models/task.server";
+import { Direction } from "~/components/ListPagination";
 
 export type RunListOptions = {
   userId?: string;

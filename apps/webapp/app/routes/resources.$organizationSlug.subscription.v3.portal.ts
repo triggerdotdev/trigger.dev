@@ -4,7 +4,7 @@ import { prisma } from "~/db.server";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { customerPortalUrl } from "~/services/platform.v3.server";
 import { requireUserId } from "~/services/session.server";
-import { OrganizationParamsSchema, usagePath } from "~/utils/pathBuilder";
+import { OrganizationParamsSchema, v3BillingPath } from "~/utils/pathBuilder";
 
 export async function loader({ request, params }: ActionFunctionArgs) {
   const userId = await requireUserId(request);
@@ -26,7 +26,7 @@ export async function loader({ request, params }: ActionFunctionArgs) {
 
   if (!org) {
     return redirectWithErrorMessage(
-      usagePath({ slug: organizationSlug }),
+      v3BillingPath({ slug: organizationSlug }),
       request,
       "Something went wrong. Please try again later."
     );
@@ -35,7 +35,7 @@ export async function loader({ request, params }: ActionFunctionArgs) {
   const result = await customerPortalUrl(org.id, organizationSlug);
   if (!result || !result.success || !result.customerPortalUrl) {
     return redirectWithErrorMessage(
-      usagePath({ slug: organizationSlug }),
+      v3BillingPath({ slug: organizationSlug }),
       request,
       "Something went wrong. Please try again later."
     );

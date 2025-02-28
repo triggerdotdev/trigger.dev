@@ -8,6 +8,7 @@ import { type ButtonContentPropsType, LinkButton } from "./Buttons";
 import { Paragraph, type ParagraphVariant } from "./Paragraph";
 import { ShortcutKey } from "./ShortcutKey";
 import { ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
+import { CheckIcon } from "@heroicons/react/20/solid";
 
 const Popover = PopoverPrimitive.Root;
 const PopoverTrigger = PopoverPrimitive.Trigger;
@@ -58,7 +59,7 @@ function PopoverMenuItem({
   leadingIconClassName,
 }: {
   to: string;
-  icon: string | React.ComponentType<any>;
+  icon: React.ComponentType<any>;
   title: React.ReactNode;
   isSelected?: boolean;
   variant?: ButtonContentPropsType;
@@ -72,7 +73,7 @@ function PopoverMenuItem({
       leadingIconClassName={leadingIconClassName}
       fullWidth
       textAlignLeft
-      TrailingIcon={isSelected ? "check" : undefined}
+      TrailingIcon={isSelected ? CheckIcon : undefined}
       className={cn(
         "group-hover:bg-charcoal-700",
         isSelected ? "bg-charcoal-750 group-hover:bg-charcoal-600/50" : undefined

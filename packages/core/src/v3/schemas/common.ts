@@ -361,3 +361,12 @@ export const SerializedError = z.object({
 });
 
 export type SerializedError = z.infer<typeof SerializedError>;
+
+export const RuntimeEnvironmentTypeSchema = z.enum([
+  "PRODUCTION",
+  "STAGING",
+  "DEVELOPMENT",
+  "PREVIEW",
+]);
+
+export type RuntimeEnvironmentType = z.infer<typeof RuntimeEnvironmentTypeSchema>;

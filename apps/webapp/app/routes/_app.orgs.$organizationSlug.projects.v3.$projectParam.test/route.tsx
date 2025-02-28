@@ -1,4 +1,4 @@
-import { BookOpenIcon } from "@heroicons/react/20/solid";
+import { BookOpenIcon, MagnifyingGlassIcon } from "@heroicons/react/20/solid";
 import {
   Link,
   MetaFunction,
@@ -209,7 +209,7 @@ function TaskSelector({
         <Input
           placeholder="Search tasks"
           variant="medium"
-          icon="search"
+          icon={MagnifyingGlassIcon}
           fullWidth={true}
           value={filterText}
           autoFocus
