@@ -10,6 +10,7 @@ import {
 } from "../schemas/index.js";
 import { ExecutorToWorkerProcessConnection } from "../zodIpc.js";
 import { RuntimeManager } from "./manager.js";
+import { preventMultipleWaits } from "./preventMultipleWaits.js";
 
 type Resolver = (value: CompletedWaitpoint) => void;
 
@@ -18,6 +19,8 @@ export class ManagedRuntimeManager implements RuntimeManager {
   private readonly resolversByWaitId: Map<string, Resolver> = new Map();
   // Maps a waitpoint ID to a wait ID
   private readonly resolversByWaitpoint: Map<string, string> = new Map();
+
+  private _preventMultipleWaits = preventMultipleWaits();
 
   constructor(
     private ipc: ExecutorToWorkerProcessConnection,
@@ -36,14 +39,16 @@ export class ManagedRuntimeManager implements RuntimeManager {
   }
 
   async waitForTask(params: { id: string; ctx: TaskRunContext }): Promise<TaskRunExecutionResult> {
-    const promise = new Promise<CompletedWaitpoint>((resolve) => {
-      this.resolversByWaitId.set(params.id, resolve);
+    return this._preventMultipleWaits(async () => {
+      const promise = new Promise<CompletedWaitpoint>((resolve) => {
+        this.resolversByWaitId.set(params.id, resolve);
+      });
+
+      const waitpoint = await promise;
+      const result = this.waitpointToTaskRunExecutionResult(waitpoint);
+
+      return result;
     });
-
-    const waitpoint = await promise;
-    const result = this.waitpointToTaskRunExecutionResult(waitpoint);
-
-    return result;
   }
 
   async waitForBatch(params: {
@@ -51,25 +56,27 @@ export class ManagedRuntimeManager implements RuntimeManager {
     runCount: number;
     ctx: TaskRunContext;
   }): Promise<BatchTaskRunExecutionResult> {
-    if (!params.runCount) {
-      return Promise.resolve({ id: params.id, items: [] });
-    }
+    return this._preventMultipleWaits(async () => {
+      if (!params.runCount) {
+        return Promise.resolve({ id: params.id, items: [] });
+      }
 
-    const promise = Promise.all(
-      Array.from({ length: params.runCount }, (_, index) => {
-        const resolverId = `${params.id}_${index}`;
-        return new Promise<CompletedWaitpoint>((resolve, reject) => {
-          this.resolversByWaitId.set(resolverId, resolve);
-        });
-      })
-    );
+      const promise = Promise.all(
+        Array.from({ length: params.runCount }, (_, index) => {
+          const resolverId = `${params.id}_${index}`;
+          return new Promise<CompletedWaitpoint>((resolve, reject) => {
+            this.resolversByWaitId.set(resolverId, resolve);
+          });
+        })
+      );
 
-    const waitpoints = await promise;
+      const waitpoints = await promise;
 
-    return {
-      id: params.id,
-      items: waitpoints.map(this.waitpointToTaskRunExecutionResult),
-    };
+      return {
+        id: params.id,
+        items: waitpoints.map(this.waitpointToTaskRunExecutionResult),
+      };
+    });
   }
 
   async waitForWaitpoint({
@@ -79,17 +86,19 @@ export class ManagedRuntimeManager implements RuntimeManager {
     waitpointFriendlyId: string;
     finishDate?: Date;
   }): Promise<WaitpointTokenResult> {
-    const promise = new Promise<CompletedWaitpoint>((resolve) => {
-      this.resolversByWaitId.set(waitpointFriendlyId, resolve);
+    return this._preventMultipleWaits(async () => {
+      const promise = new Promise<CompletedWaitpoint>((resolve) => {
+        this.resolversByWaitId.set(waitpointFriendlyId, resolve);
+      });
+
+      const waitpoint = await promise;
+
+      return {
+        ok: !waitpoint.outputIsError,
+        output: waitpoint.output,
+        outputType: waitpoint.outputType,
+      };
     });
-
-    const waitpoint = await promise;
-
-    return {
-      ok: !waitpoint.outputIsError,
-      output: waitpoint.output,
-      outputType: waitpoint.outputType,
-    };
   }
 
   associateWaitWithWaitpoint(waitId: string, waitpointId: string) {

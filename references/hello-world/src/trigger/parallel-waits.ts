@@ -6,12 +6,14 @@ import { childTask } from "./example.js";
  */
 export const parallelWaits = task({
   id: "parallel-waits",
-  run: async (payload: any, { ctx }) => {
+  run: async ({ skipDuration = false }: { skipDuration?: boolean }) => {
     //parallel wait for 5/10 seconds
-    await Promise.all([
-      wait.for({ seconds: 5 }),
-      wait.until({ date: new Date(Date.now() + 10_000) }),
-    ]);
+    if (!skipDuration) {
+      await Promise.all([
+        wait.for({ seconds: 5 }),
+        wait.until({ date: new Date(Date.now() + 10_000) }),
+      ]);
+    }
 
     //parallel task call
     await Promise.all([

@@ -2857,7 +2857,7 @@ export class RunEngine {
         const retriableError = shouldRetryError(taskRunErrorEnhancer(completion.error));
 
         const permanentlyFailRun = async (run?: { status: TaskRunStatus; spanId: string }) => {
-          // Emit and event so we can complete any spans of stalled executions
+          // Emit an event so we can complete any spans of stalled executions
           if (forceRequeue && run) {
             this.eventBus.emit("runAttemptFailed", {
               time: failedAt,
