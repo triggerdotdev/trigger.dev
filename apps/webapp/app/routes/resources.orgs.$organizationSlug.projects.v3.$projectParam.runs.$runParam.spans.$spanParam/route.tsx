@@ -690,14 +690,11 @@ function RunBody({
                     ) : (
                       <div className="mt-1 flex flex-wrap items-center gap-1 text-xs">
                         {run.tags.map((tag: string) => (
-                          <SimpleTooltip
+                          <RunTag
                             key={tag}
-                            button={
-                              <Link to={v3RunsPath(organization, project, { tags: [tag] })}>
-                                <RunTag tag={tag} />
-                              </Link>
-                            }
-                            content={`Filter runs by ${tag}`}
+                            tag={tag}
+                            to={v3RunsPath(organization, project, { tags: [tag] })}
+                            tooltip={`Filter runs by ${tag}`}
                           />
                         ))}
                       </div>
