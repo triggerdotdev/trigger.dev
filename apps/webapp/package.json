@@ -254,7 +254,7 @@
     "tsconfig-paths": "^3.14.1",
     "typescript": "^5.1.6",
     "vite-tsconfig-paths": "^4.0.5",
-    "vitest": "^1.4.0"
+    "vitest": "^0.29.0"
   },
   "engines": {
     "node": ">=16.0.0"
