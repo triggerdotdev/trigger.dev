@@ -29,7 +29,7 @@ export function RunTag({ tag, to, tooltip }: { tag: string; to?: string; tooltip
   const [isHovered, setIsHovered] = useState(false);
 
   // Render the basic tag content
-  const renderBasicTagContent = () => {
+  const renderTagContent = () => {
     if (typeof tagResult === "string") {
       return (
         <>
@@ -59,14 +59,14 @@ export function RunTag({ tag, to, tooltip }: { tag: string; to?: string; tooltip
     <SimpleTooltip
       button={
         <Link to={to} className="group">
-          <span className="flex h-6 items-stretch">{renderBasicTagContent()}</span>
+          <span className="flex h-6 items-stretch">{renderTagContent()}</span>
         </Link>
       }
       content={tooltip || `Filter runs by ${tag}`}
       disableHoverableContent
     />
   ) : (
-    <span className="flex h-6 items-stretch">{renderBasicTagContent()}</span>
+    <span className="flex h-6 items-stretch">{renderTagContent()}</span>
   );
 
   return (
