@@ -501,7 +501,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
       testUrl: `${authorization.dashboardUrl}/projects/v3/${
         resolvedConfig.project
       }/test?environment=${options.env === "prod" ? "prod" : "stg"}`,
-      needsPromotion: options.skipPromotion ? "false" : "true",
+      needsPromotion: options.skipPromotion ? "true" : "false",
     },
   });
 }
