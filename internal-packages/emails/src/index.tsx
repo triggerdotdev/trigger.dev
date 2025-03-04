@@ -15,7 +15,7 @@ import MagicLinkEmail from "../emails/magic-link";
 import WelcomeEmail from "../emails/welcome";
 import { constructMailTransport, MailTransport, MailTransportOptions } from "./transports";
 
-export { type MailTransportOptions }
+export { type MailTransportOptions };
 
 export const DeliverEmailSchema = z
   .discriminatedUnion("email", [
@@ -109,7 +109,9 @@ export class EmailClient {
       }
       case "alert-run": {
         return {
-          subject: `[${data.organization}] Run ${data.runId} failed for ${data.taskIdentifier} [${data.version}.${data.environment}] ${data.error.message}`,
+          subject: `[${data.organization}] Run ${data.runId} failed for ${data.taskIdentifier} [${
+            data.version
+          }.${data.environment}] ${formatErrorMessageForSubject(data.error.message)}`,
           component: <AlertRunFailureEmail {...data} />,
         };
       }
@@ -127,4 +129,13 @@ export class EmailClient {
       }
     }
   }
+}
+
+function formatErrorMessageForSubject(message?: string) {
+  if (!message) {
+    return "";
+  }
+
+  const singleLine = message.replace(/[\r\n]+/g, " ");
+  return singleLine.length > 30 ? singleLine.substring(0, 27) + "..." : singleLine;
 }
