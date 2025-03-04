@@ -29,13 +29,24 @@ export const convertUrlToMarkdown = schemaTask({
 export const pythonRunInlineTask = task({
   id: "python-run-inline",
   run: async () => {
-    const result = await python.runInline(`
+    const result = await python.runInline(
+      `
+import os
 import html2text as h2t
 
 h = h2t.HTML2Text()
 
 print(h.handle("<p>Hello, <a href='https://www.google.com/earth/'>world</a>!"))
-`);
+print(f"API Key: {os.environ['OPENAI_API_KEY']}")
+`,
+      {
+        env: {
+          OPENAI_API_KEY: "sk-1234567890",
+        },
+      }
+    );
+
+    console.log(result.stdout);
 
     const streamingResult = python.stream.runInline(`
 import html2text as h2t

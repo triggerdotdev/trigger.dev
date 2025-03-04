@@ -151,3 +151,32 @@ export const myStreamingScript = task({
   },
 });
 ```
+
+## Environment variables
+
+We automatically inject the environment variables in the `process.env` object when running Python scripts. You can access these environment variables in your Python scripts using the `os.environ` dictionary. For example:
+
+```python
+import os
+
+print(os.environ["MY_ENV_VAR"])
+```
+
+You can also pass additional environment variables to the Python script using the `env` option in the `python.runScript` function. For example:
+
+```ts
+import { task } from "@trigger.dev/sdk/v3";
+import { python } from "@trigger.dev/python";
+
+export const myScript = task({
+  id: "my-python-script",
+  run: async () => {
+    const result = await python.runScript("./python/my_script.py", ["hello", "world"], {
+      env: {
+        MY_ENV_VAR: "my value",
+      },
+    });
+    return result.stdout;
+  },
+});
+```

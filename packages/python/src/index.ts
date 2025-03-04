@@ -9,8 +9,12 @@ import fs from "node:fs";
 import { Result, x, Options as XOptions } from "tinyexec";
 import { createTempFileSync, withTempFile } from "./utils/tempFiles.js";
 
+export type PythonExecOptions = Partial<XOptions> & {
+  env?: { [key: string]: string | undefined };
+};
+
 export const python = {
-  async run(scriptArgs: string[] = [], options: Partial<XOptions> = {}): Promise<Result> {
+  async run(scriptArgs: string[] = [], options: PythonExecOptions = {}): Promise<Result> {
     const pythonBin = process.env.PYTHON_BIN_PATH || "python";
 
     return await logger.trace(
@@ -18,6 +22,13 @@ export const python = {
       async (span) => {
         const result = await x(pythonBin, scriptArgs, {
           ...options,
+          nodeOptions: {
+            ...(options.nodeOptions || {}),
+            env: {
+              ...process.env,
+              ...options.env,
+            },
+          },
           throwOnError: false, // Ensure errors are handled manually
         });
 
@@ -48,7 +59,7 @@ export const python = {
   async runScript(
     scriptPath: string,
     scriptArgs: string[] = [],
-    options: Partial<XOptions> = {}
+    options: PythonExecOptions = {}
   ): Promise<Result> {
     assert(scriptPath, "Script path is required");
     assert(fs.existsSync(scriptPath), `Script does not exist: ${scriptPath}`);
@@ -63,6 +74,13 @@ export const python = {
           [scriptPath, ...scriptArgs],
           {
             ...options,
+            nodeOptions: {
+              ...(options.nodeOptions || {}),
+              env: {
+                ...process.env,
+                ...options.env,
+              },
+            },
             throwOnError: false,
           }
         );
@@ -92,7 +110,7 @@ export const python = {
     );
   },
 
-  async runInline(scriptContent: string, options: Partial<XOptions> = {}): Promise<Result> {
+  async runInline(scriptContent: string, options: PythonExecOptions = {}): Promise<Result> {
     assert(scriptContent, "Script content is required");
 
     return await logger.trace(
@@ -109,6 +127,13 @@ export const python = {
             const pythonBin = process.env.PYTHON_BIN_PATH || "python";
             const result = await x(pythonBin, [tempFilePath], {
               ...options,
+              nodeOptions: {
+                ...(options.nodeOptions || {}),
+                env: {
+                  ...process.env,
+                  ...options.env,
+                },
+              },
               throwOnError: false,
             });
 
@@ -139,11 +164,18 @@ export const python = {
   },
   // Stream namespace for streaming functions
   stream: {
-    run(scriptArgs: string[] = [], options: Partial<XOptions> = {}): AsyncIterableStream<string> {
+    run(scriptArgs: string[] = [], options: PythonExecOptions = {}): AsyncIterableStream<string> {
       const pythonBin = process.env.PYTHON_BIN_PATH || "python";
 
       const pythonProcess = x(pythonBin, scriptArgs, {
         ...options,
+        nodeOptions: {
+          ...(options.nodeOptions || {}),
+          env: {
+            ...process.env,
+            ...options.env,
+          },
+        },
         throwOnError: false,
       });
 
@@ -167,7 +199,7 @@ export const python = {
     runScript(
       scriptPath: string,
       scriptArgs: string[] = [],
-      options: Partial<XOptions> = {}
+      options: PythonExecOptions = {}
     ): AsyncIterableStream<string> {
       assert(scriptPath, "Script path is required");
       assert(fs.existsSync(scriptPath), `Script does not exist: ${scriptPath}`);
@@ -176,6 +208,13 @@ export const python = {
 
       const pythonProcess = x(pythonBin, [scriptPath, ...scriptArgs], {
         ...options,
+        nodeOptions: {
+          ...(options.nodeOptions || {}),
+          env: {
+            ...process.env,
+            ...options.env,
+          },
+        },
         throwOnError: false,
       });
 
@@ -197,7 +236,7 @@ export const python = {
         },
       });
     },
-    runInline(scriptContent: string, options: Partial<XOptions> = {}): AsyncIterableStream<string> {
+    runInline(scriptContent: string, options: PythonExecOptions = {}): AsyncIterableStream<string> {
       assert(scriptContent, "Script content is required");
 
       const pythonBin = process.env.PYTHON_BIN_PATH || "python";
@@ -206,6 +245,13 @@ export const python = {
 
       const pythonProcess = x(pythonBin, [pythonScriptPath], {
         ...options,
+        nodeOptions: {
+          ...(options.nodeOptions || {}),
+          env: {
+            ...process.env,
+            ...options.env,
+          },
+        },
         throwOnError: false,
       });
 
