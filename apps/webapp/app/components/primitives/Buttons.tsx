@@ -2,7 +2,6 @@ import { Link, LinkProps, NavLink, NavLinkProps } from "@remix-run/react";
 import React, { forwardRef, ReactNode, useImperativeHandle, useRef } from "react";
 import { ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
-import { IconNamesOrString, NamedIcon } from "./NamedIcon";
 import { ShortcutKey } from "./ShortcutKey";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./Tooltip";
 
@@ -165,8 +164,8 @@ const allVariants = {
 
 export type ButtonContentPropsType = {
   children?: React.ReactNode;
-  LeadingIcon?: React.ComponentType<any> | IconNamesOrString;
-  TrailingIcon?: React.ComponentType<any> | IconNamesOrString;
+  LeadingIcon?: React.ComponentType<any>;
+  TrailingIcon?: React.ComponentType<any>;
   trailingIconClassName?: string;
   leadingIconClassName?: string;
   fullWidth?: boolean;
@@ -220,27 +219,16 @@ export function ButtonContent(props: ButtonContentPropsType) {
           iconSpacing
         )}
       >
-        {LeadingIcon &&
-          (typeof LeadingIcon === "string" ? (
-            <NamedIcon
-              name={LeadingIcon}
-              className={cn(
-                iconClassName,
-                leadingIconClassName,
-                "shrink-0 justify-start",
-                variation.icon
-              )}
-            />
-          ) : (
-            <LeadingIcon
-              className={cn(
-                iconClassName,
-                variation.icon,
-                leadingIconClassName,
-                "shrink-0 justify-start"
-              )}
-            />
-          ))}
+        {LeadingIcon && (
+          <LeadingIcon
+            className={cn(
+              iconClassName,
+              variation.icon,
+              leadingIconClassName,
+              "shrink-0 justify-start"
+            )}
+          />
+        )}
 
         {text &&
           (typeof text === "string" ? (
@@ -256,27 +244,16 @@ export function ButtonContent(props: ButtonContentPropsType) {
           props.shortcutPosition === "before-trailing-icon" &&
           renderShortcutKey()}
 
-        {TrailingIcon &&
-          (typeof TrailingIcon === "string" ? (
-            <NamedIcon
-              name={TrailingIcon}
-              className={cn(
-                iconClassName,
-                trailingIconClassName,
-                "shrink-0 justify-end",
-                variation.icon
-              )}
-            />
-          ) : (
-            <TrailingIcon
-              className={cn(
-                iconClassName,
-                variation.icon,
-                trailingIconClassName,
-                "shrink-0 justify-end"
-              )}
-            />
-          ))}
+        {TrailingIcon && (
+          <TrailingIcon
+            className={cn(
+              iconClassName,
+              variation.icon,
+              trailingIconClassName,
+              "shrink-0 justify-end"
+            )}
+          />
+        )}
 
         {shortcut &&
           !tooltip &&

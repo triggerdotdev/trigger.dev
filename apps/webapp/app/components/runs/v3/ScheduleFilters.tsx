@@ -1,4 +1,4 @@
-import { XMarkIcon } from "@heroicons/react/20/solid";
+import { MagnifyingGlassIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { useNavigate } from "@remix-run/react";
 import { type RuntimeEnvironment } from "@trigger.dev/database";
 import { useCallback } from "react";
@@ -97,7 +97,7 @@ export function ScheduleFilters({ possibleEnvironments, possibleTasks }: Schedul
       <Input
         name="search"
         placeholder="Search schedule id, external id, deduplication id or CRON pattern"
-        icon="search"
+        icon={MagnifyingGlassIcon}
         variant="tertiary"
         className="grow"
         defaultValue={search}

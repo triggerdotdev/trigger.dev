@@ -7,12 +7,10 @@ import type { ToastMessage } from "~/models/message.server";
 import { commitSession, getSession } from "~/models/message.server";
 import tailwindStylesheetUrl from "~/tailwind.css";
 import { RouteErrorDisplay } from "./components/ErrorDisplay";
-import { HighlightInit } from "./components/HighlightInit";
 import { AppContainer, MainCenteredContainer } from "./components/layout/AppLayout";
 import { Toast } from "./components/primitives/Toast";
 import { env } from "./env.server";
 import { featuresForRequest } from "./features.server";
-import { useHighlight } from "./hooks/useHighlight";
 import { usePostHog } from "./hooks/usePostHog";
 import { getUser } from "./services/session.server";
 import { appEnvTitleTag } from "./utils";
@@ -40,7 +38,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const session = await getSession(request.headers.get("cookie"));
   const toastMessage = session.get("toastMessage") as ToastMessage;
   const posthogProjectKey = env.POSTHOG_PROJECT_KEY;
-  const highlightProjectId = env.HIGHLIGHT_PROJECT_ID;
   const features = featuresForRequest(request);
 
   return typedjson(
@@ -48,7 +45,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       user: await getUser(request),
       toastMessage,
       posthogProjectKey,
-      highlightProjectId,
       features,
       appEnv: env.APP_ENV,
       appOrigin: env.APP_ORIGIN,
@@ -91,19 +87,11 @@ export function ErrorBoundary() {
 }
 
 function App() {
-  const { posthogProjectKey, highlightProjectId } = useTypedLoaderData<typeof loader>();
+  const { posthogProjectKey } = useTypedLoaderData<typeof loader>();
   usePostHog(posthogProjectKey);
-  useHighlight();
 
   return (
     <>
-      {highlightProjectId && (
-        <HighlightInit
-          projectId={highlightProjectId}
-          tracingOrigins={true}
-          networkRecording={{ enabled: true, recordHeadersAndBody: true }}
-        />
-      )}
       <html lang="en" className="h-full">
         <head>
           <Meta />

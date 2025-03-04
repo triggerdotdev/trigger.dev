@@ -5,9 +5,12 @@ import {
   BellAlertIcon,
   ChartBarIcon,
   ClockIcon,
+  Cog8ToothIcon,
   CreditCardIcon,
+  FolderIcon,
   IdentificationIcon,
   KeyIcon,
+  PlusIcon,
   RectangleStackIcon,
   ServerStackIcon,
   ShieldCheckIcon,
@@ -16,6 +19,7 @@ import {
 import { UserGroupIcon, UserPlusIcon } from "@heroicons/react/24/solid";
 import { useNavigation } from "@remix-run/react";
 import { Fragment, ReactNode, useEffect, useRef, useState } from "react";
+import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { useFeatures } from "~/hooks/useFeatures";
 import { type MatchedOrganization } from "~/hooks/useOrganizations";
@@ -30,19 +34,10 @@ import {
   logoutPath,
   newOrganizationPath,
   newProjectPath,
-  organizationBillingPath,
-  organizationIntegrationsPath,
   organizationPath,
   organizationSettingsPath,
   organizationTeamPath,
   personalAccessTokensPath,
-  projectEnvironmentsPath,
-  projectHttpEndpointsPath,
-  projectPath,
-  projectRunsPath,
-  projectSettingsPath,
-  projectSetupPath,
-  projectTriggersPath,
   v3ApiKeysPath,
   v3BatchesPath,
   v3BillingPath,
@@ -60,11 +55,7 @@ import {
 import { ImpersonationBanner } from "../ImpersonationBanner";
 import { LogoIcon } from "../LogoIcon";
 import { UserProfilePhoto } from "../UserProfilePhoto";
-import { FreePlanUsage } from "../billing/v2/FreePlanUsage";
-import { Badge } from "../primitives/Badge";
-import { LinkButton } from "../primitives/Buttons";
-import { Header2 } from "../primitives/Headers";
-import { Paragraph } from "../primitives/Paragraph";
+import { FreePlanUsage } from "../billing/FreePlanUsage";
 import {
   Popover,
   PopoverArrowTrigger,
@@ -73,7 +64,6 @@ import {
   PopoverMenuItem,
   PopoverSectionHeader,
 } from "../primitives/Popover";
-import { TextLink } from "../primitives/TextLink";
 import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
@@ -134,15 +124,15 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
           ref={borderRef}
         >
           <div className="mb-6 flex flex-col gap-1 px-1">
-            {project.version === "V2" ? (
-              <V2ProjectSideMenu organization={organization} project={project} />
-            ) : (
-              <V3ProjectSideMenu organization={organization} project={project} />
-            )}
+            <V3ProjectSideMenu organization={organization} project={project} />
           </div>
           <div className="mb-1 flex flex-col gap-1 px-1">
             <SideMenuHeader title={"Organization"}>
-              <PopoverMenuItem to={newProjectPath(organization)} title="New Project" icon="plus" />
+              <PopoverMenuItem
+                to={newProjectPath(organization)}
+                title="New Project"
+                icon={PlusIcon}
+              />
               <PopoverMenuItem
                 to={inviteTeamMemberPath(organization)}
                 title="Invite team member"
@@ -150,17 +140,9 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
                 leadingIconClassName="text-indigo-500"
               />
             </SideMenuHeader>
-            {project.version === "V2" && (
-              <SideMenuItem
-                name="Integrations"
-                icon="integration"
-                to={organizationIntegrationsPath(organization)}
-                data-action="integrations"
-              />
-            )}
             <SideMenuItem
               name="Projects"
-              icon="folder"
+              icon={FolderIcon}
               to={organizationPath(organization)}
               data-action="projects"
             />
@@ -171,41 +153,28 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
               activeIconColor="text-amber-500"
               data-action="team"
             />
-            {organization.projects.some((proj) => proj.version === "V3") && isManagedCloud && (
-              <>
-                <SideMenuItem
-                  name="Usage"
-                  icon={ChartBarIcon}
-                  to={v3UsagePath(organization)}
-                  activeIconColor="text-green-600"
-                  data-action="usage"
-                />
-                <SideMenuItem
-                  name="Billing"
-                  icon={CreditCardIcon}
-                  to={v3BillingPath(organization)}
-                  activeIconColor="text-blue-600"
-                  data-action="billing"
-                  badge={
-                    currentPlan?.v3Subscription?.isPaying
-                      ? currentPlan?.v3Subscription?.plan?.title
-                      : undefined
-                  }
-                />
-              </>
-            )}
-            {organization.projects.some((proj) => proj.version === "V2") && (
-              <SideMenuItem
-                name="Usage (v2)"
-                icon={ChartBarIcon}
-                to={organizationBillingPath(organization)}
-                activeIconColor="text-green-600"
-                data-action="usage & billing"
-              />
-            )}
+            <SideMenuItem
+              name="Usage"
+              icon={ChartBarIcon}
+              to={v3UsagePath(organization)}
+              activeIconColor="text-green-600"
+              data-action="usage"
+            />
+            <SideMenuItem
+              name="Billing"
+              icon={CreditCardIcon}
+              to={v3BillingPath(organization)}
+              activeIconColor="text-blue-600"
+              data-action="billing"
+              badge={
+                currentPlan?.v3Subscription?.isPaying
+                  ? currentPlan?.v3Subscription?.plan?.title
+                  : undefined
+              }
+            />
             <SideMenuItem
               name="Organization settings"
-              icon="settings"
+              icon={Cog8ToothIcon}
               activeIconColor="text-teal-500"
               to={organizationSettingsPath(organization)}
               data-action="organization-settings"
@@ -214,7 +183,7 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
         </div>
         <div className="flex flex-col gap-1 border-t border-grid-bright p-1">
           <HelpAndFeedback />
-          {isV3Project && isFreeV3User && (
+          {isFreeV3User && (
             <FreePlanUsage
               to={v3BillingPath(organization)}
               percentage={currentPlan.v3Usage.usagePercentage}
@@ -265,19 +234,14 @@ function ProjectSelector({
                   return (
                     <PopoverMenuItem
                       key={p.id}
-                      to={projectPath(organization, p)}
+                      to={v3ProjectPath(organization, p)}
                       title={
                         <div className="flex w-full items-center justify-between text-text-bright">
                           <span className="grow truncate text-left">{p.name}</span>
-                          {p.version === "V2" && (
-                            <Badge variant="small" className="normal-case">
-                              v2
-                            </Badge>
-                          )}
                         </div>
                       }
                       isSelected={isSelected}
-                      icon="folder"
+                      icon={FolderIcon}
                     />
                   );
                 })
@@ -285,14 +249,14 @@ function ProjectSelector({
                 <PopoverMenuItem
                   to={newProjectPath(organization)}
                   title="New project"
-                  icon="plus"
+                  icon={PlusIcon}
                 />
               )}
             </div>
           </Fragment>
         ))}
         <div className="border-t border-charcoal-700 p-1">
-          <PopoverMenuItem to={newOrganizationPath()} title="New Organization" icon="plus" />
+          <PopoverMenuItem to={newOrganizationPath()} title="New Organization" icon={PlusIcon} />
         </div>
       </PopoverContent>
     </Popover>
@@ -361,67 +325,6 @@ function UserMenu({ user }: { user: SideMenuUser }) {
   );
 }
 
-function V2ProjectSideMenu({
-  project,
-  organization,
-}: {
-  project: SideMenuProject;
-  organization: MatchedOrganization;
-}) {
-  return (
-    <>
-      <SideMenuHeader title={"Project (v2)"}>
-        <PopoverMenuItem
-          to={projectSetupPath(organization, project)}
-          title="Framework setup"
-          icon="plus"
-        />
-      </SideMenuHeader>
-      <SideMenuItem
-        name="Jobs"
-        icon="job"
-        activeIconColor="text-indigo-500"
-        to={projectPath(organization, project)}
-        data-action="jobs"
-      />
-      <SideMenuItem
-        name="Runs"
-        icon="runs"
-        activeIconColor="text-teal-500"
-        to={projectRunsPath(organization, project)}
-      />
-      <SideMenuItem
-        name="Triggers"
-        icon="trigger"
-        activeIconColor="text-amber-500"
-        to={projectTriggersPath(organization, project)}
-        data-action="triggers"
-      />
-      <SideMenuItem
-        name="HTTP endpoints"
-        icon="http-endpoint"
-        activeIconColor="text-pink-500"
-        to={projectHttpEndpointsPath(organization, project)}
-        data-action="httpendpoints"
-      />
-      <SideMenuItem
-        name="Environments & API Keys"
-        icon="environment"
-        activeIconColor="text-rose-500"
-        to={projectEnvironmentsPath(organization, project)}
-        data-action="environments & api keys"
-      />
-      <SideMenuItem
-        name="Project settings"
-        icon="settings"
-        activeIconColor="text-teal-500"
-        to={projectSettingsPath(organization, project)}
-        data-action="project-settings"
-      />
-    </>
-  );
-}
-
 function V3ProjectSideMenu({
   project,
   organization,
@@ -441,7 +344,7 @@ function V3ProjectSideMenu({
       />
       <SideMenuItem
         name="Runs"
-        icon="runs"
+        icon={RunsIcon}
         activeIconColor="text-teal-500"
         to={v3RunsPath(organization, project)}
       />
@@ -504,7 +407,7 @@ function V3ProjectSideMenu({
       />
       <SideMenuItem
         name="Project settings"
-        icon="settings"
+        icon={Cog8ToothIcon}
         activeIconColor="text-teal-500"
         to={v3ProjectSettingsPath(organization, project)}
         data-action="project-settings"
