@@ -1,5 +1,17 @@
 # trigger.dev
 
+## 3.3.17
+
+### Patch Changes
+
+- Add support for two-phase deployments and task version pinning ([#1739](https://github.com/triggerdotdev/trigger.dev/pull/1739))
+- Fix issue where a typescript file with only types causes indexing to fail ([#1735](https://github.com/triggerdotdev/trigger.dev/pull/1735))
+- Upgrade @clack/prompts to 0.10.0 to fix CI output ([#1740](https://github.com/triggerdotdev/trigger.dev/pull/1740))
+- Fixes needsPromotion github action output ([#1741](https://github.com/triggerdotdev/trigger.dev/pull/1741))
+- Updated dependencies:
+  - `@trigger.dev/core@3.3.17`
+  - `@trigger.dev/build@3.3.17`
+
 ## 3.3.16
 
 ### Patch Changes
