@@ -12,6 +12,8 @@ export function runStatusFromError(error: TaskRunError): TaskRunStatus {
   //"SYSTEM_FAILURE" should be used if it's an error from our system
   //e.g. a bug
   switch (error.code) {
+    case "RECURSIVE_WAIT_DEADLOCK":
+      return "COMPLETED_WITH_ERRORS";
     case "TASK_RUN_CANCELLED":
       return "CANCELED";
     case "MAX_DURATION_EXCEEDED":

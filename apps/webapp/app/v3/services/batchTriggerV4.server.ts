@@ -171,6 +171,7 @@ export class BatchTriggerV4Service extends WithRunEngine {
           batchId: batch.id,
           environmentId: environment.id,
           projectId: environment.projectId,
+          organizationId: environment.organizationId,
         });
       }
 
@@ -262,6 +263,7 @@ export class BatchTriggerV4Service extends WithRunEngine {
             batchId: batch.id,
             environmentId: environment.id,
             projectId: environment.projectId,
+            organizationId: environment.organizationId,
             tx,
           });
         }

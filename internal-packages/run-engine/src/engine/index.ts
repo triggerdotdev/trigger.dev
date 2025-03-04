@@ -1455,7 +1455,9 @@ export class RunEngine {
             attemptNumber: true,
             spanId: true,
             batchId: true,
+            createdAt: true,
             completedAt: true,
+            taskEventStore: true,
             runtimeEnvironment: {
               select: {
                 organizationId: true,
@@ -1525,6 +1527,9 @@ export class RunEngine {
             id: run.id,
             friendlyId: run.friendlyId,
             spanId: run.spanId,
+            taskEventStore: run.taskEventStore,
+            createdAt: run.createdAt,
+            completedAt: run.completedAt,
             error,
           },
         });
@@ -2091,7 +2096,7 @@ export class RunEngine {
         // 1. Find the TaskRuns blocked by this waitpoint
         const affectedTaskRuns = await tx.taskRunWaitpoint.findMany({
           where: { waitpointId: id },
-          select: { taskRunId: true, spanIdToComplete: true },
+          select: { taskRunId: true, spanIdToComplete: true, createdAt: true },
         });
 
         if (affectedTaskRuns.length === 0) {
@@ -2157,7 +2162,11 @@ export class RunEngine {
       if (run.spanIdToComplete) {
         this.eventBus.emit("cachedRunCompleted", {
           time: new Date(),
-          spanId: run.spanIdToComplete,
+          span: {
+            id: run.spanIdToComplete,
+            createdAt: run.createdAt,
+          },
+          blockedRunId: run.taskRunId,
           hasError: output?.isError ?? false,
         });
       }
@@ -2610,6 +2619,9 @@ export class RunEngine {
               organizationId: true,
             },
           },
+          createdAt: true,
+          completedAt: true,
+          taskEventStore: true,
         },
       });
 
@@ -2748,6 +2760,9 @@ export class RunEngine {
               },
             },
             batchId: true,
+            createdAt: true,
+            completedAt: true,
+            taskEventStore: true,
           },
         });
         const newSnapshot = await getLatestExecutionSnapshot(prisma, runId);
@@ -2783,6 +2798,9 @@ export class RunEngine {
             spanId: run.spanId,
             output: completion.output,
             outputType: completion.outputType,
+            createdAt: run.createdAt,
+            completedAt: run.completedAt,
+            taskEventStore: run.taskEventStore,
           },
         });
 
@@ -2858,7 +2876,13 @@ export class RunEngine {
         const error = sanitizeError(completion.error);
         const retriableError = shouldRetryError(taskRunErrorEnhancer(completion.error));
 
-        const permanentlyFailRun = async (run?: { status: TaskRunStatus; spanId: string }) => {
+        const permanentlyFailRun = async (run?: {
+          status: TaskRunStatus;
+          spanId: string;
+          createdAt: Date;
+          completedAt: Date | null;
+          taskEventStore: string;
+        }) => {
           // Emit an event so we can complete any spans of stalled executions
           if (forceRequeue && run) {
             this.eventBus.emit("runAttemptFailed", {
@@ -2869,6 +2893,9 @@ export class RunEngine {
                 spanId: run.spanId,
                 error,
                 attemptNumber: latestSnapshot.attemptNumber ?? 0,
+                createdAt: run.createdAt,
+                completedAt: run.completedAt,
+                taskEventStore: run.taskEventStore,
               },
             });
           }
@@ -2914,6 +2941,9 @@ export class RunEngine {
                 organizationId: true,
               },
             },
+            taskEventStore: true,
+            createdAt: true,
+            completedAt: true,
           },
         });
 
@@ -2944,6 +2974,9 @@ export class RunEngine {
               spanId: minimalRun.spanId,
               error,
               attemptNumber: latestSnapshot.attemptNumber ?? 0,
+              taskEventStore: minimalRun.taskEventStore,
+              createdAt: minimalRun.createdAt,
+              completedAt: minimalRun.completedAt,
             },
           });
         }
@@ -3094,6 +3127,9 @@ export class RunEngine {
               organizationId: true,
             },
           },
+          taskEventStore: true,
+          createdAt: true,
+          completedAt: true,
         },
       });
 
@@ -3127,6 +3163,9 @@ export class RunEngine {
           status: run.status,
           spanId: run.spanId,
           error,
+          taskEventStore: run.taskEventStore,
+          createdAt: run.createdAt,
+          completedAt: run.completedAt,
         },
       });
 

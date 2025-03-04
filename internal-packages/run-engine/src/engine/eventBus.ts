@@ -25,6 +25,9 @@ export type EventBusEvents = {
         spanId: string;
         error: TaskRunError;
         attemptNumber: number;
+        taskEventStore: string;
+        createdAt: Date;
+        completedAt: Date | null;
       };
     },
   ];
@@ -35,6 +38,9 @@ export type EventBusEvents = {
         id: string;
         spanId: string;
         ttl: string | null;
+        taskEventStore: string;
+        createdAt: Date;
+        completedAt: Date | null;
       };
     },
   ];
@@ -46,6 +52,9 @@ export type EventBusEvents = {
         spanId: string;
         output: string | undefined;
         outputType: string;
+        taskEventStore: string;
+        createdAt: Date;
+        completedAt: Date | null;
       };
     },
   ];
@@ -57,6 +66,9 @@ export type EventBusEvents = {
         status: TaskRunStatus;
         spanId: string;
         error: TaskRunError;
+        taskEventStore: string;
+        createdAt: Date;
+        completedAt: Date | null;
       };
     },
   ];
@@ -88,14 +100,21 @@ export type EventBusEvents = {
         friendlyId: string;
         spanId: string;
         error: TaskRunError;
+        taskEventStore: string;
+        createdAt: Date;
+        completedAt: Date | null;
       };
     },
   ];
   cachedRunCompleted: [
     {
       time: Date;
-      spanId: string;
+      span: {
+        id: string;
+        createdAt: Date;
+      };
       hasError: boolean;
+      blockedRunId: string;
     },
   ];
   runMetadataUpdated: [

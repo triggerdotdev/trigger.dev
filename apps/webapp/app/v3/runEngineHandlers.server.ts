@@ -1,4 +1,4 @@
-import { prisma } from "~/db.server";
+import { $replica, prisma } from "~/db.server";
 import {
   createExceptionPropertiesFromError,
   eventRepository,
@@ -16,23 +16,30 @@ import { RunId } from "@trigger.dev/core/v3/apps";
 import { updateMetadataService } from "~/services/metadata/updateMetadata.server";
 import { findEnvironmentFromRun } from "~/models/runtimeEnvironment.server";
 import { env } from "~/env.server";
+import { getTaskEventStoreTableForRun } from "./taskEventStore.server";
 
 export function registerRunEngineEventBusHandlers() {
   engine.eventBus.on("runSucceeded", async ({ time, run }) => {
     try {
-      const completedEvent = await eventRepository.completeEvent(run.spanId, {
-        endTime: time,
-        attributes: {
-          isError: false,
-          output:
-            run.outputType === "application/store" || run.outputType === "text/plain"
-              ? run.output
-              : run.output
-              ? (safeJsonParse(run.output) as Attributes)
-              : undefined,
-          outputType: run.outputType,
-        },
-      });
+      const completedEvent = await eventRepository.completeEvent(
+        getTaskEventStoreTableForRun(run),
+        run.spanId,
+        run.createdAt,
+        run.completedAt ?? undefined,
+        {
+          endTime: time,
+          attributes: {
+            isError: false,
+            output:
+              run.outputType === "application/store" || run.outputType === "text/plain"
+                ? run.output
+                : run.output
+                ? (safeJsonParse(run.output) as Attributes)
+                : undefined,
+            outputType: run.outputType,
+          },
+        }
+      );
 
       if (!completedEvent) {
         logger.error("[runSucceeded] Failed to complete event for unknown reason", {
@@ -69,21 +76,29 @@ export function registerRunEngineEventBusHandlers() {
       const sanitizedError = sanitizeError(run.error);
       const exception = createExceptionPropertiesFromError(sanitizedError);
 
-      const completedEvent = await eventRepository.completeEvent(run.spanId, {
-        endTime: time,
-        attributes: {
-          isError: true,
-        },
-        events: [
-          {
-            name: "exception",
-            time,
-            properties: {
-              exception,
-            },
+      const eventStore = getTaskEventStoreTableForRun(run);
+
+      const completedEvent = await eventRepository.completeEvent(
+        eventStore,
+        run.spanId,
+        run.createdAt,
+        run.completedAt ?? undefined,
+        {
+          endTime: time,
+          attributes: {
+            isError: true,
           },
-        ],
-      });
+          events: [
+            {
+              name: "exception",
+              time,
+              properties: {
+                exception,
+              },
+            },
+          ],
+        }
+      );
 
       if (!completedEvent) {
         logger.error("[runFailed] Failed to complete event for unknown reason", {
@@ -93,28 +108,39 @@ export function registerRunEngineEventBusHandlers() {
         return;
       }
 
-      const inProgressEvents = await eventRepository.queryIncompleteEvents({
-        runId: completedEvent?.runId,
-      });
+      const inProgressEvents = await eventRepository.queryIncompleteEvents(
+        eventStore,
+        {
+          runId: completedEvent?.runId,
+        },
+        run.createdAt,
+        run.completedAt ?? undefined
+      );
 
       await Promise.all(
         inProgressEvents.map((event) => {
           try {
-            const completedEvent = eventRepository.completeEvent(event.spanId, {
-              endTime: time,
-              attributes: {
-                isError: true,
-              },
-              events: [
-                {
-                  name: "exception",
-                  time,
-                  properties: {
-                    exception,
-                  },
+            const completedEvent = eventRepository.completeEvent(
+              eventStore,
+              run.spanId,
+              run.createdAt,
+              run.completedAt ?? undefined,
+              {
+                endTime: time,
+                attributes: {
+                  isError: true,
                 },
-              ],
-            });
+                events: [
+                  {
+                    name: "exception",
+                    time,
+                    properties: {
+                      exception,
+                    },
+                  },
+                ],
+              }
+            );
 
             if (!completedEvent) {
               logger.error("[runFailed] Failed to complete in-progress event for unknown reason", {
@@ -147,13 +173,19 @@ export function registerRunEngineEventBusHandlers() {
     try {
       const sanitizedError = sanitizeError(run.error);
       const exception = createExceptionPropertiesFromError(sanitizedError);
+      const eventStore = getTaskEventStoreTableForRun(run);
 
-      const inProgressEvents = await eventRepository.queryIncompleteEvents({
-        runId: RunId.toFriendlyId(run.id),
-        spanId: {
-          not: run.spanId,
+      const inProgressEvents = await eventRepository.queryIncompleteEvents(
+        eventStore,
+        {
+          runId: RunId.toFriendlyId(run.id),
+          spanId: {
+            not: run.spanId,
+          },
         },
-      });
+        run.createdAt,
+        run.completedAt ?? undefined
+      );
 
       await Promise.all(
         inProgressEvents.map((event) => {
@@ -173,48 +205,80 @@ export function registerRunEngineEventBusHandlers() {
     }
   });
 
-  engine.eventBus.on("cachedRunCompleted", async ({ time, spanId, hasError }) => {
+  engine.eventBus.on("cachedRunCompleted", async ({ time, span, blockedRunId, hasError }) => {
     try {
-      const completedEvent = await eventRepository.completeEvent(spanId, {
-        endTime: time,
-        attributes: {
-          isError: hasError,
+      const blockedRun = await $replica.taskRun.findFirst({
+        select: {
+          taskEventStore: true,
+        },
+        where: {
+          id: blockedRunId,
         },
       });
 
+      if (!blockedRun) {
+        logger.error("[cachedRunCompleted] Blocked run not found", {
+          blockedRunId,
+        });
+        return;
+      }
+
+      const eventStore = getTaskEventStoreTableForRun(blockedRun);
+
+      const completedEvent = await eventRepository.completeEvent(
+        eventStore,
+        span.id,
+        span.createdAt,
+        time,
+        {
+          endTime: time,
+          attributes: {
+            isError: hasError,
+          },
+        }
+      );
+
       if (!completedEvent) {
         logger.error("[cachedRunCompleted] Failed to complete event for unknown reason", {
-          spanId,
+          span,
         });
         return;
       }
     } catch (error) {
       logger.error("[cachedRunCompleted] Failed to complete event for unknown reason", {
         error: error instanceof Error ? error.message : error,
-        spanId,
+        span,
       });
     }
   });
 
   engine.eventBus.on("runExpired", async ({ time, run }) => {
     try {
-      const completedEvent = await eventRepository.completeEvent(run.spanId, {
-        endTime: time,
-        attributes: {
-          isError: true,
-        },
-        events: [
-          {
-            name: "exception",
-            time,
-            properties: {
-              exception: {
-                message: `Run expired because the TTL (${run.ttl}) was reached`,
+      const eventStore = getTaskEventStoreTableForRun(run);
+
+      const completedEvent = await eventRepository.completeEvent(
+        eventStore,
+        run.spanId,
+        run.createdAt,
+        run.completedAt ?? undefined,
+        {
+          endTime: time,
+          attributes: {
+            isError: true,
+          },
+          events: [
+            {
+              name: "exception",
+              time,
+              properties: {
+                exception: {
+                  message: `Run expired because the TTL (${run.ttl}) was reached`,
+                },
               },
             },
-          },
-        ],
-      });
+          ],
+        }
+      );
 
       if (!completedEvent) {
         logger.error("[runFailed] Failed to complete event for unknown reason", {
@@ -234,9 +298,16 @@ export function registerRunEngineEventBusHandlers() {
 
   engine.eventBus.on("runCancelled", async ({ time, run }) => {
     try {
-      const inProgressEvents = await eventRepository.queryIncompleteEvents({
-        runId: run.friendlyId,
-      });
+      const eventStore = getTaskEventStoreTableForRun(run);
+
+      const inProgressEvents = await eventRepository.queryIncompleteEvents(
+        eventStore,
+        {
+          runId: run.friendlyId,
+        },
+        run.createdAt,
+        run.completedAt ?? undefined
+      );
 
       await Promise.all(
         inProgressEvents.map((event) => {
