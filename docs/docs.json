@@ -18,37 +18,56 @@
         "groups": [
           {
             "group": "Getting started",
-            "pages": ["introduction", "quick-start", "video-walkthrough", "how-it-works", "limits"]
+            "pages": [
+              "introduction",
+              "quick-start",
+              "video-walkthrough",
+              "how-it-works",
+              "limits"
+            ]
           },
           {
             "group": "Fundamentals",
             "pages": [
               {
                 "group": "Tasks",
-                "pages": ["tasks/overview", "tasks/schemaTask", "tasks/scheduled"]
+                "pages": [
+                  "tasks/overview",
+                  "tasks/schemaTask",
+                  "tasks/scheduled"
+                ]
               },
               "triggering",
               "runs",
               "apikeys",
               {
                 "group": "Configuration",
-                "pages": ["config/config-file", "config/extensions/overview"]
+                "pages": [
+                  "config/config-file",
+                  "config/extensions/overview"
+                ]
               }
             ]
           },
           {
             "group": "Development",
-            "pages": ["cli-dev", "run-tests"]
+            "pages": [
+              "cli-dev",
+              "run-tests"
+            ]
           },
           {
             "group": "Deployment",
             "pages": [
-              "cli-deploy",
+              "deployment/overview",
               "deploy-environment-variables",
               "github-actions",
+              "deployment/atomic-deployment",
               {
                 "group": "Deployment integrations",
-                "pages": ["vercel-integration"]
+                "pages": [
+                  "vercel-integration"
+                ]
               }
             ]
           },
@@ -60,7 +79,13 @@
               "errors-retrying",
               {
                 "group": "Wait",
-                "pages": ["wait", "wait-for", "wait-until", "wait-for-event", "wait-for-request"]
+                "pages": [
+                  "wait",
+                  "wait-for",
+                  "wait-until",
+                  "wait-for-event",
+                  "wait-for-request"
+                ]
               },
               "queue-concurrency",
               "versioning",
@@ -101,7 +126,6 @@
               "realtime/subscribe-to-batch"
             ]
           },
-
           {
             "group": "CLI",
             "pages": [
@@ -113,6 +137,7 @@
                   "cli-init-commands",
                   "cli-dev-commands",
                   "cli-deploy-commands",
+                  "cli-promote-commands",
                   "cli-whoami-commands",
                   "cli-logout-commands",
                   "cli-list-profiles-commands",
@@ -146,7 +171,11 @@
           },
           {
             "group": "Help",
-            "pages": ["community", "help-slack", "help-email"]
+            "pages": [
+              "community",
+              "help-slack",
+              "help-email"
+            ]
           }
         ]
       },
@@ -167,7 +196,10 @@
           },
           {
             "group": "Tasks API",
-            "pages": ["management/tasks/trigger", "management/tasks/batch-trigger"]
+            "pages": [
+              "management/tasks/trigger",
+              "management/tasks/batch-trigger"
+            ]
           },
           {
             "group": "Runs API",
@@ -213,7 +245,9 @@
         "groups": [
           {
             "group": "Introduction",
-            "pages": ["guides/introduction"]
+            "pages": [
+              "guides/introduction"
+            ]
           },
           {
             "group": "Frameworks",
@@ -326,7 +360,10 @@
     "href": "https://trigger.dev"
   },
   "api": {
-    "openapi": ["openapi.yml", "v3-openapi.yaml"],
+    "openapi": [
+      "openapi.yml",
+      "v3-openapi.yaml"
+    ],
     "playground": {
       "display": "simple"
     }
