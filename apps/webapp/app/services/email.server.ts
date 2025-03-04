@@ -32,8 +32,10 @@ const alertsClient = singleton(
 );
 
 function buildTransportOptions(alerts?: boolean): MailTransportOptions {
-  const transportType = alerts ? env.ALERT_EMAIL_TRANSPORT : env.EMAIL_TRANSPORT
-  logger.debug(`Constructing email transport '${transportType}' for usage '${alerts?'alerts':'general'}'`)
+  const transportType = alerts ? env.ALERT_EMAIL_TRANSPORT : env.EMAIL_TRANSPORT;
+  logger.debug(
+    `Constructing email transport '${transportType}' for usage '${alerts ? "alerts" : "general"}'`
+  );
 
   switch (transportType) {
     case "aws-ses":
@@ -43,8 +45,8 @@ function buildTransportOptions(alerts?: boolean): MailTransportOptions {
         type: "resend",
         config: {
           apiKey: alerts ? env.ALERT_RESEND_API_KEY : env.RESEND_API_KEY,
-        }
-      }
+        },
+      };
     case "smtp":
       return {
         type: "smtp",
@@ -54,9 +56,9 @@ function buildTransportOptions(alerts?: boolean): MailTransportOptions {
           secure: alerts ? env.ALERT_SMTP_SECURE : env.SMTP_SECURE,
           auth: {
             user: alerts ? env.ALERT_SMTP_USER : env.SMTP_USER,
-            pass: alerts ? env.ALERT_SMTP_PASSWORD : env.SMTP_PASSWORD
-          }
-        }
+            pass: alerts ? env.ALERT_SMTP_PASSWORD : env.SMTP_PASSWORD,
+          },
+        },
       };
     default:
       return { type: undefined };
@@ -64,10 +66,10 @@ function buildTransportOptions(alerts?: boolean): MailTransportOptions {
 }
 
 export async function sendMagicLinkEmail(options: SendEmailOptions<AuthUser>): Promise<void> {
-  // Auto redirect when in development mode
-  if (env.NODE_ENV === "development") {
-    throw redirect(options.magicLink);
-  }
+  // // Auto redirect when in development mode
+  // if (env.NODE_ENV === "development") {
+  //   throw redirect(options.magicLink);
+  // }
 
   logger.debug("Sending magic link email", { emailAddress: options.emailAddress });
 
