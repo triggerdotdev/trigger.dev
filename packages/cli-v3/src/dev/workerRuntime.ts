@@ -6,6 +6,7 @@ import {
   serverWebsocketMessages,
   TaskManifest,
   TaskRunExecutionLazyAttemptPayload,
+  TaskRunExecutionMetrics,
   WorkerManifest,
 } from "@trigger.dev/core/v3";
 import { ResolvedConfig } from "@trigger.dev/core/v3/build";
@@ -313,6 +314,8 @@ class DevWorkerRuntime implements WorkerRuntime {
   }
 
   async #executeTaskRunLazyAttempt(id: string, payload: TaskRunExecutionLazyAttemptPayload) {
+    const createAttemptStart = Date.now();
+
     const attemptResponse = await this.options.client.createTaskRunAttempt(payload.runId);
 
     if (!attemptResponse.success) {
@@ -325,7 +328,19 @@ class DevWorkerRuntime implements WorkerRuntime {
 
     const completion = await this.backgroundWorkerCoordinator.executeTaskRun(
       id,
-      { execution, traceContext: payload.traceContext, environment: payload.environment },
+      {
+        execution,
+        traceContext: payload.traceContext,
+        environment: payload.environment,
+        metrics: [
+          {
+            name: "start",
+            event: "create_attempt",
+            timestamp: createAttemptStart,
+            duration: Date.now() - createAttemptStart,
+          },
+        ].concat(payload.metrics ?? []),
+      },
       payload.messageId
     );
 

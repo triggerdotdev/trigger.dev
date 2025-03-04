@@ -1073,8 +1073,8 @@ importers:
   packages/cli-v3:
     dependencies:
       '@clack/prompts':
-        specifier: ^0.7.0
-        version: 0.7.0
+        specifier: ^0.10.0
+        version: 0.10.0
       '@depot/cli':
         specifier: 0.0.1-cli.2.80.0
         version: 0.0.1-cli.2.80.0
@@ -3411,7 +3411,7 @@ packages:
     engines: {node: '>=6.9.0'}
     dependencies:
       '@babel/highlight': 7.24.7
-      picocolors: 1.0.1
+      picocolors: 1.1.1
 
   /@babel/code-frame@7.26.2:
     resolution: {integrity: sha512-RJlIHRueQgwWitWgF8OdFYGZX328Ax5BCemNGlqHfplnRT9ESi8JkFlvaVYbS+UubVY6dpv87Fs2u5M29iNFVQ==}
@@ -4020,7 +4020,7 @@ packages:
       '@babel/helper-validator-identifier': 7.24.7
       chalk: 2.4.2
       js-tokens: 4.0.0
-      picocolors: 1.0.1
+      picocolors: 1.1.1
 
   /@babel/parser@7.22.16:
     resolution: {integrity: sha512-+gPfKv8UWeKKeJTUxe59+OobVcrYHETCsORl61EmSkmgymguYk/X5bp7GuUIXaFsc6y++v8ZxPsLSSuujqDphA==}
@@ -5460,22 +5460,20 @@ packages:
     resolution: {integrity: sha512-hBzuU5+JjB2cqNZyszkDHZgOSrUUT8V3dhgRl8Q9Gp6dAj/H5+KILGjbhDpc3Iy9qmqlm/akuOI2ut9VUtzJxQ==}
     dev: true
 
-  /@clack/core@0.3.3:
-    resolution: {integrity: sha512-5ZGyb75BUBjlll6eOa1m/IZBxwk91dooBWhPSL67sWcLS0zt9SnswRL0l26TVdBhb0wnWORRxUn//uH6n4z7+A==}
+  /@clack/core@0.4.1:
+    resolution: {integrity: sha512-Pxhij4UXg8KSr7rPek6Zowm+5M22rbd2g1nfojHJkxp5YkFqiZ2+YLEM/XGVIzvGOcM0nqjIFxrpDwWRZYWYjA==}
     dependencies:
-      picocolors: 1.0.1
+      picocolors: 1.1.1
       sisteransi: 1.0.5
     dev: false
 
-  /@clack/prompts@0.7.0:
-    resolution: {integrity: sha512-0MhX9/B4iL6Re04jPrttDm+BsP8y6mS7byuv0BvXgdXhbV5PdlsHt55dvNsuBCPZ7xq1oTAOOuotR9NFbQyMSA==}
+  /@clack/prompts@0.10.0:
+    resolution: {integrity: sha512-H3rCl6CwW1NdQt9rE3n373t7o5cthPv7yUoxF2ytZvyvlJv89C5RYMJu83Hed8ODgys5vpBU0GKxIRG83jd8NQ==}
     dependencies:
-      '@clack/core': 0.3.3
-      picocolors: 1.0.0
+      '@clack/core': 0.4.1
+      picocolors: 1.1.1
       sisteransi: 1.0.5
     dev: false
-    bundledDependencies:
-      - is-unicode-supported
 
   /@cloudflare/kv-asset-handler@0.3.2:
     resolution: {integrity: sha512-EeEjMobfuJrwoctj7FA1y1KEbM0+Q1xSjobIEyie9k4haVEBB7vkDvsasw1pM3rO39mL2akxIAzLMUAtrMHZhA==}
@@ -9455,7 +9453,7 @@ packages:
       cross-spawn: 7.0.3
       is-glob: 4.0.3
       open: 8.4.0
-      picocolors: 1.0.1
+      picocolors: 1.1.1
       tiny-glob: 0.2.9
       tslib: 2.6.2
     dev: true
@@ -17808,7 +17806,7 @@ packages:
       cli-truncate: 3.1.0
       diff: 5.1.0
       loupe: 2.3.7
-      picocolors: 1.0.1
+      picocolors: 1.1.1
       pretty-format: 27.5.1
     dev: true
 
@@ -18772,7 +18770,7 @@ packages:
       caniuse-lite: 1.0.30001699
       fraction.js: 4.2.0
       normalize-range: 0.1.2
-      picocolors: 1.0.1
+      picocolors: 1.1.1
       postcss: 8.4.35
       postcss-value-parser: 4.2.0
     dev: false
@@ -26997,6 +26995,7 @@ packages:
 
   /picocolors@1.0.0:
     resolution: {integrity: sha512-1fygroTLlHu66zi26VoTDv8yRgm0Fccecssto+MhsZ0D/DGW2sm8E8AjW7NU5VVTRt5GxbeZ5qBuJr+HyLYkjQ==}
+    dev: true
 
   /picocolors@1.0.1:
     resolution: {integrity: sha512-anP1Z8qwhkbmu7MFP5iTt+wQKXgwzf7zTyGlcdzabySa9vd0Xt392U0rVmz9poOaBj0uHJKyyo9/upk0HrEQew==}
@@ -27358,7 +27357,7 @@ packages:
     engines: {node: ^10 || ^12 || >=14}
     dependencies:
       nanoid: 3.3.7
-      picocolors: 1.0.1
+      picocolors: 1.1.1
       source-map-js: 1.2.0
     dev: true
 
@@ -27376,7 +27375,7 @@ packages:
     engines: {node: ^10 || ^12 || >=14}
     dependencies:
       nanoid: 3.3.7
-      picocolors: 1.0.1
+      picocolors: 1.1.1
       source-map-js: 1.2.0
 
   /postcss@8.4.44:
@@ -27384,7 +27383,7 @@ packages:
     engines: {node: ^10 || ^12 || >=14}
     dependencies:
       nanoid: 3.3.7
-      picocolors: 1.0.1
+      picocolors: 1.1.1
       source-map-js: 1.2.0
 
   /postgres-array@2.0.0:
@@ -30411,7 +30410,7 @@ packages:
       micromatch: 4.0.5
       normalize-path: 3.0.0
       object-hash: 3.0.0
-      picocolors: 1.0.1
+      picocolors: 1.1.1
       postcss: 8.4.44
       postcss-import: 15.1.0(postcss@8.4.44)
       postcss-js: 4.0.1(postcss@8.4.44)
@@ -31668,7 +31667,7 @@ packages:
     dependencies:
       browserslist: 4.21.4
       escalade: 3.2.0
-      picocolors: 1.0.1
+      picocolors: 1.1.1
     dev: true
 
   /update-browserslist-db@1.1.0(browserslist@4.23.3):
@@ -32001,7 +32000,7 @@ packages:
       debug: 4.3.7
       mlly: 1.7.1
       pathe: 1.1.2
-      picocolors: 1.0.1
+      picocolors: 1.1.1
       source-map: 0.6.1
       source-map-support: 0.5.21
       vite: 4.4.9(@types/node@18.11.18)
@@ -32025,7 +32024,7 @@ packages:
       debug: 4.3.7
       mlly: 1.7.1
       pathe: 1.1.2
-      picocolors: 1.0.1
+      picocolors: 1.1.1
       source-map: 0.6.1
       source-map-support: 0.5.21
       vite: 4.4.9(@types/node@18.19.20)
@@ -32048,7 +32047,7 @@ packages:
       cac: 6.7.14
       debug: 4.3.7
       pathe: 1.1.2
-      picocolors: 1.0.1
+      picocolors: 1.1.1
       vite: 5.2.7(@types/node@18.11.18)
     transitivePeerDependencies:
       - '@types/node'
@@ -32069,7 +32068,7 @@ packages:
       cac: 6.7.14
       debug: 4.3.7
       pathe: 1.1.2
-      picocolors: 1.0.1
+      picocolors: 1.1.1
       vite: 5.2.7(@types/node@20.14.14)
     transitivePeerDependencies:
       - '@types/node'
@@ -32636,7 +32635,7 @@ packages:
       html-escaper: 2.0.2
       is-plain-object: 5.0.0
       opener: 1.5.2
-      picocolors: 1.0.1
+      picocolors: 1.1.1
       sirv: 2.0.4
       ws: 7.5.9
     transitivePeerDependencies:

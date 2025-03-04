@@ -1,7 +1,10 @@
 import {
+  Attributes,
   Context,
+  HrTime,
   SpanOptions,
   SpanStatusCode,
+  TimeInput,
   context,
   propagation,
   trace,
@@ -24,6 +27,16 @@ export type TriggerTracerConfig =
       tracer: Tracer;
       logger: Logger;
     };
+
+export type TriggerTracerSpanEvent = {
+  name: string;
+  attributes?: Attributes;
+  startTime?: TimeInput;
+};
+
+export type TriggerTracerSpanOptions = SpanOptions & {
+  events?: TriggerTracerSpanEvent[];
+};
 
 export class TriggerTracer {
   constructor(private readonly _config: TriggerTracerConfig) {}
@@ -57,7 +70,7 @@ export class TriggerTracer {
   startActiveSpan<T>(
     name: string,
     fn: (span: Span) => Promise<T>,
-    options?: SpanOptions,
+    options?: TriggerTracerSpanOptions,
     ctx?: Context,
     signal?: AbortSignal
   ): Promise<T> {
@@ -85,20 +98,32 @@ export class TriggerTracer {
         });
 
         if (taskContext.ctx) {
-          this.tracer
-            .startSpan(
-              name,
-              {
-                ...options,
-                attributes: {
-                  ...attributes,
-                  [SemanticInternalAttributes.SPAN_PARTIAL]: true,
-                  [SemanticInternalAttributes.SPAN_ID]: span.spanContext().spanId,
-                },
+          const partialSpan = this.tracer.startSpan(
+            name,
+            {
+              ...options,
+              attributes: {
+                ...attributes,
+                [SemanticInternalAttributes.SPAN_PARTIAL]: true,
+                [SemanticInternalAttributes.SPAN_ID]: span.spanContext().spanId,
               },
-              parentContext
-            )
-            .end();
+            },
+            parentContext
+          );
+
+          if (options?.events) {
+            for (const event of options.events) {
+              partialSpan.addEvent(event.name, event.attributes, event.startTime);
+            }
+          }
+
+          partialSpan.end();
+        }
+
+        if (options?.events) {
+          for (const event of options.events) {
+            span.addEvent(event.name, event.attributes, event.startTime);
+          }
         }
 
         const usageMeasurement = usage.start();

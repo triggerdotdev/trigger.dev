@@ -439,6 +439,8 @@ export class SharedQueueConsumer {
       };
     }
 
+    const dequeuedAt = new Date();
+
     logger.log("dequeueMessageInSharedQueue()", { queueMessage: message });
 
     const messageBody = SharedQueueMessageBody.safeParse(message.data);
@@ -472,7 +474,7 @@ export class SharedQueueConsumer {
     this._currentMessage = message;
     this._currentMessageData = messageBody.data;
 
-    const messageResult = await this.#handleMessage(message, messageBody.data);
+    const messageResult = await this.#handleMessage(message, messageBody.data, dequeuedAt);
 
     switch (messageResult.action) {
       case "noop": {
@@ -525,29 +527,30 @@ export class SharedQueueConsumer {
 
   async #handleMessage(
     message: MessagePayload,
-    data: SharedQueueMessageBody
+    data: SharedQueueMessageBody,
+    dequeuedAt: Date
   ): Promise<HandleMessageResult> {
     return await this.#startActiveSpan("handleMessage()", async (span) => {
       // TODO: For every ACK, decide what should be done with the existing run and attempts. Make sure to check the current statuses first.
       switch (data.type) {
         // MARK: EXECUTE
         case "EXECUTE": {
-          return await this.#handleExecuteMessage(message, data);
+          return await this.#handleExecuteMessage(message, data, dequeuedAt);
         }
         // MARK: DEP RESUME
         // Resume after dependency completed with no remaining retries
         case "RESUME": {
-          return await this.#handleResumeMessage(message, data);
+          return await this.#handleResumeMessage(message, data, dequeuedAt);
         }
         // MARK: DURATION RESUME
         // Resume after duration-based wait
         case "RESUME_AFTER_DURATION": {
-          return await this.#handleResumeAfterDurationMessage(message, data);
+          return await this.#handleResumeAfterDurationMessage(message, data, dequeuedAt);
         }
         // MARK: FAIL
         // Fail for whatever reason, usually runs that have been resumed but stopped heartbeating
         case "FAIL": {
-          return await this.#handleFailMessage(message, data);
+          return await this.#handleFailMessage(message, data, dequeuedAt);
         }
       }
     });
@@ -555,7 +558,8 @@ export class SharedQueueConsumer {
 
   async #handleExecuteMessage(
     message: MessagePayload,
-    data: SharedQueueExecuteMessageBody
+    data: SharedQueueExecuteMessageBody,
+    dequeuedAt: Date
   ): Promise<HandleMessageResult> {
     const existingTaskRun = await prisma.taskRun.findFirst({
       where: {
@@ -711,7 +715,7 @@ export class SharedQueueConsumer {
         taskVersion: worker.version,
         sdkVersion: worker.sdkVersion,
         cliVersion: worker.cliVersion,
-        startedAt: existingTaskRun.startedAt ?? new Date(),
+        startedAt: existingTaskRun.startedAt ?? dequeuedAt,
         baseCostInCents: env.CENTS_PER_RUN,
         machinePreset:
           existingTaskRun.machinePreset ??
@@ -884,55 +888,56 @@ export class SharedQueueConsumer {
           action: "noop",
           reason: "retry_checkpoints_disabled",
         };
-      } else {
-        const machine =
-          machinePresetFromRun(lockedTaskRun) ??
-          machinePresetFromConfig(lockedTaskRun.lockedBy?.machineConfig ?? {});
+      }
 
-        return await this.#startActiveSpan("scheduleAttemptOnProvider", async (span) => {
-          span.setAttributes({
-            run_id: lockedTaskRun.id,
+      const machine =
+        machinePresetFromRun(lockedTaskRun) ??
+        machinePresetFromConfig(lockedTaskRun.lockedBy?.machineConfig ?? {});
+
+      return await this.#startActiveSpan("scheduleAttemptOnProvider", async (span) => {
+        span.setAttributes({
+          run_id: lockedTaskRun.id,
+        });
+
+        if (await this._providerSender.validateCanSendMessage()) {
+          await this._providerSender.send("BACKGROUND_WORKER_MESSAGE", {
+            backgroundWorkerId: worker.friendlyId,
+            data: {
+              type: "SCHEDULE_ATTEMPT",
+              image: imageReference,
+              version: deployment.version,
+              machine,
+              nextAttemptNumber,
+              // identifiers
+              id: "placeholder", // TODO: Remove this completely in a future release
+              envId: lockedTaskRun.runtimeEnvironment.id,
+              envType: lockedTaskRun.runtimeEnvironment.type,
+              orgId: lockedTaskRun.runtimeEnvironment.organizationId,
+              projectId: lockedTaskRun.runtimeEnvironment.projectId,
+              runId: lockedTaskRun.id,
+              dequeuedAt: dequeuedAt.getTime(),
+            },
           });
 
-          if (await this._providerSender.validateCanSendMessage()) {
-            await this._providerSender.send("BACKGROUND_WORKER_MESSAGE", {
-              backgroundWorkerId: worker.friendlyId,
-              data: {
-                type: "SCHEDULE_ATTEMPT",
-                image: imageReference,
-                version: deployment.version,
-                machine,
-                nextAttemptNumber,
-                // identifiers
-                id: "placeholder", // TODO: Remove this completely in a future release
-                envId: lockedTaskRun.runtimeEnvironment.id,
-                envType: lockedTaskRun.runtimeEnvironment.type,
-                orgId: lockedTaskRun.runtimeEnvironment.organizationId,
-                projectId: lockedTaskRun.runtimeEnvironment.projectId,
-                runId: lockedTaskRun.id,
-              },
-            });
-
-            return {
-              action: "noop",
-              reason: "scheduled_attempt",
-              attrs: {
-                next_attempt_number: nextAttemptNumber,
-              },
-            };
-          } else {
-            return {
-              action: "nack_and_do_more_work",
-              reason: "provider_not_connected",
-              attrs: {
-                run_id: lockedTaskRun.id,
-              },
-              interval: this._options.nextTickInterval,
-              retryInMs: 5_000,
-            };
-          }
-        });
-      }
+          return {
+            action: "noop",
+            reason: "scheduled_attempt",
+            attrs: {
+              next_attempt_number: nextAttemptNumber,
+            },
+          };
+        } else {
+          return {
+            action: "nack_and_do_more_work",
+            reason: "provider_not_connected",
+            attrs: {
+              run_id: lockedTaskRun.id,
+            },
+            interval: this._options.nextTickInterval,
+            retryInMs: 5_000,
+          };
+        }
+      });
     } catch (e) {
       // We now need to unlock the task run and delete the task run attempt
       await prisma.$transaction([
@@ -966,7 +971,8 @@ export class SharedQueueConsumer {
 
   async #handleResumeMessage(
     message: MessagePayload,
-    data: SharedQueueResumeMessageBody
+    data: SharedQueueResumeMessageBody,
+    dequeuedAt: Date
   ): Promise<HandleMessageResult> {
     if (data.checkpointEventId) {
       try {
@@ -1332,7 +1338,8 @@ export class SharedQueueConsumer {
 
   async #handleResumeAfterDurationMessage(
     message: MessagePayload,
-    data: SharedQueueResumeAfterDurationMessageBody
+    data: SharedQueueResumeAfterDurationMessageBody,
+    dequeuedAt: Date
   ): Promise<HandleMessageResult> {
     try {
       const restoreService = new RestoreCheckpointService();
@@ -1374,7 +1381,8 @@ export class SharedQueueConsumer {
 
   async #handleFailMessage(
     message: MessagePayload,
-    data: SharedQueueFailMessageBody
+    data: SharedQueueFailMessageBody,
+    dequeuedAt: Date
   ): Promise<HandleMessageResult> {
     const existingTaskRun = await prisma.taskRun.findFirst({
       where: {
@@ -2057,6 +2065,7 @@ class SharedQueueTasks {
       messageId: run.id,
       isTest: run.isTest,
       attemptCount,
+      metrics: [],
     } satisfies TaskRunExecutionLazyAttemptPayload;
   }
 

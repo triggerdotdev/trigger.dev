@@ -17,6 +17,7 @@ import {
   runMetadata,
   waitUntil,
   apiClientManager,
+  runTimelineMetrics,
 } from "@trigger.dev/core/v3";
 import { TriggerTracer } from "@trigger.dev/core/v3/tracer";
 import { DevRuntimeManager } from "@trigger.dev/core/v3/dev";
@@ -36,6 +37,7 @@ import {
   getNumberEnvVar,
   StandardMetadataManager,
   StandardWaitUntilManager,
+  StandardRunTimelineMetricsManager,
 } from "@trigger.dev/core/v3/workers";
 import { ZodIpcConnection } from "@trigger.dev/core/v3/zodIpc";
 import { readFile } from "node:fs/promises";
@@ -77,6 +79,8 @@ process.on("uncaughtException", function (error, origin) {
   }
 });
 
+const standardRunTimelineMetricsManager = new StandardRunTimelineMetricsManager();
+runTimelineMetrics.setGlobalManager(standardRunTimelineMetricsManager);
 taskCatalog.setGlobalTaskCatalog(new StandardTaskCatalog());
 const durableClock = new DurableClock();
 clock.setGlobalClock(durableClock);
@@ -100,6 +104,8 @@ waitUntil.register({
 });
 
 const triggerLogLevel = getEnvVar("TRIGGER_LOG_LEVEL");
+
+standardRunTimelineMetricsManager.seedMetricsFromEnvironment();
 
 async function importConfig(
   configPath: string
@@ -180,7 +186,9 @@ const zodIpc = new ZodIpcConnection({
   emitSchema: ExecutorToWorkerMessageCatalog,
   process,
   handlers: {
-    EXECUTE_TASK_RUN: async ({ execution, traceContext, metadata }, sender) => {
+    EXECUTE_TASK_RUN: async ({ execution, traceContext, metadata, metrics }, sender) => {
+      standardRunTimelineMetricsManager.registerMetricsFromExecution(metrics);
+
       if (_isRunning) {
         console.error("Worker is already running a task");
 
@@ -233,7 +241,16 @@ const zodIpc = new ZodIpcConnection({
       }
 
       try {
-        await import(normalizeImportPath(taskManifest.entryPoint));
+        await runTimelineMetrics.measureMetric(
+          "trigger.dev/start",
+          "import",
+          {
+            entryPoint: taskManifest.entryPoint,
+          },
+          async () => {
+            await import(normalizeImportPath(taskManifest.entryPoint));
+          }
+        );
       } catch (err) {
         console.error(`Failed to import task ${execution.task.id}`, err);
 

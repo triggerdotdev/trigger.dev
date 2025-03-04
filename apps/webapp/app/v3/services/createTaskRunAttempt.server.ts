@@ -152,19 +152,18 @@ export class CreateTaskRunAttemptService extends BaseService {
           },
         });
 
-        if (setToExecuting) {
-          await tx.taskRun.update({
-            where: {
-              id: taskRun.id,
-            },
-            data: {
-              status: "EXECUTING",
-            },
-          });
+        await tx.taskRun.update({
+          where: {
+            id: taskRun.id,
+          },
+          data: {
+            status: setToExecuting ? "EXECUTING" : undefined,
+            executedAt: taskRun.executedAt ?? new Date(),
+          },
+        });
 
-          if (taskRun.ttl) {
-            await ExpireEnqueuedRunService.ack(taskRun.id, tx);
-          }
+        if (taskRun.ttl) {
+          await ExpireEnqueuedRunService.ack(taskRun.id, tx);
         }
 
         return taskRunAttempt;
