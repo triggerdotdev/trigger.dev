@@ -586,8 +586,8 @@ importers:
         specifier: ^3.6.0
         version: 3.6.0(@remix-run/react@2.1.0)(@remix-run/server-runtime@2.1.0)
       remix-auth-email-link:
-        specifier: 2.0.2
-        version: 2.0.2(@remix-run/server-runtime@2.1.0)(remix-auth@3.6.0)
+        specifier: 2.1.1
+        version: 2.1.1(@remix-run/server-runtime@2.1.0)(remix-auth@3.6.0)
       remix-auth-github:
         specifier: ^1.6.0
         version: 1.6.0(@remix-run/server-runtime@2.1.0)(remix-auth@3.6.0)
@@ -20157,10 +20157,6 @@ packages:
       shebang-command: 2.0.0
       which: 2.0.2
 
-  /crypto-js@4.1.1:
-    resolution: {integrity: sha512-o2JlM7ydqd3Qk9CA0L4NL6mTzU2sdx96a+oOfPu8Mkl/PK51vSyoi8/rQ8NknZtk44vq15lmhAj9CIAGwgeWKw==}
-    dev: false
-
   /crypto-js@4.2.0:
     resolution: {integrity: sha512-KALDyEYgpY+Rlob/iriUtjV6d5Eq+Y191A5g4UqLAi8CyGP9N1+FdVbkc1SxKc2r4YAYqG8JzO2KGL+AizD70Q==}
     dev: false
@@ -28794,14 +28790,14 @@ packages:
       unified: 10.1.2
     dev: true
 
-  /remix-auth-email-link@2.0.2(@remix-run/server-runtime@2.1.0)(remix-auth@3.6.0):
-    resolution: {integrity: sha512-Lze9c50fsqBpixXQKe37wI2Dm4rlYYkNA6Eskxk8erQ7tbyN8xiFXOgo7Y3Al0SSjzkezw8au3uc2vCLJ8A5mQ==}
+  /remix-auth-email-link@2.1.1(@remix-run/server-runtime@2.1.0)(remix-auth@3.6.0):
+    resolution: {integrity: sha512-NNz9Wk9sxWUhuDTkcLbhsVdiUpyrGFf9yIkZG74PgOMTAYsIIsfGvBr2wJCgYcH/JWxg5VbTulgNO7/KXHJcsg==}
     peerDependencies:
-      '@remix-run/server-runtime': ^1.1.1
-      remix-auth: ^3.2.1
+      '@remix-run/server-runtime': ^2.0.1
+      remix-auth: ^3.6.0
     dependencies:
       '@remix-run/server-runtime': 2.1.0(typescript@5.2.2)
-      crypto-js: 4.1.1
+      crypto-js: 4.2.0
       remix-auth: 3.6.0(@remix-run/react@2.1.0)(@remix-run/server-runtime@2.1.0)
     dev: false
 
