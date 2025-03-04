@@ -14,9 +14,9 @@ Atomic deploys achieve synchronization by deploying your tasks to Trigger.dev wi
 2. **Capture the Deployment Version**: The CLI outputs the version of the deployed tasks, which you’ll use in the next step.
 3. **Deploy Your Application**: Deploy your application (e.g., to Vercel), setting an environment variable like `TRIGGER_VERSION` to the captured task version.
 
-## Vercel & Github Actions
+## Vercel CLI & GitHub Actions
 
-Here's a sample workflow that demonstrates performing atomic deploys with GitHub Actions, Trigger.dev, and Vercel:
+If you deploy to Vercel via their CLI, you can use this sample workflow that demonstrates performing atomic deploys with GitHub Actions, Trigger.dev, and Vercel:
 
 ```yml
 name: Deploy to Trigger.dev (prod)
@@ -46,7 +46,7 @@ jobs:
         env:
           TRIGGER_ACCESS_TOKEN: ${{ secrets.TRIGGER_ACCESS_TOKEN }}
         run: |
-          npx trigger.devlatest deploy --skip-promotion
+          npx trigger.dev@latest deploy --skip-promotion
 
       - name: Deploy to Vercel
         run: npx vercel --yes --prod -e TRIGGER_VERSION=$TRIGGER_VERSION --token $VERCEL_TOKEN
@@ -77,9 +77,9 @@ For this workflow to work, you need to set up the following secrets in your GitH
 - `TRIGGER_ACCESS_TOKEN`: Your Trigger.dev personal access token. View the instructions [here](/github-actions) to learn more.
 - `VERCEL_TOKEN`: Your Vercel personal access token. You can find this in your Vercel account settings.
 
-## w/Vercel Github integration
+## Vercel GitHub integration
 
-If you're are using Vercel, chances are you are using their GitHub integration and deploying your application directly from pushes to Github. This section covers how to achieve atomic deploys with Trigger.dev in this setup.
+If you're are using Vercel, chances are you are using their GitHub integration and deploying your application directly from pushes to GitHub. This section covers how to achieve atomic deploys with Trigger.dev in this setup.
 
 ### Turn off automatic promotion
 
@@ -166,6 +166,6 @@ Checkout our [example repo](https://github.com/ericallam/vercel-atomic-deploys) 
 <Note>
   We are using the `ericallam/vercel-wait` action above as a fork of the [official
   tj-actions/vercel-wait](https://github.com/tj-actions/vercel-wait) action because there is a bug
-  in the official action that exists early if the deployment isn't found in the first check. I've
+  in the official action that exits early if the deployment isn't found in the first check. I've
   opened a PR for this issue [here](https://github.com/tj-actions/vercel-wait/pull/106).
 </Note>
