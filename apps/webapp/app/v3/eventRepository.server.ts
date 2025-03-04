@@ -1037,8 +1037,6 @@ export class EventRepository {
       parentId,
       tracestate,
       duration: options.incomplete ? 0 : duration,
-      isPartial: options.incomplete,
-      isError: options.isError,
       isPartial: failedWithError ? false : options.incomplete,
       isError: !!failedWithError,
       message: message,
