@@ -1204,7 +1204,7 @@ export class RunEngine {
               data: {
                 status: "EXECUTING",
                 attemptNumber: nextAttemptNumber,
-                firstAttemptStartedAt: taskRun.attemptNumber === null ? new Date() : undefined,
+                executedAt: taskRun.attemptNumber === null ? new Date() : undefined,
               },
               include: {
                 tags: true,
