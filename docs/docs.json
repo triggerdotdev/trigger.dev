@@ -39,36 +39,7 @@
               },
               "triggering",
               "runs",
-              "apikeys",
-              {
-                "group": "Configuration",
-                "pages": [
-                  "config/config-file",
-                  "config/extensions/overview"
-                ]
-              }
-            ]
-          },
-          {
-            "group": "Development",
-            "pages": [
-              "cli-dev",
-              "run-tests"
-            ]
-          },
-          {
-            "group": "Deployment",
-            "pages": [
-              "deployment/overview",
-              "deploy-environment-variables",
-              "github-actions",
-              "deployment/atomic-deployment",
-              {
-                "group": "Deployment integrations",
-                "pages": [
-                  "vercel-integration"
-                ]
-              }
+              "apikeys"
             ]
           },
           {
@@ -91,14 +62,61 @@
               "versioning",
               "machines",
               "idempotency",
-              "replaying",
               "runs/max-duration",
               "tags",
               "runs/metadata",
               "run-usage",
-              "context",
-              "bulk-actions",
-              "examples"
+              "context"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "config/config-file",
+              {
+                "group": "Build extensions",
+                "pages": [
+                  "config/extensions/overview",
+                  {
+                    "group": "Built-in extensions",
+                    "pages": [
+                      "config/extensions/prismaExtension",
+                      "config/extensions/pythonExtension",
+                      "config/extensions/puppeteer",
+                      "config/extensions/ffmpeg",
+                      "config/extensions/aptGet",
+                      "config/extensions/additionalFiles",
+                      "config/extensions/additionalPackages",
+                      "config/extensions/syncEnvVars",
+                      "config/extensions/esbuildPlugin",
+                      "config/extensions/emitDecoratorMetadata",
+                      "config/extensions/audioWaveform"
+                    ]
+                  },
+                  "config/extensions/custom"
+                ]
+              }
+            ]
+          },
+          {
+            "group": "Development",
+            "pages": [
+              "cli-dev"
+            ]
+          },
+          {
+            "group": "Deployment",
+            "pages": [
+              "deployment/overview",
+              "deploy-environment-variables",
+              "github-actions",
+              "deployment/atomic-deployment",
+              {
+                "group": "Deployment integrations",
+                "pages": [
+                  "vercel-integration"
+                ]
+              }
             ]
           },
           {
@@ -147,13 +165,21 @@
             ]
           },
           {
+            "group": "Using the Dashboard",
+            "pages": [
+              "run-tests",
+              "troubleshooting-alerts",
+              "replaying",
+              "bulk-actions"
+            ]
+          },
+          {
             "group": "Troubleshooting",
             "pages": [
               "troubleshooting",
               "troubleshooting-debugging-in-vscode",
               "upgrading-packages",
               "upgrading-beta",
-              "troubleshooting-alerts",
               "troubleshooting-uptime-status",
               "troubleshooting-github-issues",
               "request-feature"

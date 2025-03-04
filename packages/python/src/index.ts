@@ -1,63 +1,277 @@
-import fs from "node:fs";
-import assert from "node:assert";
+import {
+  AsyncIterableStream,
+  createAsyncIterableStreamFromAsyncIterable,
+  SemanticInternalAttributes,
+} from "@trigger.dev/core/v3";
 import { logger } from "@trigger.dev/sdk/v3";
-import { x, Options as XOptions, Result } from "tinyexec";
+import assert from "node:assert";
+import fs from "node:fs";
+import { Result, x, Options as XOptions } from "tinyexec";
+import { createTempFileSync, withTempFile } from "./utils/tempFiles.js";
 
-export const run = async (
-  scriptArgs: string[] = [],
-  options: Partial<XOptions> = {}
-): Promise<Result> => {
-  const pythonBin = process.env.PYTHON_BIN_PATH || "python";
-
-  return await logger.trace("Python call", async (span) => {
-    span.addEvent("Properties", {
-      command: `${pythonBin} ${scriptArgs.join(" ")}`,
-    });
-
-    const result = await x(pythonBin, scriptArgs, {
-      ...options,
-      throwOnError: false, // Ensure errors are handled manually
-    });
-
-    span.addEvent("Output", { ...result });
-
-    if (result.exitCode !== 0) {
-      logger.error(result.stderr, { ...result });
-      throw new Error(`Python command exited with non-zero code ${result.exitCode}`);
-    }
-
-    return result;
-  });
+export type PythonExecOptions = Partial<XOptions> & {
+  env?: { [key: string]: string | undefined };
 };
 
-export const runScript = (
-  scriptPath: string,
-  scriptArgs: string[] = [],
-  options: Partial<XOptions> = {}
-) => {
-  assert(scriptPath, "Script path is required");
-  assert(fs.existsSync(scriptPath), `Script does not exist: ${scriptPath}`);
+export const python = {
+  async run(scriptArgs: string[] = [], options: PythonExecOptions = {}): Promise<Result> {
+    const pythonBin = process.env.PYTHON_BIN_PATH || "python";
 
-  return run([scriptPath, ...scriptArgs], options);
-};
+    return await logger.trace(
+      "python.run()",
+      async (span) => {
+        const result = await x(pythonBin, scriptArgs, {
+          ...options,
+          nodeOptions: {
+            ...(options.nodeOptions || {}),
+            env: {
+              ...process.env,
+              ...options.env,
+            },
+          },
+          throwOnError: false, // Ensure errors are handled manually
+        });
 
-export const runInline = async (scriptContent: string, options: Partial<XOptions> = {}) => {
-  assert(scriptContent, "Script content is required");
+        if (result.exitCode) {
+          span.setAttribute("exitCode", result.exitCode);
+        }
 
-  const tmpFile = `/tmp/script_${Date.now()}.py`;
-  await fs.promises.writeFile(tmpFile, scriptContent, { mode: 0o600 });
+        if (result.exitCode !== 0) {
+          throw new Error(
+            `${scriptArgs.join(" ")} exited with a non-zero code ${result.exitCode}:\n${
+              result.stderr
+            }`
+          );
+        }
 
-  try {
-    return await runScript(tmpFile, [], options);
-  } finally {
-    try {
-      await fs.promises.unlink(tmpFile);
-    } catch (error) {
-      logger.warn(`Failed to clean up temporary file ${tmpFile}:`, {
-        error: (error as Error).stack || (error as Error).message,
+        return result;
+      },
+      {
+        attributes: {
+          pythonBin,
+          args: scriptArgs.join(" "),
+          [SemanticInternalAttributes.STYLE_ICON]: "brand-python",
+        },
+      }
+    );
+  },
+
+  async runScript(
+    scriptPath: string,
+    scriptArgs: string[] = [],
+    options: PythonExecOptions = {}
+  ): Promise<Result> {
+    assert(scriptPath, "Script path is required");
+    assert(fs.existsSync(scriptPath), `Script does not exist: ${scriptPath}`);
+
+    return await logger.trace(
+      "python.runScript()",
+      async (span) => {
+        span.setAttribute("scriptPath", scriptPath);
+
+        const result = await x(
+          process.env.PYTHON_BIN_PATH || "python",
+          [scriptPath, ...scriptArgs],
+          {
+            ...options,
+            nodeOptions: {
+              ...(options.nodeOptions || {}),
+              env: {
+                ...process.env,
+                ...options.env,
+              },
+            },
+            throwOnError: false,
+          }
+        );
+
+        if (result.exitCode) {
+          span.setAttribute("exitCode", result.exitCode);
+        }
+
+        if (result.exitCode !== 0) {
+          throw new Error(
+            `${scriptPath} ${scriptArgs.join(" ")} exited with a non-zero code ${
+              result.exitCode
+            }:\n${result.stderr}`
+          );
+        }
+
+        return result;
+      },
+      {
+        attributes: {
+          pythonBin: process.env.PYTHON_BIN_PATH || "python",
+          scriptPath,
+          args: scriptArgs.join(" "),
+          [SemanticInternalAttributes.STYLE_ICON]: "brand-python",
+        },
+      }
+    );
+  },
+
+  async runInline(scriptContent: string, options: PythonExecOptions = {}): Promise<Result> {
+    assert(scriptContent, "Script content is required");
+
+    return await logger.trace(
+      "python.runInline()",
+      async (span) => {
+        span.setAttribute("contentLength", scriptContent.length);
+
+        // Using the withTempFile utility to handle the temporary file
+        return await withTempFile(
+          `script_${Date.now()}.py`,
+          async (tempFilePath) => {
+            span.setAttribute("tempFilePath", tempFilePath);
+
+            const pythonBin = process.env.PYTHON_BIN_PATH || "python";
+            const result = await x(pythonBin, [tempFilePath], {
+              ...options,
+              nodeOptions: {
+                ...(options.nodeOptions || {}),
+                env: {
+                  ...process.env,
+                  ...options.env,
+                },
+              },
+              throwOnError: false,
+            });
+
+            if (result.exitCode) {
+              span.setAttribute("exitCode", result.exitCode);
+            }
+
+            if (result.exitCode !== 0) {
+              throw new Error(
+                `Inline script exited with a non-zero code ${result.exitCode}:\n${result.stderr}`
+              );
+            }
+
+            return result;
+          },
+          scriptContent
+        );
+      },
+      {
+        attributes: {
+          pythonBin: process.env.PYTHON_BIN_PATH || "python",
+          contentPreview:
+            scriptContent.substring(0, 100) + (scriptContent.length > 100 ? "..." : ""),
+          [SemanticInternalAttributes.STYLE_ICON]: "brand-python",
+        },
+      }
+    );
+  },
+  // Stream namespace for streaming functions
+  stream: {
+    run(scriptArgs: string[] = [], options: PythonExecOptions = {}): AsyncIterableStream<string> {
+      const pythonBin = process.env.PYTHON_BIN_PATH || "python";
+
+      const pythonProcess = x(pythonBin, scriptArgs, {
+        ...options,
+        nodeOptions: {
+          ...(options.nodeOptions || {}),
+          env: {
+            ...process.env,
+            ...options.env,
+          },
+        },
+        throwOnError: false,
       });
-    }
-  }
-};
 
-export default { run, runScript, runInline };
+      const span = logger.startSpan("python.stream.run()", {
+        attributes: {
+          pythonBin,
+          args: scriptArgs.join(" "),
+          [SemanticInternalAttributes.STYLE_ICON]: "brand-python",
+        },
+      });
+
+      return createAsyncIterableStreamFromAsyncIterable(pythonProcess, {
+        transform: (chunk, controller) => {
+          controller.enqueue(chunk);
+        },
+        flush: () => {
+          span.end();
+        },
+      });
+    },
+    runScript(
+      scriptPath: string,
+      scriptArgs: string[] = [],
+      options: PythonExecOptions = {}
+    ): AsyncIterableStream<string> {
+      assert(scriptPath, "Script path is required");
+      assert(fs.existsSync(scriptPath), `Script does not exist: ${scriptPath}`);
+
+      const pythonBin = process.env.PYTHON_BIN_PATH || "python";
+
+      const pythonProcess = x(pythonBin, [scriptPath, ...scriptArgs], {
+        ...options,
+        nodeOptions: {
+          ...(options.nodeOptions || {}),
+          env: {
+            ...process.env,
+            ...options.env,
+          },
+        },
+        throwOnError: false,
+      });
+
+      const span = logger.startSpan("python.stream.runScript()", {
+        attributes: {
+          pythonBin,
+          scriptPath,
+          args: scriptArgs.join(" "),
+          [SemanticInternalAttributes.STYLE_ICON]: "brand-python",
+        },
+      });
+
+      return createAsyncIterableStreamFromAsyncIterable(pythonProcess, {
+        transform: (chunk, controller) => {
+          controller.enqueue(chunk);
+        },
+        flush: () => {
+          span.end();
+        },
+      });
+    },
+    runInline(scriptContent: string, options: PythonExecOptions = {}): AsyncIterableStream<string> {
+      assert(scriptContent, "Script content is required");
+
+      const pythonBin = process.env.PYTHON_BIN_PATH || "python";
+
+      const pythonScriptPath = createTempFileSync(`script_${Date.now()}.py`, scriptContent);
+
+      const pythonProcess = x(pythonBin, [pythonScriptPath], {
+        ...options,
+        nodeOptions: {
+          ...(options.nodeOptions || {}),
+          env: {
+            ...process.env,
+            ...options.env,
+          },
+        },
+        throwOnError: false,
+      });
+
+      const span = logger.startSpan("python.stream.runInline()", {
+        attributes: {
+          pythonBin,
+          contentPreview:
+            scriptContent.substring(0, 100) + (scriptContent.length > 100 ? "..." : ""),
+          [SemanticInternalAttributes.STYLE_ICON]: "brand-python",
+        },
+      });
+
+      return createAsyncIterableStreamFromAsyncIterable(pythonProcess, {
+        transform: (chunk, controller) => {
+          controller.enqueue(chunk);
+        },
+        flush: () => {
+          span.end();
+        },
+      });
+    },
+  },
+};

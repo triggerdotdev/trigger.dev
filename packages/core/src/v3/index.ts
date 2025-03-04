@@ -22,6 +22,7 @@ export * from "./types/index.js";
 export { links } from "./links.js";
 export * from "./jwt.js";
 export * from "./idempotencyKeys.js";
+export * from "./streams/asyncIterableStream.js";
 export * from "./utils/getEnv.js";
 export {
   formatDuration,

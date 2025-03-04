@@ -9,6 +9,7 @@ import {
   type Row,
   type ShapeStreamInterface,
 } from "@electric-sql/client";
+import { AsyncIterableStream, createAsyncIterableStream } from "../streams/asyncIterableStream.js";
 
 export type ZodShapeStreamOptions = {
   headers?: Record<string, string>;
@@ -80,57 +81,6 @@ export function zodShapeStream<TShapeSchema extends z.ZodTypeAny>(
       }
     },
   };
-}
-
-export type AsyncIterableStream<T> = AsyncIterable<T> & ReadableStream<T>;
-
-export function createAsyncIterableStream<S, T>(
-  source: ReadableStream<S>,
-  transformer: Transformer<S, T>
-): AsyncIterableStream<T> {
-  const transformedStream: any = source.pipeThrough(new TransformStream(transformer));
-
-  transformedStream[Symbol.asyncIterator] = () => {
-    const reader = transformedStream.getReader();
-    return {
-      async next(): Promise<IteratorResult<string>> {
-        const { done, value } = await reader.read();
-        return done ? { done: true, value: undefined } : { done: false, value };
-      },
-    };
-  };
-
-  return transformedStream;
-}
-
-export function createAsyncIterableReadable<S, T>(
-  source: ReadableStream<S>,
-  transformer: Transformer<S, T>,
-  signal: AbortSignal
-): AsyncIterableStream<T> {
-  return new ReadableStream<T>({
-    async start(controller) {
-      const transformedStream = source.pipeThrough(new TransformStream(transformer));
-      const reader = transformedStream.getReader();
-
-      signal.addEventListener("abort", () => {
-        queueMicrotask(() => {
-          reader.cancel();
-          controller.close();
-        });
-      });
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-          controller.close();
-          break;
-        }
-
-        controller.enqueue(value);
-      }
-    },
-  }) as AsyncIterableStream<T>;
 }
 
 class ReadableShapeStream<T extends Row<unknown> = Row> {
