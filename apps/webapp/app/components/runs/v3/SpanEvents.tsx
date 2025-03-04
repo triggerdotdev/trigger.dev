@@ -18,9 +18,15 @@ type SpanEventsProps = {
 };
 
 export function SpanEvents({ spanEvents }: SpanEventsProps) {
+  const displayableEvents = spanEvents.filter((event) => !event.name.startsWith("trigger.dev/"));
+
+  if (displayableEvents.length === 0) {
+    return null;
+  }
+
   return (
     <div className="flex flex-col gap-4">
-      {spanEvents.map((event, index) => (
+      {displayableEvents.map((event, index) => (
         <SpanEvent key={index} spanEvent={event} />
       ))}
     </div>

@@ -15,6 +15,10 @@ export const links = {
     troubleshooting: {
       concurrentWaits: "https://trigger.dev/docs/troubleshooting#parallel-waits-are-not-supported",
     },
+    concurrency: {
+      recursiveDeadlock:
+        "https://trigger.dev/docs/queue-concurrency#waiting-for-a-subtask-on-the-same-queue",
+    },
   },
   site: {
     home: "https://trigger.dev",

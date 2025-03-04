@@ -25,6 +25,7 @@ import {
   TaskRunPromise,
   TaskFromIdentifier,
   flattenIdempotencyKey,
+  getEnvVar,
 } from "@trigger.dev/core/v3";
 import { PollOptions, runs } from "./runs.js";
 import { tracer } from "./tracer.js";
@@ -620,6 +621,7 @@ export async function batchTriggerById<TTask extends AnyTask>(
               idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
               machine: item.options?.machine,
               priority: item.options?.priority,
+              lockToVersion: item.options?.version ?? getEnvVar("TRIGGER_VERSION"),
             },
           } satisfies BatchTriggerTaskV2RequestBody["items"][0];
         })
@@ -947,6 +949,7 @@ export async function batchTriggerTasks<TTasks extends readonly AnyTask[]>(
               idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
               machine: item.options?.machine,
               priority: item.options?.priority,
+              lockToVersion: item.options?.version ?? getEnvVar("TRIGGER_VERSION"),
             },
           } satisfies BatchTriggerTaskV2RequestBody["items"][0];
         })
@@ -1189,6 +1192,7 @@ async function trigger_internal<TRunTypes extends AnyRunTypes>(
         parentRunId: taskContext.ctx?.run.id,
         machine: options?.machine,
         priority: options?.priority,
+        lockToVersion: options?.version ?? getEnvVar("TRIGGER_VERSION"),
       },
     },
     {
@@ -1256,6 +1260,7 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
               idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
               machine: item.options?.machine,
               priority: item.options?.priority,
+              lockToVersion: item.options?.version ?? getEnvVar("TRIGGER_VERSION"),
             },
           } satisfies BatchTriggerTaskV2RequestBody["items"][0];
         })

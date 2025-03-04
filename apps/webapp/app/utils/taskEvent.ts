@@ -62,7 +62,6 @@ export function prepareTrace(events: TaskEvent[]): TraceSummary | undefined {
     );
 
     const span = {
-      recordId: event.id,
       id: event.spanId,
       parentId: event.parentId ?? undefined,
       runId: event.runId,
@@ -247,7 +246,6 @@ export function createSpanFromEvent(events: TaskEvent[], event: PreparedEvent) {
   }
 
   const span = {
-    recordId: event.id,
     id: event.spanId,
     parentId: event.parentId ?? undefined,
     runId: event.runId,

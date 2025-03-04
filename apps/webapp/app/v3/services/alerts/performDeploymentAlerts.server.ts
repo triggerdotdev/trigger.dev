@@ -46,19 +46,17 @@ export class PerformDeploymentAlertsService extends BaseService {
     deployment: WorkerDeployment,
     alertType: ProjectAlertType
   ) {
-    const alert = await this._prisma.projectAlert.create({
-      data: {
-        friendlyId: generateFriendlyId("alert"),
+    await DeliverAlertService.createAndSendAlert(
+      {
         channelId: alertChannel.id,
+        channelType: alertChannel.type,
         projectId: deployment.projectId,
         environmentId: deployment.environmentId,
-        status: "PENDING",
-        type: alertType,
-        workerDeploymentId: deployment.id,
+        alertType,
+        deploymentId: deployment.id,
       },
-    });
-
-    await DeliverAlertService.enqueue(alert.id);
+      this._prisma
+    );
   }
 
   static async enqueue(deploymentId: string, runAt?: Date) {

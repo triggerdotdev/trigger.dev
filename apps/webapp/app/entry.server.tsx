@@ -25,6 +25,13 @@ export default function handleRequest(
   responseHeaders: Headers,
   remixContext: EntryContext
 ) {
+  const url = new URL(request.url);
+
+  if (url.pathname.startsWith("/login")) {
+    responseHeaders.set("X-Frame-Options", "SAMEORIGIN");
+    responseHeaders.set("Content-Security-Policy", "frame-ancestors 'self'");
+  }
+
   const acceptLanguage = request.headers.get("accept-language");
   const locales = parseAcceptLanguage(acceptLanguage, {
     validate: Intl.DateTimeFormat.supportedLocalesOf,

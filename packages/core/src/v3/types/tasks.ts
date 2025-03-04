@@ -202,17 +202,14 @@ type CommonTaskOptions<
    * ```
    */
   queue?: QueueOptions;
-  /** Configure the spec of the machine you want your task to run on.
+  /** Configure the spec of the [machine](https://trigger.dev/docs/machines) you want your task to run on.
    *
    * @example
    *
    * ```ts
    * export const heavyTask = task({
       id: "heavy-task",
-      machine: {
-        cpu: 2,
-        memory: 4,
-      },
+      machine: "medium-1x",
       run: async ({ payload, ctx }) => {
         //...
       },
@@ -809,9 +806,25 @@ export type TriggerOptions = {
    * The machine preset to use for this run. This will override the task's machine preset and any defaults.
    */
   machine?: MachinePresetName;
+
+  /**
+   * Specify the version of the deployed task to run. By default the "current" version is used at the time of execution,
+   * but you can specify a specific version to run here. You can also set the TRIGGER_VERSION environment
+   * variables to run a specific version for all tasks.
+   *
+   * @example
+   *
+   * ```ts
+   * await myTask.trigger({ foo: "bar" }, { version: "20250208.1" });
+   * ```
+   *
+   * Note that this option is only available for `trigger` and NOT `triggerAndWait` (and their batch counterparts). The "wait" versions will always be locked
+   * to the same version as the parent task that is triggering the child tasks.
+   */
+  version?: string;
 };
 
-export type TriggerAndWaitOptions = TriggerOptions;
+export type TriggerAndWaitOptions = Omit<TriggerOptions, "version">;
 
 export type BatchTriggerOptions = {
   /**

@@ -310,6 +310,39 @@ const EnvironmentSchema = z.object({
   ALERT_SMTP_SECURE: z.coerce.boolean().optional(),
   ALERT_SMTP_USER: z.string().optional(),
   ALERT_SMTP_PASSWORD: z.string().optional(),
+  ALERT_RATE_LIMITER_EMISSION_INTERVAL: z.coerce.number().int().default(2_500),
+  ALERT_RATE_LIMITER_BURST_TOLERANCE: z.coerce.number().int().default(10_000),
+  ALERT_RATE_LIMITER_REDIS_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_HOST),
+  ALERT_RATE_LIMITER_REDIS_READER_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_READER_HOST),
+  ALERT_RATE_LIMITER_REDIS_READER_PORT: z.coerce
+    .number()
+    .optional()
+    .transform(
+      (v) =>
+        v ?? (process.env.REDIS_READER_PORT ? parseInt(process.env.REDIS_READER_PORT) : undefined)
+    ),
+  ALERT_RATE_LIMITER_REDIS_PORT: z.coerce
+    .number()
+    .optional()
+    .transform((v) => v ?? (process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined)),
+  ALERT_RATE_LIMITER_REDIS_USERNAME: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_USERNAME),
+  ALERT_RATE_LIMITER_REDIS_PASSWORD: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_PASSWORD),
+  ALERT_RATE_LIMITER_REDIS_TLS_DISABLED: z
+    .string()
+    .default(process.env.REDIS_TLS_DISABLED ?? "false"),
+  ALERT_RATE_LIMITER_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
 
   MAX_SEQUENTIAL_INDEX_FAILURE_COUNT: z.coerce.number().default(96),
 
@@ -326,7 +359,7 @@ const EnvironmentSchema = z.object({
   MARQS_AVAILABLE_CAPACITY_BIAS: z.coerce.number().default(0.3),
   MARQS_QUEUE_AGE_RANDOMIZATION_BIAS: z.coerce.number().default(0.25),
   MARQS_REUSE_SNAPSHOT_COUNT: z.coerce.number().int().default(0),
-  MARQS_MAXIMUM_ORG_COUNT: z.coerce.number().int().optional(),
+  MARQS_MAXIMUM_ENV_COUNT: z.coerce.number().int().optional(),
 
   PROD_TASK_HEARTBEAT_INTERVAL_MS: z.coerce.number().int().optional(),
 
@@ -368,6 +401,11 @@ const EnvironmentSchema = z.object({
   MAX_BATCH_AND_WAIT_V2_TRIGGER_ITEMS: z.coerce.number().int().default(500),
 
   REALTIME_STREAM_VERSION: z.enum(["v1", "v2"]).default("v1"),
+  REALTIME_STREAM_MAX_LENGTH: z.coerce.number().int().default(1000),
+  REALTIME_STREAM_TTL: z.coerce
+    .number()
+    .int()
+    .default(60 * 60 * 24), // 1 day in seconds
   BATCH_METADATA_OPERATIONS_FLUSH_INTERVAL_MS: z.coerce.number().int().default(1000),
   BATCH_METADATA_OPERATIONS_FLUSH_ENABLED: z.string().default("1"),
   BATCH_METADATA_OPERATIONS_FLUSH_LOGGING_ENABLED: z.string().default("1"),
@@ -572,6 +610,9 @@ const EnvironmentSchema = z.object({
     .default(process.env.REDIS_TLS_DISABLED ?? "false"),
   LEGACY_RUN_ENGINE_WORKER_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
 
+  LEGACY_RUN_ENGINE_WAITING_FOR_DEPLOY_BATCH_SIZE: z.coerce.number().int().default(100),
+  LEGACY_RUN_ENGINE_WAITING_FOR_DEPLOY_BATCH_STAGGER_MS: z.coerce.number().int().default(1_000),
+
   COMMON_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
   COMMON_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(2),
   COMMON_WORKER_CONCURRENCY_TASKS_PER_WORKER: z.coerce.number().int().default(10),
@@ -608,6 +649,9 @@ const EnvironmentSchema = z.object({
     .transform((v) => v ?? process.env.REDIS_PASSWORD),
   COMMON_WORKER_REDIS_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
   COMMON_WORKER_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
+
+  TASK_EVENT_PARTITIONING_ENABLED: z.string().default("0"),
+  TASK_EVENT_PARTITIONED_WINDOW_IN_SECONDS: z.coerce.number().int().default(60), // 1 minute
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

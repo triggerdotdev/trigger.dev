@@ -213,6 +213,10 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
     }
   }
 
+  async reschedule(id: string, availableAt: Date): Promise<void> {
+    await this.redis.zadd(`queue`, "XX", availableAt.getTime(), id);
+  }
+
   async size({ includeFuture = false }: { includeFuture?: boolean } = {}): Promise<number> {
     try {
       if (includeFuture) {

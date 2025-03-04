@@ -47,6 +47,22 @@ There should be a link below the error message to the full build logs on your ma
 
 Usually there will be some useful guidance below this message. If you can't figure out what's going wrong then join [our Discord](https://trigger.dev/discord) and create a Help forum post with a link to your deployment.
 
+### `No loader is configured for ".node" files`
+
+This happens because `.node` files are native code and can't be bundled like other packages. To fix this, add your package to [`build.external`](/config/config-file#external) in the `trigger.config.ts` file like this:
+
+```ts trigger.config.ts
+import { defineConfig } from "@trigger.dev/sdk/v3";
+
+export default defineConfig({
+  project: "<project ref>",
+  // Your other config settings...
+  build: {
+    external: ["your-node-package"],
+  },
+});
+```
+
 ## Project setup issues
 
 ### `The requested module 'node:events' does not provide an export named 'addAbortListener'`

@@ -444,7 +444,7 @@ function TasksDropdown({
         <SelectList>
           {filtered.map((item, index) => (
             <SelectItem
-              key={item.slug}
+              key={`${item.triggerSource}-${item.slug}`}
               value={item.slug}
               icon={
                 <TaskTriggerSourceIcon source={item.triggerSource} className="size-4 flex-none" />

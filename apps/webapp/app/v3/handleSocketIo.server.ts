@@ -174,6 +174,44 @@ function createCoordinatorNamespace(io: Server) {
           checkpoint: message.checkpoint,
         });
       },
+      TASK_RUN_COMPLETED_WITH_ACK: async (message) => {
+        try {
+          const completeAttempt = new CompleteAttemptService({
+            supportsRetryCheckpoints: message.version === "v1",
+          });
+          await completeAttempt.call({
+            completion: message.completion,
+            execution: message.execution,
+            checkpoint: message.checkpoint,
+          });
+
+          return {
+            success: true,
+          };
+        } catch (error) {
+          const friendlyError =
+            error instanceof Error
+              ? {
+                  name: error.name,
+                  message: error.message,
+                  stack: error.stack,
+                }
+              : {
+                  name: "UnknownError",
+                  message: String(error),
+                };
+
+          logger.error("Error while completing attempt with ack", {
+            error: friendlyError,
+            message,
+          });
+
+          return {
+            success: false,
+            error: friendlyError,
+          };
+        }
+      },
       TASK_RUN_FAILED_TO_RUN: async (message) => {
         await sharedQueueTasks.taskRunFailed(message.completion);
       },

@@ -1,6 +1,7 @@
 import {
   ArrowPathIcon,
   ArrowUturnLeftIcon,
+  ArrowUturnRightIcon,
   BookOpenIcon,
   ServerStackIcon,
 } from "@heroicons/react/20/solid";
@@ -42,7 +43,10 @@ import {
   deploymentStatuses,
 } from "~/components/runs/v3/DeploymentStatus";
 import { RetryDeploymentIndexingDialog } from "~/components/runs/v3/RetryDeploymentIndexingDialog";
-import { RollbackDeploymentDialog } from "~/components/runs/v3/RollbackDeploymentDialog";
+import {
+  PromoteDeploymentDialog,
+  RollbackDeploymentDialog,
+} from "~/components/runs/v3/RollbackDeploymentDialog";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useUser } from "~/hooks/useUser";
@@ -59,6 +63,7 @@ import {
 } from "~/utils/pathBuilder";
 import { createSearchParams } from "~/utils/searchParams";
 import { deploymentIndexingIsRetryable } from "~/v3/deploymentStatus";
+import { compareDeploymentVersions } from "~/v3/utils/deploymentVersions";
 
 export const meta: MetaFunction = () => {
   return [
@@ -106,6 +111,8 @@ export default function Page() {
   const hasDeployments = totalPages > 0;
 
   const { deploymentParam } = useParams();
+
+  const currentDeployment = deployments.find((d) => d.isCurrent);
 
   return (
     <PageContainer>
@@ -235,6 +242,7 @@ export default function Page() {
                               deployment={deployment}
                               path={path}
                               isSelected={isSelected}
+                              currentDeployment={currentDeployment}
                             />
                           </TableRow>
                         );
@@ -321,22 +329,25 @@ function DeploymentActionsCell({
   deployment,
   path,
   isSelected,
+  currentDeployment,
 }: {
   deployment: DeploymentListItem;
   path: string;
   isSelected: boolean;
+  currentDeployment?: DeploymentListItem;
 }) {
   const location = useLocation();
   const project = useProject();
 
-  const canRollback =
-    deployment.type === WorkerInstanceGroupType.MANAGED &&
-    !deployment.isCurrent &&
-    deployment.isDeployed;
-
+  const canBeMadeCurrent = !deployment.isCurrent && deployment.isDeployed;
   const canRetryIndexing = deployment.isLatest && deploymentIndexingIsRetryable(deployment);
+  const canBeRolledBack =
+    canBeMadeCurrent &&
+    currentDeployment?.version &&
+    compareDeploymentVersions(deployment.version, currentDeployment.version) === -1;
+  const canBePromoted = canBeMadeCurrent && !canBeRolledBack;
 
-  if (!canRollback && !canRetryIndexing) {
+  if (!canBeMadeCurrent && !canRetryIndexing) {
     return (
       <TableCell to={path} isSelected={isSelected}>
         {""}
@@ -350,7 +361,7 @@ function DeploymentActionsCell({
       isSelected={isSelected}
       popoverContent={
         <>
-          {canRollback && (
+          {canBeRolledBack && (
             <Dialog>
               <DialogTrigger asChild>
                 <Button
@@ -364,6 +375,26 @@ function DeploymentActionsCell({
                 </Button>
               </DialogTrigger>
               <RollbackDeploymentDialog
+                projectId={project.id}
+                deploymentShortCode={deployment.shortCode}
+                redirectPath={`${location.pathname}${location.search}`}
+              />
+            </Dialog>
+          )}
+          {canBePromoted && (
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button
+                  variant="small-menu-item"
+                  LeadingIcon={ArrowUturnRightIcon}
+                  leadingIconClassName="text-blue-500"
+                  fullWidth
+                  textAlignLeft
+                >
+                  Promote…
+                </Button>
+              </DialogTrigger>
+              <PromoteDeploymentDialog
                 projectId={project.id}
                 deploymentShortCode={deployment.shortCode}
                 redirectPath={`${location.pathname}${location.search}`}

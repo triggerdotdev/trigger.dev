@@ -6,11 +6,15 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("RealtimeClient", () => {
   containerWithElectricAndRedisTest(
     "Should only track concurrency for live requests",
     { timeout: 30_000 },
-    async ({ redisOptions, electricOrigin, prisma }) => {
+    async ({ redis, electricOrigin, prisma }) => {
       const client = new RealtimeClient({
         electricOrigin,
         keyPrefix: "test:realtime",
-        redis: redisOptions,
+        redis: {
+          host: redis.options.host,
+          port: redis.options.port,
+          tlsDisabled: true,
+        },
         expiryTimeInSeconds: 5,
         cachedLimitProvider: {
           async getCachedLimit() {
@@ -142,11 +146,15 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("RealtimeClient", () => {
   containerWithElectricAndRedisTest(
     "Should support subscribing to a run tag",
     { timeout: 30_000 },
-    async ({ redisOptions, electricOrigin, prisma }) => {
+    async ({ redis, electricOrigin, prisma }) => {
       const client = new RealtimeClient({
         electricOrigin,
         keyPrefix: "test:realtime",
-        redis: redisOptions,
+        redis: {
+          host: redis.options.host,
+          port: redis.options.port,
+          tlsDisabled: true,
+        },
         expiryTimeInSeconds: 5,
         cachedLimitProvider: {
           async getCachedLimit() {
@@ -221,11 +229,15 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("RealtimeClient", () => {
   containerWithElectricAndRedisTest(
     "Should adapt for older client versions",
     { timeout: 30_000 },
-    async ({ redisOptions, electricOrigin, prisma }) => {
+    async ({ redis, electricOrigin, prisma }) => {
       const client = new RealtimeClient({
         electricOrigin,
         keyPrefix: "test:realtime",
-        redis: redisOptions,
+        redis: {
+          host: redis.options.host,
+          port: redis.options.port,
+          tlsDisabled: true,
+        },
         expiryTimeInSeconds: 5,
         cachedLimitProvider: {
           async getCachedLimit() {

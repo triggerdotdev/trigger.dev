@@ -36,6 +36,8 @@ export default defineConfig({
 
 You'll also need to add `@trigger.dev/build` to your `package.json` file under `devDependencies` if you don't already have it there.
 
+If you are modifying this example and using popular FFmpeg libraries like `fluent-ffmpeg` you'll also need to add them to [`external`](/config/config-file#external) in your `trigger.config.ts` file.
+
 ## Compress a video using FFmpeg
 
 This task demonstrates how to use FFmpeg to compress a video, reducing its file size while maintaining reasonable quality, and upload the compressed video to R2 storage.

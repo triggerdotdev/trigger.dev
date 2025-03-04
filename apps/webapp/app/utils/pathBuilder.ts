@@ -252,7 +252,7 @@ export function projectTriggersPath(organization: OrgForPath, project: ProjectFo
   return `${projectPath(organization, project)}/triggers`;
 }
 
-export function projectEventsPath(organization: OrgForPath, project: ProjectForPath) {
+function projectEventsPath(organization: OrgForPath, project: ProjectForPath) {
   return `${projectPath(organization, project)}/events`;
 }
 
@@ -394,15 +394,6 @@ export function v3RunSpanPath(
   span: v3SpanForPath
 ) {
   return `${v3RunPath(organization, project, run)}?span=${span.spanId}`;
-}
-
-export function v3TraceSpanPath(
-  organization: OrgForPath,
-  project: ProjectForPath,
-  traceId: string,
-  spanId: string
-) {
-  return `${v3ProjectPath(organization, project)}/traces/${traceId}/spans/${spanId}`;
 }
 
 export function v3RunStreamingPath(

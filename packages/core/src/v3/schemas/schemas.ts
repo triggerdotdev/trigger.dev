@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { RequireKeys } from "../types/index.js";
-import { MachineConfig, MachinePreset, TaskRunExecution } from "./common.js";
+import { MachineConfig, MachinePreset, MachinePresetName, TaskRunExecution } from "./common.js";
 
 /*
     WARNING: Never import anything from ./messages here. If it's needed in both, put it here instead.
@@ -10,10 +10,24 @@ export type EnvironmentType = z.infer<typeof EnvironmentType>;
 
 export const RunEngineVersionSchema = z.enum(["V1", "V2"]);
 
+export const TaskRunExecutionMetric = z.object({
+  name: z.string(),
+  event: z.string(),
+  timestamp: z.number(),
+  duration: z.number(),
+});
+
+export type TaskRunExecutionMetric = z.infer<typeof TaskRunExecutionMetric>;
+
+export const TaskRunExecutionMetrics = z.array(TaskRunExecutionMetric);
+
+export type TaskRunExecutionMetrics = z.infer<typeof TaskRunExecutionMetrics>;
+
 export const TaskRunExecutionPayload = z.object({
   execution: TaskRunExecution,
   traceContext: z.record(z.unknown()),
   environment: z.record(z.string()).optional(),
+  metrics: TaskRunExecutionMetrics.optional(),
 });
 
 export type TaskRunExecutionPayload = z.infer<typeof TaskRunExecutionPayload>;
@@ -38,6 +52,7 @@ export const ProdTaskRunExecutionPayload = z.object({
   execution: ProdTaskRunExecution,
   traceContext: z.record(z.unknown()),
   environment: z.record(z.string()).optional(),
+  metrics: TaskRunExecutionMetrics.optional(),
 });
 
 export type ProdTaskRunExecutionPayload = z.infer<typeof ProdTaskRunExecutionPayload>;
@@ -98,15 +113,25 @@ export const RetryOptions = z.object({
    * This can be useful to prevent the thundering herd problem where all retries happen at the same time.
    */
   randomize: z.boolean().optional(),
+
+  /** If a run fails with an Out Of Memory (OOM) error and you have this set, it will retry with the machine you specify.
+   * Note: it will not default to this [machine](https://trigger.dev/docs/machines) for new runs, only for failures caused by OOM errors.
+   * So if you frequently have attempts failing with OOM errors, you should set the [default machine](https://trigger.dev/docs/machines) to be higher.
+   */
+  outOfMemory: z
+    .object({
+      machine: MachinePresetName.optional(),
+    })
+    .optional(),
 });
 
 export type RetryOptions = z.infer<typeof RetryOptions>;
 
 export const QueueOptions = z.object({
   /** You can define a shared queue and then pass the name in to your task.
-   * 
+   *
    * @example
-   * 
+   *
    * ```ts
    * const myQueue = queue({
       name: "my-queue",
@@ -240,6 +265,7 @@ export const TaskRunExecutionLazyAttemptPayload = z.object({
   isTest: z.boolean(),
   traceContext: z.record(z.unknown()),
   environment: z.record(z.string()).optional(),
+  metrics: TaskRunExecutionMetrics.optional(),
 });
 
 export type TaskRunExecutionLazyAttemptPayload = z.infer<typeof TaskRunExecutionLazyAttemptPayload>;
@@ -257,3 +283,12 @@ export const RuntimeWait = z.discriminatedUnion("type", [
 ]);
 
 export type RuntimeWait = z.infer<typeof RuntimeWait>;
+
+export const ManualCheckpointMetadata = z.object({
+  /** NOT a friendly ID */
+  attemptId: z.string(),
+  previousRunStatus: z.string(),
+  previousAttemptStatus: z.string(),
+});
+
+export type ManualCheckpointMetadata = z.infer<typeof ManualCheckpointMetadata>;

@@ -7,7 +7,7 @@ import { registryProxy } from "../registryProxy.server";
 import { updateEnvConcurrencyLimits } from "../runQueue.server";
 import { PerformDeploymentAlertsService } from "./alerts/performDeploymentAlerts.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
-import { ExecuteTasksWaitingForDeployService } from "./executeTasksWaitingForDeploy";
+import { ChangeCurrentDeploymentService } from "./changeCurrentDeployment.server";
 import { projectPubSub } from "./projectPubSub.server";
 
 export class FinalizeDeploymentService extends BaseService {
@@ -72,23 +72,11 @@ export class FinalizeDeploymentService extends BaseService {
       },
     });
 
-    //set this deployment as the current deployment for this environment
-    await this._prisma.workerDeploymentPromotion.upsert({
-      where: {
-        environmentId_label: {
-          environmentId: authenticatedEnv.id,
-          label: CURRENT_DEPLOYMENT_LABEL,
-        },
-      },
-      create: {
-        deploymentId: finalizedDeployment.id,
-        environmentId: authenticatedEnv.id,
-        label: CURRENT_DEPLOYMENT_LABEL,
-      },
-      update: {
-        deploymentId: finalizedDeployment.id,
-      },
-    });
+    if (typeof body.skipPromotion === "undefined" || !body.skipPromotion) {
+      const promotionService = new ChangeCurrentDeploymentService();
+
+      await promotionService.call(finalizedDeployment, "promote");
+    }
 
     try {
       //send a notification that a new worker has been created
@@ -123,7 +111,6 @@ export class FinalizeDeploymentService extends BaseService {
       });
     }
 
-    await ExecuteTasksWaitingForDeployService.enqueue(deployment.worker.id, this._prisma);
     await PerformDeploymentAlertsService.enqueue(deployment.id);
 
     return finalizedDeployment;

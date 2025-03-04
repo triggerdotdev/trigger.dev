@@ -1,8 +1,10 @@
 import { millisecondsToNanoseconds } from "@trigger.dev/core/v3";
 import { createTreeFromFlatItems, flattenTree } from "~/components/primitives/TreeView/TreeView";
-import { PrismaClient, prisma } from "~/db.server";
+import { createTimelineSpanEventsFromSpanEvents } from "~/components/run/RunTimeline";
+import { prisma, PrismaClient } from "~/db.server";
 import { getUsername } from "~/utils/username";
 import { eventRepository } from "~/v3/eventRepository.server";
+import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
 import { isFinalRunStatus } from "~/v3/taskStatus";
 
 type Result = Awaited<ReturnType<RunPresenter["call"]>>;
@@ -32,6 +34,8 @@ export class RunPresenter {
     const run = await this.#prismaClient.taskRun.findFirstOrThrow({
       select: {
         id: true,
+        createdAt: true,
+        taskEventStore: true,
         number: true,
         traceId: true,
         spanId: true,
@@ -44,6 +48,7 @@ export class RunPresenter {
             friendlyId: true,
             taskIdentifier: true,
             spanId: true,
+            createdAt: true,
           },
         },
         runtimeEnvironment: {
@@ -105,13 +110,27 @@ export class RunPresenter {
     }
 
     // get the events
-    const traceSummary = await eventRepository.getTraceSummary(run.traceId);
+    const traceSummary = await eventRepository.getTraceSummary(
+      getTaskEventStoreTableForRun(run),
+      run.traceId,
+      run.rootTaskRun?.createdAt ?? run.createdAt,
+      run.completedAt ?? undefined
+    );
     if (!traceSummary) {
       return {
         run: runData,
         trace: undefined,
       };
     }
+
+    const user = await this.#prismaClient.user.findFirst({
+      where: {
+        id: userId,
+      },
+      select: {
+        admin: true,
+      },
+    });
 
     //this tree starts at the passed in span (hides parent elements if there are any)
     const tree = createTreeFromFlatItems(traceSummary.spans, run.spanId);
@@ -129,6 +148,11 @@ export class RunPresenter {
             ...n,
             data: {
               ...n.data,
+              timelineEvents: createTimelineSpanEventsFromSpanEvents(
+                n.data.events,
+                user?.admin ?? false,
+                treeRootStartTimeMs
+              ),
               //set partial nodes to null duration
               duration: n.data.isPartial ? null : n.data.duration,
               offset,

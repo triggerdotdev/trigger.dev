@@ -180,6 +180,7 @@ export const TaskRunInternalError = z.object({
     "TASK_RUN_STALLED_EXECUTING_WITH_WAITPOINTS",
     "OUTDATED_SDK_VERSION",
     "TASK_DID_CONCURRENT_WAIT",
+    "RECURSIVE_WAIT_DEADLOCK",
   ]),
   message: z.string().optional(),
   stackTrace: z.string().optional(),

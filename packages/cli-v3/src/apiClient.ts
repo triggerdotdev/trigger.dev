@@ -30,6 +30,7 @@ import {
   DevConfigResponseBody,
   DevDequeueRequestBody,
   DevDequeueResponseBody,
+  PromoteDeploymentResponseBody,
 } from "@trigger.dev/core/v3";
 import { zodfetch, zodfetchSSE, ApiError } from "@trigger.dev/core/v3/zodfetch";
 import { logger } from "./utilities/logger.js";
@@ -334,6 +335,24 @@ export class CliApiClient {
     source.stop();
 
     return result;
+  }
+
+  async promoteDeployment(version: string) {
+    if (!this.accessToken) {
+      throw new Error("promoteDeployment: No access token");
+    }
+
+    return wrapZodFetch(
+      PromoteDeploymentResponseBody,
+      `${this.apiURL}/api/v1/deployments/${version}/promote`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
   }
 
   async startDeploymentIndexing(deploymentId: string, body: StartDeploymentIndexingRequestBody) {

@@ -62,6 +62,10 @@ async function tryImport(path: string): Promise<Result<any>> {
 function getExportNames(module: any) {
   const exports: string[] = [];
 
+  if (!module) {
+    return exports;
+  }
+
   const exportKeys = Object.keys(module);
 
   if (exportKeys.length === 0) {

@@ -18,3 +18,4 @@ export { StandardMetadataManager } from "../runMetadata/manager.js";
 export { StandardWaitUntilManager } from "../waitUntil/manager.js";
 export { ManagedRuntimeManager } from "../runtime/managedRuntimeManager.js";
 export * from "../runEngineWorker/index.js";
+export { StandardRunTimelineMetricsManager } from "../runTimelineMetrics/runTimelineMetricsManager.js";

@@ -122,9 +122,12 @@ export class FinalizeTaskRunService extends BaseService {
     const result = await resumeService.call({ id: run.id });
 
     if (result.success) {
-      logger.log("FinalizeTaskRunService: Resumed dependent parents", { result, run });
+      logger.log("FinalizeTaskRunService: Resumed dependent parents", { result, run: run.id });
     } else {
-      logger.error("FinalizeTaskRunService: Failed to resume dependent parents", { result, run });
+      logger.error("FinalizeTaskRunService: Failed to resume dependent parents", {
+        result,
+        run: run.id,
+      });
     }
 
     //enqueue alert

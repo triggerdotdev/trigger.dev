@@ -285,6 +285,7 @@ export const FinalizeDeploymentRequestBody = z.object({
   imageReference: z.string(),
   selfHosted: z.boolean().optional(),
   skipRegistryProxy: z.boolean().optional(),
+  skipPromotion: z.boolean().optional(),
 });
 
 export type FinalizeDeploymentRequestBody = z.infer<typeof FinalizeDeploymentRequestBody>;
@@ -340,6 +341,14 @@ export const FailDeploymentResponseBody = z.object({
 });
 
 export type FailDeploymentResponseBody = z.infer<typeof FailDeploymentResponseBody>;
+
+export const PromoteDeploymentResponseBody = z.object({
+  id: z.string(),
+  version: z.string(),
+  shortCode: z.string(),
+});
+
+export type PromoteDeploymentResponseBody = z.infer<typeof PromoteDeploymentResponseBody>;
 
 export const GetDeploymentResponseBody = z.object({
   id: z.string(),

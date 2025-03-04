@@ -46,19 +46,17 @@ export class PerformTaskRunAlertsService extends BaseService {
   }
 
   async #createAndSendAlert(alertChannel: ProjectAlertChannel, run: FoundRun) {
-    const alert = await this._prisma.projectAlert.create({
-      data: {
-        friendlyId: generateFriendlyId("alert"),
+    await DeliverAlertService.createAndSendAlert(
+      {
         channelId: alertChannel.id,
+        channelType: alertChannel.type,
         projectId: run.projectId,
         environmentId: run.runtimeEnvironmentId,
-        status: "PENDING",
-        type: "TASK_RUN",
+        alertType: "TASK_RUN",
         taskRunId: run.id,
       },
-    });
-
-    await DeliverAlertService.enqueue(alert.id);
+      this._prisma
+    );
   }
 
   static async enqueue(runId: string, runAt?: Date) {

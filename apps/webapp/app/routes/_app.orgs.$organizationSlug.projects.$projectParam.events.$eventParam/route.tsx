@@ -3,7 +3,6 @@ import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { EventDetail } from "~/components/event/EventDetail";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { RunsFilters } from "~/components/runs/RunFilters";
 import { RunListSearchSchema } from "~/components/runs/RunStatuses";
 import { RunsTable } from "~/components/runs/RunsTable";
@@ -13,7 +12,7 @@ import { useUser } from "~/hooks/useUser";
 import { EventPresenter } from "~/presenters/EventPresenter.server";
 import { RunListPresenter } from "~/presenters/RunListPresenter.server";
 import { requireUserId } from "~/services/session.server";
-import { EventParamSchema, projectEventsPath, projectPath } from "~/utils/pathBuilder";
+import { EventParamSchema, projectPath } from "~/utils/pathBuilder";
 import { ListPagination } from "../../components/ListPagination";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
@@ -69,16 +68,6 @@ export default function Page() {
 
   return (
     <PageContainer>
-      <NavBar>
-        <PageTitle
-          title={event.name}
-          backButton={{
-            to: projectEventsPath(organization, project),
-            text: "Events",
-          }}
-        />
-      </NavBar>
-
       <PageBody scrollable={false}>
         <div className="grid h-full grid-cols-2">
           <div className="overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">

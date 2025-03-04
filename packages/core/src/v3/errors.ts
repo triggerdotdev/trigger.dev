@@ -54,6 +54,28 @@ export class AbortTaskRunError extends Error {
   }
 }
 
+const MANUAL_OOM_KILL_ERROR_MESSAGE = "MANUAL_OOM_KILL_ERROR";
+
+/**
+ * This causes an Out Of Memory error on the run (if it's uncaught).
+ * This can be useful if you use a native package that detects it's run out of memory but doesn't kill Node.js
+ */
+export class OutOfMemoryError extends Error {
+  constructor() {
+    super(MANUAL_OOM_KILL_ERROR_MESSAGE);
+    this.name = "OutOfMemoryError";
+  }
+}
+
+export function isManualOutOfMemoryError(error: TaskRunError) {
+  if (error.type === "BUILT_IN_ERROR") {
+    if (error.message && error.message === MANUAL_OOM_KILL_ERROR_MESSAGE) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export class TaskPayloadParsedError extends Error {
   public readonly cause: unknown;
 
@@ -213,6 +235,7 @@ export function shouldRetryError(error: TaskRunError): boolean {
         case "OUTDATED_SDK_VERSION":
         case "TASK_RUN_HEARTBEAT_TIMEOUT":
         case "TASK_DID_CONCURRENT_WAIT":
+        case "RECURSIVE_WAIT_DEADLOCK":
         // run engine errors
         case "TASK_DEQUEUED_INVALID_STATE":
         case "TASK_DEQUEUED_QUEUE_NOT_FOUND":
@@ -501,6 +524,14 @@ const prettyInternalErrors: Partial<
       href: links.docs.troubleshooting.concurrentWaits,
     },
   },
+  RECURSIVE_WAIT_DEADLOCK: {
+    message:
+      "This run will never execute because it was triggered recursively and the task has no remaining concurrency available.",
+    link: {
+      name: "See docs for help",
+      href: links.docs.concurrency.recursiveDeadlock,
+    },
+  },
 };
 
 const getPrettyTaskRunError = (code: TaskRunInternalError["code"]): TaskRunInternalError => {
@@ -573,6 +604,13 @@ export function taskRunErrorEnhancer(error: TaskRunError): EnhanceError<TaskRunE
           };
         }
       }
+
+      if (isManualOutOfMemoryError(error)) {
+        return {
+          ...getPrettyTaskRunError("TASK_PROCESS_OOM_KILLED"),
+        };
+      }
+
       break;
     }
     case "STRING_ERROR": {
@@ -654,6 +692,11 @@ export function exceptionEventEnhancer(
           default:
             return exception;
         }
+      } else if (exception.message?.includes(TaskRunErrorCodes.RECURSIVE_WAIT_DEADLOCK)) {
+        return {
+          ...exception,
+          ...prettyInternalErrors.RECURSIVE_WAIT_DEADLOCK,
+        };
       }
       break;
     }
@@ -878,5 +921,22 @@ function tryJsonParse(data: string | undefined): any {
     return JSON.parse(data);
   } catch {
     return;
+  }
+}
+
+export function taskRunErrorToString(error: TaskRunError): string {
+  switch (error.type) {
+    case "INTERNAL_ERROR": {
+      return `Internal error [${error.code}]${error.message ? `: ${error.message}` : ""}`;
+    }
+    case "BUILT_IN_ERROR": {
+      return `${error.name}: ${error.message}`;
+    }
+    case "STRING_ERROR": {
+      return error.raw;
+    }
+    case "CUSTOM_ERROR": {
+      return error.raw;
+    }
   }
 }

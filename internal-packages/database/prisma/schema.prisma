@@ -1734,7 +1734,10 @@ model TaskRun {
 
   checkpoints Checkpoint[]
 
+  /// startedAt marks the point at which a run is dequeued from MarQS
   startedAt     DateTime?
+  /// executedAt is set when the first attempt is about to execute
+  executedAt    DateTime?
   completedAt   DateTime?
   machinePreset String?
 
@@ -1772,6 +1775,11 @@ model TaskRun {
 
   ///If there are any blocked waitpoints, the run won't be executed
   blockedByWaitpoints TaskRunWaitpoint[]
+
+  /// Where the logs are stored
+  taskEventStore String @default("taskEvent")
+
+  queueTimestamp DateTime?
 
   batchItems             BatchTaskRunItem[]
   dependency             TaskRunDependency?
@@ -2274,8 +2282,9 @@ model TaskRunDependency {
   dependentBatchRun   BatchTaskRun? @relation("dependentBatchRun", fields: [dependentBatchRunId], references: [id])
   dependentBatchRunId String?
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  resumedAt DateTime?
 
   @@index([dependentAttemptId])
   @@index([dependentBatchRunId])
@@ -2582,6 +2591,7 @@ model BatchTaskRun {
 enum BatchTaskRunStatus {
   PENDING
   COMPLETED
+  ABORTED
 }
 
 ///Used in engine V1 only
@@ -3088,4 +3098,101 @@ model RealtimeStreamChunk {
 
   @@index([runId])
   @@index([createdAt])
+}
+
+/// This is the unified otel span/log model that will eventually be replaced by clickhouse
+model TaskEventPartitioned {
+  id      String @default(cuid())
+  /// This matches the span name for a trace event, or the log body for a log event
+  message String
+
+  traceId    String
+  spanId     String
+  parentId   String?
+  tracestate String?
+
+  isError     Boolean @default(false)
+  isPartial   Boolean @default(false)
+  isCancelled Boolean @default(false)
+
+  serviceName      String
+  serviceNamespace String
+
+  level  TaskEventLevel  @default(TRACE)
+  kind   TaskEventKind   @default(INTERNAL)
+  status TaskEventStatus @default(UNSET)
+
+  links  Json?
+  events Json?
+
+  /// This is the time the event started in nanoseconds since the epoch
+  startTime BigInt
+
+  /// This is the duration of the event in nanoseconds
+  duration BigInt @default(0)
+
+  attemptId     String?
+  attemptNumber Int?
+
+  environmentId   String
+  environmentType RuntimeEnvironmentType
+
+  organizationId String
+
+  projectId  String
+  projectRef String
+
+  runId     String
+  runIsTest Boolean @default(false)
+
+  idempotencyKey String?
+
+  taskSlug       String
+  taskPath       String?
+  taskExportName String?
+
+  workerId      String?
+  workerVersion String?
+
+  queueId   String?
+  queueName String?
+
+  batchId String?
+
+  /// This represents all the span attributes available, like http.status_code, and special attributes like $style.icon, $output, $metadata.payload.userId, as it's used for searching and filtering
+  properties Json
+
+  /// This represents all span attributes in the $metadata namespace, like $metadata.payload
+  metadata Json?
+
+  /// This represents all span attributes in the $style namespace, like $style
+  style Json?
+
+  /// This represents all span attributes in the $output namespace, like $output
+  output Json?
+
+  /// This represents the mimetype of the output, such as application/json or application/super+json
+  outputType String?
+
+  payload     Json?
+  payloadType String?
+
+  createdAt DateTime @default(now())
+
+  // This represents the amount of "usage time" the event took, e.g. the CPU time
+  usageDurationMs  Int   @default(0)
+  usageCostInCents Float @default(0)
+
+  machinePreset           String?
+  machinePresetCpu        Float?
+  machinePresetMemory     Float?
+  machinePresetCentsPerMs Float?
+
+  @@id([id, createdAt])
+  /// Used on the run page
+  @@index([traceId])
+  /// Used when looking up span events to complete when a run completes
+  @@index([spanId])
+  // Used for getting all logs for a run
+  @@index([runId])
 }

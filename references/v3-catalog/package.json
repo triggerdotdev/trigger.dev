@@ -73,6 +73,7 @@
     "@opentelemetry/sdk-trace-node": "^1.22.0",
     "@opentelemetry/semantic-conventions": "^1.22.0",
     "@trigger.dev/build": "workspace:*",
+    "@trigger.dev/python": "workspace:*",
     "@types/email-reply-parser": "^1.4.2",
     "@types/fluent-ffmpeg": "^2.1.26",
     "@types/react": "^18.3.1",

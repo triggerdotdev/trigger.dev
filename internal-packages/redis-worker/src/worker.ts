@@ -163,6 +163,26 @@ class Worker<TCatalog extends WorkerCatalog> {
     );
   }
 
+  /**
+   * Reschedules an existing job to a new available date.
+   * If the job isn't in the queue, it will be ignored.
+   */
+  reschedule(id: string, availableAt: Date) {
+    return startSpan(
+      this.tracer,
+      "reschedule",
+      async (span) => {
+        return this.queue.reschedule(id, availableAt);
+      },
+      {
+        kind: SpanKind.PRODUCER,
+        attributes: {
+          job_id: id,
+        },
+      }
+    );
+  }
+
   ack(id: string) {
     return startSpan(
       this.tracer,

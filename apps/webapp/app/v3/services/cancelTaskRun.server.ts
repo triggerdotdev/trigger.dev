@@ -1,7 +1,10 @@
 import { RunEngineVersion, type TaskRun } from "@trigger.dev/database";
+import { logger } from "~/services/logger.server";
+import { eventRepository } from "../eventRepository.server";
+import { engine } from "../runEngine.server";
+import { getTaskEventStoreTableForRun } from "../taskEventStore.server";
 import { BaseService } from "./baseService.server";
 import { CancelTaskRunServiceV1 } from "./cancelTaskRunV1.server";
-import { engine } from "../runEngine.server";
 
 export type CancelTaskRunServiceOptions = {
   reason?: string;
@@ -43,6 +46,29 @@ export class CancelTaskRunService extends BaseService {
       reason: options?.reason,
       tx: this._prisma,
     });
+
+    const inProgressEvents = await eventRepository.queryIncompleteEvents(
+      getTaskEventStoreTableForRun(taskRun),
+      {
+        runId: taskRun.friendlyId,
+      },
+      taskRun.createdAt,
+      taskRun.completedAt ?? undefined
+    );
+
+    logger.debug("Cancelling in-progress events", {
+      inProgressEvents: inProgressEvents.map((event) => event.id),
+    });
+
+    await Promise.all(
+      inProgressEvents.map((event) => {
+        return eventRepository.cancelEvent(
+          event,
+          options?.cancelledAt ?? new Date(),
+          options?.reason ?? "Run cancelled"
+        );
+      })
+    );
 
     return {
       id: result.run.id,

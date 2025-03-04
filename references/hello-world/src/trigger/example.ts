@@ -125,6 +125,8 @@ export const batchTask = task({
 
     const results = await childTask.batchTriggerAndWait(items);
 
+    logger.info("Batch task complete", { results });
+
     return {
       batchCount: payload.count,
       results,
