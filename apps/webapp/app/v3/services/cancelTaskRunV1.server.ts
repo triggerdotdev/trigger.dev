@@ -9,6 +9,7 @@ import { BaseService } from "./baseService.server";
 import { CancelAttemptService } from "./cancelAttempt.server";
 import { CancelTaskAttemptDependenciesService } from "./cancelTaskAttemptDependencies.server";
 import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
+import { getTaskEventStoreTableForRun } from "../taskEventStore.server";
 
 type ExtendedTaskRun = Prisma.TaskRunGetPayload<{
   include: {
@@ -83,9 +84,14 @@ export class CancelTaskRunServiceV1 extends BaseService {
       },
     });
 
-    const inProgressEvents = await eventRepository.queryIncompleteEvents({
-      runId: taskRun.friendlyId,
-    });
+    const inProgressEvents = await eventRepository.queryIncompleteEvents(
+      getTaskEventStoreTableForRun(taskRun),
+      {
+        runId: taskRun.friendlyId,
+      },
+      taskRun.createdAt,
+      taskRun.completedAt ?? undefined
+    );
 
     logger.debug("Cancelling in-progress events", {
       inProgressEvents: inProgressEvents.map((event) => event.id),

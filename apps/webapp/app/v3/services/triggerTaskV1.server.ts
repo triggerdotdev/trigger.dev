@@ -3,6 +3,8 @@ import {
   packetRequiresOffloading,
   QueueOptions,
   SemanticInternalAttributes,
+  taskRunErrorToString,
+  taskRunErrorEnhancer,
   TriggerTaskRequestBody,
 } from "@trigger.dev/core/v3";
 import {
@@ -39,6 +41,8 @@ import {
   TriggerTaskServiceOptions,
   TriggerTaskServiceResult,
 } from "./triggerTask.server";
+import { getTaskEventStore } from "../taskEventStore.server";
+import { enqueueRun } from "./enqueueRun.server";
 
 /** @deprecated Use TriggerTaskService in `triggerTask.server.ts` instead. */
 export class TriggerTaskServiceV1 extends BaseService {
@@ -168,6 +172,8 @@ export class TriggerTaskServiceV1 extends BaseService {
                   taskIdentifier: true,
                   rootTaskRunId: true,
                   depth: true,
+                  queueTimestamp: true,
+                  queue: true,
                 },
               },
             },
@@ -224,6 +230,8 @@ export class TriggerTaskServiceV1 extends BaseService {
                       taskIdentifier: true,
                       rootTaskRunId: true,
                       depth: true,
+                      queueTimestamp: true,
+                      queue: true,
                     },
                   },
                 },
@@ -276,7 +284,7 @@ export class TriggerTaskServiceV1 extends BaseService {
         : undefined;
 
       try {
-        return await eventRepository.traceEvent(
+        const result = await eventRepository.traceEvent(
           taskId,
           {
             context: options.traceContext,
@@ -349,6 +357,12 @@ export class TriggerTaskServiceV1 extends BaseService {
                   ? dependentBatchRun.dependentTaskAttempt.taskRun.depth + 1
                   : 0;
 
+                const queueTimestamp =
+                  dependentAttempt?.taskRun.queueTimestamp ??
+                  dependentBatchRun?.dependentTaskAttempt?.taskRun.queueTimestamp ??
+                  delayUntil ??
+                  new Date();
+
                 const taskRun = await tx.taskRun.create({
                   data: {
                     status: delayUntil ? "DELAYED" : "PENDING",
@@ -376,7 +390,9 @@ export class TriggerTaskServiceV1 extends BaseService {
                     isTest: body.options?.test ?? false,
                     delayUntil,
                     queuedAt: delayUntil ? undefined : new Date(),
+                    queueTimestamp,
                     maxAttempts: body.options?.maxAttempts,
+                    taskEventStore: getTaskEventStore(),
                     ttl,
                     tags:
                       tagIds.length === 0
@@ -528,44 +544,61 @@ export class TriggerTaskServiceV1 extends BaseService {
               this._prisma
             );
 
-            //release the concurrency for the env and org, if part of a (batch)triggerAndWait
-            if (dependentAttempt) {
-              const isSameTask = dependentAttempt.taskRun.taskIdentifier === taskId;
-              await marqs?.releaseConcurrency(dependentAttempt.taskRun.id, isSameTask);
-            }
-            if (dependentBatchRun?.dependentTaskAttempt) {
-              const isSameTask =
-                dependentBatchRun.dependentTaskAttempt.taskRun.taskIdentifier === taskId;
-              await marqs?.releaseConcurrency(
-                dependentBatchRun.dependentTaskAttempt.taskRun.id,
-                isSameTask
-              );
-            }
-
             if (!run) {
               return;
             }
 
-            // We need to enqueue the task run into the appropriate queue. This is done after the tx completes to prevent a race condition where the task run hasn't been created yet by the time we dequeue.
+            // Now enqueue the run if it's not delayed
             if (run.status === "PENDING") {
-              await marqs?.enqueueMessage(
-                environment,
-                run.queue,
-                run.id,
-                {
-                  type: "EXECUTE",
-                  taskIdentifier: taskId,
-                  projectId: environment.projectId,
-                  environmentId: environment.id,
-                  environmentType: environment.type,
-                },
-                body.options?.concurrencyKey
-              );
+              const enqueueResult = await enqueueRun({
+                env: environment,
+                run,
+                dependentRun:
+                  dependentAttempt?.taskRun ?? dependentBatchRun?.dependentTaskAttempt?.taskRun,
+              });
+
+              if (!enqueueResult.ok) {
+                // Now we need to fail the run with enqueueResult.error and make sure and
+                // set the traced event to failed as well
+                await this._prisma.taskRun.update({
+                  where: { id: run.id },
+                  data: {
+                    status: "SYSTEM_FAILURE",
+                    completedAt: new Date(),
+                    error: enqueueResult.error,
+                  },
+                });
+
+                event.failWithError(enqueueResult.error);
+
+                return {
+                  run,
+                  isCached: false,
+                  error: enqueueResult.error,
+                };
+              }
             }
 
             return { run, isCached: false };
           }
         );
+
+        if (result?.error) {
+          throw new ServiceValidationError(
+            taskRunErrorToString(taskRunErrorEnhancer(result.error))
+          );
+        }
+
+        const run = result?.run;
+
+        if (!run) {
+          return;
+        }
+
+        return {
+          run,
+          isCached: result?.isCached,
+        };
       } catch (error) {
         // Detect a prisma transaction Unique constraint violation
         if (error instanceof Prisma.PrismaClientKnownRequestError) {
