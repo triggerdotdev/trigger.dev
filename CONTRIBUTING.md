@@ -230,13 +230,21 @@ pnpm run db:studio
    cd packages/database
    ```
 
-3. Create and apply the migrations
+3. Create a migration
 
    ```
-   pnpm run db:migrate:dev
+   pnpm run db:migrate:dev:create
    ```
 
-   This creates a migration file and executes the migrations against your database and applies changes to the database schema(s)
+   This creates a migration file. Check the migration file does only what you want. If you're adding any database indexes they must use `CONCURRENTLY`, otherwise they'll lock the table when executed.
+
+4. Run the migration.
+
+  ```
+  pnpm run db:migrate:deploy
+  pnpm run generate
+  ```
+   This executes the migrations against your database and applies changes to the database schema(s), and then regenerates the Prisma client.
 
 4. Commit generated migrations as well as changes to the schema.prisma file
 5. If you're using VSCode you may need to restart the Typescript server in the webapp to get updated type inference. Open a TypeScript file, then open the Command Palette (View > Command Palette) and run `TypeScript: Restart TS server`.

@@ -1,12 +1,15 @@
 import { containerWithElectricAndRedisTest } from "@internal/testcontainers";
 import { expect, describe } from "vitest";
 import { RealtimeClient } from "../app/services/realtimeClient.server.js";
+import Redis from "ioredis";
 
 describe.skipIf(process.env.GITHUB_ACTIONS)("RealtimeClient", () => {
   containerWithElectricAndRedisTest(
     "Should only track concurrency for live requests",
     { timeout: 30_000 },
-    async ({ redis, electricOrigin, prisma }) => {
+    async ({ redisOptions, electricOrigin, prisma }) => {
+      const redis = new Redis(redisOptions);
+
       const client = new RealtimeClient({
         electricOrigin,
         keyPrefix: "test:realtime",
@@ -146,7 +149,9 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("RealtimeClient", () => {
   containerWithElectricAndRedisTest(
     "Should support subscribing to a run tag",
     { timeout: 30_000 },
-    async ({ redis, electricOrigin, prisma }) => {
+    async ({ redisOptions, electricOrigin, prisma }) => {
+      const redis = new Redis(redisOptions);
+
       const client = new RealtimeClient({
         electricOrigin,
         keyPrefix: "test:realtime",
@@ -229,7 +234,9 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("RealtimeClient", () => {
   containerWithElectricAndRedisTest(
     "Should adapt for older client versions",
     { timeout: 30_000 },
-    async ({ redis, electricOrigin, prisma }) => {
+    async ({ redisOptions, electricOrigin, prisma }) => {
+      const redis = new Redis(redisOptions);
+
       const client = new RealtimeClient({
         electricOrigin,
         keyPrefix: "test:realtime",

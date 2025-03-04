@@ -20,10 +20,8 @@
     "zod": "3.23.8"
   },
   "devDependencies": {
-    "@types/node": "^18",
     "@types/nodemailer": "^6.4.17",
-    "@types/react": "18.2.69",
-    "typescript": "^4.9.4"
+    "@types/react": "18.2.69"
   },
   "engines": {
     "node": ">=18.0.0"

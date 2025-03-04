@@ -1,6 +1,6 @@
 import { type Defu } from "defu";
 import type { Prettify } from "ts-essentials";
-import { TriggerConfig } from "../config.js";
+import { CompatibilityFlag, CompatibilityFlagFeatures, TriggerConfig } from "../config.js";
 import { BuildRuntime } from "../schemas/build.js";
 import { ResolveEnvironmentVariablesFunction } from "../types/index.js";
 
@@ -16,6 +16,8 @@ export type ResolvedConfig = Prettify<
         build: {
           jsx: { factory: string; fragment: string; automatic: true };
         } & Omit<NonNullable<TriggerConfig["build"]>, "jsx">;
+        compatibilityFlags: CompatibilityFlag[];
+        features: CompatibilityFlagFeatures;
       },
     ]
   > & {

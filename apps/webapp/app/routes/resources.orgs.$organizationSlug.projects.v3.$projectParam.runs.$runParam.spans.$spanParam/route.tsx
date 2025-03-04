@@ -59,6 +59,7 @@ import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { formatCurrencyAccurate } from "~/utils/numberFormatter";
 import {
+  docsPath,
   v3BatchPath,
   v3RunDownloadLogsPath,
   v3RunPath,
@@ -67,6 +68,11 @@ import {
   v3SchedulePath,
   v3SpanParamsSchema,
 } from "~/utils/pathBuilder";
+import { SpanLink } from "~/v3/eventRepository.server";
+import {
+  CompleteWaitpointForm,
+  ForceTimeout,
+} from "../resources.orgs.$organizationSlug.projects.$projectParam.waitpoints.$waitpointFriendlyId.complete/route";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -170,7 +176,6 @@ function SpanBody({
   runParam?: string;
   closePanel?: () => void;
 }) {
-  const isAdmin = useHasAdminAccess();
   const organization = useOrganization();
   const project = useProject();
   const { value, replace } = useSearchParams();
@@ -190,7 +195,7 @@ function SpanBody({
             className="h-4 min-h-4 w-4 min-w-4"
           />
           <Header2 className={cn("overflow-x-hidden")}>
-            <SpanTitle {...span} size="large" />
+            <SpanTitle {...span} size="large" hideAccessory />
           </Header2>
         </div>
         {runParam && closePanel && (
@@ -226,179 +231,67 @@ function SpanBody({
           </TabButton>
         </TabContainer>
       </div>
-      <div className="overflow-y-auto px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-        <div>
-          {tab === "detail" ? (
-            <div className="flex flex-col gap-4 pt-3">
-              <Property.Table>
-                <Property.Item>
-                  <Property.Label>Status</Property.Label>
-                  <Property.Value>
-                    <TaskRunAttemptStatusCombo
-                      status={
-                        span.isCancelled
-                          ? "CANCELED"
-                          : span.isError
-                          ? "FAILED"
-                          : span.isPartial
-                          ? "EXECUTING"
-                          : "COMPLETED"
-                      }
-                      className="text-sm"
-                    />
-                  </Property.Value>
-                </Property.Item>
-                <Property.Item>
-                  <Property.Label>Task</Property.Label>
-                  <Property.Value>
-                    <SimpleTooltip
-                      button={
-                        <TextLink
-                          to={v3RunsPath(organization, project, { tasks: [span.taskSlug] })}
-                        >
-                          {span.taskSlug}
-                        </TextLink>
-                      }
-                      content={`Filter runs by ${span.taskSlug}`}
-                    />
-                  </Property.Value>
-                </Property.Item>
-                {span.idempotencyKey && (
-                  <Property.Item>
-                    <Property.Label>Idempotency key</Property.Label>
-                    <Property.Value>{span.idempotencyKey}</Property.Value>
-                  </Property.Item>
-                )}
-                <Property.Item>
-                  <Property.Label>Version</Property.Label>
-                  <Property.Value>
-                    {span.workerVersion ? (
-                      span.workerVersion
-                    ) : (
-                      <span className="flex items-center gap-1">
-                        <span>Never started</span>
-                        <InfoIconTooltip
-                          content={"Runs get locked to the latest version when they start."}
-                          contentClassName="normal-case tracking-normal"
-                        />
-                      </span>
-                    )}
-                  </Property.Value>
-                </Property.Item>
-              </Property.Table>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-4 pt-3">
-              {span.level === "TRACE" ? (
-                <>
-                  <div className="border-b border-grid-bright pb-3">
-                    <TaskRunAttemptStatusCombo
-                      status={
-                        span.isCancelled
-                          ? "CANCELED"
-                          : span.isError
-                          ? "FAILED"
-                          : span.isPartial
-                          ? "EXECUTING"
-                          : "COMPLETED"
-                      }
-                      className="text-sm"
-                    />
-                  </div>
-                  <SpanTimeline
-                    startTime={new Date(span.startTime)}
-                    duration={span.duration}
-                    inProgress={span.isPartial}
-                    isError={span.isError}
-                    events={createTimelineSpanEventsFromSpanEvents(span.events, isAdmin)}
+      <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+        {tab === "detail" ? (
+          <div className="flex flex-col gap-4 px-3 pt-3">
+            <Property.Table>
+              <Property.Item>
+                <Property.Label>Status</Property.Label>
+                <Property.Value>
+                  <TaskRunAttemptStatusCombo
+                    status={
+                      span.isCancelled
+                        ? "CANCELED"
+                        : span.isError
+                        ? "FAILED"
+                        : span.isPartial
+                        ? "EXECUTING"
+                        : "COMPLETED"
+                    }
+                    className="text-sm"
                   />
-                </>
-              ) : (
-                <div className="min-w-fit max-w-80">
-                  <RunTimelineEvent
-                    title="Timestamp"
-                    subtitle={<DateTimeAccurate date={span.startTime} />}
-                    variant="dot-solid"
+                </Property.Value>
+              </Property.Item>
+              <Property.Item>
+                <Property.Label>Task</Property.Label>
+                <Property.Value>
+                  <SimpleTooltip
+                    button={
+                      <TextLink to={v3RunsPath(organization, project, { tasks: [span.taskSlug] })}>
+                        {span.taskSlug}
+                      </TextLink>
+                    }
+                    content={`Filter runs by ${span.taskSlug}`}
                   />
-                </div>
-              )}
-              <Property.Table>
+                </Property.Value>
+              </Property.Item>
+              {span.idempotencyKey && (
                 <Property.Item>
-                  <Property.Label>Message</Property.Label>
-                  <Property.Value className="whitespace-pre-wrap">{span.message}</Property.Value>
+                  <Property.Label>Idempotency key</Property.Label>
+                  <Property.Value>{span.idempotencyKey}</Property.Value>
                 </Property.Item>
-                {span.triggeredRuns.length > 0 && (
-                  <Property.Item>
-                    <div className="flex flex-col gap-1.5">
-                      <Header3>Triggered runs</Header3>
-                      <Table containerClassName="max-h-[12.5rem]">
-                        <TableHeader className="bg-background-bright">
-                          <TableRow>
-                            <TableHeaderCell>Run #</TableHeaderCell>
-                            <TableHeaderCell>Task</TableHeaderCell>
-                            <TableHeaderCell>Version</TableHeaderCell>
-                            <TableHeaderCell>Created at</TableHeaderCell>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {span.triggeredRuns.map((run) => {
-                            const path = v3RunSpanPath(
-                              organization,
-                              project,
-                              { friendlyId: run.friendlyId },
-                              { spanId: run.spanId }
-                            );
-                            return (
-                              <TableRow key={run.friendlyId}>
-                                <TableCell
-                                  to={path}
-                                  actionClassName="py-1.5"
-                                  rowHoverStyle="bright"
-                                >
-                                  {run.number}
-                                </TableCell>
-                                <TableCell
-                                  to={path}
-                                  actionClassName="py-1.5"
-                                  rowHoverStyle="bright"
-                                >
-                                  {run.taskIdentifier}
-                                </TableCell>
-                                <TableCell
-                                  to={path}
-                                  actionClassName="py-1.5"
-                                  rowHoverStyle="bright"
-                                >
-                                  {run.lockedToVersion?.version ?? "–"}
-                                </TableCell>
-                                <TableCell
-                                  to={path}
-                                  actionClassName="py-1.5"
-                                  rowHoverStyle="bright"
-                                >
-                                  <DateTime date={run.createdAt} />
-                                </TableCell>
-                              </TableRow>
-                            );
-                          })}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  </Property.Item>
-                )}
-              </Property.Table>
-              {span.events.length > 0 && <SpanEvents spanEvents={span.events} />}
-              {span.properties !== undefined && (
-                <CodeBlock
-                  rowTitle="Properties"
-                  code={span.properties}
-                  maxLines={20}
-                  showLineNumbers={false}
-                />
               )}
-            </div>
-          )}
-        </div>
+              <Property.Item>
+                <Property.Label>Version</Property.Label>
+                <Property.Value>
+                  {span.workerVersion ? (
+                    span.workerVersion
+                  ) : (
+                    <span className="flex items-center gap-1">
+                      <span>Never started</span>
+                      <InfoIconTooltip
+                        content={"Runs get locked to the latest version when they start."}
+                        contentClassName="normal-case tracking-normal"
+                      />
+                    </span>
+                  )}
+                </Property.Value>
+              </Property.Item>
+            </Property.Table>
+          </div>
+        ) : (
+          <SpanEntity span={span} />
+        )}
       </div>
     </div>
   );
@@ -417,6 +310,7 @@ function RunBody({
 }) {
   const organization = useOrganization();
   const project = useProject();
+  const isAdmin = useHasAdminAccess();
   const { value, replace } = useSearchParams();
   const tab = value("tab");
 
@@ -427,12 +321,15 @@ function RunBody({
       <div className="flex items-center justify-between gap-2 overflow-x-hidden px-3">
         <div className="flex items-center gap-1 overflow-x-hidden">
           <RunIcon
-            name={"task"}
+            name={run.isCached ? "task-cached" : "task"}
             spanName={run.taskIdentifier}
             className="h-4 min-h-4 w-4 min-w-4"
           />
           <Header2 className={cn("overflow-x-hidden text-blue-500")}>
-            <span className="truncate">{run.taskIdentifier}</span>
+            <span className="truncate">
+              {run.taskIdentifier}
+              {run.isCached ? " (cached)" : null}
+            </span>
           </Header2>
         </div>
         {runParam && closePanel && (
@@ -603,6 +500,22 @@ function RunBody({
                   </Property.Item>
                 )}
                 <Property.Item>
+                  <Property.Label>Idempotency</Property.Label>
+                  <Property.Value>
+                    <div className="break-all">{run.idempotencyKey ? run.idempotencyKey : "–"}</div>
+                    {run.idempotencyKey && (
+                      <div>
+                        Expires:{" "}
+                        {run.idempotencyKeyExpiresAt ? (
+                          <DateTime date={run.idempotencyKeyExpiresAt} />
+                        ) : (
+                          "–"
+                        )}
+                      </div>
+                    )}
+                  </Property.Value>
+                </Property.Item>
+                <Property.Item>
                   <Property.Label>Version</Property.Label>
                   <Property.Value>
                     {run.version ? (
@@ -634,6 +547,22 @@ function RunBody({
                     )}
                   </Property.Value>
                 </Property.Item>
+                <Property.Item>
+                  <Property.Label>Engine version</Property.Label>
+                  <Property.Value>{run.engine}</Property.Value>
+                </Property.Item>
+                {isAdmin && (
+                  <>
+                    <Property.Item>
+                      <Property.Label>Primary master queue</Property.Label>
+                      <Property.Value>{run.masterQueue}</Property.Value>
+                    </Property.Item>
+                    <Property.Item>
+                      <Property.Label>Secondary master queue</Property.Label>
+                      <Property.Value>{run.secondaryMasterQueue}</Property.Value>
+                    </Property.Item>
+                  </>
+                )}
                 <Property.Item>
                   <Property.Label>Test run</Property.Label>
                   <Property.Value>
@@ -771,12 +700,13 @@ function RunBody({
               </div>
               <RunTimeline run={run} />
 
+              {run.error && <RunError error={run.error} />}
+
               {run.payload !== undefined && (
                 <PacketDisplay data={run.payload} dataType={run.payloadType} title="Payload" />
               )}
-              {run.error !== undefined ? (
-                <RunError error={run.error} />
-              ) : run.output !== undefined ? (
+
+              {run.error === undefined && run.output !== undefined ? (
                 <PacketDisplay data={run.output} dataType={run.outputType} title="Output" />
               ) : null}
             </div>
@@ -787,12 +717,17 @@ function RunBody({
         <div className="flex items-center gap-4">
           {run.friendlyId !== runParam && (
             <LinkButton
-              to={v3RunSpanPath(organization, project, { friendlyId: run.friendlyId }, { spanId })}
+              to={v3RunSpanPath(
+                organization,
+                project,
+                { friendlyId: run.friendlyId },
+                { spanId: run.spanId }
+              )}
               variant="minimal/medium"
               LeadingIcon={QueueListIcon}
               shortcut={{ key: "f" }}
             >
-              Focus on run
+              {run.isCached ? "Jump to original run" : "Focus on run"}
             </LinkButton>
           )}
         </div>
@@ -922,6 +857,219 @@ function PacketDisplay({
           showLineNumbers={false}
         />
       );
+    }
+  }
+}
+
+function SpanEntity({ span }: { span: Span }) {
+  const isAdmin = useHasAdminAccess();
+
+  const organization = useOrganization();
+  const project = useProject();
+
+  if (!span.entity) {
+    //normal span
+    return (
+      <div className="flex flex-col gap-4 p-3">
+        {span.level === "TRACE" ? (
+          <>
+            <div className="border-b border-grid-bright pb-3">
+              <TaskRunAttemptStatusCombo
+                status={
+                  span.isCancelled
+                    ? "CANCELED"
+                    : span.isError
+                    ? "FAILED"
+                    : span.isPartial
+                    ? "EXECUTING"
+                    : "COMPLETED"
+                }
+                className="text-sm"
+              />
+            </div>
+            <SpanTimeline
+              startTime={new Date(span.startTime)}
+              duration={span.duration}
+              inProgress={span.isPartial}
+              isError={span.isError}
+              events={createTimelineSpanEventsFromSpanEvents(span.events, isAdmin)}
+            />
+          </>
+        ) : (
+          <div className="min-w-fit max-w-80">
+            <RunTimelineEvent
+              title="Timestamp"
+              subtitle={<DateTimeAccurate date={span.startTime} />}
+              variant="dot-solid"
+            />
+          </div>
+        )}
+        <Property.Table>
+          <Property.Item>
+            <Property.Label>Message</Property.Label>
+            <Property.Value className="whitespace-pre-wrap">{span.message}</Property.Value>
+          </Property.Item>
+          {span.triggeredRuns.length > 0 && (
+            <Property.Item>
+              <div className="flex flex-col gap-1.5">
+                <Header3>Triggered runs</Header3>
+                <Table containerClassName="max-h-[12.5rem]">
+                  <TableHeader className="bg-background-bright">
+                    <TableRow>
+                      <TableHeaderCell>Run #</TableHeaderCell>
+                      <TableHeaderCell>Task</TableHeaderCell>
+                      <TableHeaderCell>Version</TableHeaderCell>
+                      <TableHeaderCell>Created at</TableHeaderCell>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {span.triggeredRuns.map((run) => {
+                      const path = v3RunSpanPath(
+                        organization,
+                        project,
+                        { friendlyId: run.friendlyId },
+                        { spanId: run.spanId }
+                      );
+                      return (
+                        <TableRow key={run.friendlyId}>
+                          <TableCell to={path} actionClassName="py-1.5" rowHoverStyle="bright">
+                            {run.number}
+                          </TableCell>
+                          <TableCell to={path} actionClassName="py-1.5" rowHoverStyle="bright">
+                            {run.taskIdentifier}
+                          </TableCell>
+                          <TableCell to={path} actionClassName="py-1.5" rowHoverStyle="bright">
+                            {run.lockedToVersion?.version ?? "–"}
+                          </TableCell>
+                          <TableCell to={path} actionClassName="py-1.5" rowHoverStyle="bright">
+                            <DateTime date={run.createdAt} />
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            </Property.Item>
+          )}
+        </Property.Table>
+        {span.events.length > 0 && <SpanEvents spanEvents={span.events} />}
+        {span.properties !== undefined ? (
+          <CodeBlock
+            rowTitle="Properties"
+            code={span.properties}
+            maxLines={20}
+            showLineNumbers={false}
+          />
+        ) : null}
+      </div>
+    );
+  }
+
+  switch (span.entity.type) {
+    case "waitpoint": {
+      return (
+        <div className="grid h-full grid-rows-[1fr_auto]">
+          <div className="flex flex-col gap-4 overflow-y-auto px-3 pt-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+            <div>
+              <Header2>Waitpoint</Header2>
+              <Paragraph variant="small">
+                A waitpoint pauses your code from continuing until the conditions are met.{" "}
+                <TextLink to={docsPath("wait")}>View docs</TextLink>.
+              </Paragraph>
+            </div>
+            <Property.Table>
+              <Property.Item>
+                <Property.Label>Status</Property.Label>
+                <Property.Value>
+                  <TaskRunStatusCombo
+                    status={
+                      span.entity.object.isTimeout
+                        ? "TIMED_OUT"
+                        : span.entity.object.status === "PENDING"
+                        ? "EXECUTING"
+                        : span.entity.object.outputIsError
+                        ? "COMPLETED_WITH_ERRORS"
+                        : "COMPLETED_SUCCESSFULLY"
+                    }
+                    className="text-sm"
+                  />
+                </Property.Value>
+              </Property.Item>
+              <Property.Item>
+                <Property.Label>ID</Property.Label>
+                <Property.Value className="whitespace-pre-wrap">
+                  {span.entity.object.friendlyId}
+                </Property.Value>
+              </Property.Item>
+              <Property.Item>
+                <Property.Label>Idempotency key</Property.Label>
+                <Property.Value>
+                  <div>
+                    <div>
+                      {span.entity.object.userProvidedIdempotencyKey
+                        ? span.entity.object.idempotencyKey
+                        : "–"}
+                    </div>
+                    <div>
+                      {span.entity.object.idempotencyKeyExpiresAt ? (
+                        <>
+                          TTL: <DateTime date={span.entity.object.idempotencyKeyExpiresAt} />
+                        </>
+                      ) : null}
+                    </div>
+                  </div>
+                </Property.Value>
+              </Property.Item>
+              {span.entity.object.type === "MANUAL" && (
+                <>
+                  <Property.Item>
+                    <Property.Label>Timeout at</Property.Label>
+                    <Property.Value>
+                      <div className="flex w-full flex-wrap items-center justify-between gap-1">
+                        {span.entity.object.completedAfter ? (
+                          <DateTimeAccurate date={span.entity.object.completedAfter} />
+                        ) : (
+                          "–"
+                        )}
+                        {span.entity.object.status === "PENDING" && (
+                          <ForceTimeout waitpoint={span.entity.object} />
+                        )}
+                      </div>
+                    </Property.Value>
+                  </Property.Item>
+                </>
+              )}
+              {span.entity.object.status === "PENDING" ? null : span.entity.object.isTimeout ? (
+                <></>
+              ) : span.entity.object.output ? (
+                <PacketDisplay
+                  title="Output"
+                  data={span.entity.object.output}
+                  dataType={span.entity.object.outputType}
+                />
+              ) : span.entity.object.completedAfter ? (
+                <Property.Item>
+                  <Property.Label>Completed at</Property.Label>
+                  <Property.Value>
+                    <DateTimeAccurate date={span.entity.object.completedAfter} />
+                  </Property.Value>
+                </Property.Item>
+              ) : (
+                "Completed with no output"
+              )}
+            </Property.Table>
+          </div>
+          {span.entity.object.status === "PENDING" && (
+            <div className="">
+              <CompleteWaitpointForm waitpoint={span.entity.object} />
+            </div>
+          )}
+        </div>
+      );
+    }
+    default: {
+      return <Paragraph variant="small">No span for {span.entity.type}</Paragraph>;
     }
   }
 }

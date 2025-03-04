@@ -9,11 +9,11 @@ export const BuildExternal = z.object({
 
 export type BuildExternal = z.infer<typeof BuildExternal>;
 
-export const BuildTarget = z.enum(["dev", "deploy"]);
+export const BuildTarget = z.enum(["dev", "deploy", "unmanaged"]);
 
 export type BuildTarget = z.infer<typeof BuildTarget>;
 
-export const BuildRuntime = z.enum(["node", "bun"]);
+export const BuildRuntime = z.enum(["node", "node-22", "bun"]);
 
 export type BuildRuntime = z.infer<typeof BuildRuntime>;
 

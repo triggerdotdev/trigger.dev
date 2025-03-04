@@ -66,3 +66,37 @@ export function LiveCountUp({
     </>
   );
 }
+
+export function LiveCountdown({
+  endTime,
+  updateInterval = 100,
+}: {
+  endTime: Date;
+  updateInterval?: number;
+}) {
+  const [now, setNow] = useState<Date>();
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const date = new Date();
+      setNow(date);
+
+      if (date > endTime) {
+        clearInterval(interval);
+      }
+    }, updateInterval);
+
+    return () => clearInterval(interval);
+  }, [endTime]);
+
+  return (
+    <>
+      {formatDuration(now, endTime, {
+        style: "short",
+        maxDecimalPoints: 0,
+        units: ["d", "h", "m", "s"],
+        maxUnits: 4,
+      })}
+    </>
+  );
+}

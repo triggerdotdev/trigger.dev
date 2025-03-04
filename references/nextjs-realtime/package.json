@@ -42,12 +42,10 @@
   "devDependencies": {
     "@next/bundle-analyzer": "^15.0.2",
     "@trigger.dev/rsc": "workspace:^3",
-    "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "postcss": "^8",
     "tailwindcss": "^3.4.1",
-    "trigger.dev": "workspace:^3",
-    "typescript": "^5"
+    "trigger.dev": "workspace:^3"
   }
 }

@@ -1,5 +1,9 @@
 import { json } from "@remix-run/server-runtime";
-import { generateJWT as internal_generateJWT, TriggerTaskRequestBody } from "@trigger.dev/core/v3";
+import {
+  generateJWT as internal_generateJWT,
+  RunEngineVersionSchema,
+  TriggerTaskRequestBody,
+} from "@trigger.dev/core/v3";
 import { TaskRun } from "@trigger.dev/database";
 import { z } from "zod";
 import { env } from "~/env.server";
@@ -21,6 +25,7 @@ export const HeadersSchema = z.object({
   "x-trigger-span-parent-as-link": z.coerce.number().nullish(),
   "x-trigger-worker": z.string().nullish(),
   "x-trigger-client": z.string().nullish(),
+  "x-trigger-engine-version": RunEngineVersionSchema.nullish(),
   traceparent: z.string().optional(),
   tracestate: z.string().optional(),
 });
@@ -49,6 +54,7 @@ const { action, loader } = createActionApiRoute(
       tracestate,
       "x-trigger-worker": isFromWorker,
       "x-trigger-client": triggerClient,
+      "x-trigger-engine-version": engineVersion,
     } = headers;
 
     const service = new TriggerTaskService();
@@ -74,14 +80,20 @@ const { action, loader } = createActionApiRoute(
 
       const idempotencyKeyExpiresAt = resolveIdempotencyKeyTTL(idempotencyKeyTTL);
 
-      const result = await service.call(params.taskId, authentication.environment, body, {
-        idempotencyKey: idempotencyKey ?? undefined,
-        idempotencyKeyExpiresAt: idempotencyKeyExpiresAt,
-        triggerVersion: triggerVersion ?? undefined,
-        traceContext,
-        spanParentAsLink: spanParentAsLink === 1,
-        oneTimeUseToken,
-      });
+      const result = await service.call(
+        params.taskId,
+        authentication.environment,
+        body,
+        {
+          idempotencyKey: idempotencyKey ?? undefined,
+          idempotencyKeyExpiresAt: idempotencyKeyExpiresAt,
+          triggerVersion: triggerVersion ?? undefined,
+          traceContext,
+          spanParentAsLink: spanParentAsLink === 1,
+          oneTimeUseToken,
+        },
+        engineVersion ?? undefined
+      );
 
       if (!result) {
         return json({ error: "Task not found" }, { status: 404 });

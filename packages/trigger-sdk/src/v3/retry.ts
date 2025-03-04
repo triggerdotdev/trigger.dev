@@ -23,6 +23,7 @@ import {
   runtime,
 } from "@trigger.dev/core/v3";
 import { tracer } from "./tracer.js";
+import { wait } from "./wait.js";
 
 export type { RetryOptions };
 
@@ -97,7 +98,7 @@ function onThrow<T>(
           innerSpan.setAttribute(SemanticInternalAttributes.RETRY_DELAY, `${nextRetryDelay}ms`);
           innerSpan.end();
 
-          await runtime.waitForDuration(nextRetryDelay);
+          await wait.until({ date: new Date(Date.now() + nextRetryDelay) });
         } finally {
           attempt++;
         }
@@ -216,16 +217,14 @@ async function retryFetch(
           }
 
           if (nextRetry.type === "delay") {
-            span.setAttribute(
-              SemanticInternalAttributes.RETRY_AT,
-              new Date(Date.now() + nextRetry.value).toISOString()
-            );
+            const continueDate = new Date(Date.now() + nextRetry.value);
+            span.setAttribute(SemanticInternalAttributes.RETRY_AT, continueDate.toISOString());
             span.setAttribute(SemanticInternalAttributes.RETRY_COUNT, attempt);
             span.setAttribute(SemanticInternalAttributes.RETRY_DELAY, `${nextRetry.value}ms`);
 
             span.end();
 
-            await runtime.waitForDuration(nextRetry.value);
+            await wait.until({ date: continueDate });
           } else {
             const now = Date.now();
             const nextRetryDate = new Date(nextRetry.value);
@@ -246,7 +245,7 @@ async function retryFetch(
 
             span.end();
 
-            await runtime.waitUntil(new Date(nextRetry.value));
+            await wait.until({ date: new Date(nextRetry.value) });
           }
         } catch (e) {
           if (e instanceof FetchErrorWithSpan && e.originalError instanceof Error) {
@@ -266,16 +265,14 @@ async function retryFetch(
                 throw e;
               }
 
-              e.span.setAttribute(
-                SemanticInternalAttributes.RETRY_AT,
-                new Date(Date.now() + nextRetryDelay).toISOString()
-              );
+              const continueDate = new Date(Date.now() + nextRetryDelay);
+              e.span.setAttribute(SemanticInternalAttributes.RETRY_AT, continueDate.toISOString());
               e.span.setAttribute(SemanticInternalAttributes.RETRY_COUNT, attempt);
               e.span.setAttribute(SemanticInternalAttributes.RETRY_DELAY, `${nextRetryDelay}ms`);
 
               e.span.end();
 
-              await runtime.waitForDuration(nextRetryDelay);
+              await wait.until({ date: continueDate });
 
               continue; // Move to the next attempt
             } else if (
@@ -311,7 +308,7 @@ async function retryFetch(
 
               e.span.end();
 
-              await runtime.waitForDuration(nextRetryDelay);
+              await wait.until({ date: new Date(Date.now() + nextRetryDelay) });
 
               continue; // Move to the next attempt
             }

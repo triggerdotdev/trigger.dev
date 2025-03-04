@@ -7,8 +7,10 @@ import {
 } from "@heroicons/react/20/solid";
 import { AttemptIcon } from "~/assets/icons/AttemptIcon";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
+import { TaskCachedIcon } from "~/assets/icons/TaskCachedIcon";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
 import { cn } from "~/utils/cn";
+import { PauseIcon } from "~/assets/icons/PauseIcon";
 
 type TaskIconProps = {
   name: string | undefined;
@@ -41,12 +43,14 @@ export function RunIcon({ name, className, spanName }: TaskIconProps) {
   switch (name) {
     case "task":
       return <TaskIcon className={cn(className, "text-blue-500")} />;
+    case "task-cached":
+      return <TaskCachedIcon className={cn(className, "text-blue-500")} />;
     case "scheduled":
       return <ClockIcon className={cn(className, "text-sun-500")} />;
     case "attempt":
       return <AttemptIcon className={cn(className, "text-text-dimmed")} />;
     case "wait":
-      return <ClockIcon className={cn(className, "text-teal-500")} />;
+      return <PauseIcon className={cn(className, "text-teal-500")} />;
     case "trace":
       return <Squares2X2Icon className={cn(className, "text-text-dimmed")} />;
     case "tag":

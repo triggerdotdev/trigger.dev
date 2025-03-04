@@ -57,7 +57,7 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
         const delay = Math.min(times * 50, 1000);
         return delay;
       },
-      maxRetriesPerRequest: 3,
+      maxRetriesPerRequest: 20,
     });
     this.#registerCommands();
     this.schema = schema;

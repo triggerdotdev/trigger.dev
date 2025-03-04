@@ -7,6 +7,7 @@ import {
 } from "@heroicons/react/20/solid";
 import { MetaFunction, Outlet, useLocation, useParams } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { WorkerInstanceGroupType } from "@trigger.dev/database";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { UserAvatar } from "~/components/UserProfilePhoto";

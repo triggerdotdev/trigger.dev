@@ -11,13 +11,16 @@ type SpanTitleProps = {
   level: TaskEventLevel;
   isPartial: boolean;
   size: "small" | "large";
+  hideAccessory?: boolean;
 };
 
 export function SpanTitle(event: SpanTitleProps) {
   return (
     <span className={cn("flex items-center gap-x-2 overflow-x-hidden", eventTextClassName(event))}>
       <span className="truncate">{event.message}</span>{" "}
-      <SpanAccessory accessory={event.style.accessory} size={event.size} />
+      {!event.hideAccessory && (
+        <SpanAccessory accessory={event.style.accessory} size={event.size} />
+      )}
     </span>
   );
 }

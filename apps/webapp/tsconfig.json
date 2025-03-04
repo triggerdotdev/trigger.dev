@@ -3,7 +3,7 @@
   "include": ["remix.env.d.ts", "global.d.ts", "**/*.ts", "**/*.tsx"],
   "compilerOptions": {
     "types": ["vitest/globals"],
-    "lib": ["DOM", "DOM.Iterable", "ES2019"],
+    "lib": ["DOM", "DOM.Iterable", "DOM.AsyncIterable", "ES2019"],
     "isolatedModules": true,
     "esModuleInterop": true,
     "jsx": "react-jsx",
@@ -35,6 +35,8 @@
       "emails/*": ["../../internal-packages/emails/src/*"],
       "@internal/zod-worker": ["../../internal-packages/zod-worker/src/index"],
       "@internal/zod-worker/*": ["../../internal-packages/zod-worker/src/*"],
+      "@internal/run-engine": ["../../internal-packages/run-engine/src/index"],
+      "@internal/run-engine/*": ["../../internal-packages/run-engine/src/*"],
       "@internal/redis-worker": ["../../internal-packages/redis-worker/src/index"],
       "@internal/redis-worker/*": ["../../internal-packages/redis-worker/src/*"]
     },

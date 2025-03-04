@@ -5,15 +5,13 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "dependencies": {
-    "@prisma/client": "5.4.1",
-    "typescript": "^4.8.4"
+    "@prisma/client": "5.4.1"
   },
   "devDependencies": {
     "prisma": "5.4.1"
   },
   "scripts": {
     "generate": "prisma generate",
-    "db:migrate:dev": "prisma migrate dev",
     "db:migrate:dev:create": "prisma migrate dev --create-only",
     "db:migrate:deploy": "prisma migrate deploy",
     "db:push": "prisma db push",

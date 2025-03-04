@@ -1,8 +1,8 @@
 import { RescheduleRunRequestBody } from "@trigger.dev/core/v3";
 import { TaskRun } from "@trigger.dev/database";
+import { parseDelay } from "~/utils/delays";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { EnqueueDelayedRunService } from "./enqueueDelayedRun.server";
-import { parseDelay } from "./triggerTask.server";
 
 export class RescheduleTaskRunService extends BaseService {
   public async call(taskRun: TaskRun, body: RescheduleRunRequestBody) {

@@ -763,8 +763,8 @@ function RunIdDropdown({
   if (runId) {
     if (!runId.startsWith("run_")) {
       error = "Run IDs start with 'run_'";
-    } else if (runId.length !== 25) {
-      error = "Run IDs are 25 characters long";
+    } else if (runId.length !== 25 && runId.length !== 29) {
+      error = "Run IDs are 25/30 characters long";
     }
   }
 
