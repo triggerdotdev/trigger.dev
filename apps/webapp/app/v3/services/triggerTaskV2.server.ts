@@ -31,6 +31,7 @@ import {
   TriggerTaskServiceResult,
 } from "./triggerTask.server";
 import { WorkerGroupService } from "./worker/workerGroupService.server";
+import { getTaskEventStore } from "../taskEventStore.server";
 
 /** @deprecated Use TriggerTaskService in `triggerTask.server.ts` instead. */
 export class TriggerTaskServiceV2 extends WithRunEngine {
@@ -355,6 +356,7 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
                     delayUntil,
                     queuedAt: delayUntil ? undefined : new Date(),
                     maxAttempts: body.options?.maxAttempts,
+                    taskEventStore: getTaskEventStore(),
                     ttl,
                     tags,
                     oneTimeUseToken: options.oneTimeUseToken,

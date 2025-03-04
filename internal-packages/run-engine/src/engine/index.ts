@@ -246,6 +246,7 @@ export class RunEngine {
       delayUntil,
       queuedAt,
       maxAttempts,
+      taskEventStore,
       priorityMs,
       ttl,
       tags,
@@ -329,6 +330,7 @@ export class RunEngine {
               delayUntil,
               queuedAt,
               maxAttempts,
+              taskEventStore,
               priorityMs,
               ttl,
               tags:
