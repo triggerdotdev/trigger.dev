@@ -419,7 +419,12 @@ class KubernetesTaskOperations implements TaskOperations {
   }
 
   get #defaultPodSpec(): Omit<k8s.V1PodSpec, "containers"> {
-    const pullSecrets = ["registry-trigger", "registry-trigger-failover"];
+    const pullSecrets = [
+      "registry-trigger",
+      "registry-trigger-failover",
+      "regcred-harbor",
+      "regcred-trigger-checkpoints",
+    ];
 
     if (ADDITIONAL_PULL_SECRETS) {
       pullSecrets.push(...ADDITIONAL_PULL_SECRETS.split(","));
