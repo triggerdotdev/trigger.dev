@@ -232,70 +232,66 @@ function SpanBody({
         </TabContainer>
       </div>
       <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-        <div>
-          {tab === "detail" ? (
-            <div className="flex flex-col gap-4 px-3 pt-3">
-              <Property.Table>
+        {tab === "detail" ? (
+          <div className="flex flex-col gap-4 px-3 pt-3">
+            <Property.Table>
+              <Property.Item>
+                <Property.Label>Status</Property.Label>
+                <Property.Value>
+                  <TaskRunAttemptStatusCombo
+                    status={
+                      span.isCancelled
+                        ? "CANCELED"
+                        : span.isError
+                        ? "FAILED"
+                        : span.isPartial
+                        ? "EXECUTING"
+                        : "COMPLETED"
+                    }
+                    className="text-sm"
+                  />
+                </Property.Value>
+              </Property.Item>
+              <Property.Item>
+                <Property.Label>Task</Property.Label>
+                <Property.Value>
+                  <SimpleTooltip
+                    button={
+                      <TextLink to={v3RunsPath(organization, project, { tasks: [span.taskSlug] })}>
+                        {span.taskSlug}
+                      </TextLink>
+                    }
+                    content={`Filter runs by ${span.taskSlug}`}
+                  />
+                </Property.Value>
+              </Property.Item>
+              {span.idempotencyKey && (
                 <Property.Item>
-                  <Property.Label>Status</Property.Label>
-                  <Property.Value>
-                    <TaskRunAttemptStatusCombo
-                      status={
-                        span.isCancelled
-                          ? "CANCELED"
-                          : span.isError
-                          ? "FAILED"
-                          : span.isPartial
-                          ? "EXECUTING"
-                          : "COMPLETED"
-                      }
-                      className="text-sm"
-                    />
-                  </Property.Value>
+                  <Property.Label>Idempotency key</Property.Label>
+                  <Property.Value>{span.idempotencyKey}</Property.Value>
                 </Property.Item>
-                <Property.Item>
-                  <Property.Label>Task</Property.Label>
-                  <Property.Value>
-                    <SimpleTooltip
-                      button={
-                        <TextLink
-                          to={v3RunsPath(organization, project, { tasks: [span.taskSlug] })}
-                        >
-                          {span.taskSlug}
-                        </TextLink>
-                      }
-                      content={`Filter runs by ${span.taskSlug}`}
-                    />
-                  </Property.Value>
-                </Property.Item>
-                {span.idempotencyKey && (
-                  <Property.Item>
-                    <Property.Label>Idempotency key</Property.Label>
-                    <Property.Value>{span.idempotencyKey}</Property.Value>
-                  </Property.Item>
-                )}
-                <Property.Item>
-                  <Property.Label>Version</Property.Label>
-                  <Property.Value>
-                    {span.workerVersion ? (
-                      span.workerVersion
-                    ) : (
-                      <span className="flex items-center gap-1">
-                        <span>Never started</span>
-                        <InfoIconTooltip
-                          content={"Runs get locked to the latest version when they start."}
-                          contentClassName="normal-case tracking-normal"
-                        />
-                      </span>
-                    )}
-                  </Property.Value>
-                </Property.Item>
-              </Property.Table>
-            </div>
-          ) : (
-            <SpanEntity span={span} />
-          )}
-        </div>
+              )}
+              <Property.Item>
+                <Property.Label>Version</Property.Label>
+                <Property.Value>
+                  {span.workerVersion ? (
+                    span.workerVersion
+                  ) : (
+                    <span className="flex items-center gap-1">
+                      <span>Never started</span>
+                      <InfoIconTooltip
+                        content={"Runs get locked to the latest version when they start."}
+                        contentClassName="normal-case tracking-normal"
+                      />
+                    </span>
+                  )}
+                </Property.Value>
+              </Property.Item>
+            </Property.Table>
+          </div>
+        ) : (
+          <SpanEntity span={span} />
+        )}
       </div>
     </div>
   );
