@@ -12,11 +12,15 @@ export function compareDeploymentVersions(versionA: string, versionB: string) {
     return 1;
   }
 
-  if (numberA < numberB) {
+  // Convert to numbers before comparing
+  const numA = Number(numberA);
+  const numB = Number(numberB);
+
+  if (numA < numB) {
     return -1;
   }
 
-  if (numberA > numberB) {
+  if (numA > numB) {
     return 1;
   }
 
