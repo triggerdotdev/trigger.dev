@@ -2381,6 +2381,7 @@ model TaskEvent {
   isError     Boolean @default(false)
   isPartial   Boolean @default(false)
   isCancelled Boolean @default(false)
+  /// deprecated: don't use this, moving this to properties, this now uses TaskEventKind.LOG
   isDebug     Boolean @default(false)
 
   serviceName      String

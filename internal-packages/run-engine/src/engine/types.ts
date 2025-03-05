@@ -58,14 +58,14 @@ export type TriggerParams = {
   sdkVersion?: string;
   cliVersion?: string;
   concurrencyKey?: string;
-  masterQueue: string;
+  masterQueue?: string;
   queueName: string;
   queue?: QueueOptions;
   isTest: boolean;
   delayUntil?: Date;
   queuedAt?: Date;
   maxAttempts?: number;
-  taskEventStore: string;
+  taskEventStore?: string;
   priorityMs?: number;
   ttl?: string;
   tags: { id: string; name: string }[];
