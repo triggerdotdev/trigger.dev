@@ -1,5 +1,5 @@
 import { DeserializedJson } from "../../schemas/json.js";
-import { AsyncIterableStream } from "../apiClient/stream.js";
+import { AsyncIterableStream } from "../streams/asyncIterableStream.js";
 import { ApiRequestOptions } from "../zodfetch.js";
 import type { RunMetadataManager, RunMetadataUpdater } from "./types.js";
 

@@ -68,14 +68,13 @@ import {
   SubscribeToRunsQueryParams,
   UpdateEnvironmentVariableParams,
 } from "./types.js";
-import type { AsyncIterableStream } from "./stream.js";
+import { AsyncIterableStream } from "../streams/asyncIterableStream.js";
 
 export type {
   CreateEnvironmentVariableParams,
   ImportEnvironmentVariablesParams,
   SubscribeToRunsQueryParams,
   UpdateEnvironmentVariableParams,
-  AsyncIterableStream,
 };
 
 export type ClientTriggerOptions = {

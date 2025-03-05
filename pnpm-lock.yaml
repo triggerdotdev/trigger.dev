@@ -1043,7 +1043,7 @@ importers:
   packages/build:
     dependencies:
       '@trigger.dev/core':
-        specifier: workspace:3.3.16
+        specifier: workspace:3.3.17
         version: link:../core
       pkg-types:
         specifier: ^1.1.3
@@ -1116,10 +1116,10 @@ importers:
         specifier: 1.25.1
         version: 1.25.1
       '@trigger.dev/build':
-        specifier: workspace:3.3.16
+        specifier: workspace:3.3.17
         version: link:../build
       '@trigger.dev/core':
-        specifier: workspace:3.3.16
+        specifier: workspace:3.3.17
         version: link:../core
       c12:
         specifier: ^1.11.1
@@ -1426,15 +1426,9 @@ importers:
 
   packages/python:
     dependencies:
-      '@trigger.dev/build':
-        specifier: workspace:3.3.16
-        version: link:../build
       '@trigger.dev/core':
-        specifier: workspace:3.3.16
+        specifier: workspace:3.3.17
         version: link:../core
-      '@trigger.dev/sdk':
-        specifier: workspace:3.3.16
-        version: link:../trigger-sdk
       tinyexec:
         specifier: ^0.3.2
         version: 0.3.2
@@ -1442,6 +1436,12 @@ importers:
       '@arethetypeswrong/cli':
         specifier: ^0.15.4
         version: 0.15.4
+      '@trigger.dev/build':
+        specifier: workspace:3.3.17
+        version: link:../build
+      '@trigger.dev/sdk':
+        specifier: workspace:3.3.17
+        version: link:../trigger-sdk
       '@types/node':
         specifier: 20.14.14
         version: 20.14.14
@@ -1464,7 +1464,7 @@ importers:
   packages/react-hooks:
     dependencies:
       '@trigger.dev/core':
-        specifier: workspace:^3.3.16
+        specifier: workspace:^3.3.17
         version: link:../core
       react:
         specifier: ^18.0 || ^19.0 || ^19.0.0-rc
@@ -1498,7 +1498,7 @@ importers:
   packages/rsc:
     dependencies:
       '@trigger.dev/core':
-        specifier: workspace:^3.3.16
+        specifier: workspace:^3.3.17
         version: link:../core
       mlly:
         specifier: ^1.7.1
@@ -1514,7 +1514,7 @@ importers:
         specifier: ^0.15.4
         version: 0.15.4
       '@trigger.dev/build':
-        specifier: workspace:^3.3.16
+        specifier: workspace:^3.3.17
         version: link:../build
       '@types/node':
         specifier: ^20.14.14
@@ -1547,7 +1547,7 @@ importers:
         specifier: 1.25.1
         version: 1.25.1
       '@trigger.dev/core':
-        specifier: workspace:3.3.16
+        specifier: workspace:3.3.17
         version: link:../core
       chalk:
         specifier: ^5.2.0
@@ -1757,6 +1757,28 @@ importers:
       trigger.dev:
         specifier: workspace:^3
         version: link:../../packages/cli-v3
+
+  references/python-catalog:
+    dependencies:
+      '@trigger.dev/python':
+        specifier: workspace:*
+        version: link:../../packages/python
+      '@trigger.dev/sdk':
+        specifier: workspace:*
+        version: link:../../packages/trigger-sdk
+      zod:
+        specifier: 3.23.8
+        version: 3.23.8
+    devDependencies:
+      '@trigger.dev/build':
+        specifier: workspace:*
+        version: link:../../packages/build
+      trigger.dev:
+        specifier: workspace:*
+        version: link:../../packages/cli-v3
+      typescript:
+        specifier: ^5.5.4
+        version: 5.5.4
 
   references/test-tasks:
     dependencies:

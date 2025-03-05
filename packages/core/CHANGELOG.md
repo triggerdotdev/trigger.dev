@@ -1,5 +1,13 @@
 # internal-platform
 
+## 3.3.17
+
+### Patch Changes
+
+- Add manual checkpoint schema ([#1709](https://github.com/triggerdotdev/trigger.dev/pull/1709))
+- - Add new run completion submission message with ack ([#1711](https://github.com/triggerdotdev/trigger.dev/pull/1711))
+  - Add timeout support to sendWithAck
+
 ## 3.3.16
 
 ## 3.3.15

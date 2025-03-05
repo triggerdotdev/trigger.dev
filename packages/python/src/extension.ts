@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import assert from "node:assert";
-import { additionalFiles } from "@trigger.dev/build/extensions/core";
+import { addAdditionalFilesToBuild } from "@trigger.dev/build/internal";
 import { BuildManifest } from "@trigger.dev/core/v3";
 import { BuildContext, BuildExtension } from "@trigger.dev/core/v3/build";
 
@@ -16,7 +16,7 @@ export type PythonOptions = {
    *
    * Example: `/usr/bin/python3` or `C:\\Python39\\python.exe`
    */
-  pythonBinaryPath?: string;
+  devPythonBinaryPath?: string;
   /**
    * An array of glob patterns that specify which Python scripts are allowed to be executed.
    *
@@ -57,13 +57,18 @@ class PythonExtension implements BuildExtension {
   }
 
   async onBuildComplete(context: BuildContext, manifest: BuildManifest) {
-    await additionalFiles({
-      files: this.options.scripts ?? [],
-    }).onBuildComplete!(context, manifest);
+    await addAdditionalFilesToBuild(
+      "pythonExtension",
+      {
+        files: this.options.scripts ?? [],
+      },
+      context,
+      manifest
+    );
 
     if (context.target === "dev") {
-      if (this.options.pythonBinaryPath) {
-        process.env.PYTHON_BIN_PATH = this.options.pythonBinaryPath;
+      if (this.options.devPythonBinaryPath) {
+        process.env.PYTHON_BIN_PATH = this.options.devPythonBinaryPath;
       }
 
       return;
@@ -93,27 +98,59 @@ class PythonExtension implements BuildExtension {
       },
     });
 
-    context.addLayer({
-      id: "python-dependencies",
-      build: {
-        env: {
-          REQUIREMENTS_CONTENT: this.options.requirements?.join("\n") || "",
+    if (this.options.requirementsFile) {
+      if (this.options.requirements) {
+        context.logger.warn(
+          `[pythonExtension] Both options.requirements and options.requirementsFile are specified. requirements will be ignored.`
+        );
+      }
+
+      // Copy requirements file to the container
+      await addAdditionalFilesToBuild(
+        "pythonExtension",
+        {
+          files: [this.options.requirementsFile],
         },
-      },
-      image: {
-        instructions: splitAndCleanComments(`
+        context,
+        manifest
+      );
+
+      // Add a layer to the build that installs the requirements
+      context.addLayer({
+        id: "python-dependencies",
+        image: {
+          instructions: splitAndCleanComments(`
+            # Copy the requirements file
+            COPY ${this.options.requirementsFile} .
+            # Install dependencies
+            RUN pip install --no-cache-dir -r ${this.options.requirementsFile}
+          `),
+        },
+        deploy: {
+          override: true,
+        },
+      });
+    } else if (this.options.requirements) {
+      context.addLayer({
+        id: "python-dependencies",
+        build: {
+          env: {
+            REQUIREMENTS_CONTENT: this.options.requirements?.join("\n") || "",
+          },
+        },
+        image: {
+          instructions: splitAndCleanComments(`
           ARG REQUIREMENTS_CONTENT
           RUN echo "$REQUIREMENTS_CONTENT" > requirements.txt
 
           # Install dependencies
           RUN pip install --no-cache-dir -r requirements.txt
         `),
-      },
-      deploy: {
-        override: true,
-      },
-    });
+        },
+        deploy: {
+          override: true,
+        },
+      });
+    }
   }
 }
-
-export default pythonExtension;
