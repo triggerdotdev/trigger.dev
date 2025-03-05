@@ -21,6 +21,7 @@ import {
   RunQueueKeyProducer,
   RunQueuePriorityStrategy,
 } from "./types.js";
+import { createRedisClient } from "@internal/redis";
 
 const SemanticAttributes = {
   QUEUE: "runqueue.queue",
@@ -71,13 +72,27 @@ export class RunQueue {
 
   constructor(private readonly options: RunQueueOptions) {
     this.retryOptions = options.retryOptions ?? defaultRetrySettings;
-    this.redis = new Redis(options.redis);
+    this.redis = createRedisClient(options.redis, {
+      onError: (error) => {
+        this.logger.error(`RunQueue redis client error:`, {
+          error,
+          keyPrefix: options.redis.keyPrefix,
+        });
+      },
+    });
     this.logger = options.logger;
 
     this.keys = new RunQueueShortKeyProducer("rq:");
     this.queuePriorityStrategy = options.queuePriorityStrategy;
 
-    this.subscriber = new Redis(options.redis);
+    this.subscriber = createRedisClient(options.redis, {
+      onError: (error) => {
+        this.logger.error(`RunQueue subscriber redis client error:`, {
+          error,
+          keyPrefix: options.redis.keyPrefix,
+        });
+      },
+    });
     this.#setupSubscriber();
 
     this.#registerCommands();

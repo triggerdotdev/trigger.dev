@@ -1,3 +1,4 @@
+import { createRedisClient } from "@internal/redis";
 import { Worker } from "@internal/redis-worker";
 import { Attributes, Span, SpanKind, trace, Tracer } from "@opentelemetry/api";
 import { assertExhaustive } from "@trigger.dev/core";
@@ -135,10 +136,20 @@ export class RunEngine {
 
   constructor(private readonly options: RunEngineOptions) {
     this.prisma = options.prisma;
-    this.runLockRedis = new Redis({
-      ...options.runLock.redis,
-      keyPrefix: `${options.runLock.redis.keyPrefix}runlock:`,
-    });
+    this.runLockRedis = createRedisClient(
+      {
+        ...options.runLock.redis,
+        keyPrefix: `${options.runLock.redis.keyPrefix}runlock:`,
+      },
+      {
+        onError: (error) => {
+          this.logger.error(`RunLock redis client error:`, {
+            error,
+            keyPrefix: options.runLock.redis.keyPrefix,
+          });
+        },
+      }
+    );
     this.runLock = new RunLocker({ redis: this.runLockRedis });
 
     this.runQueue = new RunQueue({

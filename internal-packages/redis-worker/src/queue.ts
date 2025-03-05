@@ -1,3 +1,4 @@
+import { createRedisClient } from "@internal/redis";
 import { Logger } from "@trigger.dev/core/logger";
 import Redis, { type Callback, type RedisOptions, type Result } from "ioredis";
 import { nanoid } from "nanoid";
@@ -50,35 +51,29 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
     logger?: Logger;
   }) {
     this.name = name;
-    this.redis = new Redis({
-      ...redisOptions,
-      keyPrefix: `${redisOptions.keyPrefix ?? ""}{queue:${name}:}`,
-      retryStrategy(times) {
-        const delay = Math.min(times * 50, 1000);
-        return delay;
-      },
-      maxRetriesPerRequest: 20,
-    });
-    this.#registerCommands();
-    this.schema = schema;
-
     this.logger = logger ?? new Logger("SimpleQueue", "debug");
 
-    this.redis.on("error", (error) => {
-      this.logger.error(`Redis Error for queue ${this.name}:`, { queue: this.name, error });
-    });
-
-    this.redis.on("connect", () => {
-      this.logger.log(`Redis connected for queue ${this.name}`);
-    });
-
-    this.redis.on("reconnecting", () => {
-      this.logger.warn(`Redis reconnecting for queue ${this.name}`);
-    });
-
-    this.redis.on("close", () => {
-      this.logger.warn(`Redis connection closed for queue ${this.name}`);
-    });
+    this.redis = createRedisClient(
+      {
+        ...redisOptions,
+        keyPrefix: `${redisOptions.keyPrefix ?? ""}{queue:${name}:}`,
+        retryStrategy(times) {
+          const delay = Math.min(times * 50, 1000);
+          return delay;
+        },
+        maxRetriesPerRequest: 20,
+      },
+      {
+        onError: (error) => {
+          this.logger.error(`RedisWorker queue redis client error:`, {
+            error,
+            keyPrefix: redisOptions.keyPrefix,
+          });
+        },
+      }
+    );
+    this.#registerCommands();
+    this.schema = schema;
   }
 
   async enqueue({

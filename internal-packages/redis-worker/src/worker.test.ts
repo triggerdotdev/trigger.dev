@@ -5,6 +5,7 @@ import { expect } from "vitest";
 import { z } from "zod";
 import { Worker } from "./worker.js";
 import Redis from "ioredis";
+import { createRedisClient } from "@internal/redis";
 
 describe("Worker", () => {
   redisTest("Process items that don't throw", { timeout: 30_000 }, async ({ redisContainer }) => {
@@ -241,7 +242,7 @@ describe("Worker", () => {
         expect(dlqSize).toBe(1);
 
         // Create a Redis client to publish the redrive message
-        const redisClient = new Redis({
+        const redisClient = createRedisClient({
           host: redisContainer.getHost(),
           port: redisContainer.getPort(),
           password: redisContainer.getPassword(),
