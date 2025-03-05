@@ -3,7 +3,6 @@
   "private": true,
   "type": "module",
   "devDependencies": {
-    "trigger.dev": "workspace:*",
-    "typescript": "^5.5.4"
+    "trigger.dev": "workspace:*"
   }
 }

@@ -2,12 +2,15 @@
 import { redisTest } from "@internal/testcontainers";
 import { describe, expect, vi } from "vitest";
 import { GCRARateLimiter } from "../app/v3/GCRARateLimiter.server.js"; // adjust the import as needed
+import Redis from "ioredis";
 
 // Extend the timeout to 30 seconds (as in your redis tests)
 vi.setConfig({ testTimeout: 30_000 });
 
 describe("GCRARateLimiter", () => {
-  redisTest("should allow a single request when under the rate limit", async ({ redis }) => {
+  redisTest("should allow a single request when under the rate limit", async ({ redisOptions }) => {
+    const redis = new Redis(redisOptions);
+
     const limiter = new GCRARateLimiter({
       redis,
       emissionInterval: 1000, // 1 request per second on average
@@ -21,7 +24,9 @@ describe("GCRARateLimiter", () => {
 
   redisTest(
     "should allow bursts up to the configured limit and then reject further requests",
-    async ({ redis }) => {
+    async ({ redisOptions }) => {
+      const redis = new Redis(redisOptions);
+
       const limiter = new GCRARateLimiter({
         redis,
         emissionInterval: 1000,
@@ -45,55 +50,67 @@ describe("GCRARateLimiter", () => {
     }
   );
 
-  redisTest("should allow a request after the required waiting period", async ({ redis }) => {
-    const limiter = new GCRARateLimiter({
-      redis,
-      emissionInterval: 1000,
-      burstTolerance: 3000,
-      keyPrefix: "test:ratelimit:",
-    });
+  redisTest(
+    "should allow a request after the required waiting period",
+    async ({ redisOptions }) => {
+      const redis = new Redis(redisOptions);
 
-    // Exhaust burst capacity with 4 rapid calls.
-    await limiter.check("user:wait");
-    await limiter.check("user:wait");
-    await limiter.check("user:wait");
-    await limiter.check("user:wait");
+      const limiter = new GCRARateLimiter({
+        redis,
+        emissionInterval: 1000,
+        burstTolerance: 3000,
+        keyPrefix: "test:ratelimit:",
+      });
 
-    // The 5th call should be rejected.
-    const rejection = await limiter.check("user:wait");
-    expect(rejection.allowed).toBe(false);
-    expect(rejection.retryAfter).toBeGreaterThan(0);
+      // Exhaust burst capacity with 4 rapid calls.
+      await limiter.check("user:wait");
+      await limiter.check("user:wait");
+      await limiter.check("user:wait");
+      await limiter.check("user:wait");
 
-    // Wait for the period specified in retryAfter (plus a small buffer)
-    await new Promise((resolve) => setTimeout(resolve, rejection.retryAfter! + 50));
+      // The 5th call should be rejected.
+      const rejection = await limiter.check("user:wait");
+      expect(rejection.allowed).toBe(false);
+      expect(rejection.retryAfter).toBeGreaterThan(0);
 
-    // Now the next call should be allowed.
-    const allowedAfterWait = await limiter.check("user:wait");
-    expect(allowedAfterWait.allowed).toBe(true);
-  });
+      // Wait for the period specified in retryAfter (plus a small buffer)
+      await new Promise((resolve) => setTimeout(resolve, rejection.retryAfter! + 50));
 
-  redisTest("should rate limit independently for different identifiers", async ({ redis }) => {
-    const limiter = new GCRARateLimiter({
-      redis,
-      emissionInterval: 1000,
-      burstTolerance: 3000,
-      keyPrefix: "test:ratelimit:",
-    });
+      // Now the next call should be allowed.
+      const allowedAfterWait = await limiter.check("user:wait");
+      expect(allowedAfterWait.allowed).toBe(true);
+    }
+  );
 
-    // For "user:independent", exhaust burst capacity.
-    await limiter.check("user:independent");
-    await limiter.check("user:independent");
-    await limiter.check("user:independent");
-    await limiter.check("user:independent");
-    const rejected = await limiter.check("user:independent");
-    expect(rejected.allowed).toBe(false);
+  redisTest(
+    "should rate limit independently for different identifiers",
+    async ({ redisOptions }) => {
+      const redis = new Redis(redisOptions);
 
-    // A different identifier should start fresh.
-    const fresh = await limiter.check("user:different");
-    expect(fresh.allowed).toBe(true);
-  });
+      const limiter = new GCRARateLimiter({
+        redis,
+        emissionInterval: 1000,
+        burstTolerance: 3000,
+        keyPrefix: "test:ratelimit:",
+      });
 
-  redisTest("should gradually reduce retryAfter with time", async ({ redis }) => {
+      // For "user:independent", exhaust burst capacity.
+      await limiter.check("user:independent");
+      await limiter.check("user:independent");
+      await limiter.check("user:independent");
+      await limiter.check("user:independent");
+      const rejected = await limiter.check("user:independent");
+      expect(rejected.allowed).toBe(false);
+
+      // A different identifier should start fresh.
+      const fresh = await limiter.check("user:different");
+      expect(fresh.allowed).toBe(true);
+    }
+  );
+
+  redisTest("should gradually reduce retryAfter with time", async ({ redisOptions }) => {
+    const redis = new Redis(redisOptions);
+
     const limiter = new GCRARateLimiter({
       redis,
       emissionInterval: 1000,
@@ -120,7 +137,9 @@ describe("GCRARateLimiter", () => {
     expect(secondRetry).toBeLessThan(firstRetry);
   });
 
-  redisTest("should expire the key after the TTL", async ({ redis }) => {
+  redisTest("should expire the key after the TTL", async ({ redisOptions }) => {
+    const redis = new Redis(redisOptions);
+
     // For this test, override keyExpiration to a short value.
     const keyExpiration = 1500; // 1.5 seconds TTL
     const limiter = new GCRARateLimiter({
@@ -147,7 +166,9 @@ describe("GCRARateLimiter", () => {
     expect(stored).toBeNull();
   });
 
-  redisTest("should not share state across different key prefixes", async ({ redis }) => {
+  redisTest("should not share state across different key prefixes", async ({ redisOptions }) => {
+    const redis = new Redis(redisOptions);
+
     const limiter1 = new GCRARateLimiter({
       redis,
       emissionInterval: 1000,
@@ -174,25 +195,32 @@ describe("GCRARateLimiter", () => {
     expect(result2.allowed).toBe(true);
   });
 
-  redisTest("should increment TAT correctly on sequential allowed requests", async ({ redis }) => {
-    const limiter = new GCRARateLimiter({
-      redis,
-      emissionInterval: 1000,
-      burstTolerance: 3000,
-      keyPrefix: "test:ratelimit:",
-    });
+  redisTest(
+    "should increment TAT correctly on sequential allowed requests",
+    async ({ redisOptions }) => {
+      const redis = new Redis(redisOptions);
 
-    // The first request should be allowed.
-    const r1 = await limiter.check("user:sequential");
-    expect(r1.allowed).toBe(true);
+      const limiter = new GCRARateLimiter({
+        redis,
+        emissionInterval: 1000,
+        burstTolerance: 3000,
+        keyPrefix: "test:ratelimit:",
+      });
 
-    // Wait a bit longer than the emission interval.
-    await new Promise((resolve) => setTimeout(resolve, 1100));
-    const r2 = await limiter.check("user:sequential");
-    expect(r2.allowed).toBe(true);
-  });
+      // The first request should be allowed.
+      const r1 = await limiter.check("user:sequential");
+      expect(r1.allowed).toBe(true);
 
-  redisTest("should throw an error if redis command fails", async ({ redis }) => {
+      // Wait a bit longer than the emission interval.
+      await new Promise((resolve) => setTimeout(resolve, 1100));
+      const r2 = await limiter.check("user:sequential");
+      expect(r2.allowed).toBe(true);
+    }
+  );
+
+  redisTest("should throw an error if redis command fails", async ({ redisOptions }) => {
+    const redis = new Redis(redisOptions);
+
     const limiter = new GCRARateLimiter({
       redis,
       emissionInterval: 1000,

@@ -23,6 +23,7 @@ import {
 } from "../utilities/cliOutput.js";
 import { eventBus, EventBusEventArgs } from "../utilities/eventBus.js";
 import { logger } from "../utilities/logger.js";
+import { Socket } from "socket.io-client";
 
 export type DevOutputOptions = {
   name: string | undefined;
@@ -104,19 +105,17 @@ export function startDevOutput(options: DevOutputOptions) {
     }
   };
 
-  const runStarted = (...[worker, payload]: EventBusEventArgs<"runStarted">) => {
+  const runStarted = (...[worker, execution]: EventBusEventArgs<"runStarted">) => {
     if (!worker.serverWorker) {
       return;
     }
-
-    const { execution } = payload;
 
     // ○ Mar 27 09:17:25.653 -> View logs | 20240326.20 | create-avatar | run_slufhjdfiv8ejnrkw9dsj.1
     const logsUrl = `${baseUrl}/runs/${execution.run.id}`;
     const pipe = chalkGrey("|");
     const bullet = chalkGrey("○");
     const link = chalkLink(cliLink("View logs", logsUrl));
-    let timestampPrefix = chalkGrey(prettyPrintDate(payload.execution.attempt.startedAt));
+    let timestampPrefix = chalkGrey(prettyPrintDate(execution.run.startedAt));
     const workerPrefix = chalkWorker(worker.serverWorker.version);
     const taskPrefix = chalkTask(execution.task.id);
     const runId = chalkRun(`${execution.run.id}.${execution.attempt.number}`);
@@ -129,10 +128,8 @@ export function startDevOutput(options: DevOutputOptions) {
   };
 
   const runCompleted = (
-    ...[worker, payload, completion, durationMs]: EventBusEventArgs<"runCompleted">
+    ...[worker, execution, completion, durationMs]: EventBusEventArgs<"runCompleted">
   ) => {
-    const { execution } = payload;
-
     const retryingText = chalkGrey(
       !completion.ok && completion.skippedRetrying
         ? " (retrying skipped)"
@@ -177,6 +174,14 @@ export function startDevOutput(options: DevOutputOptions) {
     );
   };
 
+  const socketConnectionDisconnected = (reason: Socket.DisconnectReason) => {
+    logger.log(chalkGrey(`○ Connection was lost: ${reason}`));
+  };
+
+  const socketConnectionReconnected = (reason: string) => {
+    logger.log(chalkGrey(`○ Connection was restored`));
+  };
+
   eventBus.on("rebuildStarted", rebuildStarted);
   eventBus.on("buildStarted", buildStarted);
   eventBus.on("workerSkipped", workerSkipped);
@@ -184,6 +189,8 @@ export function startDevOutput(options: DevOutputOptions) {
   eventBus.on("runStarted", runStarted);
   eventBus.on("runCompleted", runCompleted);
   eventBus.on("backgroundWorkerIndexingError", backgroundWorkerIndexingError);
+  eventBus.on("socketConnectionDisconnected", socketConnectionDisconnected);
+  eventBus.on("socketConnectionReconnected", socketConnectionReconnected);
 
   return () => {
     eventBus.off("rebuildStarted", rebuildStarted);
@@ -193,6 +200,8 @@ export function startDevOutput(options: DevOutputOptions) {
     eventBus.off("runStarted", runStarted);
     eventBus.off("runCompleted", runCompleted);
     eventBus.off("backgroundWorkerIndexingError", backgroundWorkerIndexingError);
+    eventBus.off("socketConnectionDisconnected", socketConnectionDisconnected);
+    eventBus.off("socketConnectionReconnected", socketConnectionReconnected);
   };
 }
 

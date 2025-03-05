@@ -4,6 +4,7 @@ import {
   BatchTaskRunExecutionResult,
   TaskRunContext,
   TaskRunExecutionResult,
+  WaitpointTokenResult,
 } from "../schemas/index.js";
 import { getGlobal, registerGlobal, unregisterGlobal } from "../utils/globals.js";
 import { type RuntimeManager } from "./manager.js";
@@ -29,21 +30,25 @@ export class RuntimeAPI {
     return this._instance;
   }
 
-  public waitForDuration(ms: number): Promise<void> {
-    return usage.pauseAsync(() => this.#getRuntimeManager().waitForDuration(ms));
-  }
-
-  public waitUntil(date: Date): Promise<void> {
-    return usage.pauseAsync(() => this.#getRuntimeManager().waitUntil(date));
+  public waitUntil(waitpointFriendlyId: string, finishDate?: Date): Promise<WaitpointTokenResult> {
+    return usage.pauseAsync(() =>
+      this.#getRuntimeManager().waitForWaitpoint({ waitpointFriendlyId, finishDate })
+    );
   }
 
   public waitForTask(params: { id: string; ctx: TaskRunContext }): Promise<TaskRunExecutionResult> {
     return usage.pauseAsync(() => this.#getRuntimeManager().waitForTask(params));
   }
 
+  public waitForToken(waitpointFriendlyId: string): Promise<WaitpointTokenResult> {
+    return usage.pauseAsync(() =>
+      this.#getRuntimeManager().waitForWaitpoint({ waitpointFriendlyId })
+    );
+  }
+
   public waitForBatch(params: {
     id: string;
-    runs: string[];
+    runCount: number;
     ctx: TaskRunContext;
   }): Promise<BatchTaskRunExecutionResult> {
     return usage.pauseAsync(() => this.#getRuntimeManager().waitForBatch(params));

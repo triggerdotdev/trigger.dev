@@ -10,6 +10,7 @@ export const bunTask = task({
 
     return {
       message: "Query executed",
+      bunVersion: Bun.version,
     };
   },
 });

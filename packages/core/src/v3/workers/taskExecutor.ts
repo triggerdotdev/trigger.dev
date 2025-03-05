@@ -563,15 +563,15 @@ export class TaskExecutor {
       return { status: "noop" };
     }
 
+    if (isInternalError(error) && error.skipRetrying) {
+      return { status: "skipped", error };
+    }
+
     if (
       error instanceof Error &&
       (error.name === "AbortTaskRunError" || error.name === "TaskPayloadParsedError")
     ) {
       return { status: "skipped" };
-    }
-
-    if (isInternalError(error) && error.skipRetrying) {
-      return { status: "skipped", error };
     }
 
     if (execution.run.maxAttempts) {

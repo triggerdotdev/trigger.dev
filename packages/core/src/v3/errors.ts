@@ -232,12 +232,23 @@ export function shouldRetryError(error: TaskRunError): boolean {
         case "TASK_RUN_CANCELLED":
         case "MAX_DURATION_EXCEEDED":
         case "DISK_SPACE_EXCEEDED":
-        case "TASK_RUN_HEARTBEAT_TIMEOUT":
         case "OUTDATED_SDK_VERSION":
+        case "TASK_RUN_HEARTBEAT_TIMEOUT":
         case "TASK_DID_CONCURRENT_WAIT":
         case "RECURSIVE_WAIT_DEADLOCK":
+        // run engine errors
+        case "TASK_DEQUEUED_INVALID_STATE":
+        case "TASK_DEQUEUED_QUEUE_NOT_FOUND":
+        case "TASK_DEQUEUED_INVALID_RETRY_CONFIG":
+        case "TASK_DEQUEUED_NO_RETRY_CONFIG":
+        case "TASK_HAS_N0_EXECUTION_SNAPSHOT":
+        case "TASK_RUN_DEQUEUED_MAX_RETRIES":
           return false;
 
+        //new heartbeat error
+        //todo
+        case "TASK_RUN_STALLED_EXECUTING":
+        case "TASK_RUN_STALLED_EXECUTING_WITH_WAITPOINTS":
         case "GRACEFUL_EXIT_TIMEOUT":
         case "HANDLE_ERROR_ERROR":
         case "TASK_INPUT_ERROR":

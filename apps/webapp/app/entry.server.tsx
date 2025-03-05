@@ -212,7 +212,10 @@ process.on("uncaughtException", (error, origin) => {
 
 const sqsEventConsumer = singleton("sqsEventConsumer", getSharedSqsEventConsumer);
 
+singleton("RunEngineEventBusHandlers", registerRunEngineEventBusHandlers);
+
 export { apiRateLimiter } from "./services/apiRateLimit.server";
+export { engineRateLimiter } from "./services/engineRateLimit.server";
 export { socketIo } from "./v3/handleSocketIo.server";
 export { wss } from "./v3/handleWebsockets.server";
 export { registryProxy } from "./v3/registryProxy.server";
@@ -221,6 +224,7 @@ import { eventLoopMonitor } from "./eventLoopMonitor.server";
 import { env } from "./env.server";
 import { logger } from "./services/logger.server";
 import { Prisma } from "./db.server";
+import { registerRunEngineEventBusHandlers } from "./v3/runEngineHandlers.server";
 
 if (env.EVENT_LOOP_MONITOR_ENABLED === "1") {
   eventLoopMonitor.enable();

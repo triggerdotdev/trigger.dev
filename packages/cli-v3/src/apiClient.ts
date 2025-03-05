@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { EventSource } from "eventsource";
 import {
   CreateAuthorizationCodeResponseSchema,
   GetPersonalAccessTokenResponseSchema,
@@ -20,9 +21,29 @@ import {
   FailDeploymentRequestBody,
   FailDeploymentResponseBody,
   FinalizeDeploymentRequestBody,
+  WorkersListResponseBody,
+  WorkersCreateResponseBody,
+  WorkersCreateRequestBody,
+  TriggerTaskRequestBody,
+  TriggerTaskResponse,
+  GetLatestDeploymentResponseBody,
+  DevConfigResponseBody,
+  DevDequeueRequestBody,
+  DevDequeueResponseBody,
   PromoteDeploymentResponseBody,
 } from "@trigger.dev/core/v3";
-import { zodfetch, ApiError, zodfetchSSE } from "@trigger.dev/core/v3/zodfetch";
+import { zodfetch, zodfetchSSE, ApiError } from "@trigger.dev/core/v3/zodfetch";
+import { logger } from "./utilities/logger.js";
+import {
+  WorkloadDebugLogRequestBody,
+  WorkloadHeartbeatRequestBody,
+  WorkloadHeartbeatResponseBody,
+  WorkloadRunAttemptCompleteRequestBody,
+  WorkloadRunAttemptCompleteResponseBody,
+  WorkloadRunAttemptStartRequestBody,
+  WorkloadRunAttemptStartResponseBody,
+  WorkloadRunLatestSnapshotResponseBody,
+} from "@trigger.dev/core/v3/workers";
 
 export class CliApiClient {
   constructor(
@@ -366,6 +387,245 @@ export class CliApiClient {
           Authorization: `Bearer ${this.accessToken}`,
           Accept: "application/json",
         },
+      }
+    );
+  }
+
+  async triggerTaskRun(taskId: string, body?: TriggerTaskRequestBody) {
+    if (!this.accessToken) {
+      throw new Error("triggerTaskRun: No access token");
+    }
+
+    return wrapZodFetch(TriggerTaskResponse, `${this.apiURL}/api/v1/tasks/${taskId}/trigger`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.accessToken}`,
+        Accept: "application/json",
+      },
+      body: JSON.stringify(body ?? {}),
+    });
+  }
+
+  get dev() {
+    return {
+      config: this.devConfig.bind(this),
+      presenceConnection: this.devPresenceConnection.bind(this),
+      dequeue: this.devDequeue.bind(this),
+      sendDebugLog: this.devSendDebugLog.bind(this),
+      getRunExecutionData: this.devGetRunExecutionData.bind(this),
+      heartbeatRun: this.devHeartbeatRun.bind(this),
+      startRunAttempt: this.devStartRunAttempt.bind(this),
+      completeRunAttempt: this.devCompleteRunAttempt.bind(this),
+    };
+  }
+
+  get workers() {
+    return {
+      list: this.listWorkers.bind(this),
+      create: this.createWorker.bind(this),
+    };
+  }
+
+  get deployments() {
+    return {
+      unmanaged: {
+        latest: this.getLatestUnmanagedDeployment.bind(this),
+      },
+    };
+  }
+
+  private async getLatestUnmanagedDeployment() {
+    if (!this.accessToken) {
+      throw new Error("getLatestUnmanagedDeployment: No access token");
+    }
+
+    return wrapZodFetch(
+      GetLatestDeploymentResponseBody,
+      `${this.apiURL}/api/v1/deployments/latest`,
+      {
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          Accept: "application/json",
+        },
+      }
+    );
+  }
+
+  private async listWorkers() {
+    if (!this.accessToken) {
+      throw new Error("listWorkers: No access token");
+    }
+
+    return wrapZodFetch(WorkersListResponseBody, `${this.apiURL}/api/v1/workers`, {
+      headers: {
+        Authorization: `Bearer ${this.accessToken}`,
+        Accept: "application/json",
+      },
+    });
+  }
+
+  private async createWorker(options: WorkersCreateRequestBody) {
+    if (!this.accessToken) {
+      throw new Error("createWorker: No access token");
+    }
+
+    return wrapZodFetch(WorkersCreateResponseBody, `${this.apiURL}/api/v1/workers`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.accessToken}`,
+        Accept: "application/json",
+      },
+      body: JSON.stringify(options),
+    });
+  }
+
+  private async devConfig() {
+    if (!this.accessToken) {
+      throw new Error("devConfig: No access token");
+    }
+
+    return wrapZodFetch(DevConfigResponseBody, `${this.apiURL}/engine/v1/dev/config`, {
+      headers: {
+        Authorization: `Bearer ${this.accessToken}`,
+        Accept: "application/json",
+      },
+    });
+  }
+
+  private async devPresenceConnection(): Promise<EventSource> {
+    if (!this.accessToken) {
+      throw new Error("connectToPresence: No access token");
+    }
+
+    const eventSource = new EventSource(`${this.apiURL}/engine/v1/dev/presence`, {
+      fetch: (input, init) =>
+        fetch(input, {
+          ...init,
+          headers: {
+            ...init?.headers,
+            Authorization: `Bearer ${this.accessToken}`,
+          },
+        }),
+    });
+
+    return new Promise((resolve, reject) => {
+      eventSource.onopen = () => {
+        logger.debug("Presence connection established");
+        resolve(eventSource);
+      };
+
+      eventSource.onerror = (error: any) => {
+        // The connection will automatically try to reconnect
+        logger.debug("Presence connection error, will automatically attempt to reconnect", {
+          error,
+          readyState: eventSource.readyState, // 0 = connecting, 1 = open, 2 = closed
+        });
+
+        // If you want to detect when it's permanently failed and not reconnecting
+        if (eventSource.readyState === EventSource.CLOSED) {
+          logger.debug("Presence connection permanently closed", { error });
+          reject(new Error(`Failed to connect to ${this.apiURL}`));
+        }
+      };
+    });
+  }
+
+  private async devDequeue(body: DevDequeueRequestBody) {
+    if (!this.accessToken) {
+      throw new Error("devConfig: No access token");
+    }
+
+    return wrapZodFetch(DevDequeueResponseBody, `${this.apiURL}/engine/v1/dev/dequeue`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.accessToken}`,
+        Accept: "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+  }
+
+  private async devSendDebugLog(runId: string, body: WorkloadDebugLogRequestBody) {
+    if (!this.accessToken) {
+      throw new Error("devConfig: No access token");
+    }
+
+    return wrapZodFetch(z.unknown(), `${this.apiURL}/engine/v1/dev/runs/${runId}/logs/debug`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.accessToken}`,
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+  }
+
+  private async devGetRunExecutionData(runId: string) {
+    return wrapZodFetch(
+      WorkloadRunLatestSnapshotResponseBody,
+      `${this.apiURL}/engine/v1/dev/runs/${runId}/snapshots/latest`,
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          Accept: "application/json",
+        },
+      }
+    );
+  }
+
+  private async devHeartbeatRun(
+    runId: string,
+    snapshotId: string,
+    body: WorkloadHeartbeatRequestBody
+  ) {
+    return wrapZodFetch(
+      WorkloadHeartbeatResponseBody,
+      `${this.apiURL}/engine/v1/dev/runs/${runId}/snapshots/${snapshotId}/heartbeat`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      }
+    );
+  }
+
+  private async devStartRunAttempt(runId: string, snapshotId: string) {
+    return wrapZodFetch(
+      WorkloadRunAttemptStartResponseBody,
+      `${this.apiURL}/engine/v1/dev/runs/${runId}/snapshots/${snapshotId}/attempts/start`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          Accept: "application/json",
+        },
+        //no body at the moment, but we'll probably add things soon
+        body: JSON.stringify({}),
+      }
+    );
+  }
+
+  private async devCompleteRunAttempt(
+    runId: string,
+    snapshotId: string,
+    body: WorkloadRunAttemptCompleteRequestBody
+  ) {
+    return wrapZodFetch(
+      WorkloadRunAttemptCompleteResponseBody,
+      `${this.apiURL}/engine/v1/dev/runs/${runId}/snapshots/${snapshotId}/attempts/complete`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          Accept: "application/json",
+        },
+        body: JSON.stringify(body),
       }
     );
   }

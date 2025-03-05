@@ -67,6 +67,7 @@ const { action, loader } = createActionApiRoute(
       "x-trigger-span-parent-as-link": spanParentAsLink,
       "x-trigger-worker": isFromWorker,
       "x-trigger-client": triggerClient,
+      "x-trigger-engine-version": engineVersion,
       "batch-processing-strategy": batchProcessingStrategy,
       traceparent,
       tracestate,

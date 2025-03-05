@@ -51,3 +51,15 @@ function derivePresetNameFromValues(cpu: number, memory: number): MachinePresetN
 
   return defaultMachine;
 }
+
+export function allMachines(): Record<string, MachinePreset> {
+  return Object.fromEntries(
+    Object.entries(machines).map(([name, preset]) => [
+      name,
+      {
+        name: name as MachinePresetName,
+        ...preset,
+      },
+    ])
+  );
+}

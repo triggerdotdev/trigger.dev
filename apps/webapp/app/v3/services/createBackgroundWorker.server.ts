@@ -16,6 +16,12 @@ import { RegisterNextTaskScheduleInstanceService } from "./registerNextTaskSched
 import cronstrue from "cronstrue";
 import { CheckScheduleService } from "./checkSchedule.server";
 import { clampMaxDuration } from "../utils/maxDuration";
+import {
+  removeQueueConcurrencyLimits,
+  updateEnvConcurrencyLimits,
+  updateQueueConcurrencyLimits,
+} from "../runQueue.server";
+import { BackgroundWorkerId } from "@trigger.dev/core/v3/apps";
 import { sanitizeQueueName } from "~/models/taskQueue.server";
 
 export class CreateBackgroundWorkerService extends BaseService {
@@ -64,7 +70,7 @@ export class CreateBackgroundWorkerService extends BaseService {
 
       const backgroundWorker = await this._prisma.backgroundWorker.create({
         data: {
-          friendlyId: generateFriendlyId("worker"),
+          ...BackgroundWorkerId.generate(),
           version: nextVersion,
           runtimeEnvironmentId: environment.id,
           projectId: project.id,
@@ -73,8 +79,21 @@ export class CreateBackgroundWorkerService extends BaseService {
           cliVersion: body.metadata.cliPackageVersion,
           sdkVersion: body.metadata.packageVersion,
           supportsLazyAttempts: body.supportsLazyAttempts,
+          engine: body.engine,
         },
       });
+
+      //upgrade the project to engine "V2" if it's not already
+      if (project.engine === "V1" && body.engine === "V2") {
+        await this._prisma.project.update({
+          where: {
+            id: project.id,
+          },
+          data: {
+            engine: "V2",
+          },
+        });
+      }
 
       const tasksToBackgroundFiles = await createBackgroundFiles(
         body.metadata.sourceFiles,
@@ -110,7 +129,7 @@ export class CreateBackgroundWorkerService extends BaseService {
           }
         );
 
-        await marqs?.updateEnvConcurrencyLimits(environment);
+        await updateEnvConcurrencyLimits(environment);
       } catch (err) {
         logger.error(
           "Error publishing WORKER_CREATED event or updating global concurrency limits",
@@ -212,7 +231,7 @@ export async function createBackgroundTasks(
           concurrencyLimit,
           taskidentifier: task.id,
         });
-        await marqs?.updateQueueConcurrencyLimits(environment, taskQueue.name, concurrencyLimit);
+        await updateQueueConcurrencyLimits(environment, taskQueue.name, concurrencyLimit);
       } else {
         logger.debug("CreateBackgroundWorkerService: removing concurrency limit", {
           workerId: worker.id,
@@ -223,8 +242,7 @@ export async function createBackgroundTasks(
           concurrencyLimit,
           taskidentifier: task.id,
         });
-
-        await marqs?.removeQueueConcurrencyLimits(environment, taskQueue.name);
+        await removeQueueConcurrencyLimits(environment, taskQueue.name);
       }
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError) {
