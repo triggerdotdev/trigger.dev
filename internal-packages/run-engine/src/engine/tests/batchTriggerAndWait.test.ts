@@ -104,6 +104,7 @@ describe("RunEngine batchTriggerAndWait", () => {
           batchId: batch.id,
           environmentId: authenticatedEnvironment.id,
           projectId: authenticatedEnvironment.projectId,
+          organizationId: authenticatedEnvironment.organizationId,
         });
 
         const afterBlockedByBatch = await engine.getRunExecutionData({ runId: parentRun.id });
