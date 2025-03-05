@@ -164,7 +164,7 @@
     "recharts": "^2.12.6",
     "regression": "^2.0.1",
     "remix-auth": "^3.6.0",
-    "remix-auth-email-link": "2.0.2",
+    "remix-auth-email-link": "2.1.1",
     "remix-auth-github": "^1.6.0",
     "remix-typedjson": "0.3.1",
     "remix-utils": "^7.1.0",
