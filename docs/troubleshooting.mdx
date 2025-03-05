@@ -29,6 +29,10 @@ Then change the permissions of the npm folder (if 1 doesn't work):
 sudo chown -R $(whoami) ~/.npm
 ```
 
+### Clear the build cache
+
+Ensure you have stopped your local dev server then locate the hidden `.trigger` folder in your project and delete it. You can then restart your local dev server.
+
 ## Deployment
 
 Running the [trigger.dev deploy] command builds and deploys your code. Sometimes there can be issues building your code.
