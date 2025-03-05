@@ -87,6 +87,10 @@ async function verifyRedisConnection(container: StartedRedisContainer) {
     },
   });
 
+  redis.on("error", (error) => {
+    // swallow the error
+  });
+
   try {
     await redis.ping();
   } finally {

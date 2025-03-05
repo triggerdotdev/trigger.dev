@@ -277,6 +277,7 @@ export class Checkpointer {
       return result.checkpoint;
     } finally {
       if (opts.shouldHeartbeat) {
+        // @ts-ignore - Some kind of node incompatible type issue
         clearInterval(interval);
       }
       removeCurrentAbortController();
