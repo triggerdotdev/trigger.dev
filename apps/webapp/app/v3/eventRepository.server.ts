@@ -20,7 +20,7 @@ import {
   omit,
   unflattenAttributes,
 } from "@trigger.dev/core/v3";
-import { Prisma, TaskEvent, TaskEventStatus, type TaskEventKind } from "@trigger.dev/database";
+import { Prisma, TaskEvent, TaskEventKind, TaskEventStatus } from "@trigger.dev/database";
 import { createHash } from "node:crypto";
 import { EventEmitter } from "node:stream";
 import { Gauge } from "prom-client";
@@ -126,10 +126,10 @@ export type QueriedEvent = Prisma.TaskEventGetPayload<{
     isError: true;
     isPartial: true;
     isCancelled: true;
-    isDebug: true;
     level: true;
     events: true;
     environmentType: true;
+    kind: true;
   };
 }>;
 
@@ -185,26 +185,6 @@ export type UpdateEventOptions = {
   immediate?: boolean;
   events?: SpanEvents;
 };
-
-type TaskEventSummary = Pick<
-  TaskEvent,
-  | "id"
-  | "spanId"
-  | "parentId"
-  | "runId"
-  | "idempotencyKey"
-  | "message"
-  | "style"
-  | "startTime"
-  | "duration"
-  | "isError"
-  | "isPartial"
-  | "isCancelled"
-  | "level"
-  | "events"
-  | "environmentType"
-  | "isDebug"
->;
 
 export class EventRepository {
   private readonly _flushScheduler: DynamicFlushScheduler<CreatableEvent>;
@@ -512,7 +492,7 @@ export class EventRepository {
             isError: event.isError,
             isPartial: ancestorCancelled ? false : event.isPartial,
             isCancelled: event.isCancelled === true ? true : event.isPartial && ancestorCancelled,
-            isDebug: event.isDebug,
+            isDebug: event.kind === TaskEventKind.LOG,
             startTime: getDateFromNanoseconds(event.startTime),
             level: event.level,
             events: event.events,
@@ -569,7 +549,7 @@ export class EventRepository {
           isError: true,
           isPartial: true,
           isCancelled: true,
-          isDebug: true,
+          kind: true,
           level: true,
           events: true,
           environmentType: true,
@@ -865,10 +845,8 @@ export class EventRepository {
       ...options.attributes.metadata,
     };
 
-    const isDebug = options.attributes.isDebug;
-
     const style = {
-      [SemanticInternalAttributes.STYLE_ICON]: isDebug ? "warn" : "play",
+      [SemanticInternalAttributes.STYLE_ICON]: options.attributes.isDebug ? "warn" : "play",
     };
 
     if (!options.attributes.runId) {
@@ -883,12 +861,11 @@ export class EventRepository {
       message: message,
       serviceName: "api server",
       serviceNamespace: "trigger.dev",
-      level: isDebug ? "WARN" : "TRACE",
-      kind: options.kind,
+      level: options.attributes.isDebug ? "WARN" : "TRACE",
+      kind: options.attributes.isDebug ? TaskEventKind.LOG : options.kind,
       status: "OK",
       startTime,
       isPartial: false,
-      isDebug,
       duration, // convert to nanoseconds
       environmentId: options.environment.id,
       environmentType: options.environment.type,

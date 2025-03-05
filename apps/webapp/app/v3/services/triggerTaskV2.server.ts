@@ -312,21 +312,7 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
                 event.setAttribute("runId", runFriendlyId);
                 span.setAttribute("runId", runFriendlyId);
 
-                const workerGroupService = new WorkerGroupService({
-                  prisma: this._prisma,
-                  engine: this._engine,
-                });
-                const workerGroup = await workerGroupService.getDefaultWorkerGroupForProject({
-                  projectId: environment.projectId,
-                });
-
-                if (!workerGroup) {
-                  logger.error("Default worker group not found", {
-                    projectId: environment.projectId,
-                  });
-
-                  return;
-                }
+                const masterQueue = await this.#getMasterQueueForEnvironment(environment);
 
                 const taskRun = await this._engine.trigger(
                   {
@@ -351,7 +337,7 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
                     concurrencyKey: body.options?.concurrencyKey,
                     queueName,
                     queue: body.options?.queue,
-                    masterQueue: workerGroup.masterQueue,
+                    masterQueue: masterQueue,
                     isTest: body.options?.test ?? false,
                     delayUntil,
                     queuedAt: delayUntil ? undefined : new Date(),
@@ -439,6 +425,27 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
         throw error;
       }
     });
+  }
+
+  async #getMasterQueueForEnvironment(environment: AuthenticatedEnvironment) {
+    if (environment.type === "DEVELOPMENT") {
+      return;
+    }
+
+    const workerGroupService = new WorkerGroupService({
+      prisma: this._prisma,
+      engine: this._engine,
+    });
+
+    const workerGroup = await workerGroupService.getDefaultWorkerGroupForProject({
+      projectId: environment.projectId,
+    });
+
+    if (!workerGroup) {
+      throw new ServiceValidationError("No worker group found");
+    }
+
+    return workerGroup.masterQueue;
   }
 
   async #getQueueName(taskId: string, environment: AuthenticatedEnvironment, queueName?: string) {

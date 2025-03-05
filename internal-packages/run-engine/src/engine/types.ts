@@ -58,7 +58,7 @@ export type TriggerParams = {
   sdkVersion?: string;
   cliVersion?: string;
   concurrencyKey?: string;
-  masterQueue: string;
+  masterQueue?: string;
   queueName: string;
   queue?: QueueOptions;
   isTest: boolean;

@@ -20,7 +20,7 @@ export type TraceEvent = Pick<
   | "level"
   | "events"
   | "environmentType"
-  | "isDebug"
+  | "kind"
 >;
 
 export type TaskEventStoreTable = "taskEvent" | "taskEventPartitioned";
@@ -138,7 +138,7 @@ export class TaskEventStore {
           level,
           events,
           "environmentType",
-          "isDebug"
+          "kind"
         FROM "TaskEventPartitioned"
         WHERE
           "traceId" = ${traceId}
@@ -168,7 +168,7 @@ export class TaskEventStore {
           level,
           events,
           "environmentType",
-          "isDebug"
+          "kind"
         FROM "TaskEvent"
         WHERE "traceId" = ${traceId}
         ORDER BY "startTime" ASC
