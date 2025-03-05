@@ -228,6 +228,9 @@ importers:
       '@heroicons/react':
         specifier: ^2.0.12
         version: 2.0.13(react@18.2.0)
+      '@internal/redis':
+        specifier: workspace:*
+        version: link:../../internal-packages/redis
       '@internal/redis-worker':
         specifier: workspace:*
         version: link:../../internal-packages/redis-worker

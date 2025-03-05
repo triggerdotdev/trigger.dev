@@ -52,6 +52,7 @@
     "@heroicons/react": "^2.0.12",
     "@internal/run-engine": "workspace:*",
     "@internal/zod-worker": "workspace:*",
+    "@internal/redis": "workspace:*",
     "@internal/redis-worker": "workspace:*",
     "@internationalized/date": "^3.5.1",
     "@lezer/highlight": "^1.1.6",
