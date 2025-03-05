@@ -137,6 +137,37 @@ Some ones we recommend:
   `@opentelemetry/instrumentation-fs` which logs all file system calls is currently not supported.
 </Note>
 
+### Exporters
+
+You can also configure custom exporters to send your telemetry data to other services. For example, you can send your logs to [Axiom](https://axiom.co/docs/guides/opentelemetry-nodejs#exporter-instrumentation-ts):
+
+```ts trigger.config.ts
+import { defineConfig } from "@trigger.dev/sdk/v3";
+import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-proto';
+
+// Initialize OTLP trace exporter with the endpoint URL and headers
+const axiomExporter = new OTLPTraceExporter({
+  url: 'https://api.axiom.co/v1/traces',
+  headers: {
+    'Authorization': `Bearer ${process.env.AXIOM_API_TOKEN}`,
+    'X-Axiom-Dataset': process.env.AXIOM_DATASET
+  },
+});
+
+export default defineConfig({
+  project: "<project ref>",
+  // Your other config settings...
+  telemetry: {
+    instrumentations: [
+      // Your instrumentations here
+    ],
+    exporters: [axiomExporter],
+  },
+});
+```
+
+Make sure to set the `AXIOM_API_TOKEN` and `AXIOM_DATASET` environment variables in your project.
+
 ## Runtime
 
 We currently only officially support the `node` runtime, but you can try our experimental `bun` runtime by setting the `runtime` option in your config file:
