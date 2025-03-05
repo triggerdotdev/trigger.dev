@@ -1,11 +1,11 @@
+import { createRedisClient } from "@internal/redis";
 import { redisTest } from "@internal/testcontainers";
 import { expect } from "vitest";
 import { RunLocker } from "./locking.js";
-import Redis from "ioredis";
 
 describe("RunLocker", () => {
   redisTest("Test acquiring a lock works", { timeout: 15_000 }, async ({ redisOptions }) => {
-    const redis = new Redis(redisOptions);
+    const redis = createRedisClient(redisOptions);
     try {
       const runLock = new RunLocker({ redis });
 
@@ -23,7 +23,7 @@ describe("RunLocker", () => {
   });
 
   redisTest("Test double locking works", { timeout: 15_000 }, async ({ redisOptions }) => {
-    const redis = new Redis(redisOptions);
+    const redis = createRedisClient(redisOptions);
     try {
       const runLock = new RunLocker({ redis });
 

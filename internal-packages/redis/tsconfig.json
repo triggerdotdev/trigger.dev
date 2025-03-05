@@ -15,12 +15,8 @@
     "noEmit": true,
     "strict": true,
     "paths": {
-      "@internal/testcontainers": ["../../internal-packages/testcontainers/src/index"],
-      "@internal/testcontainers/*": ["../../internal-packages/testcontainers/src/*"],
       "@trigger.dev/core": ["../../packages/core/src/index"],
-      "@trigger.dev/core/*": ["../../packages/core/src/*"],
-      "@internal/redis": ["../../internal-packages/redis/src/index"],
-      "@internal/redis/*": ["../../internal-packages/redis/src/*"]
+      "@trigger.dev/core/*": ["../../packages/core/src/*"]
     }
   },
   "exclude": ["node_modules"]

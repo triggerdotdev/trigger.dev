@@ -7,6 +7,7 @@ import { setTimeout } from "node:timers/promises";
 import { RunQueue } from "./index.js";
 import { SimpleWeightedChoiceStrategy } from "./simpleWeightedPriorityStrategy.js";
 import { InputPayload } from "./types.js";
+import { createRedisClient } from "@internal/redis";
 
 const testOptions = {
   name: "rq",
@@ -468,7 +469,7 @@ describe("RunQueue", () => {
       },
     });
 
-    const redis = new Redis({ ...redisOptions, keyPrefix: "runqueue:test:" });
+    const redis = createRedisClient({ ...redisOptions, keyPrefix: "runqueue:test:" });
 
     try {
       await queue.enqueueMessage({
@@ -598,7 +599,7 @@ describe("RunQueue", () => {
       },
     });
 
-    const redis = new Redis({ ...redisOptions, keyPrefix: "runqueue:test:" });
+    const redis = createRedisClient({ ...redisOptions, keyPrefix: "runqueue:test:" });
 
     try {
       await queue.enqueueMessage({
@@ -689,7 +690,7 @@ describe("RunQueue", () => {
         },
       });
 
-      const redis = new Redis({ ...redisOptions, keyPrefix: "runqueue:test:" });
+      const redis = createRedisClient({ ...redisOptions, keyPrefix: "runqueue:test:" });
 
       try {
         await queue.enqueueMessage({
@@ -803,7 +804,7 @@ describe("RunQueue", () => {
       },
     });
 
-    const redis = new Redis({ ...redisOptions, keyPrefix: "runqueue:test:" });
+    const redis = createRedisClient({ ...redisOptions, keyPrefix: "runqueue:test:" });
 
     try {
       await queue.enqueueMessage({
@@ -858,7 +859,7 @@ describe("RunQueue", () => {
       expect(dlqMembers).toContain(messageProd.runId);
 
       //redrive
-      const redisClient = new Redis({
+      const redisClient = createRedisClient({
         host: redisContainer.getHost(),
         port: redisContainer.getPort(),
         password: redisContainer.getPassword(),

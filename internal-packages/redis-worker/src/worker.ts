@@ -9,6 +9,7 @@ import Redis from "ioredis";
 import { nanoid } from "nanoid";
 import { startSpan } from "./telemetry.js";
 import pLimit from "p-limit";
+import { createRedisClient } from "@internal/redis";
 
 export type WorkerCatalog = {
   [key: string]: {
@@ -108,7 +109,14 @@ class Worker<TCatalog extends WorkerCatalog> {
 
     this.setupShutdownHandlers();
 
-    this.subscriber = new Redis(this.options.redisOptions);
+    this.subscriber = createRedisClient(this.options.redisOptions, {
+      onError: (error) => {
+        this.logger.error(`RedisWorker subscriber redis client error:`, {
+          error,
+          keyPrefix: this.options.redisOptions.keyPrefix,
+        });
+      },
+    });
     this.setupSubscriber();
 
     return this;
