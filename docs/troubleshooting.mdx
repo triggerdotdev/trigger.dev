@@ -67,6 +67,10 @@ export default defineConfig({
 });
 ```
 
+### `Cannot find module '/app/lib/worker.js"` when using pino
+
+If you see this error, add pino (and any other associated packages) to your `external` build settings in your `trigger.config.ts` file. Learn more about the `external` setting in the [config docs](/config/config-file#external).
+
 ## Project setup issues
 
 ### `The requested module 'node:events' does not provide an export named 'addAbortListener'`
