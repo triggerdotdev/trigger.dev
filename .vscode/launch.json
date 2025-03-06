@@ -141,6 +141,14 @@
       "command": "pnpm run test --filter @internal/run-engine",
       "cwd": "${workspaceFolder}",
       "sourceMaps": true
+    },
+    {
+      "type": "node-terminal",
+      "request": "launch",
+      "name": "Debug RunQueue tests",
+      "command": "pnpm run test ./src/run-queue/index.test.ts",
+      "cwd": "${workspaceFolder}/internal-packages/run-engine",
+      "sourceMaps": true
     }
   ]
 }

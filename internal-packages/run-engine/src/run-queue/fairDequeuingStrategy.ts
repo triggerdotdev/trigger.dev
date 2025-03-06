@@ -36,7 +36,7 @@ export type FairDequeuingStrategyBiases = {
 export type FairDequeuingStrategyOptions = {
   redis: RedisOptions;
   keys: RunQueueKeyProducer;
-  defaultEnvConcurrency?: number;
+  defaultEnvConcurrencyLimit?: number;
   parentQueueLimit?: number;
   tracer?: Tracer;
   seed?: string;
@@ -97,7 +97,7 @@ export class FairDequeuingStrategy implements RunQueueFairDequeueStrategy {
   > = new Map();
   private _redis: Redis;
 
-  private _defaultEnvConcurrency: number;
+  private _defaultEnvConcurrencyLimit: number;
   private _parentQueueLimit: number;
 
   constructor(private options: FairDequeuingStrategyOptions) {
@@ -115,7 +115,7 @@ export class FairDequeuingStrategy implements RunQueueFairDequeueStrategy {
     this._rng = seedrandom(options.seed);
     this._redis = createRedisClient(options.redis);
 
-    this._defaultEnvConcurrency = options.defaultEnvConcurrency ?? 10;
+    this._defaultEnvConcurrencyLimit = options.defaultEnvConcurrencyLimit ?? 10;
     this._parentQueueLimit = options.parentQueueLimit ?? 100;
   }
 
@@ -561,13 +561,13 @@ export class FairDequeuingStrategy implements RunQueueFairDequeueStrategy {
         const value = await this._redis.get(key);
 
         if (!value) {
-          return this._defaultEnvConcurrency;
+          return this._defaultEnvConcurrencyLimit;
         }
 
         return Number(value);
       });
 
-      return result.val ?? this._defaultEnvConcurrency;
+      return result.val ?? this._defaultEnvConcurrencyLimit;
     });
   }
 

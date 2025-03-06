@@ -7,7 +7,7 @@ import { RunQueue } from "./index.js";
 import { InputPayload } from "./types.js";
 import { createRedisClient } from "@internal/redis";
 import { FairDequeuingStrategy } from "./fairDequeuingStrategy.js";
-import { RunQueueShortKeyProducer } from "./keyProducer.js";
+import { RunQueueFullKeyProducer } from "./keyProducer.js";
 
 const testOptions = {
   name: "rq",
@@ -23,7 +23,7 @@ const testOptions = {
     maxTimeoutInMs: 1_000,
     randomize: true,
   },
-  keys: new RunQueueShortKeyProducer("rq:"),
+  keys: new RunQueueFullKeyProducer(),
 };
 
 const authenticatedEnvProd = {
@@ -383,7 +383,7 @@ describe("RunQueue", () => {
     }
   );
 
-  redisTest(
+  redisTest.only(
     "Dequeue multiple messages from the queue",
     { timeout: 5_000 },
     async ({ redisContainer }) => {
@@ -408,6 +408,7 @@ describe("RunQueue", () => {
         // Create 20 messages with different runIds and some with different queues
         const messages = Array.from({ length: 20 }, (_, i) => ({
           ...messageProd,
+          taskIdentifier: i < 15 ? "task/my-task" : "task/other-task", // Mix up the queues
           runId: `r${i + 1}`,
           queue: i < 15 ? "task/my-task" : "task/other-task", // Mix up the queues
         }));

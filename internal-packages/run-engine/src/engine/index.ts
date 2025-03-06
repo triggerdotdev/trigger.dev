@@ -70,7 +70,7 @@ import {
   isPendingExecuting,
 } from "./statuses.js";
 import { HeartbeatTimeouts, RunEngineOptions, TriggerParams } from "./types.js";
-import { RunQueueShortKeyProducer } from "../run-queue/keyProducer.js";
+import { RunQueueFullKeyProducer } from "../run-queue/keyProducer.js";
 import { retryOutcomeFromCompletion } from "./retrying";
 
 const workerCatalog = {
@@ -153,7 +153,7 @@ export class RunEngine {
     );
     this.runLock = new RunLocker({ redis: this.runLockRedis });
 
-    const keys = new RunQueueShortKeyProducer("rq:");
+    const keys = new RunQueueFullKeyProducer();
 
     this.runQueue = new RunQueue({
       name: "rq",

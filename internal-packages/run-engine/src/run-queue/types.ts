@@ -37,8 +37,6 @@ export type EnvDescriptor = {
 };
 
 export interface RunQueueKeyProducer {
-  masterQueueScanPattern(masterQueue: string): string;
-  queueCurrentConcurrencyScanPattern(): string;
   //queue
   queueKey(env: MinimalAuthenticatedEnvironment, queue: string, concurrencyKey?: string): string;
   envQueueKey(env: MinimalAuthenticatedEnvironment): string;
@@ -78,7 +76,6 @@ export interface RunQueueKeyProducer {
   messageKeyPrefixFromQueue(queue: string): string;
   messageKey(orgId: string, messageId: string): string;
   //utils
-  stripKeyPrefix(key: string): string;
   orgIdFromQueue(queue: string): string;
   envIdFromQueue(queue: string): string;
   projectIdFromQueue(queue: string): string;

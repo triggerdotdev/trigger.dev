@@ -259,10 +259,11 @@ export class RunQueue {
     return this.#trace(
       "dequeueMessageInSharedQueue",
       async (span) => {
-        const envQueues = await this.queuePriorityStrategy.distributeFairQueuesFromParentQueue(
-          masterQueue,
-          consumerId
-        );
+        const envQueues =
+          await this.options.queuePriorityStrategy.distributeFairQueuesFromParentQueue(
+            masterQueue,
+            consumerId
+          );
 
         span.setAttribute("environment_count", envQueues.length);
 
@@ -275,76 +276,57 @@ export class RunQueue {
 
         const messages: DequeuedMessage[] = [];
 
-        // Keep track of queues we've tried that didn't return a message
-        const emptyQueues = new Set<string>();
+        // Each env starts with its list of candidate queues
+        const tenantQueues: Record<string, string[]> = {};
 
-        // Continue until we've hit max count or tried all queues
-        while (messages.length < maxCount) {
-          // Calculate how many more messages we need
-          const remainingCount = maxCount - messages.length;
-          if (remainingCount <= 0) break;
+        // Initialize tenantQueues with the queues for each env
+        for (const env of envQueues) {
+          tenantQueues[env.envId] = [...env.queues]; // Create a copy of the queues array
+        }
 
-          // Find all available queues across environments that we haven't marked as empty
-          const availableEnvQueues = envQueues
-            .map((env) => ({
-              env: env,
-              queues: env.queues.filter((queue) => !emptyQueues.has(queue)),
-            }))
-            .filter((env) => env.queues.length > 0);
+        // Continue until we've hit max count or all tenants have empty queue lists
+        while (
+          messages.length < maxCount &&
+          Object.values(tenantQueues).some((queues) => queues.length > 0)
+        ) {
+          for (const env of envQueues) {
+            attemptedEnvs++;
 
-          if (availableEnvQueues.length === 0) break;
+            // Skip if this tenant has no more queues
+            if (tenantQueues[env.envId].length === 0) {
+              continue;
+            }
 
-          attemptedEnvs += availableEnvQueues.length;
-
-          // Create a dequeue operation for each environment, taking one queue from each
-          const dequeueOperations = availableEnvQueues.map(({ env, queues }) => {
-            const queue = queues[0];
+            // Pop the next queue (using round-robin order)
+            const queue = tenantQueues[env.envId].shift()!;
             attemptedQueues++;
 
-            return {
-              queue,
-              operation: this.#callDequeueMessage({
-                messageQueue: queue,
-                concurrencyLimitKey: this.keys.concurrencyLimitKeyFromQueue(queue),
-                currentConcurrencyKey: this.keys.currentConcurrencyKeyFromQueue(queue),
-                envConcurrencyLimitKey: this.keys.envConcurrencyLimitKeyFromQueue(queue),
-                envCurrentConcurrencyKey: this.keys.envCurrentConcurrencyKeyFromQueue(queue),
-                projectCurrentConcurrencyKey:
-                  this.keys.projectCurrentConcurrencyKeyFromQueue(queue),
-                messageKeyPrefix: this.keys.messageKeyPrefixFromQueue(queue),
-                envQueueKey: this.keys.envQueueKeyFromQueue(queue),
-                taskCurrentConcurrentKeyPrefix:
-                  this.keys.taskIdentifierCurrentConcurrencyKeyPrefixFromQueue(queue),
-              }),
-            };
-          });
+            // Attempt to dequeue from this queue
+            const message = await this.#callDequeueMessage({
+              messageQueue: queue,
+              concurrencyLimitKey: this.keys.concurrencyLimitKeyFromQueue(queue),
+              currentConcurrencyKey: this.keys.currentConcurrencyKeyFromQueue(queue),
+              envConcurrencyLimitKey: this.keys.envConcurrencyLimitKeyFromQueue(queue),
+              envCurrentConcurrencyKey: this.keys.envCurrentConcurrencyKeyFromQueue(queue),
+              projectCurrentConcurrencyKey: this.keys.projectCurrentConcurrencyKeyFromQueue(queue),
+              messageKeyPrefix: this.keys.messageKeyPrefixFromQueue(queue),
+              envQueueKey: this.keys.envQueueKeyFromQueue(queue),
+              taskCurrentConcurrentKeyPrefix:
+                this.keys.taskIdentifierCurrentConcurrencyKeyPrefixFromQueue(queue),
+            });
 
-          // Execute all dequeue operations in parallel
-          const results = await Promise.all(
-            dequeueOperations.map(async ({ queue, operation }) => {
-              const message = await operation;
-              return { queue, message };
-            })
-          );
-
-          // Process results
-          let foundAnyMessage = false;
-          for (const { queue, message } of results) {
             if (message) {
               messages.push(message);
-              foundAnyMessage = true;
-            } else {
-              // Mark this queue as empty
-              emptyQueues.add(queue);
+              // Re-add this queue at the end, since it might have more messages
+              tenantQueues[env.envId].push(queue);
+            }
+            // If message is null, do not re-add the queue in this cycle
+
+            // If we've reached maxCount, break out of the loop
+            if (messages.length >= maxCount) {
+              break;
             }
           }
-
-          // If we couldn't get a message from any queue in any env, break
-          if (!foundAnyMessage) break;
-
-          // If we've marked all queues as empty, break
-          const totalQueues = envQueues.reduce((sum, env) => sum + env.queues.length, 0);
-          if (emptyQueues.size >= totalQueues) break;
         }
 
         span.setAttributes({
@@ -633,42 +615,6 @@ export class RunQueue {
         },
       }
     );
-  }
-
-  queueConcurrencyScanStream(
-    count: number = 100,
-    onEndCallback?: () => void,
-    onErrorCallback?: (error: Error) => void
-  ) {
-    const pattern = this.keys.queueCurrentConcurrencyScanPattern();
-
-    this.logger.debug("Starting queue concurrency scan stream", {
-      pattern,
-      component: "runqueue",
-      operation: "queueConcurrencyScanStream",
-      service: this.name,
-      count,
-    });
-
-    const redis = this.redis.duplicate();
-
-    const stream = redis.scanStream({
-      match: pattern,
-      type: "set",
-      count,
-    });
-
-    stream.on("end", () => {
-      onEndCallback?.();
-      redis.quit();
-    });
-
-    stream.on("error", (error) => {
-      onErrorCallback?.(error);
-      redis.quit();
-    });
-
-    return { stream, redis };
   }
 
   async quit() {
@@ -1103,9 +1049,9 @@ local earliestMessage = redis.call('ZRANGE', childQueue, 0, 0, 'WITHSCORES')
 for _, parentQueue in ipairs(decodedPayload.masterQueues) do
     local prefixedParentQueue = keyPrefix .. parentQueue
     if #earliestMessage == 0 then
-        redis.call('ZREM', prefixedParentQueue, childQueue)
+        redis.call('ZREM', prefixedParentQueue, childQueueName)
     else
-        redis.call('ZADD', prefixedParentQueue, earliestMessage[2], childQueue)
+        redis.call('ZADD', prefixedParentQueue, earliestMessage[2], childQueueName)
     end
 end
 
