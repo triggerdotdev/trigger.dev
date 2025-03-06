@@ -71,6 +71,7 @@ import {
   isPendingExecuting,
 } from "./statuses";
 import { HeartbeatTimeouts, RunEngineOptions, TriggerParams } from "./types";
+import { retryOutcomeFromCompletion } from "./retrying";
 
 const workerCatalog = {
   finishWaitpoint: {
@@ -2867,228 +2868,177 @@ export class RunEngine {
 
         const failedAt = new Date();
 
-        if (
-          completion.error.type === "INTERNAL_ERROR" &&
-          completion.error.code === "TASK_RUN_CANCELLED"
-        ) {
-          // We need to cancel the task run instead of fail it
-          const result = await this.cancelRun({
-            runId,
-            completedAt: failedAt,
-            reason: completion.error.message,
-            finalizeRun: true,
-            tx: prisma,
-          });
-          return {
-            attemptStatus:
-              result.snapshot.executionStatus === "PENDING_CANCEL"
-                ? "RUN_PENDING_CANCEL"
-                : "RUN_FINISHED",
-            ...result,
-          };
-        }
-
-        const error = sanitizeError(completion.error);
-        const retriableError = shouldRetryError(taskRunErrorEnhancer(completion.error));
-
-        const permanentlyFailRun = async (run?: {
-          status: TaskRunStatus;
-          spanId: string;
-          createdAt: Date;
-          completedAt: Date | null;
-          taskEventStore: string;
-        }) => {
-          // Emit an event so we can complete any spans of stalled executions
-          if (forceRequeue && run) {
-            this.eventBus.emit("runAttemptFailed", {
-              time: failedAt,
-              run: {
-                id: runId,
-                status: run.status,
-                spanId: run.spanId,
-                error,
-                attemptNumber: latestSnapshot.attemptNumber ?? 0,
-                createdAt: run.createdAt,
-                completedAt: run.completedAt,
-                taskEventStore: run.taskEventStore,
-              },
-            });
-          }
-
-          return await this.#permanentlyFailRun({
-            runId,
-            snapshotId,
-            failedAt,
-            error,
-            workerId,
-            runnerId,
-          });
-        };
-
-        // Error is not retriable, fail the run
-        if (!retriableError) {
-          return await permanentlyFailRun();
-        }
-
-        // No retry config attached to completion, fail the run
-        if (completion.retry === undefined) {
-          return await permanentlyFailRun();
-        }
-
-        // Run attempts have reached the global maximum, fail the run
-        if (
-          latestSnapshot.attemptNumber !== null &&
-          latestSnapshot.attemptNumber >= MAX_TASK_RUN_ATTEMPTS
-        ) {
-          return await permanentlyFailRun();
-        }
-
-        const minimalRun = await prisma.taskRun.findFirst({
-          where: {
-            id: runId,
-          },
-          select: {
-            status: true,
-            spanId: true,
-            maxAttempts: true,
-            runtimeEnvironment: {
-              select: {
-                organizationId: true,
-              },
-            },
-            taskEventStore: true,
-            createdAt: true,
-            completedAt: true,
-          },
+        const retryResult = await retryOutcomeFromCompletion(prisma, {
+          runId,
+          error: completion.error,
+          retryUsingQueue: forceRequeue ?? false,
+          retrySettings: completion.retry,
+          attemptNumber: latestSnapshot.attemptNumber,
         });
 
-        if (!minimalRun) {
-          throw new ServiceValidationError("Run not found", 404);
-        }
-
-        // Run doesn't have any max attempts set which is required for retrying, fail the run
-        if (!minimalRun.maxAttempts) {
-          return await permanentlyFailRun(minimalRun);
-        }
-
-        // Run has reached the maximum configured number of attempts, fail the run
-        if (
-          latestSnapshot.attemptNumber !== null &&
-          latestSnapshot.attemptNumber >= minimalRun.maxAttempts
-        ) {
-          return await permanentlyFailRun(minimalRun);
-        }
-
-        // This error didn't come from user code, so we need to emit an event to complete any spans
+        // Force requeue means it was crashed so the attempt span needs to be closed
         if (forceRequeue) {
+          const minimalRun = await prisma.taskRun.findFirst({
+            where: {
+              id: runId,
+            },
+            select: {
+              status: true,
+              spanId: true,
+              maxAttempts: true,
+              runtimeEnvironment: {
+                select: {
+                  organizationId: true,
+                },
+              },
+              taskEventStore: true,
+              createdAt: true,
+              completedAt: true,
+            },
+          });
+
+          if (!minimalRun) {
+            throw new ServiceValidationError("Run not found", 404);
+          }
+
           this.eventBus.emit("runAttemptFailed", {
             time: failedAt,
             run: {
               id: runId,
               status: minimalRun.status,
               spanId: minimalRun.spanId,
-              error,
+              error: completion.error,
               attemptNumber: latestSnapshot.attemptNumber ?? 0,
-              taskEventStore: minimalRun.taskEventStore,
               createdAt: minimalRun.createdAt,
               completedAt: minimalRun.completedAt,
+              taskEventStore: minimalRun.taskEventStore,
             },
           });
         }
 
-        const retryAt = new Date(completion.retry.timestamp);
-
-        const run = await prisma.taskRun.update({
-          where: {
-            id: runId,
-          },
-          data: {
-            status: "RETRYING_AFTER_FAILURE",
-          },
-          include: {
-            runtimeEnvironment: {
-              include: {
-                project: true,
-                organization: true,
-                orgMember: true,
-              },
-            },
-          },
-        });
-
-        const nextAttemptNumber =
-          latestSnapshot.attemptNumber === null ? 1 : latestSnapshot.attemptNumber + 1;
-
-        this.eventBus.emit("runRetryScheduled", {
-          time: failedAt,
-          run: {
-            id: run.id,
-            friendlyId: run.friendlyId,
-            attemptNumber: nextAttemptNumber,
-            queue: run.queue,
-            taskIdentifier: run.taskIdentifier,
-            traceContext: run.traceContext as Record<string, string | undefined>,
-            baseCostInCents: run.baseCostInCents,
-            spanId: run.spanId,
-          },
-          organization: {
-            id: run.runtimeEnvironment.organizationId,
-          },
-          environment: run.runtimeEnvironment,
-          retryAt,
-        });
-
-        //todo anything special for DEV? Ideally not.
-
-        //if it's a long delay and we support checkpointing, put it back in the queue
-        if (
-          forceRequeue ||
-          (this.options.retryWarmStartThresholdMs !== undefined &&
-            completion.retry.delay >= this.options.retryWarmStartThresholdMs)
-        ) {
-          //we nack the message, requeuing it for later
-          const nackResult = await this.#tryNackAndRequeue({
-            run,
-            environment: run.runtimeEnvironment,
-            orgId: run.runtimeEnvironment.organizationId,
-            timestamp: retryAt.getTime(),
-            error: {
-              type: "INTERNAL_ERROR",
-              code: "TASK_RUN_DEQUEUED_MAX_RETRIES",
-              message: `We tried to dequeue the run the maximum number of times but it wouldn't start executing`,
-            },
-            tx: prisma,
-          });
-
-          if (!nackResult.wasRequeued) {
+        switch (retryResult.outcome) {
+          case "cancel_run": {
+            const result = await this.cancelRun({
+              runId,
+              completedAt: failedAt,
+              reason: retryResult.reason,
+              finalizeRun: true,
+              tx: prisma,
+            });
             return {
-              attemptStatus: "RUN_FINISHED",
-              ...nackResult,
+              attemptStatus:
+                result.snapshot.executionStatus === "PENDING_CANCEL"
+                  ? "RUN_PENDING_CANCEL"
+                  : "RUN_FINISHED",
+              ...result,
             };
-          } else {
-            return { attemptStatus: "RETRY_QUEUED", ...nackResult };
+          }
+          case "fail_run": {
+            return await this.#permanentlyFailRun({
+              runId,
+              snapshotId,
+              failedAt,
+              error: retryResult.sanitizedError,
+              workerId,
+              runnerId,
+            });
+          }
+          case "retry": {
+            const retryAt = new Date(retryResult.settings.timestamp);
+
+            const run = await prisma.taskRun.update({
+              where: {
+                id: runId,
+              },
+              data: {
+                status: "RETRYING_AFTER_FAILURE",
+                machinePreset: retryResult.machine,
+              },
+              include: {
+                runtimeEnvironment: {
+                  include: {
+                    project: true,
+                    organization: true,
+                    orgMember: true,
+                  },
+                },
+              },
+            });
+
+            const nextAttemptNumber =
+              latestSnapshot.attemptNumber === null ? 1 : latestSnapshot.attemptNumber + 1;
+
+            this.eventBus.emit("runRetryScheduled", {
+              time: failedAt,
+              run: {
+                id: run.id,
+                friendlyId: run.friendlyId,
+                attemptNumber: nextAttemptNumber,
+                queue: run.queue,
+                taskIdentifier: run.taskIdentifier,
+                traceContext: run.traceContext as Record<string, string | undefined>,
+                baseCostInCents: run.baseCostInCents,
+                spanId: run.spanId,
+              },
+              organization: {
+                id: run.runtimeEnvironment.organizationId,
+              },
+              environment: run.runtimeEnvironment,
+              retryAt,
+            });
+
+            //if it's a long delay and we support checkpointing, put it back in the queue
+            if (
+              forceRequeue ||
+              retryResult.method === "queue" ||
+              (this.options.retryWarmStartThresholdMs !== undefined &&
+                retryResult.settings.delay >= this.options.retryWarmStartThresholdMs)
+            ) {
+              //we nack the message, requeuing it for later
+              const nackResult = await this.#tryNackAndRequeue({
+                run,
+                environment: run.runtimeEnvironment,
+                orgId: run.runtimeEnvironment.organizationId,
+                timestamp: retryAt.getTime(),
+                error: {
+                  type: "INTERNAL_ERROR",
+                  code: "TASK_RUN_DEQUEUED_MAX_RETRIES",
+                  message: `We tried to dequeue the run the maximum number of times but it wouldn't start executing`,
+                },
+                tx: prisma,
+              });
+
+              if (!nackResult.wasRequeued) {
+                return {
+                  attemptStatus: "RUN_FINISHED",
+                  ...nackResult,
+                };
+              } else {
+                return { attemptStatus: "RETRY_QUEUED", ...nackResult };
+              }
+            }
+
+            //it will continue running because the retry delay is short
+            const newSnapshot = await this.#createExecutionSnapshot(prisma, {
+              run,
+              snapshot: {
+                executionStatus: "PENDING_EXECUTING",
+                description: "Attempt failed with a short delay, starting a new attempt",
+              },
+              environmentId: latestSnapshot.environmentId,
+              environmentType: latestSnapshot.environmentType,
+              workerId,
+              runnerId,
+            });
+            //the worker can fetch the latest snapshot and should create a new attempt
+            await this.#sendNotificationToWorker({ runId, snapshot: newSnapshot });
+
+            return {
+              attemptStatus: "RETRY_IMMEDIATELY",
+              ...executionResultFromSnapshot(newSnapshot),
+            };
           }
         }
-
-        //it will continue running because the retry delay is short
-        const newSnapshot = await this.#createExecutionSnapshot(prisma, {
-          run,
-          snapshot: {
-            executionStatus: "PENDING_EXECUTING",
-            description: "Attempt failed with a short delay, starting a new attempt",
-          },
-          environmentId: latestSnapshot.environmentId,
-          environmentType: latestSnapshot.environmentType,
-          workerId,
-          runnerId,
-        });
-        //the worker can fetch the latest snapshot and should create a new attempt
-        await this.#sendNotificationToWorker({ runId, snapshot: newSnapshot });
-
-        return {
-          attemptStatus: "RETRY_IMMEDIATELY",
-          ...executionResultFromSnapshot(newSnapshot),
-        };
       });
     });
   }
