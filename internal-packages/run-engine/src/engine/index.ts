@@ -2442,8 +2442,11 @@ export class RunEngine {
       },
     });
 
-    //extending is the same as creating a new heartbeat
-    await this.#setHeartbeatDeadline({ runId, snapshotId, status: latestSnapshot.executionStatus });
+    //extending the heartbeat
+    const intervalMs = this.#getHeartbeatIntervalMs(latestSnapshot.executionStatus);
+    if (intervalMs !== null) {
+      await this.worker.reschedule(`heartbeatSnapshot.${runId}`, new Date(Date.now() + intervalMs));
+    }
 
     return executionResultFromSnapshot(latestSnapshot);
   }
@@ -3647,11 +3650,15 @@ export class RunEngine {
 
     if (!error) {
       //set heartbeat (if relevant)
-      await this.#setHeartbeatDeadline({
-        status: newSnapshot.executionStatus,
-        runId: run.id,
-        snapshotId: newSnapshot.id,
-      });
+      const intervalMs = this.#getHeartbeatIntervalMs(newSnapshot.executionStatus);
+      if (intervalMs !== null) {
+        await this.worker.enqueue({
+          id: `heartbeatSnapshot.${run.id}`,
+          job: "heartbeatSnapshot",
+          payload: { snapshotId: newSnapshot.id, runId: run.id },
+          availableAt: new Date(Date.now() + intervalMs),
+        });
+      }
     }
 
     this.eventBus.emit("executionSnapshotCreated", {
@@ -3695,29 +3702,6 @@ export class RunEngine {
   //#endregion
 
   //#region Heartbeat
-  async #setHeartbeatDeadline({
-    runId,
-    snapshotId,
-    status,
-  }: {
-    runId: string;
-    snapshotId: string;
-    status: TaskRunExecutionStatus;
-  }) {
-    const intervalMs = this.#getHeartbeatIntervalMs(status);
-
-    if (intervalMs === null) {
-      return;
-    }
-
-    await this.worker.enqueue({
-      id: `heartbeatSnapshot.${runId}`,
-      job: "heartbeatSnapshot",
-      payload: { snapshotId, runId },
-      availableAt: new Date(Date.now() + intervalMs),
-    });
-  }
-
   async #handleStalledSnapshot({
     runId,
     snapshotId,
