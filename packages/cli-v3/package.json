@@ -110,6 +110,7 @@
     "nypm": "^0.3.9",
     "object-hash": "^3.0.0",
     "open": "^10.0.3",
+    "p-limit": "^6.2.0",
     "p-retry": "^6.1.0",
     "partysocket": "^1.0.2",
     "pkg-types": "^1.1.3",

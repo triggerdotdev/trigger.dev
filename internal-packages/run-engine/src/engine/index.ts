@@ -925,6 +925,7 @@ export class RunEngine {
 
             return {
               version: "1" as const,
+              dequeuedAt: new Date(),
               snapshot: {
                 id: newSnapshot.id,
                 friendlyId: newSnapshot.friendlyId,
