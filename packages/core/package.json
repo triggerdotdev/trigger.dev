@@ -54,8 +54,6 @@
       "./v3/zodSocket": "./src/v3/zodSocket.ts",
       "./v3/zodIpc": "./src/v3/zodIpc.ts",
       "./v3/utils/timers": "./src/v3/utils/timers.ts",
-      "./v3/dev": "./src/v3/dev/index.ts",
-      "./v3/prod": "./src/v3/prod/index.ts",
       "./v3/workers": "./src/v3/workers/index.ts",
       "./v3/schemas": "./src/v3/schemas/index.ts",
       "./v3/runEngineWorker": "./src/v3/runEngineWorker/index.ts",
@@ -160,12 +158,6 @@
       ],
       "v3/utils/timers": [
         "dist/commonjs/v3/utils/timers.d.ts"
-      ],
-      "v3/dev": [
-        "dist/commonjs/v3/dev/index.d.ts"
-      ],
-      "v3/prod": [
-        "dist/commonjs/v3/prod/index.d.ts"
       ],
       "v3/workers": [
         "dist/commonjs/v3/workers/index.d.ts"
@@ -610,28 +602,6 @@
       "require": {
         "types": "./dist/commonjs/v3/utils/timers.d.ts",
         "default": "./dist/commonjs/v3/utils/timers.js"
-      }
-    },
-    "./v3/dev": {
-      "import": {
-        "@triggerdotdev/source": "./src/v3/dev/index.ts",
-        "types": "./dist/esm/v3/dev/index.d.ts",
-        "default": "./dist/esm/v3/dev/index.js"
-      },
-      "require": {
-        "types": "./dist/commonjs/v3/dev/index.d.ts",
-        "default": "./dist/commonjs/v3/dev/index.js"
-      }
-    },
-    "./v3/prod": {
-      "import": {
-        "@triggerdotdev/source": "./src/v3/prod/index.ts",
-        "types": "./dist/esm/v3/prod/index.d.ts",
-        "default": "./dist/esm/v3/prod/index.js"
-      },
-      "require": {
-        "types": "./dist/commonjs/v3/prod/index.d.ts",
-        "default": "./dist/commonjs/v3/prod/index.js"
       }
     },
     "./v3/workers": {
