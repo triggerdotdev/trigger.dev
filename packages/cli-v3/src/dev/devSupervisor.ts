@@ -24,6 +24,7 @@ import {
   WorkerClientToServerEvents,
   WorkerServerToClientEvents,
 } from "@trigger.dev/core/v3/workers";
+import pLimit from "p-limit";
 
 export type WorkerRuntimeOptions = {
   name: string | undefined;
@@ -65,6 +66,8 @@ class DevSupervisor implements WorkerRuntime {
 
   private socketConnections = new Set<string>();
 
+  private runLimiter?: ReturnType<typeof pLimit>;
+
   constructor(public readonly options: WorkerRuntimeOptions) {}
 
   async init(): Promise<void> {
@@ -80,6 +83,15 @@ class DevSupervisor implements WorkerRuntime {
 
     logger.debug("[DevSupervisor] Got dev settings", { settings: settings.data });
     this.config = settings.data;
+
+    const maxConcurrentRuns = Math.min(
+      this.config.maxConcurrentRuns,
+      this.options.args.maxConcurrentRuns ?? this.config.maxConcurrentRuns
+    );
+
+    logger.debug("[DevSupervisor] Using maxConcurrentRuns", { maxConcurrentRuns });
+
+    this.runLimiter = pLimit(maxConcurrentRuns);
 
     this.#createSocket();
 
@@ -176,6 +188,14 @@ class DevSupervisor implements WorkerRuntime {
       logger.debug(`[DevSupervisor] dequeueRuns. No latest worker ID, trying again later`);
       setTimeout(() => this.#dequeueRuns(), this.config.dequeueIntervalWithoutRun);
       return;
+    }
+
+    if (
+      this.runLimiter &&
+      this.runLimiter.activeCount + this.runLimiter.pendingCount > this.runLimiter.concurrency
+    ) {
+      logger.debug(`[DevSupervisor] dequeueRuns. Run limit reached, trying again later`);
+      setTimeout(() => this.#dequeueRuns(), this.config.dequeueIntervalWithoutRun);
     }
 
     //get relevant versions
@@ -287,10 +307,16 @@ class DevSupervisor implements WorkerRuntime {
 
         this.runControllers.set(message.run.friendlyId, runController);
 
-        //don't await for run completion, we want to dequeue more runs
-        runController.start(message).then(() => {
-          logger.debug("[DevSupervisor] Run started", { runId: message.run.friendlyId });
-        });
+        if (this.runLimiter) {
+          this.runLimiter(() => runController.start(message)).then(() => {
+            logger.debug("[DevSupervisor] Run started", { runId: message.run.friendlyId });
+          });
+        } else {
+          //don't await for run completion, we want to dequeue more runs
+          runController.start(message).then(() => {
+            logger.debug("[DevSupervisor] Run started", { runId: message.run.friendlyId });
+          });
+        }
       }
 
       setTimeout(() => this.#dequeueRuns(), this.config.dequeueIntervalWithRun);
