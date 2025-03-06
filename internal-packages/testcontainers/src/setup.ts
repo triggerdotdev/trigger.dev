@@ -68,7 +68,8 @@ export async function setupBackgroundWorker(
   prisma: PrismaClient,
   environment: AuthenticatedEnvironment,
   taskIdentifier: string | string[],
-  machineConfig?: MachineConfig
+  machineConfig?: MachineConfig,
+  retryOptions?: RetryOptions
 ) {
   const worker = await prisma.backgroundWorker.create({
     data: {
@@ -86,7 +87,7 @@ export async function setupBackgroundWorker(
   const tasks: BackgroundWorkerTask[] = [];
 
   for (const identifier of taskIdentifiers) {
-    const retryConfig: RetryOptions = {
+    const retryConfig: RetryOptions = retryOptions ?? {
       maxAttempts: 3,
       factor: 1,
       minTimeoutInMs: 100,
