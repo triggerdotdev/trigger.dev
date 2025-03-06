@@ -691,10 +691,12 @@ class ManagedRunController {
       // Kill the run process
       await this.taskRunProcess?.kill("SIGKILL");
 
-      const warmStartUrl = new URL(
-        "/warm-start",
-        env.TRIGGER_WARM_START_URL ?? env.TRIGGER_WORKER_API_URL
-      );
+      if (!env.TRIGGER_WARM_START_URL) {
+        console.error("waitForNextRun: warm starts disabled, shutting down");
+        process.exit(0);
+      }
+
+      const warmStartUrl = new URL("/warm-start", env.TRIGGER_WARM_START_URL);
 
       const res = await longPoll<DequeuedMessage>(
         warmStartUrl.href,
@@ -709,6 +711,7 @@ class ManagedRunController {
             "x-trigger-worker-instance-name": env.TRIGGER_WORKER_INSTANCE_NAME,
           },
         },
+        // TODO: get these from the warm start service instead
         {
           timeoutMs: env.TRIGGER_WARM_START_CONNECTION_TIMEOUT_MS,
           totalDurationMs: env.TRIGGER_WARM_START_TOTAL_DURATION_MS,
