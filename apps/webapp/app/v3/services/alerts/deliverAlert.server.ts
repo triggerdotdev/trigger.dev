@@ -40,7 +40,6 @@ import { generateFriendlyId } from "~/v3/friendlyIdentifiers";
 import { ProjectAlertChannelType, ProjectAlertType } from "@trigger.dev/database";
 import { alertsRateLimiter } from "~/v3/alertsRateLimiter.server";
 import { v3RunPath } from "~/utils/pathBuilder";
-import { isOOMError } from "../completeAttempt.server";
 import { ApiRetrieveRunPresenter } from "~/presenters/v3/ApiRetrieveRunPresenter.server";
 
 type FoundAlert = Prisma.Result<
