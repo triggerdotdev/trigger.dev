@@ -27,6 +27,7 @@ jobs:
           echo "🚫 re2-prod-* tags can only be pushed from the main branch."
           exit 1
   build:
+    needs: check-branch
     strategy:
       matrix:
         package: [supervisor]
