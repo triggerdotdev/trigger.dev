@@ -13,6 +13,7 @@ import {
   RunFailedWebhook,
   DeploymentFailedWebhook,
   DeploymentSuccessWebhook,
+  isOOMRunError,
 } from "@trigger.dev/core/v3";
 import assertNever from "assert-never";
 import { subtle } from "crypto";
@@ -375,7 +376,7 @@ export class DeliverAlertService extends BaseService {
                     idempotencyKey: alert.taskRun.idempotencyKey ?? undefined,
                     tags: alert.taskRun.runTags,
                     error,
-                    isOutOfMemoryError: isOOMError(error),
+                    isOutOfMemoryError: isOOMRunError(error),
                     machine: alert.taskRun.machinePreset ?? "Unknown",
                     dashboardUrl: `${env.APP_ORIGIN}${v3RunPath(
                       alert.project.organization,
