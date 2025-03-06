@@ -139,6 +139,7 @@ export type ExecutionResult = z.infer<typeof ExecutionResult>;
 export const DequeuedMessage = z.object({
   version: z.literal("1"),
   snapshot: ExecutionSnapshot,
+  dequeuedAt: z.coerce.date(),
   image: z.string().optional(),
   checkpoint: z
     .object({

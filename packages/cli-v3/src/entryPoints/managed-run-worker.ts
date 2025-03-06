@@ -17,6 +17,7 @@ import {
   runMetadata,
   waitUntil,
   apiClientManager,
+  runTimelineMetrics,
 } from "@trigger.dev/core/v3";
 import { TriggerTracer } from "@trigger.dev/core/v3/tracer";
 import {
@@ -37,6 +38,7 @@ import {
   StandardMetadataManager,
   StandardWaitUntilManager,
   ManagedRuntimeManager,
+  StandardRunTimelineMetricsManager,
 } from "@trigger.dev/core/v3/workers";
 import { ZodIpcConnection } from "@trigger.dev/core/v3/zodIpc";
 import { readFile } from "node:fs/promises";
@@ -90,6 +92,10 @@ const usageIntervalMs = getEnvVar("USAGE_HEARTBEAT_INTERVAL_MS");
 const usageEventUrl = getEnvVar("USAGE_EVENT_URL");
 const triggerJWT = getEnvVar("TRIGGER_JWT");
 const heartbeatIntervalMs = getEnvVar("HEARTBEAT_INTERVAL_MS");
+
+const standardRunTimelineMetricsManager = new StandardRunTimelineMetricsManager();
+runTimelineMetrics.setGlobalManager(standardRunTimelineMetricsManager);
+standardRunTimelineMetricsManager.seedMetricsFromEnvironment();
 
 const devUsageManager = new DevUsageManager();
 const prodUsageManager = new ProdUsageManager(devUsageManager, {
@@ -199,7 +205,9 @@ const zodIpc = new ZodIpcConnection({
   emitSchema: ExecutorToWorkerMessageCatalog,
   process,
   handlers: {
-    EXECUTE_TASK_RUN: async ({ execution, traceContext, metadata }, sender) => {
+    EXECUTE_TASK_RUN: async ({ execution, traceContext, metadata, metrics }, sender) => {
+      standardRunTimelineMetricsManager.registerMetricsFromExecution(metrics);
+
       console.log(`[${new Date().toISOString()}] Received EXECUTE_TASK_RUN`, execution);
 
       if (_isRunning) {
@@ -256,12 +264,21 @@ const zodIpc = new ZodIpcConnection({
         }
 
         try {
-          const beforeImport = performance.now();
-          await import(normalizeImportPath(taskManifest.entryPoint));
-          const durationMs = performance.now() - beforeImport;
+          await runTimelineMetrics.measureMetric(
+            "trigger.dev/start",
+            "import",
+            {
+              entryPoint: taskManifest.entryPoint,
+            },
+            async () => {
+              const beforeImport = performance.now();
+              await import(normalizeImportPath(taskManifest.entryPoint));
+              const durationMs = performance.now() - beforeImport;
 
-          console.log(
-            `Imported task ${execution.task.id} [${taskManifest.entryPoint}] in ${durationMs}ms`
+              console.log(
+                `Imported task ${execution.task.id} [${taskManifest.entryPoint}] in ${durationMs}ms`
+              );
+            }
           );
         } catch (err) {
           console.error(`Failed to import task ${execution.task.id}`, err);

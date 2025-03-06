@@ -571,6 +571,9 @@ const EnvironmentSchema = z.object({
   /** The max number of runs per API call that we'll dequeue in DEV */
   DEV_DEQUEUE_MAX_RUNS_PER_PULL: z.coerce.number().int().default(10),
 
+  /** The maximum concurrent local run processes executing at once in dev */
+  DEV_MAX_CONCURRENT_RUNS: z.coerce.number().int().default(25),
+
   LEGACY_RUN_ENGINE_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
   LEGACY_RUN_ENGINE_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(2),
   LEGACY_RUN_ENGINE_WORKER_CONCURRENCY_TASKS_PER_WORKER: z.coerce.number().int().default(1),
