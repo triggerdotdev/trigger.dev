@@ -8,6 +8,7 @@ import { trace } from "@opentelemetry/api";
 import { expect } from "vitest";
 import { EventBusEventArgs } from "../eventBus.js";
 import { RunEngine } from "../index.js";
+import { setTimeout } from "node:timers/promises";
 
 describe("RunEngine attempt failures", () => {
   containerTest(
@@ -479,10 +480,6 @@ describe("RunEngine attempt failures", () => {
           ok: false,
           id: dequeued[0].run.id,
           error,
-          retry: {
-            timestamp: Date.now(),
-            delay: 0,
-          },
         },
       });
 
@@ -603,10 +600,6 @@ describe("RunEngine attempt failures", () => {
             ok: false,
             id: dequeued[0].run.id,
             error,
-            retry: {
-              timestamp: Date.now(),
-              delay: 0,
-            },
           },
         });
 
@@ -714,6 +707,8 @@ describe("RunEngine attempt failures", () => {
 
         //create background worker
         await setupBackgroundWorker(prisma, authenticatedEnvironment, taskIdentifier, undefined, {
+          maxTimeoutInMs: 10,
+          maxAttempts: 10,
           outOfMemory: {
             machine: "small-2x",
           },
@@ -768,10 +763,6 @@ describe("RunEngine attempt failures", () => {
             ok: false,
             id: dequeued[0].run.id,
             error,
-            retry: {
-              timestamp: Date.now(),
-              delay: 0,
-            },
           },
         });
 
@@ -787,12 +778,16 @@ describe("RunEngine attempt failures", () => {
         expect(executionData.run.attemptNumber).toBe(1);
         expect(executionData.run.status).toBe("RETRYING_AFTER_FAILURE");
 
+        //wait for 1s
+        await setTimeout(1_000);
+
         //dequeue again
         const dequeued2 = await engine.dequeueFromMasterQueue({
           consumerId: "test_12345",
           masterQueue: run.masterQueue,
           maxRunCount: 10,
         });
+        expect(dequeued2.length).toBe(1);
 
         //create second attempt
         const attemptResult2 = await engine.startRunAttempt({

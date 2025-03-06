@@ -6,6 +6,7 @@ import {
   TaskRunExecutionRetry,
   taskRunErrorEnhancer,
   sanitizeError,
+  calculateNextRetryDelay,
 } from "@trigger.dev/core/v3";
 import { PrismaClientOrTransaction, TaskRunStatus } from "@trigger.dev/database";
 import { MAX_TASK_RUN_ATTEMPTS } from "./consts";
@@ -47,24 +48,31 @@ export async function retryOutcomeFromCompletion(
 
   const sanitizedError = sanitizeError(error);
 
-  // No retry settings
-  if (!retrySettings) {
-    return { outcome: "fail_run", sanitizedError };
-  }
-
   // OOM error (retry on a larger machine or fail)
   if (isOOMRunError(error)) {
-    const newMachine = await retryOOMOnMachine(prisma, runId);
-    if (!newMachine) {
+    const oomResult = await retryOOMOnMachine(prisma, runId);
+    if (!oomResult) {
+      return { outcome: "fail_run", sanitizedError, wasOOMError: true };
+    }
+
+    const delay = calculateNextRetryDelay(oomResult.retrySettings, attemptNumber ?? 1);
+
+    if (!delay) {
+      //no more retries left
       return { outcome: "fail_run", sanitizedError, wasOOMError: true };
     }
 
     return {
       outcome: "retry",
       method: "queue",
-      settings: retrySettings,
-      machine: newMachine,
+      machine: oomResult.machine,
+      settings: { timestamp: Date.now() + delay, delay },
     };
+  }
+
+  // No retry settings
+  if (!retrySettings) {
+    return { outcome: "fail_run", sanitizedError };
   }
 
   // Not a retriable error: fail
@@ -112,7 +120,7 @@ export async function retryOutcomeFromCompletion(
 async function retryOOMOnMachine(
   prisma: PrismaClientOrTransaction,
   runId: string
-): Promise<string | undefined> {
+): Promise<{ machine: string; retrySettings: RetryOptions } | undefined> {
   try {
     const run = await prisma.taskRun.findFirst({
       where: {
@@ -153,7 +161,7 @@ async function retryOOMOnMachine(
       return;
     }
 
-    return retryMachine;
+    return { machine: retryMachine, retrySettings: parsedRetryConfig.data };
   } catch (error) {
     console.error("[FailedTaskRunRetryHelper] Failed to get execution retry", {
       runId,
