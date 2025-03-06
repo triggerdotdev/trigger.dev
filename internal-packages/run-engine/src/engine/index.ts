@@ -2968,6 +2968,22 @@ export class RunEngine {
             const nextAttemptNumber =
               latestSnapshot.attemptNumber === null ? 1 : latestSnapshot.attemptNumber + 1;
 
+            if (retryResult.wasOOMError) {
+              this.eventBus.emit("runAttemptFailed", {
+                time: failedAt,
+                run: {
+                  id: runId,
+                  status: run.status,
+                  spanId: run.spanId,
+                  error: completion.error,
+                  attemptNumber: latestSnapshot.attemptNumber ?? 0,
+                  createdAt: run.createdAt,
+                  completedAt: run.completedAt,
+                  taskEventStore: run.taskEventStore,
+                },
+              });
+            }
+
             this.eventBus.emit("runRetryScheduled", {
               time: failedAt,
               run: {

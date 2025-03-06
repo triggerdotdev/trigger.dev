@@ -35,6 +35,7 @@ export type RetryOutcome =
       method: "queue" | "immediate";
       settings: TaskRunExecutionRetry;
       machine?: string;
+      wasOOMError?: boolean;
     };
 
 export async function retryOutcomeFromCompletion(
@@ -67,6 +68,7 @@ export async function retryOutcomeFromCompletion(
       method: "queue",
       machine: oomResult.machine,
       settings: { timestamp: Date.now() + delay, delay },
+      wasOOMError: true,
     };
   }
 
