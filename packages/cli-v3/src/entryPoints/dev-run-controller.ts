@@ -5,6 +5,7 @@ import {
   LogLevel,
   RunExecutionData,
   TaskRunExecution,
+  TaskRunExecutionMetrics,
   TaskRunExecutionResult,
   TaskRunFailedExecutionResult,
 } from "@trigger.dev/core/v3";
@@ -475,16 +476,20 @@ export class DevRunController {
   private async startAndExecuteRunAttempt({
     runFriendlyId,
     snapshotFriendlyId,
+    dequeuedAt,
     isWarmStart = false,
   }: {
     runFriendlyId: string;
     snapshotFriendlyId: string;
+    dequeuedAt?: Date;
     isWarmStart?: boolean;
   }) {
     this.subscribeToRunNotifications({
       run: { friendlyId: runFriendlyId },
       snapshot: { friendlyId: snapshotFriendlyId },
     });
+
+    const attemptStartedAt = Date.now();
 
     const start = await this.httpClient.dev.startRunAttempt(runFriendlyId, snapshotFriendlyId);
 
@@ -494,6 +499,8 @@ export class DevRunController {
       this.runFinished();
       return;
     }
+
+    const attemptDuration = Date.now() - attemptStartedAt;
 
     const { run, snapshot, execution, envVars } = start.data;
 
@@ -508,8 +515,28 @@ export class DevRunController {
     //  This is the only case where incrementing the attempt number is allowed
     this.enterRunPhase(run, snapshot);
 
+    const metrics = [
+      {
+        name: "start",
+        event: "create_attempt",
+        timestamp: attemptStartedAt,
+        duration: attemptDuration,
+      },
+    ].concat(
+      dequeuedAt
+        ? [
+            {
+              name: "start",
+              event: "dequeue",
+              timestamp: dequeuedAt.getTime(),
+              duration: 0,
+            },
+          ]
+        : []
+    );
+
     try {
-      return await this.executeRun({ run, snapshot, execution, envVars });
+      return await this.executeRun({ run, snapshot, execution, envVars, metrics });
     } catch (error) {
       // TODO: Handle the case where we're in the warm start phase or executing a new run
       // This can happen if we kill the run while it's still executing, e.g. after receiving an attempt number mismatch
@@ -566,7 +593,10 @@ export class DevRunController {
     snapshot,
     execution,
     envVars,
-  }: WorkloadRunAttemptStartResponseBody) {
+    metrics,
+  }: WorkloadRunAttemptStartResponseBody & {
+    metrics?: TaskRunExecutionMetrics;
+  }) {
     if (!this.opts.worker.serverWorker) {
       throw new Error(`No server worker for Dev ${run.friendlyId}`);
     }
@@ -594,6 +624,7 @@ export class DevRunController {
       payload: {
         execution,
         traceContext: execution.run.traceContext ?? {},
+        metrics,
       },
       messageId: run.friendlyId,
     });
@@ -753,6 +784,7 @@ export class DevRunController {
     await this.startAndExecuteRunAttempt({
       runFriendlyId: dequeueMessage.run.friendlyId,
       snapshotFriendlyId: dequeueMessage.snapshot.friendlyId,
+      dequeuedAt: dequeueMessage.dequeuedAt,
     }).finally(async () => {});
   }
 

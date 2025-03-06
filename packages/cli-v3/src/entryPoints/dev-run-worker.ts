@@ -17,6 +17,7 @@ import {
   waitUntil,
   WorkerManifest,
   WorkerToExecutorMessageCatalog,
+  runTimelineMetrics,
 } from "@trigger.dev/core/v3";
 import { TriggerTracer } from "@trigger.dev/core/v3/tracer";
 import {
@@ -36,6 +37,7 @@ import {
   TracingSDK,
   usage,
   UsageTimeoutManager,
+  StandardRunTimelineMetricsManager,
 } from "@trigger.dev/core/v3/workers";
 import { ZodIpcConnection } from "@trigger.dev/core/v3/zodIpc";
 import { readFile } from "node:fs/promises";
@@ -86,6 +88,10 @@ process.on("uncaughtException", function (error, origin) {
 });
 
 const heartbeatIntervalMs = getEnvVar("HEARTBEAT_INTERVAL_MS");
+
+const standardRunTimelineMetricsManager = new StandardRunTimelineMetricsManager();
+runTimelineMetrics.setGlobalManager(standardRunTimelineMetricsManager);
+standardRunTimelineMetricsManager.seedMetricsFromEnvironment();
 
 const devUsageManager = new DevUsageManager();
 usage.setGlobalUsageManager(devUsageManager);
@@ -189,8 +195,10 @@ const zodIpc = new ZodIpcConnection({
   emitSchema: ExecutorToWorkerMessageCatalog,
   process,
   handlers: {
-    EXECUTE_TASK_RUN: async ({ execution, traceContext, metadata }, sender) => {
+    EXECUTE_TASK_RUN: async ({ execution, traceContext, metadata, metrics }, sender) => {
       log(`[${new Date().toISOString()}] Received EXECUTE_TASK_RUN`, execution);
+
+      standardRunTimelineMetricsManager.registerMetricsFromExecution(metrics);
 
       if (_isRunning) {
         logError("Worker is already running a task");
@@ -246,11 +254,22 @@ const zodIpc = new ZodIpcConnection({
         }
 
         try {
-          const beforeImport = performance.now();
-          await import(normalizeImportPath(taskManifest.entryPoint));
-          const durationMs = performance.now() - beforeImport;
+          await runTimelineMetrics.measureMetric(
+            "trigger.dev/start",
+            "import",
+            {
+              entryPoint: taskManifest.entryPoint,
+            },
+            async () => {
+              const beforeImport = performance.now();
+              await import(normalizeImportPath(taskManifest.entryPoint));
+              const durationMs = performance.now() - beforeImport;
 
-          log(`Imported task ${execution.task.id} [${taskManifest.entryPoint}] in ${durationMs}ms`);
+              log(
+                `Imported task ${execution.task.id} [${taskManifest.entryPoint}] in ${durationMs}ms`
+              );
+            }
+          );
         } catch (err) {
           logError(`Failed to import task ${execution.task.id}`, err);
 
