@@ -6,7 +6,7 @@ import { setTimeout } from "node:timers/promises";
 import { RunQueue } from "./index.js";
 import { InputPayload } from "./types.js";
 import { createRedisClient } from "@internal/redis";
-import { FairDequeuingStrategy } from "./fairDequeuingStrategy.server.js";
+import { FairDequeuingStrategy } from "./fairDequeuingStrategy.js";
 import { RunQueueShortKeyProducer } from "./keyProducer.js";
 
 const testOptions = {
@@ -278,6 +278,14 @@ describe("RunQueue", () => {
     async ({ redisContainer }) => {
       const queue = new RunQueue({
         ...testOptions,
+        queuePriorityStrategy: new FairDequeuingStrategy({
+          redis: {
+            keyPrefix: "runqueue:test:",
+            host: redisContainer.getHost(),
+            port: redisContainer.getPort(),
+          },
+          keys: testOptions.keys,
+        }),
         redis: {
           keyPrefix: "runqueue:test:",
           host: redisContainer.getHost(),
@@ -381,6 +389,14 @@ describe("RunQueue", () => {
     async ({ redisContainer }) => {
       const queue = new RunQueue({
         ...testOptions,
+        queuePriorityStrategy: new FairDequeuingStrategy({
+          redis: {
+            keyPrefix: "runqueue:test:",
+            host: redisContainer.getHost(),
+            port: redisContainer.getPort(),
+          },
+          keys: testOptions.keys,
+        }),
         redis: {
           keyPrefix: "runqueue:test:",
           host: redisContainer.getHost(),
@@ -448,6 +464,14 @@ describe("RunQueue", () => {
   redisTest("Acking", { timeout: 5_000 }, async ({ redisContainer, redisOptions }) => {
     const queue = new RunQueue({
       ...testOptions,
+      queuePriorityStrategy: new FairDequeuingStrategy({
+        redis: {
+          keyPrefix: "runqueue:test:",
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+        },
+        keys: testOptions.keys,
+      }),
       redis: {
         keyPrefix: "runqueue:test:",
         host: redisContainer.getHost(),
@@ -524,6 +548,14 @@ describe("RunQueue", () => {
   redisTest("Ack (before dequeue)", { timeout: 5_000 }, async ({ redisContainer }) => {
     const queue = new RunQueue({
       ...testOptions,
+      queuePriorityStrategy: new FairDequeuingStrategy({
+        redis: {
+          keyPrefix: "runqueue:test:",
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+        },
+        keys: testOptions.keys,
+      }),
       redis: {
         keyPrefix: "runqueue:test:",
         host: redisContainer.getHost(),
@@ -578,6 +610,14 @@ describe("RunQueue", () => {
   redisTest("Nacking", { timeout: 15_000 }, async ({ redisContainer, redisOptions }) => {
     const queue = new RunQueue({
       ...testOptions,
+      queuePriorityStrategy: new FairDequeuingStrategy({
+        redis: {
+          keyPrefix: "runqueue:test:",
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+        },
+        keys: testOptions.keys,
+      }),
       redis: {
         keyPrefix: "runqueue:test:",
         host: redisContainer.getHost(),
@@ -669,6 +709,14 @@ describe("RunQueue", () => {
     async ({ redisContainer, redisOptions }) => {
       const queue = new RunQueue({
         ...testOptions,
+        queuePriorityStrategy: new FairDequeuingStrategy({
+          redis: {
+            keyPrefix: "runqueue:test:",
+            host: redisContainer.getHost(),
+            port: redisContainer.getPort(),
+          },
+          keys: testOptions.keys,
+        }),
         redis: {
           keyPrefix: "runqueue:test:",
           host: redisContainer.getHost(),
@@ -783,6 +831,14 @@ describe("RunQueue", () => {
       retryOptions: {
         maxAttempts: 1,
       },
+      queuePriorityStrategy: new FairDequeuingStrategy({
+        redis: {
+          keyPrefix: "runqueue:test:",
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+        },
+        keys: testOptions.keys,
+      }),
       redis: {
         keyPrefix: "runqueue:test:",
         host: redisContainer.getHost(),

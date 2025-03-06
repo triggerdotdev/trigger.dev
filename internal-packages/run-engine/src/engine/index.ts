@@ -1,6 +1,6 @@
-import { createRedisClient } from "@internal/redis";
+import { createRedisClient, Redis } from "@internal/redis";
 import { Worker } from "@internal/redis-worker";
-import { Attributes, Span, SpanKind, trace, Tracer } from "@opentelemetry/api";
+import { Attributes, Span, SpanKind, trace, Tracer } from "@internal/tracing";
 import { assertExhaustive } from "@trigger.dev/core";
 import { Logger } from "@trigger.dev/core/logger";
 import {
@@ -48,29 +48,29 @@ import {
   TaskRunStatus,
   Waitpoint,
 } from "@trigger.dev/database";
-import assertNever from "assert-never";
-import { Redis } from "ioredis";
+import { assertNever } from "assert-never";
 import { nanoid } from "nanoid";
 import { EventEmitter } from "node:events";
 import { z } from "zod";
-import { RunQueue } from "../run-queue";
-import { SimpleWeightedChoiceStrategy } from "../run-queue/simpleWeightedPriorityStrategy";
-import { MinimalAuthenticatedEnvironment } from "../shared";
-import { MAX_TASK_RUN_ATTEMPTS } from "./consts";
-import { getRunWithBackgroundWorkerTasks } from "./db/worker";
-import { runStatusFromError } from "./errors";
-import { EventBusEvents } from "./eventBus";
-import { executionResultFromSnapshot, getLatestExecutionSnapshot } from "./executionSnapshots";
-import { RunLocker } from "./locking";
-import { getMachinePreset } from "./machinePresets";
+import { RunQueue } from "../run-queue/index.js";
+import { FairDequeuingStrategy } from "../run-queue/fairDequeuingStrategy.js";
+import { MinimalAuthenticatedEnvironment } from "../shared/index.js";
+import { MAX_TASK_RUN_ATTEMPTS } from "./consts.js";
+import { getRunWithBackgroundWorkerTasks } from "./db/worker.js";
+import { runStatusFromError } from "./errors.js";
+import { EventBusEvents } from "./eventBus.js";
+import { executionResultFromSnapshot, getLatestExecutionSnapshot } from "./executionSnapshots.js";
+import { RunLocker } from "./locking.js";
+import { getMachinePreset } from "./machinePresets.js";
 import {
   isCheckpointable,
   isDequeueableExecutionStatus,
   isExecuting,
   isFinalRunStatus,
   isPendingExecuting,
-} from "./statuses";
-import { HeartbeatTimeouts, RunEngineOptions, TriggerParams } from "./types";
+} from "./statuses.js";
+import { HeartbeatTimeouts, RunEngineOptions, TriggerParams } from "./types.js";
+import { RunQueueShortKeyProducer } from "../run-queue/keyProducer.js";
 import { retryOutcomeFromCompletion } from "./retrying";
 
 const workerCatalog = {
@@ -153,11 +153,16 @@ export class RunEngine {
     );
     this.runLock = new RunLocker({ redis: this.runLockRedis });
 
+    const keys = new RunQueueShortKeyProducer("rq:");
+
     this.runQueue = new RunQueue({
       name: "rq",
       tracer: trace.getTracer("rq"),
-      queuePriorityStrategy: new SimpleWeightedChoiceStrategy({ queueSelectionCount: 36 }),
-      envQueuePriorityStrategy: new SimpleWeightedChoiceStrategy({ queueSelectionCount: 12 }),
+      keys,
+      queuePriorityStrategy: new FairDequeuingStrategy({
+        keys,
+        redis: { ...options.queue.redis, keyPrefix: `${options.queue.redis.keyPrefix}runqueue:` },
+      }),
       defaultEnvConcurrency: options.queue?.defaultEnvConcurrency ?? 10,
       logger: new Logger("RunQueue", "debug"),
       redis: { ...options.queue.redis, keyPrefix: `${options.queue.redis.keyPrefix}runqueue:` },

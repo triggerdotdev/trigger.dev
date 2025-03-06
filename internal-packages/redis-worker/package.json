@@ -6,10 +6,9 @@
   "types": "./src/index.ts",
   "type": "module",
   "dependencies": {
-    "@opentelemetry/api": "^1.9.0",
+    "@internal/tracing": "workspace:*",
     "@internal/redis": "workspace:*",
     "@trigger.dev/core": "workspace:*",
-    "ioredis": "^5.3.2",
     "lodash.omit": "^4.5.0",
     "nanoid": "^5.0.7",
     "p-limit": "^6.2.0",

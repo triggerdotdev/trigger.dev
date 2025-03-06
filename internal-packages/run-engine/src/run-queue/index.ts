@@ -1306,7 +1306,7 @@ redis.call('SET', envConcurrencyLimitKey, envConcurrencyLimit)
   }
 }
 
-declare module "ioredis" {
+declare module "@internal/redis" {
   interface RedisCommander<Context> {
     enqueueMessage(
       //keys

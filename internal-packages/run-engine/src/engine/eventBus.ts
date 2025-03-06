@@ -1,5 +1,5 @@
 import { TaskRunExecutionStatus, TaskRunStatus } from "@trigger.dev/database";
-import { AuthenticatedEnvironment } from "../shared";
+import { AuthenticatedEnvironment } from "../shared/index.js";
 import { FlushedRunMetadata, TaskRunError } from "@trigger.dev/core/v3";
 
 export type EventBusEvents = {

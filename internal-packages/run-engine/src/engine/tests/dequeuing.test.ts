@@ -3,7 +3,7 @@ import {
   setupAuthenticatedEnvironment,
   setupBackgroundWorker,
 } from "@internal/testcontainers";
-import { trace } from "@opentelemetry/api";
+import { trace } from "@internal/tracing";
 import { generateFriendlyId } from "@trigger.dev/core/v3/apps";
 import { expect } from "vitest";
 import { RunEngine } from "../index.js";

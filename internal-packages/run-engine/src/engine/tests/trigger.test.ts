@@ -4,7 +4,7 @@ import {
   setupAuthenticatedEnvironment,
   setupBackgroundWorker,
 } from "@internal/testcontainers";
-import { trace } from "@opentelemetry/api";
+import { trace } from "@internal/tracing";
 import { expect } from "vitest";
 import { EventBusEventArgs } from "../eventBus.js";
 import { RunEngine } from "../index.js";

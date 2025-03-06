@@ -959,15 +959,12 @@ importers:
       '@internal/redis':
         specifier: workspace:*
         version: link:../redis
-      '@opentelemetry/api':
-        specifier: ^1.9.0
-        version: 1.9.0
+      '@internal/tracing':
+        specifier: workspace:*
+        version: link:../tracing
       '@trigger.dev/core':
         specifier: workspace:*
         version: link:../../packages/core
-      ioredis:
-        specifier: ^5.3.2
-        version: 5.3.2
       lodash.omit:
         specifier: ^4.5.0
         version: 4.5.0
@@ -1014,9 +1011,6 @@ importers:
       assert-never:
         specifier: ^1.2.1
         version: 1.2.1
-      ioredis:
-        specifier: ^5.3.2
-        version: 5.3.2
       nanoid:
         specifier: ^3.3.4
         version: 3.3.7
@@ -1092,9 +1086,9 @@ importers:
 
   internal-packages/zod-worker:
     dependencies:
-      '@opentelemetry/api':
-        specifier: ^1.9.0
-        version: 1.9.0
+      '@internal/tracing':
+        specifier: workspace:*
+        version: link:../tracing
       '@trigger.dev/core':
         specifier: workspace:*
         version: link:../../packages/core

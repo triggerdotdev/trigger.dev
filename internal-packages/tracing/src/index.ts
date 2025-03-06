@@ -7,7 +7,7 @@ export * from "@opentelemetry/semantic-conventions";
 export type { Tracer, Attributes } from "@opentelemetry/api";
 
 import { trace, context, propagation, SpanKind } from "@opentelemetry/api";
-export { trace, context, propagation, type Span, SpanKind, type SpanOptions };
+export { trace, context, propagation, type Span, SpanKind, type SpanOptions, SpanStatusCode };
 
 export function getTracer(name: string): Tracer {
   return trace.getTracer(name);

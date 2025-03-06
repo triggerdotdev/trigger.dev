@@ -1,6 +1,6 @@
-import Redis from "ioredis";
 import Redlock, { RedlockAbortSignal } from "redlock";
 import { AsyncLocalStorage } from "async_hooks";
+import { Redis } from "@internal/redis";
 
 interface LockContext {
   resources: string;

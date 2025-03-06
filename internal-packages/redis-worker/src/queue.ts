@@ -1,6 +1,11 @@
-import { createRedisClient } from "@internal/redis";
+import {
+  createRedisClient,
+  type Redis,
+  type Callback,
+  type RedisOptions,
+  type Result,
+} from "@internal/redis";
 import { Logger } from "@trigger.dev/core/logger";
-import Redis, { type Callback, type RedisOptions, type Result } from "ioredis";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 
@@ -436,7 +441,7 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
   }
 }
 
-declare module "ioredis" {
+declare module "@internal/redis" {
   interface RedisCommander<Context> {
     enqueueItem(
       //keys
