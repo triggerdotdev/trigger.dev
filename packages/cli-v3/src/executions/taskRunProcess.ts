@@ -19,6 +19,7 @@ import { ChildProcess, fork } from "node:child_process";
 import { chalkError, chalkGrey, chalkRun, prettyPrintDate } from "../utilities/cliOutput.js";
 
 import { execOptionsForRuntime, execPathForRuntime } from "@trigger.dev/core/v3/build";
+import { nodeOptionsWithMaxOldSpaceSize } from "@trigger.dev/core/v3/machines";
 import { InferSocketMessageSchema } from "@trigger.dev/core/v3/zodSocket";
 import { logger } from "../utilities/logger.js";
 import {
@@ -117,14 +118,16 @@ export class TaskRunProcess {
   }
 
   async initialize() {
-    const { env: $env, workerManifest, cwd, messageId } = this.options;
+    const { env: $env, workerManifest, cwd, messageId, payload } = this.options;
+
+    const maxOldSpaceSize = nodeOptionsWithMaxOldSpaceSize(undefined, payload.execution.machine);
 
     const fullEnv = {
       ...(this.isTest ? { TRIGGER_LOG_LEVEL: "debug" } : {}),
       ...$env,
       OTEL_IMPORT_HOOK_INCLUDES: workerManifest.otelImportHook?.include?.join(","),
       // TODO: this will probably need to use something different for bun (maybe --preload?)
-      NODE_OPTIONS: execOptionsForRuntime(workerManifest.runtime, workerManifest),
+      NODE_OPTIONS: execOptionsForRuntime(workerManifest.runtime, workerManifest, maxOldSpaceSize),
       PATH: process.env.PATH,
       TRIGGER_PROCESS_FORK_START_TIME: String(Date.now()),
     };

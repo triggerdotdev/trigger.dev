@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { pathToFileURL } from "url";
 import { BuildRuntime } from "../schemas/build.js";
+import { dedupFlags } from "./flags.js";
 
 export const DEFAULT_RUNTIME = "node" satisfies BuildRuntime;
 
@@ -41,7 +42,11 @@ export type ExecOptions = {
   customConditions?: string[];
 };
 
-export function execOptionsForRuntime(runtime: BuildRuntime, options: ExecOptions): string {
+export function execOptionsForRuntime(
+  runtime: BuildRuntime,
+  options: ExecOptions,
+  additionalNodeOptions?: string
+): string {
   switch (runtime) {
     case "node":
     case "node-22": {
@@ -51,15 +56,19 @@ export function execOptionsForRuntime(runtime: BuildRuntime, options: ExecOption
 
       const conditions = options.customConditions?.map((condition) => `--conditions=${condition}`);
 
-      return [
+      //later flags will win (after the dedupe)
+      const flags = [
+        process.env.NODE_OPTIONS,
+        additionalNodeOptions,
         importEntryPoint,
         conditions,
-        process.env.NODE_OPTIONS,
         nodeRuntimeNeedsGlobalWebCryptoFlag() ? "--experimental-global-webcrypto" : undefined,
       ]
         .filter(Boolean)
         .flat()
         .join(" ");
+
+      return dedupFlags(flags);
     }
     case "bun": {
       return "";

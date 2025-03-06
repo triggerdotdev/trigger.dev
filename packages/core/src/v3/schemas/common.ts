@@ -308,7 +308,7 @@ export const TaskRunExecution = z.object({
   organization: TaskRunExecutionOrganization,
   project: TaskRunExecutionProject,
   batch: TaskRunExecutionBatch.optional(),
-  machine: MachinePreset.optional(),
+  machine: MachinePreset,
 });
 
 export type TaskRunExecution = z.infer<typeof TaskRunExecution>;
