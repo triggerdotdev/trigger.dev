@@ -1,11 +1,15 @@
 import { createCache, DefaultStatefulContext, Namespace, Cache as UnkeyCache } from "@unkey/cache";
 import { MemoryStore } from "@unkey/cache/stores";
 import { randomUUID } from "crypto";
-import { Redis } from "ioredis";
-import { EnvQueues, MarQSFairDequeueStrategy, MarQSKeyProducer } from "./types";
+import {
+  EnvDescriptor,
+  EnvQueues,
+  RunQueueFairDequeueStrategy,
+  RunQueueKeyProducer,
+} from "./types.js";
 import seedrandom from "seedrandom";
-import { Tracer } from "@opentelemetry/api";
-import { startSpan } from "../tracing.server";
+import { startSpan, type Tracer } from "@internal/tracing";
+import { Redis, type RedisOptions, createRedisClient } from "@internal/redis";
 
 export type FairDequeuingStrategyBiases = {
   /**
@@ -30,11 +34,11 @@ export type FairDequeuingStrategyBiases = {
 };
 
 export type FairDequeuingStrategyOptions = {
-  redis: Redis;
-  keys: MarQSKeyProducer;
-  defaultEnvConcurrency: number;
-  parentQueueLimit: number;
-  tracer: Tracer;
+  redis: RedisOptions;
+  keys: RunQueueKeyProducer;
+  defaultEnvConcurrency?: number;
+  parentQueueLimit?: number;
+  tracer?: Tracer;
   seed?: string;
   /**
    * Configure biasing for environment shuffling
@@ -51,7 +55,7 @@ type FairQueueConcurrency = {
   reserve: number;
 };
 
-type FairQueue = { id: string; age: number; org: string; env: string };
+type FairQueue = { id: string; age: number; org: string; env: string; project: string };
 
 type FairQueueSnapshot = {
   id: string;
@@ -81,7 +85,7 @@ const defaultBiases: FairDequeuingStrategyBiases = {
   queueAgeRandomization: 0, // Default to completely age-based ordering
 };
 
-export class FairDequeuingStrategy implements MarQSFairDequeueStrategy {
+export class FairDequeuingStrategy implements RunQueueFairDequeueStrategy {
   private _cache: UnkeyCache<{
     concurrencyLimit: number;
   }>;
@@ -91,6 +95,10 @@ export class FairDequeuingStrategy implements MarQSFairDequeueStrategy {
     string,
     { snapshot: FairQueueSnapshot; reuseCount: number }
   > = new Map();
+  private _redis: Redis;
+
+  private _defaultEnvConcurrency: number;
+  private _parentQueueLimit: number;
 
   constructor(private options: FairDequeuingStrategyOptions) {
     const ctx = new DefaultStatefulContext();
@@ -105,6 +113,10 @@ export class FairDequeuingStrategy implements MarQSFairDequeueStrategy {
     });
 
     this._rng = seedrandom(options.seed);
+    this._redis = createRedisClient(options.redis);
+
+    this._defaultEnvConcurrency = options.defaultEnvConcurrency ?? 10;
+    this._parentQueueLimit = options.parentQueueLimit ?? 100;
   }
 
   async distributeFairQueuesFromParentQueue(
@@ -219,13 +231,16 @@ export class FairDequeuingStrategy implements MarQSFairDequeueStrategy {
   // Helper method to maintain DRY principle
   // Update return type
   #orderQueuesByEnvs(envs: string[], snapshot: FairQueueSnapshot): Array<EnvQueues> {
-    const queuesByEnv = snapshot.queues.reduce((acc, queue) => {
-      if (!acc[queue.env]) {
-        acc[queue.env] = [];
-      }
-      acc[queue.env].push(queue);
-      return acc;
-    }, {} as Record<string, Array<FairQueue>>);
+    const queuesByEnv = snapshot.queues.reduce(
+      (acc, queue) => {
+        if (!acc[queue.env]) {
+          acc[queue.env] = [];
+        }
+        acc[queue.env].push(queue);
+        return acc;
+      },
+      {} as Record<string, Array<FairQueue>>
+    );
 
     return envs.reduce((acc, envId) => {
       if (queuesByEnv[envId]) {
@@ -365,14 +380,25 @@ export class FairDequeuingStrategy implements MarQSFairDequeueStrategy {
       span.setAttribute("selected_queue_count", queues.length);
 
       const envIds = new Set<string>();
+      const envIdToEnvDescriptor = new Map<string, EnvDescriptor>();
 
       for (const queue of queues) {
         envIds.add(queue.env);
+        envIdToEnvDescriptor.set(queue.env, this.#envDescriptorFromFairQueue(queue));
       }
 
       const envs = await Promise.all(
         Array.from(envIds).map(async (envId) => {
-          return { id: envId, concurrency: await this.#getEnvConcurrency(envId) };
+          const envDescriptor = envIdToEnvDescriptor.get(envId);
+
+          if (!envDescriptor) {
+            throw new Error(`No env descriptor found for envId: ${envId}`);
+          }
+
+          return {
+            id: envId,
+            concurrency: await this.#getEnvConcurrency(envDescriptor),
+          };
         })
       );
 
@@ -382,12 +408,15 @@ export class FairDequeuingStrategy implements MarQSFairDequeueStrategy {
 
       const envIdsAtFullConcurrency = new Set(envsAtFullConcurrency.map((env) => env.id));
 
-      const envsSnapshot = envs.reduce((acc, env) => {
-        if (!envIdsAtFullConcurrency.has(env.id)) {
-          acc[env.id] = env;
-        }
-        return acc;
-      }, {} as Record<string, { concurrency: FairQueueConcurrency }>);
+      const envsSnapshot = envs.reduce(
+        (acc, env) => {
+          if (!envIdsAtFullConcurrency.has(env.id)) {
+            acc[env.id] = env;
+          }
+          return acc;
+        },
+        {} as Record<string, { concurrency: FairQueueConcurrency }>
+      );
 
       span.setAttributes({
         env_count: envs.length,
@@ -418,13 +447,16 @@ export class FairDequeuingStrategy implements MarQSFairDequeueStrategy {
 
   #selectTopEnvs(queues: FairQueue[], maximumEnvCount: number): Set<string> {
     // Group queues by env
-    const queuesByEnv = queues.reduce((acc, queue) => {
-      if (!acc[queue.env]) {
-        acc[queue.env] = [];
-      }
-      acc[queue.env].push(queue);
-      return acc;
-    }, {} as Record<string, FairQueue[]>);
+    const queuesByEnv = queues.reduce(
+      (acc, queue) => {
+        if (!acc[`${queue.org}:${queue.project}:${queue.env}`]) {
+          acc[queue.env] = [];
+        }
+        acc[queue.env].push(queue);
+        return acc;
+      },
+      {} as Record<string, FairQueue[]>
+    );
 
     // Calculate average age for each env
     const envAverageAges = Object.entries(queuesByEnv).map(([envId, envQueues]) => {
@@ -462,14 +494,16 @@ export class FairDequeuingStrategy implements MarQSFairDequeueStrategy {
     return selectedEnvs;
   }
 
-  async #getEnvConcurrency(envId: string): Promise<FairQueueConcurrency> {
+  async #getEnvConcurrency(env: EnvDescriptor): Promise<FairQueueConcurrency> {
     return await startSpan(this.options.tracer, "getEnvConcurrency", async (span) => {
-      span.setAttribute("env_id", envId);
+      span.setAttribute("env_id", env.envId);
+      span.setAttribute("org_id", env.orgId);
+      span.setAttribute("project_id", env.projectId);
 
       const [currentValue, limitValue, reserveValue] = await Promise.all([
-        this.#getEnvCurrentConcurrency(envId),
-        this.#getEnvConcurrencyLimit(envId),
-        this.#getEnvReserveConcurrency(envId),
+        this.#getEnvCurrentConcurrency(env),
+        this.#getEnvConcurrencyLimit(env),
+        this.#getEnvReserveConcurrency(env),
       ]);
 
       span.setAttribute("current_value", currentValue);
@@ -489,14 +523,14 @@ export class FairDequeuingStrategy implements MarQSFairDequeueStrategy {
       span.setAttribute("consumer_id", consumerId);
       span.setAttribute("parent_queue", parentQueue);
 
-      const valuesWithScores = await this.options.redis.zrangebyscore(
+      const valuesWithScores = await this._redis.zrangebyscore(
         parentQueue,
         "-inf",
         now,
         "WITHSCORES",
         "LIMIT",
         0,
-        this.options.parentQueueLimit
+        this._parentQueueLimit
       );
 
       const result: Array<FairQueue> = [];
@@ -507,6 +541,7 @@ export class FairDequeuingStrategy implements MarQSFairDequeueStrategy {
           age: now - Number(valuesWithScores[i + 1]),
           env: this.options.keys.envIdFromQueue(valuesWithScores[i]),
           org: this.options.keys.orgIdFromQueue(valuesWithScores[i]),
+          project: this.options.keys.projectIdFromQueue(valuesWithScores[i]),
         });
       }
 
@@ -516,33 +551,35 @@ export class FairDequeuingStrategy implements MarQSFairDequeueStrategy {
     });
   }
 
-  async #getEnvConcurrencyLimit(envId: string) {
+  async #getEnvConcurrencyLimit(env: EnvDescriptor) {
     return await startSpan(this.options.tracer, "getEnvConcurrencyLimit", async (span) => {
-      span.setAttribute("env_id", envId);
+      span.setAttribute("env_id", env.envId);
 
-      const key = this.options.keys.envConcurrencyLimitKey(envId);
+      const key = this.options.keys.envConcurrencyLimitKey(env);
 
       const result = await this._cache.concurrencyLimit.swr(key, async () => {
-        const value = await this.options.redis.get(key);
+        const value = await this._redis.get(key);
 
         if (!value) {
-          return this.options.defaultEnvConcurrency;
+          return this._defaultEnvConcurrency;
         }
 
         return Number(value);
       });
 
-      return result.val ?? this.options.defaultEnvConcurrency;
+      return result.val ?? this._defaultEnvConcurrency;
     });
   }
 
-  async #getEnvCurrentConcurrency(envId: string) {
+  async #getEnvCurrentConcurrency(env: EnvDescriptor) {
     return await startSpan(this.options.tracer, "getEnvCurrentConcurrency", async (span) => {
-      span.setAttribute("env_id", envId);
+      span.setAttribute("env_id", env.envId);
+      span.setAttribute("org_id", env.orgId);
+      span.setAttribute("project_id", env.projectId);
 
-      const key = this.options.keys.envCurrentConcurrencyKey(envId);
+      const key = this.options.keys.envCurrentConcurrencyKey(env);
 
-      const result = await this.options.redis.scard(key);
+      const result = await this._redis.scard(key);
 
       span.setAttribute("current_value", result);
 
@@ -550,22 +587,32 @@ export class FairDequeuingStrategy implements MarQSFairDequeueStrategy {
     });
   }
 
-  async #getEnvReserveConcurrency(envId: string) {
+  async #getEnvReserveConcurrency(env: EnvDescriptor) {
     return await startSpan(this.options.tracer, "getEnvReserveConcurrency", async (span) => {
-      span.setAttribute("env_id", envId);
+      span.setAttribute("env_id", env.envId);
+      span.setAttribute("org_id", env.orgId);
+      span.setAttribute("project_id", env.projectId);
 
-      const key = this.options.keys.envReserveConcurrencyKey(envId);
+      const key = this.options.keys.envReserveConcurrencyKey(env);
 
-      const result = await this.options.redis.scard(key);
+      const result = await this._redis.scard(key);
 
       span.setAttribute("current_value", result);
 
       return result;
     });
+  }
+
+  #envDescriptorFromFairQueue(queue: FairQueue): EnvDescriptor {
+    return {
+      envId: queue.env,
+      projectId: queue.project,
+      orgId: queue.org,
+    };
   }
 }
 
-export class NoopFairDequeuingStrategy implements MarQSFairDequeueStrategy {
+export class NoopFairDequeuingStrategy implements RunQueueFairDequeueStrategy {
   async distributeFairQueuesFromParentQueue(
     parentQueue: string,
     consumerId: string

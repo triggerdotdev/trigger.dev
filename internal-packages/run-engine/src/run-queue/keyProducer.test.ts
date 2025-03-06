@@ -326,7 +326,7 @@ describe("KeyProducer", () => {
       },
       "task/task-name"
     );
-    const components = keyProducer.extractComponentsFromQueue(queueKey);
+    const components = keyProducer.descriptorFromQueue(queueKey);
     expect(components).toEqual({
       orgId: "o1234",
       projectId: "p1234",
@@ -349,7 +349,7 @@ describe("KeyProducer", () => {
       "task/task-name",
       "c1234"
     );
-    const components = keyProducer.extractComponentsFromQueue(queueKey);
+    const components = keyProducer.descriptorFromQueue(queueKey);
     expect(components).toEqual({
       orgId: "o1234",
       projectId: "p1234",

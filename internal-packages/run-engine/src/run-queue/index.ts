@@ -1,27 +1,34 @@
-import { context, propagation, Span, SpanKind, SpanOptions, Tracer } from "@opentelemetry/api";
 import {
+  context,
+  propagation,
+  Span,
+  SpanKind,
+  SpanOptions,
+  Tracer,
   SEMATTRS_MESSAGE_ID,
   SEMATTRS_MESSAGING_OPERATION,
   SEMATTRS_MESSAGING_SYSTEM,
-} from "@opentelemetry/semantic-conventions";
+} from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
-import { calculateNextRetryDelay, flattenAttributes } from "@trigger.dev/core/v3";
+import { calculateNextRetryDelay } from "@trigger.dev/core/v3";
 import { type RetryOptions } from "@trigger.dev/core/v3/schemas";
-import { Redis, type Callback, type RedisOptions, type Result } from "ioredis";
 import {
   attributesFromAuthenticatedEnv,
   MinimalAuthenticatedEnvironment,
 } from "../shared/index.js";
-import { RunQueueShortKeyProducer } from "./keyProducer.js";
 import {
   InputPayload,
   OutputPayload,
-  QueueCapacities,
-  QueueRange,
   RunQueueKeyProducer,
-  RunQueuePriorityStrategy,
+  RunQueueFairDequeueStrategy,
 } from "./types.js";
-import { createRedisClient } from "@internal/redis";
+import {
+  createRedisClient,
+  type Redis,
+  type Callback,
+  type RedisOptions,
+  type Result,
+} from "@internal/redis";
 
 const SemanticAttributes = {
   QUEUE: "runqueue.queue",
@@ -38,8 +45,8 @@ export type RunQueueOptions = {
   redis: RedisOptions;
   defaultEnvConcurrency: number;
   windowSize?: number;
-  queuePriorityStrategy: RunQueuePriorityStrategy;
-  envQueuePriorityStrategy: RunQueuePriorityStrategy;
+  keys: RunQueueKeyProducer;
+  queuePriorityStrategy: RunQueueFairDequeueStrategy;
   verbose?: boolean;
   logger: Logger;
   retryOptions?: RetryOptions;
@@ -68,7 +75,7 @@ export class RunQueue {
   private logger: Logger;
   private redis: Redis;
   public keys: RunQueueKeyProducer;
-  private queuePriorityStrategy: RunQueuePriorityStrategy;
+  private queuePriorityStrategy: RunQueueFairDequeueStrategy;
 
   constructor(private readonly options: RunQueueOptions) {
     this.retryOptions = options.retryOptions ?? defaultRetrySettings;
@@ -82,7 +89,7 @@ export class RunQueue {
     });
     this.logger = options.logger;
 
-    this.keys = new RunQueueShortKeyProducer("rq:");
+    this.keys = options.keys;
     this.queuePriorityStrategy = options.queuePriorityStrategy;
 
     this.subscriber = createRedisClient(options.redis, {
@@ -241,36 +248,6 @@ export class RunQueue {
     );
   }
 
-  public async getSharedQueueDetails(masterQueue: string, maxCount: number) {
-    const { range } = await this.queuePriorityStrategy.nextCandidateSelection(
-      masterQueue,
-      "getSharedQueueDetails"
-    );
-    const queues = await this.#getChildQueuesWithScores(masterQueue, range);
-
-    const queuesWithScores = await this.#calculateQueueScores(queues, (queue) =>
-      this.#calculateMessageQueueCapacities(queue)
-    );
-
-    // We need to priority shuffle here to ensure all workers aren't just working on the highest priority queue
-    const result = this.queuePriorityStrategy.chooseQueues(
-      queuesWithScores,
-      masterQueue,
-      "getSharedQueueDetails",
-      range,
-      maxCount
-    );
-
-    return {
-      selectionId: "getSharedQueueDetails",
-      queues,
-      queuesWithScores,
-      nextRange: range,
-      queueCount: queues.length,
-      queueChoice: result,
-    };
-  }
-
   /**
    * Dequeue messages from the master queue
    */
@@ -282,67 +259,99 @@ export class RunQueue {
     return this.#trace(
       "dequeueMessageInSharedQueue",
       async (span) => {
-        // Read the parent queue for matching queues
-        const selectedQueues = await this.#getRandomQueueFromParentQueue(
+        const envQueues = await this.queuePriorityStrategy.distributeFairQueuesFromParentQueue(
           masterQueue,
-          this.options.queuePriorityStrategy,
-          (queue) => this.#calculateMessageQueueCapacities(queue, { checkForDisabled: true }),
-          consumerId,
-          maxCount
+          consumerId
         );
 
-        if (!selectedQueues || selectedQueues.length === 0) {
+        span.setAttribute("environment_count", envQueues.length);
+
+        if (envQueues.length === 0) {
           return [];
         }
 
+        let attemptedEnvs = 0;
+        let attemptedQueues = 0;
+
         const messages: DequeuedMessage[] = [];
-        const remainingMessages = selectedQueues.map((q) => q.size);
-        let currentQueueIndex = 0;
 
+        // Keep track of queues we've tried that didn't return a message
+        const emptyQueues = new Set<string>();
+
+        // Continue until we've hit max count or tried all queues
         while (messages.length < maxCount) {
-          let foundMessage = false;
+          // Calculate how many more messages we need
+          const remainingCount = maxCount - messages.length;
+          if (remainingCount <= 0) break;
 
-          // Try each queue once in this round
-          for (let i = 0; i < selectedQueues.length; i++) {
-            currentQueueIndex = (currentQueueIndex + i) % selectedQueues.length;
+          // Find all available queues across environments that we haven't marked as empty
+          const availableEnvQueues = envQueues
+            .map((env) => ({
+              env: env,
+              queues: env.queues.filter((queue) => !emptyQueues.has(queue)),
+            }))
+            .filter((env) => env.queues.length > 0);
 
-            // Skip if this queue is empty
-            if (remainingMessages[currentQueueIndex] <= 0) continue;
+          if (availableEnvQueues.length === 0) break;
 
-            const selectedQueue = selectedQueues[currentQueueIndex];
-            const queue = selectedQueue.queue;
+          attemptedEnvs += availableEnvQueues.length;
 
-            const message = await this.#callDequeueMessage({
-              messageQueue: queue,
-              concurrencyLimitKey: this.keys.concurrencyLimitKeyFromQueue(queue),
-              currentConcurrencyKey: this.keys.currentConcurrencyKeyFromQueue(queue),
-              envConcurrencyLimitKey: this.keys.envConcurrencyLimitKeyFromQueue(queue),
-              envCurrentConcurrencyKey: this.keys.envCurrentConcurrencyKeyFromQueue(queue),
-              projectCurrentConcurrencyKey: this.keys.projectCurrentConcurrencyKeyFromQueue(queue),
-              messageKeyPrefix: this.keys.messageKeyPrefixFromQueue(queue),
-              envQueueKey: this.keys.envQueueKeyFromQueue(queue),
-              taskCurrentConcurrentKeyPrefix:
-                this.keys.taskIdentifierCurrentConcurrencyKeyPrefixFromQueue(queue),
-            });
+          // Create a dequeue operation for each environment, taking one queue from each
+          const dequeueOperations = availableEnvQueues.map(({ env, queues }) => {
+            const queue = queues[0];
+            attemptedQueues++;
 
+            return {
+              queue,
+              operation: this.#callDequeueMessage({
+                messageQueue: queue,
+                concurrencyLimitKey: this.keys.concurrencyLimitKeyFromQueue(queue),
+                currentConcurrencyKey: this.keys.currentConcurrencyKeyFromQueue(queue),
+                envConcurrencyLimitKey: this.keys.envConcurrencyLimitKeyFromQueue(queue),
+                envCurrentConcurrencyKey: this.keys.envCurrentConcurrencyKeyFromQueue(queue),
+                projectCurrentConcurrencyKey:
+                  this.keys.projectCurrentConcurrencyKeyFromQueue(queue),
+                messageKeyPrefix: this.keys.messageKeyPrefixFromQueue(queue),
+                envQueueKey: this.keys.envQueueKeyFromQueue(queue),
+                taskCurrentConcurrentKeyPrefix:
+                  this.keys.taskIdentifierCurrentConcurrencyKeyPrefixFromQueue(queue),
+              }),
+            };
+          });
+
+          // Execute all dequeue operations in parallel
+          const results = await Promise.all(
+            dequeueOperations.map(async ({ queue, operation }) => {
+              const message = await operation;
+              return { queue, message };
+            })
+          );
+
+          // Process results
+          let foundAnyMessage = false;
+          for (const { queue, message } of results) {
             if (message) {
               messages.push(message);
-              remainingMessages[currentQueueIndex]--;
-              foundMessage = true;
-              break;
+              foundAnyMessage = true;
             } else {
-              // If we failed to get a message, mark this queue as empty
-              remainingMessages[currentQueueIndex] = 0;
+              // Mark this queue as empty
+              emptyQueues.add(queue);
             }
           }
 
-          // If we couldn't get a message from any queue, break
-          if (!foundMessage) break;
+          // If we couldn't get a message from any queue in any env, break
+          if (!foundAnyMessage) break;
+
+          // If we've marked all queues as empty, break
+          const totalQueues = envQueues.reduce((sum, env) => sum + env.queues.length, 0);
+          if (emptyQueues.size >= totalQueues) break;
         }
 
         span.setAttributes({
           [SemanticAttributes.RESULT_COUNT]: messages.length,
           [SemanticAttributes.MASTER_QUEUES]: masterQueue,
+          attempted_environments: attemptedEnvs,
+          attempted_queues: attemptedQueues,
         });
 
         return messages;
@@ -803,167 +812,6 @@ export class RunQueue {
     );
   }
 
-  async #getRandomQueueFromParentQueue(
-    parentQueue: string,
-    queuePriorityStrategy: RunQueuePriorityStrategy,
-    calculateCapacities: (queue: string) => Promise<QueueCapacities>,
-    consumerId: string,
-    maxCount: number
-  ): Promise<
-    | {
-        queue: string;
-        capacities: QueueCapacities;
-        age: number;
-        size: number;
-      }[]
-    | undefined
-  > {
-    return this.#trace(
-      "getRandomQueueFromParentQueue",
-      async (span) => {
-        span.setAttribute("consumerId", consumerId);
-
-        const { range } = await queuePriorityStrategy.nextCandidateSelection(
-          parentQueue,
-          consumerId
-        );
-
-        const queues = await this.#getChildQueuesWithScores(parentQueue, range, span);
-        span.setAttribute("queueCount", queues.length);
-
-        const queuesWithScores = await this.#calculateQueueScores(queues, calculateCapacities);
-        span.setAttribute("queuesWithScoresCount", queuesWithScores.length);
-
-        // We need to priority shuffle here to ensure all workers aren't just working on the highest priority queue
-        const { choices, nextRange } = queuePriorityStrategy.chooseQueues(
-          queuesWithScores,
-          parentQueue,
-          consumerId,
-          range,
-          maxCount
-        );
-
-        span.setAttributes({
-          ...flattenAttributes(queues, "runqueue.queues"),
-        });
-        span.setAttributes({
-          ...flattenAttributes(queuesWithScores, "runqueue.queuesWithScores"),
-        });
-        span.setAttribute("range.offset", range.offset);
-        span.setAttribute("range.count", range.count);
-        span.setAttribute("nextRange.offset", nextRange.offset);
-        span.setAttribute("nextRange.count", nextRange.count);
-
-        if (this.options.verbose || nextRange.offset > 0) {
-          if (Array.isArray(choices)) {
-            this.logger.debug(`[${this.name}] getRandomQueueFromParentQueue`, {
-              queues,
-              queuesWithScores,
-              range,
-              nextRange,
-              queueCount: queues.length,
-              queuesWithScoresCount: queuesWithScores.length,
-              queueChoices: choices,
-              consumerId,
-            });
-          } else {
-            this.logger.debug(`[${this.name}] getRandomQueueFromParentQueue`, {
-              queues,
-              queuesWithScores,
-              range,
-              nextRange,
-              queueCount: queues.length,
-              queuesWithScoresCount: queuesWithScores.length,
-              noQueueChoice: true,
-              consumerId,
-            });
-          }
-        }
-
-        if (Array.isArray(choices)) {
-          span.setAttribute("queueChoices", choices);
-          return queuesWithScores.filter((queue) => choices.includes(queue.queue));
-        } else {
-          span.setAttribute("noQueueChoice", true);
-          return;
-        }
-      },
-      {
-        kind: SpanKind.CONSUMER,
-        attributes: {
-          [SEMATTRS_MESSAGING_OPERATION]: "receive",
-          [SEMATTRS_MESSAGING_SYSTEM]: "runqueue",
-          [SemanticAttributes.MASTER_QUEUES]: parentQueue,
-        },
-      }
-    );
-  }
-
-  // Calculate the weights of the queues based on the age and the capacity
-  async #calculateQueueScores(
-    queues: Array<{ value: string; score: number }>,
-    calculateCapacities: (queue: string) => Promise<QueueCapacities>
-  ) {
-    const now = Date.now();
-
-    const queueScores = await Promise.all(
-      queues.map(async (queue) => {
-        return {
-          queue: queue.value,
-          capacities: await calculateCapacities(queue.value),
-          age: now - queue.score,
-          size: await this.redis.zcard(queue.value),
-        };
-      })
-    );
-
-    return queueScores;
-  }
-
-  async #calculateMessageQueueCapacities(queue: string, options?: { checkForDisabled?: boolean }) {
-    return await this.#callCalculateMessageCapacities({
-      currentConcurrencyKey: this.keys.currentConcurrencyKeyFromQueue(queue),
-      currentEnvConcurrencyKey: this.keys.envCurrentConcurrencyKeyFromQueue(queue),
-      concurrencyLimitKey: this.keys.concurrencyLimitKeyFromQueue(queue),
-      envConcurrencyLimitKey: this.keys.envConcurrencyLimitKeyFromQueue(queue),
-      disabledConcurrencyLimitKey: options?.checkForDisabled
-        ? this.keys.disabledConcurrencyLimitKeyFromQueue(queue)
-        : undefined,
-    });
-  }
-
-  async #getChildQueuesWithScores(
-    key: string,
-    range: QueueRange,
-    span?: Span
-  ): Promise<Array<{ value: string; score: number }>> {
-    const valuesWithScores = await this.redis.zrangebyscore(
-      key,
-      "-inf",
-      Date.now(),
-      "WITHSCORES",
-      "LIMIT",
-      range.offset,
-      range.count
-    );
-
-    span?.setAttribute("zrangebyscore.valuesWithScores.rawLength", valuesWithScores.length);
-    span?.setAttributes({
-      ...flattenAttributes(valuesWithScores, "zrangebyscore.valuesWithScores.rawValues"),
-    });
-
-    const result: Array<{ value: string; score: number }> = [];
-
-    for (let i = 0; i < valuesWithScores.length; i += 2) {
-      result.push({
-        value: valuesWithScores[i],
-        score: Number(valuesWithScores[i + 1]),
-      });
-    }
-
-    return result;
-  }
-
   async #callEnqueueMessage(message: OutputPayload, masterQueues: string[]) {
     const concurrencyKey = this.keys.currentConcurrencyKeyFromQueue(message.queue);
     const envConcurrencyKey = this.keys.envCurrentConcurrencyKeyFromQueue(message.queue);
@@ -1123,50 +971,6 @@ export class RunQueue {
       JSON.stringify(masterQueues),
       this.options.redis.keyPrefix ?? ""
     );
-  }
-
-  async #callCalculateMessageCapacities({
-    currentConcurrencyKey,
-    currentEnvConcurrencyKey,
-    concurrencyLimitKey,
-    envConcurrencyLimitKey,
-    disabledConcurrencyLimitKey,
-  }: {
-    currentConcurrencyKey: string;
-    currentEnvConcurrencyKey: string;
-    concurrencyLimitKey: string;
-    envConcurrencyLimitKey: string;
-    disabledConcurrencyLimitKey: string | undefined;
-  }): Promise<QueueCapacities> {
-    const capacities = disabledConcurrencyLimitKey
-      ? await this.redis.calculateMessageQueueCapacitiesWithDisabling(
-          currentConcurrencyKey,
-          currentEnvConcurrencyKey,
-          concurrencyLimitKey,
-          envConcurrencyLimitKey,
-          disabledConcurrencyLimitKey,
-          String(this.options.defaultEnvConcurrency)
-        )
-      : await this.redis.calculateMessageQueueCapacities(
-          currentConcurrencyKey,
-          currentEnvConcurrencyKey,
-          concurrencyLimitKey,
-          envConcurrencyLimitKey,
-          String(this.options.defaultEnvConcurrency)
-        );
-
-    const queueCurrent = Number(capacities[0]);
-    const envLimit = Number(capacities[3]);
-    const isOrgEnabled = Boolean(capacities[4]);
-    const queueLimit = capacities[1]
-      ? Number(capacities[1])
-      : Math.min(envLimit, isOrgEnabled ? Infinity : 0);
-    const envCurrent = Number(capacities[2]);
-
-    return {
-      queue: { current: queueCurrent, limit: queueLimit },
-      env: { current: envCurrent, limit: envLimit },
-    };
   }
 
   #callUpdateGlobalConcurrencyLimits({
@@ -1487,61 +1291,6 @@ redis.call('SADD', taskCurrentConcurrencyKey, messageId)
 `,
     });
 
-    this.redis.defineCommand("calculateMessageQueueCapacitiesWithDisabling", {
-      numberOfKeys: 5,
-      lua: `
--- Keys
-local currentConcurrencyKey = KEYS[1]
-local currentEnvConcurrencyKey = KEYS[2]
-local concurrencyLimitKey = KEYS[3]
-local envConcurrencyLimitKey = KEYS[4]
-local disabledConcurrencyLimitKey = KEYS[5]
-
--- Args
-local defaultEnvConcurrencyLimit = tonumber(ARGV[1])
-
--- Check if disabledConcurrencyLimitKey exists
-local orgIsEnabled
-if redis.call('EXISTS', disabledConcurrencyLimitKey) == 1 then
-  orgIsEnabled = false
-else
-  orgIsEnabled = true
-end
-
-local currentEnvConcurrency = tonumber(redis.call('SCARD', currentEnvConcurrencyKey) or '0')
-local envConcurrencyLimit = tonumber(redis.call('GET', envConcurrencyLimitKey) or defaultEnvConcurrencyLimit)
-
-local currentConcurrency = tonumber(redis.call('SCARD', currentConcurrencyKey) or '0')
-local concurrencyLimit = redis.call('GET', concurrencyLimitKey)
-
--- Return current capacity and concurrency limits for the queue, env, org
-return { currentConcurrency, concurrencyLimit, currentEnvConcurrency, envConcurrencyLimit, orgIsEnabled }
-      `,
-    });
-
-    this.redis.defineCommand("calculateMessageQueueCapacities", {
-      numberOfKeys: 4,
-      lua: `
--- Keys:
-local currentConcurrencyKey = KEYS[1]
-local currentEnvConcurrencyKey = KEYS[2]
-local concurrencyLimitKey = KEYS[3]
-local envConcurrencyLimitKey = KEYS[4]
-
--- Args
-local defaultEnvConcurrencyLimit = tonumber(ARGV[1])
-
-local currentEnvConcurrency = tonumber(redis.call('SCARD', currentEnvConcurrencyKey) or '0')
-local envConcurrencyLimit = tonumber(redis.call('GET', envConcurrencyLimitKey) or defaultEnvConcurrencyLimit)
-
-local currentConcurrency = tonumber(redis.call('SCARD', currentConcurrencyKey) or '0')
-local concurrencyLimit = redis.call('GET', concurrencyLimitKey)
-
--- Return current capacity and concurrency limits for the queue, env, org
-return { currentConcurrency, concurrencyLimit, currentEnvConcurrency, envConcurrencyLimit, true }
-      `,
-    });
-
     this.redis.defineCommand("updateGlobalConcurrencyLimits", {
       numberOfKeys: 1,
       lua: `
@@ -1665,25 +1414,6 @@ declare module "ioredis" {
       masterQueues: string,
       callback?: Callback<void>
     ): Result<void, Context>;
-
-    calculateMessageQueueCapacities(
-      currentConcurrencyKey: string,
-      currentEnvConcurrencyKey: string,
-      concurrencyLimitKey: string,
-      envConcurrencyLimitKey: string,
-      defaultEnvConcurrencyLimit: string,
-      callback?: Callback<number[]>
-    ): Result<[number, number, number, number, boolean], Context>;
-
-    calculateMessageQueueCapacitiesWithDisabling(
-      currentConcurrencyKey: string,
-      currentEnvConcurrencyKey: string,
-      concurrencyLimitKey: string,
-      envConcurrencyLimitKey: string,
-      disabledConcurrencyLimitKey: string,
-      defaultEnvConcurrencyLimit: string,
-      callback?: Callback<number[]>
-    ): Result<[number, number, number, number, boolean], Context>;
 
     updateGlobalConcurrencyLimits(
       envConcurrencyLimitKey: string,

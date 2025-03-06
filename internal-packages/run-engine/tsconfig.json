@@ -2,8 +2,8 @@
   "compilerOptions": {
     "target": "ES2019",
     "lib": ["ES2019", "DOM", "DOM.Iterable", "DOM.AsyncIterable"],
-    "module": "CommonJS",
-    "moduleResolution": "Node",
+    "module": "Node16",
+    "moduleResolution": "Node16",
     "moduleDetection": "force",
     "verbatimModuleSyntax": false,
     "types": ["vitest/globals"],

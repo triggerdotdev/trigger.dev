@@ -1,4 +1,4 @@
-import { Attributes } from "@opentelemetry/api";
+import { Attributes } from "@internal/tracing";
 import { Prisma } from "@trigger.dev/database";
 
 export type AuthenticatedEnvironment = Prisma.RuntimeEnvironmentGetPayload<{
