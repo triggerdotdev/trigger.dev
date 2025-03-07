@@ -23,6 +23,12 @@ export class KubernetesWorkloadManager implements WorkloadManager {
 
   constructor(private opts: WorkloadManagerOptions) {
     this.k8s = createK8sApi();
+
+    if (opts.workloadApiDomain) {
+      this.logger.warn("[KubernetesWorkloadManager] ⚠️ Custom workload API domain", {
+        domain: opts.workloadApiDomain,
+      });
+    }
   }
 
   async create(opts: WorkloadManagerCreateOptions) {
@@ -72,8 +78,26 @@ export class KubernetesWorkloadManager implements WorkloadManager {
                     value: opts.snapshotFriendlyId,
                   },
                   {
-                    name: "TRIGGER_WORKER_API_URL",
-                    value: this.opts.workerApiUrl,
+                    name: "TRIGGER_SUPERVISOR_API_PROTOCOL",
+                    value: this.opts.workloadApiProtocol,
+                  },
+                  {
+                    name: "TRIGGER_SUPERVISOR_API_PORT",
+                    value: `${this.opts.workloadApiPort}`,
+                  },
+                  {
+                    name: "TRIGGER_SUPERVISOR_API_DOMAIN",
+                    ...(this.opts.workloadApiDomain
+                      ? {
+                          value: this.opts.workloadApiDomain,
+                        }
+                      : {
+                          valueFrom: {
+                            fieldRef: {
+                              fieldPath: "status.hostIP",
+                            },
+                          },
+                        }),
                   },
                   {
                     name: "TRIGGER_WORKER_INSTANCE_NAME",

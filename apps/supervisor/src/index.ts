@@ -29,7 +29,9 @@ class ManagedSupervisor {
   private readonly warmStartUrl = env.TRIGGER_WARM_START_URL;
 
   constructor() {
-    const workerApiUrl = `http://${env.WORKER_HOST_IP}:${env.TRIGGER_WORKLOAD_API_PORT_EXTERNAL}`;
+    const workloadApiProtocol = env.TRIGGER_WORKLOAD_API_PROTOCOL;
+    const workloadApiDomain = env.TRIGGER_WORKLOAD_API_DOMAIN;
+    const workloadApiPortExternal = env.TRIGGER_WORKLOAD_API_PORT_EXTERNAL;
 
     if (this.warmStartUrl) {
       this.logger.log("[ManagedWorker] 🔥 Warm starts enabled", {
@@ -40,13 +42,17 @@ class ManagedSupervisor {
     if (this.isKubernetes) {
       this.resourceMonitor = new KubernetesResourceMonitor(createK8sApi(), "");
       this.workloadManager = new KubernetesWorkloadManager({
-        workerApiUrl,
+        workloadApiProtocol,
+        workloadApiDomain,
+        workloadApiPort: workloadApiPortExternal,
         warmStartUrl: this.warmStartUrl,
       });
     } else {
       this.resourceMonitor = new DockerResourceMonitor(new Docker());
       this.workloadManager = new DockerWorkloadManager({
-        workerApiUrl,
+        workloadApiProtocol,
+        workloadApiDomain,
+        workloadApiPort: workloadApiPortExternal,
         warmStartUrl: this.warmStartUrl,
       });
     }
@@ -57,6 +63,8 @@ class ManagedSupervisor {
       instanceName: env.TRIGGER_WORKER_INSTANCE_NAME,
       managedWorkerSecret: env.MANAGED_WORKER_SECRET,
       dequeueIntervalMs: env.TRIGGER_DEQUEUE_INTERVAL_MS,
+      queueConsumerEnabled: env.TRIGGER_DEQUEUE_ENABLED,
+      runNotificationsEnabled: env.TRIGGER_WORKLOAD_API_ENABLED,
       preDequeue: async () => {
         if (this.isKubernetes) {
           // TODO: Test k8s resource monitor and remove this
@@ -180,7 +188,7 @@ class ManagedSupervisor {
 
     // Responds to workload requests only
     this.workloadServer = new WorkloadServer({
-      port: env.TRIGGER_WORKLOAD_API_PORT,
+      port: env.TRIGGER_WORKLOAD_API_PORT_INTERNAL,
       workerClient: this.workerSession.httpClient,
       checkpointClient: this.checkpointClient,
     });
