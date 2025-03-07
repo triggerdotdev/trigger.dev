@@ -27,6 +27,7 @@ import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
 import { ProjectParamSchema, v3RunsPath } from "~/utils/pathBuilder";
 import { engine } from "~/v3/runEngine.server";
+import { SpinnerWhite } from "~/components/primitives/Spinner";
 
 const CompleteWaitpointFormData = z.discriminatedUnion("type", [
   z.object({
@@ -275,7 +276,7 @@ function CompleteDateTimeWaitpointForm({
           variant="secondary/medium"
           type="submit"
           disabled={isLoading}
-          LeadingIcon={isLoading ? "spinner" : undefined}
+          LeadingIcon={isLoading ? SpinnerWhite : undefined}
         >
           {isLoading ? "Completing…" : "Skip waitpoint"}
         </Button>
@@ -365,7 +366,7 @@ function CompleteManualWaitpointForm({ waitpoint }: { waitpoint: { friendlyId: s
             variant="secondary/medium"
             type="submit"
             disabled={isLoading}
-            LeadingIcon={isLoading ? "spinner" : undefined}
+            LeadingIcon={isLoading ? SpinnerWhite : undefined}
           >
             {isLoading ? "Completing…" : "Complete waitpoint"}
           </Button>
@@ -401,7 +402,7 @@ export function ForceTimeout({ waitpoint }: { waitpoint: { friendlyId: string } 
         variant="tertiary/small"
         type="submit"
         disabled={isLoading}
-        LeadingIcon={isLoading ? "spinner" : undefined}
+        LeadingIcon={isLoading ? SpinnerWhite : undefined}
       >
         {isLoading ? "Forcing timeout…" : "Force timeout"}
       </Button>
