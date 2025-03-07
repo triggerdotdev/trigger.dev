@@ -246,7 +246,17 @@ class ManagedSupervisor {
   async start() {
     this.logger.log("[ManagedWorker] Starting up");
 
-    await this.workloadServer.start();
+    if (env.TRIGGER_WORKLOAD_API_ENABLED) {
+      this.logger.log("[ManagedWorker] Workload API enabled", {
+        protocol: env.TRIGGER_WORKLOAD_API_PROTOCOL,
+        domain: env.TRIGGER_WORKLOAD_API_DOMAIN,
+        port: env.TRIGGER_WORKLOAD_API_PORT_INTERNAL,
+      });
+      await this.workloadServer.start();
+    } else {
+      this.logger.warn("[ManagedWorker] Workload API disabled");
+    }
+
     await this.workerSession.start();
 
     await this.httpServer.start();
