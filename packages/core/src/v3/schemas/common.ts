@@ -1,5 +1,8 @@
 import { z } from "zod";
 import { DeserializedJsonSchema } from "../../schemas/json.js";
+import type { RuntimeEnvironmentType as DBRuntimeEnvironmentType } from "@trigger.dev/database";
+
+export type Enum<T extends string> = { [K in T]: K };
 
 export const RunMetadataUpdateOperation = z.object({
   type: z.literal("update"),
@@ -411,11 +414,16 @@ export const SerializedError = z.object({
 
 export type SerializedError = z.infer<typeof SerializedError>;
 
-export const RuntimeEnvironmentTypeSchema = z.enum([
-  "PRODUCTION",
-  "STAGING",
-  "DEVELOPMENT",
-  "PREVIEW",
-]);
+export const RuntimeEnvironmentType = {
+  PRODUCTION: "PRODUCTION",
+  STAGING: "STAGING",
+  DEVELOPMENT: "DEVELOPMENT",
+  PREVIEW: "PREVIEW",
+} satisfies Enum<DBRuntimeEnvironmentType>;
 
-export type RuntimeEnvironmentType = z.infer<typeof RuntimeEnvironmentTypeSchema>;
+export type RuntimeEnvironmentType =
+  (typeof RuntimeEnvironmentType)[keyof typeof RuntimeEnvironmentType];
+
+export const RuntimeEnvironmentTypeSchema = z.enum(
+  Object.values(RuntimeEnvironmentType) as [DBRuntimeEnvironmentType]
+);
