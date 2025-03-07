@@ -2,27 +2,41 @@
   "name": "@internal/run-engine",
   "private": true,
   "version": "0.0.1",
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "type": "module",
+  "exports": {
+    ".": {
+      "@triggerdotdev/source": "./src/index.ts",
+      "import": "./dist/src/index.js",
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    }
+  },
   "dependencies": {
     "@internal/redis": "workspace:*",
     "@internal/redis-worker": "workspace:*",
-    "@opentelemetry/api": "^1.9.0",
-    "@opentelemetry/semantic-conventions": "^1.27.0",
+    "@internal/tracing": "workspace:*",
     "@trigger.dev/core": "workspace:*",
     "@trigger.dev/database": "workspace:*",
     "assert-never": "^1.2.1",
-    "ioredis": "^5.3.2",
     "nanoid": "^3.3.4",
     "redlock": "5.0.0-beta.2",
-    "zod": "3.23.8"
+    "zod": "3.23.8",
+    "@unkey/cache": "^1.5.0",
+    "seedrandom": "^3.0.5"
   },
   "devDependencies": {
     "@internal/testcontainers": "workspace:*",
-    "vitest": "^1.4.0"
+    "vitest": "^1.4.0",
+    "@types/seedrandom": "^3.0.8",
+    "rimraf": "6.0.1"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit",
-    "test": "vitest --sequence.concurrent=false"
+    "clean": "rimraf dist",
+    "typecheck": "tsc --noEmit -p tsconfig.build.json",
+    "test": "vitest --sequence.concurrent=false --no-file-parallelism",
+    "build": "pnpm run clean && tsc -p tsconfig.build.json",
+    "dev": "tsc --watch  -p tsconfig.build.json"
   }
 }

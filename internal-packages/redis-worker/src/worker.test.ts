@@ -4,7 +4,6 @@ import { describe } from "node:test";
 import { expect } from "vitest";
 import { z } from "zod";
 import { Worker } from "./worker.js";
-import Redis from "ioredis";
 import { createRedisClient } from "@internal/redis";
 
 describe("Worker", () => {

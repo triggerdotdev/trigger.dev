@@ -1,6 +1,6 @@
 import { TypedResponse } from "@remix-run/server-runtime";
-import { assertExhaustive } from "@trigger.dev/core";
-import { RunId } from "@trigger.dev/core/v3/apps";
+import { assertExhaustive } from "@trigger.dev/core/utils";
+import { RunId } from "@trigger.dev/core/v3/isomorphic";
 import {
   WorkerApiDebugLogBody,
   WorkerApiRunAttemptStartResponseBody,

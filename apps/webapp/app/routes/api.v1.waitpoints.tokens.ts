@@ -3,7 +3,7 @@ import {
   CreateWaitpointTokenRequestBody,
   CreateWaitpointTokenResponseBody,
 } from "@trigger.dev/core/v3";
-import { WaitpointId } from "@trigger.dev/core/v3/apps";
+import { WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { parseDelay } from "~/utils/delays";
 import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";

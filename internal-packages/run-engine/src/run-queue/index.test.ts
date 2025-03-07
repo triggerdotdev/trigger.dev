@@ -1,19 +1,17 @@
 import { redisTest } from "@internal/testcontainers";
-import { trace } from "@opentelemetry/api";
+import { trace } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
-import Redis from "ioredis";
 import { describe } from "node:test";
 import { setTimeout } from "node:timers/promises";
 import { RunQueue } from "./index.js";
-import { SimpleWeightedChoiceStrategy } from "./simpleWeightedPriorityStrategy.js";
 import { InputPayload } from "./types.js";
 import { createRedisClient } from "@internal/redis";
+import { FairQueueSelectionStrategy } from "./fairQueueSelectionStrategy.js";
+import { RunQueueFullKeyProducer } from "./keyProducer.js";
 
 const testOptions = {
   name: "rq",
   tracer: trace.getTracer("rq"),
-  queuePriorityStrategy: new SimpleWeightedChoiceStrategy({ queueSelectionCount: 36 }),
-  envQueuePriorityStrategy: new SimpleWeightedChoiceStrategy({ queueSelectionCount: 12 }),
   workers: 1,
   defaultEnvConcurrency: 25,
   enableRebalancing: false,
@@ -25,6 +23,7 @@ const testOptions = {
     maxTimeoutInMs: 1_000,
     randomize: true,
   },
+  keys: new RunQueueFullKeyProducer(),
 };
 
 const authenticatedEnvProd = {
@@ -71,6 +70,14 @@ describe("RunQueue", () => {
   redisTest("Get/set Queue concurrency limit", { timeout: 15_000 }, async ({ redisContainer }) => {
     const queue = new RunQueue({
       ...testOptions,
+      queueSelectionStrategy: new FairQueueSelectionStrategy({
+        redis: {
+          keyPrefix: "runqueue:test:",
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+        },
+        keys: testOptions.keys,
+      }),
       redis: {
         keyPrefix: "runqueue:test:",
         host: redisContainer.getHost(),
@@ -113,6 +120,14 @@ describe("RunQueue", () => {
   redisTest("Update env concurrency limits", { timeout: 5_000 }, async ({ redisContainer }) => {
     const queue = new RunQueue({
       ...testOptions,
+      queueSelectionStrategy: new FairQueueSelectionStrategy({
+        redis: {
+          keyPrefix: "runqueue:test:",
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+        },
+        keys: testOptions.keys,
+      }),
       redis: {
         keyPrefix: "runqueue:test:",
         host: redisContainer.getHost(),
@@ -145,6 +160,14 @@ describe("RunQueue", () => {
     async ({ redisContainer }) => {
       const queue = new RunQueue({
         ...testOptions,
+        queueSelectionStrategy: new FairQueueSelectionStrategy({
+          redis: {
+            keyPrefix: "runqueue:test:",
+            host: redisContainer.getHost(),
+            port: redisContainer.getPort(),
+          },
+          keys: testOptions.keys,
+        }),
         redis: {
           keyPrefix: "runqueue:test:",
           host: redisContainer.getHost(),
@@ -255,6 +278,14 @@ describe("RunQueue", () => {
     async ({ redisContainer }) => {
       const queue = new RunQueue({
         ...testOptions,
+        queueSelectionStrategy: new FairQueueSelectionStrategy({
+          redis: {
+            keyPrefix: "runqueue:test:",
+            host: redisContainer.getHost(),
+            port: redisContainer.getPort(),
+          },
+          keys: testOptions.keys,
+        }),
         redis: {
           keyPrefix: "runqueue:test:",
           host: redisContainer.getHost(),
@@ -358,6 +389,14 @@ describe("RunQueue", () => {
     async ({ redisContainer }) => {
       const queue = new RunQueue({
         ...testOptions,
+        queueSelectionStrategy: new FairQueueSelectionStrategy({
+          redis: {
+            keyPrefix: "runqueue:test:",
+            host: redisContainer.getHost(),
+            port: redisContainer.getPort(),
+          },
+          keys: testOptions.keys,
+        }),
         redis: {
           keyPrefix: "runqueue:test:",
           host: redisContainer.getHost(),
@@ -369,6 +408,7 @@ describe("RunQueue", () => {
         // Create 20 messages with different runIds and some with different queues
         const messages = Array.from({ length: 20 }, (_, i) => ({
           ...messageProd,
+          taskIdentifier: i < 15 ? "task/my-task" : "task/other-task", // Mix up the queues
           runId: `r${i + 1}`,
           queue: i < 15 ? "task/my-task" : "task/other-task", // Mix up the queues
         }));
@@ -422,46 +462,17 @@ describe("RunQueue", () => {
     }
   );
 
-  redisTest("Get shared queue details", { timeout: 5_000 }, async ({ redisContainer }) => {
-    const queue = new RunQueue({
-      ...testOptions,
-      redis: {
-        keyPrefix: "runqueue:test:",
-        host: redisContainer.getHost(),
-        port: redisContainer.getPort(),
-      },
-    });
-
-    try {
-      const result = await queue.getSharedQueueDetails("main", 10);
-      expect(result.selectionId).toBe("getSharedQueueDetails");
-      expect(result.queueCount).toBe(0);
-      expect(result.queueChoice.choices).toStrictEqual({ abort: true });
-
-      await queue.enqueueMessage({
-        env: authenticatedEnvProd,
-        message: messageProd,
-        masterQueues: "main",
-      });
-
-      const result2 = await queue.getSharedQueueDetails("main", 10);
-      expect(result2.selectionId).toBe("getSharedQueueDetails");
-      expect(result2.queueCount).toBe(1);
-      expect(result2.queues[0].score).toBe(messageProd.timestamp);
-      if (!Array.isArray(result2.queueChoice.choices)) {
-        throw new Error("Expected queueChoice.choices to be an array");
-      }
-      expect(result2.queueChoice.choices[0]).toBe(
-        "{org:o1234}:proj:p1234:env:e1234:queue:task/my-task"
-      );
-    } finally {
-      await queue.quit();
-    }
-  });
-
   redisTest("Acking", { timeout: 5_000 }, async ({ redisContainer, redisOptions }) => {
     const queue = new RunQueue({
       ...testOptions,
+      queueSelectionStrategy: new FairQueueSelectionStrategy({
+        redis: {
+          keyPrefix: "runqueue:test:",
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+        },
+        keys: testOptions.keys,
+      }),
       redis: {
         keyPrefix: "runqueue:test:",
         host: redisContainer.getHost(),
@@ -538,6 +549,14 @@ describe("RunQueue", () => {
   redisTest("Ack (before dequeue)", { timeout: 5_000 }, async ({ redisContainer }) => {
     const queue = new RunQueue({
       ...testOptions,
+      queueSelectionStrategy: new FairQueueSelectionStrategy({
+        redis: {
+          keyPrefix: "runqueue:test:",
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+        },
+        keys: testOptions.keys,
+      }),
       redis: {
         keyPrefix: "runqueue:test:",
         host: redisContainer.getHost(),
@@ -592,6 +611,14 @@ describe("RunQueue", () => {
   redisTest("Nacking", { timeout: 15_000 }, async ({ redisContainer, redisOptions }) => {
     const queue = new RunQueue({
       ...testOptions,
+      queueSelectionStrategy: new FairQueueSelectionStrategy({
+        redis: {
+          keyPrefix: "runqueue:test:",
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+        },
+        keys: testOptions.keys,
+      }),
       redis: {
         keyPrefix: "runqueue:test:",
         host: redisContainer.getHost(),
@@ -683,6 +710,14 @@ describe("RunQueue", () => {
     async ({ redisContainer, redisOptions }) => {
       const queue = new RunQueue({
         ...testOptions,
+        queueSelectionStrategy: new FairQueueSelectionStrategy({
+          redis: {
+            keyPrefix: "runqueue:test:",
+            host: redisContainer.getHost(),
+            port: redisContainer.getPort(),
+          },
+          keys: testOptions.keys,
+        }),
         redis: {
           keyPrefix: "runqueue:test:",
           host: redisContainer.getHost(),
@@ -797,6 +832,14 @@ describe("RunQueue", () => {
       retryOptions: {
         maxAttempts: 1,
       },
+      queueSelectionStrategy: new FairQueueSelectionStrategy({
+        redis: {
+          keyPrefix: "runqueue:test:",
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+        },
+        keys: testOptions.keys,
+      }),
       redis: {
         keyPrefix: "runqueue:test:",
         host: redisContainer.getHost(),

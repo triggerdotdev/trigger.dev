@@ -1,4 +1,4 @@
-import { Prettify } from "@trigger.dev/core";
+import type { Prettify } from "@trigger.dev/core";
 import { TaskRun } from "@trigger.dev/database";
 import { SyncedShapeData, useSyncedShape } from "./useSyncedShape";
 

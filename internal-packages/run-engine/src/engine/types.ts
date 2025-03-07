@@ -1,9 +1,10 @@
 import { type WorkerConcurrencyOptions } from "@internal/redis-worker";
-import { Tracer } from "@opentelemetry/api";
+import { Tracer } from "@internal/tracing";
 import { MachinePreset, MachinePresetName, QueueOptions, RetryOptions } from "@trigger.dev/core/v3";
 import { PrismaClient } from "@trigger.dev/database";
-import { type RedisOptions } from "ioredis";
-import { MinimalAuthenticatedEnvironment } from "../shared";
+import { type RedisOptions } from "@internal/redis";
+import { MinimalAuthenticatedEnvironment } from "../shared/index.js";
+import { FairQueueSelectionStrategyOptions } from "../run-queue/fairQueueSelectionStrategy.js";
 
 export type RunEngineOptions = {
   prisma: PrismaClient;
@@ -21,6 +22,10 @@ export type RunEngineOptions = {
     redis: RedisOptions;
     retryOptions?: RetryOptions;
     defaultEnvConcurrency?: number;
+    queueSelectionStrategyOptions?: Pick<
+      FairQueueSelectionStrategyOptions,
+      "parentQueueLimit" | "tracer" | "biases" | "reuseSnapshotCount" | "maximumEnvCount"
+    >;
   };
   runLock: {
     redis: RedisOptions;

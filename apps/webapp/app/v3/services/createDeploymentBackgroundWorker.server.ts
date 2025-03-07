@@ -9,7 +9,7 @@ import {
   syncDeclarativeSchedules,
 } from "./createBackgroundWorker.server";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
-import { BackgroundWorkerId } from "@trigger.dev/core/v3/apps";
+import { BackgroundWorkerId } from "@trigger.dev/core/v3/isomorphic";
 
 export class CreateDeploymentBackgroundWorkerService extends BaseService {
   public async call(

@@ -2,7 +2,7 @@ import {
   CURRENT_DEPLOYMENT_LABEL,
   generateFriendlyId,
   sanitizeQueueName,
-} from "@trigger.dev/core/v3/apps";
+} from "@trigger.dev/core/v3/isomorphic";
 import { MachineConfig, RetryOptions } from "@trigger.dev/core/v3/schemas";
 import {
   BackgroundWorkerTask,

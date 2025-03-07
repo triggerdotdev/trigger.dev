@@ -5,7 +5,7 @@ import {
   PrismaClientOrTransaction,
   WorkerDeployment,
 } from "@trigger.dev/database";
-import { CURRENT_DEPLOYMENT_LABEL } from "@trigger.dev/core/v3/apps";
+import { CURRENT_DEPLOYMENT_LABEL } from "@trigger.dev/core/v3/isomorphic";
 
 type RunWithMininimalEnvironment = Prisma.TaskRunGetPayload<{
   include: {

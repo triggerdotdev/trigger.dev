@@ -8,7 +8,7 @@ import { BaseService } from "./baseService.server";
 import { CreateCheckpointRestoreEventService } from "./createCheckpointRestoreEvent.server";
 import { ResumeBatchRunService } from "./resumeBatchRun.server";
 import { ResumeDependentParentsService } from "./resumeDependentParents.server";
-import { CheckpointId } from "@trigger.dev/core/v3/apps";
+import { CheckpointId } from "@trigger.dev/core/v3/isomorphic";
 
 export class CreateCheckpointService extends BaseService {
   public async call(

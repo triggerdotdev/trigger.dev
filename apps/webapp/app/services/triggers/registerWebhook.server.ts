@@ -6,7 +6,7 @@ import { Prisma, WebhookEnvironment } from "@trigger.dev/database";
 import { ulid } from "../ulid.server";
 import { getSecretStore } from "../secrets/secretStore.server";
 import { z } from "zod";
-import { httpEndpointUrl } from "../httpendpoint/HandleHttpEndpointService";
+import { httpEndpointUrl } from "../httpendpoint/HandleHttpEndpointService.server";
 import { isEqual } from "ohash";
 
 type ExtendedWebhook = Prisma.WebhookGetPayload<{

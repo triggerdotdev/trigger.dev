@@ -4,13 +4,15 @@ import {
   setupAuthenticatedEnvironment,
   setupBackgroundWorker,
 } from "@internal/testcontainers";
-import { trace } from "@opentelemetry/api";
+import { trace } from "@internal/tracing";
 import { expect } from "vitest";
 import { RunEngine } from "../index.js";
 import { setTimeout } from "node:timers/promises";
 
+vi.setConfig({ testTimeout: 60_000 });
+
 describe("RunEngine triggerAndWait", () => {
-  containerTest("triggerAndWait", { timeout: 15_000 }, async ({ prisma, redisOptions }) => {
+  containerTest("triggerAndWait", async ({ prisma, redisOptions }) => {
     //create environment
     const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
@@ -198,7 +200,6 @@ describe("RunEngine triggerAndWait", () => {
   /** This happens if you `triggerAndWait` with an idempotencyKey if that run is in progress  */
   containerTest(
     "triggerAndWait two runs with shared awaited child",
-    { timeout: 15_000 },
     async ({ prisma, redisOptions }) => {
       //create environment
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");

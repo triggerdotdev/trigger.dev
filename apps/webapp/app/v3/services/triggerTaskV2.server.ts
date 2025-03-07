@@ -6,7 +6,12 @@ import {
   SemanticInternalAttributes,
   TriggerTaskRequestBody,
 } from "@trigger.dev/core/v3";
-import { BatchId, RunId, sanitizeQueueName, stringifyDuration } from "@trigger.dev/core/v3/apps";
+import {
+  BatchId,
+  RunId,
+  sanitizeQueueName,
+  stringifyDuration,
+} from "@trigger.dev/core/v3/isomorphic";
 import { Prisma, TaskRun } from "@trigger.dev/database";
 import { env } from "~/env.server";
 import { createTag, MAX_TAGS_PER_RUN } from "~/models/taskRunTag.server";

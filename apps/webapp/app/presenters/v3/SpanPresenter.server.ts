@@ -11,7 +11,7 @@ import { eventRepository } from "~/v3/eventRepository.server";
 import { machinePresetFromName } from "~/v3/machinePresets.server";
 import { FINAL_ATTEMPT_STATUSES, isFailedRunStatus, isFinalRunStatus } from "~/v3/taskStatus";
 import { BasePresenter } from "./basePresenter.server";
-import { getMaxDuration } from "@trigger.dev/core/v3/apps";
+import { getMaxDuration } from "@trigger.dev/core/v3/isomorphic";
 import { logger } from "~/services/logger.server";
 import { getTaskEventStoreTableForRun, TaskEventStoreTable } from "~/v3/taskEventStore.server";
 import { Pi } from "lucide-react";

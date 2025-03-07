@@ -1,5 +1,5 @@
 import { json, TypedResponse } from "@remix-run/server-runtime";
-import { RunId } from "@trigger.dev/core/v3/apps";
+import { RunId } from "@trigger.dev/core/v3/isomorphic";
 import { WorkerApiRunLatestSnapshotResponseBody } from "@trigger.dev/core/v3/workers";
 import { z } from "zod";
 import { prisma } from "~/db.server";

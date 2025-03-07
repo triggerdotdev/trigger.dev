@@ -419,6 +419,12 @@ const EnvironmentSchema = z.object({
   RUN_ENGINE_TIMEOUT_EXECUTING: z.coerce.number().int().default(60_000),
   RUN_ENGINE_TIMEOUT_EXECUTING_WITH_WAITPOINTS: z.coerce.number().int().default(60_000),
   RUN_ENGINE_DEBUG_WORKER_NOTIFICATIONS: z.coerce.boolean().default(false),
+  RUN_ENGINE_PARENT_QUEUE_LIMIT: z.coerce.number().int().default(1000),
+  RUN_ENGINE_CONCURRENCY_LIMIT_BIAS: z.coerce.number().default(0.75),
+  RUN_ENGINE_AVAILABLE_CAPACITY_BIAS: z.coerce.number().default(0.3),
+  RUN_ENGINE_QUEUE_AGE_RANDOMIZATION_BIAS: z.coerce.number().default(0.25),
+  RUN_ENGINE_REUSE_SNAPSHOT_COUNT: z.coerce.number().int().default(0),
+  RUN_ENGINE_MAXIMUM_ENV_COUNT: z.coerce.number().int().optional(),
 
   RUN_ENGINE_WORKER_REDIS_HOST: z
     .string()

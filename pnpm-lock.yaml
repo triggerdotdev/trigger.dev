@@ -884,6 +884,9 @@ importers:
       prisma:
         specifier: 5.4.1
         version: 5.4.1
+      rimraf:
+        specifier: 6.0.1
+        version: 6.0.1
 
   internal-packages/emails:
     dependencies:
@@ -959,15 +962,12 @@ importers:
       '@internal/redis':
         specifier: workspace:*
         version: link:../redis
-      '@opentelemetry/api':
-        specifier: ^1.9.0
-        version: 1.9.0
+      '@internal/tracing':
+        specifier: workspace:*
+        version: link:../tracing
       '@trigger.dev/core':
         specifier: workspace:*
         version: link:../../packages/core
-      ioredis:
-        specifier: ^5.3.2
-        version: 5.3.2
       lodash.omit:
         specifier: ^4.5.0
         version: 4.5.0
@@ -987,6 +987,9 @@ importers:
       '@types/lodash.omit':
         specifier: ^4.5.7
         version: 4.5.7
+      rimraf:
+        specifier: 6.0.1
+        version: 6.0.1
       vitest:
         specifier: ^1.4.0
         version: 1.6.0(@types/node@20.14.14)
@@ -999,30 +1002,30 @@ importers:
       '@internal/redis-worker':
         specifier: workspace:*
         version: link:../redis-worker
-      '@opentelemetry/api':
-        specifier: ^1.9.0
-        version: 1.9.0
-      '@opentelemetry/semantic-conventions':
-        specifier: ^1.27.0
-        version: 1.28.0
+      '@internal/tracing':
+        specifier: workspace:*
+        version: link:../tracing
       '@trigger.dev/core':
         specifier: workspace:*
         version: link:../../packages/core
       '@trigger.dev/database':
         specifier: workspace:*
         version: link:../database
+      '@unkey/cache':
+        specifier: ^1.5.0
+        version: 1.5.0
       assert-never:
         specifier: ^1.2.1
         version: 1.2.1
-      ioredis:
-        specifier: ^5.3.2
-        version: 5.3.2
       nanoid:
         specifier: ^3.3.4
         version: 3.3.7
       redlock:
         specifier: 5.0.0-beta.2
         version: 5.0.0-beta.2(patch_hash=rwyegdki7iserrd7fgjwxkhnlu)
+      seedrandom:
+        specifier: ^3.0.5
+        version: 3.0.5
       zod:
         specifier: 3.23.8
         version: 3.23.8
@@ -1030,6 +1033,12 @@ importers:
       '@internal/testcontainers':
         specifier: workspace:*
         version: link:../testcontainers
+      '@types/seedrandom':
+        specifier: ^3.0.8
+        version: 3.0.8
+      rimraf:
+        specifier: 6.0.1
+        version: 6.0.1
       vitest:
         specifier: ^1.4.0
         version: 1.6.0(@types/node@20.14.14)
@@ -1065,11 +1074,30 @@ importers:
         specifier: ^1.4.0
         version: 1.6.0(@types/node@20.14.14)
 
-  internal-packages/zod-worker:
+  internal-packages/tracing:
     dependencies:
       '@opentelemetry/api':
-        specifier: ^1.9.0
+        specifier: 1.9.0
         version: 1.9.0
+      '@opentelemetry/api-logs':
+        specifier: 0.52.1
+        version: 0.52.1
+      '@opentelemetry/semantic-conventions':
+        specifier: ^1.27.0
+        version: 1.28.0
+      '@trigger.dev/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+    devDependencies:
+      vitest:
+        specifier: ^1.4.0
+        version: 1.6.0(@types/node@20.14.14)
+
+  internal-packages/zod-worker:
+    dependencies:
+      '@internal/tracing':
+        specifier: workspace:*
+        version: link:../tracing
       '@trigger.dev/core':
         specifier: workspace:*
         version: link:../../packages/core

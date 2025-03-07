@@ -14,7 +14,7 @@ import {
   OperatingSystemContextProvider,
   OperatingSystemPlatform,
 } from "./components/primitives/OperatingSystemProvider";
-import { getSharedSqsEventConsumer } from "./services/events/sqsEventConsumer";
+import { getSharedSqsEventConsumer } from "./services/events/sqsEventConsumer.server";
 import { singleton } from "./utils/singleton";
 
 const ABORT_DELAY = 30000;

@@ -25,7 +25,7 @@ import { ExpireDispatcherService } from "./dispatchers/expireDispatcher.server";
 import { InvokeEphemeralDispatcherService } from "./dispatchers/invokeEphemeralEventDispatcher.server";
 import { sendEmail } from "./email.server";
 import { IndexEndpointService } from "./endpoints/indexEndpoint.server";
-import { PerformEndpointIndexService } from "./endpoints/performEndpointIndexService";
+import { PerformEndpointIndexService } from "./endpoints/performEndpointIndexService.server";
 import { ProbeEndpointService } from "./endpoints/probeEndpoint.server";
 import { RecurringEndpointIndexService } from "./endpoints/recurringEndpointIndex.server";
 import { DeliverEventService } from "./events/deliverEvent.server";

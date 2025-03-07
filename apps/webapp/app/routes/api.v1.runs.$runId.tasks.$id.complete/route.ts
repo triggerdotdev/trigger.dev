@@ -1,11 +1,10 @@
 import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import type { CompleteTaskBodyOutput } from "@trigger.dev/core";
+import type { CompleteTaskBodyOutput } from "@trigger.dev/core/schemas";
 import {
-  API_VERSIONS,
   CompleteTaskBodyInputSchema,
   CompleteTaskBodyV2InputSchema,
-} from "@trigger.dev/core";
+} from "@trigger.dev/core/schemas";
 import { z } from "zod";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
@@ -13,6 +12,11 @@ import { CompleteRunTaskService } from "./CompleteRunTaskService.server";
 import { startActiveSpan } from "~/v3/tracer.server";
 import { parseRequestJsonAsync } from "~/utils/parseRequestJson.server";
 import { FailRunTaskService } from "../api.v1.runs.$runId.tasks.$id.fail/FailRunTaskService.server";
+
+const API_VERSIONS = {
+  LAZY_LOADED_CACHED_TASKS: "2023-09-29",
+  SERIALIZED_TASK_OUTPUT: "2023-11-01",
+};
 
 const ParamsSchema = z.object({
   runId: z.string(),

@@ -9,7 +9,7 @@ import {
   ProviderToPlatformMessages,
   SharedQueueToClientMessages,
 } from "@trigger.dev/core/v3";
-import { RunId } from "@trigger.dev/core/v3/apps";
+import { RunId } from "@trigger.dev/core/v3/isomorphic";
 import type {
   WorkerClientToServerEvents,
   WorkerServerToClientEvents,

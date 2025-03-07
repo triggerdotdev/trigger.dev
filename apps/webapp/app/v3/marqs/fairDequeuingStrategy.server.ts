@@ -1,4 +1,3 @@
-import { flattenAttributes } from "@trigger.dev/core/v3";
 import { createCache, DefaultStatefulContext, Namespace, Cache as UnkeyCache } from "@unkey/cache";
 import { MemoryStore } from "@unkey/cache/stores";
 import { randomUUID } from "crypto";

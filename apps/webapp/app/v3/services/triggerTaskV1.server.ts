@@ -11,7 +11,7 @@ import {
   parseNaturalLanguageDuration,
   sanitizeQueueName,
   stringifyDuration,
-} from "@trigger.dev/core/v3/apps";
+} from "@trigger.dev/core/v3/isomorphic";
 import { Prisma } from "@trigger.dev/database";
 import { env } from "~/env.server";
 import { createTag, MAX_TAGS_PER_RUN } from "~/models/taskRunTag.server";

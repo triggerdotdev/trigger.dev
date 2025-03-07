@@ -1,14 +1,16 @@
-import Redis from "ioredis";
-import Redlock, { RedlockAbortSignal } from "redlock";
+// import { default: Redlock } from "redlock";
+const { default: Redlock } = require("redlock");
 import { AsyncLocalStorage } from "async_hooks";
+import { Redis } from "@internal/redis";
+import * as redlock from "redlock";
 
 interface LockContext {
   resources: string;
-  signal: RedlockAbortSignal;
+  signal: redlock.RedlockAbortSignal;
 }
 
 export class RunLocker {
-  private redlock: Redlock;
+  private redlock: InstanceType<typeof redlock.default>;
   private asyncLocalStorage: AsyncLocalStorage<LockContext>;
 
   constructor(options: { redis: Redis }) {
@@ -26,7 +28,7 @@ export class RunLocker {
   async lock<T>(
     resources: string[],
     duration: number,
-    routine: (signal: RedlockAbortSignal) => Promise<T>
+    routine: (signal: redlock.RedlockAbortSignal) => Promise<T>
   ): Promise<T> {
     const currentContext = this.asyncLocalStorage.getStore();
     const joinedResources = resources.sort().join(",");

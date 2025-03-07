@@ -4,9 +4,5 @@
   "compilerOptions": {
     "rootDir": "src",
     "outDir": "dist"
-  },
-  "paths": {
-    "@trigger.dev/core/v3": ["../../packages/core/src/v3"],
-    "@trigger.dev/core/v3/*": ["../../packages/core/src/v3/*"]
   }
 }

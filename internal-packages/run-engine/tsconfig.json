@@ -1,31 +1,8 @@
 {
+  "references": [{ "path": "./tsconfig.src.json" }, { "path": "./tsconfig.test.json" }],
   "compilerOptions": {
-    "target": "ES2019",
-    "lib": ["ES2019", "DOM", "DOM.Iterable", "DOM.AsyncIterable"],
-    "module": "CommonJS",
-    "moduleResolution": "Node",
-    "moduleDetection": "force",
-    "verbatimModuleSyntax": false,
-    "types": ["vitest/globals"],
-    "esModuleInterop": true,
-    "forceConsistentCasingInFileNames": true,
-    "isolatedModules": true,
-    "preserveWatchOutput": true,
-    "skipLibCheck": true,
-    "noEmit": true,
-    "strict": true,
-    "paths": {
-      "@internal/testcontainers": ["../../internal-packages/testcontainers/src/index"],
-      "@internal/testcontainers/*": ["../../internal-packages/testcontainers/src/*"],
-      "@internal/redis-worker": ["../../internal-packages/redis-worker/src/index"],
-      "@internal/redis-worker/*": ["../../internal-packages/redis-worker/src/*"],
-      "@internal/redis": ["../../internal-packages/redis/src/index"],
-      "@internal/redis/*": ["../../internal-packages/redis/src/*"],
-      "@trigger.dev/core": ["../../packages/core/src/index"],
-      "@trigger.dev/core/*": ["../../packages/core/src/*"],
-      "@trigger.dev/database": ["../database/src/index"],
-      "@trigger.dev/database/*": ["../database/src/*"]
-    }
-  },
-  "exclude": ["node_modules"]
+    "moduleResolution": "Node16",
+    "module": "Node16",
+    "customConditions": ["@triggerdotdev/source"]
+  }
 }

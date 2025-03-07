@@ -5,7 +5,7 @@ import {
   conditionallyExportPacket,
   stringifyIO,
 } from "@trigger.dev/core/v3";
-import { WaitpointId } from "@trigger.dev/core/v3/apps";
+import { WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import { z } from "zod";
 import { $replica } from "~/db.server";
 import { env } from "~/env.server";

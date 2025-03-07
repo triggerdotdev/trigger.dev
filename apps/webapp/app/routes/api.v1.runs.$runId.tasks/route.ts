@@ -1,6 +1,6 @@
 import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import { API_VERSIONS, RunTaskBodyOutputSchema } from "@trigger.dev/core";
+import { RunTaskBodyOutputSchema } from "@trigger.dev/core/schemas";
 import { z } from "zod";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
@@ -8,6 +8,11 @@ import { RunTaskService } from "~/services/tasks/runTask.server";
 import { ChangeRequestLazyLoadedCachedTasks } from "./ChangeRequestLazyLoadedCachedTasks.server";
 import { startActiveSpan } from "~/v3/tracer.server";
 import { parseRequestJsonAsync } from "~/utils/parseRequestJson.server";
+
+const API_VERSIONS = {
+  LAZY_LOADED_CACHED_TASKS: "2023-09-29",
+  SERIALIZED_TASK_OUTPUT: "2023-11-01",
+};
 
 const ParamsSchema = z.object({
   runId: z.string(),

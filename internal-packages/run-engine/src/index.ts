@@ -1,2 +1,2 @@
-export { RunEngine, RunDuplicateIdempotencyKeyError } from "./engine/index";
-export type { EventBusEventArgs } from "./engine/eventBus";
+export { RunEngine, RunDuplicateIdempotencyKeyError } from "./engine/index.js";
+export type { EventBusEventArgs } from "./engine/eventBus.js";

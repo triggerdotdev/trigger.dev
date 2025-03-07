@@ -363,6 +363,12 @@ export async function executeTestCaseRun({
             ref: "main",
             name: "test",
           },
+          machine: {
+            name: "small-1x",
+            cpu: 1,
+            memory: 256,
+            centsPerMs: 0.0000001,
+          },
         },
       },
       messageId: "run_1234",
