@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { RuntimeEnvironmentType } from "../../../database/src/index.js";
-import { MinimalAuthenticatedEnvironment } from "../shared/index.js";
+import type { MinimalAuthenticatedEnvironment } from "../shared/index.js";
 
 export const InputPayload = z.object({
   runId: z.string(),
@@ -38,7 +38,15 @@ export type EnvDescriptor = {
 
 export interface RunQueueKeyProducer {
   //queue
+  queueKey(
+    orgId: string,
+    projId: string,
+    envId: string,
+    queue: string,
+    concurrencyKey?: string
+  ): string;
   queueKey(env: MinimalAuthenticatedEnvironment, queue: string, concurrencyKey?: string): string;
+
   envQueueKey(env: MinimalAuthenticatedEnvironment): string;
   envQueueKeyFromQueue(queue: string): string;
   queueConcurrencyLimitKey(env: MinimalAuthenticatedEnvironment, queue: string): string;

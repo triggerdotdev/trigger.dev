@@ -40,12 +40,37 @@ export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
     }
   }
 
-  queueKey(env: MinimalAuthenticatedEnvironment, queue: string, concurrencyKey?: string) {
+  queueKey(
+    orgId: string,
+    projId: string,
+    envId: string,
+    queue: string,
+    concurrencyKey?: string
+  ): string;
+  queueKey(env: MinimalAuthenticatedEnvironment, queue: string, concurrencyKey?: string): string;
+  queueKey(
+    envOrOrgId: MinimalAuthenticatedEnvironment | string,
+    projIdOrQueue: string,
+    envIdConcurrencyKey?: string,
+    queue?: string,
+    concurrencyKey?: string
+  ): string {
+    if (typeof envOrOrgId !== "string") {
+      return [
+        this.orgKeySection(envOrOrgId.organization.id),
+        this.projKeySection(envOrOrgId.project.id),
+        this.envKeySection(envOrOrgId.id),
+        this.queueSection(projIdOrQueue),
+      ]
+        .concat(envIdConcurrencyKey ? this.concurrencyKeySection(envIdConcurrencyKey) : [])
+        .join(":");
+    }
+
     return [
-      this.orgKeySection(env.organization.id),
-      this.projKeySection(env.project.id),
-      this.envKeySection(env.id),
-      this.queueSection(queue),
+      this.orgKeySection(envOrOrgId),
+      this.projKeySection(projIdOrQueue),
+      this.envKeySection(envIdConcurrencyKey!),
+      this.queueSection(queue!),
     ]
       .concat(concurrencyKey ? this.concurrencyKeySection(concurrencyKey) : [])
       .join(":");
