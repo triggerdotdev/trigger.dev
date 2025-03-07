@@ -1,17 +1,16 @@
 import { CreateBackgroundWorkerRequestBody } from "@trigger.dev/core/v3";
 import type { BackgroundWorker } from "@trigger.dev/database";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
-import { generateFriendlyId } from "../friendlyIdentifiers";
+import { logger } from "~/services/logger.server";
+import { socketIo } from "../handleSocketIo.server";
+import { updateEnvConcurrencyLimits } from "../runQueue.server";
+import { PerformDeploymentAlertsService } from "./alerts/performDeploymentAlerts.server";
 import { BaseService } from "./baseService.server";
 import { createBackgroundTasks, syncDeclarativeSchedules } from "./createBackgroundWorker.server";
-import { CURRENT_DEPLOYMENT_LABEL } from "~/consts";
-import { projectPubSub } from "./projectPubSub.server";
-import { marqs } from "~/v3/marqs/index.server";
-import { logger } from "~/services/logger.server";
 import { ExecuteTasksWaitingForDeployService } from "./executeTasksWaitingForDeploy";
-import { PerformDeploymentAlertsService } from "./alerts/performDeploymentAlerts.server";
+import { projectPubSub } from "./projectPubSub.server";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
-import { socketIo } from "../handleSocketIo.server";
+import { CURRENT_DEPLOYMENT_LABEL, BackgroundWorkerId } from "@trigger.dev/core/v3/isomorphic";
 
 export class CreateDeployedBackgroundWorkerService extends BaseService {
   public async call(
@@ -39,7 +38,7 @@ export class CreateDeployedBackgroundWorkerService extends BaseService {
 
       const backgroundWorker = await this._prisma.backgroundWorker.create({
         data: {
-          friendlyId: generateFriendlyId("worker"),
+          ...BackgroundWorkerId.generate(),
           version: deployment.version,
           runtimeEnvironmentId: environment.id,
           projectId: environment.projectId,
@@ -48,8 +47,21 @@ export class CreateDeployedBackgroundWorkerService extends BaseService {
           cliVersion: body.metadata.cliPackageVersion,
           sdkVersion: body.metadata.packageVersion,
           supportsLazyAttempts: body.supportsLazyAttempts,
+          engine: body.engine,
         },
       });
+
+      //upgrade the project to engine "V2" if it's not already
+      if (environment.project.engine === "V1" && body.engine === "V2") {
+        await this._prisma.project.update({
+          where: {
+            id: environment.project.id,
+          },
+          data: {
+            engine: "V2",
+          },
+        });
+      }
 
       try {
         await createBackgroundTasks(
@@ -128,7 +140,7 @@ export class CreateDeployedBackgroundWorkerService extends BaseService {
             type: "deployed",
           }
         );
-        await marqs?.updateEnvConcurrencyLimits(environment);
+        await updateEnvConcurrencyLimits(environment);
       } catch (err) {
         logger.error("Failed to publish WORKER_CREATED event", { err });
       }

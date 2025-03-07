@@ -129,6 +129,7 @@ export async function authenticatePersonalAccessToken(
   token: string
 ): Promise<PersonalAccessTokenAuthenticationResult | undefined> {
   if (!token.startsWith(tokenPrefix)) {
+    logger.warn(`PAT doesn't start with ${tokenPrefix}`);
     return;
   }
 

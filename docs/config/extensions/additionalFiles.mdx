@@ -1,0 +1,28 @@
+---
+title: "Additional Files"
+sidebarTitle: "additionalFiles"
+description: "Use the additionalFiles build extension to copy additional files to the build directory"
+---
+
+Import the `additionalFiles` build extension and use it in your `trigger.config.ts` file:
+
+```ts
+import { defineConfig } from "@trigger.dev/sdk/v3";
+import { additionalFiles } from "@trigger.dev/build/extensions/core";
+
+export default defineConfig({
+  project: "<project ref>",
+  // Your other config settings...
+  build: {
+    extensions: [
+      additionalFiles({ files: ["wrangler/wrangler.toml", "./assets/**", "./fonts/**"] }),
+    ],
+  },
+});
+```
+
+This will copy the files specified in the `files` array to the build directory. The `files` array can contain globs. The output paths will match the path of the file, relative to the root of the project.
+
+This extension effects both the `dev` and the `deploy` commands, and the resulting paths will be the same for both.
+
+<Note>The root of the project is the directory that contains the trigger.config.ts file</Note>

@@ -22,6 +22,7 @@ export * from "./types/index.js";
 export { links } from "./links.js";
 export * from "./jwt.js";
 export * from "./idempotencyKeys.js";
+export * from "./streams/asyncIterableStream.js";
 export * from "./utils/getEnv.js";
 export {
   formatDuration,
@@ -61,6 +62,9 @@ export {
   stringifyIO,
   type IOPacket,
 } from "./utils/ioSerialization.js";
+
+export * from "./utils/imageRef.js";
+export * from "./utils/heartbeat.js";
 
 export * from "./config.js";
 export { getSchemaParseFn, type AnySchemaParseFn, type SchemaParseFn } from "./types/schemas.js";

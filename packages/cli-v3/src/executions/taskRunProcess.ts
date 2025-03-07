@@ -1,4 +1,5 @@
 import {
+  CompletedWaitpoint,
   ExecutorToWorkerMessageCatalog,
   ServerBackgroundWorker,
   TaskRunErrorCodes,
@@ -18,6 +19,7 @@ import { ChildProcess, fork } from "node:child_process";
 import { chalkError, chalkGrey, chalkRun, prettyPrintDate } from "../utilities/cliOutput.js";
 
 import { execOptionsForRuntime, execPathForRuntime } from "@trigger.dev/core/v3/build";
+import { nodeOptionsWithMaxOldSpaceSize } from "@trigger.dev/core/v3/machines";
 import { InferSocketMessageSchema } from "@trigger.dev/core/v3/zodSocket";
 import { logger } from "../utilities/logger.js";
 import {
@@ -40,6 +42,7 @@ export type OnWaitForBatchMessage = InferSocketMessageSchema<
   typeof ExecutorToWorkerMessageCatalog,
   "WAIT_FOR_BATCH"
 >;
+export type OnWaitMessage = InferSocketMessageSchema<typeof ExecutorToWorkerMessageCatalog, "WAIT">;
 
 export type TaskRunProcessOptions = {
   workerManifest: WorkerManifest;
@@ -72,9 +75,9 @@ export class TaskRunProcess {
   public onIsBeingKilled: Evt<TaskRunProcess> = new Evt();
   public onReadyToDispose: Evt<TaskRunProcess> = new Evt();
 
-  public onWaitForDuration: Evt<OnWaitForDurationMessage> = new Evt();
   public onWaitForTask: Evt<OnWaitForTaskMessage> = new Evt();
   public onWaitForBatch: Evt<OnWaitForBatchMessage> = new Evt();
+  public onWait: Evt<OnWaitMessage> = new Evt();
 
   constructor(public readonly options: TaskRunProcessOptions) {}
 
@@ -115,14 +118,16 @@ export class TaskRunProcess {
   }
 
   async initialize() {
-    const { env: $env, workerManifest, cwd, messageId } = this.options;
+    const { env: $env, workerManifest, cwd, messageId, payload } = this.options;
+
+    const maxOldSpaceSize = nodeOptionsWithMaxOldSpaceSize(undefined, payload.execution.machine);
 
     const fullEnv = {
       ...(this.isTest ? { TRIGGER_LOG_LEVEL: "debug" } : {}),
       ...$env,
       OTEL_IMPORT_HOOK_INCLUDES: workerManifest.otelImportHook?.include?.join(","),
       // TODO: this will probably need to use something different for bun (maybe --preload?)
-      NODE_OPTIONS: execOptionsForRuntime(workerManifest.runtime, workerManifest),
+      NODE_OPTIONS: execOptionsForRuntime(workerManifest.runtime, workerManifest, maxOldSpaceSize),
       PATH: process.env.PATH,
       TRIGGER_PROCESS_FORK_START_TIME: String(Date.now()),
     };
@@ -184,8 +189,8 @@ export class TaskRunProcess {
         WAIT_FOR_BATCH: async (message) => {
           this.onWaitForBatch.post(message);
         },
-        WAIT_FOR_DURATION: async (message) => {
-          this.onWaitForDuration.post(message);
+        UNCAUGHT_EXCEPTION: async (message) => {
+          logger.debug(`[${this.runId}] uncaught exception in task run process`, { ...message });
         },
       },
     });
@@ -274,6 +279,37 @@ export class TaskRunProcess {
     }
 
     this._ipc?.send("WAIT_COMPLETED_NOTIFICATION", {});
+  }
+
+  waitpointCreated(waitId: string, waitpointId: string) {
+    if (!this._child?.connected || this._isBeingKilled || this._child.killed) {
+      console.error(
+        "Child process not connected or being killed, can't send waitpoint created notification"
+      );
+      return;
+    }
+
+    this._ipc?.send("WAITPOINT_CREATED", {
+      wait: {
+        id: waitId,
+      },
+      waitpoint: {
+        id: waitpointId,
+      },
+    });
+  }
+
+  waitpointCompleted(waitpoint: CompletedWaitpoint) {
+    if (!this._child?.connected || this._isBeingKilled || this._child.killed) {
+      console.error(
+        "Child process not connected or being killed, can't send waitpoint completed notification"
+      );
+      return;
+    }
+
+    this._ipc?.send("WAITPOINT_COMPLETED", {
+      waitpoint,
+    });
   }
 
   async #handleExit(code: number | null, signal: NodeJS.Signals | null) {

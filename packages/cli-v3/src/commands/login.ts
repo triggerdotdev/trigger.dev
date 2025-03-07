@@ -23,6 +23,7 @@ import { spinner } from "../utilities/windows.js";
 import { isLinuxServer } from "../utilities/linux.js";
 import { VERSION } from "../version.js";
 import { env } from "std-env";
+import { CLOUD_API_URL } from "../consts.js";
 import {
   isPersonalAccessToken,
   NotPersonalAccessTokenError,
@@ -70,7 +71,7 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
   return await tracer.startActiveSpan("login", async (span) => {
     try {
       const opts = {
-        defaultApiUrl: "https://api.trigger.dev",
+        defaultApiUrl: CLOUD_API_URL,
         embedded: false,
         silent: false,
         ...options,
@@ -96,7 +97,7 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
 
         const auth = {
           accessToken: accessTokenFromEnv,
-          apiUrl: env.TRIGGER_API_URL ?? opts.defaultApiUrl ?? "https://api.trigger.dev",
+          apiUrl: env.TRIGGER_API_URL ?? opts.defaultApiUrl ?? CLOUD_API_URL,
         };
         const apiClient = new CliApiClient(auth.apiUrl, auth.accessToken);
         const userData = await apiClient.whoAmI();

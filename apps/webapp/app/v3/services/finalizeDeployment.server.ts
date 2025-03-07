@@ -2,8 +2,8 @@ import { FinalizeDeploymentRequestBody } from "@trigger.dev/core/v3/schemas";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { socketIo } from "../handleSocketIo.server";
-import { marqs } from "../marqs/index.server";
 import { registryProxy } from "../registryProxy.server";
+import { updateEnvConcurrencyLimits } from "../runQueue.server";
 import { PerformDeploymentAlertsService } from "./alerts/performDeploymentAlerts.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { ChangeCurrentDeploymentService } from "./changeCurrentDeployment.server";
@@ -91,7 +91,7 @@ export class FinalizeDeploymentService extends BaseService {
         }
       );
 
-      await marqs?.updateEnvConcurrencyLimits(authenticatedEnv);
+      await updateEnvConcurrencyLimits(authenticatedEnv);
     } catch (err) {
       logger.error("Failed to publish WORKER_CREATED event", { err });
     }

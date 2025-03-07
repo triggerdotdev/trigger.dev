@@ -8,6 +8,8 @@ import { MachineConfig, MachinePreset, MachinePresetName, TaskRunExecution } fro
 export const EnvironmentType = z.enum(["PRODUCTION", "STAGING", "DEVELOPMENT", "PREVIEW"]);
 export type EnvironmentType = z.infer<typeof EnvironmentType>;
 
+export const RunEngineVersionSchema = z.enum(["V1", "V2"]);
+
 export const TaskRunExecutionMetric = z.object({
   name: z.string(),
   event: z.string(),
@@ -39,6 +41,7 @@ export const ProdTaskRunExecution = TaskRunExecution.extend({
     id: z.string(),
     contentHash: z.string(),
     version: z.string(),
+    type: RunEngineVersionSchema.optional(),
   }),
   machine: MachinePreset.default({ name: "small-1x", cpu: 1, memory: 1, centsPerMs: 0 }),
 });
@@ -266,6 +269,20 @@ export const TaskRunExecutionLazyAttemptPayload = z.object({
 });
 
 export type TaskRunExecutionLazyAttemptPayload = z.infer<typeof TaskRunExecutionLazyAttemptPayload>;
+
+export const RuntimeWait = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("DATETIME"),
+    id: z.string(),
+    date: z.coerce.date(),
+  }),
+  z.object({
+    type: z.literal("MANUAL"),
+    id: z.string(),
+  }),
+]);
+
+export type RuntimeWait = z.infer<typeof RuntimeWait>;
 
 export const ManualCheckpointMetadata = z.object({
   /** NOT a friendly ID */

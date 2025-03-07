@@ -166,7 +166,7 @@ async function subscribeToStream(runId: string) {
 If you're building a frontend application, you can use our React hooks to subscribe to streams. Here's an example of how you can use the `useRealtimeRunWithStreams` hook to subscribe to a stream:
 
 ```tsx
-import { useRealtimeRunWithStreams } from "@trigger.dev/sdk/v3";
+import { useRealtimeRunWithStreams } from "@trigger.dev/react-hooks";
 import type { myTask, STREAMS } from "./trigger/my-task";
 
 // Somewhere in your React component
@@ -245,7 +245,7 @@ export const aiStreaming = schemaTask({
 And then render the stream in your frontend:
 
 ```tsx
-import { useRealtimeRunWithStreams } from "@trigger.dev/sdk/v3";
+import { useRealtimeRunWithStreams } from "@trigger.dev/react-hooks";
 import type { aiStreaming, STREAMS } from "./trigger/ai-streaming";
 
 function MyComponent({ runId, publicAccessToken }: { runId: string; publicAccessToken: string }) {
@@ -339,8 +339,7 @@ export const aiStreamingWithTools = schemaTask({
 Now you can get access to the tool call and results in your frontend:
 
 ```tsx
-import { useRealtimeRunWithStreams } from "@trigger.dev/sdk/v3";
-import { useRealtimeRunWithStreams } from "@trigger.dev/sdk/v3";
+import { useRealtimeRunWithStreams } from "@trigger.dev/react-hooks";
 import type { aiStreamingWithTools, STREAMS } from "./trigger/ai-streaming";
 
 function MyComponent({ runId, publicAccessToken }: { runId: string; publicAccessToken: string }) {

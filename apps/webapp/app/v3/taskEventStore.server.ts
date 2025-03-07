@@ -20,6 +20,7 @@ export type TraceEvent = Pick<
   | "level"
   | "events"
   | "environmentType"
+  | "kind"
 >;
 
 export type TaskEventStoreTable = "taskEvent" | "taskEventPartitioned";
@@ -122,7 +123,7 @@ export class TaskEventStore {
   ) {
     if (table === "taskEventPartitioned") {
       return await this.readReplica.$queryRaw<TraceEvent[]>`
-        SELECT 
+        SELECT
           "spanId",
           "parentId",
           "runId",
@@ -136,11 +137,12 @@ export class TaskEventStore {
           "isCancelled",
           level,
           events,
-          "environmentType"
+          "environmentType",
+          "kind"
         FROM "TaskEventPartitioned"
-        WHERE 
-          "traceId" = ${traceId} 
-          AND "createdAt" >= ${startCreatedAt.toISOString()}::timestamp 
+        WHERE
+          "traceId" = ${traceId}
+          AND "createdAt" >= ${startCreatedAt.toISOString()}::timestamp
           AND "createdAt" < ${(endCreatedAt
             ? new Date(endCreatedAt.getTime() + env.TASK_EVENT_PARTITIONED_WINDOW_IN_SECONDS * 1000)
             : new Date()
@@ -150,7 +152,7 @@ export class TaskEventStore {
       `;
     } else {
       return await this.readReplica.$queryRaw<TraceEvent[]>`
-        SELECT 
+        SELECT
           id,
           "spanId",
           "parentId",
@@ -165,7 +167,8 @@ export class TaskEventStore {
           "isCancelled",
           level,
           events,
-          "environmentType"
+          "environmentType",
+          "kind"
         FROM "TaskEvent"
         WHERE "traceId" = ${traceId}
         ORDER BY "startTime" ASC

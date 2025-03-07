@@ -18,38 +18,28 @@
         "groups": [
           {
             "group": "Getting started",
-            "pages": ["introduction", "quick-start", "video-walkthrough", "how-it-works", "limits"]
+            "pages": [
+              "introduction",
+              "quick-start",
+              "video-walkthrough",
+              "how-it-works",
+              "limits"
+            ]
           },
           {
             "group": "Fundamentals",
             "pages": [
               {
                 "group": "Tasks",
-                "pages": ["tasks/overview", "tasks/schemaTask", "tasks/scheduled"]
+                "pages": [
+                  "tasks/overview",
+                  "tasks/schemaTask",
+                  "tasks/scheduled"
+                ]
               },
               "triggering",
               "runs",
-              "apikeys",
-              {
-                "group": "Configuration",
-                "pages": ["config/config-file", "config/extensions/overview"]
-              }
-            ]
-          },
-          {
-            "group": "Development",
-            "pages": ["cli-dev", "run-tests"]
-          },
-          {
-            "group": "Deployment",
-            "pages": [
-              "cli-deploy",
-              "deploy-environment-variables",
-              "github-actions",
-              {
-                "group": "Deployment integrations",
-                "pages": ["vercel-integration"]
-              }
+              "apikeys"
             ]
           },
           {
@@ -60,20 +50,73 @@
               "errors-retrying",
               {
                 "group": "Wait",
-                "pages": ["wait", "wait-for", "wait-until", "wait-for-event", "wait-for-request"]
+                "pages": [
+                  "wait",
+                  "wait-for",
+                  "wait-until",
+                  "wait-for-event",
+                  "wait-for-request"
+                ]
               },
               "queue-concurrency",
               "versioning",
               "machines",
               "idempotency",
-              "replaying",
               "runs/max-duration",
               "tags",
               "runs/metadata",
               "run-usage",
-              "context",
-              "bulk-actions",
-              "examples"
+              "context"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "config/config-file",
+              {
+                "group": "Build extensions",
+                "pages": [
+                  "config/extensions/overview",
+                  {
+                    "group": "Built-in extensions",
+                    "pages": [
+                      "config/extensions/prismaExtension",
+                      "config/extensions/pythonExtension",
+                      "config/extensions/puppeteer",
+                      "config/extensions/ffmpeg",
+                      "config/extensions/aptGet",
+                      "config/extensions/additionalFiles",
+                      "config/extensions/additionalPackages",
+                      "config/extensions/syncEnvVars",
+                      "config/extensions/esbuildPlugin",
+                      "config/extensions/emitDecoratorMetadata",
+                      "config/extensions/audioWaveform"
+                    ]
+                  },
+                  "config/extensions/custom"
+                ]
+              }
+            ]
+          },
+          {
+            "group": "Development",
+            "pages": [
+              "cli-dev"
+            ]
+          },
+          {
+            "group": "Deployment",
+            "pages": [
+              "deployment/overview",
+              "deploy-environment-variables",
+              "github-actions",
+              "deployment/atomic-deployment",
+              {
+                "group": "Deployment integrations",
+                "pages": [
+                  "vercel-integration"
+                ]
+              }
             ]
           },
           {
@@ -101,7 +144,6 @@
               "realtime/subscribe-to-batch"
             ]
           },
-
           {
             "group": "CLI",
             "pages": [
@@ -113,6 +155,7 @@
                   "cli-init-commands",
                   "cli-dev-commands",
                   "cli-deploy-commands",
+                  "cli-promote-commands",
                   "cli-whoami-commands",
                   "cli-logout-commands",
                   "cli-list-profiles-commands",
@@ -122,13 +165,21 @@
             ]
           },
           {
+            "group": "Using the Dashboard",
+            "pages": [
+              "run-tests",
+              "troubleshooting-alerts",
+              "replaying",
+              "bulk-actions"
+            ]
+          },
+          {
             "group": "Troubleshooting",
             "pages": [
               "troubleshooting",
               "troubleshooting-debugging-in-vscode",
               "upgrading-packages",
               "upgrading-beta",
-              "troubleshooting-alerts",
               "troubleshooting-uptime-status",
               "troubleshooting-github-issues",
               "request-feature"
@@ -146,7 +197,11 @@
           },
           {
             "group": "Help",
-            "pages": ["community", "help-slack", "help-email"]
+            "pages": [
+              "community",
+              "help-slack",
+              "help-email"
+            ]
           }
         ]
       },
@@ -167,7 +222,10 @@
           },
           {
             "group": "Tasks API",
-            "pages": ["management/tasks/trigger", "management/tasks/batch-trigger"]
+            "pages": [
+              "management/tasks/trigger",
+              "management/tasks/batch-trigger"
+            ]
           },
           {
             "group": "Runs API",
@@ -213,7 +271,9 @@
         "groups": [
           {
             "group": "Introduction",
-            "pages": ["guides/introduction"]
+            "pages": [
+              "guides/introduction"
+            ]
           },
           {
             "group": "Frameworks",
@@ -276,8 +336,9 @@
           {
             "group": "Example projects",
             "pages": [
-              "guides/example-projects/realtime-fal-ai",
               "guides/example-projects/batch-llm-evaluator",
+              "guides/example-projects/claude-thinking-chatbot",
+              "guides/example-projects/realtime-fal-ai",
               "guides/example-projects/realtime-csv-importer",
               "guides/example-projects/vercel-ai-sdk-image-generator"
             ]
@@ -325,7 +386,10 @@
     "href": "https://trigger.dev"
   },
   "api": {
-    "openapi": ["openapi.yml", "v3-openapi.yaml"],
+    "openapi": [
+      "openapi.yml",
+      "v3-openapi.yaml"
+    ],
     "playground": {
       "display": "simple"
     }

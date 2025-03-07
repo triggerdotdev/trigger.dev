@@ -1,4 +1,4 @@
-import { WorkerDeploymentStatus } from "@trigger.dev/database";
+import { WorkerDeploymentStatus, WorkerInstanceGroupType } from "@trigger.dev/database";
 import { sqlDatabaseSchema, PrismaClient, prisma } from "~/db.server";
 import { Organization } from "~/models/organization.server";
 import { Project } from "~/models/project.server";
@@ -95,29 +95,31 @@ export class DeploymentListPresenter {
         userName: string | null;
         userDisplayName: string | null;
         userAvatarUrl: string | null;
+        type: WorkerInstanceGroupType;
       }[]
     >`
-    SELECT 
-  wd."id", 
-  wd."shortCode", 
-  wd."version", 
-  (SELECT COUNT(*) FROM ${sqlDatabaseSchema}."BackgroundWorkerTask" WHERE "BackgroundWorkerTask"."workerId" = wd."workerId") AS "tasksCount", 
-  wd."environmentId", 
-  wd."status", 
-  u."id" AS "userId", 
-  u."name" AS "userName", 
-  u."displayName" AS "userDisplayName", 
-  u."avatarUrl" AS "userAvatarUrl", 
+    SELECT
+  wd."id",
+  wd."shortCode",
+  wd."version",
+  (SELECT COUNT(*) FROM ${sqlDatabaseSchema}."BackgroundWorkerTask" WHERE "BackgroundWorkerTask"."workerId" = wd."workerId") AS "tasksCount",
+  wd."environmentId",
+  wd."status",
+  u."id" AS "userId",
+  u."name" AS "userName",
+  u."displayName" AS "userDisplayName",
+  u."avatarUrl" AS "userAvatarUrl",
   wd."builtAt",
-  wd."deployedAt"
-FROM 
+  wd."deployedAt",
+  wd."type"
+FROM
   ${sqlDatabaseSchema}."WorkerDeployment" as wd
-INNER JOIN 
-  ${sqlDatabaseSchema}."User" as u ON wd."triggeredById" = u."id" 
-WHERE 
+INNER JOIN
+  ${sqlDatabaseSchema}."User" as u ON wd."triggeredById" = u."id"
+WHERE
   wd."projectId" = ${project.id}
-ORDER BY 
-  string_to_array(wd."version", '.')::int[] DESC 
+ORDER BY
+  string_to_array(wd."version", '.')::int[] DESC
 LIMIT ${pageSize} OFFSET ${pageSize * (page - 1)};`;
 
     return {
@@ -146,6 +148,7 @@ LIMIT ${pageSize} OFFSET ${pageSize * (page - 1)};`;
           isCurrent: label?.label === "current",
           isDeployed: deployment.status === "DEPLOYED",
           isLatest: page === 1 && index === 0,
+          type: deployment.type,
           environment: {
             id: environment.id,
             type: environment.type,

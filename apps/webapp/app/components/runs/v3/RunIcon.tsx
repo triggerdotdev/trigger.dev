@@ -10,6 +10,8 @@ import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { cn } from "~/utils/cn";
 import { tablerIcons } from "~/utils/tablerIcons";
 import tablerSpritePath from "~/components/primitives/tabler-sprite.svg";
+import { TaskCachedIcon } from "~/assets/icons/TaskCachedIcon";
+import { PauseIcon } from "~/assets/icons/PauseIcon";
 
 type TaskIconProps = {
   name: string | undefined;
@@ -45,12 +47,14 @@ export function RunIcon({ name, className, spanName }: TaskIconProps) {
   switch (name) {
     case "task":
       return <TaskIcon className={cn(className, "text-blue-500")} />;
+    case "task-cached":
+      return <TaskCachedIcon className={cn(className, "text-blue-500")} />;
     case "scheduled":
       return <ClockIcon className={cn(className, "text-sun-500")} />;
     case "attempt":
       return <AttemptIcon className={cn(className, "text-text-dimmed")} />;
     case "wait":
-      return <ClockIcon className={cn(className, "text-teal-500")} />;
+      return <PauseIcon className={cn(className, "text-teal-500")} />;
     case "trace":
       return <Squares2X2Icon className={cn(className, "text-text-dimmed")} />;
     case "tag":

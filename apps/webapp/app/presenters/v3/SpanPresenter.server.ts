@@ -1,7 +1,9 @@
 import {
+  isWaitpointOutputTimeout,
   MachinePresetName,
   parsePacket,
   prettyPrintPacket,
+  SemanticInternalAttributes,
   TaskRunError,
 } from "@trigger.dev/core/v3";
 import { RUNNING_STATUSES } from "~/components/runs/v3/TaskRunStatus";
@@ -9,8 +11,10 @@ import { eventRepository } from "~/v3/eventRepository.server";
 import { machinePresetFromName } from "~/v3/machinePresets.server";
 import { FINAL_ATTEMPT_STATUSES, isFailedRunStatus, isFinalRunStatus } from "~/v3/taskStatus";
 import { BasePresenter } from "./basePresenter.server";
-import { getMaxDuration } from "~/v3/utils/maxDuration";
-import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
+import { getMaxDuration } from "@trigger.dev/core/v3/isomorphic";
+import { logger } from "~/services/logger.server";
+import { getTaskEventStoreTableForRun, TaskEventStoreTable } from "~/v3/taskEventStore.server";
+import { Pi } from "lucide-react";
 
 type Result = Awaited<ReturnType<SpanPresenter["call"]>>;
 export type Span = NonNullable<NonNullable<Result>["span"]>;
@@ -40,7 +44,34 @@ export class SpanPresenter extends BasePresenter {
       throw new Error("Project not found");
     }
 
-    const run = await this.#getRun(spanId);
+    const parentRun = await this._prisma.taskRun.findFirst({
+      select: {
+        traceId: true,
+        runtimeEnvironmentId: true,
+        taskEventStore: true,
+        createdAt: true,
+        completedAt: true,
+      },
+      where: {
+        friendlyId: runFriendlyId,
+      },
+    });
+
+    if (!parentRun) {
+      return;
+    }
+
+    const { traceId } = parentRun;
+
+    const eventStore = getTaskEventStoreTableForRun(parentRun);
+
+    const run = await this.#getRun({
+      eventStore,
+      traceId,
+      spanId,
+      createdAt: parentRun.createdAt,
+      completedAt: parentRun.completedAt,
+    });
     if (run) {
       return {
         type: "run" as const,
@@ -49,7 +80,14 @@ export class SpanPresenter extends BasePresenter {
     }
 
     //get the run
-    const span = await this.#getSpan(runFriendlyId, spanId);
+    const span = await this.#getSpan({
+      eventStore,
+      traceId,
+      spanId,
+      environmentId: parentRun.runtimeEnvironmentId,
+      createdAt: parentRun.createdAt,
+      completedAt: parentRun.completedAt,
+    });
 
     if (!span) {
       throw new Error("Span not found");
@@ -61,10 +99,35 @@ export class SpanPresenter extends BasePresenter {
     };
   }
 
-  async #getRun(spanId: string) {
+  async #getRun({
+    eventStore,
+    traceId,
+    spanId,
+    createdAt,
+    completedAt,
+  }: {
+    eventStore: TaskEventStoreTable;
+    traceId: string;
+    spanId: string;
+    createdAt: Date;
+    completedAt: Date | null;
+  }) {
+    const span = await eventRepository.getSpan(
+      eventStore,
+      spanId,
+      traceId,
+      createdAt,
+      completedAt ?? undefined
+    );
+
+    if (!span) {
+      return;
+    }
+
     const run = await this._replica.taskRun.findFirst({
       select: {
         id: true,
+        spanId: true,
         traceId: true,
         //metadata
         number: true,
@@ -85,6 +148,12 @@ export class SpanPresenter extends BasePresenter {
             sdkVersion: true,
           },
         },
+        engine: true,
+        masterQueue: true,
+        secondaryMasterQueue: true,
+        error: true,
+        output: true,
+        outputType: true,
         //status + duration
         status: true,
         startedAt: true,
@@ -96,6 +165,7 @@ export class SpanPresenter extends BasePresenter {
         logsDeletedAt: true,
         //idempotency
         idempotencyKey: true,
+        idempotencyKeyExpiresAt: true,
         //delayed
         delayUntil: true,
         //ttl
@@ -119,9 +189,6 @@ export class SpanPresenter extends BasePresenter {
         metadata: true,
         metadataType: true,
         maxAttempts: true,
-        output: true,
-        outputType: true,
-        error: true,
         project: {
           include: {
             organization: true,
@@ -155,9 +222,13 @@ export class SpanPresenter extends BasePresenter {
           },
         },
       },
-      where: {
-        spanId,
-      },
+      where: span.originalRun
+        ? {
+            friendlyId: span.originalRun,
+          }
+        : {
+            spanId,
+          },
     });
 
     if (!run) {
@@ -165,7 +236,6 @@ export class SpanPresenter extends BasePresenter {
     }
 
     const isFinished = isFinalRunStatus(run.status);
-
     const output = !isFinished
       ? undefined
       : run.outputType === "application/store"
@@ -182,6 +252,7 @@ export class SpanPresenter extends BasePresenter {
         : undefined;
 
     let error: TaskRunError | undefined = undefined;
+
     if (run?.error) {
       const result = TaskRunError.safeParse(run.error);
       if (result.success) {
@@ -262,6 +333,8 @@ export class SpanPresenter extends BasePresenter {
       sdkVersion: run.lockedToVersion?.sdkVersion,
       isTest: run.isTest,
       environmentId: run.runtimeEnvironment.id,
+      idempotencyKey: run.idempotencyKey,
+      idempotencyKeyExpiresAt: run.idempotencyKeyExpiresAt,
       schedule: await this.resolveSchedule(run.scheduleId ?? undefined),
       queue: {
         name: run.queue,
@@ -294,6 +367,11 @@ export class SpanPresenter extends BasePresenter {
       metadata,
       maxDurationInSeconds: getMaxDuration(run.maxDurationInSeconds),
       batch: run.batch ? { friendlyId: run.batch.friendlyId } : undefined,
+      engine: run.engine,
+      masterQueue: run.masterQueue,
+      secondaryMasterQueue: run.secondaryMasterQueue,
+      spanId: run.spanId,
+      isCached: !!span.originalRun,
     };
   }
 
@@ -326,31 +404,28 @@ export class SpanPresenter extends BasePresenter {
     };
   }
 
-  async #getSpan(runFriendlyId: string, spanId: string) {
-    const run = await this._prisma.taskRun.findFirst({
-      select: {
-        traceId: true,
-        createdAt: true,
-        completedAt: true,
-        taskEventStore: true,
-      },
-      where: {
-        friendlyId: runFriendlyId,
-      },
-    });
-
-    if (!run) {
-      return;
-    }
-
+  async #getSpan({
+    eventStore,
+    traceId,
+    spanId,
+    environmentId,
+    createdAt,
+    completedAt,
+  }: {
+    traceId: string;
+    spanId: string;
+    environmentId: string;
+    eventStore: TaskEventStoreTable;
+    createdAt: Date;
+    completedAt: Date | null;
+  }) {
     const span = await eventRepository.getSpan(
-      getTaskEventStoreTableForRun(run),
+      eventStore,
       spanId,
-      run.traceId,
-      run.createdAt,
-      run.completedAt ?? undefined
+      traceId,
+      createdAt,
+      completedAt ?? undefined
     );
-
     if (!span) {
       return;
     }
@@ -373,12 +448,78 @@ export class SpanPresenter extends BasePresenter {
       },
     });
 
-    return {
+    const data = {
       ...span,
       events: span.events,
       properties: span.properties ? JSON.stringify(span.properties, null, 2) : undefined,
       triggeredRuns,
       showActionBar: span.show?.actions === true,
     };
+
+    switch (span.entity.type) {
+      case "waitpoint":
+        const waitpoint = await this._replica.waitpoint.findFirst({
+          where: {
+            friendlyId: span.entity.id,
+          },
+          select: {
+            friendlyId: true,
+            type: true,
+            status: true,
+            idempotencyKey: true,
+            userProvidedIdempotencyKey: true,
+            idempotencyKeyExpiresAt: true,
+            output: true,
+            outputType: true,
+            outputIsError: true,
+            completedAfter: true,
+          },
+        });
+
+        if (!waitpoint) {
+          logger.error(`SpanPresenter: Waitpoint not found`, {
+            spanId,
+            waitpointFriendlyId: span.entity.id,
+          });
+          return { ...data, entity: null };
+        }
+
+        const output =
+          waitpoint.outputType === "application/store"
+            ? `/resources/packets/${environmentId}/${waitpoint.output}`
+            : typeof waitpoint.output !== "undefined" && waitpoint.output !== null
+            ? await prettyPrintPacket(waitpoint.output, waitpoint.outputType ?? undefined)
+            : undefined;
+
+        let isTimeout = false;
+        if (waitpoint.outputIsError && output) {
+          if (isWaitpointOutputTimeout(output)) {
+            isTimeout = true;
+          }
+        }
+
+        return {
+          ...data,
+          entity: {
+            type: "waitpoint" as const,
+            object: {
+              friendlyId: waitpoint.friendlyId,
+              type: waitpoint.type,
+              status: waitpoint.status,
+              idempotencyKey: waitpoint.idempotencyKey,
+              userProvidedIdempotencyKey: waitpoint.userProvidedIdempotencyKey,
+              idempotencyKeyExpiresAt: waitpoint.idempotencyKeyExpiresAt,
+              output: output,
+              outputType: waitpoint.outputType,
+              outputIsError: waitpoint.outputIsError,
+              completedAfter: waitpoint.completedAfter,
+              isTimeout,
+            },
+          },
+        };
+
+      default:
+        return { ...data, entity: null };
+    }
   }
 }

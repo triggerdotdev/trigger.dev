@@ -1,12 +1,12 @@
 import { dequal } from "dequal/lite";
 import { DeserializedJson } from "../../schemas/json.js";
 import { ApiClient } from "../apiClient/index.js";
-import { AsyncIterableStream } from "../apiClient/stream.js";
 import { FlushedRunMetadata, RunMetadataChangeOperation } from "../schemas/common.js";
 import { ApiRequestOptions } from "../zodfetch.js";
 import { MetadataStream } from "./metadataStream.js";
 import { applyMetadataOperations } from "./operations.js";
 import { RunMetadataManager, RunMetadataUpdater } from "./types.js";
+import { AsyncIterableStream } from "../streams/asyncIterableStream.js";
 
 const MAXIMUM_ACTIVE_STREAMS = 5;
 const MAXIMUM_TOTAL_STREAMS = 10;

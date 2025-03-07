@@ -9,13 +9,12 @@ module.exports = {
   serverModuleFormat: "cjs",
   serverDependenciesToBundle: [
     /^remix-utils.*/,
+    /^@internal\//, // Bundle all internal packages
+    /^@trigger\.dev\//, // Bundle all trigger packages
     "marked",
     "axios",
     "p-limit",
     "yocto-queue",
-    "@trigger.dev/core",
-    "@trigger.dev/sdk",
-    "@trigger.dev/platform",
     "@unkey/cache",
     "@unkey/cache/stores",
     "emails",
@@ -26,7 +25,4 @@ module.exports = {
     "prismjs/components/prism-typescript",
   ],
   browserNodeBuiltinsPolyfill: { modules: { path: true, os: true, crypto: true } },
-  watchPaths: async () => {
-    return ["../../packages/core/src/**/*", "../../packages/emails/src/**/*"];
-  },
 };

@@ -32,7 +32,7 @@ export type ZodFetchOptions<T = unknown> = {
   name?: string;
   attributes?: Attributes;
   icon?: string;
-  onResponseBody?: (body: unknown, span: Span) => void;
+  onResponseBody?: (body: T, span: Span) => void;
   prepareData?: (data: T) => Promise<T> | T;
 };
 

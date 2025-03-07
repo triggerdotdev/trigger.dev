@@ -1,0 +1,236 @@
+---
+title: "Deployment"
+sidebarTitle: "Overview"
+description: "Learn how to deploy your tasks to Trigger.dev."
+---
+
+import CorepackError from "/snippets/corepack-error.mdx";
+
+Before you can run production workloads on Trigger.dev, you need to deploy your tasks. The only way to do this at the moment is through the [deploy CLI command](/cli-deploy):
+
+<CodeGroup>
+
+```bash npm
+npx trigger.dev@latest deploy
+```
+
+```bash pnpm
+pnpm dlx trigger.dev@latest deploy
+```
+
+```bash yarn
+yarn dlx trigger.dev@latest deploy
+```
+
+</CodeGroup>
+
+## Deploying 101
+
+Let's assume you have an existing trigger.dev project with a few tasks that you have been running locally but now want to deploy to the Trigger.dev cloud (or your self-hosted instance).
+
+First, let's make sure you are logged in to the CLI (if you haven't already):
+
+```bash
+npx trigger.dev login
+```
+
+This will open a browser window where you can log in with your Trigger.dev account and link your CLI.
+
+Now you can deploy your tasks:
+
+```bash
+npx trigger.dev deploy
+```
+
+This should print out a success message and let you know a new version has been deployed:
+
+```bash
+Trigger.dev (3.3.16)
+------------------------------------------------------
+┌  Deploying project
+│
+◇  Retrieved your account details for eric@trigger.dev
+│
+◇  Successfully built code
+│
+◇  Successfully deployed version 20250228.1
+│
+└  Version 20250228.1 deployed with 4 detected tasks
+```
+
+Now if you visit your Trigger.dev dashboard you should see the new version deployed:
+
+![Trigger.dev dashboard showing the latest version deployed](/deployment/my-first-deployment.png)
+
+<Note>
+  Deploying consists of building your tasks and uploading them to the Trigger.dev cloud. This
+  process can take a few seconds to a few minutes depending on the size of your project.
+</Note>
+
+## Triggering deployed tasks
+
+Once you have deployed your tasks, you can trigger tasks exactly the same way you did locally, but with the "PROD" API key:
+
+![Trigger.dev dashboard showing the API key](/deployment/api-key.png)
+
+Copy the API key from the dashboard and set the `TRIGGER_SECRET_KEY` environment variable, and then any tasks you trigger will run against the deployed version:
+
+```txt .env
+TRIGGER_SECRET_KEY="tr_prod_abc123"
+```
+
+Now you can trigger your tasks:
+
+```ts
+import { myTask } from "./trigger/tasks";
+
+await myTask.trigger({ foo: "bar" });
+```
+
+See our [triggering tasks](/triggering) guide for more information.
+
+## Versions
+
+When you deploy your tasks, Trigger.dev creates a new version of all tasks in your project. A version is a snapshot of your tasks at a certain point in time. This ensures that tasks are not affected by changes to the code.
+
+### Current version
+
+When you deploy, the version number is automatically incremented, and the new version is set as the current version for that environment.
+
+<Note>
+  A single environment (prod, staging, etc.) can only have a single "current" version at a time.
+</Note>
+
+The current version defines which version of the code new task runs will execute against. When a task run starts, it is locked to the current version. This ensures that the task run is not affected by changes to the code. Retries of the task run will also be locked to the original version.
+
+<Note>
+  When you Replay a run in the dashboard we will create a new run, locked to the current version and
+  not necessarily the version of the original run.
+</Note>
+
+### Version locking
+
+You can optionally specify the version when triggering a task using the `version` parameter. This is useful when you want to run a task against a specific version of the code:
+
+```ts
+await myTask.trigger({ foo: "bar" }, { version: "20250228.1" });
+```
+
+If you want to set a global version to run all tasks against, you can use the `TRIGGER_VERSION` environment variable:
+
+```bash
+TRIGGER_VERSION=20250228.1
+```
+
+### Child tasks and auto-version locking
+
+Trigger and wait functions version lock child task runs to the parent task run version. This ensures the results from child runs match what the parent task is expecting. If you don't wait then version locking doesn't apply.
+
+| Trigger function        | Parent task version | Child task version | isLocked |
+| ----------------------- | ------------------- | ------------------ | -------- |
+| `trigger()`             | `20240313.2`        | Current            | No       |
+| `batchTrigger()`        | `20240313.2`        | Current            | No       |
+| `triggerAndWait()`      | `20240313.2`        | `20240313.2`       | Yes      |
+| `batchTriggerAndWait()` | `20240313.2`        | `20240313.2`       | Yes      |
+
+### Skipping promotion
+
+When you deploy, the new version is automatically promoted be the current version. If you want to skip this promotion, you can use the `--skip-promotion` flag:
+
+```bash
+npx trigger.dev deploy --skip-promotion
+```
+
+This will create a new deployment version but not promote it to the current version:
+
+![Trigger.dev dashboard showing the latest version deployed but not promoted](/deployment/skip-promotion.png)
+
+This allows you to deploy and test a new version without affecting new task runs. When you want to promote the version, you can do so from the CLI:
+
+```bash
+npx trigger.dev promote 20250228.1
+```
+
+Or from the dashboard:
+
+![Trigger.dev dashboard showing the promote button](/deployment/promote-button.png)
+
+To learn more about skipping promotion and how this enables atomic deployments, see our [Atomic deployment](/deployment/atomic-deployment) guide.
+
+## Staging deploys
+
+By default, the `deploy` command will deploy to the `prod` environment. If you want to deploy to a different environment, you can use the `--env` flag:
+
+```bash
+npx trigger.dev deploy --env staging
+```
+
+<Note>
+  If you are using the Trigger.dev Cloud, staging deploys are only available on the Hobby and Pro
+  plans.
+</Note>
+
+This will create an entirely new version of your tasks for the `staging` environment, with a new version number and an independent current version:
+
+![Trigger.dev dashboard showing the staging environment](/deployment/staging-deploy.png)
+
+Now you can trigger tasks against the staging environment by setting the `TRIGGER_SECRET_KEY` environment variable to the staging API key:
+
+```txt .env
+TRIGGER_SECRET_KEY="tr_stg_abcd123"
+```
+
+Currently, we only support two environments: `prod` and `staging`. Multiple environments are on our roadmap which you can track [here](https://feedback.trigger.dev/p/more-environments).
+
+## Environment variables
+
+To add custom environment variables to your deployed tasks, you need to add them to your project in the Trigger.dev dashboard, or automatically sync them using our [syncEnvVars](/config/config-file#syncenvvars) or [syncVercelEnvVars](/config/config-file#syncvercelenvvars) build extensions.
+
+For more information on environment variables, see our [environment variables](/deploy-environment-variables) guide.
+
+## Troubleshooting
+
+When things go wrong with your deployment, there are a few things you can do to diagnose the issue:
+
+### Dry runs
+
+You can do a "dry run" of the deployment to see what is built and uploaded without actually deploying:
+
+```bash
+npx trigger.dev deploy --dry-run
+
+#  Dry run complete. View the built project at /<project path>/.trigger/tmp/<build dir>
+```
+
+The dry run will output the build directory where you can inspect the built tasks and dependencies. You can also compress this directory and send it to us if you need help debugging.
+
+### Debug logs
+
+You can run the deploy command with `--log-level debug` at the end. This will print out a lot of information about the deploy. If you can't figure out the problem from the information below please join [our Discord](https://trigger.dev/discord) and create a help forum post. Do NOT share the extended debug logs publicly as they might reveal private information about your project.
+
+### Common issues
+
+#### `Failed to build project image: Error building image`
+
+There should be a link below the error message to the full build logs on your machine. Take a look at these to see what went wrong. Join [our Discord](https://trigger.dev/discord) and you share it privately with us if you can't figure out what's going wrong. Do NOT share these publicly as the verbose logs might reveal private information about your project.
+
+#### `Deployment encountered an error`
+
+Usually there will be some useful guidance below this message. If you can't figure out what's going wrong then join [our Discord](https://trigger.dev/discord) and create a Help forum post with a link to your deployment.
+
+#### `No loader is configured for ".node" files`
+
+This happens because `.node` files are native code and can't be bundled like other packages. To fix this, add your package to [`build.external`](/config/config-file#external) in the `trigger.config.ts` file like this:
+
+```ts trigger.config.ts
+import { defineConfig } from "@trigger.dev/sdk/v3";
+
+export default defineConfig({
+  project: "<project ref>",
+  // Your other config settings...
+  build: {
+    external: ["your-node-package"],
+  },
+});
+```
+<CorepackError />

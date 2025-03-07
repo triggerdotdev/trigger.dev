@@ -1,0 +1,20 @@
+<Tip>
+  Instead of running your Next.js app and Trigger.dev dev server in separate terminals, you can run them concurrently. First, add these scripts to your `package.json`:
+
+  ```json
+  {
+    "scripts": {
+      "trigger:dev": "npx trigger.dev@latest dev",
+      "dev": "npx concurrently --kill-others --names \"next,trigger\" --prefix-colors \"yellow,blue\" \"next dev\" \"npm run trigger:dev\""
+    }
+  }
+  ```
+
+  Then, in your terminal, you can start both servers with a single command:
+
+  ```bash
+  npm run dev
+  ```
+
+  This will run both your Next.js app and Trigger.dev dev server in the same terminal window, with color-coded output to distinguish between them.
+</Tip>

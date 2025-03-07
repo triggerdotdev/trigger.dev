@@ -47,7 +47,6 @@ const DeployCommandOptions = CommonCommandOptions.extend({
   push: z.boolean().default(false),
   config: z.string().optional(),
   projectRef: z.string().optional(),
-  apiUrl: z.string().optional(),
   saveLogs: z.boolean().default(false),
   skipUpdateCheck: z.boolean().default(false),
   skipPromotion: z.boolean().default(false),
@@ -218,6 +217,8 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
 
   const forcedExternals = await resolveAlwaysExternal(projectClient.client);
 
+  const { features } = resolvedConfig;
+
   const buildManifest = await buildWorker({
     target: "deploy",
     environment: options.env,
@@ -251,6 +252,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     selfHosted: options.selfHosted,
     registryHost: options.registry,
     namespace: options.namespace,
+    type: features.run_engine_v2 ? "MANAGED" : "V1",
   });
 
   if (!deploymentResponse.success) {
@@ -501,7 +503,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
       testUrl: `${authorization.dashboardUrl}/projects/v3/${
         resolvedConfig.project
       }/test?environment=${options.env === "prod" ? "prod" : "stg"}`,
-      needsPromotion: options.skipPromotion ? "false" : "true",
+      needsPromotion: options.skipPromotion ? "true" : "false",
     },
   });
 }

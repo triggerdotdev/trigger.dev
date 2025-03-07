@@ -71,7 +71,7 @@ import { useProject } from "~/hooks/useProject";
 import { useReplaceSearchParams } from "~/hooks/useReplaceSearchParams";
 import { Shortcut, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { useHasAdminAccess, useUser } from "~/hooks/useUser";
-import { RunPresenter } from "~/presenters/v3/RunPresenter.server";
+import { Run, RunPresenter } from "~/presenters/v3/RunPresenter.server";
 import { getImpersonationId } from "~/services/impersonation.server";
 import { getResizableSnapshot } from "~/services/resizablePanel.server";
 import { requireUserId } from "~/services/session.server";
@@ -226,8 +226,8 @@ export default function Page() {
           {run.isFinished ? null : (
             <Dialog key={`cancel-${run.friendlyId}`}>
               <DialogTrigger asChild>
-                <Button variant="danger/small" LeadingIcon={StopCircleIcon}>
-                  Cancel run
+                <Button variant="danger/small" LeadingIcon={StopCircleIcon} shortcut={{ key: "C" }}>
+                  Cancel run…
                 </Button>
               </DialogTrigger>
               <CancelRunDialog
@@ -467,8 +467,10 @@ function TasksTreeView({
   maximumLiveReloadingSetting,
   rootRun,
 }: TasksTreeViewProps) {
+  const isAdmin = useHasAdminAccess();
   const [filterText, setFilterText] = useState("");
   const [errorsOnly, setErrorsOnly] = useState(false);
+  const [showDebug, setShowDebug] = useState(false);
   const [showDurations, setShowDurations] = useState(true);
   const [scale, setScale] = useState(0);
   const parentRef = useRef<HTMLDivElement>(null);
@@ -488,7 +490,7 @@ function TasksTreeView({
     scrollToNode,
     virtualizer,
   } = useTree({
-    tree: events,
+    tree: showDebug ? events : events.filter((event) => !event.data.isDebug),
     selectedId,
     // collapsedIds,
     onSelectedIdChanged,
@@ -513,6 +515,15 @@ function TasksTreeView({
     <div className="grid h-full grid-rows-[2.5rem_1fr_3.25rem] overflow-hidden">
       <div className="flex items-center justify-between gap-2 border-b border-grid-dimmed px-2">
         <SearchField onChange={setFilterText} />
+        {isAdmin && (
+          <Switch
+            variant="small"
+            label="Debug"
+            shortcut={{ modifiers: ["shift"], key: "D" }}
+            checked={showDebug}
+            onCheckedChange={(e) => setShowDebug(e.valueOf())}
+          />
+        )}
         <Switch
           variant="small"
           label="Errors only"

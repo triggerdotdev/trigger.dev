@@ -1,6 +1,7 @@
 import { defineConfig } from "@trigger.dev/sdk/v3";
 
 export default defineConfig({
+  compatibilityFlags: ["run_engine_v2"],
   project: "proj_rrkpdguyagvsoktglnod",
   logLevel: "log",
   maxDuration: 60,

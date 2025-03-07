@@ -12,7 +12,7 @@ import {
   TaskEventStyle,
   unflattenAttributes,
 } from "@trigger.dev/core/v3";
-import { Prisma, TaskEvent } from "@trigger.dev/database";
+import { Prisma, TaskEvent, TaskEventKind } from "@trigger.dev/database";
 import { createTreeFromFlatItems, flattenTree } from "~/components/primitives/TreeView/TreeView";
 import type {
   PreparedEvent,
@@ -65,7 +65,6 @@ export function prepareTrace(events: TaskEvent[]): TraceSummary | undefined {
       id: event.spanId,
       parentId: event.parentId ?? undefined,
       runId: event.runId,
-      idempotencyKey: event.idempotencyKey,
       data: {
         message: event.message,
         style: event.style,
@@ -77,8 +76,9 @@ export function prepareTrace(events: TaskEvent[]): TraceSummary | undefined {
         level: event.level,
         events: event.events,
         environmentType: event.environmentType,
+        isDebug: event.kind === TaskEventKind.LOG,
       },
-    };
+    } satisfies SpanSummary;
 
     spansBySpanId.set(event.spanId, span);
 
