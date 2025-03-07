@@ -8,7 +8,7 @@ import {
 } from "@trigger.dev/core/v3/apps";
 import { SimpleLogger } from "@trigger.dev/core/v3/apps";
 import { isExecaChildProcess } from "@trigger.dev/core/v3/apps";
-import { testDockerCheckpoint } from "@trigger.dev/core/v3/checkpoints";
+import { testDockerCheckpoint } from "@trigger.dev/core/v3/serverOnly";
 import { setTimeout } from "node:timers/promises";
 import { PostStartCauses, PreStopCauses } from "@trigger.dev/core/v3";
 

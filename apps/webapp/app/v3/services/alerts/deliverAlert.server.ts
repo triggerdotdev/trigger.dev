@@ -13,6 +13,7 @@ import {
   RunFailedWebhook,
   DeploymentFailedWebhook,
   DeploymentSuccessWebhook,
+  isOOMRunError,
 } from "@trigger.dev/core/v3";
 import assertNever from "assert-never";
 import { subtle } from "crypto";
@@ -39,7 +40,6 @@ import { generateFriendlyId } from "~/v3/friendlyIdentifiers";
 import { ProjectAlertChannelType, ProjectAlertType } from "@trigger.dev/database";
 import { alertsRateLimiter } from "~/v3/alertsRateLimiter.server";
 import { v3RunPath } from "~/utils/pathBuilder";
-import { isOOMError } from "../completeAttempt.server";
 import { ApiRetrieveRunPresenter } from "~/presenters/v3/ApiRetrieveRunPresenter.server";
 
 type FoundAlert = Prisma.Result<
@@ -375,7 +375,7 @@ export class DeliverAlertService extends BaseService {
                     idempotencyKey: alert.taskRun.idempotencyKey ?? undefined,
                     tags: alert.taskRun.runTags,
                     error,
-                    isOutOfMemoryError: isOOMError(error),
+                    isOutOfMemoryError: isOOMRunError(error),
                     machine: alert.taskRun.machinePreset ?? "Unknown",
                     dashboardUrl: `${env.APP_ORIGIN}${v3RunPath(
                       alert.project.organization,

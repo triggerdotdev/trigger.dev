@@ -5,7 +5,7 @@ import {
   assertNonNullable,
 } from "@internal/testcontainers";
 import { trace } from "@opentelemetry/api";
-import { expect } from "vitest";
+import { expect, describe } from "vitest";
 import { RunEngine } from "../index.js";
 import { setTimeout } from "timers/promises";
 

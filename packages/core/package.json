@@ -59,6 +59,7 @@
       "./v3/workers": "./src/v3/workers/index.ts",
       "./v3/schemas": "./src/v3/schemas/index.ts",
       "./v3/runEngineWorker": "./src/v3/runEngineWorker/index.ts",
+      "./v3/machines": "./src/v3/machines/index.ts",
       "./v3/serverOnly": "./src/v3/serverOnly/index.ts"
     },
     "sourceDialects": [
@@ -177,6 +178,9 @@
       ],
       "v3/runEngineWorker": [
         "dist/commonjs/v3/runEngineWorker/index.d.ts"
+      ],
+      "v3/machines": [
+        "dist/commonjs/v3/machines/index.d.ts"
       ],
       "v3/serverOnly": [
         "dist/commonjs/v3/serverOnly/index.d.ts"
@@ -661,6 +665,17 @@
       "require": {
         "types": "./dist/commonjs/v3/runEngineWorker/index.d.ts",
         "default": "./dist/commonjs/v3/runEngineWorker/index.js"
+      }
+    },
+    "./v3/machines": {
+      "import": {
+        "@triggerdotdev/source": "./src/v3/machines/index.ts",
+        "types": "./dist/esm/v3/machines/index.d.ts",
+        "default": "./dist/esm/v3/machines/index.js"
+      },
+      "require": {
+        "types": "./dist/commonjs/v3/machines/index.d.ts",
+        "default": "./dist/commonjs/v3/machines/index.js"
       }
     },
     "./v3/serverOnly": {
