@@ -1,6 +1,6 @@
 import { redisTest } from "@internal/testcontainers";
 import { describe, expect, vi } from "vitest";
-import { FairDequeuingStrategy } from "./fairDequeuingStrategy.js";
+import { FairQueueSelectionStrategy } from "./fairQueueSelectionStrategy.js";
 import { RunQueueFullKeyProducer } from "./keyProducer.js";
 import { createRedisClient, Redis, RedisOptions } from "@internal/redis";
 import { EnvQueues, RunQueueKeyProducer } from "./types.js";
@@ -13,7 +13,7 @@ describe("FairDequeuingStrategy", () => {
     "should distribute a single queue from a single env",
     async ({ redisOptions: redis }) => {
       const keyProducer = new RunQueueFullKeyProducer();
-      const strategy = new FairDequeuingStrategy({
+      const strategy = new FairQueueSelectionStrategy({
         redis,
         keys: keyProducer,
         defaultEnvConcurrencyLimit: 5,
@@ -47,7 +47,7 @@ describe("FairDequeuingStrategy", () => {
 
   redisTest("should respect env concurrency limits", async ({ redisOptions: redis }) => {
     const keyProducer = new RunQueueFullKeyProducer();
-    const strategy = new FairDequeuingStrategy({
+    const strategy = new FairQueueSelectionStrategy({
       redis,
       keys: keyProducer,
       defaultEnvConcurrencyLimit: 2,
@@ -80,7 +80,7 @@ describe("FairDequeuingStrategy", () => {
     "should give extra concurrency when the env has reserve concurrency",
     async ({ redisOptions: redis }) => {
       const keyProducer = new RunQueueFullKeyProducer();
-      const strategy = new FairDequeuingStrategy({
+      const strategy = new FairQueueSelectionStrategy({
         redis,
         keys: keyProducer,
         defaultEnvConcurrencyLimit: 2,
@@ -126,7 +126,7 @@ describe("FairDequeuingStrategy", () => {
 
   redisTest("should respect parentQueueLimit", async ({ redisOptions: redis }) => {
     const keyProducer = new RunQueueFullKeyProducer();
-    const strategy = new FairDequeuingStrategy({
+    const strategy = new FairQueueSelectionStrategy({
       redis,
       keys: keyProducer,
       defaultEnvConcurrencyLimit: 5,
@@ -185,7 +185,7 @@ describe("FairDequeuingStrategy", () => {
     "should reuse snapshots across calls for the same consumer",
     async ({ redisOptions: redis }) => {
       const keyProducer = new RunQueueFullKeyProducer();
-      const strategy = new FairDequeuingStrategy({
+      const strategy = new FairQueueSelectionStrategy({
         redis,
         keys: keyProducer,
         defaultEnvConcurrencyLimit: 5,
@@ -282,7 +282,7 @@ describe("FairDequeuingStrategy", () => {
     "should fairly distribute queues across environments over time",
     async ({ redisOptions: redis }) => {
       const keyProducer = new RunQueueFullKeyProducer();
-      const strategy = new FairDequeuingStrategy({
+      const strategy = new FairQueueSelectionStrategy({
         redis,
         keys: keyProducer,
         defaultEnvConcurrencyLimit: 5,
@@ -440,7 +440,7 @@ describe("FairDequeuingStrategy", () => {
     "should shuffle environments while maintaining age order within environments",
     async ({ redisOptions: redis }) => {
       const keyProducer = new RunQueueFullKeyProducer();
-      const strategy = new FairDequeuingStrategy({
+      const strategy = new FairQueueSelectionStrategy({
         redis,
         keys: keyProducer,
         defaultEnvConcurrencyLimit: 5,
@@ -623,7 +623,7 @@ describe("FairDequeuingStrategy", () => {
       const strategies = Array.from(
         { length: numStrategies },
         (_, i) =>
-          new FairDequeuingStrategy({
+          new FairQueueSelectionStrategy({
             redis,
             keys: keyProducer,
             defaultEnvConcurrencyLimit: 5,
@@ -708,7 +708,7 @@ describe("FairDequeuingStrategy", () => {
 
       // Helper function to run iterations with a specific age influence
       async function runWithQueueAgeRandomization(queueAgeRandomization: number) {
-        const strategy = new FairDequeuingStrategy({
+        const strategy = new FairQueueSelectionStrategy({
           redis,
           keys: keyProducer,
           defaultEnvConcurrencyLimit: 5,
@@ -799,7 +799,7 @@ describe("FairDequeuingStrategy", () => {
     "should respect maximumEnvCount and select envs based on queue ages",
     async ({ redisOptions: redis }) => {
       const keyProducer = new RunQueueFullKeyProducer();
-      const strategy = new FairDequeuingStrategy({
+      const strategy = new FairQueueSelectionStrategy({
         redis,
         keys: keyProducer,
         defaultEnvConcurrencyLimit: 5,
@@ -942,7 +942,7 @@ describe("FairDequeuingStrategy", () => {
     "should not overly bias picking environments when queue have priority offset ages",
     async ({ redisOptions: redis }) => {
       const keyProducer = new RunQueueFullKeyProducer();
-      const strategy = new FairDequeuingStrategy({
+      const strategy = new FairQueueSelectionStrategy({
         redis,
         keys: keyProducer,
         defaultEnvConcurrencyLimit: 5,

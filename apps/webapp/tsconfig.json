@@ -40,7 +40,9 @@
       "@internal/redis-worker": ["../../internal-packages/redis-worker/src/index"],
       "@internal/redis-worker/*": ["../../internal-packages/redis-worker/src/*"],
       "@internal/redis": ["../../internal-packages/redis/src/index"],
-      "@internal/redis/*": ["../../internal-packages/redis/src/*"]
+      "@internal/redis/*": ["../../internal-packages/redis/src/*"],
+      "@internal/tracing": ["../../internal-packages/tracing/src/index"],
+      "@internal/tracing/*": ["../../internal-packages/tracing/src/*"]
     },
     "noEmit": true
   }

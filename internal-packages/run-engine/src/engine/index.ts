@@ -53,7 +53,7 @@ import { nanoid } from "nanoid";
 import { EventEmitter } from "node:events";
 import { z } from "zod";
 import { RunQueue } from "../run-queue/index.js";
-import { FairDequeuingStrategy } from "../run-queue/fairDequeuingStrategy.js";
+import { FairQueueSelectionStrategy } from "../run-queue/fairQueueSelectionStrategy.js";
 import { MinimalAuthenticatedEnvironment } from "../shared/index.js";
 import { MAX_TASK_RUN_ATTEMPTS } from "./consts.js";
 import { getRunWithBackgroundWorkerTasks } from "./db/worker.js";
@@ -159,9 +159,10 @@ export class RunEngine {
       name: "rq",
       tracer: trace.getTracer("rq"),
       keys,
-      queuePriorityStrategy: new FairDequeuingStrategy({
+      queueSelectionStrategy: new FairQueueSelectionStrategy({
         keys,
         redis: { ...options.queue.redis, keyPrefix: `${options.queue.redis.keyPrefix}runqueue:` },
+        defaultEnvConcurrencyLimit: options.queue?.defaultEnvConcurrency ?? 10,
       }),
       defaultEnvConcurrency: options.queue?.defaultEnvConcurrency ?? 10,
       logger: new Logger("RunQueue", "debug"),

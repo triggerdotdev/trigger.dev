@@ -43,6 +43,17 @@ function createRunEngine() {
         enableAutoPipelining: true,
         ...(env.RUN_ENGINE_RUN_QUEUE_REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
       },
+      queueSelectionStrategyOptions: {
+        parentQueueLimit: env.RUN_ENGINE_PARENT_QUEUE_LIMIT,
+        biases: {
+          concurrencyLimitBias: env.RUN_ENGINE_CONCURRENCY_LIMIT_BIAS,
+          availableCapacityBias: env.RUN_ENGINE_AVAILABLE_CAPACITY_BIAS,
+          queueAgeRandomization: env.RUN_ENGINE_QUEUE_AGE_RANDOMIZATION_BIAS,
+        },
+        reuseSnapshotCount: env.RUN_ENGINE_REUSE_SNAPSHOT_COUNT,
+        maximumEnvCount: env.RUN_ENGINE_MAXIMUM_ENV_COUNT,
+        tracer,
+      },
     },
     runLock: {
       redis: {

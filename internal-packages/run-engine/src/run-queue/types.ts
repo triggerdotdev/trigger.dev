@@ -95,7 +95,7 @@ export type EnvQueues = {
   queues: string[];
 };
 
-export interface RunQueueFairDequeueStrategy {
+export interface RunQueueSelectionStrategy {
   distributeFairQueuesFromParentQueue(
     parentQueue: string,
     consumerId: string

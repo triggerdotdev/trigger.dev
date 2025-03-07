@@ -26,6 +26,9 @@ module.exports = {
     "superjson",
     "prismjs/components/prism-json",
     "prismjs/components/prism-typescript",
+    "@internal/run-engine",
+    "@internal/redis",
+    "@internal/tracing",
   ],
   browserNodeBuiltinsPolyfill: { modules: { path: true, os: true, crypto: true } },
   watchPaths: async () => {

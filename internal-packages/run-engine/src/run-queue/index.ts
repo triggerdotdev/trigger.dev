@@ -20,7 +20,7 @@ import {
   InputPayload,
   OutputPayload,
   RunQueueKeyProducer,
-  RunQueueFairDequeueStrategy,
+  RunQueueSelectionStrategy,
 } from "./types.js";
 import {
   createRedisClient,
@@ -46,7 +46,7 @@ export type RunQueueOptions = {
   defaultEnvConcurrency: number;
   windowSize?: number;
   keys: RunQueueKeyProducer;
-  queuePriorityStrategy: RunQueueFairDequeueStrategy;
+  queueSelectionStrategy: RunQueueSelectionStrategy;
   verbose?: boolean;
   logger: Logger;
   retryOptions?: RetryOptions;
@@ -75,7 +75,7 @@ export class RunQueue {
   private logger: Logger;
   private redis: Redis;
   public keys: RunQueueKeyProducer;
-  private queuePriorityStrategy: RunQueueFairDequeueStrategy;
+  private queueSelectionStrategy: RunQueueSelectionStrategy;
 
   constructor(private readonly options: RunQueueOptions) {
     this.retryOptions = options.retryOptions ?? defaultRetrySettings;
@@ -90,7 +90,7 @@ export class RunQueue {
     this.logger = options.logger;
 
     this.keys = options.keys;
-    this.queuePriorityStrategy = options.queuePriorityStrategy;
+    this.queueSelectionStrategy = options.queueSelectionStrategy;
 
     this.subscriber = createRedisClient(options.redis, {
       onError: (error) => {
@@ -259,11 +259,10 @@ export class RunQueue {
     return this.#trace(
       "dequeueMessageInSharedQueue",
       async (span) => {
-        const envQueues =
-          await this.options.queuePriorityStrategy.distributeFairQueuesFromParentQueue(
-            masterQueue,
-            consumerId
-          );
+        const envQueues = await this.queueSelectionStrategy.distributeFairQueuesFromParentQueue(
+          masterQueue,
+          consumerId
+        );
 
         span.setAttribute("environment_count", envQueues.length);
 

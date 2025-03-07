@@ -1,17 +1,17 @@
+import { createRedisClient, Redis, type RedisOptions } from "@internal/redis";
+import { startSpan, type Tracer } from "@internal/tracing";
 import { createCache, DefaultStatefulContext, Namespace, Cache as UnkeyCache } from "@unkey/cache";
 import { MemoryStore } from "@unkey/cache/stores";
 import { randomUUID } from "crypto";
+import seedrandom from "seedrandom";
 import {
   EnvDescriptor,
   EnvQueues,
-  RunQueueFairDequeueStrategy,
   RunQueueKeyProducer,
+  RunQueueSelectionStrategy,
 } from "./types.js";
-import seedrandom from "seedrandom";
-import { startSpan, type Tracer } from "@internal/tracing";
-import { Redis, type RedisOptions, createRedisClient } from "@internal/redis";
 
-export type FairDequeuingStrategyBiases = {
+export type FairQueueSelectionStrategyBiases = {
   /**
    * How much to bias towards environments with higher concurrency limits
    * 0 = no bias, 1 = full bias based on limit differences
@@ -33,7 +33,7 @@ export type FairDequeuingStrategyBiases = {
   queueAgeRandomization: number;
 };
 
-export type FairDequeuingStrategyOptions = {
+export type FairQueueSelectionStrategyOptions = {
   redis: RedisOptions;
   keys: RunQueueKeyProducer;
   defaultEnvConcurrencyLimit?: number;
@@ -44,7 +44,7 @@ export type FairDequeuingStrategyOptions = {
    * Configure biasing for environment shuffling
    * If not provided, no biasing will be applied (completely random shuffling)
    */
-  biases?: FairDequeuingStrategyBiases;
+  biases?: FairQueueSelectionStrategyBiases;
   reuseSnapshotCount?: number;
   maximumEnvCount?: number;
 };
@@ -79,13 +79,13 @@ const emptyFairQueueSnapshot: FairQueueSnapshot = {
   queues: [],
 };
 
-const defaultBiases: FairDequeuingStrategyBiases = {
+const defaultBiases: FairQueueSelectionStrategyBiases = {
   concurrencyLimitBias: 0,
   availableCapacityBias: 0,
   queueAgeRandomization: 0, // Default to completely age-based ordering
 };
 
-export class FairDequeuingStrategy implements RunQueueFairDequeueStrategy {
+export class FairQueueSelectionStrategy implements RunQueueSelectionStrategy {
   private _cache: UnkeyCache<{
     concurrencyLimit: number;
   }>;
@@ -100,7 +100,7 @@ export class FairDequeuingStrategy implements RunQueueFairDequeueStrategy {
   private _defaultEnvConcurrencyLimit: number;
   private _parentQueueLimit: number;
 
-  constructor(private options: FairDequeuingStrategyOptions) {
+  constructor(private options: FairQueueSelectionStrategyOptions) {
     const ctx = new DefaultStatefulContext();
     const memory = new MemoryStore({ persistentMap: new Map() });
 
@@ -612,7 +612,7 @@ export class FairDequeuingStrategy implements RunQueueFairDequeueStrategy {
   }
 }
 
-export class NoopFairDequeuingStrategy implements RunQueueFairDequeueStrategy {
+export class NoopFairDequeuingStrategy implements RunQueueSelectionStrategy {
   async distributeFairQueuesFromParentQueue(
     parentQueue: string,
     consumerId: string

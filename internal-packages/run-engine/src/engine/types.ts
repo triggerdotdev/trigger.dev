@@ -4,6 +4,7 @@ import { MachinePreset, MachinePresetName, QueueOptions, RetryOptions } from "@t
 import { PrismaClient } from "@trigger.dev/database";
 import { type RedisOptions } from "@internal/redis";
 import { MinimalAuthenticatedEnvironment } from "../shared/index.js";
+import { FairQueueSelectionStrategyOptions } from "../run-queue/fairQueueSelectionStrategy.js";
 
 export type RunEngineOptions = {
   prisma: PrismaClient;
@@ -21,6 +22,10 @@ export type RunEngineOptions = {
     redis: RedisOptions;
     retryOptions?: RetryOptions;
     defaultEnvConcurrency?: number;
+    queueSelectionStrategyOptions?: Pick<
+      FairQueueSelectionStrategyOptions,
+      "parentQueueLimit" | "tracer" | "biases" | "reuseSnapshotCount" | "maximumEnvCount"
+    >;
   };
   runLock: {
     redis: RedisOptions;
