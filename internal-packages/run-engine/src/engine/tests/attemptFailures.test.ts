@@ -4,11 +4,10 @@ import {
   setupAuthenticatedEnvironment,
   setupBackgroundWorker,
 } from "@internal/testcontainers";
-import { trace } from "@opentelemetry/api";
-import { expect } from "vitest";
-import { EventBusEventArgs } from "../eventBus.js";
-import { RunEngine } from "../index.js";
+import { trace } from "@internal/tracing";
 import { setTimeout } from "node:timers/promises";
+import { expect } from "vitest";
+import { RunEngine } from "../index.js";
 
 describe("RunEngine attempt failures", () => {
   containerTest(

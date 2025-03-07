@@ -5,7 +5,6 @@ import {
   assertNonNullable,
 } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
-import { expect, describe } from "vitest";
 import { RunEngine } from "../index.js";
 import { setTimeout } from "timers/promises";
 
