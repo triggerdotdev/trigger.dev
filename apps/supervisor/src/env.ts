@@ -2,6 +2,14 @@ import { randomUUID } from "crypto";
 import { env as stdEnv } from "std-env";
 import { z } from "zod";
 
+const BoolEnv = z.preprocess((val) => {
+  if (typeof val !== "string") {
+    return val;
+  }
+
+  return ["true", "1"].includes(val.toLowerCase().trim());
+}, z.boolean());
+
 const Env = z.object({
   // This will come from `spec.nodeName` in k8s
   TRIGGER_WORKER_INSTANCE_NAME: z.string().default(randomUUID()),
@@ -12,7 +20,7 @@ const Env = z.object({
   MANAGED_WORKER_SECRET: z.string(),
 
   // Workload API settings (coordinator mode) - the workload API is what the run controller connects to
-  TRIGGER_WORKLOAD_API_ENABLED: z.coerce.boolean().default(true),
+  TRIGGER_WORKLOAD_API_ENABLED: BoolEnv.default("true"),
   TRIGGER_WORKLOAD_API_PROTOCOL: z
     .string()
     .transform((s) => z.enum(["http", "https"]).parse(s.toLowerCase()))
@@ -22,7 +30,7 @@ const Env = z.object({
   TRIGGER_WORKLOAD_API_PORT_EXTERNAL: z.coerce.number().default(8020), // This is the exposed port passed to the run controller
 
   // Dequeue settings (provider mode)
-  TRIGGER_DEQUEUE_ENABLED: z.coerce.boolean().default(true),
+  TRIGGER_DEQUEUE_ENABLED: BoolEnv.default("true"),
   TRIGGER_DEQUEUE_INTERVAL_MS: z.coerce.number().int().default(1000),
 
   // Optional services
