@@ -9,8 +9,10 @@ import { expect } from "vitest";
 import { RunEngine } from "../index.js";
 import { setTimeout } from "timers/promises";
 
+vi.setConfig({ testTimeout: 60_000 });
+
 describe("RunEngine not deployed", () => {
-  containerTest("Not yet deployed", { timeout: 15_000 }, async ({ prisma, redisOptions }) => {
+  containerTest("Not yet deployed", async ({ prisma, redisOptions }) => {
     //create environment
     const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 

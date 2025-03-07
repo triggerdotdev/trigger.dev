@@ -383,7 +383,7 @@ describe("RunQueue", () => {
     }
   );
 
-  redisTest.only(
+  redisTest(
     "Dequeue multiple messages from the queue",
     { timeout: 5_000 },
     async ({ redisContainer }) => {

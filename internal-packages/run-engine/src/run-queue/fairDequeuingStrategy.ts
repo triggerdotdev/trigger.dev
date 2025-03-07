@@ -115,7 +115,7 @@ export class FairDequeuingStrategy implements RunQueueFairDequeueStrategy {
     this._rng = seedrandom(options.seed);
     this._redis = createRedisClient(options.redis);
 
-    this._defaultEnvConcurrencyLimit = options.defaultEnvConcurrencyLimit ?? 10;
+    this._defaultEnvConcurrencyLimit = options.defaultEnvConcurrencyLimit ?? 100;
     this._parentQueueLimit = options.parentQueueLimit ?? 100;
   }
 

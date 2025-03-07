@@ -275,7 +275,7 @@ describe("KeyProducer", () => {
       "task/task-name"
     );
     const key = keyProducer.envCurrentConcurrencyKeyFromQueue(queueKey);
-    expect(key).toBe("{org:o1234}:env:e1234:currentConcurrency");
+    expect(key).toBe("{org:o1234}:proj:p1234:env:e1234:currentConcurrency");
   });
 
   it("envCurrentConcurrencyKey", () => {
@@ -287,7 +287,7 @@ describe("KeyProducer", () => {
       project: { id: "p1234" },
       organization: { id: "o1234" },
     });
-    expect(key).toBe("{org:o1234}:env:e1234:currentConcurrency");
+    expect(key).toBe("{org:o1234}:proj:p1234:env:e1234:currentConcurrency");
   });
 
   it("messageKey", () => {

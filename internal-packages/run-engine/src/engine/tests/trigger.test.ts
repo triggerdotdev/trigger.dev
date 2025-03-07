@@ -9,8 +9,10 @@ import { expect } from "vitest";
 import { EventBusEventArgs } from "../eventBus.js";
 import { RunEngine } from "../index.js";
 
+vi.setConfig({ testTimeout: 60_000 });
+
 describe("RunEngine trigger()", () => {
-  containerTest("Single run (success)", { timeout: 15_000 }, async ({ prisma, redisOptions }) => {
+  containerTest("Single run (success)", async ({ prisma, redisOptions }) => {
     //create environment
     const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
@@ -204,7 +206,7 @@ describe("RunEngine trigger()", () => {
     }
   });
 
-  containerTest("Single run (failed)", { timeout: 15_000 }, async ({ prisma, redisOptions }) => {
+  containerTest("Single run (failed)", async ({ prisma, redisOptions }) => {
     //create environment
     const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 

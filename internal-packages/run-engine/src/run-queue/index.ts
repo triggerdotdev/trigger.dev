@@ -467,6 +467,7 @@ export class RunQueue {
               taskConcurrencyKey,
               "dlq",
               messageId,
+              messageQueue,
               JSON.stringify(message.masterQueues),
               this.options.redis.keyPrefix ?? ""
             );
@@ -503,6 +504,7 @@ export class RunQueue {
           taskConcurrencyKey,
           //args
           messageId,
+          messageQueue,
           JSON.stringify(message),
           String(messageScore),
           JSON.stringify(message.masterQueues),
@@ -914,6 +916,7 @@ export class RunQueue {
       envQueueKey,
       taskConcurrencyKey,
       messageId,
+      messageQueue,
       JSON.stringify(masterQueues),
       this.options.redis.keyPrefix ?? ""
     );
@@ -1073,8 +1076,9 @@ local taskCurrentConcurrencyKey = KEYS[7]
 
 -- Args:
 local messageId = ARGV[1]
-local parentQueues = cjson.decode(ARGV[2])
-local keyPrefix = ARGV[3]
+local messageQueueName = ARGV[2]
+local parentQueues = cjson.decode(ARGV[3])
+local keyPrefix = ARGV[4]
 
 -- Remove the message from the message key
 redis.call('DEL', messageKey)
@@ -1088,9 +1092,9 @@ local earliestMessage = redis.call('ZRANGE', messageQueue, 0, 0, 'WITHSCORES')
 for _, parentQueue in ipairs(parentQueues) do
   local prefixedParentQueue = keyPrefix .. parentQueue
     if #earliestMessage == 0 then
-        redis.call('ZREM', prefixedParentQueue, messageQueue)
+        redis.call('ZREM', prefixedParentQueue, messageQueueName)
     else
-        redis.call('ZADD', prefixedParentQueue, earliestMessage[2], messageQueue)
+        redis.call('ZADD', prefixedParentQueue, earliestMessage[2], messageQueueName)
     end
 end
 
@@ -1116,10 +1120,11 @@ local taskConcurrencyKey = KEYS[7]
 
 -- Args:
 local messageId = ARGV[1]
-local messageData = ARGV[2]
-local messageScore = tonumber(ARGV[3])
-local parentQueues = cjson.decode(ARGV[4])
-local keyPrefix = ARGV[5]
+local messageQueueName = ARGV[2]
+local messageData = ARGV[3]
+local messageScore = tonumber(ARGV[4])
+local parentQueues = cjson.decode(ARGV[5])
+local keyPrefix = ARGV[6]
 
 -- Update the message data
 redis.call('SET', messageKey, messageData)
@@ -1139,9 +1144,9 @@ local earliestMessage = redis.call('ZRANGE', messageQueueKey, 0, 0, 'WITHSCORES'
 for _, parentQueue in ipairs(parentQueues) do
     local prefixedParentQueue = keyPrefix .. parentQueue
     if #earliestMessage == 0 then
-        redis.call('ZREM', prefixedParentQueue, messageQueueKey)
+        redis.call('ZREM', prefixedParentQueue, messageQueueName)
     else
-        redis.call('ZADD', prefixedParentQueue, earliestMessage[2], messageQueueKey)
+        redis.call('ZADD', prefixedParentQueue, earliestMessage[2], messageQueueName)
     end
 end
 `,
@@ -1162,8 +1167,9 @@ local deadLetterQueueKey = KEYS[8]
 
 -- Args:
 local messageId = ARGV[1]
-local parentQueues = cjson.decode(ARGV[2])
-local keyPrefix = ARGV[3]
+local messageQueueName = ARGV[2]
+local parentQueues = cjson.decode(ARGV[3])
+local keyPrefix = ARGV[4]
 
 -- Remove the message from the queue
 redis.call('ZREM', messageQueue, messageId)
@@ -1174,9 +1180,9 @@ local earliestMessage = redis.call('ZRANGE', messageQueue, 0, 0, 'WITHSCORES')
 for _, parentQueue in ipairs(parentQueues) do
     local prefixedParentQueue = keyPrefix .. parentQueue
     if #earliestMessage == 0 then
-        redis.call('ZREM', prefixedParentQueue, messageQueue)
+        redis.call('ZREM', prefixedParentQueue, messageQueueName)
     else
-        redis.call('ZADD', prefixedParentQueue, earliestMessage[2], messageQueue)
+        redis.call('ZADD', prefixedParentQueue, earliestMessage[2], messageQueueName)
     end
 end
 
@@ -1301,6 +1307,7 @@ declare module "@internal/redis" {
       envQueueKey: string,
       taskConcurrencyKey: string,
       messageId: string,
+      messageQueueName: string,
       masterQueues: string,
       keyPrefix: string,
       callback?: Callback<void>
@@ -1315,6 +1322,7 @@ declare module "@internal/redis" {
       envQueueKey: string,
       taskConcurrencyKey: string,
       messageId: string,
+      messageQueueName: string,
       messageData: string,
       messageScore: string,
       masterQueues: string,
@@ -1332,6 +1340,7 @@ declare module "@internal/redis" {
       taskConcurrencyKey: string,
       deadLetterQueueKey: string,
       messageId: string,
+      messageQueueName: string,
       masterQueues: string,
       keyPrefix: string,
       callback?: Callback<void>
