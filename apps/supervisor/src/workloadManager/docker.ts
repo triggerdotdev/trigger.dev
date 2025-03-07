@@ -6,12 +6,18 @@ import {
 } from "./types.js";
 import { x } from "tinyexec";
 import { env } from "../env.js";
-import { RunnerId } from "../util.js";
+import { getDockerHostDomain, RunnerId } from "../util.js";
 
 export class DockerWorkloadManager implements WorkloadManager {
   private readonly logger = new SimpleStructuredLogger("docker-workload-provider");
 
-  constructor(private opts: WorkloadManagerOptions) {}
+  constructor(private opts: WorkloadManagerOptions) {
+    if (opts.workloadApiDomain) {
+      this.logger.warn("[DockerWorkloadProvider] ⚠️ Custom workload API domain", {
+        domain: opts.workloadApiDomain,
+      });
+    }
+  }
 
   async create(opts: WorkloadManagerCreateOptions) {
     this.logger.log("[DockerWorkloadProvider] Creating container", { opts });
@@ -24,7 +30,9 @@ export class DockerWorkloadManager implements WorkloadManager {
       `--env=TRIGGER_ENV_ID=${opts.envId}`,
       `--env=TRIGGER_RUN_ID=${opts.runFriendlyId}`,
       `--env=TRIGGER_SNAPSHOT_ID=${opts.snapshotFriendlyId}`,
-      `--env=TRIGGER_WORKER_API_URL=${this.opts.workerApiUrl}`,
+      `--env=TRIGGER_SUPERVISOR_API_PROTOCOL=${this.opts.workloadApiProtocol}`,
+      `--env=TRIGGER_SUPERVISOR_API_PORT=${this.opts.workloadApiPort}`,
+      `--env=TRIGGER_SUPERVISOR_API_DOMAIN=${this.opts.workloadApiDomain ?? getDockerHostDomain()}`,
       `--env=TRIGGER_WORKER_INSTANCE_NAME=${env.TRIGGER_WORKER_INSTANCE_NAME}`,
       `--env=OTEL_EXPORTER_OTLP_ENDPOINT=${env.OTEL_EXPORTER_OTLP_ENDPOINT}`,
       `--env=TRIGGER_RUNNER_ID=${runnerId}`,

@@ -36,7 +36,9 @@ const Env = z.object({
   NODE_EXTRA_CA_CERTS: z.string().optional(),
 
   // Set at runtime
-  TRIGGER_WORKER_API_URL: z.string().url(),
+  TRIGGER_SUPERVISOR_API_PROTOCOL: z.enum(["http", "https"]),
+  TRIGGER_SUPERVISOR_API_DOMAIN: z.string(),
+  TRIGGER_SUPERVISOR_API_PORT: z.coerce.number(),
   TRIGGER_WORKLOAD_CONTROLLER_ID: z.string().default(`controller_${randomUUID()}`),
   TRIGGER_ENV_ID: z.string(),
   TRIGGER_RUN_ID: z.string().optional(), // This is only useful for cold starts
@@ -83,6 +85,8 @@ class ManagedRunController {
 
   private readonly snapshotPoller: HeartbeatService;
   private readonly snapshotPollIntervalSeconds: number;
+
+  private readonly workerApiUrl: string;
 
   private state:
     | {
@@ -246,8 +250,10 @@ class ManagedRunController {
     this.heartbeatIntervalSeconds = opts.heartbeatIntervalSeconds || 30;
     this.snapshotPollIntervalSeconds = 5;
 
+    this.workerApiUrl = `${env.TRIGGER_SUPERVISOR_API_PROTOCOL}://${env.TRIGGER_SUPERVISOR_API_DOMAIN}:${env.TRIGGER_SUPERVISOR_API_PORT}`;
+
     this.httpClient = new WorkloadHttpClient({
-      workerApiUrl: env.TRIGGER_WORKER_API_URL,
+      workerApiUrl: this.workerApiUrl,
       deploymentId: env.TRIGGER_DEPLOYMENT_ID,
       runnerId: env.TRIGGER_RUNNER_ID,
     });
@@ -746,8 +752,7 @@ class ManagedRunController {
   }
 
   createSocket() {
-    const wsUrl = new URL(env.TRIGGER_WORKER_API_URL);
-    wsUrl.pathname = "/workload";
+    const wsUrl = new URL("/workload", this.workerApiUrl);
 
     this.socket = io(wsUrl.href, {
       transports: ["websocket"],

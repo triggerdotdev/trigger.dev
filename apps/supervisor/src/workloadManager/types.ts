@@ -1,7 +1,9 @@
 import { type EnvironmentType, type MachinePreset } from "@trigger.dev/core/v3";
 
 export interface WorkloadManagerOptions {
-  workerApiUrl: string;
+  workloadApiProtocol: "http" | "https";
+  workloadApiDomain?: string; // If unset, will use orchestrator-specific default
+  workloadApiPort: number;
   warmStartUrl?: string;
 }
 
