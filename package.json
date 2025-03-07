@@ -15,7 +15,7 @@
     "db:seed": "turbo run db:seed",
     "db:studio": "turbo run db:studio",
     "db:populate": "turbo run db:populate",
-    "dev": "turbo run dev --parallel",
+    "dev": "turbo run dev",
     "i:dev": "infisical run -- turbo run dev --parallel",
     "format": "prettier . --write --config prettier.config.js",
     "generate": "turbo run generate",

@@ -71,7 +71,7 @@ import {
 } from "./statuses.js";
 import { HeartbeatTimeouts, RunEngineOptions, TriggerParams } from "./types.js";
 import { RunQueueFullKeyProducer } from "../run-queue/keyProducer.js";
-import { retryOutcomeFromCompletion } from "./retrying";
+import { retryOutcomeFromCompletion } from "./retrying.js";
 
 const workerCatalog = {
   finishWaitpoint: {
