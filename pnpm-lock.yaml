@@ -884,6 +884,9 @@ importers:
       prisma:
         specifier: 5.4.1
         version: 5.4.1
+      rimraf:
+        specifier: 6.0.1
+        version: 6.0.1
 
   internal-packages/emails:
     dependencies:
@@ -984,6 +987,9 @@ importers:
       '@types/lodash.omit':
         specifier: ^4.5.7
         version: 4.5.7
+      rimraf:
+        specifier: 6.0.1
+        version: 6.0.1
       vitest:
         specifier: ^1.4.0
         version: 1.6.0(@types/node@20.14.14)
@@ -1030,6 +1036,9 @@ importers:
       '@types/seedrandom':
         specifier: ^3.0.8
         version: 3.0.8
+      rimraf:
+        specifier: 6.0.1
+        version: 6.0.1
       vitest:
         specifier: ^1.4.0
         version: 1.6.0(@types/node@20.14.14)

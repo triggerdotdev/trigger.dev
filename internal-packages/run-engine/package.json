@@ -2,9 +2,17 @@
   "name": "@internal/run-engine",
   "private": true,
   "version": "0.0.1",
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
   "type": "module",
+  "exports": {
+    ".": {
+      "@triggerdotdev/source": "./src/index.ts",
+      "import": "./dist/src/index.js",
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    }
+  },
   "dependencies": {
     "@internal/redis": "workspace:*",
     "@internal/redis-worker": "workspace:*",
@@ -21,10 +29,14 @@
   "devDependencies": {
     "@internal/testcontainers": "workspace:*",
     "vitest": "^1.4.0",
-    "@types/seedrandom": "^3.0.8"
+    "@types/seedrandom": "^3.0.8",
+    "rimraf": "6.0.1"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit",
-    "test": "vitest --sequence.concurrent=false"
+    "clean": "rimraf dist",
+    "typecheck": "tsc --noEmit -p tsconfig.build.json",
+    "test": "vitest --sequence.concurrent=false --no-file-parallelism",
+    "build": "pnpm run clean && tsc -p tsconfig.build.json",
+    "dev": "tsc --watch  -p tsconfig.build.json"
   }
 }

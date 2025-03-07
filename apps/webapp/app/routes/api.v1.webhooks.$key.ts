@@ -1,6 +1,6 @@
 import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import { UpdateWebhookBodySchema } from "@trigger.dev/core";
+import { UpdateWebhookBodySchema } from "@trigger.dev/core/schemas";
 import { z } from "zod";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";

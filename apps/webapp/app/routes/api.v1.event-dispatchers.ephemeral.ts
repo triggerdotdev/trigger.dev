@@ -1,14 +1,9 @@
 import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import {
-  EphemeralEventDispatcherRequestBodySchema,
-  InvokeJobRequestBodySchema,
-} from "@trigger.dev/core";
-import { z } from "zod";
+import { EphemeralEventDispatcherRequestBodySchema } from "@trigger.dev/core/schemas";
 import { PrismaErrorSchema } from "~/db.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { CreateEphemeralEventDispatcherService } from "~/services/dispatchers/createEphemeralEventDispatcher.server";
-import { InvokeJobService } from "~/services/jobs/invokeJob.server";
 import { logger } from "~/services/logger.server";
 
 export async function action({ request, params }: ActionFunctionArgs) {

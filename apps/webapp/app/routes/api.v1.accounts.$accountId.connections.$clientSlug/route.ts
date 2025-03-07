@@ -1,6 +1,9 @@
 import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import { CreateExternalConnectionBodySchema, ErrorWithStackSchema } from "@trigger.dev/core";
+import {
+  CreateExternalConnectionBodySchema,
+  ErrorWithStackSchema,
+} from "@trigger.dev/core/schemas";
 import { z } from "zod";
 import { generateErrorMessage } from "zod-error";
 import { authenticateApiRequest } from "~/services/apiAuth.server";

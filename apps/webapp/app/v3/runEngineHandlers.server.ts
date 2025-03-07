@@ -12,7 +12,7 @@ import { reportInvocationUsage } from "~/services/platform.v3.server";
 import { roomFromFriendlyRunId, socketIo } from "./handleSocketIo.server";
 import { engine } from "./runEngine.server";
 import { PerformTaskRunAlertsService } from "./services/alerts/performTaskRunAlerts.server";
-import { RunId } from "@trigger.dev/core/v3/apps";
+import { RunId } from "@trigger.dev/core/v3/isomorphic";
 import { updateMetadataService } from "~/services/metadata/updateMetadata.server";
 import { findEnvironmentFromRun } from "~/models/runtimeEnvironment.server";
 import { env } from "~/env.server";

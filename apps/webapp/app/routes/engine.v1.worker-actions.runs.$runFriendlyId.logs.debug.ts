@@ -1,5 +1,5 @@
-import { assertExhaustive } from "@trigger.dev/core";
-import { RunId } from "@trigger.dev/core/v3/apps";
+import { assertExhaustive } from "@trigger.dev/core/utils";
+import { RunId } from "@trigger.dev/core/v3/isomorphic";
 import { WorkerApiDebugLogBody } from "@trigger.dev/core/v3/runEngineWorker";
 import { z } from "zod";
 import { createActionWorkerApiRoute } from "~/services/routeBuilders/apiBuilder.server";

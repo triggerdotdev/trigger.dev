@@ -1,18 +1,13 @@
 import { json, TypedResponse } from "@remix-run/server-runtime";
-import { assertExhaustive } from "@trigger.dev/core";
-import { RunId, SnapshotId } from "@trigger.dev/core/v3/apps";
+import { RunId, SnapshotId } from "@trigger.dev/core/v3/isomorphic";
 import {
-  WorkerApiDebugLogBody,
   WorkerApiRunAttemptCompleteRequestBody,
   WorkerApiRunAttemptCompleteResponseBody,
-  WorkerApiRunAttemptStartResponseBody,
-  WorkloadHeartbeatResponseBody,
 } from "@trigger.dev/core/v3/workers";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
-import { recordRunDebugLog } from "~/v3/eventRepository.server";
 import { engine } from "~/v3/runEngine.server";
 
 const { action } = createActionApiRoute(

@@ -35,7 +35,7 @@ import {
   sanitizeQueueName,
   SnapshotId,
   WaitpointId,
-} from "@trigger.dev/core/v3/apps";
+} from "@trigger.dev/core/v3/isomorphic";
 import {
   $transaction,
   Prisma,

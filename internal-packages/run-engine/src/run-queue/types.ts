@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { RuntimeEnvironmentType } from "../../../database/src/index.js";
+import { RuntimeEnvironmentType } from "@trigger.dev/database";
 import type { MinimalAuthenticatedEnvironment } from "../shared/index.js";
 
 export const InputPayload = z.object({

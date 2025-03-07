@@ -6,7 +6,7 @@ import {
   packetRequiresOffloading,
   parsePacket,
 } from "@trigger.dev/core/v3";
-import { BatchId, RunId } from "@trigger.dev/core/v3/apps";
+import { BatchId, RunId } from "@trigger.dev/core/v3/isomorphic";
 import { BatchTaskRun, Prisma } from "@trigger.dev/database";
 import { z } from "zod";
 import { $transaction, prisma, PrismaClientOrTransaction } from "~/db.server";

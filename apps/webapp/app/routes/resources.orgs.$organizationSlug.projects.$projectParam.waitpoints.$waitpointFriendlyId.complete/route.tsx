@@ -8,8 +8,8 @@ import {
   stringifyIO,
   timeoutError,
 } from "@trigger.dev/core/v3";
-import { WaitpointId } from "@trigger.dev/core/v3/apps";
-import { Waitpoint } from "@trigger.dev/database";
+import { WaitpointId } from "@trigger.dev/core/v3/isomorphic";
+import type { Waitpoint } from "@trigger.dev/database";
 import { useCallback, useRef } from "react";
 import { z } from "zod";
 import { AnimatedHourglassIcon } from "~/assets/icons/AnimatedHourglassIcon";

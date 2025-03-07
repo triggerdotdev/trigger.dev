@@ -1,6 +1,6 @@
 import type { EndpointIndexSource } from "@trigger.dev/database";
 import { PrismaClient, prisma } from "~/db.server";
-import { PerformEndpointIndexService } from "./performEndpointIndexService";
+import { PerformEndpointIndexService } from "./performEndpointIndexService.server";
 
 export class IndexEndpointService {
   #prismaClient: PrismaClient;

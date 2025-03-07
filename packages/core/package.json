@@ -58,7 +58,8 @@
       "./v3/schemas": "./src/v3/schemas/index.ts",
       "./v3/runEngineWorker": "./src/v3/runEngineWorker/index.ts",
       "./v3/machines": "./src/v3/machines/index.ts",
-      "./v3/serverOnly": "./src/v3/serverOnly/index.ts"
+      "./v3/serverOnly": "./src/v3/serverOnly/index.ts",
+      "./v3/isomorphic": "./src/v3/isomorphic/index.ts"
     },
     "sourceDialects": [
       "@triggerdotdev/source"
@@ -176,6 +177,9 @@
       ],
       "v3/serverOnly": [
         "dist/commonjs/v3/serverOnly/index.d.ts"
+      ],
+      "v3/isomorphic": [
+        "dist/commonjs/v3/isomorphic/index.d.ts"
       ]
     }
   },
@@ -657,6 +661,17 @@
       "require": {
         "types": "./dist/commonjs/v3/serverOnly/index.d.ts",
         "default": "./dist/commonjs/v3/serverOnly/index.js"
+      }
+    },
+    "./v3/isomorphic": {
+      "import": {
+        "@triggerdotdev/source": "./src/v3/isomorphic/index.ts",
+        "types": "./dist/esm/v3/isomorphic/index.d.ts",
+        "default": "./dist/esm/v3/isomorphic/index.js"
+      },
+      "require": {
+        "types": "./dist/commonjs/v3/isomorphic/index.d.ts",
+        "default": "./dist/commonjs/v3/isomorphic/index.js"
       }
     }
   },

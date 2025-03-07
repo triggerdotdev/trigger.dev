@@ -2,7 +2,7 @@ import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-r
 import {
   HandleHttpEndpointService,
   HttpEndpointParamsSchema,
-} from "~/services/httpendpoint/HandleHttpEndpointService";
+} from "~/services/httpendpoint/HandleHttpEndpointService.server";
 import { logger } from "~/services/logger.server";
 
 export async function action({ request, params }: ActionFunctionArgs) {

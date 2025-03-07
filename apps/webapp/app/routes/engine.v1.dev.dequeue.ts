@@ -1,6 +1,6 @@
 import { json } from "@remix-run/server-runtime";
 import { DequeuedMessage, DevDequeueRequestBody, MachineResources } from "@trigger.dev/core/v3";
-import { BackgroundWorkerId } from "@trigger.dev/core/v3/apps";
+import { BackgroundWorkerId } from "@trigger.dev/core/v3/isomorphic";
 import { env } from "~/env.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { engine } from "~/v3/runEngine.server";

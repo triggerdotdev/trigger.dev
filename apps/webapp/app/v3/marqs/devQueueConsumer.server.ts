@@ -19,7 +19,7 @@ import { FailedTaskRunService } from "../failedTaskRun.server";
 import { CancelDevSessionRunsService } from "../services/cancelDevSessionRuns.server";
 import { CompleteAttemptService } from "../services/completeAttempt.server";
 import { attributesFromAuthenticatedEnv, tracer } from "../tracer.server";
-import { getMaxDuration } from "@trigger.dev/core/v3/apps";
+import { getMaxDuration } from "@trigger.dev/core/v3/isomorphic";
 import { DevSubscriber, devPubSub } from "./devPubSub.server";
 import { findQueueInEnvironment, sanitizeQueueName } from "~/models/taskQueue.server";
 import { createRedisClient, RedisClient } from "~/redis.server";

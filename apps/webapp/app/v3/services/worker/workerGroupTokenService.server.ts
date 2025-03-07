@@ -24,7 +24,10 @@ import { env } from "~/env.server";
 import { $transaction } from "~/db.server";
 import { resolveVariablesForEnvironment } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import { generateJWTTokenForEnvironment } from "~/services/apiAuth.server";
-import { CURRENT_UNMANAGED_DEPLOYMENT_LABEL, fromFriendlyId } from "@trigger.dev/core/v3/apps";
+import {
+  CURRENT_UNMANAGED_DEPLOYMENT_LABEL,
+  fromFriendlyId,
+} from "@trigger.dev/core/v3/isomorphic";
 import { machinePresetFromName } from "~/v3/machinePresets.server";
 import { defaultMachine } from "@trigger.dev/platform/v3";
 

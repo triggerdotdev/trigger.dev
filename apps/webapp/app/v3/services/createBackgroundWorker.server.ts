@@ -21,7 +21,7 @@ import {
   updateEnvConcurrencyLimits,
   updateQueueConcurrencyLimits,
 } from "../runQueue.server";
-import { BackgroundWorkerId } from "@trigger.dev/core/v3/apps";
+import { BackgroundWorkerId } from "@trigger.dev/core/v3/isomorphic";
 import { sanitizeQueueName } from "~/models/taskQueue.server";
 
 export class CreateBackgroundWorkerService extends BaseService {

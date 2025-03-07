@@ -4,7 +4,7 @@ import {
   setupBackgroundWorker,
 } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
-import { generateFriendlyId } from "@trigger.dev/core/v3/apps";
+import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
 import { expect } from "vitest";
 import { RunEngine } from "../index.js";
 import { PrismaClientOrTransaction } from "@trigger.dev/database";
