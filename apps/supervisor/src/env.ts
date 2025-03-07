@@ -1,7 +1,6 @@
 import { randomUUID } from "crypto";
 import { env as stdEnv } from "std-env";
 import { z } from "zod";
-import { getDockerHostDomain } from "./util.js";
 
 const Env = z.object({
   // This will come from `spec.nodeName` in k8s
@@ -18,7 +17,7 @@ const Env = z.object({
     .string()
     .transform((s) => z.enum(["http", "https"]).parse(s.toLowerCase()))
     .default("http"),
-  TRIGGER_WORKLOAD_API_DOMAIN: z.string().default(getDockerHostDomain()), // If unset, will use orchestrator-specific default
+  TRIGGER_WORKLOAD_API_DOMAIN: z.string().optional(), // If unset, will use orchestrator-specific default
   TRIGGER_WORKLOAD_API_PORT_INTERNAL: z.coerce.number().default(8020), // This is the port the workload API listens on
   TRIGGER_WORKLOAD_API_PORT_EXTERNAL: z.coerce.number().default(8020), // This is the exposed port passed to the run controller
 
