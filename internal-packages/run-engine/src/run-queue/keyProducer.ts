@@ -1,5 +1,5 @@
 import { MinimalAuthenticatedEnvironment } from "../shared/index.js";
-import { EnvDescriptor, RunQueueKeyProducer } from "./types.js";
+import { EnvDescriptor, QueueDescriptor, RunQueueKeyProducer } from "./types.js";
 
 const constants = {
   CURRENT_CONCURRENCY_PART: "currentConcurrency",
@@ -104,14 +104,23 @@ export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
     );
   }
 
+  reserveConcurrencyKey(env: MinimalAuthenticatedEnvironment, queue: string) {
+    return [this.queueKey(env, queue), constants.RESERVE_CONCURRENCY_PART].join(":");
+  }
+
   disabledConcurrencyLimitKeyFromQueue(queue: string) {
     const { orgId } = this.descriptorFromQueue(queue);
     return `{${constants.ORG_PART}:${orgId}}:${constants.DISABLED_CONCURRENCY_LIMIT_PART}`;
   }
 
   envConcurrencyLimitKeyFromQueue(queue: string) {
-    const { orgId, envId } = this.descriptorFromQueue(queue);
-    return `{${constants.ORG_PART}:${orgId}}:${constants.ENV_PART}:${envId}:${constants.CONCURRENCY_LIMIT_PART}`;
+    const { orgId, projectId, envId } = this.descriptorFromQueue(queue);
+
+    return this.envConcurrencyLimitKey({
+      orgId,
+      projectId,
+      envId,
+    });
   }
 
   envCurrentConcurrencyKeyFromQueue(queue: string) {
@@ -169,9 +178,14 @@ export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
   }
 
   taskIdentifierCurrentConcurrencyKeyPrefixFromQueue(queue: string) {
-    const { orgId, projectId } = this.descriptorFromQueue(queue);
+    const { orgId, envId, projectId } = this.descriptorFromQueue(queue);
 
-    return `${[this.orgKeySection(orgId), this.projKeySection(projectId), constants.TASK_PART]
+    return `${[
+      this.orgKeySection(orgId),
+      this.envKeySection(envId),
+      this.projKeySection(projectId),
+      constants.TASK_PART,
+    ]
       .filter(Boolean)
       .join(":")}:`;
   }
@@ -187,6 +201,7 @@ export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
     return [
       this.orgKeySection(env.organization.id),
       this.projKeySection(env.project.id),
+      this.envKeySection(env.id),
       constants.TASK_PART,
       taskIdentifier,
     ].join(":");
@@ -230,7 +245,26 @@ export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
     return this.descriptorFromQueue(queue).projectId;
   }
 
-  descriptorFromQueue(queue: string) {
+  reserveConcurrencyKeyFromQueue(queue: string) {
+    const descriptor = this.descriptorFromQueue(queue);
+
+    return this.queueReserveConcurrencyKeyFromDescriptor(descriptor);
+  }
+
+  envReserveConcurrencyKeyFromQueue(queue: string) {
+    const descriptor = this.descriptorFromQueue(queue);
+
+    return this.envReserveConcurrencyKey(descriptor);
+  }
+
+  private queueReserveConcurrencyKeyFromDescriptor(descriptor: QueueDescriptor) {
+    return [
+      this.queueKey(descriptor.orgId, descriptor.projectId, descriptor.envId, descriptor.queue),
+      constants.RESERVE_CONCURRENCY_PART,
+    ].join(":");
+  }
+
+  descriptorFromQueue(queue: string): QueueDescriptor {
     const parts = queue.split(":");
     return {
       orgId: parts[1].replace("{", "").replace("}", ""),
