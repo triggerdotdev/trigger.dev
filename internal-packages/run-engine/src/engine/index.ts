@@ -2114,6 +2114,13 @@ export class RunEngine {
     });
   }
 
+  // Add releaseConcurrencyIfSuspendedOrGoingToBeSuspended
+  // - Called from blockRunWithWaitpoint when releaseConcurrency exists
+  // - Runlock the run
+  // - Get latest snapshot
+  // - If the run is non suspended or going to be, then bail
+  // - If the run is suspended or going to be, then release the concurrency
+
   /** This completes a waitpoint and updates all entries so the run isn't blocked,
    * if they're no longer blocked. This doesn't suffer from race conditions. */
   async completeWaitpoint({
@@ -2212,6 +2219,10 @@ export class RunEngine {
     return result.waitpoint;
   }
 
+  /**
+   * This gets called AFTER the checkpoint has been created
+   * The CPU/Memory checkpoint at this point exists in our snapshot storage
+   */
   async createCheckpoint({
     runId,
     snapshotId,
@@ -2343,6 +2354,9 @@ export class RunEngine {
     });
   }
 
+  /**
+   * This is called when a run has been restored from a checkpoint and is ready to start executing again
+   */
   async continueRunExecution({
     runId,
     snapshotId,
