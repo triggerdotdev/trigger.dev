@@ -4,6 +4,8 @@ sidebarTitle: Overview
 description: Using the Trigger.dev v3 realtime API
 ---
 
+import RealtimeExamplesCards from "/snippets/realtime-examples-cards.mdx";
+
 Trigger.dev Realtime is a set of APIs that allow you to subscribe to runs and get real-time updates on the run status. This is useful for monitoring runs, updating UIs, and building realtime dashboards.
 
 ## How it works
@@ -17,9 +19,9 @@ The Realtime API is built on top of [Electric SQL](https://electric-sql.com/), a
   height="315"
   src="https://www.youtube.com/embed/RhJAbSGkS88?si=4Z72SfygeklNI3As"
   title="YouTube video player"
-    allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-    referrerPolicy="strict-origin-when-cross-origin"
-    allowFullScreen
+  allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+  referrerPolicy="strict-origin-when-cross-origin"
+  allowFullScreen
 />
 
 ## Usage
@@ -266,3 +268,5 @@ The Realtime API in the Trigger.dev Cloud limits the number of concurrent subscr
 ## Known issues
 
 There is currently a known issue where the realtime API does not work if subscribing to a run that has a large payload or large output and are stored in object store instead of the database. We are working on a fix for this issue: https://github.com/triggerdotdev/trigger.dev/issues/1451. As a workaround you'll need to keep payloads and outputs below 128KB when using the realtime API.
+
+<RealtimeExamplesCards />
