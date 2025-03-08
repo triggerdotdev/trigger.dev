@@ -60,7 +60,7 @@
     "typescript": "5.5.4",
     "vite": "^4.1.1",
     "vite-tsconfig-paths": "^4.0.5",
-    "vitest": "^0.28.4"
+    "vitest": "^0.29.0"
   },
   "packageManager": "pnpm@8.15.5",
   "dependencies": {
