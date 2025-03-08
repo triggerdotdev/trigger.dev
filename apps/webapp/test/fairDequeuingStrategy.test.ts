@@ -10,7 +10,7 @@ import {
 import { trace } from "@opentelemetry/api";
 import { EnvQueues } from "~/v3/marqs/types.js";
 import { MARQS_RESUME_PRIORITY_TIMESTAMP_OFFSET } from "~/v3/marqs/constants.server.js";
-import Redis from "ioredis";
+import { createRedisClient } from "@internal/redis";
 
 const tracer = trace.getTracer("test");
 
@@ -18,7 +18,7 @@ vi.setConfig({ testTimeout: 30_000 }); // 30 seconds timeout
 
 describe("FairDequeuingStrategy", () => {
   redisTest("should distribute a single queue from a single env", async ({ redisOptions }) => {
-    const redis = new Redis(redisOptions);
+    const redis = createRedisClient(redisOptions);
 
     const keyProducer = createKeyProducer("test");
     const strategy = new FairDequeuingStrategy({
@@ -50,7 +50,7 @@ describe("FairDequeuingStrategy", () => {
   });
 
   redisTest("should respect env concurrency limits", async ({ redisOptions }) => {
-    const redis = new Redis(redisOptions);
+    const redis = createRedisClient(redisOptions);
 
     const keyProducer = createKeyProducer("test");
     const strategy = new FairDequeuingStrategy({
@@ -85,7 +85,7 @@ describe("FairDequeuingStrategy", () => {
   redisTest(
     "should give extra concurrency when the env has reserve concurrency",
     async ({ redisOptions }) => {
-      const redis = new Redis(redisOptions);
+      const redis = createRedisClient(redisOptions);
 
       const keyProducer = createKeyProducer("test");
       const strategy = new FairDequeuingStrategy({
@@ -126,7 +126,7 @@ describe("FairDequeuingStrategy", () => {
   );
 
   redisTest("should respect parentQueueLimit", async ({ redisOptions }) => {
-    const redis = new Redis(redisOptions);
+    const redis = createRedisClient(redisOptions);
 
     const keyProducer = createKeyProducer("test");
     const strategy = new FairDequeuingStrategy({
@@ -185,7 +185,7 @@ describe("FairDequeuingStrategy", () => {
   redisTest(
     "should reuse snapshots across calls for the same consumer",
     async ({ redisOptions }) => {
-      const redis = new Redis(redisOptions);
+      const redis = createRedisClient(redisOptions);
 
       const keyProducer = createKeyProducer("test");
       const strategy = new FairDequeuingStrategy({
@@ -282,7 +282,7 @@ describe("FairDequeuingStrategy", () => {
   redisTest(
     "should fairly distribute queues across environments over time",
     async ({ redisOptions }) => {
-      const redis = new Redis(redisOptions);
+      const redis = createRedisClient(redisOptions);
 
       const keyProducer = createKeyProducer("test");
       const strategy = new FairDequeuingStrategy({
@@ -441,7 +441,7 @@ describe("FairDequeuingStrategy", () => {
   redisTest(
     "should shuffle environments while maintaining age order within environments",
     async ({ redisOptions }) => {
-      const redis = new Redis(redisOptions);
+      const redis = createRedisClient(redisOptions);
 
       const keyProducer = createKeyProducer("test");
       const strategy = new FairDequeuingStrategy({
@@ -545,7 +545,7 @@ describe("FairDequeuingStrategy", () => {
   redisTest(
     "should bias shuffling based on concurrency limits and available capacity",
     async ({ redisOptions }) => {
-      const redis = new Redis(redisOptions);
+      const redis = createRedisClient(redisOptions);
 
       const keyProducer = createKeyProducer("test");
       const now = Date.now();
@@ -676,7 +676,7 @@ describe("FairDequeuingStrategy", () => {
   redisTest(
     "should respect ageInfluence parameter for queue ordering",
     async ({ redisOptions }) => {
-      const redis = new Redis(redisOptions);
+      const redis = createRedisClient(redisOptions);
 
       const keyProducer = createKeyProducer("test");
       const now = Date.now();
@@ -774,7 +774,7 @@ describe("FairDequeuingStrategy", () => {
   redisTest(
     "should respect maximumEnvCount and select envs based on queue ages",
     async ({ redisOptions }) => {
-      const redis = new Redis(redisOptions);
+      const redis = createRedisClient(redisOptions);
 
       const keyProducer = createKeyProducer("test");
       const strategy = new FairDequeuingStrategy({
@@ -905,7 +905,7 @@ describe("FairDequeuingStrategy", () => {
   redisTest(
     "should not overly bias picking environments when queue have priority offset ages",
     async ({ redisOptions }) => {
-      const redis = new Redis(redisOptions);
+      const redis = createRedisClient(redisOptions);
 
       const keyProducer = createKeyProducer("test");
       const strategy = new FairDequeuingStrategy({
