@@ -15,7 +15,7 @@
     "@trigger.dev/core": "workspace:*",
     "testcontainers": "^10.13.1",
     "tinyexec": "^0.3.0",
-    "vitest": "^1.4.0"
+    "vitest": "^0.29.0"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
