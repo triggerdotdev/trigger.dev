@@ -57,7 +57,7 @@ export function ffmpeg7(): BuildExtension {
       context.logger.debug("Adding ffmpeg 7");
 
       context.addLayer({
-        id:"ffmpeg",
+        id:"ffmpeg7",
         image: {
           instructions:[
             "RUN apt-get update && apt-get install -y --no-install-recommends wget xz-utils && apt-get clean && rm -rf /var/lib/apt/lists/*",
