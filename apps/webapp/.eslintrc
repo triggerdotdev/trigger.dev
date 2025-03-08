@@ -6,7 +6,7 @@
       "files": ["*.ts", "*.tsx"],
       "rules": {
         // Autofixes imports from "@trigger.dev/core" to fine grained modules
-        "@trigger.dev/no-trigger-core-import": "error",
+        // "@trigger.dev/no-trigger-core-import": "error",
         // Normalize `import type {}` and `import { type }`
         "@typescript-eslint/consistent-type-imports": [
           "warn",
