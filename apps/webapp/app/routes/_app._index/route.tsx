@@ -3,7 +3,12 @@ import { prisma } from "~/db.server";
 import { getUsersInvites } from "~/models/member.server";
 import { SelectBestProjectPresenter } from "~/presenters/SelectBestProjectPresenter.server";
 import { requireUser } from "~/services/session.server";
-import { invitesPath, newOrganizationPath, newProjectPath, projectPath } from "~/utils/pathBuilder";
+import {
+  invitesPath,
+  newOrganizationPath,
+  newProjectPath,
+  v3ProjectPath,
+} from "~/utils/pathBuilder";
 
 //this loader chooses the best project to redirect you to, ideally based on the cookie
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -19,7 +24,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   try {
     const { project, organization } = await presenter.call({ userId: user.id, request });
     //redirect them to the most appropriate project
-    return redirect(projectPath(organization, project));
+    return redirect(v3ProjectPath(organization, project));
   } catch (e) {
     const organization = await prisma.organization.findFirst({
       where: {

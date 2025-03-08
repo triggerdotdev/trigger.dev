@@ -23,16 +23,9 @@
       "./package.json": "./package.json",
       ".": "./src/index.ts",
       "./logger": "./src/logger.ts",
-      "./bloom": "./src/bloom.ts",
-      "./eventFilterMatches": "./src/eventFilterMatches.ts",
-      "./replacements": "./src/replacements.ts",
-      "./requestFilterMatches": "./src/requestFilterMatches.ts",
-      "./retry": "./src/retry.ts",
-      "./debounce": "./src/debounce.ts",
       "./utils": "./src/utils.ts",
       "./schemas": "./src/schemas/index.ts",
       "./types": "./src/types.ts",
-      "./versions": "./src/versions.ts",
       "./v3": "./src/v3/index.ts",
       "./v3/tracer": "./src/v3/tracer.ts",
       "./v3/build": "./src/v3/build/index.ts",
@@ -70,24 +63,6 @@
       "logger": [
         "dist/commonjs/logger.d.ts"
       ],
-      "bloom": [
-        "dist/commonjs/bloom.d.ts"
-      ],
-      "eventFilterMatches": [
-        "dist/commonjs/eventFilterMatches.d.ts"
-      ],
-      "replacements": [
-        "dist/commonjs/replacements.d.ts"
-      ],
-      "requestFilterMatches": [
-        "dist/commonjs/requestFilterMatches.d.ts"
-      ],
-      "retry": [
-        "dist/commonjs/retry.d.ts"
-      ],
-      "debounce": [
-        "dist/commonjs/debounce.d.ts"
-      ],
       "utils": [
         "dist/commonjs/utils.d.ts"
       ],
@@ -96,9 +71,6 @@
       ],
       "types": [
         "dist/commonjs/types.d.ts"
-      ],
-      "versions": [
-        "dist/commonjs/versions.d.ts"
       ],
       "v3": [
         "dist/commonjs/v3/index.d.ts"
@@ -267,72 +239,6 @@
         "default": "./dist/commonjs/logger.js"
       }
     },
-    "./bloom": {
-      "import": {
-        "@triggerdotdev/source": "./src/bloom.ts",
-        "types": "./dist/esm/bloom.d.ts",
-        "default": "./dist/esm/bloom.js"
-      },
-      "require": {
-        "types": "./dist/commonjs/bloom.d.ts",
-        "default": "./dist/commonjs/bloom.js"
-      }
-    },
-    "./eventFilterMatches": {
-      "import": {
-        "@triggerdotdev/source": "./src/eventFilterMatches.ts",
-        "types": "./dist/esm/eventFilterMatches.d.ts",
-        "default": "./dist/esm/eventFilterMatches.js"
-      },
-      "require": {
-        "types": "./dist/commonjs/eventFilterMatches.d.ts",
-        "default": "./dist/commonjs/eventFilterMatches.js"
-      }
-    },
-    "./replacements": {
-      "import": {
-        "@triggerdotdev/source": "./src/replacements.ts",
-        "types": "./dist/esm/replacements.d.ts",
-        "default": "./dist/esm/replacements.js"
-      },
-      "require": {
-        "types": "./dist/commonjs/replacements.d.ts",
-        "default": "./dist/commonjs/replacements.js"
-      }
-    },
-    "./requestFilterMatches": {
-      "import": {
-        "@triggerdotdev/source": "./src/requestFilterMatches.ts",
-        "types": "./dist/esm/requestFilterMatches.d.ts",
-        "default": "./dist/esm/requestFilterMatches.js"
-      },
-      "require": {
-        "types": "./dist/commonjs/requestFilterMatches.d.ts",
-        "default": "./dist/commonjs/requestFilterMatches.js"
-      }
-    },
-    "./retry": {
-      "import": {
-        "@triggerdotdev/source": "./src/retry.ts",
-        "types": "./dist/esm/retry.d.ts",
-        "default": "./dist/esm/retry.js"
-      },
-      "require": {
-        "types": "./dist/commonjs/retry.d.ts",
-        "default": "./dist/commonjs/retry.js"
-      }
-    },
-    "./debounce": {
-      "import": {
-        "@triggerdotdev/source": "./src/debounce.ts",
-        "types": "./dist/esm/debounce.d.ts",
-        "default": "./dist/esm/debounce.js"
-      },
-      "require": {
-        "types": "./dist/commonjs/debounce.d.ts",
-        "default": "./dist/commonjs/debounce.js"
-      }
-    },
     "./utils": {
       "import": {
         "@triggerdotdev/source": "./src/utils.ts",
@@ -364,17 +270,6 @@
       "require": {
         "types": "./dist/commonjs/types.d.ts",
         "default": "./dist/commonjs/types.js"
-      }
-    },
-    "./versions": {
-      "import": {
-        "@triggerdotdev/source": "./src/versions.ts",
-        "types": "./dist/esm/versions.d.ts",
-        "default": "./dist/esm/versions.js"
-      },
-      "require": {
-        "types": "./dist/commonjs/versions.d.ts",
-        "default": "./dist/commonjs/versions.js"
       }
     },
     "./v3": {

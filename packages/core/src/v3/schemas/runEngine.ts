@@ -1,9 +1,7 @@
 import { z } from "zod";
-import { MachinePreset, TaskRunExecution } from "./common.js";
+import { Enum, MachinePreset, RuntimeEnvironmentType, TaskRunExecution } from "./common.js";
 import { EnvironmentType } from "./schemas.js";
 import type * as DB_TYPES from "@trigger.dev/database";
-
-type Enum<T extends string> = { [K in T]: K };
 
 export const TaskRunExecutionStatus = {
   RUN_CREATED: "RUN_CREATED",
@@ -56,16 +54,6 @@ export const WaitpointStatus = z.enum(
   Object.values(WaitpointStatusValues) as [DB_TYPES.WaitpointStatus]
 );
 export type WaitpointStatus = z.infer<typeof WaitpointStatus>;
-
-export const RuntimeEnvironmentType = {
-  PRODUCTION: "PRODUCTION",
-  STAGING: "STAGING",
-  DEVELOPMENT: "DEVELOPMENT",
-  PREVIEW: "PREVIEW",
-} satisfies Enum<DB_TYPES.RuntimeEnvironmentType>;
-
-export type RuntimeEnvironmentType =
-  (typeof RuntimeEnvironmentType)[keyof typeof RuntimeEnvironmentType];
 
 export type TaskEventEnvironment = {
   id: string;

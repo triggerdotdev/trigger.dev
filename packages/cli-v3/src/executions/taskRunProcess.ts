@@ -113,7 +113,7 @@ export class TaskRunProcess {
     return this.options.payload.execution.run.isTest;
   }
 
-  get payload() {
+  get payload(): TaskRunExecutionPayload {
     return this.options.payload;
   }
 

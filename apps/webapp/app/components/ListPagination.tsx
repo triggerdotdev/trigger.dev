@@ -1,6 +1,7 @@
+import { ChevronLeftIcon, ChevronRightIcon } from "@heroicons/react/20/solid";
 import { useLocation } from "@remix-run/react";
+import { z } from "zod";
 import { LinkButton } from "~/components/primitives/Buttons";
-import { Direction } from "~/components/runs/RunStatuses";
 import { cn } from "~/utils/cn";
 
 type List = {
@@ -9,6 +10,9 @@ type List = {
     previous?: string | undefined;
   };
 };
+
+export const DirectionSchema = z.union([z.literal("forward"), z.literal("backward")]);
+export type Direction = z.infer<typeof DirectionSchema>;
 
 export function ListPagination({ list, className }: { list: List; className?: string }) {
   return (
@@ -26,7 +30,7 @@ function NextButton({ cursor }: { cursor?: string }) {
     <LinkButton
       to={path ?? "#"}
       variant={"minimal/small"}
-      TrailingIcon="chevron-right"
+      TrailingIcon={ChevronRightIcon}
       trailingIconClassName="text-text-dimmed"
       className={cn(
         "flex items-center",
@@ -49,7 +53,7 @@ function PreviousButton({ cursor }: { cursor?: string }) {
     <LinkButton
       to={path ?? "#"}
       variant={"minimal/small"}
-      LeadingIcon="chevron-left"
+      LeadingIcon={ChevronLeftIcon}
       leadingIconClassName="text-text-dimmed"
       className={cn(
         "flex items-center",

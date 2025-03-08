@@ -1,22 +1,16 @@
-import { parse } from "@conform-to/zod";
-import { ActionFunctionArgs, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
-import { PlainClient, uiComponent } from "@team-plain/typescript-sdk";
-import { inspect } from "util";
-import { z } from "zod";
-import { env } from "~/env.server";
-import { redirectWithSuccessMessage } from "~/models/message.server";
-import { requireUser } from "~/services/session.server";
+import { EnvelopeIcon } from "@heroicons/react/24/solid";
+import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import crypto from "node:crypto";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { prisma } from "~/db.server";
+import { z } from "zod";
 import { AppContainer, MainCenteredContainer } from "~/components/layout/AppLayout";
-import { Header1 } from "~/components/primitives/Headers";
+import { LinkButton } from "~/components/primitives/Buttons";
+import { FormTitle } from "~/components/primitives/FormTitle";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { TextLink } from "~/components/primitives/TextLink";
-import { LinkButton } from "~/components/primitives/Buttons";
+import { prisma } from "~/db.server";
+import { env } from "~/env.server";
 import { rootPath } from "~/utils/pathBuilder";
-import { FormTitle } from "~/components/primitives/FormTitle";
-import { EnvelopeIcon } from "@heroicons/react/24/solid";
 
 export const ParamsSchema = z.object({
   userId: z.string(),
@@ -70,7 +64,10 @@ export default function Page() {
       <MainCenteredContainer className="max-w-[22rem]">
         {result.success ? (
           <div>
-            <FormTitle LeadingIcon="envelope" title="Unsubscribed" />
+            <FormTitle
+              LeadingIcon={<EnvelopeIcon className="size-6 text-cyan-500" />}
+              title="Unsubscribed"
+            />
             <Paragraph spacing>
               You have unsubscribed from onboarding emails, {result.email}.
             </Paragraph>
@@ -80,7 +77,10 @@ export default function Page() {
           </div>
         ) : (
           <div>
-            <FormTitle LeadingIcon="envelope" title="Unsubscribe failed" />
+            <FormTitle
+              LeadingIcon={<EnvelopeIcon className="size-6 text-cyan-500" />}
+              title="Unsubscribe failed"
+            />
             <Paragraph spacing>{result.message}</Paragraph>
             <Paragraph spacing>
               If you believe this is a bug, please{" "}

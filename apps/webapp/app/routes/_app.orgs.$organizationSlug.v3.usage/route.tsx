@@ -6,7 +6,7 @@ import { Suspense } from "react";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { redirect, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { URL } from "url";
-import { UsageBar } from "~/components/billing/v3/UsageBar";
+import { UsageBar } from "~/components/billing/UsageBar";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import {
   ChartConfig,

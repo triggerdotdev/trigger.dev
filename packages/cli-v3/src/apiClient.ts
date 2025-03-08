@@ -142,7 +142,9 @@ export class CliApiClient {
     );
   }
 
-  async createTaskRunAttempt(runFriendlyId: string) {
+  async createTaskRunAttempt(
+    runFriendlyId: string
+  ): Promise<ApiResult<z.infer<typeof TaskRunExecution>>> {
     if (!this.accessToken) {
       throw new Error("creatTaskRunAttempt: No access token");
     }
@@ -416,7 +418,7 @@ export class CliApiClient {
       heartbeatRun: this.devHeartbeatRun.bind(this),
       startRunAttempt: this.devStartRunAttempt.bind(this),
       completeRunAttempt: this.devCompleteRunAttempt.bind(this),
-    };
+    } as const;
   }
 
   get workers() {
@@ -479,7 +481,7 @@ export class CliApiClient {
     });
   }
 
-  private async devConfig() {
+  private async devConfig(): Promise<ApiResult<DevConfigResponseBody>> {
     if (!this.accessToken) {
       throw new Error("devConfig: No access token");
     }
@@ -530,7 +532,9 @@ export class CliApiClient {
     });
   }
 
-  private async devDequeue(body: DevDequeueRequestBody) {
+  private async devDequeue(
+    body: DevDequeueRequestBody
+  ): Promise<ApiResult<DevDequeueResponseBody>> {
     if (!this.accessToken) {
       throw new Error("devConfig: No access token");
     }
@@ -545,7 +549,10 @@ export class CliApiClient {
     });
   }
 
-  private async devSendDebugLog(runId: string, body: WorkloadDebugLogRequestBody) {
+  private async devSendDebugLog(
+    runId: string,
+    body: WorkloadDebugLogRequestBody
+  ): Promise<ApiResult<unknown>> {
     if (!this.accessToken) {
       throw new Error("devConfig: No access token");
     }
@@ -561,7 +568,9 @@ export class CliApiClient {
     });
   }
 
-  private async devGetRunExecutionData(runId: string) {
+  private async devGetRunExecutionData(
+    runId: string
+  ): Promise<ApiResult<WorkloadRunLatestSnapshotResponseBody>> {
     return wrapZodFetch(
       WorkloadRunLatestSnapshotResponseBody,
       `${this.apiURL}/engine/v1/dev/runs/${runId}/snapshots/latest`,
@@ -579,7 +588,7 @@ export class CliApiClient {
     runId: string,
     snapshotId: string,
     body: WorkloadHeartbeatRequestBody
-  ) {
+  ): Promise<ApiResult<WorkloadHeartbeatResponseBody>> {
     return wrapZodFetch(
       WorkloadHeartbeatResponseBody,
       `${this.apiURL}/engine/v1/dev/runs/${runId}/snapshots/${snapshotId}/heartbeat`,
@@ -595,7 +604,10 @@ export class CliApiClient {
     );
   }
 
-  private async devStartRunAttempt(runId: string, snapshotId: string) {
+  private async devStartRunAttempt(
+    runId: string,
+    snapshotId: string
+  ): Promise<ApiResult<WorkloadRunAttemptStartResponseBody>> {
     return wrapZodFetch(
       WorkloadRunAttemptStartResponseBody,
       `${this.apiURL}/engine/v1/dev/runs/${runId}/snapshots/${snapshotId}/attempts/start`,
@@ -615,7 +627,7 @@ export class CliApiClient {
     runId: string,
     snapshotId: string,
     body: WorkloadRunAttemptCompleteRequestBody
-  ) {
+  ): Promise<ApiResult<WorkloadRunAttemptCompleteResponseBody>> {
     return wrapZodFetch(
       WorkloadRunAttemptCompleteResponseBody,
       `${this.apiURL}/engine/v1/dev/runs/${runId}/snapshots/${snapshotId}/attempts/complete`,

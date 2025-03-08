@@ -22,7 +22,7 @@
     "project": "./tsconfig.build.json",
     "exports": {
       "./package.json": "./package.json",
-      ".": "./src/index.ts",
+      ".": "./src/v3/index.ts",
       "./v3": "./src/v3/index.ts"
     },
     "sourceDialects": [
@@ -84,13 +84,13 @@
     "./package.json": "./package.json",
     ".": {
       "import": {
-        "@triggerdotdev/source": "./src/index.ts",
-        "types": "./dist/esm/index.d.ts",
-        "default": "./dist/esm/index.js"
+        "@triggerdotdev/source": "./src/v3/index.ts",
+        "types": "./dist/esm/v3/index.d.ts",
+        "default": "./dist/esm/v3/index.js"
       },
       "require": {
-        "types": "./dist/commonjs/index.d.ts",
-        "default": "./dist/commonjs/index.js"
+        "types": "./dist/commonjs/v3/index.d.ts",
+        "default": "./dist/commonjs/v3/index.js"
       }
     },
     "./v3": {
@@ -105,7 +105,7 @@
       }
     }
   },
-  "main": "./dist/commonjs/index.js",
-  "types": "./dist/commonjs/index.d.ts",
-  "module": "./dist/esm/index.js"
+  "main": "./dist/commonjs/v3/index.js",
+  "types": "./dist/commonjs/v3/index.d.ts",
+  "module": "./dist/esm/v3/index.js"
 }
