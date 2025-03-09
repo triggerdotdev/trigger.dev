@@ -50,21 +50,21 @@ export function ffmpeg7(): BuildExtension {
   return {
     name: "ffmpeg7",
     onBuildComplete(context) {
-      if(context.target === "dev") {
+      if (context.target === "dev") {
         return;
       }
 
       context.logger.debug("Adding ffmpeg 7");
 
       context.addLayer({
-        id:"ffmpeg7",
+        id: "ffmpeg7",
         image: {
           instructions:[
             "RUN apt-get update && apt-get install -y --no-install-recommends wget xz-utils && apt-get clean && rm -rf /var/lib/apt/lists/*",
             "RUN wget https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz -O ffmpeg.tar.xz && tar xvf ffmpeg.tar.xz -C /usr/bin --strip-components=1 --no-anchored 'ffmpeg' 'ffprobe' && rm ffmpeg.tar.xz",
           ],
         },
-        deploy : {
+        deploy: {
           env: {
             FFMPEG_PATH: "/usr/bin/ffmpeg",
             FFPROBE_PATH: "/usr/bin/ffprobe",
