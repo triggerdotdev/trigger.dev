@@ -48,7 +48,7 @@ export function ffmpeg(options: FfmpegOptions = {}): BuildExtension {
 
 export function ffmpeg7(): BuildExtension {
   return {
-    name:"ffmpeg7",
+    name: "ffmpeg7",
     onBuildComplete(context) {
       if(context.target === "dev") {
         return;
