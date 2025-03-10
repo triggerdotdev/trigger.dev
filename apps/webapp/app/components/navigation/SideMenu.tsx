@@ -18,7 +18,7 @@ import {
 } from "@heroicons/react/20/solid";
 import { UserGroupIcon, UserPlusIcon } from "@heroicons/react/24/solid";
 import { useNavigation } from "@remix-run/react";
-import { Fragment, ReactNode, useEffect, useRef, useState } from "react";
+import { Fragment, type ReactNode, useEffect, useRef, useState } from "react";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { useFeatures } from "~/hooks/useFeatures";
@@ -26,7 +26,7 @@ import { type MatchedOrganization } from "~/hooks/useOrganizations";
 import { type MatchedProject } from "~/hooks/useProject";
 import { type User } from "~/models/user.server";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
-import { FeedbackType } from "~/routes/resources.feedback";
+import { type FeedbackType } from "~/routes/resources.feedback";
 import { cn } from "~/utils/cn";
 import {
   accountPath,
@@ -43,6 +43,7 @@ import {
   v3BillingPath,
   v3ConcurrencyPath,
   v3DeploymentsPath,
+  v3EnvironmentPath,
   v3EnvironmentVariablesPath,
   v3ProjectAlertsPath,
   v3ProjectPath,
@@ -67,27 +68,39 @@ import {
 import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
+import { type MatchedEnvironment } from "~/hooks/useEnvironment";
+import { Paragraph } from "../primitives/Paragraph";
+import {
+  environmentFullTitle,
+  EnvironmentIcon,
+  FullEnvironmentCombo,
+} from "../environments/EnvironmentLabel";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
-type SideMenuProject = Pick<MatchedProject, "id" | "name" | "slug" | "version">;
+type SideMenuProject = Pick<MatchedProject, "id" | "name" | "slug" | "version" | "environments">;
+type SideMenuEnvironment = MatchedEnvironment;
 
 type SideMenuProps = {
   user: SideMenuUser;
   project: SideMenuProject;
+  environment: SideMenuEnvironment;
   organization: MatchedOrganization;
   organizations: MatchedOrganization[];
   button?: ReactNode;
   defaultValue?: FeedbackType;
 };
 
-export function SideMenu({ user, project, organization, organizations }: SideMenuProps) {
+export function SideMenu({
+  user,
+  project,
+  environment,
+  organization,
+  organizations,
+}: SideMenuProps) {
   const borderRef = useRef<HTMLDivElement>(null);
   const [showHeaderDivider, setShowHeaderDivider] = useState(false);
   const currentPlan = useCurrentPlan();
-  const { isManagedCloud } = useFeatures();
-
-  const isV3Project = project.version === "V3";
-  const isFreeV3User = currentPlan?.v3Subscription?.isPaying === false;
+  const isFreeUser = currentPlan?.v3Subscription?.isPaying === false;
 
   useEffect(() => {
     const handleScroll = () => {
@@ -124,7 +137,93 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
           ref={borderRef}
         >
           <div className="mb-6 flex flex-col gap-1 px-1">
-            <V3ProjectSideMenu organization={organization} project={project} />
+            <SideMenuHeader title={"Environment"} />
+            <EnvironmentSelector
+              organization={organization}
+              project={project}
+              environment={environment}
+            />
+
+            <>
+              <SideMenuHeader title={"Project"} />
+              <SideMenuItem
+                name="Tasks"
+                icon={TaskIcon}
+                activeIconColor="text-blue-500"
+                to={v3ProjectPath(organization, project)}
+                data-action="tasks"
+              />
+              <SideMenuItem
+                name="Runs"
+                icon={RunsIcon}
+                activeIconColor="text-teal-500"
+                to={v3RunsPath(organization, project)}
+              />
+              <SideMenuItem
+                name="Batches"
+                icon={Squares2X2Icon}
+                activeIconColor="text-blue-500"
+                to={v3BatchesPath(organization, project)}
+                data-action="batches"
+              />
+              <SideMenuItem
+                name="Test"
+                icon={BeakerIcon}
+                activeIconColor="text-lime-500"
+                to={v3TestPath(organization, project)}
+                data-action="test"
+              />
+              <SideMenuItem
+                name="Schedules"
+                icon={ClockIcon}
+                activeIconColor="text-sun-500"
+                to={v3SchedulesPath(organization, project)}
+                data-action="schedules"
+              />
+              <SideMenuItem
+                name="API keys"
+                icon={KeyIcon}
+                activeIconColor="text-amber-500"
+                to={v3ApiKeysPath(organization, project)}
+                data-action="api keys"
+              />
+              <SideMenuItem
+                name="Environment variables"
+                icon={IdentificationIcon}
+                activeIconColor="text-pink-500"
+                to={v3EnvironmentVariablesPath(organization, project)}
+                data-action="environment variables"
+              />
+
+              <SideMenuItem
+                name="Deployments"
+                icon={ServerStackIcon}
+                activeIconColor="text-blue-500"
+                to={v3DeploymentsPath(organization, project)}
+                data-action="deployments"
+              />
+              <SideMenuItem
+                name="Alerts"
+                icon={BellAlertIcon}
+                activeIconColor="text-red-500"
+                to={v3ProjectAlertsPath(organization, project)}
+                data-action="alerts"
+              />
+              <SideMenuItem
+                name="Concurrency limits"
+                icon={RectangleStackIcon}
+                activeIconColor="text-indigo-500"
+                to={v3ConcurrencyPath(organization, project)}
+                data-action="concurrency"
+              />
+              <SideMenuItem
+                name="Project settings"
+                icon={Cog8ToothIcon}
+                activeIconColor="text-teal-500"
+                to={v3ProjectSettingsPath(organization, project)}
+                data-action="project-settings"
+              />
+            </>
           </div>
           <div className="mb-1 flex flex-col gap-1 px-1">
             <SideMenuHeader title={"Organization"}>
@@ -183,7 +282,7 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
         </div>
         <div className="flex flex-col gap-1 border-t border-grid-bright p-1">
           <HelpAndFeedback />
-          {isFreeV3User && (
+          {isFreeUser && (
             <FreePlanUsage
               to={v3BillingPath(organization)}
               percentage={currentPlan.v3Usage.usagePercentage}
@@ -325,93 +424,45 @@ function UserMenu({ user }: { user: SideMenuUser }) {
   );
 }
 
-function V3ProjectSideMenu({
-  project,
+function EnvironmentSelector({
   organization,
+  project,
+  environment,
 }: {
-  project: SideMenuProject;
   organization: MatchedOrganization;
+  project: SideMenuProject;
+  environment: SideMenuEnvironment;
 }) {
-  return (
-    <>
-      <SideMenuHeader title={"Project"} />
-      <SideMenuItem
-        name="Tasks"
-        icon={TaskIcon}
-        activeIconColor="text-blue-500"
-        to={v3ProjectPath(organization, project)}
-        data-action="tasks"
-      />
-      <SideMenuItem
-        name="Runs"
-        icon={RunsIcon}
-        activeIconColor="text-teal-500"
-        to={v3RunsPath(organization, project)}
-      />
-      <SideMenuItem
-        name="Batches"
-        icon={Squares2X2Icon}
-        activeIconColor="text-blue-500"
-        to={v3BatchesPath(organization, project)}
-        data-action="batches"
-      />
-      <SideMenuItem
-        name="Test"
-        icon={BeakerIcon}
-        activeIconColor="text-lime-500"
-        to={v3TestPath(organization, project)}
-        data-action="test"
-      />
-      <SideMenuItem
-        name="Schedules"
-        icon={ClockIcon}
-        activeIconColor="text-sun-500"
-        to={v3SchedulesPath(organization, project)}
-        data-action="schedules"
-      />
-      <SideMenuItem
-        name="API keys"
-        icon={KeyIcon}
-        activeIconColor="text-amber-500"
-        to={v3ApiKeysPath(organization, project)}
-        data-action="api keys"
-      />
-      <SideMenuItem
-        name="Environment variables"
-        icon={IdentificationIcon}
-        activeIconColor="text-pink-500"
-        to={v3EnvironmentVariablesPath(organization, project)}
-        data-action="environment variables"
-      />
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const navigation = useNavigation();
 
-      <SideMenuItem
-        name="Deployments"
-        icon={ServerStackIcon}
-        activeIconColor="text-blue-500"
-        to={v3DeploymentsPath(organization, project)}
-        data-action="deployments"
-      />
-      <SideMenuItem
-        name="Alerts"
-        icon={BellAlertIcon}
-        activeIconColor="text-red-500"
-        to={v3ProjectAlertsPath(organization, project)}
-        data-action="alerts"
-      />
-      <SideMenuItem
-        name="Concurrency limits"
-        icon={RectangleStackIcon}
-        activeIconColor="text-indigo-500"
-        to={v3ConcurrencyPath(organization, project)}
-        data-action="concurrency"
-      />
-      <SideMenuItem
-        name="Project settings"
-        icon={Cog8ToothIcon}
-        activeIconColor="text-teal-500"
-        to={v3ProjectSettingsPath(organization, project)}
-        data-action="project-settings"
-      />
-    </>
+  useEffect(() => {
+    setIsMenuOpen(false);
+  }, [navigation.location?.pathname]);
+
+  return (
+    <Popover onOpenChange={(open) => setIsMenuOpen(open)} open={isMenuOpen}>
+      <PopoverArrowTrigger
+        isOpen={isMenuOpen}
+        overflowHidden
+        className="h-7 w-full overflow-hidden py-1 pl-2"
+      >
+        <FullEnvironmentCombo environment={environment} className="text-2sm" />
+      </PopoverArrowTrigger>
+      <PopoverContent
+        className="min-w-[16rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+        align="start"
+        style={{ maxHeight: `calc(var(--radix-popover-content-available-height) - 10vh)` }}
+      >
+        {project.environments.map((env) => (
+          <PopoverMenuItem
+            key={env.id}
+            to={v3EnvironmentPath(organization, project, env)}
+            title={<FullEnvironmentCombo environment={env} className="text-2sm" />}
+            isSelected={env.id === environment.id}
+          />
+        ))}
+      </PopoverContent>
+    </Popover>
   );
 }

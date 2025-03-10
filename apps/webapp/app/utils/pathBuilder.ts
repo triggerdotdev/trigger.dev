@@ -1,12 +1,13 @@
-import type { TaskRun, WorkerDeployment } from "@trigger.dev/database";
+import type { RuntimeEnvironment, TaskRun, WorkerDeployment } from "@trigger.dev/database";
 import { z } from "zod";
-import { TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
+import { type TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
 import type { Organization } from "~/models/organization.server";
 import type { Project } from "~/models/project.server";
 import { objectToSearchParams } from "./searchParams";
 
 export type OrgForPath = Pick<Organization, "slug">;
 export type ProjectForPath = Pick<Project, "slug">;
+export type EnvironmentForPath = Pick<RuntimeEnvironment, "slug">;
 export type v3RunForPath = Pick<TaskRun, "friendlyId">;
 export type v3SpanForPath = Pick<TaskRun, "spanId">;
 export type DeploymentForPath = Pick<WorkerDeployment, "shortCode">;
@@ -20,6 +21,10 @@ export const OrganizationParamsSchema = z.object({
 
 export const ProjectParamSchema = OrganizationParamsSchema.extend({
   projectParam: z.string(),
+});
+
+export const EnvironmentParamSchema = ProjectParamSchema.extend({
+  envParam: z.string(),
 });
 
 //v3
@@ -123,9 +128,23 @@ function projectParam(project: ProjectForPath) {
   return project.slug;
 }
 
+function environmentParam(environment: EnvironmentForPath) {
+  return environment.slug;
+}
+
 //v3 project
 export function v3ProjectPath(organization: OrgForPath, project: ProjectForPath) {
-  return `/orgs/${organizationParam(organization)}/projects/v3/${projectParam(project)}`;
+  return `/orgs/${organizationParam(organization)}/projects/${projectParam(project)}`;
+}
+
+export function v3EnvironmentPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath
+) {
+  return `/orgs/${organizationParam(organization)}/projects/${projectParam(
+    project
+  )}/env/${environmentParam(environment)}`;
 }
 
 export function v3TasksStreamingPath(organization: OrgForPath, project: ProjectForPath) {
@@ -177,11 +196,11 @@ export function v3TestTaskPath(
   organization: OrgForPath,
   project: ProjectForPath,
   task: TaskForPath,
-  environmentSlug: string
+  environment: EnvironmentForPath
 ) {
   return `${v3TestPath(organization, project)}/tasks/${encodeURIComponent(
     task.taskIdentifier
-  )}?environment=${environmentSlug}`;
+  )}?environment=${environment.slug}`;
 }
 
 export function v3RunsPath(
@@ -282,15 +301,15 @@ export function v3DeploymentPath(
 }
 
 export function v3BillingPath(organization: OrgForPath) {
-  return `${organizationPath(organization)}/v3/billing`;
+  return `${organizationPath(organization)}/billing`;
 }
 
 export function v3StripePortalPath(organization: OrgForPath) {
-  return `/resources/${organization.slug}/subscription/v3/portal`;
+  return `/resources/${organization.slug}/subscription/portal`;
 }
 
 export function v3UsagePath(organization: OrgForPath) {
-  return `${organizationPath(organization)}/v3/usage`;
+  return `${organizationPath(organization)}/usage`;
 }
 
 // Task

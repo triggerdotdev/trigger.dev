@@ -59,7 +59,7 @@ function PopoverMenuItem({
   leadingIconClassName,
 }: {
   to: string;
-  icon: React.ComponentType<any>;
+  icon?: React.ComponentType<any>;
   title: React.ReactNode;
   isSelected?: boolean;
   variant?: ButtonContentPropsType;

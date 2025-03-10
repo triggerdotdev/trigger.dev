@@ -1,15 +1,12 @@
-import { PrismaClient } from "@trigger.dev/database";
+import { type PrismaClient } from "@trigger.dev/database";
 import { redirect } from "remix-typedjson";
 import { prisma } from "~/db.server";
-import { redirectWithErrorMessage } from "~/models/message.server";
-import {
-  commitCurrentProjectSession,
-  getCurrentProjectId,
-  setCurrentProjectId,
-} from "~/services/currentProject.server";
+import { type UserWithDashboardPreferences } from "~/models/user.server";
 import { logger } from "~/services/logger.server";
-import { newProjectPath } from "~/utils/pathBuilder";
-import { ProjectPresenter } from "./ProjectPresenter.server";
+import { type UserFromSession } from "~/services/session.server";
+import { newOrganizationPath, newProjectPath } from "~/utils/pathBuilder";
+import { type MinimumEnvironment } from "./SelectBestEnvironmentPresenter.server";
+import { sortEnvironments } from "~/utils/environmentSort";
 
 export class OrganizationsPresenter {
   #prismaClient: PrismaClient;
@@ -19,25 +16,27 @@ export class OrganizationsPresenter {
   }
 
   public async call({
-    userId,
+    user,
     organizationSlug,
     projectSlug,
+    environmentSlug,
     request,
   }: {
-    userId: string;
+    user: UserFromSession;
     organizationSlug: string;
     projectSlug: string | undefined;
+    environmentSlug: string | undefined;
     request: Request;
   }) {
-    //first get the project id, this redirects if there's no session
-    const projectId = await this.#getProjectId({
-      request,
-      projectSlug,
-      organizationSlug,
-      userId,
-    });
+    const organizations = await this.#getOrganizations(user.id);
+    if (organizations.length === 0) {
+      logger.info("No organizations", {
+        organizationSlug,
+        request,
+      });
+      throw redirect(newOrganizationPath());
+    }
 
-    const organizations = await this.#getOrganizations(userId);
     const organization = organizations.find((o) => o.slug === organizationSlug);
     if (!organization) {
       logger.info("Not Found: organization", {
@@ -45,130 +44,74 @@ export class OrganizationsPresenter {
         request,
         organization,
       });
-      throw new Response("Not Found", { status: 404 });
+      throw new Response("Organization not Found", { status: 404 });
     }
 
-    const projectPresenter = new ProjectPresenter(this.#prismaClient);
-    const project = await projectPresenter.call({
-      id: projectId,
-      userId,
+    const bestProject = this.#getProject({
+      user,
+      projectSlug,
+      projects: organization.projects,
     });
-
-    if (!project) {
-      throw redirectWithErrorMessage(
-        newProjectPath({ slug: organizationSlug }),
+    if (!bestProject) {
+      logger.info("Not Found: project", {
+        projectSlug,
         request,
-        "No projects found in organization"
-      );
-    }
-
-    if (project.organizationId !== organization.id) {
-      throw redirect(newProjectPath({ slug: organizationSlug }), request);
-    }
-
-    return { organizations, organization, project };
-  }
-
-  async #getProjectId({
-    request,
-    projectSlug,
-    organizationSlug,
-    userId,
-  }: {
-    request: Request;
-    projectSlug: string | undefined;
-    organizationSlug: string;
-    userId: string;
-  }): Promise<string> {
-    const sessionProjectId = await getCurrentProjectId(request);
-
-    //no project in session, let's set one
-    if (!sessionProjectId) {
-      //no session id and no project slug so we need to select the best project
-      if (!projectSlug) {
-        const bestProject = await this.#selectBestProjectForOrganization(
-          organizationSlug,
-          userId,
-          request
-        );
-        const session = await setCurrentProjectId(bestProject.id, request);
-        throw redirect(request.url, {
-          headers: { "Set-Cookie": await commitCurrentProjectSession(session) },
-        });
-      }
-
-      //get all the projects
-      const projects = await prisma.project.findMany({
-        select: {
-          id: true,
-          slug: true,
-        },
-        where: {
-          organization: {
-            slug: organizationSlug,
-          },
-          deletedAt: null,
-          slug: projectSlug,
-        },
-        orderBy: {
-          updatedAt: "desc",
-        },
+        project: bestProject,
       });
-
-      if (projects.length === 0) {
-        throw redirectWithErrorMessage(
-          newProjectPath({ slug: organizationSlug }),
-          request,
-          "No projects in this organization"
-        );
-      }
-
-      //try get the project which matches the URL
-      let matchingProject = projects.find((p) => p.slug === projectSlug);
-
-      //if there's no matching project, just use the most recently updated one
-      if (!matchingProject) {
-        matchingProject = projects[0];
-      }
-
-      //set the session
-      const session = await setCurrentProjectId(matchingProject.id, request);
-      throw redirect(request.url, {
-        headers: { "Set-Cookie": await commitCurrentProjectSession(session) },
-      });
+      throw redirect(newProjectPath(organization));
     }
 
-    if (!projectSlug) {
-      return sessionProjectId;
-    }
-
-    //check session id matches the project slug
-    const project = await prisma.project.findFirst({
-      select: {
-        id: true,
-        slug: true,
-      },
+    const fullProject = await this.#prismaClient.project.findFirst({
       where: {
-        slug: projectSlug,
-        organization: {
-          slug: organizationSlug,
+        id: bestProject.id,
+      },
+      include: {
+        environments: {
+          select: {
+            id: true,
+            type: true,
+            slug: true,
+            orgMember: {
+              select: {
+                userId: true,
+              },
+            },
+          },
         },
-        deletedAt: null,
       },
     });
 
-    if (!project) {
-      throw new Response("Project not found in organization", { status: 404 });
-    }
-
-    if (project.id !== sessionProjectId) {
-      const session = await setCurrentProjectId(project.id, request);
-      throw redirect(request.url, {
-        headers: { "Set-Cookie": await commitCurrentProjectSession(session) },
+    if (!fullProject) {
+      logger.info("Not Found: project", {
+        projectSlug,
+        request,
+        project: bestProject,
       });
+      throw redirect(newProjectPath(organization));
     }
 
-    return project.id;
+    const environment = this.#getEnvironment({
+      user,
+      projectId: fullProject.id,
+      environments: fullProject.environments,
+      environmentSlug,
+    });
+
+    return {
+      organizations,
+      organization,
+      project: {
+        ...fullProject,
+        environments: sortEnvironments(
+          fullProject.environments.filter((env) => {
+            if (env.type !== "DEVELOPMENT") return true;
+            if (env.orgMember?.userId === user.id) return true;
+            return false;
+          })
+        ),
+      },
+      environment,
+    };
   }
 
   async #getOrganizations(userId: string) {
@@ -179,14 +122,13 @@ export class OrganizationsPresenter {
         id: true,
         slug: true,
         title: true,
-        runsEnabled: true,
         projects: {
-          where: { deletedAt: null },
+          where: { deletedAt: null, version: "V3" },
           select: {
             id: true,
             slug: true,
             name: true,
-            version: true,
+            updatedAt: true,
           },
           orderBy: { name: "asc" },
         },
@@ -202,43 +144,97 @@ export class OrganizationsPresenter {
           id: project.id,
           slug: project.slug,
           name: project.name,
-          version: project.version,
+          updatedAt: project.updatedAt,
         })),
-        runsEnabled: org.runsEnabled,
       };
     });
   }
 
-  async #selectBestProjectForOrganization(
-    organizationSlug: string,
-    userId: string,
-    request: Request
-  ) {
-    const projects = await this.#prismaClient.project.findMany({
-      select: {
-        id: true,
-        slug: true,
-      },
-      where: {
-        deletedAt: null,
-        organization: {
-          deletedAt: null,
-          slug: organizationSlug,
-          members: { some: { userId } },
-        },
-      },
-      orderBy: {
-        jobs: {
-          _count: "desc",
-        },
-      },
-      take: 1,
-    });
+  #getProject({
+    user,
+    projectSlug,
+    projects,
+  }: {
+    user: UserFromSession;
+    projectSlug: string | undefined;
+    projects: {
+      id: string;
+      slug: string;
+      name: string;
+      updatedAt: Date;
+    }[];
+  }) {
+    if (projectSlug) {
+      const proj = projects.find((p) => p.slug === projectSlug);
+      if (proj) {
+        return proj;
+      }
 
-    if (projects.length === 0) {
-      throw redirect(newProjectPath({ slug: organizationSlug }), request);
+      if (!proj) {
+        logger.info("Not Found: project", {
+          projectSlug,
+          projects,
+        });
+      }
     }
 
-    return projects[0];
+    const currentProjectId = user.dashboardPreferences.currentProjectId;
+    const project = projects.find((p) => p.id === currentProjectId);
+    if (project) {
+      return project;
+    }
+
+    //most recently updated
+    return projects.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime()).at(0);
+  }
+
+  #getEnvironment({
+    user,
+    projectId,
+    environmentSlug,
+    environments,
+  }: {
+    user: UserFromSession;
+    projectId: string;
+    environmentSlug: string | undefined;
+    environments: MinimumEnvironment[];
+  }) {
+    if (environmentSlug) {
+      const env = environments.find((e) => e.slug === environmentSlug);
+      if (env) {
+        return env;
+      }
+
+      if (!env) {
+        logger.info("Not Found: environment", {
+          environmentSlug,
+          environments,
+        });
+      }
+    }
+
+    const currentEnvironmentId: string | undefined =
+      user.dashboardPreferences.projects[projectId]?.currentEnvironment.id;
+
+    const environment = environments.find((e) => e.id === currentEnvironmentId);
+    if (environment) {
+      return environment;
+    }
+
+    //otherwise show their dev environment
+    const yourDevEnvironment = environments.find(
+      (env) => env.type === "DEVELOPMENT" && env.orgMember?.userId === user.id
+    );
+    if (yourDevEnvironment) {
+      return yourDevEnvironment;
+    }
+
+    //otherwise show their prod environment
+    const prodEnvironment = environments.find((env) => env.type === "PRODUCTION");
+    if (prodEnvironment) {
+      return prodEnvironment;
+    }
+
+    throw new Error("No environments found");
   }
 }

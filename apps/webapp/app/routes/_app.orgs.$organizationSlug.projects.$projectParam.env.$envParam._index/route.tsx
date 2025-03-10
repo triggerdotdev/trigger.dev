@@ -11,12 +11,12 @@ import {
 } from "@heroicons/react/20/solid";
 import { json, type MetaFunction } from "@remix-run/node";
 import { Link, useRevalidator, useSubmit } from "@remix-run/react";
-import { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { DiscordIcon } from "@trigger.dev/companyicons";
 import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
-import { TaskRunStatus } from "@trigger.dev/database";
+import { type TaskRunStatus } from "@trigger.dev/database";
 import { Fragment, Suspense, useEffect, useState } from "react";
-import { Bar, BarChart, ResponsiveContainer, Tooltip, TooltipProps } from "recharts";
+import { Bar, BarChart, ResponsiveContainer, Tooltip, type TooltipProps } from "recharts";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
@@ -69,11 +69,16 @@ import {
   taskTriggerSourceDescription,
   TaskTriggerSourceIcon,
 } from "~/components/runs/v3/TaskTriggerSource";
+import { useEnvironment } from "~/hooks/useEnvironment";
 import { useEventSource } from "~/hooks/useEventSource";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useTextFilter } from "~/hooks/useTextFilter";
-import { Task, TaskActivity, TaskListPresenter } from "~/presenters/v3/TaskListPresenter.server";
+import {
+  type Task,
+  type TaskActivity,
+  TaskListPresenter,
+} from "~/presenters/v3/TaskListPresenter.server";
 import {
   getUsefulLinksPreference,
   setUsefulLinksPreference,
@@ -83,6 +88,7 @@ import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import {
   docsPath,
+  EnvironmentParamSchema,
   inviteTeamMemberPath,
   ProjectParamSchema,
   v3RunsPath,
@@ -101,21 +107,22 @@ export const meta: MetaFunction = () => {
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
-  const { organizationSlug, projectParam } = ProjectParamSchema.parse(params);
+  const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
 
   try {
     const presenter = new TaskListPresenter();
-    const { tasks, userHasTasks, activity, runningStats, durations } = await presenter.call({
+    const { tasks, environment, activity, runningStats, durations } = await presenter.call({
       userId,
       organizationSlug,
       projectSlug: projectParam,
+      environmentSlug: envParam,
     });
 
     const usefulLinksPreference = await getUsefulLinksPreference(request);
 
     return typeddefer({
       tasks,
-      userHasTasks,
+      environment,
       activity,
       runningStats,
       durations,
@@ -149,7 +156,8 @@ export async function action({ request }: ActionFunctionArgs) {
 export default function Page() {
   const organization = useOrganization();
   const project = useProject();
-  const { tasks, userHasTasks, activity, runningStats, durations, usefulLinksPreference } =
+  const environment = useEnvironment();
+  const { tasks, activity, runningStats, durations, usefulLinksPreference } =
     useTypedLoaderData<typeof loader>();
   const { filterText, setFilterText, filteredItems } = useTextFilter<Task>({
     items: tasks,
@@ -211,13 +219,6 @@ export default function Page() {
               {tasks.map((task) => (
                 <Property.Item key={task.slug}>
                   <Property.Label>{task.exportName}</Property.Label>
-                  <Property.Value>
-                    {task.environments
-                      .map((e) =>
-                        e.userName ? `${e.userName}/${e.id}` : `${e.type.slice(0, 3)}/${e.id}`
-                      )
-                      .join(", ")}
-                  </Property.Value>
                 </Property.Item>
               ))}
             </Property.Table>
@@ -237,7 +238,7 @@ export default function Page() {
             <div className={cn("grid h-full grid-rows-1")}>
               {hasTasks ? (
                 <div className="flex min-w-0 max-w-full flex-col">
-                  {!userHasTasks && <UserHasNoTasks />}
+                  {tasks.length === 0 ? <UserHasNoTasks /> : null}
                   <div className="max-h-full overflow-hidden">
                     <div className="flex items-center gap-1 p-2">
                       <Input
@@ -267,7 +268,6 @@ export default function Page() {
                           <TableHeaderCell>Queued</TableHeaderCell>
                           <TableHeaderCell>Activity (7d)</TableHeaderCell>
                           <TableHeaderCell>Avg. duration</TableHeaderCell>
-                          <TableHeaderCell>Environments</TableHeaderCell>
                           <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
                         </TableRow>
                       </TableHeader>
@@ -278,22 +278,12 @@ export default function Page() {
                               tasks: [task.slug],
                             });
 
-                            const devYouEnvironment = task.environments.find(
-                              (e) => e.type === "DEVELOPMENT" && !e.userName
+                            const testPath = v3TestTaskPath(
+                              organization,
+                              project,
+                              { taskIdentifier: task.slug },
+                              environment
                             );
-                            const firstDeployedEnvironment = task.environments
-                              .filter((e) => e.type !== "DEVELOPMENT")
-                              .at(0);
-                            const testEnvironment = devYouEnvironment ?? firstDeployedEnvironment;
-
-                            const testPath = testEnvironment
-                              ? v3TestTaskPath(
-                                  organization,
-                                  project,
-                                  { taskIdentifier: task.slug },
-                                  testEnvironment.slug
-                                )
-                              : v3TestPath(organization, project);
 
                             return (
                               <TableRow key={task.slug} className="group">
@@ -371,9 +361,6 @@ export default function Page() {
                                       }}
                                     </TypedAwait>
                                   </Suspense>
-                                </TableCell>
-                                <TableCell to={path}>
-                                  <EnvironmentLabels environments={task.environments} />
                                 </TableCell>
                                 <TableCellMenu
                                   isSticky

@@ -1,5 +1,5 @@
 import { FolderIcon } from "@heroicons/react/20/solid";
-import { Link, MetaFunction } from "@remix-run/react";
+import { Link, type MetaFunction } from "@remix-run/react";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
 import { LinkButton } from "~/components/primitives/Buttons";
@@ -50,7 +50,6 @@ export default function Page() {
                     <FolderIcon className="h-10 w-10 flex-none text-indigo-600" />
                     <div className="flex flex-col">
                       <Header3>{project.name}</Header3>
-                      <Badge className="max-w-max">{project.version}</Badge>
                     </div>
                   </Link>
                 </li>

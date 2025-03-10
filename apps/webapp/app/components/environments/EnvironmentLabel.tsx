@@ -2,6 +2,11 @@ import type { RuntimeEnvironment } from "~/models/runtimeEnvironment.server";
 import { cn } from "~/utils/cn";
 import { sortEnvironments } from "~/utils/environmentSort";
 import { SimpleTooltip } from "../primitives/Tooltip";
+import {
+  DeployedEnvironmentIcon,
+  DevEnvironmentIcon,
+  ProdEnvironmentIcon,
+} from "~/assets/icons/EnvironmentIcons";
 
 type Environment = Pick<RuntimeEnvironment, "type">;
 const variants = {
@@ -127,6 +132,45 @@ export function EnvironmentLabels({
   );
 }
 
+export function EnvironmentIcon({
+  environment,
+  className,
+}: {
+  environment: Environment;
+  className?: string;
+}) {
+  switch (environment.type) {
+    case "DEVELOPMENT":
+      return (
+        <DevEnvironmentIcon className={cn(environmentTextClassName(environment), className)} />
+      );
+    case "PRODUCTION":
+      return (
+        <ProdEnvironmentIcon className={cn(environmentTextClassName(environment), className)} />
+      );
+    case "STAGING":
+    case "PREVIEW":
+      return (
+        <DeployedEnvironmentIcon className={cn(environmentTextClassName(environment), className)} />
+      );
+  }
+}
+
+export function FullEnvironmentCombo({
+  environment,
+  className,
+}: {
+  environment: Environment;
+  className?: string;
+}) {
+  return (
+    <div className={cn("flex items-center gap-2 text-sm text-text-bright", className)}>
+      <EnvironmentIcon environment={environment} className="size-4" />
+      <div>{environmentFullTitle(environment)}</div>
+    </div>
+  );
+}
+
 export function environmentTitle(environment: Environment, username?: string) {
   switch (environment.type) {
     case "PRODUCTION":
@@ -135,6 +179,19 @@ export function environmentTitle(environment: Environment, username?: string) {
       return "Staging";
     case "DEVELOPMENT":
       return username ? `Dev: ${username}` : "Dev: You";
+    case "PREVIEW":
+      return "Preview";
+  }
+}
+
+export function environmentFullTitle(environment: Environment) {
+  switch (environment.type) {
+    case "PRODUCTION":
+      return "Production";
+    case "STAGING":
+      return "Staging";
+    case "DEVELOPMENT":
+      return "Development";
     case "PREVIEW":
       return "Preview";
   }

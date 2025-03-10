@@ -1,25 +1,18 @@
-import { Prisma } from "@trigger.dev/database";
-import type {
-  RuntimeEnvironmentType,
-  TaskTriggerSource,
-  TaskRunStatus as TaskRunStatusType,
+import {
+  Prisma,
+  type TaskTriggerSource,
+  type TaskRunStatus as TaskRunStatusType,
+  type RuntimeEnvironment,
+  type TaskRunStatus as DBTaskRunStatus,
 } from "@trigger.dev/database";
-import { QUEUED_STATUSES, RUNNING_STATUSES } from "~/components/runs/v3/TaskRunStatus";
+import { QUEUED_STATUSES } from "~/components/runs/v3/TaskRunStatus";
 import { sqlDatabaseSchema } from "~/db.server";
 import type { Organization } from "~/models/organization.server";
 import type { Project } from "~/models/project.server";
-import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
 import type { User } from "~/models/user.server";
-import {
-  filterOrphanedEnvironments,
-  onlyDevEnvironments,
-  exceptDevEnvironments,
-  sortEnvironments,
-} from "~/utils/environmentSort";
 import { logger } from "~/services/logger.server";
 import { BasePresenter } from "./basePresenter.server";
 import { TaskRunStatus } from "~/database-types";
-import { concurrencyTracker } from "~/v3/services/taskRunConcurrencyTracker.server";
 import { CURRENT_DEPLOYMENT_LABEL } from "@trigger.dev/core/v3/isomorphic";
 
 export type Task = {
@@ -28,12 +21,6 @@ export type Task = {
   filePath: string;
   createdAt: Date;
   triggerSource: TaskTriggerSource;
-  environments: {
-    id: string;
-    type: RuntimeEnvironmentType;
-    slug: string;
-    userName?: string;
-  }[];
 };
 
 type Return = Awaited<ReturnType<TaskListPresenter["call"]>>;
@@ -45,43 +32,28 @@ export class TaskListPresenter extends BasePresenter {
     userId,
     projectSlug,
     organizationSlug,
+    environmentSlug,
   }: {
     userId: User["id"];
     projectSlug: Project["slug"];
     organizationSlug: Organization["slug"];
+    environmentSlug: RuntimeEnvironment["slug"];
   }) {
-    const project = await this._replica.project.findFirstOrThrow({
+    const environment = await this._replica.runtimeEnvironment.findFirstOrThrow({
       select: {
         id: true,
-        environments: {
-          select: {
-            id: true,
-            type: true,
-            slug: true,
-            orgMember: {
-              select: {
-                user: {
-                  select: {
-                    id: true,
-                    name: true,
-                    displayName: true,
-                  },
-                },
-              },
-            },
-          },
-        },
+        type: true,
       },
       where: {
-        slug: projectSlug,
+        slug: environmentSlug,
+        project: {
+          slug: projectSlug,
+        },
         organization: {
           slug: organizationSlug,
         },
       },
     });
-
-    const devEnvironments = onlyDevEnvironments(project.environments);
-    const nonDevEnvironments = exceptDevEnvironments(project.environments);
 
     const tasks = await this._replica.$queryRaw<
       {
@@ -89,7 +61,6 @@ export class TaskListPresenter extends BasePresenter {
         slug: string;
         exportName: string;
         filePath: string;
-        runtimeEnvironmentId: string;
         createdAt: Date;
         triggerSource: TaskTriggerSource;
       }[]
@@ -99,15 +70,13 @@ export class TaskListPresenter extends BasePresenter {
       FROM ${sqlDatabaseSchema}."WorkerDeploymentPromotion" wdp
       INNER JOIN ${sqlDatabaseSchema}."WorkerDeployment" wd
         ON wd.id = wdp."deploymentId"
-      WHERE wdp."environmentId" IN (${Prisma.join(nonDevEnvironments.map((e) => e.id))})
+      WHERE wdp."environmentId" = ${environment.id}
         AND wdp."label" = ${CURRENT_DEPLOYMENT_LABEL}
     ),
-    workers AS (      
+    workers AS (
       SELECT DISTINCT ON ("runtimeEnvironmentId") id, "runtimeEnvironmentId", version
       FROM ${sqlDatabaseSchema}."BackgroundWorker"
-      WHERE "runtimeEnvironmentId" IN (${Prisma.join(
-        filterOrphanedEnvironments(devEnvironments).map((e) => e.id)
-      )})
+      WHERE "runtimeEnvironmentId" = ${environment.id}
         OR id IN (SELECT id FROM non_dev_workers)
       ORDER BY "runtimeEnvironmentId", "createdAt" DESC
     )
@@ -116,64 +85,26 @@ export class TaskListPresenter extends BasePresenter {
     JOIN ${sqlDatabaseSchema}."BackgroundWorkerTask" tasks ON tasks."workerId" = workers.id
     ORDER BY slug ASC;`;
 
-    //group by the task identifier (task.slug).
-    const outputTasks = tasks.reduce((acc, task) => {
-      const environment = project.environments.find((env) => env.id === task.runtimeEnvironmentId);
-      if (!environment) {
-        throw new Error(`Environment not found for TaskRun ${task.id}`);
-      }
-
-      let existingTask = acc.find((t) => t.slug === task.slug);
-
-      if (!existingTask) {
-        existingTask = {
-          ...task,
-          environments: [],
-        };
-        acc.push(existingTask);
-      }
-
-      //favour newer tasks
-      if (task.createdAt > existingTask.createdAt) {
-        existingTask.createdAt = task.createdAt;
-        existingTask.exportName = task.exportName;
-        existingTask.filePath = task.filePath;
-        existingTask.triggerSource = task.triggerSource;
-      }
-
-      existingTask.environments.push(displayableEnvironment(environment, userId));
-
-      //order the environments
-      existingTask.environments = sortEnvironments(existingTask.environments);
-
-      return acc;
-    }, [] as Task[]);
-
     //then get the activity for each task
     const activity = this.#getActivity(
-      outputTasks.map((t) => t.slug),
-      project.id
+      tasks.map((t) => t.slug),
+      environment.id
     );
 
     const runningStats = this.#getRunningStats(
-      outputTasks.map((t) => t.slug),
-      project.id
+      tasks.map((t) => t.slug),
+      environment.id
     );
 
     const durations = this.#getAverageDurations(
-      outputTasks.map((t) => t.slug),
-      project.id
+      tasks.map((t) => t.slug),
+      environment.id
     );
 
-    const userEnvironment = project.environments.find((e) => e.orgMember?.user.id === userId);
-    const userHasTasks = userEnvironment
-      ? outputTasks.some((t) => t.environments.some((e) => e.id === userEnvironment.id))
-      : false;
-
-    return { tasks: outputTasks, userHasTasks, activity, runningStats, durations };
+    return { tasks, environment, activity, runningStats, durations };
   }
 
-  async #getActivity(tasks: string[], projectId: string) {
+  async #getActivity(tasks: string[], environmentId: string) {
     if (tasks.length === 0) {
       return {};
     }
@@ -186,22 +117,22 @@ export class TaskListPresenter extends BasePresenter {
         count: BigInt;
       }[]
     >`
-    SELECT 
-    tr."taskIdentifier", 
+    SELECT
+    tr."taskIdentifier",
     tr."status",
-    DATE(tr."createdAt") as day, 
-    COUNT(*) 
-  FROM 
+    DATE(tr."createdAt") as day,
+    COUNT(*)
+  FROM
     ${sqlDatabaseSchema}."TaskRun" as tr
-  WHERE 
+  WHERE
     tr."taskIdentifier" IN (${Prisma.join(tasks)})
-    AND tr."projectId" = ${projectId}
+    AND tr."runtimeEnvironmentId" = ${environmentId}
     AND tr."createdAt" >= (current_date - interval '6 days')
-  GROUP BY 
-    tr."taskIdentifier", 
-    tr."status", 
+  GROUP BY
+    tr."taskIdentifier",
+    tr."status",
     day
-  ORDER BY 
+  ORDER BY
     tr."taskIdentifier" ASC,
     day ASC,
     tr."status" ASC;`;
@@ -248,48 +179,67 @@ export class TaskListPresenter extends BasePresenter {
     }, {} as Record<string, ({ day: string } & Record<TaskRunStatusType, number>)[]>);
   }
 
-  async #getRunningStats(tasks: string[], projectId: string) {
+  async #getRunningStats(tasks: string[], environmentId: string) {
     if (tasks.length === 0) {
       return {};
     }
 
-    const concurrencies = await concurrencyTracker.taskConcurrentRunCounts(projectId, tasks);
-
-    const queued = await this._replica.$queryRaw<
+    const stats = await this._replica.$queryRaw<
       {
         taskIdentifier: string;
+        status: DBTaskRunStatus;
         count: BigInt;
       }[]
     >`
-    SELECT 
+    SELECT
     tr."taskIdentifier",
-    COUNT(*) 
-  FROM 
+    tr.status,
+    COUNT(*)
+  FROM
     ${sqlDatabaseSchema}."TaskRun" as tr
-  WHERE 
+  WHERE
     tr."taskIdentifier" IN (${Prisma.join(tasks)})
-    AND tr."projectId" = ${projectId}
-    AND tr."status" = ANY(ARRAY[${Prisma.join(QUEUED_STATUSES)}]::\"TaskRunStatus\"[])
-  GROUP BY 
-    tr."taskIdentifier"
-  ORDER BY 
+    AND tr."runtimeEnvironmentId" = ${environmentId}
+    AND tr."status" = ANY(ARRAY[${Prisma.join([
+      ...QUEUED_STATUSES,
+      "EXECUTING",
+    ])}]::\"TaskRunStatus\"[])
+  GROUP BY
+    tr."taskIdentifier",
+    tr.status
+  ORDER BY
     tr."taskIdentifier" ASC`;
 
     //create an object combining the queued and concurrency counts
     const result: Record<string, { queued: number; running: number }> = {};
     for (const task of tasks) {
-      const concurrency = concurrencies[task] ?? 0;
-      const queuedCount = queued.find((q) => q.taskIdentifier === task)?.count ?? 0;
+      const queued = stats.filter(
+        (q) => q.taskIdentifier === task && QUEUED_STATUSES.includes(q.status)
+      );
+      const queuedCount =
+        queued.length === 0
+          ? 0
+          : queued.reduce((acc, q) => {
+              return acc + Number(q.count);
+            }, 0);
+
+      const running = stats.filter((r) => r.taskIdentifier === task && r.status === "EXECUTING");
+      const runningCount =
+        running.length === 0
+          ? 0
+          : running.reduce((acc, r) => {
+              return acc + Number(r.count);
+            }, 0);
 
       result[task] = {
-        queued: Number(queuedCount),
-        running: concurrency,
+        queued: queuedCount,
+        running: runningCount,
       };
     }
     return result;
   }
 
-  async #getAverageDurations(tasks: string[], projectId: string) {
+  async #getAverageDurations(tasks: string[], environmentId: string) {
     if (tasks.length === 0) {
       return {};
     }
@@ -299,18 +249,18 @@ export class TaskListPresenter extends BasePresenter {
         taskIdentifier: string;
         duration: Number;
       }[]
-    >`    
-    SELECT 
-      tr."taskIdentifier", 
+    >`
+    SELECT
+      tr."taskIdentifier",
       AVG(EXTRACT(EPOCH FROM (tr."updatedAt" - COALESCE(tr."startedAt", tr."lockedAt")))) as duration
-      FROM 
+      FROM
       ${sqlDatabaseSchema}."TaskRun" as tr
-    WHERE 
+    WHERE
       tr."taskIdentifier" IN (${Prisma.join(tasks)})
-      AND tr."projectId" = ${projectId}
+      AND tr."runtimeEnvironmentId" = ${environmentId}
       AND tr."createdAt" >= (current_date - interval '6 days')
       AND tr."status" IN ('COMPLETED_SUCCESSFULLY', 'COMPLETED_WITH_ERRORS')
-    GROUP BY 
+    GROUP BY
       tr."taskIdentifier";`;
 
     return Object.fromEntries(durations.map((s) => [s.taskIdentifier, Number(s.duration)]));

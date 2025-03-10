@@ -1,8 +1,8 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { ExclamationTriangleIcon, FolderIcon, TrashIcon } from "@heroicons/react/20/solid";
-import { Form, MetaFunction, useActionData, useNavigation } from "@remix-run/react";
-import { ActionFunction, json } from "@remix-run/server-runtime";
+import { Form, type MetaFunction, useActionData, useNavigation } from "@remix-run/react";
+import { type ActionFunction, json } from "@remix-run/server-runtime";
 import { redirect } from "remix-typedjson";
 import { z } from "zod";
 import { InlineCode } from "~/components/code/InlineCode";
@@ -21,13 +21,10 @@ import { SpinnerWhite } from "~/components/primitives/Spinner";
 import { prisma } from "~/db.server";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
-import {
-  clearCurrentProjectId,
-  commitCurrentProjectSession,
-} from "~/services/currentProject.server";
+import { clearCurrentProject } from "~/services/dashboardPreferences.server";
 import { DeleteOrganizationService } from "~/services/deleteOrganization.server";
 import { logger } from "~/services/logger.server";
-import { requireUserId } from "~/services/session.server";
+import { requireUser, requireUserId } from "~/services/session.server";
 import { organizationPath, organizationSettingsPath, rootPath } from "~/utils/pathBuilder";
 
 export const meta: MetaFunction = () => {
@@ -76,7 +73,7 @@ export function createSchema(
 }
 
 export const action: ActionFunction = async ({ request, params }) => {
-  const userId = await requireUserId(request);
+  const user = await requireUser(request);
   const { organizationSlug } = params;
   if (!organizationSlug) {
     return json({ errors: { body: "organizationSlug is required" } }, { status: 400 });
@@ -102,7 +99,7 @@ export const action: ActionFunction = async ({ request, params }) => {
             slug: organizationSlug,
             members: {
               some: {
-                userId,
+                userId: user.id,
               },
             },
           },
@@ -120,15 +117,13 @@ export const action: ActionFunction = async ({ request, params }) => {
       case "delete": {
         const deleteOrganizationService = new DeleteOrganizationService();
         try {
-          await deleteOrganizationService.call({ organizationSlug, userId, request });
+          await deleteOrganizationService.call({ organizationSlug, userId: user.id, request });
 
           //we need to clear the project from the session
-          const removeProjectIdSession = await clearCurrentProjectId(request);
-          return redirect(rootPath(), {
-            headers: {
-              "Set-Cookie": await commitCurrentProjectSession(removeProjectIdSession),
-            },
+          await clearCurrentProject({
+            user,
           });
+          return redirect(rootPath());
         } catch (error: unknown) {
           const errorMessage = error instanceof Error ? error.message : JSON.stringify(error);
           logger.error("Organization could not be deleted", {
