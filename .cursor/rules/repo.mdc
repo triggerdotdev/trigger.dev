@@ -3,18 +3,4 @@ description: understanding the structure of the monorepo
 globs: 
 alwaysApply: true
 ---
-This is a pnpm 8.15.5 monorepo that uses turborepo [turbo.json](mdc:turbo.json). The following workspaces are relevant:
-
-- <root>/apps/webapp is a remix app that is the main API and dashboard for trigger.dev
-- <root>/packages/trigger-sdk is the `@trigger.dev/sdk` main SDK package
-- <root>/packages/cli-v3 is the `trigger.dev` CLI package
-- <root>/packages/core is the `@trigger.dev/core` package that is shared across the SDK and other packages
-- <root>/packages/build defines the types and prebuilt build extensions for trigger.dev
-- <root>/packages/react-hooks defines some useful react hooks like our realtime hooks
-- <root>/internal-packages/* are packages that are used internally only, not published, and usually they have a tsc build step and are used in the webapp
-- <root>/references/* are test workspaces that we use to write and test the system. Not quite e2e tests or automated, but just a useful place to help develop new features
-- <root>/docs is our trigger.dev/docs mintlify documentation site
-
-Other things in the monorepo to note:
-
-The [Dockerfile](mdc:docker/Dockerfile) is the one that creates the main trigger.dev published image, and the [docker-compose.yml](mdc:docker/docker-compose.yml) is the file we run locally to start postgresql, redis, and electric when we are doing local development. The [CONTRIBUTING.md](mdc:CONTRIBUTING.md) file defines the steps it takes for OSS contributors to start contributing.
+We've documented the structure of our monorepo here: [repo.md](mdc:ai/references/repo.md)
