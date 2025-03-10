@@ -41,6 +41,7 @@ export const batchParentTask = task({
       },
       options: {
         idempotencyKey: `item${i}`,
+        tags: ["foo:bar", "bar:baz"],
       },
     }));
 

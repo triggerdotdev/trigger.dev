@@ -682,7 +682,7 @@ export class BatchTriggerV3Service extends BaseService {
           count:
             options.strategy === "sequential"
               ? options.range.count
-              : options.range.count - result.workingIndex - options.range.start,
+              : options.range.count - (result.workingIndex - options.range.start),
         },
         attemptCount: $attemptCount,
         strategy: options.strategy,
