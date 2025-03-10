@@ -1,0 +1,10 @@
+---
+description: how to run commands in the monorepo
+globs: 
+alwaysApply: true
+---
+Almost all commands in the monorepo should be executed when `pnpm run ...` from the root of the monorepo. For example, running tests for the `@internal/run-engine` internal package:
+
+```
+pnpm run test --filter @internal/run-engine
+```
