@@ -25,17 +25,14 @@ export async function createTag({ tag, projectId }: { tag: string; projectId: st
     .then((rows) => rows[0]);
 }
 
-export async function getTagsForRunId(
-  {
-    friendlyId,
-    environmentId,
-  }: {
-    friendlyId: string;
-    environmentId: string;
-  },
-  db: PrismaClientOrTransaction
-) {
-  const run = await db.taskRun.findFirst({
+export async function getTagsForRunId({
+  friendlyId,
+  environmentId,
+}: {
+  friendlyId: string;
+  environmentId: string;
+}) {
+  const run = await prisma.taskRun.findFirst({
     where: {
       friendlyId,
       runtimeEnvironmentId: environmentId,
