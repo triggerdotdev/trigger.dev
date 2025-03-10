@@ -32,8 +32,8 @@ export function RunTag({ tag }: { tag: string }) {
 
 /** Takes a string and turns it into a tag
  *
- * Returns an object with key/value if the string starts with 1-12 alphanumeric characters 
- * followed by a colon or underscore. Otherwise returns the original string.
+ * If the string has 12 or fewer alpha characters followed by an underscore or colon then we return an object with a key and value
+ * Otherwise we return the original string
  * 
  * Special handling for common ID formats and values with special characters.
  */
