@@ -133,6 +133,55 @@ server.tool(
   }
 );
 
+server.tool(
+  "cancel-run",
+  "Cancel an in-progress run. Runs that have already completed cannot be cancelled.",
+  {
+    runId: z.string().describe("The ID of the task run to cancel"),
+  },
+  async ({ runId }) => {
+    const run = await sdkApiClient.retrieveRun(runId);
+
+    if (run?.status === "COMPLETED") {
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(
+              { message: "This run is already completed, no action taken.", run },
+              null,
+              2
+            ),
+          },
+        ],
+      };
+    }
+
+    await sdkApiClient.cancelRun(runId);
+    // we could also skip fetching the run again, but it provides more context to the LLM
+    // and one extra API call is no big deal
+    const updatedRun = await sdkApiClient.retrieveRun(runId);
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            {
+              message: "Task run was cancelled",
+              previousStatus: run.status,
+              currentStatus: updatedRun.status,
+              updatedTaskRun: updatedRun,
+            },
+            null,
+            2
+          ),
+        },
+      ],
+    };
+  }
+);
+
 const app = polka();
 app.get("/sse", (_req, res) => {
   mcpTransport = new SSEServerTransport("/messages", res);
