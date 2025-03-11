@@ -24,12 +24,25 @@ server.tool(
   "trigger-task",
   "Trigger a task",
   {
-    id: z.string().describe("The id of the task to trigger"),
+    id: z.string().describe("The ID of the task to trigger"),
+    payload: z
+      .string()
+      .transform((val, ctx) => {
+        try {
+          return JSON.parse(val);
+        } catch {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "The payload must be a valid JSON string",
+          });
+          return z.NEVER;
+        }
+      })
+      .describe("The payload to pass to the task run, must be a valid JSON"),
   },
-  async ({ id }) => {
+  async ({ id, payload }) => {
     const result = await sdkApiClient.triggerTask(id, {
-      // TODO: enable the user to pass in a custom payload
-      payload: {},
+      payload,
     });
 
     const taskRunUrl = `${dashboardUrl}/projects/v3/${projectRef}/runs/${result.id}`;
