@@ -145,6 +145,7 @@ app.post("/messages", (req, res) => {
 });
 
 export const startMcpServer = async (options: {
+  port: number;
   cliApiClient: CliApiClient;
   devSession: {
     dashboardUrl: string;
@@ -162,9 +163,7 @@ export const startMcpServer = async (options: {
   projectRef = options.devSession.projectRef;
   dashboardUrl = options.devSession.dashboardUrl;
 
-  // TODO: make the port configurable
-  const port = 3333;
-  app.listen(port, () => {
-    logger.info(`Trigger.dev MCP Server is now running on port ${port} ✨`);
+  app.listen(options.port, () => {
+    logger.info(`Trigger.dev MCP Server is now running on port ${options.port} ✨`);
   });
 };

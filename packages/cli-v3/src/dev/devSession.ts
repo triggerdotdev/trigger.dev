@@ -62,6 +62,7 @@ export async function startDevSession({
 
   if (rawArgs.mcp) {
     await startMcpServer({
+      port: rawArgs.mcpPort,
       cliApiClient: client,
       devSession: {
         dashboardUrl,

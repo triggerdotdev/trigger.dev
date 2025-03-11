@@ -21,6 +21,7 @@ const DevCommandOptions = CommonCommandOptions.extend({
   keepTmpFiles: z.boolean().default(false),
   maxConcurrentRuns: z.coerce.number().optional(),
   mcp: z.boolean().default(false),
+  mcpPort: z.coerce.number().optional().default(3333),
 });
 
 export type DevCommandOptions = z.infer<typeof DevCommandOptions>;
@@ -50,7 +51,8 @@ export function configureDevCommand(program: Command) {
         "Keep temporary files after the dev session ends, helpful for debugging"
       )
       // TODO: add a more detailed description, maybe a pointer to the docs on how to use MCP
-      .option("--mcp", "Run an MCP server")
+      .option("--mcp", "Start the MCP server")
+      .option("--mcp-port", "The port to run the MCP server on", "3333")
   ).action(async (options) => {
     wrapCommandAction("dev", DevCommandOptions, options, async (opts) => {
       await devCommand(opts);
