@@ -274,16 +274,13 @@ export default function Page() {
                       <TableBody>
                         {filteredItems.length > 0 ? (
                           filteredItems.map((task) => {
-                            const path = v3RunsPath(organization, project, {
+                            const path = v3RunsPath(organization, project, environment, {
                               tasks: [task.slug],
                             });
 
-                            const testPath = v3TestTaskPath(
-                              organization,
-                              project,
-                              { taskIdentifier: task.slug },
-                              environment
-                            );
+                            const testPath = v3TestTaskPath(organization, project, environment, {
+                              taskIdentifier: task.slug,
+                            });
 
                             return (
                               <TableRow key={task.slug} className="group">
@@ -626,6 +623,7 @@ const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>)
 function HelpfulInfoHasTasks({ onClose }: { onClose: () => void }) {
   const organization = useOrganization();
   const project = useProject();
+  const environment = useEnvironment();
   const [isVideoDialogOpen, setIsVideoDialogOpen] = useState(false);
 
   return (
@@ -647,7 +645,7 @@ function HelpfulInfoHasTasks({ onClose }: { onClose: () => void }) {
         </div>
         <LinkWithIcon
           variant="withIcon"
-          to={v3TestPath(organization, project)}
+          to={v3TestPath(organization, project, environment)}
           description="Test your tasks"
           icon={<BeakerIcon className="size-5 text-lime-500" />}
         />

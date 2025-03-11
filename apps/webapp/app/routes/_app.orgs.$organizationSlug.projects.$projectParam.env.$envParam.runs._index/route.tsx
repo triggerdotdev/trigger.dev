@@ -55,6 +55,7 @@ import {
 import { ListPagination } from "../../components/ListPagination";
 import { prisma } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
+import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 
 export const meta: MetaFunction = () => {
   return [
@@ -82,12 +83,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     throw new Error("Project not found");
   }
 
-  const environment = await prisma.runtimeEnvironment.findFirst({
-    where: {
-      projectId: project.id,
-      slug: envParam,
-    },
-  });
+  const environment = await findEnvironmentBySlug(project.id, envParam, userId);
   if (!environment) {
     throw new Error("Environment not found");
   }
@@ -167,7 +163,6 @@ export default function Page() {
   const { data, rootOnlyDefault } = useTypedLoaderData<typeof loader>();
   const navigation = useNavigation();
   const isLoading = navigation.state !== "idle";
-  const project = useProject();
 
   return (
     <>
@@ -222,7 +217,6 @@ export default function Page() {
                         >
                           <div className="flex items-start justify-between gap-x-2 p-2">
                             <RunsFilters
-                              possibleEnvironments={project.environments}
                               possibleTasks={list.possibleTasks}
                               bulkActions={list.bulkActions}
                               hasFilters={list.hasFilters}

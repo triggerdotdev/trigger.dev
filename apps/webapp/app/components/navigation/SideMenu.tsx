@@ -154,18 +154,18 @@ export function SideMenu({
                 data-action="tasks"
               />
               <SideMenuItem
-                name="Test"
-                icon={BeakerIcon}
-                activeIconColor="text-lime-500"
-                to={v3TestPath(organization, project, environment)}
-                data-action="test"
-              />
-              <SideMenuItem
                 name="Batches"
                 icon={Squares2X2Icon}
                 activeIconColor="text-blue-500"
                 to={v3BatchesPath(organization, project, environment)}
                 data-action="batches"
+              />
+              <SideMenuItem
+                name="Test"
+                icon={BeakerIcon}
+                activeIconColor="text-lime-500"
+                to={v3TestPath(organization, project, environment)}
+                data-action="test"
               />
             </SideMenuSection>
 
@@ -175,6 +175,12 @@ export function SideMenu({
                 icon={RunsIcon}
                 activeIconColor="text-teal-500"
                 to={v3RunsPath(organization, project, environment)}
+              />
+              <SideMenuItem
+                name="Failed"
+                to={v3RunsPath(organization, project, environment, {
+                  statuses: ["COMPLETED_WITH_ERRORS"],
+                })}
               />
             </SideMenuSection>
 

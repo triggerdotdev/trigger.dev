@@ -4,8 +4,8 @@ import {
   ExclamationCircleIcon,
 } from "@heroicons/react/20/solid";
 import { BookOpenIcon } from "@heroicons/react/24/solid";
-import { MetaFunction, useLocation, useNavigation } from "@remix-run/react";
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { type MetaFunction, useLocation, useNavigation } from "@remix-run/react";
+import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { formatDuration } from "@trigger.dev/core/v3/utils/durations";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { ListPagination } from "~/components/ListPagination";
@@ -38,17 +38,19 @@ import {
 } from "~/components/runs/v3/BatchStatus";
 import { CheckBatchCompletionDialog } from "~/components/runs/v3/CheckBatchCompletionDialog";
 import { LiveTimer } from "~/components/runs/v3/LiveTimer";
+import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
+import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
-  BatchList,
-  BatchListItem,
+  type BatchList,
+  type BatchListItem,
   BatchListPresenter,
 } from "~/presenters/v3/BatchListPresenter.server";
 import { requireUserId } from "~/services/session.server";
-import { docsPath, ProjectParamSchema, v3BatchRunsPath } from "~/utils/pathBuilder";
+import { docsPath, EnvironmentParamSchema, v3BatchRunsPath } from "~/utils/pathBuilder";
 
 export const meta: MetaFunction = () => {
   return [
@@ -60,13 +62,23 @@ export const meta: MetaFunction = () => {
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
-  const { projectParam, organizationSlug } = ProjectParamSchema.parse(params);
+  const { projectParam, organizationSlug, envParam } = EnvironmentParamSchema.parse(params);
+
+  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
+  if (!project) {
+    return redirectWithErrorMessage("/", request, "Project not found");
+  }
+
+  const environment = await findEnvironmentBySlug(project.id, envParam, userId);
+  if (!environment) {
+    throw new Error("Environment not found");
+  }
 
   const url = new URL(request.url);
   const s = {
     cursor: url.searchParams.get("cursor") ?? undefined,
     direction: url.searchParams.get("direction") ?? undefined,
-    environments: url.searchParams.getAll("environments"),
+    environments: [environment.id],
     statuses: url.searchParams.getAll("statuses"),
     period: url.searchParams.get("period") ?? undefined,
     from: url.searchParams.get("from") ?? undefined,
@@ -74,12 +86,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     id: url.searchParams.get("id") ?? undefined,
   };
   const filters = BatchListFilters.parse(s);
-
-  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
-
-  if (!project) {
-    return redirectWithErrorMessage("/", request, "Project not found");
-  }
 
   const presenter = new BatchListPresenter();
   const list = await presenter.call({
@@ -138,6 +144,7 @@ function BatchesTable({ batches, hasFilters, filters }: BatchList) {
   const isLoading = navigation.state !== "idle";
   const organization = useOrganization();
   const project = useProject();
+  const environment = useEnvironment();
 
   return (
     <Table className="max-h-full overflow-y-auto">
@@ -192,7 +199,7 @@ function BatchesTable({ batches, hasFilters, filters }: BatchList) {
           </TableBlankRow>
         ) : (
           batches.map((batch, index) => {
-            const path = v3BatchRunsPath(organization, project, batch);
+            const path = v3BatchRunsPath(organization, project, environment, batch);
             return (
               <TableRow key={batch.id}>
                 <TableCell to={path} isTabbableCell>

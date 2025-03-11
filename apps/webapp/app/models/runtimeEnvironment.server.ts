@@ -69,6 +69,28 @@ export async function findEnvironmentById(id: string): Promise<AuthenticatedEnvi
   return environment;
 }
 
+export async function findEnvironmentBySlug(projectId: string, envSlug: string, userId: string) {
+  return prisma.runtimeEnvironment.findFirst({
+    where: {
+      projectId: projectId,
+      slug: envSlug,
+      OR: [
+        {
+          type: {
+            in: ["PREVIEW", "STAGING", "PRODUCTION"],
+          },
+        },
+        {
+          type: "DEVELOPMENT",
+          orgMember: {
+            userId,
+          },
+        },
+      ],
+    },
+  });
+}
+
 export async function findEnvironmentFromRun(
   runId: string,
   tx?: PrismaClientOrTransaction

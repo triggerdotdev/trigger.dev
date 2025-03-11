@@ -88,6 +88,7 @@ import {
 } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { SpanView } from "../resources.orgs.$organizationSlug.projects.v3.$projectParam.runs.$runParam.spans.$spanParam/route";
+import { useEnvironment } from "~/hooks/useEnvironment";
 
 const resizableSettings = {
   parent: {
@@ -157,6 +158,7 @@ export default function Page() {
   const user = useUser();
   const organization = useOrganization();
   const project = useProject();
+  const environment = useEnvironment();
 
   const usernameForEnv = user.id !== run.environment.userId ? run.environment.userName : undefined;
 
@@ -165,7 +167,7 @@ export default function Page() {
       <NavBar>
         <PageTitle
           backButton={{
-            to: v3RunsPath(organization, project),
+            to: v3RunsPath(organization, project, environment),
             text: "Runs",
           }}
           title={
@@ -218,6 +220,7 @@ export default function Page() {
               failedRedirect={v3RunSpanPath(
                 organization,
                 project,
+                environment,
                 { friendlyId: run.friendlyId },
                 { spanId: run.spanId }
               )}
@@ -235,6 +238,7 @@ export default function Page() {
                 redirectPath={v3RunSpanPath(
                   organization,
                   project,
+                  environment,
                   { friendlyId: run.friendlyId },
                   { spanId: run.spanId }
                 )}
@@ -267,6 +271,7 @@ export default function Page() {
 function TraceView({ run, trace, maximumLiveReloadingSetting, resizable }: LoaderData) {
   const organization = useOrganization();
   const project = useProject();
+  const environment = useEnvironment();
   const { searchParams, replaceSearchParam } = useReplaceSearchParams();
   const selectedSpanId = searchParams.get("span") ?? undefined;
 
@@ -282,10 +287,13 @@ function TraceView({ run, trace, maximumLiveReloadingSetting, resizable }: Loade
   }, 250);
 
   const revalidator = useRevalidator();
-  const streamedEvents = useEventSource(v3RunStreamingPath(organization, project, run), {
-    event: "message",
-    disabled: !shouldLiveReload,
-  });
+  const streamedEvents = useEventSource(
+    v3RunStreamingPath(organization, project, environment, run),
+    {
+      event: "message",
+      disabled: !shouldLiveReload,
+    }
+  );
   useEffect(() => {
     if (streamedEvents !== null) {
       revalidator.revalidate();
@@ -1049,6 +1057,7 @@ function ShowParentLink({
   const [mouseOver, setMouseOver] = useState(false);
   const organization = useOrganization();
   const project = useProject();
+  const environment = useEnvironment();
   const { spanParam } = useParams();
 
   const span = spanId ? spanId : spanParam;
@@ -1061,12 +1070,13 @@ function ShowParentLink({
           ? v3RunSpanPath(
               organization,
               project,
+              environment,
               {
                 friendlyId: runFriendlyId,
               },
               { spanId: span }
             )
-          : v3RunPath(organization, project, {
+          : v3RunPath(organization, project, environment, {
               friendlyId: runFriendlyId,
             })
       }
