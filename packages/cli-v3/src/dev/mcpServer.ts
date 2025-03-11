@@ -1,11 +1,13 @@
+import polka from "polka";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
-import { optional, union, z } from "zod";
+import { z } from "zod";
 import { logger } from "../utilities/logger.js";
 import { CliApiClient } from "../apiClient.js";
 import { ApiClient, RunStatus } from "@trigger.dev/core/v3";
-import polka from "polka";
+import { eventBus } from "../utilities/eventBus.js";
 
+let allTaskIds: string[] = [];
 let projectRef: string;
 let dashboardUrl: string;
 // there is some overlap between `ApiClient` and `CliApiClient` which is not ideal
@@ -18,6 +20,22 @@ let mcpTransport: SSEServerTransport | null = null;
 const server = new McpServer({
   name: "trigger.dev",
   version: "1.0.0",
+});
+
+// The `list-all-tasks` tool primarily helps to enable fuzzy matching of task IDs (names).
+// This way, one doesn't need to specify the full task ID and rather let the LLM figure it out.
+// This could be a good fit for the `resource` entity in MCP.
+// Also, a custom `prompt` entity could be useful to instruct the LLM to prompt the user
+// for selecting a task from a list of matching tasks, when the confidence for an exact match is low.
+server.tool("list-all-tasks", "List all available task IDs in the worker.", async () => {
+  return {
+    content: [
+      {
+        text: JSON.stringify(allTaskIds, null, 2),
+        type: "text",
+      },
+    ],
+  };
 });
 
 server.tool(
@@ -211,6 +229,10 @@ app.post("/messages", (req, res) => {
   if (mcpTransport) {
     mcpTransport.handlePostMessage(req, res);
   }
+});
+
+eventBus.on("backgroundWorkerInitialized", (worker) => {
+  allTaskIds = worker.manifest?.tasks.map((task) => task.id) ?? [];
 });
 
 export const startMcpServer = async (options: {
