@@ -23,6 +23,7 @@ import { logger } from "../utilities/logger.js";
 import { clearTmpDirs, EphemeralDirectory, getTmpDir } from "../utilities/tempDirectories.js";
 import { startDevOutput } from "./devOutput.js";
 import { startWorkerRuntime } from "./devSupervisor.js";
+import { startMcpServer } from "./mcpServer.js";
 
 export type DevSessionOptions = {
   name: string | undefined;
@@ -58,6 +59,16 @@ export async function startDevSession({
     client,
     dashboardUrl,
   });
+
+  if (rawArgs.mcp) {
+    await startMcpServer({
+      cliApiClient: client,
+      devSession: {
+        dashboardUrl,
+        projectRef: rawConfig.project,
+      },
+    });
+  }
 
   const stopOutput = startDevOutput({
     name,
@@ -190,6 +201,7 @@ export async function startDevSession({
       stopBundling?.().catch((error) => {});
       runtime.shutdown().catch((error) => {});
       stopOutput();
+      // TODO: stop MCP server
     },
   };
 }
