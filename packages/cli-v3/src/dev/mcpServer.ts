@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
-import { z } from "zod";
+import { optional, union, z } from "zod";
 import { logger } from "../utilities/logger.js";
 import { CliApiClient } from "../apiClient.js";
 import { ApiClient, RunStatus } from "@trigger.dev/core/v3";
@@ -61,7 +61,7 @@ server.tool(
 
 server.tool(
   "list-runs",
-  "List task runs",
+  "List task runs. This returns a paginated list which shows the details of the runs, e.g., status, attempts, cost, etc.",
   {
     filters: z
       .object({
@@ -107,6 +107,26 @@ server.tool(
         {
           type: "text",
           text: JSON.stringify({ data, pagination }, null, 2),
+        },
+      ],
+    };
+  }
+);
+
+server.tool(
+  "get-run",
+  "Retrieve the details of a task run, e.g., status, attempts, cost, etc.",
+  {
+    runId: z.string().describe("The ID of the task run to get"),
+  },
+  async ({ runId }) => {
+    const result = await sdkApiClient.retrieveRun(runId);
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(result, null, 2),
         },
       ],
     };
