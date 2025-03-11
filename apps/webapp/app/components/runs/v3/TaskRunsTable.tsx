@@ -23,10 +23,13 @@ import { useFeatures } from "~/hooks/useFeatures";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useUser } from "~/hooks/useUser";
-import { RunListAppliedFilters, RunListItem } from "~/presenters/v3/RunListPresenter.server";
+import {
+  type RunListAppliedFilters,
+  type RunListItem,
+} from "~/presenters/v3/RunListPresenter.server";
 import { formatCurrencyAccurate, formatNumber } from "~/utils/numberFormatter";
 import { docsPath, v3RunSpanPath, v3TestPath } from "~/utils/pathBuilder";
-import { EnvironmentLabel } from "../../environments/EnvironmentLabel";
+import { EnvironmentLabel, FullEnvironmentCombo } from "../../environments/EnvironmentLabel";
 import { DateTime } from "../../primitives/DateTime";
 import { Paragraph } from "../../primitives/Paragraph";
 import { Spinner } from "../../primitives/Spinner";
@@ -39,7 +42,7 @@ import {
   TableHeader,
   TableHeaderCell,
   TableRow,
-  TableVariant,
+  type TableVariant,
 } from "../../primitives/Table";
 import { CancelRunDialog } from "./CancelRunDialog";
 import { LiveTimer } from "./LiveTimer";
@@ -50,6 +53,7 @@ import {
   filterableTaskRunStatuses,
   TaskRunStatusCombo,
 } from "./TaskRunStatus";
+import { useEnvironment } from "~/hooks/useEnvironment";
 
 type RunsTableProps = {
   total: number;
@@ -74,6 +78,7 @@ export function TaskRunsTable({
   const user = useUser();
   const organization = useOrganization();
   const project = useProject();
+  const environment = useEnvironment();
   const checkboxes = useRef<(HTMLInputElement | null)[]>([]);
   const { selectedItems, has, hasAll, select, deselect, toggle } = useSelectedItems(allowSelection);
   const { isManagedCloud } = useFeatures();
@@ -286,7 +291,9 @@ export function TaskRunsTable({
           <BlankState isLoading={isLoading} filters={filters} />
         ) : (
           runs.map((run, index) => {
-            const path = v3RunSpanPath(organization, project, run, { spanId: run.spanId });
+            const path = v3RunSpanPath(organization, project, environment, run, {
+              spanId: run.spanId,
+            });
             return (
               <TableRow key={run.id}>
                 {allowSelection && (
@@ -535,19 +542,17 @@ function NoRuns({ title }: { title: string }) {
 function BlankState({ isLoading, filters }: Pick<RunsTableProps, "isLoading" | "filters">) {
   const organization = useOrganization();
   const project = useProject();
-  const envs = useEnvironments();
+  const environment = useEnvironment();
   if (isLoading) return <TableBlankRow colSpan={14}></TableBlankRow>;
 
   const { environments, tasks, from, to, ...otherFilters } = filters;
 
   if (
-    filters.environments.length === 1 &&
     filters.tasks.length === 1 &&
     filters.from === undefined &&
     filters.to === undefined &&
     Object.values(otherFilters).every((filterArray) => filterArray.length === 0)
   ) {
-    const environment = envs?.find((env) => env.id === filters.environments[0]);
     return (
       <TableBlankRow colSpan={14}>
         <div className="py-14">
@@ -556,18 +561,13 @@ function BlankState({ isLoading, filters }: Pick<RunsTableProps, "isLoading" | "
             {environment ? (
               <>
                 {" "}
-                in{" "}
-                <EnvironmentLabel
-                  environment={environment}
-                  userName={environment.userName}
-                  size="large"
-                />
+                in <FullEnvironmentCombo environment={environment} />
               </>
             ) : null}
           </Paragraph>
           <div className="flex items-center justify-center gap-2">
             <LinkButton
-              to={v3TestPath(organization, project)}
+              to={v3TestPath(organization, project, environment)}
               variant="primary/small"
               LeadingIcon={BeakerIcon}
               className="inline-flex"
@@ -609,7 +609,7 @@ function BlankState({ isLoading, filters }: Pick<RunsTableProps, "isLoading" | "
           <LinkButton
             LeadingIcon={BeakerIcon}
             variant="tertiary/medium"
-            to={v3TestPath(organization, project)}
+            to={v3TestPath(organization, project, environment)}
           >
             Run a test
           </LinkButton>

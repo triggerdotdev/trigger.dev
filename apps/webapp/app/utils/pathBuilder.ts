@@ -189,36 +189,40 @@ export function v3NewProjectAlertPathConnectToSlackPath(
 export function v3TestPath(
   organization: OrgForPath,
   project: ProjectForPath,
-  environmentSlug?: string
+  environment: EnvironmentForPath
 ) {
-  return `${v3ProjectPath(organization, project)}/test${
-    environmentSlug ? `?environment=${environmentSlug}` : ""
-  }`;
+  return `${v3EnvironmentPath(organization, project, environment)}/test`;
 }
 
 export function v3TestTaskPath(
   organization: OrgForPath,
   project: ProjectForPath,
-  task: TaskForPath,
-  environment: EnvironmentForPath
+  environment: EnvironmentForPath,
+  task: TaskForPath
 ) {
-  return `${v3TestPath(organization, project)}/tasks/${encodeURIComponent(
+  return `${v3TestPath(organization, project, environment)}/tasks/${encodeURIComponent(
     task.taskIdentifier
-  )}?environment=${environment.slug}`;
+  )}`;
 }
 
 export function v3RunsPath(
   organization: OrgForPath,
   project: ProjectForPath,
+  environment: EnvironmentForPath,
   filters?: TaskRunListSearchFilters
 ) {
   const searchParams = objectToSearchParams(filters);
   const query = searchParams ? `?${searchParams.toString()}` : "";
-  return `${v3ProjectPath(organization, project)}/runs${query}`;
+  return `${v3EnvironmentPath(organization, project, environment)}/runs${query}`;
 }
 
-export function v3RunPath(organization: OrgForPath, project: ProjectForPath, run: v3RunForPath) {
-  return `${v3RunsPath(organization, project)}/${run.friendlyId}`;
+export function v3RunPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath,
+  run: v3RunForPath
+) {
+  return `${v3RunsPath(organization, project, environment)}/${run.friendlyId}`;
 }
 
 export function v3RunDownloadLogsPath(run: v3RunForPath) {
@@ -228,18 +232,20 @@ export function v3RunDownloadLogsPath(run: v3RunForPath) {
 export function v3RunSpanPath(
   organization: OrgForPath,
   project: ProjectForPath,
+  environment: EnvironmentForPath,
   run: v3RunForPath,
   span: v3SpanForPath
 ) {
-  return `${v3RunPath(organization, project, run)}?span=${span.spanId}`;
+  return `${v3RunPath(organization, project, environment, run)}?span=${span.spanId}`;
 }
 
 export function v3RunStreamingPath(
   organization: OrgForPath,
   project: ProjectForPath,
+  environment: EnvironmentForPath,
   run: v3RunForPath
 ) {
-  return `${v3RunPath(organization, project, run)}/stream`;
+  return `${v3RunPath(organization, project, environment, run)}/stream`;
 }
 
 export function v3SchedulesPath(organization: OrgForPath, project: ProjectForPath) {
@@ -266,24 +272,30 @@ export function v3NewSchedulePath(organization: OrgForPath, project: ProjectForP
   return `${v3ProjectPath(organization, project)}/schedules/new`;
 }
 
-export function v3BatchesPath(organization: OrgForPath, project: ProjectForPath) {
-  return `${v3ProjectPath(organization, project)}/batches`;
+export function v3BatchesPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath
+) {
+  return `${v3EnvironmentPath(organization, project, environment)}/batches`;
 }
 
 export function v3BatchPath(
   organization: OrgForPath,
   project: ProjectForPath,
+  environment: EnvironmentForPath,
   batch: { friendlyId: string }
 ) {
-  return `${v3ProjectPath(organization, project)}/batches?id=${batch.friendlyId}`;
+  return `${v3EnvironmentPath(organization, project, environment)}/batches?id=${batch.friendlyId}`;
 }
 
 export function v3BatchRunsPath(
   organization: OrgForPath,
   project: ProjectForPath,
+  environment: EnvironmentForPath,
   batch: { friendlyId: string }
 ) {
-  return `${v3ProjectPath(organization, project)}/runs?batchId=${batch.friendlyId}`;
+  return `${v3RunsPath(organization, project, environment, { batchId: batch.friendlyId })}`;
 }
 
 export function v3ProjectSettingsPath(organization: OrgForPath, project: ProjectForPath) {
@@ -316,21 +328,6 @@ export function v3UsagePath(organization: OrgForPath) {
   return `${organizationPath(organization)}/usage`;
 }
 
-// Task
-export function runTaskPath(runPath: string, taskId: string) {
-  return `${runPath}/tasks/${taskId}`;
-}
-
-// Event
-export function runTriggerPath(runPath: string) {
-  return `${runPath}/trigger`;
-}
-
-// Event
-export function runCompletedPath(runPath: string) {
-  return `${runPath}/completed`;
-}
-
 // Docs
 export function docsRoot() {
   return "https://trigger.dev/docs";
@@ -342,17 +339,4 @@ export function docsPath(path: string) {
 
 export function docsTroubleshootingPath(path: string) {
   return `${docsRoot()}/v3/troubleshooting`;
-}
-
-export function docsIntegrationPath(api: string) {
-  return `${docsRoot()}/integrations/apis/${api}`;
-}
-
-export function docsCreateIntegration() {
-  return `${docsRoot()}/integrations/create`;
-}
-
-//api
-export function apiReferencePath(apiSlug: string) {
-  return `https://trigger.dev/apis/${apiSlug}`;
 }

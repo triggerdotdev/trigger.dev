@@ -1,7 +1,7 @@
 import { ArrowPathIcon, StopCircleIcon } from "@heroicons/react/20/solid";
 import { BeakerIcon, BookOpenIcon } from "@heroicons/react/24/solid";
-import { Form, MetaFunction, useNavigation } from "@remix-run/react";
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { Form, type MetaFunction, useNavigation } from "@remix-run/react";
+import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { IconCircleX } from "@tabler/icons-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ListChecks, ListX } from "lucide-react";
@@ -46,12 +46,15 @@ import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import {
   docsPath,
+  EnvironmentParamSchema,
   ProjectParamSchema,
   v3ProjectPath,
   v3RunsPath,
   v3TestPath,
 } from "~/utils/pathBuilder";
 import { ListPagination } from "../../components/ListPagination";
+import { prisma } from "~/db.server";
+import { useEnvironment } from "~/hooks/useEnvironment";
 
 export const meta: MetaFunction = () => {
   return [
@@ -63,7 +66,7 @@ export const meta: MetaFunction = () => {
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
-  const { projectParam, organizationSlug } = ProjectParamSchema.parse(params);
+  const { projectParam, organizationSlug, envParam } = EnvironmentParamSchema.parse(params);
 
   const url = new URL(request.url);
 
@@ -74,11 +77,26 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     rootOnlyValue = await getRootOnlyFilterPreference(request);
   }
 
+  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
+  if (!project) {
+    throw new Error("Project not found");
+  }
+
+  const environment = await prisma.runtimeEnvironment.findFirst({
+    where: {
+      projectId: project.id,
+      slug: envParam,
+    },
+  });
+  if (!environment) {
+    throw new Error("Environment not found");
+  }
+
   const s = {
     cursor: url.searchParams.get("cursor") ?? undefined,
     direction: url.searchParams.get("direction") ?? undefined,
     statuses: url.searchParams.getAll("statuses"),
-    environments: url.searchParams.getAll("environments"),
+    environments: [environment.id],
     tasks: url.searchParams.getAll("tasks"),
     period: url.searchParams.get("period") ?? undefined,
     bulkId: url.searchParams.get("bulkId") ?? undefined,
@@ -107,12 +125,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     batchId,
     scheduleId,
   } = TaskRunListSearchFilters.parse(s);
-
-  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
-
-  if (!project) {
-    throw new Error("Project not found");
-  }
 
   const presenter = new RunListPresenter();
   const list = presenter.call({
@@ -313,7 +325,8 @@ function CancelRuns({ onOpen }: { onOpen: (open: boolean) => void }) {
 
   const organization = useOrganization();
   const project = useProject();
-  const failedRedirect = v3RunsPath(organization, project);
+  const environment = useEnvironment();
+  const failedRedirect = v3RunsPath(organization, project, environment);
 
   const formAction = `/resources/taskruns/bulk/cancel`;
 
@@ -370,7 +383,8 @@ function ReplayRuns({ onOpen }: { onOpen: (open: boolean) => void }) {
 
   const organization = useOrganization();
   const project = useProject();
-  const failedRedirect = v3RunsPath(organization, project);
+  const environment = useEnvironment();
+  const failedRedirect = v3RunsPath(organization, project, environment);
 
   const formAction = `/resources/taskruns/bulk/replay`;
 
@@ -448,6 +462,7 @@ function CreateFirstTaskInstructions() {
 function RunTaskInstructions() {
   const organization = useOrganization();
   const project = useProject();
+  const environment = useEnvironment();
   return (
     <MainCenteredContainer className="max-w-prose">
       <Header1 className="mb-6 border-b py-2">How to run your tasks</Header1>
@@ -458,7 +473,7 @@ function RunTaskInstructions() {
           page.
         </Paragraph>
         <LinkButton
-          to={v3TestPath(organization, project)}
+          to={v3TestPath(organization, project, environment)}
           variant="primary/medium"
           LeadingIcon={BeakerIcon}
           className="inline-flex"

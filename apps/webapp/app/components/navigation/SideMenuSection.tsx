@@ -1,6 +1,5 @@
 import { AnimatePresence, motion } from "framer-motion";
-import React from "react";
-import { useCallback, useState } from "react";
+import React, { useCallback, useState } from "react";
 import { ToggleArrowIcon } from "~/assets/icons/ToggleArrowIcon";
 
 type Props = {
