@@ -23,7 +23,7 @@ import { logger } from "../utilities/logger.js";
 import { clearTmpDirs, EphemeralDirectory, getTmpDir } from "../utilities/tempDirectories.js";
 import { startDevOutput } from "./devOutput.js";
 import { startWorkerRuntime } from "./devSupervisor.js";
-import { startMcpServer } from "./mcpServer.js";
+import { startMcpServer, stopMcpServer } from "./mcpServer.js";
 
 export type DevSessionOptions = {
   name: string | undefined;
@@ -202,7 +202,7 @@ export async function startDevSession({
       stopBundling?.().catch((error) => {});
       runtime.shutdown().catch((error) => {});
       stopOutput();
-      // TODO: stop MCP server
+      stopMcpServer();
     },
   };
 }

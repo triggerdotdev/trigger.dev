@@ -167,3 +167,9 @@ export const startMcpServer = async (options: {
     logger.info(`Trigger.dev MCP Server is now running on port ${options.port} ✨`);
   });
 };
+
+export const stopMcpServer = () => {
+  app.server?.close(() => {
+    logger.info(`Trigger.dev MCP Server is now stopped`);
+  });
+};
