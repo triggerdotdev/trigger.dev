@@ -164,10 +164,10 @@ export function FullEnvironmentCombo({
   className?: string;
 }) {
   return (
-    <div className={cn("flex items-center gap-2 text-sm text-text-bright", className)}>
+    <span className={cn("flex items-center gap-2 text-sm text-text-bright", className)}>
       <EnvironmentIcon environment={environment} className="size-4" />
-      <div>{environmentFullTitle(environment)}</div>
-    </div>
+      <span>{environmentFullTitle(environment)}</span>
+    </span>
   );
 }
 

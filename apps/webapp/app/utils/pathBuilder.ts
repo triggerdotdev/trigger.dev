@@ -147,8 +147,12 @@ export function v3EnvironmentPath(
   )}/env/${environmentParam(environment)}`;
 }
 
-export function v3TasksStreamingPath(organization: OrgForPath, project: ProjectForPath) {
-  return `${v3ProjectPath(organization, project)}/tasks/stream`;
+export function v3TasksStreamingPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath
+) {
+  return `${v3EnvironmentPath(organization, project, environment)}/tasks/stream`;
 }
 
 export function v3ApiKeysPath(organization: OrgForPath, project: ProjectForPath) {

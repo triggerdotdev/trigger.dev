@@ -111,8 +111,6 @@ export default function Organization() {
     useTypedLoaderData<typeof loader>();
   const user = useUser();
 
-  console.log(project);
-
   return (
     <>
       <div className="grid grid-cols-[14rem_1fr] overflow-hidden">

@@ -188,7 +188,7 @@ export default function Page() {
 
   //live reload the page when the tasks change
   const revalidator = useRevalidator();
-  const streamedEvents = useEventSource(v3TasksStreamingPath(organization, project), {
+  const streamedEvents = useEventSource(v3TasksStreamingPath(organization, project, environment), {
     event: "message",
   });
 
