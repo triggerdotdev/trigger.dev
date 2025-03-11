@@ -182,6 +182,26 @@ server.tool(
   }
 );
 
+server.tool(
+  "get-run-logs",
+  "Retrieve the logs output of a task run.",
+  {
+    runId: z.string().describe("The ID of the task run to get"),
+  },
+  async ({ runId }) => {
+    const result = await sdkApiClient.listRunEvents(runId);
+
+    return {
+      content: [
+        {
+          text: JSON.stringify(result, null, 2),
+          type: "text",
+        },
+      ],
+    };
+  }
+);
+
 const app = polka();
 app.get("/sse", (_req, res) => {
   mcpTransport = new SSEServerTransport("/messages", res);
