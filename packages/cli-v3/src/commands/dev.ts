@@ -50,7 +50,6 @@ export function configureDevCommand(program: Command) {
         "--keep-tmp-files",
         "Keep temporary files after the dev session ends, helpful for debugging"
       )
-      // TODO: add a more detailed description, maybe a pointer to the docs on how to use MCP
       .option("--mcp", "Start the MCP server")
       .option("--mcp-port", "The port to run the MCP server on", "3333")
   ).action(async (options) => {
