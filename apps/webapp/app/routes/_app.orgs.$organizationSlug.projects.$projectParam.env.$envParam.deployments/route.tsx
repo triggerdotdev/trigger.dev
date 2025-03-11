@@ -10,7 +10,7 @@ import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { UserAvatar } from "~/components/UserProfilePhoto";
-import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
+import { EnvironmentLabel, FullEnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
@@ -46,6 +46,7 @@ import {
   PromoteDeploymentDialog,
   RollbackDeploymentDialog,
 } from "~/components/runs/v3/RollbackDeploymentDialog";
+import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useUser } from "~/hooks/useUser";
@@ -55,6 +56,7 @@ import {
 } from "~/presenters/v3/DeploymentListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import {
+  EnvironmentParamSchema,
   ProjectParamSchema,
   docsPath,
   v3DeploymentPath,
@@ -78,7 +80,7 @@ const SearchParams = z.object({
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
-  const { organizationSlug, projectParam } = ProjectParamSchema.parse(params);
+  const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
 
   const searchParams = createSearchParams(request.url, SearchParams);
   const page = searchParams.success ? searchParams.params.get("page") ?? 1 : 1;
@@ -89,6 +91,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       userId,
       organizationSlug,
       projectSlug: projectParam,
+      environmentSlug: envParam,
       page,
     });
 
@@ -105,6 +108,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 export default function Page() {
   const organization = useOrganization();
   const project = useProject();
+  const environment = useEnvironment();
   const user = useUser();
   const { deployments, currentPage, totalPages } = useTypedLoaderData<typeof loader>();
   const hasDeployments = totalPages > 0;
@@ -171,13 +175,10 @@ export default function Page() {
                   <TableBody>
                     {deployments.length > 0 ? (
                       deployments.map((deployment) => {
-                        const usernameForEnv =
-                          user.id !== deployment.environment.userId
-                            ? deployment.environment.userName
-                            : undefined;
                         const path = v3DeploymentPath(
                           organization,
                           project,
+                          environment,
                           deployment,
                           currentPage
                         );
@@ -193,10 +194,7 @@ export default function Page() {
                               </div>
                             </TableCell>
                             <TableCell to={path} isSelected={isSelected}>
-                              <EnvironmentLabel
-                                environment={deployment.environment}
-                                userName={usernameForEnv}
-                              />
+                              <FullEnvironmentCombo environment={deployment.environment} />
                             </TableCell>
                             <TableCell to={path} isSelected={isSelected}>
                               {deployment.version}

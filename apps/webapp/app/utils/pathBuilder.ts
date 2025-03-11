@@ -40,7 +40,7 @@ export const v3SpanParamsSchema = v3RunParamsSchema.extend({
   spanParam: z.string(),
 });
 
-export const v3DeploymentParams = ProjectParamSchema.extend({
+export const v3DeploymentParams = EnvironmentParamSchema.extend({
   deploymentParam: z.string(),
 });
 
@@ -325,18 +325,23 @@ export function v3ProjectSettingsPath(organization: OrgForPath, project: Project
   return `${v3ProjectPath(organization, project)}/settings`;
 }
 
-export function v3DeploymentsPath(organization: OrgForPath, project: ProjectForPath) {
-  return `${v3ProjectPath(organization, project)}/deployments`;
+export function v3DeploymentsPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath
+) {
+  return `${v3EnvironmentPath(organization, project, environment)}/deployments`;
 }
 
 export function v3DeploymentPath(
   organization: OrgForPath,
   project: ProjectForPath,
+  environment: EnvironmentForPath,
   deployment: DeploymentForPath,
   currentPage: number
 ) {
   const query = currentPage ? `?page=${currentPage}` : "";
-  return `${v3DeploymentsPath(organization, project)}/${deployment.shortCode}${query}`;
+  return `${v3DeploymentsPath(organization, project, environment)}/${deployment.shortCode}${query}`;
 }
 
 export function v3BillingPath(organization: OrgForPath) {

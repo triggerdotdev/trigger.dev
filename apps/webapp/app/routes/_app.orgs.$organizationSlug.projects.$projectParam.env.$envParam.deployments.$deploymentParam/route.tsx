@@ -1,10 +1,10 @@
 import { Link, useLocation } from "@remix-run/react";
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { UserAvatar } from "~/components/UserProfilePhoto";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
-import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
+import { FullEnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { Badge } from "~/components/primitives/Badge";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { DateTimeAccurate } from "~/components/primitives/DateTime";
@@ -22,6 +22,7 @@ import {
 import { DeploymentError } from "~/components/runs/v3/DeploymentError";
 import { DeploymentStatus } from "~/components/runs/v3/DeploymentStatus";
 import { TaskFunctionName } from "~/components/runs/v3/TaskPath";
+import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useUser } from "~/hooks/useUser";
@@ -33,7 +34,8 @@ import { capitalizeWord } from "~/utils/string";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
-  const { organizationSlug, projectParam, deploymentParam } = v3DeploymentParams.parse(params);
+  const { organizationSlug, projectParam, envParam, deploymentParam } =
+    v3DeploymentParams.parse(params);
 
   try {
     const presenter = new DeploymentPresenter();
@@ -41,6 +43,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       userId,
       organizationSlug,
       projectSlug: projectParam,
+      environmentSlug: envParam,
       deploymentShortCode: deploymentParam,
     });
 
@@ -55,15 +58,13 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 export default function Page() {
+  const { deployment } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
+  const environment = useEnvironment();
   const location = useLocation();
   const user = useUser();
-  const { deployment } = useTypedLoaderData<typeof loader>();
   const page = new URLSearchParams(location.search).get("page");
-
-  const usernameForEnv =
-    user.id !== deployment.environment.userId ? deployment.environment.userName : undefined;
 
   return (
     <div className="grid h-full max-h-full grid-rows-[2.5rem_1fr] overflow-hidden bg-background-bright">
@@ -107,7 +108,9 @@ export default function Page() {
         </AdminDebugTooltip>
 
         <LinkButton
-          to={`${v3DeploymentsPath(organization, project)}${page ? `?page=${page}` : ""}`}
+          to={`${v3DeploymentsPath(organization, project, environment)}${
+            page ? `?page=${page}` : ""
+          }`}
           variant="minimal/small"
           TrailingIcon={ExitIcon}
           shortcut={{ key: "esc" }}
@@ -129,10 +132,7 @@ export default function Page() {
               <Property.Item>
                 <Property.Label>Environment</Property.Label>
                 <Property.Value>
-                  <EnvironmentLabel
-                    environment={deployment.environment}
-                    userName={usernameForEnv}
-                  />
+                  <FullEnvironmentCombo environment={deployment.environment} />
                 </Property.Value>
               </Property.Item>
               <Property.Item>

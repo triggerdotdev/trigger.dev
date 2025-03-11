@@ -76,6 +76,7 @@ import {
   FullEnvironmentCombo,
 } from "../environments/EnvironmentLabel";
 import { SideMenuSection } from "./SideMenuSection";
+import { useEnvironmentSwitcher } from "~/hooks/useEnvironmentSwitcher";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 type SideMenuProject = Pick<MatchedProject, "id" | "name" | "slug" | "version" | "environments">;
@@ -178,7 +179,7 @@ export function SideMenu({
                 name="Deployments"
                 icon={ServerStackIcon}
                 activeIconColor="text-blue-500"
-                to={v3DeploymentsPath(organization, project)}
+                to={v3DeploymentsPath(organization, project, environment)}
                 data-action="deployments"
               />
             </SideMenuSection>
@@ -426,6 +427,7 @@ function EnvironmentSelector({
 }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const navigation = useNavigation();
+  const { urlForEnvironment } = useEnvironmentSwitcher();
 
   useEffect(() => {
     setIsMenuOpen(false);
@@ -448,7 +450,7 @@ function EnvironmentSelector({
         {project.environments.map((env) => (
           <PopoverMenuItem
             key={env.id}
-            to={v3EnvironmentPath(organization, project, env)}
+            to={urlForEnvironment(env)}
             title={<FullEnvironmentCombo environment={env} className="text-2sm" />}
             isSelected={env.id === environment.id}
           />
