@@ -1,0 +1,6 @@
+---
+description: understanding the structure of the monorepo
+globs: 
+alwaysApply: true
+---
+We've documented the structure of our monorepo here: [repo.md](mdc:ai/references/repo.md)
