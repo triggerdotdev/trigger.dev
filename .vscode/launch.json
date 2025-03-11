@@ -146,7 +146,7 @@
       "type": "node-terminal",
       "request": "launch",
       "name": "Debug RunQueue tests",
-      "command": "pnpm run test ./src/engine/tests/waitpoints.test.ts",
+      "command": "pnpm run test ./src/run-queue/tests/dequeueMessageFromMasterQueue.test.ts",
       "cwd": "${workspaceFolder}/internal-packages/run-engine",
       "sourceMaps": true
     }
