@@ -5,9 +5,8 @@ import {
   BookOpenIcon,
   ServerStackIcon,
 } from "@heroicons/react/20/solid";
-import { MetaFunction, Outlet, useLocation, useParams } from "@remix-run/react";
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { WorkerInstanceGroupType } from "@trigger.dev/database";
+import { type MetaFunction, Outlet, useLocation, useParams } from "@remix-run/react";
+import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { UserAvatar } from "~/components/UserProfilePhoto";
@@ -51,7 +50,7 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useUser } from "~/hooks/useUser";
 import {
-  DeploymentListItem,
+  type DeploymentListItem,
   DeploymentListPresenter,
 } from "~/presenters/v3/DeploymentListPresenter.server";
 import { requireUserId } from "~/services/session.server";

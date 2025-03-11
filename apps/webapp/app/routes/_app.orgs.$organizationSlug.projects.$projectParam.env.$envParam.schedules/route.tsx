@@ -59,13 +59,15 @@ import {
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import {
-  ProjectParamSchema,
+  EnvironmentParamSchema,
   docsPath,
   v3BillingPath,
   v3NewSchedulePath,
   v3SchedulePath,
 } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
+import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
+import { useEnvironment } from "~/hooks/useEnvironment";
 
 export const meta: MetaFunction = () => {
   return [
@@ -77,17 +79,22 @@ export const meta: MetaFunction = () => {
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
-  const { projectParam, organizationSlug } = ProjectParamSchema.parse(params);
+  const { projectParam, organizationSlug, envParam } = EnvironmentParamSchema.parse(params);
+
+  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
+  if (!project) {
+    return redirectWithErrorMessage("/", request, "Project not found");
+  }
+
+  const environment = await findEnvironmentBySlug(project.id, envParam, userId);
+  if (!environment) {
+    return redirectWithErrorMessage("/", request, "Environment not found");
+  }
 
   const url = new URL(request.url);
   const s = Object.fromEntries(url.searchParams.entries());
   const filters = ScheduleListFilters.parse(s);
-
-  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
-
-  if (!project) {
-    return redirectWithErrorMessage("/", request, "Project not found");
-  }
+  filters.environments = [environment.id];
 
   const presenter = new ScheduleListPresenter();
   const list = await presenter.call({
@@ -112,6 +119,7 @@ export default function Page() {
   const location = useLocation();
   const organization = useOrganization();
   const project = useProject();
+  const environment = useEnvironment();
   const pathName = usePathName();
 
   const plan = useCurrentPlan();
@@ -185,7 +193,7 @@ export default function Page() {
           ) : (
             <LinkButton
               LeadingIcon={PlusIcon}
-              to={`${v3NewSchedulePath(organization, project)}${location.search}`}
+              to={`${v3NewSchedulePath(organization, project, environment)}${location.search}`}
               variant="primary/small"
               shortcut={{ key: "n" }}
               disabled={possibleTasks.length === 0 || isShowingNewPane}
@@ -206,10 +214,7 @@ export default function Page() {
               ) : (
                 <>
                   <div className="flex items-center justify-between gap-x-2 p-2">
-                    <ScheduleFilters
-                      possibleEnvironments={possibleEnvironments}
-                      possibleTasks={possibleTasks}
-                    />
+                    <ScheduleFilters possibleTasks={possibleTasks} />
                     <div className="flex items-center justify-end gap-x-2">
                       <PaginationControls
                         currentPage={currentPage}
@@ -341,6 +346,7 @@ function CreateScheduledTaskInstructions() {
 function AttachYourFirstScheduleInstructions() {
   const organization = useOrganization();
   const project = useProject();
+  const environment = useEnvironment();
   const location = useLocation();
 
   return (
@@ -357,7 +363,7 @@ function AttachYourFirstScheduleInstructions() {
         </Paragraph>
         <div className="flex gap-2">
           <LinkButton
-            to={`${v3NewSchedulePath(organization, project)}${location.search}`}
+            to={`${v3NewSchedulePath(organization, project, environment)}${location.search}`}
             variant="primary/small"
             LeadingIcon={RectangleGroupIcon}
             className="inline-flex"
@@ -387,6 +393,7 @@ function SchedulesTable({
 }) {
   const organization = useOrganization();
   const project = useProject();
+  const environment = useEnvironment();
   const location = useLocation();
   const { scheduleParam } = useParams();
 
@@ -457,7 +464,9 @@ function SchedulesTable({
           <TableBlankRow colSpan={10}>There are no matches for your filters</TableBlankRow>
         ) : (
           schedules.map((schedule) => {
-            const path = `${v3SchedulePath(organization, project, schedule)}${location.search}`;
+            const path = `${v3SchedulePath(organization, project, environment, schedule)}${
+              location.search
+            }`;
             const isSelected = scheduleParam === schedule.friendlyId;
             const cellClass = schedule.active ? "" : "opacity-50";
             return (

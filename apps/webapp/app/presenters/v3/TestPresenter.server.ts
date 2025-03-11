@@ -1,6 +1,6 @@
 import { TaskTriggerSource } from "@trigger.dev/database";
 import { sqlDatabaseSchema, PrismaClient, prisma } from "~/db.server";
-import { TestSearchParams } from "~/routes/_app.orgs.$organizationSlug.projects.v3.$projectParam.test/route";
+import { TestSearchParams } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.test/route";
 import { sortEnvironments } from "~/utils/environmentSort";
 import { createSearchParams } from "~/utils/searchParams";
 import { findCurrentWorkerDeployment } from "~/v3/models/workerDeployment.server";

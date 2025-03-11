@@ -40,6 +40,7 @@ import { EnabledStatus } from "~/components/runs/v3/EnabledStatus";
 import { ScheduleTypeCombo } from "~/components/runs/v3/ScheduleType";
 import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { prisma } from "~/db.server";
+import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
@@ -95,7 +96,8 @@ const schema = z.discriminatedUnion("action", [
 
 export const action = async ({ request, params }: ActionFunctionArgs) => {
   const userId = await requireUserId(request);
-  const { organizationSlug, projectParam, scheduleParam } = v3ScheduleParams.parse(params);
+  const { organizationSlug, projectParam, envParam, scheduleParam } =
+    v3ScheduleParams.parse(params);
 
   const formData = await request.formData();
   const submission = parse(formData, { schema });
@@ -115,6 +117,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       v3SchedulePath(
         { slug: organizationSlug },
         { slug: projectParam },
+        { slug: envParam },
         { friendlyId: scheduleParam }
       ),
       request,
@@ -132,7 +135,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
           friendlyId: scheduleParam,
         });
         return redirectWithSuccessMessage(
-          v3SchedulesPath({ slug: organizationSlug }, { slug: projectParam }),
+          v3SchedulesPath({ slug: organizationSlug }, { slug: projectParam }, { slug: envParam }),
           request,
           `${scheduleParam} deleted`
         );
@@ -141,6 +144,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
           v3SchedulePath(
             { slug: organizationSlug },
             { slug: projectParam },
+            { slug: envParam },
             { friendlyId: scheduleParam }
           ),
           request,
@@ -165,6 +169,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
           v3SchedulePath(
             { slug: organizationSlug },
             { slug: projectParam },
+            { slug: envParam },
             { friendlyId: scheduleParam }
           ),
           request,
@@ -175,6 +180,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
           v3SchedulePath(
             { slug: organizationSlug },
             { slug: projectParam },
+            { slug: envParam },
             { friendlyId: scheduleParam }
           ),
           request,
@@ -200,6 +206,7 @@ export default function Page() {
   const location = useLocation();
   const organization = useOrganization();
   const project = useProject();
+  const environment = useEnvironment();
 
   const isUtc = schedule.timezone === "UTC";
 
@@ -215,7 +222,7 @@ export default function Page() {
       <div className="mx-3 flex items-center justify-between gap-2 border-b border-grid-dimmed">
         <Header2 className={cn("whitespace-nowrap")}>{schedule.friendlyId}</Header2>
         <LinkButton
-          to={`${v3SchedulesPath(organization, project)}${location.search}`}
+          to={`${v3SchedulesPath(organization, project, environment)}${location.search}`}
           variant="minimal/small"
           TrailingIcon={ExitIcon}
           shortcut={{ key: "esc" }}
@@ -408,7 +415,9 @@ export default function Page() {
           <div className="flex items-center gap-4">
             <LinkButton
               variant="tertiary/medium"
-              to={`${v3EditSchedulePath(organization, project, schedule)}${location.search}`}
+              to={`${v3EditSchedulePath(organization, project, environment, schedule)}${
+                location.search
+              }`}
               LeadingIcon={PencilSquareIcon}
             >
               Edit schedule

@@ -1,13 +1,9 @@
-import { LoaderFunctionArgs, redirect } from "@remix-run/server-runtime";
+import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { prisma } from "~/db.server";
-import {
-  redirectBackWithSuccessMessage,
-  redirectWithSuccessMessage,
-} from "~/models/message.server";
+import { redirectWithSuccessMessage } from "~/models/message.server";
 import { OrgIntegrationRepository } from "~/models/orgIntegration.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { requireUserId } from "~/services/session.server";
-import { getUserSession } from "~/services/sessionStorage.server";
 import {
   ProjectParamSchema,
   v3NewProjectAlertPath,

@@ -51,8 +51,12 @@ import { Slider } from "~/components/primitives/Slider";
 import { Switch } from "~/components/primitives/Switch";
 import * as Timeline from "~/components/primitives/Timeline";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
-import { TreeView, UseTreeStateOutput, useTree } from "~/components/primitives/TreeView/TreeView";
-import { NodesState } from "~/components/primitives/TreeView/reducer";
+import {
+  TreeView,
+  type UseTreeStateOutput,
+  useTree,
+} from "~/components/primitives/TreeView/TreeView";
+import { type NodesState } from "~/components/primitives/TreeView/reducer";
 import { CancelRunDialog } from "~/components/runs/v3/CancelRunDialog";
 import { ReplayRunDialog } from "~/components/runs/v3/ReplayRunDialog";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
@@ -170,16 +174,7 @@ export default function Page() {
             to: v3RunsPath(organization, project, environment),
             text: "Runs",
           }}
-          title={
-            <div className="flex items-center gap-3">
-              <span>Run #{run.number}</span>
-              <EnvironmentLabel
-                size="large"
-                environment={run.environment}
-                userName={usernameForEnv}
-              />
-            </div>
-          }
+          title={`Run #${run.number}`}
         />
         <PageAccessories>
           <AdminDebugTooltip>

@@ -17,7 +17,7 @@ import {
   Squares2X2Icon,
 } from "@heroicons/react/20/solid";
 import { UserGroupIcon, UserPlusIcon } from "@heroicons/react/24/solid";
-import { useNavigation } from "@remix-run/react";
+import { useMatches, useNavigation } from "@remix-run/react";
 import { Fragment, type ReactNode, useEffect, useRef, useState } from "react";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
@@ -167,6 +167,20 @@ export function SideMenu({
                 to={v3TestPath(organization, project, environment)}
                 data-action="test"
               />
+              <SideMenuItem
+                name="Schedules"
+                icon={ClockIcon}
+                activeIconColor="text-sun-500"
+                to={v3SchedulesPath(organization, project, environment)}
+                data-action="schedules"
+              />
+              <SideMenuItem
+                name="Deployments"
+                icon={ServerStackIcon}
+                activeIconColor="text-blue-500"
+                to={v3DeploymentsPath(organization, project)}
+                data-action="deployments"
+              />
             </SideMenuSection>
 
             <SideMenuSection title="Observability">
@@ -182,16 +196,16 @@ export function SideMenu({
                   statuses: ["COMPLETED_WITH_ERRORS"],
                 })}
               />
+              <SideMenuItem
+                name="Alerts"
+                icon={BellAlertIcon}
+                activeIconColor="text-red-500"
+                to={v3ProjectAlertsPath(organization, project, environment)}
+                data-action="alerts"
+              />
             </SideMenuSection>
 
             <SideMenuSection title="Manage">
-              <SideMenuItem
-                name="Schedules"
-                icon={ClockIcon}
-                activeIconColor="text-sun-500"
-                to={v3SchedulesPath(organization, project)}
-                data-action="schedules"
-              />
               <SideMenuItem
                 name="API keys"
                 icon={KeyIcon}
@@ -206,20 +220,7 @@ export function SideMenu({
                 to={v3EnvironmentVariablesPath(organization, project)}
                 data-action="environment variables"
               />
-              <SideMenuItem
-                name="Deployments"
-                icon={ServerStackIcon}
-                activeIconColor="text-blue-500"
-                to={v3DeploymentsPath(organization, project)}
-                data-action="deployments"
-              />
-              <SideMenuItem
-                name="Alerts"
-                icon={BellAlertIcon}
-                activeIconColor="text-red-500"
-                to={v3ProjectAlertsPath(organization, project)}
-                data-action="alerts"
-              />
+
               <SideMenuItem
                 name="Concurrency limits"
                 icon={RectangleStackIcon}

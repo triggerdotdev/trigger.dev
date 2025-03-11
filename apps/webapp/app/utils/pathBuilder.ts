@@ -44,7 +44,7 @@ export const v3DeploymentParams = ProjectParamSchema.extend({
   deploymentParam: z.string(),
 });
 
-export const v3ScheduleParams = ProjectParamSchema.extend({
+export const v3ScheduleParams = EnvironmentParamSchema.extend({
   scheduleParam: z.string(),
 });
 
@@ -171,19 +171,28 @@ export function v3NewEnvironmentVariablesPath(organization: OrgForPath, project:
   return `${v3EnvironmentVariablesPath(organization, project)}/new`;
 }
 
-export function v3ProjectAlertsPath(organization: OrgForPath, project: ProjectForPath) {
-  return `${v3ProjectPath(organization, project)}/alerts`;
+export function v3ProjectAlertsPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath
+) {
+  return `${v3EnvironmentPath(organization, project, environment)}/alerts`;
 }
 
-export function v3NewProjectAlertPath(organization: OrgForPath, project: ProjectForPath) {
-  return `${v3ProjectAlertsPath(organization, project)}/new`;
+export function v3NewProjectAlertPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath
+) {
+  return `${v3ProjectAlertsPath(organization, project, environment)}/new`;
 }
 
 export function v3NewProjectAlertPathConnectToSlackPath(
   organization: OrgForPath,
-  project: ProjectForPath
+  project: ProjectForPath,
+  environment: EnvironmentForPath
 ) {
-  return `${v3ProjectAlertsPath(organization, project)}/new/connect-to-slack`;
+  return `${v3ProjectAlertsPath(organization, project, environment)}/new/connect-to-slack`;
 }
 
 export function v3TestPath(
@@ -248,28 +257,42 @@ export function v3RunStreamingPath(
   return `${v3RunPath(organization, project, environment, run)}/stream`;
 }
 
-export function v3SchedulesPath(organization: OrgForPath, project: ProjectForPath) {
-  return `${v3ProjectPath(organization, project)}/schedules`;
+export function v3SchedulesPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath
+) {
+  return `${v3EnvironmentPath(organization, project, environment)}/schedules`;
 }
 
 export function v3SchedulePath(
   organization: OrgForPath,
   project: ProjectForPath,
+  environment: EnvironmentForPath,
   schedule: { friendlyId: string }
 ) {
-  return `${v3ProjectPath(organization, project)}/schedules/${schedule.friendlyId}`;
+  return `${v3EnvironmentPath(organization, project, environment)}/schedules/${
+    schedule.friendlyId
+  }`;
 }
 
 export function v3EditSchedulePath(
   organization: OrgForPath,
   project: ProjectForPath,
+  environment: EnvironmentForPath,
   schedule: { friendlyId: string }
 ) {
-  return `${v3ProjectPath(organization, project)}/schedules/edit/${schedule.friendlyId}`;
+  return `${v3EnvironmentPath(organization, project, environment)}/schedules/edit/${
+    schedule.friendlyId
+  }`;
 }
 
-export function v3NewSchedulePath(organization: OrgForPath, project: ProjectForPath) {
-  return `${v3ProjectPath(organization, project)}/schedules/new`;
+export function v3NewSchedulePath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath
+) {
+  return `${v3EnvironmentPath(organization, project, environment)}/schedules/new`;
 }
 
 export function v3BatchesPath(

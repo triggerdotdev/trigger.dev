@@ -39,13 +39,20 @@ import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/m
 import { EditableScheduleElements } from "~/presenters/v3/EditSchedulePresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { ProjectParamSchema, docsPath, v3SchedulesPath } from "~/utils/pathBuilder";
+import {
+  EnvironmentParamSchema,
+  ProjectParamSchema,
+  docsPath,
+  v3SchedulesPath,
+} from "~/utils/pathBuilder";
 import { CronPattern, UpsertSchedule } from "~/v3/schedules";
 import { UpsertTaskScheduleService } from "~/v3/services/upsertTaskSchedule.server";
 import { AIGeneratedCronField } from "../resources.orgs.$organizationSlug.projects.$projectParam.schedules.new.natural-language";
 import { TimezoneList } from "~/components/scheduled/timezones";
 import { logger } from "~/services/logger.server";
 import { Spinner } from "~/components/primitives/Spinner";
+import { cond } from "effect/STM";
+import { useEnvironment } from "~/hooks/useEnvironment";
 
 const cronFormat = `*    *    *    *    *
 ┬    ┬    ┬    ┬    ┬
@@ -58,7 +65,7 @@ const cronFormat = `*    *    *    *    *
 
 export const action = async ({ request, params }: ActionFunctionArgs) => {
   const userId = await requireUserId(request);
-  const { organizationSlug, projectParam } = ProjectParamSchema.parse(params);
+  const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
 
   const formData = await request.formData();
   const submission = parse(formData, { schema: UpsertSchedule });
@@ -91,7 +98,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     const result = await createSchedule.call(project.id, submission.value);
 
     return redirectWithSuccessMessage(
-      v3SchedulesPath({ slug: organizationSlug }, { slug: projectParam }),
+      v3SchedulesPath({ slug: organizationSlug }, { slug: projectParam }, { slug: envParam }),
       request,
       submission.value?.friendlyId === result.id ? "Schedule updated" : "Schedule created"
     );
@@ -100,7 +107,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
     const errorMessage = `Something went wrong. Please try again.`;
     return redirectWithErrorMessage(
-      v3SchedulesPath({ slug: organizationSlug }, { slug: projectParam }),
+      v3SchedulesPath({ slug: organizationSlug }, { slug: projectParam }, { slug: envParam }),
       request,
       errorMessage
     );
@@ -132,6 +139,7 @@ export function UpsertScheduleForm({
   const isLoading = navigation.state !== "idle";
   const organization = useOrganization();
   const project = useProject();
+  const environment = useEnvironment();
   const location = useLocation();
 
   const [form, { taskIdentifier, cron, timezone, externalId, environments, deduplicationKey }] =
@@ -184,7 +192,7 @@ export function UpsertScheduleForm({
   return (
     <Form
       method="post"
-      action={`/resources/orgs/${organization.slug}/projects/${project.slug}/schedules/new`}
+      action={`/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/schedules/new`}
       {...form.props}
       className="grid h-full max-h-full grid-rows-[2.5rem_1fr_3.25rem] overflow-hidden bg-background-bright"
     >
@@ -383,7 +391,7 @@ export function UpsertScheduleForm({
       <div className="flex items-center justify-between gap-2 border-t border-grid-dimmed px-2">
         <div className="flex items-center gap-4">
           <LinkButton
-            to={`${v3SchedulesPath(organization, project)}${location.search}`}
+            to={`${v3SchedulesPath(organization, project, environment)}${location.search}`}
             variant="tertiary/medium"
           >
             Cancel
