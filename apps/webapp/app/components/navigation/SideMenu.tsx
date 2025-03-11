@@ -75,6 +75,7 @@ import {
   EnvironmentIcon,
   FullEnvironmentCombo,
 } from "../environments/EnvironmentLabel";
+import { SideMenuSection } from "./SideMenuSection";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 type SideMenuProject = Pick<MatchedProject, "id" | "name" | "slug" | "version" | "environments">;
@@ -144,8 +145,7 @@ export function SideMenu({
               environment={environment}
             />
 
-            <>
-              <SideMenuHeader title={"Project"} />
+            <SideMenuSection title="Tasks">
               <SideMenuItem
                 name="Tasks"
                 icon={TaskIcon}
@@ -154,10 +154,11 @@ export function SideMenu({
                 data-action="tasks"
               />
               <SideMenuItem
-                name="Runs"
-                icon={RunsIcon}
-                activeIconColor="text-teal-500"
-                to={v3RunsPath(organization, project)}
+                name="Test"
+                icon={BeakerIcon}
+                activeIconColor="text-lime-500"
+                to={v3TestPath(organization, project)}
+                data-action="test"
               />
               <SideMenuItem
                 name="Batches"
@@ -166,13 +167,18 @@ export function SideMenu({
                 to={v3BatchesPath(organization, project)}
                 data-action="batches"
               />
+            </SideMenuSection>
+
+            <SideMenuSection title="Observability">
               <SideMenuItem
-                name="Test"
-                icon={BeakerIcon}
-                activeIconColor="text-lime-500"
-                to={v3TestPath(organization, project)}
-                data-action="test"
+                name="Runs"
+                icon={RunsIcon}
+                activeIconColor="text-teal-500"
+                to={v3RunsPath(organization, project)}
               />
+            </SideMenuSection>
+
+            <SideMenuSection title="Manage">
               <SideMenuItem
                 name="Schedules"
                 icon={ClockIcon}
@@ -194,7 +200,6 @@ export function SideMenu({
                 to={v3EnvironmentVariablesPath(organization, project)}
                 data-action="environment variables"
               />
-
               <SideMenuItem
                 name="Deployments"
                 icon={ServerStackIcon}
@@ -223,61 +228,40 @@ export function SideMenu({
                 to={v3ProjectSettingsPath(organization, project)}
                 data-action="project-settings"
               />
-            </>
-          </div>
-          <div className="mb-1 flex flex-col gap-1 px-1">
-            <SideMenuHeader title={"Organization"}>
-              <PopoverMenuItem
-                to={newProjectPath(organization)}
-                title="New Project"
-                icon={PlusIcon}
+              <SideMenuItem
+                name="Team"
+                icon={UserGroupIcon}
+                to={organizationTeamPath(organization)}
+                activeIconColor="text-amber-500"
+                data-action="team"
               />
-              <PopoverMenuItem
-                to={inviteTeamMemberPath(organization)}
-                title="Invite team member"
-                icon={UserPlusIcon}
-                leadingIconClassName="text-indigo-500"
+              <SideMenuItem
+                name="Usage"
+                icon={ChartBarIcon}
+                to={v3UsagePath(organization)}
+                activeIconColor="text-green-600"
+                data-action="usage"
               />
-            </SideMenuHeader>
-            <SideMenuItem
-              name="Projects"
-              icon={FolderIcon}
-              to={organizationPath(organization)}
-              data-action="projects"
-            />
-            <SideMenuItem
-              name="Team"
-              icon={UserGroupIcon}
-              to={organizationTeamPath(organization)}
-              activeIconColor="text-amber-500"
-              data-action="team"
-            />
-            <SideMenuItem
-              name="Usage"
-              icon={ChartBarIcon}
-              to={v3UsagePath(organization)}
-              activeIconColor="text-green-600"
-              data-action="usage"
-            />
-            <SideMenuItem
-              name="Billing"
-              icon={CreditCardIcon}
-              to={v3BillingPath(organization)}
-              activeIconColor="text-blue-600"
-              data-action="billing"
-              badge={
-                currentPlan?.v3Subscription?.isPaying
-                  ? currentPlan?.v3Subscription?.plan?.title
-                  : undefined
-              }
-            />
-            <SideMenuItem
-              name="Organization settings"
-              icon={Cog8ToothIcon}
-              activeIconColor="text-teal-500"
-              to={organizationSettingsPath(organization)}
-              data-action="organization-settings"
-            />
+              <SideMenuItem
+                name="Billing"
+                icon={CreditCardIcon}
+                to={v3BillingPath(organization)}
+                activeIconColor="text-blue-600"
+                data-action="billing"
+                badge={
+                  currentPlan?.v3Subscription?.isPaying
+                    ? currentPlan?.v3Subscription?.plan?.title
+                    : undefined
+                }
+              />
+              <SideMenuItem
+                name="Organization settings"
+                icon={Cog8ToothIcon}
+                activeIconColor="text-teal-500"
+                to={organizationSettingsPath(organization)}
+                data-action="organization-settings"
+              />
+            </SideMenuSection>
           </div>
         </div>
         <div className="flex flex-col gap-1 border-t border-grid-bright p-1">
