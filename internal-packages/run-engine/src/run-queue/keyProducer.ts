@@ -182,8 +182,8 @@ export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
 
     return `${[
       this.orgKeySection(orgId),
-      this.envKeySection(envId),
       this.projKeySection(projectId),
+      this.envKeySection(envId),
       constants.TASK_PART,
     ]
       .filter(Boolean)

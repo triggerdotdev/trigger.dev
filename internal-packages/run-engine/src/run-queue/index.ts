@@ -388,15 +388,6 @@ export class RunQueue {
             // Attempt to dequeue from this queue
             const message = await this.#callDequeueMessage({
               messageQueue: queue,
-              concurrencyLimitKey: this.keys.concurrencyLimitKeyFromQueue(queue),
-              currentConcurrencyKey: this.keys.currentConcurrencyKeyFromQueue(queue),
-              envConcurrencyLimitKey: this.keys.envConcurrencyLimitKeyFromQueue(queue),
-              envCurrentConcurrencyKey: this.keys.envCurrentConcurrencyKeyFromQueue(queue),
-              projectCurrentConcurrencyKey: this.keys.projectCurrentConcurrencyKeyFromQueue(queue),
-              messageKeyPrefix: this.keys.messageKeyPrefixFromQueue(queue),
-              envQueueKey: this.keys.envQueueKeyFromQueue(queue),
-              taskCurrentConcurrentKeyPrefix:
-                this.keys.taskIdentifierCurrentConcurrencyKeyPrefixFromQueue(queue),
             });
 
             if (message) {
@@ -1004,32 +995,45 @@ export class RunQueue {
 
   async #callDequeueMessage({
     messageQueue,
-    concurrencyLimitKey,
-    envConcurrencyLimitKey,
-    currentConcurrencyKey,
-    envCurrentConcurrencyKey,
-    projectCurrentConcurrencyKey,
-    messageKeyPrefix,
-    envQueueKey,
-    taskCurrentConcurrentKeyPrefix,
   }: {
     messageQueue: string;
-    concurrencyLimitKey: string;
-    envConcurrencyLimitKey: string;
-    currentConcurrencyKey: string;
-    envCurrentConcurrencyKey: string;
-    projectCurrentConcurrencyKey: string;
-    messageKeyPrefix: string;
-    envQueueKey: string;
-    taskCurrentConcurrentKeyPrefix: string;
   }): Promise<DequeuedMessage | undefined> {
+    const queueConcurrencyLimitKey = this.keys.concurrencyLimitKeyFromQueue(messageQueue);
+    const queueCurrentConcurrencyKey = this.keys.currentConcurrencyKeyFromQueue(messageQueue);
+    const queueReserveConcurrencyKey = this.keys.reserveConcurrencyKeyFromQueue(messageQueue);
+    const envConcurrencyLimitKey = this.keys.envConcurrencyLimitKeyFromQueue(messageQueue);
+    const envCurrentConcurrencyKey = this.keys.envCurrentConcurrencyKeyFromQueue(messageQueue);
+    const envReserveConcurrencyKey = this.keys.envReserveConcurrencyKeyFromQueue(messageQueue);
+    const projectCurrentConcurrencyKey =
+      this.keys.projectCurrentConcurrencyKeyFromQueue(messageQueue);
+    const messageKeyPrefix = this.keys.messageKeyPrefixFromQueue(messageQueue);
+    const envQueueKey = this.keys.envQueueKeyFromQueue(messageQueue);
+    const taskCurrentConcurrentKeyPrefix =
+      this.keys.taskIdentifierCurrentConcurrencyKeyPrefixFromQueue(messageQueue);
+
+    this.logger.debug("#callDequeueMessage", {
+      messageQueue,
+      queueConcurrencyLimitKey,
+      envConcurrencyLimitKey,
+      queueCurrentConcurrencyKey,
+      queueReserveConcurrencyKey,
+      envCurrentConcurrencyKey,
+      envReserveConcurrencyKey,
+      projectCurrentConcurrencyKey,
+      messageKeyPrefix,
+      envQueueKey,
+      taskCurrentConcurrentKeyPrefix,
+    });
+
     const result = await this.redis.dequeueMessage(
       //keys
       messageQueue,
-      concurrencyLimitKey,
+      queueConcurrencyLimitKey,
       envConcurrencyLimitKey,
-      currentConcurrencyKey,
+      queueCurrentConcurrencyKey,
+      queueReserveConcurrencyKey,
       envCurrentConcurrencyKey,
+      envReserveConcurrencyKey,
       projectCurrentConcurrencyKey,
       messageKeyPrefix,
       envQueueKey,
@@ -1346,19 +1350,21 @@ return true
     });
 
     this.redis.defineCommand("dequeueMessage", {
-      numberOfKeys: 9,
+      numberOfKeys: 11,
       lua: `
-local childQueue = KEYS[1]
-local concurrencyLimitKey = KEYS[2]
+local queueKey = KEYS[1]
+local queueConcurrencyLimitKey = KEYS[2]
 local envConcurrencyLimitKey = KEYS[3]
-local currentConcurrencyKey = KEYS[4]
-local envCurrentConcurrencyKey = KEYS[5]
-local projectConcurrencyKey = KEYS[6]
-local messageKeyPrefix = KEYS[7]
-local envQueueKey = KEYS[8]
-local taskCurrentConcurrentKeyPrefix = KEYS[9]
+local queueCurrentConcurrencyKey = KEYS[4]
+local queueReserveConcurrencyKey = KEYS[5]
+local envCurrentConcurrencyKey = KEYS[6]
+local envReserveConcurrencyKey = KEYS[7]
+local projectCurrentConcurrencyKey = KEYS[8]
+local messageKeyPrefix = KEYS[9]
+local envQueueKey = KEYS[10]
+local taskCurrentConcurrentKeyPrefix = KEYS[11]
 
-local childQueueName = ARGV[1]
+local queueName = ARGV[1]
 local currentTime = tonumber(ARGV[2])
 local defaultEnvConcurrencyLimit = ARGV[3]
 local keyPrefix = ARGV[4]
@@ -1366,22 +1372,26 @@ local keyPrefix = ARGV[4]
 -- Check current env concurrency against the limit
 local envCurrentConcurrency = tonumber(redis.call('SCARD', envCurrentConcurrencyKey) or '0')
 local envConcurrencyLimit = tonumber(redis.call('GET', envConcurrencyLimitKey) or defaultEnvConcurrencyLimit)
+local envReserveConcurrency = tonumber(redis.call('SCARD', envReserveConcurrencyKey) or '0')
+local totalEnvConcurrencyLimit = envConcurrencyLimit + envReserveConcurrency
 
-if envCurrentConcurrency >= envConcurrencyLimit then
+if envCurrentConcurrency >= totalEnvConcurrencyLimit then
     return nil
 end
 
 -- Check current queue concurrency against the limit
-local currentConcurrency = tonumber(redis.call('SCARD', currentConcurrencyKey) or '0')
-local concurrencyLimit = tonumber(redis.call('GET', concurrencyLimitKey) or '1000000')
+local queueCurrentConcurrency = tonumber(redis.call('SCARD', queueCurrentConcurrencyKey) or '0')
+local queueConcurrencyLimit = math.min(tonumber(redis.call('GET', queueConcurrencyLimitKey) or '1000000'), envConcurrencyLimit)
+local queueReserveConcurrency = tonumber(redis.call('SCARD', queueReserveConcurrencyKey) or '0')
+local totalQueueConcurrencyLimit = queueConcurrencyLimit + queueReserveConcurrency
 
 -- Check condition only if concurrencyLimit exists
-if currentConcurrency >= concurrencyLimit then
+if queueCurrentConcurrency >= totalQueueConcurrencyLimit then
     return nil
 end
 
 -- Attempt to dequeue the next message
-local messages = redis.call('ZRANGEBYSCORE', childQueue, '-inf', currentTime, 'WITHSCORES', 'LIMIT', 0, 1)
+local messages = redis.call('ZRANGEBYSCORE', queueKey, '-inf', currentTime, 'WITHSCORES', 'LIMIT', 0, 1)
 
 if #messages == 0 then
     return nil
@@ -1399,24 +1409,30 @@ local decodedPayload = cjson.decode(messagePayload);
 local taskIdentifier = decodedPayload.taskIdentifier
 
 -- Perform SADD with taskIdentifier and messageId
-local taskConcurrencyKey = taskCurrentConcurrentKeyPrefix .. taskIdentifier
+local taskCurrentConcurrencyKey = taskCurrentConcurrentKeyPrefix .. taskIdentifier
 
 -- Update concurrency
-redis.call('ZREM', childQueue, messageId)
+redis.call('ZREM', queueKey, messageId)
 redis.call('ZREM', envQueueKey, messageId)
-redis.call('SADD', currentConcurrencyKey, messageId)
+redis.call('SADD', queueCurrentConcurrencyKey, messageId)
 redis.call('SADD', envCurrentConcurrencyKey, messageId)
-redis.call('SADD', projectConcurrencyKey, messageId)
-redis.call('SADD', taskConcurrencyKey, messageId)
+redis.call('SADD', projectCurrentConcurrencyKey, messageId)
+redis.call('SADD', taskCurrentConcurrencyKey, messageId)
+
+-- Remove the message from the queue reserve concurrency set
+redis.call('SREM', queueReserveConcurrencyKey, messageId)
+
+-- Remove the message from the env reserve concurrency set
+redis.call('SREM', envReserveConcurrencyKey, messageId)
 
 -- Rebalance the parent queues
-local earliestMessage = redis.call('ZRANGE', childQueue, 0, 0, 'WITHSCORES')
+local earliestMessage = redis.call('ZRANGE', queueKey, 0, 0, 'WITHSCORES')
 for _, parentQueue in ipairs(decodedPayload.masterQueues) do
     local prefixedParentQueue = keyPrefix .. parentQueue
     if #earliestMessage == 0 then
-        redis.call('ZREM', prefixedParentQueue, childQueueName)
+        redis.call('ZREM', prefixedParentQueue, queueName)
     else
-        redis.call('ZADD', prefixedParentQueue, earliestMessage[2], childQueueName)
+        redis.call('ZADD', prefixedParentQueue, earliestMessage[2], queueName)
     end
 end
 
@@ -1695,11 +1711,13 @@ declare module "@internal/redis" {
     dequeueMessage(
       //keys
       childQueue: string,
-      concurrencyLimitKey: string,
+      queueConcurrencyLimitKey: string,
       envConcurrencyLimitKey: string,
-      currentConcurrencyKey: string,
-      envConcurrencyKey: string,
-      projectConcurrencyKey: string,
+      queueCurrentConcurrencyKey: string,
+      queueReserveConcurrencyKey: string,
+      envCurrentConcurrencyKey: string,
+      envReserveConcurrencyKey: string,
+      projectCurrentConcurrencyKey: string,
       messageKeyPrefix: string,
       envQueueKey: string,
       taskCurrentConcurrentKeyPrefix: string,
