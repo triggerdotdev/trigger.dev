@@ -13,6 +13,7 @@ const constants = {
   TASK_PART: "task",
   MESSAGE_PART: "message",
   RESERVE_CONCURRENCY_PART: "reserveConcurrency",
+  DEAD_LETTER_QUEUE_PART: "deadLetter",
 } as const;
 
 export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
@@ -255,6 +256,30 @@ export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
     const descriptor = this.descriptorFromQueue(queue);
 
     return this.envReserveConcurrencyKey(descriptor);
+  }
+  deadLetterQueueKey(env: MinimalAuthenticatedEnvironment): string;
+  deadLetterQueueKey(env: EnvDescriptor): string;
+  deadLetterQueueKey(envOrDescriptor: EnvDescriptor | MinimalAuthenticatedEnvironment): string {
+    if ("id" in envOrDescriptor) {
+      return [
+        this.orgKeySection(envOrDescriptor.organization.id),
+        this.projKeySection(envOrDescriptor.project.id),
+        this.envKeySection(envOrDescriptor.id),
+        constants.DEAD_LETTER_QUEUE_PART,
+      ].join(":");
+    } else {
+      return [
+        this.orgKeySection(envOrDescriptor.orgId),
+        this.projKeySection(envOrDescriptor.projectId),
+        this.envKeySection(envOrDescriptor.envId),
+        constants.DEAD_LETTER_QUEUE_PART,
+      ].join(":");
+    }
+  }
+  deadLetterQueueKeyFromQueue(queue: string): string {
+    const descriptor = this.descriptorFromQueue(queue);
+
+    return this.deadLetterQueueKey(descriptor);
   }
 
   private queueReserveConcurrencyKeyFromDescriptor(descriptor: QueueDescriptor) {

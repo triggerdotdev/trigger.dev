@@ -826,7 +826,7 @@ describe("RunQueue", () => {
     }
   );
 
-  redisTest("Dead Letter Queue", { timeout: 8_000 }, async ({ redisContainer, redisOptions }) => {
+  redisTest("Dead Letter Queue", async ({ redisContainer, redisOptions }) => {
     const queue = new RunQueue({
       ...testOptions,
       retryOptions: {
@@ -891,36 +891,30 @@ describe("RunQueue", () => {
       expect(taskConcurrency2).toBe(0);
 
       //check the message is still there
-      const exists2 = await redis.exists(key);
-      expect(exists2).toBe(1);
+      const message = await queue.readMessage(messages[0].message.orgId, messages[0].messageId);
+      expect(message).toBeDefined();
 
-      //check it's in the dlq
-      const dlqKey = "dlq";
-      const dlqExists = await redis.exists(dlqKey);
-      expect(dlqExists).toBe(1);
-      const dlqMembers = await redis.zrange(dlqKey, 0, -1);
-      expect(dlqMembers).toContain(messageProd.runId);
+      const deadLetterQueueLengthBefore = await queue.lengthOfDeadLetterQueue(authenticatedEnvProd);
+      expect(deadLetterQueueLengthBefore).toBe(1);
+
+      const existsInDlq = await queue.messageInDeadLetterQueue(
+        authenticatedEnvProd,
+        messageProd.runId
+      );
+      expect(existsInDlq).toBe(true);
 
       //redrive
-      const redisClient = createRedisClient({
-        host: redisContainer.getHost(),
-        port: redisContainer.getPort(),
-        password: redisContainer.getPassword(),
-      });
-
-      // Publish redrive message
-      await redisClient.publish(
-        "rq:redrive",
-        JSON.stringify({ runId: messageProd.runId, orgId: messageProd.orgId })
-      );
+      await queue.redriveMessage(authenticatedEnvProd, messageProd.runId);
 
       // Wait for the item to be redrived and processed
       await setTimeout(5_000);
-      await redisClient.quit();
 
       //shouldn't be in the dlq now
-      const dlqMembersAfter = await redis.zrange(dlqKey, 0, -1);
-      expect(dlqMembersAfter).not.toContain(messageProd.runId);
+      const existsInDlqAfter = await queue.messageInDeadLetterQueue(
+        authenticatedEnvProd,
+        messageProd.runId
+      );
+      expect(existsInDlqAfter).toBe(false);
 
       //dequeue
       const messages3 = await queue.dequeueMessageFromMasterQueue("test_12345", "main", 10);

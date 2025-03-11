@@ -161,6 +161,28 @@ export class RunQueue {
     return this.redis.zcard(this.keys.envQueueKey(env));
   }
 
+  public async lengthOfDeadLetterQueue(env: MinimalAuthenticatedEnvironment) {
+    return this.redis.zcard(this.keys.deadLetterQueueKey(env));
+  }
+
+  public async messageInDeadLetterQueue(env: MinimalAuthenticatedEnvironment, messageId: string) {
+    const result = await this.redis.zscore(this.keys.deadLetterQueueKey(env), messageId);
+    return !!result;
+  }
+
+  public async redriveMessage(env: MinimalAuthenticatedEnvironment, messageId: string) {
+    // Publish redrive message
+    await this.redis.publish(
+      "rq:redrive",
+      JSON.stringify({
+        runId: messageId,
+        orgId: env.organization.id,
+        envId: env.id,
+        projectId: env.project.id,
+      })
+    );
+  }
+
   public async oldestMessageInQueue(
     env: MinimalAuthenticatedEnvironment,
     queue: string,
@@ -205,11 +227,50 @@ export class RunQueue {
     return this.redis.scard(this.keys.projectCurrentConcurrencyKey(env));
   }
 
+  public async messageExists(orgId: string, messageId: string) {
+    return this.redis.exists(this.keys.messageKey(orgId, messageId));
+  }
+
   public async currentConcurrencyOfTask(
     env: MinimalAuthenticatedEnvironment,
     taskIdentifier: string
   ) {
     return this.redis.scard(this.keys.taskIdentifierCurrentConcurrencyKey(env, taskIdentifier));
+  }
+
+  public async readMessage(orgId: string, messageId: string) {
+    return this.#trace(
+      "readMessage",
+      async (span) => {
+        const rawMessage = await this.redis.get(this.keys.messageKey(orgId, messageId));
+
+        if (!rawMessage) {
+          return;
+        }
+
+        const message = OutputPayload.safeParse(JSON.parse(rawMessage));
+
+        if (!message.success) {
+          this.logger.error(`[${this.name}] Failed to parse message`, {
+            messageId,
+            error: message.error,
+            service: this.name,
+          });
+
+          return;
+        }
+
+        return message.data;
+      },
+      {
+        attributes: {
+          [SEMATTRS_MESSAGING_OPERATION]: "receive",
+          [SEMATTRS_MESSAGE_ID]: messageId,
+          [SEMATTRS_MESSAGING_SYSTEM]: "marqs",
+          [SemanticAttributes.RUN_ID]: messageId,
+        },
+      }
+    );
   }
 
   public async enqueueMessage({
@@ -364,7 +425,7 @@ export class RunQueue {
     return this.#trace(
       "acknowledgeMessage",
       async (span) => {
-        const message = await this.#readMessage(orgId, messageId);
+        const message = await this.readMessage(orgId, messageId);
 
         if (!message) {
           this.logger.log(`[${this.name}].acknowledgeMessage() message not found`, {
@@ -382,18 +443,7 @@ export class RunQueue {
         });
 
         await this.#callAcknowledgeMessage({
-          messageId,
-          messageQueue: message.queue,
-          masterQueues: message.masterQueues,
-          messageKey: this.keys.messageKey(orgId, messageId),
-          concurrencyKey: this.keys.currentConcurrencyKeyFromQueue(message.queue),
-          envConcurrencyKey: this.keys.envCurrentConcurrencyKeyFromQueue(message.queue),
-          taskConcurrencyKey: this.keys.taskIdentifierCurrentConcurrencyKeyFromQueue(
-            message.queue,
-            message.taskIdentifier
-          ),
-          envQueueKey: this.keys.envQueueKeyFromQueue(message.queue),
-          projectConcurrencyKey: this.keys.projectCurrentConcurrencyKeyFromQueue(message.queue),
+          message,
         });
       },
       {
@@ -427,7 +477,7 @@ export class RunQueue {
       async (span) => {
         const maxAttempts = this.retryOptions.maxAttempts ?? defaultRetrySettings.maxAttempts;
 
-        const message = await this.#readMessage(orgId, messageId);
+        const message = await this.readMessage(orgId, messageId);
         if (!message) {
           this.logger.log(`[${this.name}].nackMessage() message not found`, {
             orgId,
@@ -446,75 +496,16 @@ export class RunQueue {
           [SemanticAttributes.MASTER_QUEUES]: message.masterQueues.join(","),
         });
 
-        const messageKey = this.keys.messageKey(orgId, messageId);
-        const messageQueue = message.queue;
-        const concurrencyKey = this.keys.currentConcurrencyKeyFromQueue(message.queue);
-        const envConcurrencyKey = this.keys.envCurrentConcurrencyKeyFromQueue(message.queue);
-        const taskConcurrencyKey = this.keys.taskIdentifierCurrentConcurrencyKeyFromQueue(
-          message.queue,
-          message.taskIdentifier
-        );
-        const projectConcurrencyKey = this.keys.projectCurrentConcurrencyKeyFromQueue(
-          message.queue
-        );
-        const envQueueKey = this.keys.envQueueKeyFromQueue(message.queue);
-
         if (incrementAttemptCount) {
           message.attempt = message.attempt + 1;
           if (message.attempt >= maxAttempts) {
-            await this.redis.moveToDeadLetterQueue(
-              messageKey,
-              messageQueue,
-              concurrencyKey,
-              envConcurrencyKey,
-              projectConcurrencyKey,
-              envQueueKey,
-              taskConcurrencyKey,
-              "dlq",
-              messageId,
-              messageQueue,
-              JSON.stringify(message.masterQueues),
-              this.options.redis.keyPrefix ?? ""
-            );
+            await this.#callMoveToDeadLetterQueue({ message });
             return false;
           }
         }
 
-        const nextRetryDelay = calculateNextRetryDelay(this.retryOptions, message.attempt);
-        const messageScore = retryAt ?? (nextRetryDelay ? Date.now() + nextRetryDelay : Date.now());
+        await this.#callNackMessage({ message });
 
-        this.logger.debug("Calling nackMessage", {
-          messageKey,
-          messageQueue,
-          masterQueues: message.masterQueues,
-          concurrencyKey,
-          envConcurrencyKey,
-          projectConcurrencyKey,
-          envQueueKey,
-          taskConcurrencyKey,
-          messageId,
-          messageScore,
-          attempt: message.attempt,
-          service: this.name,
-        });
-
-        await this.redis.nackMessage(
-          //keys
-          messageKey,
-          messageQueue,
-          concurrencyKey,
-          envConcurrencyKey,
-          projectConcurrencyKey,
-          envQueueKey,
-          taskConcurrencyKey,
-          //args
-          messageId,
-          messageQueue,
-          JSON.stringify(message),
-          String(messageScore),
-          JSON.stringify(message.masterQueues),
-          this.options.redis.keyPrefix ?? ""
-        );
         return true;
       },
       {
@@ -536,7 +527,7 @@ export class RunQueue {
     return this.#trace(
       "releaseConcurrency",
       async (span) => {
-        const message = await this.#readMessage(orgId, messageId);
+        const message = await this.readMessage(orgId, messageId);
 
         if (!message) {
           this.logger.log(`[${this.name}].acknowledgeMessage() message not found`, {
@@ -582,7 +573,7 @@ export class RunQueue {
     return this.#trace(
       "reacquireConcurrency",
       async (span) => {
-        const message = await this.#readMessage(orgId, messageId);
+        const message = await this.readMessage(orgId, messageId);
 
         if (!message) {
           this.logger.log(`[${this.name}].acknowledgeMessage() message not found`, {
@@ -632,16 +623,21 @@ export class RunQueue {
 
   private async handleRedriveMessage(channel: string, message: string) {
     try {
-      const { runId, orgId } = JSON.parse(message) as any;
-      if (typeof orgId !== "string" || typeof runId !== "string") {
+      const { runId, envId, projectId, orgId } = JSON.parse(message) as any;
+      if (
+        typeof orgId !== "string" ||
+        typeof runId !== "string" ||
+        typeof envId !== "string" ||
+        typeof projectId !== "string"
+      ) {
         this.logger.error(
-          "handleRedriveMessage: invalid message format: runId and orgId must be strings",
+          "handleRedriveMessage: invalid message format: runId, envId, projectId and orgId must be strings",
           { message, channel }
         );
         return;
       }
 
-      const data = await this.#readMessage(orgId, runId);
+      const data = await this.readMessage(orgId, runId);
 
       if (!data) {
         this.logger.error(`handleRedriveMessage: couldn't read message`, { orgId, runId, channel });
@@ -669,7 +665,10 @@ export class RunQueue {
       });
 
       //remove from the dlq
-      const result = await this.redis.zrem("dlq", runId);
+      const result = await this.redis.zrem(
+        this.keys.deadLetterQueueKey({ envId, orgId, projectId }),
+        runId
+      );
 
       if (result === 0) {
         this.logger.error(`handleRedriveMessage: couldn't remove message from dlq`, {
@@ -728,41 +727,6 @@ export class RunQueue {
     });
 
     this.subscriber.on("message", this.handleRedriveMessage.bind(this));
-  }
-
-  async #readMessage(orgId: string, messageId: string) {
-    return this.#trace(
-      "readMessage",
-      async (span) => {
-        const rawMessage = await this.redis.get(this.keys.messageKey(orgId, messageId));
-
-        if (!rawMessage) {
-          return;
-        }
-
-        const message = OutputPayload.safeParse(JSON.parse(rawMessage));
-
-        if (!message.success) {
-          this.logger.error(`[${this.name}] Failed to parse message`, {
-            messageId,
-            error: message.error,
-            service: this.name,
-          });
-
-          return;
-        }
-
-        return message.data;
-      },
-      {
-        attributes: {
-          [SEMATTRS_MESSAGING_OPERATION]: "receive",
-          [SEMATTRS_MESSAGE_ID]: messageId,
-          [SEMATTRS_MESSAGING_SYSTEM]: "marqs",
-          [SemanticAttributes.RUN_ID]: messageId,
-        },
-      }
-    );
   }
 
   async #callEnqueueMessage(
@@ -1015,35 +979,30 @@ export class RunQueue {
     };
   }
 
-  async #callAcknowledgeMessage({
-    messageId,
-    masterQueues,
-    messageKey,
-    messageQueue,
-    concurrencyKey,
-    envConcurrencyKey,
-    taskConcurrencyKey,
-    envQueueKey,
-    projectConcurrencyKey,
-  }: {
-    masterQueues: string[];
-    messageKey: string;
-    messageQueue: string;
-    concurrencyKey: string;
-    envConcurrencyKey: string;
-    taskConcurrencyKey: string;
-    envQueueKey: string;
-    projectConcurrencyKey: string;
-    messageId: string;
-  }) {
+  async #callAcknowledgeMessage({ message }: { message: OutputPayload }) {
+    const messageId = message.runId;
+    const messageKey = this.keys.messageKey(message.orgId, messageId);
+    const messageQueue = message.queue;
+    const queueCurrentConcurrencyKey = this.keys.currentConcurrencyKeyFromQueue(message.queue);
+    const envCurrentConcurrencyKey = this.keys.envCurrentConcurrencyKeyFromQueue(message.queue);
+    const projectCurrentConcurrencyKey = this.keys.projectCurrentConcurrencyKeyFromQueue(
+      message.queue
+    );
+    const envQueueKey = this.keys.envQueueKeyFromQueue(message.queue);
+    const taskCurrentConcurrencyKey = this.keys.taskIdentifierCurrentConcurrencyKeyFromQueue(
+      message.queue,
+      message.taskIdentifier
+    );
+    const masterQueues = message.masterQueues;
+
     this.logger.debug("Calling acknowledgeMessage", {
       messageKey,
       messageQueue,
-      concurrencyKey,
-      envConcurrencyKey,
-      projectConcurrencyKey,
+      queueCurrentConcurrencyKey,
+      envCurrentConcurrencyKey,
+      projectCurrentConcurrencyKey,
       envQueueKey,
-      taskConcurrencyKey,
+      taskCurrentConcurrencyKey,
       messageId,
       masterQueues,
       service: this.name,
@@ -1055,16 +1014,100 @@ export class RunQueue {
     return this.redis.acknowledgeMessage(
       messageKey,
       messageQueue,
-      concurrencyKey,
-      envConcurrencyKey,
-      projectConcurrencyKey,
+      queueCurrentConcurrencyKey,
+      envCurrentConcurrencyKey,
+      projectCurrentConcurrencyKey,
       envQueueKey,
-      taskConcurrencyKey,
+      taskCurrentConcurrencyKey,
       queueReserveConcurrencyKey,
       envReserveConcurrencyKey,
       messageId,
       messageQueue,
       JSON.stringify(masterQueues),
+      this.options.redis.keyPrefix ?? ""
+    );
+  }
+
+  async #callNackMessage({ message, retryAt }: { message: OutputPayload; retryAt?: number }) {
+    const messageId = message.runId;
+    const messageKey = this.keys.messageKey(message.orgId, message.runId);
+    const messageQueue = message.queue;
+    const queueCurrentConcurrencyKey = this.keys.currentConcurrencyKeyFromQueue(message.queue);
+    const envCurrentConcurrencyKey = this.keys.envCurrentConcurrencyKeyFromQueue(message.queue);
+    const projectCurrentConcurrencyKey = this.keys.projectCurrentConcurrencyKeyFromQueue(
+      message.queue
+    );
+    const envQueueKey = this.keys.envQueueKeyFromQueue(message.queue);
+    const taskCurrentConcurrencyKey = this.keys.taskIdentifierCurrentConcurrencyKeyFromQueue(
+      message.queue,
+      message.taskIdentifier
+    );
+
+    const nextRetryDelay = calculateNextRetryDelay(this.retryOptions, message.attempt);
+    const messageScore = retryAt ?? (nextRetryDelay ? Date.now() + nextRetryDelay : Date.now());
+
+    this.logger.debug("Calling nackMessage", {
+      messageKey,
+      messageQueue,
+      masterQueues: message.masterQueues,
+      queueCurrentConcurrencyKey,
+      envCurrentConcurrencyKey,
+      projectCurrentConcurrencyKey,
+      envQueueKey,
+      taskCurrentConcurrencyKey,
+      messageId,
+      messageScore,
+      attempt: message.attempt,
+      service: this.name,
+    });
+
+    await this.redis.nackMessage(
+      //keys
+      messageKey,
+      messageQueue,
+      queueCurrentConcurrencyKey,
+      envCurrentConcurrencyKey,
+      projectCurrentConcurrencyKey,
+      envQueueKey,
+      taskCurrentConcurrencyKey,
+      //args
+      messageId,
+      messageQueue,
+      JSON.stringify(message),
+      String(messageScore),
+      JSON.stringify(message.masterQueues),
+      this.options.redis.keyPrefix ?? ""
+    );
+  }
+
+  async #callMoveToDeadLetterQueue({ message }: { message: OutputPayload }) {
+    const messageId = message.runId;
+    const messageKey = this.keys.messageKey(message.orgId, message.runId);
+    const messageQueue = message.queue;
+    const queueCurrentConcurrencyKey = this.keys.currentConcurrencyKeyFromQueue(message.queue);
+    const envCurrentConcurrencyKey = this.keys.envCurrentConcurrencyKeyFromQueue(message.queue);
+    const projectCurrentConcurrencyKey = this.keys.projectCurrentConcurrencyKeyFromQueue(
+      message.queue
+    );
+    const envQueueKey = this.keys.envQueueKeyFromQueue(message.queue);
+    const taskCurrentConcurrencyKey = this.keys.taskIdentifierCurrentConcurrencyKeyFromQueue(
+      message.queue,
+      message.taskIdentifier
+    );
+    const deadLetterQueueKey = this.keys.deadLetterQueueKeyFromQueue(message.queue);
+
+    await this.redis.moveToDeadLetterQueue(
+      messageKey,
+      messageQueue,
+      queueCurrentConcurrencyKey,
+      envCurrentConcurrencyKey,
+      projectCurrentConcurrencyKey,
+      envQueueKey,
+      taskCurrentConcurrencyKey,
+      deadLetterQueueKey,
+      messageId,
+      messageQueue,
+      JSON.stringify(message.masterQueues),
       this.options.redis.keyPrefix ?? ""
     );
   }
@@ -1431,11 +1474,11 @@ redis.call('SREM', envReserveConcurrencyKey, messageId)
 -- Keys:
 local messageKey = KEYS[1]
 local messageQueueKey = KEYS[2]
-local concurrencyKey = KEYS[3]
-local envConcurrencyKey = KEYS[4]
-local projectConcurrencyKey = KEYS[5]
+local queueCurrentConcurrencyKey = KEYS[3]
+local envCurrentConcurrencyKey = KEYS[4]
+local projectCurrentConcurrencyKey = KEYS[5]
 local envQueueKey = KEYS[6]
-local taskConcurrencyKey = KEYS[7]
+local taskCurrentConcurrencyKey = KEYS[7]
 
 -- Args:
 local messageId = ARGV[1]
@@ -1449,10 +1492,10 @@ local keyPrefix = ARGV[6]
 redis.call('SET', messageKey, messageData)
 
 -- Update the concurrency keys
-redis.call('SREM', concurrencyKey, messageId)
-redis.call('SREM', envConcurrencyKey, messageId)
-redis.call('SREM', projectConcurrencyKey, messageId)
-redis.call('SREM', taskConcurrencyKey, messageId)
+redis.call('SREM', queueCurrentConcurrencyKey, messageId)
+redis.call('SREM', envCurrentConcurrencyKey, messageId)
+redis.call('SREM', projectCurrentConcurrencyKey, messageId)
+redis.call('SREM', taskCurrentConcurrencyKey, messageId)
 
 -- Enqueue the message into the queue
 redis.call('ZADD', messageQueueKey, messageScore, messageId)
@@ -1477,11 +1520,11 @@ end
 -- Keys:
 local messageKey = KEYS[1]
 local messageQueue = KEYS[2]
-local concurrencyKey = KEYS[3]
+local queueCurrentConcurrencyKey = KEYS[3]
 local envCurrentConcurrencyKey = KEYS[4]
 local projectCurrentConcurrencyKey = KEYS[5]
 local envQueueKey = KEYS[6]
-local taskCurrentConcurrencyKey = KEYS[7]
+local taskCurrentConcurrencyKeyPrefix = KEYS[7]
 local deadLetterQueueKey = KEYS[8]
 
 -- Args:
@@ -1509,10 +1552,10 @@ end
 redis.call('ZADD', deadLetterQueueKey, tonumber(redis.call('TIME')[1]), messageId)
 
 -- Update the concurrency keys
-redis.call('SREM', concurrencyKey, messageId)
+redis.call('SREM', queueCurrentConcurrencyKey, messageId)
 redis.call('SREM', envCurrentConcurrencyKey, messageId)
 redis.call('SREM', projectCurrentConcurrencyKey, messageId)
-redis.call('SREM', taskCurrentConcurrencyKey, messageId)
+redis.call('SREM', taskCurrentConcurrencyKeyPrefix, messageId)
 `,
     });
 
@@ -1690,11 +1733,11 @@ declare module "@internal/redis" {
     nackMessage(
       messageKey: string,
       messageQueue: string,
-      concurrencyKey: string,
-      envConcurrencyKey: string,
-      projectConcurrencyKey: string,
+      queueCurrentConcurrencyKey: string,
+      envCurrentConcurrencyKey: string,
+      projectCurrentConcurrencyKey: string,
       envQueueKey: string,
-      taskConcurrencyKey: string,
+      taskCurrentConcurrencyKey: string,
       messageId: string,
       messageQueueName: string,
       messageData: string,
@@ -1707,11 +1750,11 @@ declare module "@internal/redis" {
     moveToDeadLetterQueue(
       messageKey: string,
       messageQueue: string,
-      concurrencyKey: string,
-      envConcurrencyKey: string,
-      projectConcurrencyKey: string,
+      queueCurrentConcurrencyKey: string,
+      envCurrentConcurrencyKey: string,
+      projectCurrentConcurrencyKey: string,
       envQueueKey: string,
-      taskConcurrencyKey: string,
+      taskCurrentConcurrencyKey: string,
       deadLetterQueueKey: string,
       messageId: string,
       messageQueueName: string,

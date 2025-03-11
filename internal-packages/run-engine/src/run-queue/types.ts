@@ -92,6 +92,10 @@ export interface RunQueueKeyProducer {
 
   reserveConcurrencyKeyFromQueue(queue: string): string;
   envReserveConcurrencyKeyFromQueue(queue: string): string;
+
+  deadLetterQueueKey(env: MinimalAuthenticatedEnvironment): string;
+  deadLetterQueueKey(env: EnvDescriptor): string;
+  deadLetterQueueKeyFromQueue(queue: string): string;
 }
 
 export type EnvQueues = {
