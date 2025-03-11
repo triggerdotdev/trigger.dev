@@ -21,8 +21,6 @@ export function SideMenuSection({
 }: Props) {
   const [isCollapsed, setIsCollapsed] = useState(initialCollapsed);
 
-  const childCount = React.Children.count(children);
-
   const handleToggle = useCallback(() => {
     const newIsCollapsed = !isCollapsed;
     setIsCollapsed(newIsCollapsed);
@@ -53,44 +51,34 @@ export function SideMenuSection({
             expanded: {
               height: "auto",
               transition: {
-                height: {
-                  duration: 0.3,
-                },
-                opacity: {
-                  duration: 0.3,
-                },
+                height: { duration: 0.3, ease: "easeOut" },
               },
             },
             collapsed: {
               height: 0,
               transition: {
-                height: {
-                  duration: 0.2,
-                },
-                opacity: {
-                  duration: 0.2,
-                },
+                height: { duration: 0.2, ease: "easeIn" },
               },
             },
           }}
           style={{ overflow: "hidden" }}
         >
-          {React.Children.map(children, (child) => (
-            <motion.div
-              variants={{
-                expanded: {
-                  y: 0,
-                  transition: { duration: 0.3 },
-                },
-                collapsed: {
-                  y: -10,
-                  transition: { duration: 0.2 },
-                },
-              }}
-            >
-              {child}
-            </motion.div>
-          ))}
+          <motion.div
+            variants={{
+              expanded: {
+                translateY: 0,
+                opacity: 1,
+                transition: { duration: 0.3, ease: "easeOut" },
+              },
+              collapsed: {
+                translateY: "-100%",
+                opacity: 0,
+                transition: { duration: 0.2, ease: "easeIn" },
+              },
+            }}
+          >
+            {children}
+          </motion.div>
         </motion.div>
       </AnimatePresence>
     </div>
