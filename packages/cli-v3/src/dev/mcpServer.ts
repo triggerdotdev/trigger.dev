@@ -3,7 +3,7 @@ import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { z } from "zod";
 import { logger } from "../utilities/logger.js";
 import { CliApiClient } from "../apiClient.js";
-import { ApiClient } from "@trigger.dev/core/v3";
+import { ApiClient, RunStatus } from "@trigger.dev/core/v3";
 import polka from "polka";
 
 let projectRef: string;
@@ -39,6 +39,7 @@ server.tool(
         }
       })
       .describe("The payload to pass to the task run, must be a valid JSON"),
+    // TODO: expose more parameteres from the trigger options
   },
   async ({ id, payload }) => {
     const result = await sdkApiClient.triggerTask(id, {
@@ -52,6 +53,60 @@ server.tool(
         {
           type: "text",
           text: JSON.stringify({ ...result, taskRunUrl }, null, 2),
+        },
+      ],
+    };
+  }
+);
+
+server.tool(
+  "list-runs",
+  "List task runs",
+  {
+    filters: z
+      .object({
+        status: RunStatus.optional().describe(
+          "The status of the run. Can be WAITING_FOR_DEPLOY, QUEUED, EXECUTING, REATTEMPTING, or FROZEN"
+        ),
+        taskIdentifier: z
+          .union([z.array(z.string()), z.string()])
+          .optional()
+          .describe("The identifier of the task that was run"),
+        version: z
+          .union([z.array(z.string()), z.string()])
+          .optional()
+          .describe("The version of the worker that executed the run"),
+        from: z
+          .union([z.date(), z.number()])
+          .optional()
+          .describe("Start date/time for filtering runs"),
+        to: z.union([z.date(), z.number()]).optional().describe("End date/time for filtering runs"),
+        period: z.string().optional().describe("Time period for filtering runs"),
+        bulkAction: z
+          .string()
+          .optional()
+          .describe("The bulk action ID to filter the runs by (e.g., bulk_1234)"),
+        tag: z
+          .union([z.array(z.string()), z.string()])
+          .optional()
+          .describe("The tags that are attached to the run"),
+        schedule: z
+          .string()
+          .optional()
+          .describe("The schedule ID to filter the runs by (e.g., schedule_1234)"),
+        isTest: z.boolean().optional().describe("Whether the run is a test run or not"),
+        batch: z.string().optional().describe("The batch identifier to filter runs by"),
+      })
+      .describe("Parameters for listing task runs"),
+  },
+  async ({ filters }) => {
+    const { data, pagination } = await sdkApiClient.listRuns(filters);
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({ data, pagination }, null, 2),
         },
       ],
     };
