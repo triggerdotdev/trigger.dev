@@ -1,7 +1,8 @@
-import { ClockIcon, LockOpenIcon, PlusIcon, RectangleGroupIcon } from "@heroicons/react/20/solid";
+import { ClockIcon, PlusIcon, RectangleGroupIcon } from "@heroicons/react/20/solid";
+import { ArrowUpCircleIcon } from "@heroicons/react/24/outline";
 import { BookOpenIcon } from "@heroicons/react/24/solid";
-import { MetaFunction, Outlet, useLocation, useParams } from "@remix-run/react";
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { type MetaFunction, Outlet, useLocation, useParams } from "@remix-run/react";
+import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { Feedback } from "~/components/Feedback";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
@@ -10,11 +11,6 @@ import { EnvironmentLabels } from "~/components/environments/EnvironmentLabel";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
-import {
-  ScheduleTypeCombo,
-  ScheduleTypeIcon,
-  scheduleTypeName,
-} from "~/components/runs/v3/ScheduleType";
 import {
   Dialog,
   DialogContent,
@@ -43,8 +39,14 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { EnabledStatus } from "~/components/runs/v3/EnabledStatus";
 import { ScheduleFilters, ScheduleListFilters } from "~/components/runs/v3/ScheduleFilters";
+import {
+  ScheduleTypeCombo,
+  ScheduleTypeIcon,
+  scheduleTypeName,
+} from "~/components/runs/v3/ScheduleType";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { usePathName } from "~/hooks/usePathName";
 import { useProject } from "~/hooks/useProject";
@@ -55,6 +57,7 @@ import {
   ScheduleListPresenter,
 } from "~/presenters/v3/ScheduleListPresenter.server";
 import { requireUserId } from "~/services/session.server";
+import { cn } from "~/utils/cn";
 import {
   ProjectParamSchema,
   docsPath,
@@ -63,9 +66,6 @@ import {
   v3SchedulePath,
 } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
-import { ArrowUpCircleIcon } from "@heroicons/react/24/outline";
-import { SimpleTooltip } from "~/components/primitives/Tooltip";
-import { cn } from "~/utils/cn";
 
 export const meta: MetaFunction = () => {
   return [
