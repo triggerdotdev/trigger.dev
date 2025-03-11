@@ -10,7 +10,7 @@ import {
   PlusIcon,
   TrashIcon,
 } from "@heroicons/react/20/solid";
-import { Form, MetaFunction, Outlet, useActionData, useNavigation } from "@remix-run/react";
+import { Form, type MetaFunction, Outlet, useActionData, useNavigation } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { SlackIcon } from "@trigger.dev/companyicons";
 import { type ProjectAlertChannelType, type ProjectAlertType } from "@trigger.dev/database";
@@ -43,6 +43,7 @@ import {
 } from "~/components/primitives/Tooltip";
 import { EnabledStatus } from "~/components/runs/v3/EnabledStatus";
 import { prisma } from "~/db.server";
+import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { redirectWithSuccessMessage } from "~/models/message.server";
@@ -54,7 +55,7 @@ import {
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import {
-  ProjectParamSchema,
+  EnvironmentParamSchema,
   docsPath,
   v3BillingPath,
   v3NewProjectAlertPath,
@@ -71,10 +72,9 @@ export const meta: MetaFunction = () => {
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
-  const { projectParam, organizationSlug } = ProjectParamSchema.parse(params);
+  const { projectParam, organizationSlug, envParam } = EnvironmentParamSchema.parse(params);
 
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
-
   if (!project) {
     throw new Response(undefined, {
       status: 404,
@@ -96,7 +96,7 @@ const schema = z.discriminatedUnion("action", [
 
 export const action = async ({ request, params }: ActionFunctionArgs) => {
   const userId = await requireUserId(request);
-  const { organizationSlug, projectParam } = ProjectParamSchema.parse(params);
+  const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
 
   if (request.method.toUpperCase() !== "POST") {
     return { status: 405, body: "Method Not Allowed" };
@@ -123,7 +123,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       });
 
       return redirectWithSuccessMessage(
-        v3ProjectAlertsPath({ slug: organizationSlug }, { slug: projectParam }),
+        v3ProjectAlertsPath({ slug: organizationSlug }, { slug: projectParam }, { slug: envParam }),
         request,
         `Deleted ${alertChannel.name} alert`
       );
@@ -135,7 +135,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       });
 
       return redirectWithSuccessMessage(
-        v3ProjectAlertsPath({ slug: organizationSlug }, { slug: projectParam }),
+        v3ProjectAlertsPath({ slug: organizationSlug }, { slug: projectParam }, { slug: envParam }),
         request,
         `Disabled ${alertChannel.name} alert`
       );
@@ -147,7 +147,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       });
 
       return redirectWithSuccessMessage(
-        v3ProjectAlertsPath({ slug: organizationSlug }, { slug: projectParam }),
+        v3ProjectAlertsPath({ slug: organizationSlug }, { slug: projectParam }, { slug: envParam }),
         request,
         `Enabled ${alertChannel.name} alert`
       );
@@ -157,8 +157,9 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
 export default function Page() {
   const { alertChannels, limits } = useTypedLoaderData<typeof loader>();
-  const project = useProject();
   const organization = useOrganization();
+  const project = useProject();
+  const environment = useEnvironment();
 
   const requiresUpgrade = limits.used >= limits.limit;
 
@@ -182,7 +183,7 @@ export default function Page() {
             <Header2 className="">Project alerts</Header2>
             {alertChannels.length > 0 && !requiresUpgrade && (
               <LinkButton
-                to={v3NewProjectAlertPath(organization, project)}
+                to={v3NewProjectAlertPath(organization, project, environment)}
                 variant="primary/small"
                 LeadingIcon={PlusIcon}
                 shortcut={{ key: "n" }}
@@ -262,7 +263,7 @@ export default function Page() {
                         both Prod and Staging environments.
                       </Paragraph>
                       <LinkButton
-                        to={v3NewProjectAlertPath(organization, project)}
+                        to={v3NewProjectAlertPath(organization, project, environment)}
                         variant="primary/medium"
                         LeadingIcon={PlusIcon}
                         shortcut={{ key: "n" }}
