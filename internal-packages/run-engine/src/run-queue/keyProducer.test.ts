@@ -176,7 +176,7 @@ describe("KeyProducer", () => {
       "task/task-name"
     );
     const key = keyProducer.taskIdentifierCurrentConcurrencyKeyPrefixFromQueue(queueKey);
-    expect(key).toBe("{org:o1234}:proj:p1234:task:");
+    expect(key).toBe("{org:o1234}:proj:p1234:env:e1234:task:");
   });
 
   it("taskIdentifierCurrentConcurrencyKeyFromQueue", () => {
@@ -192,7 +192,7 @@ describe("KeyProducer", () => {
       "task/task-name"
     );
     const key = keyProducer.taskIdentifierCurrentConcurrencyKeyFromQueue(queueKey, "task-name");
-    expect(key).toBe("{org:o1234}:proj:p1234:task:task-name");
+    expect(key).toBe("{org:o1234}:proj:p1234:env:e1234:task:task-name");
   });
 
   it("taskIdentifierCurrentConcurrencyKey", () => {
@@ -207,7 +207,7 @@ describe("KeyProducer", () => {
       },
       "task-name"
     );
-    expect(key).toBe("{org:o1234}:proj:p1234:task:task-name");
+    expect(key).toBe("{org:o1234}:proj:p1234:env:e1234:task:task-name");
   });
 
   it("projectCurrentConcurrencyKey", () => {
@@ -259,7 +259,7 @@ describe("KeyProducer", () => {
       "task/task-name"
     );
     const key = keyProducer.envConcurrencyLimitKeyFromQueue(queueKey);
-    expect(key).toBe("{org:o1234}:env:e1234:concurrency");
+    expect(key).toBe("{org:o1234}:proj:p1234:env:e1234:concurrency");
   });
 
   it("envCurrentConcurrencyKeyFromQueue", () => {
