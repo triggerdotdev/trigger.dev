@@ -32,7 +32,7 @@ export const v3TaskParamsSchema = ProjectParamSchema.extend({
   taskParam: z.string(),
 });
 
-export const v3RunParamsSchema = ProjectParamSchema.extend({
+export const v3RunParamsSchema = EnvironmentParamSchema.extend({
   runParam: z.string(),
 });
 

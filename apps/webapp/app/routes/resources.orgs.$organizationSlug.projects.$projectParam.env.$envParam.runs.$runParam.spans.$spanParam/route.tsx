@@ -5,10 +5,10 @@ import {
   QueueListIcon,
 } from "@heroicons/react/20/solid";
 import { Link } from "@remix-run/react";
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import {
   formatDurationMilliseconds,
-  TaskRunError,
+  type TaskRunError,
   taskRunErrorEnhancer,
 } from "@trigger.dev/core/v3";
 import { useEffect } from "react";
@@ -16,7 +16,7 @@ import { typedjson, useTypedFetcher } from "remix-typedjson";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { AdminDebugRun } from "~/components/admin/debugRun";
 import { CodeBlock } from "~/components/code/CodeBlock";
-import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
+import { EnvironmentLabel, FullEnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { Feedback } from "~/components/Feedback";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
@@ -53,7 +53,7 @@ import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { useHasAdminAccess } from "~/hooks/useUser";
 import { redirectWithErrorMessage } from "~/models/message.server";
-import { Span, SpanPresenter, SpanRun } from "~/presenters/v3/SpanPresenter.server";
+import { type Span, SpanPresenter, type SpanRun } from "~/presenters/v3/SpanPresenter.server";
 import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
@@ -68,15 +68,16 @@ import {
   v3SchedulePath,
   v3SpanParamsSchema,
 } from "~/utils/pathBuilder";
-import { SpanLink } from "~/v3/eventRepository.server";
 import {
   CompleteWaitpointForm,
   ForceTimeout,
 } from "../resources.orgs.$organizationSlug.projects.$projectParam.waitpoints.$waitpointFriendlyId.complete/route";
+import { useEnvironment } from "~/hooks/useEnvironment";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
-  const { projectParam, organizationSlug, runParam, spanParam } = v3SpanParamsSchema.parse(params);
+  const { projectParam, organizationSlug, envParam, runParam, spanParam } =
+    v3SpanParamsSchema.parse(params);
 
   const presenter = new SpanPresenter();
 
@@ -99,7 +100,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       error,
     });
     return redirectWithErrorMessage(
-      v3RunPath({ slug: organizationSlug }, { slug: projectParam }, { friendlyId: runParam }),
+      v3RunPath(
+        { slug: organizationSlug },
+        { slug: projectParam },
+        { slug: envParam },
+        { friendlyId: runParam }
+      ),
       request,
       `Event not found.`
     );
@@ -117,14 +123,15 @@ export function SpanView({
 }) {
   const organization = useOrganization();
   const project = useProject();
+  const environment = useEnvironment();
   const fetcher = useTypedFetcher<typeof loader>();
 
   useEffect(() => {
     if (spanId === undefined) return;
     fetcher.load(
-      `/resources/orgs/${organization.slug}/projects/v3/${project.slug}/runs/${runParam}/spans/${spanId}`
+      `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/runs/${runParam}/spans/${spanId}`
     );
-  }, [organization.slug, project.slug, runParam, spanId]);
+  }, [organization.slug, project.slug, environment.slug, runParam, spanId]);
 
   if (spanId === undefined) {
     return null;
@@ -178,6 +185,7 @@ function SpanBody({
 }) {
   const organization = useOrganization();
   const project = useProject();
+  const environment = useEnvironment();
   const { value, replace } = useSearchParams();
   let tab = value("tab");
 
@@ -257,7 +265,11 @@ function SpanBody({
                 <Property.Value>
                   <SimpleTooltip
                     button={
-                      <TextLink to={v3RunsPath(organization, project, { tasks: [span.taskSlug] })}>
+                      <TextLink
+                        to={v3RunsPath(organization, project, environment, {
+                          tasks: [span.taskSlug],
+                        })}
+                      >
                         {span.taskSlug}
                       </TextLink>
                     }
@@ -310,11 +322,10 @@ function RunBody({
 }) {
   const organization = useOrganization();
   const project = useProject();
+  const environment = useEnvironment();
   const isAdmin = useHasAdminAccess();
   const { value, replace } = useSearchParams();
   const tab = value("tab");
-
-  const environment = project.environments.find((e) => e.id === run.environmentId);
 
   return (
     <div className="grid h-full max-h-full grid-rows-[2.5rem_2rem_1fr_3.25rem] overflow-hidden bg-background-bright">
@@ -403,7 +414,9 @@ function RunBody({
                     <SimpleTooltip
                       button={
                         <TextLink
-                          to={v3RunsPath(organization, project, { tasks: [run.taskIdentifier] })}
+                          to={v3RunsPath(organization, project, environment, {
+                            tasks: [run.taskIdentifier],
+                          })}
                         >
                           {run.taskIdentifier}
                         </TextLink>
@@ -421,6 +434,7 @@ function RunBody({
                           to={v3RunSpanPath(
                             organization,
                             project,
+                            environment,
                             {
                               friendlyId: run.relationships.root.friendlyId,
                             },
@@ -444,6 +458,7 @@ function RunBody({
                             to={v3RunSpanPath(
                               organization,
                               project,
+                              environment,
                               {
                                 friendlyId: run.relationships.root.friendlyId,
                               },
@@ -466,6 +481,7 @@ function RunBody({
                               to={v3RunSpanPath(
                                 organization,
                                 project,
+                                environment,
                                 {
                                   friendlyId: run.relationships.parent.friendlyId,
                                 },
@@ -490,7 +506,7 @@ function RunBody({
                     <Property.Value>
                       <SimpleTooltip
                         button={
-                          <TextLink to={v3BatchPath(organization, project, run.batch)}>
+                          <TextLink to={v3BatchPath(organization, project, environment, run.batch)}>
                             {run.batch.friendlyId}
                           </TextLink>
                         }
@@ -573,7 +589,7 @@ function RunBody({
                   <Property.Item>
                     <Property.Label>Environment</Property.Label>
                     <Property.Value>
-                      <EnvironmentLabel environment={environment} />
+                      <FullEnvironmentCombo environment={environment} />
                     </Property.Value>
                   </Property.Item>
                 )}
@@ -622,7 +638,9 @@ function RunBody({
                           <SimpleTooltip
                             key={tag}
                             button={
-                              <Link to={v3RunsPath(organization, project, { tags: [tag] })}>
+                              <Link
+                                to={v3RunsPath(organization, project, environment, { tags: [tag] })}
+                              >
                                 <RunTag tag={tag} />
                               </Link>
                             }
@@ -720,6 +738,7 @@ function RunBody({
               to={v3RunSpanPath(
                 organization,
                 project,
+                environment,
                 { friendlyId: run.friendlyId },
                 { spanId: run.spanId }
               )}
@@ -866,6 +885,7 @@ function SpanEntity({ span }: { span: Span }) {
 
   const organization = useOrganization();
   const project = useProject();
+  const environment = useEnvironment();
 
   if (!span.entity) {
     //normal span
@@ -927,6 +947,7 @@ function SpanEntity({ span }: { span: Span }) {
                       const path = v3RunSpanPath(
                         organization,
                         project,
+                        environment,
                         { friendlyId: run.friendlyId },
                         { spanId: run.spanId }
                       );

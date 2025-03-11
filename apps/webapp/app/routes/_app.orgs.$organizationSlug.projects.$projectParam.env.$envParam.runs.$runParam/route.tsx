@@ -12,14 +12,14 @@ import {
   StopCircleIcon,
 } from "@heroicons/react/20/solid";
 import { useLoaderData, useParams, useRevalidator } from "@remix-run/react";
-import { LoaderFunctionArgs, SerializeFrom, json } from "@remix-run/server-runtime";
-import { Virtualizer } from "@tanstack/react-virtual";
+import { type LoaderFunctionArgs, type SerializeFrom, json } from "@remix-run/server-runtime";
+import { type Virtualizer } from "@tanstack/react-virtual";
 import {
   formatDurationMilliseconds,
   millisecondsToNanoseconds,
   nanosecondsToMilliseconds,
 } from "@trigger.dev/core/v3";
-import { RuntimeEnvironmentType } from "@trigger.dev/database";
+import { type RuntimeEnvironmentType } from "@trigger.dev/database";
 import { motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
@@ -64,14 +64,15 @@ import {
 import { TaskRunStatusIcon, runStatusClassNameColor } from "~/components/runs/v3/TaskRunStatus";
 import { env } from "~/env.server";
 import { useDebounce } from "~/hooks/useDebounce";
+import { useEnvironment } from "~/hooks/useEnvironment";
 import { useEventSource } from "~/hooks/useEventSource";
 import { useInitialDimensions } from "~/hooks/useInitialDimensions";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useReplaceSearchParams } from "~/hooks/useReplaceSearchParams";
-import { Shortcut, useShortcutKeys } from "~/hooks/useShortcutKeys";
+import { type Shortcut, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { useHasAdminAccess, useUser } from "~/hooks/useUser";
-import { Run, RunPresenter } from "~/presenters/v3/RunPresenter.server";
+import { RunPresenter } from "~/presenters/v3/RunPresenter.server";
 import { getImpersonationId } from "~/services/impersonation.server";
 import { getResizableSnapshot } from "~/services/resizablePanel.server";
 import { requireUserId } from "~/services/session.server";
@@ -87,8 +88,7 @@ import {
   v3RunsPath,
 } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
-import { SpanView } from "../resources.orgs.$organizationSlug.projects.v3.$projectParam.runs.$runParam.spans.$spanParam/route";
-import { useEnvironment } from "~/hooks/useEnvironment";
+import { SpanView } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.$runParam.spans.$spanParam/route";
 
 const resizableSettings = {
   parent: {
@@ -125,7 +125,7 @@ type TraceEvent = NonNullable<SerializeFrom<typeof loader>["trace"]>["events"][0
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const impersonationId = await getImpersonationId(request);
-  const { projectParam, organizationSlug, runParam } = v3RunParamsSchema.parse(params);
+  const { projectParam, organizationSlug, envParam, runParam } = v3RunParamsSchema.parse(params);
 
   const presenter = new RunPresenter();
   const result = await presenter.call({
