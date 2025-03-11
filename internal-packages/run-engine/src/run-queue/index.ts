@@ -1119,6 +1119,9 @@ export class RunQueue {
       service: this.name,
     });
 
+    const queueReserveConcurrencyKey = this.keys.reserveConcurrencyKeyFromQueue(messageQueue);
+    const envReserveConcurrencyKey = this.keys.envReserveConcurrencyKeyFromQueue(messageQueue);
+
     return this.redis.acknowledgeMessage(
       messageKey,
       messageQueue,
@@ -1127,6 +1130,8 @@ export class RunQueue {
       projectConcurrencyKey,
       envQueueKey,
       taskConcurrencyKey,
+      queueReserveConcurrencyKey,
+      envReserveConcurrencyKey,
       messageId,
       messageQueue,
       JSON.stringify(masterQueues),
@@ -1441,7 +1446,7 @@ return {messageId, messageScore, messagePayload} -- Return message details
     });
 
     this.redis.defineCommand("acknowledgeMessage", {
-      numberOfKeys: 7,
+      numberOfKeys: 9,
       lua: `
 -- Keys:
 local messageKey = KEYS[1]
@@ -1451,6 +1456,8 @@ local envCurrentConcurrencyKey = KEYS[4]
 local projectCurrentConcurrencyKey = KEYS[5]
 local envQueueKey = KEYS[6]
 local taskCurrentConcurrencyKey = KEYS[7]
+local queueReserveConcurrencyKey = KEYS[8]
+local envReserveConcurrencyKey = KEYS[9]
 
 -- Args:
 local messageId = ARGV[1]
@@ -1481,6 +1488,10 @@ redis.call('SREM', concurrencyKey, messageId)
 redis.call('SREM', envCurrentConcurrencyKey, messageId)
 redis.call('SREM', projectCurrentConcurrencyKey, messageId)
 redis.call('SREM', taskCurrentConcurrencyKey, messageId)
+
+-- Clear reserve concurrency
+redis.call('SREM', queueReserveConcurrencyKey, messageId)
+redis.call('SREM', envReserveConcurrencyKey, messageId)
 `,
     });
 
@@ -1737,6 +1748,8 @@ declare module "@internal/redis" {
       projectConcurrencyKey: string,
       envQueueKey: string,
       taskConcurrencyKey: string,
+      queueReserveConcurrencyKey: string,
+      envReserveConcurrencyKey: string,
       messageId: string,
       messageQueueName: string,
       masterQueues: string,

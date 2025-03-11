@@ -290,4 +290,94 @@ describe("RunQueue.acknowledgeMessage", () => {
       await queue.quit();
     }
   });
+
+  redisTest(
+    "acknowledging a message clears reserve concurrency sets even when not dequeued",
+    async ({ redisContainer }) => {
+      const queue = new RunQueue({
+        ...testOptions,
+        queueSelectionStrategy: new FairQueueSelectionStrategy({
+          redis: {
+            keyPrefix: "runqueue:test:",
+            host: redisContainer.getHost(),
+            port: redisContainer.getPort(),
+          },
+          keys: testOptions.keys,
+        }),
+        redis: {
+          keyPrefix: "runqueue:test:",
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+        },
+      });
+
+      try {
+        const envMasterQueue = `env:${authenticatedEnvDev.id}`;
+
+        // Enqueue message with reserve concurrency
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: messageDev,
+          masterQueues: ["main", envMasterQueue],
+          reserveConcurrency: {
+            messageId: messageDev.runId,
+            recursiveQueue: true,
+          },
+        });
+
+        // Verify reserve concurrency is set
+        const envReserveConcurrency = await queue.reserveConcurrencyOfEnvironment(
+          authenticatedEnvDev
+        );
+        expect(envReserveConcurrency).toBe(1);
+
+        const queueReserveConcurrency = await queue.reserveConcurrencyOfQueue(
+          authenticatedEnvDev,
+          messageDev.queue
+        );
+        expect(queueReserveConcurrency).toBe(1);
+
+        // Verify message is in queue before acknowledging
+        const queueLengthBefore = await queue.lengthOfQueue(authenticatedEnvDev, messageDev.queue);
+        expect(queueLengthBefore).toBe(1);
+
+        const envQueueLengthBefore = await queue.lengthOfEnvQueue(authenticatedEnvDev);
+        expect(envQueueLengthBefore).toBe(1);
+
+        // Acknowledge the message before dequeuing
+        await queue.acknowledgeMessage(messageDev.orgId, messageDev.runId);
+
+        // Verify reserve concurrency is cleared
+        const envReserveConcurrencyAfter = await queue.reserveConcurrencyOfEnvironment(
+          authenticatedEnvDev
+        );
+        expect(envReserveConcurrencyAfter).toBe(0);
+
+        const queueReserveConcurrencyAfter = await queue.reserveConcurrencyOfQueue(
+          authenticatedEnvDev,
+          messageDev.queue
+        );
+        expect(queueReserveConcurrencyAfter).toBe(0);
+
+        // Verify message is removed from queue
+        const queueLength = await queue.lengthOfQueue(authenticatedEnvDev, messageDev.queue);
+        expect(queueLength).toBe(0);
+
+        const envQueueLength = await queue.lengthOfEnvQueue(authenticatedEnvDev);
+        expect(envQueueLength).toBe(0);
+
+        // Verify no current concurrency was set
+        const envConcurrency = await queue.currentConcurrencyOfEnvironment(authenticatedEnvDev);
+        expect(envConcurrency).toBe(0);
+
+        const queueConcurrency = await queue.currentConcurrencyOfQueue(
+          authenticatedEnvDev,
+          messageDev.queue
+        );
+        expect(queueConcurrency).toBe(0);
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
 });
