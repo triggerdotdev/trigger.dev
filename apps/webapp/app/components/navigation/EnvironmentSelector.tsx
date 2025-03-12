@@ -34,9 +34,10 @@ export function EnvironmentSelector({
       <PopoverArrowTrigger
         isOpen={isMenuOpen}
         overflowHidden
-        className={cn("h-7 w-full overflow-hidden py-1 pl-2", className)}
+        fullWidth
+        className={cn("h-7 overflow-hidden py-1 pl-2", className)}
       >
-        <FullEnvironmentCombo environment={environment} className="text-2sm" />
+        <FullEnvironmentCombo environment={environment} className="w-full text-2sm" />
       </PopoverArrowTrigger>
       <PopoverContent
         className="overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
