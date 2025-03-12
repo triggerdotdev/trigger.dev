@@ -107,14 +107,7 @@ export default function Page() {
           <div className={cn("grid h-full max-h-full grid-cols-1")}>
             <ResizablePanelGroup orientation="horizontal" className="h-full max-h-full">
               <ResizablePanel id="test-selector" min="225px" default="30%">
-                <div className="grid h-full max-h-full grid-rows-1 overflow-hidden">
-                  <div className="grid grid-rows-[auto_1fr] overflow-hidden">
-                    <div className="flex items-end px-3 pt-2">
-                      <Header2>Select a task</Header2>
-                    </div>
-                    <TaskSelector tasks={tasks} activeTaskIdentifier={taskParam} />
-                  </div>
-                </div>
+                <TaskSelector tasks={tasks} activeTaskIdentifier={taskParam} />
               </ResizablePanel>
               <ResizableHandle id="test-handle" />
               <ResizablePanel id="test-main" min="225px">
