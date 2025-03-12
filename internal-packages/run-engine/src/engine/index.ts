@@ -3617,47 +3617,6 @@ export class RunEngine {
     });
   }
 
-  async #rescheduleDateTimeWaitpoint(
-    tx: PrismaClientOrTransaction,
-    waitpointId: string,
-    completedAfter: Date
-  ): Promise<{ success: true } | { success: false; error: string }> {
-    try {
-      const updatedWaitpoint = await tx.waitpoint.update({
-        where: { id: waitpointId, status: "PENDING" },
-        data: {
-          completedAfter,
-        },
-      });
-    } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
-        return {
-          success: false,
-          error: "Waitpoint doesn't exist or is already completed",
-        };
-      }
-
-      this.logger.error("Error rescheduling waitpoint", { error });
-
-      return {
-        success: false,
-        error: "An unknown error occurred",
-      };
-    }
-
-    //reschedule completion
-    await this.worker.enqueue({
-      id: `finishWaitpoint.${waitpointId}`,
-      job: "finishWaitpoint",
-      payload: { waitpointId: waitpointId },
-      availableAt: completedAfter,
-    });
-
-    return {
-      success: true,
-    };
-  }
-
   async #clearBlockingWaitpoints({ runId, tx }: { runId: string; tx?: PrismaClientOrTransaction }) {
     const prisma = tx ?? this.prisma;
     const deleted = await prisma.taskRunWaitpoint.deleteMany({
