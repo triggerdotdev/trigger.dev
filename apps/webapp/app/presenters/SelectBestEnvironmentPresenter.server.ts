@@ -31,7 +31,7 @@ export class SelectBestEnvironmentPresenter {
     const projectId = user.dashboardPreferences.currentProjectId;
 
     if (projectId) {
-      const project = await this.#prismaClient.project.findUnique({
+      const project = await this.#prismaClient.project.findFirst({
         where: {
           id: projectId,
           deletedAt: null,
