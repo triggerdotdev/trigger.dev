@@ -47,4 +47,7 @@ COPY --from=builder /prod/supervisor /app/apps/supervisor
 EXPOSE 8000
 USER node
 
+# ensure pnpm is installed during build and not silently downloaded at runtime
+RUN pnpm -v
+
 CMD [ "/usr/bin/dumb-init", "--", "pnpm", "run", "--filter", "supervisor", "start"]
