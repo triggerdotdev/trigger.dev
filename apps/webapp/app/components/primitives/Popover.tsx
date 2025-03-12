@@ -1,14 +1,15 @@
 "use client";
 
-import { ChevronDownIcon, EllipsisVerticalIcon } from "@heroicons/react/24/solid";
+import { CheckIcon } from "@heroicons/react/20/solid";
+import { EllipsisVerticalIcon } from "@heroicons/react/24/solid";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
 import * as React from "react";
+import { DropdownIcon } from "~/assets/icons/DropdownIcon";
+import { ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
 import { type ButtonContentPropsType, LinkButton } from "./Buttons";
 import { Paragraph, type ParagraphVariant } from "./Paragraph";
 import { ShortcutKey } from "./ShortcutKey";
-import { ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
-import { CheckIcon } from "@heroicons/react/20/solid";
 
 const Popover = PopoverPrimitive.Root;
 const PopoverTrigger = PopoverPrimitive.Trigger;
@@ -172,9 +173,9 @@ function PopoverArrowTrigger({
       >
         {children}
       </Paragraph>
-      <ChevronDownIcon
+      <DropdownIcon
         className={cn(
-          "h-3 w-3 min-w-[0.75rem] text-charcoal-600 transition group-hover:text-text-bright",
+          "h-4 w-4 min-w-[0.75rem] text-text-dimmed transition group-hover:text-text-bright",
           isOpen && "-rotate-180"
         )}
       />

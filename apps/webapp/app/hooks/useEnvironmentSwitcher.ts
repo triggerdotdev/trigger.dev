@@ -44,6 +44,13 @@ export function routeForEnvironmentSwitch({
   matchId: string;
   environmentSlug: string;
 }) {
+  switch (matchId) {
+    case "routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.$runParam": {
+    }
+    default: {
+    }
+  }
+
   //replace the /env/<slug>/ in the path so it's /env/<environmentSlug>
   const newPath = location.pathname.replace(/env\/([a-z0-9-]+)/, `env/${environmentSlug}`);
 

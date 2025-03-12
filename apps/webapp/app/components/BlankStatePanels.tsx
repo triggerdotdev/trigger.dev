@@ -4,11 +4,17 @@ import {
   ChatBubbleLeftRightIcon,
   ClockIcon,
   RectangleGroupIcon,
+  ServerStackIcon,
   Squares2X2Icon,
 } from "@heroicons/react/20/solid";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { type MinimumEnvironment } from "~/presenters/SelectBestEnvironmentPresenter.server";
-import { docsPath, v3EnvironmentPath, v3NewSchedulePath } from "~/utils/pathBuilder";
+import {
+  docsPath,
+  v3EnvironmentPath,
+  v3EnvironmentVariablesPath,
+  v3NewSchedulePath,
+} from "~/utils/pathBuilder";
 import { InlineCode } from "./code/InlineCode";
 import { environmentFullTitle } from "./environments/EnvironmentLabel";
 import { Feedback } from "./Feedback";
@@ -24,6 +30,8 @@ import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { RuntimeEnvironmentType } from "@trigger.dev/database";
+import { TextLink } from "./primitives/TextLink";
+import { EnvironmentSelector } from "./navigation/EnvironmentSelector";
 
 export function HasNoTasksDev() {
   return (
@@ -188,5 +196,106 @@ export function TestHasNoTasks() {
         Add tasks
       </LinkButton>
     </InfoPanel>
+  );
+}
+
+export function DeploymentsNone() {
+  const organization = useOrganization();
+  const project = useProject();
+
+  return (
+    <InfoPanel
+      icon={ServerStackIcon}
+      iconClassName="text-blue-500"
+      title="Deploy for the first time"
+      panelClassName="max-w-full"
+    >
+      <Paragraph spacing variant="small">
+        There are several ways to deploy your tasks. You can use the CLI, Continuous Integration
+        (like GitHub Actions), or an integration with a service like Netlify or Vercel. Make sure
+        you{" "}
+        <TextLink href={v3EnvironmentVariablesPath(organization, project)}>
+          set your environment variables
+        </TextLink>{" "}
+        first.
+      </Paragraph>
+      <div className="flex gap-3">
+        <LinkButton
+          to={docsPath("v3/cli-deploy")}
+          variant="docs/medium"
+          LeadingIcon={BookOpenIcon}
+          className="inline-flex"
+        >
+          Deploy with the CLI
+        </LinkButton>
+        <LinkButton
+          to={docsPath("v3/github-actions")}
+          variant="docs/medium"
+          LeadingIcon={BookOpenIcon}
+          className="inline-flex"
+        >
+          Deploy with GitHub actions
+        </LinkButton>
+      </div>
+    </InfoPanel>
+  );
+}
+
+export function DeploymentsNoneDev() {
+  const organization = useOrganization();
+  const project = useProject();
+  const environment = useEnvironment();
+
+  return (
+    <div className="space-y-8">
+      <InfoPanel
+        icon={ServerStackIcon}
+        iconClassName="text-blue-500"
+        title="Deploying tasks"
+        panelClassName="max-w-full"
+      >
+        <Paragraph spacing variant="small">
+          This is the Development environment. When you're ready to deploy your tasks, switch to a
+          different environment.
+        </Paragraph>
+        <Paragraph spacing variant="small">
+          There are several ways to deploy your tasks. You can use the CLI, Continuous Integration
+          (like GitHub Actions), or an integration with a service like Netlify or Vercel. Make sure
+          you{" "}
+          <TextLink href={v3EnvironmentVariablesPath(organization, project)}>
+            set your environment variables
+          </TextLink>{" "}
+          first.
+        </Paragraph>
+        <div className="flex gap-3">
+          <LinkButton
+            to={docsPath("v3/cli-deploy")}
+            variant="docs/medium"
+            LeadingIcon={BookOpenIcon}
+            className="inline-flex"
+          >
+            Deploy with the CLI
+          </LinkButton>
+          <LinkButton
+            to={docsPath("v3/github-actions")}
+            variant="docs/medium"
+            LeadingIcon={BookOpenIcon}
+            className="inline-flex"
+          >
+            Deploy with GitHub actions
+          </LinkButton>
+        </div>
+      </InfoPanel>
+      <div className="flex items-center rounded-md border border-grid-bright bg-background-bright p-3">
+        <Paragraph variant="small" className="grow">
+          Switch to a deployed environment
+        </Paragraph>
+        <EnvironmentSelector
+          project={project}
+          environment={environment}
+          className="w-auto grow-0"
+        />
+      </div>
+    </div>
   );
 }

@@ -67,13 +67,15 @@ import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
 import { type MatchedEnvironment } from "~/hooks/useEnvironment";
-import { FullEnvironmentCombo } from "../environments/EnvironmentLabel";
 import { SideMenuSection } from "./SideMenuSection";
-import { useEnvironmentSwitcher } from "~/hooks/useEnvironmentSwitcher";
+import { EnvironmentSelector } from "./EnvironmentSelector";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
-type SideMenuProject = Pick<MatchedProject, "id" | "name" | "slug" | "version" | "environments">;
-type SideMenuEnvironment = MatchedEnvironment;
+export type SideMenuProject = Pick<
+  MatchedProject,
+  "id" | "name" | "slug" | "version" | "environments"
+>;
+export type SideMenuEnvironment = MatchedEnvironment;
 
 type SideMenuProps = {
   user: SideMenuUser;
@@ -133,11 +135,9 @@ export function SideMenu({
         >
           <div className="mb-6 flex flex-col gap-1 px-1">
             <SideMenuHeader title={"Environment"} />
-            <EnvironmentSelector
-              organization={organization}
-              project={project}
-              environment={environment}
-            />
+            <div className="flex items-center gap-2">
+              <EnvironmentSelector project={project} environment={environment} />
+            </div>
 
             <SideMenuSection title="Tasks">
               <SideMenuItem
@@ -183,12 +183,6 @@ export function SideMenu({
                 icon={RunsIcon}
                 activeIconColor="text-teal-500"
                 to={v3RunsPath(organization, project, environment)}
-              />
-              <SideMenuItem
-                name="Failed"
-                to={v3RunsPath(organization, project, environment, {
-                  statuses: ["COMPLETED_WITH_ERRORS"],
-                })}
               />
               <SideMenuItem
                 name="Alerts"
@@ -404,50 +398,6 @@ function UserMenu({ user }: { user: SideMenuUser }) {
             />
           </div>
         </Fragment>
-      </PopoverContent>
-    </Popover>
-  );
-}
-
-function EnvironmentSelector({
-  organization,
-  project,
-  environment,
-}: {
-  organization: MatchedOrganization;
-  project: SideMenuProject;
-  environment: SideMenuEnvironment;
-}) {
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const navigation = useNavigation();
-  const { urlForEnvironment } = useEnvironmentSwitcher();
-
-  useEffect(() => {
-    setIsMenuOpen(false);
-  }, [navigation.location?.pathname]);
-
-  return (
-    <Popover onOpenChange={(open) => setIsMenuOpen(open)} open={isMenuOpen}>
-      <PopoverArrowTrigger
-        isOpen={isMenuOpen}
-        overflowHidden
-        className="h-7 w-full overflow-hidden py-1 pl-2"
-      >
-        <FullEnvironmentCombo environment={environment} className="text-2sm" />
-      </PopoverArrowTrigger>
-      <PopoverContent
-        className="min-w-[16rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
-        align="start"
-        style={{ maxHeight: `calc(var(--radix-popover-content-available-height) - 10vh)` }}
-      >
-        {project.environments.map((env) => (
-          <PopoverMenuItem
-            key={env.id}
-            to={urlForEnvironment(env)}
-            title={<FullEnvironmentCombo environment={env} className="text-2sm" />}
-            isSelected={env.id === environment.id}
-          />
-        ))}
       </PopoverContent>
     </Popover>
   );

@@ -9,6 +9,7 @@ import { type MetaFunction, Outlet, useLocation, useParams } from "@remix-run/re
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
+import { DeploymentsNone, DeploymentsNoneDev } from "~/components/BlankStatePanels";
 import { UserAvatar } from "~/components/UserProfilePhoto";
 import { EnvironmentLabel, FullEnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
@@ -109,7 +110,6 @@ export default function Page() {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
-  const user = useUser();
   const { deployments, currentPage, totalPages } = useTypedLoaderData<typeof loader>();
   const hasDeployments = totalPages > 0;
 
@@ -259,8 +259,14 @@ export default function Page() {
                   </div>
                 )}
               </div>
+            ) : environment.type === "DEVELOPMENT" ? (
+              <MainCenteredContainer className="max-w-md">
+                <DeploymentsNoneDev />
+              </MainCenteredContainer>
             ) : (
-              <CreateDeploymentInstructions />
+              <MainCenteredContainer className="max-w-md">
+                <DeploymentsNone />
+              </MainCenteredContainer>
             )}
           </ResizablePanel>
 
@@ -275,50 +281,6 @@ export default function Page() {
         </ResizablePanelGroup>
       </PageBody>
     </PageContainer>
-  );
-}
-
-function CreateDeploymentInstructions() {
-  const organization = useOrganization();
-  const project = useProject();
-
-  return (
-    <MainCenteredContainer className="max-w-md">
-      <InfoPanel
-        icon={ServerStackIcon}
-        iconClassName="text-blue-500"
-        title="Deploy for the first time"
-        panelClassName="max-w-full"
-      >
-        <Paragraph spacing variant="small">
-          There are several ways to deploy your tasks. You can use the CLI, Continuous Integration
-          (like GitHub Actions), or an integration with a service like Netlify or Vercel. Make sure
-          you{" "}
-          <TextLink href={v3EnvironmentVariablesPath(organization, project)}>
-            set your environment variables
-          </TextLink>{" "}
-          first.
-        </Paragraph>
-        <div className="flex gap-3">
-          <LinkButton
-            to={docsPath("v3/cli-deploy")}
-            variant="docs/medium"
-            LeadingIcon={BookOpenIcon}
-            className="inline-flex"
-          >
-            Deploy with the CLI
-          </LinkButton>
-          <LinkButton
-            to={docsPath("v3/github-actions")}
-            variant="docs/medium"
-            LeadingIcon={BookOpenIcon}
-            className="inline-flex"
-          >
-            Deploy with GitHub actions
-          </LinkButton>
-        </div>
-      </InfoPanel>
-    </MainCenteredContainer>
   );
 }
 

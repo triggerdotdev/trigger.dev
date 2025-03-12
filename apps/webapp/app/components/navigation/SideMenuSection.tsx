@@ -32,7 +32,7 @@ export function SideMenuSection({
         className="flex cursor-pointer items-center gap-1 rounded-sm py-1 pl-1 text-text-dimmed hover:bg-charcoal-750 hover:text-text-bright"
         onClick={handleToggle}
       >
-        <h2 className="text-xs ">{title}</h2>
+        <h2 className="text-xs">{title}</h2>
         <motion.div
           initial={isCollapsed}
           animate={{ rotate: isCollapsed ? -90 : 0 }}
