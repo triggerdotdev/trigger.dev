@@ -4,7 +4,11 @@ import { MetaFunction } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
-import { EnvironmentLabel, environmentTitle } from "~/components/environments/EnvironmentLabel";
+import {
+  EnvironmentLabel,
+  environmentTitle,
+  FullEnvironmentCombo,
+} from "~/components/environments/EnvironmentLabel";
 import { RegenerateApiKeyModal } from "~/components/environments/RegenerateApiKeyModal";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { LinkButton } from "~/components/primitives/Buttons";
@@ -99,7 +103,6 @@ export default function Page() {
                 <TableHeaderCell>Secret key</TableHeaderCell>
                 <TableHeaderCell>Key generated</TableHeaderCell>
                 <TableHeaderCell>Latest version</TableHeaderCell>
-                <TableHeaderCell>Env vars</TableHeaderCell>
                 <TableHeaderCell hiddenLabel>Actions</TableHeaderCell>
               </TableRow>
             </TableHeader>
@@ -107,7 +110,7 @@ export default function Page() {
               {environments.map((environment) => (
                 <TableRow key={environment.id}>
                   <TableCell>
-                    <EnvironmentLabel environment={environment} />
+                    <FullEnvironmentCombo environment={environment} />
                   </TableCell>
                   <TableCell>
                     <ClipboardField
@@ -121,7 +124,6 @@ export default function Page() {
                     <DateTime date={environment.updatedAt} />
                   </TableCell>
                   <TableCell>{environment.latestVersion ?? "–"}</TableCell>
-                  <TableCell>{environment.environmentVariableCount}</TableCell>
                   <TableCellMenu
                     isSticky
                     popoverContent={
