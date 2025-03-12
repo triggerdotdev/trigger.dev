@@ -118,6 +118,12 @@ const workerCatalog = {
     }),
     visibilityTimeoutMs: 10_000,
   },
+  enqueueDelayedRun: {
+    schema: z.object({
+      runId: z.string(),
+    }),
+    visibilityTimeoutMs: 10_000,
+  },
 };
 
 type EngineWorker = Worker<typeof workerCatalog>;
@@ -214,6 +220,9 @@ export class RunEngine {
           await this.#continueRunIfUnblocked({
             runId: payload.runId,
           });
+        },
+        enqueueDelayedRun: async ({ payload }) => {
+          await this.#enqueueDelayedRun({ runId: payload.runId });
         },
       },
     }).start();
@@ -515,41 +524,18 @@ export class RunEngine {
             }
           }
 
-          if (taskRun.delayUntil) {
-            const delayWaitpointResult = await this.createDateTimeWaitpoint({
-              projectId: environment.project.id,
-              environmentId: environment.id,
-              completedAfter: taskRun.delayUntil,
-              tx: prisma,
-            });
-
-            await prisma.taskRunWaitpoint.create({
-              data: {
-                taskRunId: taskRun.id,
-                waitpointId: delayWaitpointResult.waitpoint.id,
-                projectId: delayWaitpointResult.waitpoint.projectId,
-              },
-            });
-          }
-
-          if (!taskRun.delayUntil && taskRun.ttl) {
-            const expireAt = parseNaturalLanguageDuration(taskRun.ttl);
-
-            if (expireAt) {
-              await this.worker.enqueue({
-                id: `expireRun:${taskRun.id}`,
-                job: "expireRun",
-                payload: { runId: taskRun.id },
-                availableAt: expireAt,
-              });
-            }
-          }
-
           //Make sure lock extension succeeded
           signal.throwIfAborted();
 
-          //enqueue the run if it's not delayed
-          if (!taskRun.delayUntil) {
+          if (taskRun.delayUntil) {
+            // Schedule the run to be enqueued at the delayUntil time
+            await this.worker.enqueue({
+              id: `enqueueDelayedRun:${taskRun.id}`,
+              job: "enqueueDelayedRun",
+              payload: { runId: taskRun.id },
+              availableAt: taskRun.delayUntil,
+            });
+          } else {
             const { wasEnqueued, error } = await this.#enqueueRun({
               run: taskRun,
               env: environment,
@@ -565,11 +551,24 @@ export class RunEngine {
               taskRun = await prisma.taskRun.update({
                 where: { id: taskRun.id },
                 data: {
-                  status: "SYSTEM_FAILURE",
+                  status: runStatusFromError(error),
                   completedAt: new Date(),
                   error,
                 },
               });
+            }
+
+            if (wasEnqueued && taskRun.ttl) {
+              const expireAt = parseNaturalLanguageDuration(taskRun.ttl);
+
+              if (expireAt) {
+                await this.worker.enqueue({
+                  id: `expireRun:${taskRun.id}`,
+                  job: "expireRun",
+                  payload: { runId: taskRun.id },
+                  availableAt: expireAt,
+                });
+              }
             }
           }
         });
@@ -1598,7 +1597,7 @@ export class RunEngine {
   /**
    * Reschedules a delayed run where the run hasn't been queued yet
    */
-  async rescheduleRun({
+  async rescheduleDelayedRun({
     runId,
     delayUntil,
     tx,
@@ -1634,26 +1633,9 @@ export class RunEngine {
               },
             },
           },
-          include: {
-            blockedByWaitpoints: true,
-          },
         });
 
-        if (updatedRun.blockedByWaitpoints.length === 0) {
-          throw new ServiceValidationError(
-            "Cannot reschedule a run that is not blocked by a waitpoint"
-          );
-        }
-
-        const result = await this.#rescheduleDateTimeWaitpoint(
-          prisma,
-          updatedRun.blockedByWaitpoints[0].waitpointId,
-          delayUntil
-        );
-
-        if (!result.success) {
-          throw new ServiceValidationError("Failed to reschedule waitpoint, too late.", 400);
-        }
+        await this.worker.reschedule(`enqueueDelayedRun:${updatedRun.id}`, delayUntil);
 
         return updatedRun;
       });
@@ -3118,7 +3100,7 @@ export class RunEngine {
     runnerId,
   }: {
     runId: string;
-    snapshotId: string;
+    snapshotId?: string;
     failedAt: Date;
     error: TaskRunError;
     workerId?: string;
@@ -3470,6 +3452,74 @@ export class RunEngine {
         taskRunId: runId,
       },
     });
+  }
+
+  async #enqueueDelayedRun({ runId }: { runId: string }) {
+    const run = await this.prisma.taskRun.findFirst({
+      where: { id: runId },
+      include: {
+        runtimeEnvironment: {
+          include: {
+            project: true,
+            organization: true,
+          },
+        },
+      },
+    });
+
+    if (!run) {
+      throw new Error(`#enqueueDelayedRun: run not found: ${runId}`);
+    }
+
+    let reserveConcurrency: RunQueueReserveConcurrencyOptions | undefined;
+
+    if (run.parentTaskRunId) {
+      const parentRun = await this.prisma.taskRun.findFirst({
+        where: { id: run.parentTaskRunId },
+      });
+
+      if (parentRun) {
+        reserveConcurrency = {
+          messageId: parentRun.id,
+          recursiveQueue: parentRun.queue === run.queue,
+        };
+      }
+    }
+
+    // Now we need to enqueue the run into the RunQueue
+    const { wasEnqueued, error } = await this.#enqueueRun({
+      run,
+      env: run.runtimeEnvironment,
+      timestamp: run.createdAt.getTime() - run.priorityMs,
+      reserveConcurrency,
+    });
+
+    if (error) {
+      await this.#permanentlyFailRun({ runId, error, failedAt: new Date() });
+    }
+
+    if (wasEnqueued) {
+      await this.prisma.taskRun.update({
+        where: { id: runId },
+        data: {
+          status: "PENDING",
+          queuedAt: new Date(),
+        },
+      });
+
+      if (run.ttl) {
+        const expireAt = parseNaturalLanguageDuration(run.ttl);
+
+        if (expireAt) {
+          await this.worker.enqueue({
+            id: `expireRun:${runId}`,
+            job: "expireRun",
+            payload: { runId },
+            availableAt: expireAt,
+          });
+        }
+      }
+    }
   }
 
   async #queueRunsWaitingForWorker({ backgroundWorkerId }: { backgroundWorkerId: string }) {

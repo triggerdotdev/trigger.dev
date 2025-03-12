@@ -571,7 +571,7 @@ describe("Reserve concurrency", () => {
           prisma
         );
 
-        expect(childRun2.status).toBe("SYSTEM_FAILURE");
+        expect(childRun2.status).toBe("COMPLETED_WITH_ERRORS");
         expect(childRun2.error).toEqual({
           type: "INTERNAL_ERROR",
           code: TaskRunErrorCodes.RECURSIVE_WAIT_DEADLOCK,
