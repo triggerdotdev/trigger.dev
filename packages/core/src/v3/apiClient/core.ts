@@ -5,6 +5,7 @@ import { calculateNextRetryDelay } from "../utils/retries.js";
 import { ApiConnectionError, ApiError, ApiSchemaValidationError } from "./errors.js";
 
 import { Attributes, context, propagation, Span } from "@opentelemetry/api";
+import {suppressTracing} from "@opentelemetry/core"
 import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
 import type { TriggerTracer } from "../tracer.js";
 import { accessoryAttributes } from "../utils/styleAttributes.js";
@@ -216,7 +217,9 @@ async function _doZodFetchWithRetries<TResponseBodySchema extends z.ZodTypeAny>(
   attempt = 1
 ): Promise<ZodFetchResult<z.output<TResponseBodySchema>>> {
   try {
-    const response = await fetch(url, requestInitWithCache(requestInit));
+    const response = await context.with(suppressTracing(context.active()), () =>
+      fetch(url, requestInitWithCache(requestInit))
+    );
 
     const responseHeaders = createResponseHeaders(response.headers);
 
