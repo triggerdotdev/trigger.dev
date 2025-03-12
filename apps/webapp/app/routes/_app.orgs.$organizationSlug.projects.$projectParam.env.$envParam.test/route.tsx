@@ -136,7 +136,7 @@ function TaskSelector({
   return (
     <div
       className={cn(
-        "grid max-h-full  overflow-hidden",
+        "grid h-full max-h-full overflow-hidden",
         hasTaskInEnvironment === false ? "grid-rows-[auto_auto_1fr]" : "grid-rows-[auto_1fr]"
       )}
     >
