@@ -6,7 +6,7 @@ export function DropdownIcon({ className }: { className?: string }) {
         stroke="currentColor"
         strokeWidth="1.5"
         strokeLinecap="round"
-        stroke-linejoin="round"
+        strokeLinejoin="round"
       />
       <path
         d="M7.5 15L12 19L16.5 15"
