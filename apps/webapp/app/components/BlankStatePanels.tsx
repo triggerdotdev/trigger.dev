@@ -293,7 +293,7 @@ export function DeploymentsNoneDev() {
         <EnvironmentSelector
           project={project}
           environment={environment}
-          className="w-auto grow-0"
+          className="w-auto grow-0 rounded-sm bg-grid-bright"
         />
       </div>
     </div>
