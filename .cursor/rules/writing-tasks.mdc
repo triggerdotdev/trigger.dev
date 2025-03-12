@@ -1266,5 +1266,5 @@ When asked about Trigger.dev task implementation, you MUST:
 1. FIRST use code patterns from this guide
 2. NEVER suggest deprecated approaches
 3. VERIFY your response against the patterns shown here
-3. If an answer cannot be found using this guide, look up further information ONLY from this official LLM-friendly [Trigger.dev docs site](mdc:https:/trigger.dev/docs/llms.txt).
+4. If an answer cannot be found using this guide, look up further information ONLY from the official LLM-friendly version of the [Trigger.dev docs site](https://trigger.dev/docs/llms.txt).
 
