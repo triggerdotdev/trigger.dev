@@ -1,4 +1,6 @@
-FROM node:20.11.1-bullseye-slim@sha256:5a5a92b3a8d392691c983719dbdc65d9f30085d6dcd65376e7a32e6fe9bf4cbe AS pruner
+ARG NODE_IMAGE=node:20.11.1-bullseye-slim@sha256:5a5a92b3a8d392691c983719dbdc65d9f30085d6dcd65376e7a32e6fe9bf4cbe
+
+FROM ${NODE_IMAGE} AS pruner
 
 WORKDIR /triggerdotdev
 
@@ -7,7 +9,7 @@ RUN npx -q turbo@1.10.9 prune --scope=webapp --docker
 RUN find . -name "node_modules" -type d -prune -exec rm -rf '{}' +
 
 # Base strategy to have layer caching
-FROM node:20.11.1-bullseye-slim@sha256:5a5a92b3a8d392691c983719dbdc65d9f30085d6dcd65376e7a32e6fe9bf4cbe AS base
+FROM ${NODE_IMAGE} AS base
 RUN apt-get update && apt-get install -y openssl dumb-init
 WORKDIR /triggerdotdev
 COPY --chown=node:node .gitignore .gitignore
@@ -53,7 +55,7 @@ RUN pnpm run generate
 RUN pnpm run build --filter=webapp...
 
 # Runner
-FROM node:20.11.1-bullseye-slim@sha256:5a5a92b3a8d392691c983719dbdc65d9f30085d6dcd65376e7a32e6fe9bf4cbe AS runner
+FROM ${NODE_IMAGE} AS runner
 RUN apt-get update && apt-get install -y openssl netcat-openbsd ca-certificates
 WORKDIR /triggerdotdev
 RUN corepack enable
