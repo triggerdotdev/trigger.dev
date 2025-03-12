@@ -1,8 +1,8 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { FolderIcon } from "@heroicons/react/20/solid";
-import { Form, MetaFunction, useActionData, useNavigation } from "@remix-run/react";
-import { ActionFunction, json } from "@remix-run/server-runtime";
+import { Form, type MetaFunction, useActionData, useNavigation } from "@remix-run/react";
+import { type ActionFunction, json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { InlineCode } from "~/components/code/InlineCode";
@@ -149,7 +149,7 @@ export default function Page() {
             <Fieldset>
               <InputGroup>
                 <Label>Project ref</Label>
-                <ClipboardField value={project.ref} variant={"secondary/small"} />
+                <ClipboardField value={project.externalRef} variant={"secondary/small"} />
                 <Hint>
                   This goes in your{" "}
                   <InlineCode variant="extra-extra-small">trigger.config</InlineCode> file.

@@ -222,7 +222,7 @@ export function SideMenu({
                 name="Project settings"
                 icon={Cog8ToothIcon}
                 activeIconColor="text-teal-500"
-                to={v3ProjectSettingsPath(organization, project)}
+                to={v3ProjectSettingsPath(organization, project, environment)}
                 data-action="project-settings"
               />
               <SideMenuItem

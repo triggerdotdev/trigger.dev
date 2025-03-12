@@ -337,8 +337,12 @@ export function v3BatchRunsPath(
   return `${v3RunsPath(organization, project, environment, { batchId: batch.friendlyId })}`;
 }
 
-export function v3ProjectSettingsPath(organization: OrgForPath, project: ProjectForPath) {
-  return `${v3ProjectPath(organization, project)}/settings`;
+export function v3ProjectSettingsPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath
+) {
+  return `${v3EnvironmentPath(organization, project, environment)}/settings`;
 }
 
 export function v3DeploymentsPath(
