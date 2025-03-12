@@ -31,6 +31,7 @@ import {
   DevDequeueRequestBody,
   DevDequeueResponseBody,
   PromoteDeploymentResponseBody,
+  ListRunResponse,
 } from "@trigger.dev/core/v3";
 import { zodfetch, zodfetchSSE, ApiError } from "@trigger.dev/core/v3/zodfetch";
 import { logger } from "./utilities/logger.js";
@@ -48,6 +49,7 @@ import {
 export class CliApiClient {
   constructor(
     public readonly apiURL: string,
+    // TODO: consider making this required
     public readonly accessToken?: string
   ) {
     this.apiURL = apiURL.replace(/\/$/, "");
