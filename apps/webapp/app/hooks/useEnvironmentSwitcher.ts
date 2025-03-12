@@ -57,6 +57,17 @@ export function routeForEnvironmentSwitch({
       };
       return fullPath(newLocation);
     }
+    case "routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.deployments.$deploymentParam": {
+      const newLocation: Path = {
+        pathname: replaceEnvInPath(location.pathname, environmentSlug).replace(
+          /\/deployments\/.*/,
+          "/deployments"
+        ),
+        search: "",
+        hash: "",
+      };
+      return fullPath(newLocation);
+    }
     default: {
       const newLocation: Path = {
         pathname: replaceEnvInPath(location.pathname, environmentSlug),
