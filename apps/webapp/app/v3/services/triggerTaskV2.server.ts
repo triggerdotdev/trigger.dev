@@ -4,6 +4,9 @@ import {
   packetRequiresOffloading,
   QueueOptions,
   SemanticInternalAttributes,
+  TaskRunError,
+  taskRunErrorEnhancer,
+  taskRunErrorToString,
   TriggerTaskRequestBody,
 } from "@trigger.dev/core/v3";
 import {
@@ -271,7 +274,7 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
             immediate: true,
           },
           async (event, traceContext, traceparent) => {
-            const run = await autoIncrementCounter.incrementInTransaction(
+            const result = await autoIncrementCounter.incrementInTransaction(
               `v3-run:${environment.id}:${taskId}`,
               async (num, tx) => {
                 const lockedToBackgroundWorker = body.options?.lockToVersion
@@ -374,7 +377,13 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
                   this._prisma
                 );
 
-                return { run: taskRun, isCached: false };
+                const error = taskRun.error ? TaskRunError.parse(taskRun.error) : undefined;
+
+                if (error) {
+                  event.failWithError(error);
+                }
+
+                return { run: taskRun, error, isCached: false };
               },
               async (_, tx) => {
                 const counter = await tx.taskRunNumberCounter.findFirst({
@@ -390,7 +399,13 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
               this._prisma
             );
 
-            return run;
+            if (result?.error) {
+              throw new ServiceValidationError(
+                taskRunErrorToString(taskRunErrorEnhancer(result.error))
+              );
+            }
+
+            return result;
           }
         );
       } catch (error) {

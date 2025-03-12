@@ -13,11 +13,9 @@ import {
   parsePacket,
   RetryOptions,
   RunExecutionData,
-  sanitizeError,
-  shouldRetryError,
   StartRunAttemptResult,
   TaskRunError,
-  taskRunErrorEnhancer,
+  TaskRunErrorCodes,
   TaskRunExecution,
   TaskRunExecutionResult,
   TaskRunFailedExecutionResult,
@@ -52,8 +50,9 @@ import { assertNever } from "assert-never";
 import { nanoid } from "nanoid";
 import { EventEmitter } from "node:events";
 import { z } from "zod";
-import { RunQueue } from "../run-queue/index.js";
 import { FairQueueSelectionStrategy } from "../run-queue/fairQueueSelectionStrategy.js";
+import { RunQueue, RunQueueReserveConcurrencyOptions } from "../run-queue/index.js";
+import { RunQueueFullKeyProducer } from "../run-queue/keyProducer.js";
 import { MinimalAuthenticatedEnvironment } from "../shared/index.js";
 import { MAX_TASK_RUN_ATTEMPTS } from "./consts.js";
 import { getRunWithBackgroundWorkerTasks } from "./db/worker.js";
@@ -62,6 +61,7 @@ import { EventBusEvents } from "./eventBus.js";
 import { executionResultFromSnapshot, getLatestExecutionSnapshot } from "./executionSnapshots.js";
 import { RunLocker } from "./locking.js";
 import { getMachinePreset } from "./machinePresets.js";
+import { retryOutcomeFromCompletion } from "./retrying.js";
 import {
   isCheckpointable,
   isDequeueableExecutionStatus,
@@ -70,8 +70,6 @@ import {
   isPendingExecuting,
 } from "./statuses.js";
 import { HeartbeatTimeouts, RunEngineOptions, TriggerParams } from "./types.js";
-import { RunQueueFullKeyProducer } from "../run-queue/keyProducer.js";
-import { retryOutcomeFromCompletion } from "./retrying.js";
 
 const workerCatalog = {
   finishWaitpoint: {
@@ -423,6 +421,8 @@ export class RunEngine {
             completedByTaskRunId: taskRun.id,
           });
 
+          let reserveConcurrencyOptions: RunQueueReserveConcurrencyOptions | undefined;
+
           //triggerAndWait or batchTriggerAndWait
           if (resumeParentOnCompletion && parentTaskRunId) {
             //this will block the parent run from continuing until this waitpoint is completed (and removed)
@@ -438,9 +438,7 @@ export class RunEngine {
               tx: prisma,
             });
 
-            //release the concurrency
-            //if the queue is the same then it's recursive and we need to release that too otherwise we could have a deadlock
-            const parentRun = await prisma.taskRun.findUnique({
+            const parentRun = await prisma.taskRun.findFirst({
               select: {
                 queue: true,
               },
@@ -448,12 +446,13 @@ export class RunEngine {
                 id: parentTaskRunId,
               },
             });
-            const releaseRunConcurrency = parentRun?.queue === taskRun.queue;
-            await this.runQueue.releaseConcurrency(
-              environment.organization.id,
-              parentTaskRunId,
-              releaseRunConcurrency
-            );
+
+            if (parentRun) {
+              reserveConcurrencyOptions = {
+                messageId: parentTaskRunId,
+                recursiveQueue: parentRun?.queue === taskRun.queue,
+              };
+            }
           }
 
           //Make sure lock extension succeeded
@@ -551,14 +550,27 @@ export class RunEngine {
 
           //enqueue the run if it's not delayed
           if (!taskRun.delayUntil) {
-            await this.#enqueueRun({
+            const { wasEnqueued, error } = await this.#enqueueRun({
               run: taskRun,
               env: environment,
               timestamp: Date.now() - taskRun.priorityMs,
               workerId,
               runnerId,
               tx: prisma,
+              reserveConcurrency: reserveConcurrencyOptions,
             });
+
+            if (error) {
+              // Fail the run immediately
+              taskRun = await prisma.taskRun.update({
+                where: { id: taskRun.id },
+                data: {
+                  status: "SYSTEM_FAILURE",
+                  completedAt: new Date(),
+                  error,
+                },
+              });
+            }
           }
         });
 
@@ -3212,6 +3224,7 @@ export class RunEngine {
     completedWaitpoints,
     workerId,
     runnerId,
+    reserveConcurrency,
   }: {
     run: TaskRun;
     env: MinimalAuthenticatedEnvironment;
@@ -3228,10 +3241,11 @@ export class RunEngine {
     }[];
     workerId?: string;
     runnerId?: string;
-  }) {
+    reserveConcurrency?: RunQueueReserveConcurrencyOptions;
+  }): Promise<{ wasEnqueued: boolean; error?: TaskRunError }> {
     const prisma = tx ?? this.prisma;
 
-    await this.runLock.lock([run.id], 5000, async (signal) => {
+    return await this.runLock.lock([run.id], 5000, async (signal) => {
       const newSnapshot = await this.#createExecutionSnapshot(prisma, {
         run: run,
         snapshot: {
@@ -3252,7 +3266,7 @@ export class RunEngine {
         masterQueues.push(run.secondaryMasterQueue);
       }
 
-      await this.runQueue.enqueueMessage({
+      const wasEnqueued = await this.runQueue.enqueueMessage({
         env,
         masterQueues,
         message: {
@@ -3267,7 +3281,21 @@ export class RunEngine {
           timestamp,
           attempt: 0,
         },
+        reserveConcurrency,
       });
+
+      if (!wasEnqueued) {
+        return {
+          wasEnqueued: false,
+          error: {
+            type: "INTERNAL_ERROR",
+            code: TaskRunErrorCodes.RECURSIVE_WAIT_DEADLOCK,
+            message: `This run will never execute because it was triggered recursively and the task has no remaining concurrency available`,
+          } satisfies TaskRunError,
+        };
+      }
+
+      return { wasEnqueued };
     });
   }
 
