@@ -24,6 +24,7 @@ import SegmentedControl from "~/components/primitives/SegmentedControl";
 import { Select, SelectItem } from "~/components/primitives/Select";
 import { InfoIconTooltip } from "~/components/primitives/Tooltip";
 import { env } from "~/env.server";
+import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { redirectWithSuccessMessage } from "~/models/message.server";
@@ -31,7 +32,11 @@ import { findProjectBySlug } from "~/models/project.server";
 import { NewAlertChannelPresenter } from "~/presenters/v3/NewAlertChannelPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { ProjectParamSchema, v3ProjectAlertsPath } from "~/utils/pathBuilder";
+import {
+  EnvironmentParamSchema,
+  ProjectParamSchema,
+  v3ProjectAlertsPath,
+} from "~/utils/pathBuilder";
 import {
   type CreateAlertChannelOptions,
   CreateAlertChannelService,
@@ -163,7 +168,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
 export const action = async ({ request, params }: ActionFunctionArgs) => {
   const userId = await requireUserId(request);
-  const { organizationSlug, projectParam } = ProjectParamSchema.parse(params);
+  const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
 
   if (request.method.toUpperCase() !== "POST") {
     return { status: 405, body: "Method Not Allowed" };
@@ -197,7 +202,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   }
 
   return redirectWithSuccessMessage(
-    v3ProjectAlertsPath({ slug: organizationSlug }, { slug: projectParam }),
+    v3ProjectAlertsPath({ slug: organizationSlug }, { slug: projectParam }, { slug: envParam }),
     request,
     `Created ${alertChannel.name} alert`
   );
@@ -211,6 +216,7 @@ export default function Page() {
   const navigate = useNavigate();
   const organization = useOrganization();
   const project = useProject();
+  const environment = useEnvironment();
   const [currentAlertChannel, setCurrentAlertChannel] = useState<string | null>(option ?? "EMAIL");
 
   const [selectedSlackChannelValue, setSelectedSlackChannelValue] = useState<string | undefined>();
@@ -251,7 +257,7 @@ export default function Page() {
       open={isOpen}
       onOpenChange={(o) => {
         if (!o) {
-          navigate(v3ProjectAlertsPath(organization, project));
+          navigate(v3ProjectAlertsPath(organization, project, environment));
         }
       }}
     >
@@ -436,7 +442,7 @@ export default function Page() {
               }
               cancelButton={
                 <LinkButton
-                  to={v3ProjectAlertsPath(organization, project)}
+                  to={v3ProjectAlertsPath(organization, project, environment)}
                   variant="tertiary/medium"
                 >
                   Cancel

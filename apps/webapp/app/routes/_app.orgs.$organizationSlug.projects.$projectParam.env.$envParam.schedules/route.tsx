@@ -68,6 +68,7 @@ import {
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
+import { SchedulesNoneAttached, SchedulesNoPossibleTaskPanel } from "~/components/BlankStatePanels";
 
 export const meta: MetaFunction = () => {
   return [
@@ -208,9 +209,13 @@ export default function Page() {
           <ResizablePanel id="schedules-main" min={"100px"}>
             <div className="grid max-h-full min-h-full grid-rows-[auto_1fr_auto]">
               {possibleTasks.length === 0 ? (
-                <CreateScheduledTaskInstructions />
+                <MainCenteredContainer className="max-w-md">
+                  <SchedulesNoPossibleTaskPanel />
+                </MainCenteredContainer>
               ) : schedules.length === 0 && !hasFilters ? (
-                <AttachYourFirstScheduleInstructions />
+                <MainCenteredContainer className="max-w-md">
+                  <SchedulesNoneAttached />
+                </MainCenteredContainer>
               ) : (
                 <>
                   <div className="flex items-center justify-between gap-x-2 p-2">
@@ -315,72 +320,6 @@ export default function Page() {
         </ResizablePanelGroup>
       </PageBody>
     </PageContainer>
-  );
-}
-
-function CreateScheduledTaskInstructions() {
-  return (
-    <MainCenteredContainer className="max-w-md">
-      <InfoPanel
-        title="Create your first scheduled task"
-        icon={ClockIcon}
-        iconClassName="text-sun-500"
-        panelClassName="max-w-full"
-      >
-        <Paragraph spacing variant="small">
-          You have no scheduled tasks in your project. Before you can schedule a task you need to
-          create a <InlineCode>schedules.task</InlineCode>.
-        </Paragraph>
-        <LinkButton
-          to={docsPath("v3/tasks-scheduled")}
-          variant="docs/medium"
-          LeadingIcon={BookOpenIcon}
-        >
-          View the docs
-        </LinkButton>
-      </InfoPanel>
-    </MainCenteredContainer>
-  );
-}
-
-function AttachYourFirstScheduleInstructions() {
-  const organization = useOrganization();
-  const project = useProject();
-  const environment = useEnvironment();
-  const location = useLocation();
-
-  return (
-    <MainCenteredContainer className="max-w-md">
-      <InfoPanel
-        title="Attach your first schedule"
-        icon={ClockIcon}
-        iconClassName="text-sun-500"
-        panelClassName="max-w-full"
-      >
-        <Paragraph spacing variant="small">
-          Scheduled tasks will only run automatically if you connect a schedule to them, you can do
-          this in the dashboard or using the SDK.
-        </Paragraph>
-        <div className="flex gap-2">
-          <LinkButton
-            to={`${v3NewSchedulePath(organization, project, environment)}${location.search}`}
-            variant="primary/small"
-            LeadingIcon={RectangleGroupIcon}
-            className="inline-flex"
-          >
-            Use the dashboard
-          </LinkButton>
-          <LinkButton
-            to={docsPath("v3/tasks-scheduled")}
-            variant="primary/small"
-            LeadingIcon={BookOpenIcon}
-            className="inline-flex"
-          >
-            Use the SDK
-          </LinkButton>
-        </div>
-      </InfoPanel>
-    </MainCenteredContainer>
   );
 }
 

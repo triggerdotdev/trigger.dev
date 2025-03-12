@@ -1,7 +1,6 @@
 import {
   BeakerIcon,
   BookOpenIcon,
-  ChatBubbleLeftRightIcon,
   ChevronDownIcon,
   ChevronUpIcon,
   LightBulbIcon,
@@ -21,24 +20,21 @@ import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
-import { Feedback } from "~/components/Feedback";
+import { HasNoTasksDeployed, HasNoTasksDev } from "~/components/BlankStatePanels";
 import {
-  InitCommandV3,
   PackageManagerProvider,
   TriggerDevStepV3,
   TriggerLoginStepV3,
 } from "~/components/SetupCommands";
 import { StepContentContainer } from "~/components/StepContentContainer";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
-import { InlineCode } from "~/components/code/InlineCode";
-import { EnvironmentLabels } from "~/components/environments/EnvironmentLabel";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { AnimatingArrow } from "~/components/primitives/AnimatingArrow";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { formatDateTime } from "~/components/primitives/DateTime";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "~/components/primitives/Dialog";
-import { Header1, Header2, Header3 } from "~/components/primitives/Headers";
+import { Header2, Header3 } from "~/components/primitives/Headers";
 import { Input } from "~/components/primitives/Input";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -90,7 +86,6 @@ import {
   docsPath,
   EnvironmentParamSchema,
   inviteTeamMemberPath,
-  ProjectParamSchema,
   v3RunsPath,
   v3TasksStreamingPath,
   v3TestPath,
@@ -401,9 +396,13 @@ export default function Page() {
                     </Table>
                   </div>
                 </div>
-              ) : (
+              ) : environment.type === "DEVELOPMENT" ? (
                 <MainCenteredContainer className="max-w-prose">
-                  <CreateTaskInstructions />
+                  <HasNoTasksDev />
+                </MainCenteredContainer>
+              ) : (
+                <MainCenteredContainer className="max-w-md">
+                  <HasNoTasksDeployed environment={environment} />
                 </MainCenteredContainer>
               )}
             </div>
@@ -425,45 +424,6 @@ export default function Page() {
         </ResizablePanelGroup>
       </PageBody>
     </PageContainer>
-  );
-}
-
-function CreateTaskInstructions() {
-  return (
-    <PackageManagerProvider>
-      <div>
-        <div className="mb-6 flex items-center justify-between border-b">
-          <Header1 spacing>Get setup in 3 minutes</Header1>
-          <div className="flex items-center gap-2">
-            <Feedback
-              button={
-                <Button variant="minimal/small" LeadingIcon={ChatBubbleLeftRightIcon}>
-                  I'm stuck!
-                </Button>
-              }
-              defaultValue="help"
-            />
-          </div>
-        </div>
-        <StepNumber stepNumber="1" title="Run the CLI 'init' command in an existing project" />
-        <StepContentContainer>
-          <InitCommandV3 />
-          <Paragraph spacing>
-            You'll notice a new folder in your project called{" "}
-            <InlineCode variant="small">trigger</InlineCode>. We've added a very simple example task
-            in here to help you get started.
-          </Paragraph>
-        </StepContentContainer>
-        <StepNumber stepNumber="2" title="Run the CLI 'dev' command" />
-        <StepContentContainer>
-          <TriggerDevStepV3 />
-        </StepContentContainer>
-        <StepNumber stepNumber="3" title="Waiting for tasks" displaySpinner />
-        <StepContentContainer>
-          <Paragraph>This page will automatically refresh.</Paragraph>
-        </StepContentContainer>
-      </div>
-    </PackageManagerProvider>
   );
 }
 

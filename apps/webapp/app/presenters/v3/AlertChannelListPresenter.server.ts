@@ -1,6 +1,6 @@
 import { logger } from "~/services/logger.server";
 import { BasePresenter } from "./basePresenter.server";
-import { type ProjectAlertChannel } from "@trigger.dev/database";
+import { RuntimeEnvironmentType, type ProjectAlertChannel } from "@trigger.dev/database";
 import { decryptSecret } from "~/services/secrets/secretStore.server";
 import { env } from "~/env.server";
 import {
@@ -18,7 +18,7 @@ export type AlertChannelListPresenterAlertProperties = NonNullable<
 >;
 
 export class AlertChannelListPresenter extends BasePresenter {
-  public async call(projectId: string) {
+  public async call(projectId: string, environmentType?: RuntimeEnvironmentType) {
     logger.debug("AlertChannelListPresenter", { projectId });
 
     const alertChannels = await this._prisma.projectAlertChannel.findMany({
@@ -45,9 +45,14 @@ export class AlertChannelListPresenter extends BasePresenter {
 
     const limit = await getLimit(organization.organizationId, "alerts", 100_000_000);
 
+    const relevantChannels = alertChannels.filter((channel) => {
+      if (!environmentType) return true;
+      return channel.environmentTypes.includes(environmentType);
+    });
+
     return {
       alertChannels: await Promise.all(
-        alertChannels.map(async (alertChannel) => ({
+        relevantChannels.map(async (alertChannel) => ({
           ...alertChannel,
           properties: await this.#presentProperties(alertChannel),
         }))

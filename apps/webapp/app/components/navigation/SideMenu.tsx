@@ -16,8 +16,8 @@ import {
   ShieldCheckIcon,
   Squares2X2Icon,
 } from "@heroicons/react/20/solid";
-import { UserGroupIcon, UserPlusIcon } from "@heroicons/react/24/solid";
-import { useMatches, useNavigation } from "@remix-run/react";
+import { UserGroupIcon } from "@heroicons/react/24/solid";
+import { useNavigation } from "@remix-run/react";
 import { Fragment, type ReactNode, useEffect, useRef, useState } from "react";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
@@ -30,11 +30,9 @@ import { type FeedbackType } from "~/routes/resources.feedback";
 import { cn } from "~/utils/cn";
 import {
   accountPath,
-  inviteTeamMemberPath,
   logoutPath,
   newOrganizationPath,
   newProjectPath,
-  organizationPath,
   organizationSettingsPath,
   organizationTeamPath,
   personalAccessTokensPath,
@@ -69,12 +67,7 @@ import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
 import { type MatchedEnvironment } from "~/hooks/useEnvironment";
-import { Paragraph } from "../primitives/Paragraph";
-import {
-  environmentFullTitle,
-  EnvironmentIcon,
-  FullEnvironmentCombo,
-} from "../environments/EnvironmentLabel";
+import { FullEnvironmentCombo } from "../environments/EnvironmentLabel";
 import { SideMenuSection } from "./SideMenuSection";
 import { useEnvironmentSwitcher } from "~/hooks/useEnvironmentSwitcher";
 

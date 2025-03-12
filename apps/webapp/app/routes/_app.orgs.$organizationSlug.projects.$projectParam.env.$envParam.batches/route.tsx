@@ -8,10 +8,11 @@ import { type MetaFunction, useLocation, useNavigation } from "@remix-run/react"
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { formatDuration } from "@trigger.dev/core/v3/utils/durations";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { BatchesNone } from "~/components/BlankStatePanels";
 import { ListPagination } from "~/components/ListPagination";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
-import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
@@ -100,7 +101,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
 export default function Page() {
   const { batches, hasFilters, filters, pagination } = useTypedLoaderData<typeof loader>();
-  const project = useProject();
 
   return (
     <PageContainer>
@@ -108,7 +108,6 @@ export default function Page() {
         <PageTitle title="Batches" />
         <PageAccessories>
           <AdminDebugTooltip />
-
           <LinkButton
             variant={"docs/small"}
             LeadingIcon={BookOpenIcon}
@@ -119,21 +118,27 @@ export default function Page() {
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
-        <div className="grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden">
-          <div className="flex items-start justify-between gap-x-2 p-2">
-            <BatchFilters possibleEnvironments={project.environments} hasFilters={hasFilters} />
-            <div className="flex items-center justify-end gap-x-2">
-              <ListPagination list={{ pagination }} />
+        {!hasFilters && batches.length === 0 ? (
+          <MainCenteredContainer className="max-w-md">
+            <BatchesNone />
+          </MainCenteredContainer>
+        ) : (
+          <div className="grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden">
+            <div className="flex items-start justify-between gap-x-2 p-2">
+              <BatchFilters hasFilters={hasFilters} />
+              <div className="flex items-center justify-end gap-x-2">
+                <ListPagination list={{ pagination }} />
+              </div>
             </div>
-          </div>
 
-          <BatchesTable
-            batches={batches}
-            filters={filters}
-            hasFilters={hasFilters}
-            pagination={pagination}
-          />
-        </div>
+            <BatchesTable
+              batches={batches}
+              filters={filters}
+              hasFilters={hasFilters}
+              pagination={pagination}
+            />
+          </div>
+        )}
       </PageBody>
     </PageContainer>
   );

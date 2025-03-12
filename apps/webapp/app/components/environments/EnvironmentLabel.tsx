@@ -166,7 +166,21 @@ export function FullEnvironmentCombo({
   return (
     <span className={cn("flex items-center gap-1 text-sm text-text-bright", className)}>
       <EnvironmentIcon environment={environment} className="size-4" />
-      <span>{environmentFullTitle(environment)}</span>
+      <FullEnvironmentLabel environment={environment} />
+    </span>
+  );
+}
+
+export function FullEnvironmentLabel({
+  environment,
+  className,
+}: {
+  environment: Environment;
+  className?: string;
+}) {
+  return (
+    <span className={cn(environmentTextClassName(environment), className)}>
+      {environmentFullTitle(environment)}
     </span>
   );
 }

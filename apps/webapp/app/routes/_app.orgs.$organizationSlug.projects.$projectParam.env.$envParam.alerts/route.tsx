@@ -48,6 +48,7 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
+import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
   AlertChannelListPresenter,
   type AlertChannelListPresenterRecord,
@@ -82,8 +83,16 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     });
   }
 
+  const environment = await findEnvironmentBySlug(project.id, envParam, userId);
+  if (!environment) {
+    throw new Response(undefined, {
+      status: 404,
+      statusText: "Environment not found",
+    });
+  }
+
   const presenter = new AlertChannelListPresenter();
-  const data = await presenter.call(project.id);
+  const data = await presenter.call(project.id, environment.type);
 
   return typedjson(data);
 };
