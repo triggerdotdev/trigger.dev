@@ -1,4 +1,4 @@
-import { useMatch, useMatches, type Location } from "@remix-run/react";
+import { Path, useMatch, useMatches, type Location } from "@remix-run/react";
 import { type MinimumEnvironment } from "~/presenters/SelectBestEnvironmentPresenter.server";
 import { useEnvironment } from "./useEnvironment";
 import { useEnvironments } from "./useEnvironments";
@@ -40,24 +40,41 @@ export function routeForEnvironmentSwitch({
   matchId,
   environmentSlug,
 }: {
-  location: Location;
+  location: Path;
   matchId: string;
   environmentSlug: string;
 }) {
   switch (matchId) {
+    // Run page
     case "routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.$runParam": {
+      const newLocation: Path = {
+        pathname: replaceEnvInPath(location.pathname, environmentSlug).replace(
+          /\/runs\/.*/,
+          "/runs"
+        ),
+        search: "",
+        hash: "",
+      };
+      return fullPath(newLocation);
     }
     default: {
+      const newLocation: Path = {
+        pathname: replaceEnvInPath(location.pathname, environmentSlug),
+        search: location.search,
+        hash: location.hash,
+      };
+      return fullPath(newLocation);
     }
   }
+}
 
-  //replace the /env/<slug>/ in the path so it's /env/<environmentSlug>
-  const newPath = location.pathname.replace(/env\/([a-z0-9-]+)/, `env/${environmentSlug}`);
+/**
+ * Replace the /env/<slug>/ in the path so it's /env/<environmentSlug>
+ */
+function replaceEnvInPath(path: string, environmentSlug: string) {
+  return path.replace(/env\/([a-z0-9-]+)/, `env/${environmentSlug}`);
+}
 
-  console.log({
-    oldPath: location.pathname,
-    newPath,
-  });
-
-  return `${newPath}${location.search}${location.hash}`;
+function fullPath(location: Path) {
+  return `${location.pathname}${location.search}${location.hash}`;
 }
