@@ -3474,6 +3474,7 @@ export class RunEngine {
       env: run.runtimeEnvironment,
       timestamp: run.createdAt.getTime() - run.priorityMs,
       reserveConcurrency,
+      batchId: run.batchId ?? undefined,
     });
 
     if (error) {
