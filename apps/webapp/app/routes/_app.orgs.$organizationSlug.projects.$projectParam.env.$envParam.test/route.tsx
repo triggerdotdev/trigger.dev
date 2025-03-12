@@ -161,10 +161,9 @@ function TaskSelector({
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHeaderCell className="pl-3" colSpan={2}>
-              Task
-            </TableHeaderCell>
-            <TableHeaderCell className="px-2">File path</TableHeaderCell>
+            <TableHeaderCell />
+            <TableHeaderCell className="pl-0">Task ID</TableHeaderCell>
+            <TableHeaderCell className="px-2">Task</TableHeaderCell>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -198,7 +197,7 @@ function TaskRow({ task }: { task: TaskListItem }) {
     >
       <TableCell
         to={path}
-        actionClassName="pl-2.5 pr-2 py-1"
+        actionClassName="pl-2.5 pr-1.5 py-1"
         className={cn((isActive || isPending) && "group-hover/table-row:bg-indigo-500/5")}
       >
         <RadioButtonCircle checked={isActive || isPending} />
@@ -206,21 +205,14 @@ function TaskRow({ task }: { task: TaskListItem }) {
       <TableCell
         to={path}
         isTabbableCell
-        actionClassName="pl-1 pr-2 py-1.5"
+        actionClassName="pl-0 pr-2"
         className={cn((isActive || isPending) && "group-hover/table-row:bg-indigo-500/5")}
       >
-        <div className="flex flex-col gap-0.5">
-          <TaskFunctionName
-            variant="extra-small"
-            functionName={task.exportName}
-            className="inline-flex w-fit"
-          />
-          <div className="flex items-start gap-1">
-            <TaskTriggerSourceIcon source={task.triggerSource} className="size-3.5" />
-            <Paragraph variant="extra-small" className="text-text-dimmed">
-              {task.taskIdentifier}
-            </Paragraph>
-          </div>
+        <div className="flex items-center gap-1.5">
+          <TaskTriggerSourceIcon source={task.triggerSource} />
+          <Paragraph variant="extra-small" className="text-text-dimmed">
+            {task.taskIdentifier}
+          </Paragraph>
         </div>
       </TableCell>
 
@@ -229,7 +221,11 @@ function TaskRow({ task }: { task: TaskListItem }) {
         actionClassName="px-2 py-1"
         className={cn((isActive || isPending) && "group-hover/table-row:bg-indigo-500/5")}
       >
-        {task.filePath}
+        <TaskFunctionName
+          variant="extra-extra-small"
+          functionName={task.exportName}
+          className="inline-flex w-fit"
+        />
       </TableCell>
     </TableRow>
   );
