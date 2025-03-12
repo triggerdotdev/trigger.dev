@@ -138,7 +138,7 @@
       "type": "node-terminal",
       "request": "launch",
       "name": "Debug RunEngine tests",
-      "command": "pnpm run test ./src/engine/tests/attemptFailures.test.ts -t 'OOM fails after retrying on larger machine'",
+      "command": "pnpm run test ./src/engine/tests/delays.test.ts -t 'Delayed run with a ttl'",
       "cwd": "${workspaceFolder}/internal-packages/run-engine",
       "sourceMaps": true
     },
