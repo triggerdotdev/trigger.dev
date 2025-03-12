@@ -1,0 +1,7 @@
+apps/docker-provider/
+apps/kubernetes-provider/
+apps/proxy/
+apps/coordinator/
+packages/rsc/
+.changeset
+.zed

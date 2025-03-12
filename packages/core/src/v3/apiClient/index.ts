@@ -404,6 +404,18 @@ export class ApiClient {
     );
   }
 
+  listRunEvents(runId: string, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      z.any(), // TODO: define a proper schema for this
+      `${this.baseUrl}/api/v1/runs/${runId}/events`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
   addTags(runId: string, body: AddTagsRequestBody, requestOptions?: ZodFetchOptions) {
     return zodfetch(
       z.object({ message: z.string() }),
@@ -801,7 +813,7 @@ export class ApiClient {
       "Content-Type": "application/json",
       Authorization: `Bearer ${this.accessToken}`,
       "trigger-version": VERSION,
-      "x-trigger-engine-version": taskContext.worker?.engine ?? "V1",
+      "x-trigger-engine-version": taskContext.worker?.engine ?? "V2",
       ...Object.entries(additionalHeaders ?? {}).reduce(
         (acc, [key, value]) => {
           if (value !== undefined) {
