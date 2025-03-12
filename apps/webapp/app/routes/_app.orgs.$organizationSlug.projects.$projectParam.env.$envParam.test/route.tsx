@@ -1,21 +1,10 @@
 import { BookOpenIcon, MagnifyingGlassIcon } from "@heroicons/react/20/solid";
-import {
-  Link,
-  MetaFunction,
-  Outlet,
-  useLocation,
-  useNavigation,
-  useParams,
-} from "@remix-run/react";
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { type MetaFunction, Outlet, useNavigation, useParams } from "@remix-run/react";
+import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { z } from "zod";
-import {
-  environmentBorderClassName,
-  environmentTextClassName,
-  environmentTitle,
-} from "~/components/environments/EnvironmentLabel";
-import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { TestHasNoTasks } from "~/components/BlankStatePanels";
+import { environmentTitle } from "~/components/environments/EnvironmentLabel";
+import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { Header2 } from "~/components/primitives/Headers";
@@ -28,7 +17,6 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "~/components/primitives/Resizable";
-import { Spinner } from "~/components/primitives/Spinner";
 import {
   Table,
   TableBlankRow,
@@ -40,19 +28,17 @@ import {
 } from "~/components/primitives/Table";
 import { TaskFunctionName } from "~/components/runs/v3/TaskPath";
 import { TaskTriggerSourceIcon } from "~/components/runs/v3/TaskTriggerSource";
+import { useEnvironment } from "~/hooks/useEnvironment";
 import { useFilterTasks } from "~/hooks/useFilterTasks";
 import { useLinkStatus } from "~/hooks/useLinkStatus";
-import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import {
-  SelectedEnvironment,
-  TaskListItem,
-  TestPresenter,
-} from "~/presenters/v3/TestPresenter.server";
+import { findProjectBySlug } from "~/models/project.server";
+import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
+import { type TaskListItem, TestPresenter } from "~/presenters/v3/TestPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { docsPath, ProjectParamSchema, v3TestPath, v3TestTaskPath } from "~/utils/pathBuilder";
+import { docsPath, EnvironmentParamSchema, v3TestTaskPath } from "~/utils/pathBuilder";
 
 export const meta: MetaFunction = () => {
   return [
@@ -62,44 +48,45 @@ export const meta: MetaFunction = () => {
   ];
 };
 
-export const TestSearchParams = z.object({
-  environment: z.string().optional(),
-});
-
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
-  const { projectParam, organizationSlug } = ProjectParamSchema.parse(params);
+  const { projectParam, organizationSlug, envParam } = EnvironmentParamSchema.parse(params);
+
+  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
+  if (!project) {
+    throw new Response(undefined, {
+      status: 404,
+      statusText: "Project not found",
+    });
+  }
+
+  const environment = await findEnvironmentBySlug(project.id, envParam, userId);
+  if (!environment) {
+    throw new Response(undefined, {
+      status: 404,
+      statusText: "Environment not found",
+    });
+  }
 
   const presenter = new TestPresenter();
   const result = await presenter.call({
     userId,
-    projectSlug: projectParam,
-    url: request.url,
+    projectId: project.id,
+    environmentId: environment.id,
+    environmentType: environment.type,
   });
 
   return typedjson(result);
 };
 
 export default function Page() {
-  const { hasSelectedEnvironment, environments, ...rest } = useTypedLoaderData<typeof loader>();
+  const { tasks } = useTypedLoaderData<typeof loader>();
   const { taskParam } = useParams();
-  const organization = useOrganization();
-  const project = useProject();
-
-  //get optimistic location for the segment control
-  const optimisticLocation = useOptimisticLocation();
-  const environment = new URLSearchParams(optimisticLocation.search).get("environment") ?? "dev";
 
   const navigation = useNavigation();
 
-  const location = useLocation();
-  const currentEnvironment = new URLSearchParams(location.search).get("environment");
-  const pendingEnvironment = new URLSearchParams(navigation.location?.search).get("environment");
-
   const isLoadingTasks =
-    navigation.state === "loading" &&
-    navigation.location.pathname === location.pathname &&
-    currentEnvironment !== pendingEnvironment;
+    navigation.state === "loading" && navigation.location.pathname === location.pathname;
 
   return (
     <PageContainer>
@@ -112,73 +99,30 @@ export default function Page() {
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
-        <div className={cn("grid h-full max-h-full grid-cols-1")}>
-          <ResizablePanelGroup orientation="horizontal" className="h-full max-h-full">
-            <ResizablePanel id="test-selector" min="225px" default="30%">
-              <div className="grid h-full max-h-full grid-rows-[5.625rem_1fr] overflow-hidden">
-                <div className="mx-3 flex flex-col gap-1 border-b border-grid-dimmed">
-                  <div className="flex h-10 items-center">
-                    <Header2>Select an environment</Header2>
-                  </div>
-                  <div className="flex items-center justify-stretch gap-1">
-                    {environments.map((env) => {
-                      const isSelected = env.slug === environment;
-                      return (
-                        <Link
-                          className={cn(
-                            "flex h-8 flex-1 items-center justify-center rounded-sm border text-xs uppercase tracking-wider",
-                            isSelected
-                              ? cn(environmentBorderClassName(env), environmentTextClassName(env))
-                              : "border-grid-bright text-text-dimmed transition hover:border-charcoal-600 hover:text-text-bright"
-                          )}
-                          key={env.id}
-                          to={
-                            taskParam
-                              ? v3TestTaskPath(
-                                  organization,
-                                  project,
-                                  { taskIdentifier: taskParam },
-                                  env.slug
-                                )
-                              : v3TestPath(organization, project, env.slug)
-                          }
-                        >
-                          <span>{environmentTitle(env)}</span>
-                        </Link>
-                      );
-                    })}
-                  </div>
-                </div>
-                {isLoadingTasks ? (
-                  <div className="flex h-full w-full items-center justify-center">
-                    <Spinner />
-                  </div>
-                ) : hasSelectedEnvironment ? (
+        {tasks.length === 0 ? (
+          <MainCenteredContainer className="max-w-md">
+            <TestHasNoTasks />
+          </MainCenteredContainer>
+        ) : (
+          <div className={cn("grid h-full max-h-full grid-cols-1")}>
+            <ResizablePanelGroup orientation="horizontal" className="h-full max-h-full">
+              <ResizablePanel id="test-selector" min="225px" default="30%">
+                <div className="grid h-full max-h-full grid-rows-1 overflow-hidden">
                   <div className="grid grid-rows-[auto_1fr] overflow-hidden">
                     <div className="flex items-end px-3 pt-2">
                       <Header2>Select a task</Header2>
                     </div>
-                    {!rest.tasks?.length ? (
-                      <NoTaskInstructions environment={rest.selectedEnvironment} />
-                    ) : (
-                      <TaskSelector
-                        tasks={rest.tasks}
-                        environmentSlug={rest.selectedEnvironment.slug}
-                        activeTaskIdentifier={taskParam}
-                      />
-                    )}
+                    <TaskSelector tasks={tasks} activeTaskIdentifier={taskParam} />
                   </div>
-                ) : (
-                  <></>
-                )}
-              </div>
-            </ResizablePanel>
-            <ResizableHandle id="test-handle" />
-            <ResizablePanel id="test-main" min="225px">
-              <Outlet key={taskParam} />
-            </ResizablePanel>
-          </ResizablePanelGroup>
-        </div>
+                </div>
+              </ResizablePanel>
+              <ResizableHandle id="test-handle" />
+              <ResizablePanel id="test-main" min="225px">
+                <Outlet key={taskParam} />
+              </ResizablePanel>
+            </ResizablePanelGroup>
+          </div>
+        )}
       </PageBody>
     </PageContainer>
   );
@@ -186,11 +130,9 @@ export default function Page() {
 
 function TaskSelector({
   tasks,
-  environmentSlug,
   activeTaskIdentifier,
 }: {
   tasks: TaskListItem[];
-  environmentSlug: string;
   activeTaskIdentifier?: string;
 }) {
   const { filterText, setFilterText, filteredItems } = useFilterTasks<TaskListItem>({ tasks });
@@ -218,8 +160,8 @@ function TaskSelector({
       </div>
       {hasTaskInEnvironment === false && (
         <div className="px-2 pb-2">
-          <Callout variant="warning">
-            There is no task {activeTaskIdentifier} in the selected environment.
+          <Callout variant="warning" className="text-sm text-yellow-300">
+            There is no "{activeTaskIdentifier}" task in the selected environment.
           </Callout>
         </div>
       )}
@@ -234,9 +176,7 @@ function TaskSelector({
         </TableHeader>
         <TableBody>
           {filteredItems.length > 0 ? (
-            filteredItems.map((t) => (
-              <TaskRow key={t.friendlyId} task={t} environmentSlug={environmentSlug} />
-            ))
+            filteredItems.map((t) => <TaskRow key={t.friendlyId} task={t} />)
           ) : (
             <TableBlankRow colSpan={3}>
               <Paragraph spacing variant="small">
@@ -250,21 +190,12 @@ function TaskSelector({
   );
 }
 
-function NoTaskInstructions({ environment }: { environment?: SelectedEnvironment }) {
-  return (
-    <div className="px-3 py-3">
-      <Callout variant="info">
-        You have no tasks {environment ? `in ${environmentTitle(environment)}` : ""}.
-      </Callout>
-    </div>
-  );
-}
-
-function TaskRow({ task, environmentSlug }: { task: TaskListItem; environmentSlug: string }) {
+function TaskRow({ task }: { task: TaskListItem }) {
   const organization = useOrganization();
   const project = useProject();
+  const environment = useEnvironment();
 
-  const path = v3TestTaskPath(organization, project, task, environmentSlug);
+  const path = v3TestTaskPath(organization, project, environment, task);
   const { isActive, isPending } = useLinkStatus(path);
 
   return (

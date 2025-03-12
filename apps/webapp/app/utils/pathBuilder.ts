@@ -28,7 +28,7 @@ export const EnvironmentParamSchema = ProjectParamSchema.extend({
 });
 
 //v3
-export const v3TaskParamsSchema = ProjectParamSchema.extend({
+export const v3TaskParamsSchema = EnvironmentParamSchema.extend({
   taskParam: z.string(),
 });
 

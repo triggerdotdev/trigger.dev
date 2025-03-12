@@ -2,12 +2,12 @@ import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { BeakerIcon } from "@heroicons/react/20/solid";
 import { Form, useActionData, useSubmit } from "@remix-run/react";
-import { ActionFunction, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
-import { TaskRunStatus } from "@trigger.dev/database";
+import { type ActionFunction, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
+import { type TaskRunStatus } from "@trigger.dev/database";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
+import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { JSONEditor } from "~/components/code/JSONEditor";
-import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
+import { FullEnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { Button } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { DateField } from "~/components/primitives/DateField";
@@ -31,16 +31,19 @@ import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import { TextLink } from "~/components/primitives/TextLink";
 import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
 import { TimezoneList } from "~/components/scheduled/timezones";
+import { useEnvironment } from "~/hooks/useEnvironment";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import {
   redirectBackWithErrorMessage,
   redirectWithErrorMessage,
   redirectWithSuccessMessage,
 } from "~/models/message.server";
+import { findProjectBySlug } from "~/models/project.server";
+import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
-  ScheduledRun,
-  StandardRun,
-  TestTask,
+  type ScheduledRun,
+  type StandardRun,
+  type TestTask,
   TestTaskPresenter,
 } from "~/presenters/v3/TestTaskPresenter.server";
 import { logger } from "~/services/logger.server";
@@ -53,22 +56,31 @@ import { TestTaskData } from "~/v3/testTask";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
-  const { projectParam, organizationSlug, taskParam } = v3TaskParamsSchema.parse(params);
+  const { projectParam, organizationSlug, envParam, taskParam } = v3TaskParamsSchema.parse(params);
 
-  //need an environment
-  const searchParams = new URL(request.url).searchParams;
-  const environment = searchParams.get("environment");
+  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
+  if (!project) {
+    throw new Response(undefined, {
+      status: 404,
+      statusText: "Project not found",
+    });
+  }
+
+  const environment = await findEnvironmentBySlug(project.id, envParam, userId);
   if (!environment) {
-    return redirect(v3TestPath({ slug: organizationSlug }, { slug: projectParam }));
+    throw new Response(undefined, {
+      status: 404,
+      statusText: "Environment not found",
+    });
   }
 
   const presenter = new TestTaskPresenter();
   try {
     const result = await presenter.call({
       userId,
-      projectSlug: projectParam,
+      projectId: project.id,
       taskIdentifier: taskParam,
-      environmentSlug: environment,
+      environment: environment,
     });
 
     return typedjson(result);
@@ -83,7 +95,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
 export const action: ActionFunction = async ({ request, params }) => {
   const userId = await requireUserId(request);
-  const { organizationSlug, projectParam, taskParam } = v3TaskParamsSchema.parse(params);
+  const { organizationSlug, projectParam, envParam, taskParam } = v3TaskParamsSchema.parse(params);
 
   const formData = await request.formData();
   const submission = parse(formData, { schema: TestTaskData });
@@ -107,6 +119,7 @@ export const action: ActionFunction = async ({ request, params }) => {
       v3RunSpanPath(
         { slug: organizationSlug },
         { slug: projectParam },
+        { slug: envParam },
         { friendlyId: run.friendlyId },
         { spanId: run.spanId }
       ),
@@ -156,6 +169,7 @@ export default function Page() {
 const startingJson = "{\n\n}";
 
 function StandardTaskForm({ task, runs }: { task: TestTask["task"]; runs: StandardRun[] }) {
+  const environment = useEnvironment();
   const { value, replace } = useSearchParams();
   const tab = value("tab");
 
@@ -195,7 +209,7 @@ function StandardTaskForm({ task, runs }: { task: TestTask["task"]; runs: Standa
           payload: currentPayloadJson.current,
           metadata: currentMetadataJson.current,
           taskIdentifier: task.taskIdentifier,
-          environmentId: task.environment.id,
+          environmentId: environment.id,
         },
         {
           action: "",
@@ -312,7 +326,7 @@ function StandardTaskForm({ task, runs }: { task: TestTask["task"]; runs: Standa
           <Paragraph variant="small" className="whitespace-nowrap">
             This test will run in
           </Paragraph>
-          <EnvironmentLabel environment={task.environment} size="large" />
+          <FullEnvironmentLabel environment={environment} className="text-sm" />
         </div>
         <Button
           type="submit"
@@ -336,6 +350,7 @@ function ScheduledTaskForm({
   runs: ScheduledRun[];
   possibleTimezones: string[];
 }) {
+  const environment = useEnvironment();
   const lastSubmission = useActionData();
   const [selectedCodeSampleId, setSelectedCodeSampleId] = useState(runs.at(0)?.id);
   const [timestampValue, setTimestampValue] = useState<Date | undefined>();
@@ -392,7 +407,7 @@ function ScheduledTaskForm({
       <input
         type="hidden"
         {...conform.input(environmentId, { type: "hidden" })}
-        value={task.environment.id}
+        value={environment.id}
       />
       <ResizablePanelGroup orientation="horizontal">
         <ResizablePanel id="test-task-main" min="100px" default="60%">
@@ -511,7 +526,7 @@ function ScheduledTaskForm({
           <Paragraph variant="small" className="whitespace-nowrap">
             This test will run in
           </Paragraph>
-          <EnvironmentLabel environment={task.environment} />
+          <FullEnvironmentLabel environment={environment} className="text-sm" />
         </div>
         <Button
           type="submit"

@@ -1,4 +1,5 @@
 import {
+  BeakerIcon,
   BookOpenIcon,
   ChatBubbleLeftRightIcon,
   ClockIcon,
@@ -7,7 +8,7 @@ import {
 } from "@heroicons/react/20/solid";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { type MinimumEnvironment } from "~/presenters/SelectBestEnvironmentPresenter.server";
-import { docsPath, v3NewSchedulePath } from "~/utils/pathBuilder";
+import { docsPath, v3EnvironmentPath, v3NewSchedulePath } from "~/utils/pathBuilder";
 import { InlineCode } from "./code/InlineCode";
 import { environmentFullTitle } from "./environments/EnvironmentLabel";
 import { Feedback } from "./Feedback";
@@ -22,6 +23,7 @@ import { useLocation } from "react-use";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
+import { RuntimeEnvironmentType } from "@trigger.dev/database";
 
 export function HasNoTasksDev() {
   return (
@@ -159,6 +161,31 @@ export function BatchesNone() {
       </Paragraph>
       <LinkButton to={docsPath("triggering")} variant="docs/medium" LeadingIcon={BookOpenIcon}>
         How to trigger batches
+      </LinkButton>
+    </InfoPanel>
+  );
+}
+
+export function TestHasNoTasks() {
+  const organization = useOrganization();
+  const project = useProject();
+  const environment = useEnvironment();
+
+  return (
+    <InfoPanel
+      title="No tasks to test"
+      icon={BeakerIcon}
+      iconClassName="text-lime-500"
+      panelClassName="max-w-full"
+    >
+      <Paragraph spacing variant="small">
+        You have no tasks in this environment.
+      </Paragraph>
+      <LinkButton
+        to={v3EnvironmentPath(organization, project, environment)}
+        variant="tertiary/medium"
+      >
+        Add tasks
       </LinkButton>
     </InfoPanel>
   );
