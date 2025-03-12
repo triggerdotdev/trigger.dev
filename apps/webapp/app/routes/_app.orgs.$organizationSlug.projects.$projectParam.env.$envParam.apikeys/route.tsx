@@ -1,14 +1,10 @@
 import { BookOpenIcon, InformationCircleIcon, LockOpenIcon } from "@heroicons/react/20/solid";
 import { ArrowUpCircleIcon } from "@heroicons/react/24/outline";
-import { MetaFunction } from "@remix-run/react";
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { type MetaFunction } from "@remix-run/react";
+import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
-import {
-  EnvironmentLabel,
-  environmentTitle,
-  FullEnvironmentCombo,
-} from "~/components/environments/EnvironmentLabel";
+import { environmentTitle, FullEnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { RegenerateApiKeyModal } from "~/components/environments/RegenerateApiKeyModal";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { LinkButton } from "~/components/primitives/Buttons";
@@ -31,7 +27,7 @@ import { TextLink } from "~/components/primitives/TextLink";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { ApiKeysPresenter } from "~/presenters/v3/ApiKeysPresenter.server";
 import { requireUserId } from "~/services/session.server";
-import { ProjectParamSchema, docsPath, v3BillingPath } from "~/utils/pathBuilder";
+import { docsPath, ProjectParamSchema, v3BillingPath } from "~/utils/pathBuilder";
 
 export const meta: MetaFunction = () => {
   return [
@@ -135,6 +131,25 @@ export default function Page() {
                   ></TableCellMenu>
                 </TableRow>
               ))}
+              {!hasStaging && (
+                <TableRow>
+                  <TableCell>
+                    <FullEnvironmentCombo environment={{ type: "STAGING" }} />
+                  </TableCell>
+                  <TableCell>
+                    <LinkButton
+                      to={v3BillingPath(organization)}
+                      variant="secondary/small"
+                      LeadingIcon={ArrowUpCircleIcon}
+                    >
+                      Upgrade to get staging environment
+                    </LinkButton>
+                  </TableCell>
+                  <TableCell></TableCell>
+                  <TableCell></TableCell>
+                  <TableCell></TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
 
@@ -146,22 +161,6 @@ export default function Page() {
                 backend.
               </Paragraph>
             </InfoPanel>
-
-            {!hasStaging && (
-              <div className="flex items-center gap-2 pl-3 pr-2">
-                <LockOpenIcon className="size-5 min-w-5 text-indigo-500" />
-                <Paragraph variant="small" className="text-text-bright">
-                  Upgrade to add a Staging environment
-                </Paragraph>
-                <LinkButton
-                  to={v3BillingPath(organization)}
-                  variant="secondary/small"
-                  LeadingIcon={ArrowUpCircleIcon}
-                >
-                  Upgrade
-                </LinkButton>
-              </div>
-            )}
           </div>
         </div>
       </PageBody>

@@ -133,13 +133,15 @@ export function SideMenu({
           className="h-full overflow-hidden overflow-y-auto pt-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
           ref={borderRef}
         >
-          <div className="mb-6 flex flex-col gap-1 px-1">
-            <SideMenuHeader title={"Environment"} />
-            <div className="flex items-center gap-2">
-              <EnvironmentSelector project={project} environment={environment} />
+          <div className="mb-6 flex flex-col gap-4 px-1">
+            <div className="space-y-1">
+              <SideMenuHeader title={"Environment"} />
+              <div className="flex items-center gap-2">
+                <EnvironmentSelector project={project} environment={environment} />
+              </div>
             </div>
 
-            <SideMenuSection title="Tasks">
+            <div>
               <SideMenuItem
                 name="Tasks"
                 icon={TaskIcon}
@@ -155,13 +157,6 @@ export function SideMenu({
                 data-action="batches"
               />
               <SideMenuItem
-                name="Test"
-                icon={BeakerIcon}
-                activeIconColor="text-lime-500"
-                to={v3TestPath(organization, project, environment)}
-                data-action="test"
-              />
-              <SideMenuItem
                 name="Schedules"
                 icon={ClockIcon}
                 activeIconColor="text-sun-500"
@@ -175,7 +170,14 @@ export function SideMenu({
                 to={v3DeploymentsPath(organization, project, environment)}
                 data-action="deployments"
               />
-            </SideMenuSection>
+              <SideMenuItem
+                name="Test"
+                icon={BeakerIcon}
+                activeIconColor="text-lime-500"
+                to={v3TestPath(organization, project, environment)}
+                data-action="test"
+              />
+            </div>
 
             <SideMenuSection title="Observability">
               <SideMenuItem
@@ -198,14 +200,14 @@ export function SideMenu({
                 name="API keys"
                 icon={KeyIcon}
                 activeIconColor="text-amber-500"
-                to={v3ApiKeysPath(organization, project)}
+                to={v3ApiKeysPath(organization, project, environment)}
                 data-action="api keys"
               />
               <SideMenuItem
                 name="Environment variables"
                 icon={IdentificationIcon}
                 activeIconColor="text-pink-500"
-                to={v3EnvironmentVariablesPath(organization, project)}
+                to={v3EnvironmentVariablesPath(organization, project, environment)}
                 data-action="environment variables"
               />
 
@@ -213,7 +215,7 @@ export function SideMenu({
                 name="Concurrency limits"
                 icon={RectangleStackIcon}
                 activeIconColor="text-indigo-500"
-                to={v3ConcurrencyPath(organization, project)}
+                to={v3ConcurrencyPath(organization, project, environment)}
                 data-action="concurrency"
               />
               <SideMenuItem

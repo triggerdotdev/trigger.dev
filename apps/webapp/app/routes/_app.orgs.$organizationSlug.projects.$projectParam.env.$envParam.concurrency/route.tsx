@@ -4,7 +4,7 @@ import {
   ChatBubbleLeftEllipsisIcon,
 } from "@heroicons/react/20/solid";
 import { LockOpenIcon } from "@heroicons/react/24/solid";
-import { Await, MetaFunction } from "@remix-run/react";
+import { Await, type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Suspense } from "react";
 import { typeddefer, useTypedLoaderData } from "remix-typedjson";

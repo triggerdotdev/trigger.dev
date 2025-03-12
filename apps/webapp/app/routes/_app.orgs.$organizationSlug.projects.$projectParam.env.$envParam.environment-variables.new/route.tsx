@@ -37,7 +37,12 @@ import { useProject } from "~/hooks/useProject";
 import { EnvironmentVariablesPresenter } from "~/presenters/v3/EnvironmentVariablesPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { ProjectParamSchema, v3BillingPath, v3EnvironmentVariablesPath } from "~/utils/pathBuilder";
+import {
+  EnvironmentParamSchema,
+  ProjectParamSchema,
+  v3BillingPath,
+  v3EnvironmentVariablesPath,
+} from "~/utils/pathBuilder";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import { EnvironmentVariableKey } from "~/v3/environmentVariables/repository";
 import dotenv from "dotenv";
@@ -49,6 +54,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "~/components/primitives/Tooltip";
+import { useEnvironment } from "~/hooks/useEnvironment";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -110,7 +116,7 @@ const schema = z.object({
 
 export const action = async ({ request, params }: ActionFunctionArgs) => {
   const userId = await requireUserId(request);
-  const { organizationSlug, projectParam } = ProjectParamSchema.parse(params);
+  const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
 
   if (request.method.toUpperCase() !== "POST") {
     return { status: 405, body: "Method Not Allowed" };
@@ -162,7 +168,13 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     return json(submission);
   }
 
-  return redirect(v3EnvironmentVariablesPath({ slug: organizationSlug }, { slug: projectParam }));
+  return redirect(
+    v3EnvironmentVariablesPath(
+      { slug: organizationSlug },
+      { slug: projectParam },
+      { slug: envParam }
+    )
+  );
 };
 
 export default function Page() {
@@ -173,6 +185,7 @@ export default function Page() {
   const navigate = useNavigate();
   const organization = useOrganization();
   const project = useProject();
+  const environment = useEnvironment();
 
   const isLoading = navigation.state !== "idle" && navigation.formMethod === "post";
 
@@ -197,7 +210,7 @@ export default function Page() {
       open={isOpen}
       onOpenChange={(o) => {
         if (!o) {
-          navigate(v3EnvironmentVariablesPath(organization, project));
+          navigate(v3EnvironmentVariablesPath(organization, project, environment));
         }
       }}
     >
@@ -299,7 +312,7 @@ export default function Page() {
               }
               cancelButton={
                 <LinkButton
-                  to={v3EnvironmentVariablesPath(organization, project)}
+                  to={v3EnvironmentVariablesPath(organization, project, environment)}
                   variant="tertiary/medium"
                 >
                   Cancel

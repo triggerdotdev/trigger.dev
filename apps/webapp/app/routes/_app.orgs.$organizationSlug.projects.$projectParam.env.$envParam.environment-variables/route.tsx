@@ -21,7 +21,7 @@ import { Fragment, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { InlineCode } from "~/components/code/InlineCode";
-import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
+import { EnvironmentLabel, FullEnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
@@ -47,6 +47,7 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { prisma } from "~/db.server";
+import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { redirectWithSuccessMessage } from "~/models/message.server";
@@ -57,6 +58,7 @@ import {
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import {
+  EnvironmentParamSchema,
   ProjectParamSchema,
   docsPath,
   v3BillingPath,
@@ -109,7 +111,7 @@ const schema = z.discriminatedUnion("action", [
 
 export const action = async ({ request, params }: ActionFunctionArgs) => {
   const userId = await requireUserId(request);
-  const { organizationSlug, projectParam } = ProjectParamSchema.parse(params);
+  const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
 
   if (request.method.toUpperCase() !== "POST") {
     return { status: 405, body: "Method Not Allowed" };
@@ -154,7 +156,11 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
       //use redirectDocument because it reloads the page
       return redirectDocument(
-        v3EnvironmentVariablesPath({ slug: organizationSlug }, { slug: projectParam }),
+        v3EnvironmentVariablesPath(
+          { slug: organizationSlug },
+          { slug: projectParam },
+          { slug: envParam }
+        ),
         {
           headers: {
             refresh: "true",
@@ -172,7 +178,11 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       }
 
       return redirectWithSuccessMessage(
-        v3EnvironmentVariablesPath({ slug: organizationSlug }, { slug: projectParam }),
+        v3EnvironmentVariablesPath(
+          { slug: organizationSlug },
+          { slug: projectParam },
+          { slug: envParam }
+        ),
         request,
         `Deleted ${submission.value.key} environment variable`
       );
@@ -183,8 +193,9 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 export default function Page() {
   const [revealAll, setRevealAll] = useState(false);
   const { environmentVariables, environments, hasStaging } = useTypedLoaderData<typeof loader>();
-  const project = useProject();
   const organization = useOrganization();
+  const project = useProject();
+  const environment = useEnvironment();
 
   return (
     <PageContainer>
@@ -211,7 +222,7 @@ export default function Page() {
                 onCheckedChange={(e) => setRevealAll(e.valueOf())}
               />
               <LinkButton
-                to={v3NewEnvironmentVariablesPath(organization, project)}
+                to={v3NewEnvironmentVariablesPath(organization, project, environment)}
                 variant="primary/small"
                 LeadingIcon={PlusIcon}
                 shortcut={{ key: "n" }}
@@ -225,8 +236,8 @@ export default function Page() {
               <TableRow>
                 <TableHeaderCell>Key</TableHeaderCell>
                 {environments.map((environment) => (
-                  <TableHeaderCell key={environment.id}>
-                    <EnvironmentLabel environment={environment} />
+                  <TableHeaderCell key={environment.id} className="pl-1">
+                    <FullEnvironmentCombo environment={environment} className="text-sm" />
                   </TableHeaderCell>
                 ))}
                 <TableHeaderCell hiddenLabel>Actions</TableHeaderCell>
@@ -275,7 +286,7 @@ export default function Page() {
                     <div className="flex flex-col items-center justify-center gap-y-4 py-8">
                       <Header2>You haven't set any environment variables yet.</Header2>
                       <LinkButton
-                        to={v3NewEnvironmentVariablesPath(organization, project)}
+                        to={v3NewEnvironmentVariablesPath(organization, project, environment)}
                         variant="primary/medium"
                         LeadingIcon={PlusIcon}
                         shortcut={{ key: "n" }}
@@ -289,26 +300,11 @@ export default function Page() {
             </TableBody>
           </Table>
 
-          <div className="z-10 -mt-px flex w-full flex-wrap justify-between border-t border-grid-dimmed">
+          <div className="-mt-px w-full border-t border-grid-dimmed">
             <InfoPanel icon={InformationCircleIcon} variant="minimal" panelClassName="max-w-fit">
               Dev environment variables specified here will be overridden by ones in your .env file
               when running locally.
             </InfoPanel>
-            {!hasStaging && (
-              <div className="flex items-center gap-2 pl-3 pr-2">
-                <LockOpenIcon className="size-5 min-w-5 text-indigo-500" />
-                <Paragraph variant="small" className="text-text-bright">
-                  Upgrade to add a Staging environment
-                </Paragraph>
-                <LinkButton
-                  to={v3BillingPath(organization)}
-                  variant="secondary/small"
-                  LeadingIcon={ArrowUpCircleIcon}
-                >
-                  Upgrade
-                </LinkButton>
-              </div>
-            )}
           </div>
         </div>
         <Outlet />
@@ -409,7 +405,7 @@ function EditEnvironmentVariablePanel({
                         className="flex items-center justify-end"
                         htmlFor={`values[${index}].value`}
                       >
-                        <EnvironmentLabel environment={environment} size="large" className="px-2" />
+                        <FullEnvironmentCombo environment={environment} className="text-sm" />
                       </label>
                       <Input
                         name={`values[${index}].value`}

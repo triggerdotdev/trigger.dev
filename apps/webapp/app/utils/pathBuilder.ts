@@ -155,20 +155,36 @@ export function v3TasksStreamingPath(
   return `${v3EnvironmentPath(organization, project, environment)}/tasks/stream`;
 }
 
-export function v3ApiKeysPath(organization: OrgForPath, project: ProjectForPath) {
-  return `${v3ProjectPath(organization, project)}/apikeys`;
+export function v3ApiKeysPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath
+) {
+  return `${v3EnvironmentPath(organization, project, environment)}/apikeys`;
 }
 
-export function v3EnvironmentVariablesPath(organization: OrgForPath, project: ProjectForPath) {
-  return `${v3ProjectPath(organization, project)}/environment-variables`;
+export function v3EnvironmentVariablesPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath
+) {
+  return `${v3EnvironmentPath(organization, project, environment)}/environment-variables`;
 }
 
-export function v3ConcurrencyPath(organization: OrgForPath, project: ProjectForPath) {
-  return `${v3ProjectPath(organization, project)}/concurrency`;
+export function v3ConcurrencyPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath
+) {
+  return `${v3EnvironmentPath(organization, project, environment)}/concurrency`;
 }
 
-export function v3NewEnvironmentVariablesPath(organization: OrgForPath, project: ProjectForPath) {
-  return `${v3EnvironmentVariablesPath(organization, project)}/new`;
+export function v3NewEnvironmentVariablesPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath
+) {
+  return `${v3EnvironmentVariablesPath(organization, project, environment)}/new`;
 }
 
 export function v3ProjectAlertsPath(
