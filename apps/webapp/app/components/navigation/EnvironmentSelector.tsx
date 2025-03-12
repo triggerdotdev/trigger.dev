@@ -40,7 +40,7 @@ export function EnvironmentSelector({
         <FullEnvironmentCombo environment={environment} className="w-full text-2sm" />
       </PopoverArrowTrigger>
       <PopoverContent
-        className="overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+        className="min-w-[14rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
         align="start"
         style={{ maxHeight: `calc(var(--radix-popover-content-available-height) - 10vh)` }}
       >
