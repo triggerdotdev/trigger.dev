@@ -410,7 +410,7 @@ function ScheduledTaskForm({
         value={environment.id}
       />
       <ResizablePanelGroup orientation="horizontal">
-        <ResizablePanel id="test-task-main" min="100px" default="60%">
+        <ResizablePanel id="test-task-main" min="100px" default="70%">
           <div className="p-3">
             <Fieldset>
               <InputGroup>
