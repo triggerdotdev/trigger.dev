@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { InlineCode } from "~/components/code/InlineCode";
+import { FullEnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout, variantClasses } from "~/components/primitives/Callout";
 import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
@@ -413,24 +414,9 @@ export default function Page() {
               <FormError id={alertTypes.errorId}>{alertTypes.error}</FormError>
             </InputGroup>
             <InputGroup>
-              <Label>Environments</Label>
-              <CheckboxWithLabel
-                name={environmentTypes.name}
-                id="PRODUCTION"
-                value="PRODUCTION"
-                variant="simple/small"
-                label="PROD"
-                defaultChecked
-              />
-              <CheckboxWithLabel
-                name={environmentTypes.name}
-                id="STAGING"
-                value="STAGING"
-                variant="simple/small"
-                label="STAGING"
-                defaultChecked
-              />
-
+              <Label>Environment</Label>
+              <input type="hidden" name={environmentTypes.name} value={environment.type} />
+              <FullEnvironmentCombo environment={environment} />
               <FormError id={environmentTypes.errorId}>{environmentTypes.error}</FormError>
             </InputGroup>
             <FormError>{form.error}</FormError>

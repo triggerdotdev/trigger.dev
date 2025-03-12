@@ -7,7 +7,10 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { Feedback } from "~/components/Feedback";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { InlineCode } from "~/components/code/InlineCode";
-import { EnvironmentLabels } from "~/components/environments/EnvironmentLabel";
+import {
+  EnvironmentLabels,
+  FullEnvironmentCombo,
+} from "~/components/environments/EnvironmentLabel";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
@@ -453,7 +456,11 @@ function SchedulesTable({
                     : "N/A"}
                 </TableCell>
                 <TableCell to={path} className={cellClass}>
-                  <EnvironmentLabels environments={schedule.environments} size="small" />
+                  <div className="flex items-center gap-3">
+                    {schedule.environments.map((env) => (
+                      <FullEnvironmentCombo key={env.id} environment={env} className="text-xs" />
+                    ))}
+                  </div>
                 </TableCell>
                 <TableCell to={path}>
                   {schedule.type === "IMPERATIVE" ? (

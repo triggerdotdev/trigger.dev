@@ -10,6 +10,7 @@ import { useRef, useState } from "react";
 import {
   environmentTextClassName,
   environmentTitle,
+  FullEnvironmentCombo,
 } from "~/components/environments/EnvironmentLabel";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
@@ -315,34 +316,44 @@ export function UpsertScheduleForm({
               </div>
             )}
             <InputGroup>
-              <Label>Environments</Label>
+              <Label>Environment</Label>
               <div className="flex flex-wrap items-center gap-2">
-                {possibleEnvironments.map((environment) => (
-                  <CheckboxWithLabel
-                    key={environment.id}
-                    id={environment.id}
-                    value={environment.id}
-                    name="environments"
-                    type="radio"
-                    label={
-                      <span
-                        className={cn("text-xs uppercase", environmentTextClassName(environment))}
-                      >
-                        {environmentTitle(environment, environment.userName)}
-                      </span>
-                    }
-                    defaultChecked={
-                      schedule?.instances.find((i) => i.environmentId === environment.id) !==
-                      undefined
-                    }
-                    variant="button"
-                  />
-                ))}
+                {/* This first condition supports old schedules where we let you have multiple environments */}
+                {schedule && schedule?.environments.length > 1 ? (
+                  possibleEnvironments.map((environment) => (
+                    <CheckboxWithLabel
+                      key={environment.id}
+                      id={environment.id}
+                      value={environment.id}
+                      name="environments"
+                      type="radio"
+                      label={
+                        <span
+                          className={cn("text-xs uppercase", environmentTextClassName(environment))}
+                        >
+                          {environmentTitle(environment, environment.userName)}
+                        </span>
+                      }
+                      defaultChecked={
+                        schedule?.instances.find((i) => i.environmentId === environment.id) !==
+                        undefined
+                      }
+                      variant="button"
+                    />
+                  ))
+                ) : (
+                  <>
+                    <input type="hidden" name="environments" value={environment.id} />
+                    <FullEnvironmentCombo environment={environment} />
+                  </>
+                )}
               </div>
-              <Hint>
-                Select all the environments where you want this schedule to run. Note that scheduled
-                tasks in dev environments will only run while you are connected with the dev CLI
-              </Hint>
+              {environment.type === "DEVELOPMENT" && (
+                <Hint>
+                  Note that scheduled tasks in dev environments will only run while you are
+                  connected with the dev CLI.
+                </Hint>
+              )}
               <FormError id={environments.errorId}>{environments.error}</FormError>
             </InputGroup>
             <InputGroup>

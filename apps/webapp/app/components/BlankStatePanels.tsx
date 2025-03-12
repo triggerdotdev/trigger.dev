@@ -1,8 +1,10 @@
 import {
   BeakerIcon,
+  BellAlertIcon,
   BookOpenIcon,
   ChatBubbleLeftRightIcon,
   ClockIcon,
+  PlusIcon,
   RectangleGroupIcon,
   ServerStackIcon,
   Squares2X2Icon,
@@ -13,6 +15,7 @@ import {
   docsPath,
   v3EnvironmentPath,
   v3EnvironmentVariablesPath,
+  v3NewProjectAlertPath,
   v3NewSchedulePath,
 } from "~/utils/pathBuilder";
 import { InlineCode } from "./code/InlineCode";
@@ -29,9 +32,9 @@ import { useLocation } from "react-use";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { TextLink } from "./primitives/TextLink";
 import { EnvironmentSelector } from "./navigation/EnvironmentSelector";
+import { Pi } from "lucide-react";
 
 export function HasNoTasksDev() {
   return (
@@ -244,7 +247,6 @@ export function DeploymentsNone() {
 export function DeploymentsNoneDev() {
   const organization = useOrganization();
   const project = useProject();
-  const environment = useEnvironment();
 
   return (
     <div className="space-y-8">
@@ -286,16 +288,130 @@ export function DeploymentsNoneDev() {
           </LinkButton>
         </div>
       </InfoPanel>
-      <div className="flex items-center rounded-md border border-grid-bright bg-background-bright p-3">
-        <Paragraph variant="small" className="grow">
-          Switch to a deployed environment
+      <SwitcherPanel />
+    </div>
+  );
+}
+
+export function AlertsNoneDev() {
+  return (
+    <div className="space-y-8">
+      <InfoPanel
+        icon={BellAlertIcon}
+        iconClassName="text-red-500"
+        title="Adding alerts"
+        panelClassName="max-w-full"
+      >
+        <Paragraph spacing variant="small">
+          You can get alerted when deployed runs fail.
         </Paragraph>
-        <EnvironmentSelector
-          project={project}
-          environment={environment}
-          className="w-auto grow-0 rounded-sm bg-grid-bright"
-        />
-      </div>
+        <Paragraph spacing variant="small">
+          We don't support alerts in the Development environment. Switch to a deployed environment
+          to setup alerts.
+        </Paragraph>
+        <div className="flex gap-3">
+          <LinkButton
+            to={docsPath("troubleshooting-alerts")}
+            variant="docs/medium"
+            LeadingIcon={BookOpenIcon}
+            className="inline-flex"
+          >
+            How to setup alerts
+          </LinkButton>
+        </div>
+      </InfoPanel>
+      <SwitcherPanel />
+    </div>
+  );
+}
+
+export function AlertsNoneDeployed() {
+  const organization = useOrganization();
+  const project = useProject();
+  const environment = useEnvironment();
+
+  return (
+    <div className="space-y-8">
+      <InfoPanel
+        icon={BellAlertIcon}
+        iconClassName="text-red-500"
+        title="Adding alerts"
+        panelClassName="max-w-full"
+      >
+        <Paragraph spacing variant="small">
+          You can get alerted when deployed runs fail. We currently support sending Slack, Email,
+          and webhooks.
+        </Paragraph>
+
+        <div className="flex gap-3">
+          <LinkButton
+            to={v3NewProjectAlertPath(organization, project, environment)}
+            variant="primary/medium"
+            LeadingIcon={PlusIcon}
+            shortcut={{ key: "n" }}
+          >
+            New alert
+          </LinkButton>
+          <LinkButton
+            to={docsPath("troubleshooting-alerts")}
+            variant="docs/medium"
+            LeadingIcon={BookOpenIcon}
+            className="inline-flex"
+          >
+            Alert docs
+          </LinkButton>
+        </div>
+      </InfoPanel>
+    </div>
+  );
+}
+
+function AlertsNoneProd() {
+  return (
+    <div className="space-y-8">
+      <InfoPanel
+        icon={BellAlertIcon}
+        iconClassName="text-red-500"
+        title="Adding alerts"
+        panelClassName="max-w-full"
+      >
+        <Paragraph spacing variant="small">
+          You can get alerted when deployed runs fail.
+        </Paragraph>
+        <Paragraph spacing variant="small">
+          We don't support alerts in the Development environment. Switch to a deployed environment
+          to setup alerts.
+        </Paragraph>
+        <div className="flex gap-3">
+          <LinkButton
+            to={docsPath("troubleshooting-alerts")}
+            variant="docs/medium"
+            LeadingIcon={BookOpenIcon}
+            className="inline-flex"
+          >
+            How to setup alerts
+          </LinkButton>
+        </div>
+      </InfoPanel>
+      <SwitcherPanel />
+    </div>
+  );
+}
+
+function SwitcherPanel() {
+  const project = useProject();
+  const environment = useEnvironment();
+
+  return (
+    <div className="flex items-center rounded-md border border-grid-bright bg-background-bright p-3">
+      <Paragraph variant="small" className="grow">
+        Switch to a deployed environment
+      </Paragraph>
+      <EnvironmentSelector
+        project={project}
+        environment={environment}
+        className="w-auto grow-0 rounded-sm bg-grid-bright"
+      />
     </div>
   );
 }

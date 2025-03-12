@@ -68,6 +68,18 @@ export function routeForEnvironmentSwitch({
       };
       return fullPath(newLocation);
     }
+    case "routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.schedules.$scheduleParam":
+    case "routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.schedules.edit.$scheduleParam": {
+      const newLocation: Path = {
+        pathname: replaceEnvInPath(location.pathname, environmentSlug).replace(
+          /\/schedules\/.*/,
+          "/schedules"
+        ),
+        search: "",
+        hash: "",
+      };
+      return fullPath(newLocation);
+    }
     default: {
       const newLocation: Path = {
         pathname: replaceEnvInPath(location.pathname, environmentSlug),

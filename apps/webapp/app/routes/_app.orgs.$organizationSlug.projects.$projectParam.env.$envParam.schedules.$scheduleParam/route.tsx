@@ -13,7 +13,10 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { InlineCode } from "~/components/code/InlineCode";
-import { EnvironmentLabels } from "~/components/environments/EnvironmentLabel";
+import {
+  EnvironmentLabels,
+  FullEnvironmentCombo,
+} from "~/components/environments/EnvironmentLabel";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
 import {
@@ -262,9 +265,13 @@ export default function Page() {
                 <Property.Value>{schedule.timezone}</Property.Value>
               </Property.Item>
               <Property.Item className="gap-1">
-                <Property.Label>Environments</Property.Label>
+                <Property.Label>Environment</Property.Label>
                 <Property.Value>
-                  <EnvironmentLabels size="small" environments={schedule.environments} />
+                  <div className="flex flex-col gap-2">
+                    {schedule.environments.map((env) => (
+                      <FullEnvironmentCombo key={env.id} environment={env} className="text-xs" />
+                    ))}
+                  </div>
                 </Property.Value>
               </Property.Item>
               {isImperative && (
