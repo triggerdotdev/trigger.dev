@@ -214,33 +214,41 @@ class ManagedSupervisor {
 
     const warmStartUrlWithPath = new URL("/warm-start", this.warmStartUrl);
 
-    const res = await fetch(warmStartUrlWithPath.href, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ dequeuedMessage }),
-    });
+    try {
+      const res = await fetch(warmStartUrlWithPath.href, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ dequeuedMessage }),
+      });
 
-    if (!res.ok) {
-      this.logger.error("[ManagedWorker] Warm start failed", {
+      if (!res.ok) {
+        this.logger.error("[ManagedWorker] Warm start failed", {
+          runId: dequeuedMessage.run.id,
+        });
+        return false;
+      }
+
+      const data = await res.json();
+      const parsedData = z.object({ didWarmStart: z.boolean() }).safeParse(data);
+
+      if (!parsedData.success) {
+        this.logger.error("[ManagedWorker] Warm start response invalid", {
+          runId: dequeuedMessage.run.id,
+          data,
+        });
+        return false;
+      }
+
+      return parsedData.data.didWarmStart;
+    } catch (error) {
+      this.logger.error("[ManagedWorker] Warm start error", {
         runId: dequeuedMessage.run.id,
+        error,
       });
       return false;
     }
-
-    const data = await res.json();
-    const parsedData = z.object({ didWarmStart: z.boolean() }).safeParse(data);
-
-    if (!parsedData.success) {
-      this.logger.error("[ManagedWorker] Warm start response invalid", {
-        runId: dequeuedMessage.run.id,
-        data,
-      });
-      return false;
-    }
-
-    return parsedData.data.didWarmStart;
   }
 
   async start() {
