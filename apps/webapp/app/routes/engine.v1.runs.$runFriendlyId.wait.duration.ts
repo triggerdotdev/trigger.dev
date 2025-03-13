@@ -51,9 +51,7 @@ const { action } = createActionApiRoute(
         environmentId: authentication.environment.id,
         projectId: authentication.environment.project.id,
         organizationId: authentication.environment.organization.id,
-        releaseConcurrency: {
-          releaseQueue: true,
-        },
+        releaseConcurrency: true,
       });
 
       return json({

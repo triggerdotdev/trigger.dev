@@ -63,6 +63,7 @@ import { RunLocker } from "./locking.js";
 import { getMachinePreset } from "./machinePresets.js";
 import { retryOutcomeFromCompletion } from "./retrying.js";
 import {
+  canReleaseConcurrency,
   isCheckpointable,
   isDequeueableExecutionStatus,
   isExecuting,
@@ -70,6 +71,7 @@ import {
   isPendingExecuting,
 } from "./statuses.js";
 import { HeartbeatTimeouts, RunEngineOptions, TriggerParams } from "./types.js";
+import { ReleaseConcurrencyQueue } from "./releaseConcurrencyQueue.js";
 
 const workerCatalog = {
   finishWaitpoint: {
@@ -137,6 +139,7 @@ export class RunEngine {
   private logger = new Logger("RunEngine", "debug");
   private tracer: Tracer;
   private heartbeatTimeouts: HeartbeatTimeouts;
+  private releaseConcurrencyQueue: ReleaseConcurrencyQueue;
   eventBus = new EventEmitter<EventBusEvents>();
 
   constructor(private readonly options: RunEngineOptions) {
@@ -239,6 +242,20 @@ export class RunEngine {
       ...defaultHeartbeatTimeouts,
       ...(options.heartbeatTimeoutsMs ?? {}),
     };
+
+    // Initialize the ReleaseConcurrencyQueue
+    this.releaseConcurrencyQueue = new ReleaseConcurrencyQueue({
+      redis: {
+        ...options.queue.redis, // Use base queue redis options
+        ...options.releaseConcurrency?.redis, // Allow overrides
+        keyPrefix: `${options.queue.redis.keyPrefix}release-concurrency:`,
+      },
+      maxTokens: options.releaseConcurrency?.maxTokens ?? 10, // Default to 10 tokens
+      executor: async (releaseQueue, runId) => {
+        await this.#executeReleasedConcurrencyFromQueue(releaseQueue, runId);
+      },
+      tracer: this.tracer,
+    });
   }
 
   //MARK: - Run functions
@@ -1994,9 +2011,7 @@ export class RunEngine {
     environmentId: string;
     projectId: string;
     organizationId: string;
-    releaseConcurrency?: {
-      releaseQueue: boolean;
-    };
+    releaseConcurrency?: boolean;
     timeout?: Date;
     spanIdToComplete?: string;
     batch?: { id: string; index?: number };
@@ -2096,11 +2111,7 @@ export class RunEngine {
       } else {
         if (releaseConcurrency) {
           //release concurrency
-          await this.runQueue.releaseConcurrency(
-            organizationId,
-            runId,
-            releaseConcurrency.releaseQueue === true
-          );
+          await this.#attemptToReleaseConcurrency(organizationId, snapshot);
         }
       }
 
@@ -2108,12 +2119,76 @@ export class RunEngine {
     });
   }
 
-  // Add releaseConcurrencyIfSuspendedOrGoingToBeSuspended
-  // - Called from blockRunWithWaitpoint when releaseConcurrency exists
-  // - Runlock the run
-  // - Get latest snapshot
-  // - If the run is non suspended or going to be, then bail
-  // - If the run is suspended or going to be, then release the concurrency
+  async #attemptToReleaseConcurrency(orgId: string, snapshot: TaskRunExecutionSnapshot) {
+    // Go ahead and release concurrency immediately if the run is in a development environment
+    if (snapshot.environmentType === "DEVELOPMENT") {
+      return await this.runQueue.releaseConcurrency(orgId, snapshot.runId);
+    }
+
+    const run = await this.prisma.taskRun.findFirst({
+      where: {
+        id: snapshot.runId,
+      },
+      select: {
+        runtimeEnvironment: {
+          select: {
+            id: true,
+            projectId: true,
+            organizationId: true,
+          },
+        },
+      },
+    });
+
+    if (!run) {
+      this.logger.error("Run not found for attemptToReleaseConcurrency", {
+        runId: snapshot.runId,
+      });
+
+      return;
+    }
+
+    await this.releaseConcurrencyQueue.attemptToRelease(
+      this.runQueue.keys.releaseConcurrencyKey({
+        orgId: run.runtimeEnvironment.organizationId,
+        projectId: run.runtimeEnvironment.projectId,
+        envId: run.runtimeEnvironment.id,
+      }),
+      snapshot.runId
+    );
+
+    return;
+  }
+
+  async #executeReleasedConcurrencyFromQueue(releaseQueue: string, runId: string) {
+    const releaseQueueDescriptor =
+      this.runQueue.keys.releaseConcurrencyDescriptorFromQueue(releaseQueue);
+
+    this.logger.debug("Executing released concurrency", {
+      releaseQueue,
+      runId,
+      releaseQueueDescriptor,
+    });
+
+    // - Runlock the run
+    // - Get latest snapshot
+    // - If the run is non suspended or going to be, then bail
+    // - If the run is suspended or going to be, then release the concurrency
+    await this.runLock.lock([runId], 5_000, async (signal) => {
+      const snapshot = await getLatestExecutionSnapshot(this.prisma, runId);
+
+      if (!canReleaseConcurrency(snapshot.executionStatus)) {
+        this.logger.debug("Run is not in a state to release concurrency", {
+          runId,
+          snapshot,
+        });
+
+        return;
+      }
+
+      return await this.runQueue.releaseConcurrency(releaseQueueDescriptor.orgId, snapshot.runId);
+    });
+  }
 
   /** This completes a waitpoint and updates all entries so the run isn't blocked,
    * if they're no longer blocked. This doesn't suffer from race conditions. */
@@ -2300,6 +2375,7 @@ export class RunEngine {
             select: {
               id: true,
               projectId: true,
+              organizationId: true,
             },
           },
         },
@@ -2339,6 +2415,16 @@ export class RunEngine {
         workerId,
         runnerId,
       });
+
+      // Refill the token bucket for the release concurrency queue
+      await this.releaseConcurrencyQueue.refillTokens(
+        this.runQueue.keys.releaseConcurrencyKey({
+          orgId: run.runtimeEnvironment.organizationId,
+          projectId: run.runtimeEnvironment.projectId,
+          envId: run.runtimeEnvironment.id,
+        }),
+        1
+      );
 
       return {
         ok: true as const,

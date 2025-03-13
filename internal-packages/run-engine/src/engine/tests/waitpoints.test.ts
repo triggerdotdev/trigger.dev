@@ -105,9 +105,7 @@ describe("RunEngine Waitpoints", () => {
         environmentId: authenticatedEnvironment.id,
         projectId: authenticatedEnvironment.project.id,
         organizationId: authenticatedEnvironment.organization.id,
-        releaseConcurrency: {
-          releaseQueue: true,
-        },
+        releaseConcurrency: true,
       });
       expect(result.executionStatus).toBe("EXECUTING_WITH_WAITPOINTS");
       expect(result.runStatus).toBe("EXECUTING");
