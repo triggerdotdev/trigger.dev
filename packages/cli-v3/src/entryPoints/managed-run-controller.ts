@@ -701,6 +701,7 @@ class ManagedRunController {
     }
 
     this.waitForNextRunLock = true;
+    const previousRunId = this.runFriendlyId;
 
     try {
       logger.debug("waitForNextRun: waiting for next run");
@@ -734,6 +735,17 @@ class ManagedRunController {
         connectionTimeoutMs,
         keepaliveMs,
       });
+
+      if (previousRunId) {
+        this.httpClient.sendDebugLog(previousRunId, {
+          time: new Date(),
+          message: "warm start: received config",
+          properties: {
+            connectionTimeoutMs,
+            keepaliveMs,
+          },
+        });
+      }
 
       if (!connectionTimeoutMs || !keepaliveMs) {
         console.error("waitForNextRun: warm starts disabled after connect", {
