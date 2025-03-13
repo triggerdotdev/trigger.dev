@@ -79,6 +79,7 @@ import { SideMenuItem } from "./SideMenuItem";
 import { SideMenuSection } from "./SideMenuSection";
 import { ButtonContent, LinkButton } from "../primitives/Buttons";
 import { useUser } from "~/hooks/useUser";
+import { TextLink } from "../primitives/TextLink";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 export type SideMenuProject = Pick<
@@ -239,39 +240,6 @@ export function SideMenu({
                 to={v3ProjectSettingsPath(organization, project, environment)}
                 data-action="project-settings"
               />
-              <SideMenuItem
-                name="Team"
-                icon={UserGroupIcon}
-                to={organizationTeamPath(organization)}
-                activeIconColor="text-amber-500"
-                data-action="team"
-              />
-              <SideMenuItem
-                name="Usage"
-                icon={ChartBarIcon}
-                to={v3UsagePath(organization)}
-                activeIconColor="text-green-600"
-                data-action="usage"
-              />
-              <SideMenuItem
-                name="Billing"
-                icon={CreditCardIcon}
-                to={v3BillingPath(organization)}
-                activeIconColor="text-blue-600"
-                data-action="billing"
-                badge={
-                  currentPlan?.v3Subscription?.isPaying
-                    ? currentPlan?.v3Subscription?.plan?.title
-                    : undefined
-                }
-              />
-              <SideMenuItem
-                name="Organization settings"
-                icon={Cog8ToothIcon}
-                activeIconColor="text-teal-500"
-                to={organizationSettingsPath(organization)}
-                data-action="organization-settings"
-              />
             </SideMenuSection>
           </div>
         </div>
@@ -320,15 +288,15 @@ function ProjectSelector({
       <PopoverArrowTrigger
         isOpen={isOrgMenuOpen}
         overflowHidden
-        className="h-7 w-full justify-between overflow-hidden py-1 pl-2"
+        className="h-8 w-full justify-between overflow-hidden py-1 pl-2"
       >
-        <div className="flex items-center gap-1.5">
+        <span className="flex items-center gap-1.5">
           <Avatar avatar={organization.avatar} className="size-5" />
           <SelectorDivider />
           <span className="truncate text-2sm font-normal text-text-bright">
             {project.name ?? "Select a project"}
           </span>
-        </div>
+        </span>
       </PopoverArrowTrigger>
       <PopoverContent
         className="min-w-[16rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
@@ -343,8 +311,19 @@ function ProjectSelector({
             <div className="space-y-0.5">
               <Paragraph variant="extra-small/bright">{organization.title}</Paragraph>
               <div className="flex items-baseline">
-                {plan && <Paragraph variant="extra-small">{plan}</Paragraph>}
-                <Paragraph variant="extra-small">{simplur`${organization.membersCount} member[|s]`}</Paragraph>
+                {plan && (
+                  <Paragraph variant="extra-small">
+                    <TextLink variant="secondary" to={v3BillingPath(organization)}>
+                      {plan}
+                    </TextLink>
+                  </Paragraph>
+                )}
+                <Paragraph variant="extra-small">
+                  <TextLink
+                    variant="secondary"
+                    to={organizationTeamPath(organization)}
+                  >{simplur`${organization.membersCount} member[|s]`}</TextLink>
+                </Paragraph>
               </div>
             </div>
           </div>
@@ -461,6 +440,7 @@ function SwitchOrganizations({
         <PopoverTrigger className="h-7 w-full justify-between overflow-hidden focus-custom">
           <ButtonContent
             variant="small-menu-item"
+            className="hover:bg-charcoal-750"
             LeadingIcon={ArrowPathRoundedSquareIcon}
             leadingIconClassName="text-text-dimmed"
             TrailingIcon={ChevronRightIcon}
@@ -476,6 +456,8 @@ function SwitchOrganizations({
           align="start"
           style={{ maxHeight: `calc(var(--radix-popover-content-available-height) - 10vh)` }}
           side="right"
+          alignOffset={0}
+          sideOffset={-4}
           onMouseEnter={handleMouseEnter}
           onMouseLeave={handleMouseLeave}
         >
@@ -486,6 +468,7 @@ function SwitchOrganizations({
                 to={organizationPath(org)}
                 title={org.title}
                 leadingIconClassName="text-text-dimmed"
+                isSelected={org.id === organization.id}
               />
             ))}
           </div>

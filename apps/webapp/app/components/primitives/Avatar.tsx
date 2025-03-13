@@ -109,16 +109,16 @@ function AvatarIcon({
 
   const IconComponent = avatarIcons[avatar.name] || defaultAvatarIcon.name;
   return (
-    <div className={cn("grid place-items-center", classes)}>
+    <span className={cn("grid place-items-center", classes)}>
       <IconComponent className={includePadding ? "size-[80%]" : "size-[100%]"} style={style} />
-    </div>
+    </span>
   );
 }
 
 function AvatarImage({ avatar, className }: { avatar: ImageAvatar; className?: string }) {
   return (
-    <div className="grid place-items-center">
+    <span className="grid place-items-center">
       <img src={avatar.url} alt="Organization avatar" className="size-6" />
-    </div>
+    </span>
   );
 }
