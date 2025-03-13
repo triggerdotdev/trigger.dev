@@ -67,4 +67,27 @@ describe("DynamicFlushScheduler", () => {
     expect(callback).toHaveBeenNthCalledWith(1, expect.any(String), [1, 2, 3]);
     expect(callback).toHaveBeenNthCalledWith(2, expect.any(String), [4, 5, 6]);
   });
+
+  it("handles SIGTERM signal correctly", async () => {
+    const callback = vi.fn();
+
+    const processOnMock = vi.fn();
+    process.on = processOnMock;
+
+    const dynamicFlushScheduler = new DynamicFlushScheduler({
+      batchSize: 10,
+      flushInterval: 5000,
+      callback,
+    });
+
+    const items = [1, 2, 3, 4, 5, 6];
+    await dynamicFlushScheduler.addToBatch(items);
+
+    const sigtermHandler = processOnMock.mock.calls.find((call) => call[0] === "SIGTERM")[1];
+
+    await sigtermHandler();
+
+    expect(callback).toHaveBeenCalled();
+    expect(callback).toHaveBeenCalledWith(expect.any(String), items);
+  });
 });
