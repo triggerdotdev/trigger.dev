@@ -107,26 +107,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 export default function Organization() {
-  const { organization, project, organizations, environment, isImpersonating } =
-    useTypedLoaderData<typeof loader>();
-  const user = useUser();
-
-  return (
-    <>
-      <div className="grid grid-cols-[14rem_1fr] overflow-hidden">
-        <SideMenu
-          user={{ ...user, isImpersonating }}
-          project={project}
-          environment={environment}
-          organization={organization}
-          organizations={organizations}
-        />
-        <MainBody>
-          <Outlet />
-        </MainBody>
-      </div>
-    </>
-  );
+  return <Outlet />;
 }
 
 export function ErrorBoundary() {
