@@ -4,6 +4,8 @@ import { DynamicFlushScheduler } from "../app/v3/dynamicFlushScheduler.server";
 describe("DynamicFlushScheduler", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.clearAllMocks();
+    vi.resetAllMocks();
   });
 
   it("doesn't call callback when there are no items", () => {
@@ -18,7 +20,7 @@ describe("DynamicFlushScheduler", () => {
     expect(callback).toBeCalledTimes(0);
   });
 
-  it("calls callback once with batchSize items", () => {
+  it("calls callback once with batchSize items", async () => {
     const callback = vi.fn();
     const dynamicFlushScheduler = new DynamicFlushScheduler({
       batchSize: 3,
@@ -26,7 +28,7 @@ describe("DynamicFlushScheduler", () => {
       callback,
     });
     const items = [1, 2, 3];
-    dynamicFlushScheduler.addToBatch(items);
+    await dynamicFlushScheduler.addToBatch(items);
 
     expect(callback).toBeCalledTimes(1);
     expect(callback).toBeCalledWith(expect.any(String), [1, 2, 3]);
@@ -52,13 +54,14 @@ describe("DynamicFlushScheduler", () => {
     const callback = vi.fn();
     const dynamicFlushScheduler = new DynamicFlushScheduler({
       batchSize: 3,
-      flushInterval: 3000,
+      flushInterval: 10000,
       callback,
     });
     const items = [1, 2, 3, 4, 5, 6];
-    dynamicFlushScheduler.addToBatch(items);
+    await dynamicFlushScheduler.addToBatch(items);
 
-    await vi.advanceTimersByTimeAsync(100); // we need to wait for the async callback to complete);
+    // comment out if `addToBatch` can't be marked as async
+    // await vi.advanceTimersToNextTimerAsync();
 
     expect(callback).toHaveBeenCalledTimes(2);
     expect(callback).toHaveBeenNthCalledWith(1, expect.any(String), [1, 2, 3]);
