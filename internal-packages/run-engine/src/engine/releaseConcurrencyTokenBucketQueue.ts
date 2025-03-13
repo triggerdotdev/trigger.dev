@@ -20,6 +20,7 @@ export type ReleaseConcurrencyQueueOptions<T> = {
     fromDescriptor: (releaseQueue: T) => string;
     toDescriptor: (releaseQueue: string) => T;
   };
+  maxTokens: (descriptor: T) => Promise<number>;
   consumersCount?: number;
   masterQueuesKey?: string;
   tracer?: Tracer;
@@ -36,7 +37,7 @@ const QueueItemMetadata = z.object({
 
 type QueueItemMetadata = z.infer<typeof QueueItemMetadata>;
 
-export class ReleaseConcurrencyQueue<T> {
+export class ReleaseConcurrencyTokenBucketQueue<T> {
   private redis: Redis;
   private logger: Logger;
   private abortController: AbortController;
@@ -47,6 +48,7 @@ export class ReleaseConcurrencyQueue<T> {
   private consumersCount: number;
   private pollInterval: number;
   private keys: ReleaseConcurrencyQueueOptions<T>["keys"];
+  private maxTokens: ReleaseConcurrencyQueueOptions<T>["maxTokens"];
   private batchSize: number;
   private maxRetries: number;
   private backoff: NonNullable<Required<ReleaseConcurrencyQueueRetryOptions["backoff"]>>;
@@ -62,6 +64,7 @@ export class ReleaseConcurrencyQueue<T> {
     this.consumersCount = options.consumersCount ?? 1;
     this.pollInterval = options.pollInterval ?? 1000;
     this.keys = options.keys;
+    this.maxTokens = options.maxTokens;
     this.batchSize = options.batchSize ?? 5;
     this.maxRetries = options.retry?.maxRetries ?? 3;
     this.backoff = {
@@ -86,7 +89,8 @@ export class ReleaseConcurrencyQueue<T> {
    * If there is no token available, then we'll add the operation to a queue
    * and wait until the token is available.
    */
-  public async attemptToRelease(releaseQueueDescriptor: T, runId: string, maxTokens: number) {
+  public async attemptToRelease(releaseQueueDescriptor: T, runId: string) {
+    const maxTokens = await this.maxTokens(releaseQueueDescriptor);
     const releaseQueue = this.keys.fromDescriptor(releaseQueueDescriptor);
 
     const result = await this.redis.consumeToken(
@@ -113,7 +117,8 @@ export class ReleaseConcurrencyQueue<T> {
    *
    * This will add the amount of tokens to the token bucket.
    */
-  public async refillTokens(releaseQueueDescriptor: T, maxTokens: number, amount: number = 1) {
+  public async refillTokens(releaseQueueDescriptor: T, amount: number = 1) {
+    const maxTokens = await this.maxTokens(releaseQueueDescriptor);
     const releaseQueue = this.keys.fromDescriptor(releaseQueueDescriptor);
 
     if (amount < 0) {
@@ -533,7 +538,7 @@ class ReleaseConcurrencyQueueConsumer<T> {
   private logger: Logger;
 
   constructor(
-    private readonly queue: ReleaseConcurrencyQueue<T>,
+    private readonly queue: ReleaseConcurrencyTokenBucketQueue<T>,
     private readonly pollInterval: number,
     private readonly signal: AbortSignal,
     logger?: Logger

@@ -71,7 +71,7 @@ import {
   isPendingExecuting,
 } from "./statuses.js";
 import { HeartbeatTimeouts, RunEngineOptions, TriggerParams } from "./types.js";
-import { ReleaseConcurrencyQueue } from "./releaseConcurrencyQueue.js";
+import { ReleaseConcurrencyTokenBucketQueue } from "./releaseConcurrencyTokenBucketQueue.js";
 
 const workerCatalog = {
   finishWaitpoint: {
@@ -139,7 +139,11 @@ export class RunEngine {
   private logger = new Logger("RunEngine", "debug");
   private tracer: Tracer;
   private heartbeatTimeouts: HeartbeatTimeouts;
-  private releaseConcurrencyQueue: ReleaseConcurrencyQueue;
+  private releaseConcurrencyQueue: ReleaseConcurrencyTokenBucketQueue<{
+    orgId: string;
+    projectId: string;
+    envId: string;
+  }>;
   eventBus = new EventEmitter<EventBusEvents>();
 
   constructor(private readonly options: RunEngineOptions) {
@@ -244,15 +248,43 @@ export class RunEngine {
     };
 
     // Initialize the ReleaseConcurrencyQueue
-    this.releaseConcurrencyQueue = new ReleaseConcurrencyQueue({
+    this.releaseConcurrencyQueue = new ReleaseConcurrencyTokenBucketQueue({
       redis: {
         ...options.queue.redis, // Use base queue redis options
         ...options.releaseConcurrency?.redis, // Allow overrides
         keyPrefix: `${options.queue.redis.keyPrefix}release-concurrency:`,
       },
-      maxTokens: options.releaseConcurrency?.maxTokens ?? 10, // Default to 10 tokens
-      executor: async (releaseQueue, runId) => {
-        await this.#executeReleasedConcurrencyFromQueue(releaseQueue, runId);
+      retry: {
+        maxRetries: 5, // TODO: Make this configurable
+        backoff: {
+          minDelay: 1000, // TODO: Make this configurable
+          maxDelay: 10000, // TODO: Make this configurable
+          factor: 2, // TODO: Make this configurable
+        },
+      },
+      executor: async (descriptor, runId) => {
+        await this.#executeReleasedConcurrencyFromQueue(descriptor, runId);
+      },
+      maxTokens: async (descriptor) => {
+        const environment = await this.prisma.runtimeEnvironment.findFirstOrThrow({
+          where: { id: descriptor.envId },
+          select: {
+            maximumConcurrencyLimit: true,
+          },
+        });
+
+        return (
+          environment.maximumConcurrencyLimit * (options.releaseConcurrency?.maxTokensRatio ?? 1.0)
+        );
+      },
+      keys: {
+        fromDescriptor: (descriptor) =>
+          `org:${descriptor.orgId}:proj:${descriptor.projectId}:env:${descriptor.envId}`,
+        toDescriptor: (name) => ({
+          orgId: name.split(":")[1],
+          projectId: name.split(":")[3],
+          envId: name.split(":")[5],
+        }),
       },
       tracer: this.tracer,
     });
@@ -2149,25 +2181,24 @@ export class RunEngine {
     }
 
     await this.releaseConcurrencyQueue.attemptToRelease(
-      this.runQueue.keys.releaseConcurrencyKey({
+      {
         orgId: run.runtimeEnvironment.organizationId,
         projectId: run.runtimeEnvironment.projectId,
         envId: run.runtimeEnvironment.id,
-      }),
+      },
       snapshot.runId
     );
 
     return;
   }
 
-  async #executeReleasedConcurrencyFromQueue(releaseQueue: string, runId: string) {
-    const releaseQueueDescriptor =
-      this.runQueue.keys.releaseConcurrencyDescriptorFromQueue(releaseQueue);
-
+  async #executeReleasedConcurrencyFromQueue(
+    descriptor: { orgId: string; projectId: string; envId: string },
+    runId: string
+  ) {
     this.logger.debug("Executing released concurrency", {
-      releaseQueue,
+      descriptor,
       runId,
-      releaseQueueDescriptor,
     });
 
     // - Runlock the run
@@ -2186,7 +2217,7 @@ export class RunEngine {
         return;
       }
 
-      return await this.runQueue.releaseConcurrency(releaseQueueDescriptor.orgId, snapshot.runId);
+      return await this.runQueue.releaseConcurrency(descriptor.orgId, snapshot.runId);
     });
   }
 
@@ -2418,11 +2449,11 @@ export class RunEngine {
 
       // Refill the token bucket for the release concurrency queue
       await this.releaseConcurrencyQueue.refillTokens(
-        this.runQueue.keys.releaseConcurrencyKey({
+        {
           orgId: run.runtimeEnvironment.organizationId,
           projectId: run.runtimeEnvironment.projectId,
           envId: run.runtimeEnvironment.id,
-        }),
+        },
         1
       );
 
