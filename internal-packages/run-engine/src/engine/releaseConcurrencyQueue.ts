@@ -1,7 +1,7 @@
 import { Callback, createRedisClient, Redis, Result, type RedisOptions } from "@internal/redis";
 import { Tracer } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
-import { setTimeout } from "node:timers/promises";
+import { setInterval } from "node:timers/promises";
 import { z } from "zod";
 
 export type ReleaseConcurrencyQueueRetryOptions = {
@@ -39,13 +39,14 @@ type QueueItemMetadata = z.infer<typeof QueueItemMetadata>;
 export class ReleaseConcurrencyQueue<T> {
   private redis: Redis;
   private logger: Logger;
+  private abortController: AbortController;
+  private consumers: ReleaseConcurrencyQueueConsumer<T>[];
 
   private keyPrefix: string;
   private masterQueuesKey: string;
   private consumersCount: number;
   private pollInterval: number;
   private keys: ReleaseConcurrencyQueueOptions<T>["keys"];
-  private consumersEnabled: boolean;
   private batchSize: number;
   private maxRetries: number;
   private backoff: NonNullable<Required<ReleaseConcurrencyQueueRetryOptions["backoff"]>>;
@@ -54,6 +55,8 @@ export class ReleaseConcurrencyQueue<T> {
     this.redis = createRedisClient(options.redis);
     this.keyPrefix = options.redis.keyPrefix ?? "re2:release-concurrency-queue:";
     this.logger = options.logger ?? new Logger("ReleaseConcurrencyQueue");
+    this.abortController = new AbortController();
+    this.consumers = [];
 
     this.masterQueuesKey = options.masterQueuesKey ?? "master-queue";
     this.consumersCount = options.consumersCount ?? 1;
@@ -67,14 +70,12 @@ export class ReleaseConcurrencyQueue<T> {
       factor: options.retry?.backoff?.factor ?? 2,
     };
 
-    this.consumersEnabled = true;
-
     this.#registerCommands();
     this.#startConsumers();
   }
 
   public async quit() {
-    this.consumersEnabled = false;
+    this.abortController.abort();
     await this.redis.quit();
   }
 
@@ -225,24 +226,20 @@ export class ReleaseConcurrencyQueue<T> {
   }
 
   #startConsumers() {
-    for (let i = 0; i < this.consumersCount; i++) {
-      this.#startConsumer();
-    }
-  }
+    const consumerCount = this.consumersCount;
 
-  async #startConsumer() {
-    while (this.consumersEnabled) {
-      try {
-        const processed = await this.processNextAvailableQueue();
-        if (!processed) {
-          // No items available, wait before trying again
-          await setTimeout(this.pollInterval);
-        }
-      } catch (error) {
-        // Handle error, maybe wait before retrying
-        this.logger.error("Error processing queue:", { error });
-        await setTimeout(this.pollInterval);
-      }
+    for (let i = 0; i < consumerCount; i++) {
+      const consumer = new ReleaseConcurrencyQueueConsumer(
+        this,
+        this.pollInterval,
+        this.abortController.signal,
+        this.logger
+      );
+      this.consumers.push(consumer);
+      // Start the consumer and don't await it
+      consumer.start().catch((error) => {
+        this.logger.error("Consumer failed to start:", { error, consumerId: i });
+      });
     }
   }
 
@@ -529,5 +526,37 @@ declare module "@internal/redis" {
       runId: string,
       callback?: Callback<void>
     ): Result<void, Context>;
+  }
+}
+
+class ReleaseConcurrencyQueueConsumer<T> {
+  private logger: Logger;
+
+  constructor(
+    private readonly queue: ReleaseConcurrencyQueue<T>,
+    private readonly pollInterval: number,
+    private readonly signal: AbortSignal,
+    logger?: Logger
+  ) {
+    this.logger = logger ?? new Logger("QueueConsumer");
+  }
+
+  async start() {
+    try {
+      for await (const _ of setInterval(this.pollInterval, null, { signal: this.signal })) {
+        try {
+          const processed = await this.queue.processNextAvailableQueue();
+          if (!processed) {
+            continue;
+          }
+        } catch (error) {
+          this.logger.error("Error processing queue:", { error });
+        }
+      }
+    } catch (error) {
+      if (error instanceof Error && error.name !== "AbortError") {
+        this.logger.error("Consumer loop error:", { error });
+      }
+    }
   }
 }
