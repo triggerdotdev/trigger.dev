@@ -6,7 +6,6 @@ import { randomUUID } from "crypto";
 import { readJSONFile } from "../utilities/fileSystem.js";
 import {
   CompleteRunAttemptResult,
-  DequeuedMessage,
   HeartbeatService,
   RunExecutionData,
   TaskRunExecutionResult,
@@ -14,6 +13,7 @@ import {
   WorkerManifest,
 } from "@trigger.dev/core/v3";
 import {
+  WarmStartClient,
   WORKLOAD_HEADERS,
   WorkloadClientToServerEvents,
   WorkloadHttpClient,
@@ -699,41 +699,56 @@ class ManagedRunController {
 
       if (!env.TRIGGER_WARM_START_URL) {
         console.error("waitForNextRun: warm starts disabled, shutting down");
-        process.exit(0);
+        this.exitProcess(0);
       }
 
-      const warmStartUrl = new URL("/warm-start", env.TRIGGER_WARM_START_URL);
+      const warmStartClient = new WarmStartClient({
+        apiUrl: new URL(env.TRIGGER_WARM_START_URL),
+        controllerId: env.TRIGGER_WORKLOAD_CONTROLLER_ID,
+        deploymentId: env.TRIGGER_DEPLOYMENT_ID,
+        machineCpu: env.TRIGGER_MACHINE_CPU,
+        machineMemory: env.TRIGGER_MACHINE_MEMORY,
+      });
 
-      const res = await longPoll<DequeuedMessage>(
-        warmStartUrl.href,
-        {
-          method: "GET",
-          headers: {
-            "x-trigger-workload-controller-id": env.TRIGGER_WORKLOAD_CONTROLLER_ID,
-            "x-trigger-deployment-id": env.TRIGGER_DEPLOYMENT_ID,
-            "x-trigger-deployment-version": env.TRIGGER_DEPLOYMENT_VERSION,
-            "x-trigger-machine-cpu": env.TRIGGER_MACHINE_CPU,
-            "x-trigger-machine-memory": env.TRIGGER_MACHINE_MEMORY,
-            "x-trigger-worker-instance-name": env.TRIGGER_WORKER_INSTANCE_NAME,
-          },
-        },
-        // TODO: get these from the warm start service instead
-        {
-          timeoutMs: env.TRIGGER_WARM_START_CONNECTION_TIMEOUT_MS,
-          totalDurationMs: env.TRIGGER_WARM_START_TOTAL_DURATION_MS,
-        }
-      );
+      // Check the service is up and get additional warm start config
+      const connect = await warmStartClient.connect();
 
-      if (!res.ok) {
-        console.error("waitForNextRun: failed to poll for next run", {
-          error: res.error,
-          timeoutMs: env.TRIGGER_WARM_START_CONNECTION_TIMEOUT_MS,
-          totalDurationMs: env.TRIGGER_WARM_START_TOTAL_DURATION_MS,
+      if (!connect.success) {
+        console.error("waitForNextRun: failed to connect to warm start service", {
+          warmStartUrl: env.TRIGGER_WARM_START_URL,
+          error: connect.error,
         });
-        process.exit(0);
+        this.exitProcess(0);
       }
 
-      const nextRun = DequeuedMessage.parse(res.data);
+      const connectionTimeoutMs =
+        connect.data.connectionTimeoutMs ?? env.TRIGGER_WARM_START_CONNECTION_TIMEOUT_MS;
+      const totalWarmStartDurationMs =
+        connect.data.totalWarmStartDurationMs ?? env.TRIGGER_WARM_START_TOTAL_DURATION_MS;
+
+      console.log("waitForNextRun: connected to warm start service", {
+        connectionTimeoutMs,
+        totalWarmStartDurationMs,
+      });
+
+      if (!connectionTimeoutMs || !totalWarmStartDurationMs) {
+        console.error("waitForNextRun: warm starts disabled after connect", {
+          connectionTimeoutMs,
+          totalWarmStartDurationMs,
+        });
+        this.exitProcess(0);
+      }
+
+      const nextRun = await warmStartClient.warmStart({
+        workerInstanceName: env.TRIGGER_WORKER_INSTANCE_NAME,
+        connectionTimeoutMs,
+        totalWarmStartDurationMs,
+      });
+
+      if (!nextRun) {
+        console.error("waitForNextRun: warm start failed, shutting down");
+        this.exitProcess(0);
+      }
 
       console.log("waitForNextRun: got next run", { nextRun });
 
@@ -745,10 +760,15 @@ class ManagedRunController {
       return;
     } catch (error) {
       console.error("waitForNextRun: unexpected error", { error });
-      process.exit(1);
+      this.exitProcess(1);
     } finally {
       this.waitForNextRunLock = false;
     }
+  }
+
+  private exitProcess(code?: number): never {
+    logger.log("Exiting process", { code });
+    process.exit(code);
   }
 
   createSocket() {
@@ -971,7 +991,7 @@ class ManagedRunController {
     // TODO: remove this after testing
     setTimeout(() => {
       console.error("[ManagedRunController] Exiting after 5 minutes");
-      process.exit(1);
+      this.exitProcess(1);
     }, 60 * 5000);
 
     // Websocket notifications are only an optimisation so we don't need to wait for a successful connection
@@ -1027,72 +1047,3 @@ async function loadWorkerManifest() {
   const manifest = await readJSONFile("./index.json");
   return WorkerManifest.parse(manifest);
 }
-
-const longPoll = async <T = any>(
-  url: string,
-  requestInit: Omit<RequestInit, "signal">,
-  {
-    timeoutMs,
-    totalDurationMs,
-  }: {
-    timeoutMs: number;
-    totalDurationMs: number;
-  }
-): Promise<
-  | {
-      ok: true;
-      data: T;
-    }
-  | {
-      ok: false;
-      error: string;
-    }
-> => {
-  logger.debug("Long polling", { url, requestInit, timeoutMs, totalDurationMs });
-
-  const endTime = Date.now() + totalDurationMs;
-
-  while (Date.now() < endTime) {
-    try {
-      const controller = new AbortController();
-      const signal = controller.signal;
-
-      // TODO: Think about using a random timeout instead
-      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-      const response = await fetch(url, { ...requestInit, signal });
-
-      clearTimeout(timeoutId);
-
-      if (response.ok) {
-        const data = await response.json();
-
-        return {
-          ok: true,
-          data,
-        };
-      } else {
-        return {
-          ok: false,
-          error: `Server error: ${response.status}`,
-        };
-      }
-    } catch (error) {
-      if (error instanceof Error && error.name === "AbortError") {
-        console.log("Long poll request timed out, retrying...");
-        continue;
-      } else {
-        console.error("Error during fetch, retrying...", error);
-
-        // TODO: exponential backoff
-        await sleep(1000);
-        continue;
-      }
-    }
-  }
-
-  return {
-    ok: false,
-    error: "TotalDurationExceeded",
-  };
-};
