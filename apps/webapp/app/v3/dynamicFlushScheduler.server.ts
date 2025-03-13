@@ -42,7 +42,7 @@ export class DynamicFlushScheduler<T> {
     this.startFlushTimer();
     this.setupShutdownHandlers();
 
-    if (process.env.NODE_ENV !== "test") {
+    if (!process.env.VITEST) {
       const scheduler = this;
       new Gauge({
         name: "dynamic_flush_scheduler_batch_size",
@@ -64,7 +64,12 @@ export class DynamicFlushScheduler<T> {
     }
   }
 
+  /**
+   *
+   * If you want to fire and forget, don't await this method.
+   */
   async addToBatch(items: T[]): Promise<void> {
+    // TODO: consider using concat. spread is not performant
     this.currentBatch.push(...items);
     logger.debug("Adding items to batch", {
       currentBatchSize: this.currentBatch.length,
@@ -142,6 +147,7 @@ export class DynamicFlushScheduler<T> {
       totalItems: batches.reduce((sum, batch) => sum + batch.length, 0),
     });
 
+    // TODO: report plimit.activeCount and pLimit.pendingCount and pLimit.concurrency to /metrics
     const promises = batches.map((batch) =>
       this.concurrencyLimiter(async () => {
         const batchId = nanoid();
