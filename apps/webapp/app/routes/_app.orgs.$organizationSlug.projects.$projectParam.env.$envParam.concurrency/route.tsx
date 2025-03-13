@@ -95,7 +95,17 @@ export default function Page() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              <Suspense fallback={<Spinner />}>
+              <Suspense
+                fallback={
+                  <TableRow>
+                    <TableCell colSpan={4}>
+                      <div className="grid place-items-center py-6">
+                        <Spinner />
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                }
+              >
                 <Await resolve={environments} errorElement={<p>Error loading environments</p>}>
                   {(environments) => <EnvironmentsTable environments={environments} />}
                 </Await>
