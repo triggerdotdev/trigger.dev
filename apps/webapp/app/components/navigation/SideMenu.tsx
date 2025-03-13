@@ -369,35 +369,26 @@ function ProjectSelector({
             </LinkButton>
           </div>
         </div>
-
-        {organizations.map((organization) => (
-          <Fragment key={organization.id}>
-            <div className="flex flex-col gap-1 p-1">
-              {organization.projects.map((p) => {
-                const isSelected = p.id === project.id;
-                return (
-                  <PopoverMenuItem
-                    key={p.id}
-                    to={v3ProjectPath(organization, p)}
-                    title={
-                      <div className="flex w-full items-center justify-between text-text-bright">
-                        <span className="grow truncate text-left">{p.name}</span>
-                      </div>
-                    }
-                    isSelected={isSelected}
-                    icon={isSelected ? FolderOpenIcon : FolderIcon}
-                    leadingIconClassName="text-indigo-500"
-                  />
-                );
-              })}
+        <div className="flex flex-col gap-1 p-1">
+          {organization.projects.map((p) => {
+            const isSelected = p.id === project.id;
+            return (
               <PopoverMenuItem
-                to={newProjectPath(organization)}
-                title="New project"
-                icon={PlusIcon}
+                key={p.id}
+                to={v3ProjectPath(organization, p)}
+                title={
+                  <div className="flex w-full items-center justify-between text-text-bright">
+                    <span className="grow truncate text-left">{p.name}</span>
+                  </div>
+                }
+                isSelected={isSelected}
+                icon={isSelected ? FolderOpenIcon : FolderIcon}
+                leadingIconClassName="text-indigo-500"
               />
-            </div>
-          </Fragment>
-        ))}
+            );
+          })}
+          <PopoverMenuItem to={newProjectPath(organization)} title="New project" icon={PlusIcon} />
+        </div>
         <div className="border-t border-charcoal-700 p-1">
           <SwitchOrganizations organizations={organizations} organization={organization} />
         </div>
@@ -435,43 +426,79 @@ function SwitchOrganizations({
 }) {
   const navigation = useNavigation();
   const [isMenuOpen, setMenuOpen] = useState(false);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Clear timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     setMenuOpen(false);
   }, [navigation.location?.pathname]);
 
+  const handleMouseEnter = () => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+    setMenuOpen(true);
+  };
+
+  const handleMouseLeave = () => {
+    // Small delay before closing to allow moving to the content
+    timeoutRef.current = setTimeout(() => {
+      setMenuOpen(false);
+    }, 150);
+  };
+
   return (
     <Popover onOpenChange={(open) => setMenuOpen(open)} open={isMenuOpen}>
-      <PopoverTrigger className="h-7 w-full justify-between overflow-hidden">
-        <ButtonContent
-          variant="small-menu-item"
-          LeadingIcon={ArrowPathRoundedSquareIcon}
-          leadingIconClassName="text-text-dimmed"
-          TrailingIcon={ChevronRightIcon}
-          trailingIconClassName="text-text-dimmed"
-          textAlignLeft
-          fullWidth
-        >
-          Switch organization
-        </ButtonContent>
-      </PopoverTrigger>
-      <PopoverContent className="w-64" align="start" side="right">
-        {organizations.map((org) => (
-          <PopoverMenuItem
-            key={org.id}
-            to={organizationPath(org)}
-            title={org.title}
-            // icon={org.icon}
+      <div onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
+        <PopoverTrigger className="h-7 w-full justify-between overflow-hidden focus-custom">
+          <ButtonContent
+            variant="small-menu-item"
+            LeadingIcon={ArrowPathRoundedSquareIcon}
             leadingIconClassName="text-text-dimmed"
-          />
-        ))}
-        <PopoverMenuItem
-          to={newOrganizationPath()}
-          title="New Organization"
-          icon={PlusIcon}
-          leadingIconClassName="text-text-dimmed"
-        />
-      </PopoverContent>
+            TrailingIcon={ChevronRightIcon}
+            trailingIconClassName="text-text-dimmed"
+            textAlignLeft
+            fullWidth
+          >
+            Switch organization
+          </ButtonContent>
+        </PopoverTrigger>
+        <PopoverContent
+          className="min-w-[16rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+          align="start"
+          style={{ maxHeight: `calc(var(--radix-popover-content-available-height) - 10vh)` }}
+          side="right"
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={handleMouseLeave}
+        >
+          <div className="p-1">
+            {organizations.map((org) => (
+              <PopoverMenuItem
+                key={org.id}
+                to={organizationPath(org)}
+                title={org.title}
+                leadingIconClassName="text-text-dimmed"
+              />
+            ))}
+          </div>
+          <div className="border-t border-charcoal-700 p-1">
+            <PopoverMenuItem
+              to={newOrganizationPath()}
+              title="New Organization"
+              icon={PlusIcon}
+              leadingIconClassName="text-text-dimmed"
+            />
+          </div>
+        </PopoverContent>
+      </div>
     </Popover>
   );
 }
@@ -488,67 +515,5 @@ function SelectorDivider() {
         strokeLinecap="round"
       />
     </svg>
-  );
-}
-
-function UserMenu({ user }: { user: SideMenuUser }) {
-  const [isProfileMenuOpen, setProfileMenuOpen] = useState(false);
-  const navigation = useNavigation();
-  const { v3Enabled } = useFeatures();
-
-  useEffect(() => {
-    setProfileMenuOpen(false);
-  }, [navigation.location?.pathname]);
-
-  return (
-    <Popover onOpenChange={(open) => setProfileMenuOpen(open)}>
-      <PopoverCustomTrigger isOpen={isProfileMenuOpen} className="p-1 hover:bg-transparent">
-        <UserProfilePhoto
-          className={cn(
-            "h-5 w-5 rounded-full border border-transparent text-charcoal-600 transition hover:border-charcoal-600",
-            user.isImpersonating && "rounded-full border border-yellow-500"
-          )}
-        />
-      </PopoverCustomTrigger>
-      <PopoverContent
-        className="min-w-[12rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
-        align="start"
-      >
-        <Fragment>
-          <PopoverSectionHeader title={user.email} variant="extra-small" />
-          <div className="flex flex-col gap-1 p-1">
-            {user.isImpersonating && <ImpersonationBanner />}
-            {user.admin && (
-              <PopoverMenuItem
-                to={"/admin"}
-                title="Admin"
-                icon={AcademicCapIcon}
-                leadingIconClassName="text-yellow-500"
-              />
-            )}
-            <PopoverMenuItem
-              to={accountPath()}
-              title="View profile"
-              icon={UserProfilePhoto}
-              leadingIconClassName="text-indigo-500"
-            />
-            {v3Enabled && (
-              <PopoverMenuItem
-                to={personalAccessTokensPath()}
-                title="Personal Access Tokens"
-                icon={ShieldCheckIcon}
-                leadingIconClassName="text-emerald-500"
-              />
-            )}
-            <PopoverMenuItem
-              to={logoutPath()}
-              title="Log out"
-              icon={ArrowRightOnRectangleIcon}
-              leadingIconClassName="text-rose-500"
-            />
-          </div>
-        </Fragment>
-      </PopoverContent>
-    </Popover>
   );
 }
