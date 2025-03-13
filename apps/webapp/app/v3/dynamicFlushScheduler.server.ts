@@ -32,15 +32,17 @@ export class DynamicFlushScheduler<T> {
     this.startFlushTimer();
     this.setupShutdownHandlers();
 
-    const scheduler = this;
-    new Gauge({
-      name: "dynamic_flush_scheduler_batch_size",
-      help: "Number of items in the current dynamic flush scheduler batch",
-      collect() {
-        this.set(scheduler.currentBatch.length);
-      },
-      registers: [metricsRegister],
-    });
+    // if (process.env.NODE_ENV !== "test") {
+    //   const scheduler = this;
+    //   new Gauge({
+    //     name: "dynamic_flush_scheduler_batch_size",
+    //     help: "Number of items in the current dynamic flush scheduler batch",
+    //     collect() {
+    //       this.set(scheduler.currentBatch.length);
+    //     },
+    //     registers: [metricsRegister],
+    //   });
+    // }
   }
 
   async addToBatch(items: T[]): Promise<void> {
