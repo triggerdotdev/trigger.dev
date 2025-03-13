@@ -131,11 +131,17 @@ model Organization {
 
   companySize String?
 
+  avatar Json?
+
   runsEnabled Boolean @default(true)
 
-  v3Enabled      Boolean @default(false)
+  v3Enabled Boolean @default(false)
+
+  /// @deprecated
   v2Enabled      Boolean @default(false)
+  /// @deprecated
   v2MarqsEnabled Boolean @default(false)
+  /// @deprecated
   hasRequestedV3 Boolean @default(false)
 
   environments RuntimeEnvironment[]

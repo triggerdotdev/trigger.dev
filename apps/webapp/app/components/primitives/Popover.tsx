@@ -5,7 +5,7 @@ import { EllipsisVerticalIcon } from "@heroicons/react/24/solid";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
 import * as React from "react";
 import { DropdownIcon } from "~/assets/icons/DropdownIcon";
-import { ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
+import * as useShortcutKeys from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
 import { type ButtonContentPropsType, LinkButton } from "./Buttons";
 import { Paragraph, type ParagraphVariant } from "./Paragraph";
@@ -110,11 +110,12 @@ function PopoverSideMenuTrigger({
   className,
   shortcut,
   ...props
-}: { isOpen?: boolean; shortcut?: ShortcutDefinition } & React.ComponentPropsWithoutRef<
-  typeof PopoverTrigger
->) {
+}: {
+  isOpen?: boolean;
+  shortcut?: useShortcutKeys.ShortcutDefinition;
+} & React.ComponentPropsWithoutRef<typeof PopoverTrigger>) {
   const ref = React.useRef<HTMLButtonElement>(null);
-  useShortcutKeys({
+  useShortcutKeys.useShortcutKeys({
     shortcut: shortcut,
     action: (e) => {
       e.preventDefault();

@@ -6,8 +6,10 @@ import {
   ChartBarIcon,
   ClockIcon,
   Cog8ToothIcon,
+  CogIcon,
   CreditCardIcon,
   FolderIcon,
+  FolderOpenIcon,
   IdentificationIcon,
   KeyIcon,
   PlusIcon,
@@ -18,9 +20,12 @@ import {
 } from "@heroicons/react/20/solid";
 import { UserGroupIcon } from "@heroicons/react/24/solid";
 import { useNavigation } from "@remix-run/react";
-import { Fragment, type ReactNode, useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
+import simplur from "simplur";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
+import { Avatar } from "~/components/primitives/Avatar";
+import { type MatchedEnvironment } from "~/hooks/useEnvironment";
 import { useFeatures } from "~/hooks/useFeatures";
 import { type MatchedOrganization } from "~/hooks/useOrganizations";
 import { type MatchedProject } from "~/hooks/useProject";
@@ -52,9 +57,9 @@ import {
   v3UsagePath,
 } from "~/utils/pathBuilder";
 import { ImpersonationBanner } from "../ImpersonationBanner";
-import { LogoIcon } from "../LogoIcon";
 import { UserProfilePhoto } from "../UserProfilePhoto";
 import { FreePlanUsage } from "../billing/FreePlanUsage";
+import { Paragraph } from "../primitives/Paragraph";
 import {
   Popover,
   PopoverArrowTrigger,
@@ -63,12 +68,13 @@ import {
   PopoverMenuItem,
   PopoverSectionHeader,
 } from "../primitives/Popover";
+import { EnvironmentSelector } from "./EnvironmentSelector";
 import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
-import { type MatchedEnvironment } from "~/hooks/useEnvironment";
 import { SideMenuSection } from "./SideMenuSection";
-import { EnvironmentSelector } from "./EnvironmentSelector";
+import { LinkButton } from "../primitives/Buttons";
+import { useUser } from "~/hooks/useUser";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 export type SideMenuProject = Pick<
@@ -126,8 +132,12 @@ export function SideMenu({
             showHeaderDivider ? " border-grid-bright" : "border-transparent"
           )}
         >
-          <ProjectSelector organizations={organizations} project={project} />
-          <UserMenu user={user} />
+          <ProjectSelector
+            organizations={organizations}
+            organization={organization}
+            project={project}
+            user={user}
+          />
         </div>
         <div
           className="h-full overflow-hidden overflow-y-auto pt-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
@@ -277,13 +287,25 @@ export function SideMenu({
 
 function ProjectSelector({
   project,
+  organization,
   organizations,
+  user,
 }: {
   project: SideMenuProject;
+  organization: MatchedOrganization;
   organizations: MatchedOrganization[];
+  user: SideMenuUser;
 }) {
+  const currentPlan = useCurrentPlan();
   const [isOrgMenuOpen, setOrgMenuOpen] = useState(false);
   const navigation = useNavigation();
+
+  let plan: string | undefined = undefined;
+  if (currentPlan?.v3Subscription?.isPaying === false) {
+    plan = "Free plan";
+  } else if (currentPlan?.v3Subscription?.isPaying === true) {
+    plan = currentPlan.v3Subscription.plan?.title;
+  }
 
   useEffect(() => {
     setOrgMenuOpen(false);
@@ -296,50 +318,127 @@ function ProjectSelector({
         overflowHidden
         className="h-7 w-full justify-between overflow-hidden py-1 pl-2"
       >
-        <LogoIcon className="relative -top-px mr-2 h-4 w-4 min-w-[1rem]" />
-        <span className="truncate">{project.name ?? "Select a project"}</span>
+        <div className="flex items-center gap-1.5">
+          <Avatar avatar={organization.avatar} className="size-5" />
+          <SelectorDivider />
+          <span className="truncate text-2sm font-normal text-text-bright">
+            {project.name ?? "Select a project"}
+          </span>
+        </div>
       </PopoverArrowTrigger>
       <PopoverContent
         className="min-w-[16rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
         align="start"
         style={{ maxHeight: `calc(var(--radix-popover-content-available-height) - 10vh)` }}
       >
+        <div className="flex flex-col gap-2 bg-charcoal-750 p-2">
+          <div className="flex items-center gap-2.5">
+            <div className="size-10 overflow-clip rounded-sm border border-charcoal-700 bg-charcoal-850">
+              <Avatar avatar={organization.avatar} className="size-10" includePadding />
+            </div>
+            <div className="space-y-0.5">
+              <Paragraph variant="extra-small/bright">{organization.title}</Paragraph>
+              <div className="flex items-baseline">
+                {plan && <Paragraph variant="extra-small">{plan}</Paragraph>}
+                <Paragraph variant="extra-small">{simplur`${organization.membersCount} member[|s]`}</Paragraph>
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <LinkButton
+              variant="secondary/small"
+              to={organizationSettingsPath(organization)}
+              fullWidth
+              iconSpacing="gap-1.5"
+            >
+              <CogIcon className="size-4 text-text-dimmed" />
+              <span className="text-text-bright">Settings</span>
+            </LinkButton>
+            <LinkButton
+              variant="secondary/small"
+              to={v3UsagePath(organization)}
+              fullWidth
+              iconSpacing="gap-1.5"
+            >
+              <ChartBarIcon className="size-4 text-text-dimmed" />
+              <span className="text-text-bright">Usage</span>
+            </LinkButton>
+          </div>
+        </div>
+
         {organizations.map((organization) => (
           <Fragment key={organization.id}>
-            <PopoverSectionHeader title={organization.title} />
             <div className="flex flex-col gap-1 p-1">
-              {organization.projects.length > 0 ? (
-                organization.projects.map((p) => {
-                  const isSelected = p.id === project.id;
-                  return (
-                    <PopoverMenuItem
-                      key={p.id}
-                      to={v3ProjectPath(organization, p)}
-                      title={
-                        <div className="flex w-full items-center justify-between text-text-bright">
-                          <span className="grow truncate text-left">{p.name}</span>
-                        </div>
-                      }
-                      isSelected={isSelected}
-                      icon={FolderIcon}
-                    />
-                  );
-                })
-              ) : (
-                <PopoverMenuItem
-                  to={newProjectPath(organization)}
-                  title="New project"
-                  icon={PlusIcon}
-                />
-              )}
+              {organization.projects.map((p) => {
+                const isSelected = p.id === project.id;
+                return (
+                  <PopoverMenuItem
+                    key={p.id}
+                    to={v3ProjectPath(organization, p)}
+                    title={
+                      <div className="flex w-full items-center justify-between text-text-bright">
+                        <span className="grow truncate text-left">{p.name}</span>
+                      </div>
+                    }
+                    isSelected={isSelected}
+                    icon={isSelected ? FolderOpenIcon : FolderIcon}
+                    leadingIconClassName="text-indigo-500"
+                  />
+                );
+              })}
+              <PopoverMenuItem
+                to={newProjectPath(organization)}
+                title="New project"
+                icon={PlusIcon}
+              />
             </div>
           </Fragment>
         ))}
         <div className="border-t border-charcoal-700 p-1">
-          <PopoverMenuItem to={newOrganizationPath()} title="New Organization" icon={PlusIcon} />
+          <PopoverMenuItem
+            to={newOrganizationPath()}
+            title="New Organization"
+            icon={PlusIcon}
+            leadingIconClassName="text-text-dimmed"
+          />
+        </div>
+        <div className="border-t border-charcoal-700 p-1">
+          <PopoverMenuItem
+            to={accountPath()}
+            title="Account"
+            icon={UserProfilePhoto}
+            leadingIconClassName={cn(
+              "text-text-dimmed rounded-full border border-transparent",
+              user.isImpersonating && "rounded-full border-yellow-500"
+            )}
+          />
+          {user.isImpersonating && <ImpersonationBanner />}
+        </div>
+        <div className="border-t border-charcoal-700 p-1">
+          <PopoverMenuItem
+            to={logoutPath()}
+            title="Logout"
+            icon={ArrowRightOnRectangleIcon}
+            leadingIconClassName="text-text-dimmed"
+          />
         </div>
       </PopoverContent>
     </Popover>
+  );
+}
+
+function SelectorDivider() {
+  return (
+    <svg width="6" height="21" viewBox="0 0 6 21" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <line
+        x1="5.3638"
+        y1="0.606339"
+        x2="0.606339"
+        y2="19.6362"
+        stroke="#3B3E45"
+        strokeLinecap="round"
+      />
+    </svg>
   );
 }
 

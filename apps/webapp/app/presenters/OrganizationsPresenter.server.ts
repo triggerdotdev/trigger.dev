@@ -1,12 +1,12 @@
 import { type PrismaClient } from "@trigger.dev/database";
 import { redirect } from "remix-typedjson";
 import { prisma } from "~/db.server";
-import { type UserWithDashboardPreferences } from "~/models/user.server";
 import { logger } from "~/services/logger.server";
 import { type UserFromSession } from "~/services/session.server";
 import { newOrganizationPath, newProjectPath } from "~/utils/pathBuilder";
 import { type MinimumEnvironment } from "./SelectBestEnvironmentPresenter.server";
 import { sortEnvironments } from "~/utils/environmentSort";
+import { defaultAvatarIcon, parseAvatar } from "~/components/primitives/Avatar";
 
 export class OrganizationsPresenter {
   #prismaClient: PrismaClient;
@@ -122,6 +122,7 @@ export class OrganizationsPresenter {
         id: true,
         slug: true,
         title: true,
+        avatar: true,
         projects: {
           where: { deletedAt: null, version: "V3" },
           select: {
@@ -132,6 +133,11 @@ export class OrganizationsPresenter {
           },
           orderBy: { name: "asc" },
         },
+        _count: {
+          select: {
+            members: true,
+          },
+        },
       },
     });
 
@@ -140,12 +146,14 @@ export class OrganizationsPresenter {
         id: org.id,
         slug: org.slug,
         title: org.title,
+        avatar: parseAvatar(org.avatar, defaultAvatarIcon),
         projects: org.projects.map((project) => ({
           id: project.id,
           slug: project.slug,
           name: project.name,
           updatedAt: project.updatedAt,
         })),
+        membersCount: org._count.members,
       };
     });
   }
