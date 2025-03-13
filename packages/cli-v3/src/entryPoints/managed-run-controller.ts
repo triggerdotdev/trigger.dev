@@ -485,13 +485,6 @@ class ManagedRunController {
             return;
           }
 
-          const disableSuspend = true;
-
-          if (disableSuspend) {
-            console.log("Suspend disabled, will carry on waiting");
-            return;
-          }
-
           const suspendResult = await this.httpClient.suspendRun(
             this.runFriendlyId,
             this.snapshotFriendlyId
@@ -501,6 +494,33 @@ class ManagedRunController {
             console.error("Failed to suspend run, staying alive 🎶", {
               error: suspendResult.error,
             });
+
+            this.httpClient.sendDebugLog(run.friendlyId, {
+              time: new Date(),
+              message: "checkpoint: suspend request failed",
+              properties: {
+                snapshotId: snapshot.friendlyId,
+                error: suspendResult.error,
+              },
+            });
+
+            return;
+          }
+
+          if (!suspendResult.data.ok) {
+            console.error("Failed to suspend run, staying alive 🎶🎶", {
+              suspendResult: suspendResult.data,
+            });
+
+            this.httpClient.sendDebugLog(run.friendlyId, {
+              time: new Date(),
+              message: "checkpoint: failed to suspend run",
+              properties: {
+                snapshotId: snapshot.friendlyId,
+                error: suspendResult.data.error,
+              },
+            });
+
             return;
           }
 

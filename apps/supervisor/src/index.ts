@@ -87,6 +87,10 @@ class ManagedSupervisor {
     });
 
     if (env.TRIGGER_CHECKPOINT_URL) {
+      this.logger.log("[ManagedWorker] 🥶 Checkpoints enabled", {
+        checkpointUrl: env.TRIGGER_CHECKPOINT_URL,
+      });
+
       this.checkpointClient = new CheckpointClient({
         apiUrl: new URL(env.TRIGGER_CHECKPOINT_URL),
         workerClient: this.workerSession.httpClient,
