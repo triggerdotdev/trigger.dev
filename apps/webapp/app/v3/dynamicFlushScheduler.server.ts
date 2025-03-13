@@ -19,7 +19,8 @@ export class DynamicFlushScheduler<T> {
   private readonly concurrencyLimiter: ReturnType<typeof pLimit>;
   private flushTimer: NodeJS.Timeout | null;
   private readonly callback: (flushId: string, batch: T[]) => Promise<void>;
-  private isShuttingDown = false;
+  private isShuttingDown;
+  private failedBatchCount;
 
   constructor(config: DynamicFlushSchedulerConfig<T>) {
     this.currentBatch = [];
@@ -27,22 +28,33 @@ export class DynamicFlushScheduler<T> {
     this.FLUSH_INTERVAL = config.flushInterval;
     this.MAX_CONCURRENCY = config.maxConcurrency || 1;
     this.concurrencyLimiter = pLimit(this.MAX_CONCURRENCY);
-    this.callback = config.callback;
     this.flushTimer = null;
+    this.callback = config.callback;
+    this.isShuttingDown = false;
+    this.failedBatchCount = 0;
     this.startFlushTimer();
     this.setupShutdownHandlers();
 
-    // if (process.env.NODE_ENV !== "test") {
-    //   const scheduler = this;
-    //   new Gauge({
-    //     name: "dynamic_flush_scheduler_batch_size",
-    //     help: "Number of items in the current dynamic flush scheduler batch",
-    //     collect() {
-    //       this.set(scheduler.currentBatch.length);
-    //     },
-    //     registers: [metricsRegister],
-    //   });
-    // }
+    if (process.env.NODE_ENV !== "test") {
+      const scheduler = this;
+      new Gauge({
+        name: "dynamic_flush_scheduler_batch_size",
+        help: "Number of items in the current dynamic flush scheduler batch",
+        collect() {
+          this.set(scheduler.currentBatch.length);
+        },
+        registers: [metricsRegister],
+      });
+
+      new Gauge({
+        name: "dynamic_flush_scheduler_failed_batches",
+        help: "Number of failed batches",
+        collect() {
+          this.set(scheduler.failedBatchCount);
+        },
+        registers: [metricsRegister],
+      });
+    }
   }
 
   async addToBatch(items: T[]): Promise<void> {
@@ -113,10 +125,14 @@ export class DynamicFlushScheduler<T> {
             batchId,
             error,
           });
+          throw error;
         }
       })
     );
 
-    await Promise.all(promises);
+    const results = await Promise.allSettled(promises);
+
+    const failedBatches = results.filter((result) => result.status === "rejected").length;
+    this.failedBatchCount += failedBatches;
   }
 }
