@@ -146,10 +146,6 @@ export class DynamicFlushScheduler<T> {
       this.concurrencyLimiter(async () => {
         const batchId = nanoid();
         try {
-          logger.debug("Processing batch", {
-            batchId,
-            batchSize: batch.length,
-          });
           await this.callback(batchId, batch!);
         } catch (error) {
           logger.error("Error processing batch", {
