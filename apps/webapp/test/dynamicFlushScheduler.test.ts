@@ -60,9 +60,6 @@ describe("DynamicFlushScheduler", () => {
     const items = [1, 2, 3, 4, 5, 6];
     await dynamicFlushScheduler.addToBatch(items);
 
-    // comment out if `addToBatch` can't be marked as async
-    // await vi.advanceTimersToNextTimerAsync();
-
     expect(callback).toHaveBeenCalledTimes(2);
     expect(callback).toHaveBeenNthCalledWith(1, expect.any(String), [1, 2, 3]);
     expect(callback).toHaveBeenNthCalledWith(2, expect.any(String), [4, 5, 6]);
