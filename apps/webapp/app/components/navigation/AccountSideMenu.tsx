@@ -12,7 +12,7 @@ export function AccountSideMenu({ user }: { user: User }) {
   return (
     <div
       className={cn(
-        "grid h-full grid-rows-[2.5rem_auto_2.5rem] gap-y-8 overflow-hidden border-r border-grid-bright bg-background-bright transition"
+        "grid h-full grid-rows-[2.5rem_auto_2.5rem] overflow-hidden border-r border-grid-bright bg-background-bright transition"
       )}
     >
       <div className={cn("flex items-center justify-between p-1 transition")}>
