@@ -46,9 +46,10 @@ const Env = z.object({
   OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url(),
   TRIGGER_WARM_START_URL: z.string().optional(),
   TRIGGER_WARM_START_CONNECTION_TIMEOUT_MS: z.coerce.number().default(30_000),
-  TRIGGER_WARM_START_TOTAL_DURATION_MS: z.coerce.number().default(300_000),
+  TRIGGER_WARM_START_KEEPALIVE_MS: z.coerce.number().default(300_000),
   TRIGGER_MACHINE_CPU: z.string().default("0"),
   TRIGGER_MACHINE_MEMORY: z.string().default("0"),
+  // FIXME: This could change between restores
   TRIGGER_WORKER_INSTANCE_NAME: z.string(),
   TRIGGER_RUNNER_ID: z.string(),
 });
@@ -723,18 +724,18 @@ class ManagedRunController {
 
       const connectionTimeoutMs =
         connect.data.connectionTimeoutMs ?? env.TRIGGER_WARM_START_CONNECTION_TIMEOUT_MS;
-      const totalWarmStartDurationMs =
-        connect.data.totalWarmStartDurationMs ?? env.TRIGGER_WARM_START_TOTAL_DURATION_MS;
+      const keepaliveMs =
+        connect.data.keepaliveMs ?? env.TRIGGER_WARM_START_KEEPALIVE_MS;
 
       console.log("waitForNextRun: connected to warm start service", {
         connectionTimeoutMs,
-        totalWarmStartDurationMs,
+        keepaliveMs,
       });
 
-      if (!connectionTimeoutMs || !totalWarmStartDurationMs) {
+      if (!connectionTimeoutMs || !keepaliveMs) {
         console.error("waitForNextRun: warm starts disabled after connect", {
           connectionTimeoutMs,
-          totalWarmStartDurationMs,
+          keepaliveMs,
         });
         this.exitProcess(0);
       }
@@ -742,7 +743,7 @@ class ManagedRunController {
       const nextRun = await warmStartClient.warmStart({
         workerInstanceName: env.TRIGGER_WORKER_INSTANCE_NAME,
         connectionTimeoutMs,
-        totalWarmStartDurationMs,
+        keepaliveMs,
       });
 
       if (!nextRun) {

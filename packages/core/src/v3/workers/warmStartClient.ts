@@ -54,11 +54,11 @@ export class WarmStartClient {
   async warmStart({
     workerInstanceName,
     connectionTimeoutMs,
-    totalWarmStartDurationMs,
+    keepaliveMs,
   }: {
     workerInstanceName: string;
     connectionTimeoutMs: number;
-    totalWarmStartDurationMs: number;
+    keepaliveMs: number;
   }): Promise<DequeuedMessage | null> {
     const res = await this.longPoll<unknown>(
       this.warmStartUrl.href,
@@ -74,7 +74,7 @@ export class WarmStartClient {
       },
       {
         timeoutMs: connectionTimeoutMs,
-        totalDurationMs: totalWarmStartDurationMs,
+        totalDurationMs: keepaliveMs,
       }
     );
 
@@ -82,7 +82,7 @@ export class WarmStartClient {
       this.logger.error("warmStart: failed", {
         error: res.error,
         connectionTimeoutMs,
-        totalWarmStartDurationMs,
+        keepaliveMs,
       });
       return null;
     }
