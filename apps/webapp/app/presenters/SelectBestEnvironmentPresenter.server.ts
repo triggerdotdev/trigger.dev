@@ -1,5 +1,6 @@
 import { type RuntimeEnvironment, type PrismaClient } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
+import { logger } from "~/services/logger.server";
 import { type UserFromSession } from "~/services/session.server";
 
 export type MinimumEnvironment = Pick<RuntimeEnvironment, "id" | "type" | "slug"> & {
@@ -92,6 +93,44 @@ export class SelectBestEnvironmentPresenter {
     }
 
     return { project: projects[0], organization: projects[0].organization };
+  }
+
+  async selectBestProjectFromProjects({
+    user,
+    projectSlug,
+    projects,
+  }: {
+    user: UserFromSession;
+    projectSlug: string | undefined;
+    projects: {
+      id: string;
+      slug: string;
+      name: string;
+      updatedAt: Date;
+    }[];
+  }) {
+    if (projectSlug) {
+      const proj = projects.find((p) => p.slug === projectSlug);
+      if (proj) {
+        return proj;
+      }
+
+      if (!proj) {
+        logger.info("Not Found: project", {
+          projectSlug,
+          projects,
+        });
+      }
+    }
+
+    const currentProjectId = user.dashboardPreferences.currentProjectId;
+    const project = projects.find((p) => p.id === currentProjectId);
+    if (project) {
+      return project;
+    }
+
+    //most recently updated
+    return projects.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime()).at(0);
   }
 
   async selectBestEnvironment(

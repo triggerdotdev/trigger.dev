@@ -4,7 +4,10 @@ import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { type UserFromSession } from "~/services/session.server";
 import { newOrganizationPath, newProjectPath } from "~/utils/pathBuilder";
-import { type MinimumEnvironment } from "./SelectBestEnvironmentPresenter.server";
+import {
+  SelectBestEnvironmentPresenter,
+  type MinimumEnvironment,
+} from "./SelectBestEnvironmentPresenter.server";
 import { sortEnvironments } from "~/utils/environmentSort";
 import { defaultAvatarIcon, parseAvatar } from "~/components/primitives/Avatar";
 
@@ -47,7 +50,8 @@ export class OrganizationsPresenter {
       throw new Response("Organization not Found", { status: 404 });
     }
 
-    const bestProject = this.#getProject({
+    const selector = new SelectBestEnvironmentPresenter();
+    const bestProject = selector.selectBestProjectFromProjects({
       user,
       projectSlug,
       projects: organization.projects,
@@ -156,44 +160,6 @@ export class OrganizationsPresenter {
         membersCount: org._count.members,
       };
     });
-  }
-
-  #getProject({
-    user,
-    projectSlug,
-    projects,
-  }: {
-    user: UserFromSession;
-    projectSlug: string | undefined;
-    projects: {
-      id: string;
-      slug: string;
-      name: string;
-      updatedAt: Date;
-    }[];
-  }) {
-    if (projectSlug) {
-      const proj = projects.find((p) => p.slug === projectSlug);
-      if (proj) {
-        return proj;
-      }
-
-      if (!proj) {
-        logger.info("Not Found: project", {
-          projectSlug,
-          projects,
-        });
-      }
-    }
-
-    const currentProjectId = user.dashboardPreferences.currentProjectId;
-    const project = projects.find((p) => p.id === currentProjectId);
-    if (project) {
-      return project;
-    }
-
-    //most recently updated
-    return projects.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime()).at(0);
   }
 
   #getEnvironment({
