@@ -1,9 +1,11 @@
 import {
   AcademicCapIcon,
+  ArrowPathRoundedSquareIcon,
   ArrowRightOnRectangleIcon,
   BeakerIcon,
   BellAlertIcon,
   ChartBarIcon,
+  ChevronRightIcon,
   ClockIcon,
   Cog8ToothIcon,
   CogIcon,
@@ -38,6 +40,7 @@ import {
   logoutPath,
   newOrganizationPath,
   newProjectPath,
+  organizationPath,
   organizationSettingsPath,
   organizationTeamPath,
   personalAccessTokensPath,
@@ -67,13 +70,14 @@ import {
   PopoverCustomTrigger,
   PopoverMenuItem,
   PopoverSectionHeader,
+  PopoverTrigger,
 } from "../primitives/Popover";
 import { EnvironmentSelector } from "./EnvironmentSelector";
 import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
 import { SideMenuSection } from "./SideMenuSection";
-import { LinkButton } from "../primitives/Buttons";
+import { ButtonContent, LinkButton } from "../primitives/Buttons";
 import { useUser } from "~/hooks/useUser";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
@@ -395,12 +399,7 @@ function ProjectSelector({
           </Fragment>
         ))}
         <div className="border-t border-charcoal-700 p-1">
-          <PopoverMenuItem
-            to={newOrganizationPath()}
-            title="New Organization"
-            icon={PlusIcon}
-            leadingIconClassName="text-text-dimmed"
-          />
+          <SwitchOrganizations organizations={organizations} organization={organization} />
         </div>
         <div className="border-t border-charcoal-700 p-1">
           <PopoverMenuItem
@@ -422,6 +421,56 @@ function ProjectSelector({
             leadingIconClassName="text-text-dimmed"
           />
         </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function SwitchOrganizations({
+  organizations,
+  organization,
+}: {
+  organizations: MatchedOrganization[];
+  organization: MatchedOrganization;
+}) {
+  const navigation = useNavigation();
+  const [isMenuOpen, setMenuOpen] = useState(false);
+
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [navigation.location?.pathname]);
+
+  return (
+    <Popover onOpenChange={(open) => setMenuOpen(open)} open={isMenuOpen}>
+      <PopoverTrigger className="h-7 w-full justify-between overflow-hidden">
+        <ButtonContent
+          variant="small-menu-item"
+          LeadingIcon={ArrowPathRoundedSquareIcon}
+          leadingIconClassName="text-text-dimmed"
+          TrailingIcon={ChevronRightIcon}
+          trailingIconClassName="text-text-dimmed"
+          textAlignLeft
+          fullWidth
+        >
+          Switch organization
+        </ButtonContent>
+      </PopoverTrigger>
+      <PopoverContent className="w-64" align="start" side="right">
+        {organizations.map((org) => (
+          <PopoverMenuItem
+            key={org.id}
+            to={organizationPath(org)}
+            title={org.title}
+            // icon={org.icon}
+            leadingIconClassName="text-text-dimmed"
+          />
+        ))}
+        <PopoverMenuItem
+          to={newOrganizationPath()}
+          title="New Organization"
+          icon={PlusIcon}
+          leadingIconClassName="text-text-dimmed"
+        />
       </PopoverContent>
     </Popover>
   );
