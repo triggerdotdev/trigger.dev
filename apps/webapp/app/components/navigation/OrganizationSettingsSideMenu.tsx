@@ -19,6 +19,7 @@ import { LinkButton } from "../primitives/Buttons";
 import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
+import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 
 export function OrganizationSettingsSideMenu({
   organization,
@@ -26,6 +27,7 @@ export function OrganizationSettingsSideMenu({
   organization: MatchedOrganization;
 }) {
   const { isManagedCloud } = useFeatures();
+  const currentPlan = useCurrentPlan();
 
   return (
     <div
@@ -61,6 +63,11 @@ export function OrganizationSettingsSideMenu({
             activeIconColor="text-emerald-500"
             to={v3BillingPath(organization)}
             data-action="billing"
+            badge={
+              currentPlan?.v3Subscription?.isPaying
+                ? currentPlan?.v3Subscription?.plan?.title
+                : undefined
+            }
           />
         )}
         <SideMenuItem
