@@ -3,7 +3,6 @@ import {
   ArrowUturnLeftIcon,
   ArrowUturnRightIcon,
   BookOpenIcon,
-  ServerStackIcon,
 } from "@heroicons/react/20/solid";
 import { type MetaFunction, Outlet, useLocation, useParams } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
@@ -11,13 +10,12 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { DeploymentsNone, DeploymentsNoneDev } from "~/components/BlankStatePanels";
 import { UserAvatar } from "~/components/UserProfilePhoto";
-import { EnvironmentLabel, FullEnvironmentCombo } from "~/components/environments/EnvironmentLabel";
+import { FullEnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
-import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { PaginationControls } from "~/components/primitives/Pagination";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -36,7 +34,6 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
-import { TextLink } from "~/components/primitives/TextLink";
 import {
   DeploymentStatus,
   deploymentStatusDescription,
@@ -50,19 +47,12 @@ import {
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { useUser } from "~/hooks/useUser";
 import {
   type DeploymentListItem,
   DeploymentListPresenter,
 } from "~/presenters/v3/DeploymentListPresenter.server";
 import { requireUserId } from "~/services/session.server";
-import {
-  EnvironmentParamSchema,
-  ProjectParamSchema,
-  docsPath,
-  v3DeploymentPath,
-  v3EnvironmentVariablesPath,
-} from "~/utils/pathBuilder";
+import { EnvironmentParamSchema, docsPath, v3DeploymentPath } from "~/utils/pathBuilder";
 import { createSearchParams } from "~/utils/searchParams";
 import { deploymentIndexingIsRetryable } from "~/v3/deploymentStatus";
 import { compareDeploymentVersions } from "~/v3/utils/deploymentVersions";

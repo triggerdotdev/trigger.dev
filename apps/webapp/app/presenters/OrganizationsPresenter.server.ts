@@ -51,7 +51,7 @@ export class OrganizationsPresenter {
     }
 
     const selector = new SelectBestEnvironmentPresenter();
-    const bestProject = selector.selectBestProjectFromProjects({
+    const bestProject = await selector.selectBestProjectFromProjects({
       user,
       projectSlug,
       projects: organization.projects,
