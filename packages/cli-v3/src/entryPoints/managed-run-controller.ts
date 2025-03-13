@@ -79,6 +79,7 @@ class ManagedRunController {
   private workerManifest: WorkerManifest;
 
   private readonly httpClient: WorkloadHttpClient;
+  private readonly warmStartClient: WarmStartClient | undefined;
 
   private socket: Socket<WorkloadServerToClientEvents, WorkloadClientToServerEvents>;
 
@@ -258,6 +259,17 @@ class ManagedRunController {
       deploymentId: env.TRIGGER_DEPLOYMENT_ID,
       runnerId: env.TRIGGER_RUNNER_ID,
     });
+
+    if (env.TRIGGER_WARM_START_URL) {
+      this.warmStartClient = new WarmStartClient({
+        apiUrl: new URL(env.TRIGGER_WARM_START_URL),
+        controllerId: env.TRIGGER_WORKLOAD_CONTROLLER_ID,
+        deploymentId: env.TRIGGER_DEPLOYMENT_ID,
+        deploymentVersion: env.TRIGGER_DEPLOYMENT_VERSION,
+        machineCpu: env.TRIGGER_MACHINE_CPU,
+        machineMemory: env.TRIGGER_MACHINE_MEMORY,
+      });
+    }
 
     this.snapshotPoller = new HeartbeatService({
       heartbeat: async () => {
@@ -698,22 +710,13 @@ class ManagedRunController {
       // Kill the run process
       await this.taskRunProcess?.kill("SIGKILL");
 
-      if (!env.TRIGGER_WARM_START_URL) {
+      if (!this.warmStartClient) {
         console.error("waitForNextRun: warm starts disabled, shutting down");
         this.exitProcess(0);
       }
 
-      const warmStartClient = new WarmStartClient({
-        apiUrl: new URL(env.TRIGGER_WARM_START_URL),
-        controllerId: env.TRIGGER_WORKLOAD_CONTROLLER_ID,
-        deploymentId: env.TRIGGER_DEPLOYMENT_ID,
-        deploymentVersion: env.TRIGGER_DEPLOYMENT_VERSION,
-        machineCpu: env.TRIGGER_MACHINE_CPU,
-        machineMemory: env.TRIGGER_MACHINE_MEMORY,
-      });
-
       // Check the service is up and get additional warm start config
-      const connect = await warmStartClient.connect();
+      const connect = await this.warmStartClient.connect();
 
       if (!connect.success) {
         console.error("waitForNextRun: failed to connect to warm start service", {
@@ -740,7 +743,7 @@ class ManagedRunController {
         this.exitProcess(0);
       }
 
-      const nextRun = await warmStartClient.warmStart({
+      const nextRun = await this.warmStartClient.warmStart({
         workerInstanceName: env.TRIGGER_WORKER_INSTANCE_NAME,
         connectionTimeoutMs,
         keepaliveMs,
