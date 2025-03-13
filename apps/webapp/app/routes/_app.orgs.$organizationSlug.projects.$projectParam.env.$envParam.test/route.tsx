@@ -106,7 +106,7 @@ export default function Page() {
         ) : (
           <div className={cn("grid h-full max-h-full grid-cols-1")}>
             <ResizablePanelGroup orientation="horizontal" className="h-full max-h-full">
-              <ResizablePanel id="test-selector" min="225px" default="30%">
+              <ResizablePanel id="test-selector" min="200px" default="20%">
                 <TaskSelector tasks={tasks} activeTaskIdentifier={taskParam} />
               </ResizablePanel>
               <ResizableHandle id="test-handle" />
@@ -159,18 +159,17 @@ function TaskSelector({
         </div>
       )}
       <Table>
-        <TableHeader>
+        <TableHeader className="hidden">
           <TableRow>
-            <TableHeaderCell />
-            <TableHeaderCell className="pl-0">Task ID</TableHeaderCell>
-            <TableHeaderCell className="px-2">Task</TableHeaderCell>
+            <TableHeaderCell className="w-[1%]" />
+            <TableHeaderCell className="pl-0">Task</TableHeaderCell>
           </TableRow>
         </TableHeader>
         <TableBody>
           {filteredItems.length > 0 ? (
             filteredItems.map((t) => <TaskRow key={t.friendlyId} task={t} />)
           ) : (
-            <TableBlankRow colSpan={3}>
+            <TableBlankRow colSpan={2}>
               <Paragraph spacing variant="small">
                 No tasks match "{filterText}"
               </Paragraph>
@@ -197,8 +196,8 @@ function TaskRow({ task }: { task: TaskListItem }) {
     >
       <TableCell
         to={path}
-        actionClassName="pl-2.5 pr-1.5 py-1"
-        className={cn((isActive || isPending) && "group-hover/table-row:bg-indigo-500/5")}
+        actionClassName="pl-2.5 pr-2 py-1"
+        className={cn("w-[1%]", (isActive || isPending) && "group-hover/table-row:bg-indigo-500/5")}
       >
         <RadioButtonCircle checked={isActive || isPending} />
       </TableCell>
@@ -214,18 +213,6 @@ function TaskRow({ task }: { task: TaskListItem }) {
             {task.taskIdentifier}
           </Paragraph>
         </div>
-      </TableCell>
-
-      <TableCell
-        to={path}
-        actionClassName="px-2 py-1"
-        className={cn((isActive || isPending) && "group-hover/table-row:bg-indigo-500/5")}
-      >
-        <TaskFunctionName
-          variant="extra-extra-small"
-          functionName={task.exportName}
-          className="inline-flex w-fit"
-        />
       </TableCell>
     </TableRow>
   );
