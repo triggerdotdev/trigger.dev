@@ -1,4 +1,4 @@
-import { Path, useMatch, useMatches, type Location } from "@remix-run/react";
+import { type Path, useMatches } from "@remix-run/react";
 import { type MinimumEnvironment } from "~/presenters/SelectBestEnvironmentPresenter.server";
 import { useEnvironment } from "./useEnvironment";
 import { useEnvironments } from "./useEnvironments";
@@ -9,17 +9,8 @@ import { useOptimisticLocation } from "./useOptimisticLocation";
  * @returns
  */
 export function useEnvironmentSwitcher() {
-  const environments = useEnvironments();
-  const existingEnvironment = useEnvironment();
   const matches = useMatches();
   const location = useOptimisticLocation();
-
-  console.log({
-    environments,
-    existingEnvironment,
-    matches,
-    location,
-  });
 
   const urlForEnvironment = (newEnvironment: MinimumEnvironment) => {
     return routeForEnvironmentSwitch({
