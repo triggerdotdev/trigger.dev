@@ -64,6 +64,7 @@ export class DynamicFlushScheduler<T> {
 
   private setupShutdownHandlers() {
     process.on("SIGTERM", this.shutdown.bind(this));
+    process.on("SIGINT", this.shutdown.bind(this));
   }
 
   private async shutdown(): Promise<void> {
