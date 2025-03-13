@@ -18,7 +18,6 @@ import { Header3 } from "~/components/primitives/Headers";
 import { PopoverMenuItem } from "~/components/primitives/Popover";
 import { useSelectedItems } from "~/components/primitives/SelectedItemsProvider";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
-import { useEnvironments } from "~/hooks/useEnvironments";
 import { useFeatures } from "~/hooks/useFeatures";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -284,7 +283,7 @@ export function TaskRunsTable({
       </TableHeader>
       <TableBody>
         {total === 0 && !hasFilters ? (
-          <TableBlankRow colSpan={14}>
+          <TableBlankRow colSpan={16}>
             {!isLoading && <NoRuns title="No runs found" />}
           </TableBlankRow>
         ) : runs.length === 0 ? (
@@ -543,7 +542,7 @@ function BlankState({ isLoading, filters }: Pick<RunsTableProps, "isLoading" | "
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
-  if (isLoading) return <TableBlankRow colSpan={14}></TableBlankRow>;
+  if (isLoading) return <TableBlankRow colSpan={16}></TableBlankRow>;
 
   const { environments, tasks, from, to, ...otherFilters } = filters;
 
@@ -554,43 +553,35 @@ function BlankState({ isLoading, filters }: Pick<RunsTableProps, "isLoading" | "
     Object.values(otherFilters).every((filterArray) => filterArray.length === 0)
   ) {
     return (
-      <TableBlankRow colSpan={14}>
-        <div className="py-14">
-          <Paragraph className="w-auto" variant="base/bright" spacing>
-            There are no runs for {filters.tasks[0]}
-            {environment ? (
-              <>
-                {" "}
-                in <FullEnvironmentCombo environment={environment} />
-              </>
-            ) : null}
-          </Paragraph>
-          <div className="flex items-center justify-center gap-2">
-            <LinkButton
-              to={v3TestPath(organization, project, environment)}
-              variant="primary/small"
-              LeadingIcon={BeakerIcon}
-              className="inline-flex"
-            >
-              Create a test run
-            </LinkButton>
-            <Paragraph variant="small">or</Paragraph>
-            <LinkButton
-              to={docsPath("v3/triggering")}
-              variant="primary/small"
-              LeadingIcon={BookOpenIcon}
-              className="inline-flex"
-            >
-              Triggering a task docs
-            </LinkButton>
-          </div>
+      <TableBlankRow colSpan={16}>
+        <Paragraph className="w-auto" variant="base/bright" spacing>
+          There are no runs for {filters.tasks[0]}
+        </Paragraph>
+        <div className="mt-6 flex items-center justify-center gap-2">
+          <LinkButton
+            to={v3TestPath(organization, project, environment)}
+            variant="tertiary/medium"
+            LeadingIcon={BeakerIcon}
+            className="inline-flex"
+          >
+            Create a test run
+          </LinkButton>
+          <Paragraph variant="small">or</Paragraph>
+          <LinkButton
+            to={docsPath("v3/triggering")}
+            variant="tertiary/medium"
+            LeadingIcon={BookOpenIcon}
+            className="inline-flex"
+          >
+            Triggering a task docs
+          </LinkButton>
         </div>
       </TableBlankRow>
     );
   }
 
   return (
-    <TableBlankRow colSpan={14}>
+    <TableBlankRow colSpan={16}>
       <div className="flex flex-col items-center justify-center gap-6">
         <Paragraph className="w-auto" variant="base/bright">
           No runs match your filters. Try refreshing, modifying your filters or run a test.
