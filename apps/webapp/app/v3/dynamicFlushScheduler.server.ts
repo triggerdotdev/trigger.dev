@@ -1,5 +1,7 @@
 import { nanoid } from "nanoid";
 import pLimit from "p-limit";
+import { Gauge } from "prom-client";
+import { metricsRegister } from "~/metrics.server";
 import { logger } from "~/services/logger.server";
 
 export type DynamicFlushSchedulerConfig<T> = {
@@ -10,7 +12,6 @@ export type DynamicFlushSchedulerConfig<T> = {
 };
 
 export class DynamicFlushScheduler<T> {
-  // private batchQueue: T[][]; // Adjust the type according to your data structure
   private currentBatch: T[]; // Adjust the type according to your data structure
   private readonly BATCH_SIZE: number;
   private readonly FLUSH_INTERVAL: number;
@@ -30,10 +31,24 @@ export class DynamicFlushScheduler<T> {
     this.flushTimer = null;
     this.startFlushTimer();
     this.setupShutdownHandlers();
+
+    const scheduler = this;
+    new Gauge({
+      name: "dynamic_flush_scheduler_batch_size",
+      help: "Number of items in the current dynamic flush scheduler batch",
+      collect() {
+        this.set(scheduler.currentBatch.length);
+      },
+      registers: [metricsRegister],
+    });
   }
 
   async addToBatch(items: T[]): Promise<void> {
     this.currentBatch.push(...items);
+    logger.debug("Adding items to batch", {
+      batchSize: this.BATCH_SIZE,
+      newSize: this.currentBatch.length,
+    });
 
     if (this.currentBatch.length >= this.BATCH_SIZE) {
       await this.flushNextBatch();
@@ -52,8 +67,12 @@ export class DynamicFlushScheduler<T> {
   private async shutdown(): Promise<void> {
     if (this.isShuttingDown) return;
     this.isShuttingDown = true;
+    logger.log("Shutting down dynamic flush scheduler...");
+
     await this.checkAndFlush();
     this.clearTimer();
+
+    logger.log("All items have been flushed.");
   }
 
   private clearTimer(): void {
