@@ -6,6 +6,7 @@ import { env } from "~/env.server";
 import { sendMagicLinkEmail } from "~/services/email.server";
 import { postAuthentication } from "./postAuth.server";
 import { logger } from "./logger.server";
+import { normalizeEmail } from "~/utils/email";
 
 let secret = env.MAGIC_LINK_SECRET;
 if (!secret) throw new Error("Missing MAGIC_LINK_SECRET env variable.");
@@ -30,7 +31,7 @@ const emailStrategy = new EmailLinkStrategy(
 
     try {
       const { user, isNewUser } = await findOrCreateUser({
-        email,
+        email: normalizeEmail(email),
         authenticationMethod: "MAGIC_LINK",
       });
 
