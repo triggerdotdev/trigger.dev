@@ -8,6 +8,7 @@ export type WarmStartClientOptions = {
   apiUrl: URL;
   controllerId: string;
   deploymentId: string;
+  deploymentVersion: string;
   machineCpu: string;
   machineMemory: string;
 };
@@ -67,6 +68,7 @@ export class WarmStartClient {
         headers: {
           "x-trigger-workload-controller-id": this.opts.controllerId,
           "x-trigger-deployment-id": this.opts.deploymentId,
+          "x-trigger-deployment-version": this.opts.deploymentVersion,
           "x-trigger-machine-cpu": this.opts.machineCpu,
           "x-trigger-machine-memory": this.opts.machineMemory,
           "x-trigger-worker-instance-name": workerInstanceName,

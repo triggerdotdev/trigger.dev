@@ -707,6 +707,7 @@ class ManagedRunController {
         apiUrl: new URL(env.TRIGGER_WARM_START_URL),
         controllerId: env.TRIGGER_WORKLOAD_CONTROLLER_ID,
         deploymentId: env.TRIGGER_DEPLOYMENT_ID,
+        deploymentVersion: env.TRIGGER_DEPLOYMENT_VERSION,
         machineCpu: env.TRIGGER_MACHINE_CPU,
         machineMemory: env.TRIGGER_MACHINE_MEMORY,
       });
