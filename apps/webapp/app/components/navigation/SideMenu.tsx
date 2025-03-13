@@ -290,7 +290,7 @@ function ProjectSelector({
         overflowHidden
         className="h-8 w-full justify-between overflow-hidden py-1 pl-2"
       >
-        <span className="flex items-center gap-1.5">
+        <span className="flex items-center gap-1.5 overflow-hidden">
           <Avatar avatar={organization.avatar} className="size-5" />
           <SelectorDivider />
           <span className="truncate text-2sm font-normal text-text-bright">
@@ -467,6 +467,7 @@ function SwitchOrganizations({
                 key={org.id}
                 to={organizationPath(org)}
                 title={org.title}
+                icon={<Avatar className="size-4" avatar={org.avatar} />}
                 leadingIconClassName="text-text-dimmed"
                 isSelected={org.id === organization.id}
               />

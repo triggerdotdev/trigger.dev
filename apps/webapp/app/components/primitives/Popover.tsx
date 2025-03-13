@@ -10,6 +10,7 @@ import { cn } from "~/utils/cn";
 import { type ButtonContentPropsType, LinkButton } from "./Buttons";
 import { Paragraph, type ParagraphVariant } from "./Paragraph";
 import { ShortcutKey } from "./ShortcutKey";
+import { RenderIcon } from "./Icon";
 
 const Popover = PopoverPrimitive.Root;
 const PopoverTrigger = PopoverPrimitive.Trigger;
@@ -60,7 +61,7 @@ function PopoverMenuItem({
   leadingIconClassName,
 }: {
   to: string;
-  icon?: React.ComponentType<any>;
+  icon?: RenderIcon;
   title: React.ReactNode;
   isSelected?: boolean;
   variant?: ButtonContentPropsType;
