@@ -44,3 +44,8 @@ export function isFinalRunStatus(status: TaskRunStatus): boolean {
 
   return finalStatuses.includes(status);
 }
+
+export function canReleaseConcurrency(status: TaskRunExecutionStatus): boolean {
+  const releaseableStatuses: TaskRunExecutionStatus[] = ["SUSPENDED", "EXECUTING_WITH_WAITPOINTS"];
+  return releaseableStatuses.includes(status);
+}

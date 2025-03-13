@@ -519,11 +519,7 @@ export class RunQueue {
     );
   }
 
-  public async releaseConcurrency(
-    orgId: string,
-    messageId: string,
-    releaseForRun: boolean = false
-  ) {
+  public async releaseConcurrency(orgId: string, messageId: string) {
     return this.#trace(
       "releaseConcurrency",
       async (span) => {
@@ -547,7 +543,7 @@ export class RunQueue {
         return this.redis.releaseConcurrency(
           this.keys.messageKey(orgId, messageId),
           message.queue,
-          releaseForRun ? this.keys.currentConcurrencyKeyFromQueue(message.queue) : "",
+          this.keys.currentConcurrencyKeyFromQueue(message.queue),
           this.keys.envCurrentConcurrencyKeyFromQueue(message.queue),
           this.keys.projectCurrentConcurrencyKeyFromQueue(message.queue),
           this.keys.taskIdentifierCurrentConcurrencyKeyFromQueue(

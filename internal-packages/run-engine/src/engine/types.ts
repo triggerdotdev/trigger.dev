@@ -8,11 +8,11 @@ import { FairQueueSelectionStrategyOptions } from "../run-queue/fairQueueSelecti
 
 export type RunEngineOptions = {
   prisma: PrismaClient;
-  worker: WorkerConcurrencyOptions & {
+  worker: {
     redis: RedisOptions;
     pollIntervalMs?: number;
     immediatePollIntervalMs?: number;
-  };
+  } & WorkerConcurrencyOptions;
   machines: {
     defaultMachine: MachinePresetName;
     machines: Record<string, MachinePreset>;
@@ -35,6 +35,10 @@ export type RunEngineOptions = {
   heartbeatTimeoutsMs?: Partial<HeartbeatTimeouts>;
   queueRunsWaitingForWorkerBatchSize?: number;
   tracer: Tracer;
+  releaseConcurrency?: {
+    maxTokens?: number;
+    redis?: Partial<RedisOptions>;
+  };
 };
 
 export type HeartbeatTimeouts = {
