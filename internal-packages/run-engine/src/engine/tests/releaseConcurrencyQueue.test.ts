@@ -223,6 +223,15 @@ describe("ReleaseConcurrencyQueue", () => {
           toDescriptor: (name) => name,
         },
         batchSize: 2,
+        retry: {
+          maxRetries: 2,
+          backoff: {
+            minDelay: 100,
+            maxDelay: 1000,
+            factor: 1,
+          },
+        },
+        pollInterval: 50,
       });
 
       try {
@@ -291,6 +300,7 @@ describe("ReleaseConcurrencyQueue", () => {
         toDescriptor: (name) => name,
       },
       batchSize: 5,
+      pollInterval: 50,
     });
 
     try {
@@ -366,8 +376,13 @@ describe("ReleaseConcurrencyQueue", () => {
       },
       retry: {
         maxRetries: 2, // Set max retries to 2 (will attempt 3 times total: initial + 2 retries)
+        backoff: {
+          minDelay: 100,
+          maxDelay: 1000,
+          factor: 1,
+        },
       },
-      pollInterval: 100, // Reduce poll interval for faster test
+      pollInterval: 50, // Reduce poll interval for faster test
     });
 
     try {
@@ -402,6 +417,15 @@ describe("ReleaseConcurrencyQueue", () => {
           fromDescriptor: (descriptor) => descriptor,
           toDescriptor: (name) => name,
         },
+        retry: {
+          maxRetries: 2,
+          backoff: {
+            minDelay: 100,
+            maxDelay: 1000,
+            factor: 1,
+          },
+        },
+        pollInterval: 50,
       });
 
       await queue2.attemptToRelease("test-queue", "run2", 1);
@@ -434,6 +458,11 @@ describe("ReleaseConcurrencyQueue", () => {
       },
       retry: {
         maxRetries: 2,
+        backoff: {
+          minDelay: 100,
+          maxDelay: 1000,
+          factor: 1,
+        },
       },
       batchSize: 3,
       pollInterval: 100,
