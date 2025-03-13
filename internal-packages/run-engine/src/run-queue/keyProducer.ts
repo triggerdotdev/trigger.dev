@@ -299,35 +299,7 @@ export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
       concurrencyKey: parts.at(9),
     };
   }
-  releaseConcurrencyKey(env: EnvDescriptor): string;
-  releaseConcurrencyKey(env: MinimalAuthenticatedEnvironment): string;
-  releaseConcurrencyKey(envOrDescriptor: EnvDescriptor | MinimalAuthenticatedEnvironment): string {
-    if ("id" in envOrDescriptor) {
-      return [
-        this.orgKeySection(envOrDescriptor.organization.id),
-        this.projKeySection(envOrDescriptor.project.id),
-        this.envKeySection(envOrDescriptor.id),
-        "release-concurrency",
-      ].join(":");
-    } else {
-      return [
-        this.orgKeySection(envOrDescriptor.orgId),
-        this.projKeySection(envOrDescriptor.projectId),
-        this.envKeySection(envOrDescriptor.envId),
-        "release-concurrency",
-      ].join(":");
-    }
-  }
 
-  releaseConcurrencyDescriptorFromQueue(queue: string): EnvDescriptor {
-    const parts = queue.split(":");
-
-    return {
-      orgId: parts[1],
-      projectId: parts[3],
-      envId: parts[5],
-    };
-  }
   private envKeySection(envId: string) {
     return `${constants.ENV_PART}:${envId}`;
   }

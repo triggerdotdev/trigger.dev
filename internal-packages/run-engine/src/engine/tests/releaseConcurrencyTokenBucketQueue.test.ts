@@ -1,15 +1,18 @@
 import { redisTest, StartedRedisContainer } from "@internal/testcontainers";
-import { ReleaseConcurrencyQueue } from "../releaseConcurrencyQueue.js";
+import { ReleaseConcurrencyTokenBucketQueue } from "../releaseConcurrencyTokenBucketQueue.js";
 import { setTimeout } from "node:timers/promises";
 
 type TestQueueDescriptor = {
   name: string;
 };
 
-function createReleaseConcurrencyQueue(redisContainer: StartedRedisContainer) {
+function createReleaseConcurrencyQueue(
+  redisContainer: StartedRedisContainer,
+  maxTokens: number = 2
+) {
   const executedRuns: { releaseQueue: string; runId: string }[] = [];
 
-  const queue = new ReleaseConcurrencyQueue<TestQueueDescriptor>({
+  const queue = new ReleaseConcurrencyTokenBucketQueue<TestQueueDescriptor>({
     redis: {
       keyPrefix: "release-queue:test:",
       host: redisContainer.getHost(),
@@ -18,6 +21,7 @@ function createReleaseConcurrencyQueue(redisContainer: StartedRedisContainer) {
     executor: async (releaseQueue, runId) => {
       executedRuns.push({ releaseQueue: releaseQueue.name, runId });
     },
+    maxTokens: async (_) => maxTokens,
     keys: {
       fromDescriptor: (descriptor) => descriptor.name,
       toDescriptor: (name) => ({ name }),
@@ -33,12 +37,12 @@ function createReleaseConcurrencyQueue(redisContainer: StartedRedisContainer) {
 
 describe("ReleaseConcurrencyQueue", () => {
   redisTest("Should manage token bucket and queue correctly", async ({ redisContainer }) => {
-    const { queue, executedRuns } = createReleaseConcurrencyQueue(redisContainer);
+    const { queue, executedRuns } = createReleaseConcurrencyQueue(redisContainer, 2);
 
     try {
       // First two attempts should execute immediately (we have 2 tokens)
-      await queue.attemptToRelease({ name: "test-queue" }, "run1", 2);
-      await queue.attemptToRelease({ name: "test-queue" }, "run2", 2);
+      await queue.attemptToRelease({ name: "test-queue" }, "run1");
+      await queue.attemptToRelease({ name: "test-queue" }, "run2");
 
       // Verify first two runs were executed
       expect(executedRuns).toHaveLength(2);
@@ -46,11 +50,11 @@ describe("ReleaseConcurrencyQueue", () => {
       expect(executedRuns).toContainEqual({ releaseQueue: "test-queue", runId: "run2" });
 
       // Third attempt should be queued (no tokens left)
-      await queue.attemptToRelease({ name: "test-queue" }, "run3", 2);
+      await queue.attemptToRelease({ name: "test-queue" }, "run3");
       expect(executedRuns).toHaveLength(2); // Still 2, run3 is queued
 
       // Refill one token, should execute run3
-      await queue.refillTokens({ name: "test-queue" }, 2, 1);
+      await queue.refillTokens({ name: "test-queue" }, 1);
 
       // Now we need to wait for the queue to be processed
       await setTimeout(1000);
@@ -63,15 +67,15 @@ describe("ReleaseConcurrencyQueue", () => {
   });
 
   redisTest("Should handle multiple refills correctly", async ({ redisContainer }) => {
-    const { queue, executedRuns } = createReleaseConcurrencyQueue(redisContainer);
+    const { queue, executedRuns } = createReleaseConcurrencyQueue(redisContainer, 3);
 
     try {
       // Queue up 5 runs (more than maxTokens)
-      await queue.attemptToRelease({ name: "test-queue" }, "run1", 3);
-      await queue.attemptToRelease({ name: "test-queue" }, "run2", 3);
-      await queue.attemptToRelease({ name: "test-queue" }, "run3", 3);
-      await queue.attemptToRelease({ name: "test-queue" }, "run4", 3);
-      await queue.attemptToRelease({ name: "test-queue" }, "run5", 3);
+      await queue.attemptToRelease({ name: "test-queue" }, "run1");
+      await queue.attemptToRelease({ name: "test-queue" }, "run2");
+      await queue.attemptToRelease({ name: "test-queue" }, "run3");
+      await queue.attemptToRelease({ name: "test-queue" }, "run4");
+      await queue.attemptToRelease({ name: "test-queue" }, "run5");
 
       // First 3 should be executed immediately (maxTokens = 3)
       expect(executedRuns).toHaveLength(3);
@@ -80,7 +84,7 @@ describe("ReleaseConcurrencyQueue", () => {
       expect(executedRuns).toContainEqual({ releaseQueue: "test-queue", runId: "run3" });
 
       // Refill 2 tokens
-      await queue.refillTokens({ name: "test-queue" }, 3, 2);
+      await queue.refillTokens({ name: "test-queue" }, 2);
 
       await setTimeout(1000);
 
@@ -94,14 +98,14 @@ describe("ReleaseConcurrencyQueue", () => {
   });
 
   redisTest("Should handle multiple queues independently", async ({ redisContainer }) => {
-    const { queue, executedRuns } = createReleaseConcurrencyQueue(redisContainer);
+    const { queue, executedRuns } = createReleaseConcurrencyQueue(redisContainer, 1);
 
     try {
       // Add runs to different queues
-      await queue.attemptToRelease({ name: "queue1" }, "run1", 1);
-      await queue.attemptToRelease({ name: "queue1" }, "run2", 1);
-      await queue.attemptToRelease({ name: "queue2" }, "run3", 1);
-      await queue.attemptToRelease({ name: "queue2" }, "run4", 1);
+      await queue.attemptToRelease({ name: "queue1" }, "run1");
+      await queue.attemptToRelease({ name: "queue1" }, "run2");
+      await queue.attemptToRelease({ name: "queue2" }, "run3");
+      await queue.attemptToRelease({ name: "queue2" }, "run4");
 
       // Only first run from each queue should be executed
       expect(executedRuns).toHaveLength(2);
@@ -109,7 +113,7 @@ describe("ReleaseConcurrencyQueue", () => {
       expect(executedRuns).toContainEqual({ releaseQueue: "queue2", runId: "run3" });
 
       // Refill tokens for queue1
-      await queue.refillTokens({ name: "queue1" }, 1, 1);
+      await queue.refillTokens({ name: "queue1" }, 1);
 
       await setTimeout(1000);
 
@@ -118,7 +122,7 @@ describe("ReleaseConcurrencyQueue", () => {
       expect(executedRuns).toContainEqual({ releaseQueue: "queue1", runId: "run2" });
 
       // Refill tokens for queue2
-      await queue.refillTokens({ name: "queue2" }, 1, 1);
+      await queue.refillTokens({ name: "queue2" }, 1);
 
       await setTimeout(1000);
 
@@ -131,19 +135,19 @@ describe("ReleaseConcurrencyQueue", () => {
   });
 
   redisTest("Should not allow refilling more than maxTokens", async ({ redisContainer }) => {
-    const { queue, executedRuns } = createReleaseConcurrencyQueue(redisContainer);
+    const { queue, executedRuns } = createReleaseConcurrencyQueue(redisContainer, 1);
 
     try {
       // Add two runs
-      await queue.attemptToRelease({ name: "test-queue" }, "run1", 1);
-      await queue.attemptToRelease({ name: "test-queue" }, "run2", 1);
+      await queue.attemptToRelease({ name: "test-queue" }, "run1");
+      await queue.attemptToRelease({ name: "test-queue" }, "run2");
 
       // First run should be executed immediately
       expect(executedRuns).toHaveLength(1);
       expect(executedRuns).toContainEqual({ releaseQueue: "test-queue", runId: "run1" });
 
       // Refill with more tokens than needed
-      await queue.refillTokens({ name: "test-queue" }, 1, 5);
+      await queue.refillTokens({ name: "test-queue" }, 5);
 
       await setTimeout(1000);
 
@@ -152,7 +156,7 @@ describe("ReleaseConcurrencyQueue", () => {
       expect(executedRuns).toContainEqual({ releaseQueue: "test-queue", runId: "run2" });
 
       // Add another run - should NOT execute immediately because we don't have excess tokens
-      await queue.attemptToRelease({ name: "test-queue" }, "run3", 1);
+      await queue.attemptToRelease({ name: "test-queue" }, "run3");
       expect(executedRuns).toHaveLength(2);
     } finally {
       await queue.quit();
@@ -160,35 +164,35 @@ describe("ReleaseConcurrencyQueue", () => {
   });
 
   redisTest("Should maintain FIFO order when releasing", async ({ redisContainer }) => {
-    const { queue, executedRuns } = createReleaseConcurrencyQueue(redisContainer);
+    const { queue, executedRuns } = createReleaseConcurrencyQueue(redisContainer, 1);
 
     try {
       // Queue up multiple runs
-      await queue.attemptToRelease({ name: "test-queue" }, "run1", 1);
-      await queue.attemptToRelease({ name: "test-queue" }, "run2", 1);
-      await queue.attemptToRelease({ name: "test-queue" }, "run3", 1);
-      await queue.attemptToRelease({ name: "test-queue" }, "run4", 1);
+      await queue.attemptToRelease({ name: "test-queue" }, "run1");
+      await queue.attemptToRelease({ name: "test-queue" }, "run2");
+      await queue.attemptToRelease({ name: "test-queue" }, "run3");
+      await queue.attemptToRelease({ name: "test-queue" }, "run4");
 
       // First run should be executed immediately
       expect(executedRuns).toHaveLength(1);
       expect(executedRuns[0]).toEqual({ releaseQueue: "test-queue", runId: "run1" });
 
       // Refill tokens one at a time and verify order
-      await queue.refillTokens({ name: "test-queue" }, 1, 1);
+      await queue.refillTokens({ name: "test-queue" }, 1);
 
       await setTimeout(1000);
 
       expect(executedRuns).toHaveLength(2);
       expect(executedRuns[1]).toEqual({ releaseQueue: "test-queue", runId: "run2" });
 
-      await queue.refillTokens({ name: "test-queue" }, 1, 1);
+      await queue.refillTokens({ name: "test-queue" }, 1);
 
       await setTimeout(1000);
 
       expect(executedRuns).toHaveLength(3);
       expect(executedRuns[2]).toEqual({ releaseQueue: "test-queue", runId: "run3" });
 
-      await queue.refillTokens({ name: "test-queue" }, 1, 1);
+      await queue.refillTokens({ name: "test-queue" }, 1);
 
       await setTimeout(1000);
 
@@ -206,7 +210,7 @@ describe("ReleaseConcurrencyQueue", () => {
 
       const executedRuns: { releaseQueue: string; runId: string }[] = [];
 
-      const queue = new ReleaseConcurrencyQueue<string>({
+      const queue = new ReleaseConcurrencyTokenBucketQueue<string>({
         redis: {
           keyPrefix: "release-queue:test:",
           host: redisContainer.getHost(),
@@ -218,6 +222,7 @@ describe("ReleaseConcurrencyQueue", () => {
           }
           executedRuns.push({ releaseQueue, runId });
         },
+        maxTokens: async (_) => 2,
         keys: {
           fromDescriptor: (descriptor) => descriptor,
           toDescriptor: (name) => name,
@@ -236,12 +241,12 @@ describe("ReleaseConcurrencyQueue", () => {
 
       try {
         // Attempt to release with failing executor
-        await queue.attemptToRelease("test-queue", "run1", 2);
+        await queue.attemptToRelease("test-queue", "run1");
         // Does not execute because the executor throws an error
         expect(executedRuns).toHaveLength(0);
 
         // Token should have been returned to the bucket so this should try to execute immediately and fail again
-        await queue.attemptToRelease("test-queue", "run2", 2);
+        await queue.attemptToRelease("test-queue", "run2");
         expect(executedRuns).toHaveLength(0);
 
         // Allow executor to succeed
@@ -260,21 +265,21 @@ describe("ReleaseConcurrencyQueue", () => {
   );
 
   redisTest("Should handle invalid token amounts", async ({ redisContainer }) => {
-    const { queue, executedRuns } = createReleaseConcurrencyQueue(redisContainer);
+    const { queue, executedRuns } = createReleaseConcurrencyQueue(redisContainer, 1);
 
     try {
       // Try to refill with negative tokens
-      await expect(queue.refillTokens({ name: "test-queue" }, 1, -1)).rejects.toThrow();
+      await expect(queue.refillTokens({ name: "test-queue" }, -1)).rejects.toThrow();
 
       // Try to refill with zero tokens
-      await queue.refillTokens({ name: "test-queue" }, 1, 0);
+      await queue.refillTokens({ name: "test-queue" }, 0);
 
       await setTimeout(1000);
 
       expect(executedRuns).toHaveLength(0);
 
       // Verify normal operation still works
-      await queue.attemptToRelease({ name: "test-queue" }, "run1", 1);
+      await queue.attemptToRelease({ name: "test-queue" }, "run1");
       expect(executedRuns).toHaveLength(1);
     } finally {
       await queue.quit();
@@ -284,7 +289,7 @@ describe("ReleaseConcurrencyQueue", () => {
   redisTest("Should handle concurrent operations correctly", async ({ redisContainer }) => {
     const executedRuns: { releaseQueue: string; runId: string }[] = [];
 
-    const queue = new ReleaseConcurrencyQueue<string>({
+    const queue = new ReleaseConcurrencyTokenBucketQueue<string>({
       redis: {
         keyPrefix: "release-queue:test:",
         host: redisContainer.getHost(),
@@ -299,6 +304,7 @@ describe("ReleaseConcurrencyQueue", () => {
         fromDescriptor: (descriptor) => descriptor,
         toDescriptor: (name) => name,
       },
+      maxTokens: async (_) => 2,
       batchSize: 5,
       pollInterval: 50,
     });
@@ -306,17 +312,17 @@ describe("ReleaseConcurrencyQueue", () => {
     try {
       // Attempt multiple concurrent releases
       await Promise.all([
-        queue.attemptToRelease("test-queue", "run1", 2),
-        queue.attemptToRelease("test-queue", "run2", 2),
-        queue.attemptToRelease("test-queue", "run3", 2),
-        queue.attemptToRelease("test-queue", "run4", 2),
+        queue.attemptToRelease("test-queue", "run1"),
+        queue.attemptToRelease("test-queue", "run2"),
+        queue.attemptToRelease("test-queue", "run3"),
+        queue.attemptToRelease("test-queue", "run4"),
       ]);
 
       // Should only execute maxTokens (2) runs
       expect(executedRuns).toHaveLength(2);
 
       // Attempt concurrent refills
-      queue.refillTokens("test-queue", 2, 2);
+      await queue.refillTokens("test-queue", 2);
 
       await setTimeout(1000);
 
@@ -341,25 +347,25 @@ describe("ReleaseConcurrencyQueue", () => {
   });
 
   redisTest("Should clean up Redis resources on quit", async ({ redisContainer }) => {
-    const { queue } = createReleaseConcurrencyQueue(redisContainer);
+    const { queue } = createReleaseConcurrencyQueue(redisContainer, 1);
 
     // Add some data
-    await queue.attemptToRelease({ name: "test-queue" }, "run1", 1);
-    await queue.attemptToRelease({ name: "test-queue" }, "run2", 1);
+    await queue.attemptToRelease({ name: "test-queue" }, "run1");
+    await queue.attemptToRelease({ name: "test-queue" }, "run2");
 
     // Quit the queue
     await queue.quit();
 
     // Verify we can't perform operations after quit
-    await expect(queue.attemptToRelease({ name: "test-queue" }, "run3", 1)).rejects.toThrow();
-    await expect(queue.refillTokens({ name: "test-queue" }, 1, 1)).rejects.toThrow();
+    await expect(queue.attemptToRelease({ name: "test-queue" }, "run3")).rejects.toThrow();
+    await expect(queue.refillTokens({ name: "test-queue" }, 1)).rejects.toThrow();
   });
 
   redisTest("Should stop retrying after max retries is reached", async ({ redisContainer }) => {
     let failCount = 0;
     const executedRuns: { releaseQueue: string; runId: string; attempt: number }[] = [];
 
-    const queue = new ReleaseConcurrencyQueue<string>({
+    const queue = new ReleaseConcurrencyTokenBucketQueue<string>({
       redis: {
         keyPrefix: "release-queue:test:",
         host: redisContainer.getHost(),
@@ -374,6 +380,7 @@ describe("ReleaseConcurrencyQueue", () => {
         fromDescriptor: (descriptor) => descriptor,
         toDescriptor: (name) => name,
       },
+      maxTokens: async (_) => 1,
       retry: {
         maxRetries: 2, // Set max retries to 2 (will attempt 3 times total: initial + 2 retries)
         backoff: {
@@ -387,7 +394,7 @@ describe("ReleaseConcurrencyQueue", () => {
 
     try {
       // Attempt to release - this will fail and retry
-      await queue.attemptToRelease("test-queue", "run1", 1);
+      await queue.attemptToRelease("test-queue", "run1");
 
       // Wait for retries to occur
       await setTimeout(2000);
@@ -404,7 +411,7 @@ describe("ReleaseConcurrencyQueue", () => {
 
       // Attempt a new release to verify the token was returned
       let secondRunAttempted = false;
-      const queue2 = new ReleaseConcurrencyQueue<string>({
+      const queue2 = new ReleaseConcurrencyTokenBucketQueue<string>({
         redis: {
           keyPrefix: "release-queue:test:",
           host: redisContainer.getHost(),
@@ -417,6 +424,7 @@ describe("ReleaseConcurrencyQueue", () => {
           fromDescriptor: (descriptor) => descriptor,
           toDescriptor: (name) => name,
         },
+        maxTokens: async (_) => 1,
         retry: {
           maxRetries: 2,
           backoff: {
@@ -428,7 +436,7 @@ describe("ReleaseConcurrencyQueue", () => {
         pollInterval: 50,
       });
 
-      await queue2.attemptToRelease("test-queue", "run2", 1);
+      await queue2.attemptToRelease("test-queue", "run2");
       expect(secondRunAttempted).toBe(true); // Should execute immediately because token was returned
 
       await queue2.quit();
@@ -441,7 +449,7 @@ describe("ReleaseConcurrencyQueue", () => {
     const executedRuns: { releaseQueue: string; runId: string; attempt: number }[] = [];
     const runAttempts: Record<string, number> = {};
 
-    const queue = new ReleaseConcurrencyQueue<string>({
+    const queue = new ReleaseConcurrencyTokenBucketQueue<string>({
       redis: {
         keyPrefix: "release-queue:test:",
         host: redisContainer.getHost(),
@@ -456,6 +464,7 @@ describe("ReleaseConcurrencyQueue", () => {
         fromDescriptor: (descriptor) => descriptor,
         toDescriptor: (name) => name,
       },
+      maxTokens: async (_) => 3,
       retry: {
         maxRetries: 2,
         backoff: {
@@ -471,9 +480,9 @@ describe("ReleaseConcurrencyQueue", () => {
     try {
       // Queue up multiple runs
       await Promise.all([
-        queue.attemptToRelease("test-queue", "run1", 3),
-        queue.attemptToRelease("test-queue", "run2", 3),
-        queue.attemptToRelease("test-queue", "run3", 3),
+        queue.attemptToRelease("test-queue", "run1"),
+        queue.attemptToRelease("test-queue", "run2"),
+        queue.attemptToRelease("test-queue", "run3"),
       ]);
 
       // Wait for all retries to complete
@@ -514,7 +523,7 @@ describe("ReleaseConcurrencyQueue", () => {
     const minDelay = 100;
     const factor = 2;
 
-    const queue = new ReleaseConcurrencyQueue<string>({
+    const queue = new ReleaseConcurrencyTokenBucketQueue<string>({
       redis: {
         keyPrefix: "release-queue:test:",
         host: redisContainer.getHost(),
@@ -530,6 +539,7 @@ describe("ReleaseConcurrencyQueue", () => {
         fromDescriptor: (descriptor) => descriptor,
         toDescriptor: (name) => name,
       },
+      maxTokens: async (_) => 1,
       retry: {
         maxRetries: 2,
         backoff: {
@@ -543,7 +553,7 @@ describe("ReleaseConcurrencyQueue", () => {
 
     try {
       startTime = Date.now();
-      await queue.attemptToRelease("test-queue", "run1", 1);
+      await queue.attemptToRelease("test-queue", "run1");
 
       // Wait for all retries to complete
       await setTimeout(1000);
