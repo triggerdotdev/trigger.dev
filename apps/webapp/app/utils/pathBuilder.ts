@@ -98,7 +98,7 @@ export function selectPlanPath(organization: OrgForPath) {
 }
 
 export function organizationTeamPath(organization: OrgForPath) {
-  return `${organizationPath(organization)}/team`;
+  return `${organizationPath(organization)}/settings/team`;
 }
 
 export function inviteTeamMemberPath(organization: OrgForPath) {
@@ -365,7 +365,7 @@ export function v3DeploymentPath(
 }
 
 export function v3BillingPath(organization: OrgForPath) {
-  return `${organizationPath(organization)}/billing`;
+  return `${organizationPath(organization)}/settings/billing`;
 }
 
 export function v3StripePortalPath(organization: OrgForPath) {
@@ -373,7 +373,7 @@ export function v3StripePortalPath(organization: OrgForPath) {
 }
 
 export function v3UsagePath(organization: OrgForPath) {
-  return `${organizationPath(organization)}/usage`;
+  return `${organizationPath(organization)}/settings/usage`;
 }
 
 // Docs

@@ -1,6 +1,6 @@
 import { CalendarDaysIcon, StarIcon } from "@heroicons/react/20/solid";
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { PlanDefinition } from "@trigger.dev/platform/v3";
+import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { type PlanDefinition } from "@trigger.dev/platform/v3";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { LinkButton } from "~/components/primitives/Buttons";
@@ -16,7 +16,7 @@ import {
   v3StripePortalPath,
 } from "~/utils/pathBuilder";
 import { PricingPlans } from "../resources.orgs.$organizationSlug.select-plan";
-import { MetaFunction } from "@remix-run/react";
+import { type MetaFunction } from "@remix-run/react";
 
 export const meta: MetaFunction = () => {
   return [

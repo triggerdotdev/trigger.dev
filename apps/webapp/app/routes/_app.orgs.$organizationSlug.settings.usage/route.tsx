@@ -1,6 +1,6 @@
 import { InformationCircleIcon } from "@heroicons/react/20/solid";
-import { Await, MetaFunction } from "@remix-run/react";
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { Await, type MetaFunction } from "@remix-run/react";
+import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
 import { Suspense } from "react";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
@@ -9,7 +9,7 @@ import { URL } from "url";
 import { UsageBar } from "~/components/billing/UsageBar";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import {
-  ChartConfig,
+  type ChartConfig,
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
@@ -31,7 +31,7 @@ import {
 import { prisma } from "~/db.server";
 import { featuresForRequest } from "~/features.server";
 import { useSearchParams } from "~/hooks/useSearchParam";
-import { UsagePresenter, UsageSeriesData } from "~/presenters/v3/UsagePresenter.server";
+import { UsagePresenter, type UsageSeriesData } from "~/presenters/v3/UsagePresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { formatCurrency, formatCurrencyAccurate, formatNumber } from "~/utils/numberFormatter";
 import { OrganizationParamsSchema, organizationPath } from "~/utils/pathBuilder";
