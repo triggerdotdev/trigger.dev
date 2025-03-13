@@ -52,6 +52,8 @@ const Env = z.object({
   // FIXME: This could change between restores
   TRIGGER_WORKER_INSTANCE_NAME: z.string(),
   TRIGGER_RUNNER_ID: z.string(),
+  TRIGGER_HEARTBEAT_INTERVAL_SECONDS: z.coerce.number().default(30),
+  TRIGGER_SNAPSHOT_POLL_INTERVAL_SECONDS: z.coerce.number().default(5),
 });
 
 const env = Env.parse(stdEnv);
@@ -60,7 +62,6 @@ logger.loggerLevel = "debug";
 
 type ManagedRunControllerOptions = {
   workerManifest: WorkerManifest;
-  heartbeatIntervalSeconds?: number;
 };
 
 type Run = {
@@ -247,9 +248,8 @@ class ManagedRunController {
     logger.debug("[ManagedRunController] Creating controller", { env });
 
     this.workerManifest = opts.workerManifest;
-    // TODO: This should be dynamic and set by (or at least overridden by) the managed worker / platform
-    this.heartbeatIntervalSeconds = opts.heartbeatIntervalSeconds || 30;
-    this.snapshotPollIntervalSeconds = 5;
+    this.heartbeatIntervalSeconds = env.TRIGGER_HEARTBEAT_INTERVAL_SECONDS;
+    this.snapshotPollIntervalSeconds = env.TRIGGER_SNAPSHOT_POLL_INTERVAL_SECONDS;
 
     this.workerApiUrl = `${env.TRIGGER_SUPERVISOR_API_PROTOCOL}://${env.TRIGGER_SUPERVISOR_API_DOMAIN}:${env.TRIGGER_SUPERVISOR_API_PORT}`;
 
@@ -725,8 +725,7 @@ class ManagedRunController {
 
       const connectionTimeoutMs =
         connect.data.connectionTimeoutMs ?? env.TRIGGER_WARM_START_CONNECTION_TIMEOUT_MS;
-      const keepaliveMs =
-        connect.data.keepaliveMs ?? env.TRIGGER_WARM_START_KEEPALIVE_MS;
+      const keepaliveMs = connect.data.keepaliveMs ?? env.TRIGGER_WARM_START_KEEPALIVE_MS;
 
       console.log("waitForNextRun: connected to warm start service", {
         connectionTimeoutMs,
