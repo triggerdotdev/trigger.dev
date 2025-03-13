@@ -205,6 +205,7 @@ export function TestHasNoTasks() {
 export function DeploymentsNone() {
   const organization = useOrganization();
   const project = useProject();
+  const environment = useEnvironment();
 
   return (
     <InfoPanel
@@ -217,7 +218,7 @@ export function DeploymentsNone() {
         There are several ways to deploy your tasks. You can use the CLI, Continuous Integration
         (like GitHub Actions), or an integration with a service like Netlify or Vercel. Make sure
         you{" "}
-        <TextLink href={v3EnvironmentVariablesPath(organization, project)}>
+        <TextLink href={v3EnvironmentVariablesPath(organization, project, environment)}>
           set your environment variables
         </TextLink>{" "}
         first.
@@ -247,6 +248,7 @@ export function DeploymentsNone() {
 export function DeploymentsNoneDev() {
   const organization = useOrganization();
   const project = useProject();
+  const environment = useEnvironment();
 
   return (
     <div className="space-y-8">
@@ -264,7 +266,7 @@ export function DeploymentsNoneDev() {
           There are several ways to deploy your tasks. You can use the CLI, Continuous Integration
           (like GitHub Actions), or an integration with a service like Netlify or Vercel. Make sure
           you{" "}
-          <TextLink href={v3EnvironmentVariablesPath(organization, project)}>
+          <TextLink href={v3EnvironmentVariablesPath(organization, project, environment)}>
             set your environment variables
           </TextLink>{" "}
           first.
