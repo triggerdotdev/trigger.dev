@@ -1,12 +1,9 @@
 import {
-  AcademicCapIcon,
   BuildingOffice2Icon,
   CodeBracketSquareIcon,
-  CpuChipIcon,
   CubeIcon,
   FaceSmileIcon,
   FireIcon,
-  HeartIcon,
   RocketLaunchIcon,
   StarIcon,
 } from "@heroicons/react/24/solid";
@@ -15,14 +12,19 @@ import { z } from "zod";
 import { logger } from "~/services/logger.server";
 import { cn } from "~/utils/cn";
 
-const AvatarData = z.discriminatedUnion("type", [
+export const AvatarType = z.enum(["icon", "letters", "image"]);
+
+export const AvatarData = z.discriminatedUnion("type", [
   z.object({
-    type: z.literal("icon"),
+    type: z.literal(AvatarType.enum.icon),
     name: z.string(),
     hex: z.string(),
   }),
   z.object({
-    type: z.literal("image"),
+    type: z.literal(AvatarType.enum.letters),
+  }),
+  z.object({
+    type: z.literal(AvatarType.enum.image),
     url: z.string().url(),
   }),
 ]);
@@ -64,16 +66,13 @@ export function Avatar({
 }
 
 export const avatarIcons: Record<string, React.ComponentType<React.SVGProps<SVGSVGElement>>> = {
-  "hero:rocket-launch": RocketLaunchIcon,
+  "hero:building-office-2": BuildingOffice2Icon,
   "hero:cube": CubeIcon,
-  "hero:academic-cap": AcademicCapIcon,
+  "hero:rocket-launch": RocketLaunchIcon,
   "hero:code-bracket-square": CodeBracketSquareIcon,
   "hero:fire": FireIcon,
   "hero:star": StarIcon,
   "hero:face-smile": FaceSmileIcon,
-  "hero:heart": HeartIcon,
-  "hero:cpu-chip": CpuChipIcon,
-  "hero:building-office-2": BuildingOffice2Icon,
 };
 
 export const defaultAvatarColors = [

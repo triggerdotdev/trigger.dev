@@ -2,11 +2,20 @@ import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { ExclamationTriangleIcon, FolderIcon, TrashIcon } from "@heroicons/react/20/solid";
 import { Form, type MetaFunction, useActionData, useNavigation } from "@remix-run/react";
-import { type ActionFunction, json } from "@remix-run/server-runtime";
-import { redirect } from "remix-typedjson";
+import { type ActionFunction, json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { InlineCode } from "~/components/code/InlineCode";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import {
+  Avatar,
+  AvatarData,
+  avatarIcons,
+  AvatarType,
+  defaultAvatarColors,
+  defaultAvatarIcon,
+  parseAvatar,
+} from "~/components/primitives/Avatar";
 import { Button } from "~/components/primitives/Buttons";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
@@ -25,7 +34,13 @@ import { clearCurrentProject } from "~/services/dashboardPreferences.server";
 import { DeleteOrganizationService } from "~/services/deleteOrganization.server";
 import { logger } from "~/services/logger.server";
 import { requireUser, requireUserId } from "~/services/session.server";
-import { organizationPath, organizationSettingsPath, rootPath } from "~/utils/pathBuilder";
+import { cn } from "~/utils/cn";
+import {
+  OrganizationParamsSchema,
+  organizationPath,
+  organizationSettingsPath,
+  rootPath,
+} from "~/utils/pathBuilder";
 
 export const meta: MetaFunction = () => {
   return [
@@ -35,12 +50,42 @@ export const meta: MetaFunction = () => {
   ];
 };
 
+export const loader = async ({ request, params }: LoaderFunctionArgs) => {
+  const userId = await requireUserId(request);
+  const { organizationSlug } = OrganizationParamsSchema.parse(params);
+
+  const organization = await prisma.organization.findFirst({
+    where: { slug: organizationSlug, members: { some: { userId } }, deletedAt: null },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      slug: true,
+      title: true,
+      avatar: true,
+    },
+  });
+
+  if (!organization) {
+    throw new Response("Not found", { status: 404 });
+  }
+
+  return typedjson({
+    organization: { ...organization, avatar: parseAvatar(organization.avatar, defaultAvatarIcon) },
+  });
+};
+
 export function createSchema(
   constraints: {
     getSlugMatch?: (slug: string) => { isMatch: boolean; organizationSlug: string };
   } = {}
 ) {
   return z.discriminatedUnion("action", [
+    z.object({
+      action: z.literal("avatar"),
+      type: AvatarType,
+      name: z.string().optional(),
+      hex: z.string().optional(),
+    }),
     z.object({
       action: z.literal("rename"),
       organizationName: z
@@ -136,6 +181,37 @@ export const action: ActionFunction = async ({ request, params }) => {
           );
         }
       }
+      case "avatar": {
+        const avatar = AvatarData.safeParse(submission.value);
+
+        if (!avatar.success) {
+          return redirectWithErrorMessage(
+            organizationSettingsPath({ slug: organizationSlug }),
+            request,
+            avatar.error.message
+          );
+        }
+
+        await prisma.organization.update({
+          where: {
+            slug: organizationSlug,
+            members: {
+              some: {
+                userId: user.id,
+              },
+            },
+          },
+          data: {
+            avatar: avatar.data,
+          },
+        });
+
+        return redirectWithSuccessMessage(
+          organizationSettingsPath({ slug: organizationSlug }),
+          request,
+          `Updated logo`
+        );
+      }
     }
   } catch (error: any) {
     return json({ errors: { body: error.message } }, { status: 400 });
@@ -143,7 +219,7 @@ export const action: ActionFunction = async ({ request, params }) => {
 };
 
 export default function Page() {
-  const organization = useOrganization();
+  const { organization } = useTypedLoaderData<typeof loader>();
   const lastSubmission = useActionData();
   const navigation = useNavigation();
 
@@ -193,6 +269,10 @@ export default function Page() {
 
       <PageBody>
         <div className="flex flex-col gap-4">
+          <div>
+            <LogoForm organization={organization} />
+          </div>
+
           <div>
             <Form method="post" {...renameForm.props} className="max-w-md">
               <input type="hidden" name="action" value="rename" />
@@ -268,5 +348,65 @@ export default function Page() {
         </div>
       </PageBody>
     </PageContainer>
+  );
+}
+
+function LogoForm({ organization }: { organization: { avatar: Avatar } }) {
+  const lastSubmission = useActionData();
+  const navigation = useNavigation();
+
+  const [avatarForm] = useForm({
+    id: "avatar-organization",
+    // TODO: type this
+    lastSubmission: lastSubmission as any,
+    shouldRevalidate: "onSubmit",
+    onValidate({ formData }) {
+      return parse(formData, {
+        schema: createSchema(),
+      });
+    },
+  });
+
+  const hex = "hex" in organization.avatar ? organization.avatar.hex : defaultAvatarColors[0];
+
+  return (
+    <Fieldset>
+      <InputGroup>
+        <Label>Logo</Label>
+        <div className="flex items-end gap-2">
+          <div className="size-20 overflow-clip rounded-sm border border-charcoal-700 bg-charcoal-850">
+            <Avatar avatar={organization.avatar} className="size-20" includePadding />
+          </div>
+          {Object.entries(avatarIcons).map(([name]) => (
+            <Form key={name} method="post" {...avatarForm.props}>
+              <input type="hidden" name="action" value="avatar" />
+              <input type="hidden" name="type" value="icon" />
+              <input type="hidden" name="name" value={name} />
+              <input type="hidden" name="hex" value={hex} />
+              <button
+                type="submit"
+                className={cn(
+                  "size-10 overflow-clip rounded-sm border bg-charcoal-850",
+                  organization.avatar.type === "icon" && organization.avatar.name === name
+                    ? "border-2 border-text-dimmed"
+                    : "border border-charcoal-700"
+                )}
+              >
+                <Avatar
+                  key={name}
+                  avatar={{
+                    type: "icon",
+                    name,
+                    hex,
+                  }}
+                  className="size-10"
+                  includePadding
+                />
+              </button>
+            </Form>
+          ))}
+        </div>
+      </InputGroup>
+    </Fieldset>
   );
 }
