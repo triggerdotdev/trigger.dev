@@ -1,6 +1,12 @@
+import colorWheelIcon from "../../assets/images/color-wheel.png";
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { ExclamationTriangleIcon, FolderIcon, TrashIcon } from "@heroicons/react/20/solid";
+import {
+  CheckIcon,
+  ExclamationTriangleIcon,
+  FolderIcon,
+  TrashIcon,
+} from "@heroicons/react/20/solid";
 import { Form, type MetaFunction, useActionData, useNavigation } from "@remix-run/react";
 import { type ActionFunction, json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -12,9 +18,10 @@ import {
   AvatarData,
   avatarIcons,
   AvatarType,
-  defaultAvatarColors,
-  defaultAvatarIcon,
+  defaultAvatar,
   parseAvatar,
+  defaultAvatarHex,
+  defaultAvatarColors,
 } from "~/components/primitives/Avatar";
 import { Button } from "~/components/primitives/Buttons";
 import { Fieldset } from "~/components/primitives/Fieldset";
@@ -26,7 +33,8 @@ import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
-import { SpinnerWhite } from "~/components/primitives/Spinner";
+import { Popover, PopoverContent, PopoverCustomTrigger } from "~/components/primitives/Popover";
+import { Spinner, SpinnerWhite } from "~/components/primitives/Spinner";
 import { prisma } from "~/db.server";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
@@ -70,7 +78,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 
   return typedjson({
-    organization: { ...organization, avatar: parseAvatar(organization.avatar, defaultAvatarIcon) },
+    organization: { ...organization, avatar: parseAvatar(organization.avatar, defaultAvatar) },
   });
 };
 
@@ -352,33 +360,55 @@ export default function Page() {
 }
 
 function LogoForm({ organization }: { organization: { avatar: Avatar } }) {
-  const lastSubmission = useActionData();
   const navigation = useNavigation();
 
-  const [avatarForm] = useForm({
-    id: "avatar-organization",
-    // TODO: type this
-    lastSubmission: lastSubmission as any,
-    shouldRevalidate: "onSubmit",
-    onValidate({ formData }) {
-      return parse(formData, {
-        schema: createSchema(),
-      });
-    },
-  });
+  const isSubmitting =
+    navigation.state != "idle" && navigation.formData?.get("action") === "avatar";
 
-  const hex = "hex" in organization.avatar ? organization.avatar.hex : defaultAvatarColors[0];
+  const avatar = navigation.formData
+    ? avatarFromFormData(navigation.formData) ?? organization.avatar
+    : organization.avatar;
+
+  const hex = "hex" in avatar ? avatar.hex : defaultAvatarHex;
 
   return (
     <Fieldset>
       <InputGroup>
         <Label>Logo</Label>
         <div className="flex items-end gap-2">
-          <div className="size-20 overflow-clip rounded-sm border border-charcoal-700 bg-charcoal-850">
-            <Avatar avatar={organization.avatar} className="size-20" includePadding />
+          <div className="grid size-20 place-items-center overflow-hidden rounded-sm border border-charcoal-700 bg-charcoal-850">
+            <Avatar avatar={avatar} className="size-20" includePadding />
           </div>
+          {/* Letters */}
+          <Form method="post">
+            <input type="hidden" name="action" value="avatar" />
+            <input type="hidden" name="type" value="letters" />
+            <input type="hidden" name="hex" value={hex} />
+            <button
+              type="submit"
+              className={cn(
+                "box-content grid size-10 place-items-center rounded-sm border-2 bg-charcoal-775",
+                avatar.type === "letters"
+                  ? undefined
+                  : "border-charcoal-775 hover:border-charcoal-600"
+              )}
+              style={{
+                borderColor: avatar.type === "letters" ? hex : undefined,
+              }}
+            >
+              <Avatar
+                avatar={{
+                  type: "letters",
+                  hex,
+                }}
+                className="size-10"
+                includePadding
+              />
+            </button>
+          </Form>
+          {/* Icons */}
           {Object.entries(avatarIcons).map(([name]) => (
-            <Form key={name} method="post" {...avatarForm.props}>
+            <Form key={name} method="post">
               <input type="hidden" name="action" value="avatar" />
               <input type="hidden" name="type" value="icon" />
               <input type="hidden" name="name" value={name} />
@@ -386,11 +416,14 @@ function LogoForm({ organization }: { organization: { avatar: Avatar } }) {
               <button
                 type="submit"
                 className={cn(
-                  "size-10 overflow-clip rounded-sm border bg-charcoal-850",
-                  organization.avatar.type === "icon" && organization.avatar.name === name
-                    ? "border-2 border-text-dimmed"
-                    : "border border-charcoal-700"
+                  "box-content grid size-10 place-items-center rounded-sm border-2 bg-charcoal-775",
+                  avatar.type === "icon" && avatar.name === name
+                    ? undefined
+                    : "border-charcoal-775 hover:border-charcoal-600"
                 )}
+                style={{
+                  borderColor: avatar.type === "icon" && avatar.name === name ? hex : undefined,
+                }}
               >
                 <Avatar
                   key={name}
@@ -405,8 +438,85 @@ function LogoForm({ organization }: { organization: { avatar: Avatar } }) {
               </button>
             </Form>
           ))}
+          {/* Hex */}
+          <HexPopover avatar={avatar} hex={hex} />
         </div>
       </InputGroup>
     </Fieldset>
   );
+}
+
+function HexPopover({ avatar, hex }: { avatar: Avatar; hex: string }) {
+  return (
+    <Popover>
+      <PopoverCustomTrigger className="box-content grid size-10 place-items-center rounded-sm border-2 border-charcoal-775 bg-charcoal-775 hover:border-charcoal-600">
+        <img src={colorWheelIcon} className="block size-[30px]" />
+      </PopoverCustomTrigger>
+      <PopoverContent
+        className="flex flex-col gap-1 overflow-y-auto p-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+        align="start"
+        style={{ maxHeight: `calc(var(--radix-popover-content-available-height) - 10vh)` }}
+      >
+        <Form method="post">
+          <input type="hidden" name="action" value="avatar" />
+          <input type="hidden" name="type" value={avatar.type} />
+          {"name" in avatar && <input type="hidden" name="name" value={avatar.name} />}
+          {defaultAvatarColors.map((color) => (
+            <Button
+              key={color.hex}
+              name="hex"
+              value={color.hex}
+              type="submit"
+              variant="small-menu-item"
+              LeadingIcon={
+                <div
+                  className="size-4 rounded-full"
+                  style={{
+                    backgroundColor: color.hex,
+                  }}
+                />
+              }
+              TrailingIcon={hex === color.hex && <CheckIcon className="size-4 text-text-dimmed" />}
+              trailingIconClassName="ml-4"
+              fullWidth
+              textAlignLeft
+              className={cn(
+                "group-hover:bg-charcoal-700",
+                hex === color.hex ? "bg-charcoal-750 group-hover:bg-charcoal-600/50" : undefined
+              )}
+            >
+              {color.name}
+            </Button>
+          ))}
+        </Form>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function avatarFromFormData(formData: FormData): Avatar | undefined {
+  const action = formData.get("action");
+  if (!action || action !== "avatar") {
+    return undefined;
+  }
+
+  const type = formData.get("type");
+  const hex = formData.get("hex");
+
+  if (type === "letters") {
+    return {
+      type: "letters",
+      hex: hex as string,
+    };
+  }
+
+  if (type === "icon") {
+    return {
+      type: "icon",
+      name: formData.get("name") as string,
+      hex: hex as string,
+    };
+  }
+
+  return undefined;
 }

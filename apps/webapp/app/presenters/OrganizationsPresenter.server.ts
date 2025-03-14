@@ -9,7 +9,7 @@ import {
   type MinimumEnvironment,
 } from "./SelectBestEnvironmentPresenter.server";
 import { sortEnvironments } from "~/utils/environmentSort";
-import { defaultAvatarIcon, parseAvatar } from "~/components/primitives/Avatar";
+import { defaultAvatar, parseAvatar } from "~/components/primitives/Avatar";
 
 export class OrganizationsPresenter {
   #prismaClient: PrismaClient;
@@ -150,7 +150,7 @@ export class OrganizationsPresenter {
         id: org.id,
         slug: org.slug,
         title: org.title,
-        avatar: parseAvatar(org.avatar, defaultAvatarIcon),
+        avatar: parseAvatar(org.avatar, defaultAvatar),
         projects: org.projects.map((project) => ({
           id: project.id,
           slug: project.slug,

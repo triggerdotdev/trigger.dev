@@ -118,7 +118,7 @@ export function SideMenu({
   return (
     <div
       className={cn(
-        "grid h-full grid-rows-[2.5rem_auto_2.5rem] overflow-hidden border-r border-grid-bright bg-background-bright transition"
+        "grid h-full grid-rows-[2.5rem_1fr_auto] overflow-hidden border-r border-grid-bright bg-background-bright transition"
       )}
     >
       <div

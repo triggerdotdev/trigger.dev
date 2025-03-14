@@ -9,6 +9,7 @@ import {
 } from "@heroicons/react/24/solid";
 import { type Prisma } from "@trigger.dev/database";
 import { z } from "zod";
+import { useOrganization } from "~/hooks/useOrganizations";
 import { logger } from "~/services/logger.server";
 import { cn } from "~/utils/cn";
 
@@ -22,6 +23,7 @@ export const AvatarData = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal(AvatarType.enum.letters),
+    hex: z.string(),
   }),
   z.object({
     type: z.literal(AvatarType.enum.image),
@@ -32,6 +34,7 @@ export const AvatarData = z.discriminatedUnion("type", [
 export type Avatar = z.infer<typeof AvatarData>;
 export type IconAvatar = Extract<Avatar, { type: "icon" }>;
 export type ImageAvatar = Extract<Avatar, { type: "image" }>;
+export type LettersAvatar = Extract<Avatar, { type: "letters" }>;
 
 export function parseAvatar(json: Prisma.JsonValue, defaultAvatar: Avatar): Avatar {
   if (!json || typeof json !== "object") {
@@ -60,6 +63,10 @@ export function Avatar({
   switch (avatar.type) {
     case "icon":
       return <AvatarIcon avatar={avatar} className={className} includePadding={includePadding} />;
+    case "letters":
+      return (
+        <AvatarLetters avatar={avatar} className={className} includePadding={includePadding} />
+      );
     case "image":
       return <AvatarImage avatar={avatar} className={className} />;
   }
@@ -76,21 +83,56 @@ export const avatarIcons: Record<string, React.ComponentType<React.SVGProps<SVGS
 };
 
 export const defaultAvatarColors = [
-  "#2563EB",
-  "#4F46E5",
-  "#9333EA",
-  "#DB2777",
-  "#E11D48",
-  "#EA580C",
-  "#EAB308",
-  "#16A34A",
+  { hex: "#878C99", name: "Gray" },
+  { hex: "#713F12", name: "Brown" },
+  { hex: "#F97316", name: "Orange" },
+  { hex: "#EAB308", name: "Yellow" },
+  { hex: "#22C55E", name: "Green" },
+  { hex: "#3B82F6", name: "Blue" },
+  { hex: "#6366F1", name: "Purple" },
+  { hex: "#EC4899", name: "Pink" },
+  { hex: "#F43F5E", name: "Red" },
 ];
 
-export const defaultAvatarIcon: IconAvatar = {
-  type: "icon",
-  name: "hero:building-office-2",
-  hex: defaultAvatarColors[0],
+// purple
+export const defaultAvatarHex = defaultAvatarColors[6].hex;
+
+export const defaultAvatar: Avatar = {
+  type: "letters",
+  hex: defaultAvatarHex,
 };
+
+function AvatarLetters({
+  avatar,
+  className,
+  includePadding,
+}: {
+  avatar: LettersAvatar;
+  className?: string;
+  includePadding?: boolean;
+}) {
+  const organization = useOrganization();
+  const letters = organization.title.slice(0, 2);
+
+  const classes = cn("grid place-items-center", className);
+  const style = {
+    backgroundColor: avatar.hex,
+  };
+
+  return (
+    <span className={cn("grid place-items-center text-charcoal-750", classes)}>
+      <span
+        className={cn(
+          "grid place-items-center font-semibold",
+          includePadding ? "size-[80%]" : "size-[100%]"
+        )}
+        style={style}
+      >
+        <span style={{ fontSize: "100%" }}>{letters}</span>
+      </span>
+    </span>
+  );
+}
 
 function AvatarIcon({
   avatar,
@@ -106,7 +148,7 @@ function AvatarIcon({
     color: avatar.hex,
   };
 
-  const IconComponent = avatarIcons[avatar.name] || defaultAvatarIcon.name;
+  const IconComponent = avatarIcons[avatar.name];
   return (
     <span className={cn("grid place-items-center", classes)}>
       <IconComponent className={includePadding ? "size-[80%]" : "size-[100%]"} style={style} />
