@@ -38,6 +38,15 @@ export type RunEngineOptions = {
   releaseConcurrency?: {
     maxTokensRatio?: number;
     redis?: Partial<RedisOptions>;
+    maxRetries?: number;
+    consumersCount?: number;
+    pollInterval?: number;
+    batchSize?: number;
+    backoff?: {
+      minDelay?: number; // Defaults to 1000
+      maxDelay?: number; // Defaults to 60000
+      factor?: number; // Defaults to 2
+    };
   };
 };
 

@@ -255,13 +255,16 @@ export class RunEngine {
         keyPrefix: `${options.queue.redis.keyPrefix}release-concurrency:`,
       },
       retry: {
-        maxRetries: 5, // TODO: Make this configurable
+        maxRetries: options.releaseConcurrency?.maxRetries ?? 5,
         backoff: {
-          minDelay: 1000, // TODO: Make this configurable
-          maxDelay: 10000, // TODO: Make this configurable
-          factor: 2, // TODO: Make this configurable
+          minDelay: options.releaseConcurrency?.backoff?.minDelay ?? 1000,
+          maxDelay: options.releaseConcurrency?.backoff?.maxDelay ?? 10000,
+          factor: options.releaseConcurrency?.backoff?.factor ?? 2,
         },
       },
+      consumersCount: options.releaseConcurrency?.consumersCount ?? 1,
+      pollInterval: options.releaseConcurrency?.pollInterval ?? 1000,
+      batchSize: options.releaseConcurrency?.batchSize ?? 10,
       executor: async (descriptor, runId) => {
         await this.#executeReleasedConcurrencyFromQueue(descriptor, runId);
       },
