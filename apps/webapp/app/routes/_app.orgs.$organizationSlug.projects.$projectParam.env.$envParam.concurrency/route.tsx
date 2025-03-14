@@ -9,7 +9,7 @@ import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Suspense } from "react";
 import { typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
-import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
+import { EnvironmentLabel, FullEnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { Feedback } from "~/components/Feedback";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
@@ -155,7 +155,7 @@ function EnvironmentsTable({ environments }: { environments: Environment[] }) {
       {environments.map((environment) => (
         <TableRow key={environment.id}>
           <TableCell>
-            <EnvironmentLabel environment={environment} userName={environment.userName} />
+            <FullEnvironmentCombo environment={environment} />
           </TableCell>
           <TableCell alignment="right">{environment.queued}</TableCell>
           <TableCell alignment="right">{environment.concurrency}</TableCell>
