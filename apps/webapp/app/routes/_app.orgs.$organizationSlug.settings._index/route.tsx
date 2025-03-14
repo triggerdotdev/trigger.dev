@@ -12,7 +12,11 @@ import { type ActionFunction, json, type LoaderFunctionArgs } from "@remix-run/s
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { InlineCode } from "~/components/code/InlineCode";
-import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import {
+  MainHorizontallyCenteredContainer,
+  PageBody,
+  PageContainer,
+} from "~/components/layout/AppLayout";
 import {
   Avatar,
   AvatarData,
@@ -281,84 +285,86 @@ export default function Page() {
       </NavBar>
 
       <PageBody>
-        <div className="flex flex-col gap-4">
-          <div>
-            <LogoForm organization={organization} />
-          </div>
+        <MainHorizontallyCenteredContainer>
+          <div className="flex flex-col gap-4">
+            <div>
+              <LogoForm organization={organization} />
+            </div>
 
-          <div>
-            <Form method="post" {...renameForm.props} className="max-w-md">
-              <input type="hidden" name="action" value="rename" />
-              <Fieldset>
-                <InputGroup>
-                  <Label htmlFor={organizationName.id}>Rename your organization</Label>
-                  <Input
-                    {...conform.input(organizationName, { type: "text" })}
-                    defaultValue={organization.title}
-                    placeholder="Your organization name"
-                    icon={FolderIcon}
-                    autoFocus
+            <div>
+              <Form method="post" {...renameForm.props}>
+                <input type="hidden" name="action" value="rename" />
+                <Fieldset>
+                  <InputGroup fullWidth>
+                    <Label htmlFor={organizationName.id}>Rename your organization</Label>
+                    <Input
+                      {...conform.input(organizationName, { type: "text" })}
+                      defaultValue={organization.title}
+                      placeholder="Your organization name"
+                      icon={FolderIcon}
+                      autoFocus
+                    />
+                    <FormError id={organizationName.errorId}>{organizationName.error}</FormError>
+                  </InputGroup>
+                  <FormButtons
+                    confirmButton={
+                      <Button
+                        type="submit"
+                        variant={"primary/small"}
+                        disabled={isRenameLoading}
+                        LeadingIcon={isRenameLoading ? SpinnerWhite : undefined}
+                      >
+                        Rename organization
+                      </Button>
+                    }
                   />
-                  <FormError id={organizationName.errorId}>{organizationName.error}</FormError>
-                </InputGroup>
-                <FormButtons
-                  confirmButton={
-                    <Button
-                      type="submit"
-                      variant={"primary/small"}
-                      disabled={isRenameLoading}
-                      LeadingIcon={isRenameLoading ? SpinnerWhite : undefined}
-                    >
-                      Rename organization
-                    </Button>
-                  }
-                />
-              </Fieldset>
-            </Form>
-          </div>
+                </Fieldset>
+              </Form>
+            </div>
 
-          <div>
-            <Header2 spacing>Danger zone</Header2>
-            <Form
-              method="post"
-              {...deleteForm.props}
-              className="max-w-md rounded-sm border border-rose-500/40"
-            >
-              <input type="hidden" name="action" value="delete" />
-              <Fieldset className="p-4">
-                <InputGroup>
-                  <Label htmlFor={organizationSlug.id}>Delete organization</Label>
-                  <Input
-                    {...conform.input(organizationSlug, { type: "text" })}
-                    placeholder="Your organization slug"
-                    icon={ExclamationTriangleIcon}
-                    autoFocus
+            <div>
+              <Header2 spacing>Danger zone</Header2>
+              <Form
+                method="post"
+                {...deleteForm.props}
+                className="max-w-md rounded-sm border border-rose-500/40"
+              >
+                <input type="hidden" name="action" value="delete" />
+                <Fieldset className="p-4">
+                  <InputGroup>
+                    <Label htmlFor={organizationSlug.id}>Delete organization</Label>
+                    <Input
+                      {...conform.input(organizationSlug, { type: "text" })}
+                      placeholder="Your organization slug"
+                      icon={ExclamationTriangleIcon}
+                      fullWidth
+                    />
+                    <FormError id={organizationSlug.errorId}>{organizationSlug.error}</FormError>
+                    <FormError>{deleteForm.error}</FormError>
+                    <Hint>
+                      This change is irreversible, so please be certain. Type in the Organization
+                      slug <InlineCode variant="extra-small">{organization.slug}</InlineCode> and
+                      then press Delete.
+                    </Hint>
+                  </InputGroup>
+                  <FormButtons
+                    confirmButton={
+                      <Button
+                        type="submit"
+                        variant={"danger/small"}
+                        LeadingIcon={isDeleteLoading ? SpinnerWhite : TrashIcon}
+                        leadingIconClassName="text-white"
+                        disabled={isDeleteLoading}
+                      >
+                        Delete organization
+                      </Button>
+                    }
                   />
-                  <FormError id={organizationSlug.errorId}>{organizationSlug.error}</FormError>
-                  <FormError>{deleteForm.error}</FormError>
-                  <Hint>
-                    This change is irreversible, so please be certain. Type in the Organization slug{" "}
-                    <InlineCode variant="extra-small">{organization.slug}</InlineCode> and then
-                    press Delete.
-                  </Hint>
-                </InputGroup>
-                <FormButtons
-                  confirmButton={
-                    <Button
-                      type="submit"
-                      variant={"danger/small"}
-                      LeadingIcon={isDeleteLoading ? SpinnerWhite : TrashIcon}
-                      leadingIconClassName="text-white"
-                      disabled={isDeleteLoading}
-                    >
-                      Delete organization
-                    </Button>
-                  }
-                />
-              </Fieldset>
-            </Form>
+                </Fieldset>
+              </Form>
+            </div>
           </div>
-        </div>
+        </MainHorizontallyCenteredContainer>
       </PageBody>
     </PageContainer>
   );

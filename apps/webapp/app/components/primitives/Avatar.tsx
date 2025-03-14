@@ -8,6 +8,7 @@ import {
   StarIcon,
 } from "@heroicons/react/24/solid";
 import { type Prisma } from "@trigger.dev/database";
+import { useLayoutEffect, useRef, useState } from "react";
 import { z } from "zod";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { logger } from "~/services/logger.server";
@@ -74,7 +75,6 @@ export function Avatar({
 
 export const avatarIcons: Record<string, React.ComponentType<React.SVGProps<SVGSVGElement>>> = {
   "hero:building-office-2": BuildingOffice2Icon,
-  "hero:cube": CubeIcon,
   "hero:rocket-launch": RocketLaunchIcon,
   "hero:code-bracket-square": CodeBracketSquareIcon,
   "hero:fire": FireIcon,
@@ -112,6 +112,36 @@ function AvatarLetters({
   includePadding?: boolean;
 }) {
   const organization = useOrganization();
+  const containerRef = useRef<HTMLSpanElement>(null);
+  const textRef = useRef<HTMLSpanElement>(null);
+  const [fontSize, setFontSize] = useState("1rem");
+
+  useLayoutEffect(() => {
+    if (containerRef.current) {
+      const containerWidth = containerRef.current.offsetWidth;
+      // Set font size to 60% of container width (adjust as needed)
+      setFontSize(`${containerWidth * 0.6}px`);
+    }
+
+    // Optional: Create a ResizeObserver for dynamic resizing
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.target === containerRef.current) {
+          const containerWidth = entry.contentRect.width;
+          setFontSize(`${containerWidth * 0.6}px`);
+        }
+      }
+    });
+
+    if (containerRef.current) {
+      resizeObserver.observe(containerRef.current);
+    }
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, []);
+
   const letters = organization.title.slice(0, 2);
 
   const classes = cn("grid place-items-center", className);
@@ -121,14 +151,18 @@ function AvatarLetters({
 
   return (
     <span className={cn("grid place-items-center overflow-hidden text-charcoal-750", classes)}>
+      {/* This is the square container */}
       <span
+        ref={containerRef}
         className={cn(
           "relative grid place-items-center overflow-hidden rounded-[10%] font-semibold",
           includePadding ? "size-[80%]" : "size-[100%]"
         )}
         style={style}
       >
-        <span className="absolute left-0 top-0 text-[90%] leading-none">{letters}</span>
+        <span ref={textRef} className="font-bold leading-none" style={{ fontSize }}>
+          {letters}
+        </span>
       </span>
     </span>
   );
