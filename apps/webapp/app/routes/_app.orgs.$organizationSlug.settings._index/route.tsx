@@ -33,7 +33,12 @@ import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
-import { Popover, PopoverContent, PopoverCustomTrigger } from "~/components/primitives/Popover";
+import {
+  Popover,
+  PopoverContent,
+  PopoverCustomTrigger,
+  PopoverTrigger,
+} from "~/components/primitives/Popover";
 import { Spinner, SpinnerWhite } from "~/components/primitives/Spinner";
 import { prisma } from "~/db.server";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -449,15 +454,15 @@ function LogoForm({ organization }: { organization: { avatar: Avatar } }) {
 function HexPopover({ avatar, hex }: { avatar: Avatar; hex: string }) {
   return (
     <Popover>
-      <PopoverCustomTrigger className="box-content grid size-10 place-items-center rounded-sm border-2 border-charcoal-775 bg-charcoal-775 hover:border-charcoal-600">
-        <img src={colorWheelIcon} className="block size-[30px]" />
-      </PopoverCustomTrigger>
+      <PopoverTrigger className="box-content grid size-10 place-items-center rounded-sm border-2 border-charcoal-775 bg-charcoal-775 hover:border-charcoal-600">
+        <img src={colorWheelIcon} className="m-0 block size-[30px] p-0" />
+      </PopoverTrigger>
       <PopoverContent
-        className="flex flex-col gap-1 overflow-y-auto p-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+        className="overflow-y-auto p-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
         align="start"
         style={{ maxHeight: `calc(var(--radix-popover-content-available-height) - 10vh)` }}
       >
-        <Form method="post">
+        <Form method="post" className="flex w-fit min-w-40 flex-col gap-1 ">
           <input type="hidden" name="action" value="avatar" />
           <input type="hidden" name="type" value={avatar.type} />
           {"name" in avatar && <input type="hidden" name="name" value={avatar.name} />}

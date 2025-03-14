@@ -298,7 +298,7 @@ function ProjectSelector({
       >
         <div className="flex flex-col gap-2 bg-charcoal-750 p-2">
           <div className="flex items-center gap-2.5">
-            <div className="size-10 overflow-clip rounded-sm border border-charcoal-700 bg-charcoal-850">
+            <div className="box-content size-10 overflow-clip rounded-sm border border-charcoal-700 bg-charcoal-850">
               <Avatar avatar={organization.avatar} className="size-10" includePadding />
             </div>
             <div className="space-y-0.5">

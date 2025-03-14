@@ -120,15 +120,15 @@ function AvatarLetters({
   };
 
   return (
-    <span className={cn("grid place-items-center text-charcoal-750", classes)}>
+    <span className={cn("grid place-items-center overflow-hidden text-charcoal-750", classes)}>
       <span
         className={cn(
-          "grid place-items-center font-semibold",
+          "relative grid place-items-center overflow-hidden rounded-[10%] font-semibold",
           includePadding ? "size-[80%]" : "size-[100%]"
         )}
         style={style}
       >
-        <span style={{ fontSize: "100%" }}>{letters}</span>
+        <span className="absolute left-0 top-0 text-[90%] leading-none">{letters}</span>
       </span>
     </span>
   );

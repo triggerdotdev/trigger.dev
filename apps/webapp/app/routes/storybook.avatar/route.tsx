@@ -1,10 +1,15 @@
-import { Avatar, avatarIcons, defaultAvatarColors } from "~/components/primitives/Avatar";
+import {
+  Avatar,
+  avatarIcons,
+  defaultAvatarColors,
+  type IconAvatar,
+} from "~/components/primitives/Avatar";
 
 // Map tablerIcons Set to Avatar array with cycling colors
-const avatars: Avatar[] = Object.entries(avatarIcons).map(([iconName], index) => ({
+const avatars: IconAvatar[] = Object.entries(avatarIcons).map(([iconName], index) => ({
   type: "icon",
   name: iconName,
-  hex: defaultAvatarColors[index % defaultAvatarColors.length], // Cycle through colors
+  hex: defaultAvatarColors[index % defaultAvatarColors.length].hex, // Cycle through colors
 }));
 
 export default function Story() {
