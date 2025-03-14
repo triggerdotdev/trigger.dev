@@ -401,6 +401,7 @@ function AlertsNoneProd() {
 }
 
 function SwitcherPanel() {
+  const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
 
@@ -410,6 +411,7 @@ function SwitcherPanel() {
         Switch to a deployed environment
       </Paragraph>
       <EnvironmentSelector
+        organization={organization}
         project={project}
         environment={environment}
         className="w-auto grow-0 rounded-sm bg-grid-bright"
