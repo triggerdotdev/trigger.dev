@@ -274,7 +274,7 @@ describe("RunQueue.acknowledgeMessage", () => {
   });
 
   redisTest(
-    "acknowledging a message clears reserve concurrency sets even when not dequeued",
+    "acknowledging a message clears env reserve concurrency when recursive queue is false",
     async ({ redisContainer }) => {
       const queue = new RunQueue({
         ...testOptions,
@@ -302,8 +302,8 @@ describe("RunQueue.acknowledgeMessage", () => {
           message: messageDev,
           masterQueues: ["main", envMasterQueue],
           reserveConcurrency: {
-            messageId: messageDev.runId,
-            recursiveQueue: true,
+            messageId: "r1235",
+            recursiveQueue: false,
           },
         });
 
@@ -317,7 +317,7 @@ describe("RunQueue.acknowledgeMessage", () => {
           authenticatedEnvDev,
           messageDev.queue
         );
-        expect(queueReserveConcurrency).toBe(1);
+        expect(queueReserveConcurrency).toBe(0);
 
         // Verify message is in queue before acknowledging
         const queueLengthBefore = await queue.lengthOfQueue(authenticatedEnvDev, messageDev.queue);
@@ -327,7 +327,9 @@ describe("RunQueue.acknowledgeMessage", () => {
         expect(envQueueLengthBefore).toBe(1);
 
         // Acknowledge the message before dequeuing
-        await queue.acknowledgeMessage(messageDev.orgId, messageDev.runId);
+        await queue.acknowledgeMessage(messageDev.orgId, messageDev.runId, {
+          messageId: "r1235",
+        });
 
         // Verify reserve concurrency is cleared
         const envReserveConcurrencyAfter = await queue.reserveConcurrencyOfEnvironment(

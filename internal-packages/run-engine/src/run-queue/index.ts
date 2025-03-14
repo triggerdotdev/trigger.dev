@@ -481,18 +481,20 @@ export class RunQueue {
    * This is done when the run is in a final state.
    * @param messageId
    */
-  public async acknowledgeMessage(orgId: string, messageId: string) {
+  public async acknowledgeMessage(
+    orgId: string,
+    messageId: string,
+    reserveConcurrency?: {
+      messageId?: string;
+    }
+  ) {
     return this.#trace(
       "acknowledgeMessage",
       async (span) => {
         const message = await this.readMessage(orgId, messageId);
 
         if (!message) {
-          this.logger.log(`[${this.name}].acknowledgeMessage() message not found`, {
-            messageId,
-            service: this.name,
-          });
-          return;
+          throw new MessageNotFoundError(messageId);
         }
 
         span.setAttributes({
@@ -504,6 +506,7 @@ export class RunQueue {
 
         await this.#callAcknowledgeMessage({
           message,
+          reserveConcurrency,
         });
       },
       {
@@ -1006,7 +1009,15 @@ export class RunQueue {
     };
   }
 
-  async #callAcknowledgeMessage({ message }: { message: OutputPayload }) {
+  async #callAcknowledgeMessage({
+    message,
+    reserveConcurrency,
+  }: {
+    message: OutputPayload;
+    reserveConcurrency?: {
+      messageId?: string;
+    };
+  }) {
     const messageId = message.runId;
     const messageKey = this.keys.messageKey(message.orgId, messageId);
     const messageQueue = message.queue;
@@ -1026,22 +1037,37 @@ export class RunQueue {
       service: this.name,
     });
 
-    const queueReserveConcurrencyKey = this.keys.reserveConcurrencyKeyFromQueue(messageQueue);
-    const envReserveConcurrencyKey = this.keys.envReserveConcurrencyKeyFromQueue(messageQueue);
+    if (!reserveConcurrency?.messageId) {
+      return this.redis.acknowledgeMessage(
+        messageKey,
+        messageQueue,
+        queueCurrentConcurrencyKey,
+        envCurrentConcurrencyKey,
+        envQueueKey,
+        messageId,
+        messageQueue,
+        JSON.stringify(masterQueues),
+        this.options.redis.keyPrefix ?? ""
+      );
+    } else {
+      const queueReserveConcurrencyKey = this.keys.reserveConcurrencyKeyFromQueue(messageQueue);
+      const envReserveConcurrencyKey = this.keys.envReserveConcurrencyKeyFromQueue(messageQueue);
 
-    return this.redis.acknowledgeMessage(
-      messageKey,
-      messageQueue,
-      queueCurrentConcurrencyKey,
-      envCurrentConcurrencyKey,
-      envQueueKey,
-      queueReserveConcurrencyKey,
-      envReserveConcurrencyKey,
-      messageId,
-      messageQueue,
-      JSON.stringify(masterQueues),
-      this.options.redis.keyPrefix ?? ""
-    );
+      return this.redis.acknowledgeMessageWithReserveConcurrency(
+        messageKey,
+        messageQueue,
+        queueCurrentConcurrencyKey,
+        envCurrentConcurrencyKey,
+        envQueueKey,
+        envReserveConcurrencyKey,
+        queueReserveConcurrencyKey,
+        messageId,
+        messageQueue,
+        JSON.stringify(masterQueues),
+        this.options.redis.keyPrefix ?? "",
+        reserveConcurrency.messageId
+      );
+    }
   }
 
   async #callNackMessage({ message, retryAt }: { message: OutputPayload; retryAt?: number }) {
@@ -1393,16 +1419,14 @@ return {messageId, messageScore, messagePayload} -- Return message details
     });
 
     this.redis.defineCommand("acknowledgeMessage", {
-      numberOfKeys: 7,
+      numberOfKeys: 5,
       lua: `
 -- Keys:
 local messageKey = KEYS[1]
-local messageQueue = KEYS[2]
-local concurrencyKey = KEYS[3]
+local messageQueueKey = KEYS[2]
+local queueCurrentConcurrencyKey = KEYS[3]
 local envCurrentConcurrencyKey = KEYS[4]
 local envQueueKey = KEYS[5]
-local queueReserveConcurrencyKey = KEYS[6]
-local envReserveConcurrencyKey = KEYS[7]
 
 -- Args:
 local messageId = ARGV[1]
@@ -1414,11 +1438,11 @@ local keyPrefix = ARGV[4]
 redis.call('DEL', messageKey)
 
 -- Remove the message from the queue
-redis.call('ZREM', messageQueue, messageId)
+redis.call('ZREM', messageQueueKey, messageId)
 redis.call('ZREM', envQueueKey, messageId)
 
 -- Rebalance the parent queues
-local earliestMessage = redis.call('ZRANGE', messageQueue, 0, 0, 'WITHSCORES')
+local earliestMessage = redis.call('ZRANGE', messageQueueKey, 0, 0, 'WITHSCORES')
 for _, parentQueue in ipairs(parentQueues) do
   local prefixedParentQueue = keyPrefix .. parentQueue
     if #earliestMessage == 0 then
@@ -1429,12 +1453,55 @@ for _, parentQueue in ipairs(parentQueues) do
 end
 
 -- Update the concurrency keys
-redis.call('SREM', concurrencyKey, messageId)
+redis.call('SREM', queueCurrentConcurrencyKey, messageId)
+redis.call('SREM', envCurrentConcurrencyKey, messageId)
+`,
+    });
+
+    this.redis.defineCommand("acknowledgeMessageWithReserveConcurrency", {
+      numberOfKeys: 7,
+      lua: `
+-- Keys:
+local messageKey = KEYS[1]
+local messageQueueKey = KEYS[2]
+local queueCurrentConcurrencyKey = KEYS[3]
+local envCurrentConcurrencyKey = KEYS[4]
+local envQueueKey = KEYS[5]
+local queueReserveConcurrencyKey = KEYS[6]
+local envReserveConcurrencyKey = KEYS[7]
+
+-- Args:
+local messageId = ARGV[1]
+local messageQueueName = ARGV[2]
+local parentQueues = cjson.decode(ARGV[3])
+local keyPrefix = ARGV[4]
+local reserveMessageId = ARGV[5]
+
+-- Remove the message from the message key
+redis.call('DEL', messageKey)
+
+-- Remove the message from the queue
+redis.call('ZREM', messageQueueKey, messageId)
+redis.call('ZREM', envQueueKey, messageId)
+
+-- Rebalance the parent queues
+local earliestMessage = redis.call('ZRANGE', messageQueueKey, 0, 0, 'WITHSCORES')
+for _, parentQueue in ipairs(parentQueues) do
+  local prefixedParentQueue = keyPrefix .. parentQueue
+    if #earliestMessage == 0 then
+        redis.call('ZREM', prefixedParentQueue, messageQueueName)
+    else
+        redis.call('ZADD', prefixedParentQueue, earliestMessage[2], messageQueueName)
+    end
+end
+
+-- Update the concurrency keys
+redis.call('SREM', queueCurrentConcurrencyKey, messageId)
 redis.call('SREM', envCurrentConcurrencyKey, messageId)
 
 -- Clear reserve concurrency
-redis.call('SREM', queueReserveConcurrencyKey, messageId)
-redis.call('SREM', envReserveConcurrencyKey, messageId)
+redis.call('SREM', queueReserveConcurrencyKey, reserveMessageId)
+redis.call('SREM', envReserveConcurrencyKey, reserveMessageId)
 `,
     });
 
@@ -1585,12 +1652,6 @@ end
 redis.call('SADD', queueCurrentConcurrencyKey, messageId)
 redis.call('SADD', envCurrentConcurrencyKey, messageId)
 
--- Remove the message from the queue reserve concurrency set
-redis.call('SREM', queueReserveConcurrencyKey, messageId)
-
--- Remove the message from the env reserve concurrency set
-redis.call('SREM', envReserveConcurrencyKey, messageId)
-
 return true
 `,
     });
@@ -1701,12 +1762,26 @@ declare module "@internal/redis" {
       concurrencyKey: string,
       envConcurrencyKey: string,
       envQueueKey: string,
-      queueReserveConcurrencyKey: string,
-      envReserveConcurrencyKey: string,
       messageId: string,
       messageQueueName: string,
       masterQueues: string,
       keyPrefix: string,
+      callback?: Callback<void>
+    ): Result<void, Context>;
+
+    acknowledgeMessageWithReserveConcurrency(
+      messageKey: string,
+      messageQueue: string,
+      concurrencyKey: string,
+      envConcurrencyKey: string,
+      envQueueKey: string,
+      envReserveConcurrencyKey: string,
+      queueReserveConcurrencyKey: string,
+      messageId: string,
+      messageQueueName: string,
+      masterQueues: string,
+      keyPrefix: string,
+      reserveMessageId: string,
       callback?: Callback<void>
     ): Result<void, Context>;
 

@@ -1540,6 +1540,7 @@ export class RunEngine {
             createdAt: true,
             completedAt: true,
             taskEventStore: true,
+            parentTaskRunId: true,
             runtimeEnvironment: {
               select: {
                 organizationId: true,
@@ -1559,7 +1560,9 @@ export class RunEngine {
         });
 
         //remove it from the queue and release concurrency
-        await this.runQueue.acknowledgeMessage(run.runtimeEnvironment.organizationId, runId);
+        await this.runQueue.acknowledgeMessage(run.runtimeEnvironment.organizationId, runId, {
+          messageId: run.parentTaskRunId ?? undefined,
+        });
 
         //if executing, we need to message the worker to cancel the run and put it into `PENDING_CANCEL` status
         if (isExecuting(latestSnapshot.executionStatus)) {
@@ -2790,10 +2793,13 @@ export class RunEngine {
           createdAt: true,
           completedAt: true,
           taskEventStore: true,
+          parentTaskRunId: true,
         },
       });
 
-      await this.runQueue.acknowledgeMessage(updatedRun.runtimeEnvironment.organizationId, runId);
+      await this.runQueue.acknowledgeMessage(updatedRun.runtimeEnvironment.organizationId, runId, {
+        messageId: updatedRun.parentTaskRunId ?? undefined,
+      });
 
       if (!updatedRun.associatedWaitpoint) {
         throw new ServiceValidationError("No associated waitpoint found", 400);
@@ -2931,10 +2937,14 @@ export class RunEngine {
             createdAt: true,
             completedAt: true,
             taskEventStore: true,
+            parentTaskRunId: true,
           },
         });
         const newSnapshot = await getLatestExecutionSnapshot(prisma, runId);
-        await this.runQueue.acknowledgeMessage(run.project.organizationId, runId);
+
+        await this.runQueue.acknowledgeMessage(run.project.organizationId, runId, {
+          messageId: run.parentTaskRunId ?? undefined,
+        });
 
         // We need to manually emit this as we created the final snapshot as part of the task run update
         this.eventBus.emit("executionSnapshotCreated", {
@@ -3248,6 +3258,7 @@ export class RunEngine {
           attemptNumber: true,
           spanId: true,
           batchId: true,
+          parentTaskRunId: true,
           associatedWaitpoint: {
             select: {
               id: true,
@@ -3282,12 +3293,14 @@ export class RunEngine {
         throw new ServiceValidationError("No associated waitpoint found", 400);
       }
 
+      await this.runQueue.acknowledgeMessage(run.runtimeEnvironment.organizationId, runId, {
+        messageId: run.parentTaskRunId ?? undefined,
+      });
+
       await this.completeWaitpoint({
         id: run.associatedWaitpoint.id,
         output: { value: JSON.stringify(error), isError: true },
       });
-
-      await this.runQueue.acknowledgeMessage(run.runtimeEnvironment.organizationId, runId);
 
       this.eventBus.emit("runFailed", {
         time: failedAt,
