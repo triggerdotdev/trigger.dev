@@ -101,6 +101,110 @@ class ManagedRunController {
         phase: "IDLE" | "WARM_START";
       } = { phase: "IDLE" };
 
+  constructor(opts: ManagedRunControllerOptions) {
+    logger.debug("[ManagedRunController] Creating controller", { env });
+
+    this.workerManifest = opts.workerManifest;
+    this.heartbeatIntervalSeconds = env.TRIGGER_HEARTBEAT_INTERVAL_SECONDS;
+    this.snapshotPollIntervalSeconds = env.TRIGGER_SNAPSHOT_POLL_INTERVAL_SECONDS;
+
+    this.workerApiUrl = `${env.TRIGGER_SUPERVISOR_API_PROTOCOL}://${env.TRIGGER_SUPERVISOR_API_DOMAIN}:${env.TRIGGER_SUPERVISOR_API_PORT}`;
+
+    this.httpClient = new WorkloadHttpClient({
+      workerApiUrl: this.workerApiUrl,
+      deploymentId: env.TRIGGER_DEPLOYMENT_ID,
+      runnerId: env.TRIGGER_RUNNER_ID,
+    });
+
+    if (env.TRIGGER_WARM_START_URL) {
+      this.warmStartClient = new WarmStartClient({
+        apiUrl: new URL(env.TRIGGER_WARM_START_URL),
+        controllerId: env.TRIGGER_WORKLOAD_CONTROLLER_ID,
+        deploymentId: env.TRIGGER_DEPLOYMENT_ID,
+        deploymentVersion: env.TRIGGER_DEPLOYMENT_VERSION,
+        machineCpu: env.TRIGGER_MACHINE_CPU,
+        machineMemory: env.TRIGGER_MACHINE_MEMORY,
+      });
+    }
+
+    this.snapshotPoller = new HeartbeatService({
+      heartbeat: async () => {
+        if (!this.runFriendlyId) {
+          logger.debug("[ManagedRunController] Skipping snapshot poll, no run ID");
+          return;
+        }
+
+        console.debug("[ManagedRunController] Polling for latest snapshot");
+
+        this.httpClient.sendDebugLog(this.runFriendlyId, {
+          time: new Date(),
+          message: `snapshot poll: started`,
+          properties: {
+            snapshotId: this.snapshotFriendlyId,
+          },
+        });
+
+        const response = await this.httpClient.getRunExecutionData(this.runFriendlyId);
+
+        if (!response.success) {
+          console.error("[ManagedRunController] Snapshot poll failed", { error: response.error });
+
+          this.httpClient.sendDebugLog(this.runFriendlyId, {
+            time: new Date(),
+            message: `snapshot poll: failed`,
+            properties: {
+              snapshotId: this.snapshotFriendlyId,
+              error: response.error,
+            },
+          });
+
+          return;
+        }
+
+        await this.handleSnapshotChange(response.data.execution);
+      },
+      intervalMs: this.snapshotPollIntervalSeconds * 1000,
+      leadingEdge: false,
+      onError: async (error) => {
+        console.error("[ManagedRunController] Failed to poll for snapshot", { error });
+      },
+    });
+
+    this.runHeartbeat = new HeartbeatService({
+      heartbeat: async () => {
+        if (!this.runFriendlyId || !this.snapshotFriendlyId) {
+          logger.debug("[ManagedRunController] Skipping heartbeat, no run ID or snapshot ID");
+          return;
+        }
+
+        console.debug("[ManagedRunController] Sending heartbeat");
+
+        const response = await this.httpClient.heartbeatRun(
+          this.runFriendlyId,
+          this.snapshotFriendlyId,
+          {
+            cpu: 0,
+            memory: 0,
+          }
+        );
+
+        if (!response.success) {
+          console.error("[ManagedRunController] Heartbeat failed", { error: response.error });
+        }
+      },
+      intervalMs: this.heartbeatIntervalSeconds * 1000,
+      leadingEdge: false,
+      onError: async (error) => {
+        console.error("[ManagedRunController] Failed to send heartbeat", { error });
+      },
+    });
+
+    process.on("SIGTERM", async () => {
+      logger.debug("[ManagedRunController] Received SIGTERM, stopping worker");
+      await this.stop();
+    });
+  }
+
   private enterRunPhase(run: Run, snapshot: Snapshot) {
     this.onExitRunPhase(run);
     this.state = { phase: "RUN", run, snapshot };
@@ -243,110 +347,6 @@ class ManagedRunController {
     }
 
     return this.state.snapshot.friendlyId;
-  }
-
-  constructor(opts: ManagedRunControllerOptions) {
-    logger.debug("[ManagedRunController] Creating controller", { env });
-
-    this.workerManifest = opts.workerManifest;
-    this.heartbeatIntervalSeconds = env.TRIGGER_HEARTBEAT_INTERVAL_SECONDS;
-    this.snapshotPollIntervalSeconds = env.TRIGGER_SNAPSHOT_POLL_INTERVAL_SECONDS;
-
-    this.workerApiUrl = `${env.TRIGGER_SUPERVISOR_API_PROTOCOL}://${env.TRIGGER_SUPERVISOR_API_DOMAIN}:${env.TRIGGER_SUPERVISOR_API_PORT}`;
-
-    this.httpClient = new WorkloadHttpClient({
-      workerApiUrl: this.workerApiUrl,
-      deploymentId: env.TRIGGER_DEPLOYMENT_ID,
-      runnerId: env.TRIGGER_RUNNER_ID,
-    });
-
-    if (env.TRIGGER_WARM_START_URL) {
-      this.warmStartClient = new WarmStartClient({
-        apiUrl: new URL(env.TRIGGER_WARM_START_URL),
-        controllerId: env.TRIGGER_WORKLOAD_CONTROLLER_ID,
-        deploymentId: env.TRIGGER_DEPLOYMENT_ID,
-        deploymentVersion: env.TRIGGER_DEPLOYMENT_VERSION,
-        machineCpu: env.TRIGGER_MACHINE_CPU,
-        machineMemory: env.TRIGGER_MACHINE_MEMORY,
-      });
-    }
-
-    this.snapshotPoller = new HeartbeatService({
-      heartbeat: async () => {
-        if (!this.runFriendlyId) {
-          logger.debug("[ManagedRunController] Skipping snapshot poll, no run ID");
-          return;
-        }
-
-        console.debug("[ManagedRunController] Polling for latest snapshot");
-
-        this.httpClient.sendDebugLog(this.runFriendlyId, {
-          time: new Date(),
-          message: `snapshot poll: started`,
-          properties: {
-            snapshotId: this.snapshotFriendlyId,
-          },
-        });
-
-        const response = await this.httpClient.getRunExecutionData(this.runFriendlyId);
-
-        if (!response.success) {
-          console.error("[ManagedRunController] Snapshot poll failed", { error: response.error });
-
-          this.httpClient.sendDebugLog(this.runFriendlyId, {
-            time: new Date(),
-            message: `snapshot poll: failed`,
-            properties: {
-              snapshotId: this.snapshotFriendlyId,
-              error: response.error,
-            },
-          });
-
-          return;
-        }
-
-        await this.handleSnapshotChange(response.data.execution);
-      },
-      intervalMs: this.snapshotPollIntervalSeconds * 1000,
-      leadingEdge: false,
-      onError: async (error) => {
-        console.error("[ManagedRunController] Failed to poll for snapshot", { error });
-      },
-    });
-
-    this.runHeartbeat = new HeartbeatService({
-      heartbeat: async () => {
-        if (!this.runFriendlyId || !this.snapshotFriendlyId) {
-          logger.debug("[ManagedRunController] Skipping heartbeat, no run ID or snapshot ID");
-          return;
-        }
-
-        console.debug("[ManagedRunController] Sending heartbeat");
-
-        const response = await this.httpClient.heartbeatRun(
-          this.runFriendlyId,
-          this.snapshotFriendlyId,
-          {
-            cpu: 0,
-            memory: 0,
-          }
-        );
-
-        if (!response.success) {
-          console.error("[ManagedRunController] Heartbeat failed", { error: response.error });
-        }
-      },
-      intervalMs: this.heartbeatIntervalSeconds * 1000,
-      leadingEdge: false,
-      onError: async (error) => {
-        console.error("[ManagedRunController] Failed to send heartbeat", { error });
-      },
-    });
-
-    process.on("SIGTERM", async () => {
-      logger.debug("[ManagedRunController] Received SIGTERM, stopping worker");
-      await this.stop();
-    });
   }
 
   private handleSnapshotChangeLock = false;
