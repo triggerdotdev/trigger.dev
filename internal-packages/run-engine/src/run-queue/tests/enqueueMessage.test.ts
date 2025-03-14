@@ -111,15 +111,6 @@ describe("RunQueue.enqueueMessage", () => {
         authenticatedEnvDev
       );
       expect(envReserveConcurrency).toBe(0);
-
-      const projectConcurrency = await queue.currentConcurrencyOfProject(authenticatedEnvDev);
-      expect(projectConcurrency).toBe(0);
-
-      const taskConcurrency = await queue.currentConcurrencyOfTask(
-        authenticatedEnvDev,
-        messageDev.taskIdentifier
-      );
-      expect(taskConcurrency).toBe(0);
     } finally {
       await queue.quit();
     }
@@ -199,15 +190,6 @@ describe("RunQueue.enqueueMessage", () => {
           authenticatedEnvDev
         );
         expect(envReserveConcurrency).toBe(1);
-
-        const projectConcurrency = await queue.currentConcurrencyOfProject(authenticatedEnvDev);
-        expect(projectConcurrency).toBe(0);
-
-        const taskConcurrency = await queue.currentConcurrencyOfTask(
-          authenticatedEnvDev,
-          messageDev.taskIdentifier
-        );
-        expect(taskConcurrency).toBe(0);
       } finally {
         await queue.quit();
       }
@@ -294,15 +276,6 @@ describe("RunQueue.enqueueMessage", () => {
           authenticatedEnvDev
         );
         expect(envReserveConcurrency).toBe(1);
-
-        const projectConcurrency = await queue.currentConcurrencyOfProject(authenticatedEnvDev);
-        expect(projectConcurrency).toBe(0);
-
-        const taskConcurrency = await queue.currentConcurrencyOfTask(
-          authenticatedEnvDev,
-          messageDev.taskIdentifier
-        );
-        expect(taskConcurrency).toBe(0);
       } finally {
         await queue.quit();
       }

@@ -87,15 +87,6 @@ describe("RunQueue.acknowledgeMessage", () => {
       const envConcurrency = await queue.currentConcurrencyOfEnvironment(authenticatedEnvDev);
       expect(envConcurrency).toBe(1);
 
-      const projectConcurrency = await queue.currentConcurrencyOfProject(authenticatedEnvDev);
-      expect(projectConcurrency).toBe(1);
-
-      const taskConcurrency = await queue.currentConcurrencyOfTask(
-        authenticatedEnvDev,
-        messageDev.taskIdentifier
-      );
-      expect(taskConcurrency).toBe(1);
-
       // Acknowledge the message
       await queue.acknowledgeMessage(messageDev.orgId, messageDev.runId);
 
@@ -108,15 +99,6 @@ describe("RunQueue.acknowledgeMessage", () => {
 
       const envConcurrencyAfter = await queue.currentConcurrencyOfEnvironment(authenticatedEnvDev);
       expect(envConcurrencyAfter).toBe(0);
-
-      const projectConcurrencyAfter = await queue.currentConcurrencyOfProject(authenticatedEnvDev);
-      expect(projectConcurrencyAfter).toBe(0);
-
-      const taskConcurrencyAfter = await queue.currentConcurrencyOfTask(
-        authenticatedEnvDev,
-        messageDev.taskIdentifier
-      );
-      expect(taskConcurrencyAfter).toBe(0);
     } finally {
       await queue.quit();
     }

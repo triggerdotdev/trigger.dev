@@ -125,17 +125,6 @@ describe("RunQueue.nackMessage", () => {
       );
       expect(envCurrentConcurrencyAfterNack).toBe(0);
 
-      const projectCurrentConcurrencyAfterNack = await queue.currentConcurrencyOfProject(
-        authenticatedEnvDev
-      );
-      expect(projectCurrentConcurrencyAfterNack).toBe(0);
-
-      const taskCurrentConcurrencyAfterNack = await queue.currentConcurrencyOfTask(
-        authenticatedEnvDev,
-        messageDev.taskIdentifier
-      );
-      expect(taskCurrentConcurrencyAfterNack).toBe(0);
-
       const envQueueLength = await queue.lengthOfEnvQueue(authenticatedEnvDev);
       expect(envQueueLength).toBe(1);
 

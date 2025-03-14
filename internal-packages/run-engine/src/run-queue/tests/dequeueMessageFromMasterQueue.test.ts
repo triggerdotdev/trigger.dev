@@ -112,15 +112,6 @@ describe("RunQueue.dequeueMessageFromMasterQueue", () => {
       );
       expect(envReserveConcurrency).toBe(0);
 
-      const projectConcurrency = await queue.currentConcurrencyOfProject(authenticatedEnvDev);
-      expect(projectConcurrency).toBe(0);
-
-      const taskConcurrency = await queue.currentConcurrencyOfTask(
-        authenticatedEnvDev,
-        messageDev.taskIdentifier
-      );
-      expect(taskConcurrency).toBe(0);
-
       const dequeued = await queue.dequeueMessageFromMasterQueue("test_12345", envMasterQueue, 10);
       expect(dequeued.length).toBe(1);
       expect(dequeued[0].messageId).toEqual(messageDev.runId);
@@ -142,15 +133,6 @@ describe("RunQueue.dequeueMessageFromMasterQueue", () => {
         authenticatedEnvDev
       );
       expect(envReserveConcurrencyAfter).toBe(0);
-
-      const projectConcurrencyAfter = await queue.currentConcurrencyOfProject(authenticatedEnvDev);
-      expect(projectConcurrencyAfter).toBe(1);
-
-      const taskConcurrencyAfter = await queue.currentConcurrencyOfTask(
-        authenticatedEnvDev,
-        messageDev.taskIdentifier
-      );
-      expect(taskConcurrencyAfter).toBe(1);
 
       //queue length
       const result3 = await queue.lengthOfQueue(authenticatedEnvDev, messageDev.queue);

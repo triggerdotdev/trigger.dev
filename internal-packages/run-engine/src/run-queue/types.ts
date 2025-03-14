@@ -71,16 +71,6 @@ export interface RunQueueKeyProducer {
 
   envConcurrencyLimitKeyFromQueue(queue: string): string;
   envCurrentConcurrencyKeyFromQueue(queue: string): string;
-  //task concurrency
-  taskIdentifierCurrentConcurrencyKey(
-    env: MinimalAuthenticatedEnvironment,
-    taskIdentifier: string
-  ): string;
-  taskIdentifierCurrentConcurrencyKeyPrefixFromQueue(queue: string): string;
-  taskIdentifierCurrentConcurrencyKeyFromQueue(queue: string, taskIdentifier: string): string;
-  //project concurrency
-  projectCurrentConcurrencyKey(env: MinimalAuthenticatedEnvironment): string;
-  projectCurrentConcurrencyKeyFromQueue(queue: string): string;
   //message payload
   messageKeyPrefixFromQueue(queue: string): string;
   messageKey(orgId: string, messageId: string): string;
