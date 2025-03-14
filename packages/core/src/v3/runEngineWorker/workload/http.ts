@@ -19,7 +19,7 @@ import { wrapZodFetch } from "../../zodfetch.js";
 type WorkloadHttpClientOptions = WorkloadClientCommonOptions;
 
 export class WorkloadHttpClient {
-  private readonly apiUrl: string;
+  private apiUrl: string;
   private readonly deploymentId: string;
   private readonly defaultHeaders: Record<string, string>;
 
@@ -35,6 +35,10 @@ export class WorkloadHttpClient {
     if (!this.deploymentId) {
       throw new Error("deploymentId is required and needs to be a non-empty string");
     }
+  }
+
+  updateApiUrl(apiUrl: string) {
+    this.apiUrl = apiUrl.replace(/\/$/, "");
   }
 
   async heartbeatRun(runId: string, snapshotId: string, body: WorkloadHeartbeatRequestBody) {

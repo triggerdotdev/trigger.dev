@@ -36,9 +36,6 @@ const Env = z.object({
   NODE_EXTRA_CA_CERTS: z.string().optional(),
 
   // Set at runtime
-  TRIGGER_SUPERVISOR_API_PROTOCOL: z.enum(["http", "https"]),
-  TRIGGER_SUPERVISOR_API_DOMAIN: z.string(),
-  TRIGGER_SUPERVISOR_API_PORT: z.coerce.number(),
   TRIGGER_WORKLOAD_CONTROLLER_ID: z.string().default(`controller_${randomUUID()}`),
   TRIGGER_ENV_ID: z.string(),
   TRIGGER_RUN_ID: z.string().optional(), // This is only useful for cold starts
@@ -49,9 +46,14 @@ const Env = z.object({
   TRIGGER_WARM_START_KEEPALIVE_MS: z.coerce.number().default(300_000),
   TRIGGER_MACHINE_CPU: z.string().default("0"),
   TRIGGER_MACHINE_MEMORY: z.string().default("0"),
-  // FIXME: This could change between restores
-  TRIGGER_WORKER_INSTANCE_NAME: z.string(),
   TRIGGER_RUNNER_ID: z.string(),
+  TRIGGER_METADATA_URL: z.string().optional(),
+
+  // May be overridden
+  TRIGGER_SUPERVISOR_API_PROTOCOL: z.enum(["http", "https"]),
+  TRIGGER_SUPERVISOR_API_DOMAIN: z.string(),
+  TRIGGER_SUPERVISOR_API_PORT: z.coerce.number(),
+  TRIGGER_WORKER_INSTANCE_NAME: z.string(),
   TRIGGER_HEARTBEAT_INTERVAL_SECONDS: z.coerce.number().default(30),
   TRIGGER_SNAPSHOT_POLL_INTERVAL_SECONDS: z.coerce.number().default(5),
 });
@@ -73,6 +75,33 @@ type Snapshot = {
   friendlyId: string;
 };
 
+type Metadata = {
+  TRIGGER_SUPERVISOR_API_PROTOCOL: string | undefined;
+  TRIGGER_SUPERVISOR_API_DOMAIN: string | undefined;
+  TRIGGER_SUPERVISOR_API_PORT: number | undefined;
+  TRIGGER_WORKER_INSTANCE_NAME: string | undefined;
+  TRIGGER_HEARTBEAT_INTERVAL_SECONDS: number | undefined;
+  TRIGGER_SNAPSHOT_POLL_INTERVAL_SECONDS: number | undefined;
+};
+
+class MetadataClient {
+  private readonly url: URL;
+
+  constructor(url: string) {
+    this.url = new URL(url);
+  }
+
+  async getEnvOverrides(): Promise<Metadata | null> {
+    try {
+      const response = await fetch(new URL("/env", this.url));
+      return response.json();
+    } catch (error) {
+      console.error("Failed to fetch metadata", { error });
+      return null;
+    }
+  }
+}
+
 class ManagedRunController {
   private taskRunProcess?: TaskRunProcess;
 
@@ -80,16 +109,18 @@ class ManagedRunController {
 
   private readonly httpClient: WorkloadHttpClient;
   private readonly warmStartClient: WarmStartClient | undefined;
+  private readonly metadataClient?: MetadataClient;
 
   private socket: Socket<WorkloadServerToClientEvents, WorkloadClientToServerEvents>;
 
   private readonly runHeartbeat: HeartbeatService;
-  private readonly heartbeatIntervalSeconds: number;
+  private heartbeatIntervalSeconds: number;
 
   private readonly snapshotPoller: HeartbeatService;
-  private readonly snapshotPollIntervalSeconds: number;
+  private snapshotPollIntervalSeconds: number;
 
-  private readonly workerApiUrl: string;
+  private workerApiUrl: string;
+  private workerInstanceName: string;
 
   private state:
     | {
@@ -105,10 +136,16 @@ class ManagedRunController {
     logger.debug("[ManagedRunController] Creating controller", { env });
 
     this.workerManifest = opts.workerManifest;
+
     this.heartbeatIntervalSeconds = env.TRIGGER_HEARTBEAT_INTERVAL_SECONDS;
     this.snapshotPollIntervalSeconds = env.TRIGGER_SNAPSHOT_POLL_INTERVAL_SECONDS;
 
+    if (env.TRIGGER_METADATA_URL) {
+      this.metadataClient = new MetadataClient(env.TRIGGER_METADATA_URL);
+    }
+
     this.workerApiUrl = `${env.TRIGGER_SUPERVISOR_API_PROTOCOL}://${env.TRIGGER_SUPERVISOR_API_DOMAIN}:${env.TRIGGER_SUPERVISOR_API_PORT}`;
+    this.workerInstanceName = env.TRIGGER_WORKER_INSTANCE_NAME;
 
     this.httpClient = new WorkloadHttpClient({
       workerApiUrl: this.workerApiUrl,
@@ -549,6 +586,9 @@ class ManagedRunController {
           // Short delay to give websocket time to reconnect
           await sleep(100);
 
+          // Env may have changed after restore
+          await this.processEnvOverrides();
+
           // We need to let the platform know we're ready to continue
           const continuationResult = await this.httpClient.continueRunExecution(
             run.friendlyId,
@@ -608,6 +648,51 @@ class ManagedRunController {
       });
     } finally {
       this.handleSnapshotChangeLock = false;
+    }
+  }
+
+  private async processEnvOverrides() {
+    if (!this.metadataClient) {
+      logger.log("No metadata client, skipping env overrides");
+      return;
+    }
+
+    const overrides = await this.metadataClient.getEnvOverrides();
+
+    if (!overrides) {
+      logger.log("No env overrides, skipping");
+      return;
+    }
+
+    logger.log("Processing env overrides", { env: overrides });
+
+    if (overrides.TRIGGER_HEARTBEAT_INTERVAL_SECONDS) {
+      this.heartbeatIntervalSeconds = overrides.TRIGGER_HEARTBEAT_INTERVAL_SECONDS;
+      this.runHeartbeat.updateInterval(this.heartbeatIntervalSeconds * 1000);
+    }
+
+    if (overrides.TRIGGER_SNAPSHOT_POLL_INTERVAL_SECONDS) {
+      this.snapshotPollIntervalSeconds = overrides.TRIGGER_SNAPSHOT_POLL_INTERVAL_SECONDS;
+      this.snapshotPoller.updateInterval(this.snapshotPollIntervalSeconds * 1000);
+    }
+
+    if (overrides.TRIGGER_WORKER_INSTANCE_NAME) {
+      this.workerInstanceName = overrides.TRIGGER_WORKER_INSTANCE_NAME;
+    }
+
+    if (
+      overrides.TRIGGER_SUPERVISOR_API_PROTOCOL ||
+      overrides.TRIGGER_SUPERVISOR_API_DOMAIN ||
+      overrides.TRIGGER_SUPERVISOR_API_PORT
+    ) {
+      const protocol =
+        overrides.TRIGGER_SUPERVISOR_API_PROTOCOL ?? env.TRIGGER_SUPERVISOR_API_PROTOCOL;
+      const domain = overrides.TRIGGER_SUPERVISOR_API_DOMAIN ?? env.TRIGGER_SUPERVISOR_API_DOMAIN;
+      const port = overrides.TRIGGER_SUPERVISOR_API_PORT ?? env.TRIGGER_SUPERVISOR_API_PORT;
+
+      this.workerApiUrl = `${protocol}://${domain}:${port}`;
+
+      this.httpClient.updateApiUrl(this.workerApiUrl);
     }
   }
 
@@ -776,7 +861,7 @@ class ManagedRunController {
       }
 
       const nextRun = await this.warmStartClient.warmStart({
-        workerInstanceName: env.TRIGGER_WORKER_INSTANCE_NAME,
+        workerInstanceName: this.workerInstanceName,
         connectionTimeoutMs,
         keepaliveMs,
       });
