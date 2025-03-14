@@ -1,13 +1,9 @@
-import {
-  ArrowPathIcon,
-  ArrowUturnLeftIcon,
-  ArrowUturnRightIcon,
-  BookOpenIcon,
-} from "@heroicons/react/20/solid";
+import { ArrowPathIcon, ArrowUturnLeftIcon, BookOpenIcon } from "@heroicons/react/20/solid";
 import { type MetaFunction, Outlet, useLocation, useParams } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
+import { PromoteIcon } from "~/assets/icons/PromoteIcon";
 import { DeploymentsNone, DeploymentsNoneDev } from "~/components/BlankStatePanels";
 import { UserAvatar } from "~/components/UserProfilePhoto";
 import { FullEnvironmentCombo } from "~/components/environments/EnvironmentLabel";
@@ -335,7 +331,7 @@ function DeploymentActionsCell({
               <DialogTrigger asChild>
                 <Button
                   variant="small-menu-item"
-                  LeadingIcon={ArrowUturnRightIcon}
+                  LeadingIcon={PromoteIcon}
                   leadingIconClassName="text-blue-500"
                   fullWidth
                   textAlignLeft
