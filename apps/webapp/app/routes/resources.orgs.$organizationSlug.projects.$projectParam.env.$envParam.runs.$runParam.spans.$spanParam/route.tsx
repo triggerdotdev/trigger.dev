@@ -679,12 +679,12 @@ function RunBody({
                   <Property.Label>Internal ID</Property.Label>
                   <Property.Value>{run.id}</Property.Value>
                 </Property.Item>
+                <Property.Item>
+                  <Property.Label>Run Engine</Property.Label>
+                  <Property.Value>{run.engine}</Property.Value>
+                </Property.Item>
                 {isAdmin && (
                   <>
-                    <Property.Item>
-                      <Property.Label>Engine version</Property.Label>
-                      <Property.Value>{run.engine}</Property.Value>
-                    </Property.Item>
                     <Property.Item>
                       <Property.Label>Primary master queue</Property.Label>
                       <Property.Value>{run.masterQueue}</Property.Value>
