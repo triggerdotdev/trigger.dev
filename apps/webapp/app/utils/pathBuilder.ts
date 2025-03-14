@@ -364,8 +364,10 @@ export function v3DeploymentPath(
   return `${v3DeploymentsPath(organization, project, environment)}/${deployment.shortCode}${query}`;
 }
 
-export function v3BillingPath(organization: OrgForPath) {
-  return `${organizationPath(organization)}/settings/billing`;
+export function v3BillingPath(organization: OrgForPath, message?: string) {
+  return `${organizationPath(organization)}/settings/billing${
+    message ? `?message=${encodeURIComponent(message)}` : ""
+  }`;
 }
 
 export function v3StripePortalPath(organization: OrgForPath) {

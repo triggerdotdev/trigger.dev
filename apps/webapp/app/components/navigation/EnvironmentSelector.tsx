@@ -8,19 +8,26 @@ import {
   PopoverArrowTrigger,
   PopoverContent,
   PopoverMenuItem,
+  PopoverSectionHeader,
 } from "../primitives/Popover";
 import { type SideMenuEnvironment, type SideMenuProject } from "./SideMenu";
 import { cn } from "~/utils/cn";
+import { useFeatures } from "~/hooks/useFeatures";
+import { v3BillingPath } from "~/utils/pathBuilder";
+import { TextLink } from "../primitives/TextLink";
 
 export function EnvironmentSelector({
+  organization,
   project,
   environment,
   className,
 }: {
+  organization: MatchedOrganization;
   project: SideMenuProject;
   environment: SideMenuEnvironment;
   className?: string;
 }) {
+  const { isManagedCloud } = useFeatures();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const navigation = useNavigation();
   const { urlForEnvironment } = useEnvironmentSwitcher();
@@ -28,6 +35,8 @@ export function EnvironmentSelector({
   useEffect(() => {
     setIsMenuOpen(false);
   }, [navigation.location?.pathname]);
+
+  const hasStaging = project.environments.some((env) => env.type === "STAGING");
 
   return (
     <Popover onOpenChange={(open) => setIsMenuOpen(open)} open={isMenuOpen}>
@@ -44,14 +53,37 @@ export function EnvironmentSelector({
         align="start"
         style={{ maxHeight: `calc(var(--radix-popover-content-available-height) - 10vh)` }}
       >
-        {project.environments.map((env) => (
-          <PopoverMenuItem
-            key={env.id}
-            to={urlForEnvironment(env)}
-            title={<FullEnvironmentCombo environment={env} className="text-2sm" />}
-            isSelected={env.id === environment.id}
-          />
-        ))}
+        <div className="flex flex-col gap-1 p-1">
+          {project.environments.map((env) => (
+            <PopoverMenuItem
+              key={env.id}
+              to={urlForEnvironment(env)}
+              title={<FullEnvironmentCombo environment={env} className="mx-auto grow text-2sm" />}
+              isSelected={env.id === environment.id}
+            />
+          ))}
+        </div>
+        {!hasStaging && isManagedCloud && (
+          <>
+            <PopoverSectionHeader title="Additional environments" />
+            <div className="p-1">
+              <PopoverMenuItem
+                key="staging"
+                to={v3BillingPath(
+                  organization,
+                  "Upgrade to unlock a Staging environment for your projects."
+                )}
+                title={
+                  <div className="flex w-full items-center justify-between">
+                    <FullEnvironmentCombo environment={{ type: "STAGING" }} className="text-2sm" />
+                    <span className="text-indigo-500">Upgrade</span>
+                  </div>
+                }
+                isSelected={false}
+              />
+            </div>
+          </>
+        )}
       </PopoverContent>
     </Popover>
   );

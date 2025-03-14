@@ -17,6 +17,7 @@ import {
 } from "~/utils/pathBuilder";
 import { PricingPlans } from "../resources.orgs.$organizationSlug.select-plan";
 import { type MetaFunction } from "@remix-run/react";
+import { Callout } from "~/components/primitives/Callout";
 
 export const meta: MetaFunction = () => {
   return [
@@ -64,6 +65,10 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     (periodEnd.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
   );
 
+  // Extract 'message' from search params
+  const url = new URL(request.url);
+  const message = url.searchParams.get("message");
+
   return typedjson({
     ...plans,
     ...currentPlan,
@@ -71,12 +76,20 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     periodStart,
     periodEnd,
     daysRemaining,
+    message,
   });
 }
 
 export default function ChoosePlanPage() {
-  const { plans, v3Subscription, organizationSlug, periodStart, periodEnd, daysRemaining } =
-    useTypedLoaderData<typeof loader>();
+  const {
+    plans,
+    v3Subscription,
+    organizationSlug,
+    periodStart,
+    periodEnd,
+    daysRemaining,
+    message,
+  } = useTypedLoaderData<typeof loader>();
   return (
     <PageContainer>
       <NavBar>
@@ -102,6 +115,11 @@ export default function ChoosePlanPage() {
       </NavBar>
       <PageBody scrollable={true}>
         <div className="flex flex-col gap-3">
+          {message && (
+            <Callout variant="idea" className="mb-2">
+              {message}
+            </Callout>
+          )}
           <div className="flex flex-col gap-y-3 divide-grid-bright rounded-sm border border-grid-bright bg-background-bright py-2 pr-1 text-text-bright lg:w-fit lg:flex-row lg:items-center lg:divide-x">
             <div className="flex gap-2 px-3 lg:items-center">
               <StarIcon className="size-5 min-w-5 lg:-mt-0.5" />

@@ -40,7 +40,7 @@ PopoverContent.displayName = PopoverPrimitive.Content.displayName;
 
 function PopoverSectionHeader({
   title,
-  variant = "extra-extra-small/dimmed/caps",
+  variant = "extra-small",
 }: {
   title: string;
   variant?: ParagraphVariant;

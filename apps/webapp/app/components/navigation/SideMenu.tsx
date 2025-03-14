@@ -142,7 +142,11 @@ export function SideMenu({
           <div className="space-y-1">
             <SideMenuHeader title={"Environment"} />
             <div className="flex items-center gap-2">
-              <EnvironmentSelector project={project} environment={environment} />
+              <EnvironmentSelector
+                organization={organization}
+                project={project}
+                environment={environment}
+              />
             </div>
           </div>
 
