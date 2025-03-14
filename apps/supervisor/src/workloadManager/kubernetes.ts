@@ -56,7 +56,7 @@ export class KubernetesWorkloadManager implements WorkloadManager {
             terminationGracePeriodSeconds: 60 * 60,
             containers: [
               {
-                name: runnerId,
+                name: "run-controller",
                 image: opts.image,
                 ports: [
                   {
