@@ -4,7 +4,7 @@ import {
   type WorkloadManagerCreateOptions,
   type WorkloadManagerOptions,
 } from "./types.js";
-import { RunnerId } from "../util.js";
+import { RunnerId } from "@trigger.dev/core/v3/isomorphic";
 import type { EnvironmentType, MachinePreset } from "@trigger.dev/core/v3";
 import { env } from "../env.js";
 import { type K8sApi, createK8sApi, type k8s } from "../clients/kubernetes.js";
