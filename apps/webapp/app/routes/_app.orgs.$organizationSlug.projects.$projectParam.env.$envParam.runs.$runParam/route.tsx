@@ -159,12 +159,9 @@ type LoaderData = SerializeFrom<typeof loader>;
 
 export default function Page() {
   const { run, trace, resizable, maximumLiveReloadingSetting } = useLoaderData<typeof loader>();
-  const user = useUser();
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
-
-  const usernameForEnv = user.id !== run.environment.userId ? run.environment.userName : undefined;
 
   return (
     <>

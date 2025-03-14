@@ -156,7 +156,6 @@ function BatchesTable({ batches, hasFilters, filters }: BatchList) {
       <TableHeader>
         <TableRow>
           <TableHeaderCell>ID</TableHeaderCell>
-          <TableHeaderCell>Env</TableHeaderCell>
           <TableHeaderCell
             tooltip={
               <div className="flex flex-col divide-y divide-grid-dimmed">
@@ -210,12 +209,7 @@ function BatchesTable({ batches, hasFilters, filters }: BatchList) {
                 <TableCell to={path} isTabbableCell>
                   {batch.friendlyId}
                 </TableCell>
-                <TableCell to={path}>
-                  <EnvironmentLabel
-                    environment={batch.environment}
-                    userName={batch.environment.userName}
-                  />
-                </TableCell>
+
                 <TableCell to={path}>
                   {batch.batchVersion === "v1" ? (
                     <SimpleTooltip

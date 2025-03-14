@@ -126,7 +126,6 @@ export default function Page() {
                   <TableHeader>
                     <TableRow>
                       <TableHeaderCell>Deploy</TableHeaderCell>
-                      <TableHeaderCell>Env</TableHeaderCell>
                       <TableHeaderCell>Version</TableHeaderCell>
                       <TableHeaderCell
                         tooltip={
@@ -180,9 +179,6 @@ export default function Page() {
                               </div>
                             </TableCell>
                             <TableCell to={path} isSelected={isSelected}>
-                              <FullEnvironmentCombo environment={deployment.environment} />
-                            </TableCell>
-                            <TableCell to={path} isSelected={isSelected}>
                               {deployment.version}
                             </TableCell>
                             <TableCell to={path} isSelected={isSelected}>
@@ -231,7 +227,7 @@ export default function Page() {
                         );
                       })
                     ) : (
-                      <TableBlankRow colSpan={8}>
+                      <TableBlankRow colSpan={7}>
                         <Paragraph className="flex items-center justify-center">
                           No deploys match your filters
                         </Paragraph>

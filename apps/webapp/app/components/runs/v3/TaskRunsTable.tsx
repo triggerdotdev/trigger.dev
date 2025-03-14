@@ -28,7 +28,6 @@ import {
 } from "~/presenters/v3/RunListPresenter.server";
 import { formatCurrencyAccurate, formatNumber } from "~/utils/numberFormatter";
 import { docsPath, v3RunSpanPath, v3TestPath } from "~/utils/pathBuilder";
-import { EnvironmentLabel, FullEnvironmentCombo } from "../../environments/EnvironmentLabel";
 import { DateTime } from "../../primitives/DateTime";
 import { Paragraph } from "../../primitives/Paragraph";
 import { Spinner } from "../../primitives/Spinner";
@@ -137,7 +136,6 @@ export function TaskRunsTable({
             </TableHeaderCell>
           )}
           <TableHeaderCell alignment="right">Run #</TableHeaderCell>
-          <TableHeaderCell>Env</TableHeaderCell>
           <TableHeaderCell>Task</TableHeaderCell>
           <TableHeaderCell>Version</TableHeaderCell>
           <TableHeaderCell
@@ -283,7 +281,7 @@ export function TaskRunsTable({
       </TableHeader>
       <TableBody>
         {total === 0 && !hasFilters ? (
-          <TableBlankRow colSpan={16}>
+          <TableBlankRow colSpan={15}>
             {!isLoading && <NoRuns title="No runs found" />}
           </TableBlankRow>
         ) : runs.length === 0 ? (
@@ -311,12 +309,6 @@ export function TaskRunsTable({
                 )}
                 <TableCell to={path} alignment="right" isTabbableCell>
                   {formatNumber(run.number)}
-                </TableCell>
-                <TableCell to={path}>
-                  <EnvironmentLabel
-                    environment={run.environment}
-                    userName={run.environment.userName}
-                  />
                 </TableCell>
                 <TableCell to={path}>
                   <span className="flex items-center gap-x-1">
@@ -402,7 +394,7 @@ export function TaskRunsTable({
         )}
         {isLoading && (
           <TableBlankRow
-            colSpan={14}
+            colSpan={15}
             className="absolute left-0 top-0 flex h-full w-full items-center justify-center gap-2 bg-charcoal-900/90"
           >
             <Spinner /> <span className="text-text-dimmed">Loading…</span>
@@ -542,7 +534,7 @@ function BlankState({ isLoading, filters }: Pick<RunsTableProps, "isLoading" | "
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
-  if (isLoading) return <TableBlankRow colSpan={16}></TableBlankRow>;
+  if (isLoading) return <TableBlankRow colSpan={15}></TableBlankRow>;
 
   const { environments, tasks, from, to, ...otherFilters } = filters;
 
@@ -553,7 +545,7 @@ function BlankState({ isLoading, filters }: Pick<RunsTableProps, "isLoading" | "
     Object.values(otherFilters).every((filterArray) => filterArray.length === 0)
   ) {
     return (
-      <TableBlankRow colSpan={16}>
+      <TableBlankRow colSpan={15}>
         <Paragraph className="w-auto" variant="base/bright" spacing>
           There are no runs for {filters.tasks[0]}
         </Paragraph>
@@ -581,7 +573,7 @@ function BlankState({ isLoading, filters }: Pick<RunsTableProps, "isLoading" | "
   }
 
   return (
-    <TableBlankRow colSpan={16}>
+    <TableBlankRow colSpan={15}>
       <div className="flex flex-col items-center justify-center gap-6">
         <Paragraph className="w-auto" variant="base/bright">
           No runs match your filters. Try refreshing, modifying your filters or run a test.

@@ -5,7 +5,7 @@ import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { isCancellableRunStatus, isFinalRunStatus } from "~/v3/taskStatus";
 import { BasePresenter } from "./basePresenter.server";
 import { getAllTaskIdentifiers } from "~/models/task.server";
-import { Direction } from "~/components/ListPagination";
+import { type Direction } from "~/components/ListPagination";
 
 export type RunListOptions = {
   userId?: string;
@@ -65,7 +65,6 @@ export class RunListPresenter extends BasePresenter {
       (tasks !== undefined && tasks.length > 0) ||
       (versions !== undefined && versions.length > 0) ||
       hasStatusFilters ||
-      (environments !== undefined && environments.length > 0) ||
       (period !== undefined && period !== "all") ||
       (bulkId !== undefined && bulkId !== "") ||
       from !== undefined ||
