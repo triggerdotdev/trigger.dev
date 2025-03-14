@@ -90,7 +90,12 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
    * and wait until the token is available.
    */
   public async attemptToRelease(releaseQueueDescriptor: T, runId: string) {
-    const maxTokens = await this.maxTokens(releaseQueueDescriptor);
+    const maxTokens = await this.#callMaxTokens(releaseQueueDescriptor);
+
+    if (maxTokens === 0) {
+      return;
+    }
+
     const releaseQueue = this.keys.fromDescriptor(releaseQueueDescriptor);
 
     const result = await this.redis.consumeToken(
@@ -118,7 +123,7 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
    * This will add the amount of tokens to the token bucket.
    */
   public async refillTokens(releaseQueueDescriptor: T, amount: number = 1) {
-    const maxTokens = await this.maxTokens(releaseQueueDescriptor);
+    const maxTokens = await this.#callMaxTokens(releaseQueueDescriptor);
     const releaseQueue = this.keys.fromDescriptor(releaseQueueDescriptor);
 
     if (amount < 0) {
@@ -215,6 +220,17 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
         JSON.stringify(updatedMetadata),
         this.#calculateBackoffScore(updatedMetadata)
       );
+    }
+  }
+
+  // Make sure maxTokens is an integer (round down)
+  // And if it throws, return 0
+  async #callMaxTokens(releaseQueueDescriptor: T) {
+    try {
+      const maxTokens = await this.maxTokens(releaseQueueDescriptor);
+      return Math.floor(maxTokens);
+    } catch (error) {
+      return 0;
     }
   }
 

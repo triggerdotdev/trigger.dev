@@ -580,4 +580,42 @@ describe("ReleaseConcurrencyQueue", () => {
       await queue.quit();
     }
   });
+
+  redisTest("Should not execute or queue when maxTokens is 0", async ({ redisContainer }) => {
+    const { queue, executedRuns } = createReleaseConcurrencyQueue(redisContainer, 0);
+
+    try {
+      // Attempt to release with maxTokens of 0
+      await queue.attemptToRelease({ name: "test-queue" }, "run1");
+      await queue.attemptToRelease({ name: "test-queue" }, "run2");
+
+      // Wait some time to ensure no processing occurs
+      await setTimeout(1000);
+
+      // Should not have executed any runs
+      expect(executedRuns).toHaveLength(0);
+    } finally {
+      await queue.quit();
+    }
+  });
+
+  // Makes sure that the maxTokens is an integer (round down)
+  // And if it throws, returns 0
+  redisTest("Should handle maxTokens errors", async ({ redisContainer }) => {
+    const { queue, executedRuns } = createReleaseConcurrencyQueue(redisContainer, 0.5);
+
+    try {
+      // Attempt to release with maxTokens of 0
+      await queue.attemptToRelease({ name: "test-queue" }, "run1");
+      await queue.attemptToRelease({ name: "test-queue" }, "run2");
+
+      // Wait some time to ensure no processing occurs
+      await setTimeout(1000);
+
+      // Should not have executed any runs
+      expect(executedRuns).toHaveLength(0);
+    } finally {
+      await queue.quit();
+    }
+  });
 });
