@@ -130,8 +130,13 @@ class ManagedSupervisor {
       if (message.checkpoint) {
         this.logger.log("[ManagedWorker] Restoring run", { runId: message.run.id });
 
+        if (!this.checkpointClient) {
+          this.logger.error("[ManagedWorker] No checkpoint client", { runId: message.run.id });
+          return;
+        }
+
         try {
-          const didRestore = await this.checkpointClient?.restoreRun({
+          const didRestore = await this.checkpointClient.restoreRun({
             runFriendlyId: message.run.friendlyId,
             snapshotFriendlyId: message.snapshot.friendlyId,
             checkpoint: message.checkpoint,

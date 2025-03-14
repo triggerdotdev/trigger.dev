@@ -48,7 +48,6 @@ export class KubernetesWorkloadManager implements WorkloadManager {
               app: "task-run",
               "app.kubernetes.io/part-of": "trigger-worker",
               "app.kubernetes.io/component": "create",
-              run: opts.runId,
             },
           },
           spec: {
