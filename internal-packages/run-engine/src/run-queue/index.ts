@@ -29,6 +29,7 @@ import {
   type RedisOptions,
   type Result,
 } from "@internal/redis";
+import { MessageNotFoundError } from "./errors.js";
 
 const SemanticAttributes = {
   QUEUE: "runqueue.queue",
@@ -600,12 +601,9 @@ export class RunQueue {
         });
 
         return this.redis.releaseConcurrency(
-          this.keys.messageKey(orgId, messageId),
-          message.queue,
           this.keys.currentConcurrencyKeyFromQueue(message.queue),
           this.keys.envCurrentConcurrencyKeyFromQueue(message.queue),
-          messageId,
-          JSON.stringify(message.masterQueues)
+          messageId
         );
       },
       {
@@ -626,11 +624,7 @@ export class RunQueue {
         const message = await this.readMessage(orgId, messageId);
 
         if (!message) {
-          this.logger.log(`[${this.name}].acknowledgeMessage() message not found`, {
-            messageId,
-            service: this.name,
-          });
-          return;
+          throw new MessageNotFoundError(messageId);
         }
 
         span.setAttributes({
@@ -640,14 +634,25 @@ export class RunQueue {
           [SemanticAttributes.CONCURRENCY_KEY]: message.concurrencyKey,
         });
 
-        return this.redis.reacquireConcurrency(
-          this.keys.messageKey(orgId, messageId),
-          message.queue,
-          this.keys.currentConcurrencyKeyFromQueue(message.queue),
-          this.keys.envCurrentConcurrencyKeyFromQueue(message.queue),
+        const queueCurrentConcurrencyKey = this.keys.currentConcurrencyKeyFromQueue(message.queue);
+        const envCurrentConcurrencyKey = this.keys.envCurrentConcurrencyKeyFromQueue(message.queue);
+        const queueReserveConcurrencyKey = this.keys.reserveConcurrencyKeyFromQueue(message.queue);
+        const envReserveConcurrencyKey = this.keys.envReserveConcurrencyKeyFromQueue(message.queue);
+        const queueConcurrencyLimitKey = this.keys.concurrencyLimitKeyFromQueue(message.queue);
+        const envConcurrencyLimitKey = this.keys.envConcurrencyLimitKeyFromQueue(message.queue);
+
+        const result = await this.redis.reacquireConcurrency(
+          queueCurrentConcurrencyKey,
+          envCurrentConcurrencyKey,
+          queueReserveConcurrencyKey,
+          envReserveConcurrencyKey,
+          queueConcurrencyLimitKey,
+          envConcurrencyLimitKey,
           messageId,
-          JSON.stringify(message.masterQueues)
+          String(this.options.defaultEnvConcurrency)
         );
+
+        return !!result;
       },
       {
         kind: SpanKind.CONSUMER,
@@ -1517,41 +1522,76 @@ redis.call('SREM', envCurrentConcurrencyKey, messageId)
     });
 
     this.redis.defineCommand("releaseConcurrency", {
-      numberOfKeys: 5,
+      numberOfKeys: 2,
       lua: `
 -- Keys:
-local messageKey = KEYS[1]
-local messageQueue = KEYS[2]
-local concurrencyKey = KEYS[3]
-local envCurrentConcurrencyKey = KEYS[4]
-local envQueueKey = KEYS[5]
+local queueCurrentConcurrencyKey = KEYS[1]
+local envCurrentConcurrencyKey = KEYS[2]
 
 -- Args:
 local messageId = ARGV[1]
 
 -- Update the concurrency keys
-if concurrencyKey ~= "" then
-  redis.call('SREM', concurrencyKey, messageId)
-end
+redis.call('SREM', queueCurrentConcurrencyKey, messageId)
 redis.call('SREM', envCurrentConcurrencyKey, messageId)
 `,
     });
 
     this.redis.defineCommand("reacquireConcurrency", {
-      numberOfKeys: 4,
+      numberOfKeys: 6,
       lua: `
 -- Keys:
-local messageKey = KEYS[1]
-local messageQueue = KEYS[2]
-local concurrencyKey = KEYS[3]
-local envCurrentConcurrencyKey = KEYS[4]
+local queueCurrentConcurrencyKey = KEYS[1]
+local envCurrentConcurrencyKey = KEYS[2]
+local queueReserveConcurrencyKey = KEYS[3]
+local envReserveConcurrencyKey = KEYS[4]
+local queueConcurrencyLimitKey = KEYS[5]
+local envConcurrencyLimitKey = KEYS[6]
 
 -- Args:
 local messageId = ARGV[1]
+local defaultEnvConcurrencyLimit = ARGV[2]
+
+-- Check if the message is already in either current concurrency set
+local isInQueueConcurrency = redis.call('SISMEMBER', queueCurrentConcurrencyKey, messageId) == 1
+local isInEnvConcurrency = redis.call('SISMEMBER', envCurrentConcurrencyKey, messageId) == 1
+
+-- If it's already in both sets, we're done
+if isInQueueConcurrency and isInEnvConcurrency then
+    return true
+end
+
+-- Check current env concurrency against the limit
+local envCurrentConcurrency = tonumber(redis.call('SCARD', envCurrentConcurrencyKey) or '0')
+local envConcurrencyLimit = tonumber(redis.call('GET', envConcurrencyLimitKey) or defaultEnvConcurrencyLimit)
+local envReserveConcurrency = tonumber(redis.call('SCARD', envReserveConcurrencyKey) or '0')
+local totalEnvConcurrencyLimit = envConcurrencyLimit + envReserveConcurrency
+
+if envCurrentConcurrency >= totalEnvConcurrencyLimit then
+    return false
+end
+
+-- Check current queue concurrency against the limit
+local queueCurrentConcurrency = tonumber(redis.call('SCARD', queueCurrentConcurrencyKey) or '0')
+local queueConcurrencyLimit = math.min(tonumber(redis.call('GET', queueConcurrencyLimitKey) or '1000000'), envConcurrencyLimit)
+local queueReserveConcurrency = tonumber(redis.call('SCARD', queueReserveConcurrencyKey) or '0')
+local totalQueueConcurrencyLimit = queueConcurrencyLimit + queueReserveConcurrency
+
+if queueCurrentConcurrency >= totalQueueConcurrencyLimit then
+    return false
+end
 
 -- Update the concurrency keys
-redis.call('SADD', concurrencyKey, messageId)
+redis.call('SADD', queueCurrentConcurrencyKey, messageId)
 redis.call('SADD', envCurrentConcurrencyKey, messageId)
+
+-- Remove the message from the queue reserve concurrency set
+redis.call('SREM', queueReserveConcurrencyKey, messageId)
+
+-- Remove the message from the env reserve concurrency set
+redis.call('SREM', envReserveConcurrencyKey, messageId)
+
+return true
 `,
     });
 
@@ -1700,24 +1740,23 @@ declare module "@internal/redis" {
     ): Result<void, Context>;
 
     releaseConcurrency(
-      messageKey: string,
-      messageQueue: string,
-      concurrencyKey: string,
-      envConcurrencyKey: string,
+      queueCurrentConcurrencyKey: string,
+      envCurrentConcurrencyKey: string,
       messageId: string,
-      masterQueues: string,
       callback?: Callback<void>
     ): Result<void, Context>;
 
     reacquireConcurrency(
-      messageKey: string,
-      messageQueue: string,
-      concurrencyKey: string,
-      envConcurrencyKey: string,
+      queueCurrentConcurrencyKey: string,
+      envCurrentConcurrencyKey: string,
+      queueReserveConcurrencyKey: string,
+      envReserveConcurrencyKey: string,
+      queueConcurrencyLimitKey: string,
+      envConcurrencyLimitKey: string,
       messageId: string,
-      masterQueues: string,
-      callback?: Callback<void>
-    ): Result<void, Context>;
+      defaultEnvConcurrencyLimit: string,
+      callback?: Callback<string>
+    ): Result<string, Context>;
 
     updateGlobalConcurrencyLimits(
       envConcurrencyLimitKey: string,

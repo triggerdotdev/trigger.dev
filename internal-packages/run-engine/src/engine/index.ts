@@ -3920,6 +3920,9 @@ export class RunEngine {
         case "QUEUED": {
           throw new NotImplementedError("There shouldn't be a heartbeat for QUEUED");
         }
+        case "QUEUED_EXECUTING": {
+          throw new NotImplementedError("There shouldn't be a heartbeat for QUEUED_EXECUTING");
+        }
         case "PENDING_EXECUTING": {
           //the run didn't start executing, we need to requeue it
           const run = await prisma.taskRun.findFirst({

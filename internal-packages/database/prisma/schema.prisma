@@ -2012,6 +2012,8 @@ enum TaskRunExecutionStatus {
   RUN_CREATED
   /// Run is in the RunQueue
   QUEUED
+  /// Run is in the RunQueue, and is also executing. This happens when a run is continued cannot reacquire concurrency
+  QUEUED_EXECUTING
   /// Run has been pulled from the queue, but isn't executing yet
   PENDING_EXECUTING
   /// Run is executing on a worker
