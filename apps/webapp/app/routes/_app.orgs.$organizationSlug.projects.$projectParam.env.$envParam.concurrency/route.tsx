@@ -9,7 +9,7 @@ import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Suspense } from "react";
 import { typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
-import { EnvironmentLabel, FullEnvironmentCombo } from "~/components/environments/EnvironmentLabel";
+import { FullEnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { Feedback } from "~/components/Feedback";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";

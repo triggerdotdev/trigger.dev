@@ -3,25 +3,23 @@ import { parse } from "@conform-to/zod";
 import {
   BookOpenIcon,
   InformationCircleIcon,
-  LockOpenIcon,
   PencilSquareIcon,
   PlusIcon,
   TrashIcon,
 } from "@heroicons/react/20/solid";
-import { ArrowUpCircleIcon } from "@heroicons/react/24/outline";
-import { Form, MetaFunction, Outlet, useActionData, useNavigation } from "@remix-run/react";
+import { Form, type MetaFunction, Outlet, useActionData, useNavigation } from "@remix-run/react";
 import {
-  ActionFunctionArgs,
-  LoaderFunctionArgs,
+  type ActionFunctionArgs,
+  type LoaderFunctionArgs,
   json,
   redirectDocument,
 } from "@remix-run/server-runtime";
-import { RuntimeEnvironment } from "@trigger.dev/database";
+import { type RuntimeEnvironment } from "@trigger.dev/database";
 import { Fragment, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { InlineCode } from "~/components/code/InlineCode";
-import { EnvironmentLabel, FullEnvironmentCombo } from "~/components/environments/EnvironmentLabel";
+import { FullEnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
@@ -35,7 +33,6 @@ import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
-import { Paragraph } from "~/components/primitives/Paragraph";
 import { Switch } from "~/components/primitives/Switch";
 import {
   Table,
@@ -52,7 +49,7 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import {
-  EnvironmentVariableWithSetValues,
+  type EnvironmentVariableWithSetValues,
   EnvironmentVariablesPresenter,
 } from "~/presenters/v3/EnvironmentVariablesPresenter.server";
 import { requireUserId } from "~/services/session.server";
@@ -61,7 +58,6 @@ import {
   EnvironmentParamSchema,
   ProjectParamSchema,
   docsPath,
-  v3BillingPath,
   v3EnvironmentVariablesPath,
   v3NewEnvironmentVariablesPath,
 } from "~/utils/pathBuilder";

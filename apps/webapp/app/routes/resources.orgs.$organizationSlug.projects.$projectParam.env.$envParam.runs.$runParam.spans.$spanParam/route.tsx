@@ -16,7 +16,7 @@ import { typedjson, useTypedFetcher } from "remix-typedjson";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { AdminDebugRun } from "~/components/admin/debugRun";
 import { CodeBlock } from "~/components/code/CodeBlock";
-import { EnvironmentLabel, FullEnvironmentCombo } from "~/components/environments/EnvironmentLabel";
+import { FullEnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { Feedback } from "~/components/Feedback";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
@@ -588,7 +588,9 @@ function RunBody({
                         </div>
                         <SimpleTooltip
                           button={
-                            <TextLink to={v3SchedulePath(organization, project, run.schedule)}>
+                            <TextLink
+                              to={v3SchedulePath(organization, project, environment, run.schedule)}
+                            >
                               {run.schedule.description}
                             </TextLink>
                           }

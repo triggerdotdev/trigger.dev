@@ -11,7 +11,6 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { BatchesNone } from "~/components/BlankStatePanels";
 import { ListPagination } from "~/components/ListPagination";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
-import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";

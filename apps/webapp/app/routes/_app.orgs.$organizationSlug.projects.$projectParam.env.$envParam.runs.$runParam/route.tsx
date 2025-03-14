@@ -27,7 +27,7 @@ import { ShowParentIcon, ShowParentIconSelected } from "~/assets/icons/ShowParen
 import tileBgPath from "~/assets/images/error-banner-tile@2x.png";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { InlineCode } from "~/components/code/InlineCode";
-import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
+import { FullEnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { PageBody } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
@@ -75,7 +75,7 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useReplaceSearchParams } from "~/hooks/useReplaceSearchParams";
 import { type Shortcut, useShortcutKeys } from "~/hooks/useShortcutKeys";
-import { useHasAdminAccess, useUser } from "~/hooks/useUser";
+import { useHasAdminAccess } from "~/hooks/useUser";
 import { RunPresenter } from "~/presenters/v3/RunPresenter.server";
 import { getImpersonationId } from "~/services/impersonation.server";
 import { getResizableSnapshot } from "~/services/resizablePanel.server";
@@ -1262,8 +1262,9 @@ function ConnectedDevWarning() {
         <div className="flex flex-col gap-1">
           <Paragraph variant="small">
             Runs usually start within 1 second in{" "}
-            <EnvironmentLabel environment={{ type: "DEVELOPMENT" }} />. Check you're running the
-            CLI: <InlineCode className="whitespace-nowrap">npx trigger.dev@latest dev</InlineCode>
+            <FullEnvironmentCombo environment={{ type: "DEVELOPMENT" }} className="inline-flex" />.
+            Check you're running the CLI:{" "}
+            <InlineCode className="whitespace-nowrap">npx trigger.dev@latest dev</InlineCode>
           </Paragraph>
         </div>
       </Callout>
