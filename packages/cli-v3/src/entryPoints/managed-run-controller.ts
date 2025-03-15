@@ -6,7 +6,6 @@ import { randomUUID } from "crypto";
 import { readJSONFile } from "../utilities/fileSystem.js";
 import {
   CompleteRunAttemptResult,
-  DequeuedMessage,
   HeartbeatService,
   RunExecutionData,
   TaskRunExecutionResult,
@@ -14,6 +13,7 @@ import {
   WorkerManifest,
 } from "@trigger.dev/core/v3";
 import {
+  WarmStartClient,
   WORKLOAD_HEADERS,
   WorkloadClientToServerEvents,
   WorkloadHttpClient,
@@ -36,9 +36,6 @@ const Env = z.object({
   NODE_EXTRA_CA_CERTS: z.string().optional(),
 
   // Set at runtime
-  TRIGGER_SUPERVISOR_API_PROTOCOL: z.enum(["http", "https"]),
-  TRIGGER_SUPERVISOR_API_DOMAIN: z.string(),
-  TRIGGER_SUPERVISOR_API_PORT: z.coerce.number(),
   TRIGGER_WORKLOAD_CONTROLLER_ID: z.string().default(`controller_${randomUUID()}`),
   TRIGGER_ENV_ID: z.string(),
   TRIGGER_RUN_ID: z.string().optional(), // This is only useful for cold starts
@@ -46,11 +43,19 @@ const Env = z.object({
   OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url(),
   TRIGGER_WARM_START_URL: z.string().optional(),
   TRIGGER_WARM_START_CONNECTION_TIMEOUT_MS: z.coerce.number().default(30_000),
-  TRIGGER_WARM_START_TOTAL_DURATION_MS: z.coerce.number().default(300_000),
+  TRIGGER_WARM_START_KEEPALIVE_MS: z.coerce.number().default(300_000),
   TRIGGER_MACHINE_CPU: z.string().default("0"),
   TRIGGER_MACHINE_MEMORY: z.string().default("0"),
-  TRIGGER_WORKER_INSTANCE_NAME: z.string(),
   TRIGGER_RUNNER_ID: z.string(),
+  TRIGGER_METADATA_URL: z.string().optional(),
+
+  // May be overridden
+  TRIGGER_SUPERVISOR_API_PROTOCOL: z.enum(["http", "https"]),
+  TRIGGER_SUPERVISOR_API_DOMAIN: z.string(),
+  TRIGGER_SUPERVISOR_API_PORT: z.coerce.number(),
+  TRIGGER_WORKER_INSTANCE_NAME: z.string(),
+  TRIGGER_HEARTBEAT_INTERVAL_SECONDS: z.coerce.number().default(30),
+  TRIGGER_SNAPSHOT_POLL_INTERVAL_SECONDS: z.coerce.number().default(5),
 });
 
 const env = Env.parse(stdEnv);
@@ -59,7 +64,6 @@ logger.loggerLevel = "debug";
 
 type ManagedRunControllerOptions = {
   workerManifest: WorkerManifest;
-  heartbeatIntervalSeconds?: number;
 };
 
 type Run = {
@@ -71,22 +75,52 @@ type Snapshot = {
   friendlyId: string;
 };
 
+type Metadata = {
+  TRIGGER_SUPERVISOR_API_PROTOCOL: string | undefined;
+  TRIGGER_SUPERVISOR_API_DOMAIN: string | undefined;
+  TRIGGER_SUPERVISOR_API_PORT: number | undefined;
+  TRIGGER_WORKER_INSTANCE_NAME: string | undefined;
+  TRIGGER_HEARTBEAT_INTERVAL_SECONDS: number | undefined;
+  TRIGGER_SNAPSHOT_POLL_INTERVAL_SECONDS: number | undefined;
+};
+
+class MetadataClient {
+  private readonly url: URL;
+
+  constructor(url: string) {
+    this.url = new URL(url);
+  }
+
+  async getEnvOverrides(): Promise<Metadata | null> {
+    try {
+      const response = await fetch(new URL("/env", this.url));
+      return response.json();
+    } catch (error) {
+      console.error("Failed to fetch metadata", { error });
+      return null;
+    }
+  }
+}
+
 class ManagedRunController {
   private taskRunProcess?: TaskRunProcess;
 
   private workerManifest: WorkerManifest;
 
   private readonly httpClient: WorkloadHttpClient;
+  private readonly warmStartClient: WarmStartClient | undefined;
+  private readonly metadataClient?: MetadataClient;
 
   private socket: Socket<WorkloadServerToClientEvents, WorkloadClientToServerEvents>;
 
   private readonly runHeartbeat: HeartbeatService;
-  private readonly heartbeatIntervalSeconds: number;
+  private heartbeatIntervalSeconds: number;
 
   private readonly snapshotPoller: HeartbeatService;
-  private readonly snapshotPollIntervalSeconds: number;
+  private snapshotPollIntervalSeconds: number;
 
-  private readonly workerApiUrl: string;
+  private workerApiUrl: string;
+  private workerInstanceName: string;
 
   private state:
     | {
@@ -97,6 +131,116 @@ class ManagedRunController {
     | {
         phase: "IDLE" | "WARM_START";
       } = { phase: "IDLE" };
+
+  constructor(opts: ManagedRunControllerOptions) {
+    logger.debug("[ManagedRunController] Creating controller", { env });
+
+    this.workerManifest = opts.workerManifest;
+
+    this.heartbeatIntervalSeconds = env.TRIGGER_HEARTBEAT_INTERVAL_SECONDS;
+    this.snapshotPollIntervalSeconds = env.TRIGGER_SNAPSHOT_POLL_INTERVAL_SECONDS;
+
+    if (env.TRIGGER_METADATA_URL) {
+      this.metadataClient = new MetadataClient(env.TRIGGER_METADATA_URL);
+    }
+
+    this.workerApiUrl = `${env.TRIGGER_SUPERVISOR_API_PROTOCOL}://${env.TRIGGER_SUPERVISOR_API_DOMAIN}:${env.TRIGGER_SUPERVISOR_API_PORT}`;
+    this.workerInstanceName = env.TRIGGER_WORKER_INSTANCE_NAME;
+
+    this.httpClient = new WorkloadHttpClient({
+      workerApiUrl: this.workerApiUrl,
+      deploymentId: env.TRIGGER_DEPLOYMENT_ID,
+      runnerId: env.TRIGGER_RUNNER_ID,
+    });
+
+    if (env.TRIGGER_WARM_START_URL) {
+      this.warmStartClient = new WarmStartClient({
+        apiUrl: new URL(env.TRIGGER_WARM_START_URL),
+        controllerId: env.TRIGGER_WORKLOAD_CONTROLLER_ID,
+        deploymentId: env.TRIGGER_DEPLOYMENT_ID,
+        deploymentVersion: env.TRIGGER_DEPLOYMENT_VERSION,
+        machineCpu: env.TRIGGER_MACHINE_CPU,
+        machineMemory: env.TRIGGER_MACHINE_MEMORY,
+      });
+    }
+
+    this.snapshotPoller = new HeartbeatService({
+      heartbeat: async () => {
+        if (!this.runFriendlyId) {
+          logger.debug("[ManagedRunController] Skipping snapshot poll, no run ID");
+          return;
+        }
+
+        console.debug("[ManagedRunController] Polling for latest snapshot");
+
+        this.httpClient.sendDebugLog(this.runFriendlyId, {
+          time: new Date(),
+          message: `snapshot poll: started`,
+          properties: {
+            snapshotId: this.snapshotFriendlyId,
+          },
+        });
+
+        const response = await this.httpClient.getRunExecutionData(this.runFriendlyId);
+
+        if (!response.success) {
+          console.error("[ManagedRunController] Snapshot poll failed", { error: response.error });
+
+          this.httpClient.sendDebugLog(this.runFriendlyId, {
+            time: new Date(),
+            message: `snapshot poll: failed`,
+            properties: {
+              snapshotId: this.snapshotFriendlyId,
+              error: response.error,
+            },
+          });
+
+          return;
+        }
+
+        await this.handleSnapshotChange(response.data.execution);
+      },
+      intervalMs: this.snapshotPollIntervalSeconds * 1000,
+      leadingEdge: false,
+      onError: async (error) => {
+        console.error("[ManagedRunController] Failed to poll for snapshot", { error });
+      },
+    });
+
+    this.runHeartbeat = new HeartbeatService({
+      heartbeat: async () => {
+        if (!this.runFriendlyId || !this.snapshotFriendlyId) {
+          logger.debug("[ManagedRunController] Skipping heartbeat, no run ID or snapshot ID");
+          return;
+        }
+
+        console.debug("[ManagedRunController] Sending heartbeat");
+
+        const response = await this.httpClient.heartbeatRun(
+          this.runFriendlyId,
+          this.snapshotFriendlyId,
+          {
+            cpu: 0,
+            memory: 0,
+          }
+        );
+
+        if (!response.success) {
+          console.error("[ManagedRunController] Heartbeat failed", { error: response.error });
+        }
+      },
+      intervalMs: this.heartbeatIntervalSeconds * 1000,
+      leadingEdge: false,
+      onError: async (error) => {
+        console.error("[ManagedRunController] Failed to send heartbeat", { error });
+      },
+    });
+
+    process.on("SIGTERM", async () => {
+      logger.debug("[ManagedRunController] Received SIGTERM, stopping worker");
+      await this.stop();
+    });
+  }
 
   private enterRunPhase(run: Run, snapshot: Snapshot) {
     this.onExitRunPhase(run);
@@ -242,100 +386,6 @@ class ManagedRunController {
     return this.state.snapshot.friendlyId;
   }
 
-  constructor(opts: ManagedRunControllerOptions) {
-    logger.debug("[ManagedRunController] Creating controller", { env });
-
-    this.workerManifest = opts.workerManifest;
-    // TODO: This should be dynamic and set by (or at least overridden by) the managed worker / platform
-    this.heartbeatIntervalSeconds = opts.heartbeatIntervalSeconds || 30;
-    this.snapshotPollIntervalSeconds = 5;
-
-    this.workerApiUrl = `${env.TRIGGER_SUPERVISOR_API_PROTOCOL}://${env.TRIGGER_SUPERVISOR_API_DOMAIN}:${env.TRIGGER_SUPERVISOR_API_PORT}`;
-
-    this.httpClient = new WorkloadHttpClient({
-      workerApiUrl: this.workerApiUrl,
-      deploymentId: env.TRIGGER_DEPLOYMENT_ID,
-      runnerId: env.TRIGGER_RUNNER_ID,
-    });
-
-    this.snapshotPoller = new HeartbeatService({
-      heartbeat: async () => {
-        if (!this.runFriendlyId) {
-          logger.debug("[ManagedRunController] Skipping snapshot poll, no run ID");
-          return;
-        }
-
-        console.debug("[ManagedRunController] Polling for latest snapshot");
-
-        this.httpClient.sendDebugLog(this.runFriendlyId, {
-          time: new Date(),
-          message: `snapshot poll: started`,
-          properties: {
-            snapshotId: this.snapshotFriendlyId,
-          },
-        });
-
-        const response = await this.httpClient.getRunExecutionData(this.runFriendlyId);
-
-        if (!response.success) {
-          console.error("[ManagedRunController] Snapshot poll failed", { error: response.error });
-
-          this.httpClient.sendDebugLog(this.runFriendlyId, {
-            time: new Date(),
-            message: `snapshot poll: failed`,
-            properties: {
-              snapshotId: this.snapshotFriendlyId,
-              error: response.error,
-            },
-          });
-
-          return;
-        }
-
-        await this.handleSnapshotChange(response.data.execution);
-      },
-      intervalMs: this.snapshotPollIntervalSeconds * 1000,
-      leadingEdge: false,
-      onError: async (error) => {
-        console.error("[ManagedRunController] Failed to poll for snapshot", { error });
-      },
-    });
-
-    this.runHeartbeat = new HeartbeatService({
-      heartbeat: async () => {
-        if (!this.runFriendlyId || !this.snapshotFriendlyId) {
-          logger.debug("[ManagedRunController] Skipping heartbeat, no run ID or snapshot ID");
-          return;
-        }
-
-        console.debug("[ManagedRunController] Sending heartbeat");
-
-        const response = await this.httpClient.heartbeatRun(
-          this.runFriendlyId,
-          this.snapshotFriendlyId,
-          {
-            cpu: 0,
-            memory: 0,
-          }
-        );
-
-        if (!response.success) {
-          console.error("[ManagedRunController] Heartbeat failed", { error: response.error });
-        }
-      },
-      intervalMs: this.heartbeatIntervalSeconds * 1000,
-      leadingEdge: false,
-      onError: async (error) => {
-        console.error("[ManagedRunController] Failed to send heartbeat", { error });
-      },
-    });
-
-    process.on("SIGTERM", async () => {
-      logger.debug("[ManagedRunController] Received SIGTERM, stopping worker");
-      await this.stop();
-    });
-  }
-
   private handleSnapshotChangeLock = false;
 
   private async handleSnapshotChange({
@@ -472,13 +522,6 @@ class ManagedRunController {
             return;
           }
 
-          const disableSuspend = true;
-
-          if (disableSuspend) {
-            console.log("Suspend disabled, will carry on waiting");
-            return;
-          }
-
           const suspendResult = await this.httpClient.suspendRun(
             this.runFriendlyId,
             this.snapshotFriendlyId
@@ -488,6 +531,33 @@ class ManagedRunController {
             console.error("Failed to suspend run, staying alive 🎶", {
               error: suspendResult.error,
             });
+
+            this.httpClient.sendDebugLog(run.friendlyId, {
+              time: new Date(),
+              message: "checkpoint: suspend request failed",
+              properties: {
+                snapshotId: snapshot.friendlyId,
+                error: suspendResult.error,
+              },
+            });
+
+            return;
+          }
+
+          if (!suspendResult.data.ok) {
+            console.error("Failed to suspend run, staying alive 🎶🎶", {
+              suspendResult: suspendResult.data,
+            });
+
+            this.httpClient.sendDebugLog(run.friendlyId, {
+              time: new Date(),
+              message: "checkpoint: failed to suspend run",
+              properties: {
+                snapshotId: snapshot.friendlyId,
+                error: suspendResult.data.error,
+              },
+            });
+
             return;
           }
 
@@ -515,6 +585,9 @@ class ManagedRunController {
 
           // Short delay to give websocket time to reconnect
           await sleep(100);
+
+          // Env may have changed after restore
+          await this.processEnvOverrides();
 
           // We need to let the platform know we're ready to continue
           const continuationResult = await this.httpClient.continueRunExecution(
@@ -575,6 +648,51 @@ class ManagedRunController {
       });
     } finally {
       this.handleSnapshotChangeLock = false;
+    }
+  }
+
+  private async processEnvOverrides() {
+    if (!this.metadataClient) {
+      logger.log("No metadata client, skipping env overrides");
+      return;
+    }
+
+    const overrides = await this.metadataClient.getEnvOverrides();
+
+    if (!overrides) {
+      logger.log("No env overrides, skipping");
+      return;
+    }
+
+    logger.log("Processing env overrides", { env: overrides });
+
+    if (overrides.TRIGGER_HEARTBEAT_INTERVAL_SECONDS) {
+      this.heartbeatIntervalSeconds = overrides.TRIGGER_HEARTBEAT_INTERVAL_SECONDS;
+      this.runHeartbeat.updateInterval(this.heartbeatIntervalSeconds * 1000);
+    }
+
+    if (overrides.TRIGGER_SNAPSHOT_POLL_INTERVAL_SECONDS) {
+      this.snapshotPollIntervalSeconds = overrides.TRIGGER_SNAPSHOT_POLL_INTERVAL_SECONDS;
+      this.snapshotPoller.updateInterval(this.snapshotPollIntervalSeconds * 1000);
+    }
+
+    if (overrides.TRIGGER_WORKER_INSTANCE_NAME) {
+      this.workerInstanceName = overrides.TRIGGER_WORKER_INSTANCE_NAME;
+    }
+
+    if (
+      overrides.TRIGGER_SUPERVISOR_API_PROTOCOL ||
+      overrides.TRIGGER_SUPERVISOR_API_DOMAIN ||
+      overrides.TRIGGER_SUPERVISOR_API_PORT
+    ) {
+      const protocol =
+        overrides.TRIGGER_SUPERVISOR_API_PROTOCOL ?? env.TRIGGER_SUPERVISOR_API_PROTOCOL;
+      const domain = overrides.TRIGGER_SUPERVISOR_API_DOMAIN ?? env.TRIGGER_SUPERVISOR_API_DOMAIN;
+      const port = overrides.TRIGGER_SUPERVISOR_API_PORT ?? env.TRIGGER_SUPERVISOR_API_PORT;
+
+      this.workerApiUrl = `${protocol}://${domain}:${port}`;
+
+      this.httpClient.updateApiUrl(this.workerApiUrl);
     }
   }
 
@@ -688,6 +806,7 @@ class ManagedRunController {
     }
 
     this.waitForNextRunLock = true;
+    const previousRunId = this.runFriendlyId;
 
     try {
       logger.debug("waitForNextRun: waiting for next run");
@@ -697,43 +816,60 @@ class ManagedRunController {
       // Kill the run process
       await this.taskRunProcess?.kill("SIGKILL");
 
-      if (!env.TRIGGER_WARM_START_URL) {
+      if (!this.warmStartClient) {
         console.error("waitForNextRun: warm starts disabled, shutting down");
-        process.exit(0);
+        this.exitProcess(0);
       }
 
-      const warmStartUrl = new URL("/warm-start", env.TRIGGER_WARM_START_URL);
+      // Check the service is up and get additional warm start config
+      const connect = await this.warmStartClient.connect();
 
-      const res = await longPoll<DequeuedMessage>(
-        warmStartUrl.href,
-        {
-          method: "GET",
-          headers: {
-            "x-trigger-workload-controller-id": env.TRIGGER_WORKLOAD_CONTROLLER_ID,
-            "x-trigger-deployment-id": env.TRIGGER_DEPLOYMENT_ID,
-            "x-trigger-deployment-version": env.TRIGGER_DEPLOYMENT_VERSION,
-            "x-trigger-machine-cpu": env.TRIGGER_MACHINE_CPU,
-            "x-trigger-machine-memory": env.TRIGGER_MACHINE_MEMORY,
-            "x-trigger-worker-instance-name": env.TRIGGER_WORKER_INSTANCE_NAME,
-          },
-        },
-        // TODO: get these from the warm start service instead
-        {
-          timeoutMs: env.TRIGGER_WARM_START_CONNECTION_TIMEOUT_MS,
-          totalDurationMs: env.TRIGGER_WARM_START_TOTAL_DURATION_MS,
-        }
-      );
-
-      if (!res.ok) {
-        console.error("waitForNextRun: failed to poll for next run", {
-          error: res.error,
-          timeoutMs: env.TRIGGER_WARM_START_CONNECTION_TIMEOUT_MS,
-          totalDurationMs: env.TRIGGER_WARM_START_TOTAL_DURATION_MS,
+      if (!connect.success) {
+        console.error("waitForNextRun: failed to connect to warm start service", {
+          warmStartUrl: env.TRIGGER_WARM_START_URL,
+          error: connect.error,
         });
-        process.exit(0);
+        this.exitProcess(0);
       }
 
-      const nextRun = DequeuedMessage.parse(res.data);
+      const connectionTimeoutMs =
+        connect.data.connectionTimeoutMs ?? env.TRIGGER_WARM_START_CONNECTION_TIMEOUT_MS;
+      const keepaliveMs = connect.data.keepaliveMs ?? env.TRIGGER_WARM_START_KEEPALIVE_MS;
+
+      console.log("waitForNextRun: connected to warm start service", {
+        connectionTimeoutMs,
+        keepaliveMs,
+      });
+
+      if (previousRunId) {
+        this.httpClient.sendDebugLog(previousRunId, {
+          time: new Date(),
+          message: "warm start: received config",
+          properties: {
+            connectionTimeoutMs,
+            keepaliveMs,
+          },
+        });
+      }
+
+      if (!connectionTimeoutMs || !keepaliveMs) {
+        console.error("waitForNextRun: warm starts disabled after connect", {
+          connectionTimeoutMs,
+          keepaliveMs,
+        });
+        this.exitProcess(0);
+      }
+
+      const nextRun = await this.warmStartClient.warmStart({
+        workerInstanceName: this.workerInstanceName,
+        connectionTimeoutMs,
+        keepaliveMs,
+      });
+
+      if (!nextRun) {
+        console.error("waitForNextRun: warm start failed, shutting down");
+        this.exitProcess(0);
+      }
 
       console.log("waitForNextRun: got next run", { nextRun });
 
@@ -745,10 +881,15 @@ class ManagedRunController {
       return;
     } catch (error) {
       console.error("waitForNextRun: unexpected error", { error });
-      process.exit(1);
+      this.exitProcess(1);
     } finally {
       this.waitForNextRunLock = false;
     }
+  }
+
+  private exitProcess(code?: number): never {
+    logger.log("Exiting process", { code });
+    process.exit(code);
   }
 
   createSocket() {
@@ -971,7 +1112,7 @@ class ManagedRunController {
     // TODO: remove this after testing
     setTimeout(() => {
       console.error("[ManagedRunController] Exiting after 5 minutes");
-      process.exit(1);
+      this.exitProcess(1);
     }, 60 * 5000);
 
     // Websocket notifications are only an optimisation so we don't need to wait for a successful connection
@@ -1027,72 +1168,3 @@ async function loadWorkerManifest() {
   const manifest = await readJSONFile("./index.json");
   return WorkerManifest.parse(manifest);
 }
-
-const longPoll = async <T = any>(
-  url: string,
-  requestInit: Omit<RequestInit, "signal">,
-  {
-    timeoutMs,
-    totalDurationMs,
-  }: {
-    timeoutMs: number;
-    totalDurationMs: number;
-  }
-): Promise<
-  | {
-      ok: true;
-      data: T;
-    }
-  | {
-      ok: false;
-      error: string;
-    }
-> => {
-  logger.debug("Long polling", { url, requestInit, timeoutMs, totalDurationMs });
-
-  const endTime = Date.now() + totalDurationMs;
-
-  while (Date.now() < endTime) {
-    try {
-      const controller = new AbortController();
-      const signal = controller.signal;
-
-      // TODO: Think about using a random timeout instead
-      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-      const response = await fetch(url, { ...requestInit, signal });
-
-      clearTimeout(timeoutId);
-
-      if (response.ok) {
-        const data = await response.json();
-
-        return {
-          ok: true,
-          data,
-        };
-      } else {
-        return {
-          ok: false,
-          error: `Server error: ${response.status}`,
-        };
-      }
-    } catch (error) {
-      if (error instanceof Error && error.name === "AbortError") {
-        console.log("Long poll request timed out, retrying...");
-        continue;
-      } else {
-        console.error("Error during fetch, retrying...", error);
-
-        // TODO: exponential backoff
-        await sleep(1000);
-        continue;
-      }
-    }
-  }
-
-  return {
-    ok: false,
-    error: "TotalDurationExceeded",
-  };
-};

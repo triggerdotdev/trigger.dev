@@ -1,0 +1,6 @@
+pre-commit:
+  only:
+    - ref: main
+  jobs:
+    - name: 🚫 Prevent main branch commits
+      run: exit 1

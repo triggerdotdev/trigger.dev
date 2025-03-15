@@ -200,6 +200,18 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
           handler: async ({ reply, params, req }) => {
             console.debug("Suspend request", { params, headers: req.headers });
 
+            if (!this.checkpointClient) {
+              reply.json(
+                {
+                  ok: false,
+                  error: "Checkpoints disabled",
+                } satisfies WorkloadSuspendRunResponseBody,
+                false,
+                400
+              );
+              return;
+            }
+
             const runnerId = this.runnerIdFromRequest(req);
 
             if (!runnerId) {
@@ -211,19 +223,6 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                 {
                   ok: false,
                   error: "Invalid headers",
-                } satisfies WorkloadSuspendRunResponseBody,
-                false,
-                400
-              );
-              return;
-            }
-
-            if (!this.checkpointClient) {
-              console.error("Checkpoint client unavailable - suspending impossible", { params });
-              reply.json(
-                {
-                  ok: false,
-                  error: "Suspends are not enabled",
                 } satisfies WorkloadSuspendRunResponseBody,
                 false,
                 400

@@ -16,7 +16,7 @@ type RouteHandler<
   req: IncomingMessage;
   res: ServerResponse;
   reply: HttpReply;
-}) => Promise<void>;
+}) => Promise<any>;
 
 interface RouteDefinition<
   TParams extends z.ZodFirstPartySchemaTypes = z.ZodUnknown,

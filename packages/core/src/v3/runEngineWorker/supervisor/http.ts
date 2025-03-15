@@ -18,7 +18,7 @@ import {
 } from "./schemas.js";
 import { SupervisorClientCommonOptions } from "./types.js";
 import { getDefaultWorkerHeaders } from "./util.js";
-import { ApiError, zodfetch } from "../../zodfetch.js";
+import { wrapZodFetch } from "../../zodfetch.js";
 import { createHeaders } from "../util.js";
 import { WORKER_HEADERS } from "../consts.js";
 
@@ -234,52 +234,5 @@ export class SupervisorHttpClient {
     return createHeaders({
       [WORKER_HEADERS.RUNNER_ID]: runnerId,
     });
-  }
-}
-
-type ApiResult<TSuccessResult> =
-  | { success: true; data: TSuccessResult }
-  | {
-      success: false;
-      error: string;
-    };
-
-async function wrapZodFetch<T extends z.ZodTypeAny>(
-  schema: T,
-  url: string,
-  requestInit?: RequestInit
-): Promise<ApiResult<z.infer<T>>> {
-  try {
-    const response = await zodfetch(schema, url, requestInit, {
-      retry: {
-        minTimeoutInMs: 500,
-        maxTimeoutInMs: 5000,
-        maxAttempts: 5,
-        factor: 2,
-        randomize: false,
-      },
-    });
-
-    return {
-      success: true,
-      data: response,
-    };
-  } catch (error) {
-    if (error instanceof ApiError) {
-      return {
-        success: false,
-        error: error.message,
-      };
-    } else if (error instanceof Error) {
-      return {
-        success: false,
-        error: error.message,
-      };
-    } else {
-      return {
-        success: false,
-        error: String(error),
-      };
-    }
   }
 }
