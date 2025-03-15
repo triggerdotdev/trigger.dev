@@ -4,7 +4,7 @@ import {
   type WorkloadManagerCreateOptions,
   type WorkloadManagerOptions,
 } from "./types.js";
-import { RunnerId } from "../util.js";
+import { RunnerId } from "@trigger.dev/core/v3/isomorphic";
 import type { EnvironmentType, MachinePreset } from "@trigger.dev/core/v3";
 import { env } from "../env.js";
 import { type K8sApi, createK8sApi, type k8s } from "../clients/kubernetes.js";
@@ -48,7 +48,6 @@ export class KubernetesWorkloadManager implements WorkloadManager {
               app: "task-run",
               "app.kubernetes.io/part-of": "trigger-worker",
               "app.kubernetes.io/component": "create",
-              run: opts.runId,
             },
           },
           spec: {
@@ -56,7 +55,7 @@ export class KubernetesWorkloadManager implements WorkloadManager {
             terminationGracePeriodSeconds: 60 * 60,
             containers: [
               {
-                name: runnerId,
+                name: "run-controller",
                 image: opts.image,
                 ports: [
                   {
