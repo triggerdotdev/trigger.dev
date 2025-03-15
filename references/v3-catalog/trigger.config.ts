@@ -5,6 +5,7 @@ import { esbuildPlugin } from "@trigger.dev/build";
 import { audioWaveform } from "@trigger.dev/build/extensions/audioWaveform";
 import { ffmpeg, syncEnvVars } from "@trigger.dev/build/extensions/core";
 import { puppeteer } from "@trigger.dev/build/extensions/puppeteer";
+import { playwright } from "@trigger.dev/build/extensions/playwright";
 import { prismaExtension } from "@trigger.dev/build/extensions/prisma";
 import { emitDecoratorMetadata } from "@trigger.dev/build/extensions/typescript";
 import { defineConfig } from "@trigger.dev/sdk/v3";
@@ -87,6 +88,7 @@ export default defineConfig({
         }));
       }),
       puppeteer(),
+      playwright(),
     ],
     external: ["re2"],
   },
