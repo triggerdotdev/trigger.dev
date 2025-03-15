@@ -10,7 +10,7 @@
     "@trigger.dev/core": "workspace:*"
   },
   "devDependencies": {
-    "vitest": "^1.4.0"
+    "vitest": "^0.29.0"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
