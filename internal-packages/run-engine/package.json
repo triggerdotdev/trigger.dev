@@ -28,7 +28,7 @@
   },
   "devDependencies": {
     "@internal/testcontainers": "workspace:*",
-    "vitest": "^1.4.0",
+    "vitest": "^0.29.0",
     "@types/seedrandom": "^3.0.8",
     "rimraf": "6.0.1"
   },
