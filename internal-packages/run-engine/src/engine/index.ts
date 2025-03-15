@@ -3346,6 +3346,7 @@ export class RunEngine {
     timestamp: number;
     tx?: PrismaClientOrTransaction;
     snapshot?: {
+      status?: Extract<TaskRunExecutionStatus, "QUEUED" | "QUEUED_EXECUTING">;
       description?: string;
     };
     batchId?: string;
@@ -3362,9 +3363,9 @@ export class RunEngine {
 
     return await this.runLock.lock([run.id], 5000, async (signal) => {
       const newSnapshot = await this.#createExecutionSnapshot(prisma, {
-        run: run,
+        run,
         snapshot: {
-          executionStatus: "QUEUED",
+          executionStatus: snapshot?.status ?? "QUEUED",
           description: snapshot?.description ?? "Run was QUEUED",
         },
         batchId,
@@ -3531,29 +3532,50 @@ export class RunEngine {
 
       //run is still executing, send a message to the worker
       if (isExecuting(snapshot.executionStatus)) {
-        const newSnapshot = await this.#createExecutionSnapshot(this.prisma, {
-          run: {
-            id: runId,
-            status: snapshot.runStatus,
-            attemptNumber: snapshot.attemptNumber,
-          },
-          snapshot: {
-            executionStatus: "EXECUTING",
-            description: "Run was continued, whilst still executing.",
-          },
-          environmentId: snapshot.environmentId,
-          environmentType: snapshot.environmentType,
-          batchId: snapshot.batchId ?? undefined,
-          completedWaitpoints: blockingWaitpoints.map((b) => ({
-            id: b.waitpoint.id,
-            index: b.batchIndex ?? undefined,
-          })),
-        });
+        const result = await this.runQueue.reacquireConcurrency(
+          run.runtimeEnvironment.organization.id,
+          runId
+        );
 
-        //we reacquire the concurrency if it's still running because we're not going to be dequeuing (which also does this)
-        await this.runQueue.reacquireConcurrency(run.runtimeEnvironment.organization.id, runId);
+        if (result) {
+          const newSnapshot = await this.#createExecutionSnapshot(this.prisma, {
+            run: {
+              id: runId,
+              status: snapshot.runStatus,
+              attemptNumber: snapshot.attemptNumber,
+            },
+            snapshot: {
+              executionStatus: "EXECUTING",
+              description: "Run was continued, whilst still executing.",
+            },
+            environmentId: snapshot.environmentId,
+            environmentType: snapshot.environmentType,
+            batchId: snapshot.batchId ?? undefined,
+            completedWaitpoints: blockingWaitpoints.map((b) => ({
+              id: b.waitpoint.id,
+              index: b.batchIndex ?? undefined,
+            })),
+          });
 
-        await this.#sendNotificationToWorker({ runId, snapshot: newSnapshot });
+          await this.#sendNotificationToWorker({ runId, snapshot: newSnapshot });
+        } else {
+          // Because we cannot reacquire the concurrency, we need to enqueue the run again
+          // and because the run is still executing, we need to set the status to QUEUED_EXECUTING
+          await this.#enqueueRun({
+            run,
+            env: run.runtimeEnvironment,
+            timestamp: run.createdAt.getTime() - run.priorityMs,
+            snapshot: {
+              status: "QUEUED_EXECUTING",
+              description: "Run can continue, but is waiting for concurrency",
+            },
+            batchId: snapshot.batchId ?? undefined,
+            completedWaitpoints: blockingWaitpoints.map((b) => ({
+              id: b.waitpoint.id,
+              index: b.batchIndex ?? undefined,
+            })),
+          });
+        }
       } else {
         if (snapshot.executionStatus !== "RUN_CREATED" && !snapshot.checkpointId) {
           // TODO: We're screwed, should probably fail the run immediately
