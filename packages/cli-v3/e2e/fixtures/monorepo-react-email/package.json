@@ -1,7 +1,7 @@
 {
   "name": "monorepo-react-email",
   "private": true,
-  "packageManager": "pnpm@8.15.5+sha256.4b4efa12490e5055d59b9b9fc9438b7d581a6b7af3b5675eb5c5f447cee1a589",
+  "packageManager": "pnpm@8.15.5+sha512.b051a32c7e695833b84926d3b29b8cca57254b589f0649d899c6e9d0edb670b91ec7e2a43459bae73759bb5ce619c3266f116bf931ce22d1ef1759a7e45aa96f",
   "engines": {
     "pnpm": "8.15.5",
     "yarn": "4.2.2"

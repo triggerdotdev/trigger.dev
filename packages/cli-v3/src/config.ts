@@ -154,8 +154,17 @@ async function resolveConfig(
   const lockfilePath = await resolveLockfile(cwd);
   const workspaceDir = await findWorkspaceDir(cwd);
 
+   // Get trigger config directory if not already provided
+  let configDir: string | undefined;
+  if (!result.configFile) {
+    configDir = await findTriggerConfigDir(cwd);
+  }
+
+    // Prioritize trigger.config.ts location over package.json
   const workingDir = result.configFile
     ? dirname(result.configFile)
+    : configDir
+    ? configDir
     : packageJsonPath
     ? dirname(packageJsonPath)
     : cwd;
@@ -209,6 +218,20 @@ async function resolveConfig(
     instrumentedPackageNames: getInstrumentedPackageNames(mergedConfig),
     runtime: mergedConfig.runtime,
   };
+}
+
+async function findTriggerConfigDir(cwd: string): Promise<string | undefined> {
+  try {
+    const { configFile } = await c12.loadConfig<TriggerConfig>({
+      name: "trigger",
+      cwd,
+    });
+
+    return configFile ? dirname(configFile) : undefined;
+  } catch (error) {
+    logger.debug("Error finding trigger config file", { error });
+    return undefined;
+  }
 }
 
 function resolveTriggerDir(dir: string, workingDir: string): string {
