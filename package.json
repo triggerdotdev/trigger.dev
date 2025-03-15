@@ -53,6 +53,7 @@
     "@types/node": "20.14.14",
     "autoprefixer": "^10.4.12",
     "eslint-plugin-turbo": "^2.0.4",
+    "lefthook": "^1.11.3",
     "pkg-types": "1.1.3",
     "prettier": "^3.0.0",
     "tsx": "^3.7.1",
