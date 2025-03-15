@@ -1,5 +1,13 @@
 # @trigger.dev/rsc
 
+## 3.3.18
+
+### Patch Changes
+
+- Run Engine 2.0 (alpha) ([#1575](https://github.com/triggerdotdev/trigger.dev/pull/1575))
+- Updated dependencies:
+  - `@trigger.dev/core@3.3.18`
+
 ## 3.3.17
 
 ### Patch Changes
