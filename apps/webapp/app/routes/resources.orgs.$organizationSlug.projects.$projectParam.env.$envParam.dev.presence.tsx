@@ -19,16 +19,11 @@ export const loader = createSSELoader({
       where: {
         slug: envParam,
         type: "DEVELOPMENT",
+        orgMember: {
+          userId,
+        },
         project: {
           slug: projectParam,
-        },
-        organization: {
-          slug: organizationSlug,
-          members: {
-            some: {
-              userId,
-            },
-          },
         },
       },
     });
