@@ -93,6 +93,8 @@ import {
 } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { SpanView } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.$runParam.spans.$spanParam/route";
+import { useDevPresence } from "~/components/DevPresence";
+import { DisconnectedIcon } from "~/assets/icons/ConnectionIcons";
 
 const resizableSettings = {
   parent: {
@@ -477,6 +479,8 @@ function TasksTreeView({
   const treeScrollRef = useRef<HTMLDivElement>(null);
   const timelineScrollRef = useRef<HTMLDivElement>(null);
 
+  const displayEvents = showDebug ? events : events.filter((event) => !event.data.isDebug);
+
   const {
     nodes,
     getTreeProps,
@@ -490,7 +494,7 @@ function TasksTreeView({
     scrollToNode,
     virtualizer,
   } = useTree({
-    tree: showDebug ? events : events.filter((event) => !event.data.isDebug),
+    tree: displayEvents,
     selectedId,
     // collapsedIds,
     onSelectedIdChanged,
@@ -636,7 +640,7 @@ function TasksTreeView({
                       </div>
                     </div>
                   </div>
-                  {events.length === 1 && environmentType === "DEVELOPMENT" && (
+                  {displayEvents.length === 1 && environmentType === "DEVELOPMENT" && (
                     <ConnectedDevWarning />
                   )}
                 </>
@@ -1241,29 +1245,22 @@ function CurrentTimeIndicator({
 }
 
 function ConnectedDevWarning() {
-  const [isVisible, setIsVisible] = useState(false);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setIsVisible(true);
-    }, 3000);
-
-    return () => clearTimeout(timer);
-  }, []);
+  const { isConnected } = useDevPresence();
 
   return (
     <div
       className={cn(
         "flex items-center overflow-hidden pl-5 pr-2 transition-opacity duration-500",
-        isVisible ? "opacity-100" : "h-0 opacity-0"
+        isConnected ? "h-0 opacity-0" : "opacity-100"
       )}
     >
-      <Callout variant="info" className="mt-2">
+      <Callout variant="info" icon={<DisconnectedIcon className="size-6" />} className="mt-2">
         <div className="flex flex-col gap-1">
+          <Paragraph variant="small" spacing className="text-error">
+            Your local dev server is not connected to Trigger.dev.
+          </Paragraph>
+          <Paragraph variant="small">Check you're running the CLI:</Paragraph>
           <Paragraph variant="small">
-            Runs usually start within 1 second in{" "}
-            <EnvironmentCombo environment={{ type: "DEVELOPMENT" }} className="inline-flex" />.
-            Check you're running the CLI:{" "}
             <InlineCode className="whitespace-nowrap">npx trigger.dev@latest dev</InlineCode>
           </Paragraph>
         </div>
