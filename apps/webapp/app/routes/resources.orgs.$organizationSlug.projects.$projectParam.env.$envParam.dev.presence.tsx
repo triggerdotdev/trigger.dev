@@ -60,21 +60,14 @@ export const loader = createSSELoader({
         // Format lastSeen as ISO string if it exists
         let lastSeen = null;
         if (currentPresenceValue) {
-          // Check if it's a numeric timestamp
-          if (!isNaN(Number(currentPresenceValue))) {
-            // Convert numeric timestamp to ISO string
-            lastSeen = new Date(parseInt(currentPresenceValue, 10)).toISOString();
-          } else {
-            // It's already a string format, make sure it's ISO
-            try {
-              lastSeen = new Date(currentPresenceValue).toISOString();
-            } catch (e) {
-              // If parsing fails, use current time as fallback
-              lastSeen = new Date().toISOString();
-              logger.warn("Failed to parse lastSeen value, using current time", {
-                originalValue: currentPresenceValue,
-              });
-            }
+          try {
+            lastSeen = new Date(currentPresenceValue).toISOString();
+          } catch (e) {
+            // If parsing fails, use current time as fallback
+            lastSeen = new Date().toISOString();
+            logger.warn("Failed to parse lastSeen value, using current time", {
+              originalValue: currentPresenceValue,
+            });
           }
         }
 
