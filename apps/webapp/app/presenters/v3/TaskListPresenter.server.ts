@@ -43,6 +43,7 @@ export class TaskListPresenter extends BasePresenter {
       select: {
         id: true,
         type: true,
+        projectId: true,
       },
       where: {
         slug: environmentSlug,
@@ -88,23 +89,26 @@ export class TaskListPresenter extends BasePresenter {
     //then get the activity for each task
     const activity = this.#getActivity(
       tasks.map((t) => t.slug),
+      environment.projectId,
       environment.id
     );
 
     const runningStats = this.#getRunningStats(
       tasks.map((t) => t.slug),
+      environment.projectId,
       environment.id
     );
 
     const durations = this.#getAverageDurations(
       tasks.map((t) => t.slug),
+      environment.projectId,
       environment.id
     );
 
     return { tasks, environment, activity, runningStats, durations };
   }
 
-  async #getActivity(tasks: string[], environmentId: string) {
+  async #getActivity(tasks: string[], projectId: string, environmentId: string) {
     if (tasks.length === 0) {
       return {};
     }
@@ -126,6 +130,7 @@ export class TaskListPresenter extends BasePresenter {
     ${sqlDatabaseSchema}."TaskRun" as tr
   WHERE
     tr."taskIdentifier" IN (${Prisma.join(tasks)})
+    AND tr."projectId" = ${projectId}
     AND tr."runtimeEnvironmentId" = ${environmentId}
     AND tr."createdAt" >= (current_date - interval '6 days')
   GROUP BY
@@ -179,7 +184,7 @@ export class TaskListPresenter extends BasePresenter {
     }, {} as Record<string, ({ day: string } & Record<TaskRunStatusType, number>)[]>);
   }
 
-  async #getRunningStats(tasks: string[], environmentId: string) {
+  async #getRunningStats(tasks: string[], projectId: string, environmentId: string) {
     if (tasks.length === 0) {
       return {};
     }
@@ -199,6 +204,7 @@ export class TaskListPresenter extends BasePresenter {
     ${sqlDatabaseSchema}."TaskRun" as tr
   WHERE
     tr."taskIdentifier" IN (${Prisma.join(tasks)})
+    AND tr."projectId" = ${projectId}
     AND tr."runtimeEnvironmentId" = ${environmentId}
     AND tr."status" = ANY(ARRAY[${Prisma.join([
       ...QUEUED_STATUSES,
@@ -239,7 +245,7 @@ export class TaskListPresenter extends BasePresenter {
     return result;
   }
 
-  async #getAverageDurations(tasks: string[], environmentId: string) {
+  async #getAverageDurations(tasks: string[], projectId: string, environmentId: string) {
     if (tasks.length === 0) {
       return {};
     }
@@ -257,6 +263,7 @@ export class TaskListPresenter extends BasePresenter {
       ${sqlDatabaseSchema}."TaskRun" as tr
     WHERE
       tr."taskIdentifier" IN (${Prisma.join(tasks)})
+      AND tr."projectId" = ${projectId}
       AND tr."runtimeEnvironmentId" = ${environmentId}
       AND tr."createdAt" >= (current_date - interval '6 days')
       AND tr."status" IN ('COMPLETED_SUCCESSFULLY', 'COMPLETED_WITH_ERRORS')
