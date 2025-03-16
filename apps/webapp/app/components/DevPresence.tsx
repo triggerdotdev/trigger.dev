@@ -5,8 +5,20 @@ import { useEnvironment } from "~/hooks/useEnvironment";
 import { useEventSource } from "~/hooks/useEventSource";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "./primitives/Dialog";
-import { Button } from "./primitives/Buttons";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTrigger,
+} from "./primitives/Dialog";
+import { Button, LinkButton } from "./primitives/Buttons";
+import connectedImage from "../assets/images/cli-connected.png";
+import disconnectedImage from "../assets/images/cli-disconnected.png";
+import { Paragraph } from "./primitives/Paragraph";
+import { PackageManagerProvider, TriggerDevStepV3 } from "./SetupCommands";
+import { docsPath } from "~/utils/pathBuilder";
+import { BookOpenIcon } from "@heroicons/react/20/solid";
 
 export function useDevPresence() {
   const organization = useOrganization();
@@ -79,7 +91,37 @@ export function DevPresence() {
             ? "Your dev server is connected to Trigger.dev"
             : "Your dev server is not connected to Trigger.dev"}
         </DialogHeader>
-        <div className="mt-2 flex flex-col gap-4"></div>
+        <div className="mt-2 flex flex-col gap-3 px-2">
+          <div className="flex flex-col items-center justify-center gap-6 px-6 py-10">
+            <img
+              src={isConnected ? connectedImage : disconnectedImage}
+              alt={isConnected ? "Connected" : "Disconnected"}
+              width={282}
+              height={45}
+            />
+            <Paragraph variant="small" className={isConnected ? "text-success" : "text-error"}>
+              {isConnected
+                ? "Your local dev server is connected to Trigger.dev"
+                : "Your local dev server is not connected to Trigger.dev"}
+            </Paragraph>
+          </div>
+          {isConnected ? null : (
+            <div className="space-y-3">
+              <PackageManagerProvider>
+                <TriggerDevStepV3 />
+              </PackageManagerProvider>
+              <Paragraph variant="small">
+                Run this CLI `dev` command to connect to the Trigger.dev servers to start developing
+                locally. Keep it running while you develop to stay connected.
+              </Paragraph>
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <LinkButton variant="tertiary/medium" LeadingIcon={BookOpenIcon} to={docsPath("cli-dev")}>
+            CLI docs
+          </LinkButton>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
