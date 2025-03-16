@@ -34,6 +34,6 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
 
   // Redirect to the project's runs page
   return redirect(
-    `/orgs/${project.organization.slug}/projects/v3/${project.slug}/environment-variables`
+    `/orgs/${project.organization.slug}/projects/${project.slug}/environment-variables`
   );
 }
