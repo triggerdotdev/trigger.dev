@@ -71,7 +71,7 @@ import {
 import {
   CompleteWaitpointForm,
   ForceTimeout,
-} from "../resources.orgs.$organizationSlug.projects.$projectParam.waitpoints.$waitpointFriendlyId.complete/route";
+} from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.waitpoints.$waitpointFriendlyId.complete/route";
 import { useEnvironment } from "~/hooks/useEnvironment";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
