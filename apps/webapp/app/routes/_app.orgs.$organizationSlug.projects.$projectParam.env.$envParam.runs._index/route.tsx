@@ -353,6 +353,7 @@ function CancelRuns({ onOpen }: { onOpen: (open: boolean) => void }) {
             <input type="hidden" name="failedRedirect" value={failedRedirect} />
             <input type="hidden" name="organizationSlug" value={organization.slug} />
             <input type="hidden" name="projectSlug" value={project.slug} />
+            <input type="hidden" name="environmentSlug" value={environment.slug} />
             {[...selectedItems].map((runId) => (
               <input key={runId} type="hidden" name="runIds" value={runId} />
             ))}
@@ -411,6 +412,7 @@ function ReplayRuns({ onOpen }: { onOpen: (open: boolean) => void }) {
             <input type="hidden" name="failedRedirect" value={failedRedirect} />
             <input type="hidden" name="organizationSlug" value={organization.slug} />
             <input type="hidden" name="projectSlug" value={project.slug} />
+            <input type="hidden" name="environmentSlug" value={environment.slug} />
             {[...selectedItems].map((runId) => (
               <input key={runId} type="hidden" name="runIds" value={runId} />
             ))}
