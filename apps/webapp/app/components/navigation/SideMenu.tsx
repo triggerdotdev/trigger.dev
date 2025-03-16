@@ -3,6 +3,7 @@ import {
   ArrowRightOnRectangleIcon,
   BeakerIcon,
   BellAlertIcon,
+  BookOpenIcon,
   ChartBarIcon,
   ChevronRightIcon,
   ClockIcon,
@@ -20,6 +21,7 @@ import {
 import { useNavigation } from "@remix-run/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import simplur from "simplur";
+import { ConnectedIcon, DisconnectedIcon } from "~/assets/icons/ConnectionIcons";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { Avatar } from "~/components/primitives/Avatar";
@@ -32,6 +34,7 @@ import { type FeedbackType } from "~/routes/resources.feedback";
 import { cn } from "~/utils/cn";
 import {
   accountPath,
+  docsPath,
   logoutPath,
   newOrganizationPath,
   newProjectPath,
@@ -53,9 +56,21 @@ import {
   v3TestPath,
   v3UsagePath,
 } from "~/utils/pathBuilder";
+import { useDevPresence } from "../DevPresence";
 import { ImpersonationBanner } from "../ImpersonationBanner";
+import { PackageManagerProvider, TriggerDevStepV3 } from "../SetupCommands";
 import { UserProfilePhoto } from "../UserProfilePhoto";
+import connectedImage from "../../assets/images/cli-connected.png";
+import disconnectedImage from "../../assets/images/cli-disconnected.png";
 import { FreePlanUsage } from "../billing/FreePlanUsage";
+import { Button, ButtonContent, LinkButton } from "../primitives/Buttons";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTrigger,
+} from "../primitives/Dialog";
 import { Paragraph } from "../primitives/Paragraph";
 import {
   Popover,
@@ -64,14 +79,12 @@ import {
   PopoverMenuItem,
   PopoverTrigger,
 } from "../primitives/Popover";
+import { TextLink } from "../primitives/TextLink";
 import { EnvironmentSelector } from "./EnvironmentSelector";
 import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
 import { SideMenuSection } from "./SideMenuSection";
-import { ButtonContent, LinkButton } from "../primitives/Buttons";
-import { TextLink } from "../primitives/TextLink";
-import { DevPresence } from "../DevPresence";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 export type SideMenuProject = Pick<
@@ -148,7 +161,7 @@ export function SideMenu({
                 project={project}
                 environment={environment}
               />
-              {environment.type === "DEVELOPMENT" && <DevPresence />}
+              {environment.type === "DEVELOPMENT" && <DevConnection />}
             </div>
           </div>
 
@@ -494,5 +507,65 @@ function SelectorDivider() {
         strokeLinecap="round"
       />
     </svg>
+  );
+}
+
+export function DevConnection() {
+  const { isConnected } = useDevPresence();
+
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button
+          variant="minimal/small"
+          className="px-1"
+          LeadingIcon={
+            isConnected ? (
+              <ConnectedIcon className="size-5" />
+            ) : (
+              <DisconnectedIcon className="size-5" />
+            )
+          }
+        />
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          {isConnected
+            ? "Your dev server is connected to Trigger.dev"
+            : "Your dev server is not connected to Trigger.dev"}
+        </DialogHeader>
+        <div className="mt-2 flex flex-col gap-3 px-2">
+          <div className="flex flex-col items-center justify-center gap-6 px-6 py-10">
+            <img
+              src={isConnected ? connectedImage : disconnectedImage}
+              alt={isConnected ? "Connected" : "Disconnected"}
+              width={282}
+              height={45}
+            />
+            <Paragraph variant="small" className={isConnected ? "text-success" : "text-error"}>
+              {isConnected
+                ? "Your local dev server is connected to Trigger.dev"
+                : "Your local dev server is not connected to Trigger.dev"}
+            </Paragraph>
+          </div>
+          {isConnected ? null : (
+            <div className="space-y-3">
+              <PackageManagerProvider>
+                <TriggerDevStepV3 />
+              </PackageManagerProvider>
+              <Paragraph variant="small">
+                Run this CLI `dev` command to connect to the Trigger.dev servers to start developing
+                locally. Keep it running while you develop to stay connected.
+              </Paragraph>
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <LinkButton variant="tertiary/medium" LeadingIcon={BookOpenIcon} to={docsPath("cli-dev")}>
+            CLI docs
+          </LinkButton>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

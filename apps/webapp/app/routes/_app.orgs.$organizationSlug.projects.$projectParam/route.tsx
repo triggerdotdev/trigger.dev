@@ -1,4 +1,5 @@
 import { Outlet } from "@remix-run/react";
+import { DevPresenceProvider } from "~/components/DevPresence";
 import { RouteErrorDisplay } from "~/components/ErrorDisplay";
 import { MainBody } from "~/components/layout/AppLayout";
 import { SideMenu } from "~/components/navigation/SideMenu";
@@ -29,16 +30,18 @@ export default function Project() {
   return (
     <>
       <div className="grid grid-cols-[14rem_1fr] overflow-hidden">
-        <SideMenu
-          user={{ ...user, isImpersonating }}
-          project={project}
-          environment={environment}
-          organization={organization}
-          organizations={organizations}
-        />
-        <MainBody>
-          <Outlet />
-        </MainBody>
+        <DevPresenceProvider enabled={environment.type === "DEVELOPMENT"}>
+          <SideMenu
+            user={{ ...user, isImpersonating }}
+            project={project}
+            environment={environment}
+            organization={organization}
+            organizations={organizations}
+          />
+          <MainBody>
+            <Outlet />
+          </MainBody>
+        </DevPresenceProvider>
       </div>
     </>
   );
