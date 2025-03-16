@@ -1,10 +1,12 @@
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { prisma } from "~/db.server";
+import { env } from "~/env.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { OrgIntegrationRepository } from "~/models/orgIntegration.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { requireUserId } from "~/services/session.server";
 import {
+  EnvironmentParamSchema,
   ProjectParamSchema,
   v3NewProjectAlertPath,
   v3NewProjectAlertPathConnectToSlackPath,
@@ -12,7 +14,7 @@ import {
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
   const userId = await requireUserId(request);
-  const { organizationSlug, projectParam } = ProjectParamSchema.parse(params);
+  const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
 
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
 
@@ -30,7 +32,9 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
   if (integration) {
     return redirectWithSuccessMessage(
-      `${v3NewProjectAlertPath({ slug: organizationSlug }, project)}?option=slack`,
+      `${v3NewProjectAlertPath({ slug: organizationSlug }, project, {
+        slug: envParam,
+      })}?option=slack`,
       request,
       "Successfully connected your Slack workspace"
     );
@@ -40,7 +44,9 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       "SLACK",
       project.organizationId,
       request,
-      v3NewProjectAlertPathConnectToSlackPath({ slug: organizationSlug }, project)
+      v3NewProjectAlertPathConnectToSlackPath({ slug: organizationSlug }, project, {
+        slug: envParam,
+      })
     );
   }
 }
