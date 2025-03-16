@@ -18,10 +18,7 @@ import assertNever from "assert-never";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { AlertsNoneDev, AlertsNoneDeployed } from "~/components/BlankStatePanels";
-import {
-  EnvironmentTypeLabel,
-  FullEnvironmentCombo,
-} from "~/components/environments/EnvironmentLabel";
+import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
@@ -240,7 +237,7 @@ export default function Page() {
                       <TableCell className={alertChannel.enabled ? "" : "opacity-50"}>
                         <div className="flex items-center gap-3">
                           {alertChannel.environmentTypes.map((environmentType) => (
-                            <FullEnvironmentCombo
+                            <EnvironmentCombo
                               key={environmentType}
                               environment={{ type: environmentType }}
                               className="text-xs"

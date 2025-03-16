@@ -7,7 +7,7 @@ import { type TaskRunStatus } from "@trigger.dev/database";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { JSONEditor } from "~/components/code/JSONEditor";
-import { FullEnvironmentLabel } from "~/components/environments/EnvironmentLabel";
+import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { Button } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { DateField } from "~/components/primitives/DateField";
@@ -326,7 +326,7 @@ function StandardTaskForm({ task, runs }: { task: TestTask["task"]; runs: Standa
           <Paragraph variant="small" className="whitespace-nowrap">
             This test will run in
           </Paragraph>
-          <FullEnvironmentLabel environment={environment} className="text-sm" />
+          <EnvironmentLabel environment={environment} className="text-sm" />
         </div>
         <Button
           type="submit"
@@ -526,7 +526,7 @@ function ScheduledTaskForm({
           <Paragraph variant="small" className="whitespace-nowrap">
             This test will run in
           </Paragraph>
-          <FullEnvironmentLabel environment={environment} className="text-sm" />
+          <EnvironmentLabel environment={environment} className="text-sm" />
         </div>
         <Button
           type="submit"

@@ -2,7 +2,7 @@ import { useNavigation } from "@remix-run/react";
 import { useEffect, useState } from "react";
 import { useEnvironmentSwitcher } from "~/hooks/useEnvironmentSwitcher";
 import { type MatchedOrganization } from "~/hooks/useOrganizations";
-import { FullEnvironmentCombo } from "../environments/EnvironmentLabel";
+import { EnvironmentCombo } from "../environments/EnvironmentLabel";
 import {
   Popover,
   PopoverArrowTrigger,
@@ -46,7 +46,7 @@ export function EnvironmentSelector({
         fullWidth
         className={cn("h-7 overflow-hidden py-1 pl-2", className)}
       >
-        <FullEnvironmentCombo environment={environment} className="w-full text-2sm" />
+        <EnvironmentCombo environment={environment} className="w-full text-2sm" />
       </PopoverArrowTrigger>
       <PopoverContent
         className="min-w-[14rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
@@ -58,7 +58,7 @@ export function EnvironmentSelector({
             <PopoverMenuItem
               key={env.id}
               to={urlForEnvironment(env)}
-              title={<FullEnvironmentCombo environment={env} className="mx-auto grow text-2sm" />}
+              title={<EnvironmentCombo environment={env} className="mx-auto grow text-2sm" />}
               isSelected={env.id === environment.id}
             />
           ))}
@@ -75,7 +75,7 @@ export function EnvironmentSelector({
                 )}
                 title={
                   <div className="flex w-full items-center justify-between">
-                    <FullEnvironmentCombo environment={{ type: "STAGING" }} className="text-2sm" />
+                    <EnvironmentCombo environment={{ type: "STAGING" }} className="text-2sm" />
                     <span className="text-indigo-500">Upgrade</span>
                   </div>
                 }

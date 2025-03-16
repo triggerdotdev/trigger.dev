@@ -9,128 +9,6 @@ import {
 } from "~/assets/icons/EnvironmentIcons";
 
 type Environment = Pick<RuntimeEnvironment, "type">;
-const variants = {
-  small: "h-4 text-xxs px-[0.1875rem] rounded-[2px]",
-  large: "h-6 text-xs px-1.5 rounded",
-};
-
-export function EnvironmentTypeLabel({
-  environment,
-  size = "small",
-  className,
-}: {
-  environment: Environment;
-  size?: keyof typeof variants;
-  className?: string;
-}) {
-  return (
-    <span
-      className={cn(
-        "text-midnight-900 inline-flex items-center justify-center whitespace-nowrap border font-medium uppercase tracking-wider",
-        environmentBorderClassName(environment),
-        environmentTextClassName(environment),
-        variants[size],
-        className
-      )}
-    >
-      {environmentTypeTitle(environment)}
-    </span>
-  );
-}
-
-export function EnvironmentLabel({
-  environment,
-  size = "small",
-  userName,
-  className,
-}: {
-  environment: Environment;
-  size?: keyof typeof variants;
-  userName?: string;
-  className?: string;
-}) {
-  return (
-    <span
-      className={cn(
-        "text-midnight-900 inline-flex items-center justify-center whitespace-nowrap border font-medium uppercase tracking-wider",
-        environmentBorderClassName(environment),
-        environmentTextClassName(environment),
-        variants[size],
-        className
-      )}
-    >
-      {environmentTitle(environment, userName)}
-    </span>
-  );
-}
-
-type EnvironmentWithUsername = Environment & { userName?: string };
-
-export function EnvironmentLabels({
-  environments,
-  size = "small",
-  className,
-}: {
-  environments: EnvironmentWithUsername[];
-  size?: keyof typeof variants;
-  className?: string;
-}) {
-  const devEnvironments = sortEnvironments(
-    environments.filter((env) => env.type === "DEVELOPMENT")
-  );
-  const firstDevEnvironment = devEnvironments[0];
-  const otherDevEnvironments = devEnvironments.slice(1);
-  const otherEnvironments = environments.filter((env) => env.type !== "DEVELOPMENT");
-
-  return (
-    <div className={cn("flex items-baseline gap-2", className)}>
-      {firstDevEnvironment && (
-        <EnvironmentLabel
-          environment={firstDevEnvironment}
-          userName={firstDevEnvironment.userName}
-          size={size}
-        />
-      )}
-      {otherDevEnvironments.length > 0 ? (
-        <SimpleTooltip
-          disableHoverableContent
-          button={
-            <span
-              className={cn(
-                "inline-flex items-center justify-center whitespace-nowrap border font-medium uppercase tracking-wider",
-                environmentBorderClassName({ type: "DEVELOPMENT" }),
-                environmentTextClassName({ type: "DEVELOPMENT" }),
-                variants[size]
-              )}
-            >
-              +{otherDevEnvironments.length}
-            </span>
-          }
-          content={
-            <div className="flex gap-1 py-1">
-              {otherDevEnvironments.map((environment, index) => (
-                <EnvironmentLabel
-                  key={index}
-                  environment={environment}
-                  userName={environment.userName}
-                  size={size}
-                />
-              ))}
-            </div>
-          }
-        />
-      ) : null}
-      {otherEnvironments.map((environment, index) => (
-        <EnvironmentLabel
-          key={index}
-          environment={environment}
-          userName={environment.userName}
-          size={size}
-        />
-      ))}
-    </div>
-  );
-}
 
 export function EnvironmentIcon({
   environment,
@@ -156,7 +34,7 @@ export function EnvironmentIcon({
   }
 }
 
-export function FullEnvironmentCombo({
+export function EnvironmentCombo({
   environment,
   className,
 }: {
@@ -166,12 +44,12 @@ export function FullEnvironmentCombo({
   return (
     <span className={cn("flex items-center gap-1.5 text-sm text-text-bright", className)}>
       <EnvironmentIcon environment={environment} className="size-4" />
-      <FullEnvironmentLabel environment={environment} />
+      <EnvironmentLabel environment={environment} />
     </span>
   );
 }
 
-export function FullEnvironmentLabel({
+export function EnvironmentLabel({
   environment,
   className,
 }: {

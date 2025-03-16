@@ -16,7 +16,7 @@ import { typedjson, useTypedFetcher } from "remix-typedjson";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { AdminDebugRun } from "~/components/admin/debugRun";
 import { CodeBlock } from "~/components/code/CodeBlock";
-import { FullEnvironmentCombo } from "~/components/environments/EnvironmentLabel";
+import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { Feedback } from "~/components/Feedback";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
@@ -573,7 +573,7 @@ function RunBody({
                   <Property.Item>
                     <Property.Label>Environment</Property.Label>
                     <Property.Value>
-                      <FullEnvironmentCombo environment={environment} />
+                      <EnvironmentCombo environment={environment} />
                     </Property.Value>
                   </Property.Item>
                 )}

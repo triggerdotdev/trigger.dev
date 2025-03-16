@@ -9,7 +9,7 @@ import { useEffect, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { InlineCode } from "~/components/code/InlineCode";
-import { FullEnvironmentCombo } from "~/components/environments/EnvironmentLabel";
+import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout, variantClasses } from "~/components/primitives/Callout";
 import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
@@ -416,7 +416,7 @@ export default function Page() {
             <InputGroup>
               <Label>Environment</Label>
               <input type="hidden" name={environmentTypes.name} value={environment.type} />
-              <FullEnvironmentCombo environment={environment} />
+              <EnvironmentCombo environment={environment} />
               <FormError id={environmentTypes.errorId}>{environmentTypes.error}</FormError>
             </InputGroup>
             <FormError>{form.error}</FormError>

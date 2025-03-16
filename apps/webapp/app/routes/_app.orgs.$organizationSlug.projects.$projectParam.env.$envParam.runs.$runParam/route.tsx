@@ -27,7 +27,7 @@ import { ShowParentIcon, ShowParentIconSelected } from "~/assets/icons/ShowParen
 import tileBgPath from "~/assets/images/error-banner-tile@2x.png";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { InlineCode } from "~/components/code/InlineCode";
-import { FullEnvironmentCombo } from "~/components/environments/EnvironmentLabel";
+import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { PageBody } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
@@ -1262,7 +1262,7 @@ function ConnectedDevWarning() {
         <div className="flex flex-col gap-1">
           <Paragraph variant="small">
             Runs usually start within 1 second in{" "}
-            <FullEnvironmentCombo environment={{ type: "DEVELOPMENT" }} className="inline-flex" />.
+            <EnvironmentCombo environment={{ type: "DEVELOPMENT" }} className="inline-flex" />.
             Check you're running the CLI:{" "}
             <InlineCode className="whitespace-nowrap">npx trigger.dev@latest dev</InlineCode>
           </Paragraph>

@@ -16,8 +16,8 @@ import { z } from "zod";
 import {
   environmentTextClassName,
   environmentTitle,
-  FullEnvironmentCombo,
-  FullEnvironmentLabel,
+  EnvironmentCombo,
+  EnvironmentLabel,
 } from "~/components/environments/EnvironmentLabel";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
@@ -232,7 +232,7 @@ export default function Page() {
                     value={environment.id}
                     name="environmentIds"
                     type="radio"
-                    label={<FullEnvironmentLabel environment={environment} className="text-sm" />}
+                    label={<EnvironmentLabel environment={environment} className="text-sm" />}
                     variant="button"
                   />
                 ))}
@@ -245,10 +245,7 @@ export default function Page() {
                           className="flex w-fit cursor-pointer items-center gap-2 rounded border border-dashed border-charcoal-600 py-3 pl-3 pr-4 transition hover:border-charcoal-500 hover:bg-charcoal-850"
                         >
                           <LockClosedIcon className="size-4 text-charcoal-500" />
-                          <FullEnvironmentLabel
-                            environment={{ type: "STAGING" }}
-                            className="text-sm"
-                          />
+                          <EnvironmentLabel environment={{ type: "STAGING" }} className="text-sm" />
                         </TextLink>
                       </TooltipTrigger>
                       <TooltipContent className="flex items-center gap-2">

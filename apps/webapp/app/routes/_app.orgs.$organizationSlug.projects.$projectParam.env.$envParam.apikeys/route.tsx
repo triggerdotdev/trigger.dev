@@ -4,7 +4,7 @@ import { type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
-import { environmentTitle, FullEnvironmentCombo } from "~/components/environments/EnvironmentLabel";
+import { environmentTitle, EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { RegenerateApiKeyModal } from "~/components/environments/RegenerateApiKeyModal";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { LinkButton } from "~/components/primitives/Buttons";
@@ -106,7 +106,7 @@ export default function Page() {
               {environments.map((environment) => (
                 <TableRow key={environment.id}>
                   <TableCell>
-                    <FullEnvironmentCombo environment={environment} />
+                    <EnvironmentCombo environment={environment} />
                   </TableCell>
                   <TableCell>
                     <ClipboardField
@@ -134,7 +134,7 @@ export default function Page() {
               {!hasStaging && (
                 <TableRow>
                   <TableCell>
-                    <FullEnvironmentCombo environment={{ type: "STAGING" }} />
+                    <EnvironmentCombo environment={{ type: "STAGING" }} />
                   </TableCell>
                   <TableCell>
                     <LinkButton

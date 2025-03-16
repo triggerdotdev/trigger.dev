@@ -4,7 +4,7 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { UserAvatar } from "~/components/UserProfilePhoto";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
-import { FullEnvironmentCombo } from "~/components/environments/EnvironmentLabel";
+import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { Badge } from "~/components/primitives/Badge";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { DateTimeAccurate } from "~/components/primitives/DateTime";
@@ -132,7 +132,7 @@ export default function Page() {
               <Property.Item>
                 <Property.Label>Environment</Property.Label>
                 <Property.Value>
-                  <FullEnvironmentCombo environment={deployment.environment} />
+                  <EnvironmentCombo environment={deployment.environment} />
                 </Property.Value>
               </Property.Item>
               <Property.Item>

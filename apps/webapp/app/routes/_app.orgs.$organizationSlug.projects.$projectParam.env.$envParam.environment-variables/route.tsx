@@ -19,7 +19,7 @@ import { Fragment, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { InlineCode } from "~/components/code/InlineCode";
-import { FullEnvironmentCombo } from "~/components/environments/EnvironmentLabel";
+import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
@@ -233,7 +233,7 @@ export default function Page() {
                 <TableHeaderCell>Key</TableHeaderCell>
                 {environments.map((environment) => (
                   <TableHeaderCell key={environment.id} className="pl-1">
-                    <FullEnvironmentCombo environment={environment} className="text-sm" />
+                    <EnvironmentCombo environment={environment} className="text-sm" />
                   </TableHeaderCell>
                 ))}
                 <TableHeaderCell hiddenLabel>Actions</TableHeaderCell>
@@ -401,7 +401,7 @@ function EditEnvironmentVariablePanel({
                         className="flex items-center justify-end"
                         htmlFor={`values[${index}].value`}
                       >
-                        <FullEnvironmentCombo environment={environment} className="text-sm" />
+                        <EnvironmentCombo environment={environment} className="text-sm" />
                       </label>
                       <Input
                         name={`values[${index}].value`}

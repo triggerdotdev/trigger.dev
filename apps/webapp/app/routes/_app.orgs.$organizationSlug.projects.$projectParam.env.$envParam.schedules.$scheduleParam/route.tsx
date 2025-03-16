@@ -13,10 +13,7 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { InlineCode } from "~/components/code/InlineCode";
-import {
-  EnvironmentLabels,
-  FullEnvironmentCombo,
-} from "~/components/environments/EnvironmentLabel";
+import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
 import {
@@ -269,7 +266,7 @@ export default function Page() {
                 <Property.Value>
                   <div className="flex flex-col gap-2">
                     {schedule.environments.map((env) => (
-                      <FullEnvironmentCombo key={env.id} environment={env} className="text-xs" />
+                      <EnvironmentCombo key={env.id} environment={env} className="text-xs" />
                     ))}
                   </div>
                 </Property.Value>

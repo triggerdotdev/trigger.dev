@@ -10,7 +10,7 @@ import { useRef, useState } from "react";
 import {
   environmentTextClassName,
   environmentTitle,
-  FullEnvironmentCombo,
+  EnvironmentCombo,
 } from "~/components/environments/EnvironmentLabel";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
@@ -344,7 +344,7 @@ export function UpsertScheduleForm({
                 ) : (
                   <>
                     <input type="hidden" name="environments" value={environment.id} />
-                    <FullEnvironmentCombo environment={environment} />
+                    <EnvironmentCombo environment={environment} />
                   </>
                 )}
               </div>
