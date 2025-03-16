@@ -71,6 +71,7 @@ import { SideMenuItem } from "./SideMenuItem";
 import { SideMenuSection } from "./SideMenuSection";
 import { ButtonContent, LinkButton } from "../primitives/Buttons";
 import { TextLink } from "../primitives/TextLink";
+import { DevPresence } from "../DevPresence";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 export type SideMenuProject = Pick<
@@ -141,12 +142,13 @@ export function SideMenu({
         <div className="mb-6 flex flex-col gap-4 px-1">
           <div className="space-y-1">
             <SideMenuHeader title={"Environment"} />
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
               <EnvironmentSelector
                 organization={organization}
                 project={project}
                 environment={environment}
               />
+              {environment.type === "DEVELOPMENT" && <DevPresence />}
             </div>
           </div>
 
