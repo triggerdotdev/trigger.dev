@@ -327,6 +327,7 @@ function TraceView({ run, trace, maximumLiveReloadingSetting, resizable }: Loade
             shouldLiveReload={shouldLiveReload}
             maximumLiveReloadingSetting={maximumLiveReloadingSetting}
             rootRun={run.rootTaskRun}
+            isCompleted={run.completedAt !== null}
           />
         </ResizablePanel>
         <ResizableHandle id={resizableSettings.parent.handleId} />
@@ -454,6 +455,7 @@ type TasksTreeViewProps = {
     taskIdentifier: string;
     spanId: string;
   } | null;
+  isCompleted: boolean;
 };
 
 function TasksTreeView({
@@ -468,6 +470,7 @@ function TasksTreeView({
   shouldLiveReload,
   maximumLiveReloadingSetting,
   rootRun,
+  isCompleted,
 }: TasksTreeViewProps) {
   const isAdmin = useHasAdminAccess();
   const [filterText, setFilterText] = useState("");
@@ -573,7 +576,7 @@ function TasksTreeView({
               nodes={nodes}
               getNodeProps={getNodeProps}
               getTreeProps={getTreeProps}
-              renderNode={({ node, state }) => (
+              renderNode={({ node, state, index }) => (
                 <>
                   <div
                     className={cn(
@@ -640,9 +643,9 @@ function TasksTreeView({
                       </div>
                     </div>
                   </div>
-                  {displayEvents.length === 1 && environmentType === "DEVELOPMENT" && (
-                    <ConnectedDevWarning />
-                  )}
+                  {!isCompleted &&
+                    environmentType === "DEVELOPMENT" &&
+                    index === displayEvents.length - 1 && <ConnectedDevWarning />}
                 </>
               )}
               onScroll={(scrollTop) => {
