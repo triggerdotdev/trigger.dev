@@ -343,10 +343,8 @@ function CancelRuns({ onOpen }: { onOpen: (open: boolean) => void }) {
       <DialogContent key="replay">
         <DialogHeader>Cancel {selectedItems.size} runs?</DialogHeader>
         <DialogDescription className="pt-2">
-          <Paragraph>
-            Canceling these runs will stop them from running. Only runs that are not already
-            finished will be canceled, the others will remain in their existing state.
-          </Paragraph>
+          Canceling these runs will stop them from running. Only runs that are not already finished
+          will be canceled, the others will remain in their existing state.
         </DialogDescription>
         <DialogFooter>
           <Form action={formAction} method="post" reloadDocument>
@@ -402,10 +400,8 @@ function ReplayRuns({ onOpen }: { onOpen: (open: boolean) => void }) {
       <DialogContent key="replay">
         <DialogHeader>Replay runs?</DialogHeader>
         <DialogDescription className="pt-2">
-          <Paragraph>
-            Replaying these runs will create a new run for each with the same payload and
-            environment as the original. It will use the latest version of the code for each task.
-          </Paragraph>
+          Replaying these runs will create a new run for each with the same payload and environment
+          as the original. It will use the latest version of the code for each task.
         </DialogDescription>
         <DialogFooter>
           <Form action={formAction} method="post" reloadDocument>
