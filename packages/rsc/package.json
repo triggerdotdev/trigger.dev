@@ -29,7 +29,7 @@
     ]
   },
   "scripts": {
-    "clean": "rimraf dist",
+    "clean": "rimraf dist .tshy .tshy-build .turbo",
     "build": "tshy && pnpm run update-version",
     "dev": "tshy --watch",
     "typecheck": "tsc --noEmit",
@@ -50,8 +50,7 @@
     "@types/react-dom": "*",
     "rimraf": "^3.0.2",
     "tshy": "^3.0.2",
-    "tsx": "4.17.0",
-    "typescript": "^5.5.4"
+    "tsx": "4.17.0"
   },
   "engines": {
     "node": ">=18.20.0"

@@ -45,6 +45,7 @@ import { UpsertTaskScheduleService } from "~/v3/services/upsertTaskSchedule.serv
 import { AIGeneratedCronField } from "../resources.orgs.$organizationSlug.projects.$projectParam.schedules.new.natural-language";
 import { TimezoneList } from "~/components/scheduled/timezones";
 import { logger } from "~/services/logger.server";
+import { Spinner } from "~/components/primitives/Spinner";
 
 const cronFormat = `*    *    *    *    *
 ┬    ┬    ┬    ┬    ┬
@@ -394,7 +395,7 @@ export function UpsertScheduleForm({
             type="submit"
             disabled={isLoading}
             shortcut={{ key: "enter", modifiers: ["mod"] }}
-            LeadingIcon={isLoading ? "spinner" : undefined}
+            LeadingIcon={isLoading ? Spinner : undefined}
           >
             {buttonText(mode, isLoading)}
           </Button>

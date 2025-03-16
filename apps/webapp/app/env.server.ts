@@ -42,7 +42,6 @@ const EnvironmentSchema = z.object({
   TELEMETRY_TRIGGER_API_KEY: z.string().optional(),
   TELEMETRY_TRIGGER_API_URL: z.string().optional(),
   TRIGGER_TELEMETRY_DISABLED: z.string().optional(),
-  HIGHLIGHT_PROJECT_ID: z.string().optional(),
   AUTH_GITHUB_CLIENT_ID: z.string().optional(),
   AUTH_GITHUB_CLIENT_SECRET: z.string().optional(),
   EMAIL_TRANSPORT: z.enum(["resend", "smtp", "aws-ses"]).optional(),
@@ -259,6 +258,8 @@ const EnvironmentSchema = z.object({
   SHARED_QUEUE_CONSUMER_EMIT_RESUME_DEPENDENCY_TIMEOUT_MS: z.coerce.number().int().default(1000),
   SHARED_QUEUE_CONSUMER_RESOLVE_PAYLOADS_BATCH_SIZE: z.coerce.number().int().default(25),
 
+  MANAGED_WORKER_SECRET: z.string().default("managed-secret"),
+
   // Development OTEL environment variables
   DEV_OTEL_EXPORTER_OTLP_ENDPOINT: z.string().optional(),
   // If this is set to 1, then the below variables are used to configure the batch processor for spans and logs
@@ -407,6 +408,176 @@ const EnvironmentSchema = z.object({
   BATCH_METADATA_OPERATIONS_FLUSH_INTERVAL_MS: z.coerce.number().int().default(1000),
   BATCH_METADATA_OPERATIONS_FLUSH_ENABLED: z.string().default("1"),
   BATCH_METADATA_OPERATIONS_FLUSH_LOGGING_ENABLED: z.string().default("1"),
+
+  // Run Engine 2.0
+  RUN_ENGINE_WORKER_COUNT: z.coerce.number().int().default(4),
+  RUN_ENGINE_TASKS_PER_WORKER: z.coerce.number().int().default(10),
+  RUN_ENGINE_WORKER_POLL_INTERVAL: z.coerce.number().int().default(100),
+  RUN_ENGINE_TIMEOUT_PENDING_EXECUTING: z.coerce.number().int().default(60_000),
+  RUN_ENGINE_TIMEOUT_PENDING_CANCEL: z.coerce.number().int().default(60_000),
+  RUN_ENGINE_TIMEOUT_EXECUTING: z.coerce.number().int().default(60_000),
+  RUN_ENGINE_TIMEOUT_EXECUTING_WITH_WAITPOINTS: z.coerce.number().int().default(60_000),
+  RUN_ENGINE_DEBUG_WORKER_NOTIFICATIONS: z.coerce.boolean().default(false),
+  RUN_ENGINE_PARENT_QUEUE_LIMIT: z.coerce.number().int().default(1000),
+  RUN_ENGINE_CONCURRENCY_LIMIT_BIAS: z.coerce.number().default(0.75),
+  RUN_ENGINE_AVAILABLE_CAPACITY_BIAS: z.coerce.number().default(0.3),
+  RUN_ENGINE_QUEUE_AGE_RANDOMIZATION_BIAS: z.coerce.number().default(0.25),
+  RUN_ENGINE_REUSE_SNAPSHOT_COUNT: z.coerce.number().int().default(0),
+  RUN_ENGINE_MAXIMUM_ENV_COUNT: z.coerce.number().int().optional(),
+
+  RUN_ENGINE_WORKER_REDIS_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_HOST),
+  RUN_ENGINE_WORKER_REDIS_READER_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_READER_HOST),
+  RUN_ENGINE_WORKER_REDIS_READER_PORT: z.coerce
+    .number()
+    .optional()
+    .transform(
+      (v) =>
+        v ?? (process.env.REDIS_READER_PORT ? parseInt(process.env.REDIS_READER_PORT) : undefined)
+    ),
+  RUN_ENGINE_WORKER_REDIS_PORT: z.coerce
+    .number()
+    .optional()
+    .transform((v) => v ?? (process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined)),
+  RUN_ENGINE_WORKER_REDIS_USERNAME: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_USERNAME),
+  RUN_ENGINE_WORKER_REDIS_PASSWORD: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_PASSWORD),
+  RUN_ENGINE_WORKER_REDIS_TLS_DISABLED: z
+    .string()
+    .default(process.env.REDIS_TLS_DISABLED ?? "false"),
+
+  RUN_ENGINE_RUN_QUEUE_REDIS_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_HOST),
+  RUN_ENGINE_RUN_QUEUE_REDIS_READER_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_READER_HOST),
+  RUN_ENGINE_RUN_QUEUE_REDIS_READER_PORT: z.coerce
+    .number()
+    .optional()
+    .transform(
+      (v) =>
+        v ?? (process.env.REDIS_READER_PORT ? parseInt(process.env.REDIS_READER_PORT) : undefined)
+    ),
+  RUN_ENGINE_RUN_QUEUE_REDIS_PORT: z.coerce
+    .number()
+    .optional()
+    .transform((v) => v ?? (process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined)),
+  RUN_ENGINE_RUN_QUEUE_REDIS_USERNAME: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_USERNAME),
+  RUN_ENGINE_RUN_QUEUE_REDIS_PASSWORD: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_PASSWORD),
+  RUN_ENGINE_RUN_QUEUE_REDIS_TLS_DISABLED: z
+    .string()
+    .default(process.env.REDIS_TLS_DISABLED ?? "false"),
+
+  RUN_ENGINE_RUN_LOCK_REDIS_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_HOST),
+  RUN_ENGINE_RUN_LOCK_REDIS_READER_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_READER_HOST),
+  RUN_ENGINE_RUN_LOCK_REDIS_READER_PORT: z.coerce
+    .number()
+    .optional()
+    .transform(
+      (v) =>
+        v ?? (process.env.REDIS_READER_PORT ? parseInt(process.env.REDIS_READER_PORT) : undefined)
+    ),
+  RUN_ENGINE_RUN_LOCK_REDIS_PORT: z.coerce
+    .number()
+    .optional()
+    .transform((v) => v ?? (process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined)),
+  RUN_ENGINE_RUN_LOCK_REDIS_USERNAME: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_USERNAME),
+  RUN_ENGINE_RUN_LOCK_REDIS_PASSWORD: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_PASSWORD),
+  RUN_ENGINE_RUN_LOCK_REDIS_TLS_DISABLED: z
+    .string()
+    .default(process.env.REDIS_TLS_DISABLED ?? "false"),
+
+  RUN_ENGINE_DEV_PRESENCE_REDIS_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_HOST),
+  RUN_ENGINE_DEV_PRESENCE_REDIS_READER_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_READER_HOST),
+  RUN_ENGINE_DEV_PRESENCE_REDIS_READER_PORT: z.coerce
+    .number()
+    .optional()
+    .transform(
+      (v) =>
+        v ?? (process.env.REDIS_READER_PORT ? parseInt(process.env.REDIS_READER_PORT) : undefined)
+    ),
+  RUN_ENGINE_DEV_PRESENCE_REDIS_PORT: z.coerce
+    .number()
+    .optional()
+    .transform((v) => v ?? (process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined)),
+  RUN_ENGINE_DEV_PRESENCE_REDIS_USERNAME: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_USERNAME),
+  RUN_ENGINE_DEV_PRESENCE_REDIS_PASSWORD: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_PASSWORD),
+  RUN_ENGINE_DEV_PRESENCE_REDIS_TLS_DISABLED: z
+    .string()
+    .default(process.env.REDIS_TLS_DISABLED ?? "false"),
+
+  //API Rate limiting
+  /**
+   * @example "60s"
+   * @example "1m"
+   * @example "1h"
+   * @example "1d"
+   * @example "1000ms"
+   * @example "1000s"
+   */
+  RUN_ENGINE_RATE_LIMIT_REFILL_INTERVAL: z.string().default("10s"), // refill 250 tokens every 10 seconds
+  RUN_ENGINE_RATE_LIMIT_MAX: z.coerce.number().int().default(1200), // allow bursts of 750 requests
+  RUN_ENGINE_RATE_LIMIT_REFILL_RATE: z.coerce.number().int().default(400), // refix 250 tokens every 10 seconds
+  RUN_ENGINE_RATE_LIMIT_REQUEST_LOGS_ENABLED: z.string().default("0"),
+  RUN_ENGINE_RATE_LIMIT_REJECTION_LOGS_ENABLED: z.string().default("1"),
+  RUN_ENGINE_RATE_LIMIT_LIMITER_LOGS_ENABLED: z.string().default("0"),
+
+  /** How long should the presence ttl last */
+  DEV_PRESENCE_TTL_MS: z.coerce.number().int().default(30_000),
+  DEV_PRESENCE_POLL_INTERVAL_MS: z.coerce.number().int().default(5_000),
+  DEV_PRESENCE_RECONNECT_THRESHOLD_MS: z.coerce.number().int().default(2_000),
+  /** How many ms to wait until dequeuing again, if there was a run last time */
+  DEV_DEQUEUE_INTERVAL_WITH_RUN: z.coerce.number().int().default(250),
+  /** How many ms to wait until dequeuing again, if there was no run last time */
+  DEV_DEQUEUE_INTERVAL_WITHOUT_RUN: z.coerce.number().int().default(1_000),
+  /** The max number of runs per API call that we'll dequeue in DEV */
+  DEV_DEQUEUE_MAX_RUNS_PER_PULL: z.coerce.number().int().default(10),
+
+  /** The maximum concurrent local run processes executing at once in dev */
+  DEV_MAX_CONCURRENT_RUNS: z.coerce.number().int().default(25),
 
   LEGACY_RUN_ENGINE_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
   LEGACY_RUN_ENGINE_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(2),

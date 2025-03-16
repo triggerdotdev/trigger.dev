@@ -1,6 +1,6 @@
 import { parse } from "@conform-to/zod";
 import { ActionFunction, json } from "@remix-run/node";
-import { assertExhaustive } from "@trigger.dev/core";
+import { assertExhaustive } from "@trigger.dev/core/utils";
 import { z } from "zod";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { logger } from "~/services/logger.server";

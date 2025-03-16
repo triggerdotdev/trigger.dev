@@ -53,7 +53,7 @@ type CodeBlockProps = {
   fileName?: string;
 
   /** title text for the Title row */
-  rowTitle?: string;
+  rowTitle?: ReactNode;
 
   /** Whether to show the open in modal button */
   showOpenInModal?: boolean;

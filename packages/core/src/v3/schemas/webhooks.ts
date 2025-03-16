@@ -1,7 +1,6 @@
 import { z } from "zod";
-import { RuntimeEnvironmentTypeSchema } from "../../schemas/api.js";
 import { RunStatus } from "./api.js";
-import { TaskRunError } from "./common.js";
+import { RuntimeEnvironmentTypeSchema, TaskRunError } from "./common.js";
 
 /** Represents a failed run alert webhook payload */
 const AlertWebhookRunFailedObject = z.object({

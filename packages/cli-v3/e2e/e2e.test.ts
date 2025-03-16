@@ -225,7 +225,7 @@ describe.concurrent("buildWorker", async () => {
         }
 
         expect(rewrittenManifest.indexWorkerEntryPoint).toBe(
-          "/app/src/entryPoints/deploy-index-worker.mjs"
+          "/app/src/entryPoints/managed-index-worker.mjs"
         );
 
         const stdout: string[] = [];

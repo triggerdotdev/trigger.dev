@@ -1,4 +1,4 @@
-import { logger, task, timeout, usage, wait } from "@trigger.dev/sdk/v3";
+import { logger, task, timeout, wait } from "@trigger.dev/sdk";
 import { setTimeout } from "timers/promises";
 
 export const helloWorldTask = task({
@@ -26,20 +26,65 @@ export const parentTask = task({
   },
 });
 
+export const batchParentTask = task({
+  id: "batch-parent",
+  run: async (payload: any, { ctx }) => {
+    logger.log("Hello, world from the parent", { payload });
+
+    const results = await childTask.batchTriggerAndWait([
+      { payload: { message: "Hello, world!" } },
+      { payload: { message: "Hello, world 2!" } },
+    ]);
+    logger.log("Results", { results });
+
+    const results2 = await batch.triggerAndWait<typeof childTask>([
+      { id: "child", payload: { message: "Hello, world !" } },
+      { id: "child", payload: { message: "Hello, world 2!" } },
+    ]);
+    logger.log("Results 2", { results2 });
+
+    const results3 = await batch.triggerByTask([
+      { task: childTask, payload: { message: "Hello, world !" } },
+      { task: childTask, payload: { message: "Hello, world 2!" } },
+    ]);
+    logger.log("Results 3", { results3 });
+
+    const results4 = await batch.triggerByTaskAndWait([
+      {
+        task: childTask,
+        payload: { message: "Hello, world !" },
+      },
+      { task: childTask, payload: { message: "Hello, world 2!" } },
+    ]);
+    logger.log("Results 4", { results4 });
+  },
+});
+
 export const childTask = task({
   id: "child",
-  run: async (payload: any, { ctx }) => {
-    logger.info("Hello, world from the child", { payload });
+  run: async (
+    {
+      message,
+      failureChance = 0.3,
+      duration = 3_000,
+    }: { message?: string; failureChance?: number; duration?: number },
+    { ctx }
+  ) => {
+    logger.info("Hello, world from the child", { message, failureChance });
 
-    if (Math.random() > 0.5) {
+    if (Math.random() < failureChance) {
       throw new Error("Random error at start");
     }
 
-    await setTimeout(10000);
+    await setTimeout(duration);
 
-    if (Math.random() > 0.5) {
+    if (Math.random() < failureChance) {
       throw new Error("Random error at end");
     }
+
+    return {
+      message,
+    };
   },
 });
 

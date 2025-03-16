@@ -33,7 +33,7 @@ export type ZodFetchOptions<T = unknown> = {
   name?: string;
   attributes?: Attributes;
   icon?: string;
-  onResponseBody?: (body: unknown, span: Span) => void;
+  onResponseBody?: (body: T, span: Span) => void;
   prepareData?: (data: T) => Promise<T> | T;
 };
 
@@ -694,4 +694,53 @@ export function zodfetchSSE<TMessageCatalog extends ZodFetchSSEMessageCatalogSch
   options: ZodFetchSSEOptions<TMessageCatalog>
 ): ZodFetchSSEResult<TMessageCatalog> {
   return new ZodFetchSSEResult(options);
+}
+
+export type ApiResult<TSuccessResult> =
+  | { success: true; data: TSuccessResult }
+  | {
+      success: false;
+      error: string;
+    };
+
+export async function wrapZodFetch<T extends z.ZodTypeAny>(
+  schema: T,
+  url: string,
+  requestInit?: RequestInit,
+  options?: ZodFetchOptions<z.output<T>>
+): Promise<ApiResult<z.infer<T>>> {
+  try {
+    const response = await zodfetch(schema, url, requestInit, {
+      retry: {
+        minTimeoutInMs: 500,
+        maxTimeoutInMs: 5000,
+        maxAttempts: 5,
+        factor: 2,
+        randomize: false,
+      },
+      ...options,
+    });
+
+    return {
+      success: true,
+      data: response,
+    };
+  } catch (error) {
+    if (error instanceof ApiError) {
+      return {
+        success: false,
+        error: error.message,
+      };
+    } else if (error instanceof Error) {
+      return {
+        success: false,
+        error: error.message,
+      };
+    } else {
+      return {
+        success: false,
+        error: String(error),
+      };
+    }
+  }
 }

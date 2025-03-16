@@ -858,7 +858,7 @@ export class BatchTriggerV3Service extends BaseService {
         spanParentAsLink: options?.spanParentAsLink,
         batchId: batch.friendlyId,
         skipChecks: true,
-        runId: task.runId,
+        runFriendlyId: task.runId,
       }
     );
 

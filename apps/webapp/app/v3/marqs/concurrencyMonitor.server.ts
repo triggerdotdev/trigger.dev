@@ -4,7 +4,6 @@ import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { MarQS, marqs as marqsv3 } from "./index.server";
 import { env } from "~/env.server";
-import { marqsv2 } from "./v2.server";
 
 export type MarqsConcurrencyMonitorOptions = {
   dryRun?: boolean;
@@ -197,39 +196,6 @@ export class MarqsConcurrencyMonitor {
           },
         }),
       { dryRun: env.V3_MARQS_CONCURRENCY_MONITOR_ENABLED === "0", abortSignal }
-    );
-
-    await instance.call();
-  }
-
-  static async initiateV2Monitoring(abortSignal?: AbortSignal) {
-    if (!marqsv2) {
-      return;
-    }
-
-    const instance = new MarqsConcurrencyMonitor(
-      marqsv2,
-      (runIds) =>
-        prisma.jobRun.findMany({
-          select: { id: true },
-          where: {
-            id: {
-              in: runIds,
-            },
-            status: {
-              in: [
-                "CANCELED",
-                "SUCCESS",
-                "FAILURE",
-                "TIMED_OUT",
-                "ABORTED",
-                "CANCELED",
-                "INVALID_PAYLOAD",
-              ],
-            },
-          },
-        }),
-      { dryRun: env.V2_MARQS_CONCURRENCY_MONITOR_ENABLED === "0", abortSignal }
     );
 
     await instance.call();

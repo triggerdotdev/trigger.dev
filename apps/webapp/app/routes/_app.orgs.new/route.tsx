@@ -1,5 +1,6 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
+import { BuildingOffice2Icon } from "@heroicons/react/20/solid";
 import { RadioGroup } from "@radix-ui/react-radio-group";
 import type { ActionFunction, LoaderFunctionArgs } from "@remix-run/node";
 import { json, redirect } from "@remix-run/node";
@@ -117,7 +118,10 @@ export default function NewOrganizationPage() {
 
   return (
     <MainCenteredContainer className="max-w-[22rem]">
-      <FormTitle LeadingIcon="organization" title="Create an Organization" />
+      <FormTitle
+        LeadingIcon={<BuildingOffice2Icon className="size-6 text-fuchsia-600" />}
+        title="Create an Organization"
+      />
       <Form method="post" {...form.props}>
         <Fieldset>
           <InputGroup>
@@ -125,7 +129,7 @@ export default function NewOrganizationPage() {
             <Input
               {...conform.input(orgName, { type: "text" })}
               placeholder="Your Organization name"
-              icon="organization"
+              icon={BuildingOffice2Icon}
               autoFocus
             />
             <Hint>E.g. your company name or your workspace name.</Hint>

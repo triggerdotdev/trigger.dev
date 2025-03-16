@@ -1,14 +1,13 @@
-import { SpanKind, trace, Tracer } from "@opentelemetry/api";
+import { SpanKind, startSpan, trace, Tracer } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
 import { calculateNextRetryDelay } from "@trigger.dev/core/v3";
 import { type RetryOptions } from "@trigger.dev/core/v3/schemas";
-import { type RedisOptions } from "ioredis";
+import { Redis, type RedisOptions } from "@internal/redis";
 import { z } from "zod";
 import { AnyQueueItem, SimpleQueue } from "./queue.js";
-import Redis from "ioredis";
 import { nanoid } from "nanoid";
-import { startSpan } from "./telemetry.js";
 import pLimit from "p-limit";
+import { createRedisClient } from "@internal/redis";
 
 export type WorkerCatalog = {
   [key: string]: {
@@ -108,7 +107,14 @@ class Worker<TCatalog extends WorkerCatalog> {
 
     this.setupShutdownHandlers();
 
-    this.subscriber = new Redis(this.options.redisOptions);
+    this.subscriber = createRedisClient(this.options.redisOptions, {
+      onError: (error) => {
+        this.logger.error(`RedisWorker subscriber redis client error:`, {
+          error,
+          keyPrefix: this.options.redisOptions.keyPrefix,
+        });
+      },
+    });
     this.setupSubscriber();
 
     return this;

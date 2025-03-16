@@ -1,6 +1,6 @@
 import { useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { LockOpenIcon, UserPlusIcon } from "@heroicons/react/20/solid";
+import { EnvelopeIcon, LockOpenIcon, TrashIcon, UserPlusIcon } from "@heroicons/react/20/solid";
 import { Form, MetaFunction, useActionData } from "@remix-run/react";
 import { ActionFunction, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { useState } from "react";
@@ -24,7 +24,6 @@ import { Button, ButtonContent, LinkButton } from "~/components/primitives/Butto
 import { DateTime } from "~/components/primitives/DateTime";
 import { Header2, Header3 } from "~/components/primitives/Headers";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
-import { NamedIcon } from "~/components/primitives/NamedIcon";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
@@ -191,7 +190,7 @@ export default function Page() {
               {invites.map((invite) => (
                 <li key={invite.id} className="flex items-center gap-4 py-4">
                   <div className="rounded-md border border-charcoal-750 bg-charcoal-800 p-1.5">
-                    <NamedIcon name="envelope" className="h-7 w-7" />
+                    <EnvelopeIcon className="size-7 text-cyan-500" />
                   </div>
                   <div className="flex flex-col gap-0.5">
                     <Header3>{invite.email}</Header3>
@@ -361,7 +360,7 @@ function RevokeButton({ invite }: { invite: Invite }) {
       <Button
         type="submit"
         variant="danger/small"
-        LeadingIcon="trash-can"
+        LeadingIcon={TrashIcon}
         leadingIconClassName="text-white"
       />
     </Form>

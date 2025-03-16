@@ -2,8 +2,8 @@ import { DateFormatter } from "@internationalized/date";
 import { PrismaClient } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
 import { featuresForRequest } from "~/features.server";
-import { BillingService } from "./billing.v2.server";
 import { DeleteProjectService } from "./deleteProject.server";
+import { getCurrentPlan } from "./platform.v3.server";
 
 export class DeleteOrganizationService {
   #prismaClient: PrismaClient;
@@ -40,16 +40,15 @@ export class DeleteOrganizationService {
       throw new Error("Organization already deleted");
     }
 
-    //check if they have an active subscription
+    //Check if they have an active subscription
     const { isManagedCloud } = featuresForRequest(request);
-    const billingPresenter = new BillingService(isManagedCloud);
-    const currentPlan = await billingPresenter.currentPlan(organization.id);
+    const currentPlan = isManagedCloud ? await getCurrentPlan(organization.id) : undefined;
 
-    if (currentPlan && currentPlan.subscription && currentPlan.subscription.isPaying) {
+    if (currentPlan && currentPlan.v3Subscription && currentPlan.v3Subscription.isPaying) {
       //they've cancelled and that date hasn't passed yet
       if (
-        currentPlan.subscription.canceledAt &&
-        new Date(currentPlan.subscription.canceledAt) > new Date()
+        currentPlan.v3Subscription.canceledAt &&
+        new Date(currentPlan.v3Subscription.canceledAt) > new Date()
       ) {
         //a dateformatter that produces results like "Jan 1 2024"
         const dateFormatter = new DateFormatter("en-us", {
@@ -59,7 +58,7 @@ export class DeleteOrganizationService {
         });
         throw new Error(
           `This Organization has a canceled subscription. You can delete it when the cancelation date (${dateFormatter.format(
-            new Date(currentPlan.subscription.canceledAt)
+            new Date(currentPlan.v3Subscription.canceledAt)
           )}) is in the past.`
         );
       }
@@ -72,16 +71,6 @@ export class DeleteOrganizationService {
     for (const project of organization.projects) {
       await projectDeleteService.call({ projectId: project.id, userId });
     }
-
-    //set all the integrations to disabled
-    await this.#prismaClient.integrationConnection.updateMany({
-      where: {
-        organizationId: organization.id,
-      },
-      data: {
-        enabled: false,
-      },
-    });
 
     //mark the organization as deleted
     await this.#prismaClient.organization.update({

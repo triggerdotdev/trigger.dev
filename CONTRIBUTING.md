@@ -135,23 +135,22 @@ The following steps should be followed any time you start working on a new featu
 
 1. Make sure the webapp is running on localhost:3030
 
-2. Open a terminal window and build the CLI and watch for changes
+2. Open a terminal window and build the CLI and packages and watch for changes
 
 ```sh
-pnpm run dev --filter trigger.dev
+pnpm run dev --filter trigger.dev --filter "@trigger.dev/*"
 ```
-
-2. Open a new terminal window, and anytime changes are made to the `@trigger.dev/core` package, you'll need to manually rebuild the CLI:
-
-```sh
-pnpm run build --filter trigger.dev
-```
-
-Note: You do not need to do the same for `@trigger.dev/sdk`, just core.
 
 3. Open another terminal window, and change into the `<root>/references/v3-catalog` directory.
 
-4. Run the `dev` command, which will register all the local tasks with the platform and allow you to start testing task execution:
+4. You'll need to run the following commands to setup prisma and migrate the database:
+
+```sh
+pnpm exec prisma migrate deploy
+pnpm run generate:prisma
+```
+
+5. Run the `dev` command, which will register all the local tasks with the platform and allow you to start testing task execution:
 
 ```sh
 # in <root>/references/v3-catalog
@@ -165,13 +164,13 @@ If you want additional debug logging, you can use the `--log-level debug` flag:
 pnpm exec trigger dev --log-level debug
 ```
 
-5. If you make any changes in the CLI/Core/SDK, you'll need to `CTRL+C` to exit the `dev` command and restart it to pickup changes. Any changes to the files inside of the `v3-catalog/src/trigger` dir will automatically be rebuilt by the `dev` command.
+6. If you make any changes in the CLI/Core/SDK, you'll need to `CTRL+C` to exit the `dev` command and restart it to pickup changes. Any changes to the files inside of the `v3-catalog/src/trigger` dir will automatically be rebuilt by the `dev` command.
 
-6. Navigate to the `v3-catalog` project in your local dashboard at localhost:3030 and you should see the list of tasks.
+7. Navigate to the `v3-catalog` project in your local dashboard at localhost:3030 and you should see the list of tasks.
 
-7. Go to the "Test" page in the sidebar and select a task. Then enter a payload and click "Run test". You can tell what the payloads should be by looking at the relevant task file inside the `/references/v3-catalog/src/trigger` folder. Many of them accept an empty payload.
+8. Go to the "Test" page in the sidebar and select a task. Then enter a payload and click "Run test". You can tell what the payloads should be by looking at the relevant task file inside the `/references/v3-catalog/src/trigger` folder. Many of them accept an empty payload.
 
-8. Feel free to add additional files in `v3-catalog/src/trigger` to test out specific aspects of the system, or add in edge cases.
+9. Feel free to add additional files in `v3-catalog/src/trigger` to test out specific aspects of the system, or add in edge cases.
 
 ## Running end-to-end webapp tests (deprecated)
 
@@ -230,13 +229,22 @@ pnpm run db:studio
    cd packages/database
    ```
 
-3. Create and apply the migrations
+3. Create a migration
 
    ```
-   pnpm run db:migrate:dev
+   pnpm run db:migrate:dev:create
    ```
 
-   This creates a migration file and executes the migrations against your database and applies changes to the database schema(s)
+   This creates a migration file. Check the migration file does only what you want. If you're adding any database indexes they must use `CONCURRENTLY`, otherwise they'll lock the table when executed.
+
+4. Run the migration.
+
+```
+pnpm run db:migrate:deploy
+pnpm run generate
+```
+
+This executes the migrations against your database and applies changes to the database schema(s), and then regenerates the Prisma client.
 
 4. Commit generated migrations as well as changes to the schema.prisma file
 5. If you're using VSCode you may need to restart the Typescript server in the webapp to get updated type inference. Open a TypeScript file, then open the Command Palette (View > Command Palette) and run `TypeScript: Restart TS server`.

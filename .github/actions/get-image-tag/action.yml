@@ -31,6 +31,11 @@ runs:
             sha=$(echo ${{ github.sha }} | head -c7)
             ts=$(date +%s)
             tag=${env}-${sha}-${ts}
+          elif [[ "${{ github.ref_name }}" == re2-*-* ]]; then
+            env=$(echo ${{ github.ref_name }} | cut -d- -f2)
+            sha=$(echo ${{ github.sha }} | head -c7)
+            ts=$(date +%s)
+            tag=${env}-${sha}-${ts}
           elif [[ "${{ github.ref_name }}" == v.docker.* ]]; then
             version="${GITHUB_REF_NAME#v.docker.}"
             tag="v${version}"

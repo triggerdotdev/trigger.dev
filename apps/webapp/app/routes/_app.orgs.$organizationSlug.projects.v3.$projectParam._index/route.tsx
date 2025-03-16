@@ -5,6 +5,7 @@ import {
   ChevronDownIcon,
   ChevronUpIcon,
   LightBulbIcon,
+  MagnifyingGlassIcon,
   UserPlusIcon,
   VideoCameraIcon,
 } from "@heroicons/react/20/solid";
@@ -18,6 +19,7 @@ import { Fragment, Suspense, useEffect, useState } from "react";
 import { Bar, BarChart, ResponsiveContainer, Tooltip, TooltipProps } from "recharts";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
+import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { Feedback } from "~/components/Feedback";
 import {
@@ -241,7 +243,7 @@ export default function Page() {
                       <Input
                         placeholder="Search tasks"
                         variant="tertiary"
-                        icon="search"
+                        icon={MagnifyingGlassIcon}
                         fullWidth={true}
                         value={filterText}
                         onChange={(e) => setFilterText(e.target.value)}
@@ -378,13 +380,13 @@ export default function Page() {
                                   popoverContent={
                                     <>
                                       <PopoverMenuItem
-                                        icon="runs"
+                                        icon={RunsIcon}
                                         to={path}
                                         title="View runs"
                                         leadingIconClassName="text-teal-500"
                                       />
                                       <PopoverMenuItem
-                                        icon="beaker"
+                                        icon={BeakerIcon}
                                         to={testPath}
                                         title="Test task"
                                       />

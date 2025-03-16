@@ -72,3 +72,7 @@ export function ButtonSpinner() {
     />
   );
 }
+
+export function SpinnerWhite({ className }: { className?: string }) {
+  return <Spinner className={className} color="white" />;
+}

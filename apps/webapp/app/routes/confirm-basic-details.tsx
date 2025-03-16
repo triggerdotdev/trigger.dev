@@ -1,6 +1,6 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { ArrowRightIcon } from "@heroicons/react/20/solid";
+import { ArrowRightIcon, EnvelopeIcon, HeartIcon, UserIcon } from "@heroicons/react/20/solid";
 import { HandRaisedIcon } from "@heroicons/react/24/solid";
 import { ActionFunction, json } from "@remix-run/node";
 import { Form, useActionData } from "@remix-run/react";
@@ -172,7 +172,7 @@ export default function Page() {
                 {...conform.input(name, { type: "text" })}
                 defaultValue={user.name ?? ""}
                 placeholder="Your full name"
-                icon="user"
+                icon={UserIcon}
                 autoFocus
               />
               <Hint>Your team will see this name and we'll use it if we need to contact you.</Hint>
@@ -187,7 +187,7 @@ export default function Page() {
                   setEnteredEmail(e.target.value);
                 }}
                 placeholder="Your email address"
-                icon="envelope"
+                icon={EnvelopeIcon}
                 spellCheck={false}
               />
               {!shouldShowConfirm && (
@@ -204,7 +204,7 @@ export default function Page() {
                 <Input
                   {...conform.input(confirmEmail, { type: "email" })}
                   placeholder="Your email, again"
-                  icon="envelope"
+                  icon={EnvelopeIcon}
                   spellCheck={false}
                 />
                 <Hint>
@@ -223,7 +223,7 @@ export default function Page() {
                 <Input
                   {...conform.input(referralSource, { type: "text" })}
                   placeholder="Google, X (Twitter)…?"
-                  icon="heart"
+                  icon={HeartIcon}
                   spellCheck={false}
                 />
               </InputGroup>

@@ -7,6 +7,8 @@ When you trigger a task, it isn't executed immediately. Instead, the task [run](
 
 Controlling concurrency is useful when you have a task that can't be run concurrently, or when you want to limit the number of runs to avoid overloading a resource.
 
+It's important to note that only actively executing runs count towards concurrency limits. Runs that are delayed or waiting in a queue do not consume concurrency slots until they begin execution.
+
 ## Default concurrency
 
 By default, all tasks have an unbounded concurrency limit, limited only by the overall concurrency limits of your environment. This means that each task could possibly "fill up" the entire

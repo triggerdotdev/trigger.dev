@@ -5,8 +5,8 @@ import type { VariantProps } from "class-variance-authority";
 import { cva } from "class-variance-authority";
 import * as React from "react";
 import { cn } from "~/utils/cn";
-import { NamedIcon } from "./NamedIcon";
 import { ShortcutKey } from "./ShortcutKey";
+import { XMarkIcon } from "@heroicons/react/20/solid";
 
 const Sheet = SheetPrimitive.Root;
 
@@ -156,7 +156,7 @@ const SheetContent = React.forwardRef<
       <div className="grid max-h-full grid-rows-[2.75rem_1fr] overflow-hidden">
         <div className="flex items-center gap-2 border-b border-grid-bright p-2">
           <SheetPrimitive.Close className="rounded-sm p-1 transition hover:bg-charcoal-800 disabled:pointer-events-none">
-            <NamedIcon name="close" className="h-4 w-4" />
+            <XMarkIcon className="size-4 text-text-dimmed" />
             <span className="sr-only">Close</span>
           </SheetPrimitive.Close>
           <ShortcutKey shortcut={{ key: "esc" }} variant="small" />

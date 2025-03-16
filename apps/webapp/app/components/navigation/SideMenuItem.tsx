@@ -2,7 +2,6 @@ import { type AnchorHTMLAttributes } from "react";
 import { usePathName } from "~/hooks/usePathName";
 import { cn } from "~/utils/cn";
 import { LinkButton } from "../primitives/Buttons";
-import { type IconNames } from "../primitives/NamedIcon";
 
 export function SideMenuItem({
   icon,
@@ -16,10 +15,10 @@ export function SideMenuItem({
   target,
   subItem = false,
 }: {
-  icon?: IconNames | React.ComponentType<any>;
+  icon?: React.ComponentType<any>;
   activeIconColor?: string;
   inactiveIconColor?: string;
-  trailingIcon?: IconNames | React.ComponentType<any>;
+  trailingIcon?: React.ComponentType<any>;
   trailingIconClassName?: string;
   name: string;
   to: string;

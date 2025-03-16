@@ -3,7 +3,7 @@
   "include": ["remix.env.d.ts", "global.d.ts", "**/*.ts", "**/*.tsx"],
   "compilerOptions": {
     "types": ["vitest/globals"],
-    "lib": ["DOM", "DOM.Iterable", "ES2019"],
+    "lib": ["DOM", "DOM.Iterable", "DOM.AsyncIterable", "ES2019"],
     "isolatedModules": true,
     "esModuleInterop": true,
     "jsx": "react-jsx",
@@ -20,24 +20,9 @@
     "baseUrl": ".",
     "paths": {
       "~/*": ["./app/*"],
-      "@/*": ["./*"],
-      "@trigger.dev/sdk": ["../../packages/trigger-sdk/src/index"],
-      "@trigger.dev/sdk/*": ["../../packages/trigger-sdk/src/*"],
-      "@trigger.dev/core": ["../../packages/core/src/index"],
-      "@trigger.dev/core/*": ["../../packages/core/src/*"],
-      "@trigger.dev/database": ["../../internal-packages/database/src/index"],
-      "@trigger.dev/database/*": ["../../internal-packages/database/src/*"],
-      "@trigger.dev/yalt": ["../../packages/yalt/src/index"],
-      "@trigger.dev/yalt/*": ["../../packages/yalt/src/*"],
-      "@trigger.dev/otlp-importer": ["../../internal-packages/otlp-importer/src/index"],
-      "@trigger.dev/otlp-importer/*": ["../../internal-packages/otlp-importer/src/*"],
-      "emails": ["../../internal-packages/emails/src/index"],
-      "emails/*": ["../../internal-packages/emails/src/*"],
-      "@internal/zod-worker": ["../../internal-packages/zod-worker/src/index"],
-      "@internal/zod-worker/*": ["../../internal-packages/zod-worker/src/*"],
-      "@internal/redis-worker": ["../../internal-packages/redis-worker/src/index"],
-      "@internal/redis-worker/*": ["../../internal-packages/redis-worker/src/*"]
+      "@/*": ["./*"]
     },
-    "noEmit": true
+    "noEmit": true,
+    "customConditions": ["@triggerdotdev/source"]
   }
 }

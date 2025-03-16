@@ -1,17 +1,12 @@
 {
-  "plugins": [
-    "@trigger.dev/eslint-plugin",
-    "react-hooks",
-    "@typescript-eslint/eslint-plugin",
-    "import"
-  ],
+  "plugins": ["react-hooks", "@typescript-eslint/eslint-plugin", "import"],
   "parser": "@typescript-eslint/parser",
   "overrides": [
     {
       "files": ["*.ts", "*.tsx"],
       "rules": {
         // Autofixes imports from "@trigger.dev/core" to fine grained modules
-        "@trigger.dev/no-trigger-core-import": "error",
+        // "@trigger.dev/no-trigger-core-import": "error",
         // Normalize `import type {}` and `import { type }`
         "@typescript-eslint/consistent-type-imports": [
           "warn",

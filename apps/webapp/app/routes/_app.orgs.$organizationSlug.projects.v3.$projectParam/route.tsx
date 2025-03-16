@@ -1,12 +1,13 @@
 import { Outlet } from "@remix-run/react";
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { redirect } from "remix-typedjson";
-import { RouteErrorDisplay } from "~/components/ErrorDisplay";
+import { json, LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
+import { ErrorDisplay, RouteErrorDisplay } from "~/components/ErrorDisplay";
+import { TextLink } from "~/components/primitives/TextLink";
 import { prisma } from "~/db.server";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { Handle } from "~/utils/handle";
-import { ProjectParamSchema, projectPath, v3ProjectPath } from "~/utils/pathBuilder";
+import { ProjectParamSchema, v3ProjectPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ params }: LoaderFunctionArgs) => {
   const { organizationSlug, projectParam } = ProjectParamSchema.parse(params);
@@ -20,11 +21,9 @@ export const loader = async ({ params }: LoaderFunctionArgs) => {
     throw new Response("Project not found", { status: 404, statusText: "Project not found" });
   }
 
-  if (project.version === "V2") {
-    return redirect(projectPath({ slug: organizationSlug }, { slug: projectParam }));
-  }
-
-  return null;
+  return typedjson({
+    version: project.version,
+  });
 };
 
 export const handle: Handle = {
@@ -37,6 +36,25 @@ export const handle: Handle = {
 };
 
 export default function Project() {
+  const { version } = useTypedLoaderData<typeof loader>();
+
+  if (version === "V2") {
+    return (
+      <ErrorDisplay
+        title="Version 2 projects are no longer available"
+        message={
+          <>
+            This project is v2, which was deprecated on Jan 31 2025 after{" "}
+            <TextLink to="https://trigger.dev/blog/v2-end-of-life-announcement">
+              our announcement in August 2024
+            </TextLink>
+            .
+          </>
+        }
+      />
+    );
+  }
+
   return (
     <>
       <Outlet />

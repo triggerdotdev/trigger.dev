@@ -133,6 +133,22 @@
       "command": "pnpm exec trigger dev",
       "cwd": "${workspaceFolder}/references/hello-world",
       "sourceMaps": true
+    },
+    {
+      "type": "node-terminal",
+      "request": "launch",
+      "name": "Debug RunEngine tests",
+      "command": "pnpm run test --filter @internal/run-engine",
+      "cwd": "${workspaceFolder}",
+      "sourceMaps": true
+    },
+    {
+      "type": "node-terminal",
+      "request": "launch",
+      "name": "Debug RunQueue tests",
+      "command": "pnpm run test ./src/engine/tests/waitpoints.test.ts",
+      "cwd": "${workspaceFolder}/internal-packages/run-engine",
+      "sourceMaps": true
     }
   ]
 }

@@ -129,7 +129,6 @@ Some ones we recommend:
 
 | Package                                 | Description                                                                                                              |
 | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `@opentelemetry/instrumentation-undici` | Logs all fetch calls (inc. Undici fetch)                                                                                 |
 | `@opentelemetry/instrumentation-http`   | Logs all HTTP calls                                                                                                      |
 | `@prisma/instrumentation`               | Logs all Prisma calls, you need to [enable tracing](https://github.com/prisma/prisma/tree/main/packages/instrumentation) |
 | `@traceloop/instrumentation-openai`     | Logs all OpenAI calls                                                                                                    |
@@ -137,6 +136,37 @@ Some ones we recommend:
 <Note>
   `@opentelemetry/instrumentation-fs` which logs all file system calls is currently not supported.
 </Note>
+
+### Exporters
+
+You can also configure custom exporters to send your telemetry data to other services. For example, you can send your logs to [Axiom](https://axiom.co/docs/guides/opentelemetry-nodejs#exporter-instrumentation-ts):
+
+```ts trigger.config.ts
+import { defineConfig } from "@trigger.dev/sdk/v3";
+import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-proto';
+
+// Initialize OTLP trace exporter with the endpoint URL and headers
+const axiomExporter = new OTLPTraceExporter({
+  url: 'https://api.axiom.co/v1/traces',
+  headers: {
+    'Authorization': `Bearer ${process.env.AXIOM_API_TOKEN}`,
+    'X-Axiom-Dataset': process.env.AXIOM_DATASET
+  },
+});
+
+export default defineConfig({
+  project: "<project ref>",
+  // Your other config settings...
+  telemetry: {
+    instrumentations: [
+      // Your instrumentations here
+    ],
+    exporters: [axiomExporter],
+  },
+});
+```
+
+Make sure to set the `AXIOM_API_TOKEN` and `AXIOM_DATASET` environment variables in your project.
 
 ## Runtime
 

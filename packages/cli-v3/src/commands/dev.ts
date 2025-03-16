@@ -19,6 +19,9 @@ const DevCommandOptions = CommonCommandOptions.extend({
   skipUpdateCheck: z.boolean().default(false),
   envFile: z.string().optional(),
   keepTmpFiles: z.boolean().default(false),
+  maxConcurrentRuns: z.coerce.number().optional(),
+  mcp: z.boolean().default(false),
+  mcpPort: z.coerce.number().optional().default(3333),
 });
 
 export type DevCommandOptions = z.infer<typeof DevCommandOptions>;
@@ -37,12 +40,18 @@ export function configureDevCommand(program: Command) {
         "--env-file <env file>",
         "Path to the .env file to use for the dev session. Defaults to .env in the project directory."
       )
+      .option(
+        "--max-concurrent-runs <max concurrent runs>",
+        "The maximum number of concurrent runs to allow in the dev session"
+      )
       .option("--debug-otel", "Enable OpenTelemetry debugging")
       .option("--skip-update-check", "Skip checking for @trigger.dev package updates")
       .option(
         "--keep-tmp-files",
         "Keep temporary files after the dev session ends, helpful for debugging"
       )
+      .option("--mcp", "Start the MCP server")
+      .option("--mcp-port", "The port to run the MCP server on", "3333")
   ).action(async (options) => {
     wrapCommandAction("dev", DevCommandOptions, options, async (opts) => {
       await devCommand(opts);

@@ -1,44 +1,23 @@
-\*.log
-.git
-.github
+**/*.log
+**/*.pem
+**/*.tsbuildinfo
 
-# editor
+**/.cache
+**/.env
+**/.next
+**/.output
+**/.trigger
+**/.tshy
+**/.tshy-build
+**/.turbo
+**/.vercel
+**/.wrangler
 
-.idea
-.vscode
+**/dist
+**/node_modules
 
-# dependencies
-
-node_modules
-.pnp
-.pnp.js
-
-# testing
-
-coverage
-
-# next.js
-
-.next/
-build
-
-# packages
-
-build
-dist
-packages/\*\*/dist
-
-# misc
-
-.DS_Store
-\*.pem
-
-.turbo
-.vercel
-.cache
-.output
-.trigger
-apps/\*\*/public/build
+apps/webapp/build
+apps/webapp/public/build
 
 cypress/screenshots
 cypress/videos
@@ -47,8 +26,21 @@ apps/**/styles/tailwind.css
 packages/**/styles/tailwind.css
 
 .changeset
-references
+.DS_Store
+.git
+.github
+.idea
+.pnp
+.pnp.js
+.vscode
+
+coverage
+build
+docs
 examples
+out
+references
+
 CHANGESETS.md
 CONTRIBUTING.md
 README.md

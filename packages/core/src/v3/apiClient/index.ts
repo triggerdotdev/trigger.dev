@@ -4,12 +4,16 @@ import { generateJWT } from "../jwt.js";
 import {
   AddTagsRequestBody,
   BatchTaskRunExecutionResult,
-  BatchTriggerTaskV2RequestBody,
-  BatchTriggerTaskV2Response,
+  BatchTriggerTaskV3RequestBody,
+  BatchTriggerTaskV3Response,
   CanceledRunResponse,
+  CompleteWaitpointTokenRequestBody,
+  CompleteWaitpointTokenResponseBody,
   CreateEnvironmentVariableRequestBody,
   CreateScheduleOptions,
   CreateUploadPayloadUrlResponseBody,
+  CreateWaitpointTokenRequestBody,
+  CreateWaitpointTokenResponseBody,
   DeletedScheduleObject,
   EnvironmentVariableResponseBody,
   EnvironmentVariableValue,
@@ -18,7 +22,7 @@ import {
   ListScheduleOptions,
   ReplayRunResponse,
   RescheduleRunRequestBody,
-  RetrieveBatchResponse,
+  RetrieveBatchV2Response,
   RetrieveRunResponse,
   ScheduleObject,
   TaskRunExecutionResult,
@@ -28,6 +32,9 @@ import {
   UpdateMetadataRequestBody,
   UpdateMetadataResponseBody,
   UpdateScheduleOptions,
+  WaitForDurationRequestBody,
+  WaitForDurationResponseBody,
+  WaitForWaitpointTokenResponseBody,
 } from "../schemas/index.js";
 import { taskContext } from "../task-context-api.js";
 import { AnyRunTypes, TriggerJwtOptions } from "../types/tasks.js";
@@ -43,9 +50,9 @@ import {
 } from "./core.js";
 import { ApiError } from "./errors.js";
 import {
+  AnyRealtimeRun,
   AnyRunShape,
   RealtimeRun,
-  AnyRealtimeRun,
   RunShape,
   RunStreamCallback,
   RunSubscription,
@@ -75,8 +82,6 @@ export type ClientTriggerOptions = {
 };
 
 export type ClientBatchTriggerOptions = ClientTriggerOptions & {
-  idempotencyKey?: string;
-  idempotencyKeyTTL?: string;
   processingStrategy?: "parallel" | "sequential";
 };
 
@@ -100,10 +105,10 @@ const DEFAULT_ZOD_FETCH_OPTIONS: ZodFetchOptions = {
 
 export { isRequestOptions };
 export type {
+  AnyRealtimeRun,
   AnyRunShape,
   ApiRequestOptions,
   RealtimeRun,
-  AnyRealtimeRun,
   RunShape,
   RunStreamCallback,
   RunSubscription,
@@ -234,19 +239,17 @@ export class ApiClient {
       });
   }
 
-  batchTriggerV2(
-    body: BatchTriggerTaskV2RequestBody,
+  batchTriggerV3(
+    body: BatchTriggerTaskV3RequestBody,
     clientOptions?: ClientBatchTriggerOptions,
     requestOptions?: TriggerRequestOptions
   ) {
     return zodfetch(
-      BatchTriggerTaskV2Response,
-      `${this.baseUrl}/api/v1/tasks/batch`,
+      BatchTriggerTaskV3Response,
+      `${this.baseUrl}/api/v2/tasks/batch`,
       {
         method: "POST",
         headers: this.#getHeaders(clientOptions?.spanParentAsLink ?? false, {
-          "idempotency-key": clientOptions?.idempotencyKey,
-          "idempotency-key-ttl": clientOptions?.idempotencyKeyTTL,
           "batch-processing-strategy": clientOptions?.processingStrategy,
         }),
         body: JSON.stringify(body),
@@ -396,6 +399,18 @@ export class ApiClient {
         method: "POST",
         headers: this.#getHeaders(false),
         body: JSON.stringify(body),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  listRunEvents(runId: string, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      z.any(), // TODO: define a proper schema for this
+      `${this.baseUrl}/api/v1/runs/${runId}/events`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
       },
       mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );
@@ -638,6 +653,69 @@ export class ApiClient {
     );
   }
 
+  createWaitpointToken(options: CreateWaitpointTokenRequestBody, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      CreateWaitpointTokenResponseBody,
+      `${this.baseUrl}/api/v1/waitpoints/tokens`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(options),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  completeWaitpointToken(
+    friendlyId: string,
+    options: CompleteWaitpointTokenRequestBody,
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      CompleteWaitpointTokenResponseBody,
+      `${this.baseUrl}/api/v1/waitpoints/tokens/${friendlyId}/complete`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(options),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  waitForWaitpointToken(
+    runFriendlyId: string,
+    waitpointFriendlyId: string,
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      WaitForWaitpointTokenResponseBody,
+      `${this.baseUrl}/engine/v1/runs/${runFriendlyId}/waitpoints/tokens/${waitpointFriendlyId}/wait`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  async waitForDuration(
+    runId: string,
+    body: WaitForDurationRequestBody,
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      WaitForDurationResponseBody,
+      `${this.baseUrl}/engine/v1/runs/${runId}/wait/duration`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
   subscribeToRun<TRunTypes extends AnyRunTypes>(
     runId: string,
     options?: {
@@ -720,8 +798,8 @@ export class ApiClient {
 
   retrieveBatch(batchId: string, requestOptions?: ZodFetchOptions) {
     return zodfetch(
-      RetrieveBatchResponse,
-      `${this.baseUrl}/api/v1/batches/${batchId}`,
+      RetrieveBatchV2Response,
+      `${this.baseUrl}/api/v2/batches/${batchId}`,
       {
         method: "GET",
         headers: this.#getHeaders(false),
@@ -735,6 +813,7 @@ export class ApiClient {
       "Content-Type": "application/json",
       Authorization: `Bearer ${this.accessToken}`,
       "trigger-version": VERSION,
+      "x-trigger-engine-version": taskContext.worker?.engine ?? "V2",
       ...Object.entries(additionalHeaders ?? {}).reduce(
         (acc, [key, value]) => {
           if (value !== undefined) {

@@ -1,6 +1,5 @@
 import { DateField } from "~/components/primitives/DateField";
 import { Header2 } from "~/components/primitives/Headers";
-import { AbsoluteTimeFrame } from "~/components/runs/TimeFrameFilter";
 
 export default function Story() {
   return (
@@ -14,12 +13,6 @@ export default function Story() {
           granularity="second"
           showNowButton
           showClearButton
-        />
-        <AbsoluteTimeFrame onValueChange={() => {}} />
-        <AbsoluteTimeFrame
-          from={new Date(Date.now() - 1000 * 60 * 60)}
-          to={new Date()}
-          onValueChange={() => {}}
         />
       </div>
       <div className="flex flex-col gap-4">

@@ -11,6 +11,12 @@ import type {
 } from "./types/index.js";
 import type { BuildRuntime, RetryOptions } from "./index.js";
 
+export type CompatibilityFlag = "run_engine_v2";
+
+export type CompatibilityFlagFeatures = {
+  [key in CompatibilityFlag]: boolean;
+};
+
 export type TriggerConfig = {
   /**
    * @default "node"
@@ -89,6 +95,7 @@ export type TriggerConfig = {
     enabledInDev?: boolean;
     default?: RetryOptions;
   };
+  compatibilityFlags?: Array<CompatibilityFlag>;
 
   /**
    * The default machine preset to use for your deployed trigger.dev tasks. You can override this on a per-task basis.

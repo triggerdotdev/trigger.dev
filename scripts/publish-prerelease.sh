@@ -48,6 +48,9 @@ else
     exit 1
 fi
 
+echo "Running: pnpm run clean --filter \"@trigger.dev/*\" --filter \"trigger.dev\""
+pnpm run clean --filter "@trigger.dev/*" --filter "trigger.dev"
+
 echo "Running: pnpm run build --filter \"@trigger.dev/*\" --filter \"trigger.dev\""
 pnpm run build --filter "@trigger.dev/*" --filter "trigger.dev"
 

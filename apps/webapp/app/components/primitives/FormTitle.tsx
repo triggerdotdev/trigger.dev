@@ -1,7 +1,5 @@
 import { cn } from "~/utils/cn";
 import { Header1 } from "./Headers";
-import type { IconNames } from "./NamedIcon";
-import { NamedIcon } from "./NamedIcon";
 import { Paragraph } from "./Paragraph";
 
 export function FormTitle({
@@ -13,7 +11,7 @@ export function FormTitle({
 }: {
   title: React.ReactNode;
   description?: React.ReactNode;
-  LeadingIcon?: IconNames | React.ReactNode;
+  LeadingIcon?: React.ReactNode;
   divide?: boolean;
   className?: string;
 }) {
@@ -26,15 +24,7 @@ export function FormTitle({
       )}
     >
       <div className="flex items-center gap-2">
-        {LeadingIcon && (
-          <div className="shrink-0 justify-start">
-            {typeof LeadingIcon === "string" ? (
-              <NamedIcon name={LeadingIcon} className={cn("h-7 w-7")} />
-            ) : (
-              LeadingIcon
-            )}
-          </div>
-        )}
+        {LeadingIcon && <div className="shrink-0 justify-start">{LeadingIcon}</div>}
         <Header1>{title}</Header1>
       </div>
       {description && <Paragraph variant="small">{description}</Paragraph>}

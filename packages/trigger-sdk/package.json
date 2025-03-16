@@ -22,7 +22,7 @@
     "project": "./tsconfig.build.json",
     "exports": {
       "./package.json": "./package.json",
-      ".": "./src/index.ts",
+      ".": "./src/v3/index.ts",
       "./v3": "./src/v3/index.ts"
     },
     "sourceDialects": [
@@ -37,7 +37,7 @@
     }
   },
   "scripts": {
-    "clean": "rimraf dist",
+    "clean": "rimraf dist .tshy .tshy-build .turbo",
     "build": "tshy && pnpm run update-version",
     "dev": "tshy --watch",
     "typecheck": "tsc --noEmit",
@@ -63,7 +63,6 @@
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.15.4",
     "@types/debug": "^4.1.7",
-    "@types/node": "20.14.14",
     "@types/slug": "^5.0.3",
     "@types/uuid": "^9.0.0",
     "@types/ws": "^8.5.3",
@@ -73,7 +72,6 @@
     "tshy": "^3.0.2",
     "tsx": "4.17.0",
     "typed-emitter": "^2.1.0",
-    "typescript": "^5.5.4",
     "zod": "3.23.8"
   },
   "peerDependencies": {
@@ -86,13 +84,13 @@
     "./package.json": "./package.json",
     ".": {
       "import": {
-        "@triggerdotdev/source": "./src/index.ts",
-        "types": "./dist/esm/index.d.ts",
-        "default": "./dist/esm/index.js"
+        "@triggerdotdev/source": "./src/v3/index.ts",
+        "types": "./dist/esm/v3/index.d.ts",
+        "default": "./dist/esm/v3/index.js"
       },
       "require": {
-        "types": "./dist/commonjs/index.d.ts",
-        "default": "./dist/commonjs/index.js"
+        "types": "./dist/commonjs/v3/index.d.ts",
+        "default": "./dist/commonjs/v3/index.js"
       }
     },
     "./v3": {
@@ -107,7 +105,7 @@
       }
     }
   },
-  "main": "./dist/commonjs/index.js",
-  "types": "./dist/commonjs/index.d.ts",
-  "module": "./dist/esm/index.js"
+  "main": "./dist/commonjs/v3/index.js",
+  "types": "./dist/commonjs/v3/index.d.ts",
+  "module": "./dist/esm/v3/index.js"
 }
