@@ -52,6 +52,7 @@ import { TtlSystem } from "./systems/ttlSystem.js";
 import { WaitpointSystem } from "./systems/waitpointSystem.js";
 import { EngineWorker, HeartbeatTimeouts, RunEngineOptions, TriggerParams } from "./types.js";
 import { workerCatalog } from "./workerCatalog.js";
+import { WaitingForWorkerSystem } from "./systems/waitingForWorkerSystem.js";
 
 export class RunEngine {
   private runLockRedis: Redis;
@@ -77,6 +78,7 @@ export class RunEngine {
   checkpointSystem: CheckpointSystem;
   delayedRunSystem: DelayedRunSystem;
   ttlSystem: TtlSystem;
+  waitingForWorkerSystem: WaitingForWorkerSystem;
 
   constructor(private readonly options: RunEngineOptions) {
     this.prisma = options.prisma;
@@ -150,7 +152,9 @@ export class RunEngine {
           });
         },
         queueRunsWaitingForWorker: async ({ payload }) => {
-          await this.#queueRunsWaitingForWorker({ backgroundWorkerId: payload.backgroundWorkerId });
+          await this.waitingForWorkerSystem.enqueueRunsWaitingForWorker({
+            backgroundWorkerId: payload.backgroundWorkerId,
+          });
         },
         tryCompleteBatch: async ({ payload }) => {
           await this.batchSystem.performCompleteBatch({ batchId: payload.batchId });
@@ -251,6 +255,11 @@ export class RunEngine {
     });
 
     this.delayedRunSystem = new DelayedRunSystem({
+      resources,
+      enqueueSystem: this.enqueueSystem,
+    });
+
+    this.waitingForWorkerSystem = new WaitingForWorkerSystem({
       resources,
       enqueueSystem: this.enqueueSystem,
     });
@@ -771,10 +780,8 @@ export class RunEngine {
   }: {
     backgroundWorkerId: string;
   }): Promise<void> {
-    //we want this to happen in the background
-    await this.worker.enqueue({
-      job: "queueRunsWaitingForWorker",
-      payload: { backgroundWorkerId },
+    return this.waitingForWorkerSystem.enqueueRunsWaitingForWorker({
+      backgroundWorkerId,
     });
   }
 
@@ -1234,78 +1241,6 @@ export class RunEngine {
       await this.runLockRedis.quit();
     } catch (error) {
       // And should always throw
-    }
-  }
-
-  async #queueRunsWaitingForWorker({ backgroundWorkerId }: { backgroundWorkerId: string }) {
-    //It could be a lot of runs, so we will process them in a batch
-    //if there are still more to process we will enqueue this function again
-    const maxCount = this.options.queueRunsWaitingForWorkerBatchSize ?? 200;
-
-    const backgroundWorker = await this.prisma.backgroundWorker.findFirst({
-      where: {
-        id: backgroundWorkerId,
-      },
-      include: {
-        runtimeEnvironment: {
-          include: {
-            project: true,
-            organization: true,
-          },
-        },
-        tasks: true,
-      },
-    });
-
-    if (!backgroundWorker) {
-      this.logger.error("#queueRunsWaitingForWorker: background worker not found", {
-        id: backgroundWorkerId,
-      });
-      return;
-    }
-
-    const runsWaitingForDeploy = await this.prisma.taskRun.findMany({
-      where: {
-        runtimeEnvironmentId: backgroundWorker.runtimeEnvironmentId,
-        projectId: backgroundWorker.projectId,
-        status: "WAITING_FOR_DEPLOY",
-        taskIdentifier: {
-          in: backgroundWorker.tasks.map((task) => task.slug),
-        },
-      },
-      orderBy: {
-        createdAt: "asc",
-      },
-      take: maxCount + 1,
-    });
-
-    //none to process
-    if (!runsWaitingForDeploy.length) return;
-
-    for (const run of runsWaitingForDeploy) {
-      await this.prisma.$transaction(async (tx) => {
-        const updatedRun = await tx.taskRun.update({
-          where: {
-            id: run.id,
-          },
-          data: {
-            status: "PENDING",
-          },
-        });
-        await this.enqueueSystem.enqueueRun({
-          run: updatedRun,
-          env: backgroundWorker.runtimeEnvironment,
-          //add to the queue using the original run created time
-          //this should ensure they're in the correct order in the queue
-          timestamp: updatedRun.createdAt.getTime() - updatedRun.priorityMs,
-          tx,
-        });
-      });
-    }
-
-    //enqueue more if needed
-    if (runsWaitingForDeploy.length > maxCount) {
-      await this.queueRunsWaitingForWorker({ backgroundWorkerId });
     }
   }
 
