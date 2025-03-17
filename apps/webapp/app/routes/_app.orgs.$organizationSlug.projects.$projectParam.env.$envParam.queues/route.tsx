@@ -2,6 +2,7 @@ import {
   ArrowUpCircleIcon,
   BookOpenIcon,
   ChatBubbleLeftEllipsisIcon,
+  PauseIcon,
   RectangleStackIcon,
 } from "@heroicons/react/20/solid";
 import { LockOpenIcon } from "@heroicons/react/24/solid";
@@ -36,6 +37,7 @@ import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { z } from "zod";
 import { PaginationControls } from "~/components/primitives/Pagination";
 import { cn } from "~/utils/cn";
+import { BigNumber } from "~/components/metrics/BigNumber";
 
 const SearchParamsSchema = z.object({
   page: z.coerce.number().min(1).default(1),
@@ -93,7 +95,7 @@ export default function Page() {
   return (
     <PageContainer>
       <NavBar>
-        <PageTitle title="Concurrency limits" />
+        <PageTitle title="Queues" />
         <PageAccessories>
           <AdminDebugTooltip />
           <LinkButton
@@ -107,46 +109,46 @@ export default function Page() {
       </NavBar>
       <PageBody scrollable={false}>
         <div className="flex flex-col">
-          <Table containerClassName="border-t-0">
-            <TableHeader>
-              <TableRow>
-                <TableHeaderCell alignment="right">Queued</TableHeaderCell>
-                <TableHeaderCell alignment="right">Running</TableHeaderCell>
-                <TableHeaderCell alignment="right">Concurrency limit</TableHeaderCell>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              <Suspense
-                fallback={
-                  <TableRow>
-                    <TableCell colSpan={4}>
-                      <div className="grid place-items-center py-6">
-                        <Spinner />
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                }
-              >
-                <Await resolve={environment} errorElement={<p>Error loading environments</p>}>
-                  {(environment) => <EnvironmentTable environment={environment} />}
-                </Await>
-              </Suspense>
-            </TableBody>
-          </Table>
-
-          <Header2>Queues</Header2>
-          <div className="flex items-center justify-between gap-x-2 p-2">
-            <div />
-            <div className="flex items-center justify-end gap-x-2">
-              <PaginationControls
-                currentPage={pagination.currentPage}
-                totalPages={pagination.totalPages}
-                showPageNumbers={false}
-              />
-            </div>
+          <div className="grid grid-cols-3 gap-3 p-3">
+            <Suspense fallback={<BigNumber title="Queued" loading={true} />}>
+              <Await resolve={environment}>
+                {(environment) => (
+                  <BigNumber
+                    title="Queued"
+                    value={environment.queued}
+                    animate
+                    accessory={
+                      <Button
+                        variant="tertiary/small"
+                        LeadingIcon={PauseIcon}
+                        leadingIconClassName="text-amber-500"
+                      >
+                        Pause environment
+                      </Button>
+                    }
+                  />
+                )}
+              </Await>
+            </Suspense>
+            <Suspense fallback={<BigNumber title="Running" loading={true} />}>
+              <Await resolve={environment}>
+                {(environment) => <BigNumber title="Running" value={environment.running} animate />}
+              </Await>
+            </Suspense>
+            <Suspense fallback={<BigNumber title="Concurrency limit" loading={true} />}>
+              <Await resolve={environment}>
+                {(environment) => (
+                  <BigNumber
+                    title="Concurrency limit"
+                    value={environment.concurrencyLimit}
+                    animate
+                  />
+                )}
+              </Await>
+            </Suspense>
           </div>
 
-          <Table containerClassName="mt-8 border-t">
+          <Table containerClassName="border-t">
             <TableHeader>
               <TableRow>
                 <TableHeaderCell>Name</TableHeaderCell>
@@ -267,15 +269,5 @@ export default function Page() {
         </div>
       </PageBody>
     </PageContainer>
-  );
-}
-
-function EnvironmentTable({ environment }: { environment: Environment }) {
-  return (
-    <TableRow>
-      <TableCell alignment="right">{environment.queued}</TableCell>
-      <TableCell alignment="right">{environment.concurrency}</TableCell>
-      <TableCell alignment="right">{environment.concurrencyLimit}</TableCell>
-    </TableRow>
   );
 }

@@ -1652,10 +1652,22 @@ export class RunEngine {
     return this.runQueue.lengthOfEnvQueue(environment);
   }
 
-  async currentConcurrencyOfEnvQueue(
-    environment: MinimalAuthenticatedEnvironment
-  ): Promise<number> {
+  async concurrencyOfEnvQueue(environment: MinimalAuthenticatedEnvironment): Promise<number> {
     return this.runQueue.currentConcurrencyOfEnvironment(environment);
+  }
+
+  async lengthOfQueues(
+    environment: MinimalAuthenticatedEnvironment,
+    queues: string[]
+  ): Promise<Record<string, number>> {
+    return this.runQueue.lengthOfQueues(environment, queues);
+  }
+
+  async currentConcurrencyOfQueues(
+    environment: MinimalAuthenticatedEnvironment,
+    queues: string[]
+  ): Promise<Record<string, number>> {
+    return this.runQueue.currentConcurrencyOfQueues(environment, queues);
   }
 
   /**
