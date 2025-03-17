@@ -142,6 +142,36 @@ export default function Page() {
                     title="Concurrency limit"
                     value={environment.concurrencyLimit}
                     animate
+                    accessory={
+                      plan ? (
+                        plan?.v3Subscription?.plan?.limits.concurrentRuns.canExceed ? (
+                          <Feedback
+                            button={
+                              <Button
+                                variant="tertiary/small"
+                                LeadingIcon={ChatBubbleLeftEllipsisIcon}
+                                leadingIconClassName="text-indigo-500"
+                              >
+                                Increase limit
+                              </Button>
+                            }
+                            defaultValue="help"
+                          />
+                        ) : (
+                          <LinkButton
+                            to={v3BillingPath(
+                              organization,
+                              "Upgrade your plan for more concurrency"
+                            )}
+                            variant="secondary/small"
+                            LeadingIcon={ArrowUpCircleIcon}
+                            leadingIconClassName="text-indigo-500"
+                          >
+                            Increase limit
+                          </LinkButton>
+                        )
+                      ) : null
+                    }
                   />
                 )}
               </Await>
@@ -234,38 +264,6 @@ export default function Page() {
               />
             </div>
           </div>
-
-          {plan ? (
-            plan?.v3Subscription?.plan?.limits.concurrentRuns.canExceed ? (
-              <div className="flex w-full items-center justify-end gap-2 pl-3 pr-2 pt-3">
-                <Paragraph variant="small" className="text-text-bright">
-                  Need more concurrency?
-                </Paragraph>
-                <Feedback
-                  button={
-                    <Button LeadingIcon={ChatBubbleLeftEllipsisIcon} variant="tertiary/small">
-                      Request more
-                    </Button>
-                  }
-                  defaultValue="help"
-                />
-              </div>
-            ) : (
-              <div className="flex w-full items-center justify-end gap-2 pl-3 pr-2 pt-3">
-                <LockOpenIcon className="size-5 min-w-5 text-indigo-500" />
-                <Paragraph variant="small" className="text-text-bright">
-                  Upgrade for more concurrency
-                </Paragraph>
-                <LinkButton
-                  to={v3BillingPath(organization, "Upgrade your plan for more concurrency")}
-                  variant="secondary/small"
-                  LeadingIcon={ArrowUpCircleIcon}
-                >
-                  Upgrade
-                </LinkButton>
-              </div>
-            )
-          ) : null}
         </div>
       </PageBody>
     </PageContainer>
