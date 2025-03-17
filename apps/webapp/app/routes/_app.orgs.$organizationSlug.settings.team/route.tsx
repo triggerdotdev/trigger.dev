@@ -1,15 +1,19 @@
 import { useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { EnvelopeIcon, LockOpenIcon, TrashIcon, UserPlusIcon } from "@heroicons/react/20/solid";
-import { Form, MetaFunction, useActionData } from "@remix-run/react";
-import { ActionFunction, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
+import { Form, type MetaFunction, useActionData } from "@remix-run/react";
+import { type ActionFunction, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { useState } from "react";
-import { UseDataFunctionReturn, typedjson, useTypedLoaderData } from "remix-typedjson";
+import { type UseDataFunctionReturn, typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { z } from "zod";
 import { UserAvatar } from "~/components/UserProfilePhoto";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
-import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import {
+  MainHorizontallyCenteredContainer,
+  PageBody,
+  PageContainer,
+} from "~/components/layout/AppLayout";
 import {
   Alert,
   AlertCancel,
@@ -158,82 +162,88 @@ export default function Page() {
         </PageAccessories>
       </NavBar>
       <PageBody>
-        <Header2>
-          Members ({limits.used}/{limits.limit})
-        </Header2>
-        <ul className="divide-ui-border flex w-full max-w-md flex-col divide-y border-b border-grid-bright">
-          {members.map((member) => (
-            <li key={member.user.id} className="flex items-center gap-x-4 py-4">
-              <UserAvatar
-                avatarUrl={member.user.avatarUrl}
-                name={member.user.name}
-                className="h-10 w-10"
-              />
-              <div className="flex flex-col gap-0.5">
-                <Header3>
-                  {member.user.name}{" "}
-                  {member.user.id === user.id && <span className="text-text-dimmed">(You)</span>}
-                </Header3>
-                <Paragraph variant="small">{member.user.email}</Paragraph>
-              </div>
-              <div className="flex grow items-center justify-end gap-4">
-                <LeaveRemoveButton userId={user.id} member={member} memberCount={members.length} />
-              </div>
-            </li>
-          ))}
-        </ul>
+        <MainHorizontallyCenteredContainer>
+          <Header2>
+            Members ({limits.used}/{limits.limit})
+          </Header2>
+          <ul className="divide-ui-border flex w-full max-w-md flex-col divide-y border-b border-grid-bright">
+            {members.map((member) => (
+              <li key={member.user.id} className="flex items-center gap-x-4 py-4">
+                <UserAvatar
+                  avatarUrl={member.user.avatarUrl}
+                  name={member.user.name}
+                  className="h-10 w-10"
+                />
+                <div className="flex flex-col gap-0.5">
+                  <Header3>
+                    {member.user.name}{" "}
+                    {member.user.id === user.id && <span className="text-text-dimmed">(You)</span>}
+                  </Header3>
+                  <Paragraph variant="small">{member.user.email}</Paragraph>
+                </div>
+                <div className="flex grow items-center justify-end gap-4">
+                  <LeaveRemoveButton
+                    userId={user.id}
+                    member={member}
+                    memberCount={members.length}
+                  />
+                </div>
+              </li>
+            ))}
+          </ul>
 
-        {invites.length > 0 && (
-          <>
-            <Header2 className="mt-4">Pending invites</Header2>
-            <ul className="flex w-full max-w-md flex-col divide-y divide-charcoal-800 border-b border-charcoal-800">
-              {invites.map((invite) => (
-                <li key={invite.id} className="flex items-center gap-4 py-4">
-                  <div className="rounded-md border border-charcoal-750 bg-charcoal-800 p-1.5">
-                    <EnvelopeIcon className="size-7 text-cyan-500" />
-                  </div>
-                  <div className="flex flex-col gap-0.5">
-                    <Header3>{invite.email}</Header3>
-                    <Paragraph variant="small">
-                      Invite sent {<DateTime date={invite.updatedAt} />}
-                    </Paragraph>
-                  </div>
-                  <div className="flex grow items-center justify-end gap-x-2">
-                    <ResendButton invite={invite} />
-                    <RevokeButton invite={invite} />
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </>
-        )}
+          {invites.length > 0 && (
+            <>
+              <Header2 className="mt-4">Pending invites</Header2>
+              <ul className="flex w-full max-w-md flex-col divide-y divide-charcoal-800 border-b border-charcoal-800">
+                {invites.map((invite) => (
+                  <li key={invite.id} className="flex items-center gap-4 py-4">
+                    <div className="rounded-md border border-charcoal-750 bg-charcoal-800 p-1.5">
+                      <EnvelopeIcon className="size-7 text-cyan-500" />
+                    </div>
+                    <div className="flex flex-col gap-0.5">
+                      <Header3>{invite.email}</Header3>
+                      <Paragraph variant="small">
+                        Invite sent {<DateTime date={invite.updatedAt} />}
+                      </Paragraph>
+                    </div>
+                    <div className="flex grow items-center justify-end gap-x-2">
+                      <ResendButton invite={invite} />
+                      <RevokeButton invite={invite} />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
 
-        {requiresUpgrade ? (
-          <InfoPanel
-            variant="upgrade"
-            icon={LockOpenIcon}
-            iconClassName="text-indigo-500"
-            title="Unlock more team members"
-            to={v3BillingPath(organization)}
-            buttonLabel="Upgrade"
-            panelClassName="mt-4 max-w-sm"
-          >
-            <Paragraph variant="small">
-              You've used all {limits.limit} of your available team members. Upgrade your plan to
-              enable more.
-            </Paragraph>
-          </InfoPanel>
-        ) : (
-          <div className="mt-4 flex max-w-md justify-end">
-            <LinkButton
-              to={inviteTeamMemberPath(organization)}
-              variant={"primary/small"}
-              LeadingIcon={UserPlusIcon}
+          {requiresUpgrade ? (
+            <InfoPanel
+              variant="upgrade"
+              icon={LockOpenIcon}
+              iconClassName="text-indigo-500"
+              title="Unlock more team members"
+              to={v3BillingPath(organization)}
+              buttonLabel="Upgrade"
+              panelClassName="mt-4 max-w-sm"
             >
-              Invite a team member
-            </LinkButton>
-          </div>
-        )}
+              <Paragraph variant="small">
+                You've used all {limits.limit} of your available team members. Upgrade your plan to
+                enable more.
+              </Paragraph>
+            </InfoPanel>
+          ) : (
+            <div className="mt-4 flex max-w-md justify-end">
+              <LinkButton
+                to={inviteTeamMemberPath(organization)}
+                variant={"primary/small"}
+                LeadingIcon={UserPlusIcon}
+              >
+                Invite a team member
+              </LinkButton>
+            </div>
+          )}
+        </MainHorizontallyCenteredContainer>
       </PageBody>
     </PageContainer>
   );
