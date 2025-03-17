@@ -44,25 +44,23 @@ import {
   v3ApiKeysPath,
   v3BatchesPath,
   v3BillingPath,
-  v3ConcurrencyPath,
   v3DeploymentsPath,
   v3EnvironmentPath,
   v3EnvironmentVariablesPath,
   v3ProjectAlertsPath,
   v3ProjectPath,
   v3ProjectSettingsPath,
+  v3QueuesPath,
   v3RunsPath,
   v3SchedulesPath,
   v3TestPath,
   v3UsagePath,
 } from "~/utils/pathBuilder";
-import { useDevPresence } from "../DevPresence";
-import { ImpersonationBanner } from "../ImpersonationBanner";
-import { PackageManagerProvider, TriggerDevStepV3 } from "../SetupCommands";
-import { UserProfilePhoto } from "../UserProfilePhoto";
 import connectedImage from "../../assets/images/cli-connected.png";
 import disconnectedImage from "../../assets/images/cli-disconnected.png";
 import { FreePlanUsage } from "../billing/FreePlanUsage";
+import { useDevPresence } from "../DevPresence";
+import { ImpersonationBanner } from "../ImpersonationBanner";
 import { Button, ButtonContent, LinkButton } from "../primitives/Buttons";
 import {
   Dialog,
@@ -80,18 +78,14 @@ import {
   PopoverTrigger,
 } from "../primitives/Popover";
 import { TextLink } from "../primitives/TextLink";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
+import { PackageManagerProvider, TriggerDevStepV3 } from "../SetupCommands";
+import { UserProfilePhoto } from "../UserProfilePhoto";
 import { EnvironmentSelector } from "./EnvironmentSelector";
 import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
 import { SideMenuSection } from "./SideMenuSection";
-import {
-  SimpleTooltip,
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "../primitives/Tooltip";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 export type SideMenuProject = Pick<
@@ -195,6 +189,13 @@ export function SideMenu({
               data-action="schedules"
             />
             <SideMenuItem
+              name="Queues"
+              icon={RectangleStackIcon}
+              activeIconColor="text-blue-500"
+              to={v3QueuesPath(organization, project, environment)}
+              data-action="queues"
+            />
+            <SideMenuItem
               name="Deployments"
               icon={ServerStackIcon}
               activeIconColor="text-blue-500"
@@ -240,14 +241,6 @@ export function SideMenu({
               activeIconColor="text-pink-500"
               to={v3EnvironmentVariablesPath(organization, project, environment)}
               data-action="environment variables"
-            />
-
-            <SideMenuItem
-              name="Concurrency limits"
-              icon={RectangleStackIcon}
-              activeIconColor="text-indigo-500"
-              to={v3ConcurrencyPath(organization, project, environment)}
-              data-action="concurrency"
             />
             <SideMenuItem
               name="Project settings"
