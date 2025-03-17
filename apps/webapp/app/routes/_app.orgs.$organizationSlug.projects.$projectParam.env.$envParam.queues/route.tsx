@@ -33,6 +33,13 @@ import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { Badge } from "~/components/primitives/Badge";
 import { Header2 } from "~/components/primitives/Headers";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
+import { z } from "zod";
+import { PaginationControls } from "~/components/primitives/Pagination";
+import { cn } from "~/utils/cn";
+
+const SearchParamsSchema = z.object({
+  page: z.coerce.number().min(1).default(1),
+});
 
 export const meta: MetaFunction = () => {
   return [
@@ -45,6 +52,9 @@ export const meta: MetaFunction = () => {
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
+
+  const url = new URL(request.url);
+  const { page } = SearchParamsSchema.parse(Object.fromEntries(url.searchParams));
 
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
   if (!project) {
@@ -61,6 +71,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       projectId: project.id,
       organizationId: project.organizationId,
       environmentSlug: envParam,
+      page,
     });
 
     return typeddefer(result);
@@ -74,7 +85,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 export default function Page() {
-  const { environment, queues } = useTypedLoaderData<typeof loader>();
+  const { environment, queues, pagination } = useTypedLoaderData<typeof loader>();
 
   const organization = useOrganization();
   const plan = useCurrentPlan();
@@ -124,6 +135,17 @@ export default function Page() {
           </Table>
 
           <Header2>Queues</Header2>
+          <div className="flex items-center justify-between gap-x-2 p-2">
+            <div />
+            <div className="flex items-center justify-end gap-x-2">
+              <PaginationControls
+                currentPage={pagination.currentPage}
+                totalPages={pagination.totalPages}
+                showPageNumbers={false}
+              />
+            </div>
+          </div>
+
           <Table containerClassName="mt-8 border-t">
             <TableHeader>
               <TableRow>
@@ -191,6 +213,25 @@ export default function Page() {
               </Suspense>
             </TableBody>
           </Table>
+
+          <div
+            className={cn(
+              "grid h-fit max-h-full min-h-full overflow-x-auto",
+              pagination.totalPages > 1 ? "grid-rows-[1fr_auto]" : "grid-rows-[1fr]"
+            )}
+          >
+            <div
+              className={cn(
+                "flex min-h-full",
+                pagination.totalPages > 1 && "justify-end border-t border-grid-dimmed px-2 py-3"
+              )}
+            >
+              <PaginationControls
+                currentPage={pagination.currentPage}
+                totalPages={pagination.totalPages}
+              />
+            </div>
+          </div>
 
           {plan ? (
             plan?.v3Subscription?.plan?.limits.concurrentRuns.canExceed ? (

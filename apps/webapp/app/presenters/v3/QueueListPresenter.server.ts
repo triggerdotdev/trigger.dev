@@ -16,51 +16,71 @@ import { BasePresenter } from "./basePresenter.server";
 export type Environment = Awaited<ReturnType<QueueListPresenter["environmentConcurrency"]>>;
 
 export class QueueListPresenter extends BasePresenter {
+  private readonly ITEMS_PER_PAGE = 10;
+
   public async call({
     userId,
     projectId,
     organizationId,
     environmentSlug,
+    page,
   }: {
     userId: User["id"];
     projectId: Project["id"];
     organizationId: Organization["id"];
     environmentSlug: RuntimeEnvironment["slug"];
+    page: number;
   }) {
     const environment = await findEnvironmentBySlug(projectId, environmentSlug, userId);
     if (!environment) {
       throw new Error(`Environment not found: ${environmentSlug}`);
     }
 
-    // Get all queues for this environment
-    const queues = this._replica.taskQueue
-      .findMany({
-        where: {
-          runtimeEnvironmentId: environment.id,
-        },
-        select: {
-          name: true,
-          concurrencyLimit: true,
-          type: true,
-        },
-        orderBy: {
-          name: "asc",
-        },
-      })
-      .then((queues) => {
-        return queues.map((queue) => ({
-          name: queue.name.replace(/^task\//, ""),
-          concurrencyLimit: queue.concurrencyLimit ?? null,
-          type: queue.type,
-          queued: 0, // Placeholder
-          running: 0, // Placeholder
-        }));
-      });
+    // Get total count for pagination
+    const totalQueues = await this._replica.taskQueue.count({
+      where: {
+        runtimeEnvironmentId: environment.id,
+      },
+    });
 
+    // Return the environment data immediately and defer the queues
     return {
       environment: this.environmentConcurrency(organizationId, projectId, userId, environment),
-      queues,
+      queues: this.getQueuesWithPagination(environment.id, page),
+      pagination: {
+        currentPage: page,
+        totalPages: Math.ceil(totalQueues / this.ITEMS_PER_PAGE),
+        totalItems: totalQueues,
+        itemsPerPage: this.ITEMS_PER_PAGE,
+      },
     };
+  }
+
+  private async getQueuesWithPagination(environmentId: string, page: number) {
+    const queues = await this._replica.taskQueue.findMany({
+      where: {
+        runtimeEnvironmentId: environmentId,
+      },
+      select: {
+        name: true,
+        concurrencyLimit: true,
+        type: true,
+      },
+      orderBy: {
+        name: "asc",
+      },
+      skip: (page - 1) * this.ITEMS_PER_PAGE,
+      take: this.ITEMS_PER_PAGE,
+    });
+
+    // Transform queues to include running and queued counts
+    return queues.map((queue) => ({
+      name: queue.name,
+      concurrencyLimit: queue.concurrencyLimit ?? null,
+      type: queue.type,
+      queued: 0, // Placeholder
+      running: 0, // Placeholder
+    }));
   }
 
   async environmentConcurrency(
