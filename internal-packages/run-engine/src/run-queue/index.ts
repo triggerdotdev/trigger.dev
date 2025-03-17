@@ -473,7 +473,8 @@ export class RunQueue {
         const message = await this.readMessage(orgId, messageId);
 
         if (!message) {
-          throw new MessageNotFoundError(messageId);
+          // Message not found, it may have already been acknowledged
+          return;
         }
 
         span.setAttributes({

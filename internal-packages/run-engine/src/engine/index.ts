@@ -1331,6 +1331,20 @@ export class RunEngine {
           }
 
           //it will automatically be requeued X times depending on the queue retry settings
+          await this.runAttemptSystem.tryNackAndRequeue({
+            run,
+            environment: {
+              id: latestSnapshot.environmentId,
+              type: latestSnapshot.environmentType,
+            },
+            orgId: run.runtimeEnvironment.organizationId,
+            error: {
+              type: "INTERNAL_ERROR",
+              code: "TASK_RUN_DEQUEUED_MAX_RETRIES",
+              message: `Trying to create an attempt failed multiple times, exceeding how many times we retry.`,
+            },
+            tx: prisma,
+          });
           break;
         }
         case "EXECUTING":
