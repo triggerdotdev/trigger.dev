@@ -1,7 +1,6 @@
 import { createContext, useContext, useState } from "react";
 import { useAppOrigin } from "~/hooks/useAppOrigin";
 import { useProject } from "~/hooks/useProject";
-import { InlineCode } from "./code/InlineCode";
 import {
   ClientTabs,
   ClientTabsContent,
@@ -9,7 +8,6 @@ import {
   ClientTabsTrigger,
 } from "./primitives/ClientTabs";
 import { ClipboardField } from "./primitives/ClipboardField";
-import { Paragraph } from "./primitives/Paragraph";
 
 type PackageManagerContextType = {
   activePackageManager: string;
@@ -84,7 +82,7 @@ export function InitCommandV3() {
       </ClientTabsList>
       <ClientTabsContent value={"npm"}>
         <ClipboardField
-          variant="primary/medium"
+          variant="secondary/medium"
           iconButton
           className="mb-4"
           value={`npx ${initCommand}`}
@@ -92,7 +90,7 @@ export function InitCommandV3() {
       </ClientTabsContent>
       <ClientTabsContent value={"pnpm"}>
         <ClipboardField
-          variant="primary/medium"
+          variant="secondary/medium"
           iconButton
           className="mb-4"
           value={`pnpm dlx ${initCommand}`}
@@ -100,7 +98,7 @@ export function InitCommandV3() {
       </ClientTabsContent>
       <ClientTabsContent value={"yarn"}>
         <ClipboardField
-          variant="primary/medium"
+          variant="secondary/medium"
           iconButton
           className="mb-4"
           value={`yarn dlx ${initCommand}`}
@@ -126,7 +124,7 @@ export function TriggerDevStepV3() {
       </ClientTabsList>
       <ClientTabsContent value={"npm"}>
         <ClipboardField
-          variant="primary/medium"
+          variant="secondary/medium"
           iconButton
           className="mb-4"
           value={`npx trigger.dev@${v3PackageTag} dev`}
@@ -134,7 +132,7 @@ export function TriggerDevStepV3() {
       </ClientTabsContent>
       <ClientTabsContent value={"pnpm"}>
         <ClipboardField
-          variant="primary/medium"
+          variant="secondary/medium"
           iconButton
           className="mb-4"
           value={`pnpm dlx trigger.dev@${v3PackageTag} dev`}
@@ -142,7 +140,7 @@ export function TriggerDevStepV3() {
       </ClientTabsContent>
       <ClientTabsContent value={"yarn"}>
         <ClipboardField
-          variant="primary/medium"
+          variant="secondary/medium"
           iconButton
           className="mb-4"
           value={`yarn dlx trigger.dev@${v3PackageTag} dev`}
@@ -168,7 +166,7 @@ export function TriggerLoginStepV3() {
       </ClientTabsList>
       <ClientTabsContent value={"npm"}>
         <ClipboardField
-          variant="primary/medium"
+          variant="secondary/medium"
           iconButton
           className="mb-4"
           value={`npx trigger.dev@${v3PackageTag} login`}
@@ -176,7 +174,7 @@ export function TriggerLoginStepV3() {
       </ClientTabsContent>
       <ClientTabsContent value={"pnpm"}>
         <ClipboardField
-          variant="primary/medium"
+          variant="secondary/medium"
           iconButton
           className="mb-4"
           value={`pnpm dlx trigger.dev@${v3PackageTag} login`}
@@ -184,7 +182,7 @@ export function TriggerLoginStepV3() {
       </ClientTabsContent>
       <ClientTabsContent value={"yarn"}>
         <ClipboardField
-          variant="primary/medium"
+          variant="secondary/medium"
           iconButton
           className="mb-4"
           value={`yarn dlx trigger.dev@${v3PackageTag} login`}
