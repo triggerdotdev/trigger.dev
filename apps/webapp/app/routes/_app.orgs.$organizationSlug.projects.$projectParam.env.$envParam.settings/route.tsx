@@ -6,7 +6,11 @@ import { type ActionFunction, json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { InlineCode } from "~/components/code/InlineCode";
-import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import {
+  MainHorizontallyCenteredContainer,
+  PageBody,
+  PageContainer,
+} from "~/components/layout/AppLayout";
 import { Button } from "~/components/primitives/Buttons";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { Fieldset } from "~/components/primitives/Fieldset";
@@ -144,49 +148,51 @@ export default function Page() {
       </NavBar>
 
       <PageBody>
-        <div className="flex flex-col gap-4">
+        <MainHorizontallyCenteredContainer>
           <div className="flex flex-col gap-4">
-            <Fieldset>
-              <InputGroup>
-                <Label>Project ref</Label>
-                <ClipboardField value={project.externalRef} variant={"secondary/small"} />
-                <Hint>
-                  This goes in your{" "}
-                  <InlineCode variant="extra-extra-small">trigger.config</InlineCode> file.
-                </Hint>
-              </InputGroup>
-            </Fieldset>
-
-            <Form method="post" {...renameForm.props} className="max-w-md">
-              <input type="hidden" name="action" value="rename" />
+            <div className="flex flex-col gap-4">
               <Fieldset>
                 <InputGroup>
-                  <Label htmlFor={projectName.id}>Rename your project</Label>
-                  <Input
-                    {...conform.input(projectName, { type: "text" })}
-                    defaultValue={project.name}
-                    placeholder="Your project name"
-                    icon={FolderIcon}
-                    autoFocus
-                  />
-                  <FormError id={projectName.errorId}>{projectName.error}</FormError>
+                  <Label>Project ref</Label>
+                  <ClipboardField value={project.externalRef} variant={"secondary/small"} />
+                  <Hint>
+                    This goes in your{" "}
+                    <InlineCode variant="extra-extra-small">trigger.config</InlineCode> file.
+                  </Hint>
                 </InputGroup>
-                <FormButtons
-                  confirmButton={
-                    <Button
-                      type="submit"
-                      variant={"primary/small"}
-                      disabled={isRenameLoading}
-                      LeadingIcon={isRenameLoading ? SpinnerWhite : undefined}
-                    >
-                      Rename project
-                    </Button>
-                  }
-                />
               </Fieldset>
-            </Form>
+
+              <Form method="post" {...renameForm.props} className="max-w-md">
+                <input type="hidden" name="action" value="rename" />
+                <Fieldset>
+                  <InputGroup>
+                    <Label htmlFor={projectName.id}>Rename your project</Label>
+                    <Input
+                      {...conform.input(projectName, { type: "text" })}
+                      defaultValue={project.name}
+                      placeholder="Your project name"
+                      icon={FolderIcon}
+                      autoFocus
+                    />
+                    <FormError id={projectName.errorId}>{projectName.error}</FormError>
+                  </InputGroup>
+                  <FormButtons
+                    confirmButton={
+                      <Button
+                        type="submit"
+                        variant={"primary/small"}
+                        disabled={isRenameLoading}
+                        LeadingIcon={isRenameLoading ? SpinnerWhite : undefined}
+                      >
+                        Rename project
+                      </Button>
+                    }
+                  />
+                </Fieldset>
+              </Form>
+            </div>
           </div>
-        </div>
+        </MainHorizontallyCenteredContainer>
       </PageBody>
     </PageContainer>
   );
