@@ -58,3 +58,4 @@ apps/**/public/build
 .yarn
 *.tsbuildinfo
 /packages/cli-v3/src/package.json
+.husky
