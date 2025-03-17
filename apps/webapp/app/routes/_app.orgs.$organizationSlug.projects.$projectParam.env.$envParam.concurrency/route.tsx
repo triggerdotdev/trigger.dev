@@ -134,7 +134,7 @@ export default function Page() {
                   Upgrade for more concurrency
                 </Paragraph>
                 <LinkButton
-                  to={v3BillingPath(organization)}
+                  to={v3BillingPath(organization, "Upgrade your plan for more concurrency")}
                   variant="secondary/small"
                   LeadingIcon={ArrowUpCircleIcon}
                 >

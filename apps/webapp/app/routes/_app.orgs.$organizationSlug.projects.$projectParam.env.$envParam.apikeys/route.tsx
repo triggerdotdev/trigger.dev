@@ -138,7 +138,10 @@ export default function Page() {
                   </TableCell>
                   <TableCell>
                     <LinkButton
-                      to={v3BillingPath(organization)}
+                      to={v3BillingPath(
+                        organization,
+                        "Upgrade to unlock a Staging environment for your projects."
+                      )}
                       variant="secondary/small"
                       LeadingIcon={ArrowUpCircleIcon}
                     >
