@@ -2,6 +2,7 @@ import {
   type RuntimeEnvironment,
   type Organization,
   type RuntimeEnvironmentType,
+  type TaskQueue,
 } from "@trigger.dev/database";
 import { QUEUED_STATUSES } from "~/components/runs/v3/TaskRunStatus";
 import { Prisma, sqlDatabaseSchema } from "~/db.server";
@@ -12,9 +13,9 @@ import { engine } from "~/v3/runEngine.server";
 import { concurrencyTracker } from "~/v3/services/taskRunConcurrencyTracker.server";
 import { BasePresenter } from "./basePresenter.server";
 
-export type Environment = Awaited<ReturnType<QueuePresenter["environmentConcurrency"]>>;
+export type Environment = Awaited<ReturnType<QueueListPresenter["environmentConcurrency"]>>;
 
-export class QueuePresenter extends BasePresenter {
+export class QueueListPresenter extends BasePresenter {
   public async call({
     userId,
     projectId,
@@ -31,8 +32,34 @@ export class QueuePresenter extends BasePresenter {
       throw new Error(`Environment not found: ${environmentSlug}`);
     }
 
+    // Get all queues for this environment
+    const queues = this._replica.taskQueue
+      .findMany({
+        where: {
+          runtimeEnvironmentId: environment.id,
+        },
+        select: {
+          name: true,
+          concurrencyLimit: true,
+          type: true,
+        },
+        orderBy: {
+          name: "asc",
+        },
+      })
+      .then((queues) => {
+        return queues.map((queue) => ({
+          name: queue.name.replace(/^task\//, ""),
+          concurrencyLimit: queue.concurrencyLimit ?? null,
+          type: queue.type,
+          queued: 0, // Placeholder
+          running: 0, // Placeholder
+        }));
+      });
+
     return {
       environment: this.environmentConcurrency(organizationId, projectId, userId, environment),
+      queues,
     };
   }
 

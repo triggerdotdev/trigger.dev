@@ -2,6 +2,7 @@ import {
   ArrowUpCircleIcon,
   BookOpenIcon,
   ChatBubbleLeftEllipsisIcon,
+  RectangleStackIcon,
 } from "@heroicons/react/20/solid";
 import { LockOpenIcon } from "@heroicons/react/24/solid";
 import { Await, type MetaFunction } from "@remix-run/react";
@@ -25,10 +26,13 @@ import {
 } from "~/components/primitives/Table";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { findProjectBySlug } from "~/models/project.server";
-import { QueuePresenter, type Environment } from "~/presenters/v3/ConcurrencyPresenter.server";
+import { QueueListPresenter, type Environment } from "~/presenters/v3/QueueListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { docsPath, EnvironmentParamSchema, v3BillingPath } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
+import { Badge } from "~/components/primitives/Badge";
+import { Header2 } from "~/components/primitives/Headers";
+import { TaskIcon } from "~/assets/icons/TaskIcon";
 
 export const meta: MetaFunction = () => {
   return [
@@ -51,7 +55,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 
   try {
-    const presenter = new QueuePresenter();
+    const presenter = new QueueListPresenter();
     const result = await presenter.call({
       userId,
       projectId: project.id,
@@ -70,7 +74,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 export default function Page() {
-  const { environment } = useTypedLoaderData<typeof loader>();
+  const { environment, queues } = useTypedLoaderData<typeof loader>();
 
   const organization = useOrganization();
   const plan = useCurrentPlan();
@@ -86,7 +90,7 @@ export default function Page() {
             LeadingIcon={BookOpenIcon}
             to={docsPath("/queue-concurrency")}
           >
-            Concurrency docs
+            Queues docs
           </LinkButton>
         </PageAccessories>
       </NavBar>
@@ -118,6 +122,76 @@ export default function Page() {
               </Suspense>
             </TableBody>
           </Table>
+
+          <Header2>Queues</Header2>
+          <Table containerClassName="mt-8 border-t">
+            <TableHeader>
+              <TableRow>
+                <TableHeaderCell>Name</TableHeaderCell>
+                <TableHeaderCell alignment="right">Queued</TableHeaderCell>
+                <TableHeaderCell alignment="right">Running</TableHeaderCell>
+                <TableHeaderCell alignment="right">Concurrency limit</TableHeaderCell>
+                <TableHeaderCell alignment="right">
+                  <span className="sr-only">Pause/resume</span>
+                </TableHeaderCell>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <Suspense
+                fallback={
+                  <TableRow>
+                    <TableCell colSpan={5}>
+                      <div className="grid place-items-center py-6">
+                        <Spinner />
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                }
+              >
+                <Await
+                  resolve={Promise.all([queues, environment])}
+                  errorElement={<p>Error loading queues</p>}
+                >
+                  {([queues, environment]) =>
+                    queues.length > 0 ? (
+                      queues.map((queue) => (
+                        <TableRow key={queue.name}>
+                          <TableCell>
+                            <span className="flex items-center gap-2">
+                              {queue.type === "VIRTUAL" ? (
+                                <TaskIcon className="size-4 text-blue-500" />
+                              ) : (
+                                <RectangleStackIcon className="size-4 text-purple-500" />
+                              )}
+                              <span>{queue.name}</span>
+                            </span>
+                          </TableCell>
+                          <TableCell alignment="right">{queue.queued}</TableCell>
+                          <TableCell alignment="right">{queue.running}</TableCell>
+                          <TableCell alignment="right">
+                            {queue.concurrencyLimit ?? (
+                              <span className="text-text-dimmed">
+                                Max ({environment.concurrencyLimit})
+                              </span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={5}>
+                          <div className="grid place-items-center py-6 text-text-dimmed">
+                            No queues found
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  }
+                </Await>
+              </Suspense>
+            </TableBody>
+          </Table>
+
           {plan ? (
             plan?.v3Subscription?.plan?.limits.concurrentRuns.canExceed ? (
               <div className="flex w-full items-center justify-end gap-2 pl-3 pr-2 pt-3">
