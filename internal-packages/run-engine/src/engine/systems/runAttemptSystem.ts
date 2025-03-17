@@ -36,15 +36,9 @@ import { WaitpointSystem } from "./waitpointSystem.js";
 import { MAX_TASK_RUN_ATTEMPTS } from "../consts.js";
 import { getMachinePreset } from "../machinePresets.js";
 import { parsePacket } from "@trigger.dev/core/v3/utils/ioSerialization";
-
+import { SystemResources } from "./systems.js";
 export type RunAttemptSystemOptions = {
-  prisma: PrismaClient;
-  logger: Logger;
-  tracer: Tracer;
-  runLock: RunLocker;
-  eventBus: EventBus;
-  runQueue: RunQueue;
-  worker: EngineWorker;
+  resources: SystemResources;
   executionSnapshotSystem: ExecutionSnapshotSystem;
   batchSystem: BatchSystem;
   waitpointSystem: WaitpointSystem;
@@ -53,25 +47,13 @@ export type RunAttemptSystemOptions = {
 };
 
 export class RunAttemptSystem {
-  private readonly prisma: PrismaClient;
-  private readonly logger: Logger;
-  private readonly tracer: Tracer;
-  private readonly runLock: RunLocker;
-  private readonly eventBus: EventBus;
-  private readonly runQueue: RunQueue;
-  private readonly worker: EngineWorker;
+  private readonly $: SystemResources;
   private readonly executionSnapshotSystem: ExecutionSnapshotSystem;
   private readonly batchSystem: BatchSystem;
   private readonly waitpointSystem: WaitpointSystem;
 
   constructor(private readonly options: RunAttemptSystemOptions) {
-    this.prisma = options.prisma;
-    this.logger = options.logger;
-    this.tracer = options.tracer;
-    this.runLock = options.runLock;
-    this.eventBus = options.eventBus;
-    this.runQueue = options.runQueue;
-    this.worker = options.worker;
+    this.$ = options.resources;
     this.executionSnapshotSystem = options.executionSnapshotSystem;
     this.batchSystem = options.batchSystem;
     this.waitpointSystem = options.waitpointSystem;
@@ -92,19 +74,19 @@ export class RunAttemptSystem {
     isWarmStart?: boolean;
     tx?: PrismaClientOrTransaction;
   }): Promise<StartRunAttemptResult> {
-    const prisma = tx ?? this.prisma;
+    const prisma = tx ?? this.$.prisma;
 
     return startSpan(
-      this.tracer,
+      this.$.tracer,
       "startRunAttempt",
       async (span) => {
-        return this.runLock.lock([runId], 5000, async () => {
+        return this.$.runLock.lock([runId], 5000, async () => {
           const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId);
 
           if (latestSnapshot.id !== snapshotId) {
             //if there is a big delay between the snapshot and the attempt, the snapshot might have changed
             //we just want to log because elsewhere it should have been put back into a state where it can be attempted
-            this.logger.warn(
+            this.$.logger.warn(
               "RunEngine.createRunAttempt(): snapshot has changed since the attempt was created, ignoring."
             );
             throw new ServiceValidationError("Snapshot changed", 409);
@@ -142,7 +124,7 @@ export class RunAttemptSystem {
             },
           });
 
-          this.logger.debug("Creating a task run attempt", { taskRun });
+          this.$.logger.debug("Creating a task run attempt", { taskRun });
 
           if (!taskRun) {
             throw new ServiceValidationError("Task run not found", 404);
@@ -195,7 +177,7 @@ export class RunAttemptSystem {
             throw new ServiceValidationError("Max attempts reached", 400);
           }
 
-          this.eventBus.emit("runAttemptStarted", {
+          this.$.eventBus.emit("runAttemptStarted", {
             time: new Date(),
             run: {
               id: taskRun.id,
@@ -243,13 +225,13 @@ export class RunAttemptSystem {
 
               if (taskRun.ttl) {
                 //don't expire the run, it's going to execute
-                await this.worker.ack(`expireRun:${taskRun.id}`);
+                await this.$.worker.ack(`expireRun:${taskRun.id}`);
               }
 
               return { run, snapshot: newSnapshot };
             },
             (error) => {
-              this.logger.error("RunEngine.createRunAttempt(): prisma.$transaction error", {
+              this.$.logger.error("RunEngine.createRunAttempt(): prisma.$transaction error", {
                 code: error.code,
                 meta: error.meta,
                 stack: error.stack,
@@ -264,7 +246,7 @@ export class RunAttemptSystem {
           );
 
           if (!result) {
-            this.logger.error("RunEngine.createRunAttempt(): failed to create task run attempt", {
+            this.$.logger.error("RunEngine.createRunAttempt(): failed to create task run attempt", {
               runId: taskRun.id,
               nextAttemptNumber,
             });
@@ -377,7 +359,7 @@ export class RunAttemptSystem {
     runnerId?: string;
   }): Promise<CompleteRunAttemptResult> {
     if (completion.metadata) {
-      this.eventBus.emit("runMetadataUpdated", {
+      this.$.eventBus.emit("runMetadataUpdated", {
         time: new Date(),
         run: {
           id: runId,
@@ -392,7 +374,7 @@ export class RunAttemptSystem {
           runId,
           snapshotId,
           completion,
-          tx: this.prisma,
+          tx: this.$.prisma,
           workerId,
           runnerId,
         });
@@ -402,7 +384,7 @@ export class RunAttemptSystem {
           runId,
           snapshotId,
           completion,
-          tx: this.prisma,
+          tx: this.$.prisma,
           workerId,
           runnerId,
         });
@@ -425,13 +407,13 @@ export class RunAttemptSystem {
     workerId?: string;
     runnerId?: string;
   }): Promise<CompleteRunAttemptResult> {
-    const prisma = tx ?? this.prisma;
+    const prisma = tx ?? this.$.prisma;
 
     return startSpan(
-      this.tracer,
+      this.$.tracer,
       "#completeRunAttemptSuccess",
       async (span) => {
-        return this.runLock.lock([runId], 5_000, async (signal) => {
+        return this.$.runLock.lock([runId], 5_000, async (signal) => {
           const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId);
 
           if (latestSnapshot.id !== snapshotId) {
@@ -487,10 +469,10 @@ export class RunAttemptSystem {
           });
           const newSnapshot = await getLatestExecutionSnapshot(prisma, runId);
 
-          await this.runQueue.acknowledgeMessage(run.project.organizationId, runId);
+          await this.$.runQueue.acknowledgeMessage(run.project.organizationId, runId);
 
           // We need to manually emit this as we created the final snapshot as part of the task run update
-          this.eventBus.emit("executionSnapshotCreated", {
+          this.$.eventBus.emit("executionSnapshotCreated", {
             time: newSnapshot.createdAt,
             run: {
               id: newSnapshot.runId,
@@ -512,7 +494,7 @@ export class RunAttemptSystem {
               : undefined,
           });
 
-          this.eventBus.emit("runSucceeded", {
+          this.$.eventBus.emit("runSucceeded", {
             time: completedAt,
             run: {
               id: runId,
@@ -557,13 +539,13 @@ export class RunAttemptSystem {
     forceRequeue?: boolean;
     tx: PrismaClientOrTransaction;
   }): Promise<CompleteRunAttemptResult> {
-    const prisma = this.prisma;
+    const prisma = this.$.prisma;
 
     return startSpan(
-      this.tracer,
+      this.$.tracer,
       "completeRunAttemptFailure",
       async (span) => {
-        return this.runLock.lock([runId], 5_000, async (signal) => {
+        return this.$.runLock.lock([runId], 5_000, async (signal) => {
           const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId);
 
           if (latestSnapshot.id !== snapshotId) {
@@ -575,7 +557,7 @@ export class RunAttemptSystem {
           //remove waitpoints blocking the run
           const deletedCount = await this.waitpointSystem.clearBlockingWaitpoints({ runId, tx });
           if (deletedCount > 0) {
-            this.logger.debug("Cleared blocking waitpoints", { runId, deletedCount });
+            this.$.logger.debug("Cleared blocking waitpoints", { runId, deletedCount });
           }
 
           const failedAt = new Date();
@@ -613,7 +595,7 @@ export class RunAttemptSystem {
               throw new ServiceValidationError("Run not found", 404);
             }
 
-            this.eventBus.emit("runAttemptFailed", {
+            this.$.eventBus.emit("runAttemptFailed", {
               time: failedAt,
               run: {
                 id: runId,
@@ -681,7 +663,7 @@ export class RunAttemptSystem {
                 latestSnapshot.attemptNumber === null ? 1 : latestSnapshot.attemptNumber + 1;
 
               if (retryResult.wasOOMError) {
-                this.eventBus.emit("runAttemptFailed", {
+                this.$.eventBus.emit("runAttemptFailed", {
                   time: failedAt,
                   run: {
                     id: runId,
@@ -696,7 +678,7 @@ export class RunAttemptSystem {
                 });
               }
 
-              this.eventBus.emit("runRetryScheduled", {
+              this.$.eventBus.emit("runRetryScheduled", {
                 time: failedAt,
                 run: {
                   id: run.id,
@@ -766,7 +748,7 @@ export class RunAttemptSystem {
               await sendNotificationToWorker({
                 runId,
                 snapshot: newSnapshot,
-                eventBus: this.eventBus,
+                eventBus: this.$.eventBus,
               });
 
               return {
@@ -792,10 +774,10 @@ export class RunAttemptSystem {
     error: TaskRunInternalError;
     tx?: PrismaClientOrTransaction;
   }): Promise<CompleteRunAttemptResult> {
-    const prisma = tx ?? this.prisma;
+    const prisma = tx ?? this.$.prisma;
 
     return startSpan(
-      this.tracer,
+      this.$.tracer,
       "systemFailure",
       async (span) => {
         const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId);
@@ -858,11 +840,11 @@ export class RunAttemptSystem {
     runnerId?: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<{ wasRequeued: boolean } & ExecutionResult> {
-    const prisma = tx ?? this.prisma;
+    const prisma = tx ?? this.$.prisma;
 
-    return await this.runLock.lock([run.id], 5000, async (signal) => {
+    return await this.$.runLock.lock([run.id], 5000, async (signal) => {
       //we nack the message, this allows another work to pick up the run
-      const gotRequeued = await this.runQueue.nackMessage({
+      const gotRequeued = await this.$.runQueue.nackMessage({
         orgId,
         messageId: run.id,
         retryAt: timestamp,
@@ -930,11 +912,11 @@ export class RunAttemptSystem {
     finalizeRun?: boolean;
     tx?: PrismaClientOrTransaction;
   }): Promise<ExecutionResult> {
-    const prisma = tx ?? this.prisma;
+    const prisma = tx ?? this.$.prisma;
     reason = reason ?? "Cancelled by user";
 
-    return startSpan(this.tracer, "cancelRun", async (span) => {
-      return this.runLock.lock([runId], 5_000, async (signal) => {
+    return startSpan(this.$.tracer, "cancelRun", async (span) => {
+      return this.$.runLock.lock([runId], 5_000, async (signal) => {
         const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId);
 
         //already finished, do nothing
@@ -947,7 +929,7 @@ export class RunAttemptSystem {
           await sendNotificationToWorker({
             runId,
             snapshot: latestSnapshot,
-            eventBus: this.eventBus,
+            eventBus: this.$.eventBus,
           });
           return executionResultFromSnapshot(latestSnapshot);
         }
@@ -995,7 +977,7 @@ export class RunAttemptSystem {
         });
 
         //remove it from the queue and release concurrency
-        await this.runQueue.acknowledgeMessage(run.runtimeEnvironment.organizationId, runId);
+        await this.$.runQueue.acknowledgeMessage(run.runtimeEnvironment.organizationId, runId);
 
         //if executing, we need to message the worker to cancel the run and put it into `PENDING_CANCEL` status
         if (isExecuting(latestSnapshot.executionStatus)) {
@@ -1015,7 +997,7 @@ export class RunAttemptSystem {
           await sendNotificationToWorker({
             runId,
             snapshot: newSnapshot,
-            eventBus: this.eventBus,
+            eventBus: this.$.eventBus,
           });
           return executionResultFromSnapshot(newSnapshot);
         }
@@ -1043,7 +1025,7 @@ export class RunAttemptSystem {
           output: { value: JSON.stringify(error), isError: true },
         });
 
-        this.eventBus.emit("runCancelled", {
+        this.$.eventBus.emit("runCancelled", {
           time: new Date(),
           run: {
             id: run.id,
@@ -1061,7 +1043,7 @@ export class RunAttemptSystem {
         //which will recursively cancel all children if they need to be
         if (run.childRuns.length > 0) {
           for (const childRun of run.childRuns) {
-            await this.worker.enqueue({
+            await this.$.worker.enqueue({
               id: `cancelRun:${childRun.id}`,
               job: "cancelRun",
               payload: { runId: childRun.id, completedAt: run.completedAt ?? new Date(), reason },
@@ -1089,9 +1071,9 @@ export class RunAttemptSystem {
     workerId?: string;
     runnerId?: string;
   }): Promise<CompleteRunAttemptResult> {
-    const prisma = this.prisma;
+    const prisma = this.$.prisma;
 
-    return startSpan(this.tracer, "permanentlyFailRun", async (span) => {
+    return startSpan(this.$.tracer, "permanentlyFailRun", async (span) => {
       const status = runStatusFromError(error);
 
       //run permanently failed
@@ -1146,14 +1128,14 @@ export class RunAttemptSystem {
         throw new ServiceValidationError("No associated waitpoint found", 400);
       }
 
-      await this.runQueue.acknowledgeMessage(run.runtimeEnvironment.organizationId, runId);
+      await this.$.runQueue.acknowledgeMessage(run.runtimeEnvironment.organizationId, runId);
 
       await this.waitpointSystem.completeWaitpoint({
         id: run.associatedWaitpoint.id,
         output: { value: JSON.stringify(error), isError: true },
       });
 
-      this.eventBus.emit("runFailed", {
+      this.$.eventBus.emit("runFailed", {
         time: failedAt,
         run: {
           id: runId,
@@ -1185,11 +1167,11 @@ export class RunAttemptSystem {
     }
 
     //cancel the heartbeats
-    await this.worker.ack(`heartbeatSnapshot.${id}`);
+    await this.$.worker.ack(`heartbeatSnapshot.${id}`);
   }
 
   async #getAuthenticatedEnvironmentFromRun(runId: string, tx?: PrismaClientOrTransaction) {
-    const prisma = tx ?? this.prisma;
+    const prisma = tx ?? this.$.prisma;
     const taskRun = await prisma.taskRun.findUnique({
       where: {
         id: runId,

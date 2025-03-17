@@ -9,58 +9,46 @@ import {
   DequeuedMessage,
   ExecutionResult,
   MachineResources,
-  parsePacket,
   RunExecutionData,
   StartRunAttemptResult,
   TaskRunError,
-  TaskRunExecution,
   TaskRunExecutionResult,
-  timeoutError,
 } from "@trigger.dev/core/v3";
 import {
   BatchId,
-  CheckpointId,
   parseNaturalLanguageDuration,
   QueueId,
   RunId,
   WaitpointId,
 } from "@trigger.dev/core/v3/isomorphic";
 import {
-  $transaction,
   Prisma,
   PrismaClient,
   PrismaClientOrTransaction,
   TaskRun,
   TaskRunExecutionSnapshot,
-  TaskRunExecutionStatus,
   Waitpoint,
 } from "@trigger.dev/database";
 import { assertNever } from "assert-never";
-import { nanoid } from "nanoid";
 import { EventEmitter } from "node:events";
 import { FairQueueSelectionStrategy } from "../run-queue/fairQueueSelectionStrategy.js";
 import { RunQueue } from "../run-queue/index.js";
 import { RunQueueFullKeyProducer } from "../run-queue/keyProducer.js";
 import { MinimalAuthenticatedEnvironment } from "../shared/index.js";
-import { MAX_TASK_RUN_ATTEMPTS } from "./consts.js";
 import { EventBus, EventBusEvents, sendNotificationToWorker } from "./eventBus.js";
 import { RunLocker } from "./locking.js";
-import { getMachinePreset } from "./machinePresets.js";
 import { ReleaseConcurrencyTokenBucketQueue } from "./releaseConcurrencyTokenBucketQueue.js";
-import {
-  canReleaseConcurrency,
-  isCheckpointable,
-  isExecuting,
-  isPendingExecuting,
-} from "./statuses.js";
+import { canReleaseConcurrency, isExecuting } from "./statuses.js";
 import { BatchSystem } from "./systems/batchSystem.js";
+import { CheckpointSystem } from "./systems/checkpointSystem.js";
 import { DequeueSystem } from "./systems/dequeueSystem.js";
+import { EnqueueSystem } from "./systems/enqueueSystem.js";
 import {
-  executionResultFromSnapshot,
   ExecutionSnapshotSystem,
   getLatestExecutionSnapshot,
 } from "./systems/executionSnapshotSystem.js";
 import { RunAttemptSystem } from "./systems/runAttemptSystem.js";
+import { SystemResources } from "./systems/systems.js";
 import { WaitpointSystem } from "./systems/waitpointSystem.js";
 import { EngineWorker, HeartbeatTimeouts, RunEngineOptions, TriggerParams } from "./types.js";
 import { workerCatalog } from "./workerCatalog.js";
@@ -85,6 +73,8 @@ export class RunEngine {
   dequeueSystem: DequeueSystem;
   waitpointSystem: WaitpointSystem;
   batchSystem: BatchSystem;
+  enqueueSystem: EnqueueSystem;
+  checkpointSystem: CheckpointSystem;
 
   constructor(private readonly options: RunEngineOptions) {
     this.prisma = options.prisma;
@@ -164,7 +154,7 @@ export class RunEngine {
           await this.batchSystem.performCompleteBatch({ batchId: payload.batchId });
         },
         continueRunIfUnblocked: async ({ payload }) => {
-          await this.#continueRunIfUnblocked({
+          await this.waitpointSystem.continueRunIfUnblocked({
             runId: payload.runId,
           });
         },
@@ -232,38 +222,44 @@ export class RunEngine {
       tracer: this.tracer,
     });
 
-    this.executionSnapshotSystem = new ExecutionSnapshotSystem({
-      worker: this.worker,
-      eventBus: this.eventBus,
-      heartbeatTimeouts: this.heartbeatTimeouts,
-      prisma: this.prisma,
-      logger: this.logger,
-      tracer: this.tracer,
-    });
-
-    this.waitpointSystem = new WaitpointSystem({
+    const resources: SystemResources = {
       prisma: this.prisma,
       worker: this.worker,
       eventBus: this.eventBus,
-      logger: this.logger,
-      tracer: this.tracer,
-    });
-
-    this.batchSystem = new BatchSystem({
-      prisma: this.prisma,
-      logger: this.logger,
-      tracer: this.tracer,
-      worker: this.worker,
-    });
-
-    this.runAttemptSystem = new RunAttemptSystem({
-      prisma: this.prisma,
       logger: this.logger,
       tracer: this.tracer,
       runLock: this.runLock,
-      eventBus: this.eventBus,
       runQueue: this.runQueue,
-      worker: this.worker,
+      releaseConcurrencyQueue: this.releaseConcurrencyQueue,
+    };
+
+    this.executionSnapshotSystem = new ExecutionSnapshotSystem({
+      resources,
+      heartbeatTimeouts: this.heartbeatTimeouts,
+    });
+
+    this.checkpointSystem = new CheckpointSystem({
+      resources,
+      executionSnapshotSystem: this.executionSnapshotSystem,
+    });
+
+    this.enqueueSystem = new EnqueueSystem({
+      resources,
+      executionSnapshotSystem: this.executionSnapshotSystem,
+    });
+
+    this.waitpointSystem = new WaitpointSystem({
+      resources,
+      executionSnapshotSystem: this.executionSnapshotSystem,
+      enqueueSystem: this.enqueueSystem,
+    });
+
+    this.batchSystem = new BatchSystem({
+      resources,
+    });
+
+    this.runAttemptSystem = new RunAttemptSystem({
+      resources,
       executionSnapshotSystem: this.executionSnapshotSystem,
       batchSystem: this.batchSystem,
       waitpointSystem: this.waitpointSystem,
@@ -271,14 +267,10 @@ export class RunEngine {
     });
 
     this.dequeueSystem = new DequeueSystem({
-      prisma: this.prisma,
-      queue: this.runQueue,
-      runLock: this.runLock,
-      logger: this.logger,
-      machines: this.options.machines,
-      tracer: this.tracer,
+      resources,
       executionSnapshotSystem: this.executionSnapshotSystem,
       runAttemptSystem: this.runAttemptSystem,
+      machines: this.options.machines,
     });
   }
 
@@ -460,19 +452,21 @@ export class RunEngine {
 
         await this.runLock.lock([taskRun.id], 5000, async (signal) => {
           //create associated waitpoint (this completes when the run completes)
-          const associatedWaitpoint = await this.#createRunAssociatedWaitpoint(prisma, {
-            projectId: environment.project.id,
-            environmentId: environment.id,
-            completedByTaskRunId: taskRun.id,
-          });
+          const associatedWaitpoint = await this.waitpointSystem.createRunAssociatedWaitpoint(
+            prisma,
+            {
+              projectId: environment.project.id,
+              environmentId: environment.id,
+              completedByTaskRunId: taskRun.id,
+            }
+          );
 
           //triggerAndWait or batchTriggerAndWait
           if (resumeParentOnCompletion && parentTaskRunId) {
             //this will block the parent run from continuing until this waitpoint is completed (and removed)
-            await this.blockRunWithWaitpoint({
+            await this.waitpointSystem.blockRunWithWaitpoint({
               runId: parentTaskRunId,
               waitpoints: associatedWaitpoint.id,
-              environmentId: associatedWaitpoint.environmentId,
               projectId: associatedWaitpoint.projectId,
               organizationId: environment.organization.id,
               batch,
@@ -555,7 +549,7 @@ export class RunEngine {
               availableAt: taskRun.delayUntil,
             });
           } else {
-            await this.#enqueueRun({
+            await this.enqueueSystem.enqueueRun({
               run: taskRun,
               env: environment,
               timestamp: Date.now() - taskRun.priorityMs,
@@ -799,7 +793,7 @@ export class RunEngine {
     return startSpan(
       this.tracer,
       "rescheduleRun",
-      async (span) => {
+      async () => {
         return await this.runLock.lock([runId], 5_000, async () => {
           const snapshot = await getLatestExecutionSnapshot(prisma, runId);
 
@@ -879,70 +873,14 @@ export class RunEngine {
     idempotencyKeyExpiresAt?: Date;
     tx?: PrismaClientOrTransaction;
   }) {
-    const prisma = tx ?? this.prisma;
-
-    const existingWaitpoint = idempotencyKey
-      ? await prisma.waitpoint.findUnique({
-          where: {
-            environmentId_idempotencyKey: {
-              environmentId,
-              idempotencyKey,
-            },
-          },
-        })
-      : undefined;
-
-    if (existingWaitpoint) {
-      if (
-        existingWaitpoint.idempotencyKeyExpiresAt &&
-        new Date() > existingWaitpoint.idempotencyKeyExpiresAt
-      ) {
-        //the idempotency key has expired
-        //remove the waitpoint idempotencyKey
-        await prisma.waitpoint.update({
-          where: {
-            id: existingWaitpoint.id,
-          },
-          data: {
-            idempotencyKey: nanoid(24),
-            inactiveIdempotencyKey: existingWaitpoint.idempotencyKey,
-          },
-        });
-
-        //let it fall through to create a new waitpoint
-      } else {
-        return { waitpoint: existingWaitpoint, isCached: true };
-      }
-    }
-
-    const waitpoint = await prisma.waitpoint.upsert({
-      where: {
-        environmentId_idempotencyKey: {
-          environmentId,
-          idempotencyKey: idempotencyKey ?? nanoid(24),
-        },
-      },
-      create: {
-        ...WaitpointId.generate(),
-        type: "DATETIME",
-        idempotencyKey: idempotencyKey ?? nanoid(24),
-        idempotencyKeyExpiresAt,
-        userProvidedIdempotencyKey: !!idempotencyKey,
-        environmentId,
-        projectId,
-        completedAfter,
-      },
-      update: {},
+    return this.waitpointSystem.createDateTimeWaitpoint({
+      projectId,
+      environmentId,
+      completedAfter,
+      idempotencyKey,
+      idempotencyKeyExpiresAt,
+      tx,
     });
-
-    await this.worker.enqueue({
-      id: `finishWaitpoint.${waitpoint.id}`,
-      job: "finishWaitpoint",
-      payload: { waitpointId: waitpoint.id },
-      availableAt: completedAfter,
-    });
-
-    return { waitpoint, isCached: false };
   }
 
   /** This creates a MANUAL waitpoint, that can be explicitly completed (or failed).
@@ -961,74 +899,13 @@ export class RunEngine {
     idempotencyKeyExpiresAt?: Date;
     timeout?: Date;
   }): Promise<{ waitpoint: Waitpoint; isCached: boolean }> {
-    const existingWaitpoint = idempotencyKey
-      ? await this.prisma.waitpoint.findUnique({
-          where: {
-            environmentId_idempotencyKey: {
-              environmentId,
-              idempotencyKey,
-            },
-          },
-        })
-      : undefined;
-
-    if (existingWaitpoint) {
-      if (
-        existingWaitpoint.idempotencyKeyExpiresAt &&
-        new Date() > existingWaitpoint.idempotencyKeyExpiresAt
-      ) {
-        //the idempotency key has expired
-        //remove the waitpoint idempotencyKey
-        await this.prisma.waitpoint.update({
-          where: {
-            id: existingWaitpoint.id,
-          },
-          data: {
-            idempotencyKey: nanoid(24),
-            inactiveIdempotencyKey: existingWaitpoint.idempotencyKey,
-          },
-        });
-
-        //let it fall through to create a new waitpoint
-      } else {
-        return { waitpoint: existingWaitpoint, isCached: true };
-      }
-    }
-
-    const waitpoint = await this.prisma.waitpoint.upsert({
-      where: {
-        environmentId_idempotencyKey: {
-          environmentId,
-          idempotencyKey: idempotencyKey ?? nanoid(24),
-        },
-      },
-      create: {
-        ...WaitpointId.generate(),
-        type: "MANUAL",
-        idempotencyKey: idempotencyKey ?? nanoid(24),
-        idempotencyKeyExpiresAt,
-        userProvidedIdempotencyKey: !!idempotencyKey,
-        environmentId,
-        projectId,
-        completedAfter: timeout,
-      },
-      update: {},
+    return this.waitpointSystem.createManualWaitpoint({
+      environmentId,
+      projectId,
+      idempotencyKey,
+      idempotencyKeyExpiresAt,
+      timeout,
     });
-
-    //schedule the timeout
-    if (timeout) {
-      await this.worker.enqueue({
-        id: `finishWaitpoint.${waitpoint.id}`,
-        job: "finishWaitpoint",
-        payload: {
-          waitpointId: waitpoint.id,
-          error: JSON.stringify(timeoutError(timeout)),
-        },
-        availableAt: timeout,
-      });
-    }
-
-    return { waitpoint, isCached: false };
   }
 
   /** This block a run with a BATCH waitpoint.
@@ -1067,7 +944,6 @@ export class RunEngine {
       await this.blockRunWithWaitpoint({
         runId,
         waitpoints: waitpoint.id,
-        environmentId,
         projectId,
         organizationId,
         batch: { id: batchId },
@@ -1173,11 +1049,9 @@ export class RunEngine {
     batch,
     workerId,
     runnerId,
-    tx,
   }: {
     runId: string;
     waitpoints: string | string[];
-    environmentId: string;
     projectId: string;
     organizationId: string;
     releaseConcurrency?: boolean;
@@ -1188,145 +1062,18 @@ export class RunEngine {
     runnerId?: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<TaskRunExecutionSnapshot> {
-    const prisma = tx ?? this.prisma;
-
-    let $waitpoints = typeof waitpoints === "string" ? [waitpoints] : waitpoints;
-
-    return await this.runLock.lock([runId], 5000, async () => {
-      let snapshot: TaskRunExecutionSnapshot = await getLatestExecutionSnapshot(prisma, runId);
-
-      //block the run with the waitpoints, returning how many waitpoints are pending
-      const insert = await prisma.$queryRaw<{ pending_count: BigInt }[]>`
-        WITH inserted AS (
-          INSERT INTO "TaskRunWaitpoint" ("id", "taskRunId", "waitpointId", "projectId", "createdAt", "updatedAt", "spanIdToComplete", "batchId", "batchIndex")
-          SELECT
-            gen_random_uuid(),
-            ${runId},
-            w.id,
-            ${projectId},
-            NOW(),
-            NOW(),
-            ${spanIdToComplete ?? null},
-            ${batch?.id ?? null},
-            ${batch?.index ?? null}
-          FROM "Waitpoint" w
-          WHERE w.id IN (${Prisma.join($waitpoints)})
-          ON CONFLICT DO NOTHING
-          RETURNING "waitpointId"
-        )
-        SELECT COUNT(*) as pending_count
-        FROM inserted i
-        JOIN "Waitpoint" w ON w.id = i."waitpointId"
-        WHERE w.status = 'PENDING';`;
-
-      const pendingCount = Number(insert.at(0)?.pending_count ?? 0);
-
-      let newStatus: TaskRunExecutionStatus = "SUSPENDED";
-      if (
-        snapshot.executionStatus === "EXECUTING" ||
-        snapshot.executionStatus === "EXECUTING_WITH_WAITPOINTS"
-      ) {
-        newStatus = "EXECUTING_WITH_WAITPOINTS";
-      }
-
-      //if the state has changed, create a new snapshot
-      if (newStatus !== snapshot.executionStatus) {
-        snapshot = await this.executionSnapshotSystem.createExecutionSnapshot(prisma, {
-          run: {
-            id: snapshot.runId,
-            status: snapshot.runStatus,
-            attemptNumber: snapshot.attemptNumber,
-          },
-          snapshot: {
-            executionStatus: newStatus,
-            description: "Run was blocked by a waitpoint.",
-          },
-          environmentId: snapshot.environmentId,
-          environmentType: snapshot.environmentType,
-          batchId: batch?.id ?? snapshot.batchId ?? undefined,
-          workerId,
-          runnerId,
-        });
-
-        // Let the worker know immediately, so it can suspend the run
-        await sendNotificationToWorker({ runId, snapshot, eventBus: this.eventBus });
-      }
-
-      if (timeout) {
-        for (const waitpoint of $waitpoints) {
-          await this.worker.enqueue({
-            id: `finishWaitpoint.${waitpoint}`,
-            job: "finishWaitpoint",
-            payload: {
-              waitpointId: waitpoint,
-              error: JSON.stringify(timeoutError(timeout)),
-            },
-            availableAt: timeout,
-          });
-        }
-      }
-
-      //no pending waitpoint, schedule unblocking the run
-      //debounce if we're rapidly adding waitpoints
-      if (pendingCount === 0) {
-        await this.worker.enqueue({
-          //this will debounce the call
-          id: `continueRunIfUnblocked:${runId}`,
-          job: "continueRunIfUnblocked",
-          payload: { runId: runId },
-          //in the near future
-          availableAt: new Date(Date.now() + 50),
-        });
-      } else {
-        if (releaseConcurrency) {
-          //release concurrency
-          await this.#attemptToReleaseConcurrency(organizationId, snapshot);
-        }
-      }
-
-      return snapshot;
+    return this.waitpointSystem.blockRunWithWaitpoint({
+      runId,
+      waitpoints,
+      projectId,
+      organizationId,
+      releaseConcurrency,
+      timeout,
+      spanIdToComplete,
+      batch,
+      workerId,
+      runnerId,
     });
-  }
-
-  async #attemptToReleaseConcurrency(orgId: string, snapshot: TaskRunExecutionSnapshot) {
-    // Go ahead and release concurrency immediately if the run is in a development environment
-    if (snapshot.environmentType === "DEVELOPMENT") {
-      return await this.runQueue.releaseConcurrency(orgId, snapshot.runId);
-    }
-
-    const run = await this.prisma.taskRun.findFirst({
-      where: {
-        id: snapshot.runId,
-      },
-      select: {
-        runtimeEnvironment: {
-          select: {
-            id: true,
-            projectId: true,
-            organizationId: true,
-          },
-        },
-      },
-    });
-
-    if (!run) {
-      this.logger.error("Run not found for attemptToReleaseConcurrency", {
-        runId: snapshot.runId,
-      });
-
-      return;
-    }
-
-    await this.releaseConcurrencyQueue.attemptToRelease(
-      {
-        orgId: run.runtimeEnvironment.organizationId,
-        projectId: run.runtimeEnvironment.projectId,
-        envId: run.runtimeEnvironment.id,
-      },
-      snapshot.runId
-    );
-
-    return;
   }
 
   async #executeReleasedConcurrencyFromQueue(
@@ -1371,89 +1118,7 @@ export class RunEngine {
       isError: boolean;
     };
   }): Promise<Waitpoint> {
-    const result = await $transaction(
-      this.prisma,
-      async (tx) => {
-        // 1. Find the TaskRuns blocked by this waitpoint
-        const affectedTaskRuns = await tx.taskRunWaitpoint.findMany({
-          where: { waitpointId: id },
-          select: { taskRunId: true, spanIdToComplete: true, createdAt: true },
-        });
-
-        if (affectedTaskRuns.length === 0) {
-          this.logger.warn(`completeWaitpoint: No TaskRunWaitpoints found for waitpoint`, {
-            waitpointId: id,
-          });
-        }
-
-        // 2. Update the waitpoint to completed (only if it's pending)
-        let waitpoint: Waitpoint | null = null;
-        try {
-          waitpoint = await tx.waitpoint.update({
-            where: { id, status: "PENDING" },
-            data: {
-              status: "COMPLETED",
-              completedAt: new Date(),
-              output: output?.value,
-              outputType: output?.type,
-              outputIsError: output?.isError,
-            },
-          });
-        } catch (error) {
-          if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
-            waitpoint = await tx.waitpoint.findFirst({
-              where: { id },
-            });
-          } else {
-            this.logger.log("completeWaitpoint: error updating waitpoint:", { error });
-            throw error;
-          }
-        }
-
-        return { waitpoint, affectedTaskRuns };
-      },
-      (error) => {
-        this.logger.error(`completeWaitpoint: Error completing waitpoint ${id}, retrying`, {
-          error,
-        });
-        throw error;
-      }
-    );
-
-    if (!result) {
-      throw new Error(`Waitpoint couldn't be updated`);
-    }
-
-    if (!result.waitpoint) {
-      throw new Error(`Waitpoint ${id} not found`);
-    }
-
-    //schedule trying to continue the runs
-    for (const run of result.affectedTaskRuns) {
-      await this.worker.enqueue({
-        //this will debounce the call
-        id: `continueRunIfUnblocked:${run.taskRunId}`,
-        job: "continueRunIfUnblocked",
-        payload: { runId: run.taskRunId },
-        //50ms in the future
-        availableAt: new Date(Date.now() + 50),
-      });
-
-      // emit an event to complete associated cached runs
-      if (run.spanIdToComplete) {
-        this.eventBus.emit("cachedRunCompleted", {
-          time: new Date(),
-          span: {
-            id: run.spanIdToComplete,
-            createdAt: run.createdAt,
-          },
-          blockedRunId: run.taskRunId,
-          hasError: output?.isError ?? false,
-        });
-      }
-    }
-
-    return result.waitpoint;
+    return this.waitpointSystem.completeWaitpoint({ id, output });
   }
 
   /**
@@ -1475,130 +1140,13 @@ export class RunEngine {
     runnerId?: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<CreateCheckpointResult> {
-    const prisma = tx ?? this.prisma;
-
-    return await this.runLock.lock([runId], 5_000, async () => {
-      const snapshot = await getLatestExecutionSnapshot(prisma, runId);
-      if (snapshot.id !== snapshotId) {
-        this.eventBus.emit("incomingCheckpointDiscarded", {
-          time: new Date(),
-          run: {
-            id: runId,
-          },
-          checkpoint: {
-            discardReason: "Not the latest snapshot",
-            metadata: checkpoint,
-          },
-          snapshot: {
-            id: snapshot.id,
-            executionStatus: snapshot.executionStatus,
-          },
-        });
-
-        return {
-          ok: false as const,
-          error: "Not the latest snapshot",
-        };
-      }
-
-      if (!isCheckpointable(snapshot.executionStatus)) {
-        this.logger.error("Tried to createCheckpoint on a run in an invalid state", {
-          snapshot,
-        });
-
-        this.eventBus.emit("incomingCheckpointDiscarded", {
-          time: new Date(),
-          run: {
-            id: runId,
-          },
-          checkpoint: {
-            discardReason: `Status ${snapshot.executionStatus} is not checkpointable`,
-            metadata: checkpoint,
-          },
-          snapshot: {
-            id: snapshot.id,
-            executionStatus: snapshot.executionStatus,
-          },
-        });
-
-        return {
-          ok: false as const,
-          error: `Status ${snapshot.executionStatus} is not checkpointable`,
-        };
-      }
-
-      // Get the run and update the status
-      const run = await this.prisma.taskRun.update({
-        where: {
-          id: runId,
-        },
-        data: {
-          status: "WAITING_TO_RESUME",
-        },
-        select: {
-          id: true,
-          status: true,
-          attemptNumber: true,
-          runtimeEnvironment: {
-            select: {
-              id: true,
-              projectId: true,
-              organizationId: true,
-            },
-          },
-        },
-      });
-
-      if (!run) {
-        this.logger.error("Run not found for createCheckpoint", {
-          snapshot,
-        });
-
-        throw new ServiceValidationError("Run not found", 404);
-      }
-
-      // Create the checkpoint
-      const taskRunCheckpoint = await prisma.taskRunCheckpoint.create({
-        data: {
-          ...CheckpointId.generate(),
-          type: checkpoint.type,
-          location: checkpoint.location,
-          imageRef: checkpoint.imageRef,
-          reason: checkpoint.reason,
-          runtimeEnvironmentId: run.runtimeEnvironment.id,
-          projectId: run.runtimeEnvironment.projectId,
-        },
-      });
-
-      //create a new execution snapshot, with the checkpoint
-      const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(prisma, {
-        run,
-        snapshot: {
-          executionStatus: "SUSPENDED",
-          description: "Run was suspended after creating a checkpoint.",
-        },
-        environmentId: snapshot.environmentId,
-        environmentType: snapshot.environmentType,
-        checkpointId: taskRunCheckpoint.id,
-        workerId,
-        runnerId,
-      });
-
-      // Refill the token bucket for the release concurrency queue
-      await this.releaseConcurrencyQueue.refillTokens(
-        {
-          orgId: run.runtimeEnvironment.organizationId,
-          projectId: run.runtimeEnvironment.projectId,
-          envId: run.runtimeEnvironment.id,
-        },
-        1
-      );
-
-      return {
-        ok: true as const,
-        ...executionResultFromSnapshot(newSnapshot),
-        checkpoint: taskRunCheckpoint,
-      } satisfies CreateCheckpointResult;
+    return this.checkpointSystem.createCheckpoint({
+      runId,
+      snapshotId,
+      checkpoint,
+      workerId,
+      runnerId,
+      tx,
     });
   }
 
@@ -1618,61 +1166,12 @@ export class RunEngine {
     runnerId?: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<ExecutionResult> {
-    const prisma = tx ?? this.prisma;
-
-    return await this.runLock.lock([runId], 5_000, async () => {
-      const snapshot = await getLatestExecutionSnapshot(prisma, runId);
-
-      if (snapshot.id !== snapshotId) {
-        throw new ServiceValidationError("Snapshot ID doesn't match the latest snapshot", 400);
-      }
-
-      if (!isPendingExecuting(snapshot.executionStatus)) {
-        throw new ServiceValidationError("Snapshot is not in a valid state to continue", 400);
-      }
-
-      // Get the run and update the status
-      const run = await this.prisma.taskRun.update({
-        where: {
-          id: runId,
-        },
-        data: {
-          status: "EXECUTING",
-        },
-        select: {
-          id: true,
-          status: true,
-          attemptNumber: true,
-        },
-      });
-
-      if (!run) {
-        this.logger.error("Run not found for createCheckpoint", {
-          snapshot,
-        });
-
-        throw new ServiceValidationError("Run not found", 404);
-      }
-
-      const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(prisma, {
-        run,
-        snapshot: {
-          executionStatus: "EXECUTING",
-          description: "Run was continued after being suspended",
-        },
-        environmentId: snapshot.environmentId,
-        environmentType: snapshot.environmentType,
-        completedWaitpoints: snapshot.completedWaitpoints,
-        workerId,
-        runnerId,
-      });
-
-      // Let worker know about the new snapshot so it can continue the run
-      await sendNotificationToWorker({ runId, snapshot: newSnapshot, eventBus: this.eventBus });
-
-      return {
-        ...executionResultFromSnapshot(newSnapshot),
-      } satisfies ExecutionResult;
+    return this.checkpointSystem.continueRunExecution({
+      runId,
+      snapshotId,
+      workerId,
+      runnerId,
+      tx,
     });
   }
 
@@ -1866,205 +1365,6 @@ export class RunEngine {
     });
   }
 
-  //MARK: RunQueue
-  /** The run can be added to the queue. When it's pulled from the queue it will be executed. */
-  async #enqueueRun({
-    run,
-    env,
-    timestamp,
-    tx,
-    snapshot,
-    batchId,
-    checkpointId,
-    completedWaitpoints,
-    workerId,
-    runnerId,
-  }: {
-    run: TaskRun;
-    env: MinimalAuthenticatedEnvironment;
-    timestamp: number;
-    tx?: PrismaClientOrTransaction;
-    snapshot?: {
-      status?: Extract<TaskRunExecutionStatus, "QUEUED" | "QUEUED_EXECUTING">;
-      description?: string;
-    };
-    batchId?: string;
-    checkpointId?: string;
-    completedWaitpoints?: {
-      id: string;
-      index?: number;
-    }[];
-    workerId?: string;
-    runnerId?: string;
-  }): Promise<void> {
-    const prisma = tx ?? this.prisma;
-
-    await this.runLock.lock([run.id], 5000, async () => {
-      const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(prisma, {
-        run: run,
-        snapshot: {
-          executionStatus: snapshot?.status ?? "QUEUED",
-          description: snapshot?.description ?? "Run was QUEUED",
-        },
-        batchId,
-        environmentId: env.id,
-        environmentType: env.type,
-        checkpointId,
-        completedWaitpoints,
-        workerId,
-        runnerId,
-      });
-
-      const masterQueues = [run.masterQueue];
-      if (run.secondaryMasterQueue) {
-        masterQueues.push(run.secondaryMasterQueue);
-      }
-
-      await this.runQueue.enqueueMessage({
-        env,
-        masterQueues,
-        message: {
-          runId: run.id,
-          taskIdentifier: run.taskIdentifier,
-          orgId: env.organization.id,
-          projectId: env.project.id,
-          environmentId: env.id,
-          environmentType: env.type,
-          queue: run.queue,
-          concurrencyKey: run.concurrencyKey ?? undefined,
-          timestamp,
-          attempt: 0,
-        },
-      });
-    });
-  }
-
-  async #continueRunIfUnblocked({ runId }: { runId: string }) {
-    // 1. Get the any blocking waitpoints
-    const blockingWaitpoints = await this.prisma.taskRunWaitpoint.findMany({
-      where: { taskRunId: runId },
-      select: {
-        batchId: true,
-        batchIndex: true,
-        waitpoint: {
-          select: { id: true, status: true },
-        },
-      },
-    });
-
-    // 2. There are blockers still, so do nothing
-    if (blockingWaitpoints.some((w) => w.waitpoint.status !== "COMPLETED")) {
-      return;
-    }
-
-    // 3. Get the run with environment
-    const run = await this.prisma.taskRun.findFirst({
-      where: {
-        id: runId,
-      },
-      include: {
-        runtimeEnvironment: {
-          select: {
-            id: true,
-            type: true,
-            maximumConcurrencyLimit: true,
-            project: { select: { id: true } },
-            organization: { select: { id: true } },
-          },
-        },
-      },
-    });
-
-    if (!run) {
-      throw new Error(`#continueRunIfUnblocked: run not found: ${runId}`);
-    }
-
-    //4. Continue the run whether it's executing or not
-    await this.runLock.lock([runId], 5000, async () => {
-      const snapshot = await getLatestExecutionSnapshot(this.prisma, runId);
-
-      //run is still executing, send a message to the worker
-      if (isExecuting(snapshot.executionStatus)) {
-        const result = await this.runQueue.reacquireConcurrency(
-          run.runtimeEnvironment.organization.id,
-          runId
-        );
-
-        if (result) {
-          const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(
-            this.prisma,
-            {
-              run: {
-                id: runId,
-                status: snapshot.runStatus,
-                attemptNumber: snapshot.attemptNumber,
-              },
-              snapshot: {
-                executionStatus: "EXECUTING",
-                description: "Run was continued, whilst still executing.",
-              },
-              environmentId: snapshot.environmentId,
-              environmentType: snapshot.environmentType,
-              batchId: snapshot.batchId ?? undefined,
-              completedWaitpoints: blockingWaitpoints.map((b) => ({
-                id: b.waitpoint.id,
-                index: b.batchIndex ?? undefined,
-              })),
-            }
-          );
-
-          await sendNotificationToWorker({ runId, snapshot: newSnapshot, eventBus: this.eventBus });
-        } else {
-          // Because we cannot reacquire the concurrency, we need to enqueue the run again
-          // and because the run is still executing, we need to set the status to QUEUED_EXECUTING
-          await this.#enqueueRun({
-            run,
-            env: run.runtimeEnvironment,
-            timestamp: run.createdAt.getTime() - run.priorityMs,
-            snapshot: {
-              status: "QUEUED_EXECUTING",
-              description: "Run can continue, but is waiting for concurrency",
-            },
-            batchId: snapshot.batchId ?? undefined,
-            completedWaitpoints: blockingWaitpoints.map((b) => ({
-              id: b.waitpoint.id,
-              index: b.batchIndex ?? undefined,
-            })),
-          });
-        }
-      } else {
-        if (snapshot.executionStatus !== "RUN_CREATED" && !snapshot.checkpointId) {
-          // TODO: We're screwed, should probably fail the run immediately
-          throw new Error(`#continueRunIfUnblocked: run has no checkpoint: ${run.id}`);
-        }
-
-        //put it back in the queue, with the original timestamp (w/ priority)
-        //this prioritizes dequeuing waiting runs over new runs
-        await this.#enqueueRun({
-          run,
-          env: run.runtimeEnvironment,
-          timestamp: run.createdAt.getTime() - run.priorityMs,
-          snapshot: {
-            description: "Run was QUEUED, because all waitpoints are completed",
-          },
-          batchId: snapshot.batchId ?? undefined,
-          completedWaitpoints: blockingWaitpoints.map((b) => ({
-            id: b.waitpoint.id,
-            index: b.batchIndex ?? undefined,
-          })),
-          checkpointId: snapshot.checkpointId ?? undefined,
-        });
-      }
-    });
-
-    //5. Remove the blocking waitpoints
-    await this.prisma.taskRunWaitpoint.deleteMany({
-      where: {
-        taskRunId: runId,
-      },
-    });
-  }
-
   async #enqueueDelayedRun({ runId }: { runId: string }) {
     const run = await this.prisma.taskRun.findFirst({
       where: { id: runId },
@@ -2083,7 +1383,7 @@ export class RunEngine {
     }
 
     // Now we need to enqueue the run into the RunQueue
-    await this.#enqueueRun({
+    await this.enqueueSystem.enqueueRun({
       run,
       env: run.runtimeEnvironment,
       timestamp: run.createdAt.getTime() - run.priorityMs,
@@ -2167,7 +1467,7 @@ export class RunEngine {
             status: "PENDING",
           },
         });
-        await this.#enqueueRun({
+        await this.enqueueSystem.enqueueRun({
           run: updatedRun,
           env: backgroundWorker.runtimeEnvironment,
           //add to the queue using the original run created time
@@ -2182,29 +1482,6 @@ export class RunEngine {
     if (runsWaitingForDeploy.length > maxCount) {
       await this.queueRunsWaitingForWorker({ backgroundWorkerId });
     }
-  }
-
-  //MARK: - Waitpoints
-  async #createRunAssociatedWaitpoint(
-    tx: PrismaClientOrTransaction,
-    {
-      projectId,
-      environmentId,
-      completedByTaskRunId,
-    }: { projectId: string; environmentId: string; completedByTaskRunId: string }
-  ) {
-    return tx.waitpoint.create({
-      data: {
-        ...WaitpointId.generate(),
-        type: "RUN",
-        status: "PENDING",
-        idempotencyKey: nanoid(24),
-        userProvidedIdempotencyKey: false,
-        projectId,
-        environmentId,
-        completedByTaskRunId,
-      },
-    });
   }
 
   //#endregion
@@ -2349,31 +1626,6 @@ export class RunEngine {
         }
       }
     });
-  }
-
-  //#endregion
-
-  async #getAuthenticatedEnvironmentFromRun(runId: string, tx?: PrismaClientOrTransaction) {
-    const prisma = tx ?? this.prisma;
-    const taskRun = await prisma.taskRun.findUnique({
-      where: {
-        id: runId,
-      },
-      include: {
-        runtimeEnvironment: {
-          include: {
-            organization: true,
-            project: true,
-          },
-        },
-      },
-    });
-
-    if (!taskRun) {
-      return;
-    }
-
-    return taskRun?.runtimeEnvironment;
   }
 
   #environmentMasterQueueKey(environmentId: string) {

@@ -1,45 +1,31 @@
-import { PrismaClient, PrismaClientOrTransaction } from "@trigger.dev/database";
-import { RunQueue } from "../../run-queue/index.js";
-import { DequeuedMessage, MachineResources, RetryOptions } from "@trigger.dev/core/v3";
-import { Logger } from "@trigger.dev/core/logger";
-import { RunLocker } from "../locking.js";
-import { isDequeueableExecutionStatus } from "../statuses.js";
-import { getRunWithBackgroundWorkerTasks } from "../db/worker.js";
+import { startSpan } from "@internal/tracing";
 import { assertExhaustive } from "@trigger.dev/core";
-import { getMachinePreset } from "../machinePresets.js";
-import { RunEngineOptions } from "../types.js";
+import { DequeuedMessage, MachineResources, RetryOptions } from "@trigger.dev/core/v3";
 import { getMaxDuration, sanitizeQueueName } from "@trigger.dev/core/v3/isomorphic";
+import { PrismaClientOrTransaction } from "@trigger.dev/database";
+import { getRunWithBackgroundWorkerTasks } from "../db/worker.js";
+import { getMachinePreset } from "../machinePresets.js";
+import { isDequeueableExecutionStatus } from "../statuses.js";
+import { RunEngineOptions } from "../types.js";
 import { ExecutionSnapshotSystem, getLatestExecutionSnapshot } from "./executionSnapshotSystem.js";
-import { Tracer, startSpan } from "@internal/tracing";
 import { RunAttemptSystem } from "./runAttemptSystem.js";
+import { SystemResources } from "./systems.js";
 
 export type DequeueSystemOptions = {
-  prisma: PrismaClient;
-  queue: RunQueue;
-  runLock: RunLocker;
-  logger: Logger;
+  resources: SystemResources;
   machines: RunEngineOptions["machines"];
-  tracer: Tracer;
   executionSnapshotSystem: ExecutionSnapshotSystem;
   runAttemptSystem: RunAttemptSystem;
 };
 
 export class DequeueSystem {
-  private readonly prisma: PrismaClient;
-  private readonly runQueue: RunQueue;
-  private readonly runLock: RunLocker;
-  private readonly logger: Logger;
+  private readonly $: SystemResources;
   private readonly executionSnapshotSystem: ExecutionSnapshotSystem;
-  private readonly tracer: Tracer;
   private readonly runAttemptSystem: RunAttemptSystem;
 
   constructor(private readonly options: DequeueSystemOptions) {
-    this.prisma = options.prisma;
-    this.runQueue = options.queue;
-    this.runLock = options.runLock;
-    this.logger = options.logger;
+    this.$ = options.resources;
     this.executionSnapshotSystem = options.executionSnapshotSystem;
-    this.tracer = options.tracer;
     this.runAttemptSystem = options.runAttemptSystem;
   }
 
@@ -68,14 +54,14 @@ export class DequeueSystem {
     runnerId?: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<DequeuedMessage[]> {
-    const prisma = tx ?? this.prisma;
+    const prisma = tx ?? this.$.prisma;
 
     return startSpan(
-      this.tracer,
+      this.$.tracer,
       "dequeueFromMasterQueue",
       async (span) => {
         //gets multiple runs from the queue
-        const messages = await this.runQueue.dequeueMessageFromMasterQueue(
+        const messages = await this.$.runQueue.dequeueMessageFromMasterQueue(
           consumerId,
           masterQueue,
           maxRunCount
@@ -100,7 +86,7 @@ export class DequeueSystem {
 
           //lock the run so nothing else can modify it
           try {
-            const dequeuedRun = await this.runLock.lock([runId], 5000, async (signal) => {
+            const dequeuedRun = await this.$.runLock.lock([runId], 5000, async (signal) => {
               const snapshot = await getLatestExecutionSnapshot(prisma, runId);
 
               if (!isDequeueableExecutionStatus(snapshot.executionStatus)) {
@@ -136,7 +122,7 @@ export class DequeueSystem {
                   },
                   tx: prisma,
                 });
-                this.logger.error(
+                this.$.logger.error(
                   `RunEngine.dequeueFromMasterQueue(): Run is not in a valid state to be dequeued: ${runId}\n ${snapshot.id}:${snapshot.executionStatus}`
                 );
                 return null;
@@ -152,17 +138,17 @@ export class DequeueSystem {
                 switch (result.code) {
                   case "NO_RUN": {
                     //this should not happen, the run is unrecoverable so we'll ack it
-                    this.logger.error("RunEngine.dequeueFromMasterQueue(): No run found", {
+                    this.$.logger.error("RunEngine.dequeueFromMasterQueue(): No run found", {
                       runId,
                       latestSnapshot: snapshot.id,
                     });
-                    await this.runQueue.acknowledgeMessage(orgId, runId);
+                    await this.$.runQueue.acknowledgeMessage(orgId, runId);
                     return null;
                   }
                   case "NO_WORKER":
                   case "TASK_NEVER_REGISTERED":
                   case "TASK_NOT_IN_LATEST": {
-                    this.logger.warn(`RunEngine.dequeueFromMasterQueue(): ${result.code}`, {
+                    this.$.logger.warn(`RunEngine.dequeueFromMasterQueue(): ${result.code}`, {
                       runId,
                       latestSnapshot: snapshot.id,
                       result,
@@ -178,7 +164,7 @@ export class DequeueSystem {
                     return null;
                   }
                   case "BACKGROUND_WORKER_MISMATCH": {
-                    this.logger.warn(
+                    this.$.logger.warn(
                       "RunEngine.dequeueFromMasterQueue(): Background worker mismatch",
                       {
                         runId,
@@ -188,7 +174,7 @@ export class DequeueSystem {
                     );
 
                     //worker mismatch so put it back in the queue
-                    await this.runQueue.nackMessage({ orgId, messageId: runId });
+                    await this.$.runQueue.nackMessage({ orgId, messageId: runId });
 
                     return null;
                   }
@@ -201,7 +187,7 @@ export class DequeueSystem {
               //check for a valid deployment if it's not a development environment
               if (result.run.runtimeEnvironment.type !== "DEVELOPMENT") {
                 if (!result.deployment || !result.deployment.imageReference) {
-                  this.logger.warn("RunEngine.dequeueFromMasterQueue(): No deployment found", {
+                  this.$.logger.warn("RunEngine.dequeueFromMasterQueue(): No deployment found", {
                     runId,
                     latestSnapshot: snapshot.id,
                     result,
@@ -235,7 +221,7 @@ export class DequeueSystem {
                   consumedResources.cpu > maxResources.cpu ||
                   consumedResources.memory > maxResources.memory
                 ) {
-                  this.logger.debug(
+                  this.$.logger.debug(
                     "RunEngine.dequeueFromMasterQueue(): Consumed resources over limit, nacking",
                     {
                       runId,
@@ -245,7 +231,7 @@ export class DequeueSystem {
                   );
 
                   //put it back in the queue where it was
-                  await this.runQueue.nackMessage({
+                  await this.$.runQueue.nackMessage({
                     orgId,
                     messageId: runId,
                     incrementAttemptCount: false,
@@ -262,7 +248,7 @@ export class DequeueSystem {
               if (!maxAttempts) {
                 const retryConfig = result.task.retryConfig;
 
-                this.logger.debug(
+                this.$.logger.debug(
                   "RunEngine.dequeueFromMasterQueue(): maxAttempts not set, using task's retry config",
                   {
                     runId,
@@ -274,7 +260,7 @@ export class DequeueSystem {
                 const parsedConfig = RetryOptions.nullable().safeParse(retryConfig);
 
                 if (!parsedConfig.success) {
-                  this.logger.error("RunEngine.dequeueFromMasterQueue(): Invalid retry config", {
+                  this.$.logger.error("RunEngine.dequeueFromMasterQueue(): Invalid retry config", {
                     runId,
                     task: result.task.id,
                     rawRetryConfig: retryConfig,
@@ -294,7 +280,7 @@ export class DequeueSystem {
                 }
 
                 if (!parsedConfig.data) {
-                  this.logger.error("RunEngine.dequeueFromMasterQueue(): No retry config", {
+                  this.$.logger.error("RunEngine.dequeueFromMasterQueue(): No retry config", {
                     runId,
                     task: result.task.id,
                     rawRetryConfig: retryConfig,
@@ -344,7 +330,7 @@ export class DequeueSystem {
               });
 
               if (!lockedTaskRun) {
-                this.logger.error("RunEngine.dequeueFromMasterQueue(): Failed to lock task run", {
+                this.$.logger.error("RunEngine.dequeueFromMasterQueue(): Failed to lock task run", {
                   taskRun: result.run.id,
                   taskIdentifier: result.run.taskIdentifier,
                   deployment: result.deployment?.id,
@@ -353,7 +339,7 @@ export class DequeueSystem {
                   runId,
                 });
 
-                await this.runQueue.acknowledgeMessage(orgId, runId);
+                await this.$.runQueue.acknowledgeMessage(orgId, runId);
                 return null;
               }
 
@@ -367,7 +353,7 @@ export class DequeueSystem {
               });
 
               if (!queue) {
-                this.logger.debug(
+                this.$.logger.debug(
                   "RunEngine.dequeueFromMasterQueue(): queue not found, so nacking message",
                   {
                     queueMessage: message,
@@ -377,7 +363,7 @@ export class DequeueSystem {
                 );
 
                 //will auto-retry
-                const gotRequeued = await this.runQueue.nackMessage({ orgId, messageId: runId });
+                const gotRequeued = await this.$.runQueue.nackMessage({ orgId, messageId: runId });
                 if (!gotRequeued) {
                   await this.runAttemptSystem.systemFailure({
                     runId,
@@ -464,7 +450,7 @@ export class DequeueSystem {
               dequeuedRuns.push(dequeuedRun);
             }
           } catch (error) {
-            this.logger.error(
+            this.$.logger.error(
               "RunEngine.dequeueFromMasterQueue(): Thrown error while preparing run to be run",
               {
                 error,
@@ -481,14 +467,14 @@ export class DequeueSystem {
 
             if (!run) {
               //this isn't ideal because we're not creating a snapshot… but we can't do much else
-              this.logger.error(
+              this.$.logger.error(
                 "RunEngine.dequeueFromMasterQueue(): Thrown error, then run not found. Nacking.",
                 {
                   runId,
                   orgId,
                 }
               );
-              await this.runQueue.nackMessage({ orgId, messageId: runId });
+              await this.$.runQueue.nackMessage({ orgId, messageId: runId });
               continue;
             }
 
@@ -532,13 +518,13 @@ export class DequeueSystem {
     reason?: string;
     tx?: PrismaClientOrTransaction;
   }) {
-    const prisma = tx ?? this.prisma;
+    const prisma = tx ?? this.$.prisma;
 
     return startSpan(
-      this.tracer,
+      this.$.tracer,
       "#waitingForDeploy",
       async (span) => {
-        return this.runLock.lock([runId], 5_000, async (signal) => {
+        return this.$.runLock.lock([runId], 5_000, async (signal) => {
           //mark run as waiting for deploy
           const run = await prisma.taskRun.update({
             where: { id: runId },
@@ -570,7 +556,7 @@ export class DequeueSystem {
           });
 
           //we ack because when it's deployed it will be requeued
-          await this.runQueue.acknowledgeMessage(orgId, runId);
+          await this.$.runQueue.acknowledgeMessage(orgId, runId);
         });
       },
       {

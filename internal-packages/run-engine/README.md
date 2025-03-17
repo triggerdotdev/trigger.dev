@@ -211,6 +211,7 @@ graph TD
     ESS[ExecutionSnapshotSystem]
     WS[WaitpointSystem]
     BS[BatchSystem]
+    ES[EnqueueSystem]
 
     %% Core Dependencies
     RE --> DS
@@ -218,6 +219,7 @@ graph TD
     RE --> ESS
     RE --> WS
     RE --> BS
+    RE --> ES
 
     %% System Dependencies
     DS --> ESS
@@ -226,6 +228,11 @@ graph TD
     RAS --> ESS
     RAS --> WS
     RAS --> BS
+
+    WS --> ESS
+    WS --> ES
+
+    ES --> ESS
 
     %% Shared Resources
     subgraph Resources
@@ -236,15 +243,17 @@ graph TD
         RL[RunLocker]
         EB[EventBus]
         WRK[Worker]
+        RCQ[ReleaseConcurrencyQueue]
     end
 
     %% Resource Dependencies
     RE -.-> Resources
-    DS -.-> PRI & LOG & TRC & RQ & RL
+    DS -.-> PRI & LOG & TRC & RQ & RL & EB & WRK
     RAS -.-> PRI & LOG & TRC & RL & EB & RQ & WRK
     ESS -.-> PRI & LOG & TRC & WRK & EB
-    WS -.-> PRI & LOG & TRC & WRK & EB
+    WS -.-> PRI & LOG & TRC & WRK & EB & RCQ
     BS -.-> PRI & LOG & TRC & WRK
+    ES -.-> PRI & LOG & TRC & WRK & EB & RQ
 ```
 
 ## System Responsibilities
@@ -274,12 +283,19 @@ graph TD
 - Manages waitpoints for task synchronization
 - Handles waitpoint completion
 - Coordinates blocked runs
+- Manages concurrency release
 
 ### BatchSystem
 
 - Manages batch operations
 - Handles batch completion
 - Coordinates batch-related task runs
+
+### EnqueueSystem
+
+- Handles enqueueing of runs
+- Manages run scheduling
+- Coordinates with execution snapshots
 
 ## Shared Resources
 
@@ -290,11 +306,13 @@ graph TD
 - **RunLocker**: Run locking mechanism
 - **EventBus**: Event communication
 - **Worker**: Background task execution
+- **ReleaseConcurrencyQueue**: Manages concurrency token release
 
 ## Key Interactions
 
-1. **RunEngine** orchestrates all systems and holds shared resources
-2. **DequeueSystem** works closely with **RunAttemptSystem** for task execution
-3. **RunAttemptSystem** coordinates with **WaitpointSystem** and **BatchSystem** for run completion
-4. **ExecutionSnapshotSystem** is used by all other systems to track state
-5. All systems share common resources but have specific responsibilities
+1. **RunEngine** orchestrates all systems and manages shared resources
+2. **DequeueSystem** works with **RunAttemptSystem** for task execution
+3. **RunAttemptSystem** coordinates with **WaitpointSystem** and **BatchSystem**
+4. **WaitpointSystem** uses **EnqueueSystem** for run scheduling
+5. **ExecutionSnapshotSystem** is used by all other systems to track state
+6. All systems share common resources through the `SystemResources` interface

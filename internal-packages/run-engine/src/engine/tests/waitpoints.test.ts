@@ -102,7 +102,6 @@ describe("RunEngine Waitpoints", () => {
       const result = await engine.blockRunWithWaitpoint({
         runId: run.id,
         waitpoints: [waitpoint.id],
-        environmentId: authenticatedEnvironment.id,
         projectId: authenticatedEnvironment.project.id,
         organizationId: authenticatedEnvironment.organization.id,
         releaseConcurrency: true,
@@ -216,7 +215,6 @@ describe("RunEngine Waitpoints", () => {
       const result = await engine.blockRunWithWaitpoint({
         runId: run.id,
         waitpoints: [waitpoint.id],
-        environmentId: authenticatedEnvironment.id,
         projectId: authenticatedEnvironment.project.id,
         organizationId: authenticatedEnvironment.organization.id,
       });
@@ -358,7 +356,6 @@ describe("RunEngine Waitpoints", () => {
         await engine.blockRunWithWaitpoint({
           runId: run.id,
           waitpoints: result.waitpoint.id,
-          environmentId: authenticatedEnvironment.id,
           projectId: authenticatedEnvironment.projectId,
           organizationId: authenticatedEnvironment.organizationId,
         });
@@ -498,7 +495,6 @@ describe("RunEngine Waitpoints", () => {
       await engine.blockRunWithWaitpoint({
         runId: run.id,
         waitpoints: result.waitpoint.id,
-        environmentId: authenticatedEnvironment.id,
         projectId: authenticatedEnvironment.projectId,
         organizationId: authenticatedEnvironment.organizationId,
       });
@@ -625,7 +621,6 @@ describe("RunEngine Waitpoints", () => {
               engine.blockRunWithWaitpoint({
                 runId: run.id,
                 waitpoints: result.waitpoint.id,
-                environmentId: authenticatedEnvironment.id,
                 projectId: authenticatedEnvironment.projectId,
                 organizationId: authenticatedEnvironment.organizationId,
               })
@@ -768,7 +763,6 @@ describe("RunEngine Waitpoints", () => {
         await engine.blockRunWithWaitpoint({
           runId: run.id,
           waitpoints: result.waitpoint.id,
-          environmentId: authenticatedEnvironment.id,
           projectId: authenticatedEnvironment.projectId,
           organizationId: authenticatedEnvironment.organizationId,
         });
@@ -919,7 +913,6 @@ describe("RunEngine Waitpoints", () => {
       await engine.blockRunWithWaitpoint({
         runId: run.id,
         waitpoints: result.waitpoint.id,
-        environmentId: authenticatedEnvironment.id,
         projectId: authenticatedEnvironment.projectId,
         organizationId: authenticatedEnvironment.organizationId,
       });
@@ -1080,7 +1073,6 @@ describe("RunEngine Waitpoints", () => {
       await engine.blockRunWithWaitpoint({
         runId: run.id,
         waitpoints: result.waitpoint.id,
-        environmentId: authenticatedEnvironment.id,
         projectId: authenticatedEnvironment.projectId,
         organizationId: authenticatedEnvironment.organizationId,
       });

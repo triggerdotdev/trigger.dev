@@ -1,25 +1,18 @@
-import {
-  PrismaClient,
-  PrismaClientOrTransaction,
-  RuntimeEnvironmentType,
-  TaskRunExecutionStatus,
-  TaskRunStatus,
-  TaskRunCheckpoint,
-  TaskRunExecutionSnapshot,
-} from "@trigger.dev/database";
-import { EngineWorker, HeartbeatTimeouts } from "../types.js";
-import { EventBus } from "../eventBus.js";
 import { CompletedWaitpoint, ExecutionResult } from "@trigger.dev/core/v3";
 import { BatchId, RunId, SnapshotId } from "@trigger.dev/core/v3/isomorphic";
-import { Logger } from "@trigger.dev/core/logger";
-import { Tracer } from "@internal/tracing";
+import {
+  PrismaClientOrTransaction,
+  RuntimeEnvironmentType,
+  TaskRunCheckpoint,
+  TaskRunExecutionSnapshot,
+  TaskRunExecutionStatus,
+  TaskRunStatus,
+} from "@trigger.dev/database";
+import { HeartbeatTimeouts } from "../types.js";
+import { SystemResources } from "./systems.js";
 
 export type ExecutionSnapshotSystemOptions = {
-  prisma: PrismaClient;
-  logger: Logger;
-  tracer: Tracer;
-  worker: EngineWorker;
-  eventBus: EventBus;
+  resources: SystemResources;
   heartbeatTimeouts: HeartbeatTimeouts;
 };
 
@@ -148,20 +141,12 @@ export function executionResultFromSnapshot(snapshot: TaskRunExecutionSnapshot):
 }
 
 export class ExecutionSnapshotSystem {
-  private readonly worker: EngineWorker;
-  private readonly eventBus: EventBus;
+  private readonly $: SystemResources;
   private readonly heartbeatTimeouts: HeartbeatTimeouts;
-  private readonly prisma: PrismaClient;
-  private readonly logger: Logger;
-  private readonly tracer: Tracer;
 
   constructor(private readonly options: ExecutionSnapshotSystemOptions) {
-    this.worker = options.worker;
-    this.eventBus = options.eventBus;
+    this.$ = options.resources;
     this.heartbeatTimeouts = options.heartbeatTimeouts;
-    this.prisma = options.prisma;
-    this.logger = options.logger;
-    this.tracer = options.tracer;
   }
 
   public async createExecutionSnapshot(
@@ -229,7 +214,7 @@ export class ExecutionSnapshotSystem {
       //set heartbeat (if relevant)
       const intervalMs = this.#getHeartbeatIntervalMs(newSnapshot.executionStatus);
       if (intervalMs !== null) {
-        await this.worker.enqueue({
+        await this.$.worker.enqueue({
           id: `heartbeatSnapshot.${run.id}`,
           job: "heartbeatSnapshot",
           payload: { snapshotId: newSnapshot.id, runId: run.id },
@@ -238,7 +223,7 @@ export class ExecutionSnapshotSystem {
       }
     }
 
-    this.eventBus.emit("executionSnapshotCreated", {
+    this.$.eventBus.emit("executionSnapshotCreated", {
       time: newSnapshot.createdAt,
       run: {
         id: newSnapshot.runId,
@@ -269,12 +254,12 @@ export class ExecutionSnapshotSystem {
     runnerId?: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<ExecutionResult> {
-    const prisma = tx ?? this.prisma;
+    const prisma = tx ?? this.$.prisma;
 
     //we don't need to acquire a run lock for any of this, it's not critical if it happens on an older version
     const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId);
     if (latestSnapshot.id !== snapshotId) {
-      this.logger.log("heartbeatRun: no longer the latest snapshot, stopping the heartbeat.", {
+      this.$.logger.log("heartbeatRun: no longer the latest snapshot, stopping the heartbeat.", {
         runId,
         snapshotId,
         latestSnapshot,
@@ -282,12 +267,12 @@ export class ExecutionSnapshotSystem {
         runnerId,
       });
 
-      await this.worker.ack(`heartbeatSnapshot.${runId}`);
+      await this.$.worker.ack(`heartbeatSnapshot.${runId}`);
       return executionResultFromSnapshot(latestSnapshot);
     }
 
     if (latestSnapshot.workerId !== workerId) {
-      this.logger.debug("heartbeatRun: worker ID does not match the latest snapshot", {
+      this.$.logger.debug("heartbeatRun: worker ID does not match the latest snapshot", {
         runId,
         snapshotId,
         latestSnapshot,
@@ -307,7 +292,10 @@ export class ExecutionSnapshotSystem {
     //extending the heartbeat
     const intervalMs = this.#getHeartbeatIntervalMs(latestSnapshot.executionStatus);
     if (intervalMs !== null) {
-      await this.worker.reschedule(`heartbeatSnapshot.${runId}`, new Date(Date.now() + intervalMs));
+      await this.$.worker.reschedule(
+        `heartbeatSnapshot.${runId}`,
+        new Date(Date.now() + intervalMs)
+      );
     }
 
     return executionResultFromSnapshot(latestSnapshot);
