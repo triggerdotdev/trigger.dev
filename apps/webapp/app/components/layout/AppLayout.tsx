@@ -66,3 +66,24 @@ export function MainCenteredContainer({
     </div>
   );
 }
+
+export function MainHorizontallyCenteredContainer({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className="w-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div
+        className={cn(
+          "mx-auto mt-6 max-w-lg overflow-y-auto p-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600 md:mt-14",
+          className
+        )}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}

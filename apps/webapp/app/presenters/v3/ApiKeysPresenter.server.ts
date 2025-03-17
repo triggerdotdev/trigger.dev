@@ -1,6 +1,6 @@
-import { PrismaClient, prisma } from "~/db.server";
-import { Project } from "~/models/project.server";
-import { User } from "~/models/user.server";
+import { type PrismaClient, prisma } from "~/db.server";
+import { type Project } from "~/models/project.server";
+import { type User } from "~/models/user.server";
 import { sortEnvironments } from "~/utils/environmentSort";
 
 export class ApiKeysPresenter {
@@ -31,11 +31,6 @@ export class ApiKeysPresenter {
           take: 1,
           orderBy: {
             version: "desc",
-          },
-        },
-        _count: {
-          select: {
-            environmentVariableValues: true,
           },
         },
       },
@@ -71,7 +66,6 @@ export class ApiKeysPresenter {
           slug: environment.slug,
           updatedAt: environment.updatedAt,
           latestVersion: environment.backgroundWorkers.at(0)?.version,
-          environmentVariableCount: environment._count.environmentVariableValues,
         }))
       ),
       hasStaging: environments.some((environment) => environment.type === "STAGING"),

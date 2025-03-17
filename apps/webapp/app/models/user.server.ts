@@ -2,6 +2,10 @@ import type { Prisma, User } from "@trigger.dev/database";
 import type { GitHubProfile } from "remix-auth-github";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
+import {
+  DashboardPreferences,
+  getDashboardPreferences,
+} from "~/services/dashboardPreferences.server";
 export type { User } from "@trigger.dev/database";
 
 type FindOrCreateMagicLink = {
@@ -158,8 +162,23 @@ export async function findOrCreateGithubUser({
   };
 }
 
+export type UserWithDashboardPreferences = User & {
+  dashboardPreferences: DashboardPreferences;
+};
+
 export async function getUserById(id: User["id"]) {
-  return prisma.user.findUnique({ where: { id } });
+  const user = await prisma.user.findUnique({ where: { id } });
+
+  if (!user) {
+    return null;
+  }
+
+  const dashboardPreferences = getDashboardPreferences(user.dashboardPreferences);
+
+  return {
+    ...user,
+    dashboardPreferences,
+  };
 }
 
 export async function getUserByEmail(email: User["email"]) {

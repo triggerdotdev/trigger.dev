@@ -55,14 +55,14 @@ function InputFieldSet({ disabled }: { disabled?: boolean }) {
           disabled={disabled}
           variant="large"
           placeholder="Search"
-          icon={<EnvironmentLabel environment={{ type: "DEVELOPMENT" }} size="large" />}
+          icon={<EnvironmentLabel environment={{ type: "DEVELOPMENT" }} />}
           shortcut="⌘K"
         />
         <Input
           disabled={disabled}
           variant="medium"
           placeholder="Search"
-          icon={<EnvironmentLabel environment={{ type: "DEVELOPMENT" }} size="large" />}
+          icon={<EnvironmentLabel environment={{ type: "DEVELOPMENT" }} />}
           shortcut="⌘K"
         />
         <Input

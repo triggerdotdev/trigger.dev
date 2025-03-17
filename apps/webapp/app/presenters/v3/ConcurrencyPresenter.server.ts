@@ -6,10 +6,11 @@ import {
   type DisplayableInputEnvironment,
 } from "~/models/runtimeEnvironment.server";
 import { type User } from "~/models/user.server";
-import { getLimit } from "~/services/platform.v3.server";
 import { filterOrphanedEnvironments, sortEnvironments } from "~/utils/environmentSort";
 import { concurrencyTracker } from "~/v3/services/taskRunConcurrencyTracker.server";
 import { BasePresenter } from "./basePresenter.server";
+import { execute } from "effect/Stream";
+import { engine } from "~/v3/runEngine.server";
 
 export type Environment = Awaited<
   ReturnType<ConcurrencyPresenter["environmentConcurrency"]>
@@ -56,6 +57,7 @@ export class ConcurrencyPresenter extends BasePresenter {
 
     return {
       environments: this.environmentConcurrency(
+        project.organizationId,
         project.id,
         userId,
         filterOrphanedEnvironments(project.environments)
@@ -64,14 +66,40 @@ export class ConcurrencyPresenter extends BasePresenter {
   }
 
   async environmentConcurrency(
+    organizationId: string,
     projectId: string,
     userId: string,
     environments: (DisplayableInputEnvironment & { maximumConcurrencyLimit: number })[]
   ) {
-    const environmentConcurrency = await concurrencyTracker.environmentConcurrentRunCounts(
+    const engineV1Concurrency = await concurrencyTracker.environmentConcurrentRunCounts(
       projectId,
       environments.map((env) => env.id)
     );
+
+    const engineV2Concurrency = await Promise.all(
+      environments.map(async (env) =>
+        engine.currentConcurrencyOfEnvQueue({
+          ...env,
+          project: {
+            id: projectId,
+          },
+          organization: {
+            id: organizationId,
+          },
+        })
+      )
+    );
+
+    //Build `executingCounts` with both v1 and v2 concurrencies
+    const executingCounts: Record<string, number> = engineV1Concurrency;
+
+    for (let index = 0; index < environments.length; index++) {
+      const env = environments[index];
+      const existingValue: number | undefined = executingCounts[env.id];
+      executingCounts[env.id] = engineV2Concurrency[index] + (existingValue ?? 0);
+    }
+
+    //todo add Run Engine 2 concurrency count
 
     const queued = await this._replica.$queryRaw<
       {
@@ -93,7 +121,7 @@ GROUP BY
     const sortedEnvironments = sortEnvironments(environments).map((environment) => ({
       ...displayableEnvironment(environment, userId),
       concurrencyLimit: environment.maximumConcurrencyLimit,
-      concurrency: environmentConcurrency[environment.id] ?? 0,
+      concurrency: executingCounts[environment.id] ?? 0,
       queued: Number(queued.find((q) => q.runtimeEnvironmentId === environment.id)?.count ?? 0),
     }));
 

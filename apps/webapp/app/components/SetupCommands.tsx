@@ -63,7 +63,7 @@ function getApiUrlArg() {
 
 export function InitCommandV3() {
   const project = useProject();
-  const projectRef = project.ref;
+  const projectRef = project.externalRef;
   const apiUrlArg = getApiUrlArg();
 
   const initCommandParts = [`trigger.dev@${v3PackageTag}`, "init", `-p ${projectRef}`, apiUrlArg];

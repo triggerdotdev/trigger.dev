@@ -5,6 +5,7 @@ import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { getCurrentPlan, getLimit, getLimits } from "~/services/platform.v3.server";
 import { calculateNextScheduledTimestamp } from "~/v3/utils/calculateNextSchedule.server";
 import { BasePresenter } from "./basePresenter.server";
+import { CheckScheduleService } from "~/v3/services/checkSchedule.server";
 
 type ScheduleListOptions = {
   projectId: string;
@@ -86,10 +87,9 @@ export class ScheduleListPresenter extends BasePresenter {
       },
     });
 
-    const schedulesCount = await this._prisma.taskSchedule.count({
-      where: {
-        projectId,
-      },
+    const schedulesCount = await CheckScheduleService.getUsedSchedulesCount({
+      prisma: this._replica,
+      environments: project.environments,
     });
 
     //get all possible scheduled tasks

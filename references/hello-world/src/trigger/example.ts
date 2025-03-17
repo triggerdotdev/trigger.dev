@@ -1,4 +1,4 @@
-import { logger, task, timeout, wait } from "@trigger.dev/sdk";
+import { batch, logger, task, timeout, wait } from "@trigger.dev/sdk";
 import { setTimeout } from "timers/promises";
 
 export const helloWorldTask = task({

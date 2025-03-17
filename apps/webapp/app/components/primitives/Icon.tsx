@@ -1,4 +1,4 @@
-import React, { FunctionComponent, createElement } from "react";
+import React, { type FunctionComponent, createElement } from "react";
 import { cn } from "~/utils/cn";
 
 export type RenderIcon = FunctionComponent<{ className?: string }> | React.ReactNode;

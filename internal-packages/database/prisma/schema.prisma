@@ -23,13 +23,19 @@ model User {
   name        String?
   avatarUrl   String?
 
-  admin             Boolean @default(false)
-  isOnCloudWaitlist Boolean @default(false)
+  admin Boolean @default(false)
+
+  /// Preferences for the dashboard
+  dashboardPreferences Json?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  /// @deprecated
+  isOnCloudWaitlist      Boolean @default(false)
+  /// @deprecated
   featureCloud           Boolean @default(false)
+  /// @deprecated
   isOnHostedRepoWaitlist Boolean @default(false)
 
   marketingEmails       Boolean @default(true)
@@ -39,7 +45,9 @@ model User {
 
   orgMemberships OrgMember[]
   sentInvites    OrgMemberInvite[]
-  apiVotes       ApiIntegrationVote[]
+
+  /// @deprecated
+  apiVotes ApiIntegrationVote[]
 
   invitationCode       InvitationCode?       @relation(fields: [invitationCodeId], references: [id])
   invitationCodeId     String?
@@ -123,11 +131,17 @@ model Organization {
 
   companySize String?
 
+  avatar Json?
+
   runsEnabled Boolean @default(true)
 
-  v3Enabled      Boolean @default(false)
+  v3Enabled Boolean @default(false)
+
+  /// @deprecated
   v2Enabled      Boolean @default(false)
+  /// @deprecated
   v2MarqsEnabled Boolean @default(false)
+  /// @deprecated
   hasRequestedV3 Boolean @default(false)
 
   environments RuntimeEnvironment[]

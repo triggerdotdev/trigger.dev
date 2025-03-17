@@ -20,10 +20,6 @@ export { type MailTransportOptions };
 export const DeliverEmailSchema = z
   .discriminatedUnion("email", [
     z.object({
-      email: z.literal("welcome"),
-      name: z.string().optional(),
-    }),
-    z.object({
       email: z.literal("magic_link"),
       magicLink: z.string().url(),
     }),
@@ -86,11 +82,6 @@ export class EmailClient {
     component: ReactElement;
   } {
     switch (data.email) {
-      case "welcome":
-        return {
-          subject: "✨ Welcome to Trigger.dev!",
-          component: <WelcomeEmail name={data.name} />,
-        };
       case "magic_link":
         return {
           subject: "Magic sign-in link for Trigger.dev",

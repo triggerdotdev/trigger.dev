@@ -1,11 +1,11 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { EnvelopeIcon, UserCircleIcon } from "@heroicons/react/20/solid";
-import { Form, MetaFunction, useActionData } from "@remix-run/react";
-import { ActionFunction, json } from "@remix-run/server-runtime";
+import { Form, type MetaFunction, useActionData } from "@remix-run/react";
+import { type ActionFunction, json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { UserProfilePhoto } from "~/components/UserProfilePhoto";
-import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button } from "~/components/primitives/Buttons";
 import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
 import { Fieldset } from "~/components/primitives/Fieldset";
@@ -138,54 +138,56 @@ export default function Page() {
       </NavBar>
 
       <PageBody>
-        <Form method="post" {...form.props} className="max-w-md">
-          <InputGroup className="mb-4">
-            <Label htmlFor={name.id}>Profile picture</Label>
-            <UserProfilePhoto className="h-24 w-24" />
-          </InputGroup>
-          <Fieldset>
-            <InputGroup>
-              <Label htmlFor={name.id}>Full name</Label>
-              <Input
-                {...conform.input(name, { type: "text" })}
-                placeholder="Your full name"
-                defaultValue={user?.name ?? ""}
-                icon={UserCircleIcon}
-              />
-              <Hint>Your teammates will see this</Hint>
-              <FormError id={name.errorId}>{name.error}</FormError>
+        <div className="grid place-items-center pt-12">
+          <Form method="post" {...form.props} className="w-80 max-w-md">
+            <InputGroup className="mb-4">
+              <Label htmlFor={name.id}>Profile picture</Label>
+              <UserProfilePhoto className="h-24 w-24" />
             </InputGroup>
-            <InputGroup>
-              <Label htmlFor={email.id}>Email address</Label>
-              <Input
-                {...conform.input(email, { type: "text" })}
-                placeholder="Your email"
-                defaultValue={user?.email ?? ""}
-                icon={EnvelopeIcon}
-              />
-              <FormError id={email.errorId}>{email.error}</FormError>
-            </InputGroup>
-            <InputGroup>
-              <Label>Notifications</Label>
-              <CheckboxWithLabel
-                id="marketingEmails"
-                {...conform.input(marketingEmails, { type: "checkbox" })}
-                label="Receive onboarding emails"
-                variant="simple/small"
-                defaultChecked={user.marketingEmails}
-              />
-              <FormError id={marketingEmails.errorId}>{marketingEmails.error}</FormError>
-            </InputGroup>
+            <Fieldset>
+              <InputGroup>
+                <Label htmlFor={name.id}>Full name</Label>
+                <Input
+                  {...conform.input(name, { type: "text" })}
+                  placeholder="Your full name"
+                  defaultValue={user?.name ?? ""}
+                  icon={UserCircleIcon}
+                />
+                <Hint>Your teammates will see this</Hint>
+                <FormError id={name.errorId}>{name.error}</FormError>
+              </InputGroup>
+              <InputGroup>
+                <Label htmlFor={email.id}>Email address</Label>
+                <Input
+                  {...conform.input(email, { type: "text" })}
+                  placeholder="Your email"
+                  defaultValue={user?.email ?? ""}
+                  icon={EnvelopeIcon}
+                />
+                <FormError id={email.errorId}>{email.error}</FormError>
+              </InputGroup>
+              <InputGroup>
+                <Label>Notifications</Label>
+                <CheckboxWithLabel
+                  id="marketingEmails"
+                  {...conform.input(marketingEmails, { type: "checkbox" })}
+                  label="Receive onboarding emails"
+                  variant="simple/small"
+                  defaultChecked={user.marketingEmails}
+                />
+                <FormError id={marketingEmails.errorId}>{marketingEmails.error}</FormError>
+              </InputGroup>
 
-            <FormButtons
-              confirmButton={
-                <Button type="submit" variant={"primary/small"}>
-                  Update
-                </Button>
-              }
-            />
-          </Fieldset>
-        </Form>
+              <FormButtons
+                confirmButton={
+                  <Button type="submit" variant={"primary/small"}>
+                    Update
+                  </Button>
+                }
+              />
+            </Fieldset>
+          </Form>
+        </div>
       </PageBody>
     </PageContainer>
   );
