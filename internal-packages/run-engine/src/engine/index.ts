@@ -11,16 +11,9 @@ import {
   MachineResources,
   RunExecutionData,
   StartRunAttemptResult,
-  TaskRunError,
   TaskRunExecutionResult,
 } from "@trigger.dev/core/v3";
-import {
-  BatchId,
-  parseNaturalLanguageDuration,
-  QueueId,
-  RunId,
-  WaitpointId,
-} from "@trigger.dev/core/v3/isomorphic";
+import { BatchId, QueueId, RunId, WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import {
   Prisma,
   PrismaClient,
@@ -35,12 +28,18 @@ import { FairQueueSelectionStrategy } from "../run-queue/fairQueueSelectionStrat
 import { RunQueue } from "../run-queue/index.js";
 import { RunQueueFullKeyProducer } from "../run-queue/keyProducer.js";
 import { MinimalAuthenticatedEnvironment } from "../shared/index.js";
-import { EventBus, EventBusEvents, sendNotificationToWorker } from "./eventBus.js";
+import {
+  NotImplementedError,
+  RunDuplicateIdempotencyKeyError,
+  ServiceValidationError,
+} from "./errors.js";
+import { EventBus, EventBusEvents } from "./eventBus.js";
 import { RunLocker } from "./locking.js";
 import { ReleaseConcurrencyTokenBucketQueue } from "./releaseConcurrencyTokenBucketQueue.js";
-import { canReleaseConcurrency, isExecuting } from "./statuses.js";
+import { canReleaseConcurrency } from "./statuses.js";
 import { BatchSystem } from "./systems/batchSystem.js";
 import { CheckpointSystem } from "./systems/checkpointSystem.js";
+import { DelayedRunSystem } from "./systems/delayedRunSystem.js";
 import { DequeueSystem } from "./systems/dequeueSystem.js";
 import { EnqueueSystem } from "./systems/enqueueSystem.js";
 import {
@@ -49,15 +48,10 @@ import {
 } from "./systems/executionSnapshotSystem.js";
 import { RunAttemptSystem } from "./systems/runAttemptSystem.js";
 import { SystemResources } from "./systems/systems.js";
+import { TtlSystem } from "./systems/ttlSystem.js";
 import { WaitpointSystem } from "./systems/waitpointSystem.js";
 import { EngineWorker, HeartbeatTimeouts, RunEngineOptions, TriggerParams } from "./types.js";
 import { workerCatalog } from "./workerCatalog.js";
-import {
-  NotImplementedError,
-  RunDuplicateIdempotencyKeyError,
-  ServiceValidationError,
-} from "./errors.js";
-import { DelayedRunSystem } from "./systems/delayedRunSystem.js";
 
 export class RunEngine {
   private runLockRedis: Redis;
@@ -82,6 +76,7 @@ export class RunEngine {
   enqueueSystem: EnqueueSystem;
   checkpointSystem: CheckpointSystem;
   delayedRunSystem: DelayedRunSystem;
+  ttlSystem: TtlSystem;
 
   constructor(private readonly options: RunEngineOptions) {
     this.prisma = options.prisma;
@@ -131,7 +126,7 @@ export class RunEngine {
       logger: new Logger("RunEngineWorker", "debug"),
       jobs: {
         finishWaitpoint: async ({ payload }) => {
-          await this.completeWaitpoint({
+          await this.waitpointSystem.completeWaitpoint({
             id: payload.waitpointId,
             output: payload.error
               ? {
@@ -145,7 +140,7 @@ export class RunEngine {
           await this.#handleStalledSnapshot(payload);
         },
         expireRun: async ({ payload }) => {
-          await this.#expireRun({ runId: payload.runId });
+          await this.ttlSystem.expireRun({ runId: payload.runId });
         },
         cancelRun: async ({ payload }) => {
           await this.runAttemptSystem.cancelRun({
@@ -264,6 +259,11 @@ export class RunEngine {
       resources,
       executionSnapshotSystem: this.executionSnapshotSystem,
       enqueueSystem: this.enqueueSystem,
+    });
+
+    this.ttlSystem = new TtlSystem({
+      resources,
+      waitpointSystem: this.waitpointSystem,
     });
 
     this.batchSystem = new BatchSystem({
@@ -554,11 +554,9 @@ export class RunEngine {
 
           if (taskRun.delayUntil) {
             // Schedule the run to be enqueued at the delayUntil time
-            await this.worker.enqueue({
-              id: `enqueueDelayedRun:${taskRun.id}`,
-              job: "enqueueDelayedRun",
-              payload: { runId: taskRun.id },
-              availableAt: taskRun.delayUntil,
+            await this.delayedRunSystem.scheduleDelayedRunEnqueuing({
+              runId: taskRun.id,
+              delayUntil: taskRun.delayUntil,
             });
           } else {
             await this.enqueueSystem.enqueueRun({
@@ -571,16 +569,7 @@ export class RunEngine {
             });
 
             if (taskRun.ttl) {
-              const expireAt = parseNaturalLanguageDuration(taskRun.ttl);
-
-              if (expireAt) {
-                await this.worker.enqueue({
-                  id: `expireRun:${taskRun.id}`,
-                  job: "expireRun",
-                  payload: { runId: taskRun.id },
-                  availableAt: expireAt,
-                });
-              }
+              await this.ttlSystem.scheduleExpireRun({ runId: taskRun.id, ttl: taskRun.ttl });
             }
           }
         });
@@ -1246,99 +1235,6 @@ export class RunEngine {
     } catch (error) {
       // And should always throw
     }
-  }
-
-  async #expireRun({ runId, tx }: { runId: string; tx?: PrismaClientOrTransaction }) {
-    const prisma = tx ?? this.prisma;
-    await this.runLock.lock([runId], 5_000, async () => {
-      const snapshot = await getLatestExecutionSnapshot(prisma, runId);
-
-      //if we're executing then we won't expire the run
-      if (isExecuting(snapshot.executionStatus)) {
-        return;
-      }
-
-      //only expire "PENDING" runs
-      const run = await prisma.taskRun.findUnique({ where: { id: runId } });
-
-      if (!run) {
-        this.logger.debug("Could not find enqueued run to expire", {
-          runId,
-        });
-        return;
-      }
-
-      if (run.status !== "PENDING") {
-        this.logger.debug("Run cannot be expired because it's not in PENDING status", {
-          run,
-        });
-        return;
-      }
-
-      if (run.lockedAt) {
-        this.logger.debug("Run cannot be expired because it's locked, so will run", {
-          run,
-        });
-        return;
-      }
-
-      const error: TaskRunError = {
-        type: "STRING_ERROR",
-        raw: `Run expired because the TTL (${run.ttl}) was reached`,
-      };
-
-      const updatedRun = await prisma.taskRun.update({
-        where: { id: runId },
-        data: {
-          status: "EXPIRED",
-          completedAt: new Date(),
-          expiredAt: new Date(),
-          error,
-          executionSnapshots: {
-            create: {
-              engine: "V2",
-              executionStatus: "FINISHED",
-              description: "Run was expired because the TTL was reached",
-              runStatus: "EXPIRED",
-              environmentId: snapshot.environmentId,
-              environmentType: snapshot.environmentType,
-            },
-          },
-        },
-        select: {
-          id: true,
-          spanId: true,
-          ttl: true,
-          associatedWaitpoint: {
-            select: {
-              id: true,
-            },
-          },
-          runtimeEnvironment: {
-            select: {
-              organizationId: true,
-            },
-          },
-          createdAt: true,
-          completedAt: true,
-          taskEventStore: true,
-          parentTaskRunId: true,
-        },
-      });
-
-      await this.runQueue.acknowledgeMessage(updatedRun.runtimeEnvironment.organizationId, runId);
-
-      if (!updatedRun.associatedWaitpoint) {
-        throw new ServiceValidationError("No associated waitpoint found", 400);
-      }
-
-      await this.completeWaitpoint({
-        id: updatedRun.associatedWaitpoint.id,
-        output: { value: JSON.stringify(error), isError: true },
-      });
-
-      this.eventBus.emit("runExpired", { run: updatedRun, time: new Date() });
-    });
   }
 
   async #queueRunsWaitingForWorker({ backgroundWorkerId }: { backgroundWorkerId: string }) {

@@ -121,4 +121,13 @@ export class DelayedRunSystem {
       }
     }
   }
+
+  async scheduleDelayedRunEnqueuing({ runId, delayUntil }: { runId: string; delayUntil: Date }) {
+    await this.$.worker.enqueue({
+      id: `enqueueDelayedRun:${runId}`,
+      job: "enqueueDelayedRun",
+      payload: { runId },
+      availableAt: delayUntil,
+    });
+  }
 }
