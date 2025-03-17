@@ -51,7 +51,7 @@ import { nanoid } from "nanoid";
 import { EventEmitter } from "node:events";
 import { z } from "zod";
 import { FairQueueSelectionStrategy } from "../run-queue/fairQueueSelectionStrategy.js";
-import { RunQueue, RunQueueReserveConcurrencyOptions } from "../run-queue/index.js";
+import { RunQueue } from "../run-queue/index.js";
 import { RunQueueFullKeyProducer } from "../run-queue/keyProducer.js";
 import { MinimalAuthenticatedEnvironment } from "../shared/index.js";
 import { MAX_TASK_RUN_ATTEMPTS } from "./consts.js";
@@ -482,8 +482,6 @@ export class RunEngine {
             completedByTaskRunId: taskRun.id,
           });
 
-          let reserveConcurrencyOptions: RunQueueReserveConcurrencyOptions | undefined;
-
           //triggerAndWait or batchTriggerAndWait
           if (resumeParentOnCompletion && parentTaskRunId) {
             //this will block the parent run from continuing until this waitpoint is completed (and removed)
@@ -497,23 +495,8 @@ export class RunEngine {
               workerId,
               runnerId,
               tx: prisma,
+              releaseConcurrency: true, // TODO: This needs to use the release concurrency system
             });
-
-            const parentRun = await prisma.taskRun.findFirst({
-              select: {
-                queue: true,
-              },
-              where: {
-                id: parentTaskRunId,
-              },
-            });
-
-            if (parentRun) {
-              reserveConcurrencyOptions = {
-                messageId: parentTaskRunId,
-                recursiveQueue: parentRun?.queue === taskRun.queue,
-              };
-            }
           }
 
           //Make sure lock extension succeeded
@@ -588,29 +571,16 @@ export class RunEngine {
               availableAt: taskRun.delayUntil,
             });
           } else {
-            const { wasEnqueued, error } = await this.#enqueueRun({
+            await this.#enqueueRun({
               run: taskRun,
               env: environment,
               timestamp: Date.now() - taskRun.priorityMs,
               workerId,
               runnerId,
               tx: prisma,
-              reserveConcurrency: reserveConcurrencyOptions,
             });
 
-            if (error) {
-              // Fail the run immediately
-              taskRun = await prisma.taskRun.update({
-                where: { id: taskRun.id },
-                data: {
-                  status: runStatusFromError(error),
-                  completedAt: new Date(),
-                  error,
-                },
-              });
-            }
-
-            if (wasEnqueued && taskRun.ttl) {
+            if (taskRun.ttl) {
               const expireAt = parseNaturalLanguageDuration(taskRun.ttl);
 
               if (expireAt) {
@@ -1560,9 +1530,7 @@ export class RunEngine {
         });
 
         //remove it from the queue and release concurrency
-        await this.runQueue.acknowledgeMessage(run.runtimeEnvironment.organizationId, runId, {
-          messageId: run.parentTaskRunId ?? undefined,
-        });
+        await this.runQueue.acknowledgeMessage(run.runtimeEnvironment.organizationId, runId);
 
         //if executing, we need to message the worker to cancel the run and put it into `PENDING_CANCEL` status
         if (isExecuting(latestSnapshot.executionStatus)) {
@@ -2665,6 +2633,7 @@ export class RunEngine {
   async quit() {
     try {
       //stop the run queue
+      await this.releaseConcurrencyQueue.quit();
       await this.runQueue.quit();
       await this.worker.stop();
       await this.runLock.quit();
@@ -2797,9 +2766,7 @@ export class RunEngine {
         },
       });
 
-      await this.runQueue.acknowledgeMessage(updatedRun.runtimeEnvironment.organizationId, runId, {
-        messageId: updatedRun.parentTaskRunId ?? undefined,
-      });
+      await this.runQueue.acknowledgeMessage(updatedRun.runtimeEnvironment.organizationId, runId);
 
       if (!updatedRun.associatedWaitpoint) {
         throw new ServiceValidationError("No associated waitpoint found", 400);
@@ -2942,9 +2909,7 @@ export class RunEngine {
         });
         const newSnapshot = await getLatestExecutionSnapshot(prisma, runId);
 
-        await this.runQueue.acknowledgeMessage(run.project.organizationId, runId, {
-          messageId: run.parentTaskRunId ?? undefined,
-        });
+        await this.runQueue.acknowledgeMessage(run.project.organizationId, runId);
 
         // We need to manually emit this as we created the final snapshot as part of the task run update
         this.eventBus.emit("executionSnapshotCreated", {
@@ -3293,9 +3258,7 @@ export class RunEngine {
         throw new ServiceValidationError("No associated waitpoint found", 400);
       }
 
-      await this.runQueue.acknowledgeMessage(run.runtimeEnvironment.organizationId, runId, {
-        messageId: run.parentTaskRunId ?? undefined,
-      });
+      await this.runQueue.acknowledgeMessage(run.runtimeEnvironment.organizationId, runId);
 
       await this.completeWaitpoint({
         id: run.associatedWaitpoint.id,
@@ -3339,7 +3302,6 @@ export class RunEngine {
     completedWaitpoints,
     workerId,
     runnerId,
-    reserveConcurrency,
   }: {
     run: TaskRun;
     env: MinimalAuthenticatedEnvironment;
@@ -3357,11 +3319,10 @@ export class RunEngine {
     }[];
     workerId?: string;
     runnerId?: string;
-    reserveConcurrency?: RunQueueReserveConcurrencyOptions;
-  }): Promise<{ wasEnqueued: boolean; error?: TaskRunError }> {
+  }): Promise<void> {
     const prisma = tx ?? this.prisma;
 
-    return await this.runLock.lock([run.id], 5000, async (signal) => {
+    await this.runLock.lock([run.id], 5000, async (signal) => {
       const newSnapshot = await this.#createExecutionSnapshot(prisma, {
         run,
         snapshot: {
@@ -3382,7 +3343,7 @@ export class RunEngine {
         masterQueues.push(run.secondaryMasterQueue);
       }
 
-      const wasEnqueued = await this.runQueue.enqueueMessage({
+      await this.runQueue.enqueueMessage({
         env,
         masterQueues,
         message: {
@@ -3397,21 +3358,7 @@ export class RunEngine {
           timestamp,
           attempt: 0,
         },
-        reserveConcurrency,
       });
-
-      if (!wasEnqueued) {
-        return {
-          wasEnqueued: false,
-          error: {
-            type: "INTERNAL_ERROR",
-            code: TaskRunErrorCodes.RECURSIVE_WAIT_DEADLOCK,
-            message: `This run will never execute because it was triggered recursively and the task has no remaining concurrency available`,
-          } satisfies TaskRunError,
-        };
-      }
-
-      return { wasEnqueued };
     });
   }
 
@@ -3626,54 +3573,32 @@ export class RunEngine {
       throw new Error(`#enqueueDelayedRun: run not found: ${runId}`);
     }
 
-    let reserveConcurrency: RunQueueReserveConcurrencyOptions | undefined;
-
-    if (run.parentTaskRunId) {
-      const parentRun = await this.prisma.taskRun.findFirst({
-        where: { id: run.parentTaskRunId },
-      });
-
-      if (parentRun) {
-        reserveConcurrency = {
-          messageId: parentRun.id,
-          recursiveQueue: parentRun.queue === run.queue,
-        };
-      }
-    }
-
     // Now we need to enqueue the run into the RunQueue
-    const { wasEnqueued, error } = await this.#enqueueRun({
+    await this.#enqueueRun({
       run,
       env: run.runtimeEnvironment,
       timestamp: run.createdAt.getTime() - run.priorityMs,
-      reserveConcurrency,
       batchId: run.batchId ?? undefined,
     });
 
-    if (error) {
-      await this.#permanentlyFailRun({ runId, error, failedAt: new Date() });
-    }
+    await this.prisma.taskRun.update({
+      where: { id: runId },
+      data: {
+        status: "PENDING",
+        queuedAt: new Date(),
+      },
+    });
 
-    if (wasEnqueued) {
-      await this.prisma.taskRun.update({
-        where: { id: runId },
-        data: {
-          status: "PENDING",
-          queuedAt: new Date(),
-        },
-      });
+    if (run.ttl) {
+      const expireAt = parseNaturalLanguageDuration(run.ttl);
 
-      if (run.ttl) {
-        const expireAt = parseNaturalLanguageDuration(run.ttl);
-
-        if (expireAt) {
-          await this.worker.enqueue({
-            id: `expireRun:${runId}`,
-            job: "expireRun",
-            payload: { runId },
-            availableAt: expireAt,
-          });
-        }
+      if (expireAt) {
+        await this.worker.enqueue({
+          id: `expireRun:${runId}`,
+          job: "expireRun",
+          payload: { runId },
+          availableAt: expireAt,
+        });
       }
     }
   }
