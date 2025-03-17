@@ -9,16 +9,10 @@ import {
   TrashIcon,
 } from "@heroicons/react/20/solid";
 import { Form, useFetcher } from "@remix-run/react";
-import type {
-  BulkActionType,
-  RuntimeEnvironment,
-  TaskRunStatus,
-  TaskTriggerSource,
-} from "@trigger.dev/database";
+import type { BulkActionType, TaskRunStatus, TaskTriggerSource } from "@trigger.dev/database";
 import { ListChecks, ListFilterIcon } from "lucide-react";
 import { matchSorter } from "match-sorter";
-import type { ReactNode } from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { z } from "zod";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
@@ -53,12 +47,10 @@ import { Button } from "../../primitives/Buttons";
 import { BulkActionStatusCombo } from "./BulkAction";
 import {
   AppliedCustomDateRangeFilter,
-  AppliedEnvironmentFilter,
   AppliedPeriodFilter,
   appliedSummary,
   CreatedAtDropdown,
   CustomDateRangeDropdown,
-  EnvironmentsDropdown,
   FilterMenuProvider,
 } from "./SharedFilters";
 import {
@@ -107,12 +99,7 @@ export const TaskRunListSearchFilters = z.object({
 
 export type TaskRunListSearchFilters = z.infer<typeof TaskRunListSearchFilters>;
 
-type DisplayableEnvironment = Pick<RuntimeEnvironment, "type" | "id"> & {
-  userName?: string;
-};
-
 type RunFiltersProps = {
-  possibleEnvironments: DisplayableEnvironment[];
   possibleTasks: { slug: string; triggerSource: TaskTriggerSource }[];
   bulkActions: {
     id: string;
@@ -128,7 +115,6 @@ export function RunsFilters(props: RunFiltersProps) {
   const searchParams = new URLSearchParams(location.search);
   const hasFilters =
     searchParams.has("statuses") ||
-    searchParams.has("environments") ||
     searchParams.has("tasks") ||
     searchParams.has("period") ||
     searchParams.has("bulkId") ||
@@ -168,7 +154,6 @@ const filterTypes = [
       </div>
     ),
   },
-  { name: "environments", title: "Environment", icon: <CpuChipIcon className="size-4" /> },
   { name: "tasks", title: "Tasks", icon: <TaskIcon className="size-4" /> },
   { name: "tags", title: "Tags", icon: <TagIcon className="size-4" /> },
   { name: "created", title: "Created", icon: <CalendarIcon className="size-4" /> },
@@ -217,11 +202,10 @@ function FilterMenu(props: RunFiltersProps) {
   );
 }
 
-function AppliedFilters({ possibleEnvironments, possibleTasks, bulkActions }: RunFiltersProps) {
+function AppliedFilters({ possibleTasks, bulkActions }: RunFiltersProps) {
   return (
     <>
       <AppliedStatusFilter />
-      <AppliedEnvironmentFilter possibleEnvironments={possibleEnvironments} />
       <AppliedTaskFilter possibleTasks={possibleTasks} />
       <AppliedTagsFilter />
       <AppliedPeriodFilter />
@@ -248,8 +232,7 @@ function Menu(props: MenuProps) {
       return <MainMenu {...props} />;
     case "statuses":
       return <StatusDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
-    case "environments":
-      return <EnvironmentsDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
+
     case "tasks":
       return <TasksDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
     case "created":

@@ -2,6 +2,7 @@ import { type AnchorHTMLAttributes } from "react";
 import { usePathName } from "~/hooks/usePathName";
 import { cn } from "~/utils/cn";
 import { LinkButton } from "../primitives/Buttons";
+import { type RenderIcon } from "../primitives/Icon";
 
 export function SideMenuItem({
   icon,
@@ -13,25 +14,23 @@ export function SideMenuItem({
   to,
   badge,
   target,
-  subItem = false,
 }: {
-  icon?: React.ComponentType<any>;
+  icon?: RenderIcon;
   activeIconColor?: string;
   inactiveIconColor?: string;
-  trailingIcon?: React.ComponentType<any>;
+  trailingIcon?: RenderIcon;
   trailingIconClassName?: string;
   name: string;
   to: string;
   badge?: string;
   target?: AnchorHTMLAttributes<HTMLAnchorElement>["target"];
-  subItem?: boolean;
 }) {
   const pathName = usePathName();
   const isActive = pathName === to;
 
   return (
     <LinkButton
-      variant={subItem ? "small-menu-sub-item" : "small-menu-item"}
+      variant="small-menu-item"
       fullWidth
       textAlignLeft
       LeadingIcon={icon}
@@ -42,7 +41,6 @@ export function SideMenuItem({
       target={target}
       className={cn(
         "text-text-bright group-hover:bg-charcoal-750 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0",
-        subItem ? "text-text-dimmed" : "",
         isActive ? "bg-tertiary text-text-bright" : "group-hover:text-text-bright"
       )}
     >

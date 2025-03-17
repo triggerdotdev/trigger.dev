@@ -23,11 +23,11 @@ export function useEventSource(
       return;
     }
 
-    const eventSource = new EventSource(url, init);
-    eventSource.addEventListener(event ?? "message", handler);
-
     // reset data if dependencies change
     setData(null);
+
+    const eventSource = new EventSource(url, init);
+    eventSource.addEventListener(event ?? "message", handler);
 
     function handler(event: MessageEvent) {
       setData(event.data || "UNKNOWN_EVENT_DATA");

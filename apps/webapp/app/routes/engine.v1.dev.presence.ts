@@ -40,11 +40,8 @@ export const loader = createSSELoader({
         });
       },
       initStream: async ({ send }) => {
-        //todo set a string instead, with the expire on the same call
-        //won't need multi
-
         // Set initial presence with more context
-        await redis.setex(presenceKey, env.DEV_PRESENCE_TTL_MS / 1000, Date.now().toString());
+        await redis.setex(presenceKey, env.DEV_PRESENCE_TTL_MS / 1000, new Date().toISOString());
 
         // Publish presence update
         await redis.publish(

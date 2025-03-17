@@ -1,9 +1,10 @@
-import { Link, LinkProps, NavLink, NavLinkProps } from "@remix-run/react";
-import React, { forwardRef, ReactNode, useImperativeHandle, useRef } from "react";
-import { ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
+import { Link, type LinkProps, NavLink, type NavLinkProps } from "@remix-run/react";
+import React, { forwardRef, type ReactNode, useImperativeHandle, useRef } from "react";
+import { type ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
 import { ShortcutKey } from "./ShortcutKey";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./Tooltip";
+import { Icon, type RenderIcon } from "./Icon";
 
 const sizes = {
   small: {
@@ -164,8 +165,8 @@ const allVariants = {
 
 export type ButtonContentPropsType = {
   children?: React.ReactNode;
-  LeadingIcon?: React.ComponentType<any>;
-  TrailingIcon?: React.ComponentType<any>;
+  LeadingIcon?: RenderIcon;
+  TrailingIcon?: RenderIcon;
   trailingIconClassName?: string;
   leadingIconClassName?: string;
   fullWidth?: boolean;
@@ -220,7 +221,8 @@ export function ButtonContent(props: ButtonContentPropsType) {
         )}
       >
         {LeadingIcon && (
-          <LeadingIcon
+          <Icon
+            icon={LeadingIcon}
             className={cn(
               iconClassName,
               variation.icon,
@@ -245,7 +247,8 @@ export function ButtonContent(props: ButtonContentPropsType) {
           renderShortcutKey()}
 
         {TrailingIcon && (
-          <TrailingIcon
+          <Icon
+            icon={TrailingIcon}
             className={cn(
               iconClassName,
               variation.icon,

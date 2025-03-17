@@ -1,27 +1,27 @@
 import {
-  ChatPostMessageArguments,
+  type ChatPostMessageArguments,
   ErrorCode,
-  WebAPIHTTPError,
-  WebAPIPlatformError,
-  WebAPIRateLimitedError,
-  WebAPIRequestError,
+  type WebAPIHTTPError,
+  type WebAPIPlatformError,
+  type WebAPIRateLimitedError,
+  type WebAPIRequestError,
 } from "@slack/web-api";
 import {
   Webhook,
   TaskRunError,
   createJsonErrorObject,
-  RunFailedWebhook,
-  DeploymentFailedWebhook,
-  DeploymentSuccessWebhook,
+  type RunFailedWebhook,
+  type DeploymentFailedWebhook,
+  type DeploymentSuccessWebhook,
   isOOMRunError,
 } from "@trigger.dev/core/v3";
 import assertNever from "assert-never";
 import { subtle } from "crypto";
-import { Prisma, prisma, PrismaClientOrTransaction } from "~/db.server";
+import { type Prisma, type prisma, type PrismaClientOrTransaction } from "~/db.server";
 import { env } from "~/env.server";
 import {
   OrgIntegrationRepository,
-  OrganizationIntegrationForService,
+  type OrganizationIntegrationForService,
 } from "~/models/orgIntegration.server";
 import {
   ProjectAlertEmailProperties,
@@ -37,7 +37,7 @@ import { commonWorker } from "~/v3/commonWorker.server";
 import { FINAL_ATTEMPT_STATUSES } from "~/v3/taskStatus";
 import { BaseService } from "../baseService.server";
 import { generateFriendlyId } from "~/v3/friendlyIdentifiers";
-import { ProjectAlertChannelType, ProjectAlertType } from "@trigger.dev/database";
+import { type ProjectAlertChannelType, type ProjectAlertType } from "@trigger.dev/database";
 import { alertsRateLimiter } from "~/v3/alertsRateLimiter.server";
 import { v3RunPath } from "~/utils/pathBuilder";
 import { ApiRetrieveRunPresenter } from "~/presenters/v3/ApiRetrieveRunPresenter.server";
@@ -380,6 +380,7 @@ export class DeliverAlertService extends BaseService {
                     dashboardUrl: `${env.APP_ORIGIN}${v3RunPath(
                       alert.project.organization,
                       alert.project,
+                      alert.environment,
                       alert.taskRun
                     )}`,
                   },

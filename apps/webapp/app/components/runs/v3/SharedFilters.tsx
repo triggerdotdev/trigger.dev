@@ -100,7 +100,7 @@ export function EnvironmentsDropdown({
               value={item.id}
               shortcut={shortcutFromIndex(index, { shortcutsEnabled: true })}
             >
-              <EnvironmentLabel environment={item} userName={item.userName} />
+              <EnvironmentLabel environment={item} />
             </SelectItem>
           ))}
         </SelectList>

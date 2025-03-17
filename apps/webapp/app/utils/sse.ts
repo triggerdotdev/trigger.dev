@@ -1,8 +1,9 @@
-import { LoaderFunctionArgs } from "@remix-run/node";
+import { type LoaderFunctionArgs } from "@remix-run/node";
+import { type Params } from "@remix-run/router";
 import { eventStream } from "remix-utils/sse/server";
 import { setInterval } from "timers/promises";
 
-type SendFunction = Parameters<Parameters<typeof eventStream>[1]>[0];
+export type SendFunction = Parameters<Parameters<typeof eventStream>[1]>[0];
 
 type HandlerParams = {
   send: SendFunction;
@@ -15,12 +16,13 @@ type SSEHandlers = {
   initStream?: (params: HandlerParams) => Promise<boolean | void> | boolean | void;
   /** Return false to stop */
   iterator?: (params: HandlerParams & { date: Date }) => Promise<boolean | void> | boolean | void;
-  cleanup?: () => void;
+  cleanup?: (params: HandlerParams) => void;
 };
 
 type SSEContext = {
   id: string;
   request: Request;
+  params: Params<string>;
   controller: AbortController;
   debug: (message: string) => void;
 };
@@ -38,19 +40,23 @@ const connections: Set<string> = new Set();
 export function createSSELoader(options: SSEOptions) {
   const { timeout, interval = 500, debug = false, handler } = options;
 
-  return async function loader({ request }: LoaderFunctionArgs) {
+  return async function loader({ request, params }: LoaderFunctionArgs) {
     const id = request.headers.get("x-request-id") || Math.random().toString(36).slice(2, 8);
 
     const internalController = new AbortController();
     const timeoutSignal = AbortSignal.timeout(timeout);
 
     const log = (message: string) => {
-      if (debug) console.log(`SSE: [${id}] ${message} (${connections.size} open connections)`);
+      if (debug)
+        console.log(
+          `SSE: [${request.url} ${id}] ${message} (${connections.size} open connections)`
+        );
     };
 
     const context: SSEContext = {
       id,
       request,
+      params,
       controller: internalController,
       debug: log,
     };
@@ -167,7 +173,7 @@ export function createSSELoader(options: SSEOptions) {
         log("Cleanup called");
         if (handlers.cleanup) {
           try {
-            handlers.cleanup();
+            handlers.cleanup({ send });
           } catch (error) {
             log(
               `Error in cleanup handler: ${

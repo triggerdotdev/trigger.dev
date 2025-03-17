@@ -1,5 +1,5 @@
 import { parse } from "@conform-to/zod";
-import { ActionFunctionArgs } from "@remix-run/router";
+import { type ActionFunctionArgs } from "@remix-run/router";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
@@ -11,6 +11,7 @@ import { CreateBulkActionService } from "~/v3/services/bulk/createBulkAction.ser
 const FormSchema = z.object({
   organizationSlug: z.string(),
   projectSlug: z.string(),
+  environmentSlug: z.string(),
   failedRedirect: z.string(),
   runIds: z.array(z.string()).or(z.string()),
 });
@@ -65,6 +66,7 @@ export async function action({ request }: ActionFunctionArgs) {
     const path = v3RunsPath(
       { slug: submission.value.organizationSlug },
       { slug: project.slug },
+      { slug: submission.value.environmentSlug },
       {
         bulkId: result.friendlyId,
       }
