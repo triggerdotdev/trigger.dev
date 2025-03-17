@@ -70,7 +70,7 @@ export function RadioButtonCircle({
   return (
     <div
       className={cn(
-        "ring-offset-background aspect-square h-4 w-4 shrink-0 overflow-hidden rounded-full border border-charcoal-600 focus-custom disabled:cursor-not-allowed disabled:opacity-50",
+        "ring-offset-background aspect-square h-4 w-4 shrink-0 overflow-hidden rounded-full border border-charcoal-600 bg-charcoal-700 focus-custom disabled:cursor-not-allowed disabled:opacity-50",
         boxClassName
       )}
     >

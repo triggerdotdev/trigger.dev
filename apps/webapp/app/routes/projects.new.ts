@@ -1,6 +1,6 @@
-import { LoaderFunctionArgs, redirect } from "@remix-run/server-runtime";
+import { type LoaderFunctionArgs, redirect } from "@remix-run/server-runtime";
 import { getUsersInvites } from "~/models/member.server";
-import { SelectBestProjectPresenter } from "~/presenters/SelectBestProjectPresenter.server";
+import { SelectBestEnvironmentPresenter } from "~/presenters/SelectBestEnvironmentPresenter.server";
 import { requireUser } from "~/services/session.server";
 import { invitesPath, newOrganizationPath, newProjectPath } from "~/utils/pathBuilder";
 
@@ -10,10 +10,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   const url = new URL(request.url);
 
-  const presenter = new SelectBestProjectPresenter();
+  const presenter = new SelectBestEnvironmentPresenter();
 
   try {
-    const { organization } = await presenter.call({ userId: user.id, request });
+    const { organization } = await presenter.call({ user: user });
     //redirect them to the most appropriate project
     return redirect(`${newProjectPath(organization)}${url.search}`);
   } catch (e) {

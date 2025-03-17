@@ -1652,6 +1652,12 @@ export class RunEngine {
     return this.runQueue.lengthOfEnvQueue(environment);
   }
 
+  async currentConcurrencyOfEnvQueue(
+    environment: MinimalAuthenticatedEnvironment
+  ): Promise<number> {
+    return this.runQueue.currentConcurrencyOfEnvironment(environment);
+  }
+
   /**
    * This creates a DATETIME waitpoint, that will be completed automatically when the specified date is reached.
    * If you pass an `idempotencyKey`, the waitpoint will be created only if it doesn't already exist.

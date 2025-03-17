@@ -6,7 +6,7 @@ import { LinkButton } from "./primitives/Buttons";
 import { Header1 } from "./primitives/Headers";
 import { Paragraph } from "./primitives/Paragraph";
 import Spline from "@splinetool/react-spline";
-import { ReactNode } from "react";
+import { type ReactNode } from "react";
 
 type ErrorDisplayOptions = {
   button?: {

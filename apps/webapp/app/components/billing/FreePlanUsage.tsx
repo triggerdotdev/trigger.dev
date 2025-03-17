@@ -25,7 +25,7 @@ export function FreePlanUsage({ to, percentage }: { to: string; percentage: numb
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1">
           <ArrowUpCircleIcon className="h-5 w-5 text-text-dimmed" />
-          <Paragraph className="text-2sm text-text-bright">Free Plan</Paragraph>
+          <span className="text-2sm text-text-bright">Free Plan</span>
         </div>
         <Link to={to} className="text-2sm text-text-link focus-custom">
           Upgrade

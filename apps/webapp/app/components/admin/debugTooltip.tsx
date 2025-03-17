@@ -58,7 +58,7 @@ function Content({ children }: { children: React.ReactNode }) {
             </Property.Item>
             <Property.Item>
               <Property.Label>Project ref</Property.Label>
-              <Property.Value>{project.ref}</Property.Value>
+              <Property.Value>{project.externalRef}</Property.Value>
             </Property.Item>
           </>
         )}

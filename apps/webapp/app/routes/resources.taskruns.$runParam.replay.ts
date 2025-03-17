@@ -1,5 +1,5 @@
 import { parse } from "@conform-to/zod";
-import { ActionFunction, json, LoaderFunctionArgs } from "@remix-run/node";
+import { type ActionFunction, json, type LoaderFunctionArgs } from "@remix-run/node";
 import { prettyPrintPacket } from "@trigger.dev/core/v3";
 import { typedjson } from "remix-typedjson";
 import { z } from "zod";
@@ -103,6 +103,11 @@ export const action: ActionFunction = async ({ request, params }) => {
         friendlyId: runParam,
       },
       include: {
+        runtimeEnvironment: {
+          select: {
+            slug: true,
+          },
+        },
         project: {
           include: {
             organization: true,
@@ -134,6 +139,7 @@ export const action: ActionFunction = async ({ request, params }) => {
         slug: taskRun.project.organization.slug,
       },
       { slug: taskRun.project.slug },
+      { slug: taskRun.runtimeEnvironment.slug },
       { friendlyId: newRun.friendlyId },
       { spanId: newRun.spanId }
     );

@@ -1,9 +1,9 @@
 import { DialogClose } from "@radix-ui/react-dialog";
 import { Form, useNavigation, useSubmit } from "@remix-run/react";
 import { useCallback, useEffect, useRef } from "react";
-import { UseDataFunctionReturn, useTypedFetcher } from "remix-typedjson";
+import { type UseDataFunctionReturn, useTypedFetcher } from "remix-typedjson";
 import { JSONEditor } from "~/components/code/JSONEditor";
-import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
+import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { Button } from "~/components/primitives/Buttons";
 import { DialogContent, DialogHeader } from "~/components/primitives/Dialog";
 import { Header3 } from "~/components/primitives/Headers";
@@ -135,7 +135,7 @@ function ReplayForm({
             const env = environments.find((env) => env.id === value)!;
             return (
               <div className="flex items-center pl-1 pr-2">
-                <EnvironmentLabel environment={env} userName={env.userName} />
+                <EnvironmentCombo environment={env} />
               </div>
             );
           }}
@@ -143,7 +143,7 @@ function ReplayForm({
           {(matches) =>
             matches.map((env) => (
               <SelectItem key={env.id} value={env.id}>
-                <EnvironmentLabel environment={env} userName={env.userName} />
+                <EnvironmentCombo environment={env} />
               </SelectItem>
             ))
           }
