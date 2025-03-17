@@ -2,7 +2,6 @@ import { CheckpointInput, CreateCheckpointResult, ExecutionResult } from "@trigg
 import { CheckpointId } from "@trigger.dev/core/v3/isomorphic";
 import { PrismaClientOrTransaction } from "@trigger.dev/database";
 import { sendNotificationToWorker } from "../eventBus.js";
-import { ServiceValidationError } from "../index.js";
 import { isCheckpointable, isPendingExecuting } from "../statuses.js";
 import {
   getLatestExecutionSnapshot,
@@ -10,6 +9,7 @@ import {
   ExecutionSnapshotSystem,
 } from "./executionSnapshotSystem.js";
 import { SystemResources } from "./systems.js";
+import { ServiceValidationError } from "../errors.js";
 
 export type CheckpointSystemOptions = {
   resources: SystemResources;

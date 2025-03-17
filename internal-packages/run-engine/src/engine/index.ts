@@ -52,6 +52,12 @@ import { SystemResources } from "./systems/systems.js";
 import { WaitpointSystem } from "./systems/waitpointSystem.js";
 import { EngineWorker, HeartbeatTimeouts, RunEngineOptions, TriggerParams } from "./types.js";
 import { workerCatalog } from "./workerCatalog.js";
+import {
+  NotImplementedError,
+  RunDuplicateIdempotencyKeyError,
+  ServiceValidationError,
+} from "./errors.js";
+import { DelayedRunSystem } from "./systems/delayedRunSystem.js";
 
 export class RunEngine {
   private runLockRedis: Redis;
@@ -75,6 +81,7 @@ export class RunEngine {
   batchSystem: BatchSystem;
   enqueueSystem: EnqueueSystem;
   checkpointSystem: CheckpointSystem;
+  delayedRunSystem: DelayedRunSystem;
 
   constructor(private readonly options: RunEngineOptions) {
     this.prisma = options.prisma;
@@ -159,7 +166,7 @@ export class RunEngine {
           });
         },
         enqueueDelayedRun: async ({ payload }) => {
-          await this.#enqueueDelayedRun({ runId: payload.runId });
+          await this.delayedRunSystem.enqueueDelayedRun({ runId: payload.runId });
         },
       },
     }).start();
@@ -246,6 +253,11 @@ export class RunEngine {
     this.enqueueSystem = new EnqueueSystem({
       resources,
       executionSnapshotSystem: this.executionSnapshotSystem,
+    });
+
+    this.delayedRunSystem = new DelayedRunSystem({
+      resources,
+      enqueueSystem: this.enqueueSystem,
     });
 
     this.waitpointSystem = new WaitpointSystem({
@@ -789,47 +801,11 @@ export class RunEngine {
     delayUntil: Date;
     tx?: PrismaClientOrTransaction;
   }): Promise<TaskRun> {
-    const prisma = tx ?? this.prisma;
-    return startSpan(
-      this.tracer,
-      "rescheduleRun",
-      async () => {
-        return await this.runLock.lock([runId], 5_000, async () => {
-          const snapshot = await getLatestExecutionSnapshot(prisma, runId);
-
-          //if the run isn't just created then we can't reschedule it
-          if (snapshot.executionStatus !== "RUN_CREATED") {
-            throw new ServiceValidationError("Cannot reschedule a run that is not delayed");
-          }
-
-          const updatedRun = await prisma.taskRun.update({
-            where: {
-              id: runId,
-            },
-            data: {
-              delayUntil: delayUntil,
-              executionSnapshots: {
-                create: {
-                  engine: "V2",
-                  executionStatus: "RUN_CREATED",
-                  description: "Delayed run was rescheduled to a future date",
-                  runStatus: "EXPIRED",
-                  environmentId: snapshot.environmentId,
-                  environmentType: snapshot.environmentType,
-                },
-              },
-            },
-          });
-
-          await this.worker.reschedule(`enqueueDelayedRun:${updatedRun.id}`, delayUntil);
-
-          return updatedRun;
-        });
-      },
-      {
-        attributes: { runId },
-      }
-    );
+    return this.delayedRunSystem.rescheduleDelayedRun({
+      runId,
+      delayUntil,
+      tx,
+    });
   }
 
   async lengthOfEnvQueue(environment: MinimalAuthenticatedEnvironment): Promise<number> {
@@ -1365,53 +1341,6 @@ export class RunEngine {
     });
   }
 
-  async #enqueueDelayedRun({ runId }: { runId: string }) {
-    const run = await this.prisma.taskRun.findFirst({
-      where: { id: runId },
-      include: {
-        runtimeEnvironment: {
-          include: {
-            project: true,
-            organization: true,
-          },
-        },
-      },
-    });
-
-    if (!run) {
-      throw new Error(`#enqueueDelayedRun: run not found: ${runId}`);
-    }
-
-    // Now we need to enqueue the run into the RunQueue
-    await this.enqueueSystem.enqueueRun({
-      run,
-      env: run.runtimeEnvironment,
-      timestamp: run.createdAt.getTime() - run.priorityMs,
-      batchId: run.batchId ?? undefined,
-    });
-
-    await this.prisma.taskRun.update({
-      where: { id: runId },
-      data: {
-        status: "PENDING",
-        queuedAt: new Date(),
-      },
-    });
-
-    if (run.ttl) {
-      const expireAt = parseNaturalLanguageDuration(run.ttl);
-
-      if (expireAt) {
-        await this.worker.enqueue({
-          id: `expireRun:${runId}`,
-          job: "expireRun",
-          payload: { runId },
-          availableAt: expireAt,
-        });
-      }
-    }
-  }
-
   async #queueRunsWaitingForWorker({ backgroundWorkerId }: { backgroundWorkerId: string }) {
     //It could be a lot of runs, so we will process them in a batch
     //if there are still more to process we will enqueue this function again
@@ -1634,29 +1563,5 @@ export class RunEngine {
 
   #backgroundWorkerQueueKey(backgroundWorkerId: string) {
     return `master-background-worker:${backgroundWorkerId}`;
-  }
-}
-
-export class ServiceValidationError extends Error {
-  constructor(
-    message: string,
-    public status?: number
-  ) {
-    super(message);
-    this.name = "ServiceValidationError";
-  }
-}
-
-class NotImplementedError extends Error {
-  constructor(message: string) {
-    console.error("This isn't implemented", { message });
-    super(message);
-  }
-}
-
-export class RunDuplicateIdempotencyKeyError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "RunDuplicateIdempotencyKeyError";
   }
 }

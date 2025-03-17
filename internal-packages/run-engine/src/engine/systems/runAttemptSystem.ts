@@ -1,17 +1,4 @@
-import {
-  $transaction,
-  PrismaClient,
-  PrismaClientOrTransaction,
-  RuntimeEnvironmentType,
-  TaskRun,
-} from "@trigger.dev/database";
-import { Logger } from "@trigger.dev/core/logger";
-import { startSpan, Tracer } from "@internal/tracing";
-import {
-  executionResultFromSnapshot,
-  ExecutionSnapshotSystem,
-  getLatestExecutionSnapshot,
-} from "./executionSnapshotSystem.js";
+import { startSpan } from "@internal/tracing";
 import {
   CompleteRunAttemptResult,
   ExecutionResult,
@@ -23,20 +10,29 @@ import {
   TaskRunInternalError,
   TaskRunSuccessfulExecutionResult,
 } from "@trigger.dev/core/v3/schemas";
-import { RunLocker } from "../locking.js";
-import { EventBus, sendNotificationToWorker } from "../eventBus.js";
-import { ServiceValidationError } from "../index.js";
-import { retryOutcomeFromCompletion } from "../retrying.js";
-import { RunQueue } from "../../run-queue/index.js";
-import { isExecuting } from "../statuses.js";
-import { EngineWorker, RunEngineOptions } from "../types.js";
-import { runStatusFromError } from "../errors.js";
-import { BatchSystem } from "./batchSystem.js";
-import { WaitpointSystem } from "./waitpointSystem.js";
-import { MAX_TASK_RUN_ATTEMPTS } from "../consts.js";
-import { getMachinePreset } from "../machinePresets.js";
 import { parsePacket } from "@trigger.dev/core/v3/utils/ioSerialization";
+import {
+  $transaction,
+  PrismaClientOrTransaction,
+  RuntimeEnvironmentType,
+  TaskRun,
+} from "@trigger.dev/database";
+import { MAX_TASK_RUN_ATTEMPTS } from "../consts.js";
+import { runStatusFromError, ServiceValidationError } from "../errors.js";
+import { sendNotificationToWorker } from "../eventBus.js";
+import { getMachinePreset } from "../machinePresets.js";
+import { retryOutcomeFromCompletion } from "../retrying.js";
+import { isExecuting } from "../statuses.js";
+import { RunEngineOptions } from "../types.js";
+import { BatchSystem } from "./batchSystem.js";
+import {
+  executionResultFromSnapshot,
+  ExecutionSnapshotSystem,
+  getLatestExecutionSnapshot,
+} from "./executionSnapshotSystem.js";
 import { SystemResources } from "./systems.js";
+import { WaitpointSystem } from "./waitpointSystem.js";
+
 export type RunAttemptSystemOptions = {
   resources: SystemResources;
   executionSnapshotSystem: ExecutionSnapshotSystem;

@@ -56,3 +56,27 @@ export function runStatusFromError(error: TaskRunError): TaskRunStatus {
       assertExhaustive(error.code);
   }
 }
+
+export class ServiceValidationError extends Error {
+  constructor(
+    message: string,
+    public status?: number
+  ) {
+    super(message);
+    this.name = "ServiceValidationError";
+  }
+}
+
+export class NotImplementedError extends Error {
+  constructor(message: string) {
+    console.error("This isn't implemented", { message });
+    super(message);
+  }
+}
+
+export class RunDuplicateIdempotencyKeyError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RunDuplicateIdempotencyKeyError";
+  }
+}
