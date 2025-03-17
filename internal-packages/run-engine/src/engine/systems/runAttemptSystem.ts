@@ -1,4 +1,5 @@
 import {
+  $transaction,
   PrismaClient,
   PrismaClientOrTransaction,
   RuntimeEnvironmentType,
@@ -14,7 +15,9 @@ import {
 import {
   CompleteRunAttemptResult,
   ExecutionResult,
+  StartRunAttemptResult,
   TaskRunError,
+  TaskRunExecution,
   TaskRunExecutionResult,
   TaskRunFailedExecutionResult,
   TaskRunInternalError,
@@ -26,10 +29,13 @@ import { ServiceValidationError } from "../index.js";
 import { retryOutcomeFromCompletion } from "../retrying.js";
 import { RunQueue } from "../../run-queue/index.js";
 import { isExecuting } from "../statuses.js";
-import { EngineWorker } from "../types.js";
+import { EngineWorker, RunEngineOptions } from "../types.js";
 import { runStatusFromError } from "../errors.js";
 import { BatchSystem } from "./batchSystem.js";
 import { WaitpointSystem } from "./waitpointSystem.js";
+import { MAX_TASK_RUN_ATTEMPTS } from "../consts.js";
+import { getMachinePreset } from "../machinePresets.js";
+import { parsePacket } from "@trigger.dev/core/v3/utils/ioSerialization";
 
 export type RunAttemptSystemOptions = {
   prisma: PrismaClient;
@@ -43,6 +49,7 @@ export type RunAttemptSystemOptions = {
   batchSystem: BatchSystem;
   waitpointSystem: WaitpointSystem;
   retryWarmStartThresholdMs?: number;
+  machines: RunEngineOptions["machines"];
 };
 
 export class RunAttemptSystem {
@@ -68,6 +75,292 @@ export class RunAttemptSystem {
     this.executionSnapshotSystem = options.executionSnapshotSystem;
     this.batchSystem = options.batchSystem;
     this.waitpointSystem = options.waitpointSystem;
+  }
+
+  public async startRunAttempt({
+    runId,
+    snapshotId,
+    workerId,
+    runnerId,
+    isWarmStart,
+    tx,
+  }: {
+    runId: string;
+    snapshotId: string;
+    workerId?: string;
+    runnerId?: string;
+    isWarmStart?: boolean;
+    tx?: PrismaClientOrTransaction;
+  }): Promise<StartRunAttemptResult> {
+    const prisma = tx ?? this.prisma;
+
+    return startSpan(
+      this.tracer,
+      "startRunAttempt",
+      async (span) => {
+        return this.runLock.lock([runId], 5000, async () => {
+          const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId);
+
+          if (latestSnapshot.id !== snapshotId) {
+            //if there is a big delay between the snapshot and the attempt, the snapshot might have changed
+            //we just want to log because elsewhere it should have been put back into a state where it can be attempted
+            this.logger.warn(
+              "RunEngine.createRunAttempt(): snapshot has changed since the attempt was created, ignoring."
+            );
+            throw new ServiceValidationError("Snapshot changed", 409);
+          }
+
+          const environment = await this.#getAuthenticatedEnvironmentFromRun(runId, prisma);
+          if (!environment) {
+            throw new ServiceValidationError("Environment not found", 404);
+          }
+
+          const taskRun = await prisma.taskRun.findFirst({
+            where: {
+              id: runId,
+            },
+            include: {
+              tags: true,
+              lockedBy: {
+                include: {
+                  worker: {
+                    select: {
+                      id: true,
+                      version: true,
+                      sdkVersion: true,
+                      cliVersion: true,
+                      supportsLazyAttempts: true,
+                    },
+                  },
+                },
+              },
+              batchItems: {
+                include: {
+                  batchTaskRun: true,
+                },
+              },
+            },
+          });
+
+          this.logger.debug("Creating a task run attempt", { taskRun });
+
+          if (!taskRun) {
+            throw new ServiceValidationError("Task run not found", 404);
+          }
+
+          span.setAttribute("projectId", taskRun.projectId);
+          span.setAttribute("environmentId", taskRun.runtimeEnvironmentId);
+          span.setAttribute("taskRunId", taskRun.id);
+          span.setAttribute("taskRunFriendlyId", taskRun.friendlyId);
+
+          if (taskRun.status === "CANCELED") {
+            throw new ServiceValidationError("Task run is cancelled", 400);
+          }
+
+          if (!taskRun.lockedBy) {
+            throw new ServiceValidationError("Task run is not locked", 400);
+          }
+
+          const queue = await prisma.taskQueue.findUnique({
+            where: {
+              runtimeEnvironmentId_name: {
+                runtimeEnvironmentId: environment.id,
+                name: taskRun.queue,
+              },
+            },
+          });
+
+          if (!queue) {
+            throw new ServiceValidationError("Queue not found", 404);
+          }
+
+          //increment the attempt number (start at 1)
+          const nextAttemptNumber = (taskRun.attemptNumber ?? 0) + 1;
+
+          if (nextAttemptNumber > MAX_TASK_RUN_ATTEMPTS) {
+            await this.attemptFailed({
+              runId: taskRun.id,
+              snapshotId,
+              completion: {
+                ok: false,
+                id: taskRun.id,
+                error: {
+                  type: "INTERNAL_ERROR",
+                  code: "TASK_RUN_CRASHED",
+                  message: "Max attempts reached.",
+                },
+              },
+              tx: prisma,
+            });
+            throw new ServiceValidationError("Max attempts reached", 400);
+          }
+
+          this.eventBus.emit("runAttemptStarted", {
+            time: new Date(),
+            run: {
+              id: taskRun.id,
+              attemptNumber: nextAttemptNumber,
+              baseCostInCents: taskRun.baseCostInCents,
+            },
+            organization: {
+              id: environment.organization.id,
+            },
+          });
+
+          const result = await $transaction(
+            prisma,
+            async (tx) => {
+              const run = await tx.taskRun.update({
+                where: {
+                  id: taskRun.id,
+                },
+                data: {
+                  status: "EXECUTING",
+                  attemptNumber: nextAttemptNumber,
+                  executedAt: taskRun.attemptNumber === null ? new Date() : undefined,
+                },
+                include: {
+                  tags: true,
+                  lockedBy: {
+                    include: { worker: true },
+                  },
+                },
+              });
+
+              const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(tx, {
+                run,
+                snapshot: {
+                  executionStatus: "EXECUTING",
+                  description: `Attempt created, starting execution${
+                    isWarmStart ? " (warm start)" : ""
+                  }`,
+                },
+                environmentId: latestSnapshot.environmentId,
+                environmentType: latestSnapshot.environmentType,
+                workerId,
+                runnerId,
+              });
+
+              if (taskRun.ttl) {
+                //don't expire the run, it's going to execute
+                await this.worker.ack(`expireRun:${taskRun.id}`);
+              }
+
+              return { run, snapshot: newSnapshot };
+            },
+            (error) => {
+              this.logger.error("RunEngine.createRunAttempt(): prisma.$transaction error", {
+                code: error.code,
+                meta: error.meta,
+                stack: error.stack,
+                message: error.message,
+                name: error.name,
+              });
+              throw new ServiceValidationError(
+                "Failed to update task run and execution snapshot",
+                500
+              );
+            }
+          );
+
+          if (!result) {
+            this.logger.error("RunEngine.createRunAttempt(): failed to create task run attempt", {
+              runId: taskRun.id,
+              nextAttemptNumber,
+            });
+            throw new ServiceValidationError("Failed to create task run attempt", 500);
+          }
+
+          const { run, snapshot } = result;
+
+          const machinePreset = getMachinePreset({
+            machines: this.options.machines.machines,
+            defaultMachine: this.options.machines.defaultMachine,
+            config: taskRun.lockedBy.machineConfig ?? {},
+            run: taskRun,
+          });
+
+          const metadata = await parsePacket({
+            data: taskRun.metadata ?? undefined,
+            dataType: taskRun.metadataType,
+          });
+
+          const execution: TaskRunExecution = {
+            task: {
+              id: run.lockedBy!.slug,
+              filePath: run.lockedBy!.filePath,
+              exportName: run.lockedBy!.exportName,
+            },
+            attempt: {
+              number: nextAttemptNumber,
+              startedAt: latestSnapshot.updatedAt,
+              /** @deprecated */
+              id: "deprecated",
+              /** @deprecated */
+              backgroundWorkerId: "deprecated",
+              /** @deprecated */
+              backgroundWorkerTaskId: "deprecated",
+              /** @deprecated */
+              status: "deprecated",
+            },
+            run: {
+              id: run.friendlyId,
+              payload: run.payload,
+              payloadType: run.payloadType,
+              createdAt: run.createdAt,
+              tags: run.tags.map((tag) => tag.name),
+              isTest: run.isTest,
+              idempotencyKey: run.idempotencyKey ?? undefined,
+              startedAt: run.startedAt ?? run.createdAt,
+              maxAttempts: run.maxAttempts ?? undefined,
+              version: run.lockedBy!.worker.version,
+              metadata,
+              maxDuration: run.maxDurationInSeconds ?? undefined,
+              /** @deprecated */
+              context: undefined,
+              /** @deprecated */
+              durationMs: run.usageDurationMs,
+              /** @deprecated */
+              costInCents: run.costInCents,
+              /** @deprecated */
+              baseCostInCents: run.baseCostInCents,
+              traceContext: run.traceContext as Record<string, string | undefined>,
+              priority: run.priorityMs === 0 ? undefined : run.priorityMs / 1_000,
+            },
+            queue: {
+              id: queue.friendlyId,
+              name: queue.name,
+            },
+            environment: {
+              id: environment.id,
+              slug: environment.slug,
+              type: environment.type,
+            },
+            organization: {
+              id: environment.organization.id,
+              slug: environment.organization.slug,
+              name: environment.organization.title,
+            },
+            project: {
+              id: environment.project.id,
+              ref: environment.project.externalRef,
+              slug: environment.project.slug,
+              name: environment.project.name,
+            },
+            batch:
+              taskRun.batchItems[0] && taskRun.batchItems[0].batchTaskRun
+                ? { id: taskRun.batchItems[0].batchTaskRun.friendlyId }
+                : undefined,
+            machine: machinePreset,
+          };
+
+          return { run, snapshot, execution };
+        });
+      },
+      {
+        attributes: { runId, snapshotId },
+      }
+    );
   }
 
   public async completeRunAttempt({
@@ -893,5 +1186,28 @@ export class RunAttemptSystem {
 
     //cancel the heartbeats
     await this.worker.ack(`heartbeatSnapshot.${id}`);
+  }
+
+  async #getAuthenticatedEnvironmentFromRun(runId: string, tx?: PrismaClientOrTransaction) {
+    const prisma = tx ?? this.prisma;
+    const taskRun = await prisma.taskRun.findUnique({
+      where: {
+        id: runId,
+      },
+      include: {
+        runtimeEnvironment: {
+          include: {
+            organization: true,
+            project: true,
+          },
+        },
+      },
+    });
+
+    if (!taskRun) {
+      return;
+    }
+
+    return taskRun?.runtimeEnvironment;
   }
 }
