@@ -9,7 +9,6 @@ import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Suspense } from "react";
 import { typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
-import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { Feedback } from "~/components/Feedback";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
@@ -25,31 +24,39 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { useOrganization } from "~/hooks/useOrganizations";
-import {
-  ConcurrencyPresenter,
-  type Environment,
-} from "~/presenters/v3/ConcurrencyPresenter.server";
+import { findProjectBySlug } from "~/models/project.server";
+import { QueuePresenter, type Environment } from "~/presenters/v3/ConcurrencyPresenter.server";
 import { requireUserId } from "~/services/session.server";
-import { docsPath, ProjectParamSchema, v3BillingPath } from "~/utils/pathBuilder";
+import { docsPath, EnvironmentParamSchema, v3BillingPath } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 
 export const meta: MetaFunction = () => {
   return [
     {
-      title: `Concurrency limits | Trigger.dev`,
+      title: `Queues | Trigger.dev`,
     },
   ];
 };
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
-  const { projectParam } = ProjectParamSchema.parse(params);
+  const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
+
+  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
+  if (!project) {
+    throw new Response(undefined, {
+      status: 404,
+      statusText: "Project not found",
+    });
+  }
 
   try {
-    const presenter = new ConcurrencyPresenter();
+    const presenter = new QueuePresenter();
     const result = await presenter.call({
       userId,
-      projectSlug: projectParam,
+      projectId: project.id,
+      organizationId: project.organizationId,
+      environmentSlug: envParam,
     });
 
     return typeddefer(result);
@@ -63,7 +70,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 export default function Page() {
-  const { environments } = useTypedLoaderData<typeof loader>();
+  const { environment } = useTypedLoaderData<typeof loader>();
 
   const organization = useOrganization();
   const plan = useCurrentPlan();
@@ -88,7 +95,6 @@ export default function Page() {
           <Table containerClassName="border-t-0">
             <TableHeader>
               <TableRow>
-                <TableHeaderCell>Environment</TableHeaderCell>
                 <TableHeaderCell alignment="right">Queued</TableHeaderCell>
                 <TableHeaderCell alignment="right">Running</TableHeaderCell>
                 <TableHeaderCell alignment="right">Concurrency limit</TableHeaderCell>
@@ -106,8 +112,8 @@ export default function Page() {
                   </TableRow>
                 }
               >
-                <Await resolve={environments} errorElement={<p>Error loading environments</p>}>
-                  {(environments) => <EnvironmentsTable environments={environments} />}
+                <Await resolve={environment} errorElement={<p>Error loading environments</p>}>
+                  {(environment) => <EnvironmentTable environment={environment} />}
                 </Await>
               </Suspense>
             </TableBody>
@@ -149,19 +155,12 @@ export default function Page() {
   );
 }
 
-function EnvironmentsTable({ environments }: { environments: Environment[] }) {
+function EnvironmentTable({ environment }: { environment: Environment }) {
   return (
-    <>
-      {environments.map((environment) => (
-        <TableRow key={environment.id}>
-          <TableCell>
-            <EnvironmentCombo environment={environment} />
-          </TableCell>
-          <TableCell alignment="right">{environment.queued}</TableCell>
-          <TableCell alignment="right">{environment.concurrency}</TableCell>
-          <TableCell alignment="right">{environment.concurrencyLimit}</TableCell>
-        </TableRow>
-      ))}
-    </>
+    <TableRow>
+      <TableCell alignment="right">{environment.queued}</TableCell>
+      <TableCell alignment="right">{environment.concurrency}</TableCell>
+      <TableCell alignment="right">{environment.concurrencyLimit}</TableCell>
+    </TableRow>
   );
 }
