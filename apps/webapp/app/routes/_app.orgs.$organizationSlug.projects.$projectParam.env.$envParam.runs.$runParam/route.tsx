@@ -95,6 +95,7 @@ import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { SpanView } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.$runParam.spans.$spanParam/route";
 import { useDevPresence } from "~/components/DevPresence";
 import { DisconnectedIcon } from "~/assets/icons/ConnectionIcons";
+import { ClipboardField } from "~/components/primitives/ClipboardField";
 
 const resizableSettings = {
   parent: {
@@ -1257,15 +1258,16 @@ function ConnectedDevWarning() {
         isConnected ? "h-0 opacity-0" : "opacity-100"
       )}
     >
-      <Callout variant="info" icon={<DisconnectedIcon className="size-6" />} className="mt-2">
+      <Callout
+        variant="error"
+        icon={<DisconnectedIcon className="size-5 shrink-0" />}
+        className="mt-2"
+      >
         <div className="flex flex-col gap-1">
-          <Paragraph variant="small" spacing className="text-error">
-            Your local dev server is not connected to Trigger.dev.
+          <Paragraph variant="small" spacing>
+            Your local dev server is not connectedr. Check you're running the CLI:
           </Paragraph>
-          <Paragraph variant="small">Check you're running the CLI:</Paragraph>
-          <Paragraph variant="small">
-            <InlineCode className="whitespace-nowrap">npx trigger.dev@latest dev</InlineCode>
-          </Paragraph>
+          <ClipboardField variant="secondary/small" value="npx trigger.dev@latest dev" />
         </div>
       </Callout>
     </div>

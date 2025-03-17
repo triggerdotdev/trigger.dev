@@ -85,6 +85,13 @@ import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
 import { SideMenuSection } from "./SideMenuSection";
+import {
+  SimpleTooltip,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "../primitives/Tooltip";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 export type SideMenuProject = Pick<
@@ -515,19 +522,32 @@ export function DevConnection() {
 
   return (
     <Dialog>
-      <DialogTrigger asChild>
-        <Button
-          variant="minimal/small"
-          className="px-1"
-          LeadingIcon={
-            isConnected ? (
-              <ConnectedIcon className="size-5" />
-            ) : (
-              <DisconnectedIcon className="size-5" />
-            )
-          }
-        />
-      </DialogTrigger>
+      <div>
+        <TooltipProvider disableHoverableContent={true}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div>
+                <DialogTrigger asChild>
+                  <Button
+                    variant="minimal/small"
+                    className="px-1"
+                    LeadingIcon={
+                      isConnected ? (
+                        <ConnectedIcon className="size-5" />
+                      ) : (
+                        <DisconnectedIcon className="size-5" />
+                      )
+                    }
+                  />
+                </DialogTrigger>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent side="right" className={"text-xs"}>
+              {isConnected ? "Your dev server is connected" : "Your dev server is not connected"}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </div>
       <DialogContent>
         <DialogHeader>
           {isConnected
