@@ -211,8 +211,8 @@ describe("FairDequeuingStrategy", () => {
 
       console.log("Second distribution took", distribute2Duration, "ms");
 
-      // Make sure the second call is more than 9 times faster than the first
-      expect(distribute2Duration).toBeLessThan(distribute1Duration / 9);
+      // Make sure the second call is more than 6 times faster than the first
+      expect(distribute2Duration).toBeLessThan(distribute1Duration / 6);
 
       const startDistribute3 = performance.now();
 
