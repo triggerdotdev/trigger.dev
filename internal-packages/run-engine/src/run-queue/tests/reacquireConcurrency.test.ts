@@ -226,111 +226,6 @@ describe("RunQueue.reacquireConcurrency", () => {
   );
 
   redisTest(
-    "It should return true and remove the run from the reserve concurrency set if it's already in the current concurrency set",
-    async ({ redisContainer }) => {
-      const queue = new RunQueue({
-        ...testOptions,
-        queueSelectionStrategy: new FairQueueSelectionStrategy({
-          redis: {
-            keyPrefix: "runqueue:test:",
-            host: redisContainer.getHost(),
-            port: redisContainer.getPort(),
-          },
-          keys: testOptions.keys,
-        }),
-        redis: {
-          keyPrefix: "runqueue:test:",
-          host: redisContainer.getHost(),
-          port: redisContainer.getPort(),
-        },
-      });
-
-      try {
-        await queue.updateEnvConcurrencyLimits({
-          ...authenticatedEnvProd,
-          maximumConcurrencyLimit: 1,
-        });
-
-        await queue.enqueueMessage({
-          env: authenticatedEnvProd,
-          message: messageProd,
-          masterQueues: "main",
-        });
-
-        const messages = await queue.dequeueMessageFromMasterQueue("test_12345", "main", 1);
-        expect(messages.length).toBe(1);
-        expect(messages[0].message.runId).toBe(messageProd.runId);
-
-        //concurrencies
-        expect(await queue.currentConcurrencyOfQueue(authenticatedEnvProd, messageProd.queue)).toBe(
-          1
-        );
-        expect(await queue.currentConcurrencyOfEnvironment(authenticatedEnvProd)).toBe(1);
-
-        // Now we need to enqueue a second message message, adding the first to the reserve concurrency set
-        await queue.enqueueMessage({
-          env: authenticatedEnvProd,
-          message: {
-            ...messageProd,
-            runId: "r1235",
-            queue: "task/my-task-2",
-          },
-          masterQueues: "main",
-          reserveConcurrency: {
-            messageId: messageProd.runId,
-            recursiveQueue: false, // It will only be in the env reserve concurrency set
-          },
-        });
-
-        expect(await queue.reserveConcurrencyOfEnvironment(authenticatedEnvProd)).toBe(1);
-        expect(await queue.reserveConcurrencyOfQueue(authenticatedEnvProd, messageProd.queue)).toBe(
-          0
-        );
-
-        // Now we can dequeue the second message
-        const message2 = await queue.dequeueMessageFromMasterQueue("test_12345", "main", 1);
-        expect(message2.length).toBe(1);
-        expect(message2[0].message.runId).toBe("r1235");
-
-        // Now lets assert the concurrencies
-        expect(await queue.currentConcurrencyOfQueue(authenticatedEnvProd, messageProd.queue)).toBe(
-          1
-        );
-        expect(await queue.currentConcurrencyOfQueue(authenticatedEnvProd, "task/my-task-2")).toBe(
-          1
-        );
-        expect(await queue.currentConcurrencyOfEnvironment(authenticatedEnvProd)).toBe(2);
-        expect(await queue.reserveConcurrencyOfEnvironment(authenticatedEnvProd)).toBe(1);
-        expect(await queue.reserveConcurrencyOfQueue(authenticatedEnvProd, messageProd.queue)).toBe(
-          0
-        );
-
-        //reacquire the concurrency
-        const result = await queue.reacquireConcurrency(
-          authenticatedEnvProd.organization.id,
-          messageProd.runId
-        );
-        expect(result).toBe(true);
-
-        //concurrencies
-        expect(await queue.currentConcurrencyOfQueue(authenticatedEnvProd, messageProd.queue)).toBe(
-          1
-        );
-        expect(await queue.currentConcurrencyOfQueue(authenticatedEnvProd, "task/my-task-2")).toBe(
-          1
-        );
-        expect(await queue.currentConcurrencyOfEnvironment(authenticatedEnvProd)).toBe(2);
-        expect(await queue.reserveConcurrencyOfEnvironment(authenticatedEnvProd)).toBe(1);
-        expect(await queue.reserveConcurrencyOfQueue(authenticatedEnvProd, messageProd.queue)).toBe(
-          0
-        );
-      } finally {
-        await queue.quit();
-      }
-    }
-  );
-
-  redisTest(
     "It should false if the run is not in the current concurrency set and there is no capacity in the environment",
     async ({ redisContainer }) => {
       const queue = new RunQueue({
@@ -398,10 +293,6 @@ describe("RunQueue.reacquireConcurrency", () => {
           0
         );
         expect(await queue.currentConcurrencyOfEnvironment(authenticatedEnvProd)).toBe(1);
-        expect(await queue.reserveConcurrencyOfEnvironment(authenticatedEnvProd)).toBe(0);
-        expect(await queue.reserveConcurrencyOfQueue(authenticatedEnvProd, messageProd.queue)).toBe(
-          0
-        );
       } finally {
         await queue.quit();
       }

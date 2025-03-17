@@ -1,6 +1,6 @@
 import { describe } from "node:test";
 import { expect, it } from "vitest";
-import { RunQueueFullKeyProducer } from "./keyProducer.js";
+import { RunQueueFullKeyProducer } from "../keyProducer.js";
 
 describe("KeyProducer", () => {
   it("queueConcurrencyLimitKey", () => {

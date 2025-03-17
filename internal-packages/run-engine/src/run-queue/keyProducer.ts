@@ -12,7 +12,6 @@ const constants = {
   CONCURRENCY_KEY_PART: "ck",
   TASK_PART: "task",
   MESSAGE_PART: "message",
-  RESERVE_CONCURRENCY_PART: "reserveConcurrency",
   DEAD_LETTER_QUEUE_PART: "deadLetter",
 } as const;
 
@@ -105,10 +104,6 @@ export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
     );
   }
 
-  reserveConcurrencyKey(env: MinimalAuthenticatedEnvironment, queue: string) {
-    return [this.queueKey(env, queue), constants.RESERVE_CONCURRENCY_PART].join(":");
-  }
-
   disabledConcurrencyLimitKeyFromQueue(queue: string) {
     const { orgId } = this.descriptorFromQueue(queue);
     return `{${constants.ORG_PART}:${orgId}}:${constants.DISABLED_CONCURRENCY_LIMIT_PART}`;
@@ -156,28 +151,6 @@ export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
     }
   }
 
-  envReserveConcurrencyKey(env: EnvDescriptor): string;
-  envReserveConcurrencyKey(env: MinimalAuthenticatedEnvironment): string;
-  envReserveConcurrencyKey(
-    envOrDescriptor: EnvDescriptor | MinimalAuthenticatedEnvironment
-  ): string {
-    if ("id" in envOrDescriptor) {
-      return [
-        this.orgKeySection(envOrDescriptor.organization.id),
-        this.projKeySection(envOrDescriptor.project.id),
-        this.envKeySection(envOrDescriptor.id),
-        constants.RESERVE_CONCURRENCY_PART,
-      ].join(":");
-    } else {
-      return [
-        this.orgKeySection(envOrDescriptor.orgId),
-        this.projKeySection(envOrDescriptor.projectId),
-        this.envKeySection(envOrDescriptor.envId),
-        constants.RESERVE_CONCURRENCY_PART,
-      ].join(":");
-    }
-  }
-
   messageKeyPrefixFromQueue(queue: string) {
     const { orgId } = this.descriptorFromQueue(queue);
     return `${this.orgKeySection(orgId)}:${constants.MESSAGE_PART}:`;
@@ -201,17 +174,6 @@ export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
     return this.descriptorFromQueue(queue).projectId;
   }
 
-  reserveConcurrencyKeyFromQueue(queue: string) {
-    const descriptor = this.descriptorFromQueue(queue);
-
-    return this.queueReserveConcurrencyKeyFromDescriptor(descriptor);
-  }
-
-  envReserveConcurrencyKeyFromQueue(queue: string) {
-    const descriptor = this.descriptorFromQueue(queue);
-
-    return this.envReserveConcurrencyKey(descriptor);
-  }
   deadLetterQueueKey(env: MinimalAuthenticatedEnvironment): string;
   deadLetterQueueKey(env: EnvDescriptor): string;
   deadLetterQueueKey(envOrDescriptor: EnvDescriptor | MinimalAuthenticatedEnvironment): string {
@@ -235,13 +197,6 @@ export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
     const descriptor = this.descriptorFromQueue(queue);
 
     return this.deadLetterQueueKey(descriptor);
-  }
-
-  private queueReserveConcurrencyKeyFromDescriptor(descriptor: QueueDescriptor) {
-    return [
-      this.queueKey(descriptor.orgId, descriptor.projectId, descriptor.envId, descriptor.queue),
-      constants.RESERVE_CONCURRENCY_PART,
-    ].join(":");
   }
 
   descriptorFromQueue(queue: string): QueueDescriptor {

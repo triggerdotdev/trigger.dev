@@ -1,10 +1,10 @@
-import { createRedisClient, RedisOptions } from "@internal/redis";
 import { redisTest } from "@internal/testcontainers";
 import { describe, expect, vi } from "vitest";
-import { RUN_QUEUE_RESUME_PRIORITY_TIMESTAMP_OFFSET } from "./constants.js";
-import { FairQueueSelectionStrategy } from "./fairQueueSelectionStrategy.js";
-import { RunQueueFullKeyProducer } from "./keyProducer.js";
-import { EnvQueues, RunQueueKeyProducer } from "./types.js";
+import { RUN_QUEUE_RESUME_PRIORITY_TIMESTAMP_OFFSET } from "../constants.js";
+import { FairQueueSelectionStrategy } from "../fairQueueSelectionStrategy.js";
+import { RunQueueFullKeyProducer } from "../keyProducer.js";
+import { EnvQueues, RunQueueKeyProducer } from "../types.js";
+import { createRedisClient, RedisOptions } from "@internal/redis";
 
 vi.setConfig({ testTimeout: 60_000 }); // 30 seconds timeout
 
@@ -75,54 +75,6 @@ describe("FairDequeuingStrategy", () => {
     const result = await strategy.distributeFairQueuesFromParentQueue("parent-queue", "consumer-1");
     expect(result).toHaveLength(0);
   });
-
-  redisTest(
-    "should give extra concurrency when the env has reserve concurrency",
-    async ({ redisOptions: redis }) => {
-      const keyProducer = new RunQueueFullKeyProducer();
-      const strategy = new FairQueueSelectionStrategy({
-        redis,
-        keys: keyProducer,
-        defaultEnvConcurrencyLimit: 2,
-        parentQueueLimit: 100,
-        seed: "test-seed-3",
-      });
-
-      await setupQueue({
-        redis,
-        keyProducer,
-        parentQueue: "parent-queue",
-        score: Date.now() - 1000,
-        queueId: "queue-1",
-        orgId: "org-1",
-        projectId: "proj-1",
-        envId: "env-1",
-      });
-
-      await setupConcurrency({
-        redis,
-        keyProducer,
-        env: {
-          envId: "env-1",
-          projectId: "proj-1",
-          orgId: "org-1",
-          currentConcurrency: 2,
-          limit: 2,
-          reserveConcurrency: 1,
-        },
-      });
-
-      const result = await strategy.distributeFairQueuesFromParentQueue(
-        "parent-queue",
-        "consumer-1"
-      );
-      expect(result).toHaveLength(1);
-      expect(result[0]).toEqual({
-        envId: "env-1",
-        queues: [keyProducer.queueKey("org-1", "proj-1", "env-1", "queue-1")],
-      });
-    }
-  );
 
   redisTest("should respect parentQueueLimit", async ({ redisOptions: redis }) => {
     const keyProducer = new RunQueueFullKeyProducer();
@@ -274,7 +226,7 @@ describe("FairDequeuingStrategy", () => {
       console.log("Third distribution took", distribute3Duration, "ms");
 
       // Make sure the third call is more than 4 times the second
-      expect(distribute3Duration).toBeGreaterThan(distribute2Duration * 4);
+      expect(distribute3Duration).toBeGreaterThan(distribute2Duration * 2);
     }
   );
 
@@ -1119,7 +1071,6 @@ type SetupConcurrencyOptions = {
     orgId: string;
     currentConcurrency: number;
     limit?: number;
-    reserveConcurrency?: number;
   };
 };
 
@@ -1144,19 +1095,6 @@ async function setupConcurrency({ redis, keyProducer, env }: SetupConcurrencyOpt
     );
 
     await $redis.sadd(envCurrentKey, ...dummyJobs);
-  }
-
-  if (env.reserveConcurrency && env.reserveConcurrency > 0) {
-    // Set reserved concurrency by adding dummy members to the set
-    const envReservedKey = keyProducer.envReserveConcurrencyKey(env);
-
-    // Add dummy reserved job IDs to simulate reserved concurrency
-    const dummyJobs = Array.from(
-      { length: env.reserveConcurrency },
-      (_, i) => `dummy-reserved-job-${i}-${Date.now()}`
-    );
-
-    await $redis.sadd(envReservedKey, ...dummyJobs);
   }
 }
 

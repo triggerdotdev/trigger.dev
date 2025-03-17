@@ -115,7 +115,6 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
   const concurrencyLimit = await engine.runQueue.getEnvConcurrencyLimit(environment);
   const currentConcurrency = await engine.runQueue.currentConcurrencyOfEnvironment(environment);
-  const reserveConcurrency = await engine.runQueue.reserveConcurrencyOfEnvironment(environment);
 
   if (searchParams.queue) {
     const queueConcurrencyLimit = await engine.runQueue.getQueueConcurrencyLimit(
@@ -126,21 +125,15 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       environment,
       searchParams.queue
     );
-    const queueReserveConcurrency = await engine.runQueue.reserveConcurrencyOfQueue(
-      environment,
-      searchParams.queue
-    );
 
     return json({
       id: environment.id,
       concurrencyLimit,
       currentConcurrency,
-      reserveConcurrency,
       queueConcurrencyLimit,
       queueCurrentConcurrency,
-      queueReserveConcurrency,
     });
   }
 
-  return json({ id: environment.id, concurrencyLimit, currentConcurrency, reserveConcurrency });
+  return json({ id: environment.id, concurrencyLimit, currentConcurrency });
 }

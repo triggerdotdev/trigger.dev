@@ -78,13 +78,11 @@ describe("RunQueue.dequeueMessageFromMasterQueue", () => {
       const envMasterQueue = `env:${authenticatedEnvDev.id}`;
 
       //enqueue message
-      const enqueueResult = await queue.enqueueMessage({
+      await queue.enqueueMessage({
         env: authenticatedEnvDev,
         message: messageDev,
         masterQueues: ["main", envMasterQueue],
       });
-
-      expect(enqueueResult).toBe(true);
 
       //queue length
       const result2 = await queue.lengthOfQueue(authenticatedEnvDev, messageDev.queue);
@@ -107,11 +105,6 @@ describe("RunQueue.dequeueMessageFromMasterQueue", () => {
       const envConcurrency = await queue.currentConcurrencyOfEnvironment(authenticatedEnvDev);
       expect(envConcurrency).toBe(0);
 
-      const envReserveConcurrency = await queue.reserveConcurrencyOfEnvironment(
-        authenticatedEnvDev
-      );
-      expect(envReserveConcurrency).toBe(0);
-
       const dequeued = await queue.dequeueMessageFromMasterQueue("test_12345", envMasterQueue, 10);
       expect(dequeued.length).toBe(1);
       expect(dequeued[0].messageId).toEqual(messageDev.runId);
@@ -128,11 +121,6 @@ describe("RunQueue.dequeueMessageFromMasterQueue", () => {
 
       const envConcurrencyAfter = await queue.currentConcurrencyOfEnvironment(authenticatedEnvDev);
       expect(envConcurrencyAfter).toBe(1);
-
-      const envReserveConcurrencyAfter = await queue.reserveConcurrencyOfEnvironment(
-        authenticatedEnvDev
-      );
-      expect(envReserveConcurrencyAfter).toBe(0);
 
       //queue length
       const result3 = await queue.lengthOfQueue(authenticatedEnvDev, messageDev.queue);
@@ -265,174 +253,6 @@ describe("RunQueue.dequeueMessageFromMasterQueue", () => {
           10
         );
         expect(dequeued2.length).toBe(0);
-
-        const queueConcurrency = await queue.currentConcurrencyOfQueue(
-          authenticatedEnvDev,
-          messageDev.queue
-        );
-        expect(queueConcurrency).toBe(1);
-      } finally {
-        await queue.quit();
-      }
-    }
-  );
-
-  redisTest(
-    "should consider reserve concurrency when checking limits",
-    async ({ redisContainer }) => {
-      const queue = new RunQueue({
-        ...testOptions,
-        queueSelectionStrategy: new FairQueueSelectionStrategy({
-          redis: {
-            keyPrefix: "runqueue:test:",
-            host: redisContainer.getHost(),
-            port: redisContainer.getPort(),
-          },
-          keys: testOptions.keys,
-        }),
-        redis: {
-          keyPrefix: "runqueue:test:",
-          host: redisContainer.getHost(),
-          port: redisContainer.getPort(),
-        },
-      });
-
-      try {
-        // Set env concurrency limit to 1
-        await queue.updateEnvConcurrencyLimits({
-          ...authenticatedEnvDev,
-          maximumConcurrencyLimit: 1,
-        });
-
-        const envMasterQueue = `env:${authenticatedEnvDev.id}`;
-
-        // First enqueue and dequeue a message to occupy the concurrency
-        await queue.enqueueMessage({
-          env: authenticatedEnvDev,
-          message: messageDev,
-          masterQueues: ["main", envMasterQueue],
-        });
-
-        const dequeued1 = await queue.dequeueMessageFromMasterQueue(
-          "test_12345",
-          envMasterQueue,
-          10
-        );
-        expect(dequeued1.length).toBe(1);
-
-        // Verify current concurrency is at limit
-        const envConcurrency1 = await queue.currentConcurrencyOfEnvironment(authenticatedEnvDev);
-        expect(envConcurrency1).toBe(1);
-
-        // Now enqueue a message with reserve concurrency
-        await queue.enqueueMessage({
-          env: authenticatedEnvDev,
-          message: { ...messageDev, runId: "r4322" },
-          masterQueues: ["main", envMasterQueue],
-          reserveConcurrency: {
-            messageId: "r1234",
-            recursiveQueue: false,
-          },
-        });
-
-        // Verify reserve concurrency is set
-        const envReserveConcurrency = await queue.reserveConcurrencyOfEnvironment(
-          authenticatedEnvDev
-        );
-        expect(envReserveConcurrency).toBe(1);
-
-        // Try to dequeue another message - should fail because current concurrency is at limit
-        const dequeued2 = await queue.dequeueMessageFromMasterQueue(
-          "test_12345",
-          envMasterQueue,
-          10
-        );
-        expect(dequeued2.length).toBe(0);
-
-        // Verify concurrency counts
-        const envConcurrency2 = await queue.currentConcurrencyOfEnvironment(authenticatedEnvDev);
-        expect(envConcurrency2).toBe(1);
-
-        // Reserve concurrency should still be set
-        const envReserveConcurrencyAfter = await queue.reserveConcurrencyOfEnvironment(
-          authenticatedEnvDev
-        );
-        expect(envReserveConcurrencyAfter).toBe(1);
-      } finally {
-        await queue.quit();
-      }
-    }
-  );
-
-  redisTest(
-    "should clear reserve concurrency when dequeuing reserved message",
-    async ({ redisContainer }) => {
-      const queue = new RunQueue({
-        ...testOptions,
-        queueSelectionStrategy: new FairQueueSelectionStrategy({
-          redis: {
-            keyPrefix: "runqueue:test:",
-            host: redisContainer.getHost(),
-            port: redisContainer.getPort(),
-          },
-          keys: testOptions.keys,
-        }),
-        redis: {
-          keyPrefix: "runqueue:test:",
-          host: redisContainer.getHost(),
-          port: redisContainer.getPort(),
-        },
-      });
-
-      try {
-        const envMasterQueue = `env:${authenticatedEnvDev.id}`;
-
-        // Enqueue message with reserve concurrency
-        await queue.enqueueMessage({
-          env: authenticatedEnvDev,
-          message: messageDev,
-          masterQueues: ["main", envMasterQueue],
-          reserveConcurrency: {
-            messageId: messageDev.runId,
-            recursiveQueue: true,
-          },
-        });
-
-        // Verify reserve concurrency is set
-        const envReserveConcurrency = await queue.reserveConcurrencyOfEnvironment(
-          authenticatedEnvDev
-        );
-        expect(envReserveConcurrency).toBe(1);
-
-        const queueReserveConcurrency = await queue.reserveConcurrencyOfQueue(
-          authenticatedEnvDev,
-          messageDev.queue
-        );
-        expect(queueReserveConcurrency).toBe(1);
-
-        // Dequeue the reserved message
-        const dequeued = await queue.dequeueMessageFromMasterQueue(
-          "test_12345",
-          envMasterQueue,
-          10
-        );
-        expect(dequeued.length).toBe(1);
-        expect(dequeued[0].messageId).toBe(messageDev.runId);
-
-        // Verify reserve concurrency is cleared and current concurrency is set
-        const envReserveConcurrencyAfter = await queue.reserveConcurrencyOfEnvironment(
-          authenticatedEnvDev
-        );
-        expect(envReserveConcurrencyAfter).toBe(0);
-
-        const queueReserveConcurrencyAfter = await queue.reserveConcurrencyOfQueue(
-          authenticatedEnvDev,
-          messageDev.queue
-        );
-        expect(queueReserveConcurrencyAfter).toBe(0);
-
-        const envConcurrency = await queue.currentConcurrencyOfEnvironment(authenticatedEnvDev);
-        expect(envConcurrency).toBe(1);
 
         const queueConcurrency = await queue.currentConcurrencyOfQueue(
           authenticatedEnvDev,

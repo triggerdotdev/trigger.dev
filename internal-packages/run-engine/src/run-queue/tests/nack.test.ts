@@ -73,23 +73,7 @@ describe("RunQueue.nackMessage", () => {
         env: authenticatedEnvDev,
         message: messageDev,
         masterQueues: ["main", envMasterQueue],
-        reserveConcurrency: {
-          messageId: messageDev.runId,
-          recursiveQueue: true,
-        },
       });
-
-      // Verify reserve concurrency is set
-      const queueReserveConcurrency = await queue.reserveConcurrencyOfQueue(
-        authenticatedEnvDev,
-        messageDev.queue
-      );
-      expect(queueReserveConcurrency).toBe(1);
-
-      const envReserveConcurrency = await queue.reserveConcurrencyOfEnvironment(
-        authenticatedEnvDev
-      );
-      expect(envReserveConcurrency).toBe(1);
 
       // Dequeue message
       const dequeued = await queue.dequeueMessageFromMasterQueue("test_12345", envMasterQueue, 10);
