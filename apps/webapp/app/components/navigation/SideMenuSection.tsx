@@ -50,13 +50,13 @@ export function SideMenuSection({
             expanded: {
               height: "auto",
               transition: {
-                height: { duration: 0.3, ease: "easeOut" },
+                height: { duration: 0.3, ease: "easeInOut" },
               },
             },
             collapsed: {
               height: 0,
               transition: {
-                height: { duration: 0.2, ease: "easeIn" },
+                height: { duration: 0.2, ease: "easeInOut" },
               },
             },
           }}
@@ -67,12 +67,12 @@ export function SideMenuSection({
               expanded: {
                 translateY: 0,
                 opacity: 1,
-                transition: { duration: 0.3, ease: "easeOut" },
+                transition: { duration: 0.3, ease: "easeInOut" },
               },
               collapsed: {
                 translateY: "-100%",
                 opacity: 0,
-                transition: { duration: 0.2, ease: "easeIn" },
+                transition: { duration: 0.2, ease: "easeInOut" },
               },
             }}
           >
