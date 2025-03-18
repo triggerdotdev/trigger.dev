@@ -1,28 +1,44 @@
-import { Prisma, type PrismaClientOrTransaction } from "@trigger.dev/database";
-import { generateFriendlyId } from "~/v3/friendlyIdentifiers";
-import cuid from "cuid";
+import { Prisma } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
+import { generateFriendlyId } from "~/v3/friendlyIdentifiers";
 
 export const MAX_TAGS_PER_RUN = 10;
+const MAX_RETRIES = 3;
 
 export async function createTag({ tag, projectId }: { tag: string; projectId: string }) {
   if (tag.trim().length === 0) return;
 
+  let attempts = 0;
   const friendlyId = generateFriendlyId("runtag");
-  const now = new Date();
-  const id = cuid();
 
-  return await prisma
-    .$queryRaw<Array<{ id: string; friendlyId: string; name: string; projectId: string }>>(
-      Prisma.sql`
-      INSERT INTO "TaskRunTag" ("id", "friendlyId", "name", "projectId", "createdAt")
-      VALUES (${id}, ${friendlyId}, ${tag}, ${projectId}, ${now})
-      ON CONFLICT ("projectId", "name") 
-      DO UPDATE SET "friendlyId" = "TaskRunTag"."friendlyId"
-      RETURNING "id", "friendlyId", "name", "projectId"
-    `
-    )
-    .then((rows) => rows[0]);
+  while (attempts < MAX_RETRIES) {
+    try {
+      return await prisma.taskRunTag.upsert({
+        where: {
+          projectId_name: {
+            projectId,
+            name: tag,
+          },
+        },
+        create: {
+          friendlyId,
+          name: tag,
+          projectId,
+        },
+        update: {},
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        // Handle unique constraint violation (conflict)
+        attempts++;
+        if (attempts >= MAX_RETRIES) {
+          throw new Error(`Failed to create tag after ${MAX_RETRIES} attempts due to conflicts.`);
+        }
+      } else {
+        throw error; // Re-throw other errors
+      }
+    }
+  }
 }
 
 export async function getTagsForRunId({
