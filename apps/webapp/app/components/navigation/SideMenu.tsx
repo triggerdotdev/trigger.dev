@@ -318,22 +318,23 @@ function ProjectSelector({
             <div className="box-content size-10 overflow-clip rounded-sm bg-charcoal-800">
               <Avatar avatar={organization.avatar} className="size-10" includePadding />
             </div>
-            <div className="space-y-[0.3125rem]">
-              <Paragraph variant="extra-small/bright">{organization.title}</Paragraph>
-              <div className="flex items-baseline">
+            <div className="space-y-0.5">
+              <Paragraph variant="small/bright">{organization.title}</Paragraph>
+              <div className="flex items-baseline gap-2">
                 {plan && (
-                  <Paragraph variant="extra-small">
-                    <TextLink variant="secondary" to={v3BillingPath(organization)}>
-                      {plan}
-                    </TextLink>
-                  </Paragraph>
-                )}
-                <Paragraph variant="extra-small">
                   <TextLink
                     variant="secondary"
-                    to={organizationTeamPath(organization)}
-                  >{simplur`${organization.membersCount} member[|s]`}</TextLink>
-                </Paragraph>
+                    className="text-xs"
+                    to={v3BillingPath(organization)}
+                  >
+                    {plan}
+                  </TextLink>
+                )}
+                <TextLink
+                  variant="secondary"
+                  className="text-xs"
+                  to={organizationTeamPath(organization)}
+                >{simplur`${organization.membersCount} member[|s]`}</TextLink>
               </div>
             </div>
           </div>
