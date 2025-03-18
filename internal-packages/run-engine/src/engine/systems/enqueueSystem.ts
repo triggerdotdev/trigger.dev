@@ -23,6 +23,7 @@ export class EnqueueSystem {
     timestamp,
     tx,
     snapshot,
+    previousSnapshotId,
     batchId,
     checkpointId,
     completedWaitpoints,
@@ -37,6 +38,7 @@ export class EnqueueSystem {
       status?: Extract<TaskRunExecutionStatus, "QUEUED" | "QUEUED_EXECUTING">;
       description?: string;
     };
+    previousSnapshotId?: string;
     batchId?: string;
     checkpointId?: string;
     completedWaitpoints?: {
@@ -45,16 +47,17 @@ export class EnqueueSystem {
     }[];
     workerId?: string;
     runnerId?: string;
-  }): Promise<void> {
+  }) {
     const prisma = tx ?? this.$.prisma;
 
-    await this.$.runLock.lock([run.id], 5000, async () => {
+    return await this.$.runLock.lock([run.id], 5000, async () => {
       const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(prisma, {
         run: run,
         snapshot: {
           executionStatus: snapshot?.status ?? "QUEUED",
           description: snapshot?.description ?? "Run was QUEUED",
         },
+        previousSnapshotId,
         batchId,
         environmentId: env.id,
         environmentType: env.type,
@@ -85,6 +88,8 @@ export class EnqueueSystem {
           attempt: 0,
         },
       });
+
+      return newSnapshot;
     });
   }
 }

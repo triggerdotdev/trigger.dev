@@ -10,19 +10,23 @@ import {
 } from "./executionSnapshotSystem.js";
 import { SystemResources } from "./systems.js";
 import { ServiceValidationError } from "../errors.js";
+import { EnqueueSystem } from "./enqueueSystem.js";
 
 export type CheckpointSystemOptions = {
   resources: SystemResources;
   executionSnapshotSystem: ExecutionSnapshotSystem;
+  enqueueSystem: EnqueueSystem;
 };
 
 export class CheckpointSystem {
   private readonly $: SystemResources;
   private readonly executionSnapshotSystem: ExecutionSnapshotSystem;
+  private readonly enqueueSystem: EnqueueSystem;
 
   constructor(private readonly options: CheckpointSystemOptions) {
     this.$ = options.resources;
     this.executionSnapshotSystem = options.executionSnapshotSystem;
+    this.enqueueSystem = options.enqueueSystem;
   }
 
   /**
@@ -48,7 +52,8 @@ export class CheckpointSystem {
 
     return await this.$.runLock.lock([runId], 5_000, async () => {
       const snapshot = await getLatestExecutionSnapshot(prisma, runId);
-      if (snapshot.id !== snapshotId) {
+
+      if (snapshot.id !== snapshotId && snapshot.previousSnapshotId !== snapshotId) {
         this.$.eventBus.emit("incomingCheckpointDiscarded", {
           time: new Date(),
           run: {
@@ -104,15 +109,11 @@ export class CheckpointSystem {
         data: {
           status: "WAITING_TO_RESUME",
         },
-        select: {
-          id: true,
-          status: true,
-          attemptNumber: true,
+        include: {
           runtimeEnvironment: {
-            select: {
-              id: true,
-              projectId: true,
-              organizationId: true,
+            include: {
+              project: true,
+              organization: true,
             },
           },
         },
@@ -139,35 +140,73 @@ export class CheckpointSystem {
         },
       });
 
-      //create a new execution snapshot, with the checkpoint
-      const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(prisma, {
-        run,
-        snapshot: {
-          executionStatus: "SUSPENDED",
-          description: "Run was suspended after creating a checkpoint.",
-        },
-        environmentId: snapshot.environmentId,
-        environmentType: snapshot.environmentType,
-        checkpointId: taskRunCheckpoint.id,
-        workerId,
-        runnerId,
-      });
+      if (snapshot.executionStatus === "QUEUED_EXECUTING") {
+        // Enqueue the run again
+        const newSnapshot = await this.enqueueSystem.enqueueRun({
+          run,
+          env: run.runtimeEnvironment,
+          timestamp: run.createdAt.getTime() - run.priorityMs,
+          snapshot: {
+            status: "QUEUED",
+            description:
+              "Run was QUEUED, because it was queued and executing and a checkpoint was created",
+          },
+          previousSnapshotId: snapshot.id,
+          batchId: snapshot.batchId ?? undefined,
+          completedWaitpoints: snapshot.completedWaitpoints.map((waitpoint) => ({
+            id: waitpoint.id,
+            index: waitpoint.index,
+          })),
+          checkpointId: taskRunCheckpoint.id,
+        });
 
-      // Refill the token bucket for the release concurrency queue
-      await this.$.releaseConcurrencyQueue.refillTokens(
-        {
-          orgId: run.runtimeEnvironment.organizationId,
-          projectId: run.runtimeEnvironment.projectId,
-          envId: run.runtimeEnvironment.id,
-        },
-        1
-      );
+        // Refill the token bucket for the release concurrency queue
+        await this.$.releaseConcurrencyQueue.refillTokens(
+          {
+            orgId: run.runtimeEnvironment.organizationId,
+            projectId: run.runtimeEnvironment.projectId,
+            envId: run.runtimeEnvironment.id,
+          },
+          1
+        );
 
-      return {
-        ok: true as const,
-        ...executionResultFromSnapshot(newSnapshot),
-        checkpoint: taskRunCheckpoint,
-      } satisfies CreateCheckpointResult;
+        return {
+          ok: true as const,
+          ...executionResultFromSnapshot(newSnapshot),
+          checkpoint: taskRunCheckpoint,
+        } satisfies CreateCheckpointResult;
+      } else {
+        //create a new execution snapshot, with the checkpoint
+        const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(prisma, {
+          run,
+          snapshot: {
+            executionStatus: "SUSPENDED",
+            description: "Run was suspended after creating a checkpoint.",
+          },
+          previousSnapshotId: snapshot.id,
+          environmentId: snapshot.environmentId,
+          environmentType: snapshot.environmentType,
+          checkpointId: taskRunCheckpoint.id,
+          workerId,
+          runnerId,
+        });
+
+        // Refill the token bucket for the release concurrency queue
+        await this.$.releaseConcurrencyQueue.refillTokens(
+          {
+            orgId: run.runtimeEnvironment.organizationId,
+            projectId: run.runtimeEnvironment.projectId,
+            envId: run.runtimeEnvironment.id,
+          },
+          1
+        );
+
+        return {
+          ok: true as const,
+          ...executionResultFromSnapshot(newSnapshot),
+          checkpoint: taskRunCheckpoint,
+        } satisfies CreateCheckpointResult;
+      }
     });
   }
 
@@ -229,6 +268,7 @@ export class CheckpointSystem {
           executionStatus: "EXECUTING",
           description: "Run was continued after being suspended",
         },
+        previousSnapshotId: snapshot.id,
         environmentId: snapshot.environmentId,
         environmentType: snapshot.environmentType,
         completedWaitpoints: snapshot.completedWaitpoints,

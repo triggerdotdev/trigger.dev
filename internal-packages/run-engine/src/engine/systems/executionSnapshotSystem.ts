@@ -154,6 +154,7 @@ export class ExecutionSnapshotSystem {
     {
       run,
       snapshot,
+      previousSnapshotId,
       batchId,
       environmentId,
       environmentType,
@@ -168,6 +169,7 @@ export class ExecutionSnapshotSystem {
         executionStatus: TaskRunExecutionStatus;
         description: string;
       };
+      previousSnapshotId?: string;
       batchId?: string;
       environmentId: string;
       environmentType: RuntimeEnvironmentType;
@@ -186,6 +188,7 @@ export class ExecutionSnapshotSystem {
         engine: "V2",
         executionStatus: snapshot.executionStatus,
         description: snapshot.description,
+        previousSnapshotId,
         runId: run.id,
         runStatus: run.status,
         attemptNumber: run.attemptNumber ?? undefined,

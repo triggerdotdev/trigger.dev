@@ -400,6 +400,7 @@ export class WaitpointSystem {
             executionStatus: newStatus,
             description: "Run was blocked by a waitpoint.",
           },
+          previousSnapshotId: snapshot.id,
           environmentId: snapshot.environmentId,
           environmentType: snapshot.environmentType,
           batchId: batch?.id ?? snapshot.batchId ?? undefined,
@@ -511,6 +512,7 @@ export class WaitpointSystem {
                 executionStatus: "EXECUTING",
                 description: "Run was continued, whilst still executing.",
               },
+              previousSnapshotId: snapshot.id,
               environmentId: snapshot.environmentId,
               environmentType: snapshot.environmentType,
               batchId: snapshot.batchId ?? undefined,
@@ -537,6 +539,7 @@ export class WaitpointSystem {
               status: "QUEUED_EXECUTING",
               description: "Run can continue, but is waiting for concurrency",
             },
+            previousSnapshotId: snapshot.id,
             batchId: snapshot.batchId ?? undefined,
             completedWaitpoints: blockingWaitpoints.map((b) => ({
               id: b.waitpoint.id,

@@ -244,14 +244,15 @@ export class RunEngine {
       heartbeatTimeouts: this.heartbeatTimeouts,
     });
 
-    this.checkpointSystem = new CheckpointSystem({
+    this.enqueueSystem = new EnqueueSystem({
       resources,
       executionSnapshotSystem: this.executionSnapshotSystem,
     });
 
-    this.enqueueSystem = new EnqueueSystem({
+    this.checkpointSystem = new CheckpointSystem({
       resources,
       executionSnapshotSystem: this.executionSnapshotSystem,
+      enqueueSystem: this.enqueueSystem,
     });
 
     this.delayedRunSystem = new DelayedRunSystem({

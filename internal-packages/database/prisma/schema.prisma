@@ -1965,6 +1965,9 @@ model TaskRunExecutionSnapshot {
   isValid Boolean @default(true)
   error   String?
 
+  /// The previous snapshot ID
+  previousSnapshotId String?
+
   /// Run
   runId     String
   run       TaskRun       @relation(fields: [runId], references: [id])

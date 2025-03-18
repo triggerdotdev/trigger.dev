@@ -102,6 +102,7 @@ export class DequeueSystem {
                     description:
                       "Tried to dequeue a run that is not in a valid state to be dequeued.",
                   },
+                  previousSnapshotId: snapshot.id,
                   environmentId: snapshot.environmentId,
                   environmentType: snapshot.environmentType,
                   checkpointId: snapshot.checkpointId ?? undefined,
@@ -142,6 +143,7 @@ export class DequeueSystem {
                       executionStatus: "EXECUTING",
                       description: "Run was continued, whilst still executing.",
                     },
+                    previousSnapshotId: snapshot.id,
                     environmentId: snapshot.environmentId,
                     environmentType: snapshot.environmentType,
                     batchId: snapshot.batchId ?? undefined,
@@ -427,6 +429,7 @@ export class DequeueSystem {
                     executionStatus: "PENDING_EXECUTING",
                     description: "Run was dequeued for execution",
                   },
+                  previousSnapshotId: snapshot.id,
                   environmentId: snapshot.environmentId,
                   environmentType: snapshot.environmentType,
                   checkpointId: snapshot.checkpointId ?? undefined,
