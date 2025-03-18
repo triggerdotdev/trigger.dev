@@ -31,7 +31,7 @@ import { Button } from "~/components/primitives/Buttons";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
-import { Header2 } from "~/components/primitives/Headers";
+import { Header2, Header3 } from "~/components/primitives/Headers";
 import { Hint } from "~/components/primitives/Hint";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
@@ -171,7 +171,7 @@ export const action: ActionFunction = async ({ request, params }) => {
         });
 
         return redirectWithSuccessMessage(
-          organizationPath({ slug: organizationSlug }),
+          organizationSettingsPath({ slug: organizationSlug }),
           request,
           `Organization renamed to ${submission.value.organizationName}`
         );
@@ -226,7 +226,7 @@ export const action: ActionFunction = async ({ request, params }) => {
         return redirectWithSuccessMessage(
           organizationSettingsPath({ slug: organizationSlug }),
           request,
-          `Updated logo`
+          `Updated icon`
         );
       }
     }
@@ -286,7 +286,10 @@ export default function Page() {
 
       <PageBody>
         <MainHorizontallyCenteredContainer>
-          <div className="flex flex-col gap-4">
+          <div className="mb-3 border-b border-grid-dimmed pb-3">
+            <Header2>Settings</Header2>
+          </div>
+          <div className="flex flex-col gap-6">
             <div>
               <LogoForm organization={organization} />
             </div>
@@ -294,9 +297,9 @@ export default function Page() {
             <div>
               <Form method="post" {...renameForm.props}>
                 <input type="hidden" name="action" value="rename" />
-                <Fieldset>
+                <Fieldset className="gap-y-0">
                   <InputGroup fullWidth>
-                    <Label htmlFor={organizationName.id}>Rename your organization</Label>
+                    <Label htmlFor={organizationName.id}>Organization name</Label>
                     <Input
                       {...conform.input(organizationName, { type: "text" })}
                       defaultValue={organization.title}
@@ -310,13 +313,14 @@ export default function Page() {
                     confirmButton={
                       <Button
                         type="submit"
-                        variant={"primary/small"}
+                        variant={"secondary/small"}
                         disabled={isRenameLoading}
                         LeadingIcon={isRenameLoading ? SpinnerWhite : undefined}
                       >
                         Rename organization
                       </Button>
                     }
+                    className="border-t-0"
                   />
                 </Fieldset>
               </Form>
@@ -327,7 +331,7 @@ export default function Page() {
               <Form
                 method="post"
                 {...deleteForm.props}
-                className="max-w-md rounded-sm border border-rose-500/40"
+                className="w-full rounded-sm border border-rose-500/40"
               >
                 <input type="hidden" name="action" value="delete" />
                 <Fieldset className="p-4">
@@ -384,10 +388,10 @@ function LogoForm({ organization }: { organization: { avatar: Avatar } }) {
 
   return (
     <Fieldset>
-      <InputGroup>
-        <Label>Logo</Label>
-        <div className="flex items-end gap-2">
-          <div className="grid size-20 place-items-center overflow-hidden rounded-sm border border-charcoal-700 bg-charcoal-850">
+      <InputGroup fullWidth>
+        <Label>Icon</Label>
+        <div className="flex w-full items-end justify-between gap-2">
+          <div className="grid place-items-center overflow-hidden rounded-sm border border-charcoal-750 bg-background-bright">
             <Avatar avatar={avatar} className="size-20" includePadding />
           </div>
           {/* Letters */}
