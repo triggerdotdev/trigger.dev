@@ -212,6 +212,10 @@ graph TD
     WS[WaitpointSystem]
     BS[BatchSystem]
     ES[EnqueueSystem]
+    CS[CheckpointSystem]
+    DRS[DelayedRunSystem]
+    TS[TtlSystem]
+    WFS[WaitingForWorkerSystem]
 
     %% Core Dependencies
     RE --> DS
@@ -220,6 +224,10 @@ graph TD
     RE --> WS
     RE --> BS
     RE --> ES
+    RE --> CS
+    RE --> DRS
+    RE --> TS
+    RE --> WFS
 
     %% System Dependencies
     DS --> ESS
@@ -233,6 +241,15 @@ graph TD
     WS --> ES
 
     ES --> ESS
+
+    CS --> ESS
+    CS --> ES
+
+    DRS --> ES
+
+    WFS --> ES
+
+    TS --> WS
 
     %% Shared Resources
     subgraph Resources
@@ -248,12 +265,7 @@ graph TD
 
     %% Resource Dependencies
     RE -.-> Resources
-    DS -.-> PRI & LOG & TRC & RQ & RL & EB & WRK
-    RAS -.-> PRI & LOG & TRC & RL & EB & RQ & WRK
-    ESS -.-> PRI & LOG & TRC & WRK & EB
-    WS -.-> PRI & LOG & TRC & WRK & EB & RCQ
-    BS -.-> PRI & LOG & TRC & WRK
-    ES -.-> PRI & LOG & TRC & WRK & EB & RQ
+    DS & RAS & ESS & WS & BS & ES & CS & DRS & TS & WFS -.-> Resources
 ```
 
 ## System Responsibilities
