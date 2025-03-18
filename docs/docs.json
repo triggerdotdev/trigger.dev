@@ -299,7 +299,14 @@
               }
             ]
           },
-
+          {
+            "group": "Python guides",
+            "pages": [
+              "guides/python/python-image-processing",
+              "guides/python/python-crawl4ai",
+              "guides/python/python-pdf-form-extractor"
+            ]
+          },
           {
             "group": "Example projects",
             "pages": [
@@ -309,10 +316,6 @@
               "guides/example-projects/realtime-csv-importer",
               "guides/example-projects/vercel-ai-sdk-image-generator"
             ]
-          },
-          {
-            "group": "Python examples",
-            "pages": ["guides/python/python-image-processing", "guides/python/python-crawl4ai"]
           },
           {
             "group": "Example tasks",
