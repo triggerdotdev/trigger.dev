@@ -5,7 +5,6 @@ import {
   PauseIcon,
   RectangleStackIcon,
 } from "@heroicons/react/20/solid";
-import { LockOpenIcon } from "@heroicons/react/24/solid";
 import { Await, type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Suspense } from "react";
@@ -15,7 +14,6 @@ import { Feedback } from "~/components/Feedback";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
-import { Paragraph } from "~/components/primitives/Paragraph";
 import { Spinner } from "~/components/primitives/Spinner";
 import {
   Table,
@@ -27,12 +25,10 @@ import {
 } from "~/components/primitives/Table";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { findProjectBySlug } from "~/models/project.server";
-import { QueueListPresenter, type Environment } from "~/presenters/v3/QueueListPresenter.server";
+import { QueueListPresenter } from "~/presenters/v3/QueueListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { docsPath, EnvironmentParamSchema, v3BillingPath } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
-import { Badge } from "~/components/primitives/Badge";
-import { Header2 } from "~/components/primitives/Headers";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { z } from "zod";
 import { PaginationControls } from "~/components/primitives/Pagination";
