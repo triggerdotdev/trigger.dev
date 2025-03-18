@@ -26,6 +26,7 @@ export function isCheckpointable(status: TaskRunExecutionStatus): boolean {
     //executing
     "EXECUTING",
     "EXECUTING_WITH_WAITPOINTS",
+    "QUEUED_EXECUTING",
   ];
   return checkpointableStatuses.includes(status);
 }

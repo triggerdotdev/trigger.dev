@@ -10,6 +10,7 @@ import { RunEngineOptions } from "../types.js";
 import { ExecutionSnapshotSystem, getLatestExecutionSnapshot } from "./executionSnapshotSystem.js";
 import { RunAttemptSystem } from "./runAttemptSystem.js";
 import { SystemResources } from "./systems.js";
+import { sendNotificationToWorker } from "../eventBus.js";
 
 export type DequeueSystemOptions = {
   resources: SystemResources;
@@ -125,6 +126,38 @@ export class DequeueSystem {
                 this.$.logger.error(
                   `RunEngine.dequeueFromMasterQueue(): Run is not in a valid state to be dequeued: ${runId}\n ${snapshot.id}:${snapshot.executionStatus}`
                 );
+                return null;
+              }
+
+              if (snapshot.executionStatus === "QUEUED_EXECUTING") {
+                const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(
+                  prisma,
+                  {
+                    run: {
+                      id: runId,
+                      status: snapshot.runStatus,
+                      attemptNumber: snapshot.attemptNumber,
+                    },
+                    snapshot: {
+                      executionStatus: "EXECUTING",
+                      description: "Run was continued, whilst still executing.",
+                    },
+                    environmentId: snapshot.environmentId,
+                    environmentType: snapshot.environmentType,
+                    batchId: snapshot.batchId ?? undefined,
+                    completedWaitpoints: snapshot.completedWaitpoints.map((waitpoint) => ({
+                      id: waitpoint.id,
+                      index: waitpoint.index,
+                    })),
+                  }
+                );
+
+                await sendNotificationToWorker({
+                  runId,
+                  snapshot: newSnapshot,
+                  eventBus: this.$.eventBus,
+                });
+
                 return null;
               }
 

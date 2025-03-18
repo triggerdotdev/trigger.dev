@@ -1021,6 +1021,7 @@ export class RunEngine {
     batch,
     workerId,
     runnerId,
+    tx,
   }: {
     runId: string;
     waitpoints: string | string[];
@@ -1045,6 +1046,7 @@ export class RunEngine {
       batch,
       workerId,
       runnerId,
+      tx,
     });
   }
 
