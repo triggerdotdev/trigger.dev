@@ -15,7 +15,7 @@ export type ReleaseConcurrencyQueueRetryOptions = {
 
 export type ReleaseConcurrencyQueueOptions<T> = {
   redis: RedisOptions;
-  executor: (releaseQueue: T, runId: string) => Promise<void>;
+  executor: (releaseQueue: T, releaserId: string) => Promise<void>;
   keys: {
     fromDescriptor: (releaseQueue: T) => string;
     toDescriptor: (releaseQueue: string) => T;
@@ -89,7 +89,7 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
    * If there is no token available, then we'll add the operation to a queue
    * and wait until the token is available.
    */
-  public async attemptToRelease(releaseQueueDescriptor: T, runId: string) {
+  public async attemptToRelease(releaseQueueDescriptor: T, releaserId: string) {
     const maxTokens = await this.#callMaxTokens(releaseQueueDescriptor);
 
     if (maxTokens === 0) {
@@ -104,13 +104,13 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
       this.#queueKey(releaseQueue),
       this.#metadataKey(releaseQueue),
       releaseQueue,
-      runId,
+      releaserId,
       String(maxTokens),
       String(Date.now())
     );
 
     if (!!result) {
-      await this.#callExecutor(releaseQueueDescriptor, runId, {
+      await this.#callExecutor(releaseQueueDescriptor, releaserId, {
         retryCount: 0,
         lastAttempt: Date.now(),
       });
@@ -161,28 +161,28 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
     }
 
     await Promise.all(
-      result.map(([queue, runId, metadata]) => {
+      result.map(([queue, releaserId, metadata]) => {
         const itemMetadata = QueueItemMetadata.parse(JSON.parse(metadata));
         const releaseQueueDescriptor = this.keys.toDescriptor(queue);
-        return this.#callExecutor(releaseQueueDescriptor, runId, itemMetadata);
+        return this.#callExecutor(releaseQueueDescriptor, releaserId, itemMetadata);
       })
     );
 
     return true;
   }
 
-  async #callExecutor(releaseQueueDescriptor: T, runId: string, metadata: QueueItemMetadata) {
+  async #callExecutor(releaseQueueDescriptor: T, releaserId: string, metadata: QueueItemMetadata) {
     try {
-      this.logger.info("Executing run:", { releaseQueueDescriptor, runId });
+      this.logger.info("Executing run:", { releaseQueueDescriptor, releaserId });
 
-      await this.options.executor(releaseQueueDescriptor, runId);
+      await this.options.executor(releaseQueueDescriptor, releaserId);
     } catch (error) {
       this.logger.error("Error executing run:", { error });
 
       if (metadata.retryCount >= this.maxRetries) {
         this.logger.error("Max retries reached:", {
           releaseQueueDescriptor,
-          runId,
+          releaserId,
           retryCount: metadata.retryCount,
         });
 
@@ -194,10 +194,10 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
           this.#queueKey(releaseQueue),
           this.#metadataKey(releaseQueue),
           releaseQueue,
-          runId
+          releaserId
         );
 
-        this.logger.info("Returned token:", { releaseQueueDescriptor, runId });
+        this.logger.info("Returned token:", { releaseQueueDescriptor, releaserId });
 
         return;
       }
@@ -216,7 +216,7 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
         this.#queueKey(releaseQueue),
         this.#metadataKey(releaseQueue),
         releaseQueue,
-        runId,
+        releaserId,
         JSON.stringify(updatedMetadata),
         this.#calculateBackoffScore(updatedMetadata)
       );
@@ -282,7 +282,7 @@ local queueKey = KEYS[3]
 local metadataKey = KEYS[4]
 
 local releaseQueue = ARGV[1]
-local runId = ARGV[2]
+local releaserId = ARGV[2]
 local maxTokens = tonumber(ARGV[3])
 local score = ARGV[4]
 
@@ -292,10 +292,10 @@ local currentTokens = tonumber(redis.call("GET", bucketKey) or maxTokens)
 -- If we have enough tokens, then consume them
 if currentTokens >= 1 then
   redis.call("SET", bucketKey, currentTokens - 1)
-  redis.call("ZREM", queueKey, runId)
+  redis.call("ZREM", queueKey, releaserId)
 
   -- Clean up metadata when successfully consuming
-  redis.call("HDEL", metadataKey, runId)
+  redis.call("HDEL", metadataKey, releaserId)
 
   -- Get queue length after removing the item
   local queueLength = redis.call("ZCARD", queueKey)
@@ -311,14 +311,14 @@ if currentTokens >= 1 then
 end
 
 -- If we don't have enough tokens, then we need to add the operation to the queue
-redis.call("ZADD", queueKey, score, runId)
+redis.call("ZADD", queueKey, score, releaserId)
 
 -- Initialize or update metadata
 local metadata = cjson.encode({
   retryCount = 0,
   lastAttempt = tonumber(score)
 })
-redis.call("HSET", metadataKey, runId, metadata)
+redis.call("HSET", metadataKey, releaserId, metadata)
 
 -- Remove from the master queue
 redis.call("ZREM", masterQueuesKey, releaseQueue)
@@ -400,14 +400,14 @@ redis.call("SET", bucketKey, currentTokens - itemsToProcess)
 
 -- Remove the items from the queue and add to results
 for i = 1, itemsToProcess do
-  local runId = items[i]
-  redis.call("ZREM", queueKey, runId)
+  local releaserId = items[i]
+  redis.call("ZREM", queueKey, releaserId)
 
   -- Get metadata before removing it
-  local metadata = redis.call("HGET", metadataKey, runId)
-  redis.call("HDEL", metadataKey, runId)
+  local metadata = redis.call("HGET", metadataKey, releaserId)
+  redis.call("HDEL", metadataKey, releaserId)
 
-  table.insert(results, { queueName, runId, metadata })
+  table.insert(results, { queueName, releaserId, metadata })
 end
 
 -- Get remaining queue length
@@ -434,7 +434,7 @@ local queueKey = KEYS[3]
 local metadataKey = KEYS[4]
 
 local releaseQueue = ARGV[1]
-local runId = ARGV[2]
+local releaserId = ARGV[2]
 local metadata = ARGV[3]
 local score = ARGV[4]
 
@@ -444,10 +444,10 @@ local remainingTokens = currentTokens + 1
 redis.call("SET", bucketKey, remainingTokens)
 
 -- Add the item back to the queue
-redis.call("ZADD", queueKey, score, runId)
+redis.call("ZADD", queueKey, score, releaserId)
 
 -- Add the metadata back to the item
-redis.call("HSET", metadataKey, runId, metadata)
+redis.call("HSET", metadataKey, releaserId, metadata)
 
 -- Update the master queue
 local queueLength = redis.call("ZCARD", queueKey)
@@ -470,7 +470,7 @@ local queueKey = KEYS[3]
 local metadataKey = KEYS[4]
 
 local releaseQueue = ARGV[1]
-local runId = ARGV[2]
+local releaserId = ARGV[2]
 
 -- Return the token to the bucket
 local currentTokens = tonumber(redis.call("GET", bucketKey))
@@ -478,7 +478,7 @@ local remainingTokens = currentTokens + 1
 redis.call("SET", bucketKey, remainingTokens)
 
 -- Clean up metadata
-redis.call("HDEL", metadataKey, runId)
+redis.call("HDEL", metadataKey, releaserId)
 
 -- Update the master queue based on remaining queue length
 local queueLength = redis.call("ZCARD", queueKey)
@@ -502,7 +502,7 @@ declare module "@internal/redis" {
       queueKey: string,
       metadataKey: string,
       releaseQueue: string,
-      runId: string,
+      releaserId: string,
       maxTokens: string,
       score: string,
       callback?: Callback<string>
@@ -532,7 +532,7 @@ declare module "@internal/redis" {
       queueKey: string,
       metadataKey: string,
       releaseQueue: string,
-      runId: string,
+      releaserId: string,
       metadata: string,
       score: string,
       callback?: Callback<void>
@@ -544,7 +544,7 @@ declare module "@internal/redis" {
       queueKey: string,
       metadataKey: string,
       releaseQueue: string,
-      runId: string,
+      releaserId: string,
       callback?: Callback<void>
     ): Result<void, Context>;
   }
