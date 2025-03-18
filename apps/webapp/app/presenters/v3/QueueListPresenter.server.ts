@@ -1,8 +1,8 @@
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
-import { marqs } from "~/v3/marqs/index.server";
 import { engine } from "~/v3/runEngine.server";
 import { BasePresenter } from "./basePresenter.server";
-import { EnvironmentQueuePresenter, type Environment } from "./EnvironmentQueuePresenter.server";
+import { type TaskQueueType } from "@trigger.dev/database";
+import { assertExhaustive } from "@trigger.dev/core";
 
 export class QueueListPresenter extends BasePresenter {
   private readonly ITEMS_PER_PAGE = 25;
@@ -63,10 +63,21 @@ export class QueueListPresenter extends BasePresenter {
     // Transform queues to include running and queued counts
     return queues.map((queue) => ({
       name: queue.name.replace(/^task\//, ""),
-      type: queue.type,
+      type: queueTypeFromType(queue.type),
       running: results[1][queue.name] ?? 0,
       queued: results[0][queue.name] ?? 0,
       concurrencyLimit: queue.concurrencyLimit ?? null,
     }));
+  }
+}
+
+export function queueTypeFromType(type: TaskQueueType) {
+  switch (type) {
+    case "NAMED":
+      return "custom" as const;
+    case "VIRTUAL":
+      return "task" as const;
+    default:
+      assertExhaustive(type);
   }
 }

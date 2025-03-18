@@ -289,10 +289,16 @@ export default function Page() {
                         <TableRow key={queue.name}>
                           <TableCell>
                             <span className="flex items-center gap-2">
-                              {queue.type === "VIRTUAL" ? (
-                                <TaskIcon className="size-4 text-blue-500" />
+                              {queue.type === "task" ? (
+                                <SimpleTooltip
+                                  button={<TaskIcon className="size-4 text-blue-500" />}
+                                  content={`This queue was automatically created from your "${queue.name}" task`}
+                                />
                               ) : (
-                                <RectangleStackIcon className="size-4 text-purple-500" />
+                                <SimpleTooltip
+                                  button={<RectangleStackIcon className="size-4 text-purple-500" />}
+                                  content={`This is a custom queue you added in your code.`}
+                                />
                               )}
                               <span>{queue.name}</span>
                             </span>
