@@ -86,6 +86,7 @@ import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
 import { SideMenuSection } from "./SideMenuSection";
+import { InlineCode } from "../code/InlineCode";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 export type SideMenuProject = Pick<
@@ -546,9 +547,7 @@ export function DevConnection() {
       </div>
       <DialogContent>
         <DialogHeader>
-          {isConnected
-            ? "Your dev server is connected to Trigger.dev"
-            : "Your dev server is not connected to Trigger.dev"}
+          {isConnected ? "Your dev server is connected" : "Your dev server is not connected"}
         </DialogHeader>
         <div className="mt-2 flex flex-col gap-3 px-2">
           <div className="flex flex-col items-center justify-center gap-6 px-6 py-10">
@@ -567,20 +566,17 @@ export function DevConnection() {
           {isConnected ? null : (
             <div className="space-y-3">
               <PackageManagerProvider>
-                <TriggerDevStepV3 />
+                <TriggerDevStepV3 title="Run this command to connect" />
               </PackageManagerProvider>
               <Paragraph variant="small">
-                Run this CLI `dev` command to connect to the Trigger.dev servers to start developing
-                locally. Keep it running while you develop to stay connected.
+                Run this CLI <InlineCode variant="extra-small">dev</InlineCode> command to connect
+                to the Trigger.dev servers to start developing locally. Keep it running while you
+                develop to stay connected. Learn more in the{" "}
+                <TextLink to={docsPath("cli-dev")}>CLI docs</TextLink>.
               </Paragraph>
             </div>
           )}
         </div>
-        <DialogFooter>
-          <LinkButton variant="tertiary/medium" LeadingIcon={BookOpenIcon} to={docsPath("cli-dev")}>
-            CLI docs
-          </LinkButton>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
