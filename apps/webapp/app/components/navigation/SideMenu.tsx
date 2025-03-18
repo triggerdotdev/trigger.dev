@@ -86,6 +86,7 @@ import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
 import { SideMenuSection } from "./SideMenuSection";
+import { InlineCode } from "../code/InlineCode";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 export type SideMenuProject = Pick<
@@ -138,8 +139,8 @@ export function SideMenu({
     >
       <div
         className={cn(
-          "flex items-center justify-between px-1 py-1 transition",
-          showHeaderDivider ? " border-grid-bright" : "border-transparent"
+          "flex items-center justify-between border-b px-1 py-1 transition duration-300",
+          showHeaderDivider ? "border-grid-bright" : "border-transparent"
         )}
       >
         <ProjectSelector
@@ -296,7 +297,10 @@ function ProjectSelector({
       <PopoverArrowTrigger
         isOpen={isOrgMenuOpen}
         overflowHidden
-        className="h-8 w-full justify-between overflow-hidden py-1 pl-1.5"
+        className={cn(
+          "h-8 w-full justify-between overflow-hidden py-1 pl-1.5",
+          user.isImpersonating && "border border-dashed border-amber-400"
+        )}
       >
         <span className="flex items-center gap-1.5 overflow-hidden">
           <Avatar avatar={organization.avatar} className="size-5" />
@@ -313,25 +317,26 @@ function ProjectSelector({
       >
         <div className="flex flex-col gap-2 bg-charcoal-750 p-2">
           <div className="flex items-center gap-2.5">
-            <div className="box-content size-10 overflow-clip rounded-sm border border-charcoal-700 bg-charcoal-850">
+            <div className="box-content size-10 overflow-clip rounded-sm bg-charcoal-800">
               <Avatar avatar={organization.avatar} className="size-10" includePadding />
             </div>
             <div className="space-y-0.5">
-              <Paragraph variant="extra-small/bright">{organization.title}</Paragraph>
-              <div className="flex items-baseline">
+              <Paragraph variant="small/bright">{organization.title}</Paragraph>
+              <div className="flex items-baseline gap-2">
                 {plan && (
-                  <Paragraph variant="extra-small">
-                    <TextLink variant="secondary" to={v3BillingPath(organization)}>
-                      {plan}
-                    </TextLink>
-                  </Paragraph>
-                )}
-                <Paragraph variant="extra-small">
                   <TextLink
                     variant="secondary"
-                    to={organizationTeamPath(organization)}
-                  >{simplur`${organization.membersCount} member[|s]`}</TextLink>
-                </Paragraph>
+                    className="text-xs"
+                    to={v3BillingPath(organization)}
+                  >
+                    {plan}
+                  </TextLink>
+                )}
+                <TextLink
+                  variant="secondary"
+                  className="text-xs"
+                  to={organizationTeamPath(organization)}
+                >{simplur`${organization.membersCount} member[|s]`}</TextLink>
               </div>
             </div>
           </div>
@@ -341,6 +346,7 @@ function ProjectSelector({
               to={organizationSettingsPath(organization)}
               fullWidth
               iconSpacing="gap-1.5"
+              className="group-hover/button:border-charcoal-500"
             >
               <CogIcon className="size-4 text-text-dimmed" />
               <span className="text-text-bright">Settings</span>
@@ -350,6 +356,7 @@ function ProjectSelector({
               to={v3UsagePath(organization)}
               fullWidth
               iconSpacing="gap-1.5"
+              className="group-hover/button:border-charcoal-500"
             >
               <ChartBarIcon className="size-4 text-text-dimmed" />
               <span className="text-text-bright">Usage</span>
@@ -543,9 +550,7 @@ export function DevConnection() {
       </div>
       <DialogContent>
         <DialogHeader>
-          {isConnected
-            ? "Your dev server is connected to Trigger.dev"
-            : "Your dev server is not connected to Trigger.dev"}
+          {isConnected ? "Your dev server is connected" : "Your dev server is not connected"}
         </DialogHeader>
         <div className="mt-2 flex flex-col gap-3 px-2">
           <div className="flex flex-col items-center justify-center gap-6 px-6 py-10">
@@ -564,20 +569,17 @@ export function DevConnection() {
           {isConnected ? null : (
             <div className="space-y-3">
               <PackageManagerProvider>
-                <TriggerDevStepV3 />
+                <TriggerDevStepV3 title="Run this command to connect" />
               </PackageManagerProvider>
               <Paragraph variant="small">
-                Run this CLI `dev` command to connect to the Trigger.dev servers to start developing
-                locally. Keep it running while you develop to stay connected.
+                Run this CLI <InlineCode variant="extra-small">dev</InlineCode> command to connect
+                to the Trigger.dev servers to start developing locally. Keep it running while you
+                develop to stay connected. Learn more in the{" "}
+                <TextLink to={docsPath("cli-dev")}>CLI docs</TextLink>.
               </Paragraph>
             </div>
           )}
         </div>
-        <DialogFooter>
-          <LinkButton variant="tertiary/medium" LeadingIcon={BookOpenIcon} to={docsPath("cli-dev")}>
-            CLI docs
-          </LinkButton>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

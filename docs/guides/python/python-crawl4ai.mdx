@@ -7,14 +7,14 @@ description: "Learn how to use Python, Crawl4AI and Playwright to create a headl
 import ScrapingWarning from "/snippets/web-scraping-warning.mdx";
 import PythonLearnMore from "/snippets/python-learn-more.mdx";
 
+## Overview
+
+This demo showcases how to use Trigger.dev with Python to build a web crawler that uses a headless browser to navigate websites and extract content.
+
 ## Prerequisites
 
 - A project with [Trigger.dev initialized](/quick-start)
 - [Python](https://www.python.org/) installed on your local machine
-
-## Overview
-
-This demo showcases how to use Trigger.dev with Python to build a web crawler that uses a headless browser to navigate websites and extract content.
 
 ## Features
 
@@ -113,7 +113,10 @@ export function installPlaywrightChromium(): BuildExtension {
 }
 ```
 
-Learn more about the [trigger.config.ts](/config/config-file) file including setting default retry settings, customizing the build environment, and more.
+<Info>
+  Learn more about executing scripts in your Trigger.dev project using our Python build extension
+  [here](/config/extensions/pythonExtension).
+</Info>
 
 ### Task code
 
@@ -212,14 +215,14 @@ if __name__ == "__main__":
 1. Create a virtual environment `python -m venv venv`
 2. Activate the virtual environment, depending on your OS: On Mac/Linux: `source venv/bin/activate`, on Windows: `venv\Scripts\activate`
 3. Install the Python dependencies `pip install -r requirements.txt`
-4. If you haven't already, copy your project ref from your [Trigger.dev dashboard](https://cloud.trigger.dev) and and add it to the `trigger.config.ts` file.
-5. Run the Trigger.dev dev CLI command with with `npx trigger dev@latest dev` (it may ask you to authorize the CLI if you haven't already).
+4. If you haven't already, copy your project ref from your [Trigger.dev dashboard](https://cloud.trigger.dev) and add it to the `trigger.config.ts` file.
+5. Run the Trigger.dev CLI `dev` command (it may ask you to authorize the CLI if you haven't already).
 6. Test the task in the dashboard, using a URL of your choice.
 
 <ScrapingWarning />
 
 ## Deploying your task
 
-Deploy the task to production using the CLI command `npx trigger.dev@latest deploy`
+Deploy the task to production using the Trigger.dev CLI `deploy` command.
 
 <PythonLearnMore />

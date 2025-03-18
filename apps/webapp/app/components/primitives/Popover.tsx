@@ -175,12 +175,7 @@ function PopoverArrowTrigger({
       >
         {children}
       </Paragraph>
-      <DropdownIcon
-        className={cn(
-          "h-4 w-4 min-w-[0.75rem] text-text-dimmed transition group-hover:text-text-bright",
-          isOpen && "-scale-y-100"
-        )}
-      />
+      <DropdownIcon className="size-4 min-w-[0.75rem] text-text-dimmed transition group-hover:text-text-bright" />
     </PopoverTrigger>
   );
 }
