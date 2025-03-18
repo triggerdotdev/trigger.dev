@@ -6,9 +6,9 @@ import {
   PlayIcon,
   RectangleStackIcon,
 } from "@heroicons/react/20/solid";
-import { Await, Form, type MetaFunction } from "@remix-run/react";
+import { Await, Form, useNavigation, type MetaFunction } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { Suspense } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
@@ -40,6 +40,19 @@ import { PauseEnvironmentService } from "~/v3/services/pauseEnvironment.server";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { EnvironmentQueuePresenter } from "~/presenters/v3/EnvironmentQueuePresenter.server";
+import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
+import { FormButtons } from "~/components/primitives/FormButtons";
+import { DialogClose } from "@radix-ui/react-dialog";
+import { Paragraph } from "~/components/primitives/Paragraph";
+import {
+  SimpleTooltip,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "~/components/primitives/Tooltip";
+import { type RuntimeEnvironmentType } from "@trigger.dev/database";
+import { environmentFullTitle } from "~/components/environments/EnvironmentLabel";
 
 const SearchParamsSchema = z.object({
   page: z.coerce.number().min(1).default(1),
@@ -334,23 +347,88 @@ export default function Page() {
   );
 }
 
-function EnvironmentPauseResumeButton({ env }: { env: { paused: boolean } }) {
+function EnvironmentPauseResumeButton({
+  env,
+}: {
+  env: { type: RuntimeEnvironmentType; paused: boolean };
+}) {
+  const navigation = useNavigation();
+  const [isOpen, setIsOpen] = useState(false);
+
+  useEffect(() => {
+    if (navigation.state === "loading" || navigation.state === "idle") {
+      setIsOpen(false);
+    }
+  }, [navigation.state]);
+
+  const isLoading = Boolean(
+    navigation.formData?.get("action") === (env.paused ? "environment-resume" : "environment-pause")
+  );
+
   return (
-    <Form method="post">
-      <input
-        type="hidden"
-        name="action"
-        value={env.paused ? "environment-resume" : "environment-pause"}
-      />
-      <Button
-        type="submit"
-        variant="tertiary/small"
-        LeadingIcon={env.paused ? PlayIcon : PauseIcon}
-        leadingIconClassName={env.paused ? "text-success" : "text-amber-500"}
-      >
-        {env.paused ? "Resume" : "Pause environment"}
-      </Button>
-    </Form>
+    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+      <div>
+        <TooltipProvider disableHoverableContent={true}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div>
+                <DialogTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="tertiary/small"
+                    LeadingIcon={env.paused ? PlayIcon : PauseIcon}
+                    leadingIconClassName={env.paused ? "text-success" : "text-amber-500"}
+                  >
+                    {env.paused ? "Resume" : "Pause environment"}
+                  </Button>
+                </DialogTrigger>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent side="right" className={"text-xs"}>
+              {env.paused
+                ? `Resume processing runs in ${environmentFullTitle(env)}.`
+                : `Pause processing runs in ${environmentFullTitle(env)}.`}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </div>
+      <DialogContent>
+        <DialogHeader>{env.paused ? "Resume environment?" : "Pause environment?"}</DialogHeader>
+        <div className="flex flex-col gap-3 pt-3">
+          <Paragraph>
+            {env.paused
+              ? `This will allow runs to be dequeued in ${environmentFullTitle(env)} again.`
+              : `This will pause any runs from being dequeued in ${environmentFullTitle(env)}.`}
+          </Paragraph>
+          <Form method="post" onSubmit={() => setIsOpen(false)}>
+            <input
+              type="hidden"
+              name="action"
+              value={env.paused ? "environment-resume" : "environment-pause"}
+            />
+            <FormButtons
+              confirmButton={
+                <Button
+                  type="submit"
+                  disabled={isLoading}
+                  variant={env.paused ? "primary/medium" : "danger/medium"}
+                  LeadingIcon={isLoading ? <Spinner /> : env.paused ? PlayIcon : PauseIcon}
+                >
+                  {env.paused ? "Resume environment" : "Pause environment"}
+                </Button>
+              }
+              cancelButton={
+                <DialogClose asChild>
+                  <Button type="button" variant="tertiary/medium">
+                    Cancel
+                  </Button>
+                </DialogClose>
+              }
+            />
+          </Form>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
