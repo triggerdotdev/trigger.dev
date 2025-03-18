@@ -1,10 +1,9 @@
-import { AuthenticatedEnvironment } from "@internal/testcontainers";
-import { BatchTriggerTaskV3RequestBody, BatchTriggerTaskV3Response } from "@trigger.dev/core/v3";
-import { PrismaClientOrTransaction } from "@trigger.dev/database";
+import { type AuthenticatedEnvironment } from "@internal/testcontainers";
+import { type PrismaClientOrTransaction } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
+import { logger } from "~/services/logger.server";
+import { updateEnvConcurrencyLimits } from "../runQueue.server";
 import { WithRunEngine } from "./baseService.server";
-import { BatchProcessingStrategy, BatchTriggerTaskServiceOptions } from "./batchTriggerV3.server";
-import { determineEngineVersion } from "../engineVersion.server";
 
 export type PauseStatus = "paused" | "resumed";
 
@@ -25,21 +24,45 @@ export class PauseEnvironmentService extends WithRunEngine {
 
   public async call(
     environment: AuthenticatedEnvironment,
-    action: "pause" | "resume"
+    action: PauseStatus
   ): Promise<PauseEnvironmentResult> {
-    const version = await determineEngineVersion({
-      environment,
-    });
+    try {
+      await this._prisma.runtimeEnvironment.update({
+        where: {
+          id: environment.id,
+        },
+        data: {
+          paused: action === "paused",
+        },
+      });
 
-    if (version === "V1") {
+      if (action === "paused") {
+        logger.debug("PauseEnvironmentService: pausing environment", {
+          environmentId: environment.id,
+        });
+        await updateEnvConcurrencyLimits(environment, 0);
+      } else {
+        logger.debug("PauseEnvironmentService: resuming environment", {
+          environmentId: environment.id,
+        });
+        await updateEnvConcurrencyLimits(environment);
+      }
+
+      return {
+        success: true,
+        state: action,
+      };
+    } catch (error) {
+      logger.error("PauseEnvironmentService: error pausing environment", {
+        action,
+        environmentId: environment.id,
+        error,
+      });
+
       return {
         success: false,
-        error: "You need to be on Run Engine v2+ to pause an environment",
+        error: error instanceof Error ? error.message : "Unknown error",
       };
-    }
-
-    if (action === "pause") {
-      await this._prisma.runtimeEnvironment.update({});
     }
   }
 }

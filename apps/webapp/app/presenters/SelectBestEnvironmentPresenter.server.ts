@@ -3,7 +3,7 @@ import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { type UserFromSession } from "~/services/session.server";
 
-export type MinimumEnvironment = Pick<RuntimeEnvironment, "id" | "type" | "slug"> & {
+export type MinimumEnvironment = Pick<RuntimeEnvironment, "id" | "type" | "slug" | "paused"> & {
   orgMember: null | {
     userId: string | undefined;
   };
@@ -45,6 +45,7 @@ export class SelectBestEnvironmentPresenter {
               id: true,
               type: true,
               slug: true,
+              paused: true,
               orgMember: {
                 select: {
                   userId: true,
@@ -68,6 +69,7 @@ export class SelectBestEnvironmentPresenter {
             id: true,
             type: true,
             slug: true,
+            paused: true,
             orgMember: {
               select: {
                 userId: true,

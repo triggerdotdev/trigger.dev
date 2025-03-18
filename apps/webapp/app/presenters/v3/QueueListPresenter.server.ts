@@ -1,18 +1,7 @@
-import {
-  type RuntimeEnvironment,
-  type Organization,
-  type RuntimeEnvironmentType,
-  type TaskQueue,
-} from "@trigger.dev/database";
-import { QUEUED_STATUSES } from "~/components/runs/v3/TaskRunStatus";
-import { Prisma, sqlDatabaseSchema } from "~/db.server";
-import { type Project } from "~/models/project.server";
-import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
-import { type User } from "~/models/user.server";
-import { engine } from "~/v3/runEngine.server";
-import { concurrencyTracker } from "~/v3/services/taskRunConcurrencyTracker.server";
-import { BasePresenter } from "./basePresenter.server";
+import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { marqs } from "~/v3/marqs/index.server";
+import { engine } from "~/v3/runEngine.server";
+import { BasePresenter } from "./basePresenter.server";
 
 export type Environment = Awaited<ReturnType<QueueListPresenter["environmentConcurrency"]>>;
 
@@ -20,23 +9,12 @@ export class QueueListPresenter extends BasePresenter {
   private readonly ITEMS_PER_PAGE = 10;
 
   public async call({
-    userId,
-    projectId,
-    organizationId,
-    environmentSlug,
+    environment,
     page,
   }: {
-    userId: User["id"];
-    projectId: Project["id"];
-    organizationId: Organization["id"];
-    environmentSlug: RuntimeEnvironment["slug"];
+    environment: AuthenticatedEnvironment;
     page: number;
   }) {
-    const environment = await findEnvironmentBySlug(projectId, environmentSlug, userId);
-    if (!environment) {
-      throw new Error(`Environment not found: ${environmentSlug}`);
-    }
-
     // Get total count for pagination
     const totalQueues = await this._replica.taskQueue.count({
       where: {
@@ -46,8 +24,12 @@ export class QueueListPresenter extends BasePresenter {
 
     // Return the environment data immediately and defer the queues
     return {
-      environment: this.environmentConcurrency(organizationId, projectId, userId, environment),
-      queues: this.getQueuesWithPagination(environment, projectId, organizationId, page),
+      environment: this.environmentConcurrency(environment),
+      queues: this.getQueuesWithPagination(
+        environment,
+
+        page
+      ),
       pagination: {
         currentPage: page,
         totalPages: Math.ceil(totalQueues / this.ITEMS_PER_PAGE),
@@ -57,12 +39,7 @@ export class QueueListPresenter extends BasePresenter {
     };
   }
 
-  private async getQueuesWithPagination(
-    environment: { id: string; type: RuntimeEnvironmentType; maximumConcurrencyLimit: number },
-    projectId: string,
-    organizationId: string,
-    page: number
-  ) {
+  private async getQueuesWithPagination(environment: AuthenticatedEnvironment, page: number) {
     const queues = await this._replica.taskQueue.findMany({
       where: {
         runtimeEnvironmentId: environment.id,
@@ -81,27 +58,11 @@ export class QueueListPresenter extends BasePresenter {
 
     const results = await Promise.all([
       engine.lengthOfQueues(
-        {
-          ...environment,
-          project: {
-            id: projectId,
-          },
-          organization: {
-            id: organizationId,
-          },
-        },
+        environment,
         queues.map((q) => q.name)
       ),
       engine.currentConcurrencyOfQueues(
-        {
-          ...environment,
-          project: {
-            id: projectId,
-          },
-          organization: {
-            id: organizationId,
-          },
-        },
+        environment,
         queues.map((q) => q.name)
       ),
     ]);
@@ -116,39 +77,15 @@ export class QueueListPresenter extends BasePresenter {
     }));
   }
 
-  async environmentConcurrency(
-    organizationId: string,
-    projectId: string,
-    userId: string,
-    environment: { id: string; type: RuntimeEnvironmentType; maximumConcurrencyLimit: number }
-  ) {
+  async environmentConcurrency(environment: AuthenticatedEnvironment) {
     //executing
-    const engineV1Executing = await marqs.currentConcurrencyOfEnvironment({
-      ...environment,
-      organizationId,
-    });
-    const engineV2Executing = await engine.concurrencyOfEnvQueue({
-      ...environment,
-      project: {
-        id: projectId,
-      },
-      organization: {
-        id: organizationId,
-      },
-    });
+    const engineV1Executing = await marqs.currentConcurrencyOfEnvironment(environment);
+    const engineV2Executing = await engine.concurrencyOfEnvQueue(environment);
     const running = (engineV1Executing ?? 0) + (engineV2Executing ?? 0);
 
     //queued
-    const engineV1Queued = await marqs.lengthOfEnvQueue({ ...environment, organizationId });
-    const engineV2Queued = await engine.lengthOfEnvQueue({
-      ...environment,
-      project: {
-        id: projectId,
-      },
-      organization: {
-        id: organizationId,
-      },
-    });
+    const engineV1Queued = await marqs.lengthOfEnvQueue(environment);
+    const engineV2Queued = await engine.lengthOfEnvQueue(environment);
     const queued = (engineV1Queued ?? 0) + (engineV2Queued ?? 0);
 
     return {

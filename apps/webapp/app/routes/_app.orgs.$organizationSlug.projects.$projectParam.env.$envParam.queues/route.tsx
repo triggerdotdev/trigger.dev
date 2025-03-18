@@ -3,17 +3,22 @@ import {
   BookOpenIcon,
   ChatBubbleLeftEllipsisIcon,
   PauseIcon,
+  PlayIcon,
   RectangleStackIcon,
 } from "@heroicons/react/20/solid";
-import { Await, type MetaFunction } from "@remix-run/react";
-import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { Await, Form, type MetaFunction } from "@remix-run/react";
+import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Suspense } from "react";
 import { typeddefer, useTypedLoaderData } from "remix-typedjson";
+import { z } from "zod";
+import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { Feedback } from "~/components/Feedback";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { BigNumber } from "~/components/metrics/BigNumber";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
+import { PaginationControls } from "~/components/primitives/Pagination";
 import { Spinner } from "~/components/primitives/Spinner";
 import {
   Table,
@@ -23,17 +28,17 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
+import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { findProjectBySlug } from "~/models/project.server";
+import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { QueueListPresenter } from "~/presenters/v3/QueueListPresenter.server";
 import { requireUserId } from "~/services/session.server";
-import { docsPath, EnvironmentParamSchema, v3BillingPath } from "~/utils/pathBuilder";
-import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
-import { TaskIcon } from "~/assets/icons/TaskIcon";
-import { z } from "zod";
-import { PaginationControls } from "~/components/primitives/Pagination";
 import { cn } from "~/utils/cn";
-import { BigNumber } from "~/components/metrics/BigNumber";
+import { docsPath, EnvironmentParamSchema, v3BillingPath } from "~/utils/pathBuilder";
+import { PauseEnvironmentService } from "~/v3/services/pauseEnvironment.server";
+import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
+import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 
 const SearchParamsSchema = z.object({
   page: z.coerce.number().min(1).default(1),
@@ -62,13 +67,18 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     });
   }
 
+  const environment = await findEnvironmentBySlug(project.id, envParam, userId);
+  if (!environment) {
+    throw new Response(undefined, {
+      status: 404,
+      statusText: "Environment not found",
+    });
+  }
+
   try {
     const presenter = new QueueListPresenter();
     const result = await presenter.call({
-      userId,
-      projectId: project.id,
-      organizationId: project.organizationId,
-      environmentSlug: envParam,
+      environment,
       page,
     });
 
@@ -82,10 +92,68 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 };
 
+export const action = async ({ request, params }: ActionFunctionArgs) => {
+  const userId = await requireUserId(request);
+  if (request.method.toLowerCase() !== "post") {
+    return redirectWithErrorMessage(
+      `/orgs/${params.organizationSlug}/projects/${params.projectParam}/env/${params.envParam}/queues`,
+      request,
+      "Wrong method"
+    );
+  }
+
+  const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
+
+  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
+  if (!project) {
+    throw new Response(undefined, {
+      status: 404,
+      statusText: "Project not found",
+    });
+  }
+
+  const environment = await findEnvironmentBySlug(project.id, envParam, userId);
+  if (!environment) {
+    throw new Response(undefined, {
+      status: 404,
+      statusText: "Environment not found",
+    });
+  }
+
+  const formData = await request.formData();
+  const action = formData.get("action");
+
+  switch (action) {
+    case "environment-pause":
+      const pauseService = new PauseEnvironmentService();
+      await pauseService.call(environment, "paused");
+      return redirectWithSuccessMessage(
+        `/orgs/${organizationSlug}/projects/${projectParam}/env/${envParam}/queues`,
+        request,
+        "Environment paused"
+      );
+    case "environment-resume":
+      const resumeService = new PauseEnvironmentService();
+      await resumeService.call(environment, "resumed");
+      return redirectWithSuccessMessage(
+        `/orgs/${organizationSlug}/projects/${projectParam}/env/${envParam}/queues`,
+        request,
+        "Environment resumed"
+      );
+    default:
+      redirectWithErrorMessage(
+        `/orgs/${organizationSlug}/projects/${projectParam}/env/${envParam}/queues`,
+        request,
+        "Something went wrong"
+      );
+  }
+};
+
 export default function Page() {
   const { environment, queues, pagination } = useTypedLoaderData<typeof loader>();
 
   const organization = useOrganization();
+  const env = useEnvironment();
   const plan = useCurrentPlan();
 
   return (
@@ -112,16 +180,10 @@ export default function Page() {
                   <BigNumber
                     title="Queued"
                     value={environment.queued}
+                    suffix={env.paused && environment.queued > 0 ? "paused" : undefined}
                     animate
-                    accessory={
-                      <Button
-                        variant="tertiary/small"
-                        LeadingIcon={PauseIcon}
-                        leadingIconClassName="text-amber-500"
-                      >
-                        Pause environment
-                      </Button>
-                    }
+                    accessory={<EnvironmentPauseResumeButton env={env} />}
+                    valueClassName={env.paused ? "text-amber-500" : undefined}
                   />
                 )}
               </Await>
@@ -263,5 +325,40 @@ export default function Page() {
         </div>
       </PageBody>
     </PageContainer>
+  );
+}
+
+function EnvironmentPauseResumeButton({ env }: { env: { paused: boolean } }) {
+  return (
+    <Form method="post">
+      <input
+        type="hidden"
+        name="action"
+        value={env.paused ? "environment-resume" : "environment-pause"}
+      />
+      <Button
+        type="submit"
+        variant="tertiary/small"
+        LeadingIcon={env.paused ? PlayIcon : PauseIcon}
+        leadingIconClassName={env.paused ? "text-success" : "text-amber-500"}
+      >
+        {env.paused ? "Resume" : "Pause environment"}
+      </Button>
+    </Form>
+  );
+}
+
+export function isEnvironmentPauseResumeFormSubmission(
+  formMethod: string | undefined,
+  formData: FormData | undefined
+) {
+  if (!formMethod || !formData) {
+    return false;
+  }
+
+  return (
+    formMethod.toLowerCase() === "post" &&
+    (formData.get("action") === "environment-pause" ||
+      formData.get("action") === "environment-resume")
   );
 }

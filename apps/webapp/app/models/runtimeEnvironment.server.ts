@@ -69,7 +69,11 @@ export async function findEnvironmentById(id: string): Promise<AuthenticatedEnvi
   return environment;
 }
 
-export async function findEnvironmentBySlug(projectId: string, envSlug: string, userId: string) {
+export async function findEnvironmentBySlug(
+  projectId: string,
+  envSlug: string,
+  userId: string
+): Promise<AuthenticatedEnvironment | null> {
   return prisma.runtimeEnvironment.findFirst({
     where: {
       projectId: projectId,
@@ -87,6 +91,11 @@ export async function findEnvironmentBySlug(projectId: string, envSlug: string, 
           },
         },
       ],
+    },
+    include: {
+      project: true,
+      organization: true,
+      orgMember: true,
     },
   });
 }
