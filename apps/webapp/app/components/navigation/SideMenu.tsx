@@ -139,8 +139,8 @@ export function SideMenu({
     >
       <div
         className={cn(
-          "flex items-center justify-between px-1 py-1 transition",
-          showHeaderDivider ? " border-grid-bright" : "border-transparent"
+          "flex items-center justify-between border-b px-1 py-1 transition duration-300",
+          showHeaderDivider ? "border-grid-bright" : "border-transparent"
         )}
       >
         <ProjectSelector
