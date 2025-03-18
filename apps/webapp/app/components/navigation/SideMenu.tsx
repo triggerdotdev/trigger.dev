@@ -298,7 +298,10 @@ function ProjectSelector({
       <PopoverArrowTrigger
         isOpen={isOrgMenuOpen}
         overflowHidden
-        className="h-8 w-full justify-between overflow-hidden py-1 pl-1.5"
+        className={cn(
+          "h-8 w-full justify-between overflow-hidden py-1 pl-1.5",
+          user.isImpersonating && "border border-dashed border-amber-400"
+        )}
       >
         <span className="flex items-center gap-1.5 overflow-hidden">
           <Avatar avatar={organization.avatar} className="size-5" />
