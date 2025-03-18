@@ -6,12 +6,13 @@ import { assertExhaustive } from "@trigger.dev/core";
 import { determineEngineVersion } from "~/v3/engineVersion.server";
 
 const DEFAULT_ITEMS_PER_PAGE = 25;
+const MAX_ITEMS_PER_PAGE = 100;
 export class QueueListPresenter extends BasePresenter {
   private readonly perPage: number;
 
   constructor(perPage: number = DEFAULT_ITEMS_PER_PAGE) {
     super();
-    this.perPage = perPage;
+    this.perPage = Math.min(perPage, MAX_ITEMS_PER_PAGE);
   }
 
   public async call({
