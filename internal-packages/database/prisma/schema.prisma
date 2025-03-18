@@ -382,7 +382,8 @@ model RuntimeEnvironment {
   ///A memorable code for the environment
   shortcode String
 
-  maximumConcurrencyLimit Int @default(5)
+  maximumConcurrencyLimit Int     @default(5)
+  paused                  Boolean @default(false)
 
   autoEnableInternalSources Boolean @default(true)
 
@@ -2522,6 +2523,8 @@ model TaskQueue {
 
   concurrencyLimit Int?
   rateLimit        Json?
+
+  paused Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
