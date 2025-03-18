@@ -56,13 +56,11 @@ import {
   v3TestPath,
   v3UsagePath,
 } from "~/utils/pathBuilder";
-import { useDevPresence } from "../DevPresence";
-import { ImpersonationBanner } from "../ImpersonationBanner";
-import { PackageManagerProvider, TriggerDevStepV3 } from "../SetupCommands";
-import { UserProfilePhoto } from "../UserProfilePhoto";
 import connectedImage from "../../assets/images/cli-connected.png";
 import disconnectedImage from "../../assets/images/cli-disconnected.png";
 import { FreePlanUsage } from "../billing/FreePlanUsage";
+import { useDevPresence } from "../DevPresence";
+import { ImpersonationBanner } from "../ImpersonationBanner";
 import { Button, ButtonContent, LinkButton } from "../primitives/Buttons";
 import {
   Dialog,
@@ -80,18 +78,14 @@ import {
   PopoverTrigger,
 } from "../primitives/Popover";
 import { TextLink } from "../primitives/TextLink";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
+import { PackageManagerProvider, TriggerDevStepV3 } from "../SetupCommands";
+import { UserProfilePhoto } from "../UserProfilePhoto";
 import { EnvironmentSelector } from "./EnvironmentSelector";
 import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
 import { SideMenuSection } from "./SideMenuSection";
-import {
-  SimpleTooltip,
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "../primitives/Tooltip";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 export type SideMenuProject = Pick<
