@@ -53,7 +53,20 @@ export class CheckpointSystem {
     return await this.$.runLock.lock([runId], 5_000, async () => {
       const snapshot = await getLatestExecutionSnapshot(prisma, runId);
 
-      if (snapshot.id !== snapshotId && snapshot.previousSnapshotId !== snapshotId) {
+      const isValidSnapshot =
+        // Case 1: The provided snapshotId matches the current snapshot
+        snapshot.id === snapshotId ||
+        // Case 2: The provided snapshotId matches the previous snapshot
+        // AND we're in QUEUED_EXECUTING state (which is valid)
+        (snapshot.previousSnapshotId === snapshotId &&
+          snapshot.executionStatus === "QUEUED_EXECUTING");
+
+      if (!isValidSnapshot) {
+        this.$.logger.error("Tried to createCheckpoint on an invalid snapshot", {
+          snapshot,
+          snapshotId,
+        });
+
         this.$.eventBus.emit("incomingCheckpointDiscarded", {
           time: new Date(),
           run: {
