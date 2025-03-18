@@ -9,11 +9,11 @@ import {
 import { tracer } from "./tracer.js";
 
 /**
- * Lists schedules
+ * Lists queues
  * @param options - The list options
  * @param options.page - The page number
- * @param options.perPage - The number of schedules per page
- * @returns The list of schedules
+ * @param options.perPage - The number of queues per page
+ * @returns The list of queues
  */
 export function list(
   options?: ListQueueOptions,
