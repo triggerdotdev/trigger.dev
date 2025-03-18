@@ -91,7 +91,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   try {
     const queueListPresenter = new QueueListPresenter();
-    const result = await queueListPresenter.call({
+    const queues = await queueListPresenter.call({
       environment,
       page,
     });
@@ -99,7 +99,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     const environmentQueuePresenter = new EnvironmentQueuePresenter();
 
     return typeddefer({
-      ...result,
+      queues,
       environment: environmentQueuePresenter.call(environment),
     });
   } catch (error) {
@@ -169,7 +169,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 };
 
 export default function Page() {
-  const { environment, queues, pagination } = useTypedLoaderData<typeof loader>();
+  const { environment, queues } = useTypedLoaderData<typeof loader>();
 
   const organization = useOrganization();
   const env = useEnvironment();
@@ -255,98 +255,113 @@ export default function Page() {
             </Suspense>
           </div>
 
-          <Table containerClassName="border-t">
-            <TableHeader>
-              <TableRow>
-                <TableHeaderCell>Name</TableHeaderCell>
-                <TableHeaderCell alignment="right">Queued</TableHeaderCell>
-                <TableHeaderCell alignment="right">Running</TableHeaderCell>
-                <TableHeaderCell alignment="right">Concurrency limit</TableHeaderCell>
-                <TableHeaderCell alignment="right">
-                  <span className="sr-only">Pause/resume</span>
-                </TableHeaderCell>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              <Suspense
-                fallback={
+          {queues.success ? (
+            <>
+              <Table containerClassName="border-t">
+                <TableHeader>
                   <TableRow>
-                    <TableCell colSpan={5}>
-                      <div className="grid place-items-center py-6">
-                        <Spinner />
-                      </div>
-                    </TableCell>
+                    <TableHeaderCell>Name</TableHeaderCell>
+                    <TableHeaderCell alignment="right">Queued</TableHeaderCell>
+                    <TableHeaderCell alignment="right">Running</TableHeaderCell>
+                    <TableHeaderCell alignment="right">Concurrency limit</TableHeaderCell>
+                    <TableHeaderCell alignment="right">
+                      <span className="sr-only">Pause/resume</span>
+                    </TableHeaderCell>
                   </TableRow>
-                }
-              >
-                <Await
-                  resolve={Promise.all([queues, environment])}
-                  errorElement={<p>Error loading queues</p>}
-                >
-                  {([queues, environment]) =>
-                    queues.length > 0 ? (
-                      queues.map((queue) => (
-                        <TableRow key={queue.name}>
-                          <TableCell>
-                            <span className="flex items-center gap-2">
-                              {queue.type === "task" ? (
-                                <SimpleTooltip
-                                  button={<TaskIcon className="size-4 text-blue-500" />}
-                                  content={`This queue was automatically created from your "${queue.name}" task`}
-                                />
-                              ) : (
-                                <SimpleTooltip
-                                  button={<RectangleStackIcon className="size-4 text-purple-500" />}
-                                  content={`This is a custom queue you added in your code.`}
-                                />
-                              )}
-                              <span>{queue.name}</span>
-                            </span>
-                          </TableCell>
-                          <TableCell alignment="right">{queue.queued}</TableCell>
-                          <TableCell alignment="right">{queue.running}</TableCell>
-                          <TableCell alignment="right">
-                            {queue.concurrencyLimit ?? (
-                              <span className="text-text-dimmed">
-                                Max ({environment.concurrencyLimit})
-                              </span>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    ) : (
+                </TableHeader>
+                <TableBody>
+                  <Suspense
+                    fallback={
                       <TableRow>
                         <TableCell colSpan={5}>
-                          <div className="grid place-items-center py-6 text-text-dimmed">
-                            No queues found
+                          <div className="grid place-items-center py-6">
+                            <Spinner />
                           </div>
                         </TableCell>
                       </TableRow>
-                    )
-                  }
-                </Await>
-              </Suspense>
-            </TableBody>
-          </Table>
+                    }
+                  >
+                    <Await
+                      resolve={Promise.all([queues.queues, environment])}
+                      errorElement={<p>Error loading queues</p>}
+                    >
+                      {([q, environment]) =>
+                        q.length > 0 ? (
+                          q.map((queue) => (
+                            <TableRow key={queue.name}>
+                              <TableCell>
+                                <span className="flex items-center gap-2">
+                                  {queue.type === "task" ? (
+                                    <SimpleTooltip
+                                      button={<TaskIcon className="size-4 text-blue-500" />}
+                                      content={`This queue was automatically created from your "${queue.name}" task`}
+                                    />
+                                  ) : (
+                                    <SimpleTooltip
+                                      button={
+                                        <RectangleStackIcon className="size-4 text-purple-500" />
+                                      }
+                                      content={`This is a custom queue you added in your code.`}
+                                    />
+                                  )}
+                                  <span>{queue.name}</span>
+                                </span>
+                              </TableCell>
+                              <TableCell alignment="right">{queue.queued}</TableCell>
+                              <TableCell alignment="right">{queue.running}</TableCell>
+                              <TableCell alignment="right">
+                                {queue.concurrencyLimit ?? (
+                                  <span className="text-text-dimmed">
+                                    Max ({environment.concurrencyLimit})
+                                  </span>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        ) : (
+                          <TableRow>
+                            <TableCell colSpan={5}>
+                              <div className="grid place-items-center py-6 text-text-dimmed">
+                                No queues found
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )
+                      }
+                    </Await>
+                  </Suspense>
+                </TableBody>
+              </Table>
 
-          <div
-            className={cn(
-              "grid h-fit max-h-full min-h-full overflow-x-auto",
-              pagination.totalPages > 1 ? "grid-rows-[1fr_auto]" : "grid-rows-[1fr]"
-            )}
-          >
-            <div
-              className={cn(
-                "flex min-h-full",
-                pagination.totalPages > 1 && "justify-end border-t border-grid-dimmed px-2 py-3"
-              )}
-            >
-              <PaginationControls
-                currentPage={pagination.currentPage}
-                totalPages={pagination.totalPages}
-              />
+              <div
+                className={cn(
+                  "grid h-fit max-h-full min-h-full overflow-x-auto",
+                  queues.pagination.totalPages > 1 ? "grid-rows-[1fr_auto]" : "grid-rows-[1fr]"
+                )}
+              >
+                <div
+                  className={cn(
+                    "flex min-h-full",
+                    queues.pagination.totalPages > 1 &&
+                      "justify-end border-t border-grid-dimmed px-2 py-3"
+                  )}
+                >
+                  <PaginationControls
+                    currentPage={queues.pagination.currentPage}
+                    totalPages={queues.pagination.totalPages}
+                  />
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="grid place-items-center py-6 text-text-dimmed">
+              <p>
+                {queues.code === "engine-version"
+                  ? "Please upgrade your engine to v3 to use queues."
+                  : "Something went wrong"}
+              </p>
             </div>
-          </div>
+          )}
         </div>
       </PageBody>
     </PageContainer>

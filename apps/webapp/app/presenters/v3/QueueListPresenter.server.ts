@@ -3,9 +3,16 @@ import { engine } from "~/v3/runEngine.server";
 import { BasePresenter } from "./basePresenter.server";
 import { type TaskQueueType } from "@trigger.dev/database";
 import { assertExhaustive } from "@trigger.dev/core";
+import { determineEngineVersion } from "~/v3/engineVersion.server";
 
+const DEFAULT_ITEMS_PER_PAGE = 25;
 export class QueueListPresenter extends BasePresenter {
-  private readonly ITEMS_PER_PAGE = 25;
+  private readonly perPage: number;
+
+  constructor(perPage: number = DEFAULT_ITEMS_PER_PAGE) {
+    super();
+    this.perPage = perPage;
+  }
 
   public async call({
     environment,
@@ -13,7 +20,18 @@ export class QueueListPresenter extends BasePresenter {
   }: {
     environment: AuthenticatedEnvironment;
     page: number;
+    perPage?: number;
   }) {
+    //check the engine is the correct version
+    const engineVersion = await determineEngineVersion({ environment });
+
+    if (engineVersion === "V1") {
+      return {
+        success: false as const,
+        code: "engine-version",
+      };
+    }
+
     // Get total count for pagination
     const totalQueues = await this._replica.taskQueue.count({
       where: {
@@ -22,12 +40,12 @@ export class QueueListPresenter extends BasePresenter {
     });
 
     return {
+      success: true as const,
       queues: this.getQueuesWithPagination(environment, page),
       pagination: {
         currentPage: page,
-        totalPages: Math.ceil(totalQueues / this.ITEMS_PER_PAGE),
-        totalItems: totalQueues,
-        itemsPerPage: this.ITEMS_PER_PAGE,
+        totalPages: Math.ceil(totalQueues / this.perPage),
+        count: totalQueues,
       },
     };
   }
@@ -45,8 +63,8 @@ export class QueueListPresenter extends BasePresenter {
       orderBy: {
         name: "asc",
       },
-      skip: (page - 1) * this.ITEMS_PER_PAGE,
-      take: this.ITEMS_PER_PAGE,
+      skip: (page - 1) * this.perPage,
+      take: this.perPage,
     });
 
     const results = await Promise.all([

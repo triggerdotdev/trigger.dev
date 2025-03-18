@@ -18,8 +18,10 @@ import {
   EnvironmentVariableResponseBody,
   EnvironmentVariableValue,
   EnvironmentVariables,
+  ListQueueOptions,
   ListRunResponseItem,
   ListScheduleOptions,
+  QueueItem,
   ReplayRunResponse,
   RescheduleRunRequestBody,
   RetrieveBatchV2Response,
@@ -711,6 +713,32 @@ export class ApiClient {
         method: "POST",
         headers: this.#getHeaders(false),
         body: JSON.stringify(body),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  listQueues(options?: ListQueueOptions, requestOptions?: ZodFetchOptions) {
+    const searchParams = new URLSearchParams();
+
+    if (options?.page) {
+      searchParams.append("page", options.page.toString());
+    }
+
+    if (options?.perPage) {
+      searchParams.append("perPage", options.perPage.toString());
+    }
+
+    return zodfetchOffsetLimitPage(
+      QueueItem,
+      `${this.baseUrl}/api/v1/queues`,
+      {
+        page: options?.page,
+        limit: options?.perPage,
+      },
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
       },
       mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );
