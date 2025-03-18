@@ -1,18 +1,18 @@
 import { ExclamationCircleIcon } from "@heroicons/react/20/solid";
-import { useEnvironment, useOptionalEnvironment } from "~/hooks/useEnvironment";
+import { useLocation } from "@remix-run/react";
+import { AnimatePresence, motion } from "framer-motion";
+import { useOptionalEnvironment } from "~/hooks/useEnvironment";
+import { useOptionalOrganization } from "~/hooks/useOrganizations";
+import { useOptionalProject } from "~/hooks/useProject";
+import { v3QueuesPath } from "~/utils/pathBuilder";
+import { environmentFullTitle } from "../environments/EnvironmentLabel";
+import { LinkButton } from "../primitives/Buttons";
 import { Icon } from "../primitives/Icon";
 import { Paragraph } from "../primitives/Paragraph";
-import { environmentFullTitle } from "../environments/EnvironmentLabel";
-import { useLocation } from "@remix-run/react";
-import { v3QueuesPath } from "~/utils/pathBuilder";
-import { LinkButton } from "../primitives/Buttons";
-import { useOrganization } from "~/hooks/useOrganizations";
-import { useProject } from "~/hooks/useProject";
-import { AnimatePresence, motion } from "framer-motion";
 
 export function EnvironmentPausedBanner() {
-  const organization = useOrganization();
-  const project = useProject();
+  const organization = useOptionalOrganization();
+  const project = useOptionalProject();
   const environment = useOptionalEnvironment();
   const location = useLocation();
 
@@ -20,7 +20,7 @@ export function EnvironmentPausedBanner() {
 
   return (
     <AnimatePresence initial={false}>
-      {environment && environment.paused ? (
+      {organization && project && environment && environment.paused ? (
         <motion.div
           className="flex h-10 items-center justify-between overflow-hidden border-y border-amber-400/20 bg-warning/20 py-0 pl-3 pr-2"
           initial={{ opacity: 0, height: 0 }}
