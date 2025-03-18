@@ -5,7 +5,7 @@ import { BasePresenter } from "./basePresenter.server";
 import { EnvironmentQueuePresenter, type Environment } from "./EnvironmentQueuePresenter.server";
 
 export class QueueListPresenter extends BasePresenter {
-  private readonly ITEMS_PER_PAGE = 10;
+  private readonly ITEMS_PER_PAGE = 25;
 
   public async call({
     environment,
