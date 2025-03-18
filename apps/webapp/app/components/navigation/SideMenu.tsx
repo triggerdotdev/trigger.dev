@@ -314,10 +314,10 @@ function ProjectSelector({
       >
         <div className="flex flex-col gap-2 bg-charcoal-750 p-2">
           <div className="flex items-center gap-2.5">
-            <div className="box-content size-10 overflow-clip rounded-sm border border-charcoal-700 bg-charcoal-850">
+            <div className="box-content size-10 overflow-clip rounded-sm bg-charcoal-800">
               <Avatar avatar={organization.avatar} className="size-10" includePadding />
             </div>
-            <div className="space-y-0.5">
+            <div className="space-y-[0.3125rem]">
               <Paragraph variant="extra-small/bright">{organization.title}</Paragraph>
               <div className="flex items-baseline">
                 {plan && (
@@ -342,6 +342,7 @@ function ProjectSelector({
               to={organizationSettingsPath(organization)}
               fullWidth
               iconSpacing="gap-1.5"
+              className="group-hover/button:border-charcoal-500"
             >
               <CogIcon className="size-4 text-text-dimmed" />
               <span className="text-text-bright">Settings</span>
@@ -351,6 +352,7 @@ function ProjectSelector({
               to={v3UsagePath(organization)}
               fullWidth
               iconSpacing="gap-1.5"
+              className="group-hover/button:border-charcoal-500"
             >
               <ChartBarIcon className="size-4 text-text-dimmed" />
               <span className="text-text-bright">Usage</span>
