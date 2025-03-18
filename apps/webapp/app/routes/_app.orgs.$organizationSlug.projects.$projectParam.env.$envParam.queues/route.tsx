@@ -39,6 +39,7 @@ import { docsPath, EnvironmentParamSchema, v3BillingPath } from "~/utils/pathBui
 import { PauseEnvironmentService } from "~/v3/services/pauseEnvironment.server";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
+import { EnvironmentQueuePresenter } from "~/presenters/v3/EnvironmentQueuePresenter.server";
 
 const SearchParamsSchema = z.object({
   page: z.coerce.number().min(1).default(1),
@@ -76,13 +77,18 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 
   try {
-    const presenter = new QueueListPresenter();
-    const result = await presenter.call({
+    const queueListPresenter = new QueueListPresenter();
+    const result = await queueListPresenter.call({
       environment,
       page,
     });
 
-    return typeddefer(result);
+    const environmentQueuePresenter = new EnvironmentQueuePresenter();
+
+    return typeddefer({
+      ...result,
+      environment: environmentQueuePresenter.call(environment),
+    });
   } catch (error) {
     console.error(error);
     throw new Response(undefined, {

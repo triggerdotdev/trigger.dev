@@ -2,8 +2,7 @@ import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { engine } from "~/v3/runEngine.server";
 import { BasePresenter } from "./basePresenter.server";
-
-export type Environment = Awaited<ReturnType<QueueListPresenter["environmentConcurrency"]>>;
+import { EnvironmentQueuePresenter, type Environment } from "./EnvironmentQueuePresenter.server";
 
 export class QueueListPresenter extends BasePresenter {
   private readonly ITEMS_PER_PAGE = 10;
@@ -22,14 +21,8 @@ export class QueueListPresenter extends BasePresenter {
       },
     });
 
-    // Return the environment data immediately and defer the queues
     return {
-      environment: this.environmentConcurrency(environment),
-      queues: this.getQueuesWithPagination(
-        environment,
-
-        page
-      ),
+      queues: this.getQueuesWithPagination(environment, page),
       pagination: {
         currentPage: page,
         totalPages: Math.ceil(totalQueues / this.ITEMS_PER_PAGE),
@@ -75,23 +68,5 @@ export class QueueListPresenter extends BasePresenter {
       queued: results[0][queue.name] ?? 0,
       concurrencyLimit: queue.concurrencyLimit ?? null,
     }));
-  }
-
-  async environmentConcurrency(environment: AuthenticatedEnvironment) {
-    //executing
-    const engineV1Executing = await marqs.currentConcurrencyOfEnvironment(environment);
-    const engineV2Executing = await engine.concurrencyOfEnvQueue(environment);
-    const running = (engineV1Executing ?? 0) + (engineV2Executing ?? 0);
-
-    //queued
-    const engineV1Queued = await marqs.lengthOfEnvQueue(environment);
-    const engineV2Queued = await engine.lengthOfEnvQueue(environment);
-    const queued = (engineV1Queued ?? 0) + (engineV2Queued ?? 0);
-
-    return {
-      running,
-      queued,
-      concurrencyLimit: environment.maximumConcurrencyLimit,
-    };
   }
 }
