@@ -1,7 +1,10 @@
 import { useNavigation } from "@remix-run/react";
 import { useEffect, useState } from "react";
 import { useEnvironmentSwitcher } from "~/hooks/useEnvironmentSwitcher";
+import { useFeatures } from "~/hooks/useFeatures";
 import { type MatchedOrganization } from "~/hooks/useOrganizations";
+import { cn } from "~/utils/cn";
+import { v3BillingPath } from "~/utils/pathBuilder";
 import { EnvironmentCombo } from "../environments/EnvironmentLabel";
 import {
   Popover,
@@ -11,10 +14,6 @@ import {
   PopoverSectionHeader,
 } from "../primitives/Popover";
 import { type SideMenuEnvironment, type SideMenuProject } from "./SideMenu";
-import { cn } from "~/utils/cn";
-import { useFeatures } from "~/hooks/useFeatures";
-import { v3BillingPath } from "~/utils/pathBuilder";
-import { TextLink } from "../primitives/TextLink";
 
 export function EnvironmentSelector({
   organization,

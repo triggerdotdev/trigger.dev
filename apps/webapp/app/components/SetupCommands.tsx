@@ -10,6 +10,7 @@ import {
 } from "./primitives/ClientTabs";
 import { ClipboardField } from "./primitives/ClipboardField";
 import { Paragraph } from "./primitives/Paragraph";
+import { Header3 } from "./primitives/Headers";
 
 type PackageManagerContextType = {
   activePackageManager: string;
@@ -61,7 +62,12 @@ function getApiUrlArg() {
   return apiUrl ? `-a ${apiUrl}` : undefined;
 }
 
-export function InitCommandV3() {
+// Add title prop to the component interfaces
+type TabsProps = {
+  title?: string;
+};
+
+export function InitCommandV3({ title }: TabsProps) {
   const project = useProject();
   const projectRef = project.externalRef;
   const apiUrlArg = getApiUrlArg();
@@ -77,14 +83,17 @@ export function InitCommandV3() {
       value={activePackageManager}
       onValueChange={setActivePackageManager}
     >
-      <ClientTabsList>
-        <ClientTabsTrigger value={"npm"}>npm</ClientTabsTrigger>
-        <ClientTabsTrigger value={"pnpm"}>pnpm</ClientTabsTrigger>
-        <ClientTabsTrigger value={"yarn"}>yarn</ClientTabsTrigger>
-      </ClientTabsList>
+      <div className="flex items-center gap-4">
+        {title && <span>{title}</span>}
+        <ClientTabsList className={title ? "ml-auto" : ""}>
+          <ClientTabsTrigger value={"npm"}>npm</ClientTabsTrigger>
+          <ClientTabsTrigger value={"pnpm"}>pnpm</ClientTabsTrigger>
+          <ClientTabsTrigger value={"yarn"}>yarn</ClientTabsTrigger>
+        </ClientTabsList>
+      </div>
       <ClientTabsContent value={"npm"}>
         <ClipboardField
-          variant="primary/medium"
+          variant="secondary/medium"
           iconButton
           className="mb-4"
           value={`npx ${initCommand}`}
@@ -92,7 +101,7 @@ export function InitCommandV3() {
       </ClientTabsContent>
       <ClientTabsContent value={"pnpm"}>
         <ClipboardField
-          variant="primary/medium"
+          variant="secondary/medium"
           iconButton
           className="mb-4"
           value={`pnpm dlx ${initCommand}`}
@@ -100,7 +109,7 @@ export function InitCommandV3() {
       </ClientTabsContent>
       <ClientTabsContent value={"yarn"}>
         <ClipboardField
-          variant="primary/medium"
+          variant="secondary/medium"
           iconButton
           className="mb-4"
           value={`yarn dlx ${initCommand}`}
@@ -110,7 +119,7 @@ export function InitCommandV3() {
   );
 }
 
-export function TriggerDevStepV3() {
+export function TriggerDevStepV3({ title }: TabsProps) {
   const { activePackageManager, setActivePackageManager } = usePackageManager();
 
   return (
@@ -119,14 +128,17 @@ export function TriggerDevStepV3() {
       value={activePackageManager}
       onValueChange={setActivePackageManager}
     >
-      <ClientTabsList>
-        <ClientTabsTrigger value={"npm"}>npm</ClientTabsTrigger>
-        <ClientTabsTrigger value={"pnpm"}>pnpm</ClientTabsTrigger>
-        <ClientTabsTrigger value={"yarn"}>yarn</ClientTabsTrigger>
-      </ClientTabsList>
+      <div className="flex items-center gap-4">
+        {title && <Header3>{title}</Header3>}
+        <ClientTabsList className={title ? "ml-auto" : ""}>
+          <ClientTabsTrigger value={"npm"}>npm</ClientTabsTrigger>
+          <ClientTabsTrigger value={"pnpm"}>pnpm</ClientTabsTrigger>
+          <ClientTabsTrigger value={"yarn"}>yarn</ClientTabsTrigger>
+        </ClientTabsList>
+      </div>
       <ClientTabsContent value={"npm"}>
         <ClipboardField
-          variant="primary/medium"
+          variant="secondary/medium"
           iconButton
           className="mb-4"
           value={`npx trigger.dev@${v3PackageTag} dev`}
@@ -134,7 +146,7 @@ export function TriggerDevStepV3() {
       </ClientTabsContent>
       <ClientTabsContent value={"pnpm"}>
         <ClipboardField
-          variant="primary/medium"
+          variant="secondary/medium"
           iconButton
           className="mb-4"
           value={`pnpm dlx trigger.dev@${v3PackageTag} dev`}
@@ -142,7 +154,7 @@ export function TriggerDevStepV3() {
       </ClientTabsContent>
       <ClientTabsContent value={"yarn"}>
         <ClipboardField
-          variant="primary/medium"
+          variant="secondary/medium"
           iconButton
           className="mb-4"
           value={`yarn dlx trigger.dev@${v3PackageTag} dev`}
@@ -152,7 +164,7 @@ export function TriggerDevStepV3() {
   );
 }
 
-export function TriggerLoginStepV3() {
+export function TriggerLoginStepV3({ title }: TabsProps) {
   const { activePackageManager, setActivePackageManager } = usePackageManager();
 
   return (
@@ -161,14 +173,17 @@ export function TriggerLoginStepV3() {
       value={activePackageManager}
       onValueChange={setActivePackageManager}
     >
-      <ClientTabsList>
-        <ClientTabsTrigger value={"npm"}>npm</ClientTabsTrigger>
-        <ClientTabsTrigger value={"pnpm"}>pnpm</ClientTabsTrigger>
-        <ClientTabsTrigger value={"yarn"}>yarn</ClientTabsTrigger>
-      </ClientTabsList>
+      <div className="flex items-center gap-4">
+        {title && <span>{title}</span>}
+        <ClientTabsList className={title ? "ml-auto" : ""}>
+          <ClientTabsTrigger value={"npm"}>npm</ClientTabsTrigger>
+          <ClientTabsTrigger value={"pnpm"}>pnpm</ClientTabsTrigger>
+          <ClientTabsTrigger value={"yarn"}>yarn</ClientTabsTrigger>
+        </ClientTabsList>
+      </div>
       <ClientTabsContent value={"npm"}>
         <ClipboardField
-          variant="primary/medium"
+          variant="secondary/medium"
           iconButton
           className="mb-4"
           value={`npx trigger.dev@${v3PackageTag} login`}
@@ -176,7 +191,7 @@ export function TriggerLoginStepV3() {
       </ClientTabsContent>
       <ClientTabsContent value={"pnpm"}>
         <ClipboardField
-          variant="primary/medium"
+          variant="secondary/medium"
           iconButton
           className="mb-4"
           value={`pnpm dlx trigger.dev@${v3PackageTag} login`}
@@ -184,7 +199,7 @@ export function TriggerLoginStepV3() {
       </ClientTabsContent>
       <ClientTabsContent value={"yarn"}>
         <ClipboardField
-          variant="primary/medium"
+          variant="secondary/medium"
           iconButton
           className="mb-4"
           value={`yarn dlx trigger.dev@${v3PackageTag} login`}
