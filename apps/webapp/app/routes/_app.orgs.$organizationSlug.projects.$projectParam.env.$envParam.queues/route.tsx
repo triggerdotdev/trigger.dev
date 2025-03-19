@@ -235,7 +235,7 @@ export default function Page() {
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
-        <div className="flex flex-col">
+        <div className="grid max-h-full grid-rows-[auto_1fr] overflow-hidden">
           <div className="grid grid-cols-3 gap-3 p-3">
             <BigNumber
               title="Queued"
@@ -281,7 +281,12 @@ export default function Page() {
           </div>
 
           {success ? (
-            <>
+            <div
+              className={cn(
+                "grid h-fit max-h-full min-h-full grid-rows-[1fr] overflow-x-auto",
+                pagination.totalPages > 1 && "grid-rows-[1fr_auto]"
+              )}
+            >
               <Table containerClassName="border-t">
                 <TableHeader>
                   <TableRow>
@@ -376,25 +381,28 @@ export default function Page() {
                 </TableBody>
               </Table>
 
-              <div
-                className={cn(
-                  "grid h-fit max-h-full min-h-full overflow-x-auto",
-                  pagination.totalPages > 1 ? "grid-rows-[1fr_auto]" : "grid-rows-[1fr]"
-                )}
-              >
+              {pagination.totalPages > 1 && (
                 <div
                   className={cn(
-                    "flex min-h-full",
-                    pagination.totalPages > 1 && "justify-end border-t border-grid-dimmed px-2 py-3"
+                    "grid h-fit max-h-full min-h-full overflow-x-auto",
+                    pagination.totalPages > 1 ? "grid-rows-[1fr_auto]" : "grid-rows-[1fr]"
                   )}
                 >
-                  <PaginationControls
-                    currentPage={pagination.currentPage}
-                    totalPages={pagination.totalPages}
-                  />
+                  <div
+                    className={cn(
+                      "flex min-h-full",
+                      pagination.totalPages > 1 &&
+                        "justify-end border-t border-grid-dimmed px-2 py-3"
+                    )}
+                  >
+                    <PaginationControls
+                      currentPage={pagination.currentPage}
+                      totalPages={pagination.totalPages}
+                    />
+                  </div>
                 </div>
-              </div>
-            </>
+              )}
+            </div>
           ) : (
             <div className="grid place-items-center py-6 text-text-dimmed">
               {code === "engine-version" ? (
