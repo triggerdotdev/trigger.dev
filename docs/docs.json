@@ -336,6 +336,7 @@
               "guides/examples/supabase-database-operations",
               "guides/examples/supabase-storage-upload",
               "guides/examples/react-pdf",
+              "guides/examples/react-email",
               "guides/examples/resend-email-sequence",
               "guides/examples/vercel-ai-sdk",
               "guides/examples/vercel-sync-env-vars"
