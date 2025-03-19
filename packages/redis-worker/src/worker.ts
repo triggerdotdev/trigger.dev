@@ -152,7 +152,11 @@ class Worker<TCatalog extends WorkerCatalog> {
       this.tracer,
       "enqueue",
       async (span) => {
-        const timeout = visibilityTimeoutMs ?? this.options.catalog[job].visibilityTimeoutMs;
+        const timeout = visibilityTimeoutMs ?? this.options.catalog[job]?.visibilityTimeoutMs;
+
+        if (!timeout) {
+          throw new Error(`No visibility timeout found for job ${String(job)} with id ${id}`);
+        }
 
         span.setAttribute("job_visibility_timeout_ms", timeout);
 
@@ -306,7 +310,7 @@ class Worker<TCatalog extends WorkerCatalog> {
         const newAttempt = attempt + 1;
         const retrySettings = {
           ...defaultRetrySettings,
-          ...catalogItem.retry,
+          ...catalogItem?.retry,
         };
         const retryDelay = calculateNextRetryDelay(retrySettings, newAttempt);
 
