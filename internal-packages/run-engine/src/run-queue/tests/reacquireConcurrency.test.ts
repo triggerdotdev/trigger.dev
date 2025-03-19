@@ -87,7 +87,7 @@ describe("RunQueue.reacquireConcurrency", () => {
         expect(await queue.currentConcurrencyOfEnvironment(authenticatedEnvProd)).toBe(1);
 
         // First, release the concurrency
-        await queue.releaseConcurrency(authenticatedEnvProd.organization.id, messageProd.runId);
+        await queue.releaseAllConcurrency(authenticatedEnvProd.organization.id, messageProd.runId);
 
         //reacquire the concurrency
         const result = await queue.reacquireConcurrency(

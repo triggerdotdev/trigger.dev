@@ -690,7 +690,10 @@ describe("RunQueue", () => {
       expect(await queue.currentConcurrencyOfEnvironment(authenticatedEnvProd)).toBe(1);
 
       //release the concurrency
-      await queue.releaseConcurrency(authenticatedEnvProd.organization.id, messages[0].messageId);
+      await queue.releaseAllConcurrency(
+        authenticatedEnvProd.organization.id,
+        messages[0].messageId
+      );
 
       //concurrencies
       expect(await queue.currentConcurrencyOfQueue(authenticatedEnvProd, messageProd.queue)).toBe(
@@ -708,7 +711,10 @@ describe("RunQueue", () => {
       expect(await queue.currentConcurrencyOfEnvironment(authenticatedEnvProd)).toBe(1);
 
       //release the concurrency (with the queue this time)
-      await queue.releaseConcurrency(authenticatedEnvProd.organization.id, messages[0].messageId);
+      await queue.releaseAllConcurrency(
+        authenticatedEnvProd.organization.id,
+        messages[0].messageId
+      );
 
       //concurrencies
       expect(await queue.currentConcurrencyOfQueue(authenticatedEnvProd, messageProd.queue)).toBe(

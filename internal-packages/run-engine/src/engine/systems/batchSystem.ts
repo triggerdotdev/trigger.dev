@@ -1,8 +1,5 @@
-import { Tracer, startSpan } from "@internal/tracing";
-import { Logger } from "@trigger.dev/core/logger";
-import { PrismaClient } from "@trigger.dev/database";
+import { startSpan } from "@internal/tracing";
 import { isFinalRunStatus } from "../statuses.js";
-import { EngineWorker } from "../types.js";
 import { SystemResources } from "./systems.js";
 
 export type BatchSystemOptions = {

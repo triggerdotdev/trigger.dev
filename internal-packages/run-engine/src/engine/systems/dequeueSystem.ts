@@ -105,6 +105,8 @@ export class DequeueSystem {
                   previousSnapshotId: snapshot.id,
                   environmentId: snapshot.environmentId,
                   environmentType: snapshot.environmentType,
+                  projectId: snapshot.projectId,
+                  organizationId: snapshot.organizationId,
                   checkpointId: snapshot.checkpointId ?? undefined,
                   completedWaitpoints: snapshot.completedWaitpoints,
                   error: `Tried to dequeue a run that is not in a valid state to be dequeued.`,
@@ -146,6 +148,8 @@ export class DequeueSystem {
                     previousSnapshotId: snapshot.id,
                     environmentId: snapshot.environmentId,
                     environmentType: snapshot.environmentType,
+                    projectId: snapshot.projectId,
+                    organizationId: snapshot.organizationId,
                     batchId: snapshot.batchId ?? undefined,
                     completedWaitpoints: snapshot.completedWaitpoints.map((waitpoint) => ({
                       id: waitpoint.id,
@@ -337,6 +341,42 @@ export class DequeueSystem {
                 maxAttempts = parsedConfig.data.maxAttempts;
               }
 
+              const queue = await prisma.taskQueue.findUnique({
+                where: {
+                  runtimeEnvironmentId_name: {
+                    runtimeEnvironmentId: result.run.runtimeEnvironmentId,
+                    name: sanitizeQueueName(result.run.queue),
+                  },
+                },
+              });
+
+              if (!queue) {
+                this.$.logger.debug(
+                  "RunEngine.dequeueFromMasterQueue(): queue not found, so nacking message",
+                  {
+                    queueMessage: message,
+                    taskRunQueue: result.run.queue,
+                    runtimeEnvironmentId: result.run.runtimeEnvironmentId,
+                  }
+                );
+
+                //will auto-retry
+                const gotRequeued = await this.$.runQueue.nackMessage({ orgId, messageId: runId });
+                if (!gotRequeued) {
+                  await this.runAttemptSystem.systemFailure({
+                    runId,
+                    error: {
+                      type: "INTERNAL_ERROR",
+                      code: "TASK_DEQUEUED_QUEUE_NOT_FOUND",
+                      message: `Tried to dequeue the run but the queue doesn't exist: ${result.run.queue}`,
+                    },
+                    tx: prisma,
+                  });
+                }
+
+                return null;
+              }
+
               //update the run
               const lockedTaskRun = await prisma.taskRun.update({
                 where: {
@@ -346,6 +386,7 @@ export class DequeueSystem {
                   lockedAt: new Date(),
                   lockedById: result.task.id,
                   lockedToVersionId: result.worker.id,
+                  lockedQueueId: queue.id,
                   startedAt: result.run.startedAt ?? new Date(),
                   baseCostInCents: this.options.machines.baseCostInCents,
                   machinePreset: machinePreset.name,
@@ -378,42 +419,6 @@ export class DequeueSystem {
                 return null;
               }
 
-              const queue = await prisma.taskQueue.findUnique({
-                where: {
-                  runtimeEnvironmentId_name: {
-                    runtimeEnvironmentId: lockedTaskRun.runtimeEnvironmentId,
-                    name: sanitizeQueueName(lockedTaskRun.queue),
-                  },
-                },
-              });
-
-              if (!queue) {
-                this.$.logger.debug(
-                  "RunEngine.dequeueFromMasterQueue(): queue not found, so nacking message",
-                  {
-                    queueMessage: message,
-                    taskRunQueue: lockedTaskRun.queue,
-                    runtimeEnvironmentId: lockedTaskRun.runtimeEnvironmentId,
-                  }
-                );
-
-                //will auto-retry
-                const gotRequeued = await this.$.runQueue.nackMessage({ orgId, messageId: runId });
-                if (!gotRequeued) {
-                  await this.runAttemptSystem.systemFailure({
-                    runId,
-                    error: {
-                      type: "INTERNAL_ERROR",
-                      code: "TASK_DEQUEUED_QUEUE_NOT_FOUND",
-                      message: `Tried to dequeue the run but the queue doesn't exist: ${lockedTaskRun.queue}`,
-                    },
-                    tx: prisma,
-                  });
-                }
-
-                return null;
-              }
-
               const currentAttemptNumber = lockedTaskRun.attemptNumber ?? 0;
               const nextAttemptNumber = currentAttemptNumber + 1;
 
@@ -432,6 +437,8 @@ export class DequeueSystem {
                   previousSnapshotId: snapshot.id,
                   environmentId: snapshot.environmentId,
                   environmentType: snapshot.environmentType,
+                  projectId: snapshot.projectId,
+                  organizationId: snapshot.organizationId,
                   checkpointId: snapshot.checkpointId ?? undefined,
                   completedWaitpoints: snapshot.completedWaitpoints,
                   workerId,
@@ -519,6 +526,7 @@ export class DequeueSystem {
               run,
               environment: run.runtimeEnvironment,
               orgId,
+              projectId: run.runtimeEnvironment.projectId,
               error: {
                 type: "INTERNAL_ERROR",
                 code: "TASK_RUN_DEQUEUED_MAX_RETRIES",
@@ -572,7 +580,12 @@ export class DequeueSystem {
               status: true,
               attemptNumber: true,
               runtimeEnvironment: {
-                select: { id: true, type: true },
+                select: {
+                  id: true,
+                  type: true,
+                  projectId: true,
+                  project: { select: { id: true, organizationId: true } },
+                },
               },
             },
           });
@@ -587,6 +600,8 @@ export class DequeueSystem {
             },
             environmentId: run.runtimeEnvironment.id,
             environmentType: run.runtimeEnvironment.type,
+            projectId: run.runtimeEnvironment.projectId,
+            organizationId: run.runtimeEnvironment.project.organizationId,
             workerId,
             runnerId,
           });

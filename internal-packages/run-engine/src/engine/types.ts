@@ -105,6 +105,7 @@ export type TriggerParams = {
   machine?: MachinePresetName;
   workerId?: string;
   runnerId?: string;
+  releaseConcurrency?: boolean;
 };
 
 export type EngineWorker = Worker<typeof workerCatalog>;

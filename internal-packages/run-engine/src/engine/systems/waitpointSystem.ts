@@ -14,23 +14,26 @@ import { isExecuting } from "../statuses.js";
 import { EnqueueSystem } from "./enqueueSystem.js";
 import { ExecutionSnapshotSystem, getLatestExecutionSnapshot } from "./executionSnapshotSystem.js";
 import { SystemResources } from "./systems.js";
+import { ReleaseConcurrencySystem } from "./releaseConcurrencySystem.js";
 
 export type WaitpointSystemOptions = {
   resources: SystemResources;
   executionSnapshotSystem: ExecutionSnapshotSystem;
   enqueueSystem: EnqueueSystem;
+  releaseConcurrencySystem: ReleaseConcurrencySystem;
 };
 
 export class WaitpointSystem {
   private readonly $: SystemResources;
   private readonly executionSnapshotSystem: ExecutionSnapshotSystem;
-
+  private readonly releaseConcurrencySystem: ReleaseConcurrencySystem;
   private readonly enqueueSystem: EnqueueSystem;
 
   constructor(private readonly options: WaitpointSystemOptions) {
     this.$ = options.resources;
     this.executionSnapshotSystem = options.executionSnapshotSystem;
     this.enqueueSystem = options.enqueueSystem;
+    this.releaseConcurrencySystem = options.releaseConcurrencySystem;
   }
 
   public async clearBlockingWaitpoints({
@@ -326,7 +329,6 @@ export class WaitpointSystem {
     runId,
     waitpoints,
     projectId,
-    organizationId,
     releaseConcurrency,
     timeout,
     spanIdToComplete,
@@ -338,7 +340,6 @@ export class WaitpointSystem {
     runId: string;
     waitpoints: string | string[];
     projectId: string;
-    organizationId: string;
     releaseConcurrency?: boolean;
     timeout?: Date;
     spanIdToComplete?: string;
@@ -378,7 +379,7 @@ export class WaitpointSystem {
         JOIN "Waitpoint" w ON w.id = i."waitpointId"
         WHERE w.status = 'PENDING';`;
 
-      const pendingCount = Number(insert.at(0)?.pending_count ?? 0);
+      const isRunBlocked = Number(insert.at(0)?.pending_count ?? 0) > 0;
 
       let newStatus: TaskRunExecutionStatus = "SUSPENDED";
       if (
@@ -399,10 +400,15 @@ export class WaitpointSystem {
           snapshot: {
             executionStatus: newStatus,
             description: "Run was blocked by a waitpoint.",
+            metadata: {
+              releaseConcurrency,
+            },
           },
           previousSnapshotId: snapshot.id,
           environmentId: snapshot.environmentId,
           environmentType: snapshot.environmentType,
+          projectId: snapshot.projectId,
+          organizationId: snapshot.organizationId,
           batchId: batch?.id ?? snapshot.batchId ?? undefined,
           workerId,
           runnerId,
@@ -428,7 +434,10 @@ export class WaitpointSystem {
 
       //no pending waitpoint, schedule unblocking the run
       //debounce if we're rapidly adding waitpoints
-      if (pendingCount === 0) {
+      if (isRunBlocked) {
+        //release concurrency
+        await this.releaseConcurrencySystem.releaseConcurrencyForSnapshot(snapshot);
+      } else {
         await this.$.worker.enqueue({
           //this will debounce the call
           id: `continueRunIfUnblocked:${runId}`,
@@ -437,11 +446,6 @@ export class WaitpointSystem {
           //in the near future
           availableAt: new Date(Date.now() + 50),
         });
-      } else {
-        if (releaseConcurrency) {
-          //release concurrency
-          await this.#attemptToReleaseConcurrency(organizationId, snapshot);
-        }
       }
 
       return snapshot;
@@ -515,6 +519,8 @@ export class WaitpointSystem {
               previousSnapshotId: snapshot.id,
               environmentId: snapshot.environmentId,
               environmentType: snapshot.environmentType,
+              projectId: snapshot.projectId,
+              organizationId: snapshot.organizationId,
               batchId: snapshot.batchId ?? undefined,
               completedWaitpoints: blockingWaitpoints.map((b) => ({
                 id: b.waitpoint.id,
@@ -600,46 +606,5 @@ export class WaitpointSystem {
         completedByTaskRunId,
       },
     });
-  }
-
-  async #attemptToReleaseConcurrency(orgId: string, snapshot: TaskRunExecutionSnapshot) {
-    // Go ahead and release concurrency immediately if the run is in a development environment
-    if (snapshot.environmentType === "DEVELOPMENT") {
-      return await this.$.runQueue.releaseConcurrency(orgId, snapshot.runId);
-    }
-
-    const run = await this.$.prisma.taskRun.findFirst({
-      where: {
-        id: snapshot.runId,
-      },
-      select: {
-        runtimeEnvironment: {
-          select: {
-            id: true,
-            projectId: true,
-            organizationId: true,
-          },
-        },
-      },
-    });
-
-    if (!run) {
-      this.$.logger.error("Run not found for attemptToReleaseConcurrency", {
-        runId: snapshot.runId,
-      });
-
-      return;
-    }
-
-    await this.$.releaseConcurrencyQueue.attemptToRelease(
-      {
-        orgId: run.runtimeEnvironment.organizationId,
-        projectId: run.runtimeEnvironment.projectId,
-        envId: run.runtimeEnvironment.id,
-      },
-      snapshot.runId
-    );
-
-    return;
   }
 }

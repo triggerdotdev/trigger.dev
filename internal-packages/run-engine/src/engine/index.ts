@@ -36,7 +36,6 @@ import {
 import { EventBus, EventBusEvents } from "./eventBus.js";
 import { RunLocker } from "./locking.js";
 import { ReleaseConcurrencyTokenBucketQueue } from "./releaseConcurrencyTokenBucketQueue.js";
-import { canReleaseConcurrency } from "./statuses.js";
 import { BatchSystem } from "./systems/batchSystem.js";
 import { CheckpointSystem } from "./systems/checkpointSystem.js";
 import { DelayedRunSystem } from "./systems/delayedRunSystem.js";
@@ -46,13 +45,14 @@ import {
   ExecutionSnapshotSystem,
   getLatestExecutionSnapshot,
 } from "./systems/executionSnapshotSystem.js";
+import { ReleaseConcurrencySystem } from "./systems/releaseConcurrencySystem.js";
 import { RunAttemptSystem } from "./systems/runAttemptSystem.js";
 import { SystemResources } from "./systems/systems.js";
 import { TtlSystem } from "./systems/ttlSystem.js";
+import { WaitingForWorkerSystem } from "./systems/waitingForWorkerSystem.js";
 import { WaitpointSystem } from "./systems/waitpointSystem.js";
 import { EngineWorker, HeartbeatTimeouts, RunEngineOptions, TriggerParams } from "./types.js";
 import { workerCatalog } from "./workerCatalog.js";
-import { WaitingForWorkerSystem } from "./systems/waitingForWorkerSystem.js";
 
 export class RunEngine {
   private runLockRedis: Redis;
@@ -63,7 +63,7 @@ export class RunEngine {
   private logger = new Logger("RunEngine", "debug");
   private tracer: Tracer;
   private heartbeatTimeouts: HeartbeatTimeouts;
-  private releaseConcurrencyQueue: ReleaseConcurrencyTokenBucketQueue<{
+  releaseConcurrencyQueue: ReleaseConcurrencyTokenBucketQueue<{
     orgId: string;
     projectId: string;
     envId: string;
@@ -79,6 +79,7 @@ export class RunEngine {
   delayedRunSystem: DelayedRunSystem;
   ttlSystem: TtlSystem;
   waitingForWorkerSystem: WaitingForWorkerSystem;
+  releaseConcurrencySystem: ReleaseConcurrencySystem;
 
   constructor(private readonly options: RunEngineOptions) {
     this.prisma = options.prisma;
@@ -188,7 +189,7 @@ export class RunEngine {
       redis: {
         ...options.queue.redis, // Use base queue redis options
         ...options.releaseConcurrency?.redis, // Allow overrides
-        keyPrefix: `${options.queue.redis.keyPrefix}release-concurrency:`,
+        keyPrefix: `${options.queue.redis.keyPrefix ?? ""}release-concurrency:`,
       },
       retry: {
         maxRetries: options.releaseConcurrency?.maxRetries ?? 5,
@@ -201,8 +202,8 @@ export class RunEngine {
       consumersCount: options.releaseConcurrency?.consumersCount ?? 1,
       pollInterval: options.releaseConcurrency?.pollInterval ?? 1000,
       batchSize: options.releaseConcurrency?.batchSize ?? 10,
-      executor: async (descriptor, runId) => {
-        await this.#executeReleasedConcurrencyFromQueue(descriptor, runId);
+      executor: async (descriptor, snapshotId) => {
+        await this.releaseConcurrencySystem.executeReleaseConcurrencyForSnapshot(snapshotId);
       },
       maxTokens: async (descriptor) => {
         const environment = await this.prisma.runtimeEnvironment.findFirstOrThrow({
@@ -239,6 +240,10 @@ export class RunEngine {
       releaseConcurrencyQueue: this.releaseConcurrencyQueue,
     };
 
+    this.releaseConcurrencySystem = new ReleaseConcurrencySystem({
+      resources,
+    });
+
     this.executionSnapshotSystem = new ExecutionSnapshotSystem({
       resources,
       heartbeatTimeouts: this.heartbeatTimeouts,
@@ -251,6 +256,7 @@ export class RunEngine {
 
     this.checkpointSystem = new CheckpointSystem({
       resources,
+      releaseConcurrencySystem: this.releaseConcurrencySystem,
       executionSnapshotSystem: this.executionSnapshotSystem,
       enqueueSystem: this.enqueueSystem,
     });
@@ -269,6 +275,7 @@ export class RunEngine {
       resources,
       executionSnapshotSystem: this.executionSnapshotSystem,
       enqueueSystem: this.enqueueSystem,
+      releaseConcurrencySystem: this.releaseConcurrencySystem,
     });
 
     this.ttlSystem = new TtlSystem({
@@ -344,6 +351,7 @@ export class RunEngine {
       machine,
       workerId,
       runnerId,
+      releaseConcurrency,
     }: TriggerParams,
     tx?: PrismaClientOrTransaction
   ): Promise<TaskRun> {
@@ -435,6 +443,8 @@ export class RunEngine {
                   runStatus: status,
                   environmentId: environment.id,
                   environmentType: environment.type,
+                  projectId: environment.project.id,
+                  organizationId: environment.organization.id,
                   workerId,
                   runnerId,
                 },
@@ -490,12 +500,11 @@ export class RunEngine {
               runId: parentTaskRunId,
               waitpoints: associatedWaitpoint.id,
               projectId: associatedWaitpoint.projectId,
-              organizationId: environment.organization.id,
               batch,
               workerId,
               runnerId,
               tx: prisma,
-              releaseConcurrency: true, // TODO: This needs to use the release concurrency system
+              releaseConcurrency,
             });
           }
 
@@ -1015,7 +1024,6 @@ export class RunEngine {
     runId,
     waitpoints,
     projectId,
-    organizationId,
     releaseConcurrency,
     timeout,
     spanIdToComplete,
@@ -1040,7 +1048,6 @@ export class RunEngine {
       runId,
       waitpoints,
       projectId,
-      organizationId,
       releaseConcurrency,
       timeout,
       spanIdToComplete,
@@ -1048,35 +1055,6 @@ export class RunEngine {
       workerId,
       runnerId,
       tx,
-    });
-  }
-
-  async #executeReleasedConcurrencyFromQueue(
-    descriptor: { orgId: string; projectId: string; envId: string },
-    runId: string
-  ) {
-    this.logger.debug("Executing released concurrency", {
-      descriptor,
-      runId,
-    });
-
-    // - Runlock the run
-    // - Get latest snapshot
-    // - If the run is non suspended or going to be, then bail
-    // - If the run is suspended or going to be, then release the concurrency
-    await this.runLock.lock([runId], 5_000, async () => {
-      const snapshot = await getLatestExecutionSnapshot(this.prisma, runId);
-
-      if (!canReleaseConcurrency(snapshot.executionStatus)) {
-        this.logger.debug("Run is not in a state to release concurrency", {
-          runId,
-          snapshot,
-        });
-
-        return;
-      }
-
-      return await this.runQueue.releaseConcurrency(descriptor.orgId, snapshot.runId);
     });
   }
 
@@ -1340,7 +1318,8 @@ export class RunEngine {
               id: latestSnapshot.environmentId,
               type: latestSnapshot.environmentType,
             },
-            orgId: run.runtimeEnvironment.organizationId,
+            orgId: latestSnapshot.organizationId,
+            projectId: latestSnapshot.projectId,
             error: {
               type: "INTERNAL_ERROR",
               code: "TASK_RUN_DEQUEUED_MAX_RETRIES",

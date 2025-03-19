@@ -114,7 +114,57 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
         retryCount: 0,
         lastAttempt: Date.now(),
       });
+    } else {
+      this.logger.info("No token available, adding to queue", {
+        releaseQueueDescriptor,
+        releaserId,
+        maxTokens,
+      });
     }
+  }
+
+  /**
+   * Consume a token from the token bucket for a release queue.
+   *
+   * This is mainly used for testing purposes
+   */
+  public async consumeToken(releaseQueueDescriptor: T, releaserId: string) {
+    const maxTokens = await this.#callMaxTokens(releaseQueueDescriptor);
+
+    if (maxTokens === 0) {
+      return;
+    }
+
+    const releaseQueue = this.keys.fromDescriptor(releaseQueueDescriptor);
+
+    await this.redis.consumeToken(
+      this.masterQueuesKey,
+      this.#bucketKey(releaseQueue),
+      this.#queueKey(releaseQueue),
+      this.#metadataKey(releaseQueue),
+      releaseQueue,
+      releaserId,
+      String(maxTokens),
+      String(Date.now())
+    );
+  }
+
+  /**
+   * Return a token to the token bucket for a release queue.
+   *
+   * This is mainly used for testing purposes
+   */
+  public async returnToken(releaseQueueDescriptor: T, releaserId: string) {
+    const releaseQueue = this.keys.fromDescriptor(releaseQueueDescriptor);
+
+    await this.redis.returnTokenOnly(
+      this.masterQueuesKey,
+      this.#bucketKey(releaseQueue),
+      this.#queueKey(releaseQueue),
+      this.#metadataKey(releaseQueue),
+      releaseQueue,
+      releaserId
+    );
   }
 
   /**
@@ -384,7 +434,7 @@ local queueKey = keyPrefix .. queueName .. ":queue"
 local metadataKey = keyPrefix .. queueName .. ":metadata"
 
 -- Get the oldest item from the queue
-local items = redis.call("ZRANGEBYSCORE", queueKey, 0, currentTime, "LIMIT", 0, batchSize - 1)
+local items = redis.call("ZRANGEBYSCORE", queueKey, 0, currentTime, "LIMIT", 0, batchSize)
 if #items == 0 then
 -- No items ready to be processed yet
   return nil

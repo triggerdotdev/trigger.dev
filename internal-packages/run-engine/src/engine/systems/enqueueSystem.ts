@@ -1,4 +1,9 @@
-import { PrismaClientOrTransaction, TaskRun, TaskRunExecutionStatus } from "@trigger.dev/database";
+import {
+  Prisma,
+  PrismaClientOrTransaction,
+  TaskRun,
+  TaskRunExecutionStatus,
+} from "@trigger.dev/database";
 import { MinimalAuthenticatedEnvironment } from "../../shared/index.js";
 import { ExecutionSnapshotSystem } from "./executionSnapshotSystem.js";
 import { SystemResources } from "./systems.js";
@@ -37,6 +42,7 @@ export class EnqueueSystem {
     snapshot?: {
       status?: Extract<TaskRunExecutionStatus, "QUEUED" | "QUEUED_EXECUTING">;
       description?: string;
+      metadata?: Prisma.JsonValue;
     };
     previousSnapshotId?: string;
     batchId?: string;
@@ -56,11 +62,14 @@ export class EnqueueSystem {
         snapshot: {
           executionStatus: snapshot?.status ?? "QUEUED",
           description: snapshot?.description ?? "Run was QUEUED",
+          metadata: snapshot?.metadata ?? undefined,
         },
         previousSnapshotId,
         batchId,
         environmentId: env.id,
         environmentType: env.type,
+        projectId: env.project.id,
+        organizationId: env.organization.id,
         checkpointId,
         completedWaitpoints,
         workerId,

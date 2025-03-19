@@ -167,10 +167,10 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
                         index: options.batchIndex ?? 0,
                       }
                     : undefined,
-                  environmentId: environment.id,
                   projectId: environment.projectId,
                   organizationId: environment.organizationId,
                   tx: this._prisma,
+                  releaseConcurrency: body.options?.releaseConcurrency,
                 });
               }
             );
@@ -373,6 +373,7 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
                       : undefined,
                     machine: body.options?.machine,
                     priorityMs: body.options?.priority ? body.options.priority * 1_000 : undefined,
+                    releaseConcurrency: body.options?.releaseConcurrency,
                   },
                   this._prisma
                 );

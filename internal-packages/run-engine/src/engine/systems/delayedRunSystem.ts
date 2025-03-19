@@ -59,6 +59,8 @@ export class DelayedRunSystem {
                   runStatus: "EXPIRED",
                   environmentId: snapshot.environmentId,
                   environmentType: snapshot.environmentType,
+                  projectId: snapshot.projectId,
+                  organizationId: snapshot.organizationId,
                 },
               },
             },

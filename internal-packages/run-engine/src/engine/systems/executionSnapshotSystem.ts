@@ -1,6 +1,7 @@
 import { CompletedWaitpoint, ExecutionResult } from "@trigger.dev/core/v3";
 import { BatchId, RunId, SnapshotId } from "@trigger.dev/core/v3/isomorphic";
 import {
+  Prisma,
   PrismaClientOrTransaction,
   RuntimeEnvironmentType,
   TaskRunCheckpoint,
@@ -158,6 +159,8 @@ export class ExecutionSnapshotSystem {
       batchId,
       environmentId,
       environmentType,
+      projectId,
+      organizationId,
       checkpointId,
       workerId,
       runnerId,
@@ -168,11 +171,14 @@ export class ExecutionSnapshotSystem {
       snapshot: {
         executionStatus: TaskRunExecutionStatus;
         description: string;
+        metadata?: Prisma.JsonValue;
       };
       previousSnapshotId?: string;
       batchId?: string;
       environmentId: string;
       environmentType: RuntimeEnvironmentType;
+      projectId: string;
+      organizationId: string;
       checkpointId?: string;
       workerId?: string;
       runnerId?: string;
@@ -195,9 +201,12 @@ export class ExecutionSnapshotSystem {
         batchId,
         environmentId,
         environmentType,
+        projectId,
+        organizationId,
         checkpointId,
         workerId,
         runnerId,
+        metadata: snapshot.metadata ?? undefined,
         completedWaitpoints: {
           connect: completedWaitpoints?.map((w) => ({ id: w.id })),
         },

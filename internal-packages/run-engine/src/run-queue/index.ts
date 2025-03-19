@@ -561,14 +561,17 @@ export class RunQueue {
     );
   }
 
-  public async releaseConcurrency(orgId: string, messageId: string) {
+  /**
+   * Release all concurrency for a message, including environment and queue concurrency
+   */
+  public async releaseAllConcurrency(orgId: string, messageId: string) {
     return this.#trace(
-      "releaseConcurrency",
+      "releaseAllConcurrency",
       async (span) => {
         const message = await this.readMessage(orgId, messageId);
 
         if (!message) {
-          this.logger.log(`[${this.name}].acknowledgeMessage() message not found`, {
+          this.logger.log(`[${this.name}].releaseAllConcurrency() message not found`, {
             messageId,
             service: this.name,
           });
@@ -591,7 +594,44 @@ export class RunQueue {
       {
         kind: SpanKind.CONSUMER,
         attributes: {
-          [SEMATTRS_MESSAGING_OPERATION]: "releaseConcurrency",
+          [SEMATTRS_MESSAGING_OPERATION]: "releaseAllConcurrency",
+          [SEMATTRS_MESSAGE_ID]: messageId,
+          [SEMATTRS_MESSAGING_SYSTEM]: "runqueue",
+        },
+      }
+    );
+  }
+
+  public async releaseEnvConcurrency(orgId: string, messageId: string) {
+    return this.#trace(
+      "releaseEnvConcurrency",
+      async (span) => {
+        const message = await this.readMessage(orgId, messageId);
+
+        if (!message) {
+          this.logger.log(`[${this.name}].releaseEnvConcurrency() message not found`, {
+            messageId,
+            service: this.name,
+          });
+          return;
+        }
+
+        span.setAttributes({
+          [SemanticAttributes.QUEUE]: message.queue,
+          [SemanticAttributes.ORG_ID]: message.orgId,
+          [SemanticAttributes.RUN_ID]: messageId,
+          [SemanticAttributes.CONCURRENCY_KEY]: message.concurrencyKey,
+        });
+
+        return this.redis.releaseEnvConcurrency(
+          this.keys.envCurrentConcurrencyKeyFromQueue(message.queue),
+          messageId
+        );
+      },
+      {
+        kind: SpanKind.CONSUMER,
+        attributes: {
+          [SEMATTRS_MESSAGING_OPERATION]: "releaseEnvConcurrency",
           [SEMATTRS_MESSAGE_ID]: messageId,
           [SEMATTRS_MESSAGING_SYSTEM]: "runqueue",
         },
@@ -1242,6 +1282,20 @@ redis.call('SREM', envCurrentConcurrencyKey, messageId)
 `,
     });
 
+    this.redis.defineCommand("releaseEnvConcurrency", {
+      numberOfKeys: 1,
+      lua: `
+-- Keys:
+local envCurrentConcurrencyKey = KEYS[1]
+
+-- Args:
+local messageId = ARGV[1]
+
+-- Update the concurrency keys
+redis.call('SREM', envCurrentConcurrencyKey, messageId)
+`,
+    });
+
     this.redis.defineCommand("reacquireConcurrency", {
       numberOfKeys: 4,
       lua: `
@@ -1274,12 +1328,14 @@ if envCurrentConcurrency >= totalEnvConcurrencyLimit then
 end
 
 -- Check current queue concurrency against the limit
-local queueCurrentConcurrency = tonumber(redis.call('SCARD', queueCurrentConcurrencyKey) or '0')
-local queueConcurrencyLimit = math.min(tonumber(redis.call('GET', queueConcurrencyLimitKey) or '1000000'), envConcurrencyLimit)
-local totalQueueConcurrencyLimit = queueConcurrencyLimit
+if not isInQueueConcurrency then
+    local queueCurrentConcurrency = tonumber(redis.call('SCARD', queueCurrentConcurrencyKey) or '0')
+    local queueConcurrencyLimit = math.min(tonumber(redis.call('GET', queueConcurrencyLimitKey) or '1000000'), envConcurrencyLimit)
+    local totalQueueConcurrencyLimit = queueConcurrencyLimit
 
-if queueCurrentConcurrency >= totalQueueConcurrencyLimit then
-    return false
+    if queueCurrentConcurrency >= totalQueueConcurrencyLimit then
+        return false
+    end
 end
 
 -- Update the concurrency keys
@@ -1385,6 +1441,12 @@ declare module "@internal/redis" {
 
     releaseConcurrency(
       queueCurrentConcurrencyKey: string,
+      envCurrentConcurrencyKey: string,
+      messageId: string,
+      callback?: Callback<void>
+    ): Result<void, Context>;
+
+    releaseEnvConcurrency(
       envCurrentConcurrencyKey: string,
       messageId: string,
       callback?: Callback<void>

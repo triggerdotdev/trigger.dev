@@ -7,7 +7,7 @@ import {
 import { trace } from "@internal/tracing";
 import { expect } from "vitest";
 import { RunEngine } from "../index.js";
-import { setTimeout } from "timers/promises";
+import { setTimeout } from "node:timers/promises";
 import { EventBusEventArgs } from "../eventBus.js";
 import { isWaitpointOutputTimeout } from "@trigger.dev/core/v3";
 

@@ -11,22 +11,25 @@ import {
 import { SystemResources } from "./systems.js";
 import { ServiceValidationError } from "../errors.js";
 import { EnqueueSystem } from "./enqueueSystem.js";
-
+import { ReleaseConcurrencySystem } from "./releaseConcurrencySystem.js";
 export type CheckpointSystemOptions = {
   resources: SystemResources;
   executionSnapshotSystem: ExecutionSnapshotSystem;
   enqueueSystem: EnqueueSystem;
+  releaseConcurrencySystem: ReleaseConcurrencySystem;
 };
 
 export class CheckpointSystem {
   private readonly $: SystemResources;
   private readonly executionSnapshotSystem: ExecutionSnapshotSystem;
   private readonly enqueueSystem: EnqueueSystem;
+  private readonly releaseConcurrencySystem: ReleaseConcurrencySystem;
 
   constructor(private readonly options: CheckpointSystemOptions) {
     this.$ = options.resources;
     this.executionSnapshotSystem = options.executionSnapshotSystem;
     this.enqueueSystem = options.enqueueSystem;
+    this.releaseConcurrencySystem = options.releaseConcurrencySystem;
   }
 
   /**
@@ -163,6 +166,7 @@ export class CheckpointSystem {
             status: "QUEUED",
             description:
               "Run was QUEUED, because it was queued and executing and a checkpoint was created",
+            metadata: snapshot.metadata,
           },
           previousSnapshotId: snapshot.id,
           batchId: snapshot.batchId ?? undefined,
@@ -174,14 +178,7 @@ export class CheckpointSystem {
         });
 
         // Refill the token bucket for the release concurrency queue
-        await this.$.releaseConcurrencyQueue.refillTokens(
-          {
-            orgId: run.runtimeEnvironment.organizationId,
-            projectId: run.runtimeEnvironment.projectId,
-            envId: run.runtimeEnvironment.id,
-          },
-          1
-        );
+        await this.releaseConcurrencySystem.checkpointCreatedOnEnvironment(run.runtimeEnvironment);
 
         return {
           ok: true as const,
@@ -195,24 +192,20 @@ export class CheckpointSystem {
           snapshot: {
             executionStatus: "SUSPENDED",
             description: "Run was suspended after creating a checkpoint.",
+            metadata: snapshot.metadata,
           },
           previousSnapshotId: snapshot.id,
           environmentId: snapshot.environmentId,
           environmentType: snapshot.environmentType,
+          projectId: snapshot.projectId,
+          organizationId: snapshot.organizationId,
           checkpointId: taskRunCheckpoint.id,
           workerId,
           runnerId,
         });
 
         // Refill the token bucket for the release concurrency queue
-        await this.$.releaseConcurrencyQueue.refillTokens(
-          {
-            orgId: run.runtimeEnvironment.organizationId,
-            projectId: run.runtimeEnvironment.projectId,
-            envId: run.runtimeEnvironment.id,
-          },
-          1
-        );
+        await this.releaseConcurrencySystem.checkpointCreatedOnEnvironment(run.runtimeEnvironment);
 
         return {
           ok: true as const,
@@ -284,6 +277,8 @@ export class CheckpointSystem {
         previousSnapshotId: snapshot.id,
         environmentId: snapshot.environmentId,
         environmentType: snapshot.environmentType,
+        projectId: snapshot.projectId,
+        organizationId: snapshot.organizationId,
         completedWaitpoints: snapshot.completedWaitpoints,
         workerId,
         runnerId,

@@ -216,6 +216,8 @@ export class RunAttemptSystem {
                 previousSnapshotId: latestSnapshot.id,
                 environmentId: latestSnapshot.environmentId,
                 environmentType: latestSnapshot.environmentType,
+                projectId: latestSnapshot.projectId,
+                organizationId: latestSnapshot.organizationId,
                 workerId,
                 runnerId,
               });
@@ -436,6 +438,8 @@ export class RunAttemptSystem {
                   attemptNumber: latestSnapshot.attemptNumber,
                   environmentId: latestSnapshot.environmentId,
                   environmentType: latestSnapshot.environmentType,
+                  projectId: latestSnapshot.projectId,
+                  organizationId: latestSnapshot.organizationId,
                   workerId,
                   runnerId,
                 },
@@ -706,6 +710,7 @@ export class RunAttemptSystem {
                   run,
                   environment: run.runtimeEnvironment,
                   orgId: run.runtimeEnvironment.organizationId,
+                  projectId: run.runtimeEnvironment.project.id,
                   timestamp: retryAt.getTime(),
                   error: {
                     type: "INTERNAL_ERROR",
@@ -737,6 +742,8 @@ export class RunAttemptSystem {
                   previousSnapshotId: latestSnapshot.id,
                   environmentId: latestSnapshot.environmentId,
                   environmentType: latestSnapshot.environmentType,
+                  projectId: latestSnapshot.projectId,
+                  organizationId: latestSnapshot.organizationId,
                   workerId,
                   runnerId,
                 }
@@ -820,6 +827,7 @@ export class RunAttemptSystem {
     run,
     environment,
     orgId,
+    projectId,
     timestamp,
     error,
     workerId,
@@ -832,6 +840,7 @@ export class RunAttemptSystem {
       type: RuntimeEnvironmentType;
     };
     orgId: string;
+    projectId: string;
     timestamp?: number;
     error: TaskRunInternalError;
     workerId?: string;
@@ -865,6 +874,8 @@ export class RunAttemptSystem {
         },
         environmentId: environment.id,
         environmentType: environment.type,
+        projectId: projectId,
+        organizationId: orgId,
         workerId,
         runnerId,
       });
@@ -988,6 +999,8 @@ export class RunAttemptSystem {
             previousSnapshotId: latestSnapshot.id,
             environmentId: latestSnapshot.environmentId,
             environmentType: latestSnapshot.environmentType,
+            projectId: latestSnapshot.projectId,
+            organizationId: latestSnapshot.organizationId,
             workerId,
             runnerId,
           });
@@ -1011,6 +1024,8 @@ export class RunAttemptSystem {
           previousSnapshotId: latestSnapshot.id,
           environmentId: latestSnapshot.environmentId,
           environmentType: latestSnapshot.environmentType,
+          projectId: latestSnapshot.projectId,
+          organizationId: latestSnapshot.organizationId,
           workerId,
           runnerId,
         });
@@ -1104,6 +1119,12 @@ export class RunAttemptSystem {
               id: true,
               type: true,
               organizationId: true,
+              project: {
+                select: {
+                  id: true,
+                  organizationId: true,
+                },
+              },
             },
           },
           taskEventStore: true,
@@ -1121,6 +1142,8 @@ export class RunAttemptSystem {
         previousSnapshotId: snapshotId,
         environmentId: run.runtimeEnvironment.id,
         environmentType: run.runtimeEnvironment.type,
+        projectId: run.runtimeEnvironment.project.id,
+        organizationId: run.runtimeEnvironment.project.organizationId,
         workerId,
         runnerId,
       });
