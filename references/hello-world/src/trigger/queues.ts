@@ -12,9 +12,15 @@ export const queuesTester = task({
     const retrievedFromId = await queues.retrieve(ctx.queue.id);
     logger.log("Retrieved from ID", { retrievedFromId });
 
-    const retrievedFromName = await queues.retrieve({
+    const retrievedFromCtxName = await queues.retrieve({
       type: "task",
       name: ctx.queue.name,
+    });
+    logger.log("Retrieved from name", { retrievedFromCtxName });
+
+    const retrievedFromName = await queues.retrieve({
+      type: "task",
+      name: "queues-tester",
     });
     logger.log("Retrieved from name", { retrievedFromName });
   },

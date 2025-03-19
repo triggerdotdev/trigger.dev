@@ -3,6 +3,7 @@ import {
   apiClientManager,
   ApiPromise,
   ApiRequestOptions,
+  flattenAttributes,
   ListQueueOptions,
   mergeRequestOptions,
   OffsetLimitPagePromise,
@@ -68,7 +69,7 @@ export function retrieve(
       name: "queues.retrieve()",
       icon: "queue",
       attributes: {
-        queue: typeof queue === "string" ? queue : queue.name,
+        ...flattenAttributes({ queue }),
         ...accessoryAttributes({
           items: [
             {

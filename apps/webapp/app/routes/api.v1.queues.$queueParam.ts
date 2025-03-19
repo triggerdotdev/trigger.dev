@@ -11,7 +11,7 @@ const SearchParamsSchema = z.object({
 export const loader = createLoaderApiRoute(
   {
     params: z.object({
-      queueParam: z.string(),
+      queueParam: z.string().transform((val) => val.replace(/%2F/g, "/")),
     }),
     searchParams: SearchParamsSchema,
     findResource: async () => 1, // This is a dummy function, we don't need to find a resource
@@ -22,7 +22,7 @@ export const loader = createLoaderApiRoute(
         ? params.queueParam
         : {
             type: searchParams.type,
-            name: decodeURIComponent(params.queueParam),
+            name: decodeURIComponent(params.queueParam).replace(/%2F/g, "/"),
           };
 
     const presenter = new QueueRetrievePresenter();

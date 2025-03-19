@@ -749,9 +749,12 @@ export class ApiClient {
     const type = typeof queue === "string" ? "id" : queue.type;
     const value = typeof queue === "string" ? queue : queue.name;
 
+    // Explicitly encode slashes before encoding the rest of the string
+    const encodedValue = encodeURIComponent(value.replace(/\//g, "%2F"));
+
     return zodfetch(
       QueueItem,
-      `${this.baseUrl}/api/v1/queues/${encodeURIComponent(value)}?type=${type}`,
+      `${this.baseUrl}/api/v1/queues/${encodedValue}?type=${type}`,
       {
         method: "GET",
         headers: this.#getHeaders(false),
