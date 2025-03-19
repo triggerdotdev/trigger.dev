@@ -1,9 +1,13 @@
-import { type RuntimeEnvironment, type PrismaClient } from "@trigger.dev/database";
+import {
+  type RuntimeEnvironment,
+  type PrismaClient,
+  RuntimeEnvironmentType,
+} from "@trigger.dev/database";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { type UserFromSession } from "~/services/session.server";
 
-export type MinimumEnvironment = Pick<RuntimeEnvironment, "id" | "type" | "slug"> & {
+export type MinimumEnvironment = Pick<RuntimeEnvironment, "id" | "type" | "slug" | "paused"> & {
   orgMember: null | {
     userId: string | undefined;
   };
@@ -45,6 +49,7 @@ export class SelectBestEnvironmentPresenter {
               id: true,
               type: true,
               slug: true,
+              paused: true,
               orgMember: {
                 select: {
                   userId: true,
@@ -68,6 +73,7 @@ export class SelectBestEnvironmentPresenter {
             id: true,
             type: true,
             slug: true,
+            paused: true,
             orgMember: {
               select: {
                 userId: true,
@@ -133,11 +139,9 @@ export class SelectBestEnvironmentPresenter {
     return projects.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime()).at(0);
   }
 
-  async selectBestEnvironment(
-    projectId: string,
-    user: UserFromSession,
-    environments: MinimumEnvironment[]
-  ): Promise<MinimumEnvironment> {
+  async selectBestEnvironment<
+    T extends { id: string; type: RuntimeEnvironmentType; orgMember: { userId: string } | null }
+  >(projectId: string, user: UserFromSession, environments: T[]): Promise<T> {
     //try get current environment from prefs
     const currentEnvironmentId: string | undefined =
       user.dashboardPreferences.projects[projectId]?.currentEnvironment.id;

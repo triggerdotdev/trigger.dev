@@ -171,14 +171,6 @@ export function v3EnvironmentVariablesPath(
   return `${v3EnvironmentPath(organization, project, environment)}/environment-variables`;
 }
 
-export function v3ConcurrencyPath(
-  organization: OrgForPath,
-  project: ProjectForPath,
-  environment: EnvironmentForPath
-) {
-  return `${v3EnvironmentPath(organization, project, environment)}/concurrency`;
-}
-
 export function v3NewEnvironmentVariablesPath(
   organization: OrgForPath,
   project: ProjectForPath,
@@ -309,6 +301,14 @@ export function v3NewSchedulePath(
   environment: EnvironmentForPath
 ) {
   return `${v3EnvironmentPath(organization, project, environment)}/schedules/new`;
+}
+
+export function v3QueuesPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath
+) {
+  return `${v3EnvironmentPath(organization, project, environment)}/queues`;
 }
 
 export function v3BatchesPath(

@@ -184,6 +184,76 @@ export class RunQueue {
     return this.redis.scard(this.keys.currentConcurrencyKey(env, queue, concurrencyKey));
   }
 
+  public async currentConcurrencyOfQueues(
+    env: MinimalAuthenticatedEnvironment,
+    queues: string[]
+  ): Promise<Record<string, number>> {
+    const pipeline = this.redis.pipeline();
+
+    // Queue up all SCARD commands in the pipeline
+    queues.forEach((queue) => {
+      pipeline.scard(this.keys.currentConcurrencyKey(env, queue));
+    });
+
+    // Execute pipeline and get results
+    const results = await pipeline.exec();
+
+    // If results is null, return all queues with 0 concurrency
+    if (!results) {
+      return queues.reduce(
+        (acc, queue) => {
+          acc[queue] = 0;
+          return acc;
+        },
+        {} as Record<string, number>
+      );
+    }
+
+    // Map results back to queue names, handling potential errors
+    return queues.reduce(
+      (acc, queue, index) => {
+        const [err, value] = results[index];
+        // If there was an error or value is null/undefined, use 0
+        acc[queue] = err || value == null ? 0 : (value as number);
+        return acc;
+      },
+      {} as Record<string, number>
+    );
+  }
+
+  public async lengthOfQueues(
+    env: MinimalAuthenticatedEnvironment,
+    queues: string[]
+  ): Promise<Record<string, number>> {
+    const pipeline = this.redis.pipeline();
+
+    // Queue up all ZCARD commands in the pipeline
+    queues.forEach((queue) => {
+      pipeline.zcard(this.keys.queueKey(env, queue));
+    });
+
+    const results = await pipeline.exec();
+
+    if (!results) {
+      return queues.reduce(
+        (acc, queue) => {
+          acc[queue] = 0;
+          return acc;
+        },
+        {} as Record<string, number>
+      );
+    }
+
+    return queues.reduce(
+      (acc, queue, index) => {
+        const [err, value] = results![index];
+        acc[queue] = err || value == null ? 0 : (value as number);
+        return acc;
+      },
+      {} as Record<string, number>
+    );
+  }
+
   public async currentConcurrencyOfEnvironment(env: MinimalAuthenticatedEnvironment) {
     return this.redis.scard(this.keys.envCurrentConcurrencyKey(env));
   }
