@@ -99,7 +99,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     const environmentQueuePresenter = new EnvironmentQueuePresenter();
 
     return typeddefer({
-      queues,
+      ...queues,
       environment: environmentQueuePresenter.call(environment),
     });
   } catch (error) {
@@ -169,7 +169,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 };
 
 export default function Page() {
-  const { environment, queues } = useTypedLoaderData<typeof loader>();
+  const { environment, queues, success, pagination, code } = useTypedLoaderData<typeof loader>();
 
   const organization = useOrganization();
   const env = useEnvironment();
@@ -255,7 +255,7 @@ export default function Page() {
             </Suspense>
           </div>
 
-          {queues.success ? (
+          {success ? (
             <>
               <Table containerClassName="border-t">
                 <TableHeader>
@@ -282,11 +282,11 @@ export default function Page() {
                     }
                   >
                     <TypedAwait
-                      resolve={Promise.all([queues.queues, environment])}
+                      resolve={Promise.all([queues, environment])}
                       errorElement={<Paragraph variant="small">Error loading queues</Paragraph>}
                     >
-                      {([q, environment]) =>
-                        q.length > 0 ? (
+                      {([q, environment]) => {
+                        return q.length > 0 ? (
                           q.map((queue) => (
                             <TableRow key={queue.name}>
                               <TableCell>
@@ -321,13 +321,13 @@ export default function Page() {
                         ) : (
                           <TableRow>
                             <TableCell colSpan={5}>
-                              <span className="grid place-items-center py-6 text-text-dimmed">
+                              <div className="grid place-items-center py-6 text-text-dimmed">
                                 No queues found
-                              </span>
+                              </div>
                             </TableCell>
                           </TableRow>
-                        )
-                      }
+                        );
+                      }}
                     </TypedAwait>
                   </Suspense>
                 </TableBody>
@@ -336,19 +336,18 @@ export default function Page() {
               <div
                 className={cn(
                   "grid h-fit max-h-full min-h-full overflow-x-auto",
-                  queues.pagination.totalPages > 1 ? "grid-rows-[1fr_auto]" : "grid-rows-[1fr]"
+                  pagination.totalPages > 1 ? "grid-rows-[1fr_auto]" : "grid-rows-[1fr]"
                 )}
               >
                 <div
                   className={cn(
                     "flex min-h-full",
-                    queues.pagination.totalPages > 1 &&
-                      "justify-end border-t border-grid-dimmed px-2 py-3"
+                    pagination.totalPages > 1 && "justify-end border-t border-grid-dimmed px-2 py-3"
                   )}
                 >
                   <PaginationControls
-                    currentPage={queues.pagination.currentPage}
-                    totalPages={queues.pagination.totalPages}
+                    currentPage={pagination.currentPage}
+                    totalPages={pagination.totalPages}
                   />
                 </div>
               </div>
@@ -356,7 +355,7 @@ export default function Page() {
           ) : (
             <div className="grid place-items-center py-6 text-text-dimmed">
               <p>
-                {queues.code === "engine-version"
+                {code === "engine-version"
                   ? "Please upgrade your engine to v3 to use queues."
                   : "Something went wrong"}
               </p>
