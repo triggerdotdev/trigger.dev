@@ -1,9 +1,8 @@
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { determineEngineVersion } from "~/v3/engineVersion.server";
 import { engine } from "~/v3/runEngine.server";
 import { BasePresenter } from "./basePresenter.server";
-import { type TaskQueueType } from "@trigger.dev/database";
-import { assertExhaustive } from "@trigger.dev/core";
-import { determineEngineVersion } from "~/v3/engineVersion.server";
+import { toQueueItem } from "./QueueRetrievePresenter.server";
 
 const DEFAULT_ITEMS_PER_PAGE = 25;
 const MAX_ITEMS_PER_PAGE = 100;
@@ -57,6 +56,7 @@ export class QueueListPresenter extends BasePresenter {
         runtimeEnvironmentId: environment.id,
       },
       select: {
+        friendlyId: true,
         name: true,
         concurrencyLimit: true,
         type: true,
@@ -80,23 +80,15 @@ export class QueueListPresenter extends BasePresenter {
     ]);
 
     // Transform queues to include running and queued counts
-    return queues.map((queue) => ({
-      name: queue.name.replace(/^task\//, ""),
-      type: queueTypeFromType(queue.type),
-      running: results[1][queue.name] ?? 0,
-      queued: results[0][queue.name] ?? 0,
-      concurrencyLimit: queue.concurrencyLimit ?? null,
-    }));
-  }
-}
-
-export function queueTypeFromType(type: TaskQueueType) {
-  switch (type) {
-    case "NAMED":
-      return "custom" as const;
-    case "VIRTUAL":
-      return "task" as const;
-    default:
-      assertExhaustive(type);
+    return queues.map((queue) =>
+      toQueueItem({
+        friendlyId: queue.friendlyId,
+        name: queue.name,
+        type: queue.type,
+        running: results[1][queue.name] ?? 0,
+        queued: results[0][queue.name] ?? 0,
+        concurrencyLimit: queue.concurrencyLimit ?? null,
+      })
+    );
   }
 }

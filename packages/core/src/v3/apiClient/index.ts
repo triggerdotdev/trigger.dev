@@ -25,6 +25,7 @@ import {
   ReplayRunResponse,
   RescheduleRunRequestBody,
   RetrieveBatchV2Response,
+  RetrieveQueueParam,
   RetrieveRunResponse,
   ScheduleObject,
   TaskRunExecutionResult,
@@ -736,6 +737,21 @@ export class ApiClient {
         page: options?.page,
         limit: options?.perPage,
       },
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  retrieveQueue(queue: RetrieveQueueParam, requestOptions?: ZodFetchOptions) {
+    const type = typeof queue === "string" ? "id" : queue.type;
+    const value = typeof queue === "string" ? queue : queue.name;
+
+    return zodfetch(
+      QueueItem,
+      `${this.baseUrl}/api/v1/queues/${encodeURIComponent(value)}?type=${type}`,
       {
         method: "GET",
         headers: this.#getHeaders(false),
