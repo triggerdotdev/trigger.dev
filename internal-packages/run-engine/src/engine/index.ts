@@ -1,5 +1,5 @@
 import { createRedisClient, Redis } from "@internal/redis";
-import { Worker } from "@internal/redis-worker";
+import { Worker } from "@trigger.dev/redis-worker";
 import { Attributes, Span, SpanKind, trace, Tracer } from "@internal/tracing";
 import { assertExhaustive } from "@trigger.dev/core";
 import { Logger } from "@trigger.dev/core/logger";

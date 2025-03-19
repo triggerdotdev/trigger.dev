@@ -1,4 +1,4 @@
-import { type WorkerConcurrencyOptions } from "@internal/redis-worker";
+import { type WorkerConcurrencyOptions } from "@trigger.dev/redis-worker";
 import { Tracer } from "@internal/tracing";
 import { MachinePreset, MachinePresetName, QueueOptions, RetryOptions } from "@trigger.dev/core/v3";
 import { PrismaClient } from "@trigger.dev/database";

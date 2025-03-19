@@ -1,20 +1,11 @@
 {
-  "include": ["src/**/*.test.ts"],
+  "extends": "./tsconfig.json",
+  "include": ["./test/**/*.ts"],
   "references": [{ "path": "./tsconfig.src.json" }],
   "compilerOptions": {
+    "isolatedDeclarations": false,
     "composite": true,
-    "target": "ES2019",
-    "lib": ["ES2019", "DOM", "DOM.Iterable", "DOM.AsyncIterable"],
-    "module": "Node16",
-    "moduleResolution": "Node16",
-    "moduleDetection": "force",
-    "verbatimModuleSyntax": false,
-    "types": ["vitest/globals"],
-    "esModuleInterop": true,
-    "forceConsistentCasingInFileNames": true,
-    "isolatedModules": true,
-    "preserveWatchOutput": true,
-    "skipLibCheck": true,
-    "strict": true
+    "sourceMap": true,
+    "types": ["vitest/globals"]
   }
 }

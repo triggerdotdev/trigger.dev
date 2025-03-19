@@ -1,4 +1,4 @@
-import { Worker as RedisWorker } from "@internal/redis-worker";
+import { Worker as RedisWorker } from "@trigger.dev/redis-worker";
 import { Logger } from "@trigger.dev/core/logger";
 import { z } from "zod";
 import { env } from "~/env.server";

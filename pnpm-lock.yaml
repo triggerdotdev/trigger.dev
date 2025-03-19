@@ -243,9 +243,6 @@ importers:
       '@internal/redis':
         specifier: workspace:*
         version: link:../../internal-packages/redis
-      '@internal/redis-worker':
-        specifier: workspace:*
-        version: link:../../internal-packages/redis-worker
       '@internal/run-engine':
         specifier: workspace:*
         version: link:../../internal-packages/run-engine
@@ -402,6 +399,9 @@ importers:
       '@trigger.dev/platform':
         specifier: 1.0.14
         version: 1.0.14
+      '@trigger.dev/redis-worker':
+        specifier: workspace:*
+        version: link:../../packages/redis-worker
       '@trigger.dev/sdk':
         specifier: workspace:*
         version: link:../../packages/trigger-sdk
@@ -932,51 +932,11 @@ importers:
         specifier: ^1.4.0
         version: 1.6.0(@types/node@20.14.14)
 
-  internal-packages/redis-worker:
-    dependencies:
-      '@internal/redis':
-        specifier: workspace:*
-        version: link:../redis
-      '@internal/tracing':
-        specifier: workspace:*
-        version: link:../tracing
-      '@trigger.dev/core':
-        specifier: workspace:*
-        version: link:../../packages/core
-      lodash.omit:
-        specifier: ^4.5.0
-        version: 4.5.0
-      nanoid:
-        specifier: ^5.0.7
-        version: 5.0.7
-      p-limit:
-        specifier: ^6.2.0
-        version: 6.2.0
-      zod:
-        specifier: 3.23.8
-        version: 3.23.8
-    devDependencies:
-      '@internal/testcontainers':
-        specifier: workspace:*
-        version: link:../testcontainers
-      '@types/lodash.omit':
-        specifier: ^4.5.7
-        version: 4.5.7
-      rimraf:
-        specifier: 6.0.1
-        version: 6.0.1
-      vitest:
-        specifier: ^1.4.0
-        version: 1.6.0(@types/node@20.14.14)
-
   internal-packages/run-engine:
     dependencies:
       '@internal/redis':
         specifier: workspace:*
         version: link:../redis
-      '@internal/redis-worker':
-        specifier: workspace:*
-        version: link:../redis-worker
       '@internal/tracing':
         specifier: workspace:*
         version: link:../tracing
@@ -986,6 +946,9 @@ importers:
       '@trigger.dev/database':
         specifier: workspace:*
         version: link:../database
+      '@trigger.dev/redis-worker':
+        specifier: workspace:*
+        version: link:../../packages/redis-worker
       '@unkey/cache':
         specifier: ^1.5.0
         version: 1.5.0
@@ -1568,6 +1531,49 @@ importers:
       tsx:
         specifier: 4.17.0
         version: 4.17.0
+
+  packages/redis-worker:
+    dependencies:
+      '@internal/redis':
+        specifier: workspace:*
+        version: link:../../internal-packages/redis
+      '@internal/tracing':
+        specifier: workspace:*
+        version: link:../../internal-packages/tracing
+      '@trigger.dev/core':
+        specifier: workspace:*
+        version: link:../core
+      lodash.omit:
+        specifier: ^4.5.0
+        version: 4.5.0
+      nanoid:
+        specifier: ^5.0.7
+        version: 5.1.2
+      p-limit:
+        specifier: ^6.2.0
+        version: 6.2.0
+      zod:
+        specifier: 3.23.8
+        version: 3.23.8
+    devDependencies:
+      '@internal/testcontainers':
+        specifier: workspace:*
+        version: link:../../internal-packages/testcontainers
+      '@types/lodash.omit':
+        specifier: ^4.5.7
+        version: 4.5.7
+      rimraf:
+        specifier: 6.0.1
+        version: 6.0.1
+      tshy:
+        specifier: ^3.0.2
+        version: 3.0.2
+      tsx:
+        specifier: 4.17.0
+        version: 4.17.0
+      vitest:
+        specifier: ^1.4.0
+        version: 1.6.0(@types/node@20.14.14)
 
   packages/rsc:
     dependencies:
@@ -18298,7 +18304,7 @@ packages:
     resolution: {integrity: sha512-RZNwNclF7+MS/8bDg70amg32dyeZGZxiDuQmZxKLAlQjr3jGyLx+4Kkk58UO7D2QdgFIQCovuSuZESne6RG6XQ==}
     engines: {node: '>= 6.0.0'}
     dependencies:
-      debug: 4.3.7
+      debug: 4.4.0
     transitivePeerDependencies:
       - supports-color
     dev: false
@@ -18307,7 +18313,7 @@ packages:
     resolution: {integrity: sha512-o/zjMZRhJxny7OyEF+Op8X+efiELC7k7yOjMzgfzVqOzXqkBkWI79YoTdOtsuWd5BWhAGAuOY/Xa6xpiaWXiNg==}
     engines: {node: '>= 14'}
     dependencies:
-      debug: 4.3.7
+      debug: 4.4.0
     transitivePeerDependencies:
       - supports-color
 
@@ -19530,7 +19536,7 @@ packages:
   /capnp-ts@0.7.0:
     resolution: {integrity: sha512-XKxXAC3HVPv7r674zP0VC3RTXz+/JKhfyw94ljvF80yynK6VkTnqE3jMuN8b3dUVmmc43TjyxjW4KTsmB3c86g==}
     dependencies:
-      debug: 4.3.7
+      debug: 4.4.0
       tslib: 2.6.2
     transitivePeerDependencies:
       - supports-color
@@ -23762,7 +23768,7 @@ packages:
     engines: {node: '>= 14'}
     dependencies:
       agent-base: 7.1.0
-      debug: 4.3.7
+      debug: 4.4.0
     transitivePeerDependencies:
       - supports-color
 
@@ -23790,7 +23796,7 @@ packages:
     engines: {node: '>= 6'}
     dependencies:
       agent-base: 6.0.2
-      debug: 4.3.7
+      debug: 4.4.0
     transitivePeerDependencies:
       - supports-color
     dev: false
@@ -23800,7 +23806,7 @@ packages:
     engines: {node: '>= 14'}
     dependencies:
       agent-base: 7.1.1
-      debug: 4.3.7
+      debug: 4.4.0
     transitivePeerDependencies:
       - supports-color
 
@@ -26146,12 +26152,6 @@ packages:
 
   /nanoid@5.0.6:
     resolution: {integrity: sha512-rRq0eMHoGZxlvaFOUdK1Ev83Bd1IgzzR+WJ3IbDJ7QOSdAxYjlurSPqFs9s4lJg29RT6nPwizFtJhQS6V5xgiA==}
-    engines: {node: ^18 || >=20}
-    hasBin: true
-    dev: false
-
-  /nanoid@5.0.7:
-    resolution: {integrity: sha512-oLxFY2gd2IqnjcYyOXD8XGCftpGtZP2AbHbOkthDkvRywH5ayNtPVy9YlOPcHckXzbLTCHpkb7FB+yuxKV13pQ==}
     engines: {node: ^18 || >=20}
     hasBin: true
     dev: false
@@ -32599,7 +32599,7 @@ packages:
     hasBin: true
     dependencies:
       cac: 6.7.14
-      debug: 4.3.7
+      debug: 4.4.0
       pathe: 1.1.2
       picocolors: 1.1.1
       vite: 5.2.7(@types/node@20.14.14)

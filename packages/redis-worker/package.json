@@ -1,17 +1,41 @@
 {
-  "name": "@internal/redis-worker",
-  "private": true,
-  "version": "0.0.1",
-  "main": "./dist/src/index.js",
-  "types": "./dist/src/index.d.ts",
+  "name": "@trigger.dev/redis-worker",
+  "version": "3.3.17",
+  "description": "Redis worker for trigger.dev",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/triggerdotdev/trigger.dev",
+    "directory": "packages/redis-worker"
+  },
   "type": "module",
-  "exports": {
-    ".": {
-      "@triggerdotdev/source": "./src/index.ts",
-      "import": "./dist/src/index.js",
-      "types": "./dist/src/index.d.ts",
-      "default": "./dist/src/index.js"
-    }
+  "files": [
+    "dist"
+  ],
+  "tshy": {
+    "selfLink": false,
+    "module": true,
+    "project": "./tsconfig.src.json",
+    "dialects": [
+      "esm"
+    ],
+    "exports": {
+      "./package.json": "./package.json",
+      ".": "./src/index.ts"
+    },
+    "sourceDialects": [
+      "@triggerdotdev/source"
+    ]
+  },
+  "scripts": {
+    "clean": "rimraf dist .tshy .tshy-build .turbo",
+    "build": "tshy",
+    "dev": "tshy --watch",
+    "typecheck": "tsc --noEmit -p tsconfig.src.json",
+    "test": "vitest --sequence.concurrent=false --no-file-parallelism"
   },
   "dependencies": {
     "@internal/tracing": "workspace:*",
@@ -26,13 +50,22 @@
     "@internal/testcontainers": "workspace:*",
     "@types/lodash.omit": "^4.5.7",
     "vitest": "^1.4.0",
-    "rimraf": "6.0.1"
+    "rimraf": "6.0.1",
+    "tshy": "^3.0.2",
+    "tsx": "4.17.0"
   },
-  "scripts": {
-    "clean": "rimraf dist",
-    "typecheck": "tsc --noEmit -p tsconfig.build.json",
-    "test": "vitest --sequence.concurrent=false --no-file-parallelism",
-    "build": "pnpm run clean && tsc -p tsconfig.build.json",
-    "dev": "tsc --watch  -p tsconfig.build.json"
-  }
+  "engines": {
+    "node": ">=18.20.0"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "@triggerdotdev/source": "./src/index.ts",
+        "types": "./dist/esm/index.d.ts",
+        "default": "./dist/esm/index.js"
+      }
+    }
+  },
+  "module": "./dist/esm/index.js"
 }

@@ -1,19 +1,10 @@
 {
-  "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "src/**/*.test.ts"],
+  "extends": "./tsconfig.json",
+  "include": ["./src/**/*.ts"],
   "compilerOptions": {
+    "isolatedDeclarations": false,
     "composite": true,
-    "target": "ES2019",
-    "lib": ["ES2019", "DOM", "DOM.Iterable", "DOM.AsyncIterable"],
-    "module": "Node16",
-    "moduleResolution": "Node16",
-    "moduleDetection": "force",
-    "verbatimModuleSyntax": false,
-    "esModuleInterop": true,
-    "forceConsistentCasingInFileNames": true,
-    "isolatedModules": true,
-    "preserveWatchOutput": true,
-    "skipLibCheck": true,
-    "strict": true
+    "sourceMap": true,
+    "customConditions": ["@triggerdotdev/source"]
   }
 }
