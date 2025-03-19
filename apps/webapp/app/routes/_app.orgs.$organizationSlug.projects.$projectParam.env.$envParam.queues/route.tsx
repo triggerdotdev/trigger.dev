@@ -24,6 +24,7 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableCellMenu,
   TableHeader,
   TableHeaderCell,
   TableRow,
@@ -55,6 +56,8 @@ import { type RuntimeEnvironmentType } from "@trigger.dev/database";
 import { environmentFullTitle } from "~/components/environments/EnvironmentLabel";
 import { Callout } from "~/components/primitives/Callout";
 import upgradeForQueuesPath from "~/assets/images/queues-dashboard.png";
+import { PauseQueueService } from "~/v3/services/pauseQueue.server";
+import { Badge } from "~/components/primitives/Badge";
 
 const SearchParamsSchema = z.object({
   page: z.coerce.number().min(1).default(1),
@@ -161,8 +164,40 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         request,
         "Environment resumed"
       );
+    case "queue-pause":
+    case "queue-resume": {
+      const friendlyId = formData.get("friendlyId");
+      if (!friendlyId) {
+        return redirectWithErrorMessage(
+          `/orgs/${organizationSlug}/projects/${projectParam}/env/${envParam}/queues`,
+          request,
+          "Queue ID is required"
+        );
+      }
+
+      const queueService = new PauseQueueService();
+      const result = await queueService.call(
+        environment,
+        friendlyId.toString(),
+        action === "queue-pause" ? "paused" : "resumed"
+      );
+
+      if (!result.success) {
+        return redirectWithErrorMessage(
+          `/orgs/${organizationSlug}/projects/${projectParam}/env/${envParam}/queues`,
+          request,
+          result.error ?? `Failed to ${action === "queue-pause" ? "pause" : "resume"} queue`
+        );
+      }
+
+      return redirectWithSuccessMessage(
+        `/orgs/${organizationSlug}/projects/${projectParam}/env/${envParam}/queues`,
+        request,
+        `Queue ${action === "queue-pause" ? "paused" : "resumed"}`
+      );
+    }
     default:
-      redirectWithErrorMessage(
+      return redirectWithErrorMessage(
         `/orgs/${organizationSlug}/projects/${projectParam}/env/${envParam}/queues`,
         request,
         "Something went wrong"
@@ -266,7 +301,7 @@ export default function Page() {
                     <TableHeaderCell alignment="right">Queued</TableHeaderCell>
                     <TableHeaderCell alignment="right">Running</TableHeaderCell>
                     <TableHeaderCell alignment="right">Concurrency limit</TableHeaderCell>
-                    <TableHeaderCell alignment="right">
+                    <TableHeaderCell className="w-[1%] pl-24">
                       <span className="sr-only">Pause/resume</span>
                     </TableHeaderCell>
                   </TableRow>
@@ -287,7 +322,7 @@ export default function Page() {
                       resolve={Promise.all([queues, environment])}
                       errorElement={<Paragraph variant="small">Error loading queues</Paragraph>}
                     >
-                      {([q, environment]) => {
+                      {([q, env]) => {
                         return q.length > 0 ? (
                           q.map((queue) => (
                             <TableRow key={queue.name}>
@@ -295,29 +330,70 @@ export default function Page() {
                                 <span className="flex items-center gap-2">
                                   {queue.type === "task" ? (
                                     <SimpleTooltip
-                                      button={<TaskIcon className="size-4 text-blue-500" />}
+                                      button={
+                                        <TaskIcon
+                                          className={cn(
+                                            "size-4 text-blue-500",
+                                            queue.paused && "opacity-50"
+                                          )}
+                                        />
+                                      }
                                       content={`This queue was automatically created from your "${queue.name}" task`}
                                     />
                                   ) : (
                                     <SimpleTooltip
                                       button={
-                                        <RectangleStackIcon className="size-4 text-purple-500" />
+                                        <RectangleStackIcon
+                                          className={cn(
+                                            "size-4 text-purple-500",
+                                            queue.paused && "opacity-50"
+                                          )}
+                                        />
                                       }
                                       content={`This is a custom queue you added in your code.`}
                                     />
                                   )}
-                                  <span>{queue.name}</span>
+                                  <span className={queue.paused ? "opacity-50" : undefined}>
+                                    {queue.name}
+                                  </span>
+                                  {queue.paused ? (
+                                    <Badge variant="extra-small" className="text-warning">
+                                      Paused
+                                    </Badge>
+                                  ) : null}
                                 </span>
                               </TableCell>
-                              <TableCell alignment="right">{queue.queued}</TableCell>
-                              <TableCell alignment="right">{queue.running}</TableCell>
-                              <TableCell alignment="right">
+                              <TableCell
+                                alignment="right"
+                                className={queue.paused ? "opacity-50" : undefined}
+                              >
+                                {queue.queued}
+                              </TableCell>
+                              <TableCell
+                                alignment="right"
+                                className={queue.paused ? "opacity-50" : undefined}
+                              >
+                                {queue.running}
+                              </TableCell>
+                              <TableCell
+                                alignment="right"
+                                className={queue.paused ? "opacity-50" : undefined}
+                              >
                                 {queue.concurrencyLimit ?? (
                                   <span className="text-text-dimmed">
-                                    Max ({environment.concurrencyLimit})
+                                    Max ({env.concurrencyLimit})
                                   </span>
                                 )}
                               </TableCell>
+                              <TableCellMenu
+                                isSticky
+                                visibleButtons={
+                                  queue.paused && <QueuePauseResumeButton queue={queue} />
+                                }
+                                hiddenButtons={
+                                  !queue.paused && <QueuePauseResumeButton queue={queue} />
+                                }
+                              />
                             </TableRow>
                           ))
                         ) : (
@@ -401,7 +477,7 @@ function EnvironmentPauseResumeButton({
                     LeadingIcon={env.paused ? PlayIcon : PauseIcon}
                     leadingIconClassName={env.paused ? "text-success" : "text-amber-500"}
                   >
-                    {env.paused ? "Resume" : "Pause environment"}
+                    {env.paused ? "Resume..." : "Pause environment..."}
                   </Button>
                 </DialogTrigger>
               </div>
@@ -437,8 +513,86 @@ function EnvironmentPauseResumeButton({
                   disabled={isLoading}
                   variant={env.paused ? "primary/medium" : "danger/medium"}
                   LeadingIcon={isLoading ? <Spinner /> : env.paused ? PlayIcon : PauseIcon}
+                  shortcut={{ modifiers: ["mod"], key: "enter" }}
                 >
                   {env.paused ? "Resume environment" : "Pause environment"}
+                </Button>
+              }
+              cancelButton={
+                <DialogClose asChild>
+                  <Button type="button" variant="tertiary/medium">
+                    Cancel
+                  </Button>
+                </DialogClose>
+              }
+            />
+          </Form>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function QueuePauseResumeButton({
+  queue,
+}: {
+  /** The "id" here is a friendlyId */
+  queue: { id: string; name: string; paused: boolean };
+}) {
+  const navigation = useNavigation();
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+      <div>
+        <TooltipProvider disableHoverableContent={true}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div>
+                <DialogTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="tertiary/small"
+                    LeadingIcon={queue.paused ? PlayIcon : PauseIcon}
+                    leadingIconClassName={queue.paused ? "text-success" : "text-amber-500"}
+                  >
+                    {queue.paused ? "Resume..." : "Pause..."}
+                  </Button>
+                </DialogTrigger>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent side="right" className={"text-xs"}>
+              {queue.paused
+                ? `Resume processing runs in queue "${queue.name}"`
+                : `Pause processing runs in queue "${queue.name}"`}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </div>
+      <DialogContent>
+        <DialogHeader>{queue.paused ? "Resume queue?" : "Pause queue?"}</DialogHeader>
+        <div className="flex flex-col gap-3 pt-3">
+          <Paragraph>
+            {queue.paused
+              ? `This will allow runs to be dequeued in the "${queue.name}" queue again.`
+              : `This will pause all runs from being dequeued in the "${queue.name}" queue. Any executing runs will continue to run.`}
+          </Paragraph>
+          <Form method="post" onSubmit={() => setIsOpen(false)}>
+            <input
+              type="hidden"
+              name="action"
+              value={queue.paused ? "queue-resume" : "queue-pause"}
+            />
+            <input type="hidden" name="friendlyId" value={queue.id} />
+            <FormButtons
+              confirmButton={
+                <Button
+                  type="submit"
+                  shortcut={{ modifiers: ["mod"], key: "enter" }}
+                  variant={queue.paused ? "primary/medium" : "danger/medium"}
+                  LeadingIcon={queue.paused ? PlayIcon : PauseIcon}
+                >
+                  {queue.paused ? "Resume queue" : "Pause queue"}
                 </Button>
               }
               cancelButton={

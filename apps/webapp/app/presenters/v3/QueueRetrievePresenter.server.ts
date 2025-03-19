@@ -5,6 +5,34 @@ import { type TaskQueueType } from "@trigger.dev/database";
 import { assertExhaustive } from "@trigger.dev/core";
 import { determineEngineVersion } from "~/v3/engineVersion.server";
 import { type QueueItem, type RetrieveQueueParam } from "@trigger.dev/core/v3";
+import { PrismaClientOrTransaction } from "@trigger.dev/database";
+
+/**
+ * Shared queue lookup logic used by both QueueRetrievePresenter and PauseQueueService
+ */
+export async function getQueue(
+  prismaClient: PrismaClientOrTransaction,
+  environment: AuthenticatedEnvironment,
+  queue: RetrieveQueueParam
+) {
+  if (typeof queue === "string") {
+    return prismaClient.taskQueue.findFirst({
+      where: {
+        friendlyId: queue,
+        runtimeEnvironmentId: environment.id,
+      },
+    });
+  }
+
+  const queueName =
+    queue.type === "task" ? `task/${queue.name.replace(/^task\//, "")}` : queue.name;
+  return prismaClient.taskQueue.findFirst({
+    where: {
+      name: queueName,
+      runtimeEnvironmentId: environment.id,
+    },
+  });
+}
 
 export class QueueRetrievePresenter extends BasePresenter {
   public async call({
@@ -24,7 +52,7 @@ export class QueueRetrievePresenter extends BasePresenter {
       };
     }
 
-    const queue = await this.getQueue(environment, queueInput);
+    const queue = await getQueue(this._replica, environment, queueInput);
     if (!queue) {
       return {
         success: false as const,
@@ -47,28 +75,9 @@ export class QueueRetrievePresenter extends BasePresenter {
         running: results[1]?.[queue.name] ?? 0,
         queued: results[0]?.[queue.name] ?? 0,
         concurrencyLimit: queue.concurrencyLimit ?? null,
+        paused: queue.paused,
       }),
     };
-  }
-
-  private async getQueue(environment: AuthenticatedEnvironment, queue: RetrieveQueueParam) {
-    if (typeof queue === "string") {
-      return this._replica.taskQueue.findFirst({
-        where: {
-          friendlyId: queue,
-          runtimeEnvironmentId: environment.id,
-        },
-      });
-    }
-
-    const queueName =
-      queue.type === "task" ? `task/${queue.name.replace(/^task\//, "")}` : queue.name;
-    return this._replica.taskQueue.findFirst({
-      where: {
-        name: queueName,
-        runtimeEnvironmentId: environment.id,
-      },
-    });
   }
 }
 
@@ -95,6 +104,7 @@ export function toQueueItem(data: {
   running: number;
   queued: number;
   concurrencyLimit: number | null;
+  paused: boolean;
 }): QueueItem {
   return {
     id: data.friendlyId,
@@ -104,5 +114,6 @@ export function toQueueItem(data: {
     running: data.running,
     queued: data.queued,
     concurrencyLimit: data.concurrencyLimit,
+    paused: data.paused,
   };
 }

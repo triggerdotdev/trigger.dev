@@ -4,7 +4,7 @@ import { engine } from "~/v3/runEngine.server";
 import { BasePresenter } from "./basePresenter.server";
 import { toQueueItem } from "./QueueRetrievePresenter.server";
 
-const DEFAULT_ITEMS_PER_PAGE = 25;
+const DEFAULT_ITEMS_PER_PAGE = 10;
 const MAX_ITEMS_PER_PAGE = 100;
 export class QueueListPresenter extends BasePresenter {
   private readonly perPage: number;
@@ -60,6 +60,7 @@ export class QueueListPresenter extends BasePresenter {
         name: true,
         concurrencyLimit: true,
         type: true,
+        paused: true,
       },
       orderBy: {
         name: "asc",
@@ -88,6 +89,7 @@ export class QueueListPresenter extends BasePresenter {
         running: results[1][queue.name] ?? 0,
         queued: results[0][queue.name] ?? 0,
         concurrencyLimit: queue.concurrencyLimit ?? null,
+        paused: queue.paused,
       })
     );
   }
