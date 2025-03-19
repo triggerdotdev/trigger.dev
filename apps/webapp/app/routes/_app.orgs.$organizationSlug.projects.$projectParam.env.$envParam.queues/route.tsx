@@ -54,6 +54,7 @@ import {
 import { type RuntimeEnvironmentType } from "@trigger.dev/database";
 import { environmentFullTitle } from "~/components/environments/EnvironmentLabel";
 import { Callout } from "~/components/primitives/Callout";
+import upgradeForQueuesPath from "~/assets/images/queues-dashboard.png";
 
 const SearchParamsSchema = z.object({
   page: z.coerce.number().min(1).default(1),
@@ -101,8 +102,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
     return typeddefer({
       ...queues,
-      success: false,
-      code: "engine-version",
       environment: environmentQueuePresenter.call(environment),
     });
   } catch (error) {
@@ -358,18 +357,7 @@ export default function Page() {
           ) : (
             <div className="grid place-items-center py-6 text-text-dimmed">
               {code === "engine-version" ? (
-                <div className="flex flex-col gap-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <h4 className="text-base text-text-bright">New queues table</h4>
-                    <LinkButton
-                      LeadingIcon={BookOpenIcon}
-                      to={docsPath("v4-upgrade")}
-                      variant={"docs/small"}
-                    >
-                      Upgrade guide
-                    </LinkButton>
-                  </div>
-                </div>
+                <EngineVersionUpgradeCallout />
               ) : (
                 <Callout variant="error">Something went wrong</Callout>
               )}
@@ -465,6 +453,30 @@ function EnvironmentPauseResumeButton({
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function EngineVersionUpgradeCallout() {
+  return (
+    <div className="mt-4 flex max-w-lg flex-col gap-4 rounded-sm border border-grid-bright bg-background-bright px-4">
+      <div className="flex items-center justify-between gap-2 border-b border-grid-dimmed py-4">
+        <h4 className="text-base text-text-bright">New queues table</h4>
+        <LinkButton LeadingIcon={BookOpenIcon} to={docsPath("v4-upgrade")} variant={"docs/small"}>
+          Upgrade guide
+        </LinkButton>
+      </div>
+      <div className="space-y-4 pb-4">
+        <Paragraph variant="small">
+          Upgrade to SDK version 4+ to view the new queues table, and be able to pause and resume
+          individual queues.
+        </Paragraph>
+        <img
+          src={upgradeForQueuesPath}
+          alt="Upgrade for queues"
+          className="rounded-sm border border-grid-dimmed"
+        />
+      </div>
+    </div>
   );
 }
 
