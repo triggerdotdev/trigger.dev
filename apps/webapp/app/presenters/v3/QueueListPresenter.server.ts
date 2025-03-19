@@ -41,7 +41,7 @@ export class QueueListPresenter extends BasePresenter {
 
     return {
       success: true as const,
-      queues: this.getQueuesWithPagination(environment, page),
+      queues: await this.getQueuesWithPagination(environment, page),
       pagination: {
         currentPage: page,
         totalPages: Math.ceil(totalQueues / this.perPage),

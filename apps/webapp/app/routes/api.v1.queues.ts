@@ -28,7 +28,7 @@ export const loader = createLoaderApiRoute(
         return json({ error: result.code }, { status: 400 });
       }
 
-      const queues: QueueItem[] = await result.queues;
+      const queues: QueueItem[] = result.queues;
       return json({ data: queues, pagination: result.pagination }, { status: 200 });
     } catch (error) {
       if (error instanceof ServiceValidationError) {

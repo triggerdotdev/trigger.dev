@@ -660,7 +660,7 @@ const EnvironmentSchema = z.object({
   TASK_EVENT_PARTITIONING_ENABLED: z.string().default("0"),
   TASK_EVENT_PARTITIONED_WINDOW_IN_SECONDS: z.coerce.number().int().default(60), // 1 minute
 
-  QUEUE_SSE_AUTORELOAD_INTERVAL_MS: z.coerce.number().int().default(10_000),
+  QUEUE_SSE_AUTORELOAD_INTERVAL_MS: z.coerce.number().int().default(5_000),
   QUEUE_SSE_AUTORELOAD_TIMEOUT_MS: z.coerce.number().int().default(60_000),
 });
 
