@@ -147,32 +147,25 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const formData = await request.formData();
   const action = formData.get("action");
 
+  const url = new URL(request.url);
+  const { page } = SearchParamsSchema.parse(Object.fromEntries(url.searchParams));
+
+  const redirectPath = `/orgs/${organizationSlug}/projects/${projectParam}/env/${envParam}/queues?page=${page}`;
+
   switch (action) {
     case "environment-pause":
       const pauseService = new PauseEnvironmentService();
       await pauseService.call(environment, "paused");
-      return redirectWithSuccessMessage(
-        `/orgs/${organizationSlug}/projects/${projectParam}/env/${envParam}/queues`,
-        request,
-        "Environment paused"
-      );
+      return redirectWithSuccessMessage(redirectPath, request, "Environment paused");
     case "environment-resume":
       const resumeService = new PauseEnvironmentService();
       await resumeService.call(environment, "resumed");
-      return redirectWithSuccessMessage(
-        `/orgs/${organizationSlug}/projects/${projectParam}/env/${envParam}/queues`,
-        request,
-        "Environment resumed"
-      );
+      return redirectWithSuccessMessage(redirectPath, request, "Environment resumed");
     case "queue-pause":
     case "queue-resume": {
       const friendlyId = formData.get("friendlyId");
       if (!friendlyId) {
-        return redirectWithErrorMessage(
-          `/orgs/${organizationSlug}/projects/${projectParam}/env/${envParam}/queues`,
-          request,
-          "Queue ID is required"
-        );
+        return redirectWithErrorMessage(redirectPath, request, "Queue ID is required");
       }
 
       const queueService = new PauseQueueService();
@@ -184,24 +177,20 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
       if (!result.success) {
         return redirectWithErrorMessage(
-          `/orgs/${organizationSlug}/projects/${projectParam}/env/${envParam}/queues`,
+          redirectPath,
           request,
           result.error ?? `Failed to ${action === "queue-pause" ? "pause" : "resume"} queue`
         );
       }
 
       return redirectWithSuccessMessage(
-        `/orgs/${organizationSlug}/projects/${projectParam}/env/${envParam}/queues`,
+        redirectPath,
         request,
         `Queue ${action === "queue-pause" ? "paused" : "resumed"}`
       );
     }
     default:
-      return redirectWithErrorMessage(
-        `/orgs/${organizationSlug}/projects/${projectParam}/env/${envParam}/queues`,
-        request,
-        "Something went wrong"
-      );
+      return redirectWithErrorMessage(redirectPath, request, "Something went wrong");
   }
 };
 
