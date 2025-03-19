@@ -36,25 +36,21 @@ describe("Worker", () => {
       logger: new Logger("test", "log"),
     }).start();
 
-    try {
-      // Enqueue 10 items
-      for (let i = 0; i < 10; i++) {
-        await worker.enqueue({
-          id: `item-${i}`,
-          job: "testJob",
-          payload: { value: i },
-          visibilityTimeoutMs: 5000,
-        });
-      }
-
-      // Wait for items to be processed
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-
-      expect(processedItems.length).toBe(10);
-      expect(new Set(processedItems).size).toBe(10); // Ensure all items were processed uniquely
-    } finally {
-      worker.stop();
+    // Enqueue 10 items
+    for (let i = 0; i < 10; i++) {
+      await worker.enqueue({
+        id: `item-${i}`,
+        job: "testJob",
+        payload: { value: i },
+        visibilityTimeoutMs: 5000,
+      });
     }
+
+    // Wait for items to be processed
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+
+    expect(processedItems.length).toBe(10);
+    expect(new Set(processedItems).size).toBe(10); // Ensure all items were processed uniquely
   });
 
   redisTest(
@@ -97,25 +93,21 @@ describe("Worker", () => {
         logger: new Logger("test", "error"),
       }).start();
 
-      try {
-        // Enqueue 10 items
-        for (let i = 0; i < 10; i++) {
-          await worker.enqueue({
-            id: `item-${i}`,
-            job: "testJob",
-            payload: { value: i },
-            visibilityTimeoutMs: 5000,
-          });
-        }
-
-        // Wait for items to be processed
-        await new Promise((resolve) => setTimeout(resolve, 500));
-
-        expect(processedItems.length).toBe(10);
-        expect(new Set(processedItems).size).toBe(10); // Ensure all items were processed uniquely
-      } finally {
-        worker.stop();
+      // Enqueue 10 items
+      for (let i = 0; i < 10; i++) {
+        await worker.enqueue({
+          id: `item-${i}`,
+          job: "testJob",
+          payload: { value: i },
+          visibilityTimeoutMs: 5000,
+        });
       }
+
+      // Wait for items to be processed
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      expect(processedItems.length).toBe(10);
+      expect(new Set(processedItems).size).toBe(10); // Ensure all items were processed uniquely
     }
   );
 
@@ -156,33 +148,29 @@ describe("Worker", () => {
         logger: new Logger("test", "error"),
       }).start();
 
-      try {
-        // Enqueue the item that will permanently fail
-        await worker.enqueue({
-          id: failedItemId,
-          job: "testJob",
-          payload: { value: 999 },
-        });
+      // Enqueue the item that will permanently fail
+      await worker.enqueue({
+        id: failedItemId,
+        job: "testJob",
+        payload: { value: 999 },
+      });
 
-        // Enqueue a normal item
-        await worker.enqueue({
-          id: "normal-item",
-          job: "testJob",
-          payload: { value: 1 },
-        });
+      // Enqueue a normal item
+      await worker.enqueue({
+        id: "normal-item",
+        job: "testJob",
+        payload: { value: 1 },
+      });
 
-        // Wait for items to be processed and retried
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+      // Wait for items to be processed and retried
+      await new Promise((resolve) => setTimeout(resolve, 1000));
 
-        // Check that the normal item was processed
-        expect(processedItems).toEqual([1]);
+      // Check that the normal item was processed
+      expect(processedItems).toEqual([1]);
 
-        // Check that the failed item is in the DLQ
-        const dlqSize = await worker.queue.sizeOfDeadLetterQueue();
-        expect(dlqSize).toBe(1);
-      } finally {
-        worker.stop();
-      }
+      // Check that the failed item is in the DLQ
+      const dlqSize = await worker.queue.sizeOfDeadLetterQueue();
+      expect(dlqSize).toBe(1);
     }
   );
 
@@ -225,45 +213,41 @@ describe("Worker", () => {
         logger: new Logger("test", "error"),
       }).start();
 
-      try {
-        // Enqueue the item that will fail 3 times
-        await worker.enqueue({
-          id: failedItemId,
-          job: "testJob",
-          payload: { value: 999 },
-        });
+      // Enqueue the item that will fail 3 times
+      await worker.enqueue({
+        id: failedItemId,
+        job: "testJob",
+        payload: { value: 999 },
+      });
 
-        // Wait for the item to be processed and moved to DLQ
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+      // Wait for the item to be processed and moved to DLQ
+      await new Promise((resolve) => setTimeout(resolve, 1000));
 
-        // Check that the item is in the DLQ
-        let dlqSize = await worker.queue.sizeOfDeadLetterQueue();
-        expect(dlqSize).toBe(1);
+      // Check that the item is in the DLQ
+      let dlqSize = await worker.queue.sizeOfDeadLetterQueue();
+      expect(dlqSize).toBe(1);
 
-        // Create a Redis client to publish the redrive message
-        const redisClient = createRedisClient({
-          host: redisContainer.getHost(),
-          port: redisContainer.getPort(),
-          password: redisContainer.getPassword(),
-        });
+      // Create a Redis client to publish the redrive message
+      const redisClient = createRedisClient({
+        host: redisContainer.getHost(),
+        port: redisContainer.getPort(),
+        password: redisContainer.getPassword(),
+      });
 
-        // Publish redrive message
-        await redisClient.publish("test-worker:redrive", JSON.stringify({ id: failedItemId }));
+      // Publish redrive message
+      await redisClient.publish("test-worker:redrive", JSON.stringify({ id: failedItemId }));
 
-        // Wait for the item to be redrived and processed
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+      // Wait for the item to be redrived and processed
+      await new Promise((resolve) => setTimeout(resolve, 1000));
 
-        // Check that the item was processed successfully
-        expect(processedItems).toEqual([999]);
+      // Check that the item was processed successfully
+      expect(processedItems).toEqual([999]);
 
-        // Check that the DLQ is now empty
-        dlqSize = await worker.queue.sizeOfDeadLetterQueue();
-        expect(dlqSize).toBe(0);
+      // Check that the DLQ is now empty
+      dlqSize = await worker.queue.sizeOfDeadLetterQueue();
+      expect(dlqSize).toBe(0);
 
-        await redisClient.quit();
-      } finally {
-        worker.stop();
-      }
+      await redisClient.quit();
     }
   );
 });
