@@ -80,6 +80,7 @@ function initializeWorker() {
     },
     pollIntervalMs: env.COMMON_WORKER_POLL_INTERVAL,
     immediatePollIntervalMs: env.COMMON_WORKER_IMMEDIATE_POLL_INTERVAL,
+    shutdownTimeoutMs: env.COMMON_WORKER_SHUTDOWN_TIMEOUT_MS,
     logger: new Logger("CommonWorker", "debug"),
     jobs: {
       "v3.deliverAlert": async ({ payload }) => {

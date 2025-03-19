@@ -180,6 +180,7 @@ export class RunEngine {
       concurrency: options.worker,
       pollIntervalMs: options.worker.pollIntervalMs,
       immediatePollIntervalMs: options.worker.immediatePollIntervalMs,
+      shutdownTimeoutMs: options.worker.shutdownTimeoutMs,
       logger: new Logger("RunEngineWorker", "debug"),
       jobs: {
         finishWaitpoint: async ({ payload }) => {

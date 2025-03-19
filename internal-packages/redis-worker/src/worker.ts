@@ -8,6 +8,7 @@ import { AnyQueueItem, SimpleQueue } from "./queue.js";
 import { nanoid } from "nanoid";
 import pLimit from "p-limit";
 import { createRedisClient } from "@internal/redis";
+import { shutdownManager } from "@trigger.dev/core/v3/serverOnly";
 
 export type WorkerCatalog = {
   [key: string]: {
@@ -44,6 +45,7 @@ type WorkerOptions<TCatalog extends WorkerCatalog> = {
   concurrency?: WorkerConcurrencyOptions;
   pollIntervalMs?: number;
   immediatePollIntervalMs?: number;
+  shutdownTimeoutMs?: number;
   logger?: Logger;
   tracer?: Tracer;
 };
@@ -69,6 +71,7 @@ class Worker<TCatalog extends WorkerCatalog> {
   private workerLoops: Promise<void>[] = [];
   private isShuttingDown = false;
   private concurrency: Required<NonNullable<WorkerOptions<TCatalog>["concurrency"]>>;
+  private shutdownTimeoutMs: number;
 
   // The p-limit limiter to control overall concurrency.
   private limiter: ReturnType<typeof pLimit>;
@@ -76,6 +79,8 @@ class Worker<TCatalog extends WorkerCatalog> {
   constructor(private options: WorkerOptions<TCatalog>) {
     this.logger = options.logger ?? new Logger("Worker", "debug");
     this.tracer = options.tracer ?? trace.getTracer(options.name);
+
+    this.shutdownTimeoutMs = options.shutdownTimeoutMs ?? 60_000;
 
     const schema: QueueCatalogFromWorkerCatalog<TCatalog> = Object.fromEntries(
       Object.entries(this.options.catalog).map(([key, value]) => [key, value.schema])
@@ -386,22 +391,33 @@ class Worker<TCatalog extends WorkerCatalog> {
   }
 
   private setupShutdownHandlers() {
-    process.on("SIGTERM", this.shutdown.bind(this));
-    process.on("SIGINT", this.shutdown.bind(this));
+    shutdownManager.register("redis-worker", this.shutdown.bind(this));
   }
 
-  private async shutdown() {
-    if (this.isShuttingDown) return;
+  private async shutdown(signal?: NodeJS.Signals) {
+    if (this.isShuttingDown) {
+      this.logger.log("Worker already shutting down", { signal });
+      return;
+    }
+
     this.isShuttingDown = true;
-    this.logger.log("Shutting down worker loops...");
+    this.logger.log("Shutting down worker loops...", { signal });
 
     // Wait for all worker loops to finish.
-    await Promise.all(this.workerLoops);
+    await Promise.race([
+      Promise.all(this.workerLoops),
+      Worker.delay(this.shutdownTimeoutMs).then(() => {
+        this.logger.error("Worker shutdown timed out", {
+          signal,
+          shutdownTimeoutMs: this.shutdownTimeoutMs,
+        });
+      }),
+    ]);
 
     await this.subscriber?.unsubscribe();
     await this.subscriber?.quit();
     await this.queue.close();
-    this.logger.log("All workers and subscribers shut down.");
+    this.logger.log("All workers and subscribers shut down.", { signal });
   }
 
   public async stop() {

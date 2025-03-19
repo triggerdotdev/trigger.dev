@@ -12,6 +12,7 @@ export type RunEngineOptions = {
     redis: RedisOptions;
     pollIntervalMs?: number;
     immediatePollIntervalMs?: number;
+    shutdownTimeoutMs?: number;
   };
   machines: {
     defaultMachine: MachinePresetName;
