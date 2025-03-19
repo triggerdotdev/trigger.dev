@@ -53,6 +53,7 @@ import {
 } from "~/components/primitives/Tooltip";
 import { type RuntimeEnvironmentType } from "@trigger.dev/database";
 import { environmentFullTitle } from "~/components/environments/EnvironmentLabel";
+import { Callout } from "~/components/primitives/Callout";
 
 const SearchParamsSchema = z.object({
   page: z.coerce.number().min(1).default(1),
@@ -100,6 +101,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
     return typeddefer({
       ...queues,
+      success: false,
+      code: "engine-version",
       environment: environmentQueuePresenter.call(environment),
     });
   } catch (error) {
@@ -354,11 +357,22 @@ export default function Page() {
             </>
           ) : (
             <div className="grid place-items-center py-6 text-text-dimmed">
-              <p>
-                {code === "engine-version"
-                  ? "Please upgrade your engine to v3 to use queues."
-                  : "Something went wrong"}
-              </p>
+              {code === "engine-version" ? (
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <h4 className="text-base text-text-bright">New queues table</h4>
+                    <LinkButton
+                      LeadingIcon={BookOpenIcon}
+                      to={docsPath("v4-upgrade")}
+                      variant={"docs/small"}
+                    >
+                      Upgrade guide
+                    </LinkButton>
+                  </div>
+                </div>
+              ) : (
+                <Callout variant="error">Something went wrong</Callout>
+              )}
             </div>
           )}
         </div>
