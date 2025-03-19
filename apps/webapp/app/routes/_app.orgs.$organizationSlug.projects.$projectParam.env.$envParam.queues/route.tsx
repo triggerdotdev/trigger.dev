@@ -60,6 +60,7 @@ import { docsPath, EnvironmentParamSchema, v3BillingPath } from "~/utils/pathBui
 import { PauseEnvironmentService } from "~/v3/services/pauseEnvironment.server";
 import { PauseQueueService } from "~/v3/services/pauseQueue.server";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
+import { QueuesHasNoTasks } from "~/components/BlankStatePanels";
 
 const SearchParamsSchema = z.object({
   page: z.coerce.number().min(1).default(1),
@@ -197,7 +198,8 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 };
 
 export default function Page() {
-  const { environment, queues, success, pagination, code } = useTypedLoaderData<typeof loader>();
+  const { environment, queues, success, pagination, code, totalQueues } =
+    useTypedLoaderData<typeof loader>();
 
   const organization = useOrganization();
   const project = useProject();
@@ -406,7 +408,13 @@ export default function Page() {
           ) : (
             <div className="grid place-items-center py-6 text-text-dimmed">
               {code === "engine-version" ? (
-                <EngineVersionUpgradeCallout />
+                totalQueues === 0 ? (
+                  <div className="pt-12">
+                    <QueuesHasNoTasks />
+                  </div>
+                ) : (
+                  <EngineVersionUpgradeCallout />
+                )
               ) : (
                 <Callout variant="error">Something went wrong</Callout>
               )}

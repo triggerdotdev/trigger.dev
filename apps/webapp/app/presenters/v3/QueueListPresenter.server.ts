@@ -22,6 +22,13 @@ export class QueueListPresenter extends BasePresenter {
     page: number;
     perPage?: number;
   }) {
+    // Get total count for pagination
+    const totalQueues = await this._replica.taskQueue.count({
+      where: {
+        runtimeEnvironmentId: environment.id,
+      },
+    });
+
     //check the engine is the correct version
     const engineVersion = await determineEngineVersion({ environment });
 
@@ -29,15 +36,9 @@ export class QueueListPresenter extends BasePresenter {
       return {
         success: false as const,
         code: "engine-version",
+        totalQueues,
       };
     }
-
-    // Get total count for pagination
-    const totalQueues = await this._replica.taskQueue.count({
-      where: {
-        runtimeEnvironmentId: environment.id,
-      },
-    });
 
     return {
       success: true as const,
@@ -47,6 +48,7 @@ export class QueueListPresenter extends BasePresenter {
         totalPages: Math.ceil(totalQueues / this.perPage),
         count: totalQueues,
       },
+      totalQueues,
     };
   }
 
