@@ -1,5 +1,4 @@
 import { type ReactNode } from "react";
-import NumberFlow from "@number-flow/react";
 import { AnimatedNumber } from "../primitives/AnimatedNumber";
 import { Spinner } from "../primitives/Spinner";
 import { cn } from "~/utils/cn";
