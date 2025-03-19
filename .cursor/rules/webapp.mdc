@@ -9,7 +9,7 @@ The main trigger.dev webapp, which powers it's API and dashboard and makes up th
 - `@trigger.dev/database` exports a Prisma 5.4.1 client that is used extensively in the webapp to access a PostgreSQL instance. The schema file is [schema.prisma](mdc:internal-packages/database/prisma/schema.prisma)
 - `@trigger.dev/core` is a published package and is used to share code between the `@trigger.dev/sdk` and the webapp. It includes functionality but also a load of Zod schemas for data validation. When importing from `@trigger.dev/core` in the webapp, we never import the root `@trigger.dev/core` path, instead we favor one of the subpath exports that you can find in [package.json](mdc:packages/core/package.json)
 - `@internal/run-engine` has all the code needed to trigger a run and take it through it's lifecycle to completion.
-- `@internal/redis-worker` is a custom redis based background job/worker system that's used in the webapp and also used inside the run engine.
+- `@trigger.dev/redis-worker` is a custom redis based background job/worker system that's used in the webapp and also used inside the run engine.
 
 ## Environment variables and testing
 
