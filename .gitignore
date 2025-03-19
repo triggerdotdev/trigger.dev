@@ -59,3 +59,4 @@ apps/**/public/build
 *.tsbuildinfo
 /packages/cli-v3/src/package.json
 .husky
+/packages/react-hooks/src/package.json
