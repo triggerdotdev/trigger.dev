@@ -3,6 +3,10 @@ import { SystemResources } from "./systems.js";
 import { getLatestExecutionSnapshot } from "./executionSnapshotSystem.js";
 import { canReleaseConcurrency } from "../statuses.js";
 import { z } from "zod";
+import {
+  ReleaseConcurrencyQueueOptions,
+  ReleaseConcurrencyTokenBucketQueue,
+} from "../releaseConcurrencyTokenBucketQueue.js";
 
 const ReleaseConcurrencyMetadata = z.object({
   releaseConcurrency: z.boolean().optional(),
@@ -12,17 +16,65 @@ type ReleaseConcurrencyMetadata = z.infer<typeof ReleaseConcurrencyMetadata>;
 
 export type ReleaseConcurrencySystemOptions = {
   resources: SystemResources;
+  queueOptions?: ReleaseConcurrencyQueueOptions<{
+    orgId: string;
+    projectId: string;
+    envId: string;
+  }>;
 };
 
 export class ReleaseConcurrencySystem {
   private readonly $: SystemResources;
+  releaseConcurrencyQueue?: ReleaseConcurrencyTokenBucketQueue<{
+    orgId: string;
+    projectId: string;
+    envId: string;
+  }>;
 
   constructor(private readonly options: ReleaseConcurrencySystemOptions) {
     this.$ = options.resources;
+
+    if (options.queueOptions) {
+      this.releaseConcurrencyQueue = new ReleaseConcurrencyTokenBucketQueue(options.queueOptions);
+    }
+  }
+
+  public async consumeToken(
+    descriptor: { orgId: string; projectId: string; envId: string },
+    releaserId: string
+  ) {
+    if (!this.releaseConcurrencyQueue) {
+      return;
+    }
+
+    await this.releaseConcurrencyQueue.consumeToken(descriptor, releaserId);
+  }
+
+  public async returnToken(
+    descriptor: { orgId: string; projectId: string; envId: string },
+    releaserId: string
+  ) {
+    if (!this.releaseConcurrencyQueue) {
+      return;
+    }
+
+    await this.releaseConcurrencyQueue.returnToken(descriptor, releaserId);
+  }
+
+  public async quit() {
+    if (!this.releaseConcurrencyQueue) {
+      return;
+    }
+
+    await this.releaseConcurrencyQueue.quit();
   }
 
   public async checkpointCreatedOnEnvironment(environment: RuntimeEnvironment) {
-    await this.$.releaseConcurrencyQueue.refillTokens(
+    if (!this.releaseConcurrencyQueue) {
+      return;
+    }
+
+    await this.releaseConcurrencyQueue.refillTokens(
       {
         orgId: environment.organizationId,
         projectId: environment.projectId,
@@ -33,12 +85,16 @@ export class ReleaseConcurrencySystem {
   }
 
   public async releaseConcurrencyForSnapshot(snapshot: TaskRunExecutionSnapshot) {
+    if (!this.releaseConcurrencyQueue) {
+      return;
+    }
+
     // Go ahead and release concurrency immediately if the run is in a development environment
     if (snapshot.environmentType === "DEVELOPMENT") {
       return await this.executeReleaseConcurrencyForSnapshot(snapshot.id);
     }
 
-    await this.$.releaseConcurrencyQueue.attemptToRelease(
+    await this.releaseConcurrencyQueue.attemptToRelease(
       {
         orgId: snapshot.organizationId,
         projectId: snapshot.projectId,
@@ -49,6 +105,10 @@ export class ReleaseConcurrencySystem {
   }
 
   public async executeReleaseConcurrencyForSnapshot(snapshotId: string) {
+    if (!this.releaseConcurrencyQueue) {
+      return;
+    }
+
     this.$.logger.debug("Executing released concurrency", {
       snapshotId,
     });

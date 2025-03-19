@@ -673,7 +673,7 @@ describe("RunEngine Releasing Concurrency", () => {
         projectId: authenticatedEnvironment.projectId,
       });
 
-      await engine.releaseConcurrencyQueue.consumeToken(
+      await engine.releaseConcurrencySystem.consumeToken(
         {
           orgId: authenticatedEnvironment.organizationId,
           projectId: authenticatedEnvironment.projectId,
@@ -708,7 +708,7 @@ describe("RunEngine Releasing Concurrency", () => {
       expect(envConcurrencyAfter).toBe(1);
 
       // Now we return the token so the concurrency can be released
-      await engine.releaseConcurrencyQueue.returnToken(
+      await engine.releaseConcurrencySystem.returnToken(
         {
           orgId: authenticatedEnvironment.organizationId,
           projectId: authenticatedEnvironment.projectId,
@@ -835,7 +835,7 @@ describe("RunEngine Releasing Concurrency", () => {
         projectId: authenticatedEnvironment.projectId,
       });
 
-      await engine.releaseConcurrencyQueue.consumeToken(
+      await engine.releaseConcurrencySystem.consumeToken(
         {
           orgId: authenticatedEnvironment.organizationId,
           projectId: authenticatedEnvironment.projectId,
@@ -890,7 +890,7 @@ describe("RunEngine Releasing Concurrency", () => {
       expect(snapshot.executionStatus).toBe("SUSPENDED");
 
       // Now we return the token so the concurrency can be released
-      await engine.releaseConcurrencyQueue.returnToken(
+      await engine.releaseConcurrencySystem.returnToken(
         {
           orgId: authenticatedEnvironment.organizationId,
           projectId: authenticatedEnvironment.projectId,
@@ -1017,7 +1017,7 @@ describe("RunEngine Releasing Concurrency", () => {
         projectId: authenticatedEnvironment.projectId,
       });
 
-      await engine.releaseConcurrencyQueue.consumeToken(
+      await engine.releaseConcurrencySystem.consumeToken(
         {
           orgId: authenticatedEnvironment.organizationId,
           projectId: authenticatedEnvironment.projectId,
@@ -1063,7 +1063,7 @@ describe("RunEngine Releasing Concurrency", () => {
       expect(executionDataAfter?.snapshot.executionStatus).toBe("EXECUTING");
 
       // Now we return the token so the concurrency can be released
-      await engine.releaseConcurrencyQueue.returnToken(
+      await engine.releaseConcurrencySystem.returnToken(
         {
           orgId: authenticatedEnvironment.organizationId,
           projectId: authenticatedEnvironment.projectId,

@@ -35,7 +35,6 @@ import {
 } from "./errors.js";
 import { EventBus, EventBusEvents } from "./eventBus.js";
 import { RunLocker } from "./locking.js";
-import { ReleaseConcurrencyTokenBucketQueue } from "./releaseConcurrencyTokenBucketQueue.js";
 import { BatchSystem } from "./systems/batchSystem.js";
 import { CheckpointSystem } from "./systems/checkpointSystem.js";
 import { DelayedRunSystem } from "./systems/delayedRunSystem.js";
@@ -63,11 +62,6 @@ export class RunEngine {
   private logger = new Logger("RunEngine", "debug");
   private tracer: Tracer;
   private heartbeatTimeouts: HeartbeatTimeouts;
-  releaseConcurrencyQueue: ReleaseConcurrencyTokenBucketQueue<{
-    orgId: string;
-    projectId: string;
-    envId: string;
-  }>;
   eventBus: EventBus = new EventEmitter<EventBusEvents>();
   executionSnapshotSystem: ExecutionSnapshotSystem;
   runAttemptSystem: RunAttemptSystem;
@@ -184,51 +178,6 @@ export class RunEngine {
       ...(options.heartbeatTimeoutsMs ?? {}),
     };
 
-    // Initialize the ReleaseConcurrencyQueue
-    this.releaseConcurrencyQueue = new ReleaseConcurrencyTokenBucketQueue({
-      redis: {
-        ...options.queue.redis, // Use base queue redis options
-        ...options.releaseConcurrency?.redis, // Allow overrides
-        keyPrefix: `${options.queue.redis.keyPrefix ?? ""}release-concurrency:`,
-      },
-      retry: {
-        maxRetries: options.releaseConcurrency?.maxRetries ?? 5,
-        backoff: {
-          minDelay: options.releaseConcurrency?.backoff?.minDelay ?? 1000,
-          maxDelay: options.releaseConcurrency?.backoff?.maxDelay ?? 10000,
-          factor: options.releaseConcurrency?.backoff?.factor ?? 2,
-        },
-      },
-      consumersCount: options.releaseConcurrency?.consumersCount ?? 1,
-      pollInterval: options.releaseConcurrency?.pollInterval ?? 1000,
-      batchSize: options.releaseConcurrency?.batchSize ?? 10,
-      executor: async (descriptor, snapshotId) => {
-        await this.releaseConcurrencySystem.executeReleaseConcurrencyForSnapshot(snapshotId);
-      },
-      maxTokens: async (descriptor) => {
-        const environment = await this.prisma.runtimeEnvironment.findFirstOrThrow({
-          where: { id: descriptor.envId },
-          select: {
-            maximumConcurrencyLimit: true,
-          },
-        });
-
-        return (
-          environment.maximumConcurrencyLimit * (options.releaseConcurrency?.maxTokensRatio ?? 1.0)
-        );
-      },
-      keys: {
-        fromDescriptor: (descriptor) =>
-          `org:${descriptor.orgId}:proj:${descriptor.projectId}:env:${descriptor.envId}`,
-        toDescriptor: (name) => ({
-          orgId: name.split(":")[1],
-          projectId: name.split(":")[3],
-          envId: name.split(":")[5],
-        }),
-      },
-      tracer: this.tracer,
-    });
-
     const resources: SystemResources = {
       prisma: this.prisma,
       worker: this.worker,
@@ -237,11 +186,60 @@ export class RunEngine {
       tracer: this.tracer,
       runLock: this.runLock,
       runQueue: this.runQueue,
-      releaseConcurrencyQueue: this.releaseConcurrencyQueue,
     };
 
     this.releaseConcurrencySystem = new ReleaseConcurrencySystem({
       resources,
+      queueOptions:
+        typeof options.releaseConcurrency?.disabled === "boolean" &&
+        options.releaseConcurrency.disabled
+          ? undefined
+          : {
+              redis: {
+                ...options.queue.redis, // Use base queue redis options
+                ...options.releaseConcurrency?.redis, // Allow overrides
+                keyPrefix: `${options.queue.redis.keyPrefix ?? ""}release-concurrency:`,
+              },
+              retry: {
+                maxRetries: options.releaseConcurrency?.maxRetries ?? 5,
+                backoff: {
+                  minDelay: options.releaseConcurrency?.backoff?.minDelay ?? 1000,
+                  maxDelay: options.releaseConcurrency?.backoff?.maxDelay ?? 10000,
+                  factor: options.releaseConcurrency?.backoff?.factor ?? 2,
+                },
+              },
+              consumersCount: options.releaseConcurrency?.consumersCount ?? 1,
+              pollInterval: options.releaseConcurrency?.pollInterval ?? 1000,
+              batchSize: options.releaseConcurrency?.batchSize ?? 10,
+              executor: async (descriptor, snapshotId) => {
+                await this.releaseConcurrencySystem.executeReleaseConcurrencyForSnapshot(
+                  snapshotId
+                );
+              },
+              maxTokens: async (descriptor) => {
+                const environment = await this.prisma.runtimeEnvironment.findFirstOrThrow({
+                  where: { id: descriptor.envId },
+                  select: {
+                    maximumConcurrencyLimit: true,
+                  },
+                });
+
+                return (
+                  environment.maximumConcurrencyLimit *
+                  (options.releaseConcurrency?.maxTokensRatio ?? 1.0)
+                );
+              },
+              keys: {
+                fromDescriptor: (descriptor) =>
+                  `org:${descriptor.orgId}:proj:${descriptor.projectId}:env:${descriptor.envId}`,
+                toDescriptor: (name) => ({
+                  orgId: name.split(":")[1],
+                  projectId: name.split(":")[3],
+                  envId: name.split(":")[5],
+                }),
+              },
+              tracer: this.tracer,
+            },
     });
 
     this.executionSnapshotSystem = new ExecutionSnapshotSystem({
@@ -1213,7 +1211,7 @@ export class RunEngine {
   async quit() {
     try {
       //stop the run queue
-      await this.releaseConcurrencyQueue.quit();
+      await this.releaseConcurrencySystem.quit();
       await this.runQueue.quit();
       await this.worker.stop();
       await this.runLock.quit();

@@ -37,6 +37,7 @@ export type RunEngineOptions = {
   queueRunsWaitingForWorkerBatchSize?: number;
   tracer: Tracer;
   releaseConcurrency?: {
+    disabled?: boolean;
     maxTokensRatio?: number;
     redis?: Partial<RedisOptions>;
     maxRetries?: number;
