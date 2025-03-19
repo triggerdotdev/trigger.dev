@@ -39,3 +39,14 @@ export const queuesTester = task({
     logger.log("Resumed queue", { resumedQueue });
   },
 });
+
+export const otherQueueTask = task({
+  id: "other-queue-task",
+  queue: {
+    name: "my-custom-queue",
+    concurrencyLimit: 1,
+  },
+  run: async (payload: any, { ctx }) => {
+    logger.log("Other queue task", { payload });
+  },
+});

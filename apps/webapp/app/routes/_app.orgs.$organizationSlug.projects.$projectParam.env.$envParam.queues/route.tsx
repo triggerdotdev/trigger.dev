@@ -6,7 +6,7 @@ import {
   PlayIcon,
   RectangleStackIcon,
 } from "@heroicons/react/20/solid";
-import { Await, Form, useNavigation, type MetaFunction } from "@remix-run/react";
+import { Await, Form, useNavigation, useRevalidator, type MetaFunction } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Suspense, useEffect, useState } from "react";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
@@ -58,6 +58,8 @@ import { Callout } from "~/components/primitives/Callout";
 import upgradeForQueuesPath from "~/assets/images/queues-dashboard.png";
 import { PauseQueueService } from "~/v3/services/pauseQueue.server";
 import { Badge } from "~/components/primitives/Badge";
+import { useEventSource } from "~/hooks/useEventSource";
+import { useProject } from "~/hooks/useProject";
 
 const SearchParamsSchema = z.object({
   page: z.coerce.number().min(1).default(1),
@@ -198,8 +200,25 @@ export default function Page() {
   const { environment, queues, success, pagination, code } = useTypedLoaderData<typeof loader>();
 
   const organization = useOrganization();
+  const project = useProject();
   const env = useEnvironment();
   const plan = useCurrentPlan();
+
+  const revalidation = useRevalidator();
+
+  const streamedEvents = useEventSource(
+    `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${env.slug}/queues/stream`,
+    {
+      event: "update",
+    }
+  );
+
+  useEffect(() => {
+    if (streamedEvents) {
+      console.log("streamedEvents", streamedEvents);
+      revalidation.revalidate();
+    }
+  }, [streamedEvents]);
 
   return (
     <PageContainer>
