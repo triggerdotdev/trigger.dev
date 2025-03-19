@@ -18,10 +18,24 @@ export const queuesTester = task({
     });
     logger.log("Retrieved from name", { retrievedFromCtxName });
 
+    //pause the queue
+    const pausedQueue = await queues.pause({
+      type: "task",
+      name: "queues-tester",
+    });
+    logger.log("Paused queue", { pausedQueue });
+
     const retrievedFromName = await queues.retrieve({
       type: "task",
       name: "queues-tester",
     });
     logger.log("Retrieved from name", { retrievedFromName });
+
+    //resume the queue
+    const resumedQueue = await queues.resume({
+      type: "task",
+      name: "queues-tester",
+    });
+    logger.log("Resumed queue", { resumedQueue });
   },
 });

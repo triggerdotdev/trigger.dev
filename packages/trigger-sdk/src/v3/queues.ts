@@ -86,3 +86,92 @@ export function retrieve(
 
   return apiClient.retrieveQueue(queue, $requestOptions);
 }
+
+/**
+ * Pauses a queue, preventing any new runs from being started.
+ * Runs that are currently running will continue to completion.
+ *
+ * @example
+ * ```ts
+ * // Pause using a queue id
+ * await queues.pause("queue_12345");
+ *
+ * // Or pause using type and name
+ * await queues.pause({ type: "task", name: "my-task-id"});
+ * ```
+ * @param queue - The ID of the queue to pause, or the type and name
+ * @returns The updated queue state
+ */
+export function pause(
+  queue: RetrieveQueueParam,
+  requestOptions?: ApiRequestOptions
+): ApiPromise<QueueItem> {
+  const apiClient = apiClientManager.clientOrThrow();
+
+  const $requestOptions = mergeRequestOptions(
+    {
+      tracer,
+      name: "queues.pause()",
+      icon: "queue",
+      attributes: {
+        ...flattenAttributes({ queue }),
+        ...accessoryAttributes({
+          items: [
+            {
+              text: typeof queue === "string" ? queue : queue.name,
+              variant: "normal",
+            },
+          ],
+          style: "codepath",
+        }),
+      },
+    },
+    requestOptions
+  );
+
+  return apiClient.pauseQueue(queue, "pause", $requestOptions);
+}
+
+/**
+ * Resumes a paused queue, allowing new runs to be started.
+ *
+ * @example
+ * ```ts
+ * // Resume using a queue id
+ * await queues.resume("queue_12345");
+ *
+ * // Or resume using type and name
+ * await queues.resume({ type: "task", name: "my-task-id"});
+ * ```
+ * @param queue - The ID of the queue to resume, or the type and name
+ * @returns The updated queue state
+ */
+export function resume(
+  queue: RetrieveQueueParam,
+  requestOptions?: ApiRequestOptions
+): ApiPromise<QueueItem> {
+  const apiClient = apiClientManager.clientOrThrow();
+
+  const $requestOptions = mergeRequestOptions(
+    {
+      tracer,
+      name: "queues.resume()",
+      icon: "queue",
+      attributes: {
+        ...flattenAttributes({ queue }),
+        ...accessoryAttributes({
+          items: [
+            {
+              text: typeof queue === "string" ? queue : queue.name,
+              variant: "normal",
+            },
+          ],
+          style: "codepath",
+        }),
+      },
+    },
+    requestOptions
+  );
+
+  return apiClient.pauseQueue(queue, "resume", $requestOptions);
+}

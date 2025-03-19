@@ -1,10 +1,11 @@
-import { type RetrieveQueueParam } from "@trigger.dev/core/v3";
-import { getQueue } from "~/presenters/v3/QueueRetrievePresenter.server";
+import { QueueItem, type RetrieveQueueParam } from "@trigger.dev/core/v3";
+import { getQueue, toQueueItem } from "~/presenters/v3/QueueRetrievePresenter.server";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { BaseService } from "./baseService.server";
 import { determineEngineVersion } from "../engineVersion.server";
 import { removeQueueConcurrencyLimits, updateQueueConcurrencyLimits } from "../runQueue.server";
+import { engine } from "../runEngine.server";
 
 export type PauseStatus = "paused" | "resumed";
 
@@ -12,6 +13,7 @@ export type PauseQueueResult =
   | {
       success: true;
       state: PauseStatus;
+      queue: QueueItem;
     }
   | {
       success: false;
@@ -46,7 +48,7 @@ export class PauseQueueService extends BaseService {
         };
       }
 
-      await this._prisma.taskQueue.update({
+      const updatedQueue = await this._prisma.taskQueue.update({
         where: {
           id: queue.id,
         },
@@ -71,9 +73,23 @@ export class PauseQueueService extends BaseService {
         environmentId: environment.id,
       });
 
+      const results = await Promise.all([
+        engine.lengthOfQueues(environment, [queue.name]),
+        engine.currentConcurrencyOfQueues(environment, [queue.name]),
+      ]);
+
       return {
         success: true,
         state: action,
+        queue: toQueueItem({
+          friendlyId: updatedQueue.friendlyId,
+          name: updatedQueue.name,
+          type: updatedQueue.type,
+          running: results[1]?.[updatedQueue.name] ?? 0,
+          queued: results[0]?.[updatedQueue.name] ?? 0,
+          concurrencyLimit: updatedQueue.concurrencyLimit ?? null,
+          paused: updatedQueue.paused,
+        }),
       };
     } catch (error) {
       logger.error("PauseQueueService: error updating queue state", {
