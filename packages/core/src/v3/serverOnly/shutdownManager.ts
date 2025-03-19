@@ -30,6 +30,10 @@ class ShutdownManager {
     this.handlers.set(name, { handler, signals });
   }
 
+  unregister(name: string) {
+    this.handlers.delete(name);
+  }
+
   async shutdown(signal: ShutdownSignal) {
     if (this.isShuttingDown) return;
     this.isShuttingDown = true;
