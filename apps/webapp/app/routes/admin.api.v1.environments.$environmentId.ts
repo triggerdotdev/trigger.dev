@@ -2,7 +2,7 @@ import { ActionFunctionArgs, json, LoaderFunctionArgs } from "@remix-run/server-
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";
-import { marqs } from "~/v3/marqs/index.server";
+import { engine } from "~/v3/runEngine.server";
 import { updateEnvConcurrencyLimits } from "~/v3/runQueue.server";
 
 const ParamsSchema = z.object({
@@ -113,20 +113,15 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     Object.fromEntries(requestUrl.searchParams.entries())
   );
 
-  const concurrencyLimit = await marqs.getEnvConcurrencyLimit(environment);
-  const currentConcurrency = await marqs.currentConcurrencyOfEnvironment(environment);
-  const reserveConcurrency = await marqs.reserveConcurrencyOfEnvironment(environment);
+  const concurrencyLimit = await engine.runQueue.getEnvConcurrencyLimit(environment);
+  const currentConcurrency = await engine.runQueue.currentConcurrencyOfEnvironment(environment);
 
   if (searchParams.queue) {
-    const queueConcurrencyLimit = await marqs.getQueueConcurrencyLimit(
+    const queueConcurrencyLimit = await engine.runQueue.getQueueConcurrencyLimit(
       environment,
       searchParams.queue
     );
-    const queueCurrentConcurrency = await marqs.currentConcurrencyOfQueue(
-      environment,
-      searchParams.queue
-    );
-    const queueReserveConcurrency = await marqs.reserveConcurrencyOfQueue(
+    const queueCurrentConcurrency = await engine.runQueue.currentConcurrencyOfQueue(
       environment,
       searchParams.queue
     );
@@ -135,12 +130,10 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       id: environment.id,
       concurrencyLimit,
       currentConcurrency,
-      reserveConcurrency,
       queueConcurrencyLimit,
       queueCurrentConcurrency,
-      queueReserveConcurrency,
     });
   }
 
-  return json({ id: environment.id, concurrencyLimit, currentConcurrency, reserveConcurrency });
+  return json({ id: environment.id, concurrencyLimit, currentConcurrency });
 }

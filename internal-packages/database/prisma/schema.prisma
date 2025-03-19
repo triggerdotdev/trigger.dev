@@ -164,6 +164,7 @@ model Organization {
   organizationIntegrations OrganizationIntegration[]
   workerGroups             WorkerInstanceGroup[]
   workerInstances          WorkerInstance[]
+  executionSnapshots       TaskRunExecutionSnapshot[]
 }
 
 model ExternalAccount {
@@ -504,6 +505,7 @@ model Project {
   waitpoints             Waitpoint[]
   taskRunWaitpoints      TaskRunWaitpoint[]
   taskRunCheckpoints     TaskRunCheckpoint[]
+  executionSnapshots     TaskRunExecutionSnapshot[]
 }
 
 enum ProjectVersion {
@@ -1724,7 +1726,9 @@ model TaskRun {
   projectId String
 
   // The specific queue this run is in
-  queue String
+  queue         String
+  // The queueId is set when the run is locked to a specific queue
+  lockedQueueId String?
 
   /// The main queue that this run is part of
   masterQueue          String  @default("main")
@@ -1965,6 +1969,9 @@ model TaskRunExecutionSnapshot {
   isValid Boolean @default(true)
   error   String?
 
+  /// The previous snapshot ID
+  previousSnapshotId String?
+
   /// Run
   runId     String
   run       TaskRun       @relation(fields: [runId], references: [id])
@@ -1981,6 +1988,12 @@ model TaskRunExecutionSnapshot {
   environmentId   String
   environment     RuntimeEnvironment     @relation(fields: [environmentId], references: [id])
   environmentType RuntimeEnvironmentType
+
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id])
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
 
   /// Waitpoints that have been completed for this execution
   completedWaitpoints Waitpoint[] @relation("completedWaitpoints")
@@ -2003,6 +2016,9 @@ model TaskRunExecutionSnapshot {
 
   lastHeartbeatAt DateTime?
 
+  /// Metadata used by various systems in the run engine
+  metadata Json?
+
   /// Used to get the latest valid snapshot quickly
   @@index([runId, isValid, createdAt(sort: Desc)])
 }
@@ -2012,6 +2028,8 @@ enum TaskRunExecutionStatus {
   RUN_CREATED
   /// Run is in the RunQueue
   QUEUED
+  /// Run is in the RunQueue, and is also executing. This happens when a run is continued cannot reacquire concurrency
+  QUEUED_EXECUTING
   /// Run has been pulled from the queue, but isn't executing yet
   PENDING_EXECUTING
   /// Run is executing on a worker
@@ -2525,6 +2543,9 @@ model TaskQueue {
   rateLimit        Json?
 
   paused Boolean @default(false)
+
+  /// If true, when a run is paused and waiting for waitpoints to be completed, the run will release the concurrency capacity.
+  releaseConcurrencyOnWaitpoint Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -1,7 +1,7 @@
 import { createRedisClient } from "@internal/redis";
 import { redisTest } from "@internal/testcontainers";
 import { expect } from "vitest";
-import { RunLocker } from "./locking.js";
+import { RunLocker } from "../locking.js";
 
 describe("RunLocker", () => {
   redisTest("Test acquiring a lock works", { timeout: 15_000 }, async ({ redisOptions }) => {

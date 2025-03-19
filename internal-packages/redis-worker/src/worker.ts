@@ -365,7 +365,7 @@ class Worker<TCatalog extends WorkerCatalog> {
       if (err) {
         this.logger.error(`Failed to subscribe to ${channel}`, { error: err });
       } else {
-        this.logger.log(`Subscribed to ${channel}`);
+        this.logger.debug(`Subscribed to ${channel}`);
       }
     });
 
