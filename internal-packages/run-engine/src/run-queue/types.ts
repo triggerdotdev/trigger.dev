@@ -65,21 +65,8 @@ export interface RunQueueKeyProducer {
   envConcurrencyLimitKey(env: EnvDescriptor): string;
   envConcurrencyLimitKey(env: MinimalAuthenticatedEnvironment): string;
 
-  envReserveConcurrencyKey(env: EnvDescriptor): string;
-  envReserveConcurrencyKey(env: MinimalAuthenticatedEnvironment): string;
-
   envConcurrencyLimitKeyFromQueue(queue: string): string;
   envCurrentConcurrencyKeyFromQueue(queue: string): string;
-  //task concurrency
-  taskIdentifierCurrentConcurrencyKey(
-    env: MinimalAuthenticatedEnvironment,
-    taskIdentifier: string
-  ): string;
-  taskIdentifierCurrentConcurrencyKeyPrefixFromQueue(queue: string): string;
-  taskIdentifierCurrentConcurrencyKeyFromQueue(queue: string, taskIdentifier: string): string;
-  //project concurrency
-  projectCurrentConcurrencyKey(env: MinimalAuthenticatedEnvironment): string;
-  projectCurrentConcurrencyKeyFromQueue(queue: string): string;
   //message payload
   messageKeyPrefixFromQueue(queue: string): string;
   messageKey(orgId: string, messageId: string): string;
@@ -88,6 +75,10 @@ export interface RunQueueKeyProducer {
   envIdFromQueue(queue: string): string;
   projectIdFromQueue(queue: string): string;
   descriptorFromQueue(queue: string): QueueDescriptor;
+
+  deadLetterQueueKey(env: MinimalAuthenticatedEnvironment): string;
+  deadLetterQueueKey(env: EnvDescriptor): string;
+  deadLetterQueueKeyFromQueue(queue: string): string;
 }
 
 export type EnvQueues = {

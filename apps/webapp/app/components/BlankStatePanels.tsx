@@ -6,6 +6,7 @@ import {
   ClockIcon,
   PlusIcon,
   RectangleGroupIcon,
+  RectangleStackIcon,
   ServerStackIcon,
   Squares2X2Icon,
 } from "@heroicons/react/20/solid";
@@ -368,35 +369,28 @@ export function AlertsNoneDeployed() {
   );
 }
 
-function AlertsNoneProd() {
+export function QueuesHasNoTasks() {
+  const organization = useOrganization();
+  const project = useProject();
+  const environment = useEnvironment();
+
   return (
-    <div className="space-y-8">
-      <InfoPanel
-        icon={BellAlertIcon}
-        iconClassName="text-red-500"
-        title="Adding alerts"
-        panelClassName="max-w-full"
+    <InfoPanel
+      title="You have no queues"
+      icon={RectangleStackIcon}
+      iconClassName="text-purple-500"
+      panelClassName="max-w-full"
+    >
+      <Paragraph spacing variant="small">
+        This means you haven't got any tasks yet in this environment.
+      </Paragraph>
+      <LinkButton
+        to={v3EnvironmentPath(organization, project, environment)}
+        variant="tertiary/medium"
       >
-        <Paragraph spacing variant="small">
-          You can get alerted when deployed runs fail.
-        </Paragraph>
-        <Paragraph spacing variant="small">
-          We don't support alerts in the Development environment. Switch to a deployed environment
-          to setup alerts.
-        </Paragraph>
-        <div className="flex gap-3">
-          <LinkButton
-            to={docsPath("troubleshooting-alerts")}
-            variant="docs/medium"
-            LeadingIcon={BookOpenIcon}
-            className="inline-flex"
-          >
-            How to setup alerts
-          </LinkButton>
-        </div>
-      </InfoPanel>
-      <SwitcherPanel />
-    </div>
+        Add tasks
+      </LinkButton>
+    </InfoPanel>
   );
 }
 

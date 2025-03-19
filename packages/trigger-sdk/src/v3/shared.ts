@@ -1345,6 +1345,7 @@ async function triggerAndWait_internal<TIdentifier extends string, TPayload, TOu
             idempotencyKeyTTL: options?.idempotencyKeyTTL,
             machine: options?.machine,
             priority: options?.priority,
+            releaseConcurrency: options?.releaseConcurrency,
           },
         },
         {},

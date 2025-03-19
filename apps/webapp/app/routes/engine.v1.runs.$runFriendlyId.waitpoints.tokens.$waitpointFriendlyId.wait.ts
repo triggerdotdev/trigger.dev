@@ -34,10 +34,10 @@ const { action } = createActionApiRoute(
         throw json({ error: "Waitpoint not found" }, { status: 404 });
       }
 
+      // TODO: Add releaseConcurrency from the body
       const result = await engine.blockRunWithWaitpoint({
         runId,
         waitpoints: [waitpointId],
-        environmentId: authentication.environment.id,
         projectId: authentication.environment.project.id,
         organizationId: authentication.environment.organization.id,
       });

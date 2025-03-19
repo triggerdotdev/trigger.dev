@@ -69,7 +69,11 @@ export async function setupBackgroundWorker(
   environment: AuthenticatedEnvironment,
   taskIdentifier: string | string[],
   machineConfig?: MachineConfig,
-  retryOptions?: RetryOptions
+  retryOptions?: RetryOptions,
+  queueOptions?: {
+    releaseConcurrencyOnWaitpoint?: boolean;
+    concurrencyLimit?: number | null;
+  }
 ) {
   const worker = await prisma.backgroundWorker.create({
     data: {
@@ -115,10 +119,17 @@ export async function setupBackgroundWorker(
       data: {
         friendlyId: generateFriendlyId("queue"),
         name: queueName,
-        concurrencyLimit: 10,
+        concurrencyLimit:
+          typeof queueOptions?.concurrencyLimit === "undefined"
+            ? 10
+            : queueOptions.concurrencyLimit,
         runtimeEnvironmentId: worker.runtimeEnvironmentId,
         projectId: worker.projectId,
         type: "VIRTUAL",
+        releaseConcurrencyOnWaitpoint:
+          typeof queueOptions?.releaseConcurrencyOnWaitpoint === "boolean"
+            ? queueOptions.releaseConcurrencyOnWaitpoint
+            : undefined,
       },
     });
   }

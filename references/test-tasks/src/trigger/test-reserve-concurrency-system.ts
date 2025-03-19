@@ -1,4 +1,4 @@
-import { logger, task } from "@trigger.dev/sdk/v3";
+import { batch, logger, task } from "@trigger.dev/sdk/v3";
 import assert from "assert";
 import {
   getEnvironmentStats,
@@ -293,8 +293,10 @@ export const testEnvReserveConcurrency = task({
       }))
     );
 
+    const retrievedHoldBatch = await batch.retrieve(holdBatch.batchId);
+
     // Wait for the hold tasks to be executing
-    await Promise.all(holdBatch.runs.map((run) => waitForRunStatus(run.id, ["EXECUTING"])));
+    await Promise.all(retrievedHoldBatch.runs.map((run) => waitForRunStatus(run, ["EXECUTING"])));
 
     // Now we will trigger a parent task that will trigger a child task
     const parentRun = await genericParentTask.trigger(
@@ -341,7 +343,7 @@ export const testEnvReserveConcurrency = task({
     );
 
     // Wait for the hold tasks to be completed
-    await Promise.all(holdBatch.runs.map((run) => waitForRunStatus(run.id, ["COMPLETED"])));
+    await Promise.all(retrievedHoldBatch.runs.map((run) => waitForRunStatus(run, ["COMPLETED"])));
 
     await updateEnvironmentConcurrencyLimit(ctx.environment.id, 100);
 

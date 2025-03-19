@@ -48,6 +48,7 @@ import {
   DeploymentListPresenter,
 } from "~/presenters/v3/DeploymentListPresenter.server";
 import { requireUserId } from "~/services/session.server";
+import { titleCase } from "~/utils";
 import { EnvironmentParamSchema, docsPath, v3DeploymentPath } from "~/utils/pathBuilder";
 import { createSearchParams } from "~/utils/searchParams";
 import { deploymentIndexingIsRetryable } from "~/v3/deploymentStatus";
@@ -174,7 +175,7 @@ export default function Page() {
                               <div className="flex items-center gap-2">
                                 <Paragraph variant="extra-small">{deployment.shortCode}</Paragraph>
                                 {deployment.label && (
-                                  <Badge variant="outline-rounded">{deployment.label}</Badge>
+                                  <Badge variant="extra-small">{titleCase(deployment.label)}</Badge>
                                 )}
                               </div>
                             </TableCell>
