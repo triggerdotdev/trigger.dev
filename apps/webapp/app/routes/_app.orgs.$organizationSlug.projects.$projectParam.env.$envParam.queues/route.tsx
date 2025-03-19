@@ -9,7 +9,7 @@ import {
 import { Await, Form, useNavigation, type MetaFunction } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Suspense, useEffect, useState } from "react";
-import { typeddefer, useTypedLoaderData } from "remix-typedjson";
+import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
@@ -194,7 +194,7 @@ export default function Page() {
         <div className="flex flex-col">
           <div className="grid grid-cols-3 gap-3 p-3">
             <Suspense fallback={<BigNumber title="Queued" loading={true} />}>
-              <Await resolve={environment}>
+              <TypedAwait resolve={environment}>
                 {(environment) => (
                   <BigNumber
                     title="Queued"
@@ -205,15 +205,15 @@ export default function Page() {
                     valueClassName={env.paused ? "text-amber-500" : undefined}
                   />
                 )}
-              </Await>
+              </TypedAwait>
             </Suspense>
             <Suspense fallback={<BigNumber title="Running" loading={true} />}>
-              <Await resolve={environment}>
+              <TypedAwait resolve={environment}>
                 {(environment) => <BigNumber title="Running" value={environment.running} animate />}
-              </Await>
+              </TypedAwait>
             </Suspense>
             <Suspense fallback={<BigNumber title="Concurrency limit" loading={true} />}>
-              <Await resolve={environment}>
+              <TypedAwait resolve={environment}>
                 {(environment) => (
                   <BigNumber
                     title="Concurrency limit"
@@ -251,7 +251,7 @@ export default function Page() {
                     }
                   />
                 )}
-              </Await>
+              </TypedAwait>
             </Suspense>
           </div>
 
@@ -281,9 +281,9 @@ export default function Page() {
                       </TableRow>
                     }
                   >
-                    <Await
+                    <TypedAwait
                       resolve={Promise.all([queues.queues, environment])}
-                      errorElement={<p>Error loading queues</p>}
+                      errorElement={<Paragraph variant="small">Error loading queues</Paragraph>}
                     >
                       {([q, environment]) =>
                         q.length > 0 ? (
@@ -321,14 +321,14 @@ export default function Page() {
                         ) : (
                           <TableRow>
                             <TableCell colSpan={5}>
-                              <div className="grid place-items-center py-6 text-text-dimmed">
+                              <span className="grid place-items-center py-6 text-text-dimmed">
                                 No queues found
-                              </div>
+                              </span>
                             </TableCell>
                           </TableRow>
                         )
                       }
-                    </Await>
+                    </TypedAwait>
                   </Suspense>
                 </TableBody>
               </Table>
@@ -419,7 +419,9 @@ function EnvironmentPauseResumeButton({
           <Paragraph>
             {env.paused
               ? `This will allow runs to be dequeued in ${environmentFullTitle(env)} again.`
-              : `This will pause any runs from being dequeued in ${environmentFullTitle(env)}.`}
+              : `This will pause all runs from being dequeued in ${environmentFullTitle(
+                  env
+                )}. Any executing runs will continue to run.`}
           </Paragraph>
           <Form method="post" onSubmit={() => setIsOpen(false)}>
             <input
