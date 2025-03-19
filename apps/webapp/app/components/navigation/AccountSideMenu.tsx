@@ -22,9 +22,8 @@ export function AccountSideMenu({ user }: { user: User }) {
           to={rootPath()}
           fullWidth
           textAlignLeft
-          className="text-text-bright"
         >
-          Back to app
+          <span className="text-text-bright">Back to app</span>
         </LinkButton>
       </div>
       <div className="mb-6 flex grow flex-col gap-1 overflow-y-auto px-1 pt-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">

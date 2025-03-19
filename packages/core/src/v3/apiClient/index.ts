@@ -18,11 +18,14 @@ import {
   EnvironmentVariableResponseBody,
   EnvironmentVariableValue,
   EnvironmentVariables,
+  ListQueueOptions,
   ListRunResponseItem,
   ListScheduleOptions,
+  QueueItem,
   ReplayRunResponse,
   RescheduleRunRequestBody,
   RetrieveBatchV2Response,
+  RetrieveQueueParam,
   RetrieveRunResponse,
   ScheduleObject,
   TaskRunExecutionResult,
@@ -711,6 +714,76 @@ export class ApiClient {
         method: "POST",
         headers: this.#getHeaders(false),
         body: JSON.stringify(body),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  listQueues(options?: ListQueueOptions, requestOptions?: ZodFetchOptions) {
+    const searchParams = new URLSearchParams();
+
+    if (options?.page) {
+      searchParams.append("page", options.page.toString());
+    }
+
+    if (options?.perPage) {
+      searchParams.append("perPage", options.perPage.toString());
+    }
+
+    return zodfetchOffsetLimitPage(
+      QueueItem,
+      `${this.baseUrl}/api/v1/queues`,
+      {
+        page: options?.page,
+        limit: options?.perPage,
+      },
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  retrieveQueue(queue: RetrieveQueueParam, requestOptions?: ZodFetchOptions) {
+    const type = typeof queue === "string" ? "id" : queue.type;
+    const value = typeof queue === "string" ? queue : queue.name;
+
+    // Explicitly encode slashes before encoding the rest of the string
+    const encodedValue = encodeURIComponent(value.replace(/\//g, "%2F"));
+
+    return zodfetch(
+      QueueItem,
+      `${this.baseUrl}/api/v1/queues/${encodedValue}?type=${type}`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  pauseQueue(
+    queue: RetrieveQueueParam,
+    action: "pause" | "resume",
+    requestOptions?: ZodFetchOptions
+  ) {
+    const type = typeof queue === "string" ? "id" : queue.type;
+    const value = typeof queue === "string" ? queue : queue.name;
+
+    // Explicitly encode slashes before encoding the rest of the string
+    const encodedValue = encodeURIComponent(value.replace(/\//g, "%2F"));
+
+    return zodfetch(
+      QueueItem,
+      `${this.baseUrl}/api/v1/queues/${encodedValue}/pause`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify({
+          type,
+          action,
+        }),
       },
       mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );

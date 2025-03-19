@@ -565,10 +565,16 @@ const EnvironmentSchema = z.object({
   RUN_ENGINE_RATE_LIMIT_REJECTION_LOGS_ENABLED: z.string().default("1"),
   RUN_ENGINE_RATE_LIMIT_LIMITER_LOGS_ENABLED: z.string().default("0"),
 
+  RUN_ENGINE_RELEASE_CONCURRENCY_ENABLED: z.string().default("0"),
+  RUN_ENGINE_RELEASE_CONCURRENCY_MAX_TOKENS_RATIO: z.coerce.number().default(1),
+  RUN_ENGINE_RELEASE_CONCURRENCY_MAX_RETRIES: z.coerce.number().int().default(3),
+  RUN_ENGINE_RELEASE_CONCURRENCY_CONSUMERS_COUNT: z.coerce.number().int().default(1),
+  RUN_ENGINE_RELEASE_CONCURRENCY_POLL_INTERVAL: z.coerce.number().int().default(500),
+  RUN_ENGINE_RELEASE_CONCURRENCY_BATCH_SIZE: z.coerce.number().int().default(10),
+
   /** How long should the presence ttl last */
   DEV_PRESENCE_TTL_MS: z.coerce.number().int().default(30_000),
   DEV_PRESENCE_POLL_INTERVAL_MS: z.coerce.number().int().default(5_000),
-  DEV_PRESENCE_RECONNECT_THRESHOLD_MS: z.coerce.number().int().default(2_000),
   /** How many ms to wait until dequeuing again, if there was a run last time */
   DEV_DEQUEUE_INTERVAL_WITH_RUN: z.coerce.number().int().default(250),
   /** How many ms to wait until dequeuing again, if there was no run last time */
@@ -660,6 +666,9 @@ const EnvironmentSchema = z.object({
 
   TASK_EVENT_PARTITIONING_ENABLED: z.string().default("0"),
   TASK_EVENT_PARTITIONED_WINDOW_IN_SECONDS: z.coerce.number().int().default(60), // 1 minute
+
+  QUEUE_SSE_AUTORELOAD_INTERVAL_MS: z.coerce.number().int().default(5_000),
+  QUEUE_SSE_AUTORELOAD_TIMEOUT_MS: z.coerce.number().int().default(60_000),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

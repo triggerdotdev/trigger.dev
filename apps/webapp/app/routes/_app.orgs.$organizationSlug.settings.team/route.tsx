@@ -164,15 +164,18 @@ export default function Page() {
       <PageBody>
         <MainHorizontallyCenteredContainer>
           <Header2>
-            Members ({limits.used}/{limits.limit})
+            Members{" "}
+            <span className="font-normal text-text-dimmed">
+              ({limits.used}/{limits.limit})
+            </span>
           </Header2>
-          <ul className="divide-ui-border flex w-full max-w-md flex-col divide-y border-b border-grid-bright">
+          <ul className="divide-ui-border mt-3 flex w-full flex-col divide-y border-y border-grid-bright">
             {members.map((member) => (
               <li key={member.user.id} className="flex items-center gap-x-4 py-4">
                 <UserAvatar
                   avatarUrl={member.user.avatarUrl}
                   name={member.user.name}
-                  className="h-10 w-10"
+                  className="size-10"
                 />
                 <div className="flex flex-col gap-0.5">
                   <Header3>
@@ -194,8 +197,8 @@ export default function Page() {
 
           {invites.length > 0 && (
             <>
-              <Header2 className="mt-4">Pending invites</Header2>
-              <ul className="flex w-full max-w-md flex-col divide-y divide-charcoal-800 border-b border-charcoal-800">
+              <Header2 className="mb-3 mt-4">Pending invites</Header2>
+              <ul className="flex w-full flex-col divide-y divide-charcoal-800 border-b border-grid-bright">
                 {invites.map((invite) => (
                   <li key={invite.id} className="flex items-center gap-4 py-4">
                     <div className="rounded-md border border-charcoal-750 bg-charcoal-800 p-1.5">
@@ -225,7 +228,7 @@ export default function Page() {
               title="Unlock more team members"
               to={v3BillingPath(organization)}
               buttonLabel="Upgrade"
-              panelClassName="mt-4 max-w-sm"
+              panelClassName="mt-4"
             >
               <Paragraph variant="small">
                 You've used all {limits.limit} of your available team members. Upgrade your plan to
@@ -233,10 +236,10 @@ export default function Page() {
               </Paragraph>
             </InfoPanel>
           ) : (
-            <div className="mt-4 flex max-w-md justify-end">
+            <div className="mt-4 flex justify-end">
               <LinkButton
                 to={inviteTeamMemberPath(organization)}
-                variant={"primary/small"}
+                variant={"secondary/small"}
                 LeadingIcon={UserPlusIcon}
               >
                 Invite a team member

@@ -1,12 +1,11 @@
 import {
   BuildingOffice2Icon,
   CodeBracketSquareIcon,
-  CubeIcon,
   FaceSmileIcon,
   FireIcon,
   RocketLaunchIcon,
   StarIcon,
-} from "@heroicons/react/24/solid";
+} from "@heroicons/react/20/solid";
 import { type Prisma } from "@trigger.dev/database";
 import { useLayoutEffect, useRef, useState } from "react";
 import { z } from "zod";

@@ -73,7 +73,12 @@ export const waitForDuration = task({
   }) => {
     const idempotency = idempotencyKey ? await idempotencyKeys.create(idempotencyKey) : undefined;
 
-    await wait.for({ seconds: duration, idempotencyKey: idempotency, idempotencyKeyTTL });
+    await wait.for({
+      seconds: duration,
+      idempotencyKey: idempotency,
+      idempotencyKeyTTL,
+      releaseConcurrency: true,
+    });
     await wait.until({ date: new Date(Date.now() + duration * 1000) });
 
     await retry.fetch("https://example.com/404", { method: "GET" });

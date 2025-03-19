@@ -1,6 +1,6 @@
 import { describe } from "node:test";
 import { expect, it } from "vitest";
-import { RunQueueFullKeyProducer } from "./keyProducer.js";
+import { RunQueueFullKeyProducer } from "../keyProducer.js";
 
 describe("KeyProducer", () => {
   it("queueConcurrencyLimitKey", () => {
@@ -163,73 +163,6 @@ describe("KeyProducer", () => {
     expect(key).toBe("{org:o1234}:proj:p1234:env:e1234:queue:task/task-name:currentConcurrency");
   });
 
-  it("taskIdentifierCurrentConcurrencyKeyPrefixFromQueue", () => {
-    const keyProducer = new RunQueueFullKeyProducer();
-    const queueKey = keyProducer.queueKey(
-      {
-        id: "e1234",
-        type: "PRODUCTION",
-        maximumConcurrencyLimit: 10,
-        project: { id: "p1234" },
-        organization: { id: "o1234" },
-      },
-      "task/task-name"
-    );
-    const key = keyProducer.taskIdentifierCurrentConcurrencyKeyPrefixFromQueue(queueKey);
-    expect(key).toBe("{org:o1234}:proj:p1234:task:");
-  });
-
-  it("taskIdentifierCurrentConcurrencyKeyFromQueue", () => {
-    const keyProducer = new RunQueueFullKeyProducer();
-    const queueKey = keyProducer.queueKey(
-      {
-        id: "e1234",
-        type: "PRODUCTION",
-        maximumConcurrencyLimit: 10,
-        project: { id: "p1234" },
-        organization: { id: "o1234" },
-      },
-      "task/task-name"
-    );
-    const key = keyProducer.taskIdentifierCurrentConcurrencyKeyFromQueue(queueKey, "task-name");
-    expect(key).toBe("{org:o1234}:proj:p1234:task:task-name");
-  });
-
-  it("taskIdentifierCurrentConcurrencyKey", () => {
-    const keyProducer = new RunQueueFullKeyProducer();
-    const key = keyProducer.taskIdentifierCurrentConcurrencyKey(
-      {
-        id: "e1234",
-        type: "PRODUCTION",
-        maximumConcurrencyLimit: 10,
-        project: { id: "p1234" },
-        organization: { id: "o1234" },
-      },
-      "task-name"
-    );
-    expect(key).toBe("{org:o1234}:proj:p1234:task:task-name");
-  });
-
-  it("projectCurrentConcurrencyKey", () => {
-    const keyProducer = new RunQueueFullKeyProducer();
-    const key = keyProducer.projectCurrentConcurrencyKey({
-      id: "e1234",
-      type: "PRODUCTION",
-      maximumConcurrencyLimit: 10,
-      project: { id: "p1234" },
-      organization: { id: "o1234" },
-    });
-    expect(key).toBe("{org:o1234}:proj:p1234:currentConcurrency");
-  });
-
-  it("projectCurrentConcurrencyKeyFromQueue", () => {
-    const keyProducer = new RunQueueFullKeyProducer();
-    const key = keyProducer.projectCurrentConcurrencyKeyFromQueue(
-      "{org:o1234}:proj:p1234:currentConcurrency"
-    );
-    expect(key).toBe("{org:o1234}:proj:p1234:currentConcurrency");
-  });
-
   it("disabledConcurrencyLimitKeyFromQueue", () => {
     const keyProducer = new RunQueueFullKeyProducer();
     const queueKey = keyProducer.queueKey(
@@ -259,7 +192,7 @@ describe("KeyProducer", () => {
       "task/task-name"
     );
     const key = keyProducer.envConcurrencyLimitKeyFromQueue(queueKey);
-    expect(key).toBe("{org:o1234}:env:e1234:concurrency");
+    expect(key).toBe("{org:o1234}:proj:p1234:env:e1234:concurrency");
   });
 
   it("envCurrentConcurrencyKeyFromQueue", () => {

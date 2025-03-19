@@ -5,12 +5,18 @@ import { Form, type MetaFunction, useActionData } from "@remix-run/react";
 import { type ActionFunction, json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { UserProfilePhoto } from "~/components/UserProfilePhoto";
-import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
+import {
+  MainCenteredContainer,
+  MainHorizontallyCenteredContainer,
+  PageBody,
+  PageContainer,
+} from "~/components/layout/AppLayout";
 import { Button } from "~/components/primitives/Buttons";
 import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
+import { Header2 } from "~/components/primitives/Headers";
 import { Hint } from "~/components/primitives/Hint";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
@@ -138,14 +144,17 @@ export default function Page() {
       </NavBar>
 
       <PageBody>
-        <div className="grid place-items-center pt-12">
-          <Form method="post" {...form.props} className="w-80 max-w-md">
+        <MainHorizontallyCenteredContainer className="grid place-items-center">
+          <div className="mb-3 w-full border-b border-grid-dimmed pb-3">
+            <Header2>Profile</Header2>
+          </div>
+          <Form method="post" {...form.props} className="w-full">
             <InputGroup className="mb-4">
               <Label htmlFor={name.id}>Profile picture</Label>
-              <UserProfilePhoto className="h-24 w-24" />
+              <UserProfilePhoto className="size-24" />
             </InputGroup>
             <Fieldset>
-              <InputGroup>
+              <InputGroup fullWidth>
                 <Label htmlFor={name.id}>Full name</Label>
                 <Input
                   {...conform.input(name, { type: "text" })}
@@ -156,7 +165,7 @@ export default function Page() {
                 <Hint>Your teammates will see this</Hint>
                 <FormError id={name.errorId}>{name.error}</FormError>
               </InputGroup>
-              <InputGroup>
+              <InputGroup fullWidth>
                 <Label htmlFor={email.id}>Email address</Label>
                 <Input
                   {...conform.input(email, { type: "text" })}
@@ -180,14 +189,14 @@ export default function Page() {
 
               <FormButtons
                 confirmButton={
-                  <Button type="submit" variant={"primary/small"}>
+                  <Button type="submit" variant={"secondary/small"}>
                     Update
                   </Button>
                 }
               />
             </Fieldset>
           </Form>
-        </div>
+        </MainHorizontallyCenteredContainer>
       </PageBody>
     </PageContainer>
   );

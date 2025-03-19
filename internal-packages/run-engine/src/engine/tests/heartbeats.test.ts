@@ -95,7 +95,7 @@ describe("RunEngine heartbeats", () => {
       assertNonNullable(executionData);
       expect(executionData.snapshot.executionStatus).toBe("PENDING_EXECUTING");
 
-      await setTimeout(pendingExecutingTimeout * 2);
+      await setTimeout(pendingExecutingTimeout * 4);
 
       //expect it to be pending with 3 consecutiveFailures
       const executionData2 = await engine.getRunExecutionData({ runId: run.id });

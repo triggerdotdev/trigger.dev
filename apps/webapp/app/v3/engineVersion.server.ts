@@ -1,17 +1,25 @@
-import { RunEngineVersion, RuntimeEnvironmentType } from "@trigger.dev/database";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { RunEngineVersion, type RuntimeEnvironmentType } from "@trigger.dev/database";
 import {
   findCurrentWorkerDeploymentWithoutTasks,
   findCurrentWorkerFromEnvironment,
 } from "./models/workerDeployment.server";
 import { $replica } from "~/db.server";
 
+type Environment = {
+  id: string;
+  type: RuntimeEnvironmentType;
+  project: {
+    id: string;
+    engine: RunEngineVersion;
+  };
+};
+
 export async function determineEngineVersion({
   environment,
   workerVersion,
   engineVersion: version,
 }: {
-  environment: AuthenticatedEnvironment;
+  environment: Environment;
   workerVersion?: string;
   engineVersion?: RunEngineVersion;
 }): Promise<RunEngineVersion> {
@@ -36,7 +44,7 @@ export async function determineEngineVersion({
       },
       where: {
         projectId_runtimeEnvironmentId_version: {
-          projectId: environment.projectId,
+          projectId: environment.project.id,
           runtimeEnvironmentId: environment.id,
           version: workerVersion,
         },

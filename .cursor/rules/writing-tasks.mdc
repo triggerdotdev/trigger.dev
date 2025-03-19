@@ -1,6 +1,6 @@
 ---
 description: Guidelines for writing Trigger.dev tasks
-globs: **/trigger/**/*.ts, **/trigger/**/*.tsx
+globs: **/trigger/**/*.ts, **/trigger/**/*.tsx,**/trigger/**/*.js,**/trigger/**/*.jsx
 alwaysApply: false
 ---
 # How to write Trigger.dev tasks
@@ -832,7 +832,7 @@ npm add @trigger.dev/react-hooks
 
 All hooks require a Public Access Token. You can provide it directly to each hook:
 
-```typescriptx
+```typescript
 import { useRealtimeRun } from "@trigger.dev/react-hooks";
 
 function MyComponent({ runId, publicAccessToken }) {
@@ -845,7 +845,7 @@ function MyComponent({ runId, publicAccessToken }) {
 
 Or use the `TriggerAuthContext` provider:
 
-```typescriptx
+```typescript
 import { TriggerAuthContext } from "@trigger.dev/react-hooks";
 
 function SetupTrigger({ publicAccessToken }) {
@@ -859,7 +859,7 @@ function SetupTrigger({ publicAccessToken }) {
 
 For Next.js App Router, wrap the provider in a client component:
 
-```typescriptx
+```typescript
 // components/TriggerProvider.tsx
 "use client";
 
@@ -879,7 +879,7 @@ export function TriggerProvider({ accessToken, children }) {
 Several approaches for Next.js App Router:
 
 1. **Using cookies**:
-```typescriptx
+```typescript
 // Server action
 export async function startRun() {
   const handle = await tasks.trigger<typeof exampleTask>("example", { foo: "bar" });
@@ -899,7 +899,7 @@ export default function RunPage({ params }) {
 ```
 
 2. **Using query parameters**:
-```typescriptx
+```typescript
 // Server action
 export async function startRun() {
   const handle = await tasks.trigger<typeof exampleTask>("example", { foo: "bar" });
@@ -908,7 +908,7 @@ export async function startRun() {
 ```
 
 3. **Server-side token generation**:
-```typescriptx
+```typescript
 // Page component
 export default async function RunPage({ params }) {
   const publicAccessToken = await generatePublicAccessToken(params.id);
@@ -938,7 +938,7 @@ export async function generatePublicAccessToken(runId: string) {
 
 Data fetching hooks that use SWR for caching:
 
-```typescriptx
+```typescript
 "use client";
 import { useRun } from "@trigger.dev/react-hooks";
 import type { myTask } from "@/trigger/myTask";
