@@ -395,7 +395,7 @@ class Worker<TCatalog extends WorkerCatalog> {
   }
 
   private setupShutdownHandlers() {
-    shutdownManager.register("redis-worker", this.shutdown.bind(this));
+    shutdownManager.register(`redis-worker:${this.options.name}`, this.shutdown.bind(this));
   }
 
   private async shutdown(signal?: NodeJS.Signals) {
