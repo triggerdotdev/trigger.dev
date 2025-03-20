@@ -94,14 +94,30 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
     this.websocketServer = this.createWebsocketServer();
   }
 
-  private runnerIdFromRequest(req: IncomingMessage): string | undefined {
-    const value = req.headers[WORKLOAD_HEADERS.RUNNER_ID];
+  private headerValueFromRequest(req: IncomingMessage, headerName: string): string | undefined {
+    const value = req.headers[headerName];
 
     if (Array.isArray(value)) {
       return value[0];
     }
 
     return value;
+  }
+
+  private runnerIdFromRequest(req: IncomingMessage): string | undefined {
+    return this.headerValueFromRequest(req, WORKLOAD_HEADERS.RUNNER_ID);
+  }
+
+  private deploymentIdFromRequest(req: IncomingMessage): string | undefined {
+    return this.headerValueFromRequest(req, WORKLOAD_HEADERS.DEPLOYMENT_ID);
+  }
+
+  private deploymentVersionFromRequest(req: IncomingMessage): string | undefined {
+    return this.headerValueFromRequest(req, WORKLOAD_HEADERS.DEPLOYMENT_VERSION);
+  }
+
+  private projectRefFromRequest(req: IncomingMessage): string | undefined {
+    return this.headerValueFromRequest(req, WORKLOAD_HEADERS.PROJECT_REF);
   }
 
   private createHttpServer({ host, port }: { host: string; port: number }) {
@@ -213,8 +229,10 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
             }
 
             const runnerId = this.runnerIdFromRequest(req);
+            const deploymentVersion = this.deploymentVersionFromRequest(req);
+            const projectRef = this.projectRefFromRequest(req);
 
-            if (!runnerId) {
+            if (!runnerId || !deploymentVersion || !projectRef) {
               console.error("Invalid headers for suspend request", {
                 ...params,
                 headers: req.headers,
@@ -241,8 +259,13 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
             const suspendResult = await this.checkpointClient.suspendRun({
               runFriendlyId: params.runFriendlyId,
               snapshotFriendlyId: params.snapshotFriendlyId,
-              containerId: runnerId,
-              runnerId,
+              body: {
+                runnerId,
+                runId: params.runFriendlyId,
+                snapshotId: params.snapshotFriendlyId,
+                projectRef,
+                deploymentVersion,
+              },
             });
 
             if (!suspendResult) {

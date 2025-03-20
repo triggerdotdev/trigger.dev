@@ -149,8 +149,10 @@ class ManagedRunController {
 
     this.httpClient = new WorkloadHttpClient({
       workerApiUrl: this.workerApiUrl,
-      deploymentId: env.TRIGGER_DEPLOYMENT_ID,
       runnerId: env.TRIGGER_RUNNER_ID,
+      deploymentId: env.TRIGGER_DEPLOYMENT_ID,
+      deploymentVersion: env.TRIGGER_DEPLOYMENT_VERSION,
+      projectRef: env.TRIGGER_PROJECT_REF,
     });
 
     if (env.TRIGGER_WARM_START_URL) {

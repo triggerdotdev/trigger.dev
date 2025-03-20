@@ -4,49 +4,42 @@ import {
   CheckpointServiceSuspendResponseBody,
   CheckpointServiceRestoreRequestBodyInput,
 } from "../schemas/checkpoints.js";
-import { DequeuedMessage } from "../schemas/runEngine.js";
+import { CheckpointType, DequeuedMessage } from "../schemas/runEngine.js";
 import { SimpleStructuredLogger } from "../utils/structuredLogger.js";
 
 export type CheckpointClientOptions = {
   apiUrl: URL;
   workerClient: SupervisorHttpClient;
+  orchestrator: CheckpointType;
 };
 
 export class CheckpointClient {
   private readonly logger = new SimpleStructuredLogger("checkpoint-client");
-  private readonly apiUrl: URL;
-  private readonly workerClient: SupervisorHttpClient;
 
-  private get restoreUrl() {
-    return new URL("/api/v1/restore", this.apiUrl);
-  }
-
-  constructor(opts: CheckpointClientOptions) {
-    this.apiUrl = opts.apiUrl;
-    this.workerClient = opts.workerClient;
-  }
+  constructor(private readonly opts: CheckpointClientOptions) {}
 
   async suspendRun({
     runFriendlyId,
     snapshotFriendlyId,
-    containerId,
-    runnerId,
+    body,
   }: {
     runFriendlyId: string;
     snapshotFriendlyId: string;
-    containerId: string;
-    runnerId: string;
+    body: Omit<CheckpointServiceSuspendRequestBodyInput, "type">;
   }): Promise<boolean> {
     const res = await fetch(
-      new URL(`/api/v1/runs/${runFriendlyId}/snapshots/${snapshotFriendlyId}/suspend`, this.apiUrl),
+      new URL(
+        `/api/v1/runs/${runFriendlyId}/snapshots/${snapshotFriendlyId}/suspend`,
+        this.opts.apiUrl
+      ),
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          type: "DOCKER",
-          containerId,
+          type: this.opts.orchestrator,
+          ...body,
         } satisfies CheckpointServiceSuspendRequestBodyInput),
       }
     );
@@ -55,7 +48,7 @@ export class CheckpointClient {
       this.logger.error("[CheckpointClient] Suspend request failed", {
         runFriendlyId,
         snapshotFriendlyId,
-        containerId,
+        body,
       });
       return false;
     }
@@ -63,7 +56,7 @@ export class CheckpointClient {
     this.logger.debug("[CheckpointClient] Suspend request success", {
       runFriendlyId,
       snapshotFriendlyId,
-      containerId,
+      body,
       status: res.status,
       contentType: res.headers.get("content-type"),
     });
@@ -76,7 +69,7 @@ export class CheckpointClient {
         this.logger.error("[CheckpointClient] Suspend response invalid", {
           runFriendlyId,
           snapshotFriendlyId,
-          containerId,
+          body,
           data,
         });
         return false;
@@ -95,28 +88,31 @@ export class CheckpointClient {
   async restoreRun({
     runFriendlyId,
     snapshotFriendlyId,
-    checkpoint,
+    body,
   }: {
     runFriendlyId: string;
     snapshotFriendlyId: string;
-    checkpoint: NonNullable<DequeuedMessage["checkpoint"]>;
+    body: CheckpointServiceRestoreRequestBodyInput;
   }): Promise<boolean> {
-    const res = await fetch(this.restoreUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        type: "DOCKER",
-        containerId: checkpoint.location,
-      } satisfies CheckpointServiceRestoreRequestBodyInput),
-    });
+    const res = await fetch(
+      new URL(
+        `/api/v1/runs/${runFriendlyId}/snapshots/${snapshotFriendlyId}/restore`,
+        this.opts.apiUrl
+      ),
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      }
+    );
 
     if (!res.ok) {
       this.logger.error("[CheckpointClient] Restore request failed", {
         runFriendlyId,
         snapshotFriendlyId,
-        checkpoint,
+        body,
       });
       return false;
     }
