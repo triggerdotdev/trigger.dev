@@ -73,6 +73,7 @@ import {
   ForceTimeout,
 } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.waitpoints.$waitpointFriendlyId.complete/route";
 import { useEnvironment } from "~/hooks/useEnvironment";
+import { WaitpointStatusCombo } from "~/components/runs/v3/WaitpointStatus";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -1005,16 +1006,9 @@ function SpanEntity({ span }: { span: Span }) {
               <Property.Item>
                 <Property.Label>Status</Property.Label>
                 <Property.Value>
-                  <TaskRunStatusCombo
-                    status={
-                      span.entity.object.isTimeout
-                        ? "TIMED_OUT"
-                        : span.entity.object.status === "PENDING"
-                        ? "EXECUTING"
-                        : span.entity.object.outputIsError
-                        ? "COMPLETED_WITH_ERRORS"
-                        : "COMPLETED_SUCCESSFULLY"
-                    }
+                  <WaitpointStatusCombo
+                    status={span.entity.object.status}
+                    outputIsError={span.entity.object.outputIsError}
                     className="text-sm"
                   />
                 </Property.Value>

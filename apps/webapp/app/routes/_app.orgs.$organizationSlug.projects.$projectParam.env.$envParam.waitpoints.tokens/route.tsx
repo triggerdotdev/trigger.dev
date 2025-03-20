@@ -39,6 +39,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "~/components/primitives/Tooltip";
+import { WaitpointStatusCombo } from "~/components/runs/v3/WaitpointStatus";
 import { WaitpointSearchParamsSchema } from "~/components/runs/v3/WaitpointTokenFilters";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -138,7 +139,7 @@ export default function Page() {
             <Table containerClassName="border-t">
               <TableHeader>
                 <TableRow>
-                  <TableHeaderCell>Friendly ID</TableHeaderCell>
+                  <TableHeaderCell>ID</TableHeaderCell>
                   <TableHeaderCell>Status</TableHeaderCell>
                   <TableHeaderCell>Completed At</TableHeaderCell>
                   <TableHeaderCell>Completed After</TableHeaderCell>
@@ -151,7 +152,13 @@ export default function Page() {
                   tokens.map((token) => (
                     <TableRow key={token.friendlyId}>
                       <TableCell>{token.friendlyId}</TableCell>
-                      <TableCell>{token.status}</TableCell>
+                      <TableCell>
+                        <WaitpointStatusCombo
+                          status={token.status}
+                          outputIsError={token.isTimeout}
+                          className="text-sm"
+                        />
+                      </TableCell>
                       <TableCell>{token.completedAt?.toLocaleString()}</TableCell>
                       <TableCell>{token.completedAfter?.toLocaleString()}</TableCell>
                       <TableCell>{token.idempotencyKey}</TableCell>
