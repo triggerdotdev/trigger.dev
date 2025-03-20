@@ -34,15 +34,32 @@ export function RunTag({ tag }: { tag: string }) {
  *
  * If the string has 12 or fewer alpha characters followed by an underscore or colon then we return an object with a key and value
  * Otherwise we return the original string
+ * 
+ * Special handling for common ID formats and values with special characters.
  */
-function splitTag(tag: string): Tag {
-  if (tag.match(/^[a-zA-Z]{1,12}[_:]/)) {
-    const components = tag.split(/[_:]/);
-    if (components.length !== 2) {
-      return tag;
-    }
-    return { key: components[0], value: components[1] };
-  }
-
+export function splitTag(tag: string): Tag {
+  const match = tag.match(/^([a-zA-Z0-9]{1,12})[_:](.*?)$/);
+  if (!match) return tag;
+  
+  const [, key, value] = match;
+  
+  const colonCount = (tag.match(/:/g) || []).length;
+  const underscoreCount = (tag.match(/_/g) || []).length;
+  
+  const hasMultipleColons = colonCount > 1 && !tag.includes("_");
+  const hasMultipleUnderscores = underscoreCount > 1 && !tag.includes(":");
+  const isLikelyID = hasMultipleColons || hasMultipleUnderscores;
+  
+  if (!isLikelyID) return { key, value };
+  
+  const isAlphabeticKey = key.match(/^[a-zA-Z]+$/) !== null;
+  const hasSpecialFormatChars = value.includes("-") || 
+                                value.includes("T") || 
+                                value.includes("Z") || 
+                                value.includes("/");
+  const isSpecialFormat = isAlphabeticKey && hasSpecialFormatChars;
+  
+  if (isSpecialFormat) return { key, value };
+  
   return tag;
 }
