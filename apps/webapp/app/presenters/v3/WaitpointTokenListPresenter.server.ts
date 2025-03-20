@@ -4,6 +4,7 @@ import { sqlDatabaseSchema } from "~/db.server";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { BasePresenter } from "./basePresenter.server";
 import { isWaitpointOutputTimeout } from "@trigger.dev/core/v3/schemas";
+import { type WaitpointFilterStatus } from "~/components/runs/v3/WaitpointTokenFilters";
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -11,7 +12,7 @@ export type WaitpointTokenListOptions = {
   environment: AuthenticatedEnvironment;
   // filters
   friendlyId?: string;
-  statuses?: WaitpointStatus[];
+  statuses?: WaitpointFilterStatus[];
   idempotencyKey?: string;
   from?: number;
   to?: number;
@@ -42,6 +43,30 @@ export class WaitpointTokenListPresenter extends BasePresenter {
       from !== undefined ||
       to !== undefined;
 
+    let filterOutputIsError: boolean | undefined;
+    //if the only status is completed: true
+    //if the only status is failed: false
+    //otherwise undefined
+    if (statuses?.length === 1) {
+      if (statuses[0] === "COMPLETED") {
+        filterOutputIsError = true;
+      } else if (statuses[0] === "FAILED") {
+        filterOutputIsError = false;
+      }
+    }
+
+    const statusesToFilter: WaitpointStatus[] =
+      statuses?.map((status) => {
+        switch (status) {
+          case "PENDING":
+            return "PENDING";
+          case "COMPLETED":
+            return "COMPLETED";
+          case "FAILED":
+            return "COMPLETED";
+        }
+      }) ?? [];
+
     // Get the waitpoint tokens using raw SQL for better performance
     const tokens = await this._replica.$queryRaw<
       {
@@ -67,7 +92,7 @@ export class WaitpointTokenListPresenter extends BasePresenter {
       w."idempotencyKey",
       w."idempotencyKeyExpiresAt",
       w."userProvidedIdempotencyKey",
-      w."createdAt",
+      w."createdAt"
     FROM
       ${sqlDatabaseSchema}."Waitpoint" w
     WHERE
@@ -84,8 +109,15 @@ export class WaitpointTokenListPresenter extends BasePresenter {
       -- filters
       ${friendlyId ? Prisma.sql`AND w."friendlyId" = ${friendlyId}` : Prisma.empty}
       ${
-        statuses && statuses.length > 0
-          ? Prisma.sql`AND w.status = ANY(ARRAY[${Prisma.join(statuses)}]::"WaitpointStatus"[])`
+        statusesToFilter && statusesToFilter.length > 0
+          ? Prisma.sql`AND w.status = ANY(ARRAY[${Prisma.join(
+              statusesToFilter
+            )}]::"WaitpointStatus"[])`
+          : Prisma.empty
+      }
+      ${
+        filterOutputIsError !== undefined
+          ? Prisma.sql`AND w."outputIsError" = ${filterOutputIsError}`
           : Prisma.empty
       }
       ${idempotencyKey ? Prisma.sql`AND w."idempotencyKey" = ${idempotencyKey}` : Prisma.empty}
