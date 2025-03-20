@@ -55,6 +55,7 @@ import {
   v3SchedulesPath,
   v3TestPath,
   v3UsagePath,
+  v3WaitpointTokensPath,
 } from "~/utils/pathBuilder";
 import connectedImage from "../../assets/images/cli-connected.png";
 import disconnectedImage from "../../assets/images/cli-disconnected.png";
@@ -87,6 +88,7 @@ import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
 import { SideMenuSection } from "./SideMenuSection";
 import { InlineCode } from "../code/InlineCode";
+import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 export type SideMenuProject = Pick<
@@ -211,6 +213,15 @@ export function SideMenu({
               data-action="test"
             />
           </div>
+
+          <SideMenuSection title="Waitpoints">
+            <SideMenuItem
+              name="Tokens"
+              icon={WaitpointTokenIcon}
+              activeIconColor="text-sky-500"
+              to={v3WaitpointTokensPath(organization, project, environment)}
+            />
+          </SideMenuSection>
 
           <SideMenuSection title="Observability">
             <SideMenuItem

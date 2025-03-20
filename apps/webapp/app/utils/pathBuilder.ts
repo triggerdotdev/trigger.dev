@@ -311,6 +311,14 @@ export function v3QueuesPath(
   return `${v3EnvironmentPath(organization, project, environment)}/queues`;
 }
 
+export function v3WaitpointTokensPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath
+) {
+  return `${v3EnvironmentPath(organization, project, environment)}/waitpoints/tokens`;
+}
+
 export function v3BatchesPath(
   organization: OrgForPath,
   project: ProjectForPath,
