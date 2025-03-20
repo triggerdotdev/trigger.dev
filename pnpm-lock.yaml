@@ -1399,6 +1399,9 @@ importers:
       nanoid:
         specifier: ^3.3.4
         version: 3.3.7
+      prom-client:
+        specifier: ^15.1.0
+        version: 15.1.0
       socket.io:
         specifier: 4.7.4
         version: 4.7.4
