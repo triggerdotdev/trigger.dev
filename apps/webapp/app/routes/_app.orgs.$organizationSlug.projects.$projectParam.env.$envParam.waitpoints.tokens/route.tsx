@@ -141,31 +141,38 @@ export default function Page() {
             <Table containerClassName="border-t">
               <TableHeader>
                 <TableRow>
+                  <TableHeaderCell className="w-[1%]">Created</TableHeaderCell>
                   <TableHeaderCell>ID</TableHeaderCell>
                   <TableHeaderCell>Status</TableHeaderCell>
                   <TableHeaderCell>Completed</TableHeaderCell>
-                  <TableHeaderCell>Timeout</TableHeaderCell>
                   <TableHeaderCell>Idempotency Key</TableHeaderCell>
-                  <TableHeaderCell>Idempotency Key TTL</TableHeaderCell>
-                  <TableHeaderCell>Created</TableHeaderCell>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {tokens.length > 0 ? (
-                  tokens.map((token) => (
-                    <TableRow key={token.friendlyId}>
-                      <TableCell>{token.friendlyId}</TableCell>
-                      <TableCell>
-                        <WaitpointStatusCombo
-                          status={token.status}
-                          outputIsError={token.isTimeout}
-                          className="text-sm"
-                        />
-                      </TableCell>
-                      <TableCell>
-                        {token.completedAt ? <DateTime date={token.completedAt} /> : "–"}
-                      </TableCell>
-                      <TableCell>
+                  tokens.map((token) => {
+                    const ttlExpired =
+                      token.idempotencyKeyExpiresAt && token.idempotencyKeyExpiresAt < new Date();
+
+                    return (
+                      <TableRow key={token.friendlyId}>
+                        <TableCell>
+                          <span className="opacity-60">
+                            <DateTime date={token.createdAt} />
+                          </span>
+                        </TableCell>
+                        <TableCell>{token.friendlyId}</TableCell>
+                        <TableCell>
+                          <WaitpointStatusCombo
+                            status={token.status}
+                            outputIsError={token.isTimeout}
+                            className="text-xs"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          {token.completedAt ? <DateTime date={token.completedAt} /> : "–"}
+                        </TableCell>
+                        {/* <TableCell>
                         {token.completedAfter ? (
                           token.isTimeout ? (
                             <SimpleTooltip
@@ -180,28 +187,33 @@ export default function Page() {
                         ) : (
                           "–"
                         )}
-                      </TableCell>
-                      <TableCell>{token.idempotencyKey ?? "–"}</TableCell>
-                      <TableCell>
-                        {token.idempotencyKeyExpiresAt ? (
-                          token.idempotencyKeyExpiresAt < new Date() ? (
-                            <SimpleTooltip
-                              content="This idempotency key has expired"
-                              buttonClassName="opacity-50"
-                              button={<DateTime date={token.idempotencyKeyExpiresAt} />}
-                            />
+                      </TableCell> */}
+                        <TableCell>
+                          {" "}
+                          {token.idempotencyKey ? (
+                            token.idempotencyKeyExpiresAt ? (
+                              <SimpleTooltip
+                                content={
+                                  <>
+                                    <DateTime date={token.idempotencyKeyExpiresAt} />
+                                    {ttlExpired ? (
+                                      <span className="text-xs opacity-50"> (expired)</span>
+                                    ) : null}
+                                  </>
+                                }
+                                buttonClassName={ttlExpired ? "opacity-50" : undefined}
+                                button={token.idempotencyKey}
+                              />
+                            ) : (
+                              token.idempotencyKey
+                            )
                           ) : (
-                            <DateTime date={token.idempotencyKeyExpiresAt} />
-                          )
-                        ) : (
-                          "–"
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <DateTime date={token.createdAt} />
-                      </TableCell>
-                    </TableRow>
-                  ))
+                            "–"
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
                 ) : (
                   <TableRow>
                     <TableCell colSpan={6}>
