@@ -78,6 +78,7 @@ export class WaitpointTokenListPresenter extends BasePresenter {
         outputIsError: boolean;
         idempotencyKey: string;
         idempotencyKeyExpiresAt: Date | null;
+        inactiveIdempotencyKey: string | null;
         userProvidedIdempotencyKey: boolean;
         createdAt: Date;
       }[]
@@ -91,6 +92,7 @@ export class WaitpointTokenListPresenter extends BasePresenter {
       w."outputIsError",
       w."idempotencyKey",
       w."idempotencyKeyExpiresAt",
+      w."inactiveIdempotencyKey",
       w."userProvidedIdempotencyKey",
       w."createdAt"
     FROM
@@ -169,9 +171,10 @@ export class WaitpointTokenListPresenter extends BasePresenter {
         status: token.status,
         completedAt: token.completedAt,
         completedAfter: token.completedAfter,
-        idempotencyKey: token.idempotencyKey,
+        idempotencyKey: token.userProvidedIdempotencyKey
+          ? token.inactiveIdempotencyKey ?? token.idempotencyKey
+          : null,
         idempotencyKeyExpiresAt: token.idempotencyKeyExpiresAt,
-        userProvidedIdempotencyKey: token.userProvidedIdempotencyKey,
         //we can assume that all errors for tokens are timeouts
         isTimeout: token.outputIsError,
         createdAt: token.createdAt,

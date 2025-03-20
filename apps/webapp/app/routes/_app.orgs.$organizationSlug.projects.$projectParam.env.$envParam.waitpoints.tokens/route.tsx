@@ -19,6 +19,7 @@ import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { ListPagination } from "~/components/ListPagination";
 import { BigNumber } from "~/components/metrics/BigNumber";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { DateTime } from "~/components/primitives/DateTime";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
@@ -34,6 +35,7 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import {
+  SimpleTooltip,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -141,10 +143,11 @@ export default function Page() {
                 <TableRow>
                   <TableHeaderCell>ID</TableHeaderCell>
                   <TableHeaderCell>Status</TableHeaderCell>
-                  <TableHeaderCell>Completed At</TableHeaderCell>
-                  <TableHeaderCell>Completed After</TableHeaderCell>
+                  <TableHeaderCell>Completed</TableHeaderCell>
+                  <TableHeaderCell>Timeout</TableHeaderCell>
                   <TableHeaderCell>Idempotency Key</TableHeaderCell>
-                  <TableHeaderCell>Created At</TableHeaderCell>
+                  <TableHeaderCell>Idempotency Key TTL</TableHeaderCell>
+                  <TableHeaderCell>Created</TableHeaderCell>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -159,10 +162,44 @@ export default function Page() {
                           className="text-sm"
                         />
                       </TableCell>
-                      <TableCell>{token.completedAt?.toLocaleString()}</TableCell>
-                      <TableCell>{token.completedAfter?.toLocaleString()}</TableCell>
-                      <TableCell>{token.idempotencyKey}</TableCell>
-                      <TableCell>{token.createdAt.toLocaleString()}</TableCell>
+                      <TableCell>
+                        {token.completedAt ? <DateTime date={token.completedAt} /> : "–"}
+                      </TableCell>
+                      <TableCell>
+                        {token.completedAfter ? (
+                          token.isTimeout ? (
+                            <SimpleTooltip
+                              content="This waitpoint timed out"
+                              button={<DateTime date={token.completedAfter} />}
+                            />
+                          ) : (
+                            <span className="opacity-50">
+                              <DateTime date={token.completedAfter} />
+                            </span>
+                          )
+                        ) : (
+                          "–"
+                        )}
+                      </TableCell>
+                      <TableCell>{token.idempotencyKey ?? "–"}</TableCell>
+                      <TableCell>
+                        {token.idempotencyKeyExpiresAt ? (
+                          token.idempotencyKeyExpiresAt < new Date() ? (
+                            <SimpleTooltip
+                              content="This idempotency key has expired"
+                              buttonClassName="opacity-50"
+                              button={<DateTime date={token.idempotencyKeyExpiresAt} />}
+                            />
+                          ) : (
+                            <DateTime date={token.idempotencyKeyExpiresAt} />
+                          )
+                        ) : (
+                          "–"
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <DateTime date={token.createdAt} />
+                      </TableCell>
                     </TableRow>
                   ))
                 ) : (
