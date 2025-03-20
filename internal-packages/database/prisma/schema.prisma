@@ -1614,6 +1614,7 @@ model BackgroundWorker {
   attempts   TaskRunAttempt[]
   lockedRuns TaskRun[]
   files      BackgroundWorkerFile[]
+  queues     TaskQueue[]
 
   deployment WorkerDeployment?
 
@@ -1902,7 +1903,10 @@ enum TaskRunStatus {
   /// Task is waiting to be executed by a worker
   PENDING
 
-  /// Task hasn't been deployed yet but is waiting to be executed
+  /// The run is pending a version update because it cannot execute without additional information (task, queue, etc.). Replaces WAITING_FOR_DEPLOY
+  PENDING_VERSION
+
+  /// Task hasn't been deployed yet but is waiting to be executed. Deprecated in favor of PENDING_VERSION
   WAITING_FOR_DEPLOY
 
   /// Task is currently being executed by a worker
@@ -2558,6 +2562,7 @@ model TaskQueue {
 
   attempts TaskRunAttempt[]
   tasks    BackgroundWorkerTask[]
+  workers  BackgroundWorker[]
 
   @@unique([runtimeEnvironmentId, name])
 }

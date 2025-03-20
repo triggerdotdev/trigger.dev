@@ -236,11 +236,6 @@ export default function Page() {
                       <TableRow key={t.slug}>
                         <TableCell>
                           <div className="inline-flex flex-col gap-0.5">
-                            <TaskFunctionName
-                              variant="extra-small"
-                              functionName={t.exportName}
-                              className="-ml-1 inline-flex"
-                            />
                             <Paragraph variant="extra-small" className="text-text-dimmed">
                               {t.slug}
                             </Paragraph>

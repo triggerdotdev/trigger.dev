@@ -507,7 +507,7 @@ function TaskActivityGraph({ activity }: { activity: TaskActivity }) {
           isAnimationActive={false}
         />
         <Bar dataKey="PENDING" fill="#5F6570" stackId="a" strokeWidth={0} barSize={10} />
-        <Bar dataKey="WAITING_FOR_DEPLOY" fill="#F59E0B" stackId="a" strokeWidth={0} barSize={10} />
+        <Bar dataKey="PENDING_VERSION" fill="#F59E0B" stackId="a" strokeWidth={0} barSize={10} />
         <Bar dataKey="EXECUTING" fill="#3B82F6" stackId="a" strokeWidth={0} barSize={10} />
         <Bar
           dataKey="RETRYING_AFTER_FAILURE"

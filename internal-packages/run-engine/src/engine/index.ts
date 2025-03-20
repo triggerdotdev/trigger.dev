@@ -48,7 +48,7 @@ import { ReleaseConcurrencySystem } from "./systems/releaseConcurrencySystem.js"
 import { RunAttemptSystem } from "./systems/runAttemptSystem.js";
 import { SystemResources } from "./systems/systems.js";
 import { TtlSystem } from "./systems/ttlSystem.js";
-import { WaitingForWorkerSystem } from "./systems/waitingForWorkerSystem.js";
+import { PendingVersionSystem } from "./systems/pendingVersionSystem.js";
 import { WaitpointSystem } from "./systems/waitpointSystem.js";
 import { EngineWorker, HeartbeatTimeouts, RunEngineOptions, TriggerParams } from "./types.js";
 import { workerCatalog } from "./workerCatalog.js";
@@ -73,7 +73,7 @@ export class RunEngine {
   checkpointSystem: CheckpointSystem;
   delayedRunSystem: DelayedRunSystem;
   ttlSystem: TtlSystem;
-  waitingForWorkerSystem: WaitingForWorkerSystem;
+  pendingVersionSystem: PendingVersionSystem;
   releaseConcurrencySystem: ReleaseConcurrencySystem;
 
   constructor(private readonly options: RunEngineOptions) {
@@ -148,10 +148,10 @@ export class RunEngine {
             reason: payload.reason,
           });
         },
-        queueRunsWaitingForWorker: async ({ payload }) => {
-          await this.waitingForWorkerSystem.enqueueRunsWaitingForWorker({
-            backgroundWorkerId: payload.backgroundWorkerId,
-          });
+        queueRunsPendingVersion: async ({ payload }) => {
+          await this.pendingVersionSystem.enqueueRunsForBackgroundWorker(
+            payload.backgroundWorkerId
+          );
         },
         tryCompleteBatch: async ({ payload }) => {
           await this.batchSystem.performCompleteBatch({ batchId: payload.batchId });
@@ -266,7 +266,7 @@ export class RunEngine {
       enqueueSystem: this.enqueueSystem,
     });
 
-    this.waitingForWorkerSystem = new WaitingForWorkerSystem({
+    this.pendingVersionSystem = new PendingVersionSystem({
       resources,
       enqueueSystem: this.enqueueSystem,
     });
@@ -724,14 +724,8 @@ export class RunEngine {
     });
   }
 
-  async queueRunsWaitingForWorker({
-    backgroundWorkerId,
-  }: {
-    backgroundWorkerId: string;
-  }): Promise<void> {
-    return this.waitingForWorkerSystem.enqueueRunsWaitingForWorker({
-      backgroundWorkerId,
-    });
+  async scheduleEnqueueRunsForBackgroundWorker(backgroundWorkerId: string): Promise<void> {
+    return this.pendingVersionSystem.scheduleResolvePendingVersionRuns(backgroundWorkerId);
   }
 
   /**

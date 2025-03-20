@@ -20,10 +20,12 @@ import {
 } from "../runQueue.server";
 import { calculateNextBuildVersion } from "../utils/calculateNextBuildVersion";
 import { clampMaxDuration } from "../utils/maxDuration";
-import { BaseService } from "./baseService.server";
+import { BaseService, ServiceValidationError } from "./baseService.server";
 import { CheckScheduleService } from "./checkSchedule.server";
 import { projectPubSub } from "./projectPubSub.server";
 import { RegisterNextTaskScheduleInstanceService } from "./registerNextTaskScheduleInstance.server";
+import { tryCatch } from "@trigger.dev/core/v3";
+import { engine } from "../runEngine.server";
 
 export class CreateBackgroundWorkerService extends BaseService {
   public async call(
@@ -96,58 +98,97 @@ export class CreateBackgroundWorkerService extends BaseService {
         });
       }
 
-      const tasksToBackgroundFiles = await createBackgroundFiles(
-        body.metadata.sourceFiles,
-        backgroundWorker,
-        environment,
-        this._prisma
-      );
-      await createWorkerResources(
-        body.metadata,
-        backgroundWorker,
-        environment,
-        this._prisma,
-        tasksToBackgroundFiles
-      );
-      await syncDeclarativeSchedules(
-        body.metadata.tasks,
-        backgroundWorker,
-        environment,
-        this._prisma
+      const [filesError, tasksToBackgroundFiles] = await tryCatch(
+        createBackgroundFiles(
+          body.metadata.sourceFiles,
+          backgroundWorker,
+          environment,
+          this._prisma
+        )
       );
 
-      try {
-        //send a notification that a new worker has been created
-        await projectPubSub.publish(
-          `project:${project.id}:env:${environment.id}`,
-          "WORKER_CREATED",
-          {
-            environmentId: environment.id,
-            environmentType: environment.type,
-            createdAt: backgroundWorker.createdAt,
-            taskCount: body.metadata.tasks.length,
-            type: "local",
-          }
+      if (filesError) {
+        logger.error("Error creating background worker files", {
+          error: filesError,
+          backgroundWorker,
+          environment,
+        });
+
+        throw new ServiceValidationError("Error creating background worker files");
+      }
+
+      const [resourcesError] = await tryCatch(
+        createWorkerResources(
+          body.metadata,
+          backgroundWorker,
+          environment,
+          this._prisma,
+          tasksToBackgroundFiles
+        )
+      );
+
+      if (resourcesError) {
+        logger.error("Error creating worker resources", {
+          error: resourcesError,
+          backgroundWorker,
+          environment,
+        });
+        throw new ServiceValidationError("Error creating worker resources");
+      }
+
+      const [schedulesError] = await tryCatch(
+        syncDeclarativeSchedules(body.metadata.tasks, backgroundWorker, environment, this._prisma)
+      );
+
+      if (schedulesError) {
+        logger.error("Error syncing declarative schedules", {
+          error: schedulesError,
+          backgroundWorker,
+          environment,
+        });
+        throw new ServiceValidationError("Error syncing declarative schedules");
+      }
+
+      const [updateConcurrencyLimitsError] = await tryCatch(
+        updateEnvConcurrencyLimits(environment)
+      );
+
+      if (updateConcurrencyLimitsError) {
+        logger.error("Error updating environment concurrency limits", {
+          error: updateConcurrencyLimitsError,
+          backgroundWorker,
+          environment,
+        });
+      }
+
+      const [publishError] = await tryCatch(
+        projectPubSub.publish(`project:${project.id}:env:${environment.id}`, "WORKER_CREATED", {
+          environmentId: environment.id,
+          environmentType: environment.type,
+          createdAt: backgroundWorker.createdAt,
+          taskCount: body.metadata.tasks.length,
+          type: "local",
+        })
+      );
+
+      if (publishError) {
+        logger.error("Error publishing WORKER_CREATED event", {
+          error: publishError,
+          backgroundWorker,
+          environment,
+        });
+      }
+
+      if (backgroundWorker.engine === "V2") {
+        const [schedulePendingVersionsError] = await tryCatch(
+          engine.scheduleEnqueueRunsForBackgroundWorker(backgroundWorker.id)
         );
 
-        await updateEnvConcurrencyLimits(environment);
-      } catch (err) {
-        logger.error(
-          "Error publishing WORKER_CREATED event or updating global concurrency limits",
-          {
-            error:
-              err instanceof Error
-                ? {
-                    name: err.name,
-                    message: err.message,
-                    stack: err.stack,
-                  }
-                : err,
-            project,
-            environment,
-            backgroundWorker,
-          }
-        );
+        if (schedulePendingVersionsError) {
+          logger.error("Error scheduling pending versions", {
+            error: schedulePendingVersionsError,
+          });
+        }
       }
 
       return backgroundWorker;
@@ -338,6 +379,20 @@ async function createWorkerQueue(
         runtimeEnvironmentId: worker.runtimeEnvironmentId,
         projectId: worker.projectId,
         type: queueType,
+        workers: {
+          connect: {
+            id: worker.id,
+          },
+        },
+      },
+    });
+  } else {
+    await prisma.taskQueue.update({
+      where: {
+        id: taskQueue.id,
+      },
+      data: {
+        workers: { connect: { id: worker.id } },
       },
     });
   }

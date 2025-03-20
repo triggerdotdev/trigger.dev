@@ -24,6 +24,7 @@ export * from "./jwt.js";
 export * from "./idempotencyKeys.js";
 export * from "./streams/asyncIterableStream.js";
 export * from "./utils/getEnv.js";
+export * from "./tryCatch.js";
 export {
   formatDuration,
   formatDurationInDays,

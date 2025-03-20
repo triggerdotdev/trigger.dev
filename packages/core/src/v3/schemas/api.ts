@@ -609,6 +609,8 @@ export const TimezonesResult = z.object({
 export type TimezonesResult = z.infer<typeof TimezonesResult>;
 
 export const RunStatus = z.enum([
+  /// Task is waiting for a version update because it cannot execute without additional information (task, queue, etc.). Replaces WAITING_FOR_DEPLOY
+  "PENDING_VERSION",
   /// Task hasn't been deployed yet but is waiting to be executed
   "WAITING_FOR_DEPLOY",
   /// Task is waiting to be executed by a worker

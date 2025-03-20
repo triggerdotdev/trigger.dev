@@ -64,12 +64,7 @@ export class CreateDeployedBackgroundWorkerService extends BaseService {
       }
 
       try {
-        await createWorkerResources(
-          body.metadata.tasks,
-          backgroundWorker,
-          environment,
-          this._prisma
-        );
+        await createWorkerResources(body.metadata, backgroundWorker, environment, this._prisma);
         await syncDeclarativeSchedules(
           body.metadata.tasks,
           backgroundWorker,

@@ -1,0 +1,4 @@
+-- AlterEnum
+ALTER TYPE "TaskRunStatus"
+ADD
+  VALUE 'PENDING_VERSION';

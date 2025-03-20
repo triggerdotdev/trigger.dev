@@ -21,6 +21,7 @@ import { cn } from "~/utils/cn";
 export const allTaskRunStatuses = [
   "DELAYED",
   "WAITING_FOR_DEPLOY",
+  "PENDING_VERSION",
   "PENDING",
   "EXECUTING",
   "RETRYING_AFTER_FAILURE",
@@ -37,7 +38,7 @@ export const allTaskRunStatuses = [
 ] as const satisfies Readonly<Array<TaskRunStatus>>;
 
 export const filterableTaskRunStatuses = [
-  "WAITING_FOR_DEPLOY",
+  "PENDING_VERSION",
   "DELAYED",
   "PENDING",
   "WAITING_TO_RESUME",
@@ -56,7 +57,10 @@ export const filterableTaskRunStatuses = [
 const taskRunStatusDescriptions: Record<TaskRunStatus, string> = {
   DELAYED: "Task has been delayed and is waiting to be executed.",
   PENDING: "Task is waiting to be executed.",
-  WAITING_FOR_DEPLOY: "Task needs to be deployed first to start executing.",
+  PENDING_VERSION:
+    "Task is waiting for a version update because it cannot execute without additional information (task, queue, etc.).",
+  WAITING_FOR_DEPLOY:
+    "Task is waiting for a version update because it cannot execute without additional information (task, queue, etc.).",
   EXECUTING: "Task is currently being executed.",
   RETRYING_AFTER_FAILURE: "Task is being reattempted after a failure.",
   WAITING_TO_RESUME: `You have used a "wait" function. When the wait is complete, the task will resume execution.`,
@@ -73,6 +77,7 @@ const taskRunStatusDescriptions: Record<TaskRunStatus, string> = {
 
 export const QUEUED_STATUSES = [
   "PENDING",
+  "PENDING_VERSION",
   "WAITING_FOR_DEPLOY",
   "DELAYED",
 ] satisfies TaskRunStatus[];
@@ -120,6 +125,7 @@ export function TaskRunStatusIcon({
       return <ClockIcon className={cn(runStatusClassNameColor(status), className)} />;
     case "PENDING":
       return <RectangleStackIcon className={cn(runStatusClassNameColor(status), className)} />;
+    case "PENDING_VERSION":
     case "WAITING_FOR_DEPLOY":
       return <RectangleStackIcon className={cn(runStatusClassNameColor(status), className)} />;
     case "EXECUTING":
@@ -158,6 +164,7 @@ export function runStatusClassNameColor(status: TaskRunStatus): string {
     case "PENDING":
     case "DELAYED":
       return "text-charcoal-500";
+    case "PENDING_VERSION":
     case "WAITING_FOR_DEPLOY":
       return "text-amber-500";
     case "EXECUTING":
@@ -194,8 +201,9 @@ export function runStatusTitle(status: TaskRunStatus): string {
       return "Delayed";
     case "PENDING":
       return "Queued";
+    case "PENDING_VERSION":
     case "WAITING_FOR_DEPLOY":
-      return "Waiting for deploy";
+      return "Pending version";
     case "EXECUTING":
       return "Executing";
     case "WAITING_TO_RESUME":

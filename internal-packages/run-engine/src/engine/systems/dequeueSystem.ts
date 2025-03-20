@@ -186,6 +186,7 @@ export class DequeueSystem {
                   }
                   case "NO_WORKER":
                   case "TASK_NEVER_REGISTERED":
+                  case "QUEUE_NOT_FOUND":
                   case "TASK_NOT_IN_LATEST": {
                     this.$.logger.warn(`RunEngine.dequeueFromMasterQueue(): ${result.code}`, {
                       runId,
@@ -194,7 +195,7 @@ export class DequeueSystem {
                     });
 
                     //not deployed yet, so we'll wait for the deploy
-                    await this.#waitingForDeploy({
+                    await this.#pendingVersion({
                       orgId,
                       runId,
                       reason: result.message,
@@ -232,7 +233,7 @@ export class DequeueSystem {
                     result,
                   });
                   //not deployed yet, so we'll wait for the deploy
-                  await this.#waitingForDeploy({
+                  await this.#pendingVersion({
                     orgId,
                     runId,
                     reason: "No deployment or deployment image reference found for deployed run",
@@ -340,43 +341,6 @@ export class DequeueSystem {
 
                 maxAttempts = parsedConfig.data.maxAttempts;
               }
-
-              const queue = await prisma.taskQueue.findUnique({
-                where: {
-                  runtimeEnvironmentId_name: {
-                    runtimeEnvironmentId: result.run.runtimeEnvironmentId,
-                    name: sanitizeQueueName(result.run.queue),
-                  },
-                },
-              });
-
-              if (!queue) {
-                this.$.logger.debug(
-                  "RunEngine.dequeueFromMasterQueue(): queue not found, so nacking message",
-                  {
-                    queueMessage: message,
-                    taskRunQueue: result.run.queue,
-                    runtimeEnvironmentId: result.run.runtimeEnvironmentId,
-                  }
-                );
-
-                //will auto-retry
-                const gotRequeued = await this.$.runQueue.nackMessage({ orgId, messageId: runId });
-                if (!gotRequeued) {
-                  await this.runAttemptSystem.systemFailure({
-                    runId,
-                    error: {
-                      type: "INTERNAL_ERROR",
-                      code: "TASK_DEQUEUED_QUEUE_NOT_FOUND",
-                      message: `Tried to dequeue the run but the queue doesn't exist: ${result.run.queue}`,
-                    },
-                    tx: prisma,
-                  });
-                }
-
-                return null;
-              }
-
               //update the run
               const lockedTaskRun = await prisma.taskRun.update({
                 where: {
@@ -386,7 +350,7 @@ export class DequeueSystem {
                   lockedAt: new Date(),
                   lockedById: result.task.id,
                   lockedToVersionId: result.worker.id,
-                  lockedQueueId: queue.id,
+                  lockedQueueId: result.queue.id,
                   startedAt: result.run.startedAt ?? new Date(),
                   baseCostInCents: this.options.machines.baseCostInCents,
                   machinePreset: machinePreset.name,
@@ -547,7 +511,7 @@ export class DequeueSystem {
     );
   }
 
-  async #waitingForDeploy({
+  async #pendingVersion({
     orgId,
     runId,
     workerId,
@@ -566,14 +530,14 @@ export class DequeueSystem {
 
     return startSpan(
       this.$.tracer,
-      "#waitingForDeploy",
+      "#pendingVersion",
       async (span) => {
         return this.$.runLock.lock([runId], 5_000, async (signal) => {
           //mark run as waiting for deploy
           const run = await prisma.taskRun.update({
             where: { id: runId },
             data: {
-              status: "WAITING_FOR_DEPLOY",
+              status: "PENDING_VERSION",
             },
             select: {
               id: true,
@@ -588,6 +552,11 @@ export class DequeueSystem {
                 },
               },
             },
+          });
+
+          this.$.logger.debug("RunEngine.dequeueFromMasterQueue(): Pending version", {
+            runId,
+            run,
           });
 
           await this.executionSnapshotSystem.createExecutionSnapshot(prisma, {
