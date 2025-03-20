@@ -249,8 +249,6 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
               console.error("Failed to suspend run", { params });
               return;
             }
-
-            console.log("Suspended run", { params });
           },
         }
       )

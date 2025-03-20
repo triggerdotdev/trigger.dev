@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "dev": "tsx --experimental-sqlite --require dotenv/config --watch src/index.ts",
+    "dev": "tsx --experimental-sqlite --require dotenv/config --watch src/index.ts || (echo '!! Remember to run: nvm use'; exit 1)",
     "start": "node --experimental-sqlite dist/index.js",
     "typecheck": "tsc --noEmit"
   },

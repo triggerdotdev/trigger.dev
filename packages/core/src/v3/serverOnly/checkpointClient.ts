@@ -21,10 +21,6 @@ export class CheckpointClient {
     return new URL("/api/v1/restore", this.apiUrl);
   }
 
-  private get suspendUrl() {
-    return new URL("/api/v1/suspend", this.apiUrl);
-  }
-
   constructor(opts: CheckpointClientOptions) {
     this.apiUrl = opts.apiUrl;
     this.workerClient = opts.workerClient;
@@ -41,26 +37,19 @@ export class CheckpointClient {
     containerId: string;
     runnerId: string;
   }): Promise<boolean> {
-    const completionUrl = this.workerClient.getSuspendCompletionUrl(
-      runFriendlyId,
-      snapshotFriendlyId,
-      runnerId
-    );
-
-    const res = await fetch(this.suspendUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        type: "DOCKER",
-        containerId,
-        callbacks: {
-          completion: completionUrl.url,
-          headers: completionUrl.headers,
+    const res = await fetch(
+      new URL(`/api/v1/runs/${runFriendlyId}/snapshots/${snapshotFriendlyId}/suspend`, this.apiUrl),
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
         },
-      } satisfies CheckpointServiceSuspendRequestBodyInput),
-    });
+        body: JSON.stringify({
+          type: "DOCKER",
+          containerId,
+        } satisfies CheckpointServiceSuspendRequestBodyInput),
+      }
+    );
 
     if (!res.ok) {
       this.logger.error("[CheckpointClient] Suspend request failed", {
