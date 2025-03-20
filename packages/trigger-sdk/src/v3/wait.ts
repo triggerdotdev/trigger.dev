@@ -17,6 +17,30 @@ import { tracer } from "./tracer.js";
 import { conditionallyImportAndParsePacket } from "@trigger.dev/core/v3/utils/ioSerialization";
 import { SpanStatusCode } from "@opentelemetry/api";
 
+/**
+ * This creates a waitpoint token.
+ * You can use this to pause a run until you complete the waitpoint (or it times out).
+ *
+ * @example
+ *
+ * ```ts
+ * const token = await wait.createToken({
+ *   idempotencyKey: `approve-document-${documentId}`,
+ *   timeout: "24h",
+ *   tags: [`document-${documentId}`],
+ * });
+ *
+ * // Later, in a different part of your codebase, you can complete the waitpoint
+ * await wait.completeToken(token, {
+ *   status: "approved",
+ *   comment: "Looks good to me!",
+ * });
+ * ```
+ *
+ * @param options - The options for the waitpoint token.
+ * @param requestOptions - The request options for the waitpoint token.
+ * @returns The waitpoint token.
+ */
 function createToken(
   options?: CreateWaitpointTokenRequestBody,
   requestOptions?: ApiRequestOptions
@@ -49,8 +73,34 @@ function createToken(
   return apiClient.createWaitpointToken(options ?? {}, $requestOptions);
 }
 
+/**
+ * This completes a waitpoint token.
+ * You can use this to complete a waitpoint token that you created earlier.
+ *
+ * @example
+ *
+ * ```ts
+ * await wait.completeToken(token, {
+ *   status: "approved",
+ *   comment: "Looks good to me!",
+ * });
+ * ```
+ *
+ * @param token - The token to complete.
+ * @param data - The data to complete the waitpoint with.
+ * @param requestOptions - The request options for the waitpoint token.
+ * @returns The waitpoint token.
+ */
 async function completeToken<T>(
+  /**
+   * The token to complete.
+   * This can be a string token ID or an object with an `id` property.
+   */
   token: string | { id: string },
+  /**
+   * The data to complete the waitpoint with.
+   * This will be returned when you wait for the token.
+   */
   data: T,
   requestOptions?: ApiRequestOptions
 ) {
@@ -222,8 +272,46 @@ export const wait = {
   },
   createToken,
   completeToken,
+  /**
+   * This waits for a waitpoint token to be completed.
+   * It can only be used inside a task.run() block.
+   *
+   * @example
+   *
+   * ```ts
+   * const result = await wait.forToken<typeof ApprovalData>(token);
+   * if (!result.ok) {
+   *   // The waitpoint timed out
+   *   throw result.error;
+   * }
+   *
+   * // This will be the type ApprovalData
+   * const approval = result.output;
+   * ```
+   *
+   * @param token - The token to wait for.
+   * @param options - The options for the waitpoint token.
+   * @returns The waitpoint token.
+   */
   forToken: async <T>(
-    token: string | { id: string }
+    /**
+     * The token to wait for.
+     * This can be a string token ID or an object with an `id` property.
+     */
+    token: string | { id: string },
+    /**
+     * The options for the waitpoint token.
+     */
+    options?: {
+      /**
+       * If set to true, this will cause the waitpoint to release the current run from the queue's concurrency.
+       *
+       * This is useful if you want to allow other runs to execute while waiting
+       *
+       * @default false
+       */
+      releaseConcurrency?: boolean;
+    }
   ): Promise<Prettify<WaitpointTokenTypedResult<T>>> => {
     const ctx = taskContext.ctx;
 
@@ -238,7 +326,11 @@ export const wait = {
     return tracer.startActiveSpan(
       `wait.forToken()`,
       async (span) => {
-        const response = await apiClient.waitForWaitpointToken(ctx.run.id, tokenId);
+        const response = await apiClient.waitForWaitpointToken({
+          runFriendlyId: ctx.run.id,
+          waitpointFriendlyId: tokenId,
+          releaseConcurrency: options?.releaseConcurrency,
+        });
 
         if (!response.success) {
           throw new Error(`Failed to wait for wait token ${tokenId}`);

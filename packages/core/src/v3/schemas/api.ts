@@ -972,8 +972,18 @@ export const WaitForDurationRequestBody = z.object({
    */
   idempotencyKeyTTL: z.string().optional(),
 
+  /**
+   * If set to true, this will cause the waitpoint to release the current run from the queue's concurrency.
+   *
+   * This is useful if you want to allow other runs to execute while the waiting
+   *
+   * @default false
+   */
   releaseConcurrency: z.boolean().optional(),
 
+  /**
+   * The date that the waitpoint will complete.
+   */
   date: z.coerce.date(),
 });
 export type WaitForDurationRequestBody = z.infer<typeof WaitForDurationRequestBody>;

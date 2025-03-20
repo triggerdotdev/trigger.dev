@@ -47,7 +47,7 @@ export const waitToken = task({
     }
 
     //wait for the token
-    const result = await wait.forToken<{ foo: string }>(token);
+    const result = await wait.forToken<{ foo: string }>(token, { releaseConcurrency: true });
     if (!result.ok) {
       logger.log("Token timeout", result);
     } else {
