@@ -1,0 +1,161 @@
+import { Prisma, type WaitpointStatus } from "@trigger.dev/database";
+import { type Direction } from "~/components/ListPagination";
+import { sqlDatabaseSchema } from "~/db.server";
+import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { BasePresenter } from "./basePresenter.server";
+import { isWaitpointOutputTimeout } from "@trigger.dev/core/v3/schemas";
+
+const DEFAULT_PAGE_SIZE = 25;
+
+export type WaitpointTokenListOptions = {
+  environment: AuthenticatedEnvironment;
+  // filters
+  friendlyId?: string;
+  statuses?: WaitpointStatus[];
+  idempotencyKey?: string;
+  from?: number;
+  to?: number;
+  // pagination
+  direction?: Direction;
+  cursor?: string;
+  pageSize?: number;
+};
+
+export class WaitpointTokenListPresenter extends BasePresenter {
+  public async call({
+    environment,
+    friendlyId,
+    statuses,
+    idempotencyKey,
+    from,
+    to,
+    direction = "forward",
+    cursor,
+    pageSize = DEFAULT_PAGE_SIZE,
+  }: WaitpointTokenListOptions) {
+    const hasStatusFilters = statuses && statuses.length > 0;
+
+    const hasFilters =
+      friendlyId !== undefined ||
+      hasStatusFilters ||
+      idempotencyKey !== undefined ||
+      from !== undefined ||
+      to !== undefined;
+
+    // Get the waitpoint tokens using raw SQL for better performance
+    const tokens = await this._replica.$queryRaw<
+      {
+        id: string;
+        friendlyId: string;
+        status: WaitpointStatus;
+        completedAt: Date | null;
+        completedAfter: Date | null;
+        outputIsError: boolean;
+        idempotencyKey: string;
+        idempotencyKeyExpiresAt: Date | null;
+        userProvidedIdempotencyKey: boolean;
+        createdAt: Date;
+      }[]
+    >`
+    SELECT
+      w.id,
+      w."friendlyId",
+      w.status,
+      w."completedAt",
+      w."completedAfter",
+      w."outputIsError",
+      w."idempotencyKey",
+      w."idempotencyKeyExpiresAt",
+      w."userProvidedIdempotencyKey",
+      w."createdAt",
+    FROM
+      ${sqlDatabaseSchema}."Waitpoint" w
+    WHERE
+      w."environmentId" = ${environment.id}
+      AND w.type = 'MANUAL'
+      -- cursor
+      ${
+        cursor
+          ? direction === "forward"
+            ? Prisma.sql`AND w.id < ${cursor}`
+            : Prisma.sql`AND w.id > ${cursor}`
+          : Prisma.empty
+      }
+      -- filters
+      ${friendlyId ? Prisma.sql`AND w."friendlyId" = ${friendlyId}` : Prisma.empty}
+      ${
+        statuses && statuses.length > 0
+          ? Prisma.sql`AND w.status = ANY(ARRAY[${Prisma.join(statuses)}]::"WaitpointStatus"[])`
+          : Prisma.empty
+      }
+      ${idempotencyKey ? Prisma.sql`AND w."idempotencyKey" = ${idempotencyKey}` : Prisma.empty}
+      ${
+        from
+          ? Prisma.sql`AND w."createdAt" >= ${new Date(from).toISOString()}::timestamp`
+          : Prisma.empty
+      }
+      ${
+        to
+          ? Prisma.sql`AND w."createdAt" <= ${new Date(to).toISOString()}::timestamp`
+          : Prisma.empty
+      }
+    ORDER BY
+      ${direction === "forward" ? Prisma.sql`w.id DESC` : Prisma.sql`w.id ASC`}
+    LIMIT ${pageSize + 1}`;
+
+    const hasMore = tokens.length > pageSize;
+
+    //get cursors for next and previous pages
+    let next: string | undefined;
+    let previous: string | undefined;
+    switch (direction) {
+      case "forward":
+        previous = cursor ? tokens.at(0)?.id : undefined;
+        if (hasMore) {
+          next = tokens[pageSize - 1]?.id;
+        }
+        break;
+      case "backward":
+        tokens.reverse();
+        if (hasMore) {
+          previous = tokens[1]?.id;
+          next = tokens[pageSize]?.id;
+        } else {
+          next = tokens[pageSize - 1]?.id;
+        }
+        break;
+    }
+
+    const tokensToReturn =
+      direction === "backward" && hasMore
+        ? tokens.slice(1, pageSize + 1)
+        : tokens.slice(0, pageSize);
+
+    return {
+      tokens: tokensToReturn.map((token) => ({
+        friendlyId: token.friendlyId,
+        status: token.status,
+        completedAt: token.completedAt,
+        completedAfter: token.completedAfter,
+        idempotencyKey: token.idempotencyKey,
+        idempotencyKeyExpiresAt: token.idempotencyKeyExpiresAt,
+        userProvidedIdempotencyKey: token.userProvidedIdempotencyKey,
+        //we can assume that all errors for tokens are timeouts
+        isTimeout: token.outputIsError,
+        createdAt: token.createdAt,
+      })),
+      pagination: {
+        next,
+        previous,
+      },
+      filters: {
+        friendlyId: friendlyId || undefined,
+        statuses: statuses || [],
+        idempotencyKey: idempotencyKey || undefined,
+        from,
+        to,
+      },
+      hasFilters,
+    };
+  }
+}
