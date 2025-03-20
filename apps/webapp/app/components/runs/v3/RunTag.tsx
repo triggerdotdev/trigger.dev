@@ -45,7 +45,7 @@ export function RunTag({ tag, to, tooltip }: { tag: string; to?: string; tooltip
           <span className="flex h-6 items-stretch">{renderTagContent()}</span>
         </Link>
       }
-      content={tooltip || `Filter runs by ${tag}`}
+      content={tooltip || `Filter by ${tag}`}
       disableHoverableContent
     />
   ) : (
@@ -83,7 +83,7 @@ function CopyButton({ textToCopy, isHovered }: { textToCopy: string; isHovered: 
   return (
     <SimpleTooltip
       button={
-        <button
+        <span
           onClick={copy}
           onMouseDown={(e) => e.stopPropagation()}
           className={cn(
@@ -99,7 +99,7 @@ function CopyButton({ textToCopy, isHovered }: { textToCopy: string; isHovered: 
           ) : (
             <ClipboardIcon className="size-3.5" />
           )}
-        </button>
+        </span>
       }
       content={copied ? "Copied!" : "Copy tag"}
       disableHoverableContent
