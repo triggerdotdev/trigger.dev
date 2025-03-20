@@ -1707,7 +1707,8 @@ model TaskRun {
 
   engine RunEngineVersion @default(V1)
 
-  status TaskRunStatus @default(PENDING)
+  status       TaskRunStatus @default(PENDING)
+  statusReason String?
 
   idempotencyKey          String?
   idempotencyKeyExpiresAt DateTime?

@@ -75,7 +75,6 @@ import {
 import { useEnvironment } from "~/hooks/useEnvironment";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const userId = await requireUserId(request);
   const { projectParam, organizationSlug, envParam, runParam, spanParam } =
     v3SpanParamsSchema.parse(params);
 
@@ -83,8 +82,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   try {
     const result = await presenter.call({
-      userId,
-      organizationSlug,
       projectSlug: projectParam,
       spanId: spanParam,
       runFriendlyId: runParam,
@@ -405,7 +402,7 @@ function RunBody({
                 <Property.Item>
                   <Property.Label>Status</Property.Label>
                   <Property.Value>
-                    <TaskRunStatusCombo status={run.status} />
+                    <TaskRunStatusCombo status={run.status} statusReason={run.statusReason} />
                   </Property.Value>
                 </Property.Item>
                 <Property.Item>
@@ -716,7 +713,11 @@ function RunBody({
           ) : (
             <div className="flex flex-col gap-4 pt-3">
               <div className="border-b border-grid-bright pb-3">
-                <TaskRunStatusCombo status={run.status} className="text-sm" />
+                <TaskRunStatusCombo
+                  status={run.status}
+                  statusReason={run.statusReason}
+                  className="text-sm"
+                />
               </div>
               <RunTimeline run={run} />
 

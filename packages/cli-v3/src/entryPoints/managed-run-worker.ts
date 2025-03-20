@@ -266,7 +266,9 @@ const zodIpc = new ZodIpcConnection({
             },
             async () => {
               const beforeImport = performance.now();
+              resourceCatalog.setCurrentFileContext(taskManifest.entryPoint, taskManifest.filePath);
               await import(normalizeImportPath(taskManifest.entryPoint));
+              resourceCatalog.clearCurrentFileContext();
               const durationMs = performance.now() - beforeImport;
 
               console.log(

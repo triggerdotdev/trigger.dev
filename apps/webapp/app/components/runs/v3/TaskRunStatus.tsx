@@ -15,6 +15,7 @@ import { type TaskRunStatus } from "@trigger.dev/database";
 import assertNever from "assert-never";
 import { HourglassIcon } from "lucide-react";
 import { TimedOutIcon } from "~/assets/icons/TimedOutIcon";
+import { Callout } from "~/components/primitives/Callout";
 import { Spinner } from "~/components/primitives/Spinner";
 import { cn } from "~/utils/cn";
 
@@ -57,10 +58,8 @@ export const filterableTaskRunStatuses = [
 const taskRunStatusDescriptions: Record<TaskRunStatus, string> = {
   DELAYED: "Task has been delayed and is waiting to be executed.",
   PENDING: "Task is waiting to be executed.",
-  PENDING_VERSION:
-    "Task is waiting for a version update because it cannot execute without additional information (task, queue, etc.).",
-  WAITING_FOR_DEPLOY:
-    "Task is waiting for a version update because it cannot execute without additional information (task, queue, etc.).",
+  PENDING_VERSION: "Run cannot execute until a version includes the task and queue.",
+  WAITING_FOR_DEPLOY: "Run cannot execute until a version includes the task and queue.",
   EXECUTING: "Task is currently being executed.",
   RETRYING_AFTER_FAILURE: "Task is being reattempted after a failure.",
   WAITING_TO_RESUME: `You have used a "wait" function. When the wait is complete, the task will resume execution.`,
@@ -94,10 +93,12 @@ export function descriptionForTaskRunStatus(status: TaskRunStatus): string {
 
 export function TaskRunStatusCombo({
   status,
+  statusReason,
   className,
   iconClassName,
 }: {
   status: TaskRunStatus;
+  statusReason?: string;
   className?: string;
   iconClassName?: string;
 }) {
@@ -105,7 +106,45 @@ export function TaskRunStatusCombo({
     <span className={cn("flex items-center gap-1", className)}>
       <TaskRunStatusIcon status={status} className={cn("h-4 w-4", iconClassName)} />
       <TaskRunStatusLabel status={status} />
+      <TaskRunStatusReason status={status} statusReason={statusReason} />
     </span>
+  );
+}
+
+const statusReasonsToDescription: Record<string, string> = {
+  NO_DEPLOYMENT: "No deployment or deployment image reference found for deployed run",
+  NO_WORKER: "No worker found for run",
+  TASK_NEVER_REGISTERED: "Task never registered",
+  QUEUE_NOT_FOUND: "Queue not found",
+  TASK_NOT_IN_LATEST: "Task not in latest version",
+  BACKGROUND_WORKER_MISMATCH: "Background worker mismatch",
+};
+
+function TaskRunStatusReason({
+  status,
+  statusReason,
+}: {
+  status: TaskRunStatus;
+  statusReason?: string;
+}) {
+  if (status !== "PENDING_VERSION") {
+    return null;
+  }
+
+  if (!statusReason) {
+    return null;
+  }
+
+  const description = statusReasonsToDescription[statusReason];
+
+  if (!description) {
+    return null;
+  }
+
+  return (
+    <Callout to="https://trigger.dev/docs" variant="warning" className="w-fit text-sm">
+      {description}
+    </Callout>
   );
 }
 

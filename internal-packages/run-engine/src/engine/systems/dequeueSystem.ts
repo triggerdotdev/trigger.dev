@@ -199,6 +199,7 @@ export class DequeueSystem {
                       orgId,
                       runId,
                       reason: result.message,
+                      statusReason: result.code,
                       tx: prisma,
                     });
                     return null;
@@ -237,6 +238,7 @@ export class DequeueSystem {
                     orgId,
                     runId,
                     reason: "No deployment or deployment image reference found for deployed run",
+                    statusReason: "NO_DEPLOYMENT",
                     tx: prisma,
                   });
 
@@ -517,10 +519,12 @@ export class DequeueSystem {
     workerId,
     runnerId,
     reason,
+    statusReason,
     tx,
   }: {
     orgId: string;
     runId: string;
+    statusReason: string;
     workerId?: string;
     runnerId?: string;
     reason?: string;
@@ -538,6 +542,7 @@ export class DequeueSystem {
             where: { id: runId },
             data: {
               status: "PENDING_VERSION",
+              statusReason,
             },
             select: {
               id: true,

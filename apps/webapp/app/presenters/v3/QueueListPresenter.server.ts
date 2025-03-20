@@ -56,6 +56,7 @@ export class QueueListPresenter extends BasePresenter {
     const queues = await this._replica.taskQueue.findMany({
       where: {
         runtimeEnvironmentId: environment.id,
+        version: "V2",
       },
       select: {
         friendlyId: true,
