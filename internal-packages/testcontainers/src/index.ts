@@ -1,14 +1,13 @@
 import { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { StartedRedisContainer } from "@testcontainers/redis";
 import { PrismaClient } from "@trigger.dev/database";
-import { Redis, RedisOptions } from "ioredis";
+import { RedisOptions } from "ioredis";
 import { Network, type StartedNetwork } from "testcontainers";
 import { test } from "vitest";
 import { createElectricContainer, createPostgresContainer, createRedisContainer } from "./utils";
 
-export { StartedRedisContainer };
-export * from "./setup";
 export { assertNonNullable } from "./utils";
+export { StartedRedisContainer };
 
 type NetworkContext = { network: StartedNetwork };
 

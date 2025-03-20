@@ -1,28 +1,29 @@
 import {
+  BackgroundWorkerMetadata,
   BackgroundWorkerSourceFileMetadata,
   CreateBackgroundWorkerRequestBody,
+  QueueManifest,
   TaskResource,
 } from "@trigger.dev/core/v3";
-import type { BackgroundWorker } from "@trigger.dev/database";
+import { BackgroundWorkerId } from "@trigger.dev/core/v3/isomorphic";
+import type { BackgroundWorker, TaskQueue, TaskQueueType } from "@trigger.dev/database";
+import cronstrue from "cronstrue";
 import { Prisma, PrismaClientOrTransaction } from "~/db.server";
+import { sanitizeQueueName } from "~/models/taskQueue.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
-import { marqs } from "~/v3/marqs/index.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
-import { calculateNextBuildVersion } from "../utils/calculateNextBuildVersion";
-import { BaseService } from "./baseService.server";
-import { projectPubSub } from "./projectPubSub.server";
-import { RegisterNextTaskScheduleInstanceService } from "./registerNextTaskScheduleInstance.server";
-import cronstrue from "cronstrue";
-import { CheckScheduleService } from "./checkSchedule.server";
-import { clampMaxDuration } from "../utils/maxDuration";
 import {
   removeQueueConcurrencyLimits,
   updateEnvConcurrencyLimits,
   updateQueueConcurrencyLimits,
 } from "../runQueue.server";
-import { BackgroundWorkerId } from "@trigger.dev/core/v3/isomorphic";
-import { sanitizeQueueName } from "~/models/taskQueue.server";
+import { calculateNextBuildVersion } from "../utils/calculateNextBuildVersion";
+import { clampMaxDuration } from "../utils/maxDuration";
+import { BaseService } from "./baseService.server";
+import { CheckScheduleService } from "./checkSchedule.server";
+import { projectPubSub } from "./projectPubSub.server";
+import { RegisterNextTaskScheduleInstanceService } from "./registerNextTaskScheduleInstance.server";
 
 export class CreateBackgroundWorkerService extends BaseService {
   public async call(
@@ -101,8 +102,8 @@ export class CreateBackgroundWorkerService extends BaseService {
         environment,
         this._prisma
       );
-      await createBackgroundTasks(
-        body.metadata.tasks,
+      await createWorkerResources(
+        body.metadata,
         backgroundWorker,
         environment,
         this._prisma,
@@ -154,133 +155,216 @@ export class CreateBackgroundWorkerService extends BaseService {
   }
 }
 
-export async function createBackgroundTasks(
-  tasks: TaskResource[],
+export async function createWorkerResources(
+  metadata: BackgroundWorkerMetadata,
   worker: BackgroundWorker,
   environment: AuthenticatedEnvironment,
   prisma: PrismaClientOrTransaction,
   tasksToBackgroundFiles?: Map<string, string>
 ) {
-  for (const task of tasks) {
-    try {
-      await prisma.backgroundWorkerTask.create({
-        data: {
-          friendlyId: generateFriendlyId("task"),
-          projectId: worker.projectId,
-          runtimeEnvironmentId: worker.runtimeEnvironmentId,
-          workerId: worker.id,
-          slug: task.id,
-          description: task.description,
-          filePath: task.filePath,
-          exportName: task.exportName,
-          retryConfig: task.retry,
-          queueConfig: task.queue,
-          machineConfig: task.machine,
-          triggerSource: task.triggerSource === "schedule" ? "SCHEDULED" : "STANDARD",
-          fileId: tasksToBackgroundFiles?.get(task.id) ?? null,
-          maxDurationInSeconds: task.maxDuration ? clampMaxDuration(task.maxDuration) : null,
+  // Create the queues
+  const queues = await createWorkerQueues(metadata, worker, environment, prisma);
+
+  // Create the tasks
+  await createWorkerTasks(metadata, queues, worker, environment, prisma, tasksToBackgroundFiles);
+}
+
+async function createWorkerTasks(
+  metadata: BackgroundWorkerMetadata,
+  queues: Array<TaskQueue>,
+  worker: BackgroundWorker,
+  environment: AuthenticatedEnvironment,
+  prisma: PrismaClientOrTransaction,
+  tasksToBackgroundFiles?: Map<string, string>
+) {
+  // Create tasks in chunks of 20
+  const CHUNK_SIZE = 20;
+  for (let i = 0; i < metadata.tasks.length; i += CHUNK_SIZE) {
+    const chunk = metadata.tasks.slice(i, i + CHUNK_SIZE);
+    await Promise.all(
+      chunk.map((task) =>
+        createWorkerTask(task, queues, worker, environment, prisma, tasksToBackgroundFiles)
+      )
+    );
+  }
+}
+
+async function createWorkerTask(
+  task: TaskResource,
+  queues: Array<TaskQueue>,
+  worker: BackgroundWorker,
+  environment: AuthenticatedEnvironment,
+  prisma: PrismaClientOrTransaction,
+  tasksToBackgroundFiles?: Map<string, string>
+) {
+  try {
+    let queue = queues.find((queue) => queue.name === task.queue?.name);
+
+    if (!queue) {
+      // Create a TaskQueue
+      queue = await createWorkerQueue(
+        {
+          name: `task/${task.id}`,
         },
-      });
+        task.id,
+        "VIRTUAL",
+        worker,
+        environment,
+        prisma
+      );
+    }
 
-      let queueName = sanitizeQueueName(task.queue?.name ?? `task/${task.id}`);
-
-      // Check that the queuename is not an empty string
-      if (!queueName) {
-        queueName = sanitizeQueueName(`task/${task.id}`);
-      }
-
-      const concurrencyLimit =
-        typeof task.queue?.concurrencyLimit === "number"
-          ? Math.max(
-              Math.min(
-                task.queue.concurrencyLimit,
-                environment.maximumConcurrencyLimit,
-                environment.organization.maximumConcurrencyLimit
-              ),
-              0
-            )
-          : task.queue?.concurrencyLimit;
-
-      let taskQueue = await prisma.taskQueue.findFirst({
-        where: {
-          runtimeEnvironmentId: worker.runtimeEnvironmentId,
-          name: queueName,
-        },
-      });
-
-      if (!taskQueue) {
-        taskQueue = await prisma.taskQueue.create({
-          data: {
-            friendlyId: generateFriendlyId("queue"),
-            name: queueName,
-            concurrencyLimit,
-            runtimeEnvironmentId: worker.runtimeEnvironmentId,
-            projectId: worker.projectId,
-            type: task.queue?.name ? "NAMED" : "VIRTUAL",
-          },
+    await prisma.backgroundWorkerTask.create({
+      data: {
+        friendlyId: generateFriendlyId("task"),
+        projectId: worker.projectId,
+        runtimeEnvironmentId: worker.runtimeEnvironmentId,
+        workerId: worker.id,
+        slug: task.id,
+        description: task.description,
+        filePath: task.filePath,
+        exportName: task.exportName,
+        retryConfig: task.retry,
+        queueConfig: task.queue,
+        machineConfig: task.machine,
+        triggerSource: task.triggerSource === "schedule" ? "SCHEDULED" : "STANDARD",
+        fileId: tasksToBackgroundFiles?.get(task.id) ?? null,
+        maxDurationInSeconds: task.maxDuration ? clampMaxDuration(task.maxDuration) : null,
+        queueId: queue.id,
+      },
+    });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      // The error code for unique constraint violation in Prisma is P2002
+      if (error.code === "P2002") {
+        logger.warn("Task already exists", {
+          task,
+          worker,
         });
-      }
-
-      if (typeof concurrencyLimit === "number") {
-        logger.debug("CreateBackgroundWorkerService: updating concurrency limit", {
-          workerId: worker.id,
-          taskQueue,
-          orgId: environment.organizationId,
-          projectId: environment.projectId,
-          environmentId: environment.id,
-          concurrencyLimit,
-          taskidentifier: task.id,
-        });
-        await updateQueueConcurrencyLimits(environment, taskQueue.name, concurrencyLimit);
       } else {
-        logger.debug("CreateBackgroundWorkerService: removing concurrency limit", {
-          workerId: worker.id,
-          taskQueue,
-          orgId: environment.organizationId,
-          projectId: environment.projectId,
-          environmentId: environment.id,
-          concurrencyLimit,
-          taskidentifier: task.id,
-        });
-        await removeQueueConcurrencyLimits(environment, taskQueue.name);
-      }
-    } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError) {
-        // The error code for unique constraint violation in Prisma is P2002
-        if (error.code === "P2002") {
-          logger.warn("Task already exists", {
-            task,
-            worker,
-          });
-        } else {
-          logger.error("Prisma Error creating background worker task", {
-            error: {
-              code: error.code,
-              message: error.message,
-            },
-            task,
-            worker,
-          });
-        }
-      } else if (error instanceof Error) {
-        logger.error("Error creating background worker task", {
+        logger.error("Prisma Error creating background worker task", {
           error: {
-            name: error.name,
+            code: error.code,
             message: error.message,
-            stack: error.stack,
           },
           task,
           worker,
         });
-      } else {
-        logger.error("Unknown error creating background worker task", {
-          error,
-          task,
-          worker,
-        });
       }
+    } else if (error instanceof Error) {
+      logger.error("Error creating background worker task", {
+        error: {
+          name: error.name,
+          message: error.message,
+          stack: error.stack,
+        },
+        task,
+        worker,
+      });
+    } else {
+      logger.error("Unknown error creating background worker task", {
+        error,
+        task,
+        worker,
+      });
     }
   }
+}
+
+async function createWorkerQueues(
+  metadata: BackgroundWorkerMetadata,
+  worker: BackgroundWorker,
+  environment: AuthenticatedEnvironment,
+  prisma: PrismaClientOrTransaction
+) {
+  if (!metadata.queues) {
+    return [];
+  }
+
+  const CHUNK_SIZE = 20;
+  const allQueues: Awaited<ReturnType<typeof createWorkerQueue>>[] = [];
+
+  // Process queues in chunks
+  for (let i = 0; i < metadata.queues.length; i += CHUNK_SIZE) {
+    const chunk = metadata.queues.slice(i, i + CHUNK_SIZE);
+    const queueChunk = await Promise.all(
+      chunk.map(async (queue) => {
+        return createWorkerQueue(queue, queue.name, "NAMED", worker, environment, prisma);
+      })
+    );
+    allQueues.push(...queueChunk.filter(Boolean));
+  }
+
+  return allQueues;
+}
+
+async function createWorkerQueue(
+  queue: QueueManifest,
+  orderableName: string,
+  queueType: TaskQueueType,
+  worker: BackgroundWorker,
+  environment: AuthenticatedEnvironment,
+  prisma: PrismaClientOrTransaction
+) {
+  let queueName = sanitizeQueueName(queue.name);
+
+  const concurrencyLimit =
+    typeof queue.concurrencyLimit === "number"
+      ? Math.max(
+          Math.min(
+            queue.concurrencyLimit,
+            environment.maximumConcurrencyLimit,
+            environment.organization.maximumConcurrencyLimit
+          ),
+          0
+        )
+      : queue.concurrencyLimit;
+
+  let taskQueue = await prisma.taskQueue.findFirst({
+    where: {
+      runtimeEnvironmentId: worker.runtimeEnvironmentId,
+      name: queueName,
+    },
+  });
+
+  if (!taskQueue) {
+    taskQueue = await prisma.taskQueue.create({
+      data: {
+        friendlyId: generateFriendlyId("queue"),
+        version: "V2",
+        name: queueName,
+        orderableName,
+        concurrencyLimit,
+        runtimeEnvironmentId: worker.runtimeEnvironmentId,
+        projectId: worker.projectId,
+        type: queueType,
+      },
+    });
+  }
+
+  if (typeof concurrencyLimit === "number") {
+    logger.debug("createWorkerQueue: updating concurrency limit", {
+      workerId: worker.id,
+      taskQueue,
+      orgId: environment.organizationId,
+      projectId: environment.projectId,
+      environmentId: environment.id,
+      concurrencyLimit,
+    });
+    await updateQueueConcurrencyLimits(environment, taskQueue.name, concurrencyLimit);
+  } else {
+    logger.debug("createWorkerQueue: removing concurrency limit", {
+      workerId: worker.id,
+      taskQueue,
+      orgId: environment.organizationId,
+      projectId: environment.projectId,
+      environmentId: environment.id,
+      concurrencyLimit,
+    });
+    await removeQueueConcurrencyLimits(environment, taskQueue.name);
+  }
+
+  return taskQueue;
 }
 
 //CreateDeclarativeScheduleError with a message

@@ -80,8 +80,7 @@ export type TriggerParams = {
   cliVersion?: string;
   concurrencyKey?: string;
   masterQueue?: string;
-  queueName: string;
-  queue?: QueueOptions;
+  queue: string;
   isTest: boolean;
   delayUntil?: Date;
   queuedAt?: Date;

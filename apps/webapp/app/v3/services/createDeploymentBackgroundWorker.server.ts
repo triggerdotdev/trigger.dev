@@ -5,7 +5,7 @@ import { generateFriendlyId } from "../friendlyIdentifiers";
 import { BaseService } from "./baseService.server";
 import {
   createBackgroundFiles,
-  createBackgroundTasks,
+  createWorkerResources,
   syncDeclarativeSchedules,
 } from "./createBackgroundWorker.server";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
@@ -68,7 +68,7 @@ export class CreateDeploymentBackgroundWorkerService extends BaseService {
           environment,
           this._prisma
         );
-        await createBackgroundTasks(
+        await createWorkerResources(
           body.metadata.tasks,
           backgroundWorker,
           environment,

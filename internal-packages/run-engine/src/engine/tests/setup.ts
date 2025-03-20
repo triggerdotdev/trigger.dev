@@ -11,6 +11,7 @@ import {
   RunEngineVersion,
   RuntimeEnvironmentType,
 } from "@trigger.dev/database";
+import { RunEngine } from "../index.js";
 
 export type AuthenticatedEnvironment = Prisma.RuntimeEnvironmentGetPayload<{
   include: { project: true; organization: true; orgMember: true };
@@ -65,7 +66,7 @@ export async function setupAuthenticatedEnvironment(
 }
 
 export async function setupBackgroundWorker(
-  prisma: PrismaClient,
+  engine: RunEngine,
   environment: AuthenticatedEnvironment,
   taskIdentifier: string | string[],
   machineConfig?: MachineConfig,
@@ -75,7 +76,7 @@ export async function setupBackgroundWorker(
     concurrencyLimit?: number | null;
   }
 ) {
-  const worker = await prisma.backgroundWorker.create({
+  const worker = await engine.prisma.backgroundWorker.create({
     data: {
       friendlyId: generateFriendlyId("worker"),
       contentHash: "hash",
@@ -98,7 +99,7 @@ export async function setupBackgroundWorker(
       maxTimeoutInMs: 100,
       randomize: false,
     };
-    const task = await prisma.backgroundWorkerTask.create({
+    const task = await engine.prisma.backgroundWorkerTask.create({
       data: {
         friendlyId: generateFriendlyId("task"),
         slug: identifier,
@@ -115,7 +116,7 @@ export async function setupBackgroundWorker(
     tasks.push(task);
 
     const queueName = sanitizeQueueName(`task/${identifier}`);
-    const taskQueue = await prisma.taskQueue.create({
+    const taskQueue = await engine.prisma.taskQueue.create({
       data: {
         friendlyId: generateFriendlyId("queue"),
         name: queueName,
@@ -132,10 +133,20 @@ export async function setupBackgroundWorker(
             : undefined,
       },
     });
+
+    if (typeof taskQueue.concurrencyLimit === "number") {
+      await engine.runQueue.updateQueueConcurrencyLimits(
+        environment,
+        queueName,
+        taskQueue.concurrencyLimit
+      );
+    } else {
+      await engine.runQueue.removeQueueConcurrencyLimits(environment, queueName);
+    }
   }
 
   if (environment.type !== "DEVELOPMENT") {
-    const deployment = await prisma.workerDeployment.create({
+    const deployment = await engine.prisma.workerDeployment.create({
       data: {
         friendlyId: generateFriendlyId("deployment"),
         contentHash: worker.contentHash,
@@ -149,7 +160,7 @@ export async function setupBackgroundWorker(
       },
     });
 
-    const promotion = await prisma.workerDeploymentPromotion.create({
+    const promotion = await engine.prisma.workerDeploymentPromotion.create({
       data: {
         label: CURRENT_DEPLOYMENT_LABEL,
         deploymentId: deployment.id,

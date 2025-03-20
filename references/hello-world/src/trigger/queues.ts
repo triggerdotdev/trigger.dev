@@ -1,4 +1,4 @@
-import { logger, queues, task } from "@trigger.dev/sdk/v3";
+import { logger, queue, queues, task } from "@trigger.dev/sdk/v3";
 
 export const queuesTester = task({
   id: "queues-tester",
@@ -40,12 +40,14 @@ export const queuesTester = task({
   },
 });
 
+const myCustomQueue = queue({
+  name: "my-custom-queue",
+  concurrencyLimit: 1,
+});
+
 export const otherQueueTask = task({
   id: "other-queue-task",
-  queue: {
-    name: "my-custom-queue",
-    concurrencyLimit: 1,
-  },
+  queue: myCustomQueue,
   run: async (payload: any, { ctx }) => {
     logger.log("Other queue task", { payload });
   },

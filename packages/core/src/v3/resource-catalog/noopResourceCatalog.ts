@@ -1,13 +1,17 @@
-import { TaskFileMetadata, TaskManifest } from "../schemas/index.js";
+import { QueueManifest, TaskManifest, WorkerManifest } from "../schemas/index.js";
 import { TaskMetadataWithFunctions } from "../types/index.js";
-import { TaskCatalog } from "./catalog.js";
+import { ResourceCatalog } from "./catalog.js";
 
-export class NoopTaskCatalog implements TaskCatalog {
+export class NoopResourceCatalog implements ResourceCatalog {
   registerTaskMetadata(task: TaskMetadataWithFunctions): void {
     // noop
   }
 
-  registerTaskFileMetadata(id: string, metadata: TaskFileMetadata): void {
+  setCurrentFileContext(filePath: string, entryPoint: string): void {
+    // noop
+  }
+
+  clearCurrentFileContext(): void {
     // noop
   }
 
@@ -33,5 +37,17 @@ export class NoopTaskCatalog implements TaskCatalog {
 
   disable() {
     // noop
+  }
+
+  registerWorkerManifest(workerManifest: WorkerManifest): void {
+    // noop
+  }
+
+  registerQueueMetadata(queue: QueueManifest): void {
+    // noop
+  }
+
+  listQueueManifests(): Array<QueueManifest> {
+    return [];
   }
 }

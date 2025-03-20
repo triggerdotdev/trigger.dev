@@ -1656,7 +1656,7 @@ model BackgroundWorkerTask {
   friendlyId String @unique
 
   filePath   String
-  exportName String
+  exportName String?
 
   worker   BackgroundWorker @relation(fields: [workerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   workerId String
@@ -1679,6 +1679,9 @@ model BackgroundWorkerTask {
   queueConfig   Json?
   retryConfig   Json?
   machineConfig Json?
+
+  queueId String?
+  queue   TaskQueue? @relation(fields: [queueId], references: [id], onDelete: SetNull, onUpdate: Cascade)
 
   maxDurationInSeconds Int?
 
@@ -2533,6 +2536,9 @@ model TaskQueue {
   name String
   type TaskQueueType @default(VIRTUAL)
 
+  version       TaskQueueVersion @default(V1)
+  orderableName String?
+
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   projectId String
 
@@ -2551,6 +2557,7 @@ model TaskQueue {
   updatedAt DateTime @updatedAt
 
   attempts TaskRunAttempt[]
+  tasks    BackgroundWorkerTask[]
 
   @@unique([runtimeEnvironmentId, name])
 }
@@ -2558,6 +2565,11 @@ model TaskQueue {
 enum TaskQueueType {
   VIRTUAL
   NAMED
+}
+
+enum TaskQueueVersion {
+  V1
+  V2
 }
 
 model BatchTaskRun {

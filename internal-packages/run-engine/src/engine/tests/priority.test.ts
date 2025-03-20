@@ -1,14 +1,11 @@
-import {
-  containerTest,
-  setupAuthenticatedEnvironment,
-  setupBackgroundWorker,
-} from "@internal/testcontainers";
+import { containerTest } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
 import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
 import { RunEngine } from "../index.js";
 import { PrismaClientOrTransaction } from "@trigger.dev/database";
 import { MinimalAuthenticatedEnvironment } from "../../shared/index.js";
 import { setTimeout } from "timers/promises";
+import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -51,7 +48,7 @@ describe("RunEngine priority", () => {
 
       //create background worker
       const backgroundWorker = await setupBackgroundWorker(
-        prisma,
+        engine,
         authenticatedEnvironment,
         taskIdentifier
       );
@@ -129,7 +126,7 @@ async function triggerRuns({
         traceId: "t12345",
         spanId: "s12345",
         masterQueue: "main",
-        queueName: `task/${taskIdentifier}`,
+        queue: `task/${taskIdentifier}`,
         isTest: false,
         tags: [],
         priorityMs: priorities[i],
