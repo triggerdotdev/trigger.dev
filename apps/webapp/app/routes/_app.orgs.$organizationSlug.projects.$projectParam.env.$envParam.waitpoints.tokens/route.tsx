@@ -142,10 +142,10 @@ export default function Page() {
               <TableHeader>
                 <TableRow>
                   <TableHeaderCell className="w-[1%]">Created</TableHeaderCell>
-                  <TableHeaderCell>ID</TableHeaderCell>
-                  <TableHeaderCell>Status</TableHeaderCell>
-                  <TableHeaderCell>Completed</TableHeaderCell>
-                  <TableHeaderCell>Idempotency Key</TableHeaderCell>
+                  <TableHeaderCell className="w-[25%]">ID</TableHeaderCell>
+                  <TableHeaderCell className="w-[25%]">Status</TableHeaderCell>
+                  <TableHeaderCell className="w-[25%]">Completed</TableHeaderCell>
+                  <TableHeaderCell className="w-[25%]">Idempotency Key</TableHeaderCell>
                 </TableRow>
               </TableHeader>
               <TableBody>
