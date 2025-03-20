@@ -872,12 +872,14 @@ export class RunEngine {
     idempotencyKey,
     idempotencyKeyExpiresAt,
     timeout,
+    tags,
   }: {
     environmentId: string;
     projectId: string;
     idempotencyKey?: string;
     idempotencyKeyExpiresAt?: Date;
     timeout?: Date;
+    tags?: string[];
   }): Promise<{ waitpoint: Waitpoint; isCached: boolean }> {
     return this.waitpointSystem.createManualWaitpoint({
       environmentId,
@@ -885,6 +887,7 @@ export class RunEngine {
       idempotencyKey,
       idempotencyKeyExpiresAt,
       timeout,
+      tags,
     });
   }
 

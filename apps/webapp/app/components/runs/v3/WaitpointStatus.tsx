@@ -83,7 +83,7 @@ export function waitpointStatusClassNameColor(
 ): string {
   switch (status) {
     case "PENDING":
-      return "text-charcoal-500";
+      return "text-blue-500";
     case "COMPLETED": {
       if (outputIsError) {
         return "text-error";
@@ -99,7 +99,7 @@ export function waitpointStatusClassNameColor(
 export function runStatusTitle(status: WaitpointStatus, outputIsError: boolean): string {
   switch (status) {
     case "PENDING":
-      return "Delayed";
+      return "Waiting";
     case "COMPLETED": {
       if (outputIsError) {
         return "Timed out";

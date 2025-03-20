@@ -920,6 +920,20 @@ export const CreateWaitpointTokenRequestBody = z.object({
    * You can pass a `Date` object, or a string in this format: "30s", "1m", "2h", "3d", "4w".
    */
   timeout: TimePeriod.optional(),
+  /**
+   * Tags to attach to the waitpoint. Tags can be used to filter waitpoints in the dashboard.
+   *
+   * You can set up to 10 tags per waitpoint, they must be less than 128 characters each.
+   *
+   * We recommend prefixing tags with a namespace using an underscore or colon, like `user_1234567` or `org:9876543`.
+   *
+   * @example
+   *
+   * ```ts
+   * await wait.createToken({ tags: ["user:1234567", "org:9876543"] });
+   * ```
+   */
+  tags: RunTags.optional(),
 });
 export type CreateWaitpointTokenRequestBody = z.infer<typeof CreateWaitpointTokenRequestBody>;
 

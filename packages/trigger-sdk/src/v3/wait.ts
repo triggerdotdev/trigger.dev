@@ -36,6 +36,7 @@ function createToken(
             ? options.timeout
             : options.timeout.toISOString()
           : undefined,
+        tags: options?.tags,
       },
       onResponseBody: (body: CreateWaitpointTokenResponseBody, span) => {
         span.setAttribute("id", body.id);
