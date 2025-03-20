@@ -193,7 +193,10 @@ type CommonTaskOptions<
     });
    * ```
    */
-  queue?: Queue;
+  queue?: {
+    name?: string;
+    concurrencyLimit?: number;
+  };
   /** Configure the spec of the [machine](https://trigger.dev/docs/machines) you want your task to run on.
    *
    * @example

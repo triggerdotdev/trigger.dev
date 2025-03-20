@@ -3,7 +3,7 @@ import { logger, task } from "@trigger.dev/sdk/v3";
 export const priorityParent = task({
   id: "priority-parent",
   run: async (payload: any, { ctx }) => {
-    logger.log("Hello, world from the parent", { payload });
+    logger.log("Hello, world from the parents", { payload });
 
     const batch1 = await priorityChild.batchTriggerAndWait([
       {

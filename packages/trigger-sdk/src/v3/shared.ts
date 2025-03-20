@@ -219,8 +219,13 @@ export function createTask<
     },
   });
 
-  if (params.queue) {
-    resourceCatalog.registerQueueMetadata(params.queue);
+  const queue = params.queue;
+
+  if (queue && typeof queue.name === "string") {
+    resourceCatalog.registerQueueMetadata({
+      name: queue.name,
+      concurrencyLimit: queue.concurrencyLimit,
+    });
   }
 
   // @ts-expect-error
@@ -362,6 +367,15 @@ export function createSchemaTask<
       parsePayload,
     },
   });
+
+  const queue = params.queue;
+
+  if (queue && typeof queue.name === "string") {
+    resourceCatalog.registerQueueMetadata({
+      name: queue.name,
+      concurrencyLimit: queue.concurrencyLimit,
+    });
+  }
 
   // @ts-expect-error
   task[Symbol.for("trigger.dev/task")] = true;
