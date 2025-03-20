@@ -14,6 +14,7 @@ export type WaitpointTokenListOptions = {
   friendlyId?: string;
   statuses?: WaitpointFilterStatus[];
   idempotencyKey?: string;
+  tags?: string[];
   from?: number;
   to?: number;
   // pagination
@@ -28,6 +29,7 @@ export class WaitpointTokenListPresenter extends BasePresenter {
     friendlyId,
     statuses,
     idempotencyKey,
+    tags,
     from,
     to,
     direction = "forward",
@@ -40,6 +42,7 @@ export class WaitpointTokenListPresenter extends BasePresenter {
       friendlyId !== undefined ||
       hasStatusFilters ||
       idempotencyKey !== undefined ||
+      (tags !== undefined && tags.length > 0) ||
       from !== undefined ||
       to !== undefined;
 
@@ -81,6 +84,7 @@ export class WaitpointTokenListPresenter extends BasePresenter {
         inactiveIdempotencyKey: string | null;
         userProvidedIdempotencyKey: boolean;
         createdAt: Date;
+        tags: null | string[];
       }[]
     >`
     SELECT
@@ -94,6 +98,7 @@ export class WaitpointTokenListPresenter extends BasePresenter {
       w."idempotencyKeyExpiresAt",
       w."inactiveIdempotencyKey",
       w."userProvidedIdempotencyKey",
+      w."tags",
       w."createdAt"
     FROM
       ${sqlDatabaseSchema}."Waitpoint" w
@@ -131,6 +136,11 @@ export class WaitpointTokenListPresenter extends BasePresenter {
       ${
         to
           ? Prisma.sql`AND w."createdAt" <= ${new Date(to).toISOString()}::timestamp`
+          : Prisma.empty
+      }
+      ${
+        tags && tags.length > 0
+          ? Prisma.sql`AND w."tags" && ARRAY[${Prisma.join(tags)}]::text[]`
           : Prisma.empty
       }
     ORDER BY
@@ -175,6 +185,7 @@ export class WaitpointTokenListPresenter extends BasePresenter {
           ? token.inactiveIdempotencyKey ?? token.idempotencyKey
           : null,
         idempotencyKeyExpiresAt: token.idempotencyKeyExpiresAt,
+        tags: token.tags ? token.tags.sort((a, b) => a.localeCompare(b)) : [],
         //we can assume that all errors for tokens are timeouts
         isTimeout: token.outputIsError,
         createdAt: token.createdAt,

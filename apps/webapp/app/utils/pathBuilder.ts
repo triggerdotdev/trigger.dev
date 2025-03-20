@@ -319,6 +319,15 @@ export function v3WaitpointTokensPath(
   return `${v3EnvironmentPath(organization, project, environment)}/waitpoints/tokens`;
 }
 
+export function v3WaitpointTokenPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath,
+  token: { friendlyId: string }
+) {
+  return `${v3WaitpointTokensPath(organization, project, environment)}/${token.friendlyId}`;
+}
+
 export function v3BatchesPath(
   organization: OrgForPath,
   project: ProjectForPath,

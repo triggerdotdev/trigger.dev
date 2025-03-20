@@ -10,6 +10,7 @@ export const WaitpointSearchParamsSchema = z.object({
     WaitpointFilterStatus.array().optional()
   ),
   idempotencyKey: z.string().optional(),
+  tags: z.string().array().optional(),
   from: z.coerce.number().optional(),
   to: z.coerce.number().optional(),
   cursor: z.string().optional(),

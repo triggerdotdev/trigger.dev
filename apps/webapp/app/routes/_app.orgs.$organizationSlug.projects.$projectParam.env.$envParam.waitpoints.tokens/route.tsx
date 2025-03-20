@@ -41,6 +41,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "~/components/primitives/Tooltip";
+import { RunTag } from "~/components/runs/v3/RunTag";
 import { WaitpointStatusCombo } from "~/components/runs/v3/WaitpointStatus";
 import { WaitpointSearchParamsSchema } from "~/components/runs/v3/WaitpointTokenFilters";
 import { useEnvironment } from "~/hooks/useEnvironment";
@@ -51,7 +52,14 @@ import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { WaitpointTokenListPresenter } from "~/presenters/v3/WaitpointTokenListPresenter.server";
 import { requireUserId } from "~/services/session.server";
-import { docsPath, EnvironmentParamSchema, v3BillingPath } from "~/utils/pathBuilder";
+import {
+  docsPath,
+  EnvironmentParamSchema,
+  v3BillingPath,
+  v3RunSpanPath,
+  v3WaitpointTokenPath,
+  v3WaitpointTokensPath,
+} from "~/utils/pathBuilder";
 import { PauseEnvironmentService } from "~/v3/services/pauseEnvironment.server";
 import { PauseQueueService } from "~/v3/services/pauseQueue.server";
 
@@ -72,6 +80,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     friendlyId: url.searchParams.get("friendlyId") ?? undefined,
     statuses: url.searchParams.getAll("statuses"),
     idempotencyKey: url.searchParams.get("idempotencyKey") ?? undefined,
+    tags: url.searchParams.getAll("tags"),
     from: url.searchParams.get("from") ?? undefined,
     to: url.searchParams.get("to") ?? undefined,
     cursor: url.searchParams.get("cursor") ?? undefined,
@@ -118,7 +127,7 @@ export default function Page() {
 
   const organization = useOrganization();
   const project = useProject();
-  const env = useEnvironment();
+  const environment = useEnvironment();
 
   return (
     <PageContainer>
@@ -142,10 +151,11 @@ export default function Page() {
               <TableHeader>
                 <TableRow>
                   <TableHeaderCell className="w-[1%]">Created</TableHeaderCell>
-                  <TableHeaderCell className="w-[25%]">ID</TableHeaderCell>
-                  <TableHeaderCell className="w-[25%]">Status</TableHeaderCell>
-                  <TableHeaderCell className="w-[25%]">Completed</TableHeaderCell>
-                  <TableHeaderCell className="w-[25%]">Idempotency Key</TableHeaderCell>
+                  <TableHeaderCell className="w-[20%]">ID</TableHeaderCell>
+                  <TableHeaderCell className="w-[20%]">Status</TableHeaderCell>
+                  <TableHeaderCell className="w-[20%]">Completed</TableHeaderCell>
+                  <TableHeaderCell className="w-[20%]">Idempotency Key</TableHeaderCell>
+                  <TableHeaderCell className="w-[20%]">Tags</TableHeaderCell>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -154,42 +164,27 @@ export default function Page() {
                     const ttlExpired =
                       token.idempotencyKeyExpiresAt && token.idempotencyKeyExpiresAt < new Date();
 
+                    const path = v3WaitpointTokenPath(organization, project, environment, token);
+
                     return (
                       <TableRow key={token.friendlyId}>
-                        <TableCell>
+                        <TableCell to={path}>
                           <span className="opacity-60">
                             <DateTime date={token.createdAt} />
                           </span>
                         </TableCell>
-                        <TableCell>{token.friendlyId}</TableCell>
-                        <TableCell>
+                        <TableCell to={path}>{token.friendlyId}</TableCell>
+                        <TableCell to={path}>
                           <WaitpointStatusCombo
                             status={token.status}
                             outputIsError={token.isTimeout}
                             className="text-xs"
                           />
                         </TableCell>
-                        <TableCell>
+                        <TableCell to={path}>
                           {token.completedAt ? <DateTime date={token.completedAt} /> : "–"}
                         </TableCell>
-                        {/* <TableCell>
-                        {token.completedAfter ? (
-                          token.isTimeout ? (
-                            <SimpleTooltip
-                              content="This waitpoint timed out"
-                              button={<DateTime date={token.completedAfter} />}
-                            />
-                          ) : (
-                            <span className="opacity-50">
-                              <DateTime date={token.completedAfter} />
-                            </span>
-                          )
-                        ) : (
-                          "–"
-                        )}
-                      </TableCell> */}
-                        <TableCell>
-                          {" "}
+                        <TableCell to={path}>
                           {token.idempotencyKey ? (
                             token.idempotencyKeyExpiresAt ? (
                               <SimpleTooltip
@@ -210,6 +205,11 @@ export default function Page() {
                           ) : (
                             "–"
                           )}
+                        </TableCell>
+                        <TableCell to={path} actionClassName="py-1" className="pr-16">
+                          <div className="flex gap-1">
+                            {token.tags.map((tag) => <RunTag key={tag} tag={tag} />) || "–"}
+                          </div>
                         </TableCell>
                       </TableRow>
                     );
