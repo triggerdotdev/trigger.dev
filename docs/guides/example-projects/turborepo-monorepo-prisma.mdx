@@ -6,16 +6,16 @@ description: "Two example projects demonstrating how to use Prisma and Trigger.d
 
 ## Overview
 
-These examples demonstrate how to use Prisma and Trigger.dev in a Turborepo monorepo.
+These examples demonstrate two different ways to use Prisma and Trigger.dev in a Turborepo monorepo. They both trigger a task from a Next.js app using a server action, and then use Prisma to add a user to a database table, however they differ in how Trigger.dev is installed and configured.
+
+- Example 1: Turborepo monorepo demo with Trigger.dev and Prisma packages
+- Example 2: Turborepo monorepo demo with a Prisma package and Trigger.dev installed in a Next.js app
 
 <Note>
 
 You can either fork the repos below, or simply check out the project structures and code to get an idea of how to set up Trigger.dev in your own monorepos.
 
 </Note>
-
-- Example 1: Turborepo monorepo demo with Trigger.dev and Prisma packages
-- Example 2: Turborepo monorepo demo with a Prisma package and Trigger.dev installed in a Next.js app
 
 ## Example 1: Turborepo monorepo demo with Trigger.dev and Prisma packages
 
@@ -26,7 +26,7 @@ This simple example demonstrates how to use Trigger.dev and Prisma as packages i
 Fork the GitHub repo below to get started with this example project.
 
 <Card
-  title="Check out the Turborepo monorepo demo with Trigger.dev and Prisma packages repo"
+  title="Check out the Turborepo monorepo demo with Trigger.dev and Prisma packages"
   icon="GitHub"
   href="https://github.com/triggerdotdev/examples/tree/main/monorepos/turborepo-prisma-tasks-package"
 >
@@ -43,6 +43,8 @@ Fork the GitHub repo below to get started with this example project.
 - A [Next.js](https://nextjs.org/) example app (`apps/web`) to show how to trigger the task via a server action.
 
 ### Project structure
+
+Simplified project structure for this example:
 
 ```
 |
@@ -114,4 +116,80 @@ You must include the version of Prisma you are using in the `trigger.config.ts` 
 
 ### Running the example
 
-To run this example, check out the full instructions [in the repo](https://github.com/triggerdotdev/examples/tree/main/monorepos/turborepo-prisma-tasks-package).
+To run this example, check out the full instructions [in the GitHub repo README file](https://github.com/triggerdotdev/examples/tree/main/monorepos/turborepo-prisma-tasks-package/README.md).
+
+## Example 2: Turborepo monorepo demo with a Prisma package and Trigger.dev installed in a Next.js app
+
+This example demonstrates how to use Trigger.dev and Prisma in a monorepo created with Turborepo. Prisma has been added as a package, and Trigger.dev has been installed in a Next.js app. The task is triggered by a button click in the app via a server action.
+
+### GitHub repo
+
+Fork the GitHub repo below to get started with this example project.
+
+<Card
+  title="Check out the Turborepo monorepo demo with a Prisma package and Trigger.dev installed in a Next.js app repo"
+  icon="GitHub"
+  href="https://github.com/triggerdotdev/examples/tree/main/monorepos/turborepo-prisma-tasks-trigger"
+>
+  Click here to view the full code for this project in our examples repository on GitHub. You can
+  fork it and use it as a starting point for your own project.
+</Card>
+
+### Features
+
+- This monorepo has been created using the [Turborepo CLI](https://turbo.build/repo), following the official [Prisma and Turborepo docs](https://www.prisma.io/docs/guides/turborepo), and then adapted for use with Trigger.dev.
+- [pnpm](https://pnpm.io/) has been used as the package manager.
+- A database package (`@repo/db`) using [Prisma ORM](https://www.prisma.io/docs/orm/) is used to interact with the database. You can use any popular Postgres database supported by Prisma, e.g. [Supabase](https://supabase.com/), [Neon](https://neon.tech/), etc.
+- A [Next.js](https://nextjs.org/) example app (`apps/web`) to show how to trigger the task via a server action.
+- Trigger.dev initialized and an `addNewUser` task created in the `web` app.
+
+### Project structure
+
+Simplified project structure for this example:
+
+```
+|
+| — apps/
+|   | — web/                       # Next.js frontend application
+|   |   | — app/                   # Next.js app router
+|   |   |   | — api/
+|   |   |   |   | — actions.ts     # Server actions for triggering tasks
+|   |   |   | — page.tsx           # Main page with "Add new user" button
+|   |   | — src/
+|   |   |   | — trigger/
+|   |   |       | — addNewUser.ts  # Task implementation for adding users
+|   |   | — trigger.config.ts      # Trigger.dev configuration
+|   |   | — package.json           # Dependencies including @repo/db
+|   |
+|   | — docs/                      # Documentation app
+|       | — app/
+|           | — page.tsx           # Docs landing page
+|
+| — packages/
+|   | — database/                  # Prisma database package (@repo/db)
+|   |   | — prisma/
+|   |   |   | — schema.prisma      # Database schema definition
+|   |
+|   | — ui/                        # UI components package
+|
+| — turbo.json                     # Turborepo configuration
+| — package.json                   # Root package.json with workspace config
+```
+
+## Relevant files and code
+
+### Database package (`@repo/db`)
+
+- Located in [`/packages/database/`](https://github.com/triggerdotdev/examples/tree/main/monorepos/turborepo-prisma-tasks-trigger/packages/database/) and exported as `@repo/db`
+- Schema defined in [`schema.prisma`](https://github.com/triggerdotdev/examples/tree/main/monorepos/turborepo-prisma-tasks-trigger/packages/database/prisma/schema.prisma)
+- Provides database access to other packages and apps
+
+### Next.js app (`apps/web`)
+
+- Contains Trigger.dev configuration in [`trigger.config.ts`](https://github.com/triggerdotdev/examples/tree/main/monorepos/turborepo-prisma-tasks-trigger/apps/web/trigger.config.ts)
+- Trigger.dev tasks are defined in [`src/trigger/`](https://github.com/triggerdotdev/examples/tree/main/monorepos/turborepo-prisma-tasks-trigger/apps/web/src/trigger/) (e.g., [`addNewUser.ts`](https://github.com/triggerdotdev/examples/tree/main/monorepos/turborepo-prisma-tasks-trigger/apps/web/src/trigger/addNewUser.ts))
+- Demonstrates triggering tasks via server actions in [`app/api/actions.ts`](https://github.com/triggerdotdev/examples/tree/main/monorepos/turborepo-prisma-tasks-trigger/apps/web/app/api/actions.ts)
+
+### Running the example
+
+To run this example, check out the full instructions [in the GitHub repo README file](https://github.com/triggerdotdev/examples/tree/main/monorepos/turborepo-prisma-tasks-trigger/README.md).
