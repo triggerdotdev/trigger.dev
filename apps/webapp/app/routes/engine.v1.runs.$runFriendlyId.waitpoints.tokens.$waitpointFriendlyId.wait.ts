@@ -13,6 +13,9 @@ const { action } = createActionApiRoute(
       runFriendlyId: z.string(),
       waitpointFriendlyId: z.string(),
     }),
+    body: z.object({
+      releaseConcurrency: z.boolean().optional(),
+    }),
     maxContentLength: 1024 * 10, // 10KB
     method: "POST",
   },
@@ -34,12 +37,12 @@ const { action } = createActionApiRoute(
         throw json({ error: "Waitpoint not found" }, { status: 404 });
       }
 
-      // TODO: Add releaseConcurrency from the body
       const result = await engine.blockRunWithWaitpoint({
         runId,
         waitpoints: [waitpointId],
         projectId: authentication.environment.project.id,
         organizationId: authentication.environment.organization.id,
+        releaseConcurrency: body.releaseConcurrency,
       });
 
       return json<WaitForWaitpointTokenResponseBody>(
