@@ -2092,11 +2092,6 @@ model Waitpoint {
   /// If there's a user provided idempotency key, this is the time it expires at
   idempotencyKeyExpiresAt DateTime?
 
-  //todo
-  /// Will automatically deactivate the idempotencyKey when the waitpoint is completed
-  /// "Deactivating" means moving it to the inactiveIdempotencyKey field and generating a random new one for the main column
-  /// deactivateIdempotencyKeyWhenCompleted Boolean @default(false)
-
   /// If an idempotencyKey is no longer active, we store it here and generate a new one for the idempotencyKey field.
   /// Clearing an idempotencyKey is useful for debounce or cancelling child runs.
   /// This is a workaround because Prisma doesn't support partial indexes.
@@ -2134,8 +2129,15 @@ model Waitpoint {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  /// Quickly find an idempotent waitpoint
   @@unique([environmentId, idempotencyKey])
+  /// Quickly find a batch waitpoint
   @@index([completedByBatchId])
+  /// Used on the Waitpoint dashboard pages
+  /// Time period filtering
+  @@index([environmentId, type, createdAt(sort: Desc)])
+  /// Status filtering
+  @@index([environmentId, type, status])
 }
 
 enum WaitpointType {
