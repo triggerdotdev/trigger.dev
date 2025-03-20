@@ -1,3 +1,4 @@
+import { SimpleStructuredLogger } from "../utils/structuredLogger.js";
 import { singleton } from "./singleton.js";
 
 type ShutdownHandler = NodeJS.SignalsListener;
@@ -11,6 +12,7 @@ class ShutdownManager {
     SIGTERM: 15,
   };
 
+  private logger = new SimpleStructuredLogger("shutdownManager");
   private handlers: Map<string, { handler: ShutdownHandler; signals: ShutdownSignal[] }> =
     new Map();
 
@@ -38,7 +40,7 @@ class ShutdownManager {
     if (this.isShuttingDown) return;
     this.isShuttingDown = true;
 
-    console.log(`\nReceived ${signal}. Starting graceful shutdown...`);
+    this.logger.info(`Received ${signal}. Starting graceful shutdown...`);
 
     // Get handlers that are registered for this signal
     const handlersToRun = Array.from(this.handlers.entries()).filter(([_, { signals }]) =>
@@ -49,11 +51,11 @@ class ShutdownManager {
       const results = await Promise.allSettled(
         handlersToRun.map(async ([name, { handler }]) => {
           try {
-            console.log(`Running shutdown handler: ${name}`);
+            this.logger.info(`Running shutdown handler: ${name}`);
             await handler(signal);
-            console.log(`Shutdown handler completed: ${name}`);
+            this.logger.info(`Shutdown handler completed: ${name}`);
           } catch (error) {
-            console.error(`Shutdown handler failed: ${name}`, error);
+            this.logger.error(`Shutdown handler failed: ${name}`, { error });
             throw error;
           }
         })
@@ -65,12 +67,12 @@ class ShutdownManager {
           const handlerEntry = handlersToRun[index];
           if (handlerEntry) {
             const [name] = handlerEntry;
-            console.error(`Shutdown handler "${name}" failed:`, result.reason);
+            this.logger.error(`Shutdown handler "${name}" failed:`, { reason: result.reason });
           }
         }
       });
     } catch (error) {
-      console.error("Error during shutdown:", error);
+      this.logger.error("Error during shutdown:", { error });
     } finally {
       // Exit with the correct signal number
       process.exit(128 + this.signalNumbers[signal]);
