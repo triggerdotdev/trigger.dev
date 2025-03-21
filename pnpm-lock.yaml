@@ -1561,6 +1561,9 @@ importers:
       p-limit:
         specifier: ^6.2.0
         version: 6.2.0
+      prom-client:
+        specifier: ^15.1.0
+        version: 15.1.0
       zod:
         specifier: 3.23.8
         version: 3.23.8
