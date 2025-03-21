@@ -21,7 +21,6 @@ type Task = {
   id: string;
   taskIdentifier: string;
   filePath: string;
-  exportName?: string;
   friendlyId: string;
 };
 

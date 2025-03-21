@@ -191,7 +191,6 @@ export class SpanPresenter extends BasePresenter {
         lockedBy: {
           select: {
             filePath: true,
-            exportName: true,
           },
         },
         //relationships

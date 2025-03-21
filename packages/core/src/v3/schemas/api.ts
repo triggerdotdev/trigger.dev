@@ -379,7 +379,7 @@ export const GetDeploymentResponseBody = z.object({
           id: z.string(),
           slug: z.string(),
           filePath: z.string(),
-          exportName: z.string(),
+          exportName: z.string().optional(),
         })
       ),
     })
