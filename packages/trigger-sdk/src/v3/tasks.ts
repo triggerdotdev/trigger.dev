@@ -1,3 +1,4 @@
+import { onInit } from "./hooks.js";
 import {
   batchTrigger,
   batchTriggerAndWait,
@@ -76,4 +77,5 @@ export const tasks = {
   batchTrigger,
   triggerAndWait,
   batchTriggerAndWait,
+  onInit,
 };
