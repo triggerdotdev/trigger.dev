@@ -21,7 +21,6 @@ import {
 } from "~/components/primitives/Table";
 import { DeploymentError } from "~/components/runs/v3/DeploymentError";
 import { DeploymentStatus } from "~/components/runs/v3/DeploymentStatus";
-import { TaskFunctionName } from "~/components/runs/v3/TaskPath";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
