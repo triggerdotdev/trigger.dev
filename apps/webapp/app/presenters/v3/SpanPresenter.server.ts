@@ -269,7 +269,6 @@ export class SpanPresenter extends BasePresenter {
       task: {
         id: run.taskIdentifier,
         filePath: run.lockedBy?.filePath,
-        exportName: run.lockedBy?.exportName,
       },
       run: {
         id: run.friendlyId,
