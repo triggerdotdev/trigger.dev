@@ -1,4 +1,4 @@
-import { Redis, RedisOptions } from "ioredis";
+import { Redis, type RedisOptions } from "ioredis";
 import { Logger } from "@trigger.dev/core/logger";
 
 export { Redis, type Callback, type RedisOptions, type Result, type RedisCommander } from "ioredis";

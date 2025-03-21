@@ -1,5 +1,5 @@
 import { type RedisOptions } from "@internal/redis";
-import { Worker, type WorkerConcurrencyOptions } from "@internal/redis-worker";
+import { Worker, type WorkerConcurrencyOptions } from "@trigger.dev/redis-worker";
 import { Tracer } from "@internal/tracing";
 import { MachinePreset, MachinePresetName, QueueOptions, RetryOptions } from "@trigger.dev/core/v3";
 import { PrismaClient } from "@trigger.dev/database";
@@ -13,6 +13,7 @@ export type RunEngineOptions = {
     redis: RedisOptions;
     pollIntervalMs?: number;
     immediatePollIntervalMs?: number;
+    shutdownTimeoutMs?: number;
   } & WorkerConcurrencyOptions;
   machines: {
     defaultMachine: MachinePresetName;

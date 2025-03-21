@@ -8,6 +8,8 @@ import { AnyQueueItem, SimpleQueue } from "./queue.js";
 import { nanoid } from "nanoid";
 import pLimit from "p-limit";
 import { createRedisClient } from "@internal/redis";
+import { shutdownManager } from "@trigger.dev/core/v3/serverOnly";
+import { Registry, Histogram } from "prom-client";
 
 export type WorkerCatalog = {
   [key: string]: {
@@ -44,8 +46,12 @@ type WorkerOptions<TCatalog extends WorkerCatalog> = {
   concurrency?: WorkerConcurrencyOptions;
   pollIntervalMs?: number;
   immediatePollIntervalMs?: number;
+  shutdownTimeoutMs?: number;
   logger?: Logger;
   tracer?: Tracer;
+  metrics?: {
+    register: Registry;
+  };
 };
 
 // This results in attempt 12 being a delay of 1 hour
@@ -63,12 +69,23 @@ class Worker<TCatalog extends WorkerCatalog> {
   private subscriber: Redis | undefined;
   private tracer: Tracer;
 
+  private metrics: {
+    register?: Registry;
+    enqueueDuration?: Histogram;
+    dequeueDuration?: Histogram;
+    jobDuration?: Histogram;
+    ackDuration?: Histogram;
+    redriveDuration?: Histogram;
+    rescheduleDuration?: Histogram;
+  } = {};
+
   queue: SimpleQueue<QueueCatalogFromWorkerCatalog<TCatalog>>;
   private jobs: WorkerOptions<TCatalog>["jobs"];
   private logger: Logger;
   private workerLoops: Promise<void>[] = [];
   private isShuttingDown = false;
   private concurrency: Required<NonNullable<WorkerOptions<TCatalog>["concurrency"]>>;
+  private shutdownTimeoutMs: number;
 
   // The p-limit limiter to control overall concurrency.
   private limiter: ReturnType<typeof pLimit>;
@@ -76,6 +93,8 @@ class Worker<TCatalog extends WorkerCatalog> {
   constructor(private options: WorkerOptions<TCatalog>) {
     this.logger = options.logger ?? new Logger("Worker", "debug");
     this.tracer = options.tracer ?? trace.getTracer(options.name);
+
+    this.shutdownTimeoutMs = options.shutdownTimeoutMs ?? 60_000;
 
     const schema: QueueCatalogFromWorkerCatalog<TCatalog> = Object.fromEntries(
       Object.entries(this.options.catalog).map(([key, value]) => [key, value.schema])
@@ -95,6 +114,61 @@ class Worker<TCatalog extends WorkerCatalog> {
 
     // Create a p-limit instance using this limit.
     this.limiter = pLimit(this.concurrency.limit);
+
+    this.metrics.register = options.metrics?.register;
+
+    if (!this.metrics.register) {
+      return;
+    }
+
+    this.metrics.enqueueDuration = new Histogram({
+      name: "redis_worker_enqueue_duration_seconds",
+      help: "The duration of enqueue operations",
+      labelNames: ["worker_name", "job_type", "has_available_at"],
+      buckets: [0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1],
+      registers: [this.metrics.register],
+    });
+
+    this.metrics.dequeueDuration = new Histogram({
+      name: "redis_worker_dequeue_duration_seconds",
+      help: "The duration of dequeue operations",
+      labelNames: ["worker_name", "worker_id", "task_count"],
+      buckets: [0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1],
+      registers: [this.metrics.register],
+    });
+
+    this.metrics.jobDuration = new Histogram({
+      name: "redis_worker_job_duration_seconds",
+      help: "The duration of job operations",
+      labelNames: ["worker_name", "worker_id", "batch_size", "job_type", "attempt"],
+      // use different buckets here as jobs can take a while to run
+      buckets: [0.1, 0.25, 0.5, 1, 2.5, 5, 10, 20, 30, 45, 60],
+      registers: [this.metrics.register],
+    });
+
+    this.metrics.ackDuration = new Histogram({
+      name: "redis_worker_ack_duration_seconds",
+      help: "The duration of ack operations",
+      labelNames: ["worker_name"],
+      buckets: [0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1],
+      registers: [this.metrics.register],
+    });
+
+    this.metrics.redriveDuration = new Histogram({
+      name: "redis_worker_redrive_duration_seconds",
+      help: "The duration of redrive operations",
+      labelNames: ["worker_name"],
+      buckets: [0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1],
+      registers: [this.metrics.register],
+    });
+
+    this.metrics.rescheduleDuration = new Histogram({
+      name: "redis_worker_reschedule_duration_seconds",
+      help: "The duration of reschedule operations",
+      labelNames: ["worker_name"],
+      buckets: [0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1],
+      registers: [this.metrics.register],
+    });
   }
 
   public start() {
@@ -147,22 +221,33 @@ class Worker<TCatalog extends WorkerCatalog> {
       this.tracer,
       "enqueue",
       async (span) => {
-        const timeout = visibilityTimeoutMs ?? this.options.catalog[job].visibilityTimeoutMs;
+        const timeout = visibilityTimeoutMs ?? this.options.catalog[job]?.visibilityTimeoutMs;
+
+        if (!timeout) {
+          throw new Error(`No visibility timeout found for job ${String(job)} with id ${id}`);
+        }
 
         span.setAttribute("job_visibility_timeout_ms", timeout);
 
-        return this.queue.enqueue({
-          id,
-          job,
-          item: payload,
-          visibilityTimeoutMs: timeout,
-          availableAt,
-        });
+        return this.withHistogram(
+          this.metrics.enqueueDuration,
+          this.queue.enqueue({
+            id,
+            job,
+            item: payload,
+            visibilityTimeoutMs: timeout,
+            availableAt,
+          }),
+          {
+            job_type: String(job),
+            has_available_at: availableAt ? "true" : "false",
+          }
+        );
       },
       {
         kind: SpanKind.PRODUCER,
         attributes: {
-          job_type: job as string,
+          job_type: String(job),
           job_id: id,
         },
       }
@@ -178,7 +263,10 @@ class Worker<TCatalog extends WorkerCatalog> {
       this.tracer,
       "reschedule",
       async (span) => {
-        return this.queue.reschedule(id, availableAt);
+        return this.withHistogram(
+          this.metrics.rescheduleDuration,
+          this.queue.reschedule(id, availableAt)
+        );
       },
       {
         kind: SpanKind.PRODUCER,
@@ -194,7 +282,7 @@ class Worker<TCatalog extends WorkerCatalog> {
       this.tracer,
       "ack",
       () => {
-        return this.queue.ack(id);
+        return this.withHistogram(this.metrics.ackDuration, this.queue.ack(id));
       },
       {
         attributes: {
@@ -220,7 +308,14 @@ class Worker<TCatalog extends WorkerCatalog> {
       }
 
       try {
-        const items = await this.queue.dequeue(taskCount);
+        const items = await this.withHistogram(
+          this.metrics.dequeueDuration,
+          this.queue.dequeue(taskCount),
+          {
+            worker_id: workerId,
+            task_count: taskCount,
+          }
+        );
 
         if (items.length === 0) {
           await Worker.delay(pollIntervalMs);
@@ -265,7 +360,17 @@ class Worker<TCatalog extends WorkerCatalog> {
       this.tracer,
       "processItem",
       async () => {
-        await handler({ id, payload: item, visibilityTimeoutMs, attempt });
+        await this.withHistogram(
+          this.metrics.jobDuration,
+          handler({ id, payload: item, visibilityTimeoutMs, attempt }),
+          {
+            worker_id: workerId,
+            batch_size: batchSize,
+            job_type: job,
+            attempt,
+          }
+        );
+
         // On success, acknowledge the item.
         await this.queue.ack(id);
       },
@@ -301,7 +406,7 @@ class Worker<TCatalog extends WorkerCatalog> {
         const newAttempt = attempt + 1;
         const retrySettings = {
           ...defaultRetrySettings,
-          ...catalogItem.retry,
+          ...catalogItem?.retry,
         };
         const retryDelay = calculateNextRetryDelay(retrySettings, newAttempt);
 
@@ -354,6 +459,23 @@ class Worker<TCatalog extends WorkerCatalog> {
     });
   }
 
+  private async withHistogram<T>(
+    histogram: Histogram<string> | undefined,
+    promise: Promise<T>,
+    labels?: Record<string, string | number>
+  ): Promise<T> {
+    if (!histogram || !this.metrics.register) {
+      return promise;
+    }
+
+    const end = histogram.startTimer({ worker_name: this.options.name, ...labels });
+    try {
+      return await promise;
+    } finally {
+      end();
+    }
+  }
+
   // A simple helper to delay for a given number of milliseconds.
   private static delay(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -378,7 +500,10 @@ class Worker<TCatalog extends WorkerCatalog> {
       if (typeof id !== "string") {
         throw new Error("Invalid message format: id must be a string");
       }
-      await this.queue.redriveFromDeadLetterQueue(id);
+      await this.withHistogram(
+        this.metrics.redriveDuration,
+        this.queue.redriveFromDeadLetterQueue(id)
+      );
       this.logger.log(`Redrived item ${id} from Dead Letter Queue`);
     } catch (error) {
       this.logger.error("Error processing redrive message", { error, message });
@@ -386,25 +511,37 @@ class Worker<TCatalog extends WorkerCatalog> {
   }
 
   private setupShutdownHandlers() {
-    process.on("SIGTERM", this.shutdown.bind(this));
-    process.on("SIGINT", this.shutdown.bind(this));
+    shutdownManager.register(`redis-worker:${this.options.name}`, this.shutdown.bind(this));
   }
 
-  private async shutdown() {
-    if (this.isShuttingDown) return;
+  private async shutdown(signal?: NodeJS.Signals) {
+    if (this.isShuttingDown) {
+      this.logger.log("Worker already shutting down", { signal });
+      return;
+    }
+
     this.isShuttingDown = true;
-    this.logger.log("Shutting down worker loops...");
+    this.logger.log("Shutting down worker loops...", { signal });
 
     // Wait for all worker loops to finish.
-    await Promise.all(this.workerLoops);
+    await Promise.race([
+      Promise.all(this.workerLoops),
+      Worker.delay(this.shutdownTimeoutMs).then(() => {
+        this.logger.error("Worker shutdown timed out", {
+          signal,
+          shutdownTimeoutMs: this.shutdownTimeoutMs,
+        });
+      }),
+    ]);
 
     await this.subscriber?.unsubscribe();
     await this.subscriber?.quit();
     await this.queue.close();
-    this.logger.log("All workers and subscribers shut down.");
+    this.logger.log("All workers and subscribers shut down.", { signal });
   }
 
   public async stop() {
+    shutdownManager.unregister(`redis-worker:${this.options.name}`);
     await this.shutdown();
   }
 }

@@ -1,5 +1,5 @@
 import { createRedisClient, Redis } from "@internal/redis";
-import { Worker } from "@internal/redis-worker";
+import { Worker } from "@trigger.dev/redis-worker";
 import { startSpan, trace, Tracer } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
 import {
@@ -120,6 +120,7 @@ export class RunEngine {
       concurrency: options.worker,
       pollIntervalMs: options.worker.pollIntervalMs,
       immediatePollIntervalMs: options.worker.immediatePollIntervalMs,
+      shutdownTimeoutMs: options.worker.shutdownTimeoutMs,
       logger: new Logger("RunEngineWorker", "debug"),
       jobs: {
         finishWaitpoint: async ({ payload }) => {
