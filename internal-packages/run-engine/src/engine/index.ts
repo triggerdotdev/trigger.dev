@@ -48,20 +48,21 @@ import { ReleaseConcurrencySystem } from "./systems/releaseConcurrencySystem.js"
 import { RunAttemptSystem } from "./systems/runAttemptSystem.js";
 import { SystemResources } from "./systems/systems.js";
 import { TtlSystem } from "./systems/ttlSystem.js";
-import { WaitingForWorkerSystem } from "./systems/waitingForWorkerSystem.js";
+import { PendingVersionSystem } from "./systems/pendingVersionSystem.js";
 import { WaitpointSystem } from "./systems/waitpointSystem.js";
 import { EngineWorker, HeartbeatTimeouts, RunEngineOptions, TriggerParams } from "./types.js";
 import { workerCatalog } from "./workerCatalog.js";
 
 export class RunEngine {
   private runLockRedis: Redis;
-  private prisma: PrismaClient;
   private runLock: RunLocker;
-  runQueue: RunQueue;
   private worker: EngineWorker;
   private logger = new Logger("RunEngine", "debug");
   private tracer: Tracer;
   private heartbeatTimeouts: HeartbeatTimeouts;
+
+  prisma: PrismaClient;
+  runQueue: RunQueue;
   eventBus: EventBus = new EventEmitter<EventBusEvents>();
   executionSnapshotSystem: ExecutionSnapshotSystem;
   runAttemptSystem: RunAttemptSystem;
@@ -72,7 +73,7 @@ export class RunEngine {
   checkpointSystem: CheckpointSystem;
   delayedRunSystem: DelayedRunSystem;
   ttlSystem: TtlSystem;
-  waitingForWorkerSystem: WaitingForWorkerSystem;
+  pendingVersionSystem: PendingVersionSystem;
   releaseConcurrencySystem: ReleaseConcurrencySystem;
 
   constructor(private readonly options: RunEngineOptions) {
@@ -147,10 +148,10 @@ export class RunEngine {
             reason: payload.reason,
           });
         },
-        queueRunsWaitingForWorker: async ({ payload }) => {
-          await this.waitingForWorkerSystem.enqueueRunsWaitingForWorker({
-            backgroundWorkerId: payload.backgroundWorkerId,
-          });
+        queueRunsPendingVersion: async ({ payload }) => {
+          await this.pendingVersionSystem.enqueueRunsForBackgroundWorker(
+            payload.backgroundWorkerId
+          );
         },
         tryCompleteBatch: async ({ payload }) => {
           await this.batchSystem.performCompleteBatch({ batchId: payload.batchId });
@@ -265,7 +266,7 @@ export class RunEngine {
       enqueueSystem: this.enqueueSystem,
     });
 
-    this.waitingForWorkerSystem = new WaitingForWorkerSystem({
+    this.pendingVersionSystem = new PendingVersionSystem({
       resources,
       enqueueSystem: this.enqueueSystem,
     });
@@ -326,7 +327,6 @@ export class RunEngine {
       cliVersion,
       concurrencyKey,
       masterQueue,
-      queueName,
       queue,
       isTest,
       delayUntil,
@@ -405,7 +405,7 @@ export class RunEngine {
               sdkVersion,
               cliVersion,
               concurrencyKey,
-              queue: queueName,
+              queue,
               masterQueue,
               secondaryMasterQueue,
               isTest,
@@ -505,66 +505,6 @@ export class RunEngine {
               tx: prisma,
               releaseConcurrency,
             });
-          }
-
-          //Make sure lock extension succeeded
-          signal.throwIfAborted();
-
-          if (queue) {
-            const concurrencyLimit =
-              typeof queue.concurrencyLimit === "number"
-                ? Math.max(Math.min(queue.concurrencyLimit, environment.maximumConcurrencyLimit), 0)
-                : queue.concurrencyLimit;
-
-            let taskQueue = await prisma.taskQueue.findFirst({
-              where: {
-                runtimeEnvironmentId: environment.id,
-                name: queueName,
-              },
-            });
-
-            if (!taskQueue) {
-              // handle conflicts with existing queues
-              taskQueue = await prisma.taskQueue.create({
-                data: {
-                  ...QueueId.generate(),
-                  name: queueName,
-                  concurrencyLimit,
-                  runtimeEnvironmentId: environment.id,
-                  projectId: environment.project.id,
-                  type: "NAMED",
-                },
-              });
-            }
-
-            if (typeof concurrencyLimit === "number") {
-              this.logger.debug("TriggerTaskService: updating concurrency limit", {
-                runId: taskRun.id,
-                friendlyId: taskRun.friendlyId,
-                taskQueue,
-                orgId: environment.organization.id,
-                projectId: environment.project.id,
-                concurrencyLimit,
-                queueOptions: queue,
-              });
-
-              await this.runQueue.updateQueueConcurrencyLimits(
-                environment,
-                taskQueue.name,
-                concurrencyLimit
-              );
-            } else if (concurrencyLimit === null) {
-              this.logger.debug("TriggerTaskService: removing concurrency limit", {
-                runId: taskRun.id,
-                friendlyId: taskRun.friendlyId,
-                taskQueue,
-                orgId: environment.organization.id,
-                projectId: environment.project.id,
-                queueOptions: queue,
-              });
-
-              await this.runQueue.removeQueueConcurrencyLimits(environment, taskQueue.name);
-            }
           }
 
           //Make sure lock extension succeeded
@@ -784,14 +724,8 @@ export class RunEngine {
     });
   }
 
-  async queueRunsWaitingForWorker({
-    backgroundWorkerId,
-  }: {
-    backgroundWorkerId: string;
-  }): Promise<void> {
-    return this.waitingForWorkerSystem.enqueueRunsWaitingForWorker({
-      backgroundWorkerId,
-    });
+  async scheduleEnqueueRunsForBackgroundWorker(backgroundWorkerId: string): Promise<void> {
+    return this.pendingVersionSystem.scheduleResolvePendingVersionRuns(backgroundWorkerId);
   }
 
   /**

@@ -3,6 +3,7 @@ import {
   BackgroundWorkerTask,
   Prisma,
   PrismaClientOrTransaction,
+  TaskQueue,
   WorkerDeployment,
 } from "@trigger.dev/database";
 import { CURRENT_DEPLOYMENT_LABEL } from "@trigger.dev/core/v3/isomorphic";
@@ -30,7 +31,8 @@ type RunWithBackgroundWorkerTasksResult =
         | "NO_WORKER"
         | "TASK_NOT_IN_LATEST"
         | "TASK_NEVER_REGISTERED"
-        | "BACKGROUND_WORKER_MISMATCH";
+        | "BACKGROUND_WORKER_MISMATCH"
+        | "QUEUE_NOT_FOUND";
       message: string;
       run: RunWithMininimalEnvironment;
     }
@@ -49,6 +51,7 @@ type RunWithBackgroundWorkerTasksResult =
       run: RunWithMininimalEnvironment;
       worker: BackgroundWorker;
       task: BackgroundWorkerTask;
+      queue: TaskQueue;
       deployment: WorkerDeployment | null;
     };
 
@@ -158,11 +161,23 @@ export async function getRunWithBackgroundWorkerTasks(
     }
   }
 
+  const queue = workerWithTasks.queues.find((queue) => queue.name === run.queue);
+
+  if (!queue) {
+    return {
+      success: false as const,
+      code: "QUEUE_NOT_FOUND",
+      message: `Queue not found for run: ${run.id}`,
+      run,
+    };
+  }
+
   return {
     success: true as const,
     run,
     worker: workerWithTasks.worker,
     task: backgroundTask,
+    queue,
     deployment: workerWithTasks.deployment,
   };
 }
@@ -170,6 +185,7 @@ export async function getRunWithBackgroundWorkerTasks(
 type WorkerDeploymentWithWorkerTasks = {
   worker: BackgroundWorker;
   tasks: BackgroundWorkerTask[];
+  queues: TaskQueue[];
   deployment: WorkerDeployment | null;
 };
 
@@ -184,6 +200,7 @@ export async function getWorkerDeploymentFromWorker(
     include: {
       deployment: true,
       tasks: true,
+      queues: true,
     },
   });
 
@@ -191,7 +208,7 @@ export async function getWorkerDeploymentFromWorker(
     return null;
   }
 
-  return { worker, tasks: worker.tasks, deployment: worker.deployment };
+  return { worker, tasks: worker.tasks, queues: worker.queues, deployment: worker.deployment };
 }
 
 export async function getMostRecentWorker(
@@ -204,6 +221,7 @@ export async function getMostRecentWorker(
     },
     include: {
       tasks: true,
+      queues: true,
     },
     orderBy: {
       id: "desc",
@@ -214,7 +232,7 @@ export async function getMostRecentWorker(
     return null;
   }
 
-  return { worker, tasks: worker.tasks, deployment: null };
+  return { worker, tasks: worker.tasks, queues: worker.queues, deployment: null };
 }
 
 export async function getWorkerById(
@@ -228,6 +246,7 @@ export async function getWorkerById(
     include: {
       deployment: true,
       tasks: true,
+      queues: true,
     },
     orderBy: {
       id: "desc",
@@ -238,7 +257,7 @@ export async function getWorkerById(
     return null;
   }
 
-  return { worker, tasks: worker.tasks, deployment: worker.deployment };
+  return { worker, tasks: worker.tasks, queues: worker.queues, deployment: worker.deployment };
 }
 
 export async function getWorkerFromCurrentlyPromotedDeployment(
@@ -258,6 +277,7 @@ export async function getWorkerFromCurrentlyPromotedDeployment(
           worker: {
             include: {
               tasks: true,
+              queues: true,
             },
           },
         },
@@ -272,6 +292,7 @@ export async function getWorkerFromCurrentlyPromotedDeployment(
   return {
     worker: promotion.deployment.worker,
     tasks: promotion.deployment.worker.tasks,
+    queues: promotion.deployment.worker.queues,
     deployment: promotion.deployment,
   };
 }

@@ -1,12 +1,8 @@
-import {
-  assertNonNullable,
-  containerTest,
-  setupAuthenticatedEnvironment,
-  setupBackgroundWorker,
-} from "@internal/testcontainers";
+import { assertNonNullable, containerTest } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
 import { RunEngine } from "../index.js";
 import { setTimeout } from "node:timers/promises";
+import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -52,7 +48,7 @@ describe("RunEngine Releasing Concurrency", () => {
     });
     const taskIdentifier = "test-task";
 
-    await setupBackgroundWorker(prisma, authenticatedEnvironment, taskIdentifier);
+    await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
 
     const run = await engine.trigger(
       {
@@ -67,7 +63,7 @@ describe("RunEngine Releasing Concurrency", () => {
         traceId: "t12345",
         spanId: "s12345",
         masterQueue: "main",
-        queueName: `task/${taskIdentifier}`,
+        queue: `task/${taskIdentifier}`,
         isTest: false,
         tags: [],
       },
@@ -244,7 +240,7 @@ describe("RunEngine Releasing Concurrency", () => {
       const taskIdentifier = "test-task";
 
       await setupBackgroundWorker(
-        prisma,
+        engine,
         authenticatedEnvironment,
         taskIdentifier,
         undefined,
@@ -267,7 +263,7 @@ describe("RunEngine Releasing Concurrency", () => {
           traceId: "t12345",
           spanId: "s12345",
           masterQueue: "main",
-          queueName: `task/${taskIdentifier}`,
+          queue: `task/${taskIdentifier}`,
           isTest: false,
           tags: [],
         },
@@ -431,7 +427,7 @@ describe("RunEngine Releasing Concurrency", () => {
       const taskIdentifier = "test-task";
 
       await setupBackgroundWorker(
-        prisma,
+        engine,
         authenticatedEnvironment,
         taskIdentifier,
         undefined,
@@ -455,7 +451,7 @@ describe("RunEngine Releasing Concurrency", () => {
           traceId: "t12345",
           spanId: "s12345",
           masterQueue: "main",
-          queueName: `task/${taskIdentifier}`,
+          queue: `task/${taskIdentifier}`,
           isTest: false,
           tags: [],
         },
@@ -618,7 +614,7 @@ describe("RunEngine Releasing Concurrency", () => {
       });
       const taskIdentifier = "test-task";
 
-      await setupBackgroundWorker(prisma, authenticatedEnvironment, taskIdentifier);
+      await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
 
       const run = await engine.trigger(
         {
@@ -633,7 +629,7 @@ describe("RunEngine Releasing Concurrency", () => {
           traceId: "t12345",
           spanId: "s12345",
           masterQueue: "main",
-          queueName: `task/${taskIdentifier}`,
+          queue: `task/${taskIdentifier}`,
           isTest: false,
           tags: [],
         },
@@ -780,7 +776,7 @@ describe("RunEngine Releasing Concurrency", () => {
       });
       const taskIdentifier = "test-task";
 
-      await setupBackgroundWorker(prisma, authenticatedEnvironment, taskIdentifier);
+      await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
 
       const run = await engine.trigger(
         {
@@ -795,7 +791,7 @@ describe("RunEngine Releasing Concurrency", () => {
           traceId: "t12345",
           spanId: "s12345",
           masterQueue: "main",
-          queueName: `task/${taskIdentifier}`,
+          queue: `task/${taskIdentifier}`,
           isTest: false,
           tags: [],
         },
@@ -962,7 +958,7 @@ describe("RunEngine Releasing Concurrency", () => {
       });
       const taskIdentifier = "test-task";
 
-      await setupBackgroundWorker(prisma, authenticatedEnvironment, taskIdentifier);
+      await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
 
       const run = await engine.trigger(
         {
@@ -977,7 +973,7 @@ describe("RunEngine Releasing Concurrency", () => {
           traceId: "t12345",
           spanId: "s12345",
           masterQueue: "main",
-          queueName: `task/${taskIdentifier}`,
+          queue: `task/${taskIdentifier}`,
           isTest: false,
           tags: [],
         },

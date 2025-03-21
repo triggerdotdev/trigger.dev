@@ -29,7 +29,7 @@ export const workerCatalog = {
     }),
     visibilityTimeoutMs: 5000,
   },
-  queueRunsWaitingForWorker: {
+  queueRunsPendingVersion: {
     schema: z.object({
       backgroundWorkerId: z.string(),
     }),

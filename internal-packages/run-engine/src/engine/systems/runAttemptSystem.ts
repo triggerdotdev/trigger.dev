@@ -270,7 +270,7 @@ export class RunAttemptSystem {
             task: {
               id: run.lockedBy!.slug,
               filePath: run.lockedBy!.filePath,
-              exportName: run.lockedBy!.exportName,
+              exportName: run.lockedBy!.exportName ?? undefined,
             },
             attempt: {
               number: nextAttemptNumber,

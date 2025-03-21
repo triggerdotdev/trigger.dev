@@ -59,7 +59,7 @@ import {
 } from "~/components/primitives/Table";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import TooltipPortal from "~/components/primitives/TooltipPortal";
-import { TaskFunctionName } from "~/components/runs/v3/TaskPath";
+import { TaskFileName } from "~/components/runs/v3/TaskPath";
 import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
 import {
   taskTriggerSourceDescription,
@@ -71,8 +71,8 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useTextFilter } from "~/hooks/useTextFilter";
 import {
-  type Task,
   type TaskActivity,
+  type TaskListItem,
   TaskListPresenter,
 } from "~/presenters/v3/TaskListPresenter.server";
 import {
@@ -154,16 +154,10 @@ export default function Page() {
   const environment = useEnvironment();
   const { tasks, activity, runningStats, durations, usefulLinksPreference } =
     useTypedLoaderData<typeof loader>();
-  const { filterText, setFilterText, filteredItems } = useTextFilter<Task>({
+  const { filterText, setFilterText, filteredItems } = useTextFilter<TaskListItem>({
     items: tasks,
     filter: (task, text) => {
       if (task.slug.toLowerCase().includes(text.toLowerCase())) {
-        return true;
-      }
-
-      if (
-        task.exportName.toLowerCase().includes(text.toLowerCase().replace("(", "").replace(")", ""))
-      ) {
         return true;
       }
 
@@ -213,7 +207,7 @@ export default function Page() {
             <Property.Table>
               {tasks.map((task) => (
                 <Property.Item key={task.slug}>
-                  <Property.Label>{task.exportName}</Property.Label>
+                  <Property.Label>{task.filePath}</Property.Label>
                 </Property.Item>
               ))}
             </Property.Table>
@@ -258,7 +252,7 @@ export default function Page() {
                       <TableHeader>
                         <TableRow>
                           <TableHeaderCell>Task ID</TableHeaderCell>
-                          <TableHeaderCell>Task</TableHeaderCell>
+                          <TableHeaderCell>File</TableHeaderCell>
                           <TableHeaderCell>Running</TableHeaderCell>
                           <TableHeaderCell>Queued</TableHeaderCell>
                           <TableHeaderCell>Activity (7d)</TableHeaderCell>
@@ -289,8 +283,8 @@ export default function Page() {
                                   </div>
                                 </TableCell>
                                 <TableCell to={path}>
-                                  <TaskFunctionName
-                                    functionName={task.exportName}
+                                  <TaskFileName
+                                    fileName={task.filePath}
                                     variant="extra-extra-small"
                                   />
                                 </TableCell>
@@ -507,7 +501,7 @@ function TaskActivityGraph({ activity }: { activity: TaskActivity }) {
           isAnimationActive={false}
         />
         <Bar dataKey="PENDING" fill="#5F6570" stackId="a" strokeWidth={0} barSize={10} />
-        <Bar dataKey="WAITING_FOR_DEPLOY" fill="#F59E0B" stackId="a" strokeWidth={0} barSize={10} />
+        <Bar dataKey="PENDING_VERSION" fill="#F59E0B" stackId="a" strokeWidth={0} barSize={10} />
         <Bar dataKey="EXECUTING" fill="#3B82F6" stackId="a" strokeWidth={0} barSize={10} />
         <Bar
           dataKey="RETRYING_AFTER_FAILURE"

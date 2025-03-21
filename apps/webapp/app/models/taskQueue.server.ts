@@ -1,4 +1,4 @@
-import { QueueOptions } from "@trigger.dev/core/v3/schemas";
+import { QueueManifest } from "@trigger.dev/core/v3/schemas";
 import { TaskQueue } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
 
@@ -35,7 +35,7 @@ export async function findQueueInEnvironment(
     return;
   }
 
-  const queueConfig = QueueOptions.safeParse(task.queueConfig);
+  const queueConfig = QueueManifest.safeParse(task.queueConfig);
 
   if (queueConfig.success) {
     const taskQueueName = queueConfig.data.name

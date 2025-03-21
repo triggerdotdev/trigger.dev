@@ -161,7 +161,12 @@ export const TableHeaderCell = forwardRef<HTMLTableCellElement, TableHeaderCellP
         {hiddenLabel ? (
           <span className="sr-only">{children}</span>
         ) : tooltip ? (
-          <div className="flex items-center gap-1">
+          <div
+            className={cn("flex items-center gap-1", {
+              "justify-center": alignment === "center",
+              "justify-end": alignment === "right",
+            })}
+          >
             {children}
             <InfoIconTooltip content={tooltip} contentClassName="normal-case tracking-normal" />
           </div>

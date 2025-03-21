@@ -1614,6 +1614,7 @@ model BackgroundWorker {
   attempts   TaskRunAttempt[]
   lockedRuns TaskRun[]
   files      BackgroundWorkerFile[]
+  queues     TaskQueue[]
 
   deployment WorkerDeployment?
 
@@ -1656,7 +1657,7 @@ model BackgroundWorkerTask {
   friendlyId String @unique
 
   filePath   String
-  exportName String
+  exportName String?
 
   worker   BackgroundWorker @relation(fields: [workerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   workerId String
@@ -1679,6 +1680,9 @@ model BackgroundWorkerTask {
   queueConfig   Json?
   retryConfig   Json?
   machineConfig Json?
+
+  queueId String?
+  queue   TaskQueue? @relation(fields: [queueId], references: [id], onDelete: SetNull, onUpdate: Cascade)
 
   maxDurationInSeconds Int?
 
@@ -1703,7 +1707,8 @@ model TaskRun {
 
   engine RunEngineVersion @default(V1)
 
-  status TaskRunStatus @default(PENDING)
+  status       TaskRunStatus @default(PENDING)
+  statusReason String?
 
   idempotencyKey          String?
   idempotencyKeyExpiresAt DateTime?
@@ -1899,7 +1904,10 @@ enum TaskRunStatus {
   /// Task is waiting to be executed by a worker
   PENDING
 
-  /// Task hasn't been deployed yet but is waiting to be executed
+  /// The run is pending a version update because it cannot execute without additional information (task, queue, etc.). Replaces WAITING_FOR_DEPLOY
+  PENDING_VERSION
+
+  /// Task hasn't been deployed yet but is waiting to be executed. Deprecated in favor of PENDING_VERSION
   WAITING_FOR_DEPLOY
 
   /// Task is currently being executed by a worker
@@ -2533,6 +2541,9 @@ model TaskQueue {
   name String
   type TaskQueueType @default(VIRTUAL)
 
+  version       TaskQueueVersion @default(V1)
+  orderableName String?
+
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   projectId String
 
@@ -2551,6 +2562,8 @@ model TaskQueue {
   updatedAt DateTime @updatedAt
 
   attempts TaskRunAttempt[]
+  tasks    BackgroundWorkerTask[]
+  workers  BackgroundWorker[]
 
   @@unique([runtimeEnvironmentId, name])
 }
@@ -2558,6 +2571,11 @@ model TaskQueue {
 enum TaskQueueType {
   VIRTUAL
   NAMED
+}
+
+enum TaskQueueVersion {
+  V1
+  V2
 }
 
 model BatchTaskRun {

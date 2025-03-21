@@ -382,7 +382,7 @@ function extractResourceProperties(attributes: KeyValue[]) {
     attemptNumber: extractNumberAttribute(attributes, SemanticInternalAttributes.ATTEMPT_NUMBER),
     taskSlug: extractStringAttribute(attributes, SemanticInternalAttributes.TASK_SLUG, "unknown"),
     taskPath: extractStringAttribute(attributes, SemanticInternalAttributes.TASK_PATH),
-    taskExportName: extractStringAttribute(attributes, SemanticInternalAttributes.TASK_EXPORT_NAME),
+    taskExportName: "@deprecated",
     workerId: extractStringAttribute(attributes, SemanticInternalAttributes.WORKER_ID),
     workerVersion: extractStringAttribute(attributes, SemanticInternalAttributes.WORKER_VERSION),
     queueId: extractStringAttribute(attributes, SemanticInternalAttributes.QUEUE_ID),

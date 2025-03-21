@@ -1,9 +1,9 @@
-import { type AuthenticatedEnvironment } from "@internal/testcontainers";
 import { type PrismaClientOrTransaction } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { updateEnvConcurrencyLimits } from "../runQueue.server";
 import { WithRunEngine } from "./baseService.server";
+import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 
 export type PauseStatus = "paused" | "resumed";
 

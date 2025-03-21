@@ -295,6 +295,32 @@ export default function Page() {
                     <TableHeaderCell>Name</TableHeaderCell>
                     <TableHeaderCell alignment="right">Queued</TableHeaderCell>
                     <TableHeaderCell alignment="right">Running</TableHeaderCell>
+                    <TableHeaderCell
+                      alignment="right"
+                      tooltip={
+                        <div className="max-w-xs p-1 text-left">
+                          <Paragraph
+                            variant="small"
+                            className="!text-wrap text-text-dimmed"
+                            spacing
+                          >
+                            When a task executing on this queue is paused and waiting for a
+                            waitpoint to complete, the queue will release the concurrency being used
+                            by the run so other runs can be started.
+                          </Paragraph>
+                          <LinkButton
+                            to={docsPath("v3/queues#release-concurrency-on-waitpoint")}
+                            variant="docs/small"
+                            LeadingIcon={BookOpenIcon}
+                            className="mt-3"
+                          >
+                            Read docs
+                          </LinkButton>
+                        </div>
+                      }
+                    >
+                      Release on waitpoint
+                    </TableHeaderCell>
                     <TableHeaderCell alignment="right">Concurrency limit</TableHeaderCell>
                     <TableHeaderCell className="w-[1%] pl-24">
                       <span className="sr-only">Pause/resume</span>
@@ -353,6 +379,12 @@ export default function Page() {
                           className={queue.paused ? "opacity-50" : undefined}
                         >
                           {queue.running}
+                        </TableCell>
+                        <TableCell
+                          alignment="right"
+                          className={queue.paused ? "opacity-50" : undefined}
+                        >
+                          {queue.releaseConcurrencyOnWaitpoint ? "Yes" : "No"}
                         </TableCell>
                         <TableCell
                           alignment="right"
