@@ -3,7 +3,13 @@ import { VERSION } from "../../version.js";
 import { ApiError, RateLimitError } from "../apiClient/errors.js";
 import { ConsoleInterceptor } from "../consoleInterceptor.js";
 import { isInternalError, parseError, sanitizeError, TaskPayloadParsedError } from "../errors.js";
-import { lifecycleHooks, runMetadata, TriggerConfig, waitUntil } from "../index.js";
+import {
+  flattenAttributes,
+  lifecycleHooks,
+  runMetadata,
+  TriggerConfig,
+  waitUntil,
+} from "../index.js";
 import { recordSpanException, TracingSDK } from "../otel/index.js";
 import { runTimelineMetrics } from "../run-timeline-metrics-api.js";
 import {
@@ -288,58 +294,87 @@ export class TaskExecutor {
     return this._tracer.startActiveSpan(
       "hooks.init",
       async (span) => {
-        return await runTimelineMetrics.measureMetric("trigger.dev/execution", "init", async () => {
-          // Store global hook results in an array
-          const globalResults = [];
-          for (const hook of globalInitHooks) {
-            const result = await this._tracer.startActiveSpan(
-              hook.name ?? "global",
-              async (span) => {
-                return await hook.fn({ payload, ctx, signal, task: this.task.id });
-              },
-              {
-                attributes: {
-                  [SemanticInternalAttributes.STYLE_ICON]: "function",
+        const result = await runTimelineMetrics.measureMetric(
+          "trigger.dev/execution",
+          "init",
+          async () => {
+            // Store global hook results in an array
+            const globalResults = [];
+            for (const hook of globalInitHooks) {
+              const result = await this._tracer.startActiveSpan(
+                hook.name ?? "global",
+                async (span) => {
+                  const result = await hook.fn({ payload, ctx, signal, task: this.task.id });
+
+                  if (result && typeof result === "object" && !Array.isArray(result)) {
+                    span.setAttributes(flattenAttributes(result));
+
+                    return result;
+                  }
+
+                  return {};
                 },
+                {
+                  attributes: {
+                    [SemanticInternalAttributes.STYLE_ICON]: "tabler-function",
+                  },
+                }
+              );
+              // Only include object results
+              if (result && typeof result === "object" && !Array.isArray(result)) {
+                globalResults.push(result);
               }
-            );
-            // Only include object results
-            if (result && typeof result === "object" && !Array.isArray(result)) {
-              globalResults.push(result);
-            }
-          }
-
-          // Merge all global results into a single object
-          const mergedGlobalResults = Object.assign({}, ...globalResults);
-
-          if (taskInitHook) {
-            const taskResult = await this._tracer.startActiveSpan(
-              "task",
-              async (span) => {
-                return await taskInitHook({ payload, ctx, signal, task: this.task.id });
-              },
-              {
-                attributes: {
-                  [SemanticInternalAttributes.STYLE_ICON]: "function",
-                },
-              }
-            );
-
-            // Only merge if taskResult is an object
-            if (taskResult && typeof taskResult === "object" && !Array.isArray(taskResult)) {
-              return { ...mergedGlobalResults, ...taskResult };
             }
 
-            // If taskResult isn't an object, return global results
+            // Merge all global results into a single object
+            const mergedGlobalResults = Object.assign({}, ...globalResults);
+
+            if (taskInitHook) {
+              const taskResult = await this._tracer.startActiveSpan(
+                "task",
+                async (span) => {
+                  const result = await taskInitHook({ payload, ctx, signal, task: this.task.id });
+
+                  if (result && typeof result === "object" && !Array.isArray(result)) {
+                    span.setAttributes(flattenAttributes(result));
+
+                    return result;
+                  }
+
+                  return {};
+                },
+                {
+                  attributes: {
+                    [SemanticInternalAttributes.STYLE_ICON]: "tabler-function",
+                  },
+                }
+              );
+
+              // Only merge if taskResult is an object
+              if (taskResult && typeof taskResult === "object" && !Array.isArray(taskResult)) {
+                return { ...mergedGlobalResults, ...taskResult };
+              }
+
+              // If taskResult isn't an object, return global results
+              return mergedGlobalResults;
+            }
+
             return mergedGlobalResults;
           }
+        );
 
-          return mergedGlobalResults;
-        });
+        if (result && typeof result === "object" && !Array.isArray(result)) {
+          span.setAttributes(flattenAttributes(result));
+
+          return result;
+        }
+
+        return;
       },
       {
         attributes: {
-          [SemanticInternalAttributes.STYLE_ICON]: "function",
+          [SemanticInternalAttributes.STYLE_ICON]: "tabler-function",
+          [SemanticInternalAttributes.COLLAPSED]: true,
         },
       }
     );

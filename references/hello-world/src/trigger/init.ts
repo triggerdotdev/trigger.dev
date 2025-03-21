@@ -1,4 +1,4 @@
-import { logger, tasks } from "@trigger.dev/sdk";
+import { logger, type TaskInitHookParams, tasks } from "@trigger.dev/sdk";
 
 // tasks.onSuccess(({ ctx, payload, output }) => {
 //   logger.info("Hello, world from the success", { ctx, payload });
@@ -28,6 +28,18 @@ import { logger, tasks } from "@trigger.dev/sdk";
 //   logger.info("Hello, world from the start", { ctx, payload });
 // });
 
-tasks.onInit("logging", ({ ctx, payload, task }) => {
+tasks.onInit(({ ctx, payload, task }) => {
   logger.info("Hello, world from the init", { ctx, payload, task });
+
+  return {
+    foo: "bar",
+  };
+});
+
+tasks.onInit(({ ctx, payload, task }) => {
+  logger.info("Hello, world from the init 2", { ctx, payload, task });
+
+  return {
+    bar: "baz",
+  };
 });

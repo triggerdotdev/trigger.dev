@@ -1,4 +1,11 @@
-import { lifecycleHooks, type AnyOnInitHookFunction } from "@trigger.dev/core/v3";
+import {
+  lifecycleHooks,
+  type AnyOnInitHookFunction,
+  type TaskInitHookParams,
+  type OnInitHookFunction,
+} from "@trigger.dev/core/v3";
+
+export type { AnyOnInitHookFunction, TaskInitHookParams, OnInitHookFunction };
 
 export function onInit(name: string, fn: AnyOnInitHookFunction): void;
 export function onInit(fn: AnyOnInitHookFunction): void;

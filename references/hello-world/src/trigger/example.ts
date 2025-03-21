@@ -3,8 +3,15 @@ import { setTimeout } from "timers/promises";
 
 export const helloWorldTask = task({
   id: "hello-world",
-  run: async (payload: any, { ctx }) => {
-    logger.debug("debug: Hello, world!", { payload });
+  init: async (payload, { ctx }) => {
+    logger.info("Hello, world from the init", { ctx, payload });
+
+    return {
+      foobar: "baz",
+    };
+  },
+  run: async (payload: any, { ctx, init }) => {
+    logger.debug("debug: Hello, world!", { payload, init });
     logger.info("info: Hello, world!", { payload });
     logger.log("log: Hello, world!", { payload });
     logger.warn("warn: Hello, world!", { payload });

@@ -6,8 +6,8 @@ import {
 } from "./types.js";
 
 export class StandardLifecycleHooksManager implements LifecycleHooksManager {
-  private initHooks: Map<string, RegisteredHookFunction<AnyOnInitHookFunction>> = new Map();
-  private taskInitHooks: Map<string, string> = new Map();
+  private globalInitHooks: Map<string, RegisteredHookFunction<AnyOnInitHookFunction>> = new Map();
+  private taskInitHooks: Map<string, RegisteredHookFunction<AnyOnInitHookFunction>> = new Map();
 
   registerGlobalInitHook(hook: RegisterHookFunctionParams<AnyOnInitHookFunction>): void {
     // if there is no id, lets generate one based on the contents of the function
@@ -15,11 +15,11 @@ export class StandardLifecycleHooksManager implements LifecycleHooksManager {
 
     const registeredHook = {
       id,
-      name: hook.id ?? hook.fn.name,
+      name: hook.id ?? hook.fn.name ? (hook.fn.name === "" ? undefined : hook.fn.name) : undefined,
       fn: hook.fn,
     };
 
-    this.initHooks.set(id, registeredHook);
+    this.globalInitHooks.set(id, registeredHook);
   }
 
   registerTaskInitHook(
@@ -32,18 +32,15 @@ export class StandardLifecycleHooksManager implements LifecycleHooksManager {
       fn: hook.fn,
     };
 
-    this.initHooks.set(registeredHook.id, registeredHook);
-    this.taskInitHooks.set(taskId, registeredHook.id);
+    this.taskInitHooks.set(taskId, registeredHook);
   }
 
   getTaskInitHook(taskId: string): AnyOnInitHookFunction | undefined {
-    const hookId = this.taskInitHooks.get(taskId);
-    if (!hookId) return undefined;
-    return this.initHooks.get(hookId)?.fn;
+    return this.taskInitHooks.get(taskId)?.fn;
   }
 
   getGlobalInitHooks(): RegisteredHookFunction<AnyOnInitHookFunction>[] {
-    return Array.from(this.initHooks.values());
+    return Array.from(this.globalInitHooks.values());
   }
 }
 
@@ -69,5 +66,9 @@ export class NoopLifecycleHooksManager implements LifecycleHooksManager {
 }
 
 function generateHookId(hook: RegisterHookFunctionParams<any>): string {
-  return hook.id ?? hook.fn.name ?? hook.fn.toString();
+  return hook.id ?? hook.fn.name
+    ? hook.fn.name === ""
+      ? hook.fn.toString()
+      : hook.fn.name
+    : hook.fn.toString();
 }

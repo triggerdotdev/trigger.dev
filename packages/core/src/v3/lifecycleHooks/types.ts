@@ -1,13 +1,17 @@
 import { TaskRunContext } from "../schemas/index.js";
 
-export type OnInitHookFunction<TPayload, TInitOutput> = (params: {
+export type TaskInitHookParams<TPayload = unknown> = {
   ctx: TaskRunContext;
   payload: TPayload;
   task: string;
   signal?: AbortSignal;
-}) => TInitOutput | undefined | void | Promise<TInitOutput | undefined | void>;
+};
 
-export type AnyOnInitHookFunction = OnInitHookFunction<unknown, unknown>;
+export type OnInitHookFunction<TPayload, TInitOutput extends Record<string, unknown>> = (
+  params: TaskInitHookParams<TPayload>
+) => TInitOutput | undefined | void | Promise<TInitOutput | undefined | void>;
+
+export type AnyOnInitHookFunction = OnInitHookFunction<unknown, Record<string, unknown>>;
 
 export type RegisterHookFunctionParams<THookFunction extends (params: any) => any> = {
   id?: string;
