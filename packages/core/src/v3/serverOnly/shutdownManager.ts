@@ -33,6 +33,10 @@ class ShutdownManager {
   }
 
   unregister(name: string) {
+    if (!this.handlers.has(name)) {
+      throw new Error(`Shutdown handler "${name}" not registered`);
+    }
+
     this.handlers.delete(name);
   }
 

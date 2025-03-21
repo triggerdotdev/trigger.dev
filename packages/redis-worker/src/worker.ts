@@ -541,7 +541,7 @@ class Worker<TCatalog extends WorkerCatalog> {
   }
 
   public async stop() {
-    shutdownManager.unregister("redis-worker");
+    shutdownManager.unregister(`redis-worker:${this.options.name}`);
     await this.shutdown();
   }
 }
