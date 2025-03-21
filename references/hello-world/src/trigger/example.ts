@@ -138,3 +138,10 @@ export const batchTask = task({
     };
   },
 });
+
+const nonExportedTask = task({
+  id: "non-exported",
+  run: async (payload: { message: string }, { ctx }) => {
+    logger.info("Hello, world from the non-exported task", { message: payload.message });
+  },
+});
