@@ -36,8 +36,12 @@ const network = async ({}, use: Use<StartedNetwork>) => {
   try {
     await use(network);
   } finally {
+    try {
+      await network.stop();
+    } catch (error) {
+      console.warn("Network stop error (ignored):", error);
+    }
     // Make sure to stop the network after use
-    await network.stop();
   }
 };
 
