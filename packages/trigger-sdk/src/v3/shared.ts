@@ -193,6 +193,12 @@ export function createTask<
     });
   }
 
+  if (params.onStart) {
+    lifecycleHooks.registerTaskStartHook(params.id, {
+      fn: lifecycleHooksAdapters.createStartHookAdapter(params.onStart),
+    });
+  }
+
   resourceCatalog.registerTaskMetadata({
     id: params.id,
     description: params.description,
@@ -328,6 +334,12 @@ export function createSchemaTask<
   if (params.init) {
     lifecycleHooks.registerTaskInitHook(params.id, {
       fn: lifecycleHooksAdapters.createInitHookAdapter(params.init),
+    });
+  }
+
+  if (params.onStart) {
+    lifecycleHooks.registerTaskStartHook(params.id, {
+      fn: lifecycleHooksAdapters.createStartHookAdapter(params.onStart),
     });
   }
 

@@ -513,54 +513,56 @@ export class TaskExecutor {
   }
 
   async #callOnStartFunctions(payload: unknown, ctx: TaskRunContext, signal?: AbortSignal) {
-    await this.#callOnStartFunction(
-      this._importedConfig?.onStart,
-      "config.onStart",
-      payload,
-      ctx,
-      {},
-      signal
-    );
+    const globalStartHooks = lifecycleHooks.getGlobalStartHooks();
+    const taskStartHook = lifecycleHooks.getTaskStartHook(this.task.id);
 
-    await this.#callOnStartFunction(
-      this.task.fns.onStart,
-      "task.onStart",
-      payload,
-      ctx,
-      {},
-      signal
-    );
-  }
-
-  async #callOnStartFunction(
-    onStartFn: TaskMetadataWithFunctions["fns"]["onStart"],
-    name: string,
-    payload: unknown,
-    ctx: TaskRunContext,
-    initOutput: any,
-    signal?: AbortSignal
-  ) {
-    if (!onStartFn) {
+    if (globalStartHooks.length === 0 && !taskStartHook) {
       return;
     }
 
-    try {
-      await this._tracer.startActiveSpan(
-        name,
-        async (span) => {
-          return await runTimelineMetrics.measureMetric("trigger.dev/execution", name, () =>
-            onStartFn(payload, { ctx, signal })
-          );
+    return this._tracer.startActiveSpan(
+      "hooks.start",
+      async (span) => {
+        return await runTimelineMetrics.measureMetric(
+          "trigger.dev/execution",
+          "start",
+          async () => {
+            for (const hook of globalStartHooks) {
+              await this._tracer.startActiveSpan(
+                hook.name ?? "global",
+                async (span) => {
+                  await hook.fn({ payload, ctx, signal, task: this.task.id });
+                },
+                {
+                  attributes: {
+                    [SemanticInternalAttributes.STYLE_ICON]: "tabler-function",
+                  },
+                }
+              );
+            }
+
+            if (taskStartHook) {
+              await this._tracer.startActiveSpan(
+                "task",
+                async (span) => {
+                  await taskStartHook({ payload, ctx, signal, task: this.task.id });
+                },
+                {
+                  attributes: {
+                    [SemanticInternalAttributes.STYLE_ICON]: "tabler-function",
+                  },
+                }
+              );
+            }
+          }
+        );
+      },
+      {
+        attributes: {
+          [SemanticInternalAttributes.STYLE_ICON]: "tabler-function",
         },
-        {
-          attributes: {
-            [SemanticInternalAttributes.STYLE_ICON]: "function",
-          },
-        }
-      );
-    } catch {
-      // Ignore errors from onStart functions
-    }
+      }
+    );
   }
 
   async #callTaskCleanup(

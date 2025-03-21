@@ -9,6 +9,9 @@ export type {
   AnyOnInitHookFunction,
   RegisteredHookFunction,
   TaskInitHookParams,
+  TaskStartHookParams,
+  OnStartHookFunction,
+  AnyOnStartHookFunction,
 } from "./lifecycleHooks/types.js";
 
 export * as lifecycleHooksAdapters from "./lifecycleHooks/adapters.js";
