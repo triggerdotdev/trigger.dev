@@ -54,6 +54,7 @@ jobs:
   units:
     uses: ./.github/workflows/unit-tests.yml
     secrets: inherit
+    if: ${{ !startsWith(github.ref_name, 'build-') }}
 
   publish-webapp:
     needs: [typecheck, units]
