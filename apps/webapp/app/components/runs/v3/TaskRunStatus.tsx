@@ -93,12 +93,10 @@ export function descriptionForTaskRunStatus(status: TaskRunStatus): string {
 
 export function TaskRunStatusCombo({
   status,
-  statusReason,
   className,
   iconClassName,
 }: {
   status: TaskRunStatus;
-  statusReason?: string;
   className?: string;
   iconClassName?: string;
 }) {
@@ -106,7 +104,6 @@ export function TaskRunStatusCombo({
     <span className={cn("flex items-center gap-1", className)}>
       <TaskRunStatusIcon status={status} className={cn("h-4 w-4", iconClassName)} />
       <TaskRunStatusLabel status={status} />
-      <TaskRunStatusReason status={status} statusReason={statusReason} />
     </span>
   );
 }
@@ -120,7 +117,7 @@ const statusReasonsToDescription: Record<string, string> = {
   BACKGROUND_WORKER_MISMATCH: "Background worker mismatch",
 };
 
-function TaskRunStatusReason({
+export function TaskRunStatusReason({
   status,
   statusReason,
 }: {
@@ -142,7 +139,7 @@ function TaskRunStatusReason({
   }
 
   return (
-    <Callout to="https://trigger.dev/docs" variant="warning" className="w-fit text-sm">
+    <Callout to="https://trigger.dev/docs" variant="warning" className="text-sm">
       {description}
     </Callout>
   );
