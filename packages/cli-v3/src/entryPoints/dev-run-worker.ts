@@ -18,6 +18,8 @@ import {
   WorkerManifest,
   WorkerToExecutorMessageCatalog,
   runTimelineMetrics,
+  lifecycleHooks,
+  lifecycleHooksAdapters,
 } from "@trigger.dev/core/v3";
 import { TriggerTracer } from "@trigger.dev/core/v3/tracer";
 import {
@@ -38,6 +40,7 @@ import {
   usage,
   UsageTimeoutManager,
   StandardRunTimelineMetricsManager,
+  StandardLifecycleHooksManager,
 } from "@trigger.dev/core/v3/workers";
 import { ZodIpcConnection } from "@trigger.dev/core/v3/zodIpc";
 import { readFile } from "node:fs/promises";
@@ -92,6 +95,9 @@ const heartbeatIntervalMs = getEnvVar("HEARTBEAT_INTERVAL_MS");
 const standardRunTimelineMetricsManager = new StandardRunTimelineMetricsManager();
 runTimelineMetrics.setGlobalManager(standardRunTimelineMetricsManager);
 standardRunTimelineMetricsManager.seedMetricsFromEnvironment();
+
+const standardLifecycleHooksManager = new StandardLifecycleHooksManager();
+lifecycleHooks.setGlobalLifecycleHooksManager(standardLifecycleHooksManager);
 
 const devUsageManager = new DevUsageManager();
 usage.setGlobalUsageManager(devUsageManager);
@@ -169,6 +175,13 @@ async function bootstrap() {
   });
 
   logger.setGlobalTaskLogger(otelTaskLogger);
+
+  if (config.init) {
+    lifecycleHooks.registerGlobalInitHook({
+      id: "trigger-dev-worker",
+      fn: lifecycleHooksAdapters.createInitHookAdapter(config.init),
+    });
+  }
 
   return {
     tracer,

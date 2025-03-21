@@ -3,7 +3,7 @@ import { VERSION } from "../../version.js";
 import { ApiError, RateLimitError } from "../apiClient/errors.js";
 import { ConsoleInterceptor } from "../consoleInterceptor.js";
 import { isInternalError, parseError, sanitizeError, TaskPayloadParsedError } from "../errors.js";
-import { runMetadata, TriggerConfig, waitUntil } from "../index.js";
+import { lifecycleHooks, runMetadata, TriggerConfig, waitUntil } from "../index.js";
 import { recordSpanException, TracingSDK } from "../otel/index.js";
 import { runTimelineMetrics } from "../run-timeline-metrics-api.js";
 import {
@@ -278,44 +278,64 @@ export class TaskExecutor {
   }
 
   async #callInitFunctions(payload: unknown, ctx: TaskRunContext, signal?: AbortSignal) {
-    await this.#callConfigInit(payload, ctx, signal);
+    const globalInitHooks = lifecycleHooks.getGlobalInitHooks();
+    const taskInitHook = lifecycleHooks.getTaskInitHook(this.task.id);
 
-    const initFn = this.task.fns.init;
-
-    if (!initFn) {
+    if (globalInitHooks.length === 0 && !taskInitHook) {
       return {};
     }
 
     return this._tracer.startActiveSpan(
-      "init",
+      "hooks.init",
       async (span) => {
-        return await runTimelineMetrics.measureMetric("trigger.dev/execution", "init", () =>
-          initFn(payload, { ctx, signal })
-        );
-      },
-      {
-        attributes: {
-          [SemanticInternalAttributes.STYLE_ICON]: "function",
-        },
-      }
-    );
-  }
+        return await runTimelineMetrics.measureMetric("trigger.dev/execution", "init", async () => {
+          // Store global hook results in an array
+          const globalResults = [];
+          for (const hook of globalInitHooks) {
+            const result = await this._tracer.startActiveSpan(
+              hook.name ?? "global",
+              async (span) => {
+                return await hook.fn({ payload, ctx, signal, task: this.task.id });
+              },
+              {
+                attributes: {
+                  [SemanticInternalAttributes.STYLE_ICON]: "function",
+                },
+              }
+            );
+            // Only include object results
+            if (result && typeof result === "object" && !Array.isArray(result)) {
+              globalResults.push(result);
+            }
+          }
 
-  async #callConfigInit(payload: unknown, ctx: TaskRunContext, signal?: AbortSignal) {
-    const initFn = this._importedConfig?.init;
+          // Merge all global results into a single object
+          const mergedGlobalResults = Object.assign({}, ...globalResults);
 
-    if (!initFn) {
-      return {};
-    }
+          if (taskInitHook) {
+            const taskResult = await this._tracer.startActiveSpan(
+              "task",
+              async (span) => {
+                return await taskInitHook({ payload, ctx, signal, task: this.task.id });
+              },
+              {
+                attributes: {
+                  [SemanticInternalAttributes.STYLE_ICON]: "function",
+                },
+              }
+            );
 
-    return this._tracer.startActiveSpan(
-      "config.init",
-      async (span) => {
-        return await runTimelineMetrics.measureMetric(
-          "trigger.dev/execution",
-          "config.init",
-          async () => initFn(payload, { ctx, signal })
-        );
+            // Only merge if taskResult is an object
+            if (taskResult && typeof taskResult === "object" && !Array.isArray(taskResult)) {
+              return { ...mergedGlobalResults, ...taskResult };
+            }
+
+            // If taskResult isn't an object, return global results
+            return mergedGlobalResults;
+          }
+
+          return mergedGlobalResults;
+        });
       },
       {
         attributes: {

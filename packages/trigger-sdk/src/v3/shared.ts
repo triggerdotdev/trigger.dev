@@ -26,6 +26,8 @@ import {
   TaskFromIdentifier,
   flattenIdempotencyKey,
   getEnvVar,
+  lifecycleHooks,
+  lifecycleHooksAdapters,
 } from "@trigger.dev/core/v3";
 import { PollOptions, runs } from "./runs.js";
 import { tracer } from "./tracer.js";
@@ -77,6 +79,7 @@ import type {
   AnyTaskRunResult,
   BatchTriggerAndWaitOptions,
   BatchTriggerTaskV2RequestBody,
+  AnyOnInitHookFunction,
 } from "@trigger.dev/core/v3";
 
 export type {
@@ -183,6 +186,12 @@ export function createTask<
       );
     },
   };
+
+  if (params.init) {
+    lifecycleHooks.registerTaskInitHook(params.id, {
+      fn: lifecycleHooksAdapters.createInitHookAdapter(params.init),
+    });
+  }
 
   resourceCatalog.registerTaskMetadata({
     id: params.id,
@@ -315,6 +324,12 @@ export function createSchemaTask<
       );
     },
   };
+
+  if (params.init) {
+    lifecycleHooks.registerTaskInitHook(params.id, {
+      fn: lifecycleHooksAdapters.createInitHookAdapter(params.init),
+    });
+  }
 
   resourceCatalog.registerTaskMetadata({
     id: params.id,

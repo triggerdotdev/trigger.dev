@@ -216,7 +216,7 @@ export type TriggerConfig = {
   /**
    * Run before a task is executed, for all tasks. This is useful for setting up any global state that is needed for all tasks.
    */
-  init?: (payload: unknown, params: InitFnParams) => void | Promise<void>;
+  init?: (payload: unknown, params: InitFnParams) => any | Promise<any>;
 
   /**
    * onSuccess is called after the run function has successfully completed.
