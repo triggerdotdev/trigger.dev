@@ -176,6 +176,12 @@ export function SideMenu({
               data-action="tasks"
             />
             <SideMenuItem
+              name="Runs"
+              icon={RunsIcon}
+              activeIconColor="text-teal-500"
+              to={v3RunsPath(organization, project, environment)}
+            />
+            <SideMenuItem
               name="Batches"
               icon={Squares2X2Icon}
               activeIconColor="text-blue-500"
@@ -212,22 +218,6 @@ export function SideMenu({
             />
           </div>
 
-          <SideMenuSection title="Observability">
-            <SideMenuItem
-              name="Runs"
-              icon={RunsIcon}
-              activeIconColor="text-teal-500"
-              to={v3RunsPath(organization, project, environment)}
-            />
-            <SideMenuItem
-              name="Alerts"
-              icon={BellAlertIcon}
-              activeIconColor="text-red-500"
-              to={v3ProjectAlertsPath(organization, project, environment)}
-              data-action="alerts"
-            />
-          </SideMenuSection>
-
           <SideMenuSection title="Manage">
             <SideMenuItem
               name="API keys"
@@ -242,6 +232,13 @@ export function SideMenu({
               activeIconColor="text-pink-500"
               to={v3EnvironmentVariablesPath(organization, project, environment)}
               data-action="environment variables"
+            />
+            <SideMenuItem
+              name="Alerts"
+              icon={BellAlertIcon}
+              activeIconColor="text-red-500"
+              to={v3ProjectAlertsPath(organization, project, environment)}
+              data-action="alerts"
             />
             <SideMenuItem
               name="Project settings"
