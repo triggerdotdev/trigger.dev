@@ -21,7 +21,7 @@ export default defineConfig({
     if (format !== "esm") return;
 
     return {
-      js: `import { createRequire } from 'module'; const require = createRequire(import.meta.url);`,
+      js: `import { createRequire } from 'module'; const require = createRequire(import.meta.url || process.cwd() + '/index.js');`,
     };
   },
 });
