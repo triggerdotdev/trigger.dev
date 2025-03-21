@@ -236,6 +236,18 @@ export async function getBundleResultFromBuild(
     ? relative(resolvedConfig.workingDir, resolvedConfig.configFile)
     : "trigger.config.ts";
 
+  // Check if the entry point is an init.ts file at the root of a trigger directory
+  function isInitEntryPoint(entryPoint: string): boolean {
+    const normalizedEntryPoint = entryPoint.replace(/\\/g, "/"); // Normalize path separators
+    const initFileName = "init.ts";
+
+    // Check if it's directly in one of the trigger directories
+    return resolvedConfig.dirs.some((dir) => {
+      const normalizedDir = dir.replace(/\\/g, "/");
+      return normalizedEntryPoint === `${normalizedDir}/${initFileName}`;
+    });
+  }
+
   for (const [outputPath, outputMeta] of Object.entries(result.metafile.outputs)) {
     if (outputPath.endsWith(".mjs")) {
       const $outputPath = resolve(workingDir, outputPath);
@@ -256,7 +268,7 @@ export async function getBundleResultFromBuild(
         indexControllerEntryPoint = $outputPath;
       } else if (isIndexWorkerForTarget(outputMeta.entryPoint, target)) {
         indexWorkerEntryPoint = $outputPath;
-      } else if (outputMeta.entryPoint.endsWith("init.ts")) {
+      } else if (isInitEntryPoint(outputMeta.entryPoint)) {
         initEntryPoint = $outputPath;
       } else {
         if (
@@ -362,6 +374,7 @@ export async function createBuildManifestFromBundle({
     runControllerEntryPoint: bundle.runControllerEntryPoint ?? getRunControllerForTarget(target),
     runWorkerEntryPoint: bundle.runWorkerEntryPoint ?? getRunWorkerForTarget(target),
     loaderEntryPoint: bundle.loaderEntryPoint,
+    initEntryPoint: bundle.initEntryPoint,
     configPath: bundle.configPath,
     customConditions: resolvedConfig.build.conditions ?? [],
     deploy: {
