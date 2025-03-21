@@ -1,3 +1,4 @@
+import { isTest } from "std-env";
 import { SimpleStructuredLogger } from "../utils/structuredLogger.js";
 import { singleton } from "./singleton.js";
 
@@ -5,7 +6,7 @@ type ShutdownHandler = NodeJS.SignalsListener;
 // We intentionally keep these limited to avoid unexpected issues with signal handling
 type ShutdownSignal = Extract<NodeJS.Signals, "SIGTERM" | "SIGINT">;
 
-class ShutdownManager {
+export class ShutdownManager {
   private isShuttingDown = false;
   private signalNumbers: Record<ShutdownSignal, number> = {
     SIGINT: 2,
@@ -16,7 +17,9 @@ class ShutdownManager {
   private handlers: Map<string, { handler: ShutdownHandler; signals: ShutdownSignal[] }> =
     new Map();
 
-  constructor() {
+  constructor(private disableForTesting = true) {
+    if (disableForTesting) return;
+
     process.on("SIGTERM", () => this.shutdown("SIGTERM"));
     process.on("SIGINT", () => this.shutdown("SIGINT"));
   }
@@ -26,6 +29,8 @@ class ShutdownManager {
     handler: ShutdownHandler,
     signals: ShutdownSignal[] = ["SIGTERM", "SIGINT"]
   ) {
+    if (!this.isEnabled()) return;
+
     if (this.handlers.has(name)) {
       throw new Error(`Shutdown handler "${name}" already registered`);
     }
@@ -33,6 +38,8 @@ class ShutdownManager {
   }
 
   unregister(name: string) {
+    if (!this.isEnabled()) return;
+
     if (!this.handlers.has(name)) {
       throw new Error(`Shutdown handler "${name}" not registered`);
     }
@@ -41,6 +48,8 @@ class ShutdownManager {
   }
 
   async shutdown(signal: ShutdownSignal) {
+    if (!this.isEnabled()) return;
+
     if (this.isShuttingDown) return;
     this.isShuttingDown = true;
 
@@ -83,10 +92,20 @@ class ShutdownManager {
     }
   }
 
-  // For testing purposes only - keep this
-  private _reset() {
-    this.isShuttingDown = false;
-    this.handlers.clear();
+  private isEnabled() {
+    if (!this.disableForTesting) {
+      return true;
+    }
+
+    return !isTest;
+  }
+
+  // Only for testing
+  public _getHandlersForTesting(): ReadonlyMap<
+    string,
+    { handler: ShutdownHandler; signals: ShutdownSignal[] }
+  > {
+    return new Map(this.handlers);
   }
 }
 

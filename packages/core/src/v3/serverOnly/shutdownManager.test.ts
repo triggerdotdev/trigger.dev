@@ -1,57 +1,55 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
-import { shutdownManager } from "./shutdownManager.js";
-
-// Type assertion to access private members for testing
-type PrivateShutdownManager = {
-  handlers: Map<string, { handler: NodeJS.SignalsListener; signals: Array<"SIGTERM" | "SIGINT"> }>;
-  shutdown: (signal: "SIGTERM" | "SIGINT") => Promise<void>;
-  _reset: () => void;
-};
+import { ShutdownManager } from "./shutdownManager.js";
 
 describe("ShutdownManager", { concurrent: false }, () => {
-  const manager = shutdownManager as unknown as PrivateShutdownManager;
   // Mock process.exit to prevent actual exit
   const mockExit = vi.spyOn(process, "exit").mockImplementation(() => undefined as never);
 
   beforeEach(() => {
-    // Clear all mocks and reset the manager before each test
     vi.clearAllMocks();
-    manager._reset();
   });
 
   test("should successfully register a new handler", () => {
-    const handler = vi.fn();
-    shutdownManager.register("test-handler", handler);
+    const manager = new ShutdownManager(false);
 
-    expect(manager.handlers.has("test-handler")).toBe(true);
-    const registeredHandler = manager.handlers.get("test-handler");
+    const handler = vi.fn();
+    manager.register("test-handler", handler);
+
+    expect(manager._getHandlersForTesting().has("test-handler")).toBe(true);
+    const registeredHandler = manager._getHandlersForTesting().get("test-handler");
     expect(registeredHandler?.handler).toBe(handler);
     expect(registeredHandler?.signals).toEqual(["SIGTERM", "SIGINT"]);
   });
 
   test("should throw error when registering duplicate handler name", () => {
+    const manager = new ShutdownManager(false);
+
     const handler = vi.fn();
-    shutdownManager.register("duplicate-handler", handler);
+    manager.register("duplicate-handler", handler);
 
     expect(() => {
-      shutdownManager.register("duplicate-handler", handler);
+      manager.register("duplicate-handler", handler);
     }).toThrow('Shutdown handler "duplicate-handler" already registered');
   });
 
   test("should register handler with custom signals", () => {
-    const handler = vi.fn();
-    shutdownManager.register("custom-signals", handler, ["SIGTERM"]);
+    const manager = new ShutdownManager(false);
 
-    const registeredHandler = manager.handlers.get("custom-signals");
+    const handler = vi.fn();
+    manager.register("custom-signals", handler, ["SIGTERM"]);
+
+    const registeredHandler = manager._getHandlersForTesting().get("custom-signals");
     expect(registeredHandler?.signals).toEqual(["SIGTERM"]);
   });
 
   test("should call registered handlers when shutdown is triggered", async () => {
+    const manager = new ShutdownManager(false);
+
     const handler1 = vi.fn();
     const handler2 = vi.fn();
 
-    shutdownManager.register("handler1", handler1);
-    shutdownManager.register("handler2", handler2);
+    manager.register("handler1", handler1);
+    manager.register("handler2", handler2);
 
     await manager.shutdown("SIGTERM");
 
@@ -61,11 +59,13 @@ describe("ShutdownManager", { concurrent: false }, () => {
   });
 
   test("should only call handlers registered for specific signal", async () => {
+    const manager = new ShutdownManager(false);
+
     const handler1 = vi.fn();
     const handler2 = vi.fn();
 
-    shutdownManager.register("handler1", handler1, ["SIGTERM"]);
-    shutdownManager.register("handler2", handler2, ["SIGINT"]);
+    manager.register("handler1", handler1, ["SIGTERM"]);
+    manager.register("handler2", handler2, ["SIGINT"]);
 
     await manager.shutdown("SIGTERM");
 
@@ -75,11 +75,13 @@ describe("ShutdownManager", { concurrent: false }, () => {
   });
 
   test("should handle errors in shutdown handlers gracefully", async () => {
+    const manager = new ShutdownManager(false);
+
     const successHandler = vi.fn();
     const errorHandler = vi.fn().mockRejectedValue(new Error("Handler failed"));
 
-    shutdownManager.register("success-handler", successHandler);
-    shutdownManager.register("error-handler", errorHandler);
+    manager.register("success-handler", successHandler);
+    manager.register("error-handler", errorHandler);
 
     await manager.shutdown("SIGTERM");
 
@@ -89,8 +91,10 @@ describe("ShutdownManager", { concurrent: false }, () => {
   });
 
   test("should only run shutdown sequence once even if called multiple times", async () => {
+    const manager = new ShutdownManager(false);
+
     const handler = vi.fn();
-    shutdownManager.register("test-handler", handler);
+    manager.register("test-handler", handler);
 
     await Promise.all([manager.shutdown("SIGTERM"), manager.shutdown("SIGTERM")]);
 
@@ -99,16 +103,19 @@ describe("ShutdownManager", { concurrent: false }, () => {
     expect(mockExit).toHaveBeenCalledWith(128 + 15);
   });
 
-  test("should exit with correct signal number", async () => {
-    const handler = vi.fn();
-    shutdownManager.register("test-handler", handler);
+  test("should exit with correct signal number on SIGINT", async () => {
+    const manager = new ShutdownManager(false);
+
+    manager.register("test-handler", vi.fn());
 
     await manager.shutdown("SIGINT");
     expect(mockExit).toHaveBeenCalledWith(128 + 2); // SIGINT number
+  });
 
-    vi.clearAllMocks();
-    manager._reset();
-    shutdownManager.register("test-handler", handler);
+  test("should exit with correct signal number on SIGTERM", async () => {
+    const manager = new ShutdownManager(false);
+
+    manager.register("test-handler", vi.fn());
 
     await manager.shutdown("SIGTERM");
     expect(mockExit).toHaveBeenCalledWith(128 + 15); // SIGTERM number
@@ -116,6 +123,7 @@ describe("ShutdownManager", { concurrent: false }, () => {
 
   test("should only exit after all handlers have finished", async () => {
     const sequence: string[] = [];
+    const manager = new ShutdownManager(false);
 
     const handler1 = vi.fn().mockImplementation(async () => {
       sequence.push("handler1 start");
@@ -144,9 +152,9 @@ describe("ShutdownManager", { concurrent: false }, () => {
       return undefined as never;
     });
 
-    shutdownManager.register("handler1", handler1);
-    shutdownManager.register("handler2", handler2);
-    shutdownManager.register("handler3", handler3);
+    manager.register("handler1", handler1);
+    manager.register("handler2", handler2);
+    manager.register("handler3", handler3);
 
     await manager.shutdown("SIGTERM");
 

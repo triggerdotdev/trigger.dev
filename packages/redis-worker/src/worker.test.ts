@@ -1,17 +1,12 @@
 import { redisTest } from "@internal/testcontainers";
 import { Logger } from "@trigger.dev/core/logger";
 import { describe } from "node:test";
-import { afterEach, expect } from "vitest";
+import { expect } from "vitest";
 import { z } from "zod";
 import { Worker } from "./worker.js";
 import { createRedisClient } from "@internal/redis";
-import { shutdownManager } from "@trigger.dev/core/v3/serverOnly";
 
 describe("Worker", () => {
-  afterEach(() => {
-    (shutdownManager as unknown as { _reset: () => void })._reset();
-  });
-
   redisTest("Process items that don't throw", { timeout: 30_000 }, async ({ redisContainer }) => {
     const processedItems: number[] = [];
     const worker = new Worker({
