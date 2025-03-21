@@ -8,7 +8,7 @@ const defaultOptions: Partial<RedisOptions> = {
     const delay = Math.min(times * 50, 1000);
     return delay;
   },
-  maxRetriesPerRequest: 20,
+  maxRetriesPerRequest: process.env.VITEST ? 1 : 20,
 };
 
 const logger = new Logger("Redis", "debug");

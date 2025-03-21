@@ -22,7 +22,12 @@ export const parentTask = task({
   id: "parent",
   run: async (payload: any, { ctx }) => {
     logger.log("Hello, world from the parent", { payload });
-    await childTask.triggerAndWait({ message: "Hello, world!" });
+    await childTask.triggerAndWait(
+      { message: "Hello, world!" },
+      {
+        releaseConcurrency: true,
+      }
+    );
   },
 });
 

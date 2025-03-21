@@ -372,7 +372,6 @@ describe("RunEngine triggerAndWait", () => {
         const blockedResult = await engine.blockRunWithWaitpoint({
           runId: parentRun2.id,
           waitpoints: childRunWithWaitpoint.associatedWaitpoint!.id,
-          environmentId: authenticatedEnvironment.id,
           projectId: authenticatedEnvironment.project.id,
           organizationId: authenticatedEnvironment.organizationId,
           tx: prisma,

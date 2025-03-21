@@ -48,6 +48,7 @@ export {
 } from "./runs.js";
 export * as schedules from "./schedules/index.js";
 export * as envvars from "./envvars.js";
+export * as queues from "./queues.js";
 export type { ImportEnvironmentVariablesParams } from "./envvars.js";
 
 export { configure, auth } from "./auth.js";

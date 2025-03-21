@@ -48,12 +48,9 @@ const { action } = createActionApiRoute(
       const waitResult = await engine.blockRunWithWaitpoint({
         runId: run.id,
         waitpoints: waitpoint.id,
-        environmentId: authentication.environment.id,
         projectId: authentication.environment.project.id,
         organizationId: authentication.environment.organization.id,
-        releaseConcurrency: {
-          releaseQueue: true,
-        },
+        releaseConcurrency: body.releaseConcurrency,
       });
 
       return json({

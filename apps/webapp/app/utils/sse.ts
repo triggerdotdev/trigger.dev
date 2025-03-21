@@ -53,6 +53,26 @@ export function createSSELoader(options: SSEOptions) {
         );
     };
 
+    const createSafeSend = (originalSend: SendFunction): SendFunction => {
+      return (event) => {
+        try {
+          if (!internalController.signal.aborted) {
+            originalSend(event);
+          }
+          // If controller is aborted, silently ignore the send attempt
+        } catch (error) {
+          if (error instanceof Error) {
+            if (error.message?.includes("Controller is already closed")) {
+              // Silently handle controller closed errors
+              return;
+            }
+            log(`Error sending event: ${error.message}`);
+          }
+          throw error; // Re-throw other errors
+        }
+      };
+    };
+
     const context: SSEContext = {
       id,
       request,
@@ -115,12 +135,13 @@ export function createSSELoader(options: SSEOptions) {
 
     return eventStream(combinedSignal, function setup(send) {
       connections.add(id);
+      const safeSend = createSafeSend(send);
 
       async function run() {
         try {
           log("Initializing");
           if (handlers.initStream) {
-            const shouldContinue = await handlers.initStream({ send });
+            const shouldContinue = await handlers.initStream({ send: safeSend });
             if (shouldContinue === false) {
               log("initStream returned false, so we'll stop the stream");
               internalController.abort("Init requested stop");
@@ -138,7 +159,7 @@ export function createSSELoader(options: SSEOptions) {
 
             if (handlers.iterator) {
               try {
-                const shouldContinue = await handlers.iterator({ date, send });
+                const shouldContinue = await handlers.iterator({ date, send: safeSend });
                 if (shouldContinue === false) {
                   log("iterator return false, so we'll stop the stream");
                   internalController.abort("Iterator requested stop");
@@ -173,7 +194,7 @@ export function createSSELoader(options: SSEOptions) {
         log("Cleanup called");
         if (handlers.cleanup) {
           try {
-            handlers.cleanup({ send });
+            handlers.cleanup({ send: safeSend });
           } catch (error) {
             log(
               `Error in cleanup handler: ${

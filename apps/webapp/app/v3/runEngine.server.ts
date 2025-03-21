@@ -1,10 +1,10 @@
 import { RunEngine } from "@internal/run-engine";
+import { defaultMachine } from "@trigger.dev/platform/v3";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
-import { tracer } from "./tracer.server";
 import { singleton } from "~/utils/singleton";
-import { defaultMachine, machines } from "@trigger.dev/platform/v3";
 import { allMachines } from "./machinePresets.server";
+import { tracer } from "./tracer.server";
 
 export const engine = singleton("RunEngine", createRunEngine);
 
@@ -73,6 +73,23 @@ function createRunEngine() {
       PENDING_CANCEL: env.RUN_ENGINE_TIMEOUT_PENDING_CANCEL,
       EXECUTING: env.RUN_ENGINE_TIMEOUT_EXECUTING,
       EXECUTING_WITH_WAITPOINTS: env.RUN_ENGINE_TIMEOUT_EXECUTING_WITH_WAITPOINTS,
+    },
+    releaseConcurrency: {
+      disabled: env.RUN_ENGINE_RELEASE_CONCURRENCY_ENABLED === "0",
+      maxTokensRatio: env.RUN_ENGINE_RELEASE_CONCURRENCY_MAX_TOKENS_RATIO,
+      maxRetries: env.RUN_ENGINE_RELEASE_CONCURRENCY_MAX_RETRIES,
+      consumersCount: env.RUN_ENGINE_RELEASE_CONCURRENCY_CONSUMERS_COUNT,
+      pollInterval: env.RUN_ENGINE_RELEASE_CONCURRENCY_POLL_INTERVAL,
+      batchSize: env.RUN_ENGINE_RELEASE_CONCURRENCY_BATCH_SIZE,
+      redis: {
+        keyPrefix: "engine:",
+        port: env.RUN_ENGINE_RUN_QUEUE_REDIS_PORT ?? undefined,
+        host: env.RUN_ENGINE_RUN_QUEUE_REDIS_HOST ?? undefined,
+        username: env.RUN_ENGINE_RUN_QUEUE_REDIS_USERNAME ?? undefined,
+        password: env.RUN_ENGINE_RUN_QUEUE_REDIS_PASSWORD ?? undefined,
+        enableAutoPipelining: true,
+        ...(env.RUN_ENGINE_RUN_QUEUE_REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
+      },
     },
   });
 

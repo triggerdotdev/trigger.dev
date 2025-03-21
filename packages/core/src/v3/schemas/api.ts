@@ -119,6 +119,7 @@ export const TriggerTaskRequestBody = z.object({
       test: z.boolean().optional(),
       ttl: z.string().or(z.number().nonnegative().int()).optional(),
       priority: z.number().optional(),
+      releaseConcurrency: z.boolean().optional(),
     })
     .optional(),
 });
@@ -956,6 +957,9 @@ export const WaitForDurationRequestBody = z.object({
    * This means after that time if you pass the same idempotency key again, you will get a new waitpoint.
    */
   idempotencyKeyTTL: z.string().optional(),
+
+  releaseConcurrency: z.boolean().optional(),
+
   date: z.coerce.date(),
 });
 export type WaitForDurationRequestBody = z.infer<typeof WaitForDurationRequestBody>;

@@ -11,6 +11,8 @@ import { getCachedUsage, getCurrentPlan } from "~/services/platform.v3.server";
 import { requireUser } from "~/services/session.server";
 import { telemetry } from "~/services/telemetry.server";
 import { organizationPath } from "~/utils/pathBuilder";
+import { isEnvironmentPauseResumeFormSubmission } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.queues/route";
+import { logger } from "~/services/logger.server";
 
 const ParamsSchema = z.object({
   organizationSlug: z.string(),
@@ -43,6 +45,11 @@ export const shouldRevalidate: ShouldRevalidateFunction = (params) => {
     if (current.data.envParam !== next.data.envParam) {
       return true;
     }
+  }
+
+  // Invalidate if the environment has been paused or resumed
+  if (isEnvironmentPauseResumeFormSubmission(params.formMethod, params.formData)) {
+    return true;
   }
 
   // This prevents revalidation when there are search params changes

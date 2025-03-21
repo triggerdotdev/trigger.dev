@@ -1,7 +1,6 @@
 import { createContext, useContext, useState } from "react";
 import { useAppOrigin } from "~/hooks/useAppOrigin";
 import { useProject } from "~/hooks/useProject";
-import { InlineCode } from "./code/InlineCode";
 import {
   ClientTabs,
   ClientTabsContent,
@@ -9,7 +8,6 @@ import {
   ClientTabsTrigger,
 } from "./primitives/ClientTabs";
 import { ClipboardField } from "./primitives/ClipboardField";
-import { Paragraph } from "./primitives/Paragraph";
 import { Header3 } from "./primitives/Headers";
 
 type PackageManagerContextType = {

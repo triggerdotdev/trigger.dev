@@ -824,8 +824,16 @@ export type TriggerOptions = {
   version?: string;
 };
 
-export type TriggerAndWaitOptions = Omit<TriggerOptions, "version">;
-
+export type TriggerAndWaitOptions = Omit<TriggerOptions, "version"> & {
+  /**
+   * If set to true, this will cause the waitpoint to release the current run from the queue's concurrency.
+   *
+   * This is useful if you want to allow other runs to execute while the child task is executing
+   *
+   * @default false
+   */
+  releaseConcurrency?: boolean;
+};
 export type BatchTriggerOptions = {
   /**
    * If no idempotencyKey is set on an individual item in the batch, it will use this key on each item + the array index.

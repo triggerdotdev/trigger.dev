@@ -52,7 +52,6 @@ export type FairQueueSelectionStrategyOptions = {
 type FairQueueConcurrency = {
   current: number;
   limit: number;
-  reserve: number;
 };
 
 type FairQueue = { id: string; age: number; org: string; env: string; project: string };
@@ -403,7 +402,7 @@ export class FairQueueSelectionStrategy implements RunQueueSelectionStrategy {
       );
 
       const envsAtFullConcurrency = envs.filter(
-        (env) => env.concurrency.current >= env.concurrency.limit + env.concurrency.reserve
+        (env) => env.concurrency.current >= env.concurrency.limit
       );
 
       const envIdsAtFullConcurrency = new Set(envsAtFullConcurrency.map((env) => env.id));
@@ -500,17 +499,15 @@ export class FairQueueSelectionStrategy implements RunQueueSelectionStrategy {
       span.setAttribute("org_id", env.orgId);
       span.setAttribute("project_id", env.projectId);
 
-      const [currentValue, limitValue, reserveValue] = await Promise.all([
+      const [currentValue, limitValue] = await Promise.all([
         this.#getEnvCurrentConcurrency(env),
         this.#getEnvConcurrencyLimit(env),
-        this.#getEnvReserveConcurrency(env),
       ]);
 
       span.setAttribute("current_value", currentValue);
       span.setAttribute("limit_value", limitValue);
-      span.setAttribute("reserve_value", reserveValue);
 
-      return { current: currentValue, limit: limitValue, reserve: reserveValue };
+      return { current: currentValue, limit: limitValue };
     });
   }
 
@@ -578,22 +575,6 @@ export class FairQueueSelectionStrategy implements RunQueueSelectionStrategy {
       span.setAttribute("project_id", env.projectId);
 
       const key = this.options.keys.envCurrentConcurrencyKey(env);
-
-      const result = await this._redis.scard(key);
-
-      span.setAttribute("current_value", result);
-
-      return result;
-    });
-  }
-
-  async #getEnvReserveConcurrency(env: EnvDescriptor) {
-    return await startSpan(this.options.tracer, "getEnvReserveConcurrency", async (span) => {
-      span.setAttribute("env_id", env.envId);
-      span.setAttribute("org_id", env.orgId);
-      span.setAttribute("project_id", env.projectId);
-
-      const key = this.options.keys.envReserveConcurrencyKey(env);
 
       const result = await this._redis.scard(key);
 

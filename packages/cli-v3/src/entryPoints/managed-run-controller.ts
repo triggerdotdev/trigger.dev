@@ -629,6 +629,7 @@ class ManagedRunController {
           return;
         }
         case "RUN_CREATED":
+        case "QUEUED_EXECUTING":
         case "QUEUED": {
           console.log("Status change not handled", { status: snapshot.executionStatus });
           return;
