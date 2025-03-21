@@ -7,12 +7,7 @@
     }
   ],
   "commit": false,
-  "fixed": [
-    [
-      "@trigger.dev/*",
-      "trigger.dev"
-    ]
-  ],
+  "fixed": [["@trigger.dev/*", "trigger.dev"]],
   "linked": [],
   "access": "public",
   "baseBranch": "main",
