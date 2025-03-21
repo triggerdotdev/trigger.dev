@@ -28,6 +28,8 @@ type SpanNameIcons = {
 const spanNameIcons: SpanNameIcons[] = [{ matcher: /^prisma:/, iconName: "brand-prisma" }];
 
 export function RunIcon({ name, className, spanName }: TaskIconProps) {
+  console.log("spanName", spanName, name);
+
   const spanNameIcon = spanNameIcons.find(({ matcher }) => matcher.test(spanName));
 
   if (spanNameIcon) {
@@ -44,6 +46,9 @@ export function RunIcon({ name, className, spanName }: TaskIconProps) {
   }
 
   if (!name) return <Squares2X2Icon className={cn(className, "text-text-dimmed")} />;
+  if (tablerIcons.has(name)) {
+    return <TablerIcon name={name} className={className} />;
+  }
 
   switch (name) {
     case "task":

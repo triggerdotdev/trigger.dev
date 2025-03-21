@@ -47,6 +47,8 @@ export type {
   TaskFromIdentifier,
 };
 
+export type * from "./hooks.js";
+
 /** Creates a task that can be triggered
  * @param options - Task options
  * @example 

@@ -33,6 +33,7 @@ export const SemanticInternalAttributes = {
   STYLE_ICON: "$style.icon",
   STYLE_VARIANT: "$style.variant",
   STYLE_ACCESSORY: "$style.accessory",
+  COLLAPSED: "$collapsed",
   METADATA: "$metadata",
   TRIGGER: "$trigger",
   PAYLOAD: "$payload",
