@@ -394,6 +394,7 @@ async function createWorkerQueue(
       data: {
         workers: { connect: { id: worker.id } },
         version: "V2",
+        orderableName,
       },
     });
   }
