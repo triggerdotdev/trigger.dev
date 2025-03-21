@@ -47,6 +47,7 @@ export type BundleResult = {
   runControllerEntryPoint: string | undefined;
   indexWorkerEntryPoint: string | undefined;
   indexControllerEntryPoint: string | undefined;
+  initEntryPoint: string | undefined;
   stop: (() => Promise<void>) | undefined;
 };
 
@@ -229,6 +230,7 @@ export async function getBundleResultFromBuild(
   let runControllerEntryPoint: string | undefined;
   let indexWorkerEntryPoint: string | undefined;
   let indexControllerEntryPoint: string | undefined;
+  let initEntryPoint: string | undefined;
 
   const configEntryPoint = resolvedConfig.configFile
     ? relative(resolvedConfig.workingDir, resolvedConfig.configFile)
@@ -254,6 +256,8 @@ export async function getBundleResultFromBuild(
         indexControllerEntryPoint = $outputPath;
       } else if (isIndexWorkerForTarget(outputMeta.entryPoint, target)) {
         indexWorkerEntryPoint = $outputPath;
+      } else if (outputMeta.entryPoint.endsWith("init.ts")) {
+        initEntryPoint = $outputPath;
       } else {
         if (
           !outputMeta.entryPoint.startsWith("..") &&
@@ -280,6 +284,7 @@ export async function getBundleResultFromBuild(
     runControllerEntryPoint,
     indexWorkerEntryPoint,
     indexControllerEntryPoint,
+    initEntryPoint,
     contentHash: hasher.digest("hex"),
   };
 }
