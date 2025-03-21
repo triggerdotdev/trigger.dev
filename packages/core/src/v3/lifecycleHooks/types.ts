@@ -13,6 +13,19 @@ export type OnInitHookFunction<TPayload, TInitOutput extends Record<string, unkn
 
 export type AnyOnInitHookFunction = OnInitHookFunction<unknown, Record<string, unknown>>;
 
+export type TaskStartHookParams<TPayload = unknown> = {
+  ctx: TaskRunContext;
+  payload: TPayload;
+  task: string;
+  signal?: AbortSignal;
+};
+
+export type OnStartHookFunction<TPayload> = (
+  params: TaskStartHookParams<TPayload>
+) => undefined | void | Promise<undefined | void>;
+
+export type AnyOnStartHookFunction = OnStartHookFunction<unknown>;
+
 export type RegisterHookFunctionParams<THookFunction extends (params: any) => any> = {
   id?: string;
   fn: THookFunction;
@@ -32,4 +45,11 @@ export interface LifecycleHooksManager {
   ): void;
   getTaskInitHook(taskId: string): AnyOnInitHookFunction | undefined;
   getGlobalInitHooks(): RegisteredHookFunction<AnyOnInitHookFunction>[];
+  registerGlobalStartHook(hook: RegisterHookFunctionParams<AnyOnStartHookFunction>): void;
+  registerTaskStartHook(
+    taskId: string,
+    hook: RegisterHookFunctionParams<AnyOnStartHookFunction>
+  ): void;
+  getTaskStartHook(taskId: string): AnyOnStartHookFunction | undefined;
+  getGlobalStartHooks(): RegisteredHookFunction<AnyOnStartHookFunction>[];
 }

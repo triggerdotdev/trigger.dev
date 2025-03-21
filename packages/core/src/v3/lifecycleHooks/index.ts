@@ -4,6 +4,7 @@ import { getGlobal, registerGlobal, unregisterGlobal } from "../utils/globals.js
 import { NoopLifecycleHooksManager } from "./manager.js";
 import {
   AnyOnInitHookFunction,
+  AnyOnStartHookFunction,
   RegisteredHookFunction,
   RegisterHookFunctionParams,
   type LifecycleHooksManager,
@@ -49,6 +50,25 @@ export class LifecycleHooksAPI {
 
   public getGlobalInitHooks(): RegisteredHookFunction<AnyOnInitHookFunction>[] {
     return this.#getManager().getGlobalInitHooks();
+  }
+
+  public registerGlobalStartHook(hook: RegisterHookFunctionParams<AnyOnStartHookFunction>): void {
+    this.#getManager().registerGlobalStartHook(hook);
+  }
+
+  public getTaskStartHook(taskId: string): AnyOnStartHookFunction | undefined {
+    return this.#getManager().getTaskStartHook(taskId);
+  }
+
+  public getGlobalStartHooks(): RegisteredHookFunction<AnyOnStartHookFunction>[] {
+    return this.#getManager().getGlobalStartHooks();
+  }
+
+  public registerTaskStartHook(
+    taskId: string,
+    hook: RegisterHookFunctionParams<AnyOnStartHookFunction>
+  ): void {
+    this.#getManager().registerTaskStartHook(taskId, hook);
   }
 
   #getManager(): LifecycleHooksManager {

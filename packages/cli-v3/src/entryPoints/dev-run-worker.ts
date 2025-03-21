@@ -183,6 +183,13 @@ async function bootstrap() {
     });
   }
 
+  if (config.onStart) {
+    lifecycleHooks.registerGlobalStartHook({
+      id: "trigger-dev-worker",
+      fn: lifecycleHooksAdapters.createStartHookAdapter(config.onStart),
+    });
+  }
+
   return {
     tracer,
     tracingSDK,

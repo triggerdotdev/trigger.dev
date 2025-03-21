@@ -1,5 +1,6 @@
 import {
   AnyOnInitHookFunction,
+  AnyOnStartHookFunction,
   LifecycleHooksManager,
   RegisteredHookFunction,
   RegisterHookFunctionParams,
@@ -8,6 +9,40 @@ import {
 export class StandardLifecycleHooksManager implements LifecycleHooksManager {
   private globalInitHooks: Map<string, RegisteredHookFunction<AnyOnInitHookFunction>> = new Map();
   private taskInitHooks: Map<string, RegisteredHookFunction<AnyOnInitHookFunction>> = new Map();
+
+  private globalStartHooks: Map<string, RegisteredHookFunction<AnyOnStartHookFunction>> = new Map();
+  private taskStartHooks: Map<string, RegisteredHookFunction<AnyOnStartHookFunction>> = new Map();
+
+  registerGlobalStartHook(hook: RegisterHookFunctionParams<AnyOnStartHookFunction>): void {
+    const id = generateHookId(hook);
+
+    this.globalStartHooks.set(id, {
+      id,
+      name: hook.id ?? hook.fn.name ? (hook.fn.name === "" ? undefined : hook.fn.name) : undefined,
+      fn: hook.fn,
+    });
+  }
+
+  registerTaskStartHook(
+    taskId: string,
+    hook: RegisterHookFunctionParams<AnyOnStartHookFunction>
+  ): void {
+    const id = generateHookId(hook);
+
+    this.taskStartHooks.set(taskId, {
+      id,
+      name: hook.id ?? hook.fn.name ? (hook.fn.name === "" ? undefined : hook.fn.name) : undefined,
+      fn: hook.fn,
+    });
+  }
+
+  getTaskStartHook(taskId: string): AnyOnStartHookFunction | undefined {
+    return this.taskStartHooks.get(taskId)?.fn;
+  }
+
+  getGlobalStartHooks(): RegisteredHookFunction<AnyOnStartHookFunction>[] {
+    return Array.from(this.globalStartHooks.values());
+  }
 
   registerGlobalInitHook(hook: RegisterHookFunctionParams<AnyOnInitHookFunction>): void {
     // if there is no id, lets generate one based on the contents of the function
@@ -61,6 +96,25 @@ export class NoopLifecycleHooksManager implements LifecycleHooksManager {
   }
 
   getGlobalInitHooks(): RegisteredHookFunction<AnyOnInitHookFunction>[] {
+    return [];
+  }
+
+  registerGlobalStartHook(hook: RegisterHookFunctionParams<AnyOnStartHookFunction>): void {
+    // Noop
+  }
+
+  registerTaskStartHook(
+    taskId: string,
+    hook: RegisterHookFunctionParams<AnyOnStartHookFunction>
+  ): void {
+    // Noop
+  }
+
+  getTaskStartHook(taskId: string): AnyOnStartHookFunction | undefined {
+    return undefined;
+  }
+
+  getGlobalStartHooks(): RegisteredHookFunction<AnyOnStartHookFunction>[] {
     return [];
   }
 }
