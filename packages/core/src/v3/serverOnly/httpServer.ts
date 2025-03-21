@@ -207,8 +207,9 @@ export class HttpServer {
         return reply.empty(500);
       } finally {
         this.collectMetrics(req, res, startTime);
-        return;
       }
+
+      return reply.empty(501);
     });
 
     this.server.on("clientError", (_, socket) => {
