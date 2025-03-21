@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/redis-worker",
-  "version": "3.3.17",
+  "version": "3.3.18",
   "description": "Redis worker for trigger.dev",
   "license": "MIT",
   "publishConfig": {
