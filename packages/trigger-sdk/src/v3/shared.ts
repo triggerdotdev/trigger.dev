@@ -129,12 +129,8 @@ export function createTask<
     id: params.id,
     description: params.description,
     trigger: async (payload, options) => {
-      const taskMetadata = resourceCatalog.getTaskManifest(params.id);
-
       return await trigger_internal<RunTypes<TIdentifier, TInput, TOutput>>(
-        taskMetadata && taskMetadata.exportName
-          ? `${taskMetadata.exportName}.trigger()`
-          : `trigger()`,
+        "trigger()",
         params.id,
         payload,
         undefined,
@@ -145,12 +141,8 @@ export function createTask<
       );
     },
     batchTrigger: async (items, options) => {
-      const taskMetadata = resourceCatalog.getTaskManifest(params.id);
-
       return await batchTrigger_internal<RunTypes<TIdentifier, TInput, TOutput>>(
-        taskMetadata && taskMetadata.exportName
-          ? `${taskMetadata.exportName}.batchTrigger()`
-          : `batchTrigger()`,
+        "batchTrigger()",
         params.id,
         items,
         options,
@@ -160,13 +152,9 @@ export function createTask<
       );
     },
     triggerAndWait: (payload, options) => {
-      const taskMetadata = resourceCatalog.getTaskManifest(params.id);
-
       return new TaskRunPromise<TIdentifier, TOutput>((resolve, reject) => {
         triggerAndWait_internal<TIdentifier, TInput, TOutput>(
-          taskMetadata && taskMetadata.exportName
-            ? `${taskMetadata.exportName}.triggerAndWait()`
-            : `triggerAndWait()`,
+          "triggerAndWait()",
           params.id,
           payload,
           undefined,
@@ -184,12 +172,8 @@ export function createTask<
       }, params.id);
     },
     batchTriggerAndWait: async (items, options) => {
-      const taskMetadata = resourceCatalog.getTaskManifest(params.id);
-
       return await batchTriggerAndWait_internal<TIdentifier, TInput, TOutput>(
-        taskMetadata && taskMetadata.exportName
-          ? `${taskMetadata.exportName}.batchTriggerAndWait()`
-          : `batchTriggerAndWait()`,
+        "batchTriggerAndWait()",
         params.id,
         items,
         undefined,
@@ -276,12 +260,8 @@ export function createSchemaTask<
     description: params.description,
     schema: params.schema,
     trigger: async (payload, options, requestOptions) => {
-      const taskMetadata = resourceCatalog.getTaskManifest(params.id);
-
       return await trigger_internal<RunTypes<TIdentifier, inferSchemaIn<TSchema>, TOutput>>(
-        taskMetadata && taskMetadata.exportName
-          ? `${taskMetadata.exportName}.trigger()`
-          : `trigger()`,
+        "trigger()",
         params.id,
         payload,
         parsePayload,
@@ -293,12 +273,8 @@ export function createSchemaTask<
       );
     },
     batchTrigger: async (items, options, requestOptions) => {
-      const taskMetadata = resourceCatalog.getTaskManifest(params.id);
-
       return await batchTrigger_internal<RunTypes<TIdentifier, inferSchemaIn<TSchema>, TOutput>>(
-        taskMetadata && taskMetadata.exportName
-          ? `${taskMetadata.exportName}.batchTrigger()`
-          : `batchTrigger()`,
+        "batchTrigger()",
         params.id,
         items,
         options,
@@ -308,13 +284,9 @@ export function createSchemaTask<
       );
     },
     triggerAndWait: (payload, options) => {
-      const taskMetadata = resourceCatalog.getTaskManifest(params.id);
-
       return new TaskRunPromise<TIdentifier, TOutput>((resolve, reject) => {
         triggerAndWait_internal<TIdentifier, inferSchemaIn<TSchema>, TOutput>(
-          taskMetadata && taskMetadata.exportName
-            ? `${taskMetadata.exportName}.triggerAndWait()`
-            : `triggerAndWait()`,
+          "triggerAndWait()",
           params.id,
           payload,
           parsePayload,
@@ -332,12 +304,8 @@ export function createSchemaTask<
       }, params.id);
     },
     batchTriggerAndWait: async (items, options) => {
-      const taskMetadata = resourceCatalog.getTaskManifest(params.id);
-
       return await batchTriggerAndWait_internal<TIdentifier, inferSchemaIn<TSchema>, TOutput>(
-        taskMetadata && taskMetadata.exportName
-          ? `${taskMetadata.exportName}.batchTriggerAndWait()`
-          : `batchTriggerAndWait()`,
+        "batchTriggerAndWait()",
         params.id,
         items,
         parsePayload,
