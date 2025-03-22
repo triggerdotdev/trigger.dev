@@ -326,7 +326,7 @@ function ProjectSelector({
                     className="text-xs"
                     to={v3BillingPath(organization)}
                   >
-                    {plan}
+                    {plan} {plan !== "Free plan" && "plan"}
                   </TextLink>
                 )}
                 <TextLink
