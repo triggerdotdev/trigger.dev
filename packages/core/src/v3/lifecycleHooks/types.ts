@@ -26,6 +26,32 @@ export type OnStartHookFunction<TPayload> = (
 
 export type AnyOnStartHookFunction = OnStartHookFunction<unknown>;
 
+export type TaskWaitHookParams<TPayload = unknown> = {
+  ctx: TaskRunContext;
+  payload: TPayload;
+  task: string;
+  signal?: AbortSignal;
+};
+
+export type OnWaitHookFunction<TPayload> = (
+  params: TaskWaitHookParams<TPayload>
+) => undefined | void | Promise<undefined | void>;
+
+export type AnyOnWaitHookFunction = OnWaitHookFunction<unknown>;
+
+export type TaskResumeHookParams<TPayload = unknown> = {
+  ctx: TaskRunContext;
+  payload: TPayload;
+  task: string;
+  signal?: AbortSignal;
+};
+
+export type OnResumeHookFunction<TPayload> = (
+  params: TaskResumeHookParams<TPayload>
+) => undefined | void | Promise<undefined | void>;
+
+export type AnyOnResumeHookFunction = OnResumeHookFunction<unknown>;
+
 export type TaskFailureHookParams<TPayload = unknown> = {
   ctx: TaskRunContext;
   payload: TPayload;
@@ -129,4 +155,18 @@ export interface LifecycleHooksManager {
   ): void;
   getTaskCompleteHook(taskId: string): AnyOnCompleteHookFunction | undefined;
   getGlobalCompleteHooks(): RegisteredHookFunction<AnyOnCompleteHookFunction>[];
+  registerGlobalWaitHook(hook: RegisterHookFunctionParams<AnyOnWaitHookFunction>): void;
+  registerTaskWaitHook(
+    taskId: string,
+    hook: RegisterHookFunctionParams<AnyOnWaitHookFunction>
+  ): void;
+  getTaskWaitHook(taskId: string): AnyOnWaitHookFunction | undefined;
+  getGlobalWaitHooks(): RegisteredHookFunction<AnyOnWaitHookFunction>[];
+  registerGlobalResumeHook(hook: RegisterHookFunctionParams<AnyOnResumeHookFunction>): void;
+  registerTaskResumeHook(
+    taskId: string,
+    hook: RegisterHookFunctionParams<AnyOnResumeHookFunction>
+  ): void;
+  getTaskResumeHook(taskId: string): AnyOnResumeHookFunction | undefined;
+  getGlobalResumeHooks(): RegisteredHookFunction<AnyOnResumeHookFunction>[];
 }

@@ -10,6 +10,8 @@ import {
   type AnyOnSuccessHookFunction,
   type AnyOnCompleteHookFunction,
   type TaskCompleteResult,
+  type AnyOnWaitHookFunction,
+  type AnyOnResumeHookFunction,
 } from "@trigger.dev/core/v3";
 
 export type {
@@ -23,6 +25,8 @@ export type {
   AnyOnSuccessHookFunction,
   AnyOnCompleteHookFunction,
   TaskCompleteResult,
+  AnyOnWaitHookFunction,
+  AnyOnResumeHookFunction,
 };
 
 export function onInit(name: string, fn: AnyOnInitHookFunction): void;
@@ -77,6 +81,27 @@ export function onComplete(
   fn?: AnyOnCompleteHookFunction
 ): void {
   lifecycleHooks.registerGlobalCompleteHook({
+    id: typeof fnOrName === "string" ? fnOrName : fnOrName.name ? fnOrName.name : undefined,
+    fn: typeof fnOrName === "function" ? fnOrName : fn!,
+  });
+}
+
+export function onWait(name: string, fn: AnyOnWaitHookFunction): void;
+export function onWait(fn: AnyOnWaitHookFunction): void;
+export function onWait(fnOrName: string | AnyOnWaitHookFunction, fn?: AnyOnWaitHookFunction): void {
+  lifecycleHooks.registerGlobalWaitHook({
+    id: typeof fnOrName === "string" ? fnOrName : fnOrName.name ? fnOrName.name : undefined,
+    fn: typeof fnOrName === "function" ? fnOrName : fn!,
+  });
+}
+
+export function onResume(name: string, fn: AnyOnResumeHookFunction): void;
+export function onResume(fn: AnyOnResumeHookFunction): void;
+export function onResume(
+  fnOrName: string | AnyOnResumeHookFunction,
+  fn?: AnyOnResumeHookFunction
+): void {
+  lifecycleHooks.registerGlobalResumeHook({
     id: typeof fnOrName === "string" ? fnOrName : fnOrName.name ? fnOrName.name : undefined,
     fn: typeof fnOrName === "function" ? fnOrName : fn!,
   });

@@ -7,6 +7,8 @@ import {
   AnyOnFailureHookFunction,
   AnyOnSuccessHookFunction,
   AnyOnCompleteHookFunction,
+  AnyOnWaitHookFunction,
+  AnyOnResumeHookFunction,
 } from "./types.js";
 
 export class StandardLifecycleHooksManager implements LifecycleHooksManager {
@@ -30,6 +32,13 @@ export class StandardLifecycleHooksManager implements LifecycleHooksManager {
     new Map();
   private taskCompleteHooks: Map<string, RegisteredHookFunction<AnyOnCompleteHookFunction>> =
     new Map();
+
+  private globalWaitHooks: Map<string, RegisteredHookFunction<AnyOnWaitHookFunction>> = new Map();
+  private taskWaitHooks: Map<string, RegisteredHookFunction<AnyOnWaitHookFunction>> = new Map();
+
+  private globalResumeHooks: Map<string, RegisteredHookFunction<AnyOnResumeHookFunction>> =
+    new Map();
+  private taskResumeHooks: Map<string, RegisteredHookFunction<AnyOnResumeHookFunction>> = new Map();
 
   registerGlobalStartHook(hook: RegisterHookFunctionParams<AnyOnStartHookFunction>): void {
     const id = generateHookId(hook);
@@ -188,6 +197,68 @@ export class StandardLifecycleHooksManager implements LifecycleHooksManager {
   getGlobalCompleteHooks(): RegisteredHookFunction<AnyOnCompleteHookFunction>[] {
     return Array.from(this.globalCompleteHooks.values());
   }
+
+  registerGlobalWaitHook(hook: RegisterHookFunctionParams<AnyOnWaitHookFunction>): void {
+    const id = generateHookId(hook);
+
+    this.globalWaitHooks.set(id, {
+      id,
+      name: hook.id ?? hook.fn.name ? (hook.fn.name === "" ? undefined : hook.fn.name) : undefined,
+      fn: hook.fn,
+    });
+  }
+
+  registerTaskWaitHook(
+    taskId: string,
+    hook: RegisterHookFunctionParams<AnyOnWaitHookFunction>
+  ): void {
+    const id = generateHookId(hook);
+
+    this.taskWaitHooks.set(taskId, {
+      id,
+      name: hook.id ?? hook.fn.name ? (hook.fn.name === "" ? undefined : hook.fn.name) : undefined,
+      fn: hook.fn,
+    });
+  }
+
+  getTaskWaitHook(taskId: string): AnyOnWaitHookFunction | undefined {
+    return this.taskWaitHooks.get(taskId)?.fn;
+  }
+
+  getGlobalWaitHooks(): RegisteredHookFunction<AnyOnWaitHookFunction>[] {
+    return Array.from(this.globalWaitHooks.values());
+  }
+
+  registerGlobalResumeHook(hook: RegisterHookFunctionParams<AnyOnResumeHookFunction>): void {
+    const id = generateHookId(hook);
+
+    this.globalResumeHooks.set(id, {
+      id,
+      name: hook.id ?? hook.fn.name ? (hook.fn.name === "" ? undefined : hook.fn.name) : undefined,
+      fn: hook.fn,
+    });
+  }
+
+  registerTaskResumeHook(
+    taskId: string,
+    hook: RegisterHookFunctionParams<AnyOnResumeHookFunction>
+  ): void {
+    const id = generateHookId(hook);
+
+    this.taskResumeHooks.set(taskId, {
+      id,
+      name: hook.id ?? hook.fn.name ? (hook.fn.name === "" ? undefined : hook.fn.name) : undefined,
+      fn: hook.fn,
+    });
+  }
+
+  getTaskResumeHook(taskId: string): AnyOnResumeHookFunction | undefined {
+    return this.taskResumeHooks.get(taskId)?.fn;
+  }
+
+  getGlobalResumeHooks(): RegisteredHookFunction<AnyOnResumeHookFunction>[] {
+    return Array.from(this.globalResumeHooks.values());
+  }
 }
 
 export class NoopLifecycleHooksManager implements LifecycleHooksManager {
@@ -283,6 +354,44 @@ export class NoopLifecycleHooksManager implements LifecycleHooksManager {
   }
 
   getGlobalCompleteHooks(): RegisteredHookFunction<AnyOnCompleteHookFunction>[] {
+    return [];
+  }
+
+  registerGlobalWaitHook(hook: RegisterHookFunctionParams<AnyOnWaitHookFunction>): void {
+    // Noop
+  }
+
+  registerTaskWaitHook(
+    taskId: string,
+    hook: RegisterHookFunctionParams<AnyOnWaitHookFunction>
+  ): void {
+    // Noop
+  }
+
+  getTaskWaitHook(taskId: string): AnyOnWaitHookFunction | undefined {
+    return undefined;
+  }
+
+  getGlobalWaitHooks(): RegisteredHookFunction<AnyOnWaitHookFunction>[] {
+    return [];
+  }
+
+  registerGlobalResumeHook(hook: RegisterHookFunctionParams<AnyOnResumeHookFunction>): void {
+    // Noop
+  }
+
+  registerTaskResumeHook(
+    taskId: string,
+    hook: RegisterHookFunctionParams<AnyOnResumeHookFunction>
+  ): void {
+    // Noop
+  }
+
+  getTaskResumeHook(taskId: string): AnyOnResumeHookFunction | undefined {
+    return undefined;
+  }
+
+  getGlobalResumeHooks(): RegisteredHookFunction<AnyOnResumeHookFunction>[] {
     return [];
   }
 }
