@@ -78,20 +78,19 @@ export function HasNoTasksDev() {
 export function HasNoTasksDeployed({ environment }: { environment: MinimumEnvironment }) {
   return (
     <InfoPanel
-      title="You don't have any deployed tasks"
+      title={`You don't have any deployed tasks in ${environmentFullTitle(environment)}`}
       icon={TaskIcon}
       iconClassName="text-blue-500"
+      panelClassName="max-w-full"
+      to={docsPath("deployment/overview")}
+      buttonLabel="How to deploy tasks"
+      buttonVariant="docs/small"
+      buttonLeadingIcon={BookOpenIcon}
     >
       <Paragraph spacing variant="small">
-        You don't have any deployed tasks in {environmentFullTitle(environment)}.
+        Run the <TextLink to={docsPath("deployment/overview")}>CLI deploy command</TextLink> to
+        deploy your tasks to the {environmentFullTitle(environment)} environment.
       </Paragraph>
-      <LinkButton
-        to={docsPath("deployment/overview")}
-        variant="docs/medium"
-        LeadingIcon={BookOpenIcon}
-      >
-        How to deploy tasks
-      </LinkButton>
     </InfoPanel>
   );
 }
