@@ -3,7 +3,6 @@ import {
   ArrowRightOnRectangleIcon,
   BeakerIcon,
   BellAlertIcon,
-  BookOpenIcon,
   ChartBarIcon,
   ChevronRightIcon,
   ClockIcon,
@@ -59,16 +58,11 @@ import {
 import connectedImage from "../../assets/images/cli-connected.png";
 import disconnectedImage from "../../assets/images/cli-disconnected.png";
 import { FreePlanUsage } from "../billing/FreePlanUsage";
+import { InlineCode } from "../code/InlineCode";
 import { useDevPresence } from "../DevPresence";
 import { ImpersonationBanner } from "../ImpersonationBanner";
 import { Button, ButtonContent, LinkButton } from "../primitives/Buttons";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTrigger,
-} from "../primitives/Dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "../primitives/Dialog";
 import { Paragraph } from "../primitives/Paragraph";
 import {
   Popover,
@@ -86,7 +80,6 @@ import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
 import { SideMenuSection } from "./SideMenuSection";
-import { InlineCode } from "../code/InlineCode";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 export type SideMenuProject = Pick<
@@ -280,7 +273,7 @@ function ProjectSelector({
 
   let plan: string | undefined = undefined;
   if (currentPlan?.v3Subscription?.isPaying === false) {
-    plan = "Free plan";
+    plan = "Free";
   } else if (currentPlan?.v3Subscription?.isPaying === true) {
     plan = currentPlan.v3Subscription.plan?.title;
   }
@@ -326,7 +319,7 @@ function ProjectSelector({
                     className="text-xs"
                     to={v3BillingPath(organization)}
                   >
-                    {plan} {plan !== "Free plan" && "plan"}
+                    {plan} plan
                   </TextLink>
                 )}
                 <TextLink
