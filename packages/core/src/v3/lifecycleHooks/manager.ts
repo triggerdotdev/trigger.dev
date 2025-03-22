@@ -4,6 +4,7 @@ import {
   LifecycleHooksManager,
   RegisteredHookFunction,
   RegisterHookFunctionParams,
+  AnyOnFailureHookFunction,
 } from "./types.js";
 
 export class StandardLifecycleHooksManager implements LifecycleHooksManager {
@@ -12,6 +13,11 @@ export class StandardLifecycleHooksManager implements LifecycleHooksManager {
 
   private globalStartHooks: Map<string, RegisteredHookFunction<AnyOnStartHookFunction>> = new Map();
   private taskStartHooks: Map<string, RegisteredHookFunction<AnyOnStartHookFunction>> = new Map();
+
+  private globalFailureHooks: Map<string, RegisteredHookFunction<AnyOnFailureHookFunction>> =
+    new Map();
+  private taskFailureHooks: Map<string, RegisteredHookFunction<AnyOnFailureHookFunction>> =
+    new Map();
 
   registerGlobalStartHook(hook: RegisterHookFunctionParams<AnyOnStartHookFunction>): void {
     const id = generateHookId(hook);
@@ -77,6 +83,37 @@ export class StandardLifecycleHooksManager implements LifecycleHooksManager {
   getGlobalInitHooks(): RegisteredHookFunction<AnyOnInitHookFunction>[] {
     return Array.from(this.globalInitHooks.values());
   }
+
+  registerGlobalFailureHook(hook: RegisterHookFunctionParams<AnyOnFailureHookFunction>): void {
+    const id = generateHookId(hook);
+
+    this.globalFailureHooks.set(id, {
+      id,
+      name: hook.id ?? hook.fn.name ? (hook.fn.name === "" ? undefined : hook.fn.name) : undefined,
+      fn: hook.fn,
+    });
+  }
+
+  registerTaskFailureHook(
+    taskId: string,
+    hook: RegisterHookFunctionParams<AnyOnFailureHookFunction>
+  ): void {
+    const id = generateHookId(hook);
+
+    this.taskFailureHooks.set(taskId, {
+      id,
+      name: hook.id ?? hook.fn.name ? (hook.fn.name === "" ? undefined : hook.fn.name) : undefined,
+      fn: hook.fn,
+    });
+  }
+
+  getTaskFailureHook(taskId: string): AnyOnFailureHookFunction | undefined {
+    return this.taskFailureHooks.get(taskId)?.fn;
+  }
+
+  getGlobalFailureHooks(): RegisteredHookFunction<AnyOnFailureHookFunction>[] {
+    return Array.from(this.globalFailureHooks.values());
+  }
 }
 
 export class NoopLifecycleHooksManager implements LifecycleHooksManager {
@@ -115,6 +152,25 @@ export class NoopLifecycleHooksManager implements LifecycleHooksManager {
   }
 
   getGlobalStartHooks(): RegisteredHookFunction<AnyOnStartHookFunction>[] {
+    return [];
+  }
+
+  registerGlobalFailureHook(hook: RegisterHookFunctionParams<AnyOnFailureHookFunction>): void {
+    // Noop
+  }
+
+  registerTaskFailureHook(
+    taskId: string,
+    hook: RegisterHookFunctionParams<AnyOnFailureHookFunction>
+  ): void {
+    // Noop
+  }
+
+  getTaskFailureHook(taskId: string): AnyOnFailureHookFunction | undefined {
+    return undefined;
+  }
+
+  getGlobalFailureHooks(): RegisteredHookFunction<AnyOnFailureHookFunction>[] {
     return [];
   }
 }

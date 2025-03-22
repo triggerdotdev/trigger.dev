@@ -26,6 +26,20 @@ export type OnStartHookFunction<TPayload> = (
 
 export type AnyOnStartHookFunction = OnStartHookFunction<unknown>;
 
+export type TaskFailureHookParams<TPayload = unknown> = {
+  ctx: TaskRunContext;
+  payload: TPayload;
+  task: string;
+  error: unknown;
+  signal?: AbortSignal;
+};
+
+export type OnFailureHookFunction<TPayload> = (
+  params: TaskFailureHookParams<TPayload>
+) => undefined | void | Promise<undefined | void>;
+
+export type AnyOnFailureHookFunction = OnFailureHookFunction<unknown>;
+
 export type RegisterHookFunctionParams<THookFunction extends (params: any) => any> = {
   id?: string;
   fn: THookFunction;
@@ -52,4 +66,11 @@ export interface LifecycleHooksManager {
   ): void;
   getTaskStartHook(taskId: string): AnyOnStartHookFunction | undefined;
   getGlobalStartHooks(): RegisteredHookFunction<AnyOnStartHookFunction>[];
+  registerGlobalFailureHook(hook: RegisterHookFunctionParams<AnyOnFailureHookFunction>): void;
+  registerTaskFailureHook(
+    taskId: string,
+    hook: RegisterHookFunctionParams<AnyOnFailureHookFunction>
+  ): void;
+  getTaskFailureHook(taskId: string): AnyOnFailureHookFunction | undefined;
+  getGlobalFailureHooks(): RegisteredHookFunction<AnyOnFailureHookFunction>[];
 }
