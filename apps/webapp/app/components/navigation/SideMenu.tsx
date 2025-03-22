@@ -473,7 +473,7 @@ function SwitchOrganizations({
           onMouseEnter={handleMouseEnter}
           onMouseLeave={handleMouseLeave}
         >
-          <div className="p-1">
+          <div className="flex flex-col gap-1 p-1">
             {organizations.map((org) => (
               <PopoverMenuItem
                 key={org.id}
