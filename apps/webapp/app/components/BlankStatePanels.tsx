@@ -346,7 +346,15 @@ export function AlertsNoneDeployed() {
           and webhooks.
         </Paragraph>
 
-        <div className="flex gap-3">
+        <div className="flex items-center justify-between gap-3">
+          <LinkButton
+            to={docsPath("troubleshooting-alerts")}
+            variant="docs/medium"
+            LeadingIcon={BookOpenIcon}
+            className="inline-flex"
+          >
+            Alerts docs
+          </LinkButton>
           <LinkButton
             to={v3NewProjectAlertPath(organization, project, environment)}
             variant="primary/medium"
@@ -354,14 +362,6 @@ export function AlertsNoneDeployed() {
             shortcut={{ key: "n" }}
           >
             New alert
-          </LinkButton>
-          <LinkButton
-            to={docsPath("troubleshooting-alerts")}
-            variant="docs/medium"
-            LeadingIcon={BookOpenIcon}
-            className="inline-flex"
-          >
-            Alert docs
           </LinkButton>
         </div>
       </InfoPanel>
