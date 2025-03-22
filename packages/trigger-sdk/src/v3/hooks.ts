@@ -7,6 +7,7 @@ import {
   type TaskStartHookParams,
   type OnStartHookFunction,
   type AnyOnFailureHookFunction,
+  type AnyOnSuccessHookFunction,
 } from "@trigger.dev/core/v3";
 
 export type {
@@ -17,6 +18,7 @@ export type {
   TaskStartHookParams,
   OnStartHookFunction,
   AnyOnFailureHookFunction,
+  AnyOnSuccessHookFunction,
 };
 
 export function onInit(name: string, fn: AnyOnInitHookFunction): void;
@@ -47,6 +49,18 @@ export function onFailure(
   fn?: AnyOnFailureHookFunction
 ): void {
   lifecycleHooks.registerGlobalFailureHook({
+    id: typeof fnOrName === "string" ? fnOrName : fnOrName.name ? fnOrName.name : undefined,
+    fn: typeof fnOrName === "function" ? fnOrName : fn!,
+  });
+}
+
+export function onSuccess(name: string, fn: AnyOnSuccessHookFunction): void;
+export function onSuccess(fn: AnyOnSuccessHookFunction): void;
+export function onSuccess(
+  fnOrName: string | AnyOnSuccessHookFunction,
+  fn?: AnyOnSuccessHookFunction
+): void {
+  lifecycleHooks.registerGlobalSuccessHook({
     id: typeof fnOrName === "string" ? fnOrName : fnOrName.name ? fnOrName.name : undefined,
     fn: typeof fnOrName === "function" ? fnOrName : fn!,
   });

@@ -3,6 +3,7 @@ import {
   AnyOnInitHookFunction,
   AnyOnStartHookFunction,
   AnyOnFailureHookFunction,
+  AnyOnSuccessHookFunction,
 } from "./types.js";
 
 export function createInitHookAdapter<TPayload>(
@@ -45,5 +46,24 @@ export function createFailureHookAdapter<TPayload>(
     delete paramsWithoutPayload["error"];
 
     return await fn(params.payload as unknown as TPayload, params.error, paramsWithoutPayload);
+  };
+}
+
+export function createSuccessHookAdapter<TPayload, TOutput>(
+  fn: NonNullable<TaskOptions<string, TPayload, TOutput, any>["onSuccess"]>
+): AnyOnSuccessHookFunction {
+  return async (params) => {
+    const paramsWithoutPayload = {
+      ...params,
+    };
+
+    delete paramsWithoutPayload["payload"];
+    delete paramsWithoutPayload["output"];
+
+    return await fn(
+      params.payload as unknown as TPayload,
+      params.output as unknown as TOutput,
+      paramsWithoutPayload
+    );
   };
 }

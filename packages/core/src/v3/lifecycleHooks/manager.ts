@@ -5,6 +5,7 @@ import {
   RegisteredHookFunction,
   RegisterHookFunctionParams,
   AnyOnFailureHookFunction,
+  AnyOnSuccessHookFunction,
 } from "./types.js";
 
 export class StandardLifecycleHooksManager implements LifecycleHooksManager {
@@ -17,6 +18,11 @@ export class StandardLifecycleHooksManager implements LifecycleHooksManager {
   private globalFailureHooks: Map<string, RegisteredHookFunction<AnyOnFailureHookFunction>> =
     new Map();
   private taskFailureHooks: Map<string, RegisteredHookFunction<AnyOnFailureHookFunction>> =
+    new Map();
+
+  private globalSuccessHooks: Map<string, RegisteredHookFunction<AnyOnSuccessHookFunction>> =
+    new Map();
+  private taskSuccessHooks: Map<string, RegisteredHookFunction<AnyOnSuccessHookFunction>> =
     new Map();
 
   registerGlobalStartHook(hook: RegisterHookFunctionParams<AnyOnStartHookFunction>): void {
@@ -114,6 +120,37 @@ export class StandardLifecycleHooksManager implements LifecycleHooksManager {
   getGlobalFailureHooks(): RegisteredHookFunction<AnyOnFailureHookFunction>[] {
     return Array.from(this.globalFailureHooks.values());
   }
+
+  registerGlobalSuccessHook(hook: RegisterHookFunctionParams<AnyOnSuccessHookFunction>): void {
+    const id = generateHookId(hook);
+
+    this.globalSuccessHooks.set(id, {
+      id,
+      name: hook.id ?? hook.fn.name ? (hook.fn.name === "" ? undefined : hook.fn.name) : undefined,
+      fn: hook.fn,
+    });
+  }
+
+  registerTaskSuccessHook(
+    taskId: string,
+    hook: RegisterHookFunctionParams<AnyOnSuccessHookFunction>
+  ): void {
+    const id = generateHookId(hook);
+
+    this.taskSuccessHooks.set(taskId, {
+      id,
+      name: hook.id ?? hook.fn.name ? (hook.fn.name === "" ? undefined : hook.fn.name) : undefined,
+      fn: hook.fn,
+    });
+  }
+
+  getTaskSuccessHook(taskId: string): AnyOnSuccessHookFunction | undefined {
+    return this.taskSuccessHooks.get(taskId)?.fn;
+  }
+
+  getGlobalSuccessHooks(): RegisteredHookFunction<AnyOnSuccessHookFunction>[] {
+    return Array.from(this.globalSuccessHooks.values());
+  }
 }
 
 export class NoopLifecycleHooksManager implements LifecycleHooksManager {
@@ -171,6 +208,25 @@ export class NoopLifecycleHooksManager implements LifecycleHooksManager {
   }
 
   getGlobalFailureHooks(): RegisteredHookFunction<AnyOnFailureHookFunction>[] {
+    return [];
+  }
+
+  registerGlobalSuccessHook(hook: RegisterHookFunctionParams<AnyOnSuccessHookFunction>): void {
+    // Noop
+  }
+
+  registerTaskSuccessHook(
+    taskId: string,
+    hook: RegisterHookFunctionParams<AnyOnSuccessHookFunction>
+  ): void {
+    // Noop
+  }
+
+  getTaskSuccessHook(taskId: string): AnyOnSuccessHookFunction | undefined {
+    return undefined;
+  }
+
+  getGlobalSuccessHooks(): RegisteredHookFunction<AnyOnSuccessHookFunction>[] {
     return [];
   }
 }
