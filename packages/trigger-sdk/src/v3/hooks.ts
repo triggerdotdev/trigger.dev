@@ -8,6 +8,8 @@ import {
   type OnStartHookFunction,
   type AnyOnFailureHookFunction,
   type AnyOnSuccessHookFunction,
+  type AnyOnCompleteHookFunction,
+  type TaskCompleteResult,
 } from "@trigger.dev/core/v3";
 
 export type {
@@ -19,6 +21,8 @@ export type {
   OnStartHookFunction,
   AnyOnFailureHookFunction,
   AnyOnSuccessHookFunction,
+  AnyOnCompleteHookFunction,
+  TaskCompleteResult,
 };
 
 export function onInit(name: string, fn: AnyOnInitHookFunction): void;
@@ -61,6 +65,18 @@ export function onSuccess(
   fn?: AnyOnSuccessHookFunction
 ): void {
   lifecycleHooks.registerGlobalSuccessHook({
+    id: typeof fnOrName === "string" ? fnOrName : fnOrName.name ? fnOrName.name : undefined,
+    fn: typeof fnOrName === "function" ? fnOrName : fn!,
+  });
+}
+
+export function onComplete(name: string, fn: AnyOnCompleteHookFunction): void;
+export function onComplete(fn: AnyOnCompleteHookFunction): void;
+export function onComplete(
+  fnOrName: string | AnyOnCompleteHookFunction,
+  fn?: AnyOnCompleteHookFunction
+): void {
+  lifecycleHooks.registerGlobalCompleteHook({
     id: typeof fnOrName === "string" ? fnOrName : fnOrName.name ? fnOrName.name : undefined,
     fn: typeof fnOrName === "function" ? fnOrName : fn!,
   });

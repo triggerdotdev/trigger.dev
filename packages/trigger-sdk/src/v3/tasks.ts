@@ -1,4 +1,4 @@
-import { onInit, onStart, onFailure, onSuccess } from "./hooks.js";
+import { onInit, onStart, onFailure, onSuccess, onComplete } from "./hooks.js";
 import {
   batchTrigger,
   batchTriggerAndWait,
@@ -83,4 +83,5 @@ export const tasks = {
   onStart,
   onFailure,
   onSuccess,
+  onComplete,
 };

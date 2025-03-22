@@ -6,6 +6,7 @@ import {
   RegisterHookFunctionParams,
   AnyOnFailureHookFunction,
   AnyOnSuccessHookFunction,
+  AnyOnCompleteHookFunction,
 } from "./types.js";
 
 export class StandardLifecycleHooksManager implements LifecycleHooksManager {
@@ -23,6 +24,11 @@ export class StandardLifecycleHooksManager implements LifecycleHooksManager {
   private globalSuccessHooks: Map<string, RegisteredHookFunction<AnyOnSuccessHookFunction>> =
     new Map();
   private taskSuccessHooks: Map<string, RegisteredHookFunction<AnyOnSuccessHookFunction>> =
+    new Map();
+
+  private globalCompleteHooks: Map<string, RegisteredHookFunction<AnyOnCompleteHookFunction>> =
+    new Map();
+  private taskCompleteHooks: Map<string, RegisteredHookFunction<AnyOnCompleteHookFunction>> =
     new Map();
 
   registerGlobalStartHook(hook: RegisterHookFunctionParams<AnyOnStartHookFunction>): void {
@@ -151,6 +157,37 @@ export class StandardLifecycleHooksManager implements LifecycleHooksManager {
   getGlobalSuccessHooks(): RegisteredHookFunction<AnyOnSuccessHookFunction>[] {
     return Array.from(this.globalSuccessHooks.values());
   }
+
+  registerGlobalCompleteHook(hook: RegisterHookFunctionParams<AnyOnCompleteHookFunction>): void {
+    const id = generateHookId(hook);
+
+    this.globalCompleteHooks.set(id, {
+      id,
+      name: hook.id ?? hook.fn.name ? (hook.fn.name === "" ? undefined : hook.fn.name) : undefined,
+      fn: hook.fn,
+    });
+  }
+
+  registerTaskCompleteHook(
+    taskId: string,
+    hook: RegisterHookFunctionParams<AnyOnCompleteHookFunction>
+  ): void {
+    const id = generateHookId(hook);
+
+    this.taskCompleteHooks.set(taskId, {
+      id,
+      name: hook.id ?? hook.fn.name ? (hook.fn.name === "" ? undefined : hook.fn.name) : undefined,
+      fn: hook.fn,
+    });
+  }
+
+  getTaskCompleteHook(taskId: string): AnyOnCompleteHookFunction | undefined {
+    return this.taskCompleteHooks.get(taskId)?.fn;
+  }
+
+  getGlobalCompleteHooks(): RegisteredHookFunction<AnyOnCompleteHookFunction>[] {
+    return Array.from(this.globalCompleteHooks.values());
+  }
 }
 
 export class NoopLifecycleHooksManager implements LifecycleHooksManager {
@@ -227,6 +264,25 @@ export class NoopLifecycleHooksManager implements LifecycleHooksManager {
   }
 
   getGlobalSuccessHooks(): RegisteredHookFunction<AnyOnSuccessHookFunction>[] {
+    return [];
+  }
+
+  registerGlobalCompleteHook(hook: RegisterHookFunctionParams<AnyOnCompleteHookFunction>): void {
+    // Noop
+  }
+
+  registerTaskCompleteHook(
+    taskId: string,
+    hook: RegisterHookFunctionParams<AnyOnCompleteHookFunction>
+  ): void {
+    // Noop
+  }
+
+  getTaskCompleteHook(taskId: string): AnyOnCompleteHookFunction | undefined {
+    return undefined;
+  }
+
+  getGlobalCompleteHooks(): RegisteredHookFunction<AnyOnCompleteHookFunction>[] {
     return [];
   }
 }

@@ -54,6 +54,34 @@ export type OnSuccessHookFunction<TPayload, TOutput> = (
 
 export type AnyOnSuccessHookFunction = OnSuccessHookFunction<unknown, unknown>;
 
+export type TaskCompleteSuccessResult<TOutput> = {
+  ok: true;
+  data: TOutput;
+};
+
+export type TaskCompleteErrorResult = {
+  ok: false;
+  error: unknown;
+};
+
+export type TaskCompleteResult<TOutput> =
+  | TaskCompleteSuccessResult<TOutput>
+  | TaskCompleteErrorResult;
+
+export type TaskCompleteHookParams<TPayload = unknown, TOutput = unknown> = {
+  ctx: TaskRunContext;
+  payload: TPayload;
+  task: string;
+  result: TaskCompleteResult<TOutput>;
+  signal?: AbortSignal;
+};
+
+export type OnCompleteHookFunction<TPayload, TOutput> = (
+  params: TaskCompleteHookParams<TPayload, TOutput>
+) => undefined | void | Promise<undefined | void>;
+
+export type AnyOnCompleteHookFunction = OnCompleteHookFunction<unknown, unknown>;
+
 export type RegisterHookFunctionParams<THookFunction extends (params: any) => any> = {
   id?: string;
   fn: THookFunction;
@@ -94,4 +122,11 @@ export interface LifecycleHooksManager {
   ): void;
   getTaskSuccessHook(taskId: string): AnyOnSuccessHookFunction | undefined;
   getGlobalSuccessHooks(): RegisteredHookFunction<AnyOnSuccessHookFunction>[];
+  registerGlobalCompleteHook(hook: RegisterHookFunctionParams<AnyOnCompleteHookFunction>): void;
+  registerTaskCompleteHook(
+    taskId: string,
+    hook: RegisterHookFunctionParams<AnyOnCompleteHookFunction>
+  ): void;
+  getTaskCompleteHook(taskId: string): AnyOnCompleteHookFunction | undefined;
+  getGlobalCompleteHooks(): RegisteredHookFunction<AnyOnCompleteHookFunction>[];
 }
