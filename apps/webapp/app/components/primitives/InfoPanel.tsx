@@ -22,6 +22,8 @@ type Props = {
   children: React.ReactNode;
   to?: string;
   buttonLabel?: string;
+  buttonVariant?: React.ComponentProps<typeof LinkButton>["variant"];
+  buttonLeadingIcon?: React.ComponentProps<typeof LinkButton>["LeadingIcon"];
   icon: React.ComponentType<any>;
   iconClassName?: string;
   variant?: InfoPanelVariant;
@@ -33,6 +35,8 @@ export function InfoPanel({
   children,
   to,
   buttonLabel,
+  buttonVariant = "secondary/small",
+  buttonLeadingIcon,
   icon,
   iconClassName,
   variant = "info",
@@ -54,7 +58,7 @@ export function InfoPanel({
         <Icon className={cn("size-5", iconClassName)} />
 
         {to && (
-          <LinkButton to={to} variant="secondary/small">
+          <LinkButton to={to} variant={buttonVariant} LeadingIcon={buttonLeadingIcon}>
             {buttonLabel}
           </LinkButton>
         )}
