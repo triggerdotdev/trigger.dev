@@ -1,4 +1,5 @@
-import { TaskRunContext } from "../schemas/index.js";
+import { RetryOptions, TaskRunContext } from "../schemas/index.js";
+import { HandleErrorResult } from "../types/index.js";
 
 export type TaskInitHookParams<TPayload = unknown> = {
   ctx: TaskRunContext;
