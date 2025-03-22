@@ -378,7 +378,7 @@ export function QueuesHasNoTasks() {
     <InfoPanel
       title="You have no queues"
       icon={RectangleStackIcon}
-      iconClassName="text-purple-500"
+      iconClassName="text-blue-500"
       panelClassName="max-w-full"
     >
       <Paragraph spacing variant="small">
