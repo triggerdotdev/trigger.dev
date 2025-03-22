@@ -86,4 +86,5 @@ export const tasks = {
   onComplete,
   onWait,
   onResume,
+  onHandleError,
 };

@@ -12,6 +12,7 @@ import {
   type TaskCompleteResult,
   type AnyOnWaitHookFunction,
   type AnyOnResumeHookFunction,
+  type AnyOnHandleErrorHookFunction,
 } from "@trigger.dev/core/v3";
 
 export type {
@@ -27,6 +28,7 @@ export type {
   TaskCompleteResult,
   AnyOnWaitHookFunction,
   AnyOnResumeHookFunction,
+  AnyOnHandleErrorHookFunction,
 };
 
 export function onInit(name: string, fn: AnyOnInitHookFunction): void;
@@ -102,6 +104,18 @@ export function onResume(
   fn?: AnyOnResumeHookFunction
 ): void {
   lifecycleHooks.registerGlobalResumeHook({
+    id: typeof fnOrName === "string" ? fnOrName : fnOrName.name ? fnOrName.name : undefined,
+    fn: typeof fnOrName === "function" ? fnOrName : fn!,
+  });
+}
+
+export function onHandleError(name: string, fn: AnyOnHandleErrorHookFunction): void;
+export function onHandleError(fn: AnyOnHandleErrorHookFunction): void;
+export function onHandleError(
+  fnOrName: string | AnyOnHandleErrorHookFunction,
+  fn?: AnyOnHandleErrorHookFunction
+): void {
+  lifecycleHooks.registerGlobalHandleErrorHook({
     id: typeof fnOrName === "string" ? fnOrName : fnOrName.name ? fnOrName.name : undefined,
     fn: typeof fnOrName === "function" ? fnOrName : fn!,
   });

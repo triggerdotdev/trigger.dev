@@ -119,6 +119,23 @@ export type RegisteredHookFunction<THookFunction extends (params: any) => any> =
   fn: THookFunction;
 };
 
+export type TaskHandleErrorHookParams<TPayload = unknown> = {
+  ctx: TaskRunContext;
+  payload: TPayload;
+  task: string;
+  error: unknown;
+  retry?: RetryOptions;
+  retryAt?: Date;
+  retryDelayInMs?: number;
+  signal?: AbortSignal;
+};
+
+export type OnHandleErrorHookFunction<TPayload> = (
+  params: TaskHandleErrorHookParams<TPayload>
+) => HandleErrorResult;
+
+export type AnyOnHandleErrorHookFunction = OnHandleErrorHookFunction<unknown>;
+
 export interface LifecycleHooksManager {
   registerGlobalInitHook(hook: RegisterHookFunctionParams<AnyOnInitHookFunction>): void;
   registerTaskInitHook(
@@ -169,4 +186,13 @@ export interface LifecycleHooksManager {
   ): void;
   getTaskResumeHook(taskId: string): AnyOnResumeHookFunction | undefined;
   getGlobalResumeHooks(): RegisteredHookFunction<AnyOnResumeHookFunction>[];
+  registerGlobalHandleErrorHook(
+    hook: RegisterHookFunctionParams<AnyOnHandleErrorHookFunction>
+  ): void;
+  registerTaskHandleErrorHook(
+    taskId: string,
+    hook: RegisterHookFunctionParams<AnyOnHandleErrorHookFunction>
+  ): void;
+  getTaskHandleErrorHook(taskId: string): AnyOnHandleErrorHookFunction | undefined;
+  getGlobalHandleErrorHooks(): RegisteredHookFunction<AnyOnHandleErrorHookFunction>[];
 }
