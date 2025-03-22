@@ -1,9 +1,9 @@
-import { ClockIcon, PlusIcon, RectangleGroupIcon } from "@heroicons/react/20/solid";
-import { ArrowUpCircleIcon } from "@heroicons/react/24/outline";
+import { ArrowUpCircleIcon, PlusIcon } from "@heroicons/react/20/solid";
 import { BookOpenIcon } from "@heroicons/react/24/solid";
 import { type MetaFunction, Outlet, useLocation, useParams } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { SchedulesNoneAttached, SchedulesNoPossibleTaskPanel } from "~/components/BlankStatePanels";
 import { Feedback } from "~/components/Feedback";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { InlineCode } from "~/components/code/InlineCode";
@@ -20,7 +20,6 @@ import {
   DialogTrigger,
 } from "~/components/primitives/Dialog";
 import { Header3 } from "~/components/primitives/Headers";
-import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { PaginationControls } from "~/components/primitives/Pagination";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -47,11 +46,13 @@ import {
   ScheduleTypeIcon,
   scheduleTypeName,
 } from "~/components/runs/v3/ScheduleType";
+import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { usePathName } from "~/hooks/usePathName";
 import { useProject } from "~/hooks/useProject";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
+import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
   type ScheduleListItem,
   ScheduleListPresenter,
@@ -59,16 +60,13 @@ import {
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import {
-  EnvironmentParamSchema,
   docsPath,
+  EnvironmentParamSchema,
   v3BillingPath,
   v3NewSchedulePath,
   v3SchedulePath,
 } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
-import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
-import { useEnvironment } from "~/hooks/useEnvironment";
-import { SchedulesNoneAttached, SchedulesNoPossibleTaskPanel } from "~/components/BlankStatePanels";
 
 export const meta: MetaFunction = () => {
   return [
