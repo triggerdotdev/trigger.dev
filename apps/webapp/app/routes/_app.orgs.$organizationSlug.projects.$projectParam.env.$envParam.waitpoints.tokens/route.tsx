@@ -46,10 +46,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const url = new URL(request.url);
   const s = {
-    friendlyId: url.searchParams.get("id") ?? undefined,
+    id: url.searchParams.get("id") ?? undefined,
     statuses: url.searchParams.getAll("statuses"),
     idempotencyKey: url.searchParams.get("idempotencyKey") ?? undefined,
     tags: url.searchParams.getAll("tags"),
+    period: url.searchParams.get("period") ?? undefined,
     from: url.searchParams.get("from") ?? undefined,
     to: url.searchParams.get("to") ?? undefined,
     cursor: url.searchParams.get("cursor") ?? undefined,

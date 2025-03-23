@@ -52,13 +52,14 @@ export const WaitpointFilterStatus = z.enum(filterableStatuses);
 export type WaitpointFilterStatus = z.infer<typeof WaitpointFilterStatus>;
 
 export const WaitpointSearchParamsSchema = z.object({
-  friendlyId: z.string().optional(),
+  id: z.string().optional(),
   statuses: z.preprocess(
     (value) => (typeof value === "string" ? [value] : value),
     WaitpointFilterStatus.array().optional()
   ),
   idempotencyKey: z.string().optional(),
   tags: z.string().array().optional(),
+  period: z.preprocess((value) => (value === "all" ? undefined : value), z.string().optional()),
   from: z.coerce.number().optional(),
   to: z.coerce.number().optional(),
   cursor: z.string().optional(),
@@ -469,26 +470,26 @@ function WaitpointIdDropdown({
 }) {
   const [open, setOpen] = useState<boolean | undefined>();
   const { value, replace } = useSearchParams();
-  const idValue = value("friendlyId");
+  const idValue = value("id");
 
-  const [friendlyId, setFriendlyId] = useState(idValue);
+  const [id, setId] = useState(idValue);
 
   const apply = useCallback(() => {
     clearSearchValue();
     replace({
       cursor: undefined,
       direction: undefined,
-      friendlyId: friendlyId === "" ? undefined : friendlyId?.toString(),
+      id: id === "" ? undefined : id?.toString(),
     });
 
     setOpen(false);
-  }, [friendlyId, replace]);
+  }, [id, replace]);
 
   let error: string | undefined = undefined;
-  if (friendlyId) {
-    if (!friendlyId.startsWith("waitpooint_")) {
+  if (id) {
+    if (!id.startsWith("waitpoint_")) {
       error = "Waitpoint IDs start with 'waitpoint_'";
-    } else if (friendlyId.length !== 35) {
+    } else if (id.length !== 35) {
       error = "Waitpoint IDs are 35 characters long";
     }
   }
@@ -513,8 +514,8 @@ function WaitpointIdDropdown({
             <Label>Waitpoint ID</Label>
             <Input
               placeholder="run_"
-              value={friendlyId ?? ""}
-              onChange={(e) => setFriendlyId(e.target.value)}
+              value={id ?? ""}
+              onChange={(e) => setId(e.target.value)}
               variant="small"
               className="w-[27ch] font-mono"
               spellCheck={false}
@@ -526,7 +527,7 @@ function WaitpointIdDropdown({
               Cancel
             </Button>
             <Button
-              disabled={error !== undefined || !friendlyId}
+              disabled={error !== undefined || !id}
               variant="secondary/small"
               shortcut={{
                 modifiers: ["mod"],
@@ -547,11 +548,11 @@ function WaitpointIdDropdown({
 function AppliedWaitpointIdFilter() {
   const { value, del } = useSearchParams();
 
-  if (value("friendlyId") === undefined) {
+  if (value("id") === undefined) {
     return null;
   }
 
-  const friendlyId = value("friendlyId");
+  const id = value("id");
 
   return (
     <FilterMenuProvider>
@@ -561,8 +562,8 @@ function AppliedWaitpointIdFilter() {
             <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
               <AppliedFilter
                 label="Waitpoint ID"
-                value={friendlyId}
-                onRemove={() => del(["friendlyId", "cursor", "direction"])}
+                value={id}
+                onRemove={() => del(["id", "cursor", "direction"])}
               />
             </Ariakit.Select>
           }

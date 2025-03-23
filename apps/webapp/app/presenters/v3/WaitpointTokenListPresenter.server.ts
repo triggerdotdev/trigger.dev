@@ -1,9 +1,9 @@
+import parse from "parse-duration";
 import { Prisma, type WaitpointStatus } from "@trigger.dev/database";
 import { type Direction } from "~/components/ListPagination";
 import { sqlDatabaseSchema } from "~/db.server";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { BasePresenter } from "./basePresenter.server";
-import { isWaitpointOutputTimeout } from "@trigger.dev/core/v3/schemas";
 import { type WaitpointFilterStatus } from "~/components/runs/v3/WaitpointTokenFilters";
 
 const DEFAULT_PAGE_SIZE = 25;
@@ -11,10 +11,11 @@ const DEFAULT_PAGE_SIZE = 25;
 export type WaitpointTokenListOptions = {
   environment: AuthenticatedEnvironment;
   // filters
-  friendlyId?: string;
+  id?: string;
   statuses?: WaitpointFilterStatus[];
   idempotencyKey?: string;
   tags?: string[];
+  period?: string;
   from?: number;
   to?: number;
   // pagination
@@ -26,10 +27,11 @@ export type WaitpointTokenListOptions = {
 export class WaitpointTokenListPresenter extends BasePresenter {
   public async call({
     environment,
-    friendlyId,
+    id,
     statuses,
     idempotencyKey,
     tags,
+    period,
     from,
     to,
     direction = "forward",
@@ -39,10 +41,11 @@ export class WaitpointTokenListPresenter extends BasePresenter {
     const hasStatusFilters = statuses && statuses.length > 0;
 
     const hasFilters =
-      friendlyId !== undefined ||
+      id !== undefined ||
       hasStatusFilters ||
       idempotencyKey !== undefined ||
       (tags !== undefined && tags.length > 0) ||
+      (period !== undefined && period !== "all") ||
       from !== undefined ||
       to !== undefined;
 
@@ -69,6 +72,8 @@ export class WaitpointTokenListPresenter extends BasePresenter {
             return "COMPLETED";
         }
       }) ?? [];
+
+    const periodMs = period ? parse(period) : undefined;
 
     // Get the waitpoint tokens using raw SQL for better performance
     const tokens = await this._replica.$queryRaw<
@@ -114,7 +119,7 @@ export class WaitpointTokenListPresenter extends BasePresenter {
           : Prisma.empty
       }
       -- filters
-      ${friendlyId ? Prisma.sql`AND w."friendlyId" = ${friendlyId}` : Prisma.empty}
+      ${id ? Prisma.sql`AND w."friendlyId" = ${id}` : Prisma.empty}
       ${
         statusesToFilter && statusesToFilter.length > 0
           ? Prisma.sql`AND w.status = ANY(ARRAY[${Prisma.join(
@@ -127,7 +132,16 @@ export class WaitpointTokenListPresenter extends BasePresenter {
           ? Prisma.sql`AND w."outputIsError" = ${filterOutputIsError}`
           : Prisma.empty
       }
-      ${idempotencyKey ? Prisma.sql`AND w."idempotencyKey" = ${idempotencyKey}` : Prisma.empty}
+      ${
+        idempotencyKey
+          ? Prisma.sql`AND w."idempotencyKey" = ${idempotencyKey} OR w."inactiveIdempotencyKey" = ${idempotencyKey}`
+          : Prisma.empty
+      }
+      ${
+        periodMs
+          ? Prisma.sql`AND w."createdAt" >= NOW() - INTERVAL '1 millisecond' * ${periodMs}`
+          : Prisma.empty
+      }
       ${
         from
           ? Prisma.sql`AND w."createdAt" >= ${new Date(from).toISOString()}::timestamp`
@@ -195,7 +209,7 @@ export class WaitpointTokenListPresenter extends BasePresenter {
         previous,
       },
       filters: {
-        friendlyId: friendlyId || undefined,
+        id: id || undefined,
         statuses: statuses || [],
         idempotencyKey: idempotencyKey || undefined,
         from,
