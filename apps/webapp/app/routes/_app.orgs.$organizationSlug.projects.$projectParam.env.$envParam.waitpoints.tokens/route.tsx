@@ -1,31 +1,13 @@
-import {
-  ArrowUpCircleIcon,
-  BookOpenIcon,
-  ChatBubbleLeftEllipsisIcon,
-  PauseIcon,
-  PlayIcon,
-} from "@heroicons/react/20/solid";
-import { DialogClose } from "@radix-ui/react-dialog";
-import { Form, useNavigation, type MetaFunction } from "@remix-run/react";
-import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { type RuntimeEnvironmentType } from "@trigger.dev/database";
-import { useEffect, useState } from "react";
+import { BookOpenIcon } from "@heroicons/react/20/solid";
+import { type MetaFunction } from "@remix-run/react";
+import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import upgradeForQueuesPath from "~/assets/images/queues-dashboard.png";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
-import { environmentFullTitle } from "~/components/environments/EnvironmentLabel";
-import { Feedback } from "~/components/Feedback";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { ListPagination } from "~/components/ListPagination";
-import { BigNumber } from "~/components/metrics/BigNumber";
-import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { LinkButton } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
-import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
-import { FormButtons } from "~/components/primitives/FormButtons";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
-import { PaginationControls } from "~/components/primitives/Pagination";
-import { Paragraph } from "~/components/primitives/Paragraph";
-import { Spinner } from "~/components/primitives/Spinner";
 import {
   Table,
   TableBody,
@@ -34,34 +16,21 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
-import {
-  SimpleTooltip,
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "~/components/primitives/Tooltip";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { RunTag } from "~/components/runs/v3/RunTag";
 import { WaitpointStatusCombo } from "~/components/runs/v3/WaitpointStatus";
-import { WaitpointSearchParamsSchema } from "~/components/runs/v3/WaitpointTokenFilters";
+import {
+  WaitpointSearchParamsSchema,
+  WaitpointTokenFilters,
+} from "~/components/runs/v3/WaitpointTokenFilters";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { WaitpointTokenListPresenter } from "~/presenters/v3/WaitpointTokenListPresenter.server";
 import { requireUserId } from "~/services/session.server";
-import {
-  docsPath,
-  EnvironmentParamSchema,
-  v3BillingPath,
-  v3RunSpanPath,
-  v3WaitpointTokenPath,
-  v3WaitpointTokensPath,
-} from "~/utils/pathBuilder";
-import { PauseEnvironmentService } from "~/v3/services/pauseEnvironment.server";
-import { PauseQueueService } from "~/v3/services/pauseQueue.server";
+import { docsPath, EnvironmentParamSchema, v3WaitpointTokenPath } from "~/utils/pathBuilder";
 
 export const meta: MetaFunction = () => {
   return [
@@ -77,7 +46,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const url = new URL(request.url);
   const s = {
-    friendlyId: url.searchParams.get("friendlyId") ?? undefined,
+    friendlyId: url.searchParams.get("id") ?? undefined,
     statuses: url.searchParams.getAll("statuses"),
     idempotencyKey: url.searchParams.get("idempotencyKey") ?? undefined,
     tags: url.searchParams.getAll("tags"),
@@ -146,6 +115,12 @@ export default function Page() {
       </NavBar>
       <PageBody scrollable={false}>
         <div className="grid max-h-full grid-rows-[auto_1fr] overflow-hidden">
+          <div className="flex items-start justify-between gap-x-2 p-2">
+            <WaitpointTokenFilters hasFilters={hasFilters} />
+            <div className="flex items-center justify-end gap-x-2">
+              <ListPagination list={{ pagination }} />
+            </div>
+          </div>
           <div className="grid h-fit max-h-full min-h-full grid-rows-[1fr] overflow-x-auto">
             <Table containerClassName="border-t">
               <TableHeader>
