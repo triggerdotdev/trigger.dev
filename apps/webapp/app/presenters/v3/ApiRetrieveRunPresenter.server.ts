@@ -204,6 +204,9 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
       case "DELAYED": {
         return "DELAYED";
       }
+      case "PENDING_VERSION": {
+        return "PENDING_VERSION";
+      }
       case "WAITING_FOR_DEPLOY": {
         return "WAITING_FOR_DEPLOY";
       }
@@ -257,7 +260,11 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
   }
 
   static apiBooleanHelpersFromRunStatus(status: RunStatus) {
-    const isQueued = status === "QUEUED" || status === "WAITING_FOR_DEPLOY" || status === "DELAYED";
+    const isQueued =
+      status === "QUEUED" ||
+      status === "WAITING_FOR_DEPLOY" ||
+      status === "DELAYED" ||
+      status === "PENDING_VERSION";
     const isExecuting = status === "EXECUTING" || status === "REATTEMPTING" || status === "FROZEN";
     const isCompleted =
       status === "COMPLETED" ||

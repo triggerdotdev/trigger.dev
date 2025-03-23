@@ -56,16 +56,19 @@ export class QueueListPresenter extends BasePresenter {
     const queues = await this._replica.taskQueue.findMany({
       where: {
         runtimeEnvironmentId: environment.id,
+        version: "V2",
       },
       select: {
         friendlyId: true,
         name: true,
+        orderableName: true,
         concurrencyLimit: true,
         type: true,
         paused: true,
+        releaseConcurrencyOnWaitpoint: true,
       },
       orderBy: {
-        name: "asc",
+        orderableName: "asc",
       },
       skip: (page - 1) * this.perPage,
       take: this.perPage,
@@ -92,6 +95,7 @@ export class QueueListPresenter extends BasePresenter {
         queued: results[0][queue.name] ?? 0,
         concurrencyLimit: queue.concurrencyLimit ?? null,
         paused: queue.paused,
+        releaseConcurrencyOnWaitpoint: queue.releaseConcurrencyOnWaitpoint,
       })
     );
   }

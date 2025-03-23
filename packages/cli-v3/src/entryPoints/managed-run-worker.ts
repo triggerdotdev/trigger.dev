@@ -6,7 +6,7 @@ import {
   logger,
   LogLevel,
   runtime,
-  taskCatalog,
+  resourceCatalog,
   TaskRunErrorCodes,
   TaskRunExecution,
   WorkerToExecutorMessageCatalog,
@@ -29,7 +29,7 @@ import {
   logLevels,
   OtelTaskLogger,
   ProdUsageManager,
-  StandardTaskCatalog,
+  StandardResourceCatalog,
   TaskExecutor,
   TracingDiagnosticLogLevel,
   TracingSDK,
@@ -107,7 +107,7 @@ const prodUsageManager = new ProdUsageManager(devUsageManager, {
 usage.setGlobalUsageManager(prodUsageManager);
 timeout.setGlobalManager(new UsageTimeoutManager(devUsageManager));
 
-taskCatalog.setGlobalTaskCatalog(new StandardTaskCatalog());
+resourceCatalog.setGlobalResourceCatalog(new StandardResourceCatalog());
 const durableClock = new DurableClock();
 clock.setGlobalClock(durableClock);
 const runMetadataManager = new StandardMetadataManager(
@@ -148,6 +148,8 @@ async function loadWorkerManifest() {
 async function bootstrap() {
   const workerManifest = await loadWorkerManifest();
 
+  resourceCatalog.registerWorkerManifest(workerManifest);
+
   const { config, handleError } = await importConfig(
     normalizeImportPath(workerManifest.configPath)
   );
@@ -177,14 +179,6 @@ async function bootstrap() {
   });
 
   logger.setGlobalTaskLogger(otelTaskLogger);
-
-  for (const task of workerManifest.tasks) {
-    taskCatalog.registerTaskFileMetadata(task.id, {
-      exportName: task.exportName,
-      filePath: task.filePath,
-      entryPoint: task.entryPoint,
-    });
-  }
 
   return {
     tracer,
@@ -272,7 +266,9 @@ const zodIpc = new ZodIpcConnection({
             },
             async () => {
               const beforeImport = performance.now();
+              resourceCatalog.setCurrentFileContext(taskManifest.entryPoint, taskManifest.filePath);
               await import(normalizeImportPath(taskManifest.entryPoint));
+              resourceCatalog.clearCurrentFileContext();
               const durationMs = performance.now() - beforeImport;
 
               console.log(
@@ -307,7 +303,7 @@ const zodIpc = new ZodIpcConnection({
         process.title = `trigger-dev-worker: ${execution.task.id} ${execution.run.id}`;
 
         // Import the task module
-        const task = taskCatalog.getTask(execution.task.id);
+        const task = resourceCatalog.getTask(execution.task.id);
 
         if (!task) {
           console.error(`Could not find task ${execution.task.id}`);

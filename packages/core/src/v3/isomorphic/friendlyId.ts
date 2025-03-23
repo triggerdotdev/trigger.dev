@@ -21,6 +21,10 @@ export function toFriendlyId(entityName: string, internalId: string): string {
     throw new Error("Internal ID cannot be empty");
   }
 
+  if (internalId.startsWith(`${entityName}_`)) {
+    return internalId;
+  }
+
   return `${entityName}_${internalId}`;
 }
 

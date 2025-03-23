@@ -2,7 +2,6 @@ import { RunEngine, RunDuplicateIdempotencyKeyError } from "@internal/run-engine
 import {
   IOPacket,
   packetRequiresOffloading,
-  QueueOptions,
   SemanticInternalAttributes,
   TaskRunError,
   taskRunErrorEnhancer,
@@ -343,8 +342,7 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
                     sdkVersion: lockedToBackgroundWorker?.sdkVersion,
                     cliVersion: lockedToBackgroundWorker?.cliVersion,
                     concurrencyKey: body.options?.concurrencyKey,
-                    queueName,
-                    queue: body.options?.queue,
+                    queue: queueName,
                     masterQueue: masterQueue,
                     isTest: body.options?.test ?? false,
                     delayUntil,
@@ -492,6 +490,9 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
         workerId: worker.id,
         slug: taskId,
       },
+      include: {
+        queue: true,
+      },
     });
 
     if (!task) {
@@ -503,10 +504,8 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
       return defaultQueueName;
     }
 
-    const queueConfig = QueueOptions.optional().nullable().safeParse(task.queueConfig);
-
-    if (!queueConfig.success) {
-      console.log("Failed to get queue name: Invalid queue config", {
+    if (!task.queue) {
+      console.log("Failed to get queue name: No queue found", {
         taskId,
         environmentId: environment.id,
         queueConfig: task.queueConfig,
@@ -515,7 +514,7 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
       return defaultQueueName;
     }
 
-    return queueConfig.data?.name ?? defaultQueueName;
+    return task.queue.name ?? defaultQueueName;
   }
 
   async #handlePayloadPacket(

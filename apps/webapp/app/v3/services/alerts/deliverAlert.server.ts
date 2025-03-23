@@ -573,7 +573,7 @@ export class DeliverAlertService extends BaseService {
                     alert.workerDeployment.worker?.tasks.map((task) => ({
                       id: task.slug,
                       filePath: task.filePath,
-                      exportName: task.exportName,
+                      exportName: task.exportName ?? "@deprecated",
                       triggerSource: task.triggerSource,
                     })) ?? [],
                   environment: {

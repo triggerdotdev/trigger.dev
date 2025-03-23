@@ -1,13 +1,9 @@
-import {
-  assertNonNullable,
-  containerTest,
-  setupAuthenticatedEnvironment,
-  setupBackgroundWorker,
-} from "@internal/testcontainers";
+import { assertNonNullable, containerTest } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
 import { expect } from "vitest";
 import { EventBusEventArgs } from "../eventBus.js";
 import { RunEngine } from "../index.js";
+import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -50,7 +46,7 @@ describe("RunEngine trigger()", () => {
 
       //create background worker
       const backgroundWorker = await setupBackgroundWorker(
-        prisma,
+        engine,
         authenticatedEnvironment,
         taskIdentifier
       );
@@ -69,7 +65,7 @@ describe("RunEngine trigger()", () => {
           traceId: "t12345",
           spanId: "s12345",
           masterQueue: "main",
-          queueName: "task/test-task",
+          queue: "task/test-task",
           isTest: false,
           tags: [],
         },
@@ -244,7 +240,7 @@ describe("RunEngine trigger()", () => {
 
       //create background worker
       const backgroundWorker = await setupBackgroundWorker(
-        prisma,
+        engine,
         authenticatedEnvironment,
         taskIdentifier
       );
@@ -263,7 +259,7 @@ describe("RunEngine trigger()", () => {
           traceId: "t12345",
           spanId: "s12345",
           masterQueue: "main",
-          queueName: "task/test-task",
+          queue: "task/test-task",
           isTest: false,
           tags: [],
         },

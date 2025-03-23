@@ -1,4 +1,4 @@
-import { Worker as RedisWorker } from "@internal/redis-worker";
+import { Worker as RedisWorker } from "@trigger.dev/redis-worker";
 import { Logger } from "@trigger.dev/core/logger";
 import { z } from "zod";
 import { env } from "~/env.server";
@@ -80,6 +80,7 @@ function initializeWorker() {
     },
     pollIntervalMs: env.COMMON_WORKER_POLL_INTERVAL,
     immediatePollIntervalMs: env.COMMON_WORKER_IMMEDIATE_POLL_INTERVAL,
+    shutdownTimeoutMs: env.COMMON_WORKER_SHUTDOWN_TIMEOUT_MS,
     logger: new Logger("CommonWorker", "debug"),
     jobs: {
       "v3.deliverAlert": async ({ payload }) => {

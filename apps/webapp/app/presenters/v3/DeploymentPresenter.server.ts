@@ -108,11 +108,10 @@ export class DeploymentPresenter {
             tasks: {
               select: {
                 slug: true,
-                exportName: true,
                 filePath: true,
               },
               orderBy: {
-                exportName: "asc",
+                slug: "asc",
               },
             },
             sdkVersion: true,

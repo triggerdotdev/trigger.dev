@@ -30,6 +30,11 @@ describe("SimpleQueue", () => {
       expect(await queue.size()).toBe(2);
 
       const [first] = await queue.dequeue(1);
+
+      if (!first) {
+        throw new Error("No item dequeued");
+      }
+
       expect(first).toEqual(
         expect.objectContaining({
           id: "1",
@@ -47,6 +52,11 @@ describe("SimpleQueue", () => {
       expect(await queue.size({ includeFuture: true })).toBe(1);
 
       const [second] = await queue.dequeue(1);
+
+      if (!second) {
+        throw new Error("No item dequeued");
+      }
+
       expect(second).toEqual(
         expect.objectContaining({
           id: "2",
@@ -253,6 +263,10 @@ describe("SimpleQueue", () => {
       expect(await queue.size()).toBe(1);
       expect(await queue.size({ includeFuture: true })).toBe(3);
 
+      if (!dequeued[0] || !dequeued[1]) {
+        throw new Error("No items dequeued");
+      }
+
       await queue.ack(dequeued[0].id);
       await queue.ack(dequeued[1].id);
 
@@ -269,6 +283,10 @@ describe("SimpleQueue", () => {
           timestamp: expect.any(Date),
         })
       );
+
+      if (!last) {
+        throw new Error("No item dequeued");
+      }
 
       await queue.ack(last.id);
       expect(await queue.size({ includeFuture: true })).toBe(0);
@@ -315,6 +333,11 @@ describe("SimpleQueue", () => {
 
       // Dequeue the redriven item
       const [redrivenItem] = await queue.dequeue(1);
+
+      if (!redrivenItem) {
+        throw new Error("No item dequeued");
+      }
+
       expect(redrivenItem).toEqual(
         expect.objectContaining({
           id: "1",

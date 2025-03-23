@@ -15,9 +15,8 @@ import { BasePresenter } from "./basePresenter.server";
 import { TaskRunStatus } from "~/database-types";
 import { CURRENT_DEPLOYMENT_LABEL } from "@trigger.dev/core/v3/isomorphic";
 
-export type Task = {
+export type TaskListItem = {
   slug: string;
-  exportName: string;
   filePath: string;
   createdAt: Date;
   triggerSource: TaskTriggerSource;
@@ -60,7 +59,6 @@ export class TaskListPresenter extends BasePresenter {
       {
         id: string;
         slug: string;
-        exportName: string;
         filePath: string;
         createdAt: Date;
         triggerSource: TaskTriggerSource;
@@ -81,7 +79,7 @@ export class TaskListPresenter extends BasePresenter {
         OR id IN (SELECT id FROM non_dev_workers)
       ORDER BY "runtimeEnvironmentId", "createdAt" DESC
     )
-    SELECT tasks.id, slug, "filePath", "exportName", "triggerSource", tasks."runtimeEnvironmentId", tasks."createdAt"
+    SELECT tasks.id, slug, "filePath", "triggerSource", tasks."runtimeEnvironmentId", tasks."createdAt"
     FROM workers
     JOIN ${sqlDatabaseSchema}."BackgroundWorkerTask" tasks ON tasks."workerId" = workers.id
     ORDER BY slug ASC;`;

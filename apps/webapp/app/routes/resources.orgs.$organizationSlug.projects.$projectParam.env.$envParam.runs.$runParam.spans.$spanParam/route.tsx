@@ -47,7 +47,7 @@ import { RunTag } from "~/components/runs/v3/RunTag";
 import { SpanEvents } from "~/components/runs/v3/SpanEvents";
 import { SpanTitle } from "~/components/runs/v3/SpanTitle";
 import { TaskRunAttemptStatusCombo } from "~/components/runs/v3/TaskRunAttemptStatus";
-import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
+import { TaskRunStatusCombo, TaskRunStatusReason } from "~/components/runs/v3/TaskRunStatus";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
@@ -75,7 +75,6 @@ import {
 import { useEnvironment } from "~/hooks/useEnvironment";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const userId = await requireUserId(request);
   const { projectParam, organizationSlug, envParam, runParam, spanParam } =
     v3SpanParamsSchema.parse(params);
 
@@ -83,8 +82,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   try {
     const result = await presenter.call({
-      userId,
-      organizationSlug,
       projectSlug: projectParam,
       spanId: spanParam,
       runFriendlyId: runParam,
@@ -715,8 +712,9 @@ function RunBody({
             </div>
           ) : (
             <div className="flex flex-col gap-4 pt-3">
-              <div className="border-b border-grid-bright pb-3">
+              <div className="space-y-2 border-b border-grid-bright pb-3">
                 <TaskRunStatusCombo status={run.status} className="text-sm" />
+                <TaskRunStatusReason status={run.status} statusReason={run.statusReason} />
               </div>
               <RunTimeline run={run} />
 

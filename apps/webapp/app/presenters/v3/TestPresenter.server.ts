@@ -24,7 +24,6 @@ export class TestPresenter extends BasePresenter {
           id: task.id,
           taskIdentifier: task.slug,
           filePath: task.filePath,
-          exportName: task.exportName,
           friendlyId: task.friendlyId,
           triggerSource: task.triggerSource,
         };
@@ -40,7 +39,6 @@ export class TestPresenter extends BasePresenter {
           version: string;
           slug: string;
           filePath: string;
-          exportName: string;
           friendlyId: string;
           triggerSource: TaskTriggerSource;
         }[]
@@ -53,10 +51,10 @@ export class TestPresenter extends BasePresenter {
           WHERE "runtimeEnvironmentId" = ${envId}
         ),
         latest_workers AS (SELECT * FROM workers WHERE rn = 1)
-        SELECT bwt.id, version, slug, "filePath", "exportName", bwt."friendlyId", bwt."triggerSource"
+        SELECT bwt.id, version, slug, "filePath", bwt."friendlyId", bwt."triggerSource"
         FROM latest_workers
         JOIN ${sqlDatabaseSchema}."BackgroundWorkerTask" bwt ON bwt."workerId" = latest_workers.id
-        ORDER BY bwt."exportName" ASC;`;
+        ORDER BY slug ASC;`;
     } else {
       const currentDeployment = await findCurrentWorkerDeployment(envId);
       return currentDeployment?.worker?.tasks ?? [];

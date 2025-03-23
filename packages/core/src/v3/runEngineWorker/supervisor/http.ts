@@ -15,6 +15,8 @@ import {
   WorkerApiRunHeartbeatResponseBody,
   WorkerApiRunLatestSnapshotResponseBody,
   WorkerApiDebugLogBody,
+  WorkerApiSuspendRunRequestBody,
+  WorkerApiSuspendRunResponseBody,
 } from "./schemas.js";
 import { SupervisorClientCommonOptions } from "./types.js";
 import { getDefaultWorkerHeaders } from "./util.js";
@@ -220,14 +222,30 @@ export class SupervisorHttpClient {
     );
   }
 
-  getSuspendCompletionUrl(runId: string, snapshotId: string, runnerId?: string) {
-    return {
-      url: `${this.apiUrl}/engine/v1/worker-actions/runs/${runId}/snapshots/${snapshotId}/suspend`,
-      headers: {
-        ...this.defaultHeaders,
-        ...this.runnerIdHeader(runnerId),
-      },
-    };
+  async submitSuspendCompletion({
+    runId,
+    snapshotId,
+    runnerId,
+    body,
+  }: {
+    runId: string;
+    snapshotId: string;
+    runnerId?: string;
+    body: WorkerApiSuspendRunRequestBody;
+  }) {
+    return wrapZodFetch(
+      WorkerApiSuspendRunResponseBody,
+      `${this.apiUrl}/engine/v1/worker-actions/runs/${runId}/snapshots/${snapshotId}/suspend`,
+      {
+        method: "POST",
+        headers: {
+          ...this.defaultHeaders,
+          ...this.runnerIdHeader(runnerId),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      }
+    );
   }
 
   private runnerIdHeader(runnerId?: string): Record<string, string> {

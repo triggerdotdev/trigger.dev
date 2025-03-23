@@ -1,15 +1,11 @@
-import {
-  assertNonNullable,
-  containerTest,
-  setupAuthenticatedEnvironment,
-  setupBackgroundWorker,
-} from "@internal/testcontainers";
+import { assertNonNullable, containerTest } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
 import { expect } from "vitest";
 import { RunEngine } from "../index.js";
 import { setTimeout } from "node:timers/promises";
 import { EventBusEventArgs } from "../eventBus.js";
 import { isWaitpointOutputTimeout } from "@trigger.dev/core/v3";
+import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -51,7 +47,7 @@ describe("RunEngine Waitpoints", () => {
       const taskIdentifier = "test-task";
 
       //create background worker
-      await setupBackgroundWorker(prisma, authenticatedEnvironment, taskIdentifier);
+      await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
 
       //trigger the run
       const run = await engine.trigger(
@@ -67,7 +63,7 @@ describe("RunEngine Waitpoints", () => {
           traceId: "t12345",
           spanId: "s12345",
           masterQueue: "main",
-          queueName: "task/test-task",
+          queue: "task/test-task",
           isTest: false,
           tags: [],
         },
@@ -166,7 +162,7 @@ describe("RunEngine Waitpoints", () => {
       const taskIdentifier = "test-task";
 
       //create background worker
-      await setupBackgroundWorker(prisma, authenticatedEnvironment, taskIdentifier);
+      await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
 
       //trigger the run
       const run = await engine.trigger(
@@ -182,7 +178,7 @@ describe("RunEngine Waitpoints", () => {
           traceId: "t12345",
           spanId: "s12345",
           masterQueue: "main",
-          queueName: "task/test-task",
+          queue: "task/test-task",
           isTest: false,
           tags: [],
         },
@@ -308,7 +304,7 @@ describe("RunEngine Waitpoints", () => {
         const taskIdentifier = "test-task";
 
         //create background worker
-        await setupBackgroundWorker(prisma, authenticatedEnvironment, taskIdentifier);
+        await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
 
         //trigger the run
         const run = await engine.trigger(
@@ -324,7 +320,7 @@ describe("RunEngine Waitpoints", () => {
             traceId: "t12345",
             spanId: "s12345",
             masterQueue: "main",
-            queueName: "task/test-task",
+            queue: "task/test-task",
             isTest: false,
             tags: [],
           },
@@ -446,7 +442,7 @@ describe("RunEngine Waitpoints", () => {
       const taskIdentifier = "test-task";
 
       //create background worker
-      await setupBackgroundWorker(prisma, authenticatedEnvironment, taskIdentifier);
+      await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
 
       //trigger the run
       const run = await engine.trigger(
@@ -462,7 +458,7 @@ describe("RunEngine Waitpoints", () => {
           traceId: "t12345",
           spanId: "s12345",
           masterQueue: "main",
-          queueName: "task/test-task",
+          queue: "task/test-task",
           isTest: false,
           tags: [],
         },
@@ -563,7 +559,7 @@ describe("RunEngine Waitpoints", () => {
         const taskIdentifier = "test-task";
 
         //create background worker
-        await setupBackgroundWorker(prisma, authenticatedEnvironment, taskIdentifier);
+        await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
 
         //trigger the run
         const run = await engine.trigger(
@@ -579,7 +575,7 @@ describe("RunEngine Waitpoints", () => {
             traceId: "t12345",
             spanId: "s12345",
             masterQueue: "main",
-            queueName: "task/test-task",
+            queue: "task/test-task",
             isTest: false,
             tags: [],
           },
@@ -712,7 +708,7 @@ describe("RunEngine Waitpoints", () => {
         const taskIdentifier = "test-task";
 
         //create background worker
-        await setupBackgroundWorker(prisma, authenticatedEnvironment, taskIdentifier);
+        await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
 
         //trigger the run
         const run = await engine.trigger(
@@ -728,7 +724,7 @@ describe("RunEngine Waitpoints", () => {
             traceId: "t12345",
             spanId: "s12345",
             masterQueue: "main",
-            queueName: "task/test-task",
+            queue: "task/test-task",
             isTest: false,
             tags: [],
           },
@@ -860,7 +856,7 @@ describe("RunEngine Waitpoints", () => {
       const taskIdentifier = "test-task";
 
       //create background worker
-      await setupBackgroundWorker(prisma, authenticatedEnvironment, taskIdentifier);
+      await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
 
       //trigger the run
       const run = await engine.trigger(
@@ -876,7 +872,7 @@ describe("RunEngine Waitpoints", () => {
           traceId: "t12345",
           spanId: "s12345",
           masterQueue: "main",
-          queueName: "task/test-task",
+          queue: "task/test-task",
           isTest: false,
           tags: [],
         },
@@ -1011,7 +1007,7 @@ describe("RunEngine Waitpoints", () => {
       const taskIdentifier = "test-task";
 
       //create background worker
-      await setupBackgroundWorker(prisma, authenticatedEnvironment, taskIdentifier);
+      await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
 
       //trigger the run
       const run = await engine.trigger(
@@ -1027,7 +1023,7 @@ describe("RunEngine Waitpoints", () => {
           traceId: "t12345",
           spanId: "s12345",
           masterQueue: "main",
-          queueName: "task/test-task",
+          queue: "task/test-task",
           isTest: false,
           tags: [],
         },
@@ -1170,10 +1166,18 @@ describe("RunEngine Waitpoints", () => {
 
       try {
         const taskIdentifier = "test-task";
-        const queueName = "task/test-task-limited";
 
         // Create background worker
-        await setupBackgroundWorker(prisma, authenticatedEnvironment, taskIdentifier);
+        await setupBackgroundWorker(
+          engine,
+          authenticatedEnvironment,
+          taskIdentifier,
+          undefined,
+          undefined,
+          {
+            concurrencyLimit: 1,
+          }
+        );
 
         // Create first run with queue concurrency limit of 1
         const firstRun = await engine.trigger(
@@ -1189,10 +1193,9 @@ describe("RunEngine Waitpoints", () => {
             traceId: "t12345-first",
             spanId: "s12345-first",
             masterQueue: "main",
-            queueName,
+            queue: "task/test-task",
             isTest: false,
             tags: [],
-            queue: { concurrencyLimit: 1 },
           },
           prisma
         );
@@ -1244,10 +1247,9 @@ describe("RunEngine Waitpoints", () => {
             traceId: "t12345-second",
             spanId: "s12345-second",
             masterQueue: "main",
-            queueName,
+            queue: "task/test-task",
             isTest: false,
             tags: [],
-            queue: { concurrencyLimit: 1 },
           },
           prisma
         );

@@ -13,7 +13,11 @@ import {
 } from "./resourceMonitor.js";
 import { KubernetesWorkloadManager } from "./workloadManager/kubernetes.js";
 import { DockerWorkloadManager } from "./workloadManager/docker.js";
-import { HttpServer, CheckpointClient } from "@trigger.dev/core/v3/serverOnly";
+import {
+  HttpServer,
+  CheckpointClient,
+  isKubernetesEnvironment,
+} from "@trigger.dev/core/v3/serverOnly";
 import { createK8sApi, RUNTIME_ENV } from "./clients/kubernetes.js";
 
 class ManagedSupervisor {
@@ -25,7 +29,7 @@ class ManagedSupervisor {
   private readonly resourceMonitor: ResourceMonitor;
   private readonly checkpointClient?: CheckpointClient;
 
-  private readonly isKubernetes = RUNTIME_ENV === "kubernetes";
+  private readonly isKubernetes = isKubernetesEnvironment(env.KUBERNETES_FORCE_ENABLED);
   private readonly warmStartUrl = env.TRIGGER_WARM_START_URL;
 
   constructor() {
@@ -94,6 +98,7 @@ class ManagedSupervisor {
       this.checkpointClient = new CheckpointClient({
         apiUrl: new URL(env.TRIGGER_CHECKPOINT_URL),
         workerClient: this.workerSession.httpClient,
+        orchestrator: this.isKubernetes ? "KUBERNETES" : "DOCKER",
       });
     }
 
@@ -127,7 +132,9 @@ class ManagedSupervisor {
         return;
       }
 
-      if (message.checkpoint) {
+      const { checkpoint, ...rest } = message;
+
+      if (checkpoint) {
         this.logger.log("[ManagedWorker] Restoring run", { runId: message.run.id });
 
         if (!this.checkpointClient) {
@@ -139,7 +146,10 @@ class ManagedSupervisor {
           const didRestore = await this.checkpointClient.restoreRun({
             runFriendlyId: message.run.friendlyId,
             snapshotFriendlyId: message.snapshot.friendlyId,
-            checkpoint: message.checkpoint,
+            body: {
+              ...rest,
+              checkpoint,
+            },
           });
 
           if (didRestore) {
