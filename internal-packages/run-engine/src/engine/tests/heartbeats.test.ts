@@ -1,12 +1,8 @@
-import {
-  containerTest,
-  setupAuthenticatedEnvironment,
-  setupBackgroundWorker,
-  assertNonNullable,
-} from "@internal/testcontainers";
+import { containerTest, assertNonNullable } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
 import { RunEngine } from "../index.js";
 import { setTimeout } from "timers/promises";
+import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -57,7 +53,7 @@ describe("RunEngine heartbeats", () => {
 
       //create background worker
       const backgroundWorker = await setupBackgroundWorker(
-        prisma,
+        engine,
         authenticatedEnvironment,
         taskIdentifier
       );
@@ -76,7 +72,7 @@ describe("RunEngine heartbeats", () => {
           traceId: "t12345",
           spanId: "s12345",
           masterQueue: "main",
-          queueName: "task/test-task",
+          queue: "task/test-task",
           isTest: false,
           tags: [],
         },
@@ -174,7 +170,7 @@ describe("RunEngine heartbeats", () => {
 
       //create background worker
       const backgroundWorker = await setupBackgroundWorker(
-        prisma,
+        engine,
         authenticatedEnvironment,
         taskIdentifier
       );
@@ -193,7 +189,7 @@ describe("RunEngine heartbeats", () => {
           traceId: "t12345",
           spanId: "s12345",
           masterQueue: "main",
-          queueName: "task/test-task",
+          queue: "task/test-task",
           isTest: false,
           tags: [],
         },
@@ -294,7 +290,7 @@ describe("RunEngine heartbeats", () => {
 
         //create background worker
         const backgroundWorker = await setupBackgroundWorker(
-          prisma,
+          engine,
           authenticatedEnvironment,
           taskIdentifier
         );
@@ -313,7 +309,7 @@ describe("RunEngine heartbeats", () => {
             traceId: "t12345",
             spanId: "s12345",
             masterQueue: "main",
-            queueName: "task/test-task",
+            queue: "task/test-task",
             isTest: false,
             tags: [],
           },
@@ -423,7 +419,7 @@ describe("RunEngine heartbeats", () => {
 
       //create background worker
       const backgroundWorker = await setupBackgroundWorker(
-        prisma,
+        engine,
         authenticatedEnvironment,
         taskIdentifier
       );
@@ -442,7 +438,7 @@ describe("RunEngine heartbeats", () => {
           traceId: "t12345",
           spanId: "s12345",
           masterQueue: "main",
-          queueName: "task/test-task",
+          queue: "task/test-task",
           isTest: false,
           tags: [],
         },
@@ -525,7 +521,7 @@ describe("RunEngine heartbeats", () => {
 
       //create background worker
       const backgroundWorker = await setupBackgroundWorker(
-        prisma,
+        engine,
         authenticatedEnvironment,
         taskIdentifier
       );
@@ -544,7 +540,7 @@ describe("RunEngine heartbeats", () => {
           traceId: "t12345",
           spanId: "s12345",
           masterQueue: "main",
-          queueName: "task/test-task",
+          queue: "task/test-task",
           isTest: false,
           tags: [],
         },

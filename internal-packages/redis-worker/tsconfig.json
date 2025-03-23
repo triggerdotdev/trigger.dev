@@ -1,8 +1,0 @@
-{
-  "references": [{ "path": "./tsconfig.src.json" }, { "path": "./tsconfig.test.json" }],
-  "compilerOptions": {
-    "moduleResolution": "Node16",
-    "module": "Node16",
-    "customConditions": ["@triggerdotdev/source"]
-  }
-}

@@ -1,20 +1,17 @@
 import {
   isWaitpointOutputTimeout,
   MachinePresetName,
-  parsePacket,
   prettyPrintPacket,
-  SemanticInternalAttributes,
   TaskRunError,
 } from "@trigger.dev/core/v3";
+import { getMaxDuration } from "@trigger.dev/core/v3/isomorphic";
 import { RUNNING_STATUSES } from "~/components/runs/v3/TaskRunStatus";
+import { logger } from "~/services/logger.server";
 import { eventRepository } from "~/v3/eventRepository.server";
 import { machinePresetFromName } from "~/v3/machinePresets.server";
-import { FINAL_ATTEMPT_STATUSES, isFailedRunStatus, isFinalRunStatus } from "~/v3/taskStatus";
-import { BasePresenter } from "./basePresenter.server";
-import { getMaxDuration } from "@trigger.dev/core/v3/isomorphic";
-import { logger } from "~/services/logger.server";
 import { getTaskEventStoreTableForRun, TaskEventStoreTable } from "~/v3/taskEventStore.server";
-import { Pi } from "lucide-react";
+import { isFailedRunStatus, isFinalRunStatus } from "~/v3/taskStatus";
+import { BasePresenter } from "./basePresenter.server";
 
 type Result = Awaited<ReturnType<SpanPresenter["call"]>>;
 export type Span = NonNullable<NonNullable<Result>["span"]>;
@@ -22,15 +19,11 @@ export type SpanRun = NonNullable<NonNullable<Result>["run"]>;
 
 export class SpanPresenter extends BasePresenter {
   public async call({
-    userId,
     projectSlug,
-    organizationSlug,
     spanId,
     runFriendlyId,
   }: {
-    userId: string;
     projectSlug: string;
-    organizationSlug: string;
     spanId: string;
     runFriendlyId: string;
   }) {
@@ -156,6 +149,7 @@ export class SpanPresenter extends BasePresenter {
         outputType: true,
         //status + duration
         status: true,
+        statusReason: true,
         startedAt: true,
         executedAt: true,
         createdAt: true,
@@ -197,7 +191,6 @@ export class SpanPresenter extends BasePresenter {
         lockedBy: {
           select: {
             filePath: true,
-            exportName: true,
           },
         },
         //relationships
@@ -275,7 +268,6 @@ export class SpanPresenter extends BasePresenter {
       task: {
         id: run.taskIdentifier,
         filePath: run.lockedBy?.filePath,
-        exportName: run.lockedBy?.exportName,
       },
       run: {
         id: run.friendlyId,
@@ -319,6 +311,7 @@ export class SpanPresenter extends BasePresenter {
       id: run.id,
       friendlyId: run.friendlyId,
       status: run.status,
+      statusReason: run.statusReason ?? undefined,
       createdAt: run.createdAt,
       startedAt: run.startedAt,
       executedAt: run.executedAt,

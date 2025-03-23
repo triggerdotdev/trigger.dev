@@ -1,14 +1,10 @@
-import {
-  containerTest,
-  setupAuthenticatedEnvironment,
-  setupBackgroundWorker,
-  assertNonNullable,
-} from "@internal/testcontainers";
+import { containerTest, assertNonNullable } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
 import { expect } from "vitest";
 import { RunEngine } from "../index.js";
 import { setTimeout } from "timers/promises";
 import { EventBusEventArgs } from "../eventBus.js";
+import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -53,7 +49,7 @@ describe("RunEngine cancelling", () => {
         const childTask = "child-task";
 
         //create background worker
-        await setupBackgroundWorker(prisma, authenticatedEnvironment, [parentTask, childTask]);
+        await setupBackgroundWorker(engine, authenticatedEnvironment, [parentTask, childTask]);
 
         //trigger the run
         const parentRun = await engine.trigger(
@@ -69,7 +65,7 @@ describe("RunEngine cancelling", () => {
             traceId: "t12345",
             spanId: "s12345",
             masterQueue: "main",
-            queueName: `task/${parentTask}`,
+            queue: `task/${parentTask}`,
             isTest: false,
             tags: [],
           },
@@ -104,7 +100,7 @@ describe("RunEngine cancelling", () => {
             traceId: "t12345",
             spanId: "s12345",
             masterQueue: "main",
-            queueName: `task/${childTask}`,
+            queue: `task/${childTask}`,
             isTest: false,
             tags: [],
             resumeParentOnCompletion: true,
@@ -266,7 +262,7 @@ describe("RunEngine cancelling", () => {
       const parentTask = "parent-task";
 
       //create background worker
-      await setupBackgroundWorker(prisma, authenticatedEnvironment, [parentTask]);
+      await setupBackgroundWorker(engine, authenticatedEnvironment, [parentTask]);
 
       //trigger the run
       const parentRun = await engine.trigger(
@@ -282,7 +278,7 @@ describe("RunEngine cancelling", () => {
           traceId: "t12345",
           spanId: "s12345",
           masterQueue: "main",
-          queueName: `task/${parentTask}`,
+          queue: `task/${parentTask}`,
           isTest: false,
           tags: [],
         },

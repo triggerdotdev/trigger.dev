@@ -1,25 +1,25 @@
 import { EnqueueSystem } from "./enqueueSystem.js";
 import { SystemResources } from "./systems.js";
 
-export type WaitingForWorkerSystemOptions = {
+export type PendingVersionSystemOptions = {
   resources: SystemResources;
   enqueueSystem: EnqueueSystem;
-  queueRunsWaitingForWorkerBatchSize?: number;
+  queueRunsPendingVersionBatchSize?: number;
 };
 
-export class WaitingForWorkerSystem {
+export class PendingVersionSystem {
   private readonly $: SystemResources;
   private readonly enqueueSystem: EnqueueSystem;
 
-  constructor(private readonly options: WaitingForWorkerSystemOptions) {
+  constructor(private readonly options: PendingVersionSystemOptions) {
     this.$ = options.resources;
     this.enqueueSystem = options.enqueueSystem;
   }
 
-  async enqueueRunsWaitingForWorker({ backgroundWorkerId }: { backgroundWorkerId: string }) {
+  async enqueueRunsForBackgroundWorker(backgroundWorkerId: string) {
     //It could be a lot of runs, so we will process them in a batch
     //if there are still more to process we will enqueue this function again
-    const maxCount = this.options.queueRunsWaitingForWorkerBatchSize ?? 200;
+    const maxCount = this.options.queueRunsPendingVersionBatchSize ?? 200;
 
     const backgroundWorker = await this.$.prisma.backgroundWorker.findFirst({
       where: {
@@ -33,23 +33,33 @@ export class WaitingForWorkerSystem {
           },
         },
         tasks: true,
+        queues: true,
       },
     });
 
     if (!backgroundWorker) {
-      this.$.logger.error("#queueRunsWaitingForWorker: background worker not found", {
+      this.$.logger.error("#enqueueRunsForBackgroundWorker: background worker not found", {
         id: backgroundWorkerId,
       });
       return;
     }
 
-    const runsWaitingForDeploy = await this.$.prisma.taskRun.findMany({
+    this.$.logger.debug("Finding PENDING_VERSION runs for background worker", {
+      workerId: backgroundWorker.id,
+      taskIdentifiers: backgroundWorker.tasks.map((task) => task.slug),
+      queues: backgroundWorker.queues.map((queue) => queue.name),
+    });
+
+    const pendingRuns = await this.$.prisma.taskRun.findMany({
       where: {
         runtimeEnvironmentId: backgroundWorker.runtimeEnvironmentId,
         projectId: backgroundWorker.projectId,
-        status: "WAITING_FOR_DEPLOY",
+        status: "PENDING_VERSION",
         taskIdentifier: {
           in: backgroundWorker.tasks.map((task) => task.slug),
+        },
+        queue: {
+          in: backgroundWorker.queues.map((queue) => queue.name),
         },
       },
       orderBy: {
@@ -59,9 +69,22 @@ export class WaitingForWorkerSystem {
     });
 
     //none to process
-    if (!runsWaitingForDeploy.length) return;
+    if (!pendingRuns.length) return;
 
-    for (const run of runsWaitingForDeploy) {
+    this.$.logger.debug("Enqueueing PENDING_VERSION runs for background worker", {
+      workerId: backgroundWorker.id,
+      taskIdentifiers: pendingRuns.map((run) => run.taskIdentifier),
+      queues: pendingRuns.map((run) => run.queue),
+      runs: pendingRuns.map((run) => ({
+        id: run.id,
+        taskIdentifier: run.taskIdentifier,
+        queue: run.queue,
+        createdAt: run.createdAt,
+        priorityMs: run.priorityMs,
+      })),
+    });
+
+    for (const run of pendingRuns) {
       await this.$.prisma.$transaction(async (tx) => {
         const updatedRun = await tx.taskRun.update({
           where: {
@@ -83,19 +106,15 @@ export class WaitingForWorkerSystem {
     }
 
     //enqueue more if needed
-    if (runsWaitingForDeploy.length > maxCount) {
-      await this.scheduleEnqueueRunsWaitingForWorker({ backgroundWorkerId });
+    if (pendingRuns.length > maxCount) {
+      await this.scheduleResolvePendingVersionRuns(backgroundWorkerId);
     }
   }
 
-  async scheduleEnqueueRunsWaitingForWorker({
-    backgroundWorkerId,
-  }: {
-    backgroundWorkerId: string;
-  }): Promise<void> {
+  async scheduleResolvePendingVersionRuns(backgroundWorkerId: string): Promise<void> {
     //we want this to happen in the background
     await this.$.worker.enqueue({
-      job: "queueRunsWaitingForWorker",
+      job: "queueRunsPendingVersion",
       payload: { backgroundWorkerId },
     });
   }

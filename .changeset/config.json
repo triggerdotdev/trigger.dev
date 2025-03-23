@@ -12,7 +12,13 @@
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
-  "ignore": ["webapp", "proxy", "coordinator", "docker-provider", "kubernetes-provider"],
+  "ignore": [
+    "webapp",
+    "coordinator",
+    "docker-provider",
+    "kubernetes-provider",
+    "supervisor"
+  ],
   "___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH": {
     "onlyUpdatePeerDependentsWhenOutOfRange": true
   }

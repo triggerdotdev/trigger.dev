@@ -113,6 +113,7 @@ class DevSupervisor implements WorkerRuntime {
 
   async initializeWorker(manifest: BuildManifest, stop: () => void): Promise<void> {
     if (this.lastManifest && this.lastManifest.contentHash === manifest.contentHash) {
+      logger.debug("worker skipped", { lastManifestContentHash: this.lastManifest?.contentHash });
       eventBus.emit("workerSkipped");
       stop();
       return;
@@ -125,6 +126,8 @@ class DevSupervisor implements WorkerRuntime {
       cwd: this.options.config.workingDir,
       stop,
     });
+
+    logger.debug("initializing background worker", { manifest });
 
     await backgroundWorker.initialize();
 
@@ -153,6 +156,7 @@ class DevSupervisor implements WorkerRuntime {
         packageVersion: manifest.packageVersion,
         cliPackageVersion: manifest.cliPackageVersion,
         tasks: backgroundWorker.manifest.tasks,
+        queues: backgroundWorker.manifest.queues,
         contentHash: manifest.contentHash,
         sourceFiles,
       },

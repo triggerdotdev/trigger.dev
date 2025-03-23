@@ -4,7 +4,6 @@ type Task = {
   id: string;
   friendlyId: string;
   taskIdentifier: string;
-  exportName: string;
   filePath: string;
   triggerSource: string;
 };
@@ -14,10 +13,6 @@ export function useFilterTasks<T extends Task>({ tasks }: { tasks: T[] }) {
     items: tasks,
     filter: (task, text) => {
       if (task.taskIdentifier.toLowerCase().includes(text.toLowerCase())) {
-        return true;
-      }
-
-      if (task.exportName.toLowerCase().includes(text.toLowerCase())) {
         return true;
       }
 
