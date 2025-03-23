@@ -4,6 +4,7 @@ import {
   AnyOnStartHookFunction,
   AnyOnFailureHookFunction,
   AnyOnSuccessHookFunction,
+  AnyOnCatchErrorHookFunction,
 } from "./types.js";
 
 export function createInitHookAdapter<TPayload>(
@@ -65,5 +66,13 @@ export function createSuccessHookAdapter<TPayload, TOutput>(
       params.output as unknown as TOutput,
       paramsWithoutPayload
     );
+  };
+}
+
+export function createHandleErrorHookAdapter<TPayload>(
+  fn: NonNullable<TaskOptions<string, TPayload, unknown, any>["handleError"]>
+): AnyOnCatchErrorHookFunction {
+  return async (params) => {
+    return await fn(params.payload as unknown as TPayload, params.error, params);
   };
 }

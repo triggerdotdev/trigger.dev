@@ -120,7 +120,7 @@ export type RegisteredHookFunction<THookFunction extends (params: any) => any> =
   fn: THookFunction;
 };
 
-export type TaskHandleErrorHookParams<TPayload = unknown> = {
+export type TaskCatchErrorHookParams<TPayload = unknown> = {
   ctx: TaskRunContext;
   payload: TPayload;
   task: string;
@@ -131,11 +131,11 @@ export type TaskHandleErrorHookParams<TPayload = unknown> = {
   signal?: AbortSignal;
 };
 
-export type OnHandleErrorHookFunction<TPayload> = (
-  params: TaskHandleErrorHookParams<TPayload>
+export type OnCatchErrorHookFunction<TPayload> = (
+  params: TaskCatchErrorHookParams<TPayload>
 ) => HandleErrorResult;
 
-export type AnyOnHandleErrorHookFunction = OnHandleErrorHookFunction<unknown>;
+export type AnyOnCatchErrorHookFunction = OnCatchErrorHookFunction<unknown>;
 
 export interface LifecycleHooksManager {
   registerGlobalInitHook(hook: RegisterHookFunctionParams<AnyOnInitHookFunction>): void;
@@ -187,13 +187,11 @@ export interface LifecycleHooksManager {
   ): void;
   getTaskResumeHook(taskId: string): AnyOnResumeHookFunction | undefined;
   getGlobalResumeHooks(): RegisteredHookFunction<AnyOnResumeHookFunction>[];
-  registerGlobalHandleErrorHook(
-    hook: RegisterHookFunctionParams<AnyOnHandleErrorHookFunction>
-  ): void;
-  registerTaskHandleErrorHook(
+  registerGlobalCatchErrorHook(hook: RegisterHookFunctionParams<AnyOnCatchErrorHookFunction>): void;
+  registerTaskCatchErrorHook(
     taskId: string,
-    hook: RegisterHookFunctionParams<AnyOnHandleErrorHookFunction>
+    hook: RegisterHookFunctionParams<AnyOnCatchErrorHookFunction>
   ): void;
-  getTaskHandleErrorHook(taskId: string): AnyOnHandleErrorHookFunction | undefined;
-  getGlobalHandleErrorHooks(): RegisteredHookFunction<AnyOnHandleErrorHookFunction>[];
+  getTaskCatchErrorHook(taskId: string): AnyOnCatchErrorHookFunction | undefined;
+  getGlobalCatchErrorHooks(): RegisteredHookFunction<AnyOnCatchErrorHookFunction>[];
 }

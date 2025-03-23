@@ -14,6 +14,12 @@ import { AnySchemaParseFn, inferSchemaIn, inferSchemaOut, Schema } from "./schem
 import { Prettify } from "./utils.js";
 import { inferToolParameters, ToolTaskParameters } from "./tools.js";
 import { QueueOptions } from "./queues.js";
+import {
+  OnCatchErrorHookFunction,
+  OnCompleteHookFunction,
+  OnResumeHookFunction,
+  OnWaitHookFunction,
+} from "../lifecycleHooks/types.js";
 
 export type Queue = QueueOptions;
 export type TaskSchema = Schema;
@@ -268,12 +274,23 @@ type CommonTaskOptions<
 
   /**
    * handleError is called when the run function throws an error. It can be used to modify the error or return new retry options.
+   *
+   * @deprecated Use catchError instead
    */
   handleError?: (
     payload: TPayload,
     error: unknown,
     params: HandleErrorFnParams<TInitOutput>
   ) => HandleErrorResult;
+
+  /**
+   * catchError is called when the run function throws an error. It can be used to modify the error or return new retry options.
+   */
+  catchError?: OnCatchErrorHookFunction<TPayload>;
+
+  onResume?: OnResumeHookFunction<TPayload>;
+  onWait?: OnWaitHookFunction<TPayload>;
+  onComplete?: OnCompleteHookFunction<TPayload, TOutput>;
 
   /**
    * middleware allows you to run code "around" the run function. This can be useful for logging, metrics, or other cross-cutting concerns.

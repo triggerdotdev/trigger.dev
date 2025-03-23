@@ -9,7 +9,7 @@ import {
   AnyOnCompleteHookFunction,
   AnyOnWaitHookFunction,
   AnyOnResumeHookFunction,
-  AnyOnHandleErrorHookFunction,
+  AnyOnCatchErrorHookFunction,
 } from "./types.js";
 
 export class StandardLifecycleHooksManager implements LifecycleHooksManager {
@@ -41,11 +41,9 @@ export class StandardLifecycleHooksManager implements LifecycleHooksManager {
     new Map();
   private taskResumeHooks: Map<string, RegisteredHookFunction<AnyOnResumeHookFunction>> = new Map();
 
-  private globalHandleErrorHooks: Map<
-    string,
-    RegisteredHookFunction<AnyOnHandleErrorHookFunction>
-  > = new Map();
-  private taskHandleErrorHooks: Map<string, RegisteredHookFunction<AnyOnHandleErrorHookFunction>> =
+  private globalCatchErrorHooks: Map<string, RegisteredHookFunction<AnyOnCatchErrorHookFunction>> =
+    new Map();
+  private taskCatchErrorHooks: Map<string, RegisteredHookFunction<AnyOnCatchErrorHookFunction>> =
     new Map();
 
   registerGlobalStartHook(hook: RegisterHookFunctionParams<AnyOnStartHookFunction>): void {
@@ -268,37 +266,37 @@ export class StandardLifecycleHooksManager implements LifecycleHooksManager {
     return Array.from(this.globalResumeHooks.values());
   }
 
-  registerGlobalHandleErrorHook(
-    hook: RegisterHookFunctionParams<AnyOnHandleErrorHookFunction>
+  registerGlobalCatchErrorHook(
+    hook: RegisterHookFunctionParams<AnyOnCatchErrorHookFunction>
   ): void {
     const id = generateHookId(hook);
 
-    this.globalHandleErrorHooks.set(id, {
+    this.globalCatchErrorHooks.set(id, {
       id,
       name: hook.id ?? hook.fn.name ? (hook.fn.name === "" ? undefined : hook.fn.name) : undefined,
       fn: hook.fn,
     });
   }
 
-  registerTaskHandleErrorHook(
+  registerTaskCatchErrorHook(
     taskId: string,
-    hook: RegisterHookFunctionParams<AnyOnHandleErrorHookFunction>
+    hook: RegisterHookFunctionParams<AnyOnCatchErrorHookFunction>
   ): void {
     const id = generateHookId(hook);
 
-    this.taskHandleErrorHooks.set(taskId, {
+    this.taskCatchErrorHooks.set(taskId, {
       id,
       name: hook.id ?? hook.fn.name ? (hook.fn.name === "" ? undefined : hook.fn.name) : undefined,
       fn: hook.fn,
     });
   }
 
-  getTaskHandleErrorHook(taskId: string): AnyOnHandleErrorHookFunction | undefined {
-    return this.taskHandleErrorHooks.get(taskId)?.fn;
+  getTaskCatchErrorHook(taskId: string): AnyOnCatchErrorHookFunction | undefined {
+    return this.taskCatchErrorHooks.get(taskId)?.fn;
   }
 
-  getGlobalHandleErrorHooks(): RegisteredHookFunction<AnyOnHandleErrorHookFunction>[] {
-    return Array.from(this.globalHandleErrorHooks.values());
+  getGlobalCatchErrorHooks(): RegisteredHookFunction<AnyOnCatchErrorHookFunction>[] {
+    return Array.from(this.globalCatchErrorHooks.values());
   }
 }
 
@@ -436,24 +434,19 @@ export class NoopLifecycleHooksManager implements LifecycleHooksManager {
     return [];
   }
 
-  registerGlobalHandleErrorHook(
-    hook: RegisterHookFunctionParams<AnyOnHandleErrorHookFunction>
-  ): void {
+  registerGlobalCatchErrorHook(): void {
     // Noop
   }
 
-  registerTaskHandleErrorHook(
-    taskId: string,
-    hook: RegisterHookFunctionParams<AnyOnHandleErrorHookFunction>
-  ): void {
+  registerTaskCatchErrorHook(): void {
     // Noop
   }
 
-  getTaskHandleErrorHook(taskId: string): AnyOnHandleErrorHookFunction | undefined {
+  getTaskCatchErrorHook(): undefined {
     return undefined;
   }
 
-  getGlobalHandleErrorHooks(): RegisteredHookFunction<AnyOnHandleErrorHookFunction>[] {
+  getGlobalCatchErrorHooks(): [] {
     return [];
   }
 }

@@ -80,6 +80,10 @@ import type {
   BatchTriggerAndWaitOptions,
   BatchTriggerTaskV2RequestBody,
   AnyOnInitHookFunction,
+  AnyOnCatchErrorHookFunction,
+  AnyOnCompleteHookFunction,
+  AnyOnWaitHookFunction,
+  AnyOnResumeHookFunction,
 } from "@trigger.dev/core/v3";
 
 export type {
@@ -340,6 +344,48 @@ export function createSchemaTask<
   if (params.onStart) {
     lifecycleHooks.registerTaskStartHook(params.id, {
       fn: lifecycleHooksAdapters.createStartHookAdapter(params.onStart),
+    });
+  }
+
+  if (params.onFailure) {
+    lifecycleHooks.registerTaskFailureHook(params.id, {
+      fn: lifecycleHooksAdapters.createFailureHookAdapter(params.onFailure),
+    });
+  }
+
+  if (params.onSuccess) {
+    lifecycleHooks.registerTaskSuccessHook(params.id, {
+      fn: lifecycleHooksAdapters.createSuccessHookAdapter(params.onSuccess),
+    });
+  }
+
+  if (params.onComplete) {
+    lifecycleHooks.registerTaskCompleteHook(params.id, {
+      fn: params.onComplete as AnyOnCompleteHookFunction,
+    });
+  }
+
+  if (params.onWait) {
+    lifecycleHooks.registerTaskWaitHook(params.id, {
+      fn: params.onWait as AnyOnWaitHookFunction,
+    });
+  }
+
+  if (params.onResume) {
+    lifecycleHooks.registerTaskResumeHook(params.id, {
+      fn: params.onResume as AnyOnResumeHookFunction,
+    });
+  }
+
+  if (params.catchError) {
+    lifecycleHooks.registerTaskCatchErrorHook(params.id, {
+      fn: params.catchError as AnyOnCatchErrorHookFunction,
+    });
+  }
+
+  if (params.handleError) {
+    lifecycleHooks.registerTaskCatchErrorHook(params.id, {
+      fn: lifecycleHooksAdapters.createHandleErrorHookAdapter(params.handleError),
     });
   }
 

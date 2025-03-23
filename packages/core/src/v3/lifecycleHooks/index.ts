@@ -3,8 +3,14 @@ const API_NAME = "lifecycle-hooks";
 import { getGlobal, registerGlobal, unregisterGlobal } from "../utils/globals.js";
 import { NoopLifecycleHooksManager } from "./manager.js";
 import {
+  AnyOnCatchErrorHookFunction,
+  AnyOnCompleteHookFunction,
+  AnyOnFailureHookFunction,
   AnyOnInitHookFunction,
+  AnyOnResumeHookFunction,
   AnyOnStartHookFunction,
+  AnyOnSuccessHookFunction,
+  AnyOnWaitHookFunction,
   RegisteredHookFunction,
   RegisterHookFunctionParams,
   type LifecycleHooksManager,
@@ -52,6 +58,13 @@ export class LifecycleHooksAPI {
     return this.#getManager().getGlobalInitHooks();
   }
 
+  public registerTaskStartHook(
+    taskId: string,
+    hook: RegisterHookFunctionParams<AnyOnStartHookFunction>
+  ): void {
+    this.#getManager().registerTaskStartHook(taskId, hook);
+  }
+
   public registerGlobalStartHook(hook: RegisterHookFunctionParams<AnyOnStartHookFunction>): void {
     this.#getManager().registerGlobalStartHook(hook);
   }
@@ -64,11 +77,126 @@ export class LifecycleHooksAPI {
     return this.#getManager().getGlobalStartHooks();
   }
 
-  public registerTaskStartHook(
-    taskId: string,
-    hook: RegisterHookFunctionParams<AnyOnStartHookFunction>
+  public registerGlobalFailureHook(
+    hook: RegisterHookFunctionParams<AnyOnFailureHookFunction>
   ): void {
-    this.#getManager().registerTaskStartHook(taskId, hook);
+    this.#getManager().registerGlobalFailureHook(hook);
+  }
+
+  public registerTaskFailureHook(
+    taskId: string,
+    hook: RegisterHookFunctionParams<AnyOnFailureHookFunction>
+  ): void {
+    this.#getManager().registerTaskFailureHook(taskId, hook);
+  }
+
+  public getTaskFailureHook(taskId: string): AnyOnFailureHookFunction | undefined {
+    return this.#getManager().getTaskFailureHook(taskId);
+  }
+
+  public getGlobalFailureHooks(): RegisteredHookFunction<AnyOnFailureHookFunction>[] {
+    return this.#getManager().getGlobalFailureHooks();
+  }
+
+  public registerGlobalSuccessHook(
+    hook: RegisterHookFunctionParams<AnyOnSuccessHookFunction>
+  ): void {
+    this.#getManager().registerGlobalSuccessHook(hook);
+  }
+
+  public registerTaskSuccessHook(
+    taskId: string,
+    hook: RegisterHookFunctionParams<AnyOnSuccessHookFunction>
+  ): void {
+    this.#getManager().registerTaskSuccessHook(taskId, hook);
+  }
+
+  public getTaskSuccessHook(taskId: string): AnyOnSuccessHookFunction | undefined {
+    return this.#getManager().getTaskSuccessHook(taskId);
+  }
+
+  public getGlobalSuccessHooks(): RegisteredHookFunction<AnyOnSuccessHookFunction>[] {
+    return this.#getManager().getGlobalSuccessHooks();
+  }
+
+  public registerGlobalCompleteHook(
+    hook: RegisterHookFunctionParams<AnyOnCompleteHookFunction>
+  ): void {
+    this.#getManager().registerGlobalCompleteHook(hook);
+  }
+
+  public registerTaskCompleteHook(
+    taskId: string,
+    hook: RegisterHookFunctionParams<AnyOnCompleteHookFunction>
+  ): void {
+    this.#getManager().registerTaskCompleteHook(taskId, hook);
+  }
+
+  public getTaskCompleteHook(taskId: string): AnyOnCompleteHookFunction | undefined {
+    return this.#getManager().getTaskCompleteHook(taskId);
+  }
+
+  public getGlobalCompleteHooks(): RegisteredHookFunction<AnyOnCompleteHookFunction>[] {
+    return this.#getManager().getGlobalCompleteHooks();
+  }
+
+  public registerGlobalWaitHook(hook: RegisterHookFunctionParams<AnyOnWaitHookFunction>): void {
+    this.#getManager().registerGlobalWaitHook(hook);
+  }
+
+  public registerTaskWaitHook(
+    taskId: string,
+    hook: RegisterHookFunctionParams<AnyOnWaitHookFunction>
+  ): void {
+    this.#getManager().registerTaskWaitHook(taskId, hook);
+  }
+
+  public getTaskWaitHook(taskId: string): AnyOnWaitHookFunction | undefined {
+    return this.#getManager().getTaskWaitHook(taskId);
+  }
+
+  public getGlobalWaitHooks(): RegisteredHookFunction<AnyOnWaitHookFunction>[] {
+    return this.#getManager().getGlobalWaitHooks();
+  }
+
+  public registerGlobalResumeHook(hook: RegisterHookFunctionParams<AnyOnResumeHookFunction>): void {
+    this.#getManager().registerGlobalResumeHook(hook);
+  }
+
+  public registerTaskResumeHook(
+    taskId: string,
+    hook: RegisterHookFunctionParams<AnyOnResumeHookFunction>
+  ): void {
+    this.#getManager().registerTaskResumeHook(taskId, hook);
+  }
+
+  public getTaskResumeHook(taskId: string): AnyOnResumeHookFunction | undefined {
+    return this.#getManager().getTaskResumeHook(taskId);
+  }
+
+  public getGlobalResumeHooks(): RegisteredHookFunction<AnyOnResumeHookFunction>[] {
+    return this.#getManager().getGlobalResumeHooks();
+  }
+
+  public registerGlobalCatchErrorHook(
+    hook: RegisterHookFunctionParams<AnyOnCatchErrorHookFunction>
+  ): void {
+    this.#getManager().registerGlobalCatchErrorHook(hook);
+  }
+
+  public registerTaskCatchErrorHook(
+    taskId: string,
+    hook: RegisterHookFunctionParams<AnyOnCatchErrorHookFunction>
+  ): void {
+    this.#getManager().registerTaskCatchErrorHook(taskId, hook);
+  }
+
+  public getTaskCatchErrorHook(taskId: string): AnyOnCatchErrorHookFunction | undefined {
+    return this.#getManager().getTaskCatchErrorHook(taskId);
+  }
+
+  public getGlobalCatchErrorHooks(): RegisteredHookFunction<AnyOnCatchErrorHookFunction>[] {
+    return this.#getManager().getGlobalCatchErrorHooks();
   }
 
   #getManager(): LifecycleHooksManager {

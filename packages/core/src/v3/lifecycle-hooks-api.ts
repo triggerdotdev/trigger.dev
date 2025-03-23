@@ -12,6 +12,19 @@ export type {
   TaskStartHookParams,
   OnStartHookFunction,
   AnyOnStartHookFunction,
+  TaskFailureHookParams,
+  AnyOnFailureHookFunction,
+  TaskSuccessHookParams,
+  AnyOnSuccessHookFunction,
+  TaskCompleteHookParams,
+  AnyOnCompleteHookFunction,
+  TaskWaitHookParams,
+  AnyOnWaitHookFunction,
+  TaskResumeHookParams,
+  AnyOnResumeHookFunction,
+  TaskCatchErrorHookParams,
+  AnyOnCatchErrorHookFunction,
+  TaskCompleteResult,
 } from "./lifecycleHooks/types.js";
 
 export * as lifecycleHooksAdapters from "./lifecycleHooks/adapters.js";

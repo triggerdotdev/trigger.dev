@@ -12,7 +12,7 @@ import {
   type TaskCompleteResult,
   type AnyOnWaitHookFunction,
   type AnyOnResumeHookFunction,
-  type AnyOnHandleErrorHookFunction,
+  type AnyOnCatchErrorHookFunction,
 } from "@trigger.dev/core/v3";
 
 export type {
@@ -28,7 +28,7 @@ export type {
   TaskCompleteResult,
   AnyOnWaitHookFunction,
   AnyOnResumeHookFunction,
-  AnyOnHandleErrorHookFunction,
+  AnyOnCatchErrorHookFunction,
 };
 
 export function onInit(name: string, fn: AnyOnInitHookFunction): void;
@@ -109,13 +109,25 @@ export function onResume(
   });
 }
 
-export function onHandleError(name: string, fn: AnyOnHandleErrorHookFunction): void;
-export function onHandleError(fn: AnyOnHandleErrorHookFunction): void;
+/** @deprecated Use onCatchError instead */
+export function onHandleError(name: string, fn: AnyOnCatchErrorHookFunction): void;
+/** @deprecated Use onCatchError instead */
+export function onHandleError(fn: AnyOnCatchErrorHookFunction): void;
+/** @deprecated Use onCatchError instead */
 export function onHandleError(
-  fnOrName: string | AnyOnHandleErrorHookFunction,
-  fn?: AnyOnHandleErrorHookFunction
+  fnOrName: string | AnyOnCatchErrorHookFunction,
+  fn?: AnyOnCatchErrorHookFunction
 ): void {
-  lifecycleHooks.registerGlobalHandleErrorHook({
+  onCatchError(fnOrName as any, fn as any);
+}
+
+export function onCatchError(name: string, fn: AnyOnCatchErrorHookFunction): void;
+export function onCatchError(fn: AnyOnCatchErrorHookFunction): void;
+export function onCatchError(
+  fnOrName: string | AnyOnCatchErrorHookFunction,
+  fn?: AnyOnCatchErrorHookFunction
+): void {
+  lifecycleHooks.registerGlobalCatchErrorHook({
     id: typeof fnOrName === "string" ? fnOrName : fnOrName.name ? fnOrName.name : undefined,
     fn: typeof fnOrName === "function" ? fnOrName : fn!,
   });
