@@ -8,19 +8,19 @@ import { requireUserId } from "~/services/session.server";
 const Params = z.object({
   organizationSlug: z.string(),
   projectParam: z.string(),
-  environmentSlug: z.string(),
+  envParam: z.string(),
 });
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
   const userId = await requireUserId(request);
-  const { organizationSlug, projectParam, environmentSlug } = Params.parse(params);
+  const { organizationSlug, projectParam, envParam } = Params.parse(params);
 
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
   if (!project) {
     throw new Response("Not Found", { status: 404 });
   }
 
-  const environment = await findEnvironmentBySlug(project.id, environmentSlug, userId);
+  const environment = await findEnvironmentBySlug(project.id, envParam, userId);
   if (!environment) {
     throw new Response("Not Found", { status: 404 });
   }

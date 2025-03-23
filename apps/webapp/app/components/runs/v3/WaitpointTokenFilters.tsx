@@ -41,7 +41,7 @@ import { matchSorter } from "match-sorter";
 import { Spinner } from "~/components/primitives/Spinner";
 import { project } from "effect/Layer";
 import { useProject } from "~/hooks/useProject";
-import { type loader as tagsLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$environmentId.runs.tags";
+import { type loader as tagsLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.waitpoints.tags";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { Label } from "~/components/primitives/Label";
 import { Input } from "~/components/primitives/Input";
@@ -367,7 +367,7 @@ function TagsDropdown({
       searchParams.set("name", encodeURIComponent(searchValue));
     }
     fetcher.load(
-      `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.id}/runs/tags?${searchParams}`
+      `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/waitpoints/tags?${searchParams}`
     );
   }, [searchValue]);
 

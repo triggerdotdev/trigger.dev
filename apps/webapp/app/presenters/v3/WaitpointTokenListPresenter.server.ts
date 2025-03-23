@@ -52,9 +52,9 @@ export class WaitpointTokenListPresenter extends BasePresenter {
     //otherwise undefined
     if (statuses?.length === 1) {
       if (statuses[0] === "COMPLETED") {
-        filterOutputIsError = true;
-      } else if (statuses[0] === "FAILED") {
         filterOutputIsError = false;
+      } else if (statuses[0] === "FAILED") {
+        filterOutputIsError = true;
       }
     }
 
