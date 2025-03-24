@@ -37,7 +37,7 @@ export function WaitpointStatusLabel({
 }) {
   return (
     <span className={waitpointStatusClassNameColor(status, outputIsError)}>
-      {runStatusTitle(status, outputIsError)}
+      {waitpointStatusTitle(status, outputIsError)}
     </span>
   );
 }
@@ -96,7 +96,7 @@ export function waitpointStatusClassNameColor(
   }
 }
 
-export function runStatusTitle(status: WaitpointStatus, outputIsError: boolean): string {
+export function waitpointStatusTitle(status: WaitpointStatus, outputIsError: boolean): string {
   switch (status) {
     case "PENDING":
       return "Waiting";
