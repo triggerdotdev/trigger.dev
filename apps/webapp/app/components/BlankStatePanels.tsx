@@ -82,10 +82,15 @@ export function HasNoTasksDeployed({ environment }: { environment: MinimumEnviro
       icon={TaskIcon}
       iconClassName="text-blue-500"
       panelClassName="max-w-full"
-      to={docsPath("deployment/overview")}
-      buttonLabel="How to deploy tasks"
-      buttonVariant="docs/small"
-      buttonLeadingIcon={BookOpenIcon}
+      accessory={
+        <LinkButton
+          to={docsPath("deployment/overview")}
+          variant="docs/small"
+          LeadingIcon={BookOpenIcon}
+        >
+          How to deploy tasks
+        </LinkButton>
+      }
     >
       <Paragraph spacing variant="small">
         Run the <TextLink to={docsPath("deployment/overview")}>CLI deploy command</TextLink> to
@@ -102,10 +107,15 @@ export function SchedulesNoPossibleTaskPanel() {
       icon={ClockIcon}
       iconClassName="text-sun-500"
       panelClassName="max-w-full"
-      to={docsPath("v3/tasks-scheduled")}
-      buttonLabel="How to schedule tasks"
-      buttonVariant="docs/small"
-      buttonLeadingIcon={BookOpenIcon}
+      accessory={
+        <LinkButton
+          to={docsPath("v3/tasks-scheduled")}
+          variant="docs/small"
+          LeadingIcon={BookOpenIcon}
+        >
+          How to schedule tasks
+        </LinkButton>
+      }
     >
       <Paragraph spacing variant="small">
         You have no scheduled tasks in your project. Before you can schedule a task you need to
@@ -135,15 +145,16 @@ export function SchedulesNoneAttached() {
       <div className="flex gap-2">
         <LinkButton
           to={`${v3NewSchedulePath(organization, project, environment)}${location.search}`}
-          variant="primary/small"
+          variant="secondary/medium"
           LeadingIcon={RectangleGroupIcon}
           className="inline-flex"
+          leadingIconClassName="text-sun-500"
         >
           Use the dashboard
         </LinkButton>
         <LinkButton
           to={docsPath("v3/tasks-scheduled")}
-          variant="primary/small"
+          variant="docs/medium"
           LeadingIcon={BookOpenIcon}
           className="inline-flex"
         >
@@ -161,10 +172,11 @@ export function BatchesNone() {
       icon={Squares2X2Icon}
       iconClassName="text-blue-500"
       panelClassName="max-w-full"
-      to={docsPath("triggering")}
-      buttonLabel="How to trigger batches"
-      buttonVariant="docs/small"
-      buttonLeadingIcon={BookOpenIcon}
+      accessory={
+        <LinkButton to={docsPath("triggering")} variant="docs/small" LeadingIcon={BookOpenIcon}>
+          How to trigger batches
+        </LinkButton>
+      }
     >
       <Paragraph spacing variant="small">
         You have no batches in this environment. You can trigger batches from your backend or from
@@ -184,8 +196,15 @@ export function TestHasNoTasks() {
       icon={BeakerIcon}
       iconClassName="text-lime-500"
       panelClassName="max-w-full"
-      to={v3EnvironmentPath(organization, project, environment)}
-      buttonLabel="Create a task"
+      accessory={
+        <LinkButton
+          to={v3EnvironmentPath(organization, project, environment)}
+          variant="secondary/small"
+          LeadingIcon={PlusIcon}
+        >
+          Create a task
+        </LinkButton>
+      }
     >
       <Paragraph spacing variant="small">
         Before testing a task, you must first create one. Follow the instructions on the{" "}
@@ -373,8 +392,15 @@ export function QueuesHasNoTasks() {
       icon={RectangleStackIcon}
       iconClassName="text-blue-500"
       panelClassName="max-w-md"
-      to={v3EnvironmentPath(organization, project, environment)}
-      buttonLabel="Create a task"
+      accessory={
+        <LinkButton
+          to={v3EnvironmentPath(organization, project, environment)}
+          variant="secondary/small"
+          LeadingIcon={PlusIcon}
+        >
+          Create a task
+        </LinkButton>
+      }
     >
       <Paragraph spacing variant="small">
         Queues will appear here when you have created a task in this environment. Follow the

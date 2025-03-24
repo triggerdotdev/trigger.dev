@@ -50,10 +50,7 @@ export class ScheduleListPresenter extends BasePresenter {
     pageSize = DEFAULT_PAGE_SIZE,
   }: ScheduleListOptions) {
     const hasFilters =
-      type !== undefined ||
-      tasks !== undefined ||
-      environments !== undefined ||
-      (search !== undefined && search !== "");
+      type !== undefined || tasks !== undefined || (search !== undefined && search !== "");
 
     const filterType =
       type === "declarative" ? "DECLARATIVE" : type === "imperative" ? "IMPERATIVE" : undefined;
