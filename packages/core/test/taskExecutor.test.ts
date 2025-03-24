@@ -372,6 +372,205 @@ describe("TaskExecutor", () => {
       },
     });
   });
+
+  test("should call onComplete hooks in correct order with proper data", async () => {
+    const globalCompleteOrder: string[] = [];
+    const completePayloads: any[] = [];
+    const completeResults: any[] = [];
+    const completeInits: any[] = [];
+
+    // Register global init hook to provide init data
+    lifecycleHooks.registerGlobalInitHook({
+      id: "test-init",
+      fn: async () => {
+        return {
+          foo: "bar",
+        };
+      },
+    });
+
+    // Register two global complete hooks
+    lifecycleHooks.registerGlobalCompleteHook({
+      id: "global-complete-1",
+      fn: async ({ payload, result, init }) => {
+        console.log("Executing global complete hook 1");
+        globalCompleteOrder.push("global-1");
+        completePayloads.push(payload);
+        completeResults.push(result);
+        completeInits.push(init);
+      },
+    });
+
+    lifecycleHooks.registerGlobalCompleteHook({
+      id: "global-complete-2",
+      fn: async ({ payload, result, init }) => {
+        console.log("Executing global complete hook 2");
+        globalCompleteOrder.push("global-2");
+        completePayloads.push(payload);
+        completeResults.push(result);
+        completeInits.push(init);
+      },
+    });
+
+    // Register task-specific complete hook
+    lifecycleHooks.registerTaskCompleteHook("test-task", {
+      id: "task-complete",
+      fn: async ({ payload, result, init }) => {
+        console.log("Executing task complete hook");
+        globalCompleteOrder.push("task");
+        completePayloads.push(payload);
+        completeResults.push(result);
+        completeInits.push(init);
+      },
+    });
+
+    // Verify hooks are registered
+    const globalHooks = lifecycleHooks.getGlobalCompleteHooks();
+    console.log(
+      "Registered global hooks:",
+      globalHooks.map((h) => h.id)
+    );
+    const taskHook = lifecycleHooks.getTaskCompleteHook("test-task");
+    console.log("Registered task hook:", taskHook ? "yes" : "no");
+
+    const task = {
+      id: "test-task",
+      fns: {
+        run: async (payload: any, params: RunFnParams<any>) => {
+          return {
+            output: "test-output",
+            init: params.init,
+          };
+        },
+      },
+    };
+
+    const result = await executeTask(task, { test: "data" });
+
+    // Verify hooks were called in correct order
+    expect(globalCompleteOrder).toEqual(["global-1", "global-2", "task"]);
+
+    // Verify each hook received the correct payload
+    completePayloads.forEach((payload) => {
+      expect(payload).toEqual({ test: "data" });
+    });
+
+    // Verify each hook received the correct result
+    completeResults.forEach((result) => {
+      expect(result).toEqual({
+        ok: true,
+        data: {
+          output: "test-output",
+          init: { foo: "bar" },
+        },
+      });
+    });
+
+    // Verify each hook received the correct init data
+    completeInits.forEach((init) => {
+      expect(init).toEqual({ foo: "bar" });
+    });
+
+    // Verify the final result
+    expect(result).toEqual({
+      result: {
+        ok: true,
+        id: "test-run-id",
+        output: '{"json":{"output":"test-output","init":{"foo":"bar"}}}',
+        outputType: "application/super+json",
+      },
+    });
+  });
+
+  test("should call onComplete hooks with error when task fails", async () => {
+    const globalCompleteOrder: string[] = [];
+    const completePayloads: any[] = [];
+    const completeResults: any[] = [];
+    const completeInits: any[] = [];
+
+    // Register global init hook to provide init data
+    lifecycleHooks.registerGlobalInitHook({
+      id: "test-init",
+      fn: async () => {
+        return {
+          foo: "bar",
+        };
+      },
+    });
+
+    // Register global complete hooks
+    lifecycleHooks.registerGlobalCompleteHook({
+      id: "global-complete",
+      fn: async ({ payload, result, init }) => {
+        console.log("Executing global complete hook");
+        globalCompleteOrder.push("global");
+        completePayloads.push(payload);
+        completeResults.push(result);
+        completeInits.push(init);
+      },
+    });
+
+    // Register task-specific complete hook
+    lifecycleHooks.registerTaskCompleteHook("test-task", {
+      id: "task-complete",
+      fn: async ({ payload, result, init }) => {
+        console.log("Executing task complete hook");
+        globalCompleteOrder.push("task");
+        completePayloads.push(payload);
+        completeResults.push(result);
+        completeInits.push(init);
+      },
+    });
+
+    const expectedError = new Error("Task failed intentionally");
+
+    const task = {
+      id: "test-task",
+      fns: {
+        run: async (payload: any, params: RunFnParams<any>) => {
+          throw expectedError;
+        },
+      },
+    };
+
+    const result = await executeTask(task, { test: "data" });
+
+    // Verify hooks were called in correct order
+    expect(globalCompleteOrder).toEqual(["global", "task"]);
+
+    // Verify each hook received the correct payload
+    completePayloads.forEach((payload) => {
+      expect(payload).toEqual({ test: "data" });
+    });
+
+    // Verify each hook received the error result
+    completeResults.forEach((result) => {
+      expect(result).toEqual({
+        ok: false,
+        error: expectedError,
+      });
+    });
+
+    // Verify each hook received the correct init data
+    completeInits.forEach((init) => {
+      expect(init).toEqual({ foo: "bar" });
+    });
+
+    // Verify the final result contains the error
+    expect(result).toEqual({
+      result: {
+        ok: false,
+        id: "test-run-id",
+        error: {
+          type: "BUILT_IN_ERROR",
+          message: "Task failed intentionally",
+          name: "Error",
+          stackTrace: expect.any(String),
+        },
+        skippedRetrying: false,
+      },
+    });
+  });
 });
 
 function executeTask(task: TaskMetadataWithFunctions, payload: any) {
