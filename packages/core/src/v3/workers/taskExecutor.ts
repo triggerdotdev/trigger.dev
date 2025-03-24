@@ -33,6 +33,7 @@ import {
   stringifyIO,
 } from "../utils/ioSerialization.js";
 import { calculateNextRetryDelay } from "../utils/retries.js";
+import { TaskCompleteResult } from "../lifecycleHooks/types.js";
 
 export type TaskExecutorOptions = {
   tracingSDK: TracingSDK;
@@ -154,6 +155,15 @@ export class TaskExecutor {
                 span.setAttributes(attributes);
               }
 
+              // Call onComplete with success result
+              await this.#callOnCompleteFunctions(
+                parsedPayload,
+                { ok: true, data: output },
+                ctx,
+                initOutput,
+                signal
+              );
+
               return {
                 ok: true,
                 id: execution.run.id,
@@ -162,6 +172,15 @@ export class TaskExecutor {
               } satisfies TaskRunExecutionResult;
             } catch (outputError) {
               recordSpanException(span, outputError);
+
+              // Call onComplete with error result
+              await this.#callOnCompleteFunctions(
+                parsedPayload,
+                { ok: false, error: outputError },
+                ctx,
+                initOutput,
+                signal
+              );
 
               return {
                 ok: false,
@@ -199,6 +218,15 @@ export class TaskExecutor {
                   initOutput,
                   signal
                 );
+
+                // Call onComplete with error result
+                await this.#callOnCompleteFunctions(
+                  parsedPayload,
+                  { ok: false, error: handleErrorResult.error ?? runError },
+                  ctx,
+                  initOutput,
+                  signal
+                );
               }
 
               return {
@@ -214,6 +242,15 @@ export class TaskExecutor {
               } satisfies TaskRunExecutionResult;
             } catch (handleErrorError) {
               recordSpanException(span, handleErrorError);
+
+              // Call onComplete with error result
+              await this.#callOnCompleteFunctions(
+                parsedPayload,
+                { ok: false, error: handleErrorError },
+                ctx,
+                initOutput,
+                signal
+              );
 
               return {
                 ok: false,
@@ -763,6 +800,87 @@ export class TaskExecutor {
       {
         attributes: {
           [SemanticInternalAttributes.STYLE_ICON]: "exclamation-circle",
+        },
+      }
+    );
+  }
+
+  async #callOnCompleteFunctions(
+    payload: unknown,
+    result: TaskCompleteResult<unknown>,
+    ctx: TaskRunContext,
+    initOutput: any,
+    signal?: AbortSignal
+  ) {
+    const globalCompleteHooks = lifecycleHooks.getGlobalCompleteHooks();
+    const taskCompleteHook = lifecycleHooks.getTaskCompleteHook(this.task.id);
+
+    if (globalCompleteHooks.length === 0 && !taskCompleteHook) {
+      return;
+    }
+
+    return this._tracer.startActiveSpan(
+      "hooks.complete",
+      async (span) => {
+        return await runTimelineMetrics.measureMetric(
+          "trigger.dev/execution",
+          "complete",
+          async () => {
+            for (const hook of globalCompleteHooks) {
+              try {
+                await this._tracer.startActiveSpan(
+                  hook.name ?? "global",
+                  async (span) => {
+                    await hook.fn({
+                      payload,
+                      result,
+                      ctx,
+                      signal,
+                      task: this.task.id,
+                      init: initOutput,
+                    });
+                  },
+                  {
+                    attributes: {
+                      [SemanticInternalAttributes.STYLE_ICON]: "tabler-function",
+                    },
+                  }
+                );
+              } catch {
+                // Ignore errors from onComplete functions
+              }
+            }
+
+            if (taskCompleteHook) {
+              try {
+                await this._tracer.startActiveSpan(
+                  "task",
+                  async (span) => {
+                    await taskCompleteHook({
+                      payload,
+                      result,
+                      ctx,
+                      signal,
+                      task: this.task.id,
+                      init: initOutput,
+                    });
+                  },
+                  {
+                    attributes: {
+                      [SemanticInternalAttributes.STYLE_ICON]: "tabler-function",
+                    },
+                  }
+                );
+              } catch {
+                // Ignore errors from onComplete functions
+              }
+            }
+          }
+        );
+      },
+      {
+        attributes: {
+          [SemanticInternalAttributes.STYLE_ICON]: "tabler-function",
         },
       }
     );
