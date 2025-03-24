@@ -137,6 +137,20 @@ export type OnCatchErrorHookFunction<TPayload> = (
 
 export type AnyOnCatchErrorHookFunction = OnCatchErrorHookFunction<unknown>;
 
+export type TaskMiddlewareHookParams<TPayload = unknown> = {
+  ctx: TaskRunContext;
+  payload: TPayload;
+  task: string;
+  signal?: AbortSignal;
+  next: () => Promise<void>;
+};
+
+export type OnMiddlewareHookFunction<TPayload> = (
+  params: TaskMiddlewareHookParams<TPayload>
+) => Promise<void>;
+
+export type AnyOnMiddlewareHookFunction = OnMiddlewareHookFunction<unknown>;
+
 export interface LifecycleHooksManager {
   registerGlobalInitHook(hook: RegisterHookFunctionParams<AnyOnInitHookFunction>): void;
   registerTaskInitHook(
@@ -194,4 +208,11 @@ export interface LifecycleHooksManager {
   ): void;
   getTaskCatchErrorHook(taskId: string): AnyOnCatchErrorHookFunction | undefined;
   getGlobalCatchErrorHooks(): RegisteredHookFunction<AnyOnCatchErrorHookFunction>[];
+  registerGlobalMiddlewareHook(hook: RegisterHookFunctionParams<AnyOnMiddlewareHookFunction>): void;
+  registerTaskMiddlewareHook(
+    taskId: string,
+    hook: RegisterHookFunctionParams<AnyOnMiddlewareHookFunction>
+  ): void;
+  getTaskMiddlewareHook(taskId: string): AnyOnMiddlewareHookFunction | undefined;
+  getGlobalMiddlewareHooks(): RegisteredHookFunction<AnyOnMiddlewareHookFunction>[];
 }

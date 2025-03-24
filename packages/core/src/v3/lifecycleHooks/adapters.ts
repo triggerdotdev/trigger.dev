@@ -5,6 +5,7 @@ import {
   AnyOnFailureHookFunction,
   AnyOnSuccessHookFunction,
   AnyOnCatchErrorHookFunction,
+  AnyOnMiddlewareHookFunction,
 } from "./types.js";
 
 export function createInitHookAdapter<TPayload>(
@@ -74,5 +75,18 @@ export function createHandleErrorHookAdapter<TPayload>(
 ): AnyOnCatchErrorHookFunction {
   return async (params) => {
     return await fn(params.payload as unknown as TPayload, params.error, params);
+  };
+}
+
+export function createMiddlewareHookAdapter<TPayload>(
+  fn: NonNullable<TaskOptions<string, TPayload, unknown, any>["middleware"]>
+): AnyOnMiddlewareHookFunction {
+  return async (params) => {
+    const { payload, next, ...paramsWithoutPayloadAndNext } = params;
+
+    return await fn(payload as unknown as TPayload, {
+      ...paramsWithoutPayloadAndNext,
+      next,
+    });
   };
 }

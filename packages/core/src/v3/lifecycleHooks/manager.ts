@@ -10,6 +10,7 @@ import {
   AnyOnWaitHookFunction,
   AnyOnResumeHookFunction,
   AnyOnCatchErrorHookFunction,
+  AnyOnMiddlewareHookFunction,
 } from "./types.js";
 
 export class StandardLifecycleHooksManager implements LifecycleHooksManager {
@@ -44,6 +45,11 @@ export class StandardLifecycleHooksManager implements LifecycleHooksManager {
   private globalCatchErrorHooks: Map<string, RegisteredHookFunction<AnyOnCatchErrorHookFunction>> =
     new Map();
   private taskCatchErrorHooks: Map<string, RegisteredHookFunction<AnyOnCatchErrorHookFunction>> =
+    new Map();
+
+  private globalMiddlewareHooks: Map<string, RegisteredHookFunction<AnyOnMiddlewareHookFunction>> =
+    new Map();
+  private taskMiddlewareHooks: Map<string, RegisteredHookFunction<AnyOnMiddlewareHookFunction>> =
     new Map();
 
   registerGlobalStartHook(hook: RegisterHookFunctionParams<AnyOnStartHookFunction>): void {
@@ -298,6 +304,39 @@ export class StandardLifecycleHooksManager implements LifecycleHooksManager {
   getGlobalCatchErrorHooks(): RegisteredHookFunction<AnyOnCatchErrorHookFunction>[] {
     return Array.from(this.globalCatchErrorHooks.values());
   }
+
+  registerGlobalMiddlewareHook(
+    hook: RegisterHookFunctionParams<AnyOnMiddlewareHookFunction>
+  ): void {
+    const id = generateHookId(hook);
+
+    this.globalMiddlewareHooks.set(id, {
+      id,
+      name: hook.id ?? hook.fn.name ? (hook.fn.name === "" ? undefined : hook.fn.name) : undefined,
+      fn: hook.fn,
+    });
+  }
+
+  registerTaskMiddlewareHook(
+    taskId: string,
+    hook: RegisterHookFunctionParams<AnyOnMiddlewareHookFunction>
+  ): void {
+    const id = generateHookId(hook);
+
+    this.taskMiddlewareHooks.set(taskId, {
+      id,
+      name: hook.id ?? hook.fn.name ? (hook.fn.name === "" ? undefined : hook.fn.name) : undefined,
+      fn: hook.fn,
+    });
+  }
+
+  getTaskMiddlewareHook(taskId: string): AnyOnMiddlewareHookFunction | undefined {
+    return this.taskMiddlewareHooks.get(taskId)?.fn;
+  }
+
+  getGlobalMiddlewareHooks(): RegisteredHookFunction<AnyOnMiddlewareHookFunction>[] {
+    return Array.from(this.globalMiddlewareHooks.values());
+  }
 }
 
 export class NoopLifecycleHooksManager implements LifecycleHooksManager {
@@ -447,6 +486,22 @@ export class NoopLifecycleHooksManager implements LifecycleHooksManager {
   }
 
   getGlobalCatchErrorHooks(): [] {
+    return [];
+  }
+
+  registerGlobalMiddlewareHook(): void {
+    // Noop
+  }
+
+  registerTaskMiddlewareHook(): void {
+    // Noop
+  }
+
+  getTaskMiddlewareHook(): undefined {
+    return undefined;
+  }
+
+  getGlobalMiddlewareHooks(): [] {
     return [];
   }
 }

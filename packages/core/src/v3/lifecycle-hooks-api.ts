@@ -25,6 +25,9 @@ export type {
   TaskCatchErrorHookParams,
   AnyOnCatchErrorHookFunction,
   TaskCompleteResult,
+  TaskMiddlewareHookParams,
+  AnyOnMiddlewareHookFunction,
+  OnMiddlewareHookFunction,
 } from "./lifecycleHooks/types.js";
 
 export * as lifecycleHooksAdapters from "./lifecycleHooks/adapters.js";
