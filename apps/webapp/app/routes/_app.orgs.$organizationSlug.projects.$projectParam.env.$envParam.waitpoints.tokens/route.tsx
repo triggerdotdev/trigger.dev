@@ -1,5 +1,5 @@
 import { BookOpenIcon } from "@heroicons/react/20/solid";
-import { type MetaFunction } from "@remix-run/react";
+import { useParams, type MetaFunction, Outlet } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
@@ -8,6 +8,11 @@ import { ListPagination } from "~/components/ListPagination";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "~/components/primitives/Resizable";
 import {
   Table,
   TableBody,
@@ -99,6 +104,9 @@ export default function Page() {
   const project = useProject();
   const environment = useEnvironment();
 
+  const { waitpointParam } = useParams();
+  const isShowingWaitpoint = !!waitpointParam;
+
   return (
     <PageContainer>
       <NavBar>
@@ -115,100 +123,118 @@ export default function Page() {
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
-        <div className="grid max-h-full grid-rows-[auto_1fr] overflow-hidden">
-          <div className="flex items-start justify-between gap-x-2 p-2">
-            <WaitpointTokenFilters hasFilters={hasFilters} />
-            <div className="flex items-center justify-end gap-x-2">
-              <ListPagination list={{ pagination }} />
-            </div>
-          </div>
-          <div className="grid h-fit max-h-full min-h-full grid-rows-[1fr] overflow-x-auto">
-            <Table containerClassName="border-t">
-              <TableHeader>
-                <TableRow>
-                  <TableHeaderCell className="w-[1%]">Created</TableHeaderCell>
-                  <TableHeaderCell className="w-[20%]">ID</TableHeaderCell>
-                  <TableHeaderCell className="w-[20%]">Status</TableHeaderCell>
-                  <TableHeaderCell className="w-[20%]">Completed</TableHeaderCell>
-                  <TableHeaderCell className="w-[20%]">Idempotency Key</TableHeaderCell>
-                  <TableHeaderCell className="w-[20%]">Tags</TableHeaderCell>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {tokens.length > 0 ? (
-                  tokens.map((token) => {
-                    const ttlExpired =
-                      token.idempotencyKeyExpiresAt && token.idempotencyKeyExpiresAt < new Date();
+        <ResizablePanelGroup orientation="horizontal" className="max-h-full">
+          <ResizablePanel id="waitpoint-tokens-main" min={"100px"}>
+            <div className="grid max-h-full grid-rows-[auto_1fr] overflow-hidden">
+              <div className="flex items-start justify-between gap-x-2 p-2">
+                <WaitpointTokenFilters hasFilters={hasFilters} />
+                <div className="flex items-center justify-end gap-x-2">
+                  <ListPagination list={{ pagination }} />
+                </div>
+              </div>
+              <div className="grid h-fit max-h-full min-h-full grid-rows-[1fr] overflow-x-auto">
+                <Table containerClassName="border-t">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHeaderCell className="w-[1%]">Created</TableHeaderCell>
+                      <TableHeaderCell className="w-[20%]">ID</TableHeaderCell>
+                      <TableHeaderCell className="w-[20%]">Status</TableHeaderCell>
+                      <TableHeaderCell className="w-[20%]">Completed</TableHeaderCell>
+                      <TableHeaderCell className="w-[20%]">Idempotency Key</TableHeaderCell>
+                      <TableHeaderCell className="w-[20%]">Tags</TableHeaderCell>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {tokens.length > 0 ? (
+                      tokens.map((token) => {
+                        const ttlExpired =
+                          token.idempotencyKeyExpiresAt &&
+                          token.idempotencyKeyExpiresAt < new Date();
 
-                    const path = v3WaitpointTokenPath(organization, project, environment, token);
+                        const path = v3WaitpointTokenPath(
+                          organization,
+                          project,
+                          environment,
+                          token
+                        );
 
-                    return (
-                      <TableRow key={token.friendlyId}>
-                        <TableCell to={path}>
-                          <span className="opacity-60">
-                            <DateTime date={token.createdAt} />
-                          </span>
-                        </TableCell>
-                        <TableCell to={path}>{token.friendlyId}</TableCell>
-                        <TableCell to={path}>
-                          <WaitpointStatusCombo
-                            status={token.status}
-                            outputIsError={token.isTimeout}
-                            className="text-xs"
-                          />
-                        </TableCell>
-                        <TableCell to={path}>
-                          {token.completedAt ? <DateTime date={token.completedAt} /> : "–"}
-                        </TableCell>
-                        <TableCell to={path}>
-                          {token.idempotencyKey ? (
-                            token.idempotencyKeyExpiresAt ? (
-                              <SimpleTooltip
-                                content={
-                                  <>
-                                    <DateTime date={token.idempotencyKeyExpiresAt} />
-                                    {ttlExpired ? (
-                                      <span className="text-xs opacity-50"> (expired)</span>
-                                    ) : null}
-                                  </>
-                                }
-                                buttonClassName={ttlExpired ? "opacity-50" : undefined}
-                                button={token.idempotencyKey}
+                        return (
+                          <TableRow key={token.friendlyId}>
+                            <TableCell to={path}>
+                              <span className="opacity-60">
+                                <DateTime date={token.createdAt} />
+                              </span>
+                            </TableCell>
+                            <TableCell to={path}>{token.friendlyId}</TableCell>
+                            <TableCell to={path}>
+                              <WaitpointStatusCombo
+                                status={token.status}
+                                outputIsError={token.isTimeout}
+                                className="text-xs"
                               />
-                            ) : (
-                              token.idempotencyKey
-                            )
-                          ) : (
-                            "–"
-                          )}
-                        </TableCell>
-                        <TableCell to={path} actionClassName="py-1" className="pr-16">
-                          <div className="flex gap-1">
-                            {token.tags.map((tag) => <RunTag key={tag} tag={tag} />) || "–"}
+                            </TableCell>
+                            <TableCell to={path}>
+                              {token.completedAt ? <DateTime date={token.completedAt} /> : "–"}
+                            </TableCell>
+                            <TableCell to={path}>
+                              {token.idempotencyKey ? (
+                                token.idempotencyKeyExpiresAt ? (
+                                  <SimpleTooltip
+                                    content={
+                                      <>
+                                        <DateTime date={token.idempotencyKeyExpiresAt} />
+                                        {ttlExpired ? (
+                                          <span className="text-xs opacity-50"> (expired)</span>
+                                        ) : null}
+                                      </>
+                                    }
+                                    buttonClassName={ttlExpired ? "opacity-50" : undefined}
+                                    button={token.idempotencyKey}
+                                  />
+                                ) : (
+                                  token.idempotencyKey
+                                )
+                              ) : (
+                                "–"
+                              )}
+                            </TableCell>
+                            <TableCell to={path} actionClassName="py-1" className="pr-16">
+                              <div className="flex gap-1">
+                                {token.tags.map((tag) => <RunTag key={tag} tag={tag} />) || "–"}
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={6}>
+                          <div className="grid place-items-center py-6 text-text-dimmed">
+                            No waitpoint tokens found
                           </div>
                         </TableCell>
                       </TableRow>
-                    );
-                  })
-                ) : (
-                  <TableRow>
-                    <TableCell colSpan={6}>
-                      <div className="grid place-items-center py-6 text-text-dimmed">
-                        No waitpoint tokens found
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
+                    )}
+                  </TableBody>
+                </Table>
 
-            {(pagination.next || pagination.previous) && (
-              <div className="flex justify-end border-t border-grid-dimmed px-2 py-3">
-                <ListPagination list={{ pagination }} />
+                {(pagination.next || pagination.previous) && (
+                  <div className="flex justify-end border-t border-grid-dimmed px-2 py-3">
+                    <ListPagination list={{ pagination }} />
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        </div>
+            </div>
+          </ResizablePanel>
+          {isShowingWaitpoint && (
+            <>
+              <ResizableHandle id="waitpoint-tokens-handle" />
+              <ResizablePanel id="waitpoint-tokens-inspector" min="100px" default="500px">
+                <Outlet />
+              </ResizablePanel>
+            </>
+          )}
+        </ResizablePanelGroup>
       </PageBody>
     </PageContainer>
   );

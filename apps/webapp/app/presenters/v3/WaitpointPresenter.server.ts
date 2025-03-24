@@ -2,6 +2,8 @@ import { isWaitpointOutputTimeout, prettyPrintPacket } from "@trigger.dev/core/v
 import { logger } from "~/services/logger.server";
 import { BasePresenter } from "./basePresenter.server";
 
+export type WaitpointDetail = NonNullable<Awaited<ReturnType<WaitpointPresenter["call"]>>>;
+
 export class WaitpointPresenter extends BasePresenter {
   public async call({ friendlyId, environmentId }: { friendlyId: string; environmentId: string }) {
     const waitpoint = await this._replica.waitpoint.findFirst({

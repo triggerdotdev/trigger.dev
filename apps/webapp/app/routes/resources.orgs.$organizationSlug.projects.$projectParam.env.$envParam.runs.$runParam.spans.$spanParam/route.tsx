@@ -74,6 +74,8 @@ import {
 } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.waitpoints.$waitpointFriendlyId.complete/route";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { WaitpointStatusCombo } from "~/components/runs/v3/WaitpointStatus";
+import { PacketDisplay } from "~/components/runs/v3/PacketDisplay";
+import { WaitpointDetailTable } from "~/components/runs/v3/WaitpointDetails";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -831,53 +833,6 @@ function RunError({ error }: { error: TaskRunError }) {
   }
 }
 
-function PacketDisplay({
-  data,
-  dataType,
-  title,
-}: {
-  data: string;
-  dataType: string;
-  title: string;
-}) {
-  switch (dataType) {
-    case "application/store": {
-      return (
-        <div className="flex flex-col">
-          <Paragraph variant="base/bright" className="w-full border-b border-grid-dimmed py-2.5">
-            {title}
-          </Paragraph>
-          <LinkButton LeadingIcon={CloudArrowDownIcon} to={data} variant="tertiary/medium" download>
-            Download
-          </LinkButton>
-        </div>
-      );
-    }
-    case "text/plain": {
-      return (
-        <CodeBlock
-          language="markdown"
-          rowTitle={title}
-          code={data}
-          maxLines={20}
-          showLineNumbers={false}
-        />
-      );
-    }
-    default: {
-      return (
-        <CodeBlock
-          language="json"
-          rowTitle={title}
-          code={data}
-          maxLines={20}
-          showLineNumbers={false}
-        />
-      );
-    }
-  }
-}
-
 function SpanEntity({ span }: { span: Span }) {
   const isAdmin = useHasAdminAccess();
 
@@ -997,83 +952,10 @@ function SpanEntity({ span }: { span: Span }) {
                 <TextLink to={docsPath("wait")}>View docs</TextLink>.
               </Paragraph>
             </div>
-            <Property.Table>
-              <Property.Item>
-                <Property.Label>Status</Property.Label>
-                <Property.Value>
-                  <WaitpointStatusCombo
-                    status={span.entity.object.status}
-                    outputIsError={span.entity.object.outputIsError}
-                    className="text-sm"
-                  />
-                </Property.Value>
-              </Property.Item>
-              <Property.Item>
-                <Property.Label>ID</Property.Label>
-                <Property.Value className="whitespace-pre-wrap">
-                  {span.entity.object.friendlyId}
-                </Property.Value>
-              </Property.Item>
-              <Property.Item>
-                <Property.Label>Idempotency key</Property.Label>
-                <Property.Value>
-                  <div>
-                    <div>
-                      {span.entity.object.userProvidedIdempotencyKey
-                        ? span.entity.object.idempotencyKey
-                        : "–"}
-                    </div>
-                    <div>
-                      {span.entity.object.idempotencyKeyExpiresAt ? (
-                        <>
-                          TTL: <DateTime date={span.entity.object.idempotencyKeyExpiresAt} />
-                        </>
-                      ) : null}
-                    </div>
-                  </div>
-                </Property.Value>
-              </Property.Item>
-              {span.entity.object.type === "MANUAL" && (
-                <>
-                  <Property.Item>
-                    <Property.Label>Timeout at</Property.Label>
-                    <Property.Value>
-                      <div className="flex w-full flex-wrap items-center justify-between gap-1">
-                        {span.entity.object.completedAfter ? (
-                          <DateTimeAccurate date={span.entity.object.completedAfter} />
-                        ) : (
-                          "–"
-                        )}
-                        {span.entity.object.status === "PENDING" && (
-                          <ForceTimeout waitpoint={span.entity.object} />
-                        )}
-                      </div>
-                    </Property.Value>
-                  </Property.Item>
-                </>
-              )}
-              {span.entity.object.status === "PENDING" ? null : span.entity.object.isTimeout ? (
-                <></>
-              ) : span.entity.object.output ? (
-                <PacketDisplay
-                  title="Output"
-                  data={span.entity.object.output}
-                  dataType={span.entity.object.outputType}
-                />
-              ) : span.entity.object.completedAfter ? (
-                <Property.Item>
-                  <Property.Label>Completed at</Property.Label>
-                  <Property.Value>
-                    <DateTimeAccurate date={span.entity.object.completedAfter} />
-                  </Property.Value>
-                </Property.Item>
-              ) : (
-                "Completed with no output"
-              )}
-            </Property.Table>
+            <WaitpointDetailTable waitpoint={span.entity.object} />
           </div>
           {span.entity.object.status === "PENDING" && (
-            <div className="">
+            <div>
               <CompleteWaitpointForm waitpoint={span.entity.object} />
             </div>
           )}
