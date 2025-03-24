@@ -35,6 +35,7 @@ import { StepNumber } from "./primitives/StepNumber";
 import { TextLink } from "./primitives/TextLink";
 import { InitCommandV3, PackageManagerProvider, TriggerDevStepV3 } from "./SetupCommands";
 import { StepContentContainer } from "./StepContentContainer";
+import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
 
 export function HasNoTasksDev() {
   return (
@@ -407,6 +408,25 @@ export function QueuesHasNoTasks() {
         instructions on the{" "}
         <TextLink to={v3EnvironmentPath(organization, project, environment)}>Tasks page</TextLink>{" "}
         to create a task, then return here to see its queue.
+      </Paragraph>
+    </InfoPanel>
+  );
+}
+
+export function NoWaitpointTokens() {
+  return (
+    <InfoPanel
+      title="You don't have any waitpoint tokens"
+      icon={WaitpointTokenIcon}
+      iconClassName="text-sky-500"
+      panelClassName="max-w-md"
+    >
+      <Paragraph spacing variant="small">
+        Waitpoint tokens are used to pause runs until you complete the token so the run can
+        continue.
+      </Paragraph>
+      <Paragraph spacing variant="small">
+        You can build approval workflows using them, as well as other use cases.
       </Paragraph>
     </InfoPanel>
   );
