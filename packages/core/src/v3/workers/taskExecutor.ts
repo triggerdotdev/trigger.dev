@@ -460,57 +460,78 @@ export class TaskExecutor {
     initOutput: any,
     signal?: AbortSignal
   ) {
-    await this.#callOnFailureFunction(
-      this.task.fns.onFailure,
-      "task.onFailure",
-      payload,
-      error,
-      ctx,
-      initOutput,
-      signal
-    );
+    const globalFailureHooks = lifecycleHooks.getGlobalFailureHooks();
+    const taskFailureHook = lifecycleHooks.getTaskFailureHook(this.task.id);
 
-    await this.#callOnFailureFunction(
-      this._importedConfig?.onFailure,
-      "config.onFailure",
-      payload,
-      error,
-      ctx,
-      initOutput,
-      signal
-    );
-  }
-
-  async #callOnFailureFunction(
-    onFailureFn: TaskMetadataWithFunctions["fns"]["onFailure"],
-    name: string,
-    payload: unknown,
-    error: unknown,
-    ctx: TaskRunContext,
-    initOutput: any,
-    signal?: AbortSignal
-  ) {
-    if (!onFailureFn) {
+    if (globalFailureHooks.length === 0 && !taskFailureHook) {
       return;
     }
 
-    try {
-      return await this._tracer.startActiveSpan(
-        name,
-        async (span) => {
-          return await runTimelineMetrics.measureMetric("trigger.dev/execution", name, () =>
-            onFailureFn(payload, error, { ctx, init: initOutput, signal })
-          );
+    return this._tracer.startActiveSpan(
+      "hooks.failure",
+      async (span) => {
+        return await runTimelineMetrics.measureMetric(
+          "trigger.dev/execution",
+          "failure",
+          async () => {
+            for (const hook of globalFailureHooks) {
+              try {
+                await this._tracer.startActiveSpan(
+                  hook.name ?? "global",
+                  async (span) => {
+                    await hook.fn({
+                      payload,
+                      error,
+                      ctx,
+                      signal,
+                      task: this.task.id,
+                      init: initOutput,
+                    });
+                  },
+                  {
+                    attributes: {
+                      [SemanticInternalAttributes.STYLE_ICON]: "tabler-function",
+                    },
+                  }
+                );
+              } catch {
+                // Ignore errors from onFailure functions
+              }
+            }
+
+            if (taskFailureHook) {
+              try {
+                await this._tracer.startActiveSpan(
+                  "task",
+                  async (span) => {
+                    await taskFailureHook({
+                      payload,
+                      error,
+                      ctx,
+                      signal,
+                      task: this.task.id,
+                      init: initOutput,
+                    });
+                  },
+                  {
+                    attributes: {
+                      [SemanticInternalAttributes.STYLE_ICON]: "tabler-function",
+                    },
+                  }
+                );
+              } catch {
+                // Ignore errors from onFailure functions
+              }
+            }
+          }
+        );
+      },
+      {
+        attributes: {
+          [SemanticInternalAttributes.STYLE_ICON]: "tabler-function",
         },
-        {
-          attributes: {
-            [SemanticInternalAttributes.STYLE_ICON]: "function",
-          },
-        }
-      );
-    } catch (e) {
-      // Ignore errors from onFailure functions
-    }
+      }
+    );
   }
 
   async #parsePayload(payload: unknown) {
