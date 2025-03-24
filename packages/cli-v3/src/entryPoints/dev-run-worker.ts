@@ -20,6 +20,7 @@ import {
   runTimelineMetrics,
   lifecycleHooks,
   lifecycleHooksAdapters,
+  localsAPI,
 } from "@trigger.dev/core/v3";
 import { TriggerTracer } from "@trigger.dev/core/v3/tracer";
 import {
@@ -41,6 +42,7 @@ import {
   UsageTimeoutManager,
   StandardRunTimelineMetricsManager,
   StandardLifecycleHooksManager,
+  StandardLocalsManager,
 } from "@trigger.dev/core/v3/workers";
 import { ZodIpcConnection } from "@trigger.dev/core/v3/zodIpc";
 import { readFile } from "node:fs/promises";
@@ -91,6 +93,9 @@ process.on("uncaughtException", function (error, origin) {
 });
 
 const heartbeatIntervalMs = getEnvVar("HEARTBEAT_INTERVAL_MS");
+
+const standardLocalsManager = new StandardLocalsManager();
+localsAPI.setGlobalLocalsManager(standardLocalsManager);
 
 const standardRunTimelineMetricsManager = new StandardRunTimelineMetricsManager();
 runTimelineMetrics.setGlobalManager(standardRunTimelineMetricsManager);

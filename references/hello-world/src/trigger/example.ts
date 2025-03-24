@@ -1,16 +1,21 @@
 import { batch, logger, task, timeout, wait } from "@trigger.dev/sdk";
 import { setTimeout } from "timers/promises";
+import { getDb } from "../db.js";
 
 export const helloWorldTask = task({
   id: "hello-world",
   init: async (payload, { ctx }) => {
-    logger.info("Hello, world from the init", { ctx, payload });
-
     return {
       foobar: "baz",
     };
   },
   run: async (payload: any, { ctx, init }) => {
+    logger.info("Hello, world from the init", { ctx, payload });
+
+    const db = getDb();
+
+    await db.connect();
+
     logger.debug("debug: Hello, world!", { payload, init });
     logger.info("info: Hello, world!", { payload });
     logger.log("log: Hello, world!", { payload });

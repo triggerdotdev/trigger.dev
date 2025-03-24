@@ -1,4 +1,5 @@
 import { logger, tasks } from "@trigger.dev/sdk";
+// import { setDb } from "../db.js";
 
 // tasks.onSuccess(({ ctx, payload, output }) => {
 //   logger.info("Hello, world from the success", { ctx, payload });
@@ -16,9 +17,15 @@ import { logger, tasks } from "@trigger.dev/sdk";
 //   logger.info("Hello, world from the failure", { ctx, payload });
 // });
 
-tasks.onStart(({ ctx, payload }) => {
-  logger.info("Hello, world from the start", { ctx, payload });
-});
+// tasks.onStart(({ ctx, payload }) => {
+//   logger.info("Hello, world from the start", { ctx, payload });
+
+//   setDb({
+//     connect: async () => {
+//       logger.info("Connecting to the database");
+//     },
+//   });
+// });
 
 // tasks.onWait(({ ctx, payload }) => {
 //   logger.info("Hello, world from the start", { ctx, payload });
@@ -27,19 +34,3 @@ tasks.onStart(({ ctx, payload }) => {
 // tasks.onResume(({ ctx, payload }) => {
 //   logger.info("Hello, world from the start", { ctx, payload });
 // });
-
-tasks.init(({ ctx, payload, task }) => {
-  logger.info("Hello, world from the init", { ctx, payload, task });
-
-  return {
-    foo: "bar",
-  };
-});
-
-tasks.init(({ ctx, payload, task }) => {
-  logger.info("Hello, world from the init 2", { ctx, payload, task });
-
-  return {
-    bar: "baz",
-  };
-});

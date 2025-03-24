@@ -1,5 +1,4 @@
 import {
-  onInit,
   onStart,
   onFailure,
   onSuccess,
@@ -89,7 +88,6 @@ export const tasks = {
   batchTrigger,
   triggerAndWait,
   batchTriggerAndWait,
-  init: onInit,
   onStart,
   onFailure,
   onSuccess,

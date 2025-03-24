@@ -16,6 +16,7 @@ export * from "./wait-until-api.js";
 export * from "./timeout-api.js";
 export * from "./run-timeline-metrics-api.js";
 export * from "./lifecycle-hooks-api.js";
+export * from "./locals-api.js";
 export * from "./schemas/index.js";
 export { SemanticInternalAttributes } from "./semanticInternalAttributes.js";
 export * from "./resource-catalog-api.js";

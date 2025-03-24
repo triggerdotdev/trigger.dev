@@ -18,6 +18,7 @@ import {
   waitUntil,
   apiClientManager,
   runTimelineMetrics,
+  localsAPI,
 } from "@trigger.dev/core/v3";
 import { TriggerTracer } from "@trigger.dev/core/v3/tracer";
 import {
@@ -39,6 +40,7 @@ import {
   StandardWaitUntilManager,
   ManagedRuntimeManager,
   StandardRunTimelineMetricsManager,
+  StandardLocalsManager,
 } from "@trigger.dev/core/v3/workers";
 import { ZodIpcConnection } from "@trigger.dev/core/v3/zodIpc";
 import { readFile } from "node:fs/promises";
@@ -92,6 +94,9 @@ const usageIntervalMs = getEnvVar("USAGE_HEARTBEAT_INTERVAL_MS");
 const usageEventUrl = getEnvVar("USAGE_EVENT_URL");
 const triggerJWT = getEnvVar("TRIGGER_JWT");
 const heartbeatIntervalMs = getEnvVar("HEARTBEAT_INTERVAL_MS");
+
+const standardLocalsManager = new StandardLocalsManager();
+localsAPI.setGlobalLocalsManager(standardLocalsManager);
 
 const standardRunTimelineMetricsManager = new StandardRunTimelineMetricsManager();
 runTimelineMetrics.setGlobalManager(standardRunTimelineMetricsManager);

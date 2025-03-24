@@ -264,11 +264,15 @@ type CommonTaskOptions<
 
   /**
    * init is called before the run function is called. It's useful for setting up any global state.
+   *
+   * @deprecated Use locals and middleware instead
    */
   init?: (payload: TPayload, params: InitFnParams) => Promise<TInitOutput>;
 
   /**
    * cleanup is called after the run function has completed.
+   *
+   * @deprecated Use middleware instead
    */
   cleanup?: (payload: TPayload, params: RunFnParams<TInitOutput>) => Promise<void>;
 
