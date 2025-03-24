@@ -33,9 +33,11 @@ import { TextLink } from "~/components/primitives/TextLink";
 import { RunsFilters, TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
 import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { BULK_ACTION_RUN_LIMIT } from "~/consts";
+import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { findProjectBySlug } from "~/models/project.server";
+import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { RunListPresenter } from "~/presenters/v3/RunListPresenter.server";
 import {
   getRootOnlyFilterPreference,
@@ -47,15 +49,11 @@ import { cn } from "~/utils/cn";
 import {
   docsPath,
   EnvironmentParamSchema,
-  ProjectParamSchema,
   v3ProjectPath,
   v3RunsPath,
   v3TestPath,
 } from "~/utils/pathBuilder";
 import { ListPagination } from "../../components/ListPagination";
-import { prisma } from "~/db.server";
-import { useEnvironment } from "~/hooks/useEnvironment";
-import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 
 export const meta: MetaFunction = () => {
   return [
@@ -438,8 +436,11 @@ function CreateFirstTaskInstructions() {
         iconClassName="text-blue-500"
         panelClassName="max-full"
         title="Create your first task"
-        to={v3ProjectPath(organization, project)}
-        buttonLabel="Create a task"
+        accessory={
+          <LinkButton to={v3ProjectPath(organization, project)} variant="primary/small">
+            Create a task
+          </LinkButton>
+        }
       >
         <Paragraph variant="small">
           Before running a task, you must first create one. Follow the instructions on the{" "}

@@ -357,8 +357,11 @@ export default function Page() {
                 icon={BookOpenIcon}
                 iconClassName="text-indigo-500"
                 variant="info"
-                buttonLabel="Docs"
-                to="https://trigger.dev/docs/v3/tasks-scheduled"
+                accessory={
+                  <LinkButton to="https://trigger.dev/docs/v3/tasks-scheduled" variant="docs/small">
+                    Docs
+                  </LinkButton>
+                }
                 panelClassName="max-w-full"
               >
                 You can only edit a declarative schedule by updating your schedules.task and then
