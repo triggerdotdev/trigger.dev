@@ -571,6 +571,216 @@ describe("TaskExecutor", () => {
       },
     });
   });
+
+  test("should call catchError hooks in correct order and stop at first handler that returns a result", async () => {
+    const hookCallOrder: string[] = [];
+    const expectedError = new Error("Task failed intentionally");
+
+    // Register global init hook to provide init data
+    lifecycleHooks.registerGlobalInitHook({
+      id: "test-init",
+      fn: async () => {
+        return {
+          foo: "bar",
+        };
+      },
+    });
+
+    // Register task-specific catch error hook that doesn't handle the error
+    lifecycleHooks.registerTaskCatchErrorHook("test-task", {
+      id: "task-catch-error",
+      fn: async ({ payload, error, init, retry }) => {
+        console.log("Executing task catch error hook");
+        hookCallOrder.push("task");
+        // Return undefined to let it fall through to global handlers
+        return undefined;
+      },
+    });
+
+    // Register first global catch error hook that doesn't handle the error
+    lifecycleHooks.registerGlobalCatchErrorHook({
+      id: "global-catch-error-1",
+      fn: async ({ payload, error, init, retry }) => {
+        console.log("Executing global catch error hook 1");
+        hookCallOrder.push("global-1");
+        // Return undefined to let it fall through to next handler
+        return undefined;
+      },
+    });
+
+    // Register second global catch error hook that handles the error
+    lifecycleHooks.registerGlobalCatchErrorHook({
+      id: "global-catch-error-2",
+      fn: async ({ payload, error, init, retry }) => {
+        console.log("Executing global catch error hook 2");
+        hookCallOrder.push("global-2");
+        // Return a result to handle the error
+        return {
+          retry: {
+            maxAttempts: 3,
+            minDelay: 1000,
+            maxDelay: 5000,
+            factor: 2,
+          },
+        };
+      },
+    });
+
+    // Register third global catch error hook that should never be called
+    lifecycleHooks.registerGlobalCatchErrorHook({
+      id: "global-catch-error-3",
+      fn: async ({ payload, error, init, retry }) => {
+        console.log("Executing global catch error hook 3");
+        hookCallOrder.push("global-3");
+        return undefined;
+      },
+    });
+
+    const task = {
+      id: "test-task",
+      fns: {
+        run: async (payload: any, params: RunFnParams<any>) => {
+          throw expectedError;
+        },
+      },
+    };
+
+    const result = await executeTask(task, { test: "data" });
+
+    // Verify hooks were called in correct order and stopped after second global hook
+    expect(hookCallOrder).toEqual(["task", "global-1", "global-2"]);
+    // global-3 should not be called since global-2 returned a result
+
+    // Verify the final result contains retry information from the second global hook
+    expect(result).toEqual({
+      result: {
+        ok: false,
+        id: "test-run-id",
+        error: {
+          type: "BUILT_IN_ERROR",
+          message: "Task failed intentionally",
+          name: "Error",
+          stackTrace: expect.any(String),
+        },
+        retry: {
+          timestamp: expect.any(Number),
+          delay: expect.any(Number),
+        },
+        skippedRetrying: false,
+      },
+    });
+  });
+
+  test("should skip retrying if catch error hook returns skipRetrying", async () => {
+    const hookCallOrder: string[] = [];
+    const expectedError = new Error("Task failed intentionally");
+
+    // Register task-specific catch error hook that handles the error
+    lifecycleHooks.registerTaskCatchErrorHook("test-task", {
+      id: "task-catch-error",
+      fn: async ({ payload, error, init }) => {
+        console.log("Executing task catch error hook");
+        hookCallOrder.push("task");
+        return {
+          skipRetrying: true,
+          error: new Error("Modified error in catch hook"),
+        };
+      },
+    });
+
+    // Register global catch error hook that should never be called
+    lifecycleHooks.registerGlobalCatchErrorHook({
+      id: "global-catch-error",
+      fn: async ({ payload, error, init }) => {
+        console.log("Executing global catch error hook");
+        hookCallOrder.push("global");
+        return undefined;
+      },
+    });
+
+    const task = {
+      id: "test-task",
+      fns: {
+        run: async (payload: any, params: RunFnParams<any>) => {
+          throw expectedError;
+        },
+      },
+    };
+
+    const result = await executeTask(task, { test: "data" });
+
+    // Verify only task hook was called
+    expect(hookCallOrder).toEqual(["task"]);
+
+    // Verify the final result shows skipped retrying and the modified error
+    expect(result).toEqual({
+      result: {
+        ok: false,
+        id: "test-run-id",
+        error: {
+          type: "BUILT_IN_ERROR",
+          message: "Modified error in catch hook",
+          name: "Error",
+          stackTrace: expect.any(String),
+        },
+        skippedRetrying: true,
+      },
+    });
+  });
+
+  test("should use specific retry timing if catch error hook provides it", async () => {
+    const hookCallOrder: string[] = [];
+    const expectedError = new Error("Task failed intentionally");
+    const specificRetryDate = new Date(Date.now() + 30000); // 30 seconds in future
+
+    // Register task-specific catch error hook that specifies retry timing
+    lifecycleHooks.registerTaskCatchErrorHook("test-task", {
+      id: "task-catch-error",
+      fn: async ({ payload, error, init }) => {
+        console.log("Executing task catch error hook");
+        hookCallOrder.push("task");
+        return {
+          retryAt: specificRetryDate,
+          error: expectedError,
+        };
+      },
+    });
+
+    const task = {
+      id: "test-task",
+      fns: {
+        run: async (payload: any, params: RunFnParams<any>) => {
+          throw expectedError;
+        },
+      },
+    };
+
+    const result = await executeTask(task, { test: "data" });
+
+    // Verify only task hook was called
+    expect(hookCallOrder).toEqual(["task"]);
+
+    // Verify the final result contains the specific retry timing
+    expect(result).toEqual({
+      result: {
+        ok: false,
+        id: "test-run-id",
+        error: {
+          type: "BUILT_IN_ERROR",
+          message: "Task failed intentionally",
+          name: "Error",
+          stackTrace: expect.any(String),
+        },
+        retry: {
+          timestamp: specificRetryDate.getTime(),
+          delay: expect.any(Number),
+        },
+        skippedRetrying: false,
+      },
+    });
+
+    expect((result as any).result.retry.delay).toBeCloseTo(30000, -1);
+  });
 });
 
 function executeTask(task: TaskMetadataWithFunctions, payload: any) {

@@ -4,7 +4,7 @@ import { ApiError, RateLimitError } from "../apiClient/errors.js";
 import { ConsoleInterceptor } from "../consoleInterceptor.js";
 import { isInternalError, parseError, sanitizeError, TaskPayloadParsedError } from "../errors.js";
 import { flattenAttributes, lifecycleHooks, runMetadata, waitUntil } from "../index.js";
-import { TaskCompleteResult } from "../lifecycleHooks/types.js";
+import { TaskCompleteResult, TaskInitOutput } from "../lifecycleHooks/types.js";
 import { recordSpanException, TracingSDK } from "../otel/index.js";
 import { runTimelineMetrics } from "../run-timeline-metrics-api.js";
 import {
@@ -19,7 +19,11 @@ import {
 import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
 import { taskContext } from "../task-context-api.js";
 import { TriggerTracer } from "../tracer.js";
-import { HandleErrorFunction, TaskMetadataWithFunctions } from "../types/index.js";
+import {
+  HandleErrorFunction,
+  HandleErrorModificationOptions,
+  TaskMetadataWithFunctions,
+} from "../types/index.js";
 import {
   conditionallyExportPacket,
   conditionallyImportPacket,
@@ -670,21 +674,17 @@ export class TaskExecutor {
     error: unknown,
     payload: any,
     ctx: TaskRunContext,
-    init: unknown,
+    init: TaskInitOutput,
     signal?: AbortSignal
   ): Promise<
     | { status: "retry"; retry: TaskRunExecutionRetry; error?: unknown }
-    | { status: "skipped"; error?: unknown } // skipped is different than noop, it means that the task was skipped from retrying, instead of just not retrying
+    | { status: "skipped"; error?: unknown }
     | { status: "noop"; error?: unknown }
   > {
     const retriesConfig = this._retries;
-
     const retry = this.task.retry ?? retriesConfig?.default;
 
-    if (!retry) {
-      return { status: "noop" };
-    }
-
+    // Early exit conditions that prevent retrying
     if (isInternalError(error) && error.skipRetrying) {
       return { status: "skipped", error };
     }
@@ -696,23 +696,28 @@ export class TaskExecutor {
       return { status: "skipped" };
     }
 
-    if (execution.run.maxAttempts) {
-      retry.maxAttempts = Math.max(execution.run.maxAttempts, 1);
+    // Calculate default retry delay if retry config exists
+    let defaultDelay: number | undefined;
+    if (retry) {
+      if (execution.run.maxAttempts) {
+        retry.maxAttempts = Math.max(execution.run.maxAttempts, 1);
+      }
+
+      defaultDelay = calculateNextRetryDelay(retry, execution.attempt.number);
+
+      // Handle rate limit errors
+      if (
+        defaultDelay &&
+        error instanceof Error &&
+        error.name === "TriggerApiError" &&
+        (error as ApiError).status === 429
+      ) {
+        const rateLimitError = error as RateLimitError;
+        defaultDelay = rateLimitError.millisecondsUntilReset;
+      }
     }
 
-    let delay = calculateNextRetryDelay(retry, execution.attempt.number);
-
-    if (
-      delay &&
-      error instanceof Error &&
-      error.name === "TriggerApiError" &&
-      (error as ApiError).status === 429
-    ) {
-      const rateLimitError = error as RateLimitError;
-
-      delay = rateLimitError.millisecondsUntilReset;
-    }
-
+    // Check if retries are enabled in dev environment
     if (
       execution.environment.type === "DEVELOPMENT" &&
       typeof retriesConfig?.enabledInDev === "boolean" &&
@@ -724,72 +729,53 @@ export class TaskExecutor {
     return this._tracer.startActiveSpan(
       "handleError()",
       async (span) => {
-        const handleErrorResult = this.task.fns.handleError
-          ? await this.task.fns.handleError(payload, error, {
-              ctx,
-              init,
-              retry,
-              retryDelayInMs: delay,
-              retryAt: delay ? new Date(Date.now() + delay) : undefined,
-              signal,
-            })
-          : this._handleErrorFn
-          ? await this._handleErrorFn(payload, error, {
-              ctx,
-              init,
-              retry,
-              retryDelayInMs: delay,
-              retryAt: delay ? new Date(Date.now() + delay) : undefined,
-              signal,
-            })
-          : undefined;
+        // Try task-specific catch error hook first
+        const taskCatchErrorHook = lifecycleHooks.getTaskCatchErrorHook(this.task.id);
+        if (taskCatchErrorHook) {
+          const result = await taskCatchErrorHook({
+            payload,
+            error,
+            ctx,
+            init,
+            retry,
+            retryDelayInMs: defaultDelay,
+            retryAt: defaultDelay ? new Date(Date.now() + defaultDelay) : undefined,
+            signal,
+            task: this.task.id,
+          });
 
-        // If handleErrorResult
-        if (!handleErrorResult) {
-          return typeof delay === "undefined"
-            ? { status: "noop" }
-            : { status: "retry", retry: { timestamp: Date.now() + delay, delay } };
+          if (result) {
+            return this.#processHandleErrorResult(result, execution.attempt.number, defaultDelay);
+          }
         }
 
-        if (handleErrorResult.skipRetrying) {
-          return { status: "skipped", error: handleErrorResult.error };
+        // Try global catch error hooks in order
+        const globalCatchErrorHooks = lifecycleHooks.getGlobalCatchErrorHooks();
+        for (const hook of globalCatchErrorHooks) {
+          const result = await hook.fn({
+            payload,
+            error,
+            ctx,
+            init,
+            retry,
+            retryDelayInMs: defaultDelay,
+            retryAt: defaultDelay ? new Date(Date.now() + defaultDelay) : undefined,
+            signal,
+            task: this.task.id,
+          });
+
+          if (result) {
+            return this.#processHandleErrorResult(result, execution.attempt.number, defaultDelay);
+          }
         }
 
-        if (typeof handleErrorResult.retryAt !== "undefined") {
-          return {
-            status: "retry",
-            retry: {
-              timestamp: handleErrorResult.retryAt.getTime(),
-              delay: handleErrorResult.retryAt.getTime() - Date.now(),
-            },
-            error: handleErrorResult.error,
-          };
-        }
-
-        if (typeof handleErrorResult.retryDelayInMs === "number") {
-          return {
-            status: "retry",
-            retry: {
-              timestamp: Date.now() + handleErrorResult.retryDelayInMs,
-              delay: handleErrorResult.retryDelayInMs,
-            },
-            error: handleErrorResult.error,
-          };
-        }
-
-        if (handleErrorResult.retry && typeof handleErrorResult.retry === "object") {
-          const delay = calculateNextRetryDelay(handleErrorResult.retry, execution.attempt.number);
-
-          return typeof delay === "undefined"
-            ? { status: "noop", error: handleErrorResult.error }
-            : {
-                status: "retry",
-                retry: { timestamp: Date.now() + delay, delay },
-                error: handleErrorResult.error,
-              };
-        }
-
-        return { status: "noop", error: handleErrorResult.error };
+        // If no hooks handled the error, use default retry behavior
+        return typeof defaultDelay === "undefined"
+          ? { status: "noop" as const }
+          : {
+              status: "retry" as const,
+              retry: { timestamp: Date.now() + defaultDelay, delay: defaultDelay },
+            };
       },
       {
         attributes: {
@@ -797,6 +783,56 @@ export class TaskExecutor {
         },
       }
     );
+  }
+
+  // Helper method to process handle error results
+  #processHandleErrorResult(
+    result: HandleErrorModificationOptions,
+    attemptNumber: number,
+    defaultDelay?: number
+  ):
+    | { status: "retry"; retry: TaskRunExecutionRetry; error?: unknown }
+    | { status: "skipped"; error?: unknown }
+    | { status: "noop"; error?: unknown } {
+    if (result.skipRetrying) {
+      return { status: "skipped", error: result.error };
+    }
+
+    if (typeof result.retryAt !== "undefined") {
+      return {
+        status: "retry",
+        retry: {
+          timestamp: result.retryAt.getTime(),
+          delay: result.retryAt.getTime() - Date.now(),
+        },
+        error: result.error,
+      };
+    }
+
+    if (typeof result.retryDelayInMs === "number") {
+      return {
+        status: "retry",
+        retry: {
+          timestamp: Date.now() + result.retryDelayInMs,
+          delay: result.retryDelayInMs,
+        },
+        error: result.error,
+      };
+    }
+
+    if (result.retry && typeof result.retry === "object") {
+      const delay = calculateNextRetryDelay(result.retry, attemptNumber);
+
+      return typeof delay === "undefined"
+        ? { status: "noop", error: result.error }
+        : {
+            status: "retry",
+            retry: { timestamp: Date.now() + delay, delay },
+            error: result.error,
+          };
+    }
+
+    return { status: "noop", error: result.error };
   }
 
   async #callOnCompleteFunctions(
