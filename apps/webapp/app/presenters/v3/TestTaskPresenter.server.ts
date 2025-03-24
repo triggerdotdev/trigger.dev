@@ -21,7 +21,6 @@ type Task = {
   id: string;
   taskIdentifier: string;
   filePath: string;
-  exportName: string;
   friendlyId: string;
 };
 
@@ -151,7 +150,6 @@ export class TestTaskPresenter {
       id: task.id,
       taskIdentifier: task.slug,
       filePath: task.filePath,
-      exportName: task.exportName,
       friendlyId: task.friendlyId,
     };
 

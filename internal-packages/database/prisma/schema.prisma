@@ -164,6 +164,7 @@ model Organization {
   organizationIntegrations OrganizationIntegration[]
   workerGroups             WorkerInstanceGroup[]
   workerInstances          WorkerInstance[]
+  executionSnapshots       TaskRunExecutionSnapshot[]
 }
 
 model ExternalAccount {
@@ -382,7 +383,8 @@ model RuntimeEnvironment {
   ///A memorable code for the environment
   shortcode String
 
-  maximumConcurrencyLimit Int @default(5)
+  maximumConcurrencyLimit Int     @default(5)
+  paused                  Boolean @default(false)
 
   autoEnableInternalSources Boolean @default(true)
 
@@ -503,6 +505,7 @@ model Project {
   waitpoints             Waitpoint[]
   taskRunWaitpoints      TaskRunWaitpoint[]
   taskRunCheckpoints     TaskRunCheckpoint[]
+  executionSnapshots     TaskRunExecutionSnapshot[]
 }
 
 enum ProjectVersion {
@@ -1611,6 +1614,7 @@ model BackgroundWorker {
   attempts   TaskRunAttempt[]
   lockedRuns TaskRun[]
   files      BackgroundWorkerFile[]
+  queues     TaskQueue[]
 
   deployment WorkerDeployment?
 
@@ -1653,7 +1657,7 @@ model BackgroundWorkerTask {
   friendlyId String @unique
 
   filePath   String
-  exportName String
+  exportName String?
 
   worker   BackgroundWorker @relation(fields: [workerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   workerId String
@@ -1676,6 +1680,9 @@ model BackgroundWorkerTask {
   queueConfig   Json?
   retryConfig   Json?
   machineConfig Json?
+
+  queueId String?
+  queue   TaskQueue? @relation(fields: [queueId], references: [id], onDelete: SetNull, onUpdate: Cascade)
 
   maxDurationInSeconds Int?
 
@@ -1700,7 +1707,8 @@ model TaskRun {
 
   engine RunEngineVersion @default(V1)
 
-  status TaskRunStatus @default(PENDING)
+  status       TaskRunStatus @default(PENDING)
+  statusReason String?
 
   idempotencyKey          String?
   idempotencyKeyExpiresAt DateTime?
@@ -1723,7 +1731,9 @@ model TaskRun {
   projectId String
 
   // The specific queue this run is in
-  queue String
+  queue         String
+  // The queueId is set when the run is locked to a specific queue
+  lockedQueueId String?
 
   /// The main queue that this run is part of
   masterQueue          String  @default("main")
@@ -1894,7 +1904,10 @@ enum TaskRunStatus {
   /// Task is waiting to be executed by a worker
   PENDING
 
-  /// Task hasn't been deployed yet but is waiting to be executed
+  /// The run is pending a version update because it cannot execute without additional information (task, queue, etc.). Replaces WAITING_FOR_DEPLOY
+  PENDING_VERSION
+
+  /// Task hasn't been deployed yet but is waiting to be executed. Deprecated in favor of PENDING_VERSION
   WAITING_FOR_DEPLOY
 
   /// Task is currently being executed by a worker
@@ -1964,6 +1977,9 @@ model TaskRunExecutionSnapshot {
   isValid Boolean @default(true)
   error   String?
 
+  /// The previous snapshot ID
+  previousSnapshotId String?
+
   /// Run
   runId     String
   run       TaskRun       @relation(fields: [runId], references: [id])
@@ -1980,6 +1996,12 @@ model TaskRunExecutionSnapshot {
   environmentId   String
   environment     RuntimeEnvironment     @relation(fields: [environmentId], references: [id])
   environmentType RuntimeEnvironmentType
+
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id])
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
 
   /// Waitpoints that have been completed for this execution
   completedWaitpoints Waitpoint[] @relation("completedWaitpoints")
@@ -2002,6 +2024,9 @@ model TaskRunExecutionSnapshot {
 
   lastHeartbeatAt DateTime?
 
+  /// Metadata used by various systems in the run engine
+  metadata Json?
+
   /// Used to get the latest valid snapshot quickly
   @@index([runId, isValid, createdAt(sort: Desc)])
 }
@@ -2011,6 +2036,8 @@ enum TaskRunExecutionStatus {
   RUN_CREATED
   /// Run is in the RunQueue
   QUEUED
+  /// Run is in the RunQueue, and is also executing. This happens when a run is continued cannot reacquire concurrency
+  QUEUED_EXECUTING
   /// Run has been pulled from the queue, but isn't executing yet
   PENDING_EXECUTING
   /// Run is executing on a worker
@@ -2514,6 +2541,9 @@ model TaskQueue {
   name String
   type TaskQueueType @default(VIRTUAL)
 
+  version       TaskQueueVersion @default(V1)
+  orderableName String?
+
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   projectId String
 
@@ -2523,10 +2553,17 @@ model TaskQueue {
   concurrencyLimit Int?
   rateLimit        Json?
 
+  paused Boolean @default(false)
+
+  /// If true, when a run is paused and waiting for waitpoints to be completed, the run will release the concurrency capacity.
+  releaseConcurrencyOnWaitpoint Boolean @default(false)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   attempts TaskRunAttempt[]
+  tasks    BackgroundWorkerTask[]
+  workers  BackgroundWorker[]
 
   @@unique([runtimeEnvironmentId, name])
 }
@@ -2534,6 +2571,11 @@ model TaskQueue {
 enum TaskQueueType {
   VIRTUAL
   NAMED
+}
+
+enum TaskQueueVersion {
+  V1
+  V2
 }
 
 model BatchTaskRun {

@@ -22,7 +22,12 @@ export const parentTask = task({
   id: "parent",
   run: async (payload: any, { ctx }) => {
     logger.log("Hello, world from the parent", { payload });
-    await childTask.triggerAndWait({ message: "Hello, world!" });
+    await childTask.triggerAndWait(
+      { message: "Hello, world!" },
+      {
+        releaseConcurrency: true,
+      }
+    );
   },
 });
 
@@ -131,5 +136,12 @@ export const batchTask = task({
       batchCount: payload.count,
       results,
     };
+  },
+});
+
+const nonExportedTask = task({
+  id: "non-exported",
+  run: async (payload: { message: string }, { ctx }) => {
+    logger.info("Hello, world from the non-exported task", { message: payload.message });
   },
 });

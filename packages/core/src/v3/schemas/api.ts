@@ -1,15 +1,8 @@
-import { coerce, date, z } from "zod";
+import { z } from "zod";
 import { DeserializedJsonSchema } from "../../schemas/json.js";
-import {
-  FlushedRunMetadata,
-  MachinePresetName,
-  RunMetadataChangeOperation,
-  SerializedError,
-  TaskRunError,
-} from "./common.js";
+import { FlushedRunMetadata, MachinePresetName, SerializedError, TaskRunError } from "./common.js";
 import { BackgroundWorkerMetadata } from "./resources.js";
-import { QueueOptions } from "./schemas.js";
-import { DequeuedMessage, MachineResources, WaitpointStatus } from "./runEngine.js";
+import { DequeuedMessage, MachineResources } from "./runEngine.js";
 
 export const RunEngineVersion = z.union([z.literal("V1"), z.literal("V2")]);
 
@@ -104,7 +97,13 @@ export const TriggerTaskRequestBody = z.object({
        */
       lockToVersion: z.string().optional(),
 
-      queue: QueueOptions.optional(),
+      queue: z
+        .object({
+          name: z.string(),
+          // @deprecated, this is now specified on the queue
+          concurrencyLimit: z.number().int().optional(),
+        })
+        .optional(),
       concurrencyKey: z.string().optional(),
       delay: z.string().or(z.coerce.date()).optional(),
       idempotencyKey: z.string().optional(),
@@ -119,6 +118,7 @@ export const TriggerTaskRequestBody = z.object({
       test: z.boolean().optional(),
       ttl: z.string().or(z.number().nonnegative().int()).optional(),
       priority: z.number().optional(),
+      releaseConcurrency: z.boolean().optional(),
     })
     .optional(),
 });
@@ -157,7 +157,11 @@ export const BatchTriggerTaskItem = z.object({
       metadataType: z.string().optional(),
       parentAttempt: z.string().optional(),
       payloadType: z.string().optional(),
-      queue: QueueOptions.optional(),
+      queue: z
+        .object({
+          name: z.string(),
+        })
+        .optional(),
       tags: RunTags.optional(),
       test: z.boolean().optional(),
       ttl: z.string().or(z.number().nonnegative().int()).optional(),
@@ -375,7 +379,7 @@ export const GetDeploymentResponseBody = z.object({
           id: z.string(),
           slug: z.string(),
           filePath: z.string(),
-          exportName: z.string(),
+          exportName: z.string().optional(),
         })
       ),
     })
@@ -605,6 +609,8 @@ export const TimezonesResult = z.object({
 export type TimezonesResult = z.infer<typeof TimezonesResult>;
 
 export const RunStatus = z.enum([
+  /// Task is waiting for a version update because it cannot execute without additional information (task, queue, etc.). Replaces WAITING_FOR_DEPLOY
+  "PENDING_VERSION",
   /// Task hasn't been deployed yet but is waiting to be executed
   "WAITING_FOR_DEPLOY",
   /// Task is waiting to be executed by a worker
@@ -956,6 +962,9 @@ export const WaitForDurationRequestBody = z.object({
    * This means after that time if you pass the same idempotency key again, you will get a new waitpoint.
    */
   idempotencyKeyTTL: z.string().optional(),
+
+  releaseConcurrency: z.boolean().optional(),
+
   date: z.coerce.date(),
 });
 export type WaitForDurationRequestBody = z.infer<typeof WaitForDurationRequestBody>;

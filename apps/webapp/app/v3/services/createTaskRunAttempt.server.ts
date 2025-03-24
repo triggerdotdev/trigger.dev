@@ -192,7 +192,7 @@ export class CreateTaskRunAttemptService extends BaseService {
         task: {
           id: lockedBy.slug,
           filePath: lockedBy.filePath,
-          exportName: lockedBy.exportName,
+          exportName: lockedBy.exportName ?? "@deprecated",
         },
         attempt: {
           id: taskRunAttempt.friendlyId,

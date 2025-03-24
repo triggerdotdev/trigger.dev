@@ -10,7 +10,7 @@ export interface TestCaseRun {
   task: {
     id: string;
     filePath: string;
-    exportName: string;
+    exportName?: string;
   };
   payload: string;
   payloadType?: string;
@@ -59,7 +59,6 @@ export const fixturesConfig: TestCase[] = [
         {
           id: "helloWorld",
           filePath: "src/trigger/helloWorld.ts",
-          exportName: "helloWorld",
         },
       ],
     },
@@ -93,13 +92,12 @@ export const fixturesConfig: TestCase[] = [
         {
           id: "ai",
           filePath: "src/trigger/ai.ts",
-          exportName: "aiTask",
         },
       ],
     },
     runs: [
       {
-        task: { id: "ai", filePath: "src/trigger/ai.ts", exportName: "aiTask" },
+        task: { id: "ai", filePath: "src/trigger/ai.ts" },
         payload: '{"prompt":"be funny"}',
         result: { ok: true, durationMs: 1 },
       },
@@ -126,17 +124,12 @@ export const fixturesConfig: TestCase[] = [
         {
           id: "decoratorsTask",
           filePath: "src/trigger/decorators.ts",
-          exportName: "decoratorsTask",
         },
       ],
     },
     runs: [
       {
-        task: {
-          id: "decoratorsTask",
-          filePath: "src/trigger/decorators.ts",
-          exportName: "decoratorsTask",
-        },
+        task: { id: "decoratorsTask", filePath: "src/trigger/decorators.ts" },
         payload: "{}",
         result: { ok: true, durationMs: 1 },
       },
@@ -162,13 +155,12 @@ export const fixturesConfig: TestCase[] = [
         {
           id: "react-email",
           filePath: "src/reactEmail.tsx",
-          exportName: "reactEmail",
         },
       ],
     },
     runs: [
       {
-        task: { id: "react-email", filePath: "src/reactEmail.tsx", exportName: "reactEmail" },
+        task: { id: "react-email", filePath: "src/reactEmail.tsx" },
         payload: "{}",
         result: {
           ok: true,
@@ -200,13 +192,12 @@ export const fixturesConfig: TestCase[] = [
         {
           id: "helloWorld",
           filePath: "src/trigger/helloWorld.ts",
-          exportName: "helloWorld",
         },
       ],
     },
     runs: [
       {
-        task: { id: "helloWorld", filePath: "src/trigger/helloWorld.ts", exportName: "helloWorld" },
+        task: { id: "helloWorld", filePath: "src/trigger/helloWorld.ts" },
         payload: "{}",
         result: { ok: true, durationMs: 1 },
       },

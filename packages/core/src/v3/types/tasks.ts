@@ -9,23 +9,15 @@ import {
   TaskMetadata,
   TaskRunContext,
 } from "../schemas/index.js";
-import { QueueOptions } from "../schemas/schemas.js";
 import { IdempotencyKey } from "./idempotencyKeys.js";
 import { AnySchemaParseFn, inferSchemaIn, inferSchemaOut, Schema } from "./schemas.js";
 import { Prettify } from "./utils.js";
 import { inferToolParameters, ToolTaskParameters } from "./tools.js";
+import { QueueOptions } from "./queues.js";
 
-type RequireOne<T, K extends keyof T> = {
-  [X in Exclude<keyof T, K>]?: T[X];
-} & {
-  [P in K]-?: T[P];
-};
-
-export type Queue = RequireOne<QueueOptions, "name">;
+export type Queue = QueueOptions;
 export type TaskSchema = Schema;
 export type { inferSchemaIn } from "./schemas.js";
-
-type TaskRunConcurrencyOptions = Queue;
 
 export class SubtaskUnwrapError extends Error {
   public readonly taskId: string;
@@ -201,7 +193,10 @@ type CommonTaskOptions<
     });
    * ```
    */
-  queue?: QueueOptions;
+  queue?: {
+    name?: string;
+    concurrencyLimit?: number;
+  };
   /** Configure the spec of the [machine](https://trigger.dev/docs/machines) you want your task to run on.
    *
    * @example
@@ -712,10 +707,9 @@ export type TriggerOptions = {
   maxAttempts?: number;
 
   /**
-   * You can override the queue for the task. If a queue doesn't exist for the given name, it will be created.
-   * Setting the `concurrencyLimit` here will modify the limit for this queue everywhere it's used.
+   * You can override the queue for the task. If a queue doesn't exist for the given name, the run will be in the PENDING_VERSION state until the queue is created..
    */
-  queue?: TaskRunConcurrencyOptions;
+  queue?: string;
 
   /**
    * The `concurrencyKey` creates a copy of the queue for every unique value of the key.
@@ -824,8 +818,16 @@ export type TriggerOptions = {
   version?: string;
 };
 
-export type TriggerAndWaitOptions = Omit<TriggerOptions, "version">;
-
+export type TriggerAndWaitOptions = Omit<TriggerOptions, "version"> & {
+  /**
+   * If set to true, this will cause the waitpoint to release the current run from the queue's concurrency.
+   *
+   * This is useful if you want to allow other runs to execute while the child task is executing
+   *
+   * @default false
+   */
+  releaseConcurrency?: boolean;
+};
 export type BatchTriggerOptions = {
   /**
    * If no idempotencyKey is set on an individual item in the batch, it will use this key on each item + the array index.

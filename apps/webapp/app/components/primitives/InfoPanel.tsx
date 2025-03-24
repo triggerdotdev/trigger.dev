@@ -1,7 +1,7 @@
 import { cn } from "~/utils/cn";
-import { LinkButton } from "./Buttons";
 import { Header2 } from "./Headers";
 import { Paragraph } from "./Paragraph";
+import { type ReactNode } from "react";
 
 const variants = {
   info: {
@@ -20,8 +20,7 @@ type InfoPanelVariant = keyof typeof variants;
 type Props = {
   title?: string;
   children: React.ReactNode;
-  to?: string;
-  buttonLabel?: string;
+  accessory?: ReactNode;
   icon: React.ComponentType<any>;
   iconClassName?: string;
   variant?: InfoPanelVariant;
@@ -31,8 +30,7 @@ type Props = {
 export function InfoPanel({
   title,
   children,
-  to,
-  buttonLabel,
+  accessory,
   icon,
   iconClassName,
   variant = "info",
@@ -50,14 +48,10 @@ export function InfoPanel({
         panelClassName
       )}
     >
-      <div className={cn("flex items-center gap-2", to ? "w-full justify-between" : "")}>
+      <div className={cn("flex items-center gap-2", accessory ? "w-full justify-between" : "")}>
         <Icon className={cn("size-5", iconClassName)} />
 
-        {to && (
-          <LinkButton to={to} variant="secondary/small">
-            {buttonLabel}
-          </LinkButton>
-        )}
+        {accessory}
       </div>
       <div className="flex flex-col gap-1">
         {title && <Header2 className="text-text-bright">{title}</Header2>}

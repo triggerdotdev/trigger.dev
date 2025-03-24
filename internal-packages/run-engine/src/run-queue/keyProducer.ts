@@ -1,5 +1,5 @@
 import { MinimalAuthenticatedEnvironment } from "../shared/index.js";
-import { EnvDescriptor, RunQueueKeyProducer } from "./types.js";
+import { EnvDescriptor, QueueDescriptor, RunQueueKeyProducer } from "./types.js";
 
 const constants = {
   CURRENT_CONCURRENCY_PART: "currentConcurrency",
@@ -12,7 +12,7 @@ const constants = {
   CONCURRENCY_KEY_PART: "ck",
   TASK_PART: "task",
   MESSAGE_PART: "message",
-  RESERVE_CONCURRENCY_PART: "reserveConcurrency",
+  DEAD_LETTER_QUEUE_PART: "deadLetter",
 } as const;
 
 export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
@@ -110,8 +110,13 @@ export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
   }
 
   envConcurrencyLimitKeyFromQueue(queue: string) {
-    const { orgId, envId } = this.descriptorFromQueue(queue);
-    return `{${constants.ORG_PART}:${orgId}}:${constants.ENV_PART}:${envId}:${constants.CONCURRENCY_LIMIT_PART}`;
+    const { orgId, projectId, envId } = this.descriptorFromQueue(queue);
+
+    return this.envConcurrencyLimitKey({
+      orgId,
+      projectId,
+      envId,
+    });
   }
 
   envCurrentConcurrencyKeyFromQueue(queue: string) {
@@ -146,67 +151,6 @@ export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
     }
   }
 
-  envReserveConcurrencyKey(env: EnvDescriptor): string;
-  envReserveConcurrencyKey(env: MinimalAuthenticatedEnvironment): string;
-  envReserveConcurrencyKey(
-    envOrDescriptor: EnvDescriptor | MinimalAuthenticatedEnvironment
-  ): string {
-    if ("id" in envOrDescriptor) {
-      return [
-        this.orgKeySection(envOrDescriptor.organization.id),
-        this.projKeySection(envOrDescriptor.project.id),
-        this.envKeySection(envOrDescriptor.id),
-        constants.RESERVE_CONCURRENCY_PART,
-      ].join(":");
-    } else {
-      return [
-        this.orgKeySection(envOrDescriptor.orgId),
-        this.projKeySection(envOrDescriptor.projectId),
-        this.envKeySection(envOrDescriptor.envId),
-        constants.RESERVE_CONCURRENCY_PART,
-      ].join(":");
-    }
-  }
-
-  taskIdentifierCurrentConcurrencyKeyPrefixFromQueue(queue: string) {
-    const { orgId, projectId } = this.descriptorFromQueue(queue);
-
-    return `${[this.orgKeySection(orgId), this.projKeySection(projectId), constants.TASK_PART]
-      .filter(Boolean)
-      .join(":")}:`;
-  }
-
-  taskIdentifierCurrentConcurrencyKeyFromQueue(queue: string, taskIdentifier: string) {
-    return `${this.taskIdentifierCurrentConcurrencyKeyPrefixFromQueue(queue)}${taskIdentifier}`;
-  }
-
-  taskIdentifierCurrentConcurrencyKey(
-    env: MinimalAuthenticatedEnvironment,
-    taskIdentifier: string
-  ): string {
-    return [
-      this.orgKeySection(env.organization.id),
-      this.projKeySection(env.project.id),
-      constants.TASK_PART,
-      taskIdentifier,
-    ].join(":");
-  }
-
-  projectCurrentConcurrencyKey(env: MinimalAuthenticatedEnvironment): string {
-    return [
-      this.orgKeySection(env.organization.id),
-      this.projKeySection(env.project.id),
-      constants.CURRENT_CONCURRENCY_PART,
-    ].join(":");
-  }
-
-  projectCurrentConcurrencyKeyFromQueue(queue: string): string {
-    const { orgId, projectId } = this.descriptorFromQueue(queue);
-    return `${this.orgKeySection(orgId)}:${this.projKeySection(projectId)}:${
-      constants.CURRENT_CONCURRENCY_PART
-    }`;
-  }
-
   messageKeyPrefixFromQueue(queue: string) {
     const { orgId } = this.descriptorFromQueue(queue);
     return `${this.orgKeySection(orgId)}:${constants.MESSAGE_PART}:`;
@@ -230,7 +174,32 @@ export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
     return this.descriptorFromQueue(queue).projectId;
   }
 
-  descriptorFromQueue(queue: string) {
+  deadLetterQueueKey(env: MinimalAuthenticatedEnvironment): string;
+  deadLetterQueueKey(env: EnvDescriptor): string;
+  deadLetterQueueKey(envOrDescriptor: EnvDescriptor | MinimalAuthenticatedEnvironment): string {
+    if ("id" in envOrDescriptor) {
+      return [
+        this.orgKeySection(envOrDescriptor.organization.id),
+        this.projKeySection(envOrDescriptor.project.id),
+        this.envKeySection(envOrDescriptor.id),
+        constants.DEAD_LETTER_QUEUE_PART,
+      ].join(":");
+    } else {
+      return [
+        this.orgKeySection(envOrDescriptor.orgId),
+        this.projKeySection(envOrDescriptor.projectId),
+        this.envKeySection(envOrDescriptor.envId),
+        constants.DEAD_LETTER_QUEUE_PART,
+      ].join(":");
+    }
+  }
+  deadLetterQueueKeyFromQueue(queue: string): string {
+    const descriptor = this.descriptorFromQueue(queue);
+
+    return this.deadLetterQueueKey(descriptor);
+  }
+
+  descriptorFromQueue(queue: string): QueueDescriptor {
     const parts = queue.split(":");
     return {
       orgId: parts[1].replace("{", "").replace("}", ""),

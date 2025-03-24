@@ -6,10 +6,15 @@ import {
   ClockIcon,
   PlusIcon,
   RectangleGroupIcon,
+  RectangleStackIcon,
   ServerStackIcon,
   Squares2X2Icon,
 } from "@heroicons/react/20/solid";
+import { useLocation } from "react-use";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
+import { useEnvironment } from "~/hooks/useEnvironment";
+import { useOrganization } from "~/hooks/useOrganizations";
+import { useProject } from "~/hooks/useProject";
 import { type MinimumEnvironment } from "~/presenters/SelectBestEnvironmentPresenter.server";
 import {
   docsPath,
@@ -21,20 +26,15 @@ import {
 import { InlineCode } from "./code/InlineCode";
 import { environmentFullTitle } from "./environments/EnvironmentLabel";
 import { Feedback } from "./Feedback";
+import { EnvironmentSelector } from "./navigation/EnvironmentSelector";
 import { Button, LinkButton } from "./primitives/Buttons";
 import { Header1 } from "./primitives/Headers";
 import { InfoPanel } from "./primitives/InfoPanel";
 import { Paragraph } from "./primitives/Paragraph";
 import { StepNumber } from "./primitives/StepNumber";
+import { TextLink } from "./primitives/TextLink";
 import { InitCommandV3, PackageManagerProvider, TriggerDevStepV3 } from "./SetupCommands";
 import { StepContentContainer } from "./StepContentContainer";
-import { useLocation } from "react-use";
-import { useEnvironment } from "~/hooks/useEnvironment";
-import { useOrganization } from "~/hooks/useOrganizations";
-import { useProject } from "~/hooks/useProject";
-import { TextLink } from "./primitives/TextLink";
-import { EnvironmentSelector } from "./navigation/EnvironmentSelector";
-import { Pi } from "lucide-react";
 
 export function HasNoTasksDev() {
   return (
@@ -78,20 +78,24 @@ export function HasNoTasksDev() {
 export function HasNoTasksDeployed({ environment }: { environment: MinimumEnvironment }) {
   return (
     <InfoPanel
-      title="You don't have any deployed tasks"
+      title={`You don't have any deployed tasks in ${environmentFullTitle(environment)}`}
       icon={TaskIcon}
       iconClassName="text-blue-500"
+      panelClassName="max-w-full"
+      accessory={
+        <LinkButton
+          to={docsPath("deployment/overview")}
+          variant="docs/small"
+          LeadingIcon={BookOpenIcon}
+        >
+          How to deploy tasks
+        </LinkButton>
+      }
     >
       <Paragraph spacing variant="small">
-        You don't have any deployed tasks in {environmentFullTitle(environment)}.
+        Run the <TextLink to={docsPath("deployment/overview")}>CLI deploy command</TextLink> to
+        deploy your tasks to the {environmentFullTitle(environment)} environment.
       </Paragraph>
-      <LinkButton
-        to={docsPath("deployment/overview")}
-        variant="docs/medium"
-        LeadingIcon={BookOpenIcon}
-      >
-        How to deploy tasks
-      </LinkButton>
     </InfoPanel>
   );
 }
@@ -103,18 +107,20 @@ export function SchedulesNoPossibleTaskPanel() {
       icon={ClockIcon}
       iconClassName="text-sun-500"
       panelClassName="max-w-full"
+      accessory={
+        <LinkButton
+          to={docsPath("v3/tasks-scheduled")}
+          variant="docs/small"
+          LeadingIcon={BookOpenIcon}
+        >
+          How to schedule tasks
+        </LinkButton>
+      }
     >
       <Paragraph spacing variant="small">
         You have no scheduled tasks in your project. Before you can schedule a task you need to
         create a <InlineCode>schedules.task</InlineCode>.
       </Paragraph>
-      <LinkButton
-        to={docsPath("v3/tasks-scheduled")}
-        variant="docs/medium"
-        LeadingIcon={BookOpenIcon}
-      >
-        View the docs
-      </LinkButton>
     </InfoPanel>
   );
 }
@@ -139,15 +145,16 @@ export function SchedulesNoneAttached() {
       <div className="flex gap-2">
         <LinkButton
           to={`${v3NewSchedulePath(organization, project, environment)}${location.search}`}
-          variant="primary/small"
+          variant="secondary/medium"
           LeadingIcon={RectangleGroupIcon}
           className="inline-flex"
+          leadingIconClassName="text-sun-500"
         >
           Use the dashboard
         </LinkButton>
         <LinkButton
           to={docsPath("v3/tasks-scheduled")}
-          variant="primary/small"
+          variant="docs/medium"
           LeadingIcon={BookOpenIcon}
           className="inline-flex"
         >
@@ -165,14 +172,16 @@ export function BatchesNone() {
       icon={Squares2X2Icon}
       iconClassName="text-blue-500"
       panelClassName="max-w-full"
+      accessory={
+        <LinkButton to={docsPath("triggering")} variant="docs/small" LeadingIcon={BookOpenIcon}>
+          How to trigger batches
+        </LinkButton>
+      }
     >
       <Paragraph spacing variant="small">
         You have no batches in this environment. You can trigger batches from your backend or from
         inside other tasks.
       </Paragraph>
-      <LinkButton to={docsPath("triggering")} variant="docs/medium" LeadingIcon={BookOpenIcon}>
-        How to trigger batches
-      </LinkButton>
     </InfoPanel>
   );
 }
@@ -181,23 +190,27 @@ export function TestHasNoTasks() {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
-
   return (
     <InfoPanel
-      title="No tasks to test"
+      title="You don't have any tasks to test"
       icon={BeakerIcon}
       iconClassName="text-lime-500"
       panelClassName="max-w-full"
+      accessory={
+        <LinkButton
+          to={v3EnvironmentPath(organization, project, environment)}
+          variant="secondary/small"
+          LeadingIcon={PlusIcon}
+        >
+          Create a task
+        </LinkButton>
+      }
     >
       <Paragraph spacing variant="small">
-        You have no tasks in this environment.
+        Before testing a task, you must first create one. Follow the instructions on the{" "}
+        <TextLink to={v3EnvironmentPath(organization, project, environment)}>Tasks page</TextLink>{" "}
+        to create a task, then return here to test it.
       </Paragraph>
-      <LinkButton
-        to={v3EnvironmentPath(organization, project, environment)}
-        variant="tertiary/medium"
-      >
-        Add tasks
-      </LinkButton>
     </InfoPanel>
   );
 }
@@ -345,7 +358,15 @@ export function AlertsNoneDeployed() {
           and webhooks.
         </Paragraph>
 
-        <div className="flex gap-3">
+        <div className="flex items-center justify-between gap-3">
+          <LinkButton
+            to={docsPath("troubleshooting-alerts")}
+            variant="docs/medium"
+            LeadingIcon={BookOpenIcon}
+            className="inline-flex"
+          >
+            Alerts docs
+          </LinkButton>
           <LinkButton
             to={v3NewProjectAlertPath(organization, project, environment)}
             variant="primary/medium"
@@ -354,49 +375,40 @@ export function AlertsNoneDeployed() {
           >
             New alert
           </LinkButton>
-          <LinkButton
-            to={docsPath("troubleshooting-alerts")}
-            variant="docs/medium"
-            LeadingIcon={BookOpenIcon}
-            className="inline-flex"
-          >
-            Alert docs
-          </LinkButton>
         </div>
       </InfoPanel>
     </div>
   );
 }
 
-function AlertsNoneProd() {
+export function QueuesHasNoTasks() {
+  const organization = useOrganization();
+  const project = useProject();
+  const environment = useEnvironment();
+
   return (
-    <div className="space-y-8">
-      <InfoPanel
-        icon={BellAlertIcon}
-        iconClassName="text-red-500"
-        title="Adding alerts"
-        panelClassName="max-w-full"
-      >
-        <Paragraph spacing variant="small">
-          You can get alerted when deployed runs fail.
-        </Paragraph>
-        <Paragraph spacing variant="small">
-          We don't support alerts in the Development environment. Switch to a deployed environment
-          to setup alerts.
-        </Paragraph>
-        <div className="flex gap-3">
-          <LinkButton
-            to={docsPath("troubleshooting-alerts")}
-            variant="docs/medium"
-            LeadingIcon={BookOpenIcon}
-            className="inline-flex"
-          >
-            How to setup alerts
-          </LinkButton>
-        </div>
-      </InfoPanel>
-      <SwitcherPanel />
-    </div>
+    <InfoPanel
+      title="You don't have any queues"
+      icon={RectangleStackIcon}
+      iconClassName="text-blue-500"
+      panelClassName="max-w-md"
+      accessory={
+        <LinkButton
+          to={v3EnvironmentPath(organization, project, environment)}
+          variant="secondary/small"
+          LeadingIcon={PlusIcon}
+        >
+          Create a task
+        </LinkButton>
+      }
+    >
+      <Paragraph spacing variant="small">
+        Queues will appear here when you have created a task in this environment. Follow the
+        instructions on the{" "}
+        <TextLink to={v3EnvironmentPath(organization, project, environment)}>Tasks page</TextLink>{" "}
+        to create a task, then return here to see its queue.
+      </Paragraph>
+    </InfoPanel>
   );
 }
 

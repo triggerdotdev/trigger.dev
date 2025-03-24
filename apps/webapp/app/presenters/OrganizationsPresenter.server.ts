@@ -75,6 +75,7 @@ export class OrganizationsPresenter {
             id: true,
             type: true,
             slug: true,
+            paused: true,
             orgMember: {
               select: {
                 userId: true,

@@ -76,7 +76,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       lockedBy: {
         select: {
           filePath: true,
-          exportName: true,
         },
       },
     },
@@ -150,7 +149,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     task: {
       id: run.taskIdentifier,
       filePath: run.lockedBy?.filePath,
-      exportName: run.lockedBy?.exportName,
+      exportName: "@deprecated",
     },
     run: {
       id: run.friendlyId,

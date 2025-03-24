@@ -1688,7 +1688,7 @@ class SharedQueueTasks {
       task: {
         id: backgroundWorkerTask.slug,
         filePath: backgroundWorkerTask.filePath,
-        exportName: backgroundWorkerTask.exportName,
+        exportName: backgroundWorkerTask.exportName ?? backgroundWorkerTask.slug,
       },
       attempt: {
         id: attempt.friendlyId,

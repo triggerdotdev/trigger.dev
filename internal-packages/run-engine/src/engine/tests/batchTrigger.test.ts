@@ -1,13 +1,10 @@
-import {
-  containerTest,
-  setupAuthenticatedEnvironment,
-  setupBackgroundWorker,
-} from "@internal/testcontainers";
+import { containerTest } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
 import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
 import { expect } from "vitest";
 import { RunEngine } from "../index.js";
 import { setTimeout } from "node:timers/promises";
+import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -50,7 +47,7 @@ describe("RunEngine batchTrigger", () => {
 
       //create background worker
       const backgroundWorker = await setupBackgroundWorker(
-        prisma,
+        engine,
         authenticatedEnvironment,
         taskIdentifier
       );
@@ -76,7 +73,7 @@ describe("RunEngine batchTrigger", () => {
           traceId: "t12345",
           spanId: "s12345",
           masterQueue: "main",
-          queueName: "task/test-task",
+          queue: "task/test-task",
           isTest: false,
           tags: [],
           batch: { id: batch.id, index: 0 },
@@ -97,7 +94,7 @@ describe("RunEngine batchTrigger", () => {
           traceId: "t12345",
           spanId: "s12345",
           masterQueue: "main",
-          queueName: "task/test-task",
+          queue: "task/test-task",
           isTest: false,
           tags: [],
           batch: { id: batch.id, index: 1 },

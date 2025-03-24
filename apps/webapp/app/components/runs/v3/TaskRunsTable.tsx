@@ -330,7 +330,9 @@ export function TaskRunsTable({
                 <TableCell to={path} className="w-[1%]" actionClassName="pr-0 tabular-nums">
                   <div className="flex items-center gap-1">
                     <RectangleStackIcon className="size-4 text-text-dimmed" />
-                    {run.startedAt ? (
+                    {run.isPending ? (
+                      "–"
+                    ) : run.startedAt ? (
                       formatDuration(new Date(run.createdAt), new Date(run.startedAt), {
                         style: "short",
                       })

@@ -21,7 +21,6 @@ import {
 } from "~/components/primitives/Table";
 import { DeploymentError } from "~/components/runs/v3/DeploymentError";
 import { DeploymentStatus } from "~/components/runs/v3/DeploymentStatus";
-import { TaskFunctionName } from "~/components/runs/v3/TaskPath";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -236,11 +235,6 @@ export default function Page() {
                       <TableRow key={t.slug}>
                         <TableCell>
                           <div className="inline-flex flex-col gap-0.5">
-                            <TaskFunctionName
-                              variant="extra-small"
-                              functionName={t.exportName}
-                              className="-ml-1 inline-flex"
-                            />
                             <Paragraph variant="extra-small" className="text-text-dimmed">
                               {t.slug}
                             </Paragraph>

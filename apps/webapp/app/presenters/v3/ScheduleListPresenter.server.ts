@@ -1,11 +1,11 @@
-import { Prisma, RuntimeEnvironmentType, ScheduleType } from "@trigger.dev/database";
-import { ScheduleListFilters } from "~/components/runs/v3/ScheduleFilters";
+import { Prisma, type RuntimeEnvironmentType, type ScheduleType } from "@trigger.dev/database";
+import { type ScheduleListFilters } from "~/components/runs/v3/ScheduleFilters";
 import { sqlDatabaseSchema } from "~/db.server";
 import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
-import { getCurrentPlan, getLimit, getLimits } from "~/services/platform.v3.server";
+import { getLimit } from "~/services/platform.v3.server";
+import { CheckScheduleService } from "~/v3/services/checkSchedule.server";
 import { calculateNextScheduledTimestamp } from "~/v3/utils/calculateNextSchedule.server";
 import { BasePresenter } from "./basePresenter.server";
-import { CheckScheduleService } from "~/v3/services/checkSchedule.server";
 
 type ScheduleListOptions = {
   projectId: string;
@@ -50,10 +50,7 @@ export class ScheduleListPresenter extends BasePresenter {
     pageSize = DEFAULT_PAGE_SIZE,
   }: ScheduleListOptions) {
     const hasFilters =
-      type !== undefined ||
-      tasks !== undefined ||
-      environments !== undefined ||
-      (search !== undefined && search !== "");
+      type !== undefined || tasks !== undefined || (search !== undefined && search !== "");
 
     const filterType =
       type === "declarative" ? "DECLARATIVE" : type === "imperative" ? "IMPERATIVE" : undefined;

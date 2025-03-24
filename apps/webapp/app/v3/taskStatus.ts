@@ -16,6 +16,7 @@ export type FINAL_RUN_STATUSES = (typeof FINAL_RUN_STATUSES)[number];
 export const NON_FINAL_RUN_STATUSES = [
   "DELAYED",
   "PENDING",
+  "PENDING_VERSION",
   "WAITING_FOR_DEPLOY",
   "EXECUTING",
   "WAITING_TO_RESUME",
@@ -24,6 +25,14 @@ export const NON_FINAL_RUN_STATUSES = [
 ] satisfies TaskRunStatus[];
 
 export type NON_FINAL_RUN_STATUSES = (typeof NON_FINAL_RUN_STATUSES)[number];
+
+export const PENDING_STATUSES = [
+  "PENDING",
+  "PENDING_VERSION",
+  "WAITING_FOR_DEPLOY",
+] satisfies TaskRunStatus[];
+
+export type PENDING_STATUSES = (typeof PENDING_STATUSES)[number];
 
 export const FINAL_ATTEMPT_STATUSES = [
   "FAILED",
@@ -89,6 +98,10 @@ export function isCancellableRunStatus(status: TaskRunStatus): boolean {
 }
 export function isCancellableAttemptStatus(status: TaskRunAttemptStatus): boolean {
   return CANCELLABLE_ATTEMPT_STATUSES.includes(status);
+}
+
+export function isPendingRunStatus(status: TaskRunStatus): boolean {
+  return PENDING_STATUSES.includes(status);
 }
 
 export function isCrashableRunStatus(status: TaskRunStatus): boolean {

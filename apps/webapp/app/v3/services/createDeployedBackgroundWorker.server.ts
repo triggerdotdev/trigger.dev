@@ -6,7 +6,7 @@ import { socketIo } from "../handleSocketIo.server";
 import { updateEnvConcurrencyLimits } from "../runQueue.server";
 import { PerformDeploymentAlertsService } from "./alerts/performDeploymentAlerts.server";
 import { BaseService } from "./baseService.server";
-import { createBackgroundTasks, syncDeclarativeSchedules } from "./createBackgroundWorker.server";
+import { createWorkerResources, syncDeclarativeSchedules } from "./createBackgroundWorker.server";
 import { ExecuteTasksWaitingForDeployService } from "./executeTasksWaitingForDeploy";
 import { projectPubSub } from "./projectPubSub.server";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
@@ -64,12 +64,7 @@ export class CreateDeployedBackgroundWorkerService extends BaseService {
       }
 
       try {
-        await createBackgroundTasks(
-          body.metadata.tasks,
-          backgroundWorker,
-          environment,
-          this._prisma
-        );
+        await createWorkerResources(body.metadata, backgroundWorker, environment, this._prisma);
         await syncDeclarativeSchedules(
           body.metadata.tasks,
           backgroundWorker,

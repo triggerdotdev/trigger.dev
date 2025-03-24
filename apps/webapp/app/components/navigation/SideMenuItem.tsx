@@ -56,7 +56,7 @@ export function SideMenuItem({
 
 export function MenuCount({ count }: { count: number | string }) {
   return (
-    <div className="rounded-full bg-charcoal-900 px-2 py-1 text-xxs uppercase tracking-wider text-text-dimmed">
+    <div className="rounded border border-charcoal-650 bg-background-dimmed/70 px-1.5 py-1 text-xxs uppercase tracking-wider text-text-dimmed">
       {count}
     </div>
   );

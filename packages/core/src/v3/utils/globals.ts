@@ -1,10 +1,9 @@
-import { DeserializedJson } from "../../schemas/json.js";
 import { ApiClientConfiguration } from "../apiClientManager/types.js";
 import { Clock } from "../clock/clock.js";
+import { ResourceCatalog } from "../resource-catalog/catalog.js";
 import { RunMetadataManager } from "../runMetadata/types.js";
 import type { RuntimeManager } from "../runtime/manager.js";
 import { RunTimelineMetricsManager } from "../runTimelineMetrics/types.js";
-import { TaskCatalog } from "../task-catalog/catalog.js";
 import { TaskContext } from "../taskContext/types.js";
 import { TimeoutManager } from "../timeout/types.js";
 import { UsageManager } from "../usage/types.js";
@@ -56,7 +55,7 @@ type TriggerDotDevGlobalAPI = {
   logger?: any;
   clock?: Clock;
   usage?: UsageManager;
-  ["task-catalog"]?: TaskCatalog;
+  ["resource-catalog"]?: ResourceCatalog;
   ["task-context"]?: TaskContext;
   ["api-client"]?: ApiClientConfiguration;
   ["run-metadata"]?: RunMetadataManager;

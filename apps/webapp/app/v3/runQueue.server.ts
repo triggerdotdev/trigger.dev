@@ -1,14 +1,22 @@
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { marqs } from "./marqs/index.server";
 import { engine } from "./runEngine.server";
 
 //This allows us to update MARQS and the RunQueue
 
 /** Updates MARQS and the RunQueue limits */
-export async function updateEnvConcurrencyLimits(environment: AuthenticatedEnvironment) {
+export async function updateEnvConcurrencyLimits(
+  environment: AuthenticatedEnvironment,
+  maximumConcurrencyLimit?: number
+) {
+  let updatedEnvironment = environment;
+  if (maximumConcurrencyLimit !== undefined) {
+    updatedEnvironment.maximumConcurrencyLimit = maximumConcurrencyLimit;
+  }
+
   await Promise.allSettled([
-    marqs?.updateEnvConcurrencyLimits(environment),
-    engine.runQueue.updateEnvConcurrencyLimits(environment),
+    marqs?.updateEnvConcurrencyLimits(updatedEnvironment),
+    engine.runQueue.updateEnvConcurrencyLimits(updatedEnvironment),
   ]);
 }
 

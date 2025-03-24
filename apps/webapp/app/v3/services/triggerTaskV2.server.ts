@@ -2,8 +2,10 @@ import { RunEngine, RunDuplicateIdempotencyKeyError } from "@internal/run-engine
 import {
   IOPacket,
   packetRequiresOffloading,
-  QueueOptions,
   SemanticInternalAttributes,
+  TaskRunError,
+  taskRunErrorEnhancer,
+  taskRunErrorToString,
   TriggerTaskRequestBody,
 } from "@trigger.dev/core/v3";
 import {
@@ -164,10 +166,10 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
                         index: options.batchIndex ?? 0,
                       }
                     : undefined,
-                  environmentId: environment.id,
                   projectId: environment.projectId,
                   organizationId: environment.organizationId,
                   tx: this._prisma,
+                  releaseConcurrency: body.options?.releaseConcurrency,
                 });
               }
             );
@@ -271,7 +273,7 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
             immediate: true,
           },
           async (event, traceContext, traceparent) => {
-            const run = await autoIncrementCounter.incrementInTransaction(
+            const result = await autoIncrementCounter.incrementInTransaction(
               `v3-run:${environment.id}:${taskId}`,
               async (num, tx) => {
                 const lockedToBackgroundWorker = body.options?.lockToVersion
@@ -340,8 +342,7 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
                     sdkVersion: lockedToBackgroundWorker?.sdkVersion,
                     cliVersion: lockedToBackgroundWorker?.cliVersion,
                     concurrencyKey: body.options?.concurrencyKey,
-                    queueName,
-                    queue: body.options?.queue,
+                    queue: queueName,
                     masterQueue: masterQueue,
                     isTest: body.options?.test ?? false,
                     delayUntil,
@@ -370,11 +371,18 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
                       : undefined,
                     machine: body.options?.machine,
                     priorityMs: body.options?.priority ? body.options.priority * 1_000 : undefined,
+                    releaseConcurrency: body.options?.releaseConcurrency,
                   },
                   this._prisma
                 );
 
-                return { run: taskRun, isCached: false };
+                const error = taskRun.error ? TaskRunError.parse(taskRun.error) : undefined;
+
+                if (error) {
+                  event.failWithError(error);
+                }
+
+                return { run: taskRun, error, isCached: false };
               },
               async (_, tx) => {
                 const counter = await tx.taskRunNumberCounter.findFirst({
@@ -390,7 +398,13 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
               this._prisma
             );
 
-            return run;
+            if (result?.error) {
+              throw new ServiceValidationError(
+                taskRunErrorToString(taskRunErrorEnhancer(result.error))
+              );
+            }
+
+            return result;
           }
         );
       } catch (error) {
@@ -476,6 +490,9 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
         workerId: worker.id,
         slug: taskId,
       },
+      include: {
+        queue: true,
+      },
     });
 
     if (!task) {
@@ -487,10 +504,8 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
       return defaultQueueName;
     }
 
-    const queueConfig = QueueOptions.optional().nullable().safeParse(task.queueConfig);
-
-    if (!queueConfig.success) {
-      console.log("Failed to get queue name: Invalid queue config", {
+    if (!task.queue) {
+      console.log("Failed to get queue name: No queue found", {
         taskId,
         environmentId: environment.id,
         queueConfig: task.queueConfig,
@@ -499,7 +514,7 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
       return defaultQueueName;
     }
 
-    return queueConfig.data?.name ?? defaultQueueName;
+    return task.queue.name ?? defaultQueueName;
   }
 
   async #handlePayloadPacket(

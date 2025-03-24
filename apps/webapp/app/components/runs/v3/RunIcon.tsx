@@ -2,6 +2,7 @@ import {
   ClockIcon,
   HandRaisedIcon,
   InformationCircleIcon,
+  RectangleStackIcon,
   Squares2X2Icon,
   TagIcon,
 } from "@heroicons/react/20/solid";
@@ -59,6 +60,8 @@ export function RunIcon({ name, className, spanName }: TaskIconProps) {
       return <Squares2X2Icon className={cn(className, "text-text-dimmed")} />;
     case "tag":
       return <TagIcon className={cn(className, "text-text-dimmed")} />;
+    case "queue":
+      return <RectangleStackIcon className={cn(className, "text-purple-500")} />;
     //log levels
     case "debug":
     case "log":
