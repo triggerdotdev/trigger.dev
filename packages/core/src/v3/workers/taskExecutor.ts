@@ -387,57 +387,70 @@ export class TaskExecutor {
     initOutput: any,
     signal?: AbortSignal
   ) {
-    await this.#callOnSuccessFunction(
-      this.task.fns.onSuccess,
-      "task.onSuccess",
-      payload,
-      output,
-      ctx,
-      initOutput,
-      signal
-    );
+    const globalSuccessHooks = lifecycleHooks.getGlobalSuccessHooks();
+    const taskSuccessHook = lifecycleHooks.getTaskSuccessHook(this.task.id);
 
-    await this.#callOnSuccessFunction(
-      this._importedConfig?.onSuccess,
-      "config.onSuccess",
-      payload,
-      output,
-      ctx,
-      initOutput,
-      signal
-    );
-  }
-
-  async #callOnSuccessFunction(
-    onSuccessFn: TaskMetadataWithFunctions["fns"]["onSuccess"],
-    name: string,
-    payload: unknown,
-    output: any,
-    ctx: TaskRunContext,
-    initOutput: any,
-    signal?: AbortSignal
-  ) {
-    if (!onSuccessFn) {
+    if (globalSuccessHooks.length === 0 && !taskSuccessHook) {
       return;
     }
 
-    try {
-      await this._tracer.startActiveSpan(
-        name,
-        async (span) => {
-          return await runTimelineMetrics.measureMetric("trigger.dev/execution", name, () =>
-            onSuccessFn(payload, output, { ctx, init: initOutput, signal })
-          );
+    return this._tracer.startActiveSpan(
+      "hooks.success",
+      async (span) => {
+        return await runTimelineMetrics.measureMetric(
+          "trigger.dev/execution",
+          "success",
+          async () => {
+            for (const hook of globalSuccessHooks) {
+              await this._tracer.startActiveSpan(
+                hook.name ?? "global",
+                async (span) => {
+                  await hook.fn({
+                    payload,
+                    output,
+                    ctx,
+                    signal,
+                    task: this.task.id,
+                    init: initOutput,
+                  });
+                },
+                {
+                  attributes: {
+                    [SemanticInternalAttributes.STYLE_ICON]: "tabler-function",
+                  },
+                }
+              );
+            }
+
+            if (taskSuccessHook) {
+              await this._tracer.startActiveSpan(
+                "task",
+                async (span) => {
+                  await taskSuccessHook({
+                    payload,
+                    output,
+                    ctx,
+                    signal,
+                    task: this.task.id,
+                    init: initOutput,
+                  });
+                },
+                {
+                  attributes: {
+                    [SemanticInternalAttributes.STYLE_ICON]: "tabler-function",
+                  },
+                }
+              );
+            }
+          }
+        );
+      },
+      {
+        attributes: {
+          [SemanticInternalAttributes.STYLE_ICON]: "tabler-function",
         },
-        {
-          attributes: {
-            [SemanticInternalAttributes.STYLE_ICON]: "function",
-          },
-        }
-      );
-    } catch {
-      // Ignore errors from onSuccess functions
-    }
+      }
+    );
   }
 
   async #callOnFailureFunctions(

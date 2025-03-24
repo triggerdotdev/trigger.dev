@@ -84,6 +84,7 @@ import type {
   AnyOnCompleteHookFunction,
   AnyOnWaitHookFunction,
   AnyOnResumeHookFunction,
+  AnyOnFailureHookFunction,
 } from "@trigger.dev/core/v3";
 
 export type {

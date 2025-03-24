@@ -6,6 +6,11 @@ import {
   AnyOnSuccessHookFunction,
   AnyOnCatchErrorHookFunction,
   AnyOnMiddlewareHookFunction,
+  TaskInitOutput,
+  TaskSuccessHookParams,
+  TaskFailureHookParams,
+  TaskStartHookParams,
+  TaskCatchErrorHookParams,
 } from "./types.js";
 
 export function createInitHookAdapter<TPayload>(
@@ -22,59 +27,59 @@ export function createInitHookAdapter<TPayload>(
   };
 }
 
-export function createStartHookAdapter<TPayload>(
-  fn: NonNullable<TaskOptions<string, TPayload, unknown, any>["onStart"]>
+export function createStartHookAdapter<
+  TPayload,
+  TInitOutput extends TaskInitOutput = TaskInitOutput,
+>(
+  fn: NonNullable<TaskOptions<string, TPayload, unknown, TInitOutput>["onStart"]>
 ): AnyOnStartHookFunction {
   return async (params) => {
-    const paramsWithoutPayload = {
-      ...params,
-    };
-
-    delete paramsWithoutPayload["payload"];
-
-    return await fn(params.payload as unknown as TPayload, paramsWithoutPayload);
-  };
-}
-
-export function createFailureHookAdapter<TPayload>(
-  fn: NonNullable<TaskOptions<string, TPayload, unknown, any>["onFailure"]>
-): AnyOnFailureHookFunction {
-  return async (params) => {
-    const paramsWithoutPayload = {
-      ...params,
-    };
-
-    delete paramsWithoutPayload["payload"];
-    delete paramsWithoutPayload["error"];
-
-    return await fn(params.payload as unknown as TPayload, params.error, paramsWithoutPayload);
-  };
-}
-
-export function createSuccessHookAdapter<TPayload, TOutput>(
-  fn: NonNullable<TaskOptions<string, TPayload, TOutput, any>["onSuccess"]>
-): AnyOnSuccessHookFunction {
-  return async (params) => {
-    const paramsWithoutPayload = {
-      ...params,
-    };
-
-    delete paramsWithoutPayload["payload"];
-    delete paramsWithoutPayload["output"];
-
     return await fn(
       params.payload as unknown as TPayload,
-      params.output as unknown as TOutput,
-      paramsWithoutPayload
+      params as TaskStartHookParams<TPayload, TInitOutput>
     );
   };
 }
 
-export function createHandleErrorHookAdapter<TPayload>(
-  fn: NonNullable<TaskOptions<string, TPayload, unknown, any>["handleError"]>
+export function createFailureHookAdapter<
+  TPayload,
+  TInitOutput extends TaskInitOutput = TaskInitOutput,
+>(
+  fn: NonNullable<TaskOptions<string, TPayload, unknown, TInitOutput>["onFailure"]>
+): AnyOnFailureHookFunction {
+  return async (params) => {
+    return await fn(
+      params.payload as unknown as TPayload,
+      params.error,
+      params as TaskFailureHookParams<TPayload, TInitOutput>
+    );
+  };
+}
+
+export function createSuccessHookAdapter<TPayload, TOutput, TInitOutput extends TaskInitOutput>(
+  fn: NonNullable<TaskOptions<string, TPayload, TOutput, TInitOutput>["onSuccess"]>
+): AnyOnSuccessHookFunction {
+  return async (params) => {
+    return await fn(
+      params.payload as unknown as TPayload,
+      params.output as unknown as TOutput,
+      params as TaskSuccessHookParams<TPayload, TOutput, TInitOutput>
+    );
+  };
+}
+
+export function createHandleErrorHookAdapter<
+  TPayload,
+  TInitOutput extends TaskInitOutput = TaskInitOutput,
+>(
+  fn: NonNullable<TaskOptions<string, TPayload, unknown, TInitOutput>["handleError"]>
 ): AnyOnCatchErrorHookFunction {
   return async (params) => {
-    return await fn(params.payload as unknown as TPayload, params.error, params);
+    return await fn(
+      params.payload as unknown as TPayload,
+      params.error,
+      params as TaskCatchErrorHookParams<TPayload, TInitOutput>
+    );
   };
 }
 

@@ -1,6 +1,8 @@
 import { RetryOptions, TaskRunContext } from "../schemas/index.js";
 import { HandleErrorResult } from "../types/index.js";
 
+export type TaskInitOutput = Record<string, any> | void | undefined;
+
 export type TaskInitHookParams<TPayload = unknown> = {
   ctx: TaskRunContext;
   payload: TPayload;
@@ -8,78 +10,103 @@ export type TaskInitHookParams<TPayload = unknown> = {
   signal?: AbortSignal;
 };
 
-export type OnInitHookFunction<TPayload, TInitOutput extends Record<string, unknown>> = (
+export type OnInitHookFunction<TPayload, TInitOutput extends TaskInitOutput> = (
   params: TaskInitHookParams<TPayload>
 ) => TInitOutput | undefined | void | Promise<TInitOutput | undefined | void>;
 
-export type AnyOnInitHookFunction = OnInitHookFunction<unknown, Record<string, unknown>>;
+export type AnyOnInitHookFunction = OnInitHookFunction<unknown, TaskInitOutput>;
 
-export type TaskStartHookParams<TPayload = unknown> = {
+export type TaskStartHookParams<
+  TPayload = unknown,
+  TInitOutput extends TaskInitOutput = TaskInitOutput,
+> = {
   ctx: TaskRunContext;
   payload: TPayload;
   task: string;
   signal?: AbortSignal;
+  init?: TInitOutput;
 };
 
-export type OnStartHookFunction<TPayload> = (
-  params: TaskStartHookParams<TPayload>
+export type OnStartHookFunction<TPayload, TInitOutput extends TaskInitOutput = TaskInitOutput> = (
+  params: TaskStartHookParams<TPayload, TInitOutput>
 ) => undefined | void | Promise<undefined | void>;
 
-export type AnyOnStartHookFunction = OnStartHookFunction<unknown>;
+export type AnyOnStartHookFunction = OnStartHookFunction<unknown, TaskInitOutput>;
 
-export type TaskWaitHookParams<TPayload = unknown> = {
+export type TaskWaitHookParams<
+  TPayload = unknown,
+  TInitOutput extends TaskInitOutput = TaskInitOutput,
+> = {
   ctx: TaskRunContext;
   payload: TPayload;
   task: string;
   signal?: AbortSignal;
+  init?: TInitOutput;
 };
 
-export type OnWaitHookFunction<TPayload> = (
-  params: TaskWaitHookParams<TPayload>
+export type OnWaitHookFunction<TPayload, TInitOutput extends TaskInitOutput = TaskInitOutput> = (
+  params: TaskWaitHookParams<TPayload, TInitOutput>
 ) => undefined | void | Promise<undefined | void>;
 
-export type AnyOnWaitHookFunction = OnWaitHookFunction<unknown>;
+export type AnyOnWaitHookFunction = OnWaitHookFunction<unknown, TaskInitOutput>;
 
-export type TaskResumeHookParams<TPayload = unknown> = {
+export type TaskResumeHookParams<
+  TPayload = unknown,
+  TInitOutput extends TaskInitOutput = TaskInitOutput,
+> = {
   ctx: TaskRunContext;
   payload: TPayload;
   task: string;
   signal?: AbortSignal;
+  init?: TInitOutput;
 };
 
-export type OnResumeHookFunction<TPayload> = (
-  params: TaskResumeHookParams<TPayload>
+export type OnResumeHookFunction<TPayload, TInitOutput extends TaskInitOutput = TaskInitOutput> = (
+  params: TaskResumeHookParams<TPayload, TInitOutput>
 ) => undefined | void | Promise<undefined | void>;
 
-export type AnyOnResumeHookFunction = OnResumeHookFunction<unknown>;
+export type AnyOnResumeHookFunction = OnResumeHookFunction<unknown, TaskInitOutput>;
 
-export type TaskFailureHookParams<TPayload = unknown> = {
+export type TaskFailureHookParams<
+  TPayload = unknown,
+  TInitOutput extends TaskInitOutput = TaskInitOutput,
+> = {
   ctx: TaskRunContext;
   payload: TPayload;
   task: string;
   error: unknown;
   signal?: AbortSignal;
+  init?: TInitOutput;
 };
 
-export type OnFailureHookFunction<TPayload> = (
-  params: TaskFailureHookParams<TPayload>
+export type OnFailureHookFunction<TPayload, TInitOutput extends TaskInitOutput = TaskInitOutput> = (
+  params: TaskFailureHookParams<TPayload, TInitOutput>
 ) => undefined | void | Promise<undefined | void>;
 
-export type AnyOnFailureHookFunction = OnFailureHookFunction<unknown>;
+export type AnyOnFailureHookFunction = OnFailureHookFunction<unknown, TaskInitOutput>;
 
-export type TaskSuccessHookParams<TPayload = unknown, TOutput = unknown> = {
+export type TaskSuccessHookParams<
+  TPayload = unknown,
+  TOutput = unknown,
+  TInitOutput extends TaskInitOutput = TaskInitOutput,
+> = {
   ctx: TaskRunContext;
   payload: TPayload;
   task: string;
   output: TOutput;
   signal?: AbortSignal;
+  init?: TInitOutput;
 };
 
-export type OnSuccessHookFunction<TPayload, TOutput> = (
-  params: TaskSuccessHookParams<TPayload, TOutput>
+export type OnSuccessHookFunction<
+  TPayload,
+  TOutput,
+  TInitOutput extends TaskInitOutput = TaskInitOutput,
+> = (
+  params: TaskSuccessHookParams<TPayload, TOutput, TInitOutput>
 ) => undefined | void | Promise<undefined | void>;
 
-export type AnyOnSuccessHookFunction = OnSuccessHookFunction<unknown, unknown>;
+export type AnyOnSuccessHookFunction = OnSuccessHookFunction<unknown, unknown, TaskInitOutput>;
 
 export type TaskCompleteSuccessResult<TOutput> = {
   ok: true;
@@ -95,19 +122,28 @@ export type TaskCompleteResult<TOutput> =
   | TaskCompleteSuccessResult<TOutput>
   | TaskCompleteErrorResult;
 
-export type TaskCompleteHookParams<TPayload = unknown, TOutput = unknown> = {
+export type TaskCompleteHookParams<
+  TPayload = unknown,
+  TOutput = unknown,
+  TInitOutput extends TaskInitOutput = TaskInitOutput,
+> = {
   ctx: TaskRunContext;
   payload: TPayload;
   task: string;
   result: TaskCompleteResult<TOutput>;
   signal?: AbortSignal;
+  init?: TInitOutput;
 };
 
-export type OnCompleteHookFunction<TPayload, TOutput> = (
-  params: TaskCompleteHookParams<TPayload, TOutput>
+export type OnCompleteHookFunction<
+  TPayload,
+  TOutput,
+  TInitOutput extends TaskInitOutput = TaskInitOutput,
+> = (
+  params: TaskCompleteHookParams<TPayload, TOutput, TInitOutput>
 ) => undefined | void | Promise<undefined | void>;
 
-export type AnyOnCompleteHookFunction = OnCompleteHookFunction<unknown, unknown>;
+export type AnyOnCompleteHookFunction = OnCompleteHookFunction<unknown, unknown, TaskInitOutput>;
 
 export type RegisterHookFunctionParams<THookFunction extends (params: any) => any> = {
   id?: string;
@@ -120,7 +156,10 @@ export type RegisteredHookFunction<THookFunction extends (params: any) => any> =
   fn: THookFunction;
 };
 
-export type TaskCatchErrorHookParams<TPayload = unknown> = {
+export type TaskCatchErrorHookParams<
+  TPayload = unknown,
+  TInitOutput extends TaskInitOutput = TaskInitOutput,
+> = {
   ctx: TaskRunContext;
   payload: TPayload;
   task: string;
@@ -129,13 +168,15 @@ export type TaskCatchErrorHookParams<TPayload = unknown> = {
   retryAt?: Date;
   retryDelayInMs?: number;
   signal?: AbortSignal;
+  init?: TInitOutput;
 };
 
-export type OnCatchErrorHookFunction<TPayload> = (
-  params: TaskCatchErrorHookParams<TPayload>
-) => HandleErrorResult;
+export type OnCatchErrorHookFunction<
+  TPayload,
+  TInitOutput extends TaskInitOutput = TaskInitOutput,
+> = (params: TaskCatchErrorHookParams<TPayload, TInitOutput>) => HandleErrorResult;
 
-export type AnyOnCatchErrorHookFunction = OnCatchErrorHookFunction<unknown>;
+export type AnyOnCatchErrorHookFunction = OnCatchErrorHookFunction<unknown, TaskInitOutput>;
 
 export type TaskMiddlewareHookParams<TPayload = unknown> = {
   ctx: TaskRunContext;
