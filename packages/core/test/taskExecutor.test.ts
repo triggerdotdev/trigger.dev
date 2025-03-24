@@ -524,4 +524,199 @@ describe("TaskExecutor", () => {
       },
     });
   });
+
+  test("should call onFailure hooks with error when task fails", async () => {
+    const globalFailureOrder: string[] = [];
+    const failurePayloads: any[] = [];
+    const failureErrors: any[] = [];
+    const failureInits: any[] = [];
+
+    // Register global init hook to provide init data
+    lifecycleHooks.registerGlobalInitHook({
+      id: "test-init",
+      fn: async () => {
+        return {
+          foo: "bar",
+        };
+      },
+    });
+
+    // Register two global failure hooks
+    lifecycleHooks.registerGlobalFailureHook({
+      id: "global-failure-1",
+      fn: async ({ payload, error, init }) => {
+        console.log("Executing global failure hook 1");
+        globalFailureOrder.push("global-1");
+        failurePayloads.push(payload);
+        failureErrors.push(error);
+        failureInits.push(init);
+      },
+    });
+
+    lifecycleHooks.registerGlobalFailureHook({
+      id: "global-failure-2",
+      fn: async ({ payload, error, init }) => {
+        console.log("Executing global failure hook 2");
+        globalFailureOrder.push("global-2");
+        failurePayloads.push(payload);
+        failureErrors.push(error);
+        failureInits.push(init);
+      },
+    });
+
+    // Register task-specific failure hook
+    lifecycleHooks.registerTaskFailureHook("test-task", {
+      id: "task-failure",
+      fn: async ({ payload, error, init }) => {
+        console.log("Executing task failure hook");
+        globalFailureOrder.push("task");
+        failurePayloads.push(payload);
+        failureErrors.push(error);
+        failureInits.push(init);
+      },
+    });
+
+    // Verify hooks are registered
+    const globalHooks = lifecycleHooks.getGlobalFailureHooks();
+    console.log(
+      "Registered global hooks:",
+      globalHooks.map((h) => h.id)
+    );
+    const taskHook = lifecycleHooks.getTaskFailureHook("test-task");
+    console.log("Registered task hook:", taskHook ? "yes" : "no");
+
+    const expectedError = new Error("Task failed intentionally");
+
+    const task = {
+      id: "test-task",
+      fns: {
+        run: async (payload: any, params: RunFnParams<any>) => {
+          throw expectedError;
+        },
+      },
+    };
+
+    const tracingSDK = new TracingSDK({
+      url: "http://localhost:4318",
+    });
+
+    const tracer = new TriggerTracer({
+      name: "test-task",
+      version: "1.0.0",
+      tracer: tracingSDK.getTracer("test-task"),
+      logger: tracingSDK.getLogger("test-task"),
+    });
+
+    const consoleInterceptor = new ConsoleInterceptor(tracingSDK.getLogger("test-task"), false);
+
+    const executor = new TaskExecutor(task, {
+      tracingSDK,
+      tracer,
+      consoleInterceptor,
+      retries: {
+        enabledInDev: false,
+        default: {
+          maxAttempts: 1,
+        },
+      },
+      handleErrorFn: undefined,
+    });
+
+    const execution: TaskRunExecution = {
+      task: {
+        id: "test-task",
+        filePath: "test-task.ts",
+      },
+      attempt: {
+        number: 1,
+        startedAt: new Date(),
+        id: "test-attempt-id",
+        status: "success",
+        backgroundWorkerId: "test-background-worker-id",
+        backgroundWorkerTaskId: "test-background-worker-task-id",
+      },
+      run: {
+        id: "test-run-id",
+        payload: '{"test":"data"}',
+        payloadType: "application/json",
+        metadata: {},
+        startedAt: new Date(),
+        tags: [],
+        isTest: false,
+        createdAt: new Date(),
+        durationMs: 0,
+        costInCents: 0,
+        baseCostInCents: 0,
+        priority: 0,
+      },
+      machine: {
+        name: "micro",
+        cpu: 1,
+        memory: 1,
+        centsPerMs: 0,
+      },
+      queue: {
+        name: "test-queue",
+        id: "test-queue-id",
+      },
+      environment: {
+        type: "PRODUCTION",
+        id: "test-environment-id",
+        slug: "test-environment-slug",
+      },
+      organization: {
+        id: "test-organization-id",
+        name: "test-organization-name",
+        slug: "test-organization-slug",
+      },
+      project: {
+        id: "test-project-id",
+        name: "test-project-name",
+        slug: "test-project-slug",
+        ref: "test-project-ref",
+      },
+    };
+
+    const worker: ServerBackgroundWorker = {
+      id: "test-background-worker-id",
+      version: "1.0.0",
+      contentHash: "test-content-hash",
+      engine: "V2",
+    };
+
+    const result = await executor.execute(execution, worker, {});
+
+    // Verify hooks were called in correct order
+    expect(globalFailureOrder).toEqual(["global-1", "global-2", "task"]);
+
+    // Verify each hook received the correct payload
+    failurePayloads.forEach((payload) => {
+      expect(payload).toEqual({ test: "data" });
+    });
+
+    // Verify each hook received the correct error
+    failureErrors.forEach((error) => {
+      expect(error).toBe(expectedError);
+    });
+
+    // Verify each hook received the correct init data
+    failureInits.forEach((init) => {
+      expect(init).toEqual({ foo: "bar" });
+    });
+
+    // Verify the final result contains the error
+    expect(result).toEqual({
+      result: {
+        ok: false,
+        id: "test-run-id",
+        error: {
+          type: "BUILT_IN_ERROR",
+          message: "Task failed intentionally",
+          name: "Error",
+          stackTrace: expect.any(String),
+        },
+        skippedRetrying: false,
+      },
+    });
+  });
 });
