@@ -1,10 +1,9 @@
-import { BookOpenIcon, InformationCircleIcon, LockOpenIcon } from "@heroicons/react/20/solid";
-import { ArrowUpCircleIcon } from "@heroicons/react/24/outline";
+import { ArrowUpCircleIcon, BookOpenIcon, InformationCircleIcon } from "@heroicons/react/20/solid";
 import { type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
-import { environmentTitle, EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
+import { EnvironmentCombo, environmentTitle } from "~/components/environments/EnvironmentLabel";
 import { RegenerateApiKeyModal } from "~/components/environments/RegenerateApiKeyModal";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { LinkButton } from "~/components/primitives/Buttons";
@@ -144,6 +143,7 @@ export default function Page() {
                       )}
                       variant="secondary/small"
                       LeadingIcon={ArrowUpCircleIcon}
+                      leadingIconClassName="text-indigo-500"
                     >
                       Upgrade to get staging environment
                     </LinkButton>

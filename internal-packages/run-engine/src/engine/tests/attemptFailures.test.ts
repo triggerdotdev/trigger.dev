@@ -1,13 +1,9 @@
-import {
-  assertNonNullable,
-  containerTest,
-  setupAuthenticatedEnvironment,
-  setupBackgroundWorker,
-} from "@internal/testcontainers";
+import { assertNonNullable, containerTest } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
 import { setTimeout } from "node:timers/promises";
 import { expect } from "vitest";
 import { RunEngine } from "../index.js";
+import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
 
 describe("RunEngine attempt failures", () => {
   containerTest("Retry user error and succeed", async ({ prisma, redisOptions }) => {
@@ -48,7 +44,7 @@ describe("RunEngine attempt failures", () => {
 
       //create background worker
       const backgroundWorker = await setupBackgroundWorker(
-        prisma,
+        engine,
         authenticatedEnvironment,
         taskIdentifier
       );
@@ -67,7 +63,7 @@ describe("RunEngine attempt failures", () => {
           traceId: "t12345",
           spanId: "s12345",
           masterQueue: "main",
-          queueName: "task/test-task",
+          queue: "task/test-task",
           isTest: false,
           tags: [],
         },
@@ -200,7 +196,7 @@ describe("RunEngine attempt failures", () => {
       const taskIdentifier = "test-task";
 
       //create background worker
-      await setupBackgroundWorker(prisma, authenticatedEnvironment, taskIdentifier, undefined, {
+      await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier, undefined, {
         maxAttempts: 1,
       });
 
@@ -218,7 +214,7 @@ describe("RunEngine attempt failures", () => {
           traceId: "t12345",
           spanId: "s12345",
           masterQueue: "main",
-          queueName: "task/test-task",
+          queue: "task/test-task",
           isTest: false,
           tags: [],
         },
@@ -311,7 +307,7 @@ describe("RunEngine attempt failures", () => {
       const taskIdentifier = "test-task";
 
       //create background worker
-      await setupBackgroundWorker(prisma, authenticatedEnvironment, taskIdentifier, undefined, {
+      await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier, undefined, {
         maxAttempts: 1,
       });
 
@@ -329,7 +325,7 @@ describe("RunEngine attempt failures", () => {
           traceId: "t12345",
           spanId: "s12345",
           masterQueue: "main",
-          queueName: "task/test-task",
+          queue: "task/test-task",
           isTest: false,
           tags: [],
         },
@@ -420,7 +416,7 @@ describe("RunEngine attempt failures", () => {
       const taskIdentifier = "test-task";
 
       //create background worker
-      await setupBackgroundWorker(prisma, authenticatedEnvironment, taskIdentifier);
+      await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
 
       //trigger the run
       const run = await engine.trigger(
@@ -436,7 +432,7 @@ describe("RunEngine attempt failures", () => {
           traceId: "t12345",
           spanId: "s12345",
           masterQueue: "main",
-          queueName: "task/test-task",
+          queue: "task/test-task",
           isTest: false,
           tags: [],
         },
@@ -533,7 +529,7 @@ describe("RunEngine attempt failures", () => {
       const taskIdentifier = "test-task";
 
       //create background worker
-      await setupBackgroundWorker(prisma, authenticatedEnvironment, taskIdentifier, undefined, {
+      await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier, undefined, {
         outOfMemory: {
           machine: "small-2x",
         },
@@ -553,7 +549,7 @@ describe("RunEngine attempt failures", () => {
           traceId: "t12345",
           spanId: "s12345",
           masterQueue: "main",
-          queueName: "task/test-task",
+          queue: "task/test-task",
           isTest: false,
           tags: [],
         },
@@ -690,7 +686,7 @@ describe("RunEngine attempt failures", () => {
       const taskIdentifier = "test-task";
 
       //create background worker
-      await setupBackgroundWorker(prisma, authenticatedEnvironment, taskIdentifier, undefined, {
+      await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier, undefined, {
         maxTimeoutInMs: 10,
         maxAttempts: 10,
         outOfMemory: {
@@ -712,7 +708,7 @@ describe("RunEngine attempt failures", () => {
           traceId: "t12345",
           spanId: "s12345",
           masterQueue: "main",
-          queueName: "task/test-task",
+          queue: "task/test-task",
           isTest: false,
           tags: [],
         },

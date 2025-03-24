@@ -1,7 +1,6 @@
 import {
   IOPacket,
   packetRequiresOffloading,
-  QueueOptions,
   SemanticInternalAttributes,
   taskRunErrorToString,
   taskRunErrorEnhancer,
@@ -43,6 +42,13 @@ import {
 } from "./triggerTask.server";
 import { getTaskEventStore } from "../taskEventStore.server";
 import { enqueueRun } from "./enqueueRun.server";
+import { z } from "zod";
+
+// This is here for backwords compatibility for v3 users
+const QueueOptions = z.object({
+  name: z.string(),
+  concurrencyLimit: z.number().int().optional(),
+});
 
 /** @deprecated Use TriggerTaskService in `triggerTask.server.ts` instead. */
 export class TriggerTaskServiceV1 extends BaseService {

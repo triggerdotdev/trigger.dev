@@ -142,3 +142,11 @@ export const WorkerApiDebugLogBody = z.object({
   properties: Attributes.optional(),
 });
 export type WorkerApiDebugLogBody = z.infer<typeof WorkerApiDebugLogBody>;
+
+export const WorkerApiSuspendCompletionResponseBody = z.object({
+  success: z.boolean(),
+  error: z.string().optional(),
+});
+export type WorkerApiSuspendCompletionResponseBody = z.infer<
+  typeof WorkerApiSuspendCompletionResponseBody
+>;

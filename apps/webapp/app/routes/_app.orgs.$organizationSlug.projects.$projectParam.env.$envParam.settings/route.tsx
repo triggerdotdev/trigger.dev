@@ -16,6 +16,7 @@ import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
+import { Header2 } from "~/components/primitives/Headers";
 import { Hint } from "~/components/primitives/Hint";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
@@ -149,48 +150,50 @@ export default function Page() {
 
       <PageBody>
         <MainHorizontallyCenteredContainer>
-          <div className="flex flex-col gap-4">
-            <div className="flex flex-col gap-4">
-              <Fieldset>
-                <InputGroup>
-                  <Label>Project ref</Label>
-                  <ClipboardField value={project.externalRef} variant={"secondary/small"} />
-                  <Hint>
-                    This goes in your{" "}
-                    <InlineCode variant="extra-extra-small">trigger.config</InlineCode> file.
-                  </Hint>
-                </InputGroup>
-              </Fieldset>
+          <div className="mb-3 border-b border-grid-dimmed pb-3">
+            <Header2>Project settings</Header2>
+          </div>
+          <div className="flex flex-col gap-6">
+            <Fieldset>
+              <InputGroup fullWidth>
+                <Label>Project ref</Label>
+                <ClipboardField value={project.externalRef} variant={"secondary/medium"} />
+                <Hint>
+                  This goes in your{" "}
+                  <InlineCode variant="extra-extra-small">trigger.config</InlineCode> file.
+                </Hint>
+              </InputGroup>
+            </Fieldset>
 
-              <Form method="post" {...renameForm.props} className="max-w-md">
-                <input type="hidden" name="action" value="rename" />
-                <Fieldset>
-                  <InputGroup>
-                    <Label htmlFor={projectName.id}>Rename your project</Label>
-                    <Input
-                      {...conform.input(projectName, { type: "text" })}
-                      defaultValue={project.name}
-                      placeholder="Your project name"
-                      icon={FolderIcon}
-                      autoFocus
-                    />
-                    <FormError id={projectName.errorId}>{projectName.error}</FormError>
-                  </InputGroup>
-                  <FormButtons
-                    confirmButton={
-                      <Button
-                        type="submit"
-                        variant={"primary/small"}
-                        disabled={isRenameLoading}
-                        LeadingIcon={isRenameLoading ? SpinnerWhite : undefined}
-                      >
-                        Rename project
-                      </Button>
-                    }
+            <Form method="post" {...renameForm.props}>
+              <input type="hidden" name="action" value="rename" />
+              <Fieldset className="gap-y-0">
+                <InputGroup fullWidth>
+                  <Label htmlFor={projectName.id}>Rename your project</Label>
+                  <Input
+                    {...conform.input(projectName, { type: "text" })}
+                    defaultValue={project.name}
+                    placeholder="Your project name"
+                    icon={FolderIcon}
+                    autoFocus
                   />
-                </Fieldset>
-              </Form>
-            </div>
+                  <FormError id={projectName.errorId}>{projectName.error}</FormError>
+                </InputGroup>
+                <FormButtons
+                  confirmButton={
+                    <Button
+                      type="submit"
+                      variant={"secondary/small"}
+                      disabled={isRenameLoading}
+                      LeadingIcon={isRenameLoading ? SpinnerWhite : undefined}
+                    >
+                      Rename project
+                    </Button>
+                  }
+                  className="border-t-0"
+                />
+              </Fieldset>
+            </Form>
           </div>
         </MainHorizontallyCenteredContainer>
       </PageBody>

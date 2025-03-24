@@ -23,15 +23,16 @@ import { type RuntimeEnvironmentType } from "@trigger.dev/database";
 import { motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
+import { DisconnectedIcon } from "~/assets/icons/ConnectionIcons";
 import { ShowParentIcon, ShowParentIconSelected } from "~/assets/icons/ShowParentIcon";
 import tileBgPath from "~/assets/images/error-banner-tile@2x.png";
+import { useDevPresence } from "~/components/DevPresence";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
-import { InlineCode } from "~/components/code/InlineCode";
-import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { PageBody } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
+import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { DateTimeShort } from "~/components/primitives/DateTime";
 import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
 import { Header3 } from "~/components/primitives/Headers";
@@ -93,9 +94,6 @@ import {
 } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { SpanView } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.$runParam.spans.$spanParam/route";
-import { useDevPresence } from "~/components/DevPresence";
-import { DisconnectedIcon } from "~/assets/icons/ConnectionIcons";
-import { ClipboardField } from "~/components/primitives/ClipboardField";
 
 const resizableSettings = {
   parent: {
@@ -404,8 +402,11 @@ function NoLogsView({ run, resizable }: LoaderData) {
                 icon={LockOpenIcon}
                 iconClassName="text-indigo-500"
                 title="Unlock longer log retention"
-                to={v3BillingPath(organization)}
-                buttonLabel="Upgrade"
+                accessory={
+                  <LinkButton to={v3BillingPath(organization)} variant="secondary/small">
+                    Upgrade
+                  </LinkButton>
+                }
               >
                 <Paragraph variant="small">
                   The logs for this run have been deleted because the run completed{" "}

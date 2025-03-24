@@ -1,4 +1,4 @@
-import { AuthenticatedEnvironment } from "@internal/testcontainers";
+import type { AuthenticatedEnvironment } from "@internal/run-engine";
 import type { Prisma, PrismaClientOrTransaction, RuntimeEnvironment } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
 import { getUsername } from "~/utils/username";

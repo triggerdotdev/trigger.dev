@@ -9,9 +9,6 @@ import type { EnvironmentType, MachinePreset } from "@trigger.dev/core/v3";
 import { env } from "../env.js";
 import { type K8sApi, createK8sApi, type k8s } from "../clients/kubernetes.js";
 
-const POD_EPHEMERAL_STORAGE_SIZE_LIMIT = process.env.POD_EPHEMERAL_STORAGE_SIZE_LIMIT || "10Gi";
-const POD_EPHEMERAL_STORAGE_SIZE_REQUEST = process.env.POD_EPHEMERAL_STORAGE_SIZE_REQUEST || "2Gi";
-
 type ResourceQuantities = {
   [K in "cpu" | "memory" | "ephemeral-storage"]?: string;
 };
@@ -19,7 +16,7 @@ type ResourceQuantities = {
 export class KubernetesWorkloadManager implements WorkloadManager {
   private readonly logger = new SimpleStructuredLogger("kubernetes-workload-provider");
   private k8s: K8sApi;
-  private namespace = "default";
+  private namespace = env.KUBERNETES_NAMESPACE;
 
   constructor(private opts: WorkloadManagerOptions) {
     this.k8s = createK8sApi();
@@ -205,13 +202,13 @@ export class KubernetesWorkloadManager implements WorkloadManager {
 
   get #defaultResourceRequests(): ResourceQuantities {
     return {
-      "ephemeral-storage": POD_EPHEMERAL_STORAGE_SIZE_REQUEST,
+      "ephemeral-storage": env.EPHEMERAL_STORAGE_SIZE_REQUEST,
     };
   }
 
   get #defaultResourceLimits(): ResourceQuantities {
     return {
-      "ephemeral-storage": POD_EPHEMERAL_STORAGE_SIZE_LIMIT,
+      "ephemeral-storage": env.EPHEMERAL_STORAGE_SIZE_LIMIT,
     };
   }
 

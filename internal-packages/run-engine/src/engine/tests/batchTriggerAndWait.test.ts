@@ -1,14 +1,10 @@
-import {
-  assertNonNullable,
-  containerTest,
-  setupAuthenticatedEnvironment,
-  setupBackgroundWorker,
-} from "@internal/testcontainers";
+import { assertNonNullable, containerTest } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
 import { expect, describe } from "vitest";
 import { RunEngine } from "../index.js";
 import { setTimeout } from "node:timers/promises";
 import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
+import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -51,7 +47,7 @@ describe("RunEngine batchTriggerAndWait", () => {
       const childTask = "child-task";
 
       //create background worker
-      await setupBackgroundWorker(prisma, authenticatedEnvironment, [parentTask, childTask]);
+      await setupBackgroundWorker(engine, authenticatedEnvironment, [parentTask, childTask]);
 
       //create a batch
       const batch = await prisma.batchTaskRun.create({
@@ -75,7 +71,7 @@ describe("RunEngine batchTriggerAndWait", () => {
           traceId: "t12345",
           spanId: "s12345",
           masterQueue: "main",
-          queueName: `task/${parentTask}`,
+          queue: `task/${parentTask}`,
           isTest: false,
           tags: [],
         },
@@ -123,7 +119,7 @@ describe("RunEngine batchTriggerAndWait", () => {
           traceId: "t12345",
           spanId: "s12345",
           masterQueue: "main",
-          queueName: `task/${childTask}`,
+          queue: `task/${childTask}`,
           isTest: false,
           tags: [],
           resumeParentOnCompletion: true,
@@ -150,7 +146,7 @@ describe("RunEngine batchTriggerAndWait", () => {
           traceId: "t123456",
           spanId: "s123456",
           masterQueue: "main",
-          queueName: `task/${childTask}`,
+          queue: `task/${childTask}`,
           isTest: false,
           tags: [],
           resumeParentOnCompletion: true,

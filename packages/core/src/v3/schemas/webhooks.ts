@@ -11,7 +11,7 @@ const AlertWebhookRunFailedObject = z.object({
     /** File path where the task is defined */
     filePath: z.string(),
     /** Name of the exported task function */
-    exportName: z.string(),
+    exportName: z.string().optional(),
     /** Version of the task */
     version: z.string(),
     /** Version of the SDK used */
@@ -142,7 +142,7 @@ export const AlertWebhookDeploymentSuccessObject = z.object({
       /** File path where the task is defined */
       filePath: z.string(),
       /** Name of the exported task function */
-      exportName: z.string(),
+      exportName: z.string().optional(),
       /** Source of the trigger */
       triggerSource: z.string(),
     })

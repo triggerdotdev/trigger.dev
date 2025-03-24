@@ -242,7 +242,7 @@ export type TaskRun = z.infer<typeof TaskRun>;
 export const TaskRunExecutionTask = z.object({
   id: z.string(),
   filePath: z.string(),
-  exportName: z.string(),
+  exportName: z.string().optional(),
 });
 
 export type TaskRunExecutionTask = z.infer<typeof TaskRunExecutionTask>;

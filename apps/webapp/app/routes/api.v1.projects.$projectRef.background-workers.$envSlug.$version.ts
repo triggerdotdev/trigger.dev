@@ -66,7 +66,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     updatedAt: backgroundWorker.updatedAt,
     tasks: backgroundWorker.tasks.map((task) => ({
       id: task.slug,
-      exportName: task.exportName,
+      exportName: task.exportName ?? "@deprecated",
       filePath: task.filePath,
       source: task.triggerSource,
       retryConfig: task.retryConfig,

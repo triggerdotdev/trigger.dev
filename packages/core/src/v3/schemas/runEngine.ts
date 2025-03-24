@@ -21,6 +21,7 @@ export type TaskRunExecutionStatus =
 export const TaskRunStatus = {
   DELAYED: "DELAYED",
   PENDING: "PENDING",
+  PENDING_VERSION: "PENDING_VERSION",
   WAITING_FOR_DEPLOY: "WAITING_FOR_DEPLOY",
   EXECUTING: "EXECUTING",
   WAITING_TO_RESUME: "WAITING_TO_RESUME",
@@ -124,52 +125,6 @@ export const ExecutionResult = z.object({
 
 export type ExecutionResult = z.infer<typeof ExecutionResult>;
 
-/** This is sent to a Worker when a run is dequeued (a new run or continuing run) */
-export const DequeuedMessage = z.object({
-  version: z.literal("1"),
-  snapshot: ExecutionSnapshot,
-  dequeuedAt: z.coerce.date(),
-  image: z.string().optional(),
-  checkpoint: z
-    .object({
-      id: z.string(),
-      type: z.string(),
-      location: z.string(),
-      reason: z.string().nullish(),
-    })
-    .optional(),
-  completedWaitpoints: z.array(CompletedWaitpoint),
-  backgroundWorker: z.object({
-    id: z.string(),
-    friendlyId: z.string(),
-    version: z.string(),
-  }),
-  deployment: z.object({
-    id: z.string().optional(),
-    friendlyId: z.string().optional(),
-  }),
-  run: z.object({
-    id: z.string(),
-    friendlyId: z.string(),
-    isTest: z.boolean(),
-    machine: MachinePreset,
-    attemptNumber: z.number(),
-    masterQueue: z.string(),
-    traceContext: z.record(z.unknown()),
-  }),
-  environment: z.object({
-    id: z.string(),
-    type: EnvironmentType,
-  }),
-  organization: z.object({
-    id: z.string(),
-  }),
-  project: z.object({
-    id: z.string(),
-  }),
-});
-export type DequeuedMessage = z.infer<typeof DequeuedMessage>;
-
 /** The response to the Worker when starting an attempt */
 export const StartRunAttemptResult = ExecutionResult.and(
   z.object({
@@ -257,3 +212,51 @@ export const MachineResources = z.object({
   memory: z.number(),
 });
 export type MachineResources = z.infer<typeof MachineResources>;
+
+export const DequeueMessageCheckpoint = z.object({
+  id: z.string(),
+  type: CheckpointType,
+  location: z.string(),
+  imageRef: z.string(),
+  reason: z.string().nullish(),
+});
+export type DequeueMessageCheckpoint = z.infer<typeof DequeueMessageCheckpoint>;
+
+/** This is sent to a Worker when a run is dequeued (a new run or continuing run) */
+export const DequeuedMessage = z.object({
+  version: z.literal("1"),
+  snapshot: ExecutionSnapshot,
+  dequeuedAt: z.coerce.date(),
+  image: z.string().optional(),
+  checkpoint: DequeueMessageCheckpoint.optional(),
+  completedWaitpoints: z.array(CompletedWaitpoint),
+  backgroundWorker: z.object({
+    id: z.string(),
+    friendlyId: z.string(),
+    version: z.string(),
+  }),
+  deployment: z.object({
+    id: z.string().optional(),
+    friendlyId: z.string().optional(),
+  }),
+  run: z.object({
+    id: z.string(),
+    friendlyId: z.string(),
+    isTest: z.boolean(),
+    machine: MachinePreset,
+    attemptNumber: z.number(),
+    masterQueue: z.string(),
+    traceContext: z.record(z.unknown()),
+  }),
+  environment: z.object({
+    id: z.string(),
+    type: EnvironmentType,
+  }),
+  organization: z.object({
+    id: z.string(),
+  }),
+  project: z.object({
+    id: z.string(),
+  }),
+});
+export type DequeuedMessage = z.infer<typeof DequeuedMessage>;

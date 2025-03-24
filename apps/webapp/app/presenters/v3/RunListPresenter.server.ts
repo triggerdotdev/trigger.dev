@@ -2,7 +2,7 @@ import { Prisma, type TaskRunStatus } from "@trigger.dev/database";
 import parse from "parse-duration";
 import { sqlDatabaseSchema } from "~/db.server";
 import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
-import { isCancellableRunStatus, isFinalRunStatus } from "~/v3/taskStatus";
+import { isCancellableRunStatus, isFinalRunStatus, isPendingRunStatus } from "~/v3/taskStatus";
 import { BasePresenter } from "./basePresenter.server";
 import { getAllTaskIdentifiers } from "~/models/task.server";
 import { type Direction } from "~/components/ListPagination";
@@ -367,6 +367,7 @@ WHERE
           spanId: run.spanId,
           isReplayable: true,
           isCancellable: isCancellableRunStatus(run.status),
+          isPending: isPendingRunStatus(run.status),
           environment: displayableEnvironment(environment, userId),
           idempotencyKey: run.idempotencyKey ? run.idempotencyKey : undefined,
           ttl: run.ttl ? run.ttl : undefined,

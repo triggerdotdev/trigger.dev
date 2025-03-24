@@ -25,6 +25,11 @@ pnpm run test ./src/components/Button.test.ts
 
 We use vitest for testing. We almost NEVER mock anything. Start with a top-level "describe", and have multiple "it" statements inside of it.
 
+New test files should be placed right next to the file being tested. For example:
+
+- Source file: `./src/services/MyService.ts`
+- Test file: `./src/services/MyService.test.ts`
+
 When writing anything that needs redis or postgresql, we have some internal "testcontainers" that are used to spin up a local instance, redis, or both.
 
 redisTest:

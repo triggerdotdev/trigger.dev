@@ -3,7 +3,6 @@ import {
   ArrowRightOnRectangleIcon,
   BeakerIcon,
   BellAlertIcon,
-  BookOpenIcon,
   ChartBarIcon,
   ChevronRightIcon,
   ClockIcon,
@@ -60,16 +59,11 @@ import {
 import connectedImage from "../../assets/images/cli-connected.png";
 import disconnectedImage from "../../assets/images/cli-disconnected.png";
 import { FreePlanUsage } from "../billing/FreePlanUsage";
+import { InlineCode } from "../code/InlineCode";
 import { useDevPresence } from "../DevPresence";
 import { ImpersonationBanner } from "../ImpersonationBanner";
 import { Button, ButtonContent, LinkButton } from "../primitives/Buttons";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTrigger,
-} from "../primitives/Dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "../primitives/Dialog";
 import { Paragraph } from "../primitives/Paragraph";
 import {
   Popover,
@@ -87,7 +81,6 @@ import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
 import { SideMenuSection } from "./SideMenuSection";
-import { InlineCode } from "../code/InlineCode";
 import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
@@ -178,6 +171,12 @@ export function SideMenu({
               data-action="tasks"
             />
             <SideMenuItem
+              name="Runs"
+              icon={RunsIcon}
+              activeIconColor="text-teal-500"
+              to={v3RunsPath(organization, project, environment)}
+            />
+            <SideMenuItem
               name="Batches"
               icon={Squares2X2Icon}
               activeIconColor="text-blue-500"
@@ -223,22 +222,6 @@ export function SideMenu({
             />
           </SideMenuSection>
 
-          <SideMenuSection title="Observability">
-            <SideMenuItem
-              name="Runs"
-              icon={RunsIcon}
-              activeIconColor="text-teal-500"
-              to={v3RunsPath(organization, project, environment)}
-            />
-            <SideMenuItem
-              name="Alerts"
-              icon={BellAlertIcon}
-              activeIconColor="text-red-500"
-              to={v3ProjectAlertsPath(organization, project, environment)}
-              data-action="alerts"
-            />
-          </SideMenuSection>
-
           <SideMenuSection title="Manage">
             <SideMenuItem
               name="API keys"
@@ -253,6 +236,13 @@ export function SideMenu({
               activeIconColor="text-pink-500"
               to={v3EnvironmentVariablesPath(organization, project, environment)}
               data-action="environment variables"
+            />
+            <SideMenuItem
+              name="Alerts"
+              icon={BellAlertIcon}
+              activeIconColor="text-red-500"
+              to={v3ProjectAlertsPath(organization, project, environment)}
+              data-action="alerts"
             />
             <SideMenuItem
               name="Project settings"
@@ -294,7 +284,7 @@ function ProjectSelector({
 
   let plan: string | undefined = undefined;
   if (currentPlan?.v3Subscription?.isPaying === false) {
-    plan = "Free plan";
+    plan = "Free";
   } else if (currentPlan?.v3Subscription?.isPaying === true) {
     plan = currentPlan.v3Subscription.plan?.title;
   }
@@ -340,7 +330,7 @@ function ProjectSelector({
                     className="text-xs"
                     to={v3BillingPath(organization)}
                   >
-                    {plan}
+                    {plan} plan
                   </TextLink>
                 )}
                 <TextLink
@@ -463,7 +453,7 @@ function SwitchOrganizations({
   return (
     <Popover onOpenChange={(open) => setMenuOpen(open)} open={isMenuOpen}>
       <div onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
-        <PopoverTrigger className="h-7 w-full justify-between overflow-hidden focus-custom">
+        <PopoverTrigger className="w-full justify-between overflow-hidden focus-custom">
           <ButtonContent
             variant="small-menu-item"
             className="hover:bg-charcoal-750"
@@ -487,7 +477,7 @@ function SwitchOrganizations({
           onMouseEnter={handleMouseEnter}
           onMouseLeave={handleMouseLeave}
         >
-          <div className="p-1">
+          <div className="flex flex-col gap-1 p-1">
             {organizations.map((org) => (
               <PopoverMenuItem
                 key={org.id}

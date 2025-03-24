@@ -20,15 +20,11 @@ export type SpanRun = NonNullable<NonNullable<Result>["run"]>;
 
 export class SpanPresenter extends BasePresenter {
   public async call({
-    userId,
     projectSlug,
-    organizationSlug,
     spanId,
     runFriendlyId,
   }: {
-    userId: string;
     projectSlug: string;
-    organizationSlug: string;
     spanId: string;
     runFriendlyId: string;
   }) {
@@ -154,6 +150,7 @@ export class SpanPresenter extends BasePresenter {
         outputType: true,
         //status + duration
         status: true,
+        statusReason: true,
         startedAt: true,
         executedAt: true,
         createdAt: true,
@@ -195,7 +192,6 @@ export class SpanPresenter extends BasePresenter {
         lockedBy: {
           select: {
             filePath: true,
-            exportName: true,
           },
         },
         //relationships
@@ -273,7 +269,6 @@ export class SpanPresenter extends BasePresenter {
       task: {
         id: run.taskIdentifier,
         filePath: run.lockedBy?.filePath,
-        exportName: run.lockedBy?.exportName,
       },
       run: {
         id: run.friendlyId,
@@ -317,6 +312,7 @@ export class SpanPresenter extends BasePresenter {
       id: run.id,
       friendlyId: run.friendlyId,
       status: run.status,
+      statusReason: run.statusReason ?? undefined,
       createdAt: run.createdAt,
       startedAt: run.startedAt,
       executedAt: run.executedAt,

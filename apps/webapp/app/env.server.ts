@@ -424,6 +424,7 @@ const EnvironmentSchema = z.object({
   RUN_ENGINE_QUEUE_AGE_RANDOMIZATION_BIAS: z.coerce.number().default(0.25),
   RUN_ENGINE_REUSE_SNAPSHOT_COUNT: z.coerce.number().int().default(0),
   RUN_ENGINE_MAXIMUM_ENV_COUNT: z.coerce.number().int().optional(),
+  RUN_ENGINE_WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().default(60_000),
 
   RUN_ENGINE_WORKER_REDIS_HOST: z
     .string()
@@ -591,6 +592,7 @@ const EnvironmentSchema = z.object({
   LEGACY_RUN_ENGINE_WORKER_POLL_INTERVAL: z.coerce.number().int().default(1000),
   LEGACY_RUN_ENGINE_WORKER_IMMEDIATE_POLL_INTERVAL: z.coerce.number().int().default(50),
   LEGACY_RUN_ENGINE_WORKER_CONCURRENCY_LIMIT: z.coerce.number().int().default(100),
+  LEGACY_RUN_ENGINE_WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().default(60_000),
 
   LEGACY_RUN_ENGINE_WORKER_REDIS_HOST: z
     .string()
@@ -633,6 +635,7 @@ const EnvironmentSchema = z.object({
   COMMON_WORKER_POLL_INTERVAL: z.coerce.number().int().default(1000),
   COMMON_WORKER_IMMEDIATE_POLL_INTERVAL: z.coerce.number().int().default(50),
   COMMON_WORKER_CONCURRENCY_LIMIT: z.coerce.number().int().default(100),
+  COMMON_WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().default(60_000),
 
   COMMON_WORKER_REDIS_HOST: z
     .string()

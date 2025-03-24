@@ -1,5 +1,5 @@
 {
-  "include": ["src/**/*.test.ts", "src/run-queue/tests/dequeueMessageFromMasterQueue.ts"],
+  "include": ["src/**/*.test.ts"],
   "references": [{ "path": "./tsconfig.src.json" }],
   "compilerOptions": {
     "composite": true,

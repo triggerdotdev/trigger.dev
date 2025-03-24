@@ -1,14 +1,13 @@
 import { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { StartedRedisContainer } from "@testcontainers/redis";
 import { PrismaClient } from "@trigger.dev/database";
-import { Redis, RedisOptions } from "ioredis";
+import { RedisOptions } from "ioredis";
 import { Network, type StartedNetwork } from "testcontainers";
 import { test } from "vitest";
 import { createElectricContainer, createPostgresContainer, createRedisContainer } from "./utils";
 
-export { StartedRedisContainer };
-export * from "./setup";
 export { assertNonNullable } from "./utils";
+export { StartedRedisContainer };
 
 type NetworkContext = { network: StartedNetwork };
 
@@ -37,8 +36,12 @@ const network = async ({}, use: Use<StartedNetwork>) => {
   try {
     await use(network);
   } finally {
+    try {
+      await network.stop();
+    } catch (error) {
+      console.warn("Network stop error (ignored):", error);
+    }
     // Make sure to stop the network after use
-    await network.stop();
   }
 };
 

@@ -8,4 +8,6 @@ export const WORKER_HEADERS = {
 export const WORKLOAD_HEADERS = {
   DEPLOYMENT_ID: "x-trigger-workload-deployment-id",
   RUNNER_ID: "x-trigger-workload-runner-id",
+  DEPLOYMENT_VERSION: "x-trigger-workload-deployment-version",
+  PROJECT_REF: "x-trigger-workload-project-ref",
 };

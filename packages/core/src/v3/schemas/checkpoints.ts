@@ -1,4 +1,4 @@
-import { CheckpointType } from "./runEngine.js";
+import { CheckpointType, DequeuedMessage } from "./runEngine.js";
 import z from "zod";
 
 const CallbackUrl = z
@@ -8,20 +8,12 @@ const CallbackUrl = z
 
 export const CheckpointServiceSuspendRequestBody = z.object({
   type: CheckpointType,
-  containerId: z.string(),
-  simulate: z.boolean().optional(),
-  leaveRunning: z.boolean().optional(),
+  runId: z.string(),
+  snapshotId: z.string(),
+  runnerId: z.string(),
+  projectRef: z.string(),
+  deploymentVersion: z.string(),
   reason: z.string().optional(),
-  callbacks: z
-    .object({
-      /** These headers will sent to all callbacks */
-      headers: z.record(z.string()).optional(),
-      /** This will be hit before suspending the container. Suspension will proceed unless we receive an error response. */
-      preSuspend: CallbackUrl.optional(),
-      /** This will be hit after suspending or failure to suspend the container */
-      completion: CallbackUrl.optional(),
-    })
-    .optional(),
 });
 
 export type CheckpointServiceSuspendRequestBody = z.infer<
@@ -39,16 +31,7 @@ export type CheckpointServiceSuspendResponseBody = z.infer<
   typeof CheckpointServiceSuspendResponseBody
 >;
 
-export const CheckpointServiceRestoreRequestBody = z.discriminatedUnion("type", [
-  z.object({
-    type: z.literal(CheckpointType.Enum.DOCKER),
-    containerId: z.string(),
-  }),
-  z.object({
-    type: z.literal(CheckpointType.Enum.KUBERNETES),
-    containerId: z.string(),
-  }),
-]);
+export const CheckpointServiceRestoreRequestBody = DequeuedMessage.required({ checkpoint: true });
 
 export type CheckpointServiceRestoreRequestBody = z.infer<
   typeof CheckpointServiceRestoreRequestBody
