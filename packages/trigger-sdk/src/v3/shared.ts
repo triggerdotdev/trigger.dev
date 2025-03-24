@@ -191,17 +191,7 @@ export function createTask<
     },
   };
 
-  if (params.init) {
-    lifecycleHooks.registerTaskInitHook(params.id, {
-      fn: lifecycleHooksAdapters.createInitHookAdapter(params.init),
-    });
-  }
-
-  if (params.onStart) {
-    lifecycleHooks.registerTaskStartHook(params.id, {
-      fn: lifecycleHooksAdapters.createStartHookAdapter(params.onStart),
-    });
-  }
+  registerTaskLifecycleHooks(params.id, params);
 
   resourceCatalog.registerTaskMetadata({
     id: params.id,
@@ -328,65 +318,7 @@ export function createSchemaTask<
     },
   };
 
-  if (params.init) {
-    lifecycleHooks.registerTaskInitHook(params.id, {
-      fn: lifecycleHooksAdapters.createInitHookAdapter(params.init),
-    });
-  }
-
-  if (params.onStart) {
-    lifecycleHooks.registerTaskStartHook(params.id, {
-      fn: lifecycleHooksAdapters.createStartHookAdapter(params.onStart),
-    });
-  }
-
-  if (params.onFailure) {
-    lifecycleHooks.registerTaskFailureHook(params.id, {
-      fn: lifecycleHooksAdapters.createFailureHookAdapter(params.onFailure),
-    });
-  }
-
-  if (params.onSuccess) {
-    lifecycleHooks.registerTaskSuccessHook(params.id, {
-      fn: lifecycleHooksAdapters.createSuccessHookAdapter(params.onSuccess),
-    });
-  }
-
-  if (params.onComplete) {
-    lifecycleHooks.registerTaskCompleteHook(params.id, {
-      fn: params.onComplete as AnyOnCompleteHookFunction,
-    });
-  }
-
-  if (params.onWait) {
-    lifecycleHooks.registerTaskWaitHook(params.id, {
-      fn: params.onWait as AnyOnWaitHookFunction,
-    });
-  }
-
-  if (params.onResume) {
-    lifecycleHooks.registerTaskResumeHook(params.id, {
-      fn: params.onResume as AnyOnResumeHookFunction,
-    });
-  }
-
-  if (params.catchError) {
-    lifecycleHooks.registerTaskCatchErrorHook(params.id, {
-      fn: params.catchError as AnyOnCatchErrorHookFunction,
-    });
-  }
-
-  if (params.handleError) {
-    lifecycleHooks.registerTaskCatchErrorHook(params.id, {
-      fn: lifecycleHooksAdapters.createHandleErrorHookAdapter(params.handleError),
-    });
-  }
-
-  if (params.middleware) {
-    lifecycleHooks.registerTaskMiddlewareHook(params.id, {
-      fn: lifecycleHooksAdapters.createMiddlewareHookAdapter(params.middleware),
-    });
-  }
+  registerTaskLifecycleHooks(params.id, params);
 
   resourceCatalog.registerTaskMetadata({
     id: params.id,
@@ -1622,5 +1554,73 @@ async function handleTaskRunExecutionResult<TIdentifier extends string = string,
       taskIdentifier: (execution.taskIdentifier ?? taskIdentifier) as TIdentifier,
       error: createErrorTaskError(execution.error),
     };
+  }
+}
+
+function registerTaskLifecycleHooks<
+  TIdentifier extends string,
+  TInput = void,
+  TOutput = unknown,
+  TInitOutput extends InitOutput = any,
+>(taskId: TIdentifier, params: TaskOptions<TIdentifier, TInput, TOutput, TInitOutput>) {
+  if (params.init) {
+    lifecycleHooks.registerTaskInitHook(taskId, {
+      fn: lifecycleHooksAdapters.createInitHookAdapter(params.init),
+    });
+  }
+
+  if (params.onStart) {
+    lifecycleHooks.registerTaskStartHook(taskId, {
+      fn: lifecycleHooksAdapters.createStartHookAdapter(params.onStart),
+    });
+  }
+
+  if (params.onFailure) {
+    lifecycleHooks.registerTaskFailureHook(taskId, {
+      fn: lifecycleHooksAdapters.createFailureHookAdapter(params.onFailure),
+    });
+  }
+
+  if (params.onSuccess) {
+    lifecycleHooks.registerTaskSuccessHook(taskId, {
+      fn: lifecycleHooksAdapters.createSuccessHookAdapter(params.onSuccess),
+    });
+  }
+
+  if (params.onComplete) {
+    lifecycleHooks.registerTaskCompleteHook(taskId, {
+      fn: params.onComplete as AnyOnCompleteHookFunction,
+    });
+  }
+
+  if (params.onWait) {
+    lifecycleHooks.registerTaskWaitHook(taskId, {
+      fn: params.onWait as AnyOnWaitHookFunction,
+    });
+  }
+
+  if (params.onResume) {
+    lifecycleHooks.registerTaskResumeHook(taskId, {
+      fn: params.onResume as AnyOnResumeHookFunction,
+    });
+  }
+
+  if (params.catchError) {
+    // We don't need to use an adapter here because catchError is the new version of handleError
+    lifecycleHooks.registerTaskCatchErrorHook(taskId, {
+      fn: params.catchError as AnyOnCatchErrorHookFunction,
+    });
+  }
+
+  if (params.handleError) {
+    lifecycleHooks.registerTaskCatchErrorHook(taskId, {
+      fn: lifecycleHooksAdapters.createHandleErrorHookAdapter(params.handleError),
+    });
+  }
+
+  if (params.middleware) {
+    lifecycleHooks.registerTaskMiddlewareHook(taskId, {
+      fn: lifecycleHooksAdapters.createMiddlewareHookAdapter(params.middleware),
+    });
   }
 }
