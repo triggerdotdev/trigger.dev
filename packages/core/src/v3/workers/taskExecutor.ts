@@ -134,8 +134,6 @@ export class TaskExecutor {
 
             const output = await this.#callRun(parsedPayload, ctx, initOutput, signal);
 
-            await this.#callOnSuccessFunctions(parsedPayload, output, ctx, initOutput, signal);
-
             try {
               const stringifiedOutput = await stringifyIO(output);
 
@@ -155,6 +153,8 @@ export class TaskExecutor {
                 span.setAttributes(attributes);
               }
 
+              await this.#callOnSuccessFunctions(parsedPayload, output, ctx, initOutput, signal);
+
               // Call onComplete with success result
               await this.#callOnCompleteFunctions(
                 parsedPayload,
@@ -172,15 +172,6 @@ export class TaskExecutor {
               } satisfies TaskRunExecutionResult;
             } catch (outputError) {
               recordSpanException(span, outputError);
-
-              // Call onComplete with error result
-              await this.#callOnCompleteFunctions(
-                parsedPayload,
-                { ok: false, error: outputError },
-                ctx,
-                initOutput,
-                signal
-              );
 
               return {
                 ok: false,
@@ -242,15 +233,6 @@ export class TaskExecutor {
               } satisfies TaskRunExecutionResult;
             } catch (handleErrorError) {
               recordSpanException(span, handleErrorError);
-
-              // Call onComplete with error result
-              await this.#callOnCompleteFunctions(
-                parsedPayload,
-                { ok: false, error: handleErrorError },
-                ctx,
-                initOutput,
-                signal
-              );
 
               return {
                 ok: false,
