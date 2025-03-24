@@ -4,8 +4,12 @@ import { type WaitpointDetail } from "~/presenters/v3/WaitpointPresenter.server"
 import { ForceTimeout } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.waitpoints.$waitpointFriendlyId.complete/route";
 import { PacketDisplay } from "./PacketDisplay";
 import { WaitpointStatusCombo } from "./WaitpointStatus";
+import { Paragraph } from "~/components/primitives/Paragraph";
 
 export function WaitpointDetailTable({ waitpoint }: { waitpoint: WaitpointDetail }) {
+  const hasExpired =
+    waitpoint.idempotencyKeyExpiresAt && waitpoint.idempotencyKeyExpiresAt < new Date();
+
   return (
     <Property.Table>
       <Property.Item>
@@ -26,11 +30,16 @@ export function WaitpointDetailTable({ waitpoint }: { waitpoint: WaitpointDetail
         <Property.Label>Idempotency key</Property.Label>
         <Property.Value>
           <div>
-            <div>{waitpoint.userProvidedIdempotencyKey ? waitpoint.idempotencyKey : "–"}</div>
+            <div>
+              {waitpoint.userProvidedIdempotencyKey
+                ? waitpoint.inactiveIdempotencyKey ?? waitpoint.idempotencyKey
+                : "–"}
+            </div>
             <div>
               {waitpoint.idempotencyKeyExpiresAt ? (
                 <>
-                  TTL: <DateTime date={waitpoint.idempotencyKeyExpiresAt} />
+                  {hasExpired ? "Expired" : "Expires at"}:{" "}
+                  <DateTime date={waitpoint.idempotencyKeyExpiresAt} />
                 </>
               ) : null}
             </div>
@@ -40,15 +49,26 @@ export function WaitpointDetailTable({ waitpoint }: { waitpoint: WaitpointDetail
       {waitpoint.type === "MANUAL" && (
         <>
           <Property.Item>
-            <Property.Label>Timeout at</Property.Label>
+            <Property.Label>Timeout</Property.Label>
             <Property.Value>
-              <div className="flex w-full flex-wrap items-center justify-between gap-1">
-                {waitpoint.completedAfter ? (
-                  <DateTimeAccurate date={waitpoint.completedAfter} />
-                ) : (
-                  "–"
-                )}
-                {waitpoint.status === "PENDING" && <ForceTimeout waitpoint={waitpoint} />}
+              <div>
+                <div className="flex w-full flex-wrap items-center justify-between gap-1">
+                  {waitpoint.completedAfter ? (
+                    <>
+                      <DateTimeAccurate date={waitpoint.completedAfter} />
+                    </>
+                  ) : (
+                    "–"
+                  )}
+                  {waitpoint.status === "PENDING" && <ForceTimeout waitpoint={waitpoint} />}
+                </div>
+                <Paragraph variant="extra-small" className="text-text-dimmed/70">
+                  {waitpoint.isTimeout
+                    ? "The waitpoint timed out"
+                    : waitpoint.status === "COMPLETED"
+                    ? "The waitpoint completed before this timeout was reached"
+                    : "The waitpoint is still waiting"}
+                </Paragraph>
               </div>
             </Property.Value>
           </Property.Item>
