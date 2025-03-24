@@ -1,6 +1,11 @@
 import { describe, expect, test } from "vitest";
 import { ConsoleInterceptor } from "../src/v3/consoleInterceptor.js";
-import { RunFnParams, ServerBackgroundWorker, TaskRunExecution } from "../src/v3/index.js";
+import {
+  RunFnParams,
+  ServerBackgroundWorker,
+  TaskMetadataWithFunctions,
+  TaskRunExecution,
+} from "../src/v3/index.js";
 import { TracingSDK } from "../src/v3/otel/tracingSDK.js";
 import { TriggerTracer } from "../src/v3/tracer.js";
 import { TaskExecutor } from "../src/v3/workers/taskExecutor.js";
@@ -47,95 +52,7 @@ describe("TaskExecutor", () => {
       },
     };
 
-    const tracingSDK = new TracingSDK({
-      url: "http://localhost:4318",
-    });
-
-    const tracer = new TriggerTracer({
-      name: "test-task",
-      version: "1.0.0",
-      tracer: tracingSDK.getTracer("test-task"),
-      logger: tracingSDK.getLogger("test-task"),
-    });
-
-    const consoleInterceptor = new ConsoleInterceptor(tracingSDK.getLogger("test-task"), false);
-
-    const executor = new TaskExecutor(task, {
-      tracingSDK,
-      tracer,
-      consoleInterceptor,
-      retries: {
-        enabledInDev: false,
-        default: {
-          maxAttempts: 1,
-        },
-      },
-      handleErrorFn: undefined,
-    });
-
-    const execution: TaskRunExecution = {
-      task: {
-        id: "test-task",
-        filePath: "test-task.ts",
-      },
-      attempt: {
-        number: 1,
-        startedAt: new Date(),
-        id: "test-attempt-id",
-        status: "success",
-        backgroundWorkerId: "test-background-worker-id",
-        backgroundWorkerTaskId: "test-background-worker-task-id",
-      },
-      run: {
-        id: "test-run-id",
-        payload: "{}",
-        payloadType: "application/json",
-        metadata: {},
-        startedAt: new Date(),
-        tags: [],
-        isTest: false,
-        createdAt: new Date(),
-        durationMs: 0,
-        costInCents: 0,
-        baseCostInCents: 0,
-        priority: 0,
-      },
-      machine: {
-        name: "micro",
-        cpu: 1,
-        memory: 1,
-        centsPerMs: 0,
-      },
-      queue: {
-        name: "test-queue",
-        id: "test-queue-id",
-      },
-      environment: {
-        type: "PRODUCTION",
-        id: "test-environment-id",
-        slug: "test-environment-slug",
-      },
-      organization: {
-        id: "test-organization-id",
-        name: "test-organization-name",
-        slug: "test-organization-slug",
-      },
-      project: {
-        id: "test-project-id",
-        name: "test-project-name",
-        slug: "test-project-slug",
-        ref: "test-project-ref",
-      },
-    };
-
-    const worker: ServerBackgroundWorker = {
-      id: "test-background-worker-id",
-      version: "1.0.0",
-      contentHash: "test-content-hash",
-      engine: "V2",
-    };
-
-    const result = await executor.execute(execution, worker, {});
+    const result = await executeTask(task, {});
 
     expect(result).toEqual({
       result: {
@@ -219,95 +136,7 @@ describe("TaskExecutor", () => {
       },
     };
 
-    const tracingSDK = new TracingSDK({
-      url: "http://localhost:4318",
-    });
-
-    const tracer = new TriggerTracer({
-      name: "test-task",
-      version: "1.0.0",
-      tracer: tracingSDK.getTracer("test-task"),
-      logger: tracingSDK.getLogger("test-task"),
-    });
-
-    const consoleInterceptor = new ConsoleInterceptor(tracingSDK.getLogger("test-task"), false);
-
-    const executor = new TaskExecutor(task, {
-      tracingSDK,
-      tracer,
-      consoleInterceptor,
-      retries: {
-        enabledInDev: false,
-        default: {
-          maxAttempts: 1,
-        },
-      },
-      handleErrorFn: undefined,
-    });
-
-    const execution: TaskRunExecution = {
-      task: {
-        id: "test-task",
-        filePath: "test-task.ts",
-      },
-      attempt: {
-        number: 1,
-        startedAt: new Date(),
-        id: "test-attempt-id",
-        status: "success",
-        backgroundWorkerId: "test-background-worker-id",
-        backgroundWorkerTaskId: "test-background-worker-task-id",
-      },
-      run: {
-        id: "test-run-id",
-        payload: "{}",
-        payloadType: "application/json",
-        metadata: {},
-        startedAt: new Date(),
-        tags: [],
-        isTest: false,
-        createdAt: new Date(),
-        durationMs: 0,
-        costInCents: 0,
-        baseCostInCents: 0,
-        priority: 0,
-      },
-      machine: {
-        name: "micro",
-        cpu: 1,
-        memory: 1,
-        centsPerMs: 0,
-      },
-      queue: {
-        name: "test-queue",
-        id: "test-queue-id",
-      },
-      environment: {
-        type: "PRODUCTION",
-        id: "test-environment-id",
-        slug: "test-environment-slug",
-      },
-      organization: {
-        id: "test-organization-id",
-        name: "test-organization-name",
-        slug: "test-organization-slug",
-      },
-      project: {
-        id: "test-project-id",
-        name: "test-project-name",
-        slug: "test-project-slug",
-        ref: "test-project-ref",
-      },
-    };
-
-    const worker: ServerBackgroundWorker = {
-      id: "test-background-worker-id",
-      version: "1.0.0",
-      contentHash: "test-content-hash",
-      engine: "V2",
-    };
-
-    const result = await executor.execute(execution, worker, {});
+    const result = await executeTask(task, {});
 
     // Verify hooks were called in correct order - should match registration order
     expect(globalSuccessOrder).toEqual(["global-2", "global-1", "task"]);
@@ -409,95 +238,7 @@ describe("TaskExecutor", () => {
       },
     };
 
-    const tracingSDK = new TracingSDK({
-      url: "http://localhost:4318",
-    });
-
-    const tracer = new TriggerTracer({
-      name: "test-task",
-      version: "1.0.0",
-      tracer: tracingSDK.getTracer("test-task"),
-      logger: tracingSDK.getLogger("test-task"),
-    });
-
-    const consoleInterceptor = new ConsoleInterceptor(tracingSDK.getLogger("test-task"), false);
-
-    const executor = new TaskExecutor(task, {
-      tracingSDK,
-      tracer,
-      consoleInterceptor,
-      retries: {
-        enabledInDev: false,
-        default: {
-          maxAttempts: 1,
-        },
-      },
-      handleErrorFn: undefined,
-    });
-
-    const execution: TaskRunExecution = {
-      task: {
-        id: "test-task",
-        filePath: "test-task.ts",
-      },
-      attempt: {
-        number: 1,
-        startedAt: new Date(),
-        id: "test-attempt-id",
-        status: "success",
-        backgroundWorkerId: "test-background-worker-id",
-        backgroundWorkerTaskId: "test-background-worker-task-id",
-      },
-      run: {
-        id: "test-run-id",
-        payload: '{"test":"data"}',
-        payloadType: "application/json",
-        metadata: {},
-        startedAt: new Date(),
-        tags: [],
-        isTest: false,
-        createdAt: new Date(),
-        durationMs: 0,
-        costInCents: 0,
-        baseCostInCents: 0,
-        priority: 0,
-      },
-      machine: {
-        name: "micro",
-        cpu: 1,
-        memory: 1,
-        centsPerMs: 0,
-      },
-      queue: {
-        name: "test-queue",
-        id: "test-queue-id",
-      },
-      environment: {
-        type: "PRODUCTION",
-        id: "test-environment-id",
-        slug: "test-environment-slug",
-      },
-      organization: {
-        id: "test-organization-id",
-        name: "test-organization-name",
-        slug: "test-organization-slug",
-      },
-      project: {
-        id: "test-project-id",
-        name: "test-project-name",
-        slug: "test-project-slug",
-        ref: "test-project-ref",
-      },
-    };
-
-    const worker: ServerBackgroundWorker = {
-      id: "test-background-worker-id",
-      version: "1.0.0",
-      contentHash: "test-content-hash",
-      engine: "V2",
-    };
-
-    const result = await executor.execute(execution, worker, {});
+    const result = await executeTask(task, { test: "data" });
 
     // Verify hooks were called in correct order
     expect(globalStartOrder).toEqual(["global-1", "global-2", "task"]);
@@ -596,95 +337,7 @@ describe("TaskExecutor", () => {
       },
     };
 
-    const tracingSDK = new TracingSDK({
-      url: "http://localhost:4318",
-    });
-
-    const tracer = new TriggerTracer({
-      name: "test-task",
-      version: "1.0.0",
-      tracer: tracingSDK.getTracer("test-task"),
-      logger: tracingSDK.getLogger("test-task"),
-    });
-
-    const consoleInterceptor = new ConsoleInterceptor(tracingSDK.getLogger("test-task"), false);
-
-    const executor = new TaskExecutor(task, {
-      tracingSDK,
-      tracer,
-      consoleInterceptor,
-      retries: {
-        enabledInDev: false,
-        default: {
-          maxAttempts: 1,
-        },
-      },
-      handleErrorFn: undefined,
-    });
-
-    const execution: TaskRunExecution = {
-      task: {
-        id: "test-task",
-        filePath: "test-task.ts",
-      },
-      attempt: {
-        number: 1,
-        startedAt: new Date(),
-        id: "test-attempt-id",
-        status: "success",
-        backgroundWorkerId: "test-background-worker-id",
-        backgroundWorkerTaskId: "test-background-worker-task-id",
-      },
-      run: {
-        id: "test-run-id",
-        payload: '{"test":"data"}',
-        payloadType: "application/json",
-        metadata: {},
-        startedAt: new Date(),
-        tags: [],
-        isTest: false,
-        createdAt: new Date(),
-        durationMs: 0,
-        costInCents: 0,
-        baseCostInCents: 0,
-        priority: 0,
-      },
-      machine: {
-        name: "micro",
-        cpu: 1,
-        memory: 1,
-        centsPerMs: 0,
-      },
-      queue: {
-        name: "test-queue",
-        id: "test-queue-id",
-      },
-      environment: {
-        type: "PRODUCTION",
-        id: "test-environment-id",
-        slug: "test-environment-slug",
-      },
-      organization: {
-        id: "test-organization-id",
-        name: "test-organization-name",
-        slug: "test-organization-slug",
-      },
-      project: {
-        id: "test-project-id",
-        name: "test-project-name",
-        slug: "test-project-slug",
-        ref: "test-project-ref",
-      },
-    };
-
-    const worker: ServerBackgroundWorker = {
-      id: "test-background-worker-id",
-      version: "1.0.0",
-      contentHash: "test-content-hash",
-      engine: "V2",
-    };
-
-    const result = await executor.execute(execution, worker, {});
+    const result = await executeTask(task, { test: "data" });
 
     // Verify hooks were called in correct order
     expect(globalFailureOrder).toEqual(["global-1", "global-2", "task"]);
@@ -720,3 +373,95 @@ describe("TaskExecutor", () => {
     });
   });
 });
+
+function executeTask(task: TaskMetadataWithFunctions, payload: any) {
+  const tracingSDK = new TracingSDK({
+    url: "http://localhost:4318",
+  });
+
+  const tracer = new TriggerTracer({
+    name: "test-task",
+    version: "1.0.0",
+    tracer: tracingSDK.getTracer("test-task"),
+    logger: tracingSDK.getLogger("test-task"),
+  });
+
+  const consoleInterceptor = new ConsoleInterceptor(tracingSDK.getLogger("test-task"), false);
+
+  const executor = new TaskExecutor(task, {
+    tracingSDK,
+    tracer,
+    consoleInterceptor,
+    retries: {
+      enabledInDev: false,
+      default: {
+        maxAttempts: 1,
+      },
+    },
+    handleErrorFn: undefined,
+  });
+
+  const execution: TaskRunExecution = {
+    task: {
+      id: "test-task",
+      filePath: "test-task.ts",
+    },
+    attempt: {
+      number: 1,
+      startedAt: new Date(),
+      id: "test-attempt-id",
+      status: "success",
+      backgroundWorkerId: "test-background-worker-id",
+      backgroundWorkerTaskId: "test-background-worker-task-id",
+    },
+    run: {
+      id: "test-run-id",
+      payload: JSON.stringify(payload),
+      payloadType: "application/json",
+      metadata: {},
+      startedAt: new Date(),
+      tags: [],
+      isTest: false,
+      createdAt: new Date(),
+      durationMs: 0,
+      costInCents: 0,
+      baseCostInCents: 0,
+      priority: 0,
+    },
+    machine: {
+      name: "micro",
+      cpu: 1,
+      memory: 1,
+      centsPerMs: 0,
+    },
+    queue: {
+      name: "test-queue",
+      id: "test-queue-id",
+    },
+    environment: {
+      type: "PRODUCTION",
+      id: "test-environment-id",
+      slug: "test-environment-slug",
+    },
+    organization: {
+      id: "test-organization-id",
+      name: "test-organization-name",
+      slug: "test-organization-slug",
+    },
+    project: {
+      id: "test-project-id",
+      name: "test-project-name",
+      slug: "test-project-slug",
+      ref: "test-project-ref",
+    },
+  };
+
+  const worker: ServerBackgroundWorker = {
+    id: "test-background-worker-id",
+    version: "1.0.0",
+    contentHash: "test-content-hash",
+    engine: "V2",
+  };
+
+  return executor.execute(execution, worker, {});
+}
