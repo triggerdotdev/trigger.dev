@@ -13,6 +13,7 @@ import {
 import { recordSpanException, TracingSDK } from "../otel/index.js";
 import { runTimelineMetrics } from "../run-timeline-metrics-api.js";
 import {
+  RetryOptions,
   ServerBackgroundWorker,
   TaskRunContext,
   TaskRunErrorCodes,
@@ -39,7 +40,10 @@ export type TaskExecutorOptions = {
   tracingSDK: TracingSDK;
   tracer: TriggerTracer;
   consoleInterceptor: ConsoleInterceptor;
-  config: TriggerConfig | undefined;
+  retries?: {
+    enabledInDev?: boolean;
+    default?: RetryOptions;
+  };
   handleErrorFn: HandleErrorFunction | undefined;
 };
 
@@ -47,7 +51,12 @@ export class TaskExecutor {
   private _tracingSDK: TracingSDK;
   private _tracer: TriggerTracer;
   private _consoleInterceptor: ConsoleInterceptor;
-  private _importedConfig: TriggerConfig | undefined;
+  private _retries:
+    | {
+        enabledInDev?: boolean;
+        default?: RetryOptions;
+      }
+    | undefined;
   private _handleErrorFn: HandleErrorFunction | undefined;
 
   constructor(
@@ -57,7 +66,7 @@ export class TaskExecutor {
     this._tracingSDK = options.tracingSDK;
     this._tracer = options.tracer;
     this._consoleInterceptor = options.consoleInterceptor;
-    this._importedConfig = options.config;
+    this._retries = options.retries;
     this._handleErrorFn = options.handleErrorFn;
   }
 
@@ -65,7 +74,6 @@ export class TaskExecutor {
     execution: TaskRunExecution,
     worker: ServerBackgroundWorker,
     traceContext: Record<string, unknown>,
-    usage: UsageMeasurement,
     signal?: AbortSignal
   ): Promise<{ result: TaskRunExecutionResult }> {
     const ctx = TaskRunContext.parse(execution);
@@ -665,7 +673,7 @@ export class TaskExecutor {
     | { status: "skipped"; error?: unknown } // skipped is different than noop, it means that the task was skipped from retrying, instead of just not retrying
     | { status: "noop"; error?: unknown }
   > {
-    const retriesConfig = this._importedConfig?.retries;
+    const retriesConfig = this._retries;
 
     const retry = this.task.retry ?? retriesConfig?.default;
 
@@ -721,8 +729,8 @@ export class TaskExecutor {
               retryAt: delay ? new Date(Date.now() + delay) : undefined,
               signal,
             })
-          : this._importedConfig
-          ? await this._handleErrorFn?.(payload, error, {
+          : this._handleErrorFn
+          ? await this._handleErrorFn(payload, error, {
               ctx,
               init,
               retry,
