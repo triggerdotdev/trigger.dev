@@ -212,13 +212,6 @@ export function createTask<
     maxDuration: params.maxDuration,
     fns: {
       run: params.run,
-      init: params.init,
-      cleanup: params.cleanup,
-      middleware: params.middleware,
-      handleError: params.handleError,
-      onSuccess: params.onSuccess,
-      onFailure: params.onFailure,
-      onStart: params.onStart,
     },
   });
 
@@ -389,6 +382,12 @@ export function createSchemaTask<
     });
   }
 
+  if (params.middleware) {
+    lifecycleHooks.registerTaskMiddlewareHook(params.id, {
+      fn: lifecycleHooksAdapters.createMiddlewareHookAdapter(params.middleware),
+    });
+  }
+
   resourceCatalog.registerTaskMetadata({
     id: params.id,
     description: params.description,
@@ -398,13 +397,6 @@ export function createSchemaTask<
     maxDuration: params.maxDuration,
     fns: {
       run: params.run,
-      init: params.init,
-      cleanup: params.cleanup,
-      middleware: params.middleware,
-      handleError: params.handleError,
-      onSuccess: params.onSuccess,
-      onFailure: params.onFailure,
-      onStart: params.onStart,
       parsePayload,
     },
   });

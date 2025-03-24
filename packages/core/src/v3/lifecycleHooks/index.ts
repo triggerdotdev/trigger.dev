@@ -7,6 +7,7 @@ import {
   AnyOnCompleteHookFunction,
   AnyOnFailureHookFunction,
   AnyOnInitHookFunction,
+  AnyOnMiddlewareHookFunction,
   AnyOnResumeHookFunction,
   AnyOnStartHookFunction,
   AnyOnSuccessHookFunction,
@@ -197,6 +198,27 @@ export class LifecycleHooksAPI {
 
   public getGlobalCatchErrorHooks(): RegisteredHookFunction<AnyOnCatchErrorHookFunction>[] {
     return this.#getManager().getGlobalCatchErrorHooks();
+  }
+
+  public registerGlobalMiddlewareHook(
+    hook: RegisterHookFunctionParams<AnyOnMiddlewareHookFunction>
+  ): void {
+    this.#getManager().registerGlobalMiddlewareHook(hook);
+  }
+
+  public registerTaskMiddlewareHook(
+    taskId: string,
+    hook: RegisterHookFunctionParams<AnyOnMiddlewareHookFunction>
+  ): void {
+    this.#getManager().registerTaskMiddlewareHook(taskId, hook);
+  }
+
+  public getTaskMiddlewareHook(taskId: string): AnyOnMiddlewareHookFunction | undefined {
+    return this.#getManager().getTaskMiddlewareHook(taskId);
+  }
+
+  public getGlobalMiddlewareHooks(): RegisteredHookFunction<AnyOnMiddlewareHookFunction>[] {
+    return this.#getManager().getGlobalMiddlewareHooks();
   }
 
   #getManager(): LifecycleHooksManager {

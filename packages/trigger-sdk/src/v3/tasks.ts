@@ -7,6 +7,7 @@ import {
   onResume,
   onHandleError,
   onCatchError,
+  middleware,
 } from "./hooks.js";
 import {
   batchTrigger,
@@ -97,4 +98,5 @@ export const tasks = {
   /** @deprecated Use catchError instead */
   handleError: onHandleError,
   catchError: onCatchError,
+  middleware,
 };

@@ -10,6 +10,7 @@ import {
   type AnyOnWaitHookFunction,
   type AnyOnResumeHookFunction,
   type AnyOnCatchErrorHookFunction,
+  type AnyOnMiddlewareHookFunction,
 } from "@trigger.dev/core/v3";
 
 export type {
@@ -23,6 +24,7 @@ export type {
   AnyOnWaitHookFunction,
   AnyOnResumeHookFunction,
   AnyOnCatchErrorHookFunction,
+  AnyOnMiddlewareHookFunction,
 };
 
 export function onStart(name: string, fn: AnyOnStartHookFunction): void;
@@ -113,6 +115,18 @@ export function onCatchError(
   fn?: AnyOnCatchErrorHookFunction
 ): void {
   lifecycleHooks.registerGlobalCatchErrorHook({
+    id: typeof fnOrName === "string" ? fnOrName : fnOrName.name ? fnOrName.name : undefined,
+    fn: typeof fnOrName === "function" ? fnOrName : fn!,
+  });
+}
+
+export function middleware(name: string, fn: AnyOnMiddlewareHookFunction): void;
+export function middleware(fn: AnyOnMiddlewareHookFunction): void;
+export function middleware(
+  fnOrName: string | AnyOnMiddlewareHookFunction,
+  fn?: AnyOnMiddlewareHookFunction
+): void {
+  lifecycleHooks.registerGlobalMiddlewareHook({
     id: typeof fnOrName === "string" ? fnOrName : fnOrName.name ? fnOrName.name : undefined,
     fn: typeof fnOrName === "function" ? fnOrName : fn!,
   });
