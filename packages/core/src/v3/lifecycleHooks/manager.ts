@@ -57,7 +57,7 @@ export class StandardLifecycleHooksManager implements LifecycleHooksManager {
 
     this.globalStartHooks.set(id, {
       id,
-      name: hook.id ?? hook.fn.name ? (hook.fn.name === "" ? undefined : hook.fn.name) : undefined,
+      name: hook.id,
       fn: hook.fn,
     });
   }
@@ -70,7 +70,7 @@ export class StandardLifecycleHooksManager implements LifecycleHooksManager {
 
     this.taskStartHooks.set(taskId, {
       id,
-      name: hook.id ?? hook.fn.name ? (hook.fn.name === "" ? undefined : hook.fn.name) : undefined,
+      name: hook.id,
       fn: hook.fn,
     });
   }
@@ -89,7 +89,7 @@ export class StandardLifecycleHooksManager implements LifecycleHooksManager {
 
     const registeredHook = {
       id,
-      name: hook.id ?? hook.fn.name ? (hook.fn.name === "" ? undefined : hook.fn.name) : undefined,
+      name: hook.id,
       fn: hook.fn,
     };
 
@@ -122,7 +122,7 @@ export class StandardLifecycleHooksManager implements LifecycleHooksManager {
 
     this.globalFailureHooks.set(id, {
       id,
-      name: hook.id ?? hook.fn.name ? (hook.fn.name === "" ? undefined : hook.fn.name) : undefined,
+      name: hook.id,
       fn: hook.fn,
     });
   }
@@ -135,7 +135,7 @@ export class StandardLifecycleHooksManager implements LifecycleHooksManager {
 
     this.taskFailureHooks.set(taskId, {
       id,
-      name: hook.id ?? hook.fn.name ? (hook.fn.name === "" ? undefined : hook.fn.name) : undefined,
+      name: hook.id,
       fn: hook.fn,
     });
   }
@@ -153,7 +153,7 @@ export class StandardLifecycleHooksManager implements LifecycleHooksManager {
 
     this.globalSuccessHooks.set(id, {
       id,
-      name: hook.id ?? hook.fn.name ? (hook.fn.name === "" ? undefined : hook.fn.name) : undefined,
+      name: hook.id,
       fn: hook.fn,
     });
   }
@@ -166,7 +166,7 @@ export class StandardLifecycleHooksManager implements LifecycleHooksManager {
 
     this.taskSuccessHooks.set(taskId, {
       id,
-      name: hook.id ?? hook.fn.name ? (hook.fn.name === "" ? undefined : hook.fn.name) : undefined,
+      name: hook.id,
       fn: hook.fn,
     });
   }
@@ -184,7 +184,7 @@ export class StandardLifecycleHooksManager implements LifecycleHooksManager {
 
     this.globalCompleteHooks.set(id, {
       id,
-      name: hook.id ?? hook.fn.name ? (hook.fn.name === "" ? undefined : hook.fn.name) : undefined,
+      name: hook.id,
       fn: hook.fn,
     });
   }
@@ -197,7 +197,7 @@ export class StandardLifecycleHooksManager implements LifecycleHooksManager {
 
     this.taskCompleteHooks.set(taskId, {
       id,
-      name: hook.id ?? hook.fn.name ? (hook.fn.name === "" ? undefined : hook.fn.name) : undefined,
+      name: hook.id,
       fn: hook.fn,
     });
   }
@@ -215,7 +215,7 @@ export class StandardLifecycleHooksManager implements LifecycleHooksManager {
 
     this.globalWaitHooks.set(id, {
       id,
-      name: hook.id ?? hook.fn.name ? (hook.fn.name === "" ? undefined : hook.fn.name) : undefined,
+      name: hook.id,
       fn: hook.fn,
     });
   }
@@ -228,7 +228,7 @@ export class StandardLifecycleHooksManager implements LifecycleHooksManager {
 
     this.taskWaitHooks.set(taskId, {
       id,
-      name: hook.id ?? hook.fn.name ? (hook.fn.name === "" ? undefined : hook.fn.name) : undefined,
+      name: hook.id,
       fn: hook.fn,
     });
   }
@@ -246,7 +246,7 @@ export class StandardLifecycleHooksManager implements LifecycleHooksManager {
 
     this.globalResumeHooks.set(id, {
       id,
-      name: hook.id ?? hook.fn.name ? (hook.fn.name === "" ? undefined : hook.fn.name) : undefined,
+      name: hook.id,
       fn: hook.fn,
     });
   }
@@ -259,7 +259,7 @@ export class StandardLifecycleHooksManager implements LifecycleHooksManager {
 
     this.taskResumeHooks.set(taskId, {
       id,
-      name: hook.id ?? hook.fn.name ? (hook.fn.name === "" ? undefined : hook.fn.name) : undefined,
+      name: hook.id,
       fn: hook.fn,
     });
   }
@@ -279,7 +279,7 @@ export class StandardLifecycleHooksManager implements LifecycleHooksManager {
 
     this.globalCatchErrorHooks.set(id, {
       id,
-      name: hook.id ?? hook.fn.name ? (hook.fn.name === "" ? undefined : hook.fn.name) : undefined,
+      name: hook.id,
       fn: hook.fn,
     });
   }
@@ -292,7 +292,7 @@ export class StandardLifecycleHooksManager implements LifecycleHooksManager {
 
     this.taskCatchErrorHooks.set(taskId, {
       id,
-      name: hook.id ?? hook.fn.name ? (hook.fn.name === "" ? undefined : hook.fn.name) : undefined,
+      name: hook.id,
       fn: hook.fn,
     });
   }
@@ -312,7 +312,7 @@ export class StandardLifecycleHooksManager implements LifecycleHooksManager {
 
     this.globalMiddlewareHooks.set(id, {
       id,
-      name: hook.id ?? hook.fn.name ? (hook.fn.name === "" ? undefined : hook.fn.name) : undefined,
+      name: hook.id,
       fn: hook.fn,
     });
   }
@@ -325,7 +325,7 @@ export class StandardLifecycleHooksManager implements LifecycleHooksManager {
 
     this.taskMiddlewareHooks.set(taskId, {
       id,
-      name: hook.id ?? hook.fn.name ? (hook.fn.name === "" ? undefined : hook.fn.name) : undefined,
+      name: hook.id,
       fn: hook.fn,
     });
   }
@@ -507,9 +507,5 @@ export class NoopLifecycleHooksManager implements LifecycleHooksManager {
 }
 
 function generateHookId(hook: RegisterHookFunctionParams<any>): string {
-  return hook.id ?? hook.fn.name
-    ? hook.fn.name === ""
-      ? hook.fn.toString()
-      : hook.fn.name
-    : hook.fn.toString();
+  return hook.id ?? hook.fn.toString();
 }

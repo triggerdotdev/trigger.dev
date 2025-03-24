@@ -3,13 +3,8 @@ import { VERSION } from "../../version.js";
 import { ApiError, RateLimitError } from "../apiClient/errors.js";
 import { ConsoleInterceptor } from "../consoleInterceptor.js";
 import { isInternalError, parseError, sanitizeError, TaskPayloadParsedError } from "../errors.js";
-import {
-  flattenAttributes,
-  lifecycleHooks,
-  runMetadata,
-  TriggerConfig,
-  waitUntil,
-} from "../index.js";
+import { flattenAttributes, lifecycleHooks, runMetadata, waitUntil } from "../index.js";
+import { TaskCompleteResult } from "../lifecycleHooks/types.js";
 import { recordSpanException, TracingSDK } from "../otel/index.js";
 import { runTimelineMetrics } from "../run-timeline-metrics-api.js";
 import {
@@ -25,7 +20,6 @@ import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
 import { taskContext } from "../task-context-api.js";
 import { TriggerTracer } from "../tracer.js";
 import { HandleErrorFunction, TaskMetadataWithFunctions } from "../types/index.js";
-import { UsageMeasurement } from "../usage/types.js";
 import {
   conditionallyExportPacket,
   conditionallyImportPacket,
@@ -34,7 +28,6 @@ import {
   stringifyIO,
 } from "../utils/ioSerialization.js";
 import { calculateNextRetryDelay } from "../utils/retries.js";
-import { TaskCompleteResult } from "../lifecycleHooks/types.js";
 
 export type TaskExecutorOptions = {
   tracingSDK: TracingSDK;
@@ -134,11 +127,11 @@ export class TaskExecutor {
           try {
             parsedPayload = await this.#parsePayload(parsedPayload);
 
-            if (execution.attempt.number === 1) {
-              await this.#callOnStartFunctions(parsedPayload, ctx, signal);
-            }
-
             initOutput = await this.#callInitFunctions(parsedPayload, ctx, signal);
+
+            if (execution.attempt.number === 1) {
+              await this.#callOnStartFunctions(parsedPayload, ctx, initOutput, signal);
+            }
 
             const output = await this.#callRun(parsedPayload, ctx, initOutput, signal);
 
@@ -573,7 +566,12 @@ export class TaskExecutor {
     }
   }
 
-  async #callOnStartFunctions(payload: unknown, ctx: TaskRunContext, signal?: AbortSignal) {
+  async #callOnStartFunctions(
+    payload: unknown,
+    ctx: TaskRunContext,
+    initOutput: any,
+    signal?: AbortSignal
+  ) {
     const globalStartHooks = lifecycleHooks.getGlobalStartHooks();
     const taskStartHook = lifecycleHooks.getTaskStartHook(this.task.id);
 
@@ -592,7 +590,7 @@ export class TaskExecutor {
               await this._tracer.startActiveSpan(
                 hook.name ?? "global",
                 async (span) => {
-                  await hook.fn({ payload, ctx, signal, task: this.task.id });
+                  await hook.fn({ payload, ctx, signal, task: this.task.id, init: initOutput });
                 },
                 {
                   attributes: {
@@ -606,7 +604,13 @@ export class TaskExecutor {
               await this._tracer.startActiveSpan(
                 "task",
                 async (span) => {
-                  await taskStartHook({ payload, ctx, signal, task: this.task.id });
+                  await taskStartHook({
+                    payload,
+                    ctx,
+                    signal,
+                    task: this.task.id,
+                    init: initOutput,
+                  });
                 },
                 {
                   attributes: {
