@@ -3,7 +3,6 @@ import {
   ArrowRightOnRectangleIcon,
   BeakerIcon,
   BellAlertIcon,
-  BookOpenIcon,
   ChartBarIcon,
   ChevronRightIcon,
   ClockIcon,
@@ -21,6 +20,7 @@ import {
 import { useNavigation } from "@remix-run/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import simplur from "simplur";
+import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
 import { ConnectedIcon, DisconnectedIcon } from "~/assets/icons/ConnectionIcons";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
@@ -59,16 +59,11 @@ import {
 import connectedImage from "../../assets/images/cli-connected.png";
 import disconnectedImage from "../../assets/images/cli-disconnected.png";
 import { FreePlanUsage } from "../billing/FreePlanUsage";
+import { InlineCode } from "../code/InlineCode";
 import { useDevPresence } from "../DevPresence";
 import { ImpersonationBanner } from "../ImpersonationBanner";
 import { Button, ButtonContent, LinkButton } from "../primitives/Buttons";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTrigger,
-} from "../primitives/Dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "../primitives/Dialog";
 import { Paragraph } from "../primitives/Paragraph";
 import {
   Popover,
@@ -86,7 +81,8 @@ import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
 import { SideMenuSection } from "./SideMenuSection";
-import { InlineCode } from "../code/InlineCode";
+import { useShortcutKeys } from "~/hooks/useShortcutKeys";
+import { ShortcutKey } from "../primitives/ShortcutKey";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 export type SideMenuProject = Pick<
@@ -116,6 +112,17 @@ export function SideMenu({
   const [showHeaderDivider, setShowHeaderDivider] = useState(false);
   const currentPlan = useCurrentPlan();
   const isFreeUser = currentPlan?.v3Subscription?.isPaying === false;
+  const buttonRef = useRef<HTMLButtonElement>(null);
+
+  useShortcutKeys({
+    shortcut: { key: "a", modifiers: ["mod", "shift"] },
+    action: (e) => {
+      e.preventDefault();
+      if (buttonRef.current) {
+        buttonRef.current.click();
+      }
+    },
+  });
 
   useEffect(() => {
     const handleScroll = () => {
@@ -251,7 +258,34 @@ export function SideMenu({
         </div>
       </div>
       <div className="flex flex-col gap-1 border-t border-grid-bright p-1">
-        <HelpAndFeedback />
+        <div className="flex w-full items-center justify-between">
+          <HelpAndFeedback />
+          <TooltipProvider disableHoverableContent>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div>
+                  <Button
+                    ref={buttonRef}
+                    variant="small-menu-item"
+                    data-action="ask-ai"
+                    onClick={() => {
+                      // TODO: sort action
+                    }}
+                  >
+                    <AISparkleIcon className="size-5" />
+                  </Button>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent
+                side="top"
+                className="flex items-center gap-1 py-1.5 pl-2.5 pr-2 text-xs"
+              >
+                Ask AI
+                <ShortcutKey shortcut={{ key: "/", modifiers: ["mod"] }} variant="small" />
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
         {isFreeUser && (
           <FreePlanUsage
             to={v3BillingPath(organization)}

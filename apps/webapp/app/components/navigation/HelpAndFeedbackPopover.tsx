@@ -5,6 +5,7 @@ import {
   ChatBubbleLeftEllipsisIcon,
   EnvelopeIcon,
   LightBulbIcon,
+  QuestionMarkCircleIcon,
   SignalIcon,
   StarIcon,
 } from "@heroicons/react/20/solid";
@@ -28,9 +29,12 @@ export function HelpAndFeedback() {
 
   return (
     <Popover onOpenChange={(open) => setHelpMenuOpen(open)}>
-      <PopoverSideMenuTrigger isOpen={isHelpMenuOpen} shortcut={{ key: "h" }}>
+      <PopoverSideMenuTrigger
+        isOpen={isHelpMenuOpen}
+        shortcut={{ key: "h", enabledOnInputElements: false }}
+      >
         <div className="flex items-center gap-1.5">
-          <ChatBubbleLeftEllipsisIcon className="size-4 text-success" />
+          <QuestionMarkCircleIcon className="size-4 text-success" />
           Help & Feedback
         </div>
       </PopoverSideMenuTrigger>
