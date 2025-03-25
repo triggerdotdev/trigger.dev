@@ -399,6 +399,13 @@ export class WaitpointSystem {
           WHERE w.id IN (${Prisma.join($waitpoints)})
           ON CONFLICT DO NOTHING
           RETURNING "waitpointId"
+        ),
+        connected_runs AS (
+          INSERT INTO "_WaitpointRunConnections" ("A", "B")
+          SELECT ${runId}, w.id
+          FROM "Waitpoint" w
+          WHERE w.id IN (${Prisma.join($waitpoints)})
+          ON CONFLICT DO NOTHING
         )
         SELECT COUNT(*) as pending_count
         FROM inserted i

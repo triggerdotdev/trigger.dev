@@ -65,6 +65,7 @@ export const WaitpointSearchParamsSchema = z.object({
   cursor: z.string().optional(),
   direction: z.enum(["forward", "backward"]).optional(),
 });
+export type WaitpointSearchParams = z.infer<typeof WaitpointSearchParamsSchema>;
 
 type WaitpointTokenFiltersProps = {
   hasFilters: boolean;
@@ -561,7 +562,7 @@ function AppliedWaitpointIdFilter() {
           trigger={
             <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
               <AppliedFilter
-                label="Waitpoint ID"
+                label="ID"
                 value={id}
                 onRemove={() => del(["id", "cursor", "direction"])}
               />
@@ -629,7 +630,7 @@ function IdempotencyKeyDropdown({
           <div className="flex flex-col gap-1">
             <Label>Idempotency key</Label>
             <Input
-              placeholder="run_"
+              placeholder="waitpoint_"
               value={idempotencyKey ?? ""}
               onChange={(e) => setIdempotencyKey(e.target.value)}
               variant="small"

@@ -4,7 +4,7 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { LinkButton } from "~/components/primitives/Buttons";
-import { Header2 } from "~/components/primitives/Headers";
+import { Header2, Header3 } from "~/components/primitives/Headers";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -16,6 +16,8 @@ import { cn } from "~/utils/cn";
 import { EnvironmentParamSchema, v3WaitpointTokensPath } from "~/utils/pathBuilder";
 import { CompleteWaitpointForm } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.waitpoints.$waitpointFriendlyId.complete/route";
 import { WaitpointDetailTable } from "~/components/runs/v3/WaitpointDetails";
+import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
+import { InfoIconTooltip } from "~/components/primitives/Tooltip";
 
 const Params = EnvironmentParamSchema.extend({
   waitpointParam: z.string(),
@@ -46,6 +48,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     const result = await presenter.call({
       friendlyId: waitpointParam,
       environmentId: environment.id,
+      projectId: project.id,
     });
 
     if (!result) {
@@ -94,8 +97,31 @@ export default function Page() {
           className="pl-1"
         />
       </div>
-      <div className="overflow-y-auto px-3 pt-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-        <WaitpointDetailTable waitpoint={waitpoint} />
+      <div className="overflow-y-auto pt-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+        <div className="px-3">
+          <WaitpointDetailTable waitpoint={waitpoint} />
+        </div>
+        <div className="flex flex-col gap-1 pt-6">
+          <div className="mb-1 flex items-center gap-1 pl-3">
+            <Header3>5 related runs</Header3>
+            <InfoIconTooltip content="These runs have been blocked by this waitpoint." />
+          </div>
+          <TaskRunsTable
+            total={waitpoint.connectedRuns.length}
+            hasFilters={false}
+            filters={{
+              tasks: [],
+              versions: [],
+              statuses: [],
+              environments: [],
+              from: undefined,
+              to: undefined,
+            }}
+            runs={waitpoint.connectedRuns}
+            isLoading={false}
+            variant="bright"
+          />
+        </div>
       </div>
       {waitpoint.status === "PENDING" && (
         <div>

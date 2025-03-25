@@ -1794,10 +1794,13 @@ model TaskRun {
   oneTimeUseToken String?
 
   ///When this run is finished, the waitpoint will be marked as completed
-  associatedWaitpoint Waitpoint?
+  associatedWaitpoint Waitpoint? @relation("CompletingRun")
 
   ///If there are any blocked waitpoints, the run won't be executed
   blockedByWaitpoints TaskRunWaitpoint[]
+
+  /// All waitpoints that blocked this run at some point, used for display purposes
+  connectedWaitpoints Waitpoint[] @relation("WaitpointRunConnections")
 
   /// Where the logs are stored
   taskEventStore String @default("taskEvent")
@@ -2109,7 +2112,7 @@ model Waitpoint {
 
   /// If it's a RUN type waitpoint, this is the associated run
   completedByTaskRunId String?  @unique
-  completedByTaskRun   TaskRun? @relation(fields: [completedByTaskRunId], references: [id], onDelete: SetNull)
+  completedByTaskRun   TaskRun? @relation("CompletingRun", fields: [completedByTaskRunId], references: [id], onDelete: SetNull)
 
   /// If it's a DATETIME type waitpoint, this is the date.
   /// If it's a MANUAL waitpoint, this can be set as the `timeout`.
@@ -2121,6 +2124,9 @@ model Waitpoint {
 
   /// The runs this waitpoint is blocking
   blockingTaskRuns TaskRunWaitpoint[]
+
+  /// All runs that have ever been blocked by this waitpoint, used for display purposes
+  connectedRuns TaskRun[] @relation("WaitpointRunConnections")
 
   /// When a waitpoint is complete
   completedExecutionSnapshots TaskRunExecutionSnapshot[] @relation("completedWaitpoints")

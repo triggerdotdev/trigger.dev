@@ -203,7 +203,7 @@ export default function Page() {
                                   "–"
                                 )}
                               </TableCell>
-                              <TableCell to={path} actionClassName="py-1" className="pr-16">
+                              <TableCell to={path} actionClassName="py-1">
                                 <div className="flex gap-1">
                                   {token.tags.map((tag) => <RunTag key={tag} tag={tag} />) || "–"}
                                 </div>

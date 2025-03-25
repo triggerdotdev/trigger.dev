@@ -1,11 +1,20 @@
 import { isWaitpointOutputTimeout, prettyPrintPacket } from "@trigger.dev/core/v3";
 import { logger } from "~/services/logger.server";
 import { BasePresenter } from "./basePresenter.server";
+import { RunListItem, RunListPresenter } from "./RunListPresenter.server";
 
 export type WaitpointDetail = NonNullable<Awaited<ReturnType<WaitpointPresenter["call"]>>>;
 
 export class WaitpointPresenter extends BasePresenter {
-  public async call({ friendlyId, environmentId }: { friendlyId: string; environmentId: string }) {
+  public async call({
+    friendlyId,
+    environmentId,
+    projectId,
+  }: {
+    friendlyId: string;
+    environmentId: string;
+    projectId: string;
+  }) {
     const waitpoint = await this._replica.waitpoint.findFirst({
       where: {
         friendlyId,
@@ -23,6 +32,12 @@ export class WaitpointPresenter extends BasePresenter {
         outputType: true,
         outputIsError: true,
         completedAfter: true,
+        connectedRuns: {
+          select: {
+            friendlyId: true,
+          },
+          take: 5,
+        },
       },
     });
 
@@ -47,6 +62,20 @@ export class WaitpointPresenter extends BasePresenter {
       }
     }
 
+    const connectedRunIds = waitpoint.connectedRuns.map((run) => run.friendlyId);
+    const connectedRuns: RunListItem[] = [];
+
+    if (connectedRunIds.length > 0) {
+      const runPresenter = new RunListPresenter();
+      const { runs } = await runPresenter.call({
+        projectId: projectId,
+        environments: [environmentId],
+        runIds: connectedRunIds,
+        pageSize: 5,
+      });
+      connectedRuns.push(...runs);
+    }
+
     return {
       friendlyId: waitpoint.friendlyId,
       type: waitpoint.type,
@@ -60,6 +89,7 @@ export class WaitpointPresenter extends BasePresenter {
       outputIsError: waitpoint.outputIsError,
       completedAfter: waitpoint.completedAfter,
       isTimeout,
+      connectedRuns,
     };
   }
 }

@@ -950,7 +950,7 @@ function SpanEntity({ span }: { span: Span }) {
                 <TextLink to={docsPath("wait")}>View docs</TextLink>.
               </Paragraph>
             </div>
-            <WaitpointDetailTable waitpoint={span.entity.object} />
+            <WaitpointDetailTable waitpoint={span.entity.object} linkToList />
           </div>
           {span.entity.object.status === "PENDING" && (
             <div>

@@ -1,12 +1,28 @@
 import { DateTime, DateTimeAccurate } from "~/components/primitives/DateTime";
+import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
 import { type WaitpointDetail } from "~/presenters/v3/WaitpointPresenter.server";
 import { ForceTimeout } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.waitpoints.$waitpointFriendlyId.complete/route";
 import { PacketDisplay } from "./PacketDisplay";
 import { WaitpointStatusCombo } from "./WaitpointStatus";
-import { Paragraph } from "~/components/primitives/Paragraph";
+import { v3WaitpointTokensPath } from "~/utils/pathBuilder";
+import { Link } from "@remix-run/react";
+import { TextLink } from "~/components/primitives/TextLink";
+import { useOrganization } from "~/hooks/useOrganizations";
+import { useProject } from "~/hooks/useProject";
+import { useEnvironment } from "~/hooks/useEnvironment";
 
-export function WaitpointDetailTable({ waitpoint }: { waitpoint: WaitpointDetail }) {
+export function WaitpointDetailTable({
+  waitpoint,
+  linkToList = false,
+}: {
+  waitpoint: WaitpointDetail;
+  linkToList?: boolean;
+}) {
+  const organization = useOrganization();
+  const project = useProject();
+  const environment = useEnvironment();
+
   const hasExpired =
     waitpoint.idempotencyKeyExpiresAt && waitpoint.idempotencyKeyExpiresAt < new Date();
 
@@ -24,7 +40,19 @@ export function WaitpointDetailTable({ waitpoint }: { waitpoint: WaitpointDetail
       </Property.Item>
       <Property.Item>
         <Property.Label>ID</Property.Label>
-        <Property.Value className="whitespace-pre-wrap">{waitpoint.friendlyId}</Property.Value>
+        <Property.Value className="whitespace-pre-wrap">
+          {linkToList ? (
+            <TextLink
+              to={v3WaitpointTokensPath(organization, project, environment, {
+                id: waitpoint.friendlyId,
+              })}
+            >
+              {waitpoint.friendlyId}
+            </TextLink>
+          ) : (
+            waitpoint.friendlyId
+          )}
+        </Property.Value>
       </Property.Item>
       <Property.Item>
         <Property.Label>Idempotency key</Property.Label>

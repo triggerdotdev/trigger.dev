@@ -4,6 +4,10 @@ import { type TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
 import type { Organization } from "~/models/organization.server";
 import type { Project } from "~/models/project.server";
 import { objectToSearchParams } from "./searchParams";
+import {
+  WaitpointFilterStatus,
+  WaitpointSearchParams,
+} from "~/components/runs/v3/WaitpointTokenFilters";
 
 export type OrgForPath = Pick<Organization, "slug">;
 export type ProjectForPath = Pick<Project, "slug">;
@@ -314,9 +318,12 @@ export function v3QueuesPath(
 export function v3WaitpointTokensPath(
   organization: OrgForPath,
   project: ProjectForPath,
-  environment: EnvironmentForPath
+  environment: EnvironmentForPath,
+  filters?: WaitpointSearchParams
 ) {
-  return `${v3EnvironmentPath(organization, project, environment)}/waitpoints/tokens`;
+  const searchParams = objectToSearchParams(filters);
+  const query = searchParams ? `?${searchParams.toString()}` : "";
+  return `${v3EnvironmentPath(organization, project, environment)}/waitpoints/tokens${query}`;
 }
 
 export function v3WaitpointTokenPath(
