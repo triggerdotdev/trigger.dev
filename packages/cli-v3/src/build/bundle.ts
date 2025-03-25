@@ -239,12 +239,14 @@ export async function getBundleResultFromBuild(
   // Check if the entry point is an init.ts file at the root of a trigger directory
   function isInitEntryPoint(entryPoint: string): boolean {
     const normalizedEntryPoint = entryPoint.replace(/\\/g, "/"); // Normalize path separators
-    const initFileName = "init.ts";
+    const initFileNames = ["init.ts", "init.mts", "init.cts", "init.js", "init.mjs", "init.cjs"];
 
     // Check if it's directly in one of the trigger directories
     return resolvedConfig.dirs.some((dir) => {
       const normalizedDir = dir.replace(/\\/g, "/");
-      return normalizedEntryPoint === `${normalizedDir}/${initFileName}`;
+      return initFileNames.some(
+        (fileName) => normalizedEntryPoint === `${normalizedDir}/${fileName}`
+      );
     });
   }
 
