@@ -42,6 +42,7 @@ export class SpanPresenter extends BasePresenter {
       select: {
         traceId: true,
         runtimeEnvironmentId: true,
+        projectId: true,
         taskEventStore: true,
         createdAt: true,
         completedAt: true,
@@ -79,6 +80,7 @@ export class SpanPresenter extends BasePresenter {
       traceId,
       spanId,
       environmentId: parentRun.runtimeEnvironmentId,
+      projectId: parentRun.projectId,
       createdAt: parentRun.createdAt,
       completedAt: parentRun.completedAt,
     });
@@ -403,12 +405,14 @@ export class SpanPresenter extends BasePresenter {
     traceId,
     spanId,
     environmentId,
+    projectId,
     createdAt,
     completedAt,
   }: {
     traceId: string;
     spanId: string;
     environmentId: string;
+    projectId: string;
     eventStore: TaskEventStoreTable;
     createdAt: Date;
     completedAt: Date | null;
@@ -464,6 +468,7 @@ export class SpanPresenter extends BasePresenter {
         const waitpoint = await presenter.call({
           friendlyId: span.entity.id,
           environmentId,
+          projectId,
         });
 
         if (!waitpoint) {
