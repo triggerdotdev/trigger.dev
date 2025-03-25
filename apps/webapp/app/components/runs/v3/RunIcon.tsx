@@ -28,8 +28,6 @@ type SpanNameIcons = {
 const spanNameIcons: SpanNameIcons[] = [{ matcher: /^prisma:/, iconName: "brand-prisma" }];
 
 export function RunIcon({ name, className, spanName }: TaskIconProps) {
-  console.log("spanName", spanName, name);
-
   const spanNameIcon = spanNameIcons.find(({ matcher }) => matcher.test(spanName));
 
   if (spanNameIcon) {
