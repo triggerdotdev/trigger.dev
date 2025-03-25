@@ -12,6 +12,7 @@ import {
   AnyOnCatchErrorHookFunction,
   AnyOnMiddlewareHookFunction,
   AnyOnCleanupHookFunction,
+  TaskWait,
 } from "./types.js";
 
 export class StandardLifecycleHooksManager implements LifecycleHooksManager {
@@ -57,6 +58,25 @@ export class StandardLifecycleHooksManager implements LifecycleHooksManager {
     new Map();
   private taskCleanupHooks: Map<string, RegisteredHookFunction<AnyOnCleanupHookFunction>> =
     new Map();
+
+  private onWaitHookListeners: ((wait: TaskWait) => Promise<void>)[] = [];
+  private onResumeHookListeners: ((wait: TaskWait) => Promise<void>)[] = [];
+
+  registerOnWaitHookListener(listener: (wait: TaskWait) => Promise<void>): void {
+    this.onWaitHookListeners.push(listener);
+  }
+
+  async callOnWaitHookListeners(wait: TaskWait): Promise<void> {
+    await Promise.all(this.onWaitHookListeners.map((listener) => listener(wait)));
+  }
+
+  registerOnResumeHookListener(listener: (wait: TaskWait) => Promise<void>): void {
+    this.onResumeHookListeners.push(listener);
+  }
+
+  async callOnResumeHookListeners(wait: TaskWait): Promise<void> {
+    await Promise.all(this.onResumeHookListeners.map((listener) => listener(wait)));
+  }
 
   registerGlobalStartHook(hook: RegisterHookFunctionParams<AnyOnStartHookFunction>): void {
     const id = generateHookId(hook);
@@ -377,6 +397,22 @@ export class StandardLifecycleHooksManager implements LifecycleHooksManager {
 }
 
 export class NoopLifecycleHooksManager implements LifecycleHooksManager {
+  registerOnWaitHookListener(listener: (wait: TaskWait) => Promise<void>): void {
+    // Noop
+  }
+
+  async callOnWaitHookListeners(wait: TaskWait): Promise<void> {
+    // Noop
+  }
+
+  registerOnResumeHookListener(listener: (wait: TaskWait) => Promise<void>): void {
+    // Noop
+  }
+
+  async callOnResumeHookListeners(wait: TaskWait): Promise<void> {
+    // Noop
+  }
+
   registerGlobalInitHook(hook: RegisterHookFunctionParams<AnyOnInitHookFunction>): void {
     // Noop
   }

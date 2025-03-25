@@ -1,6 +1,5 @@
 import { batch, logger, task, timeout, wait } from "@trigger.dev/sdk";
 import { setTimeout } from "timers/promises";
-import { getDb } from "../db.js";
 
 export const helloWorldTask = task({
   id: "hello-world",
@@ -165,11 +164,11 @@ export const hooksTask = task({
       foobar: "baz",
     };
   },
-  onWait: async ({ payload, ctx, init }) => {
-    logger.info("Hello, world from the onWait hook", { payload, init });
+  onWait: async ({ payload, wait, ctx, init }) => {
+    logger.info("Hello, world from the onWait hook", { payload, init, wait });
   },
-  onResume: async ({ payload, ctx, init }) => {
-    logger.info("Hello, world from the onResume hook", { payload, init });
+  onResume: async ({ payload, wait, ctx, init }) => {
+    logger.info("Hello, world from the onResume hook", { payload, init, wait });
   },
   onStart: async ({ payload, ctx, init }) => {
     logger.info("Hello, world from the onStart hook", { payload, init });

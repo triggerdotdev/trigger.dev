@@ -1501,6 +1501,126 @@ describe("TaskExecutor", () => {
       },
     });
   });
+
+  test("should call onWait and onResume hooks in correct order with proper data", async () => {
+    const executionOrder: string[] = [];
+    const waitData = { type: "task", runId: "test-run-id" } as const;
+
+    // Register global init hook to provide init data
+    lifecycleHooks.registerGlobalInitHook({
+      id: "test-init",
+      fn: async () => {
+        executionOrder.push("init");
+        return {
+          foo: "bar",
+        };
+      },
+    });
+
+    // Register global wait hooks
+    lifecycleHooks.registerGlobalWaitHook({
+      id: "global-wait-1",
+      fn: async ({ payload, wait, init }) => {
+        executionOrder.push("global-wait-1");
+        expect(wait).toEqual(waitData);
+        expect(init).toEqual({ foo: "bar" });
+      },
+    });
+
+    lifecycleHooks.registerGlobalWaitHook({
+      id: "global-wait-2",
+      fn: async ({ payload, wait, init }) => {
+        executionOrder.push("global-wait-2");
+        expect(wait).toEqual(waitData);
+        expect(init).toEqual({ foo: "bar" });
+      },
+    });
+
+    // Register task-specific wait hook
+    lifecycleHooks.registerTaskWaitHook("test-task", {
+      id: "task-wait",
+      fn: async ({ payload, wait, init }) => {
+        executionOrder.push("task-wait");
+        expect(wait).toEqual(waitData);
+        expect(init).toEqual({ foo: "bar" });
+      },
+    });
+
+    // Register global resume hooks
+    lifecycleHooks.registerGlobalResumeHook({
+      id: "global-resume-1",
+      fn: async ({ payload, wait, init }) => {
+        executionOrder.push("global-resume-1");
+        expect(wait).toEqual(waitData);
+        expect(init).toEqual({ foo: "bar" });
+      },
+    });
+
+    lifecycleHooks.registerGlobalResumeHook({
+      id: "global-resume-2",
+      fn: async ({ payload, wait, init }) => {
+        executionOrder.push("global-resume-2");
+        expect(wait).toEqual(waitData);
+        expect(init).toEqual({ foo: "bar" });
+      },
+    });
+
+    // Register task-specific resume hook
+    lifecycleHooks.registerTaskResumeHook("test-task", {
+      id: "task-resume",
+      fn: async ({ payload, wait, init }) => {
+        executionOrder.push("task-resume");
+        expect(wait).toEqual(waitData);
+        expect(init).toEqual({ foo: "bar" });
+      },
+    });
+
+    const task = {
+      id: "test-task",
+      fns: {
+        run: async (payload: any, params: RunFnParams<any>) => {
+          executionOrder.push("run-start");
+
+          // Simulate a wait
+          await lifecycleHooks.callOnWaitHookListeners(waitData);
+
+          // Simulate some time passing
+          await new Promise((resolve) => setTimeout(resolve, 10));
+
+          // Simulate resuming
+          await lifecycleHooks.callOnResumeHookListeners(waitData);
+
+          executionOrder.push("run-end");
+          return { success: true };
+        },
+      },
+    };
+
+    const result = await executeTask(task, { test: "data" });
+
+    // Verify hooks were called in correct order
+    expect(executionOrder).toEqual([
+      "init",
+      "run-start",
+      "global-wait-1",
+      "global-wait-2",
+      "task-wait",
+      "global-resume-1",
+      "global-resume-2",
+      "task-resume",
+      "run-end",
+    ]);
+
+    // Verify the final result
+    expect(result).toEqual({
+      result: {
+        ok: true,
+        id: "test-run-id",
+        output: '{"json":{"success":true}}',
+        outputType: "application/super+json",
+      },
+    });
+  });
 });
 
 function executeTask(task: TaskMetadataWithFunctions, payload: any, signal?: AbortSignal) {

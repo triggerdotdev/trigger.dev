@@ -33,10 +33,30 @@ export type OnStartHookFunction<TPayload, TInitOutput extends TaskInitOutput = T
 
 export type AnyOnStartHookFunction = OnStartHookFunction<unknown, TaskInitOutput>;
 
+export type TaskWait =
+  | {
+      type: "duration";
+      date: Date;
+    }
+  | {
+      type: "token";
+      token: string;
+    }
+  | {
+      type: "task";
+      runId: string;
+    }
+  | {
+      type: "batch";
+      batchId: string;
+      runCount: number;
+    };
+
 export type TaskWaitHookParams<
   TPayload = unknown,
   TInitOutput extends TaskInitOutput = TaskInitOutput,
 > = {
+  wait: TaskWait;
   ctx: TaskRunContext;
   payload: TPayload;
   task: string;
@@ -55,6 +75,7 @@ export type TaskResumeHookParams<
   TInitOutput extends TaskInitOutput = TaskInitOutput,
 > = {
   ctx: TaskRunContext;
+  wait: TaskWait;
   payload: TPayload;
   task: string;
   signal?: AbortSignal;
@@ -280,4 +301,10 @@ export interface LifecycleHooksManager {
   ): void;
   getTaskCleanupHook(taskId: string): AnyOnCleanupHookFunction | undefined;
   getGlobalCleanupHooks(): RegisteredHookFunction<AnyOnCleanupHookFunction>[];
+
+  callOnWaitHookListeners(wait: TaskWait): Promise<void>;
+  registerOnWaitHookListener(listener: (wait: TaskWait) => Promise<void>): void;
+
+  callOnResumeHookListeners(wait: TaskWait): Promise<void>;
+  registerOnResumeHookListener(listener: (wait: TaskWait) => Promise<void>): void;
 }

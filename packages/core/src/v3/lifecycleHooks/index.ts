@@ -15,6 +15,7 @@ import {
   AnyOnWaitHookFunction,
   RegisteredHookFunction,
   RegisterHookFunctionParams,
+  TaskWait,
   type LifecycleHooksManager,
 } from "./types.js";
 
@@ -241,6 +242,22 @@ export class LifecycleHooksAPI {
 
   public getGlobalCleanupHooks(): RegisteredHookFunction<AnyOnCleanupHookFunction>[] {
     return this.#getManager().getGlobalCleanupHooks();
+  }
+
+  public callOnWaitHookListeners(wait: TaskWait): Promise<void> {
+    return this.#getManager().callOnWaitHookListeners(wait);
+  }
+
+  public callOnResumeHookListeners(wait: TaskWait): Promise<void> {
+    return this.#getManager().callOnResumeHookListeners(wait);
+  }
+
+  public registerOnWaitHookListener(listener: (wait: TaskWait) => Promise<void>): void {
+    this.#getManager().registerOnWaitHookListener(listener);
+  }
+
+  public registerOnResumeHookListener(listener: (wait: TaskWait) => Promise<void>): void {
+    this.#getManager().registerOnResumeHookListener(listener);
   }
 
   #getManager(): LifecycleHooksManager {

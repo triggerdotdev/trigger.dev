@@ -31,4 +31,5 @@ export type {
   OnCleanupHookFunction,
   AnyOnCleanupHookFunction,
   TaskCleanupHookParams,
+  TaskWait,
 } from "./lifecycleHooks/types.js";

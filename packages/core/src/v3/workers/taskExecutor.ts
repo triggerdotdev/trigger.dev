@@ -15,6 +15,7 @@ import {
   RegisteredHookFunction,
   TaskCompleteResult,
   TaskInitOutput,
+  TaskWait,
 } from "../lifecycleHooks/types.js";
 import { recordSpanException, TracingSDK } from "../otel/index.js";
 import { runTimelineMetrics } from "../run-timeline-metrics-api.js";
@@ -125,6 +126,14 @@ export class TaskExecutor {
           }
 
           parsedPayload = await this.#parsePayload(payloadResult);
+
+          lifecycleHooks.registerOnWaitHookListener(async (wait) => {
+            await this.#callOnWaitFunctions(wait, parsedPayload, ctx, initOutput, signal);
+          });
+
+          lifecycleHooks.registerOnResumeHookListener(async (wait) => {
+            await this.#callOnResumeFunctions(wait, parsedPayload, ctx, initOutput, signal);
+          });
 
           const executeTask = async (payload: any) => {
             const [runError, output] = await tryCatch(
@@ -381,6 +390,146 @@ export class TaskExecutor {
         }
       );
     });
+  }
+
+  async #callOnWaitFunctions(
+    wait: TaskWait,
+    payload: unknown,
+    ctx: TaskRunContext,
+    initOutput: TaskInitOutput,
+    signal?: AbortSignal
+  ) {
+    const globalWaitHooks = lifecycleHooks.getGlobalWaitHooks();
+    const taskWaitHook = lifecycleHooks.getTaskWaitHook(this.task.id);
+
+    if (globalWaitHooks.length === 0 && !taskWaitHook) {
+      return;
+    }
+
+    const result = await runTimelineMetrics.measureMetric(
+      "trigger.dev/execution",
+      "onWait",
+      async () => {
+        for (const hook of globalWaitHooks) {
+          const [hookError] = await tryCatch(
+            this._tracer.startActiveSpan(
+              hook.name ? `onWait/${hook.name}` : "onWait/global",
+              async (span) => {
+                await hook.fn({ payload, ctx, signal, task: this.task.id, wait, init: initOutput });
+              },
+              {
+                attributes: {
+                  [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onWait",
+                  [SemanticInternalAttributes.COLLAPSED]: true,
+                },
+              }
+            )
+          );
+
+          if (hookError) {
+            throw hookError;
+          }
+        }
+
+        if (taskWaitHook) {
+          const [hookError] = await tryCatch(
+            this._tracer.startActiveSpan(
+              "onWait/task",
+              async (span) => {
+                await taskWaitHook({
+                  payload,
+                  ctx,
+                  signal,
+                  task: this.task.id,
+                  wait,
+                  init: initOutput,
+                });
+              },
+              {
+                attributes: {
+                  [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onWait",
+                  [SemanticInternalAttributes.COLLAPSED]: true,
+                },
+              }
+            )
+          );
+
+          if (hookError) {
+            throw hookError;
+          }
+        }
+      }
+    );
+  }
+
+  async #callOnResumeFunctions(
+    wait: TaskWait,
+    payload: unknown,
+    ctx: TaskRunContext,
+    initOutput: TaskInitOutput,
+    signal?: AbortSignal
+  ) {
+    const globalResumeHooks = lifecycleHooks.getGlobalResumeHooks();
+    const taskResumeHook = lifecycleHooks.getTaskResumeHook(this.task.id);
+
+    if (globalResumeHooks.length === 0 && !taskResumeHook) {
+      return;
+    }
+
+    const result = await runTimelineMetrics.measureMetric(
+      "trigger.dev/execution",
+      "onResume",
+      async () => {
+        for (const hook of globalResumeHooks) {
+          const [hookError] = await tryCatch(
+            this._tracer.startActiveSpan(
+              hook.name ? `onResume/${hook.name}` : "onResume/global",
+              async (span) => {
+                await hook.fn({ payload, ctx, signal, task: this.task.id, wait, init: initOutput });
+              },
+              {
+                attributes: {
+                  [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onResume",
+                  [SemanticInternalAttributes.COLLAPSED]: true,
+                },
+              }
+            )
+          );
+
+          if (hookError) {
+            throw hookError;
+          }
+        }
+
+        if (taskResumeHook) {
+          const [hookError] = await tryCatch(
+            this._tracer.startActiveSpan(
+              "onResume/task",
+              async (span) => {
+                await taskResumeHook({
+                  payload,
+                  ctx,
+                  signal,
+                  task: this.task.id,
+                  wait,
+                  init: initOutput,
+                });
+              },
+              {
+                attributes: {
+                  [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onResume",
+                  [SemanticInternalAttributes.COLLAPSED]: true,
+                },
+              }
+            )
+          );
+
+          if (hookError) {
+            throw hookError;
+          }
+        }
+      }
+    );
   }
 
   async #callInitFunctions(payload: unknown, ctx: TaskRunContext, signal?: AbortSignal) {
