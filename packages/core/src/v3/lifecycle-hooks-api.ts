@@ -28,6 +28,9 @@ export type {
   TaskMiddlewareHookParams,
   AnyOnMiddlewareHookFunction,
   OnMiddlewareHookFunction,
+  OnCleanupHookFunction,
+  AnyOnCleanupHookFunction,
+  TaskCleanupHookParams,
 } from "./lifecycleHooks/types.js";
 
 export * as lifecycleHooksAdapters from "./lifecycleHooks/adapters.js";

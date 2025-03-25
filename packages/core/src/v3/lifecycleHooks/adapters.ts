@@ -11,6 +11,8 @@ import {
   TaskFailureHookParams,
   TaskStartHookParams,
   TaskCatchErrorHookParams,
+  TaskCleanupHookParams,
+  AnyOnCleanupHookFunction,
 } from "./types.js";
 
 export function createInitHookAdapter<TPayload>(
@@ -93,5 +95,19 @@ export function createMiddlewareHookAdapter<TPayload>(
       ...paramsWithoutPayloadAndNext,
       next,
     });
+  };
+}
+
+export function createCleanupHookAdapter<
+  TPayload,
+  TInitOutput extends TaskInitOutput = TaskInitOutput,
+>(
+  fn: NonNullable<TaskOptions<string, TPayload, unknown, TInitOutput>["cleanup"]>
+): AnyOnCleanupHookFunction {
+  return async (params) => {
+    return await fn(
+      params.payload as unknown as TPayload,
+      params as TaskCleanupHookParams<TPayload, TInitOutput>
+    );
   };
 }

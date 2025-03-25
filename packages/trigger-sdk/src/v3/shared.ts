@@ -1624,4 +1624,10 @@ function registerTaskLifecycleHooks<
       fn: lifecycleHooksAdapters.createMiddlewareHookAdapter(params.middleware),
     });
   }
+
+  if (params.cleanup) {
+    lifecycleHooks.registerTaskCleanupHook(taskId, {
+      fn: lifecycleHooksAdapters.createCleanupHookAdapter(params.cleanup),
+    });
+  }
 }

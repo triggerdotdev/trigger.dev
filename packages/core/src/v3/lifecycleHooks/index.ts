@@ -4,6 +4,7 @@ import { getGlobal, registerGlobal, unregisterGlobal } from "../utils/globals.js
 import { NoopLifecycleHooksManager } from "./manager.js";
 import {
   AnyOnCatchErrorHookFunction,
+  AnyOnCleanupHookFunction,
   AnyOnCompleteHookFunction,
   AnyOnFailureHookFunction,
   AnyOnInitHookFunction,
@@ -219,6 +220,27 @@ export class LifecycleHooksAPI {
 
   public getGlobalMiddlewareHooks(): RegisteredHookFunction<AnyOnMiddlewareHookFunction>[] {
     return this.#getManager().getGlobalMiddlewareHooks();
+  }
+
+  public registerGlobalCleanupHook(
+    hook: RegisterHookFunctionParams<AnyOnCleanupHookFunction>
+  ): void {
+    this.#getManager().registerGlobalCleanupHook(hook);
+  }
+
+  public registerTaskCleanupHook(
+    taskId: string,
+    hook: RegisterHookFunctionParams<AnyOnCleanupHookFunction>
+  ): void {
+    this.#getManager().registerTaskCleanupHook(taskId, hook);
+  }
+
+  public getTaskCleanupHook(taskId: string): AnyOnCleanupHookFunction | undefined {
+    return this.#getManager().getTaskCleanupHook(taskId);
+  }
+
+  public getGlobalCleanupHooks(): RegisteredHookFunction<AnyOnCleanupHookFunction>[] {
+    return this.#getManager().getGlobalCleanupHooks();
   }
 
   #getManager(): LifecycleHooksManager {

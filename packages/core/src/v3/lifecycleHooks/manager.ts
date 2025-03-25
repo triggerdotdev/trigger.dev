@@ -11,6 +11,7 @@ import {
   AnyOnResumeHookFunction,
   AnyOnCatchErrorHookFunction,
   AnyOnMiddlewareHookFunction,
+  AnyOnCleanupHookFunction,
 } from "./types.js";
 
 export class StandardLifecycleHooksManager implements LifecycleHooksManager {
@@ -50,6 +51,11 @@ export class StandardLifecycleHooksManager implements LifecycleHooksManager {
   private globalMiddlewareHooks: Map<string, RegisteredHookFunction<AnyOnMiddlewareHookFunction>> =
     new Map();
   private taskMiddlewareHooks: Map<string, RegisteredHookFunction<AnyOnMiddlewareHookFunction>> =
+    new Map();
+
+  private globalCleanupHooks: Map<string, RegisteredHookFunction<AnyOnCleanupHookFunction>> =
+    new Map();
+  private taskCleanupHooks: Map<string, RegisteredHookFunction<AnyOnCleanupHookFunction>> =
     new Map();
 
   registerGlobalStartHook(hook: RegisterHookFunctionParams<AnyOnStartHookFunction>): void {
@@ -337,6 +343,37 @@ export class StandardLifecycleHooksManager implements LifecycleHooksManager {
   getGlobalMiddlewareHooks(): RegisteredHookFunction<AnyOnMiddlewareHookFunction>[] {
     return Array.from(this.globalMiddlewareHooks.values());
   }
+
+  registerGlobalCleanupHook(hook: RegisterHookFunctionParams<AnyOnCleanupHookFunction>): void {
+    const id = generateHookId(hook);
+
+    this.globalCleanupHooks.set(id, {
+      id,
+      name: hook.id,
+      fn: hook.fn,
+    });
+  }
+
+  registerTaskCleanupHook(
+    taskId: string,
+    hook: RegisterHookFunctionParams<AnyOnCleanupHookFunction>
+  ): void {
+    const id = generateHookId(hook);
+
+    this.taskCleanupHooks.set(taskId, {
+      id,
+      name: hook.id,
+      fn: hook.fn,
+    });
+  }
+
+  getTaskCleanupHook(taskId: string): AnyOnCleanupHookFunction | undefined {
+    return this.taskCleanupHooks.get(taskId)?.fn;
+  }
+
+  getGlobalCleanupHooks(): RegisteredHookFunction<AnyOnCleanupHookFunction>[] {
+    return Array.from(this.globalCleanupHooks.values());
+  }
 }
 
 export class NoopLifecycleHooksManager implements LifecycleHooksManager {
@@ -502,6 +539,25 @@ export class NoopLifecycleHooksManager implements LifecycleHooksManager {
   }
 
   getGlobalMiddlewareHooks(): [] {
+    return [];
+  }
+
+  registerGlobalCleanupHook(hook: RegisterHookFunctionParams<AnyOnCleanupHookFunction>): void {
+    // Noop
+  }
+
+  registerTaskCleanupHook(
+    taskId: string,
+    hook: RegisterHookFunctionParams<AnyOnCleanupHookFunction>
+  ): void {
+    // Noop
+  }
+
+  getTaskCleanupHook(taskId: string): AnyOnCleanupHookFunction | undefined {
+    return undefined;
+  }
+
+  getGlobalCleanupHooks(): RegisteredHookFunction<AnyOnCleanupHookFunction>[] {
     return [];
   }
 }

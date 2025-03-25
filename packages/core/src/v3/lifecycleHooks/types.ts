@@ -192,6 +192,23 @@ export type OnMiddlewareHookFunction<TPayload> = (
 
 export type AnyOnMiddlewareHookFunction = OnMiddlewareHookFunction<unknown>;
 
+export type TaskCleanupHookParams<
+  TPayload = unknown,
+  TInitOutput extends TaskInitOutput = TaskInitOutput,
+> = {
+  ctx: TaskRunContext;
+  payload: TPayload;
+  task: string;
+  signal?: AbortSignal;
+  init?: TInitOutput;
+};
+
+export type OnCleanupHookFunction<TPayload, TInitOutput extends TaskInitOutput = TaskInitOutput> = (
+  params: TaskCleanupHookParams<TPayload, TInitOutput>
+) => undefined | void | Promise<undefined | void>;
+
+export type AnyOnCleanupHookFunction = OnCleanupHookFunction<unknown, TaskInitOutput>;
+
 export interface LifecycleHooksManager {
   registerGlobalInitHook(hook: RegisterHookFunctionParams<AnyOnInitHookFunction>): void;
   registerTaskInitHook(
@@ -256,4 +273,11 @@ export interface LifecycleHooksManager {
   ): void;
   getTaskMiddlewareHook(taskId: string): AnyOnMiddlewareHookFunction | undefined;
   getGlobalMiddlewareHooks(): RegisteredHookFunction<AnyOnMiddlewareHookFunction>[];
+  registerGlobalCleanupHook(hook: RegisterHookFunctionParams<AnyOnCleanupHookFunction>): void;
+  registerTaskCleanupHook(
+    taskId: string,
+    hook: RegisterHookFunctionParams<AnyOnCleanupHookFunction>
+  ): void;
+  getTaskCleanupHook(taskId: string): AnyOnCleanupHookFunction | undefined;
+  getGlobalCleanupHooks(): RegisteredHookFunction<AnyOnCleanupHookFunction>[];
 }
