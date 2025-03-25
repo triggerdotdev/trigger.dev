@@ -19,8 +19,9 @@ export const locals = {
     }
     return value;
   },
-  set<T>(key: LocalsKey<T>, value: T): void {
+  set<T>(key: LocalsKey<T>, value: T): T {
     localsAPI.setLocal(key, value);
+    return value;
   },
 };
 

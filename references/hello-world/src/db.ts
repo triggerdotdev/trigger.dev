@@ -1,7 +1,9 @@
 import { locals } from "@trigger.dev/sdk";
 import { logger, tasks } from "@trigger.dev/sdk";
 
-const DbLocal = locals.create<{ connect: () => Promise<void> }>("db");
+const DbLocal = locals.create<{ connect: () => Promise<void>; disconnect: () => Promise<void> }>(
+  "db"
+);
 
 export function getDb() {
   return locals.getOrThrow(DbLocal);
@@ -11,13 +13,22 @@ export function setDb(db: { connect: () => Promise<void> }) {
   locals.set(DbLocal, db);
 }
 
-// tasks.middleware("db", ({ ctx, payload, next, task }) => {
-//   locals.set(DbLocal, {
-//     connect: async () => {
-//       logger.info("Connecting to the database");
-//     },
-//   });
+tasks.middleware("db", async ({ ctx, payload, next, task }) => {
+  const db = locals.set(DbLocal, {
+    connect: async () => {
+      logger.info("Connecting to the database");
+    },
+    disconnect: async () => {
+      logger.info("Disconnecting from the database");
+    },
+  });
 
-//   logger.info("Hello, world from the middleware", { ctx, payload });
-//   return next();
-// });
+  await db.connect();
+
+  logger.info("Hello, world from BEFORE the next call", { ctx, payload });
+  await next();
+
+  logger.info("Hello, world from AFTER the next call", { ctx, payload });
+
+  await db.disconnect();
+});
