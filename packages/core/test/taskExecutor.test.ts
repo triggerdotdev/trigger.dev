@@ -1531,7 +1531,6 @@ function executeTask(task: TaskMetadataWithFunctions, payload: any, signal?: Abo
         maxAttempts: 1,
       },
     },
-    handleErrorFn: undefined,
   });
 
   const execution: TaskRunExecution = {

@@ -183,15 +183,36 @@ async function bootstrap() {
 
   if (config.init) {
     lifecycleHooks.registerGlobalInitHook({
-      id: "trigger-dev-worker",
+      id: "config",
       fn: lifecycleHooksAdapters.createInitHookAdapter(config.init),
     });
   }
 
   if (config.onStart) {
     lifecycleHooks.registerGlobalStartHook({
-      id: "trigger-dev-worker",
+      id: "config",
       fn: lifecycleHooksAdapters.createStartHookAdapter(config.onStart),
+    });
+  }
+
+  if (config.onSuccess) {
+    lifecycleHooks.registerGlobalSuccessHook({
+      id: "config",
+      fn: lifecycleHooksAdapters.createSuccessHookAdapter(config.onSuccess),
+    });
+  }
+
+  if (config.onFailure) {
+    lifecycleHooks.registerGlobalFailureHook({
+      id: "config",
+      fn: lifecycleHooksAdapters.createFailureHookAdapter(config.onFailure),
+    });
+  }
+
+  if (handleError) {
+    lifecycleHooks.registerGlobalCatchErrorHook({
+      id: "config",
+      fn: lifecycleHooksAdapters.createHandleErrorHookAdapter(handleError),
     });
   }
 
@@ -200,7 +221,6 @@ async function bootstrap() {
     tracingSDK,
     consoleInterceptor,
     config,
-    handleErrorFn: handleError,
     workerManifest,
   };
 }
@@ -242,7 +262,7 @@ const zodIpc = new ZodIpcConnection({
       }
 
       try {
-        const { tracer, tracingSDK, consoleInterceptor, config, handleErrorFn, workerManifest } =
+        const { tracer, tracingSDK, consoleInterceptor, config, workerManifest } =
           await bootstrap();
 
         _tracingSDK = tracingSDK;
@@ -359,7 +379,6 @@ const zodIpc = new ZodIpcConnection({
           tracingSDK,
           consoleInterceptor,
           retries: config.retries,
-          handleErrorFn,
         });
 
         try {

@@ -53,7 +53,6 @@ export type TaskExecutorOptions = {
     enabledInDev?: boolean;
     default?: RetryOptions;
   };
-  handleErrorFn: HandleErrorFunction | undefined;
 };
 
 export class TaskExecutor {
@@ -66,7 +65,6 @@ export class TaskExecutor {
         default?: RetryOptions;
       }
     | undefined;
-  private _handleErrorFn: HandleErrorFunction | undefined;
 
   constructor(
     public task: TaskMetadataWithFunctions,
@@ -76,7 +74,6 @@ export class TaskExecutor {
     this._tracer = options.tracer;
     this._consoleInterceptor = options.consoleInterceptor;
     this._retries = options.retries;
-    this._handleErrorFn = options.handleErrorFn;
   }
 
   async execute(

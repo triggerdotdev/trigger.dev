@@ -133,7 +133,7 @@ export type HandleErrorResult =
 
 export type HandleErrorArgs = {
   ctx: Context;
-  init: unknown;
+  init?: Record<string, unknown>;
   retry?: RetryOptions;
   retryAt?: Date;
   retryDelayInMs?: number;
