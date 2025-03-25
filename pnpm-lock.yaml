@@ -167,6 +167,9 @@ importers:
       nanoid:
         specifier: ^5.0.9
         version: 5.1.2
+      prom-client:
+        specifier: ^15.1.0
+        version: 15.1.0
       socket.io:
         specifier: 4.7.4
         version: 4.7.4

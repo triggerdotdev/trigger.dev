@@ -6,8 +6,10 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "dev": "tsx --experimental-sqlite --require dotenv/config --watch src/index.ts || (echo '!! Remember to run: nvm use'; exit 1)",
-    "start": "node --experimental-sqlite dist/index.js",
+    "dev": "tsx --require dotenv/config --watch src/index.ts || (echo '!! Remember to run: nvm use'; exit 1)",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -15,6 +17,7 @@
     "@trigger.dev/core": "workspace:*",
     "dockerode": "^4.0.3",
     "nanoid": "^5.0.9",
+    "prom-client": "^15.1.0",
     "socket.io": "4.7.4",
     "std-env": "^3.8.0",
     "tinyexec": "^0.3.1",
