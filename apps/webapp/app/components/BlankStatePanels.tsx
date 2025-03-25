@@ -420,6 +420,11 @@ export function NoWaitpointTokens() {
       icon={WaitpointTokenIcon}
       iconClassName="text-sky-500"
       panelClassName="max-w-md"
+      accessory={
+        <LinkButton to={docsPath("wait")} variant="docs/small" LeadingIcon={BookOpenIcon}>
+          Waitpoint docs
+        </LinkButton>
+      }
     >
       <Paragraph spacing variant="small">
         Waitpoint tokens are used to pause runs until you complete the token so the run can
