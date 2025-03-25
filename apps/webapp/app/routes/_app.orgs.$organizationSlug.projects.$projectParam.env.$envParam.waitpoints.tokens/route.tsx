@@ -40,6 +40,7 @@ import { WaitpointTokenListPresenter } from "~/presenters/v3/WaitpointTokenListP
 import { requireUserId } from "~/services/session.server";
 import { docsPath, EnvironmentParamSchema, v3WaitpointTokenPath } from "~/utils/pathBuilder";
 import { determineEngineVersion } from "~/v3/engineVersion.server";
+import { CopyableText } from "~/components/primitives/CopyableText";
 
 export const meta: MetaFunction = () => {
   return [
@@ -102,7 +103,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 export default function Page() {
-  const { success, tokens, pagination, hasFilters } = useTypedLoaderData<typeof loader>();
+  const { success, tokens, pagination, hasFilters, filters } = useTypedLoaderData<typeof loader>();
 
   const organization = useOrganization();
   const project = useProject();
@@ -160,7 +161,8 @@ export default function Page() {
                             organization,
                             project,
                             environment,
-                            token
+                            token,
+                            filters
                           );
 
                           return (
@@ -170,7 +172,9 @@ export default function Page() {
                                   <DateTime date={token.createdAt} />
                                 </span>
                               </TableCell>
-                              <TableCell to={path}>{token.friendlyId}</TableCell>
+                              <TableCell to={path}>
+                                <CopyableText value={token.friendlyId} className="font-mono" />
+                              </TableCell>
                               <TableCell to={path}>
                                 <WaitpointStatusCombo
                                   status={token.status}

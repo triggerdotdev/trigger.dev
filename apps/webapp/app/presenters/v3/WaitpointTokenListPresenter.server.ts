@@ -4,7 +4,10 @@ import { type Direction } from "~/components/ListPagination";
 import { sqlDatabaseSchema } from "~/db.server";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { BasePresenter } from "./basePresenter.server";
-import { type WaitpointFilterStatus } from "~/components/runs/v3/WaitpointTokenFilters";
+import {
+  type WaitpointFilterStatus,
+  type WaitpointSearchParams,
+} from "~/components/runs/v3/WaitpointTokenFilters";
 import { determineEngineVersion } from "~/v3/engineVersion.server";
 
 const DEFAULT_PAGE_SIZE = 25;
@@ -46,6 +49,7 @@ type Result =
         previous: string | undefined;
       };
       hasFilters: boolean;
+      filters: WaitpointSearchParams;
     }
   | {
       success: false;
@@ -57,6 +61,7 @@ type Result =
         previous: undefined;
       };
       hasFilters: false;
+      filters: undefined;
     };
 
 export class WaitpointTokenListPresenter extends BasePresenter {
@@ -85,6 +90,7 @@ export class WaitpointTokenListPresenter extends BasePresenter {
           previous: undefined,
         },
         hasFilters: false,
+        filters: undefined,
       };
     }
 
@@ -260,6 +266,17 @@ export class WaitpointTokenListPresenter extends BasePresenter {
         previous,
       },
       hasFilters,
+      filters: {
+        id,
+        statuses: statuses?.length ? statuses : undefined,
+        tags: tags?.length ? tags : undefined,
+        idempotencyKey,
+        period,
+        from,
+        to,
+        cursor,
+        direction,
+      },
     };
   }
 }
