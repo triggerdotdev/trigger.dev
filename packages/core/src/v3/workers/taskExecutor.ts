@@ -30,11 +30,8 @@ import {
 import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
 import { taskContext } from "../task-context-api.js";
 import { TriggerTracer } from "../tracer.js";
-import {
-  HandleErrorFunction,
-  HandleErrorModificationOptions,
-  TaskMetadataWithFunctions,
-} from "../types/index.js";
+import { tryCatch } from "../tryCatch.js";
+import { HandleErrorModificationOptions, TaskMetadataWithFunctions } from "../types/index.js";
 import {
   conditionallyExportPacket,
   conditionallyImportPacket,
@@ -43,7 +40,6 @@ import {
   stringifyIO,
 } from "../utils/ioSerialization.js";
 import { calculateNextRetryDelay } from "../utils/retries.js";
-import { tryCatch } from "../tryCatch.js";
 
 export type TaskExecutorOptions = {
   tracingSDK: TracingSDK;
@@ -308,7 +304,17 @@ export class TaskExecutor {
     const runner = hooks.reduceRight(
       (next, hook) => {
         return async () => {
-          await hook.fn({ payload, ctx, signal, task: this.task.id, next });
+          await this._tracer.startActiveSpan(
+            hook.name ? `middleware/${hook.name}` : "middleware",
+            async (span) => {
+              await hook.fn({ payload, ctx, signal, task: this.task.id, next });
+            },
+            {
+              attributes: {
+                [SemanticInternalAttributes.STYLE_ICON]: "task-middleware",
+              },
+            }
+          );
         };
       },
       async () => {
@@ -360,12 +366,20 @@ export class TaskExecutor {
       : undefined;
 
     return runTimelineMetrics.measureMetric("trigger.dev/execution", "run", async () => {
-      if (abortPromise) {
-        // Race between the run function and the abort promise
-        return await Promise.race([runFn(payload, { ctx, init, signal }), abortPromise]);
-      }
+      return await this._tracer.startActiveSpan(
+        "run",
+        async (span) => {
+          if (abortPromise) {
+            // Race between the run function and the abort promise
+            return await Promise.race([runFn(payload, { ctx, init, signal }), abortPromise]);
+          }
 
-      return await runFn(payload, { ctx, init, signal });
+          return await runFn(payload, { ctx, init, signal });
+        },
+        {
+          attributes: { [SemanticInternalAttributes.STYLE_ICON]: "task-fn-run" },
+        }
+      );
     });
   }
 
@@ -377,102 +391,92 @@ export class TaskExecutor {
       return {};
     }
 
-    return this._tracer.startActiveSpan(
-      "hooks.init",
-      async (span) => {
-        const result = await runTimelineMetrics.measureMetric(
-          "trigger.dev/execution",
-          "init",
-          async () => {
-            // Store global hook results in an array
-            const globalResults = [];
-            for (const hook of globalInitHooks) {
-              const [hookError, result] = await tryCatch(
-                this._tracer.startActiveSpan(
-                  hook.name ?? "global",
-                  async (span) => {
-                    const result = await hook.fn({ payload, ctx, signal, task: this.task.id });
+    const result = await runTimelineMetrics.measureMetric(
+      "trigger.dev/execution",
+      "init",
+      async () => {
+        // Store global hook results in an array
+        const globalResults = [];
+        for (const hook of globalInitHooks) {
+          const [hookError, result] = await tryCatch(
+            this._tracer.startActiveSpan(
+              hook.name ? `init/${hook.name}` : "init/global",
+              async (span) => {
+                const result = await hook.fn({ payload, ctx, signal, task: this.task.id });
 
-                    if (result && typeof result === "object" && !Array.isArray(result)) {
-                      span.setAttributes(flattenAttributes(result));
-                      return result;
-                    }
+                if (result && typeof result === "object" && !Array.isArray(result)) {
+                  span.setAttributes(flattenAttributes(result));
+                  return result;
+                }
 
-                    return {};
-                  },
-                  {
-                    attributes: {
-                      [SemanticInternalAttributes.STYLE_ICON]: "tabler-function",
-                    },
-                  }
-                )
-              );
-
-              if (hookError) {
-                throw hookError;
+                return {};
+              },
+              {
+                attributes: {
+                  [SemanticInternalAttributes.STYLE_ICON]: "task-hook-init",
+                  [SemanticInternalAttributes.COLLAPSED]: true,
+                },
               }
+            )
+          );
 
-              if (result && typeof result === "object" && !Array.isArray(result)) {
-                globalResults.push(result);
-              }
-            }
-
-            // Merge all global results into a single object
-            const mergedGlobalResults = Object.assign({}, ...globalResults);
-
-            if (taskInitHook) {
-              const [hookError, taskResult] = await tryCatch(
-                this._tracer.startActiveSpan(
-                  "task",
-                  async (span) => {
-                    const result = await taskInitHook({ payload, ctx, signal, task: this.task.id });
-
-                    if (result && typeof result === "object" && !Array.isArray(result)) {
-                      span.setAttributes(flattenAttributes(result));
-                      return result;
-                    }
-
-                    return {};
-                  },
-                  {
-                    attributes: {
-                      [SemanticInternalAttributes.STYLE_ICON]: "tabler-function",
-                    },
-                  }
-                )
-              );
-
-              if (hookError) {
-                throw hookError;
-              }
-
-              // Only merge if taskResult is an object
-              if (taskResult && typeof taskResult === "object" && !Array.isArray(taskResult)) {
-                return { ...mergedGlobalResults, ...taskResult };
-              }
-
-              // If taskResult isn't an object, return global results
-              return mergedGlobalResults;
-            }
-
-            return mergedGlobalResults;
+          if (hookError) {
+            throw hookError;
           }
-        );
 
-        if (result && typeof result === "object" && !Array.isArray(result)) {
-          span.setAttributes(flattenAttributes(result));
-          return result;
+          if (result && typeof result === "object" && !Array.isArray(result)) {
+            globalResults.push(result);
+          }
         }
 
-        return;
-      },
-      {
-        attributes: {
-          [SemanticInternalAttributes.STYLE_ICON]: "tabler-function",
-          [SemanticInternalAttributes.COLLAPSED]: true,
-        },
+        // Merge all global results into a single object
+        const mergedGlobalResults = Object.assign({}, ...globalResults);
+
+        if (taskInitHook) {
+          const [hookError, taskResult] = await tryCatch(
+            this._tracer.startActiveSpan(
+              "init/task",
+              async (span) => {
+                const result = await taskInitHook({ payload, ctx, signal, task: this.task.id });
+
+                if (result && typeof result === "object" && !Array.isArray(result)) {
+                  span.setAttributes(flattenAttributes(result));
+                  return result;
+                }
+
+                return {};
+              },
+              {
+                attributes: {
+                  [SemanticInternalAttributes.STYLE_ICON]: "task-hook-init",
+                  [SemanticInternalAttributes.COLLAPSED]: true,
+                },
+              }
+            )
+          );
+
+          if (hookError) {
+            throw hookError;
+          }
+
+          // Only merge if taskResult is an object
+          if (taskResult && typeof taskResult === "object" && !Array.isArray(taskResult)) {
+            return { ...mergedGlobalResults, ...taskResult };
+          }
+
+          // If taskResult isn't an object, return global results
+          return mergedGlobalResults;
+        }
+
+        return mergedGlobalResults;
       }
     );
+
+    if (result && typeof result === "object" && !Array.isArray(result)) {
+      return result;
+    }
+
+    return;
   }
 
   async #callOnSuccessFunctions(
@@ -489,69 +493,63 @@ export class TaskExecutor {
       return;
     }
 
-    return this._tracer.startActiveSpan(
-      "hooks.success",
-      async (span) => {
-        return await runTimelineMetrics.measureMetric(
-          "trigger.dev/execution",
-          "success",
-          async () => {
-            for (const hook of globalSuccessHooks) {
-              const [hookError] = await tryCatch(
-                this._tracer.startActiveSpan(
-                  hook.name ?? "global",
-                  async (span) => {
-                    await hook.fn({
-                      payload,
-                      output,
-                      ctx,
-                      signal,
-                      task: this.task.id,
-                      init: initOutput,
-                    });
-                  },
-                  {
-                    attributes: {
-                      [SemanticInternalAttributes.STYLE_ICON]: "tabler-function",
-                    },
-                  }
-                )
-              );
-              // Ignore errors from onSuccess functions
+    return await runTimelineMetrics.measureMetric("trigger.dev/execution", "success", async () => {
+      for (const hook of globalSuccessHooks) {
+        const [hookError] = await tryCatch(
+          this._tracer.startActiveSpan(
+            hook.name ? `onSuccess/${hook.name}` : "onSuccess/global",
+            async (span) => {
+              await hook.fn({
+                payload,
+                output,
+                ctx,
+                signal,
+                task: this.task.id,
+                init: initOutput,
+              });
+            },
+            {
+              attributes: {
+                [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onSuccess",
+                [SemanticInternalAttributes.COLLAPSED]: true,
+              },
             }
-
-            if (taskSuccessHook) {
-              const [hookError] = await tryCatch(
-                this._tracer.startActiveSpan(
-                  "task",
-                  async (span) => {
-                    await taskSuccessHook({
-                      payload,
-                      output,
-                      ctx,
-                      signal,
-                      task: this.task.id,
-                      init: initOutput,
-                    });
-                  },
-                  {
-                    attributes: {
-                      [SemanticInternalAttributes.STYLE_ICON]: "tabler-function",
-                    },
-                  }
-                )
-              );
-              // Ignore errors from onSuccess functions
-            }
-          }
+          )
         );
-      },
-      {
-        attributes: {
-          [SemanticInternalAttributes.STYLE_ICON]: "tabler-function",
-        },
+
+        if (hookError) {
+          throw hookError;
+        }
       }
-    );
+
+      if (taskSuccessHook) {
+        const [hookError] = await tryCatch(
+          this._tracer.startActiveSpan(
+            "onSuccess/task",
+            async (span) => {
+              await taskSuccessHook({
+                payload,
+                output,
+                ctx,
+                signal,
+                task: this.task.id,
+                init: initOutput,
+              });
+            },
+            {
+              attributes: {
+                [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onSuccess",
+                [SemanticInternalAttributes.COLLAPSED]: true,
+              },
+            }
+          )
+        );
+
+        if (hookError) {
+          throw hookError;
+        }
+      }
+    });
   }
 
   async #callOnFailureFunctions(
@@ -568,69 +566,63 @@ export class TaskExecutor {
       return;
     }
 
-    return this._tracer.startActiveSpan(
-      "hooks.failure",
-      async (span) => {
-        return await runTimelineMetrics.measureMetric(
-          "trigger.dev/execution",
-          "failure",
-          async () => {
-            for (const hook of globalFailureHooks) {
-              const [hookError] = await tryCatch(
-                this._tracer.startActiveSpan(
-                  hook.name ?? "global",
-                  async (span) => {
-                    await hook.fn({
-                      payload,
-                      error,
-                      ctx,
-                      signal,
-                      task: this.task.id,
-                      init: initOutput,
-                    });
-                  },
-                  {
-                    attributes: {
-                      [SemanticInternalAttributes.STYLE_ICON]: "tabler-function",
-                    },
-                  }
-                )
-              );
-              // Ignore errors from onFailure functions
+    return await runTimelineMetrics.measureMetric("trigger.dev/execution", "failure", async () => {
+      for (const hook of globalFailureHooks) {
+        const [hookError] = await tryCatch(
+          this._tracer.startActiveSpan(
+            hook.name ? `onFailure/${hook.name}` : "onFailure/global",
+            async (span) => {
+              await hook.fn({
+                payload,
+                error,
+                ctx,
+                signal,
+                task: this.task.id,
+                init: initOutput,
+              });
+            },
+            {
+              attributes: {
+                [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onFailure",
+                [SemanticInternalAttributes.COLLAPSED]: true,
+              },
             }
-
-            if (taskFailureHook) {
-              const [hookError] = await tryCatch(
-                this._tracer.startActiveSpan(
-                  "task",
-                  async (span) => {
-                    await taskFailureHook({
-                      payload,
-                      error,
-                      ctx,
-                      signal,
-                      task: this.task.id,
-                      init: initOutput,
-                    });
-                  },
-                  {
-                    attributes: {
-                      [SemanticInternalAttributes.STYLE_ICON]: "tabler-function",
-                    },
-                  }
-                )
-              );
-              // Ignore errors from onFailure functions
-            }
-          }
+          )
         );
-      },
-      {
-        attributes: {
-          [SemanticInternalAttributes.STYLE_ICON]: "tabler-function",
-        },
+
+        if (hookError) {
+          throw hookError;
+        }
       }
-    );
+
+      if (taskFailureHook) {
+        const [hookError] = await tryCatch(
+          this._tracer.startActiveSpan(
+            "onFailure/task",
+            async (span) => {
+              await taskFailureHook({
+                payload,
+                error,
+                ctx,
+                signal,
+                task: this.task.id,
+                init: initOutput,
+              });
+            },
+            {
+              attributes: {
+                [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onFailure",
+                [SemanticInternalAttributes.COLLAPSED]: true,
+              },
+            }
+          )
+        );
+
+        if (hookError) {
+          throw hookError;
+        }
+      }
+    });
   }
 
   async #parsePayload(payload: unknown) {
@@ -658,67 +650,55 @@ export class TaskExecutor {
       return;
     }
 
-    return this._tracer.startActiveSpan(
-      "hooks.start",
-      async (span) => {
-        return await runTimelineMetrics.measureMetric(
-          "trigger.dev/execution",
-          "start",
-          async () => {
-            for (const hook of globalStartHooks) {
-              const [hookError] = await tryCatch(
-                this._tracer.startActiveSpan(
-                  hook.name ?? "global",
-                  async (span) => {
-                    await hook.fn({ payload, ctx, signal, task: this.task.id, init: initOutput });
-                  },
-                  {
-                    attributes: {
-                      [SemanticInternalAttributes.STYLE_ICON]: "tabler-function",
-                    },
-                  }
-                )
-              );
-
-              if (hookError) {
-                throw hookError;
-              }
+    return await runTimelineMetrics.measureMetric("trigger.dev/execution", "start", async () => {
+      for (const hook of globalStartHooks) {
+        const [hookError] = await tryCatch(
+          this._tracer.startActiveSpan(
+            hook.name ? `onStart/${hook.name}` : "onStart/global",
+            async (span) => {
+              await hook.fn({ payload, ctx, signal, task: this.task.id, init: initOutput });
+            },
+            {
+              attributes: {
+                [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
+                [SemanticInternalAttributes.COLLAPSED]: true,
+              },
             }
-
-            if (taskStartHook) {
-              const [hookError] = await tryCatch(
-                this._tracer.startActiveSpan(
-                  "task",
-                  async (span) => {
-                    await taskStartHook({
-                      payload,
-                      ctx,
-                      signal,
-                      task: this.task.id,
-                      init: initOutput,
-                    });
-                  },
-                  {
-                    attributes: {
-                      [SemanticInternalAttributes.STYLE_ICON]: "tabler-function",
-                    },
-                  }
-                )
-              );
-
-              if (hookError) {
-                throw hookError;
-              }
-            }
-          }
+          )
         );
-      },
-      {
-        attributes: {
-          [SemanticInternalAttributes.STYLE_ICON]: "tabler-function",
-        },
+
+        if (hookError) {
+          throw hookError;
+        }
       }
-    );
+
+      if (taskStartHook) {
+        const [hookError] = await tryCatch(
+          this._tracer.startActiveSpan(
+            "onStart/task",
+            async (span) => {
+              await taskStartHook({
+                payload,
+                ctx,
+                signal,
+                task: this.task.id,
+                init: initOutput,
+              });
+            },
+            {
+              attributes: {
+                [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
+                [SemanticInternalAttributes.COLLAPSED]: true,
+              },
+            }
+          )
+        );
+
+        if (hookError) {
+          throw hookError;
+        }
+      }
+    });
   }
 
   async #cleanupAndWaitUntil(
@@ -744,67 +724,61 @@ export class TaskExecutor {
       return;
     }
 
-    return this._tracer.startActiveSpan(
-      "hooks.cleanup",
-      async (span) => {
-        return await runTimelineMetrics.measureMetric(
-          "trigger.dev/execution",
-          "cleanup",
-          async () => {
-            for (const hook of globalCleanupHooks) {
-              const [hookError] = await tryCatch(
-                this._tracer.startActiveSpan(
-                  hook.name ?? "global",
-                  async (span) => {
-                    await hook.fn({
-                      payload,
-                      ctx,
-                      signal,
-                      task: this.task.id,
-                      init: initOutput,
-                    });
-                  },
-                  {
-                    attributes: {
-                      [SemanticInternalAttributes.STYLE_ICON]: "tabler-function",
-                    },
-                  }
-                )
-              );
-              // Ignore errors from cleanup functions
+    return await runTimelineMetrics.measureMetric("trigger.dev/execution", "cleanup", async () => {
+      for (const hook of globalCleanupHooks) {
+        const [hookError] = await tryCatch(
+          this._tracer.startActiveSpan(
+            hook.name ? `cleanup/${hook.name}` : "cleanup/global",
+            async (span) => {
+              await hook.fn({
+                payload,
+                ctx,
+                signal,
+                task: this.task.id,
+                init: initOutput,
+              });
+            },
+            {
+              attributes: {
+                [SemanticInternalAttributes.STYLE_ICON]: "task-hook-cleanup",
+                [SemanticInternalAttributes.COLLAPSED]: true,
+              },
             }
-
-            if (taskCleanupHook) {
-              const [hookError] = await tryCatch(
-                this._tracer.startActiveSpan(
-                  "task",
-                  async (span) => {
-                    await taskCleanupHook({
-                      payload,
-                      ctx,
-                      signal,
-                      task: this.task.id,
-                      init: initOutput,
-                    });
-                  },
-                  {
-                    attributes: {
-                      [SemanticInternalAttributes.STYLE_ICON]: "tabler-function",
-                    },
-                  }
-                )
-              );
-              // Ignore errors from cleanup functions
-            }
-          }
+          )
         );
-      },
-      {
-        attributes: {
-          [SemanticInternalAttributes.STYLE_ICON]: "tabler-function",
-        },
+
+        if (hookError) {
+          throw hookError;
+        }
       }
-    );
+
+      if (taskCleanupHook) {
+        const [hookError] = await tryCatch(
+          this._tracer.startActiveSpan(
+            "cleanup/task",
+            async (span) => {
+              await taskCleanupHook({
+                payload,
+                ctx,
+                signal,
+                task: this.task.id,
+                init: initOutput,
+              });
+            },
+            {
+              attributes: {
+                [SemanticInternalAttributes.STYLE_ICON]: "task-hook-cleanup",
+                [SemanticInternalAttributes.COLLAPSED]: true,
+              },
+            }
+          )
+        );
+
+        if (hookError) {
+          throw hookError;
+        }
+      }
+    });
   }
 
   async #blockForWaitUntil() {
@@ -820,6 +794,7 @@ export class TaskExecutor {
       {
         attributes: {
           [SemanticInternalAttributes.STYLE_ICON]: "clock",
+          [SemanticInternalAttributes.COLLAPSED]: true,
         },
       }
     );
@@ -883,7 +858,7 @@ export class TaskExecutor {
     }
 
     return this._tracer.startActiveSpan(
-      "handleError()",
+      "catchError",
       async (span) => {
         // Try task-specific catch error hook first
         const taskCatchErrorHook = lifecycleHooks.getTaskCatchErrorHook(this.task.id);
@@ -935,7 +910,8 @@ export class TaskExecutor {
       },
       {
         attributes: {
-          [SemanticInternalAttributes.STYLE_ICON]: "exclamation-circle",
+          [SemanticInternalAttributes.STYLE_ICON]: "task-hook-catchError",
+          [SemanticInternalAttributes.COLLAPSED]: true,
         },
       }
     );
@@ -1005,69 +981,63 @@ export class TaskExecutor {
       return;
     }
 
-    return this._tracer.startActiveSpan(
-      "hooks.complete",
-      async (span) => {
-        return await runTimelineMetrics.measureMetric(
-          "trigger.dev/execution",
-          "complete",
-          async () => {
-            for (const hook of globalCompleteHooks) {
-              const [hookError] = await tryCatch(
-                this._tracer.startActiveSpan(
-                  hook.name ?? "global",
-                  async (span) => {
-                    await hook.fn({
-                      payload,
-                      result,
-                      ctx,
-                      signal,
-                      task: this.task.id,
-                      init: initOutput,
-                    });
-                  },
-                  {
-                    attributes: {
-                      [SemanticInternalAttributes.STYLE_ICON]: "tabler-function",
-                    },
-                  }
-                )
-              );
-              // Ignore errors from onComplete functions
+    return await runTimelineMetrics.measureMetric("trigger.dev/execution", "complete", async () => {
+      for (const hook of globalCompleteHooks) {
+        const [hookError] = await tryCatch(
+          this._tracer.startActiveSpan(
+            hook.name ? `onComplete/${hook.name}` : "onComplete/global",
+            async (span) => {
+              await hook.fn({
+                payload,
+                result,
+                ctx,
+                signal,
+                task: this.task.id,
+                init: initOutput,
+              });
+            },
+            {
+              attributes: {
+                [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onComplete",
+                [SemanticInternalAttributes.COLLAPSED]: true,
+              },
             }
-
-            if (taskCompleteHook) {
-              const [hookError] = await tryCatch(
-                this._tracer.startActiveSpan(
-                  "task",
-                  async (span) => {
-                    await taskCompleteHook({
-                      payload,
-                      result,
-                      ctx,
-                      signal,
-                      task: this.task.id,
-                      init: initOutput,
-                    });
-                  },
-                  {
-                    attributes: {
-                      [SemanticInternalAttributes.STYLE_ICON]: "tabler-function",
-                    },
-                  }
-                )
-              );
-              // Ignore errors from onComplete functions
-            }
-          }
+          )
         );
-      },
-      {
-        attributes: {
-          [SemanticInternalAttributes.STYLE_ICON]: "tabler-function",
-        },
+
+        if (hookError) {
+          throw hookError;
+        }
       }
-    );
+
+      if (taskCompleteHook) {
+        const [hookError] = await tryCatch(
+          this._tracer.startActiveSpan(
+            "onComplete/task",
+            async (span) => {
+              await taskCompleteHook({
+                payload,
+                result,
+                ctx,
+                signal,
+                task: this.task.id,
+                init: initOutput,
+              });
+            },
+            {
+              attributes: {
+                [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onComplete",
+                [SemanticInternalAttributes.COLLAPSED]: true,
+              },
+            }
+          )
+        );
+
+        if (hookError) {
+          throw hookError;
+        }
+      }
+    });
   }
 
   #internalErrorResult(execution: TaskRunExecution, code: TaskRunErrorCodes, error: unknown) {

@@ -1,5 +1,18 @@
 import { SerializableJson } from "../../schemas/json.js";
 import { TriggerApiRequestOptions } from "../apiClient/index.js";
+import {
+  AnyOnCatchErrorHookFunction,
+  OnCatchErrorHookFunction,
+  OnCleanupHookFunction,
+  OnCompleteHookFunction,
+  OnFailureHookFunction,
+  OnInitHookFunction,
+  OnMiddlewareHookFunction,
+  OnResumeHookFunction,
+  OnStartHookFunction,
+  OnSuccessHookFunction,
+  OnWaitHookFunction,
+} from "../lifecycleHooks/types.js";
 import { RunTags } from "../schemas/api.js";
 import {
   MachineCpu,
@@ -10,16 +23,10 @@ import {
   TaskRunContext,
 } from "../schemas/index.js";
 import { IdempotencyKey } from "./idempotencyKeys.js";
-import { AnySchemaParseFn, inferSchemaIn, inferSchemaOut, Schema } from "./schemas.js";
-import { Prettify } from "./utils.js";
-import { inferToolParameters, ToolTaskParameters } from "./tools.js";
 import { QueueOptions } from "./queues.js";
-import {
-  OnCatchErrorHookFunction,
-  OnCompleteHookFunction,
-  OnResumeHookFunction,
-  OnWaitHookFunction,
-} from "../lifecycleHooks/types.js";
+import { AnySchemaParseFn, inferSchemaIn, inferSchemaOut, Schema } from "./schemas.js";
+import { inferToolParameters, ToolTaskParameters } from "./tools.js";
+import { Prettify } from "./utils.js";
 
 export type Queue = QueueOptions;
 export type TaskSchema = Schema;
@@ -100,6 +107,7 @@ export type InitFnParams = Prettify<{
 
 export type StartFnParams = Prettify<{
   ctx: Context;
+  init?: InitOutput;
   /** Abort signal that is aborted when a task run exceeds it's maxDuration. Can be used to automatically cancel downstream requests */
   signal?: AbortSignal;
 }>;
@@ -267,25 +275,21 @@ type CommonTaskOptions<
    *
    * @deprecated Use locals and middleware instead
    */
-  init?: (payload: TPayload, params: InitFnParams) => Promise<TInitOutput>;
+  init?: OnInitHookFunction<TPayload, TInitOutput>;
 
   /**
    * cleanup is called after the run function has completed.
    *
    * @deprecated Use middleware instead
    */
-  cleanup?: (payload: TPayload, params: RunFnParams<TInitOutput>) => Promise<void>;
+  cleanup?: OnCleanupHookFunction<TPayload, TInitOutput>;
 
   /**
    * handleError is called when the run function throws an error. It can be used to modify the error or return new retry options.
    *
    * @deprecated Use catchError instead
    */
-  handleError?: (
-    payload: TPayload,
-    error: unknown,
-    params: HandleErrorFnParams<TInitOutput>
-  ) => HandleErrorResult;
+  handleError?: OnCatchErrorHookFunction<TPayload>;
 
   /**
    * catchError is called when the run function throws an error. It can be used to modify the error or return new retry options.
@@ -313,30 +317,22 @@ type CommonTaskOptions<
    * });
    * ```
    */
-  middleware?: (payload: TPayload, params: MiddlewareFnParams) => Promise<void>;
+  middleware?: OnMiddlewareHookFunction<TPayload>;
 
   /**
    * onStart is called the first time a task is executed in a run (not before every retry)
    */
-  onStart?: (payload: TPayload, params: StartFnParams) => Promise<void>;
+  onStart?: OnStartHookFunction<TPayload, TInitOutput>;
 
   /**
    * onSuccess is called after the run function has successfully completed.
    */
-  onSuccess?: (
-    payload: TPayload,
-    output: TOutput,
-    params: SuccessFnParams<TInitOutput>
-  ) => Promise<void>;
+  onSuccess?: OnSuccessHookFunction<TPayload, TOutput, TInitOutput>;
 
   /**
    * onFailure is called after a task run has failed (meaning the run function threw an error and won't be retried anymore)
    */
-  onFailure?: (
-    payload: TPayload,
-    error: unknown,
-    params: FailureFnParams<TInitOutput>
-  ) => Promise<void>;
+  onFailure?: OnFailureHookFunction<TPayload, TInitOutput>;
 };
 
 export type TaskOptions<

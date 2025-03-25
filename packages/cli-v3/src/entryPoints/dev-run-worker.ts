@@ -1,15 +1,23 @@
 import type { Tracer } from "@opentelemetry/api";
 import type { Logger } from "@opentelemetry/api-logs";
 import {
+  AnyOnCatchErrorHookFunction,
+  AnyOnFailureHookFunction,
+  AnyOnInitHookFunction,
+  AnyOnStartHookFunction,
+  AnyOnSuccessHookFunction,
   apiClientManager,
   clock,
   ExecutorToWorkerMessageCatalog,
   type HandleErrorFunction,
+  lifecycleHooks,
+  localsAPI,
   logger,
   LogLevel,
+  resourceCatalog,
   runMetadata,
   runtime,
-  resourceCatalog,
+  runTimelineMetrics,
   TaskRunErrorCodes,
   TaskRunExecution,
   timeout,
@@ -17,10 +25,6 @@ import {
   waitUntil,
   WorkerManifest,
   WorkerToExecutorMessageCatalog,
-  runTimelineMetrics,
-  lifecycleHooks,
-  lifecycleHooksAdapters,
-  localsAPI,
 } from "@trigger.dev/core/v3";
 import { TriggerTracer } from "@trigger.dev/core/v3/tracer";
 import {
@@ -32,17 +36,17 @@ import {
   logLevels,
   ManagedRuntimeManager,
   OtelTaskLogger,
+  StandardLifecycleHooksManager,
+  StandardLocalsManager,
   StandardMetadataManager,
   StandardResourceCatalog,
+  StandardRunTimelineMetricsManager,
   StandardWaitUntilManager,
   TaskExecutor,
   TracingDiagnosticLogLevel,
   TracingSDK,
   usage,
   UsageTimeoutManager,
-  StandardRunTimelineMetricsManager,
-  StandardLifecycleHooksManager,
-  StandardLocalsManager,
 } from "@trigger.dev/core/v3/workers";
 import { ZodIpcConnection } from "@trigger.dev/core/v3/zodIpc";
 import { readFile } from "node:fs/promises";
@@ -184,35 +188,35 @@ async function bootstrap() {
   if (config.init) {
     lifecycleHooks.registerGlobalInitHook({
       id: "config",
-      fn: lifecycleHooksAdapters.createInitHookAdapter(config.init),
+      fn: config.init as AnyOnInitHookFunction,
     });
   }
 
   if (config.onStart) {
     lifecycleHooks.registerGlobalStartHook({
       id: "config",
-      fn: lifecycleHooksAdapters.createStartHookAdapter(config.onStart),
+      fn: config.onStart as AnyOnStartHookFunction,
     });
   }
 
   if (config.onSuccess) {
     lifecycleHooks.registerGlobalSuccessHook({
       id: "config",
-      fn: lifecycleHooksAdapters.createSuccessHookAdapter(config.onSuccess),
+      fn: config.onSuccess as AnyOnSuccessHookFunction,
     });
   }
 
   if (config.onFailure) {
     lifecycleHooks.registerGlobalFailureHook({
       id: "config",
-      fn: lifecycleHooksAdapters.createFailureHookAdapter(config.onFailure),
+      fn: config.onFailure as AnyOnFailureHookFunction,
     });
   }
 
   if (handleError) {
     lifecycleHooks.registerGlobalCatchErrorHook({
       id: "config",
-      fn: lifecycleHooksAdapters.createHandleErrorHookAdapter(handleError),
+      fn: handleError as AnyOnCatchErrorHookFunction,
     });
   }
 

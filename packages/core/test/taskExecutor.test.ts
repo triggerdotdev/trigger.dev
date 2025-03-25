@@ -1064,8 +1064,6 @@ describe("TaskExecutor", () => {
       fn: async ({ error, init }) => {
         executionOrder.push("failure");
         expect(error).toBe(expectedError);
-        // Verify we got the global init data
-        expect(init).toEqual({ foo: "bar" });
       },
     });
 
@@ -1078,8 +1076,6 @@ describe("TaskExecutor", () => {
           ok: false,
           error: expectedError,
         });
-        // Verify we got the global init data
-        expect(init).toEqual({ foo: "bar" });
       },
     });
 

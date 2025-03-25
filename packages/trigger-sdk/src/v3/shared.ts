@@ -1,4 +1,4 @@
-import { SpanKind, SpanStatusCode } from "@opentelemetry/api";
+import { SpanKind } from "@opentelemetry/api";
 import { SerializableJson } from "@trigger.dev/core";
 import {
   accessoryAttributes,
@@ -8,47 +8,59 @@ import {
   convertToolParametersToSchema,
   createErrorTaskError,
   defaultRetryOptions,
+  flattenIdempotencyKey,
+  getEnvVar,
   getSchemaParseFn,
   InitOutput,
+  lifecycleHooks,
   makeIdempotencyKey,
   parsePacket,
   Queue,
   QueueOptions,
+  resourceCatalog,
   runtime,
   SemanticInternalAttributes,
   stringifyIO,
   SubtaskUnwrapError,
-  resourceCatalog,
   taskContext,
+  TaskFromIdentifier,
   TaskRunContext,
   TaskRunExecutionResult,
   TaskRunPromise,
-  TaskFromIdentifier,
-  flattenIdempotencyKey,
-  getEnvVar,
-  lifecycleHooks,
-  lifecycleHooksAdapters,
 } from "@trigger.dev/core/v3";
 import { PollOptions, runs } from "./runs.js";
 import { tracer } from "./tracer.js";
 
 import type {
+  AnyOnCatchErrorHookFunction,
+  AnyOnCleanupHookFunction,
+  AnyOnCompleteHookFunction,
+  AnyOnFailureHookFunction,
+  AnyOnInitHookFunction,
+  AnyOnMiddlewareHookFunction,
+  AnyOnResumeHookFunction,
+  AnyOnStartHookFunction,
+  AnyOnSuccessHookFunction,
+  AnyOnWaitHookFunction,
   AnyRunHandle,
   AnyRunTypes,
   AnyTask,
+  AnyTaskRunResult,
   BatchByIdAndWaitItem,
-  BatchByTaskAndWaitItem,
   BatchByIdItem,
+  BatchByIdResult,
+  BatchByTaskAndWaitItem,
   BatchByTaskItem,
   BatchByTaskResult,
-  BatchByIdResult,
   BatchItem,
   BatchResult,
   BatchRunHandle,
   BatchRunHandleFromTypes,
   BatchTasksRunHandleFromTypes,
   BatchTriggerAndWaitItem,
+  BatchTriggerAndWaitOptions,
   BatchTriggerOptions,
+  BatchTriggerTaskV2RequestBody,
   InferRunTypes,
   inferSchemaIn,
   inferToolParameters,
@@ -76,15 +88,6 @@ import type {
   TriggerAndWaitOptions,
   TriggerApiRequestOptions,
   TriggerOptions,
-  AnyTaskRunResult,
-  BatchTriggerAndWaitOptions,
-  BatchTriggerTaskV2RequestBody,
-  AnyOnInitHookFunction,
-  AnyOnCatchErrorHookFunction,
-  AnyOnCompleteHookFunction,
-  AnyOnWaitHookFunction,
-  AnyOnResumeHookFunction,
-  AnyOnFailureHookFunction,
 } from "@trigger.dev/core/v3";
 
 export type {
@@ -101,6 +104,7 @@ export type {
   SerializableJson,
   Task,
   TaskBatchOutputHandle,
+  TaskFromIdentifier,
   TaskIdentifier,
   TaskOptions,
   TaskOutput,
@@ -108,7 +112,6 @@ export type {
   TaskPayload,
   TaskRunResult,
   TriggerOptions,
-  TaskFromIdentifier,
 };
 
 export { SubtaskUnwrapError, TaskRunPromise };
@@ -1566,25 +1569,25 @@ function registerTaskLifecycleHooks<
 >(taskId: TIdentifier, params: TaskOptions<TIdentifier, TInput, TOutput, TInitOutput>) {
   if (params.init) {
     lifecycleHooks.registerTaskInitHook(taskId, {
-      fn: lifecycleHooksAdapters.createInitHookAdapter(params.init),
+      fn: params.init as AnyOnInitHookFunction,
     });
   }
 
   if (params.onStart) {
     lifecycleHooks.registerTaskStartHook(taskId, {
-      fn: lifecycleHooksAdapters.createStartHookAdapter(params.onStart),
+      fn: params.onStart as AnyOnStartHookFunction,
     });
   }
 
   if (params.onFailure) {
     lifecycleHooks.registerTaskFailureHook(taskId, {
-      fn: lifecycleHooksAdapters.createFailureHookAdapter(params.onFailure),
+      fn: params.onFailure as AnyOnFailureHookFunction,
     });
   }
 
   if (params.onSuccess) {
     lifecycleHooks.registerTaskSuccessHook(taskId, {
-      fn: lifecycleHooksAdapters.createSuccessHookAdapter(params.onSuccess),
+      fn: params.onSuccess as AnyOnSuccessHookFunction,
     });
   }
 
@@ -1615,19 +1618,19 @@ function registerTaskLifecycleHooks<
 
   if (params.handleError) {
     lifecycleHooks.registerTaskCatchErrorHook(taskId, {
-      fn: lifecycleHooksAdapters.createHandleErrorHookAdapter(params.handleError),
+      fn: params.handleError as AnyOnCatchErrorHookFunction,
     });
   }
 
   if (params.middleware) {
     lifecycleHooks.registerTaskMiddlewareHook(taskId, {
-      fn: lifecycleHooksAdapters.createMiddlewareHookAdapter(params.middleware),
+      fn: params.middleware as AnyOnMiddlewareHookFunction,
     });
   }
 
   if (params.cleanup) {
     lifecycleHooks.registerTaskCleanupHook(taskId, {
-      fn: lifecycleHooksAdapters.createCleanupHookAdapter(params.cleanup),
+      fn: params.cleanup as AnyOnCleanupHookFunction,
     });
   }
 }

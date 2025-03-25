@@ -32,5 +32,3 @@ export type {
   AnyOnCleanupHookFunction,
   TaskCleanupHookParams,
 } from "./lifecycleHooks/types.js";
-
-export * as lifecycleHooksAdapters from "./lifecycleHooks/adapters.js";

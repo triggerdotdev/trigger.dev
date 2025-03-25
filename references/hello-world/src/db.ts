@@ -32,3 +32,17 @@ tasks.middleware("db", async ({ ctx, payload, next, task }) => {
 
   await db.disconnect();
 });
+
+tasks.onWait("db", async ({ ctx, payload, task }) => {
+  logger.info("Hello, world from ON WAIT", { ctx, payload });
+
+  const db = getDb();
+  await db.disconnect();
+});
+
+tasks.onResume("db", async ({ ctx, payload, task }) => {
+  logger.info("Hello, world from ON RESUME", { ctx, payload });
+
+  const db = getDb();
+  await db.connect();
+});
