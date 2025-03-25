@@ -20,3 +20,5 @@ export { ManagedRuntimeManager } from "../runtime/managedRuntimeManager.js";
 export * from "../runEngineWorker/index.js";
 export { StandardRunTimelineMetricsManager } from "../runTimelineMetrics/runTimelineMetricsManager.js";
 export { WarmStartClient, type WarmStartClientOptions } from "../workers/warmStartClient.js";
+export { StandardLifecycleHooksManager } from "../lifecycleHooks/manager.js";
+export { StandardLocalsManager } from "../locals/manager.js";
