@@ -377,7 +377,11 @@ export class TaskExecutor {
                 )
               );
 
-              if (!hookError && result && typeof result === "object" && !Array.isArray(result)) {
+              if (hookError) {
+                throw hookError;
+              }
+
+              if (result && typeof result === "object" && !Array.isArray(result)) {
                 globalResults.push(result);
               }
             }
@@ -407,13 +411,12 @@ export class TaskExecutor {
                 )
               );
 
+              if (hookError) {
+                throw hookError;
+              }
+
               // Only merge if taskResult is an object
-              if (
-                !hookError &&
-                taskResult &&
-                typeof taskResult === "object" &&
-                !Array.isArray(taskResult)
-              ) {
+              if (taskResult && typeof taskResult === "object" && !Array.isArray(taskResult)) {
                 return { ...mergedGlobalResults, ...taskResult };
               }
 
@@ -645,6 +648,10 @@ export class TaskExecutor {
                   }
                 )
               );
+
+              if (hookError) {
+                throw hookError;
+              }
             }
 
             if (taskStartHook) {
@@ -667,6 +674,10 @@ export class TaskExecutor {
                   }
                 )
               );
+
+              if (hookError) {
+                throw hookError;
+              }
             }
           }
         );

@@ -953,6 +953,256 @@ describe("TaskExecutor", () => {
       },
     });
   });
+
+  test("should propagate errors from init hooks", async () => {
+    const executionOrder: string[] = [];
+    const expectedError = new Error("Init hook error");
+
+    // Register global init hook that throws an error
+    lifecycleHooks.registerGlobalInitHook({
+      id: "failing-init",
+      fn: async () => {
+        executionOrder.push("global-init");
+        throw expectedError;
+      },
+    });
+
+    // Register task init hook that should never be called
+    lifecycleHooks.registerTaskInitHook("test-task", {
+      id: "task-init",
+      fn: async () => {
+        executionOrder.push("task-init");
+        return {
+          foo: "bar",
+        };
+      },
+    });
+
+    // Register failure hook to verify it's called
+    lifecycleHooks.registerGlobalFailureHook({
+      id: "global-failure",
+      fn: async ({ error }) => {
+        executionOrder.push("failure");
+        expect(error).toBe(expectedError);
+      },
+    });
+
+    // Register complete hook to verify it's called with error
+    lifecycleHooks.registerGlobalCompleteHook({
+      id: "global-complete",
+      fn: async ({ result }) => {
+        executionOrder.push("complete");
+        expect(result).toEqual({
+          ok: false,
+          error: expectedError,
+        });
+      },
+    });
+
+    const task = {
+      id: "test-task",
+      fns: {
+        run: async (payload: any, params: RunFnParams<any>) => {
+          executionOrder.push("run");
+          return {
+            output: "test-output",
+          };
+        },
+      },
+    };
+
+    const result = await executeTask(task, { test: "data" });
+
+    // Verify only the global init hook ran, and failure/complete hooks were called
+    expect(executionOrder).toEqual(["global-init", "failure", "complete"]);
+
+    // Verify the error result
+    expect(result).toEqual({
+      result: {
+        ok: false,
+        id: "test-run-id",
+        error: {
+          type: "BUILT_IN_ERROR",
+          message: "Init hook error",
+          name: "Error",
+          stackTrace: expect.any(String),
+        },
+        skippedRetrying: false,
+      },
+    });
+  });
+
+  test("should propagate errors from task init hooks", async () => {
+    const executionOrder: string[] = [];
+    const expectedError = new Error("Task init hook error");
+
+    // Register global init hook that succeeds
+    lifecycleHooks.registerGlobalInitHook({
+      id: "global-init",
+      fn: async () => {
+        executionOrder.push("global-init");
+        return {
+          foo: "bar",
+        };
+      },
+    });
+
+    // Register task init hook that throws an error
+    lifecycleHooks.registerTaskInitHook("test-task", {
+      id: "task-init",
+      fn: async () => {
+        executionOrder.push("task-init");
+        throw expectedError;
+      },
+    });
+
+    // Register failure hook to verify it's called
+    lifecycleHooks.registerGlobalFailureHook({
+      id: "global-failure",
+      fn: async ({ error, init }) => {
+        executionOrder.push("failure");
+        expect(error).toBe(expectedError);
+        // Verify we got the global init data
+        expect(init).toEqual({ foo: "bar" });
+      },
+    });
+
+    // Register complete hook to verify it's called with error
+    lifecycleHooks.registerGlobalCompleteHook({
+      id: "global-complete",
+      fn: async ({ result, init }) => {
+        executionOrder.push("complete");
+        expect(result).toEqual({
+          ok: false,
+          error: expectedError,
+        });
+        // Verify we got the global init data
+        expect(init).toEqual({ foo: "bar" });
+      },
+    });
+
+    const task = {
+      id: "test-task",
+      fns: {
+        run: async (payload: any, params: RunFnParams<any>) => {
+          executionOrder.push("run");
+          return {
+            output: "test-output",
+          };
+        },
+      },
+    };
+
+    const result = await executeTask(task, { test: "data" });
+
+    // Verify both init hooks ran, but run wasn't called, and failure/complete hooks were called
+    expect(executionOrder).toEqual(["global-init", "task-init", "failure", "complete"]);
+
+    // Verify the error result
+    expect(result).toEqual({
+      result: {
+        ok: false,
+        id: "test-run-id",
+        error: {
+          type: "BUILT_IN_ERROR",
+          message: "Task init hook error",
+          name: "Error",
+          stackTrace: expect.any(String),
+        },
+        skippedRetrying: false,
+      },
+    });
+  });
+
+  test("should propagate errors from start hooks", async () => {
+    const executionOrder: string[] = [];
+    const expectedError = new Error("Start hook error");
+
+    // Register global init hook that succeeds
+    lifecycleHooks.registerGlobalInitHook({
+      id: "global-init",
+      fn: async () => {
+        executionOrder.push("global-init");
+        return {
+          foo: "bar",
+        };
+      },
+    });
+
+    // Register global start hook that throws an error
+    lifecycleHooks.registerGlobalStartHook({
+      id: "global-start",
+      fn: async () => {
+        executionOrder.push("global-start");
+        throw expectedError;
+      },
+    });
+
+    // Register task start hook that should never be called
+    lifecycleHooks.registerTaskStartHook("test-task", {
+      id: "task-start",
+      fn: async () => {
+        executionOrder.push("task-start");
+      },
+    });
+
+    // Register failure hook to verify it's called
+    lifecycleHooks.registerGlobalFailureHook({
+      id: "global-failure",
+      fn: async ({ error, init }) => {
+        executionOrder.push("failure");
+        expect(error).toBe(expectedError);
+        // Verify we got the init data
+        expect(init).toEqual({ foo: "bar" });
+      },
+    });
+
+    // Register complete hook to verify it's called with error
+    lifecycleHooks.registerGlobalCompleteHook({
+      id: "global-complete",
+      fn: async ({ result, init }) => {
+        executionOrder.push("complete");
+        expect(result).toEqual({
+          ok: false,
+          error: expectedError,
+        });
+        // Verify we got the init data
+        expect(init).toEqual({ foo: "bar" });
+      },
+    });
+
+    const task = {
+      id: "test-task",
+      fns: {
+        run: async (payload: any, params: RunFnParams<any>) => {
+          executionOrder.push("run");
+          return {
+            output: "test-output",
+          };
+        },
+      },
+    };
+
+    const result = await executeTask(task, { test: "data" });
+
+    // Verify init succeeded, start hook failed, and run wasn't called
+    expect(executionOrder).toEqual(["global-init", "global-start", "failure", "complete"]);
+
+    // Verify the error result
+    expect(result).toEqual({
+      result: {
+        ok: false,
+        id: "test-run-id",
+        error: {
+          type: "BUILT_IN_ERROR",
+          message: "Start hook error",
+          name: "Error",
+          stackTrace: expect.any(String),
+        },
+        skippedRetrying: false,
+      },
+    });
+  });
 });
 
 function executeTask(task: TaskMetadataWithFunctions, payload: any) {

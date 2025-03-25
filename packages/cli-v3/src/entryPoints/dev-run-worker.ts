@@ -358,7 +358,7 @@ const zodIpc = new ZodIpcConnection({
           tracer,
           tracingSDK,
           consoleInterceptor,
-          config,
+          retries: config.retries,
           handleErrorFn,
         });
 
@@ -406,13 +406,7 @@ const zodIpc = new ZodIpcConnection({
             }
           });
 
-          const { result } = await executor.execute(
-            execution,
-            metadata,
-            traceContext,
-            measurement,
-            signal
-          );
+          const { result } = await executor.execute(execution, metadata, traceContext, signal);
 
           const usageSample = usage.stop(measurement);
 
