@@ -59,6 +59,10 @@ const Env = z.object({
   POD_CLEANER_ENABLED: BoolEnv.default(true),
   POD_CLEANER_INTERVAL_MS: z.coerce.number().int().default(10000),
   POD_CLEANER_BATCH_SIZE: z.coerce.number().int().default(500),
+
+  // Failed pod handler
+  FAILED_POD_HANDLER_ENABLED: BoolEnv.default(true),
+  FAILED_POD_HANDLER_RECONNECT_INTERVAL_MS: z.coerce.number().int().default(1000),
 });
 
 export const env = Env.parse(stdEnv);

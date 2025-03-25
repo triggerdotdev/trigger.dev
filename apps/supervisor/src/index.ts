@@ -22,6 +22,7 @@ import { createK8sApi } from "./clients/kubernetes.js";
 import { collectDefaultMetrics } from "prom-client";
 import { register } from "./metrics.js";
 import { PodCleaner } from "./services/podCleaner.js";
+import { FailedPodHandler } from "./services/failedPodHandler.js";
 
 if (env.METRICS_COLLECT_DEFAULTS) {
   collectDefaultMetrics({ register });
@@ -35,7 +36,9 @@ class ManagedSupervisor {
   private readonly logger = new SimpleStructuredLogger("managed-worker");
   private readonly resourceMonitor: ResourceMonitor;
   private readonly checkpointClient?: CheckpointClient;
+
   private readonly podCleaner?: PodCleaner;
+  private readonly failedPodHandler?: FailedPodHandler;
 
   private readonly isKubernetes = isKubernetesEnvironment(env.KUBERNETES_FORCE_ENABLED);
   private readonly warmStartUrl = env.TRIGGER_WARM_START_URL;
@@ -50,6 +53,13 @@ class ManagedSupervisor {
         namespace: env.KUBERNETES_NAMESPACE,
         batchSize: env.POD_CLEANER_BATCH_SIZE,
         intervalMs: env.POD_CLEANER_INTERVAL_MS,
+      });
+    }
+
+    if (env.FAILED_POD_HANDLER_ENABLED) {
+      this.failedPodHandler = new FailedPodHandler({
+        namespace: env.KUBERNETES_NAMESPACE,
+        reconnectIntervalMs: env.FAILED_POD_HANDLER_RECONNECT_INTERVAL_MS,
       });
     }
 
@@ -293,6 +303,10 @@ class ManagedSupervisor {
       await this.podCleaner.start();
     }
 
+    if (this.failedPodHandler) {
+      await this.failedPodHandler.start();
+    }
+
     if (env.TRIGGER_WORKLOAD_API_ENABLED) {
       this.logger.log("[ManagedWorker] Workload API enabled", {
         protocol: env.TRIGGER_WORKLOAD_API_PROTOCOL,
@@ -315,6 +329,10 @@ class ManagedSupervisor {
 
     if (this.podCleaner) {
       await this.podCleaner.stop();
+    }
+
+    if (this.failedPodHandler) {
+      await this.failedPodHandler.stop();
     }
   }
 }

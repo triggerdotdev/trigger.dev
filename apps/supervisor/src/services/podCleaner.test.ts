@@ -68,8 +68,7 @@ describe("PodCleaner Integration Tests", () => {
       });
 
       // Verify pod was deleted
-      const pods = await k8s.core.listNamespacedPod({ namespace });
-      expect(pods.items.find((p) => p.metadata?.name === podName)).toBeUndefined();
+      expect(await podExists({ k8sApi: k8s, namespace, podName })).toBe(false);
     } finally {
       await podCleaner.stop();
     }
@@ -226,11 +225,7 @@ describe("PodCleaner Integration Tests", () => {
       await setTimeout(5000);
 
       // Verify pod still exists
-      const pod = await k8s.core.readNamespacedPod({
-        namespace,
-        name: podName,
-      });
-      expect(pod.metadata?.name).toBe(podName);
+      expect(await podExists({ k8sApi: k8s, namespace, podName })).toBe(true);
     } finally {
       await podCleaner.stop();
     }
@@ -268,11 +263,7 @@ describe("PodCleaner Integration Tests", () => {
       await setTimeout(5000);
 
       // Verify pod still exists
-      const pod = await k8s.core.readNamespacedPod({
-        namespace,
-        name: podName,
-      });
-      expect(pod.metadata?.name).toBe(podName);
+      expect(await podExists({ k8sApi: k8s, namespace, podName })).toBe(true);
     } finally {
       await podCleaner.stop();
     }
@@ -465,4 +456,17 @@ async function waitForPodsDeletion({
       `Pods [${Array.from(pendingPods).join(", ")}] were not deleted within ${timeoutMs}ms`
     );
   }
+}
+
+async function podExists({
+  k8sApi,
+  namespace,
+  podName,
+}: {
+  k8sApi: K8sApi;
+  namespace: string;
+  podName: string;
+}) {
+  const pods = await k8sApi.core.listNamespacedPod({ namespace });
+  return pods.items.some((p) => p.metadata?.name === podName);
 }
