@@ -405,9 +405,9 @@ export default function Page() {
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={5}>
+                      <TableCell colSpan={6}>
                         <div className="grid place-items-center py-6 text-text-dimmed">
-                          No queues found
+                          <Paragraph>No queues found</Paragraph>
                         </div>
                       </TableCell>
                     </TableRow>
