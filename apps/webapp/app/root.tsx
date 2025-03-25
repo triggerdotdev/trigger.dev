@@ -1,10 +1,10 @@
 import type { LinksFunction, LoaderFunctionArgs, MetaFunction } from "@remix-run/node";
 import type { ShouldRevalidateFunction } from "@remix-run/react";
 import { Links, LiveReload, Meta, Outlet, Scripts, ScrollRestoration } from "@remix-run/react";
-import { UseDataFunctionReturn, typedjson, useTypedLoaderData } from "remix-typedjson";
+import { type UseDataFunctionReturn, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { ExternalScripts } from "remix-utils/external-scripts";
-import type { ToastMessage } from "~/models/message.server";
 import { commitSession, getSession } from "~/models/message.server";
+import type { ToastMessage } from "~/models/message.server";
 import tailwindStylesheetUrl from "~/tailwind.css";
 import { RouteErrorDisplay } from "./components/ErrorDisplay";
 import { AppContainer, MainCenteredContainer } from "./components/layout/AppLayout";
@@ -14,6 +14,8 @@ import { featuresForRequest } from "./features.server";
 import { usePostHog } from "./hooks/usePostHog";
 import { getUser } from "./services/session.server";
 import { appEnvTitleTag } from "./utils";
+import { type Handle } from "./utils/handle";
+import { useEffect } from "react";
 
 export const links: LinksFunction = () => {
   return [{ rel: "stylesheet", href: tailwindStylesheetUrl }];
@@ -40,6 +42,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const posthogProjectKey = env.POSTHOG_PROJECT_KEY;
   const features = featuresForRequest(request);
 
+  const kapa = {
+    websiteId: env.KAPA_AI_WEBSITE_ID,
+  };
+
   return typedjson(
     {
       user: await getUser(request),
@@ -48,6 +54,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       features,
       appEnv: env.APP_ENV,
       appOrigin: env.APP_ORIGIN,
+      kapa,
     },
     { headers: { "Set-Cookie": await commitSession(session) } }
   );
@@ -86,8 +93,8 @@ export function ErrorBoundary() {
   );
 }
 
-function App() {
-  const { posthogProjectKey } = useTypedLoaderData<typeof loader>();
+export default function App() {
+  const { posthogProjectKey, kapa, features } = useTypedLoaderData<typeof loader>();
   usePostHog(posthogProjectKey);
 
   return (
@@ -96,6 +103,17 @@ function App() {
         <head>
           <Meta />
           <Links />
+          {features.isManagedCloud && (
+            <script
+              src="/resources/kapa-widget"
+              crossOrigin="anonymous"
+              async
+              data-website-id={kapa.websiteId}
+              data-project-name="Trigger.dev"
+              data-project-color="#ff9900"
+              data-project-logo="content.trigger.dev/trigger-logo-triangle.png"
+            />
+          )}
         </head>
         <body className="bg-darkBackground h-full overflow-hidden">
           <Outlet />
@@ -109,5 +127,3 @@ function App() {
     </>
   );
 }
-
-export default App;
