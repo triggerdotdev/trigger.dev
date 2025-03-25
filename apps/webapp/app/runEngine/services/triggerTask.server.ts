@@ -371,6 +371,10 @@ export class RunEngineTriggerTaskService extends WithRunEngine {
                     machine: body.options?.machine,
                     priorityMs: body.options?.priority ? body.options.priority * 1_000 : undefined,
                     releaseConcurrency: body.options?.releaseConcurrency,
+                    queueTimestamp:
+                      parentRun && body.options?.resumeParentOnCompletion
+                        ? parentRun.queueTimestamp ?? undefined
+                        : undefined,
                   },
                   this._prisma
                 );
