@@ -67,7 +67,7 @@ export class StandardLifecycleHooksManager implements LifecycleHooksManager {
   }
 
   async callOnWaitHookListeners(wait: TaskWait): Promise<void> {
-    await Promise.all(this.onWaitHookListeners.map((listener) => listener(wait)));
+    await Promise.allSettled(this.onWaitHookListeners.map((listener) => listener(wait)));
   }
 
   registerOnResumeHookListener(listener: (wait: TaskWait) => Promise<void>): void {
@@ -75,7 +75,7 @@ export class StandardLifecycleHooksManager implements LifecycleHooksManager {
   }
 
   async callOnResumeHookListeners(wait: TaskWait): Promise<void> {
-    await Promise.all(this.onResumeHookListeners.map((listener) => listener(wait)));
+    await Promise.allSettled(this.onResumeHookListeners.map((listener) => listener(wait)));
   }
 
   registerGlobalStartHook(hook: RegisterHookFunctionParams<AnyOnStartHookFunction>): void {
