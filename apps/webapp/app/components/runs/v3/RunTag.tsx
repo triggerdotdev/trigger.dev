@@ -41,7 +41,7 @@ export function RunTag({ tag, to, tooltip }: { tag: string; to?: string; tooltip
   const tagContent = to ? (
     <SimpleTooltip
       button={
-        <Link to={to} className="group">
+        <Link to={to} className="group shrink-0" onMouseEnter={() => setIsHovered(true)}>
           <span className="flex h-6 items-stretch">{renderTagContent()}</span>
         </Link>
       }
@@ -49,15 +49,13 @@ export function RunTag({ tag, to, tooltip }: { tag: string; to?: string; tooltip
       disableHoverableContent
     />
   ) : (
-    <span className="flex h-6 items-stretch">{renderTagContent()}</span>
+    <span className="flex h-6 shrink-0 items-stretch" onMouseEnter={() => setIsHovered(true)}>
+      {renderTagContent()}
+    </span>
   );
 
   return (
-    <div
-      className="group relative inline-flex"
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-    >
+    <div className="group relative inline-flex shrink-0" onMouseLeave={() => setIsHovered(false)}>
       {tagContent}
       <CopyButton textToCopy={tag} isHovered={isHovered} />
     </div>
@@ -87,8 +85,8 @@ function CopyButton({ textToCopy, isHovered }: { textToCopy: string; isHovered: 
           onClick={copy}
           onMouseDown={(e) => e.stopPropagation()}
           className={cn(
-            "absolute -right-6 top-0 z-10 flex size-6 items-center justify-center rounded-r-sm border-y border-r border-charcoal-650 bg-charcoal-750",
-            isHovered ? "opacity-100" : "opacity-0",
+            "absolute -right-6 top-0 z-10 size-6 items-center justify-center rounded-r-sm border-y border-r border-charcoal-650 bg-charcoal-750",
+            isHovered ? "flex" : "hidden",
             copied
               ? "text-green-500"
               : "text-text-dimmed hover:border-charcoal-600 hover:bg-charcoal-700 hover:text-text-bright"
