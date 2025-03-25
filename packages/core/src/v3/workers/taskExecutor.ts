@@ -174,6 +174,8 @@ export class TaskExecutor {
                 );
               }
 
+              await this.#cleanupAndWaitUntil(payload, ctx, initOutput, signal);
+
               return {
                 id: execution.run.id,
                 ok: false,
@@ -191,6 +193,8 @@ export class TaskExecutor {
 
             if (outputError) {
               recordSpanException(span, outputError);
+              await this.#cleanupAndWaitUntil(payload, ctx, initOutput, signal);
+
               return this.#internalErrorResult(
                 execution,
                 TaskRunErrorCodes.TASK_OUTPUT_ERROR,
@@ -208,6 +212,8 @@ export class TaskExecutor {
 
             if (exportError) {
               recordSpanException(span, exportError);
+              await this.#cleanupAndWaitUntil(payload, ctx, initOutput, signal);
+
               return this.#internalErrorResult(
                 execution,
                 TaskRunErrorCodes.TASK_OUTPUT_ERROR,
@@ -235,6 +241,8 @@ export class TaskExecutor {
               initOutput,
               signal
             );
+
+            await this.#cleanupAndWaitUntil(payload, ctx, initOutput, signal);
 
             return {
               ok: true,
@@ -690,21 +698,90 @@ export class TaskExecutor {
     );
   }
 
-  async #callTaskCleanup(
+  async #cleanupAndWaitUntil(
     payload: unknown,
     ctx: TaskRunContext,
-    init: unknown,
+    initOutput: any,
     signal?: AbortSignal
   ) {
-    const cleanupFn = this.task.fns.cleanup;
+    await this.#callCleanupFunctions(payload, ctx, initOutput, signal);
+    await this.#blockForWaitUntil();
+  }
 
-    if (!cleanupFn) {
+  async #callCleanupFunctions(
+    payload: unknown,
+    ctx: TaskRunContext,
+    initOutput: any,
+    signal?: AbortSignal
+  ) {
+    const globalCleanupHooks = lifecycleHooks.getGlobalCleanupHooks();
+    const taskCleanupHook = lifecycleHooks.getTaskCleanupHook(this.task.id);
+
+    if (globalCleanupHooks.length === 0 && !taskCleanupHook) {
       return;
     }
 
-    return this._tracer.startActiveSpan("cleanup", async (span) => {
-      return await cleanupFn(payload, { ctx, init, signal });
-    });
+    return this._tracer.startActiveSpan(
+      "hooks.cleanup",
+      async (span) => {
+        return await runTimelineMetrics.measureMetric(
+          "trigger.dev/execution",
+          "cleanup",
+          async () => {
+            for (const hook of globalCleanupHooks) {
+              const [hookError] = await tryCatch(
+                this._tracer.startActiveSpan(
+                  hook.name ?? "global",
+                  async (span) => {
+                    await hook.fn({
+                      payload,
+                      ctx,
+                      signal,
+                      task: this.task.id,
+                      init: initOutput,
+                    });
+                  },
+                  {
+                    attributes: {
+                      [SemanticInternalAttributes.STYLE_ICON]: "tabler-function",
+                    },
+                  }
+                )
+              );
+              // Ignore errors from cleanup functions
+            }
+
+            if (taskCleanupHook) {
+              const [hookError] = await tryCatch(
+                this._tracer.startActiveSpan(
+                  "task",
+                  async (span) => {
+                    await taskCleanupHook({
+                      payload,
+                      ctx,
+                      signal,
+                      task: this.task.id,
+                      init: initOutput,
+                    });
+                  },
+                  {
+                    attributes: {
+                      [SemanticInternalAttributes.STYLE_ICON]: "tabler-function",
+                    },
+                  }
+                )
+              );
+              // Ignore errors from cleanup functions
+            }
+          }
+        );
+      },
+      {
+        attributes: {
+          [SemanticInternalAttributes.STYLE_ICON]: "tabler-function",
+        },
+      }
+    );
   }
 
   async #blockForWaitUntil() {

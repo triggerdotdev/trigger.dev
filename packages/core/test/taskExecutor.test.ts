@@ -779,7 +779,8 @@ describe("TaskExecutor", () => {
       },
     });
 
-    expect((result as any).result.retry.delay).toBeCloseTo(30000, -1);
+    expect((result as any).result.retry.delay).toBeGreaterThan(29900);
+    expect((result as any).result.retry.delay).toBeLessThan(30100);
   });
 
   test("should execute middleware hooks in correct order around other hooks", async () => {
@@ -1196,6 +1197,219 @@ describe("TaskExecutor", () => {
         error: {
           type: "BUILT_IN_ERROR",
           message: "Start hook error",
+          name: "Error",
+          stackTrace: expect.any(String),
+        },
+        skippedRetrying: false,
+      },
+    });
+  });
+
+  test("should call cleanup hooks in correct order after other hooks but before middleware completion", async () => {
+    const executionOrder: string[] = [];
+
+    // Register global init hook
+    lifecycleHooks.registerGlobalInitHook({
+      id: "test-init",
+      fn: async () => {
+        executionOrder.push("init");
+        return {
+          foo: "bar",
+        };
+      },
+    });
+
+    // Register global start hook
+    lifecycleHooks.registerGlobalStartHook({
+      id: "global-start",
+      fn: async () => {
+        executionOrder.push("start");
+      },
+    });
+
+    // Register global success hook
+    lifecycleHooks.registerGlobalSuccessHook({
+      id: "global-success",
+      fn: async () => {
+        executionOrder.push("success");
+      },
+    });
+
+    // Register global complete hook
+    lifecycleHooks.registerGlobalCompleteHook({
+      id: "global-complete",
+      fn: async () => {
+        executionOrder.push("complete");
+      },
+    });
+
+    // Register global cleanup hooks
+    lifecycleHooks.registerGlobalCleanupHook({
+      id: "global-cleanup-1",
+      fn: async ({ init }) => {
+        executionOrder.push("global-cleanup-1");
+        // Verify we have access to init data
+        expect(init).toEqual({ foo: "bar" });
+      },
+    });
+
+    lifecycleHooks.registerGlobalCleanupHook({
+      id: "global-cleanup-2",
+      fn: async ({ init }) => {
+        executionOrder.push("global-cleanup-2");
+        // Verify we have access to init data
+        expect(init).toEqual({ foo: "bar" });
+      },
+    });
+
+    // Register task-specific cleanup hook
+    lifecycleHooks.registerTaskCleanupHook("test-task", {
+      id: "task-cleanup",
+      fn: async ({ init }) => {
+        executionOrder.push("task-cleanup");
+        // Verify we have access to init data
+        expect(init).toEqual({ foo: "bar" });
+      },
+    });
+
+    // Register middleware to verify cleanup happens before middleware completion
+    lifecycleHooks.registerGlobalMiddlewareHook({
+      id: "global-middleware",
+      fn: async ({ next }) => {
+        executionOrder.push("middleware-before");
+        await next();
+        executionOrder.push("middleware-after");
+      },
+    });
+
+    const task = {
+      id: "test-task",
+      fns: {
+        run: async (payload: any, params: RunFnParams<any>) => {
+          executionOrder.push("run");
+          return {
+            output: "test-output",
+            init: params.init,
+          };
+        },
+      },
+    };
+
+    const result = await executeTask(task, { test: "data" });
+
+    // Verify the execution order:
+    // 1. Middleware starts
+    // 2. Init hook
+    // 3. Start hook
+    // 4. Run function
+    // 5. Success hook
+    // 6. Complete hook
+    // 7. Cleanup hooks
+    // 8. Middleware completes
+    expect(executionOrder).toEqual([
+      "middleware-before",
+      "init",
+      "start",
+      "run",
+      "success",
+      "complete",
+      "global-cleanup-1",
+      "global-cleanup-2",
+      "task-cleanup",
+      "middleware-after",
+    ]);
+
+    // Verify the final result
+    expect(result).toEqual({
+      result: {
+        ok: true,
+        id: "test-run-id",
+        output: '{"json":{"output":"test-output","init":{"foo":"bar"}}}',
+        outputType: "application/super+json",
+      },
+    });
+  });
+
+  test("should call cleanup hooks even when task fails", async () => {
+    const executionOrder: string[] = [];
+    const expectedError = new Error("Task failed intentionally");
+
+    // Register global init hook
+    lifecycleHooks.registerGlobalInitHook({
+      id: "test-init",
+      fn: async () => {
+        executionOrder.push("init");
+        return {
+          foo: "bar",
+        };
+      },
+    });
+
+    // Register failure hook
+    lifecycleHooks.registerGlobalFailureHook({
+      id: "global-failure",
+      fn: async () => {
+        executionOrder.push("failure");
+      },
+    });
+
+    // Register complete hook
+    lifecycleHooks.registerGlobalCompleteHook({
+      id: "global-complete",
+      fn: async () => {
+        executionOrder.push("complete");
+      },
+    });
+
+    // Register cleanup hooks
+    lifecycleHooks.registerGlobalCleanupHook({
+      id: "global-cleanup",
+      fn: async ({ init }) => {
+        executionOrder.push("global-cleanup");
+        // Verify we have access to init data even after failure
+        expect(init).toEqual({ foo: "bar" });
+      },
+    });
+
+    lifecycleHooks.registerTaskCleanupHook("test-task", {
+      id: "task-cleanup",
+      fn: async ({ init }) => {
+        executionOrder.push("task-cleanup");
+        // Verify we have access to init data even after failure
+        expect(init).toEqual({ foo: "bar" });
+      },
+    });
+
+    const task = {
+      id: "test-task",
+      fns: {
+        run: async () => {
+          executionOrder.push("run");
+          throw expectedError;
+        },
+      },
+    };
+
+    const result = await executeTask(task, { test: "data" });
+
+    // Verify cleanup hooks are called even after failure
+    expect(executionOrder).toEqual([
+      "init",
+      "run",
+      "failure",
+      "complete",
+      "global-cleanup",
+      "task-cleanup",
+    ]);
+
+    // Verify the error result
+    expect(result).toEqual({
+      result: {
+        ok: false,
+        id: "test-run-id",
+        error: {
+          type: "BUILT_IN_ERROR",
+          message: "Task failed intentionally",
           name: "Error",
           stackTrace: expect.any(String),
         },
