@@ -2,7 +2,13 @@ import { SpanKind } from "@opentelemetry/api";
 import { VERSION } from "../../version.js";
 import { ApiError, RateLimitError } from "../apiClient/errors.js";
 import { ConsoleInterceptor } from "../consoleInterceptor.js";
-import { isInternalError, parseError, sanitizeError, TaskPayloadParsedError } from "../errors.js";
+import {
+  InternalError,
+  isInternalError,
+  parseError,
+  sanitizeError,
+  TaskPayloadParsedError,
+} from "../errors.js";
 import { flattenAttributes, lifecycleHooks, runMetadata, waitUntil } from "../index.js";
 import {
   AnyOnMiddlewareHookFunction,
@@ -341,9 +347,29 @@ export class TaskExecutor {
       throw new Error("Task does not have a run function");
     }
 
-    return runTimelineMetrics.measureMetric("trigger.dev/execution", "run", () =>
-      runFn(payload, { ctx, init, signal })
-    );
+    // Create a promise that rejects when the signal aborts
+    const abortPromise = signal
+      ? new Promise((_, reject) => {
+          signal.addEventListener("abort", () => {
+            const maxDuration = ctx.run.maxDuration;
+            reject(
+              new InternalError({
+                code: TaskRunErrorCodes.MAX_DURATION_EXCEEDED,
+                message: `Task execution exceeded maximum duration of ${maxDuration}ms`,
+              })
+            );
+          });
+        })
+      : undefined;
+
+    return runTimelineMetrics.measureMetric("trigger.dev/execution", "run", async () => {
+      if (abortPromise) {
+        // Race between the run function and the abort promise
+        return await Promise.race([runFn(payload, { ctx, init, signal }), abortPromise]);
+      }
+
+      return await runFn(payload, { ctx, init, signal });
+    });
   }
 
   async #callInitFunctions(payload: unknown, ctx: TaskRunContext, signal?: AbortSignal) {

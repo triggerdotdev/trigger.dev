@@ -4,6 +4,7 @@ import {
   RunFnParams,
   ServerBackgroundWorker,
   TaskMetadataWithFunctions,
+  TaskRunErrorCodes,
   TaskRunExecution,
 } from "../src/v3/index.js";
 import { TracingSDK } from "../src/v3/otel/tracingSDK.js";
@@ -52,7 +53,7 @@ describe("TaskExecutor", () => {
       },
     };
 
-    const result = await executeTask(task, {});
+    const result = await executeTask(task, {}, undefined);
 
     expect(result).toEqual({
       result: {
@@ -136,7 +137,7 @@ describe("TaskExecutor", () => {
       },
     };
 
-    const result = await executeTask(task, {});
+    const result = await executeTask(task, {}, undefined);
 
     // Verify hooks were called in correct order - should match registration order
     expect(globalSuccessOrder).toEqual(["global-2", "global-1", "task"]);
@@ -238,7 +239,7 @@ describe("TaskExecutor", () => {
       },
     };
 
-    const result = await executeTask(task, { test: "data" });
+    const result = await executeTask(task, { test: "data" }, undefined);
 
     // Verify hooks were called in correct order
     expect(globalStartOrder).toEqual(["global-1", "global-2", "task"]);
@@ -337,7 +338,7 @@ describe("TaskExecutor", () => {
       },
     };
 
-    const result = await executeTask(task, { test: "data" });
+    const result = await executeTask(task, { test: "data" }, undefined);
 
     // Verify hooks were called in correct order
     expect(globalFailureOrder).toEqual(["global-1", "global-2", "task"]);
@@ -445,7 +446,7 @@ describe("TaskExecutor", () => {
       },
     };
 
-    const result = await executeTask(task, { test: "data" });
+    const result = await executeTask(task, { test: "data" }, undefined);
 
     // Verify hooks were called in correct order
     expect(globalCompleteOrder).toEqual(["global-1", "global-2", "task"]);
@@ -533,7 +534,7 @@ describe("TaskExecutor", () => {
       },
     };
 
-    const result = await executeTask(task, { test: "data" });
+    const result = await executeTask(task, { test: "data" }, undefined);
 
     // Verify hooks were called in correct order
     expect(globalCompleteOrder).toEqual(["global", "task"]);
@@ -645,7 +646,7 @@ describe("TaskExecutor", () => {
       },
     };
 
-    const result = await executeTask(task, { test: "data" });
+    const result = await executeTask(task, { test: "data" }, undefined);
 
     // Verify hooks were called in correct order and stopped after second global hook
     expect(hookCallOrder).toEqual(["task", "global-1", "global-2"]);
@@ -707,7 +708,7 @@ describe("TaskExecutor", () => {
       },
     };
 
-    const result = await executeTask(task, { test: "data" });
+    const result = await executeTask(task, { test: "data" }, undefined);
 
     // Verify only task hook was called
     expect(hookCallOrder).toEqual(["task"]);
@@ -755,7 +756,7 @@ describe("TaskExecutor", () => {
       },
     };
 
-    const result = await executeTask(task, { test: "data" });
+    const result = await executeTask(task, { test: "data" }, undefined);
 
     // Verify only task hook was called
     expect(hookCallOrder).toEqual(["task"]);
@@ -863,7 +864,7 @@ describe("TaskExecutor", () => {
       },
     };
 
-    const result = await executeTask(task, { test: "data" });
+    const result = await executeTask(task, { test: "data" }, undefined);
 
     // Verify the execution order:
     // 1. Global middlewares (outside to inside)
@@ -935,7 +936,7 @@ describe("TaskExecutor", () => {
       },
     };
 
-    const result = await executeTask(task, { test: "data" });
+    const result = await executeTask(task, { test: "data" }, undefined);
 
     // Verify only the middleware-before hook ran
     expect(executionOrder).toEqual(["middleware-before"]);
@@ -1012,7 +1013,7 @@ describe("TaskExecutor", () => {
       },
     };
 
-    const result = await executeTask(task, { test: "data" });
+    const result = await executeTask(task, { test: "data" }, undefined);
 
     // Verify only the global init hook ran, and failure/complete hooks were called
     expect(executionOrder).toEqual(["global-init", "failure", "complete"]);
@@ -1094,7 +1095,7 @@ describe("TaskExecutor", () => {
       },
     };
 
-    const result = await executeTask(task, { test: "data" });
+    const result = await executeTask(task, { test: "data" }, undefined);
 
     // Verify both init hooks ran, but run wasn't called, and failure/complete hooks were called
     expect(executionOrder).toEqual(["global-init", "task-init", "failure", "complete"]);
@@ -1184,7 +1185,7 @@ describe("TaskExecutor", () => {
       },
     };
 
-    const result = await executeTask(task, { test: "data" });
+    const result = await executeTask(task, { test: "data" }, undefined);
 
     // Verify init succeeded, start hook failed, and run wasn't called
     expect(executionOrder).toEqual(["global-init", "global-start", "failure", "complete"]);
@@ -1295,7 +1296,7 @@ describe("TaskExecutor", () => {
       },
     };
 
-    const result = await executeTask(task, { test: "data" });
+    const result = await executeTask(task, { test: "data" }, undefined);
 
     // Verify the execution order:
     // 1. Middleware starts
@@ -1390,7 +1391,7 @@ describe("TaskExecutor", () => {
       },
     };
 
-    const result = await executeTask(task, { test: "data" });
+    const result = await executeTask(task, { test: "data" }, undefined);
 
     // Verify cleanup hooks are called even after failure
     expect(executionOrder).toEqual([
@@ -1417,9 +1418,96 @@ describe("TaskExecutor", () => {
       },
     });
   });
+
+  test("should handle max duration abort signal and call hooks in correct order", async () => {
+    const executionOrder: string[] = [];
+    const maxDurationMs = 1000;
+
+    // Create an abort controller that we'll trigger manually
+    const controller = new AbortController();
+
+    // Register global init hook
+    lifecycleHooks.registerGlobalInitHook({
+      id: "test-init",
+      fn: async () => {
+        executionOrder.push("init");
+        return {
+          foo: "bar",
+        };
+      },
+    });
+
+    // Register failure hook
+    lifecycleHooks.registerGlobalFailureHook({
+      id: "global-failure",
+      fn: async ({ error }) => {
+        executionOrder.push("failure");
+        expect((error as Error).message).toBe(
+          `Task execution exceeded maximum duration of ${maxDurationMs}ms`
+        );
+      },
+    });
+
+    // Register complete hook
+    lifecycleHooks.registerGlobalCompleteHook({
+      id: "global-complete",
+      fn: async ({ result }) => {
+        executionOrder.push("complete");
+        expect(result.ok).toBe(false);
+      },
+    });
+
+    // Register cleanup hook
+    lifecycleHooks.registerGlobalCleanupHook({
+      id: "global-cleanup",
+      fn: async () => {
+        executionOrder.push("cleanup");
+      },
+    });
+
+    const task = {
+      id: "test-task",
+      fns: {
+        run: async (payload: any, params: RunFnParams<any>) => {
+          executionOrder.push("run-start");
+
+          // Create a promise that never resolves
+          await new Promise((resolve) => {
+            // Trigger abort after a small delay
+            setTimeout(() => {
+              controller.abort();
+            }, 10);
+          });
+
+          // This should never be reached
+          executionOrder.push("run-end");
+        },
+      },
+    };
+
+    const result = await executeTask(task, { test: "data" }, controller.signal);
+
+    // Verify hooks were called in correct order
+    expect(executionOrder).toEqual(["init", "run-start", "failure", "complete", "cleanup"]);
+
+    // Verify the error result
+    expect(result).toEqual({
+      result: {
+        ok: false,
+        id: "test-run-id",
+        error: {
+          type: "INTERNAL_ERROR",
+          code: TaskRunErrorCodes.MAX_DURATION_EXCEEDED,
+          message: "Task execution exceeded maximum duration of 1000ms",
+          stackTrace: expect.any(String),
+        },
+        skippedRetrying: false,
+      },
+    });
+  });
 });
 
-function executeTask(task: TaskMetadataWithFunctions, payload: any) {
+function executeTask(task: TaskMetadataWithFunctions, payload: any, signal?: AbortSignal) {
   const tracingSDK = new TracingSDK({
     url: "http://localhost:4318",
   });
@@ -1472,6 +1560,7 @@ function executeTask(task: TaskMetadataWithFunctions, payload: any) {
       costInCents: 0,
       baseCostInCents: 0,
       priority: 0,
+      maxDuration: 1000,
     },
     machine: {
       name: "micro",
@@ -1508,5 +1597,5 @@ function executeTask(task: TaskMetadataWithFunctions, payload: any) {
     engine: "V2",
   };
 
-  return executor.execute(execution, worker, {});
+  return executor.execute(execution, worker, {}, signal);
 }

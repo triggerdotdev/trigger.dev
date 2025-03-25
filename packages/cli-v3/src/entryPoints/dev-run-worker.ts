@@ -377,35 +377,6 @@ const zodIpc = new ZodIpcConnection({
             ? timeout.abortAfterTimeout(execution.run.maxDuration)
             : undefined;
 
-          signal?.addEventListener("abort", async (e) => {
-            if (_isRunning) {
-              _isRunning = false;
-              _execution = undefined;
-
-              const usageSample = usage.stop(measurement);
-
-              await sender.send("TASK_RUN_COMPLETED", {
-                execution,
-                result: {
-                  ok: false,
-                  id: execution.run.id,
-                  error: {
-                    type: "INTERNAL_ERROR",
-                    code: TaskRunErrorCodes.MAX_DURATION_EXCEEDED,
-                    message:
-                      signal.reason instanceof Error
-                        ? signal.reason.message
-                        : String(signal.reason),
-                  },
-                  usage: {
-                    durationMs: usageSample.cpuTime,
-                  },
-                  metadata: runMetadataManager.stopAndReturnLastFlush(),
-                },
-              });
-            }
-          });
-
           const { result } = await executor.execute(execution, metadata, traceContext, signal);
 
           const usageSample = usage.stop(measurement);
