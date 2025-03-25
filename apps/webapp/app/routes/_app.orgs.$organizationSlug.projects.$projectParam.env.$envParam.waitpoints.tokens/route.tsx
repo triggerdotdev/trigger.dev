@@ -1,15 +1,11 @@
+import upgradeForWaitpointsPath from "~/assets/images/waitpoints-dashboard.png";
 import { BookOpenIcon } from "@heroicons/react/20/solid";
-import { useParams, type MetaFunction, Outlet } from "@remix-run/react";
+import { Outlet, useParams, type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { NoWaitpointTokens } from "~/components/BlankStatePanels";
-import {
-  MainCenteredContainer,
-  MainHorizontallyCenteredContainer,
-  PageBody,
-  PageContainer,
-} from "~/components/layout/AppLayout";
+import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { ListPagination } from "~/components/ListPagination";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
@@ -43,6 +39,7 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { WaitpointTokenListPresenter } from "~/presenters/v3/WaitpointTokenListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { docsPath, EnvironmentParamSchema, v3WaitpointTokenPath } from "~/utils/pathBuilder";
+import { determineEngineVersion } from "~/v3/engineVersion.server";
 
 export const meta: MetaFunction = () => {
   return [
@@ -105,7 +102,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 export default function Page() {
-  const { tokens, pagination, filters, hasFilters } = useTypedLoaderData<typeof loader>();
+  const { success, tokens, pagination, hasFilters } = useTypedLoaderData<typeof loader>();
 
   const organization = useOrganization();
   const project = useProject();
@@ -120,11 +117,7 @@ export default function Page() {
         <PageTitle title="Waitpoint Tokens" />
         <PageAccessories>
           <AdminDebugTooltip />
-          <LinkButton
-            variant={"docs/small"}
-            LeadingIcon={BookOpenIcon}
-            to={docsPath("/waitpoints")}
-          >
+          <LinkButton variant={"docs/small"} LeadingIcon={BookOpenIcon} to={docsPath("/wait")}>
             Waitpoints docs
           </LinkButton>
         </PageAccessories>

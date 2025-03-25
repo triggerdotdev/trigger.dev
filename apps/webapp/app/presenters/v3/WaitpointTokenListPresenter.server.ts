@@ -5,6 +5,7 @@ import { sqlDatabaseSchema } from "~/db.server";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { BasePresenter } from "./basePresenter.server";
 import { type WaitpointFilterStatus } from "~/components/runs/v3/WaitpointTokenFilters";
+import { determineEngineVersion } from "~/v3/engineVersion.server";
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -24,6 +25,40 @@ export type WaitpointTokenListOptions = {
   pageSize?: number;
 };
 
+type WaitpointToken = {
+  friendlyId: string;
+  status: WaitpointStatus;
+  completedAt: Date | null;
+  completedAfter: Date | null;
+  idempotencyKey: string | null;
+  idempotencyKeyExpiresAt: Date | null;
+  tags: string[];
+  isTimeout: boolean;
+  createdAt: Date;
+};
+
+type Result =
+  | {
+      success: true;
+      tokens: WaitpointToken[];
+      pagination: {
+        next: string | undefined;
+        previous: string | undefined;
+      };
+      hasFilters: boolean;
+    }
+  | {
+      success: false;
+      code: "ENGINE_VERSION_MISMATCH" | "UNKNOWN";
+      error: string;
+      tokens: [];
+      pagination: {
+        next: undefined;
+        previous: undefined;
+      };
+      hasFilters: false;
+    };
+
 export class WaitpointTokenListPresenter extends BasePresenter {
   public async call({
     environment,
@@ -37,7 +72,22 @@ export class WaitpointTokenListPresenter extends BasePresenter {
     direction = "forward",
     cursor,
     pageSize = DEFAULT_PAGE_SIZE,
-  }: WaitpointTokenListOptions) {
+  }: WaitpointTokenListOptions): Promise<Result> {
+    const engineVersion = await determineEngineVersion({ environment });
+    if (engineVersion === "V1") {
+      return {
+        success: false,
+        code: "ENGINE_VERSION_MISMATCH",
+        error: "Upgrade to SDK version 4+ to use Waitpoint tokens.",
+        tokens: [],
+        pagination: {
+          next: undefined,
+          previous: undefined,
+        },
+        hasFilters: false,
+      };
+    }
+
     const hasStatusFilters = statuses && statuses.length > 0;
 
     const hasFilters =
@@ -190,6 +240,7 @@ export class WaitpointTokenListPresenter extends BasePresenter {
         : tokens.slice(0, pageSize);
 
     return {
+      success: true,
       tokens: tokensToReturn.map((token) => ({
         friendlyId: token.friendlyId,
         status: token.status,
@@ -207,13 +258,6 @@ export class WaitpointTokenListPresenter extends BasePresenter {
       pagination: {
         next,
         previous,
-      },
-      filters: {
-        id: id || undefined,
-        statuses: statuses || [],
-        idempotencyKey: idempotencyKey || undefined,
-        from,
-        to,
       },
       hasFilters,
     };
