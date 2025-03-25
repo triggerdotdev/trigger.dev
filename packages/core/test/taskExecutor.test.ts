@@ -781,6 +781,178 @@ describe("TaskExecutor", () => {
 
     expect((result as any).result.retry.delay).toBeCloseTo(30000, -1);
   });
+
+  test("should execute middleware hooks in correct order around other hooks", async () => {
+    const executionOrder: string[] = [];
+
+    // Register global init hook
+    lifecycleHooks.registerGlobalInitHook({
+      id: "test-init",
+      fn: async () => {
+        executionOrder.push("init");
+        return {
+          foo: "bar",
+        };
+      },
+    });
+
+    // Register global start hook
+    lifecycleHooks.registerGlobalStartHook({
+      id: "global-start",
+      fn: async ({ payload }) => {
+        executionOrder.push("start");
+      },
+    });
+
+    // Register global success hook
+    lifecycleHooks.registerGlobalSuccessHook({
+      id: "global-success",
+      fn: async ({ payload, output }) => {
+        executionOrder.push("success");
+      },
+    });
+
+    // Register global complete hook
+    lifecycleHooks.registerGlobalCompleteHook({
+      id: "global-complete",
+      fn: async ({ payload, result }) => {
+        executionOrder.push("complete");
+      },
+    });
+
+    // Register task-specific middleware that executes first
+    lifecycleHooks.registerTaskMiddlewareHook("test-task", {
+      id: "task-middleware",
+      fn: async ({ payload, ctx, next }) => {
+        executionOrder.push("task-middleware-before");
+        await next();
+        executionOrder.push("task-middleware-after");
+      },
+    });
+
+    // Register two global middleware hooks
+    lifecycleHooks.registerGlobalMiddlewareHook({
+      id: "global-middleware-1",
+      fn: async ({ payload, ctx, next }) => {
+        executionOrder.push("global-middleware-1-before");
+        await next();
+        executionOrder.push("global-middleware-1-after");
+      },
+    });
+
+    lifecycleHooks.registerGlobalMiddlewareHook({
+      id: "global-middleware-2",
+      fn: async ({ payload, ctx, next }) => {
+        executionOrder.push("global-middleware-2-before");
+        await next();
+        executionOrder.push("global-middleware-2-after");
+      },
+    });
+
+    const task = {
+      id: "test-task",
+      fns: {
+        run: async (payload: any, params: RunFnParams<any>) => {
+          executionOrder.push("run");
+          return {
+            output: "test-output",
+            init: params.init,
+          };
+        },
+      },
+    };
+
+    const result = await executeTask(task, { test: "data" });
+
+    // Verify the execution order:
+    // 1. Global middlewares (outside to inside)
+    // 2. Task middleware
+    // 3. Init hook
+    // 4. Start hook
+    // 5. Run function
+    // 6. Success hook
+    // 7. Complete hook
+    // 8. Middlewares in reverse order
+    expect(executionOrder).toEqual([
+      "global-middleware-1-before",
+      "global-middleware-2-before",
+      "task-middleware-before",
+      "init",
+      "start",
+      "run",
+      "success",
+      "complete",
+      "task-middleware-after",
+      "global-middleware-2-after",
+      "global-middleware-1-after",
+    ]);
+
+    // Verify the final result
+    expect(result).toEqual({
+      result: {
+        ok: true,
+        id: "test-run-id",
+        output: '{"json":{"output":"test-output","init":{"foo":"bar"}}}',
+        outputType: "application/super+json",
+      },
+    });
+  });
+
+  test("should handle middleware errors correctly", async () => {
+    const executionOrder: string[] = [];
+    const expectedError = new Error("Middleware error");
+
+    // Register global middleware that throws an error
+    lifecycleHooks.registerGlobalMiddlewareHook({
+      id: "global-middleware",
+      fn: async ({ payload, ctx, next }) => {
+        executionOrder.push("middleware-before");
+        throw expectedError;
+        // Should never get here
+        await next();
+        executionOrder.push("middleware-after");
+      },
+    });
+
+    // Register failure hook to verify it's called
+    lifecycleHooks.registerGlobalFailureHook({
+      id: "global-failure",
+      fn: async ({ payload, error }) => {
+        executionOrder.push("failure");
+      },
+    });
+
+    const task = {
+      id: "test-task",
+      fns: {
+        run: async (payload: any, params: RunFnParams<any>) => {
+          executionOrder.push("run");
+          return {
+            output: "test-output",
+          };
+        },
+      },
+    };
+
+    const result = await executeTask(task, { test: "data" });
+
+    // Verify only the middleware-before hook ran
+    expect(executionOrder).toEqual(["middleware-before"]);
+
+    // Verify the error result
+    expect(result).toEqual({
+      result: {
+        ok: false,
+        id: "test-run-id",
+        error: {
+          type: "INTERNAL_ERROR",
+          message: "Error: Middleware error",
+          code: "TASK_MIDDLEWARE_ERROR",
+          stackTrace: expect.any(String),
+        },
+      },
+    });
+  });
 });
 
 function executeTask(task: TaskMetadataWithFunctions, payload: any) {

@@ -4,7 +4,12 @@ import { ApiError, RateLimitError } from "../apiClient/errors.js";
 import { ConsoleInterceptor } from "../consoleInterceptor.js";
 import { isInternalError, parseError, sanitizeError, TaskPayloadParsedError } from "../errors.js";
 import { flattenAttributes, lifecycleHooks, runMetadata, waitUntil } from "../index.js";
-import { TaskCompleteResult, TaskInitOutput } from "../lifecycleHooks/types.js";
+import {
+  AnyOnMiddlewareHookFunction,
+  RegisteredHookFunction,
+  TaskCompleteResult,
+  TaskInitOutput,
+} from "../lifecycleHooks/types.js";
 import { recordSpanException, TracingSDK } from "../otel/index.js";
 import { runTimelineMetrics } from "../run-timeline-metrics-api.js";
 import {
@@ -111,155 +116,146 @@ export class TaskExecutor {
           } catch (inputError) {
             recordSpanException(span, inputError);
 
-            return {
-              ok: false,
-              id: execution.run.id,
-              error: {
-                type: "INTERNAL_ERROR",
-                code: TaskRunErrorCodes.TASK_INPUT_ERROR,
-                message:
-                  inputError instanceof Error
-                    ? `${inputError.name}: ${inputError.message}`
-                    : typeof inputError === "string"
-                    ? inputError
-                    : undefined,
-                stackTrace: inputError instanceof Error ? inputError.stack : undefined,
-              },
-            } satisfies TaskRunExecutionResult;
+            return this.#internalErrorResult(
+              execution,
+              TaskRunErrorCodes.TASK_INPUT_ERROR,
+              inputError
+            );
           }
 
-          try {
-            parsedPayload = await this.#parsePayload(parsedPayload);
+          parsedPayload = await this.#parsePayload(parsedPayload);
 
-            initOutput = await this.#callInitFunctions(parsedPayload, ctx, signal);
-
-            if (execution.attempt.number === 1) {
-              await this.#callOnStartFunctions(parsedPayload, ctx, initOutput, signal);
-            }
-
-            const output = await this.#callRun(parsedPayload, ctx, initOutput, signal);
-
+          const executeTask = async (payload: any) => {
             try {
-              const stringifiedOutput = await stringifyIO(output);
+              initOutput = await this.#callInitFunctions(payload, ctx, signal);
 
-              const finalOutput = await conditionallyExportPacket(
-                stringifiedOutput,
-                `${execution.attempt.id}/output`,
-                this._tracer
-              );
-
-              const attributes = await createPacketAttributes(
-                finalOutput,
-                SemanticInternalAttributes.OUTPUT,
-                SemanticInternalAttributes.OUTPUT_TYPE
-              );
-
-              if (attributes) {
-                span.setAttributes(attributes);
+              if (execution.attempt.number === 1) {
+                await this.#callOnStartFunctions(payload, ctx, initOutput, signal);
               }
 
-              await this.#callOnSuccessFunctions(parsedPayload, output, ctx, initOutput, signal);
+              const output = await this.#callRun(payload, ctx, initOutput, signal);
 
-              // Call onComplete with success result
-              await this.#callOnCompleteFunctions(
-                parsedPayload,
-                { ok: true, data: output },
-                ctx,
-                initOutput,
-                signal
-              );
+              try {
+                const stringifiedOutput = await stringifyIO(output);
 
-              return {
-                ok: true,
-                id: execution.run.id,
-                output: finalOutput.data,
-                outputType: finalOutput.dataType,
-              } satisfies TaskRunExecutionResult;
-            } catch (outputError) {
-              recordSpanException(span, outputError);
-
-              return {
-                ok: false,
-                id: execution.run.id,
-                error: {
-                  type: "INTERNAL_ERROR",
-                  code: TaskRunErrorCodes.TASK_OUTPUT_ERROR,
-                  message:
-                    outputError instanceof Error
-                      ? outputError.message
-                      : typeof outputError === "string"
-                      ? outputError
-                      : undefined,
-                },
-              } satisfies TaskRunExecutionResult;
-            }
-          } catch (runError) {
-            try {
-              const handleErrorResult = await this.#handleError(
-                execution,
-                runError,
-                parsedPayload,
-                ctx,
-                initOutput,
-                signal
-              );
-
-              recordSpanException(span, handleErrorResult.error ?? runError);
-
-              if (handleErrorResult.status !== "retry") {
-                await this.#callOnFailureFunctions(
-                  parsedPayload,
-                  handleErrorResult.error ?? runError,
-                  ctx,
-                  initOutput,
-                  signal
+                const finalOutput = await conditionallyExportPacket(
+                  stringifiedOutput,
+                  `${execution.attempt.id}/output`,
+                  this._tracer
                 );
 
-                // Call onComplete with error result
+                const attributes = await createPacketAttributes(
+                  finalOutput,
+                  SemanticInternalAttributes.OUTPUT,
+                  SemanticInternalAttributes.OUTPUT_TYPE
+                );
+
+                if (attributes) {
+                  span.setAttributes(attributes);
+                }
+
+                await this.#callOnSuccessFunctions(payload, output, ctx, initOutput, signal);
+
+                // Call onComplete with success result
                 await this.#callOnCompleteFunctions(
-                  parsedPayload,
-                  { ok: false, error: handleErrorResult.error ?? runError },
+                  payload,
+                  { ok: true, data: output },
                   ctx,
                   initOutput,
                   signal
                 );
+
+                return {
+                  ok: true,
+                  id: execution.run.id,
+                  output: finalOutput.data,
+                  outputType: finalOutput.dataType,
+                } satisfies TaskRunExecutionResult;
+              } catch (outputError) {
+                recordSpanException(span, outputError);
+
+                return this.#internalErrorResult(
+                  execution,
+                  TaskRunErrorCodes.TASK_OUTPUT_ERROR,
+                  outputError
+                );
               }
+            } catch (runError) {
+              try {
+                const handleErrorResult = await this.#handleError(
+                  execution,
+                  runError,
+                  payload,
+                  ctx,
+                  initOutput,
+                  signal
+                );
 
-              return {
-                id: execution.run.id,
-                ok: false,
-                error: sanitizeError(
-                  handleErrorResult.error
-                    ? parseError(handleErrorResult.error)
-                    : parseError(runError)
-                ),
-                retry: handleErrorResult.status === "retry" ? handleErrorResult.retry : undefined,
-                skippedRetrying: handleErrorResult.status === "skipped",
-              } satisfies TaskRunExecutionResult;
-            } catch (handleErrorError) {
-              recordSpanException(span, handleErrorError);
+                recordSpanException(span, handleErrorResult.error ?? runError);
 
-              return {
-                ok: false,
-                id: execution.run.id,
-                error: {
-                  type: "INTERNAL_ERROR",
-                  code: TaskRunErrorCodes.HANDLE_ERROR_ERROR,
-                  message:
-                    handleErrorError instanceof Error
-                      ? handleErrorError.message
-                      : typeof handleErrorError === "string"
-                      ? handleErrorError
-                      : undefined,
-                },
-              } satisfies TaskRunExecutionResult;
+                if (handleErrorResult.status !== "retry") {
+                  await this.#callOnFailureFunctions(
+                    payload,
+                    handleErrorResult.error ?? runError,
+                    ctx,
+                    initOutput,
+                    signal
+                  );
+
+                  // Call onComplete with error result
+                  await this.#callOnCompleteFunctions(
+                    payload,
+                    { ok: false, error: handleErrorResult.error ?? runError },
+                    ctx,
+                    initOutput,
+                    signal
+                  );
+                }
+
+                return {
+                  id: execution.run.id,
+                  ok: false,
+                  error: sanitizeError(
+                    handleErrorResult.error
+                      ? parseError(handleErrorResult.error)
+                      : parseError(runError)
+                  ),
+                  retry: handleErrorResult.status === "retry" ? handleErrorResult.retry : undefined,
+                  skippedRetrying: handleErrorResult.status === "skipped",
+                } satisfies TaskRunExecutionResult;
+              } catch (handleErrorError) {
+                recordSpanException(span, handleErrorError);
+
+                return this.#internalErrorResult(
+                  execution,
+                  TaskRunErrorCodes.HANDLE_ERROR_ERROR,
+                  handleErrorError
+                );
+              }
+            } finally {
+              await this.#callTaskCleanup(payload, ctx, initOutput, signal);
+              await this.#blockForWaitUntil();
+
+              span.setAttributes(runTimelineMetrics.convertMetricsToSpanAttributes());
             }
-          } finally {
-            await this.#callTaskCleanup(parsedPayload, ctx, initOutput, signal);
-            await this.#blockForWaitUntil();
+          };
 
-            span.setAttributes(runTimelineMetrics.convertMetricsToSpanAttributes());
-          }
+          const globalMiddlewareHooks = lifecycleHooks.getGlobalMiddlewareHooks();
+          const taskMiddlewareHook = lifecycleHooks.getTaskMiddlewareHook(this.task.id);
+
+          const middlewareHooks = [
+            ...globalMiddlewareHooks,
+            taskMiddlewareHook ? { id: this.task.id, fn: taskMiddlewareHook } : undefined,
+          ].filter(Boolean) as RegisteredHookFunction<AnyOnMiddlewareHookFunction>[];
+
+          return await this.#executeTaskWithMiddlewareHooks(
+            parsedPayload,
+            ctx,
+            execution,
+            middlewareHooks,
+            executeTask,
+            signal
+          );
         });
       },
       {
@@ -283,28 +279,55 @@ export class TaskExecutor {
     return { result };
   }
 
+  async #executeTaskWithMiddlewareHooks(
+    payload: unknown,
+    ctx: TaskRunContext,
+    execution: TaskRunExecution,
+    hooks: RegisteredHookFunction<AnyOnMiddlewareHookFunction>[],
+    executeTask: (payload: unknown) => Promise<TaskRunExecutionResult>,
+    signal?: AbortSignal
+  ) {
+    let output: any;
+    let executeError: unknown;
+
+    const runner = hooks.reduceRight(
+      (next, hook) => {
+        return async () => {
+          await hook.fn({ payload, ctx, signal, task: this.task.id, next });
+        };
+      },
+      async () => {
+        try {
+          output = await executeTask(payload);
+        } catch (error) {
+          executeError = error;
+        }
+      }
+    );
+
+    try {
+      await runner();
+    } catch (error) {
+      return this.#internalErrorResult(execution, TaskRunErrorCodes.TASK_MIDDLEWARE_ERROR, error);
+    }
+
+    if (executeError) {
+      throw executeError;
+    }
+
+    return output;
+  }
+
   async #callRun(payload: unknown, ctx: TaskRunContext, init: unknown, signal?: AbortSignal) {
     const runFn = this.task.fns.run;
-    const middlewareFn = this.task.fns.middleware;
 
     if (!runFn) {
       throw new Error("Task does not have a run function");
     }
 
-    if (!middlewareFn) {
-      return runTimelineMetrics.measureMetric("trigger.dev/execution", "run", () =>
-        runFn(payload, { ctx, init, signal })
-      );
-    }
-
-    return middlewareFn(payload, {
-      ctx,
-      signal,
-      next: async () =>
-        runTimelineMetrics.measureMetric("trigger.dev/execution", "run", () =>
-          runFn(payload, { ctx, init, signal })
-        ),
-    });
+    return runTimelineMetrics.measureMetric("trigger.dev/execution", "run", () =>
+      runFn(payload, { ctx, init, signal })
+    );
   }
 
   async #callInitFunctions(payload: unknown, ctx: TaskRunContext, signal?: AbortSignal) {
@@ -914,5 +937,23 @@ export class TaskExecutor {
         },
       }
     );
+  }
+
+  #internalErrorResult(execution: TaskRunExecution, code: TaskRunErrorCodes, error: unknown) {
+    return {
+      ok: false,
+      id: execution.run.id,
+      error: {
+        type: "INTERNAL_ERROR",
+        code,
+        message:
+          error instanceof Error
+            ? `${error.name}: ${error.message}`
+            : typeof error === "string"
+            ? error
+            : undefined,
+        stackTrace: error instanceof Error ? error.stack : undefined,
+      },
+    } satisfies TaskRunExecutionResult;
   }
 }
