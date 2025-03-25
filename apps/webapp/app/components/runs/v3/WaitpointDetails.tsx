@@ -5,7 +5,7 @@ import { type WaitpointDetail } from "~/presenters/v3/WaitpointPresenter.server"
 import { ForceTimeout } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.waitpoints.$waitpointFriendlyId.complete/route";
 import { PacketDisplay } from "./PacketDisplay";
 import { WaitpointStatusCombo } from "./WaitpointStatus";
-import { v3WaitpointTokensPath } from "~/utils/pathBuilder";
+import { v3WaitpointTokenPath, v3WaitpointTokensPath } from "~/utils/pathBuilder";
 import { Link } from "@remix-run/react";
 import { TextLink } from "~/components/primitives/TextLink";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -43,7 +43,7 @@ export function WaitpointDetailTable({
         <Property.Value className="whitespace-pre-wrap">
           {linkToList ? (
             <TextLink
-              to={v3WaitpointTokensPath(organization, project, environment, {
+              to={v3WaitpointTokenPath(organization, project, environment, waitpoint, {
                 id: waitpoint.friendlyId,
               })}
             >
