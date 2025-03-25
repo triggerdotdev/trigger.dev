@@ -330,12 +330,12 @@ export function v3WaitpointTokenPath(
   organization: OrgForPath,
   project: ProjectForPath,
   environment: EnvironmentForPath,
-  token: { friendlyId: string },
+  token: { id: string },
   filters?: WaitpointSearchParams
 ) {
   const searchParams = objectToSearchParams(filters);
   const query = searchParams ? `?${searchParams.toString()}` : "";
-  return `${v3WaitpointTokensPath(organization, project, environment)}/${token.friendlyId}${query}`;
+  return `${v3WaitpointTokensPath(organization, project, environment)}/${token.id}${query}`;
 }
 
 export function v3BatchesPath(
