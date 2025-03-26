@@ -82,7 +82,7 @@ export default function Page() {
       className={cn(
         cn(
           "grid h-full max-h-full grid-rows-[2.5rem_1fr] overflow-hidden bg-background-bright",
-          waitpoint.status === "PENDING" && "grid-rows-[2.5rem_1fr_auto]"
+          waitpoint.status === "WAITING" && "grid-rows-[2.5rem_1fr_auto]"
         )
       )}
     >
@@ -123,7 +123,7 @@ export default function Page() {
           />
         </div>
       </div>
-      {waitpoint.status === "PENDING" && (
+      {waitpoint.status === "WAITING" && (
         <div>
           <CompleteWaitpointForm waitpoint={waitpoint} />
         </div>

@@ -14,6 +14,8 @@ import {
   taskContext,
   ListWaitpointTokensQueryParams,
   CursorPagePromise,
+  WaitpointTokenItem,
+  flattenAttributes,
 } from "@trigger.dev/core/v3";
 import { tracer } from "./tracer.js";
 import { conditionallyImportAndParsePacket } from "@trigger.dev/core/v3/utils/ioSerialization";
@@ -73,6 +75,67 @@ function createToken(
   );
 
   return apiClient.createWaitpointToken(options ?? {}, $requestOptions);
+}
+
+/**
+ * Lists waitpoint tokens with optional filtering and pagination.
+ * You can iterate over all the items in the result using a for-await-of loop (you don't need to think about pagination).
+ *
+ * @example
+ * Basic usage:
+ * ```ts
+ * // List all tokens
+ * for await (const token of wait.listTokens()) {
+ *   console.log("Token ID:", token.id);
+ * }
+ * ```
+ *
+ * @example
+ * With filters:
+ * ```ts
+ * // List completed tokens from the last 24 hours with specific tags
+ * for await (const token of wait.listTokens({
+ *   status: "COMPLETED",
+ *   period: "24h",
+ *   tags: ["important", "approval"],
+ *   limit: 50
+ * })) {
+ *   console.log("Token ID:", token.id);
+ * }
+ * ```
+ *
+ * @param params - Optional query parameters for filtering and pagination
+ * @param params.status - Filter by token status
+ * @param params.idempotencyKey - Filter by idempotency key
+ * @param params.tags - Filter by tags
+ * @param params.period - Filter by time period (e.g. "24h", "7d")
+ * @param params.from - Filter by start date
+ * @param params.to - Filter by end date
+ * @param params.limit - Number of items per page
+ * @param params.after - Cursor for next page
+ * @param params.before - Cursor for previous page
+ * @param requestOptions - Additional API request options
+ * @returns Waitpoint tokens that can easily be iterated over using a for-await-of loop
+ */
+function listTokens(
+  params?: ListWaitpointTokensQueryParams,
+  requestOptions?: ApiRequestOptions
+): CursorPagePromise<typeof WaitpointTokenItem> {
+  const apiClient = apiClientManager.clientOrThrow();
+
+  const $requestOptions = mergeRequestOptions(
+    {
+      tracer,
+      name: "wait.listTokens()",
+      icon: "wait-token",
+      attributes: {
+        ...flattenAttributes(params as Record<string, unknown>),
+      },
+    },
+    requestOptions
+  );
+
+  return apiClient.listWaitpointTokens(params, $requestOptions);
 }
 
 /**
@@ -273,6 +336,7 @@ export const wait = {
     );
   },
   createToken,
+  listTokens,
   completeToken,
   /**
    * This waits for a waitpoint token to be completed.

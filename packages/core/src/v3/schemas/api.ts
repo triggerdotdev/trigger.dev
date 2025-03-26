@@ -948,7 +948,7 @@ export const CreateWaitpointTokenResponseBody = z.object({
 });
 export type CreateWaitpointTokenResponseBody = z.infer<typeof CreateWaitpointTokenResponseBody>;
 
-export const waitpointTokenStatuses = ["PENDING", "COMPLETED", "FAILED"] as const;
+export const waitpointTokenStatuses = ["WAITING", "COMPLETED", "TIMED_OUT"] as const;
 export const WaitpointTokenStatus = z.enum(waitpointTokenStatuses);
 export type WaitpointTokenStatus = z.infer<typeof WaitpointTokenStatus>;
 

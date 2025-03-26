@@ -1,8 +1,12 @@
 import parse from "parse-duration";
-import { Prisma, type WaitpointStatus } from "@trigger.dev/database";
+import {
+  Prisma,
+  type RunEngineVersion,
+  type RuntimeEnvironmentType,
+  type WaitpointStatus,
+} from "@trigger.dev/database";
 import { type Direction } from "~/components/ListPagination";
 import { sqlDatabaseSchema } from "~/db.server";
-import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { BasePresenter } from "./basePresenter.server";
 import { type WaitpointSearchParams } from "~/components/runs/v3/WaitpointTokenFilters";
 import { determineEngineVersion } from "~/v3/engineVersion.server";
@@ -11,7 +15,14 @@ import { type WaitpointTokenStatus, type WaitpointTokenItem } from "@trigger.dev
 const DEFAULT_PAGE_SIZE = 25;
 
 export type WaitpointTokenListOptions = {
-  environment: AuthenticatedEnvironment;
+  environment: {
+    id: string;
+    type: RuntimeEnvironmentType;
+    project: {
+      id: string;
+      engine: RunEngineVersion;
+    };
+  };
   // filters
   id?: string;
   statuses?: WaitpointTokenStatus[];
@@ -98,19 +109,19 @@ export class WaitpointTokenListPresenter extends BasePresenter {
     if (statuses?.length === 1) {
       if (statuses[0] === "COMPLETED") {
         filterOutputIsError = false;
-      } else if (statuses[0] === "FAILED") {
+      } else if (statuses[0] === "TIMED_OUT") {
         filterOutputIsError = true;
       }
     }
 
-    const statusesToFilter: WaitpointTokenStatus[] =
+    const statusesToFilter: WaitpointStatus[] =
       statuses?.map((status) => {
         switch (status) {
-          case "PENDING":
+          case "WAITING":
             return "PENDING";
           case "COMPLETED":
             return "COMPLETED";
-          case "FAILED":
+          case "TIMED_OUT":
             return "COMPLETED";
         }
       }) ?? [];
@@ -235,7 +246,7 @@ export class WaitpointTokenListPresenter extends BasePresenter {
       success: true,
       tokens: tokensToReturn.map((token) => ({
         id: token.friendlyId,
-        status: token.outputIsError ? "FAILED" : token.status,
+        status: waitpointStatusToApiStatus(token.status, token.outputIsError),
         completedAt: token.completedAt ?? undefined,
         completedAfter: token.completedAfter ?? undefined,
         idempotencyKey: token.userProvidedIdempotencyKey
@@ -264,5 +275,17 @@ export class WaitpointTokenListPresenter extends BasePresenter {
         direction,
       },
     };
+  }
+}
+
+export function waitpointStatusToApiStatus(
+  status: WaitpointStatus,
+  outputIsError: boolean
+): WaitpointTokenStatus {
+  switch (status) {
+    case "PENDING":
+      return "WAITING";
+    case "COMPLETED":
+      return outputIsError ? "TIMED_OUT" : "COMPLETED";
   }
 }

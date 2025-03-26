@@ -38,6 +38,7 @@ import {
   WaitForDurationRequestBody,
   WaitForDurationResponseBody,
   WaitForWaitpointTokenResponseBody,
+  WaitpointTokenItem,
 } from "../schemas/index.js";
 import { taskContext } from "../task-context-api.js";
 import { AnyRunTypes, TriggerJwtOptions } from "../types/tasks.js";
@@ -68,6 +69,7 @@ import {
   ImportEnvironmentVariablesParams,
   ListProjectRunsQueryParams,
   ListRunsQueryParams,
+  ListWaitpointTokensQueryParams,
   SubscribeToRunsQueryParams,
   UpdateEnvironmentVariableParams,
 } from "./types.js";
@@ -669,6 +671,29 @@ export class ApiClient {
     );
   }
 
+  listWaitpointTokens(
+    params?: ListWaitpointTokensQueryParams,
+    requestOptions?: ZodFetchOptions
+  ): CursorPagePromise<typeof WaitpointTokenItem> {
+    const searchParams = createSearchQueryForListWaitpointTokens(params);
+
+    return zodfetchCursorPage(
+      WaitpointTokenItem,
+      `${this.baseUrl}/api/v1/waitpoints/tokens`,
+      {
+        query: searchParams,
+        limit: params?.limit,
+        after: params?.after,
+        before: params?.before,
+      },
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
   completeWaitpointToken(
     friendlyId: string,
     options: CompleteWaitpointTokenRequestBody,
@@ -1018,6 +1043,52 @@ function createSearchQueryForListRuns(query?: ListRunsQueryParams): URLSearchPar
 
     if (query.batch) {
       searchParams.append("filter[batch]", query.batch);
+    }
+  }
+
+  return searchParams;
+}
+
+function createSearchQueryForListWaitpointTokens(
+  query?: ListWaitpointTokensQueryParams
+): URLSearchParams {
+  const searchParams = new URLSearchParams();
+
+  if (query) {
+    if (query.status) {
+      searchParams.append(
+        "filter[status]",
+        Array.isArray(query.status) ? query.status.join(",") : query.status
+      );
+    }
+
+    if (query.idempotencyKey) {
+      searchParams.append("filter[idempotencyKey]", query.idempotencyKey);
+    }
+
+    if (query.tags) {
+      searchParams.append(
+        "filter[tags]",
+        Array.isArray(query.tags) ? query.tags.join(",") : query.tags
+      );
+    }
+
+    if (query.period) {
+      searchParams.append("filter[createdAt][period]", query.period);
+    }
+
+    if (query.from) {
+      searchParams.append(
+        "filter[createdAt][from]",
+        query.from instanceof Date ? query.from.getTime().toString() : query.from.toString()
+      );
+    }
+
+    if (query.to) {
+      searchParams.append(
+        "filter[createdAt][to]",
+        query.to instanceof Date ? query.to.getTime().toString() : query.to.toString()
+      );
     }
   }
 

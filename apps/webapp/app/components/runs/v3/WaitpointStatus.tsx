@@ -36,9 +36,9 @@ export function WaitpointStatusIcon({
   className: string;
 }) {
   switch (status) {
-    case "PENDING":
+    case "WAITING":
       return <Spinner className={cn(waitpointStatusClassNameColor(status), className)} />;
-    case "FAILED":
+    case "TIMED_OUT":
       return <TimedOutIcon className={cn(waitpointStatusClassNameColor(status), className)} />;
     case "COMPLETED":
       return <CheckCircleIcon className={cn(waitpointStatusClassNameColor(status), className)} />;
@@ -50,9 +50,9 @@ export function WaitpointStatusIcon({
 
 export function waitpointStatusClassNameColor(status: WaitpointTokenStatus): string {
   switch (status) {
-    case "PENDING":
+    case "WAITING":
       return "text-blue-500";
-    case "FAILED":
+    case "TIMED_OUT":
       return "text-error";
     case "COMPLETED": {
       return "text-success";
@@ -65,9 +65,9 @@ export function waitpointStatusClassNameColor(status: WaitpointTokenStatus): str
 
 export function waitpointStatusTitle(status: WaitpointTokenStatus): string {
   switch (status) {
-    case "PENDING":
+    case "WAITING":
       return "Waiting";
-    case "FAILED":
+    case "TIMED_OUT":
       return "Timed out";
     case "COMPLETED": {
       return "Completed";

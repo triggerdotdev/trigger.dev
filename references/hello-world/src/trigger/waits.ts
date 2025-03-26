@@ -46,12 +46,22 @@ export const waitToken = task({
       await completeWaitToken.trigger({ token: token.id, delay: completionDelay });
     }
 
+    const tokens = await wait.listTokens();
+    for await (const token of tokens) {
+      logger.log("Token", token);
+    }
+
     //wait for the token
     const result = await wait.forToken<{ foo: string }>(token, { releaseConcurrency: true });
     if (!result.ok) {
       logger.log("Token timeout", result);
     } else {
       logger.log("Token completed", result);
+    }
+
+    const tokens2 = await wait.listTokens({ tags, status: ["COMPLETED"] });
+    for await (const token of tokens2) {
+      logger.log("Token2", token);
     }
   },
 });

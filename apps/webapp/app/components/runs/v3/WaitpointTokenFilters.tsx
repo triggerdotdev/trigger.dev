@@ -44,7 +44,7 @@ import {
   CustomDateRangeDropdown,
   FilterMenuProvider,
 } from "./SharedFilters";
-import { WaitpointStatusCombo } from "./WaitpointStatus";
+import { WaitpointStatusCombo, waitpointStatusTitle } from "./WaitpointStatus";
 
 export const WaitpointSearchParamsSchema = z.object({
   id: z.string().optional(),
@@ -217,23 +217,9 @@ function MainMenu({ searchValue, trigger, clearSearchValue, setFilterType }: Men
 }
 
 const statuses = waitpointTokenStatuses.map((status) => ({
-  title: statusTitle(status),
+  title: waitpointStatusTitle(status),
   value: status,
 }));
-
-function statusTitle(status: WaitpointTokenStatus) {
-  switch (status) {
-    case "COMPLETED": {
-      return "Completed";
-    }
-    case "FAILED": {
-      return "Timed out";
-    }
-    case "PENDING": {
-      return "Waiting";
-    }
-  }
-}
 
 function StatusDropdown({
   trigger,
@@ -286,7 +272,9 @@ function StatusDropdown({
                       <WaitpointStatusCombo status={item.value} />
                     </TooltipTrigger>
                     <TooltipContent side="right" sideOffset={50}>
-                      <Paragraph variant="extra-small">{statusTitle(item.value)}</Paragraph>
+                      <Paragraph variant="extra-small">
+                        {waitpointStatusTitle(item.value)}
+                      </Paragraph>
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
@@ -315,7 +303,9 @@ function AppliedStatusFilter() {
             <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
               <AppliedFilter
                 label="Status"
-                value={appliedSummary(statuses.map((v) => statusTitle(v as WaitpointTokenStatus)))}
+                value={appliedSummary(
+                  statuses.map((v) => waitpointStatusTitle(v as WaitpointTokenStatus))
+                )}
                 onRemove={() => del(["statuses", "cursor", "direction"])}
               />
             </Ariakit.Select>

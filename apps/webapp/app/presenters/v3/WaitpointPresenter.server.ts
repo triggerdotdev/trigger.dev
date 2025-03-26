@@ -2,6 +2,7 @@ import { isWaitpointOutputTimeout, prettyPrintPacket } from "@trigger.dev/core/v
 import { logger } from "~/services/logger.server";
 import { BasePresenter } from "./basePresenter.server";
 import { type RunListItem, RunListPresenter } from "./RunListPresenter.server";
+import { waitpointStatusToApiStatus } from "./WaitpointTokenListPresenter.server";
 
 export type WaitpointDetail = NonNullable<Awaited<ReturnType<WaitpointPresenter["call"]>>>;
 
@@ -80,7 +81,7 @@ export class WaitpointPresenter extends BasePresenter {
     return {
       id: waitpoint.friendlyId,
       type: waitpoint.type,
-      status: waitpoint.outputIsError ? ("FAILED" as const) : waitpoint.status,
+      status: waitpointStatusToApiStatus(waitpoint.status, waitpoint.outputIsError),
       idempotencyKey: waitpoint.idempotencyKey,
       userProvidedIdempotencyKey: waitpoint.userProvidedIdempotencyKey,
       idempotencyKeyExpiresAt: waitpoint.idempotencyKeyExpiresAt,

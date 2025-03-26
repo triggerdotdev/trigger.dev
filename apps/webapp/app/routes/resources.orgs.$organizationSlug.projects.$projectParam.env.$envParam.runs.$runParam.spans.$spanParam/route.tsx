@@ -952,7 +952,7 @@ function SpanEntity({ span }: { span: Span }) {
             </div>
             <WaitpointDetailTable waitpoint={span.entity.object} linkToList />
           </div>
-          {span.entity.object.status === "PENDING" && (
+          {span.entity.object.status === "WAITING" && (
             <div>
               <CompleteWaitpointForm waitpoint={span.entity.object} />
             </div>

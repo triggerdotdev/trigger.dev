@@ -5,11 +5,31 @@ import {
 } from "@trigger.dev/core/v3";
 import { WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import { createWaitpointTag, MAX_TAGS_PER_WAITPOINT } from "~/models/waitpointTag.server";
-import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+import {
+  ApiWaitpointTokenListPresenter,
+  ApiWaitpointTokenListSearchParams,
+} from "~/presenters/v3/ApiWaitpointTokenListPresenter.server";
+import {
+  createActionApiRoute,
+  createLoaderApiRoute,
+} from "~/services/routeBuilders/apiBuilder.server";
 import { parseDelay } from "~/utils/delays";
 import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
 import { engine } from "~/v3/runEngine.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
+
+export const loader = createLoaderApiRoute(
+  {
+    searchParams: ApiWaitpointTokenListSearchParams,
+    findResource: async () => 1, // This is a dummy function, we don't need to find a resource
+  },
+  async ({ searchParams, authentication }) => {
+    const presenter = new ApiWaitpointTokenListPresenter();
+    const result = await presenter.call(authentication.environment, searchParams);
+
+    return json(result);
+  }
+);
 
 const { action } = createActionApiRoute(
   {
