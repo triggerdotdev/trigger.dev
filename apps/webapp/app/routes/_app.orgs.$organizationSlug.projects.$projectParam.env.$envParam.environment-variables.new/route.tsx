@@ -10,15 +10,11 @@ import { parse } from "@conform-to/zod";
 import { LockClosedIcon, LockOpenIcon, PlusIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { Form, useActionData, useNavigate, useNavigation } from "@remix-run/react";
 import { ActionFunctionArgs, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
+import dotenv from "dotenv";
 import { RefObject, useCallback, useEffect, useRef, useState } from "react";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
-import {
-  environmentTextClassName,
-  environmentTitle,
-  EnvironmentCombo,
-  EnvironmentLabel,
-} from "~/components/environments/EnvironmentLabel";
+import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
 import { Dialog, DialogContent, DialogHeader } from "~/components/primitives/Dialog";
@@ -29,8 +25,17 @@ import { Hint } from "~/components/primitives/Hint";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
+import { Paragraph } from "~/components/primitives/Paragraph";
 import { Switch } from "~/components/primitives/Switch";
+import { TextLink } from "~/components/primitives/TextLink";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "~/components/primitives/Tooltip";
 import { prisma } from "~/db.server";
+import { useEnvironment } from "~/hooks/useEnvironment";
 import { useList } from "~/hooks/useList";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -45,16 +50,6 @@ import {
 } from "~/utils/pathBuilder";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import { EnvironmentVariableKey } from "~/v3/environmentVariables/repository";
-import dotenv from "dotenv";
-import { Paragraph } from "~/components/primitives/Paragraph";
-import { TextLink } from "~/components/primitives/TextLink";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "~/components/primitives/Tooltip";
-import { useEnvironment } from "~/hooks/useEnvironment";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
