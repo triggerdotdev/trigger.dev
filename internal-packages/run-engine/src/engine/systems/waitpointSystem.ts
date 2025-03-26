@@ -334,7 +334,7 @@ export class WaitpointSystem {
           attempts++;
           if (attempts >= maxRetries) {
             throw new Error(
-              `Failed to create waitpoint tag after ${maxRetries} attempts due to conflicts.`
+              `Failed to create waitpoint after ${maxRetries} attempts due to conflicts.`
             );
           }
         } else {
@@ -343,9 +343,7 @@ export class WaitpointSystem {
       }
     }
 
-    throw new Error(
-      `Failed to create waitpoint tag after ${maxRetries} attempts due to conflicts.`
-    );
+    throw new Error(`Failed to create waitpoint after ${maxRetries} attempts due to conflicts.`);
   }
 
   /**
