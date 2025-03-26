@@ -13,14 +13,20 @@ import { logger } from "~/services/logger.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { engine } from "~/v3/runEngine.server";
 
-const { action } = createActionApiRoute(
+const { action, loader } = createActionApiRoute(
   {
     params: z.object({
       waitpointFriendlyId: z.string(),
     }),
     body: CompleteWaitpointTokenRequestBody,
     maxContentLength: env.TASK_PAYLOAD_MAXIMUM_SIZE,
-    method: "POST",
+    allowJWT: true,
+    authorization: {
+      action: "write",
+      resource: (params) => ({ waitpoints: params.waitpointFriendlyId }),
+      superScopes: ["write:waitpoints", "admin"],
+    },
+    corsStrategy: "all",
   },
   async ({ authentication, body, params }) => {
     // Resume tokens are actually just waitpoints
@@ -65,4 +71,4 @@ const { action } = createActionApiRoute(
   }
 );
 
-export { action };
+export { action, loader };

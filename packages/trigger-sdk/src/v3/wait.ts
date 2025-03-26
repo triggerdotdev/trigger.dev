@@ -48,10 +48,14 @@ import { SpanStatusCode } from "@opentelemetry/api";
  * @param requestOptions - The request options for the waitpoint token.
  * @returns The waitpoint token.
  */
+export type CreateWaitpointTokenResponse = CreateWaitpointTokenResponseBody & {
+  publicAccessToken: string;
+};
+
 function createToken(
   options?: CreateWaitpointTokenRequestBody,
   requestOptions?: ApiRequestOptions
-): ApiPromise<CreateWaitpointTokenResponseBody> {
+): ApiPromise<CreateWaitpointTokenResponse> {
   const apiClient = apiClientManager.clientOrThrow();
 
   const $requestOptions = mergeRequestOptions(

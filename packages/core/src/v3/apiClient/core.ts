@@ -5,7 +5,7 @@ import { calculateNextRetryDelay } from "../utils/retries.js";
 import { ApiConnectionError, ApiError, ApiSchemaValidationError } from "./errors.js";
 
 import { Attributes, context, propagation, Span } from "@opentelemetry/api";
-import {suppressTracing} from "@opentelemetry/core"
+import { suppressTracing } from "@opentelemetry/core";
 import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
 import type { TriggerTracer } from "../tracer.js";
 import { accessoryAttributes } from "../utils/styleAttributes.js";
@@ -27,14 +27,14 @@ export const defaultRetryOptions = {
   randomize: false,
 } satisfies RetryOptions;
 
-export type ZodFetchOptions<T = unknown> = {
+export type ZodFetchOptions<TInput = unknown, TOutput = TInput> = {
   retry?: RetryOptions;
   tracer?: TriggerTracer;
   name?: string;
   attributes?: Attributes;
   icon?: string;
-  onResponseBody?: (body: T, span: Span) => void;
-  prepareData?: (data: T) => Promise<T> | T;
+  onResponseBody?: (body: TInput, span: Span) => void;
+  prepareData?: (data: TInput, response: Response) => Promise<TOutput> | TOutput;
 };
 
 export type AnyZodFetchOptions = ZodFetchOptions<any>;
@@ -67,12 +67,15 @@ interface FetchOffsetLimitPageParams extends OffsetLimitPageParams {
   query?: URLSearchParams;
 }
 
-export function zodfetch<TResponseBodySchema extends z.ZodTypeAny>(
+export function zodfetch<
+  TResponseBodySchema extends z.ZodTypeAny,
+  TOutput = z.output<TResponseBodySchema>,
+>(
   schema: TResponseBodySchema,
   url: string,
   requestInit?: RequestInit,
-  options?: ZodFetchOptions<z.output<TResponseBodySchema>>
-): ApiPromise<z.output<TResponseBodySchema>> {
+  options?: ZodFetchOptions<z.output<TResponseBodySchema>, TOutput>
+): ApiPromise<TOutput> {
   return new ApiPromise(_doZodFetch(schema, url, requestInit, options));
 }
 
@@ -110,7 +113,14 @@ export function zodfetchCursorPage<TItemSchema extends z.ZodTypeAny>(
 
   const fetchResult = _doZodFetch(cursorPageSchema, $url.href, requestInit, options);
 
-  return new CursorPagePromise(fetchResult, schema, url, params, requestInit, options);
+  return new CursorPagePromise(
+    fetchResult as Promise<ZodFetchResult<CursorPageResponse<z.output<TItemSchema>>>>,
+    schema,
+    url,
+    params,
+    requestInit,
+    options
+  );
 }
 
 export function zodfetchOffsetLimitPage<TItemSchema extends z.ZodTypeAny>(
@@ -144,7 +154,14 @@ export function zodfetchOffsetLimitPage<TItemSchema extends z.ZodTypeAny>(
 
   const fetchResult = _doZodFetch(offsetLimitPageSchema, $url.href, requestInit, options);
 
-  return new OffsetLimitPagePromise(fetchResult, schema, url, params, requestInit, options);
+  return new OffsetLimitPagePromise(
+    fetchResult as Promise<ZodFetchResult<OffsetLimitPageResponse<z.output<TItemSchema>>>>,
+    schema,
+    url,
+    params,
+    requestInit,
+    options
+  );
 }
 
 type ZodFetchResult<T> = {
@@ -184,12 +201,15 @@ async function traceZodFetch<T>(
   );
 }
 
-async function _doZodFetch<TResponseBodySchema extends z.ZodTypeAny>(
+async function _doZodFetch<
+  TResponseBodySchema extends z.ZodTypeAny,
+  TOutput = z.output<TResponseBodySchema>,
+>(
   schema: TResponseBodySchema,
   url: string,
   requestInit?: PromiseOrValue<RequestInit>,
-  options?: ZodFetchOptions
-): Promise<ZodFetchResult<z.output<TResponseBodySchema>>> {
+  options?: ZodFetchOptions<z.output<TResponseBodySchema>, TOutput>
+): Promise<ZodFetchResult<TOutput>> {
   let $requestInit = await requestInit;
 
   return traceZodFetch({ url, requestInit: $requestInit, options }, async (span) => {
@@ -202,7 +222,7 @@ async function _doZodFetch<TResponseBodySchema extends z.ZodTypeAny>(
     }
 
     if (options?.prepareData) {
-      result.data = await options.prepareData(result.data);
+      result.data = await options.prepareData(result.data, result.response);
     }
 
     return result;
@@ -707,7 +727,7 @@ export async function wrapZodFetch<T extends z.ZodTypeAny>(
   schema: T,
   url: string,
   requestInit?: RequestInit,
-  options?: ZodFetchOptions<z.output<T>>
+  options?: ZodFetchOptions<z.output<T>, z.infer<T>>
 ): Promise<ApiResult<z.infer<T>>> {
   try {
     const response = await zodfetch(schema, url, requestInit, {
