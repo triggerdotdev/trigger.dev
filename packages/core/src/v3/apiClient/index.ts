@@ -44,6 +44,7 @@ import { taskContext } from "../task-context-api.js";
 import { AnyRunTypes, TriggerJwtOptions } from "../types/tasks.js";
 import {
   AnyZodFetchOptions,
+  ApiPromise,
   ApiRequestOptions,
   CursorPagePromise,
   ZodFetchOptions,
@@ -686,6 +687,18 @@ export class ApiClient {
         after: params?.after,
         before: params?.before,
       },
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  retrieveWaitpointToken(friendlyId: string, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      WaitpointTokenItem,
+      `${this.baseUrl}/api/v1/waitpoints/tokens/${friendlyId}`,
       {
         method: "GET",
         headers: this.#getHeaders(false),

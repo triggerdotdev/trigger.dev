@@ -139,6 +139,53 @@ function listTokens(
 }
 
 /**
+ * Retrieves a waitpoint token by its ID.
+ *
+ * @example
+ * ```ts
+ * const token = await wait.retrieveToken("waitpoint_12345678910");
+ * console.log("Token status:", token.status);
+ * console.log("Token tags:", token.tags);
+ * ```
+ *
+ * @param token - The token to retrieve.
+ * This can be a string token ID or an object with an `id` property.
+ * @param requestOptions - Optional API request options.
+ * @returns The waitpoint token details.
+ */
+function retrieveToken(
+  token: string | { id: string },
+  requestOptions?: ApiRequestOptions
+): ApiPromise<WaitpointTokenItem> {
+  const apiClient = apiClientManager.clientOrThrow();
+
+  const $tokenId = typeof token === "string" ? token : token.id;
+
+  const $requestOptions = mergeRequestOptions(
+    {
+      tracer,
+      name: "wait.retrieveToken()",
+      icon: "wait-token",
+      attributes: {
+        id: $tokenId,
+        ...accessoryAttributes({
+          items: [
+            {
+              text: $tokenId,
+              variant: "normal",
+            },
+          ],
+          style: "codepath",
+        }),
+      },
+    },
+    requestOptions
+  );
+
+  return apiClient.retrieveWaitpointToken($tokenId, $requestOptions);
+}
+
+/**
  * This completes a waitpoint token.
  * You can use this to complete a waitpoint token that you created earlier.
  *
@@ -338,6 +385,7 @@ export const wait = {
   createToken,
   listTokens,
   completeToken,
+  retrieveToken,
   /**
    * This waits for a waitpoint token to be completed.
    * It can only be used inside a task.run() block.
