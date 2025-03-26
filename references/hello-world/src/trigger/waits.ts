@@ -47,9 +47,11 @@ export const waitToken = task({
     }
 
     const tokens = await wait.listTokens();
-    for await (const token of tokens) {
-      logger.log("Token", token);
-    }
+    await logger.trace("Tokens", async () => {
+      for await (const token of tokens) {
+        logger.log("Token", token);
+      }
+    });
 
     const retrievedToken = await wait.retrieveToken(token.id);
     logger.log("Retrieved token", retrievedToken);
@@ -63,9 +65,11 @@ export const waitToken = task({
     }
 
     const tokens2 = await wait.listTokens({ tags, status: ["COMPLETED"] });
-    for await (const token of tokens2) {
-      logger.log("Token2", token);
-    }
+    await logger.trace("Tokens2", async () => {
+      for await (const token of tokens2) {
+        logger.log("Token2", token);
+      }
+    });
 
     const retrievedToken2 = await wait.retrieveToken(token.id);
     logger.log("Retrieved token2", retrievedToken2);

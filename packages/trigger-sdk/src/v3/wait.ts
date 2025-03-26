@@ -18,6 +18,7 @@ import {
   flattenAttributes,
   WaitpointListTokenItem,
   WaitpointTokenStatus,
+  WaitpointRetrieveTokenResponse,
 } from "@trigger.dev/core/v3";
 import { tracer } from "./tracer.js";
 import { conditionallyImportAndParsePacket } from "@trigger.dev/core/v3/utils/ioSerialization";
@@ -199,6 +200,24 @@ async function retrieveToken<T>(
           ],
           style: "codepath",
         }),
+      },
+      onResponseBody: (body: WaitpointRetrieveTokenResponse, span) => {
+        span.setAttribute("id", body.id);
+        span.setAttribute("status", body.status);
+        if (body.completedAt) {
+          span.setAttribute("completedAt", body.completedAt.toISOString());
+        }
+        if (body.timeoutAt) {
+          span.setAttribute("timeoutAt", body.timeoutAt.toISOString());
+        }
+        if (body.idempotencyKey) {
+          span.setAttribute("idempotencyKey", body.idempotencyKey);
+        }
+        if (body.idempotencyKeyExpiresAt) {
+          span.setAttribute("idempotencyKeyExpiresAt", body.idempotencyKeyExpiresAt.toISOString());
+        }
+        span.setAttribute("tags", body.tags);
+        span.setAttribute("createdAt", body.createdAt.toISOString());
       },
     },
     requestOptions
