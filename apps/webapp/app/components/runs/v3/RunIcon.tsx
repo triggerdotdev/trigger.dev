@@ -15,6 +15,7 @@ import { TaskCachedIcon } from "~/assets/icons/TaskCachedIcon";
 import { PauseIcon } from "~/assets/icons/PauseIcon";
 import { RunFunctionIcon } from "~/assets/icons/RunFunctionIcon";
 import { MiddlewareIcon } from "~/assets/icons/MiddlewareIcon";
+import { WebhookTaskIcon } from "~/assets/icons/WebhookTaskIcon";
 
 type TaskIconProps = {
   name: string | undefined;
@@ -83,23 +84,23 @@ export function RunIcon({ name, className, spanName }: TaskIconProps) {
     case "task-fn-run":
       return <RunFunctionIcon className={cn(className, "text-text-dimmed")} />;
     case "task-hook-init":
-      return <InformationCircleIcon className={cn(className, "text-text-dimmed")} />;
+      return <WebhookTaskIcon className={cn(className, "text-text-dimmed")} />;
     case "task-hook-onStart":
-      return <InformationCircleIcon className={cn(className, "text-text-dimmed")} />;
+      return <WebhookTaskIcon className={cn(className, "text-text-dimmed")} />;
     case "task-hook-onSuccess":
-      return <InformationCircleIcon className={cn(className, "text-text-dimmed")} />;
+      return <WebhookTaskIcon className={cn(className, "text-text-dimmed")} />;
     case "task-hook-onFailure":
-      return <InformationCircleIcon className={cn(className, "text-error")} />;
+      return <WebhookTaskIcon className={cn(className, "text-error")} />;
     case "task-hook-onComplete":
-      return <InformationCircleIcon className={cn(className, "text-text-dimmed")} />;
+      return <WebhookTaskIcon className={cn(className, "text-text-dimmed")} />;
     case "task-hook-onWait":
-      return <InformationCircleIcon className={cn(className, "text-text-dimmed")} />;
+      return <WebhookTaskIcon className={cn(className, "text-text-dimmed")} />;
     case "task-hook-onResume":
-      return <InformationCircleIcon className={cn(className, "text-text-dimmed")} />;
+      return <WebhookTaskIcon className={cn(className, "text-text-dimmed")} />;
     case "task-hook-catchError":
-      return <InformationCircleIcon className={cn(className, "text-error")} />;
+      return <WebhookTaskIcon className={cn(className, "text-error")} />;
     case "task-hook-cleanup":
-      return <InformationCircleIcon className={cn(className, "text-text-dimmed")} />;
+      return <WebhookTaskIcon className={cn(className, "text-text-dimmed")} />;
   }
 
   return <InformationCircleIcon className={cn(className, "text-text-dimmed")} />;
