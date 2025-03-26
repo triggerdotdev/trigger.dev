@@ -15,10 +15,10 @@ import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { getEntitlement } from "~/services/platform.v3.server";
 import { workerQueue } from "~/services/worker.server";
-import { downloadPacketFromObjectStore, uploadPacketToObjectStore } from "../r2.server";
-import { startActiveSpan } from "../tracer.server";
-import { ServiceValidationError, WithRunEngine } from "./baseService.server";
-import { OutOfEntitlementError, TriggerTaskService } from "./triggerTask.server";
+import { downloadPacketFromObjectStore, uploadPacketToObjectStore } from "../../v3/r2.server";
+import { startActiveSpan } from "../../v3/tracer.server";
+import { ServiceValidationError, WithRunEngine } from "../../v3/services/baseService.server";
+import { OutOfEntitlementError, TriggerTaskService } from "../../v3/services/triggerTask.server";
 
 const PROCESSING_BATCH_SIZE = 50;
 const ASYNC_BATCH_PROCESS_SIZE_THRESHOLD = 20;
@@ -49,7 +49,7 @@ export type BatchTriggerTaskServiceOptions = {
 /**
  * Larger batches, used in Run Engine v2
  */
-export class BatchTriggerV4Service extends WithRunEngine {
+export class RunEngineBatchTriggerService extends WithRunEngine {
   private _batchProcessingStrategy: BatchProcessingStrategy;
 
   constructor(
@@ -643,7 +643,7 @@ export class BatchTriggerV4Service extends WithRunEngine {
   }
 
   async #enqueueBatchTaskRun(options: BatchProcessingOptions, tx?: PrismaClientOrTransaction) {
-    await workerQueue.enqueue("v3.processBatchTaskRunV3", options, {
+    await workerQueue.enqueue("runengine.processBatchTaskRun", options, {
       tx,
       jobKey: `BatchTriggerV3Service.process:${options.batchId}:${options.processingId}`,
     });

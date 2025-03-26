@@ -1,13 +1,22 @@
-import { logger, runs, task, tasks } from "@trigger.dev/sdk/v3";
-import { fixedLengthTask } from "./prioritize-continuing.js";
+import { logger, task, wait } from "@trigger.dev/sdk";
 
-type Payload = {
-  tags: string | string[];
-};
+export const tagsTester = task({
+  id: "tags-tester",
+  run: async (payload: any, { ctx }) => {
+    await tagsChildTask.trigger(
+      {
+        tags: ["tag1", "tag2"],
+      },
+      {
+        tags: ["user:user1", "org:org1"],
+      }
+    );
+  },
+});
 
-export const triggerRunsWithTags = task({
-  id: "tags",
-  run: async (payload: Payload, { ctx }) => {
-    const { id } = await fixedLengthTask.trigger({ waitSeconds: 5 }, { tags: payload.tags });
+export const tagsChildTask = task({
+  id: "tags-child",
+  run: async (payload: any, { ctx }) => {
+    logger.log("Hello, world from the child", { payload });
   },
 });

@@ -76,7 +76,7 @@ export const retryTask = task({
       throw new Error("Error");
     }
   },
-  handleError: async (payload, error, { ctx }) => {
+  handleError: async ({ ctx, payload, error }) => {
     if (!payload.throwError) {
       return {
         skipRetrying: true,

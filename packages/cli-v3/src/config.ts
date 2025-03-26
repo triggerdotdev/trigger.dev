@@ -169,7 +169,9 @@ async function resolveConfig(
 
   dirs = dirs.map((dir) => resolveTriggerDir(dir, workingDir));
 
-  const features = featuresFromCompatibilityFlags(config.compatibilityFlags ?? []);
+  const features = featuresFromCompatibilityFlags(
+    ["run_engine_v2" as const].concat(config.compatibilityFlags ?? [])
+  );
 
   const defaultRuntime: BuildRuntime = features.run_engine_v2 ? "node-22" : DEFAULT_RUNTIME;
 
