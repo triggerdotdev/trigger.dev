@@ -84,23 +84,16 @@ export function RunIcon({ name, className, spanName }: TaskIconProps) {
     case "task-fn-run":
       return <RunFunctionIcon className={cn(className, "text-text-dimmed")} />;
     case "task-hook-init":
-      return <WebhookTaskIcon className={cn(className, "text-text-dimmed")} />;
     case "task-hook-onStart":
-      return <WebhookTaskIcon className={cn(className, "text-text-dimmed")} />;
     case "task-hook-onSuccess":
-      return <WebhookTaskIcon className={cn(className, "text-text-dimmed")} />;
-    case "task-hook-onFailure":
-      return <WebhookTaskIcon className={cn(className, "text-error")} />;
-    case "task-hook-onComplete":
-      return <WebhookTaskIcon className={cn(className, "text-text-dimmed")} />;
     case "task-hook-onWait":
-      return <WebhookTaskIcon className={cn(className, "text-text-dimmed")} />;
     case "task-hook-onResume":
-      return <WebhookTaskIcon className={cn(className, "text-text-dimmed")} />;
-    case "task-hook-catchError":
-      return <WebhookTaskIcon className={cn(className, "text-error")} />;
+    case "task-hook-onComplete":
     case "task-hook-cleanup":
       return <WebhookTaskIcon className={cn(className, "text-text-dimmed")} />;
+    case "task-hook-onFailure":
+    case "task-hook-catchError":
+      return <WebhookTaskIcon className={cn(className, "text-error")} />;
   }
 
   return <InformationCircleIcon className={cn(className, "text-text-dimmed")} />;
