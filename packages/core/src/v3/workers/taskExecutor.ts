@@ -560,7 +560,7 @@ export class TaskExecutor {
         for (const hook of globalInitHooks) {
           const [hookError, result] = await tryCatch(
             this._tracer.startActiveSpan(
-              hook.name ? `init/${hook.name}` : "init/global",
+              "init()",
               async (span) => {
                 const result = await hook.fn({ payload, ctx, signal, task: this.task.id });
 
@@ -575,6 +575,7 @@ export class TaskExecutor {
                 attributes: {
                   [SemanticInternalAttributes.STYLE_ICON]: "task-hook-init",
                   [SemanticInternalAttributes.COLLAPSED]: true,
+                  ...this.#lifecycleHookAccessoryAttributes(hook.name),
                 },
               }
             )
