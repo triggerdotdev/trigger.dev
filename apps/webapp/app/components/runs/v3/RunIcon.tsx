@@ -15,7 +15,7 @@ import { TaskCachedIcon } from "~/assets/icons/TaskCachedIcon";
 import { PauseIcon } from "~/assets/icons/PauseIcon";
 import { RunFunctionIcon } from "~/assets/icons/RunFunctionIcon";
 import { MiddlewareIcon } from "~/assets/icons/MiddlewareIcon";
-import { FunctionIcon } from "~/assets/icons/WebhookTaskIcon";
+import { FunctionIcon } from "~/assets/icons/FunctionIcon";
 import { TriggerIcon } from "~/assets/icons/TriggerIcon";
 
 type TaskIconProps = {
