@@ -142,7 +142,7 @@ const variant = {
     textColor: "text-text-bright",
     button:
       "h-[1.8rem] px-[0.4rem] text-2sm rounded-sm text-text-dimmed bg-transparent group-hover/button:bg-charcoal-750",
-    icon: "h-4",
+    icon: "h-[1.125rem]",
     iconSpacing: "gap-x-1.5",
     shortcutVariant: undefined,
     shortcut: undefined,

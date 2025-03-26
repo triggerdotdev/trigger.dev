@@ -200,7 +200,7 @@ function SpanBody({
           <RunIcon
             name={span.style?.icon}
             spanName={span.message}
-            className="h-4 min-h-4 w-4 min-w-4"
+            className="size-5 min-h-5 min-w-5"
           />
           <Header2 className={cn("overflow-x-hidden")}>
             <SpanTitle {...span} size="large" hideAccessory />
@@ -334,7 +334,7 @@ function RunBody({
           <RunIcon
             name={run.isCached ? "task-cached" : "task"}
             spanName={run.taskIdentifier}
-            className="h-4 min-h-4 w-4 min-w-4"
+            className="size-5 min-h-5 min-w-5"
           />
           <Header2 className={cn("overflow-x-hidden text-blue-500")}>
             <span className="truncate">

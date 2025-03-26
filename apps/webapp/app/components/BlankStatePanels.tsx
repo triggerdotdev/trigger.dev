@@ -81,7 +81,7 @@ export function HasNoTasksDeployed({ environment }: { environment: MinimumEnviro
     <InfoPanel
       title={`You don't have any deployed tasks in ${environmentFullTitle(environment)}`}
       icon={TaskIcon}
-      iconClassName="text-blue-500"
+      iconClassName="text-tasks"
       panelClassName="max-w-full"
       accessory={
         <LinkButton
@@ -106,7 +106,7 @@ export function SchedulesNoPossibleTaskPanel() {
     <InfoPanel
       title="Create your first scheduled task"
       icon={ClockIcon}
-      iconClassName="text-sun-500"
+      iconClassName="text-schedules"
       panelClassName="max-w-full"
       accessory={
         <LinkButton
@@ -136,7 +136,7 @@ export function SchedulesNoneAttached() {
     <InfoPanel
       title="Attach your first schedule"
       icon={ClockIcon}
-      iconClassName="text-sun-500"
+      iconClassName="text-schedules"
       panelClassName="max-w-full"
     >
       <Paragraph spacing variant="small">
@@ -149,7 +149,7 @@ export function SchedulesNoneAttached() {
           variant="secondary/medium"
           LeadingIcon={RectangleGroupIcon}
           className="inline-flex"
-          leadingIconClassName="text-sun-500"
+          leadingIconClassName="text-blue-500"
         >
           Use the dashboard
         </LinkButton>
@@ -171,7 +171,7 @@ export function BatchesNone() {
     <InfoPanel
       title="Triggering batches"
       icon={Squares2X2Icon}
-      iconClassName="text-blue-500"
+      iconClassName="text-batches"
       panelClassName="max-w-full"
       accessory={
         <LinkButton to={docsPath("triggering")} variant="docs/small" LeadingIcon={BookOpenIcon}>
@@ -195,7 +195,7 @@ export function TestHasNoTasks() {
     <InfoPanel
       title="You don't have any tasks to test"
       icon={BeakerIcon}
-      iconClassName="text-lime-500"
+      iconClassName="text-tests"
       panelClassName="max-w-full"
       accessory={
         <LinkButton
@@ -224,7 +224,7 @@ export function DeploymentsNone() {
   return (
     <InfoPanel
       icon={ServerStackIcon}
-      iconClassName="text-blue-500"
+      iconClassName="text-deployments"
       title="Deploy for the first time"
       panelClassName="max-w-full"
     >
@@ -268,7 +268,7 @@ export function DeploymentsNoneDev() {
     <div className="space-y-8">
       <InfoPanel
         icon={ServerStackIcon}
-        iconClassName="text-blue-500"
+        iconClassName="text-deployments"
         title="Deploying tasks"
         panelClassName="max-w-full"
       >
@@ -314,7 +314,7 @@ export function AlertsNoneDev() {
     <div className="space-y-8">
       <InfoPanel
         icon={BellAlertIcon}
-        iconClassName="text-red-500"
+        iconClassName="text-alerts"
         title="Adding alerts"
         panelClassName="max-w-full"
       >
@@ -350,7 +350,7 @@ export function AlertsNoneDeployed() {
     <div className="space-y-8">
       <InfoPanel
         icon={BellAlertIcon}
-        iconClassName="text-red-500"
+        iconClassName="text-alerts"
         title="Adding alerts"
         panelClassName="max-w-full"
       >
@@ -391,7 +391,7 @@ export function QueuesHasNoTasks() {
     <InfoPanel
       title="You don't have any queues"
       icon={RectangleStackIcon}
-      iconClassName="text-blue-500"
+      iconClassName="text-queues"
       panelClassName="max-w-md"
       accessory={
         <LinkButton

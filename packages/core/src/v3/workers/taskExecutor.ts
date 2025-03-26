@@ -9,7 +9,13 @@ import {
   sanitizeError,
   TaskPayloadParsedError,
 } from "../errors.js";
-import { flattenAttributes, lifecycleHooks, runMetadata, waitUntil } from "../index.js";
+import {
+  accessoryAttributes,
+  flattenAttributes,
+  lifecycleHooks,
+  runMetadata,
+  waitUntil,
+} from "../index.js";
 import {
   AnyOnMiddlewareHookFunction,
   RegisteredHookFunction,
@@ -314,13 +320,14 @@ export class TaskExecutor {
       (next, hook) => {
         return async () => {
           await this._tracer.startActiveSpan(
-            hook.name ? `middleware/${hook.name}` : "middleware",
+            "middleware()",
             async (span) => {
               await hook.fn({ payload, ctx, signal, task: this.task.id, next });
             },
             {
               attributes: {
                 [SemanticInternalAttributes.STYLE_ICON]: "task-middleware",
+                ...this.#lifecycleHookAccessoryAttributes(hook.name),
               },
             }
           );
@@ -376,7 +383,7 @@ export class TaskExecutor {
 
     return runTimelineMetrics.measureMetric("trigger.dev/execution", "run", async () => {
       return await this._tracer.startActiveSpan(
-        "run",
+        "run()",
         async (span) => {
           if (abortPromise) {
             // Race between the run function and the abort promise
@@ -413,7 +420,7 @@ export class TaskExecutor {
         for (const hook of globalWaitHooks) {
           const [hookError] = await tryCatch(
             this._tracer.startActiveSpan(
-              hook.name ? `onWait/${hook.name}` : "onWait/global",
+              "onWait()",
               async (span) => {
                 await hook.fn({ payload, ctx, signal, task: this.task.id, wait, init: initOutput });
               },
@@ -421,6 +428,7 @@ export class TaskExecutor {
                 attributes: {
                   [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onWait",
                   [SemanticInternalAttributes.COLLAPSED]: true,
+                  ...this.#lifecycleHookAccessoryAttributes(hook.name),
                 },
               }
             )
@@ -434,7 +442,7 @@ export class TaskExecutor {
         if (taskWaitHook) {
           const [hookError] = await tryCatch(
             this._tracer.startActiveSpan(
-              "onWait/task",
+              "onWait()",
               async (span) => {
                 await taskWaitHook({
                   payload,
@@ -449,6 +457,7 @@ export class TaskExecutor {
                 attributes: {
                   [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onWait",
                   [SemanticInternalAttributes.COLLAPSED]: true,
+                  ...this.#lifecycleHookAccessoryAttributes("task"),
                 },
               }
             )
@@ -483,7 +492,7 @@ export class TaskExecutor {
         for (const hook of globalResumeHooks) {
           const [hookError] = await tryCatch(
             this._tracer.startActiveSpan(
-              hook.name ? `onResume/${hook.name}` : "onResume/global",
+              "onResume()",
               async (span) => {
                 await hook.fn({ payload, ctx, signal, task: this.task.id, wait, init: initOutput });
               },
@@ -491,6 +500,7 @@ export class TaskExecutor {
                 attributes: {
                   [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onResume",
                   [SemanticInternalAttributes.COLLAPSED]: true,
+                  ...this.#lifecycleHookAccessoryAttributes(hook.name),
                 },
               }
             )
@@ -504,7 +514,7 @@ export class TaskExecutor {
         if (taskResumeHook) {
           const [hookError] = await tryCatch(
             this._tracer.startActiveSpan(
-              "onResume/task",
+              "onResume()",
               async (span) => {
                 await taskResumeHook({
                   payload,
@@ -519,6 +529,7 @@ export class TaskExecutor {
                 attributes: {
                   [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onResume",
                   [SemanticInternalAttributes.COLLAPSED]: true,
+                  ...this.#lifecycleHookAccessoryAttributes("task"),
                 },
               }
             )
@@ -549,7 +560,7 @@ export class TaskExecutor {
         for (const hook of globalInitHooks) {
           const [hookError, result] = await tryCatch(
             this._tracer.startActiveSpan(
-              hook.name ? `init/${hook.name}` : "init/global",
+              "init()",
               async (span) => {
                 const result = await hook.fn({ payload, ctx, signal, task: this.task.id });
 
@@ -564,6 +575,7 @@ export class TaskExecutor {
                 attributes: {
                   [SemanticInternalAttributes.STYLE_ICON]: "task-hook-init",
                   [SemanticInternalAttributes.COLLAPSED]: true,
+                  ...this.#lifecycleHookAccessoryAttributes(hook.name),
                 },
               }
             )
@@ -584,7 +596,7 @@ export class TaskExecutor {
         if (taskInitHook) {
           const [hookError, taskResult] = await tryCatch(
             this._tracer.startActiveSpan(
-              "init/task",
+              "init()",
               async (span) => {
                 const result = await taskInitHook({ payload, ctx, signal, task: this.task.id });
 
@@ -599,6 +611,7 @@ export class TaskExecutor {
                 attributes: {
                   [SemanticInternalAttributes.STYLE_ICON]: "task-hook-init",
                   [SemanticInternalAttributes.COLLAPSED]: true,
+                  ...this.#lifecycleHookAccessoryAttributes("task"),
                 },
               }
             )
@@ -646,7 +659,7 @@ export class TaskExecutor {
       for (const hook of globalSuccessHooks) {
         const [hookError] = await tryCatch(
           this._tracer.startActiveSpan(
-            hook.name ? `onSuccess/${hook.name}` : "onSuccess/global",
+            "onSuccess()",
             async (span) => {
               await hook.fn({
                 payload,
@@ -661,6 +674,7 @@ export class TaskExecutor {
               attributes: {
                 [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onSuccess",
                 [SemanticInternalAttributes.COLLAPSED]: true,
+                ...this.#lifecycleHookAccessoryAttributes(hook.name),
               },
             }
           )
@@ -674,7 +688,7 @@ export class TaskExecutor {
       if (taskSuccessHook) {
         const [hookError] = await tryCatch(
           this._tracer.startActiveSpan(
-            "onSuccess/task",
+            "onSuccess()",
             async (span) => {
               await taskSuccessHook({
                 payload,
@@ -689,6 +703,7 @@ export class TaskExecutor {
               attributes: {
                 [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onSuccess",
                 [SemanticInternalAttributes.COLLAPSED]: true,
+                ...this.#lifecycleHookAccessoryAttributes("task"),
               },
             }
           )
@@ -719,7 +734,7 @@ export class TaskExecutor {
       for (const hook of globalFailureHooks) {
         const [hookError] = await tryCatch(
           this._tracer.startActiveSpan(
-            hook.name ? `onFailure/${hook.name}` : "onFailure/global",
+            "onFailure()",
             async (span) => {
               await hook.fn({
                 payload,
@@ -734,6 +749,7 @@ export class TaskExecutor {
               attributes: {
                 [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onFailure",
                 [SemanticInternalAttributes.COLLAPSED]: true,
+                ...this.#lifecycleHookAccessoryAttributes(hook.name),
               },
             }
           )
@@ -747,7 +763,7 @@ export class TaskExecutor {
       if (taskFailureHook) {
         const [hookError] = await tryCatch(
           this._tracer.startActiveSpan(
-            "onFailure/task",
+            "onFailure()",
             async (span) => {
               await taskFailureHook({
                 payload,
@@ -762,6 +778,7 @@ export class TaskExecutor {
               attributes: {
                 [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onFailure",
                 [SemanticInternalAttributes.COLLAPSED]: true,
+                ...this.#lifecycleHookAccessoryAttributes("task"),
               },
             }
           )
@@ -803,7 +820,7 @@ export class TaskExecutor {
       for (const hook of globalStartHooks) {
         const [hookError] = await tryCatch(
           this._tracer.startActiveSpan(
-            hook.name ? `onStart/${hook.name}` : "onStart/global",
+            "onStart()",
             async (span) => {
               await hook.fn({ payload, ctx, signal, task: this.task.id, init: initOutput });
             },
@@ -811,6 +828,7 @@ export class TaskExecutor {
               attributes: {
                 [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
                 [SemanticInternalAttributes.COLLAPSED]: true,
+                ...this.#lifecycleHookAccessoryAttributes(hook.name),
               },
             }
           )
@@ -824,7 +842,7 @@ export class TaskExecutor {
       if (taskStartHook) {
         const [hookError] = await tryCatch(
           this._tracer.startActiveSpan(
-            "onStart/task",
+            "onStart()",
             async (span) => {
               await taskStartHook({
                 payload,
@@ -838,6 +856,7 @@ export class TaskExecutor {
               attributes: {
                 [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
                 [SemanticInternalAttributes.COLLAPSED]: true,
+                ...this.#lifecycleHookAccessoryAttributes("task"),
               },
             }
           )
@@ -877,7 +896,7 @@ export class TaskExecutor {
       for (const hook of globalCleanupHooks) {
         const [hookError] = await tryCatch(
           this._tracer.startActiveSpan(
-            hook.name ? `cleanup/${hook.name}` : "cleanup/global",
+            "cleanup()",
             async (span) => {
               await hook.fn({
                 payload,
@@ -891,6 +910,7 @@ export class TaskExecutor {
               attributes: {
                 [SemanticInternalAttributes.STYLE_ICON]: "task-hook-cleanup",
                 [SemanticInternalAttributes.COLLAPSED]: true,
+                ...this.#lifecycleHookAccessoryAttributes(hook.name),
               },
             }
           )
@@ -904,7 +924,7 @@ export class TaskExecutor {
       if (taskCleanupHook) {
         const [hookError] = await tryCatch(
           this._tracer.startActiveSpan(
-            "cleanup/task",
+            "cleanup()",
             async (span) => {
               await taskCleanupHook({
                 payload,
@@ -918,6 +938,7 @@ export class TaskExecutor {
               attributes: {
                 [SemanticInternalAttributes.STYLE_ICON]: "task-hook-cleanup",
                 [SemanticInternalAttributes.COLLAPSED]: true,
+                ...this.#lifecycleHookAccessoryAttributes("task"),
               },
             }
           )
@@ -1134,7 +1155,7 @@ export class TaskExecutor {
       for (const hook of globalCompleteHooks) {
         const [hookError] = await tryCatch(
           this._tracer.startActiveSpan(
-            hook.name ? `onComplete/${hook.name}` : "onComplete/global",
+            "onComplete()",
             async (span) => {
               await hook.fn({
                 payload,
@@ -1149,6 +1170,7 @@ export class TaskExecutor {
               attributes: {
                 [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onComplete",
                 [SemanticInternalAttributes.COLLAPSED]: true,
+                ...this.#lifecycleHookAccessoryAttributes(hook.name),
               },
             }
           )
@@ -1162,7 +1184,7 @@ export class TaskExecutor {
       if (taskCompleteHook) {
         const [hookError] = await tryCatch(
           this._tracer.startActiveSpan(
-            "onComplete/task",
+            "onComplete()",
             async (span) => {
               await taskCompleteHook({
                 payload,
@@ -1177,6 +1199,7 @@ export class TaskExecutor {
               attributes: {
                 [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onComplete",
                 [SemanticInternalAttributes.COLLAPSED]: true,
+                ...this.#lifecycleHookAccessoryAttributes("task"),
               },
             }
           )
@@ -1205,5 +1228,17 @@ export class TaskExecutor {
         stackTrace: error instanceof Error ? error.stack : undefined,
       },
     } satisfies TaskRunExecutionResult;
+  }
+
+  #lifecycleHookAccessoryAttributes(name?: string) {
+    return accessoryAttributes({
+      items: [
+        {
+          text: name ?? "global",
+          variant: "normal",
+        },
+      ],
+      style: "codepath",
+    });
   }
 }

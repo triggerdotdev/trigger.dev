@@ -659,7 +659,7 @@ function HelpfulInfoHasTasks({ onClose }: { onClose: () => void }) {
         />
         <div className="mb-2 flex items-center gap-2 border-b border-grid-dimmed pb-2 pt-6">
           <Header2 className="flex items-center gap-2">
-            <TaskIcon className="size-4 text-blue-500" />
+            <TaskIcon className="size-5 text-blue-500" />
             Example tasks
           </Header2>
         </div>
