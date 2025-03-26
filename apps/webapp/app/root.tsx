@@ -17,6 +17,12 @@ import { appEnvTitleTag } from "./utils";
 import { type Handle } from "./utils/handle";
 import { useEffect } from "react";
 
+declare global {
+  interface Window {
+    Kapa: (command: string, options?: { onRender?: () => void }) => void;
+  }
+}
+
 export const links: LinksFunction = () => {
   return [{ rel: "stylesheet", href: tailwindStylesheetUrl }];
 };
@@ -97,23 +103,23 @@ export default function App() {
   const { posthogProjectKey, kapa, features } = useTypedLoaderData<typeof loader>();
   usePostHog(posthogProjectKey);
 
+  useEffect(() => {
+    if (!features.isManagedCloud || !kapa.websiteId) return;
+
+    loadScriptIfNotExists(kapa.websiteId);
+    window.Kapa("render", {
+      onRender: () => window.Kapa("open"),
+    });
+
+    return () => window.Kapa("unmount");
+  }, [features.isManagedCloud, kapa.websiteId]);
+
   return (
     <>
       <html lang="en" className="h-full">
         <head>
           <Meta />
           <Links />
-          {features.isManagedCloud && (
-            <script
-              src="/resources/kapa-widget"
-              crossOrigin="anonymous"
-              async
-              data-website-id={kapa.websiteId}
-              data-project-name="Trigger.dev"
-              data-project-color="#ff9900"
-              data-project-logo="content.trigger.dev/trigger-logo-triangle.png"
-            />
-          )}
         </head>
         <body className="bg-darkBackground h-full overflow-hidden">
           <Outlet />
@@ -126,4 +132,30 @@ export default function App() {
       </html>
     </>
   );
+}
+
+function loadScriptIfNotExists(websiteId: string) {
+  const scriptSrc = "https://widget.kapa.ai/kapa-widget.bundle.js";
+
+  if (document.querySelector(`script[src="${scriptSrc}"]`)) {
+    return;
+  }
+
+  const script = document.createElement("script");
+  script.async = true;
+  script.src = scriptSrc;
+
+  const attributes = {
+    "data-website-id": websiteId,
+    "data-project-name": "Trigger.dev",
+    "data-project-color": "#ff9900",
+    "data-project-logo": "content.trigger.dev/trigger-logo-triangle.png",
+    "data-render-on-load": "false",
+  };
+
+  Object.entries(attributes).forEach(([key, value]) => {
+    script.setAttribute(key, value);
+  });
+
+  document.head.appendChild(script);
 }
