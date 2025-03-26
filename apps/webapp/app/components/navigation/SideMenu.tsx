@@ -512,32 +512,30 @@ export function DevConnection() {
 
   return (
     <Dialog>
-      <div>
-        <TooltipProvider disableHoverableContent={true}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div>
-                <DialogTrigger asChild>
-                  <Button
-                    variant="minimal/small"
-                    className="px-1"
-                    LeadingIcon={
-                      isConnected ? (
-                        <ConnectedIcon className="size-5" />
-                      ) : (
-                        <DisconnectedIcon className="size-5" />
-                      )
-                    }
-                  />
-                </DialogTrigger>
-              </div>
-            </TooltipTrigger>
-            <TooltipContent side="right" className={"text-xs"}>
-              {isConnected ? "Your dev server is connected" : "Your dev server is not connected"}
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      </div>
+      <TooltipProvider disableHoverableContent={true}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="inline-flex">
+              <DialogTrigger asChild>
+                <Button
+                  variant="minimal/small"
+                  className="aspect-square h-7 p-1"
+                  LeadingIcon={
+                    isConnected ? (
+                      <ConnectedIcon className="size-5" />
+                    ) : (
+                      <DisconnectedIcon className="size-5" />
+                    )
+                  }
+                />
+              </DialogTrigger>
+            </div>
+          </TooltipTrigger>
+          <TooltipContent side="right" className={"text-xs"}>
+            {isConnected ? "Your dev server is connected" : "Your dev server is not connected"}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
       <DialogContent>
         <DialogHeader>
           {isConnected ? "Your dev server is connected" : "Your dev server is not connected"}
