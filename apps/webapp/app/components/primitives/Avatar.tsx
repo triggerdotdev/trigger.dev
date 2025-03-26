@@ -8,7 +8,6 @@ import {
 } from "@heroicons/react/20/solid";
 import { type Prisma } from "@trigger.dev/database";
 import { z } from "zod";
-import { useOrganization } from "~/hooks/useOrganizations";
 import { logger } from "~/services/logger.server";
 import { cn } from "~/utils/cn";
 
@@ -54,17 +53,26 @@ export function Avatar({
   avatar,
   size,
   includePadding,
+  orgName,
 }: {
   avatar: Avatar;
   /** Size in rems of the icon */
   size: number;
   includePadding?: boolean;
+  orgName: string;
 }) {
   switch (avatar.type) {
     case "icon":
       return <AvatarIcon avatar={avatar} size={size} includePadding={includePadding} />;
     case "letters":
-      return <AvatarLetters avatar={avatar} size={size} includePadding={includePadding} />;
+      return (
+        <AvatarLetters
+          avatar={avatar}
+          size={size}
+          includePadding={includePadding}
+          orgName={orgName}
+        />
+      );
     case "image":
       return <AvatarImage avatar={avatar} size={size} />;
   }
@@ -110,13 +118,14 @@ function AvatarLetters({
   avatar,
   size,
   includePadding,
+  orgName,
 }: {
   avatar: LettersAvatar;
   size: number;
   includePadding?: boolean;
+  orgName: string;
 }) {
-  const organization = useOrganization();
-  const letters = organization.title.slice(0, 2);
+  const letters = orgName.slice(0, 2);
 
   const style = {
     backgroundColor: avatar.hex,
