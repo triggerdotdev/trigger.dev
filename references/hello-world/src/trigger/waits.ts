@@ -1,4 +1,4 @@
-import { logger, wait, task, retry, idempotencyKeys } from "@trigger.dev/sdk/v3";
+import { logger, wait, task, retry, idempotencyKeys, auth } from "@trigger.dev/sdk/v3";
 
 type Token = {
   status: "approved" | "pending" | "rejected";
@@ -8,6 +8,7 @@ export const waitToken = task({
   id: "wait-token",
   run: async ({
     completeBeforeWaiting = false,
+    completeWithPublicToken = false,
     idempotencyKey,
     idempotencyKeyTTL,
     completionDelay,
@@ -15,6 +16,7 @@ export const waitToken = task({
     tags,
   }: {
     completeBeforeWaiting?: boolean;
+    completeWithPublicToken?: boolean;
     idempotencyKey?: string;
     idempotencyKeyTTL?: string;
     completionDelay?: number;
@@ -38,6 +40,28 @@ export const waitToken = task({
       tags,
     });
     logger.log("Token2", token2);
+
+    const publicAccessToken = await auth.createPublicToken({
+      scopes: {
+        write: {
+          waitpoints: token.id,
+        },
+      },
+      expirationTime: "1h",
+    });
+
+    logger.log("Public access token", { publicAccessToken });
+
+    if (completeWithPublicToken) {
+      await auth.withAuth(
+        {
+          accessToken: token.publicAccessToken,
+        },
+        async () => {
+          await wait.completeToken<Token>(token.id, { status: "approved" });
+        }
+      );
+    }
 
     if (completeBeforeWaiting) {
       await wait.completeToken<Token>(token.id, { status: "approved" });

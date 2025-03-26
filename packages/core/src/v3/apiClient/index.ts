@@ -692,7 +692,7 @@ export class ApiClient {
               ...claims,
               scopes: [`write:waitpoints:${data.id}`],
             },
-            expirationTime: "1h",
+            expirationTime: "24h",
           });
 
           return {

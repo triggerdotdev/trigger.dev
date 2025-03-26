@@ -24,6 +24,12 @@ import { tracer } from "./tracer.js";
 import { conditionallyImportAndParsePacket } from "@trigger.dev/core/v3/utils/ioSerialization";
 import { SpanStatusCode } from "@opentelemetry/api";
 
+export type CreateWaitpointTokenResponse = Prettify<
+  CreateWaitpointTokenResponseBody & {
+    publicAccessToken: string;
+  }
+>;
+
 /**
  * This creates a waitpoint token.
  * You can use this to pause a run until you complete the waitpoint (or it times out).
@@ -48,10 +54,6 @@ import { SpanStatusCode } from "@opentelemetry/api";
  * @param requestOptions - The request options for the waitpoint token.
  * @returns The waitpoint token.
  */
-export type CreateWaitpointTokenResponse = CreateWaitpointTokenResponseBody & {
-  publicAccessToken: string;
-};
-
 function createToken(
   options?: CreateWaitpointTokenRequestBody,
   requestOptions?: ApiRequestOptions
