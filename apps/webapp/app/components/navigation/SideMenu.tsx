@@ -22,7 +22,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import simplur from "simplur";
 import { ConnectedIcon, DisconnectedIcon } from "~/assets/icons/ConnectionIcons";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
-import { TaskIcon } from "~/assets/icons/TaskIcon";
+import { TaskIconSmall } from "~/assets/icons/TaskIcon";
 import { Avatar } from "~/components/primitives/Avatar";
 import { type MatchedEnvironment } from "~/hooks/useEnvironment";
 import { type MatchedOrganization } from "~/hooks/useOrganizations";
@@ -150,7 +150,7 @@ export function SideMenu({
         <div className="mb-6 flex flex-col gap-4 px-1">
           <div className="space-y-1">
             <SideMenuHeader title={"Environment"} />
-            <div className="flex items-center gap-1">
+            <div className="flex items-center">
               <EnvironmentSelector
                 organization={organization}
                 project={project}
@@ -163,7 +163,7 @@ export function SideMenu({
           <div>
             <SideMenuItem
               name="Tasks"
-              icon={TaskIcon}
+              icon={TaskIconSmall}
               activeIconColor="text-blue-500"
               to={v3EnvironmentPath(organization, project, environment)}
               data-action="tasks"
@@ -171,34 +171,34 @@ export function SideMenu({
             <SideMenuItem
               name="Runs"
               icon={RunsIcon}
-              activeIconColor="text-teal-500"
+              activeIconColor="text-indigo-500"
               to={v3RunsPath(organization, project, environment)}
             />
             <SideMenuItem
               name="Batches"
               icon={Squares2X2Icon}
-              activeIconColor="text-blue-500"
+              activeIconColor="text-pink-500"
               to={v3BatchesPath(organization, project, environment)}
               data-action="batches"
             />
             <SideMenuItem
               name="Schedules"
               icon={ClockIcon}
-              activeIconColor="text-sun-500"
+              activeIconColor="text-yellow-500"
               to={v3SchedulesPath(organization, project, environment)}
               data-action="schedules"
             />
             <SideMenuItem
               name="Queues"
               icon={RectangleStackIcon}
-              activeIconColor="text-blue-500"
+              activeIconColor="text-purple-500"
               to={v3QueuesPath(organization, project, environment)}
               data-action="queues"
             />
             <SideMenuItem
               name="Deployments"
               icon={ServerStackIcon}
-              activeIconColor="text-blue-500"
+              activeIconColor="text-green-500"
               to={v3DeploymentsPath(organization, project, environment)}
               data-action="deployments"
             />
