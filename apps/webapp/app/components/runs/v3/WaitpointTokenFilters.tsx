@@ -1,12 +1,18 @@
 import * as Ariakit from "@ariakit/react";
 import { CalendarIcon, FingerPrintIcon, TagIcon, TrashIcon } from "@heroicons/react/20/solid";
 import { Form, useFetcher } from "@remix-run/react";
-import { TaskTriggerSource } from "@trigger.dev/database";
+import { WaitpointTokenStatus, waitpointTokenStatuses } from "@trigger.dev/core/v3";
 import { ListChecks, ListFilterIcon } from "lucide-react";
+import { matchSorter } from "match-sorter";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { z } from "zod";
 import { StatusIcon } from "~/assets/icons/StatusIcon";
+import { AppliedFilter } from "~/components/primitives/AppliedFilter";
 import { Button } from "~/components/primitives/Buttons";
+import { FormError } from "~/components/primitives/FormError";
+import { Input } from "~/components/primitives/Input";
+import { Label } from "~/components/primitives/Label";
+import { Paragraph } from "~/components/primitives/Paragraph";
 import {
   ComboBox,
   SelectButtonItem,
@@ -17,7 +23,19 @@ import {
   SelectTrigger,
   shortcutFromIndex,
 } from "~/components/primitives/Select";
+import { Spinner } from "~/components/primitives/Spinner";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "~/components/primitives/Tooltip";
+import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
+import { useOrganization } from "~/hooks/useOrganizations";
+import { useProject } from "~/hooks/useProject";
+import { useSearchParams } from "~/hooks/useSearchParam";
+import { type loader as tagsLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.waitpoints.tags";
 import {
   AppliedCustomDateRangeFilter,
   AppliedPeriodFilter,
@@ -26,36 +44,13 @@ import {
   CustomDateRangeDropdown,
   FilterMenuProvider,
 } from "./SharedFilters";
-import { useSearchParams } from "~/hooks/useSearchParam";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "~/components/primitives/Tooltip";
-import { WaitpointStatusCombo, waitpointStatusTitle } from "./WaitpointStatus";
-import { Paragraph } from "~/components/primitives/Paragraph";
-import { AppliedFilter } from "~/components/primitives/AppliedFilter";
-import { useEnvironment } from "~/hooks/useEnvironment";
-import { matchSorter } from "match-sorter";
-import { Spinner } from "~/components/primitives/Spinner";
-import { project } from "effect/Layer";
-import { useProject } from "~/hooks/useProject";
-import { type loader as tagsLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.waitpoints.tags";
-import { useOrganization } from "~/hooks/useOrganizations";
-import { Label } from "~/components/primitives/Label";
-import { Input } from "~/components/primitives/Input";
-import { FormError } from "~/components/primitives/FormError";
-
-const filterableStatuses = ["PENDING", "COMPLETED", "FAILED"] as const;
-export const WaitpointFilterStatus = z.enum(filterableStatuses);
-export type WaitpointFilterStatus = z.infer<typeof WaitpointFilterStatus>;
+import { WaitpointStatusCombo } from "./WaitpointStatus";
 
 export const WaitpointSearchParamsSchema = z.object({
   id: z.string().optional(),
   statuses: z.preprocess(
     (value) => (typeof value === "string" ? [value] : value),
-    WaitpointFilterStatus.array().optional()
+    WaitpointTokenStatus.array().optional()
   ),
   idempotencyKey: z.string().optional(),
   tags: z.string().array().optional(),
@@ -221,12 +216,12 @@ function MainMenu({ searchValue, trigger, clearSearchValue, setFilterType }: Men
   );
 }
 
-const statuses = filterableStatuses.map((status) => ({
+const statuses = waitpointTokenStatuses.map((status) => ({
   title: statusTitle(status),
   value: status,
 }));
 
-function statusTitle(status: WaitpointFilterStatus) {
+function statusTitle(status: WaitpointTokenStatus) {
   switch (status) {
     case "COMPLETED": {
       return "Completed";
@@ -288,10 +283,7 @@ function StatusDropdown({
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger className="group flex w-full flex-col py-0">
-                      <WaitpointStatusCombo
-                        status={item.value === "FAILED" ? "COMPLETED" : item.value}
-                        outputIsError={item.value === "FAILED"}
-                      />
+                      <WaitpointStatusCombo status={item.value} />
                     </TooltipTrigger>
                     <TooltipContent side="right" sideOffset={50}>
                       <Paragraph variant="extra-small">{statusTitle(item.value)}</Paragraph>
@@ -323,7 +315,7 @@ function AppliedStatusFilter() {
             <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
               <AppliedFilter
                 label="Status"
-                value={appliedSummary(statuses.map((v) => statusTitle(v as WaitpointFilterStatus)))}
+                value={appliedSummary(statuses.map((v) => statusTitle(v as WaitpointTokenStatus)))}
                 onRemove={() => del(["statuses", "cursor", "direction"])}
               />
             </Ariakit.Select>

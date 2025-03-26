@@ -87,7 +87,7 @@ export default function Page() {
       )}
     >
       <div className="mx-3 flex items-center justify-between gap-2 border-b border-grid-dimmed">
-        <Header2 className={cn("whitespace-nowrap")}>{waitpoint.friendlyId}</Header2>
+        <Header2 className={cn("whitespace-nowrap")}>{waitpoint.id}</Header2>
         <LinkButton
           to={`${v3WaitpointTokensPath(organization, project, environment)}${location.search}`}
           variant="minimal/small"

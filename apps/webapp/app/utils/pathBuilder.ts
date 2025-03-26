@@ -4,11 +4,7 @@ import { type TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
 import type { Organization } from "~/models/organization.server";
 import type { Project } from "~/models/project.server";
 import { objectToSearchParams } from "./searchParams";
-import {
-  WaitpointFilterStatus,
-  WaitpointSearchParams,
-} from "~/components/runs/v3/WaitpointTokenFilters";
-
+import { type WaitpointSearchParams } from "~/components/runs/v3/WaitpointTokenFilters";
 export type OrgForPath = Pick<Organization, "slug">;
 export type ProjectForPath = Pick<Project, "slug">;
 export type EnvironmentForPath = Pick<RuntimeEnvironment, "slug">;

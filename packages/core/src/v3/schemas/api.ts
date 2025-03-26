@@ -948,6 +948,23 @@ export const CreateWaitpointTokenResponseBody = z.object({
 });
 export type CreateWaitpointTokenResponseBody = z.infer<typeof CreateWaitpointTokenResponseBody>;
 
+export const waitpointTokenStatuses = ["PENDING", "COMPLETED", "FAILED"] as const;
+export const WaitpointTokenStatus = z.enum(waitpointTokenStatuses);
+export type WaitpointTokenStatus = z.infer<typeof WaitpointTokenStatus>;
+
+export const WaitpointTokenItem = z.object({
+  id: z.string(),
+  status: WaitpointTokenStatus,
+  completedAt: z.coerce.date().optional(),
+  completedAfter: z.coerce.date().optional(),
+  idempotencyKey: z.string().optional(),
+  idempotencyKeyExpiresAt: z.coerce.date().optional(),
+  tags: z.array(z.string()),
+  isTimeout: z.boolean(),
+  createdAt: z.coerce.date(),
+});
+export type WaitpointTokenItem = z.infer<typeof WaitpointTokenItem>;
+
 export const CompleteWaitpointTokenRequestBody = z.object({
   data: z.any().nullish(),
 });

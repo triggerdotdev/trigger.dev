@@ -4,11 +4,9 @@ import { type Direction } from "~/components/ListPagination";
 import { sqlDatabaseSchema } from "~/db.server";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { BasePresenter } from "./basePresenter.server";
-import {
-  type WaitpointFilterStatus,
-  type WaitpointSearchParams,
-} from "~/components/runs/v3/WaitpointTokenFilters";
+import { type WaitpointSearchParams } from "~/components/runs/v3/WaitpointTokenFilters";
 import { determineEngineVersion } from "~/v3/engineVersion.server";
+import { type WaitpointTokenStatus, type WaitpointTokenItem } from "@trigger.dev/core/v3";
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -16,7 +14,7 @@ export type WaitpointTokenListOptions = {
   environment: AuthenticatedEnvironment;
   // filters
   id?: string;
-  statuses?: WaitpointFilterStatus[];
+  statuses?: WaitpointTokenStatus[];
   idempotencyKey?: string;
   tags?: string[];
   period?: string;
@@ -28,22 +26,10 @@ export type WaitpointTokenListOptions = {
   pageSize?: number;
 };
 
-type WaitpointToken = {
-  friendlyId: string;
-  status: WaitpointStatus;
-  completedAt: Date | null;
-  completedAfter: Date | null;
-  idempotencyKey: string | null;
-  idempotencyKeyExpiresAt: Date | null;
-  tags: string[];
-  isTimeout: boolean;
-  createdAt: Date;
-};
-
 type Result =
   | {
       success: true;
-      tokens: WaitpointToken[];
+      tokens: WaitpointTokenItem[];
       pagination: {
         next: string | undefined;
         previous: string | undefined;
@@ -117,7 +103,7 @@ export class WaitpointTokenListPresenter extends BasePresenter {
       }
     }
 
-    const statusesToFilter: WaitpointStatus[] =
+    const statusesToFilter: WaitpointTokenStatus[] =
       statuses?.map((status) => {
         switch (status) {
           case "PENDING":
@@ -248,14 +234,14 @@ export class WaitpointTokenListPresenter extends BasePresenter {
     return {
       success: true,
       tokens: tokensToReturn.map((token) => ({
-        friendlyId: token.friendlyId,
-        status: token.status,
-        completedAt: token.completedAt,
-        completedAfter: token.completedAfter,
+        id: token.friendlyId,
+        status: token.outputIsError ? "FAILED" : token.status,
+        completedAt: token.completedAt ?? undefined,
+        completedAfter: token.completedAfter ?? undefined,
         idempotencyKey: token.userProvidedIdempotencyKey
           ? token.inactiveIdempotencyKey ?? token.idempotencyKey
-          : null,
-        idempotencyKeyExpiresAt: token.idempotencyKeyExpiresAt,
+          : undefined,
+        idempotencyKeyExpiresAt: token.idempotencyKeyExpiresAt ?? undefined,
         tags: token.tags ? token.tags.sort((a, b) => a.localeCompare(b)) : [],
         //we can assume that all errors for tokens are timeouts
         isTimeout: token.outputIsError,

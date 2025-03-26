@@ -1,5 +1,5 @@
 import { CheckCircleIcon } from "@heroicons/react/20/solid";
-import { type WaitpointStatus } from "@trigger.dev/database";
+import { type WaitpointTokenStatus } from "@trigger.dev/core/v3";
 import assertNever from "assert-never";
 import { TimedOutIcon } from "~/assets/icons/TimedOutIcon";
 import { Spinner } from "~/components/primitives/Spinner";
@@ -7,87 +7,54 @@ import { cn } from "~/utils/cn";
 
 export function WaitpointStatusCombo({
   status,
-  outputIsError,
   className,
   iconClassName,
 }: {
-  status: WaitpointStatus;
-  outputIsError: boolean;
+  status: WaitpointTokenStatus;
   className?: string;
   iconClassName?: string;
 }) {
   return (
     <span className={cn("flex items-center gap-1", className)}>
-      <WaitpointStatusIcon
-        status={status}
-        outputIsError={outputIsError}
-        className={cn("h-4 w-4", iconClassName)}
-      />
-      <WaitpointStatusLabel status={status} outputIsError={outputIsError} />
+      <WaitpointStatusIcon status={status} className={cn("h-4 w-4", iconClassName)} />
+      <WaitpointStatusLabel status={status} />
     </span>
   );
 }
 
-export function WaitpointStatusLabel({
-  status,
-  outputIsError,
-}: {
-  status: WaitpointStatus;
-  outputIsError: boolean;
-}) {
+export function WaitpointStatusLabel({ status }: { status: WaitpointTokenStatus }) {
   return (
-    <span className={waitpointStatusClassNameColor(status, outputIsError)}>
-      {waitpointStatusTitle(status, outputIsError)}
-    </span>
+    <span className={waitpointStatusClassNameColor(status)}>{waitpointStatusTitle(status)}</span>
   );
 }
 
 export function WaitpointStatusIcon({
   status,
-  outputIsError,
   className,
 }: {
-  status: WaitpointStatus;
-  outputIsError: boolean;
+  status: WaitpointTokenStatus;
   className: string;
 }) {
   switch (status) {
     case "PENDING":
-      return (
-        <Spinner className={cn(waitpointStatusClassNameColor(status, outputIsError), className)} />
-      );
-    case "COMPLETED": {
-      if (outputIsError) {
-        return (
-          <TimedOutIcon
-            className={cn(waitpointStatusClassNameColor(status, outputIsError), className)}
-          />
-        );
-      }
-      return (
-        <CheckCircleIcon
-          className={cn(waitpointStatusClassNameColor(status, outputIsError), className)}
-        />
-      );
-    }
-
+      return <Spinner className={cn(waitpointStatusClassNameColor(status), className)} />;
+    case "FAILED":
+      return <TimedOutIcon className={cn(waitpointStatusClassNameColor(status), className)} />;
+    case "COMPLETED":
+      return <CheckCircleIcon className={cn(waitpointStatusClassNameColor(status), className)} />;
     default: {
       assertNever(status);
     }
   }
 }
 
-export function waitpointStatusClassNameColor(
-  status: WaitpointStatus,
-  outputIsError: boolean
-): string {
+export function waitpointStatusClassNameColor(status: WaitpointTokenStatus): string {
   switch (status) {
     case "PENDING":
       return "text-blue-500";
+    case "FAILED":
+      return "text-error";
     case "COMPLETED": {
-      if (outputIsError) {
-        return "text-error";
-      }
       return "text-success";
     }
     default: {
@@ -96,14 +63,13 @@ export function waitpointStatusClassNameColor(
   }
 }
 
-export function waitpointStatusTitle(status: WaitpointStatus, outputIsError: boolean): string {
+export function waitpointStatusTitle(status: WaitpointTokenStatus): string {
   switch (status) {
     case "PENDING":
       return "Waiting";
+    case "FAILED":
+      return "Timed out";
     case "COMPLETED": {
-      if (outputIsError) {
-        return "Timed out";
-      }
       return "Completed";
     }
     default: {

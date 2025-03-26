@@ -1,16 +1,16 @@
 import { DateTime, DateTimeAccurate } from "~/components/primitives/DateTime";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
-import { type WaitpointDetail } from "~/presenters/v3/WaitpointPresenter.server";
-import { ForceTimeout } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.waitpoints.$waitpointFriendlyId.complete/route";
-import { PacketDisplay } from "./PacketDisplay";
-import { WaitpointStatusCombo } from "./WaitpointStatus";
-import { v3WaitpointTokenPath, v3WaitpointTokensPath } from "~/utils/pathBuilder";
-import { Link } from "@remix-run/react";
 import { TextLink } from "~/components/primitives/TextLink";
+import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { useEnvironment } from "~/hooks/useEnvironment";
+import { type WaitpointDetail } from "~/presenters/v3/WaitpointPresenter.server";
+import { ForceTimeout } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.waitpoints.$waitpointFriendlyId.complete/route";
+import { v3WaitpointTokenPath, v3WaitpointTokensPath } from "~/utils/pathBuilder";
+import { PacketDisplay } from "./PacketDisplay";
+import { WaitpointStatusCombo } from "./WaitpointStatus";
+import { RunTag } from "./RunTag";
 
 export function WaitpointDetailTable({
   waitpoint,
@@ -31,11 +31,7 @@ export function WaitpointDetailTable({
       <Property.Item>
         <Property.Label>Status</Property.Label>
         <Property.Value>
-          <WaitpointStatusCombo
-            status={waitpoint.status}
-            outputIsError={waitpoint.outputIsError}
-            className="text-sm"
-          />
+          <WaitpointStatusCombo status={waitpoint.status} className="text-sm" />
         </Property.Value>
       </Property.Item>
       <Property.Item>
@@ -44,13 +40,13 @@ export function WaitpointDetailTable({
           {linkToList ? (
             <TextLink
               to={v3WaitpointTokenPath(organization, project, environment, waitpoint, {
-                id: waitpoint.friendlyId,
+                id: waitpoint.id,
               })}
             >
-              {waitpoint.friendlyId}
+              {waitpoint.id}
             </TextLink>
           ) : (
-            waitpoint.friendlyId
+            waitpoint.id
           )}
         </Property.Value>
       </Property.Item>
@@ -97,6 +93,20 @@ export function WaitpointDetailTable({
                     ? "The waitpoint completed before this timeout was reached"
                     : "The waitpoint is still waiting"}
                 </Paragraph>
+              </div>
+            </Property.Value>
+          </Property.Item>
+          <Property.Item>
+            <Property.Label>Tags</Property.Label>
+            <Property.Value>
+              <div className="flex flex-wrap gap-1 pt-1 text-xs">
+                {waitpoint.tags.map((tag) => (
+                  <RunTag
+                    key={tag}
+                    tag={tag}
+                    to={v3WaitpointTokensPath(organization, project, environment, { tags: [tag] })}
+                  />
+                ))}
               </div>
             </Property.Value>
           </Property.Item>

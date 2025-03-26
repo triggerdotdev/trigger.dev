@@ -166,21 +166,17 @@ export default function Page() {
                           );
 
                           return (
-                            <TableRow key={token.friendlyId}>
+                            <TableRow key={token.id}>
                               <TableCell to={path}>
                                 <span className="opacity-60">
                                   <DateTime date={token.createdAt} />
                                 </span>
                               </TableCell>
                               <TableCell to={path}>
-                                <CopyableText value={token.friendlyId} className="font-mono" />
+                                <CopyableText value={token.id} className="font-mono" />
                               </TableCell>
                               <TableCell to={path}>
-                                <WaitpointStatusCombo
-                                  status={token.status}
-                                  outputIsError={token.isTimeout}
-                                  className="text-xs"
-                                />
+                                <WaitpointStatusCombo status={token.status} className="text-xs" />
                               </TableCell>
                               <TableCell to={path}>
                                 {token.completedAt ? <DateTime date={token.completedAt} /> : "–"}
