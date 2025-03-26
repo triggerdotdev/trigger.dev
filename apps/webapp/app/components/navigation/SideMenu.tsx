@@ -304,7 +304,7 @@ function ProjectSelector({
         )}
       >
         <span className="flex items-center gap-1.5 overflow-hidden">
-          <Avatar avatar={organization.avatar} className="size-5" />
+          <Avatar avatar={organization.avatar} size={1.25} />
           <SelectorDivider />
           <span className="truncate text-2sm font-normal text-text-bright">
             {project.name ?? "Select a project"}
@@ -319,7 +319,7 @@ function ProjectSelector({
         <div className="flex flex-col gap-2 bg-charcoal-750 p-2">
           <div className="flex items-center gap-2.5">
             <div className="box-content size-10 overflow-clip rounded-sm bg-charcoal-800">
-              <Avatar avatar={organization.avatar} className="size-10" includePadding />
+              <Avatar avatar={organization.avatar} size={2.5} includePadding />
             </div>
             <div className="space-y-0.5">
               <Paragraph variant="small/bright">{organization.title}</Paragraph>
@@ -483,7 +483,7 @@ function SwitchOrganizations({
                 key={org.id}
                 to={organizationPath(org)}
                 title={org.title}
-                icon={<Avatar className="size-4" avatar={org.avatar} />}
+                icon={<Avatar size={1} avatar={org.avatar} />}
                 leadingIconClassName="text-text-dimmed"
                 isSelected={org.id === organization.id}
               />
