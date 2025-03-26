@@ -163,7 +163,8 @@ const tests = colors.lime[500];
 const apiKeys = colors.amber[500];
 const environmentVariables = colors.pink[500];
 const alerts = colors.red[500];
-const projectSettings = colors.indigo[500];
+const projectSettings = colors.blue[500];
+const orgSettings = colors.blue[500];
 const docs = colors.blue[500];
 
 /** Other variables */
@@ -238,6 +239,7 @@ module.exports = {
         environmentVariables,
         alerts,
         projectSettings,
+        orgSettings,
         docs,
       },
       focusStyles: {
