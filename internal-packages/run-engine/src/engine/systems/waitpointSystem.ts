@@ -245,12 +245,14 @@ export class WaitpointSystem {
     idempotencyKey,
     idempotencyKeyExpiresAt,
     timeout,
+    tags,
   }: {
     environmentId: string;
     projectId: string;
     idempotencyKey?: string;
     idempotencyKeyExpiresAt?: Date;
     timeout?: Date;
+    tags?: string[];
   }): Promise<{ waitpoint: Waitpoint; isCached: boolean }> {
     const existingWaitpoint = idempotencyKey
       ? await this.$.prisma.waitpoint.findUnique({
@@ -286,40 +288,62 @@ export class WaitpointSystem {
       }
     }
 
-    const waitpoint = await this.$.prisma.waitpoint.upsert({
-      where: {
-        environmentId_idempotencyKey: {
-          environmentId,
-          idempotencyKey: idempotencyKey ?? nanoid(24),
-        },
-      },
-      create: {
-        ...WaitpointId.generate(),
-        type: "MANUAL",
-        idempotencyKey: idempotencyKey ?? nanoid(24),
-        idempotencyKeyExpiresAt,
-        userProvidedIdempotencyKey: !!idempotencyKey,
-        environmentId,
-        projectId,
-        completedAfter: timeout,
-      },
-      update: {},
-    });
+    const maxRetries = 5;
+    let attempts = 0;
 
-    //schedule the timeout
-    if (timeout) {
-      await this.$.worker.enqueue({
-        id: `finishWaitpoint.${waitpoint.id}`,
-        job: "finishWaitpoint",
-        payload: {
-          waitpointId: waitpoint.id,
-          error: JSON.stringify(timeoutError(timeout)),
-        },
-        availableAt: timeout,
-      });
+    while (attempts < maxRetries) {
+      try {
+        const waitpoint = await this.$.prisma.waitpoint.upsert({
+          where: {
+            environmentId_idempotencyKey: {
+              environmentId,
+              idempotencyKey: idempotencyKey ?? nanoid(24),
+            },
+          },
+          create: {
+            ...WaitpointId.generate(),
+            type: "MANUAL",
+            idempotencyKey: idempotencyKey ?? nanoid(24),
+            idempotencyKeyExpiresAt,
+            userProvidedIdempotencyKey: !!idempotencyKey,
+            environmentId,
+            projectId,
+            completedAfter: timeout,
+            tags,
+          },
+          update: {},
+        });
+
+        //schedule the timeout
+        if (timeout) {
+          await this.$.worker.enqueue({
+            id: `finishWaitpoint.${waitpoint.id}`,
+            job: "finishWaitpoint",
+            payload: {
+              waitpointId: waitpoint.id,
+              error: JSON.stringify(timeoutError(timeout)),
+            },
+            availableAt: timeout,
+          });
+        }
+
+        return { waitpoint, isCached: false };
+      } catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+          // Handle unique constraint violation (conflict)
+          attempts++;
+          if (attempts >= maxRetries) {
+            throw new Error(
+              `Failed to create waitpoint after ${maxRetries} attempts due to conflicts.`
+            );
+          }
+        } else {
+          throw error; // Re-throw other errors
+        }
+      }
     }
 
-    return { waitpoint, isCached: false };
+    throw new Error(`Failed to create waitpoint after ${maxRetries} attempts due to conflicts.`);
   }
 
   /**
@@ -373,6 +397,13 @@ export class WaitpointSystem {
           WHERE w.id IN (${Prisma.join($waitpoints)})
           ON CONFLICT DO NOTHING
           RETURNING "waitpointId"
+        ),
+        connected_runs AS (
+          INSERT INTO "_WaitpointRunConnections" ("A", "B")
+          SELECT ${runId}, w.id
+          FROM "Waitpoint" w
+          WHERE w.id IN (${Prisma.join($waitpoints)})
+          ON CONFLICT DO NOTHING
         )
         SELECT COUNT(*) as pending_count
         FROM inserted i
@@ -540,7 +571,6 @@ export class WaitpointSystem {
           await this.enqueueSystem.enqueueRun({
             run,
             env: run.runtimeEnvironment,
-            timestamp: run.createdAt.getTime() - run.priorityMs,
             snapshot: {
               status: "QUEUED_EXECUTING",
               description: "Run can continue, but is waiting for concurrency",
@@ -564,7 +594,6 @@ export class WaitpointSystem {
         await this.enqueueSystem.enqueueRun({
           run,
           env: run.runtimeEnvironment,
-          timestamp: run.createdAt.getTime() - run.priorityMs,
           snapshot: {
             description: "Run was QUEUED, because all waitpoints are completed",
           },

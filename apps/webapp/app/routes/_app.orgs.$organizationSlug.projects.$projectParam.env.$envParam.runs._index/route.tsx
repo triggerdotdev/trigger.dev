@@ -134,7 +134,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     from,
     to,
     batchId,
-    runId,
+    runIds: runId ? [runId] : undefined,
     scheduleId,
     rootOnly,
     direction: direction,

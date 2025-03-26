@@ -1,7 +1,7 @@
 import { json } from "@remix-run/server-runtime";
 import {
   CompleteWaitpointTokenRequestBody,
-  CompleteWaitpointTokenResponseBody,
+  type CompleteWaitpointTokenResponseBody,
   conditionallyExportPacket,
   stringifyIO,
 } from "@trigger.dev/core/v3";

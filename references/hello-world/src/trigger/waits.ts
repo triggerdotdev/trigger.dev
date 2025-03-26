@@ -12,12 +12,14 @@ export const waitToken = task({
     idempotencyKeyTTL,
     completionDelay,
     timeout,
+    tags,
   }: {
     completeBeforeWaiting?: boolean;
     idempotencyKey?: string;
     idempotencyKeyTTL?: string;
     completionDelay?: number;
     timeout?: string;
+    tags?: string[];
   }) => {
     logger.log("Hello, world", { completeBeforeWaiting });
 
@@ -25,6 +27,7 @@ export const waitToken = task({
       idempotencyKey,
       idempotencyKeyTTL,
       timeout,
+      tags,
     });
     logger.log("Token", token);
 
@@ -32,6 +35,7 @@ export const waitToken = task({
       idempotencyKey,
       idempotencyKeyTTL,
       timeout: "10s",
+      tags,
     });
     logger.log("Token2", token2);
 
@@ -42,13 +46,33 @@ export const waitToken = task({
       await completeWaitToken.trigger({ token: token.id, delay: completionDelay });
     }
 
+    const tokens = await wait.listTokens();
+    await logger.trace("Tokens", async () => {
+      for await (const token of tokens) {
+        logger.log("Token", token);
+      }
+    });
+
+    const retrievedToken = await wait.retrieveToken(token.id);
+    logger.log("Retrieved token", retrievedToken);
+
     //wait for the token
-    const result = await wait.forToken<{ foo: string }>(token);
+    const result = await wait.forToken<{ foo: string }>(token, { releaseConcurrency: true });
     if (!result.ok) {
       logger.log("Token timeout", result);
     } else {
       logger.log("Token completed", result);
     }
+
+    const tokens2 = await wait.listTokens({ tags, status: ["COMPLETED"] });
+    await logger.trace("Tokens2", async () => {
+      for await (const token of tokens2) {
+        logger.log("Token2", token);
+      }
+    });
+
+    const retrievedToken2 = await wait.retrieveToken(token.id);
+    logger.log("Retrieved token2", retrievedToken2);
   },
 });
 

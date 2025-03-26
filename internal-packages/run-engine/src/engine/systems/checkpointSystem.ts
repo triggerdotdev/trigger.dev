@@ -161,7 +161,6 @@ export class CheckpointSystem {
         const newSnapshot = await this.enqueueSystem.enqueueRun({
           run,
           env: run.runtimeEnvironment,
-          timestamp: run.createdAt.getTime() - run.priorityMs,
           snapshot: {
             status: "QUEUED",
             description:

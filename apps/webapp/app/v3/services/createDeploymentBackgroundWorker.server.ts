@@ -130,6 +130,7 @@ export class CreateDeploymentBackgroundWorkerService extends BaseService {
           status: "DEPLOYING",
           workerId: backgroundWorker.id,
           builtAt: new Date(),
+          type: backgroundWorker.engine === "V2" ? "MANAGED" : "V1",
         },
       });
 

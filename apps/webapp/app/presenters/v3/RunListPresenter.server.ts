@@ -24,7 +24,7 @@ export type RunListOptions = {
   isTest?: boolean;
   rootOnly?: boolean;
   batchId?: string;
-  runId?: string;
+  runIds?: string[];
   //pagination
   direction?: Direction;
   cursor?: string;
@@ -52,7 +52,7 @@ export class RunListPresenter extends BasePresenter {
     isTest,
     rootOnly,
     batchId,
-    runId,
+    runIds,
     from,
     to,
     direction = "forward",
@@ -72,7 +72,7 @@ export class RunListPresenter extends BasePresenter {
       (scheduleId !== undefined && scheduleId !== "") ||
       (tags !== undefined && tags.length > 0) ||
       batchId !== undefined ||
-      runId !== undefined ||
+      (runIds !== undefined && runIds.length > 0) ||
       typeof isTest === "boolean" ||
       rootOnly === true;
 
@@ -182,7 +182,7 @@ export class RunListPresenter extends BasePresenter {
     }
 
     //show all runs if we are filtering by batchId or runId
-    if (batchId || runId || scheduleId || tasks?.length) {
+    if (batchId || runIds?.length || scheduleId || tasks?.length) {
       rootOnly = false;
     }
 
@@ -261,7 +261,7 @@ WHERE
         : Prisma.empty
     }
     -- filters
-    ${runId ? Prisma.sql`AND tr."friendlyId" = ${runId}` : Prisma.empty}
+    ${runIds ? Prisma.sql`AND tr."friendlyId" IN (${Prisma.join(runIds)})` : Prisma.empty}
     ${batchId ? Prisma.sql`AND tr."batchId" = ${batchId}` : Prisma.empty}
     ${
       restrictToRunIds

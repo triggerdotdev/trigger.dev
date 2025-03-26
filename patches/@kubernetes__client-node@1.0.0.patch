@@ -1,0 +1,53 @@
+diff --git a/dist/cache.js b/dist/cache.js
+index d58eea314385e5b5dea1f5d9104ba9446deb6364..3554cef6ba6cd1c8186bf0fa880eab2c5a4f3289 100644
+--- a/dist/cache.js
++++ b/dist/cache.js
+@@ -1,11 +1,12 @@
+ import { ADD, CHANGE, CONNECT, DELETE, ERROR, UPDATE, } from './informer.js';
+ import { ObjectSerializer } from './serializer.js';
+ export class ListWatch {
+-    constructor(path, watch, listFn, autoStart = true, labelSelector) {
++    constructor(path, watch, listFn, autoStart = true, labelSelector, fieldSelector) {
+         this.path = path;
+         this.watch = watch;
+         this.listFn = listFn;
+         this.labelSelector = labelSelector;
++        this.fieldSelector = fieldSelector;
+         this.objects = new Map();
+         this.indexCache = {};
+         this.callbackCache = {};
+@@ -113,6 +114,9 @@ export class ListWatch {
+         if (this.labelSelector !== undefined) {
+             queryParams.labelSelector = ObjectSerializer.serialize(this.labelSelector, 'string');
+         }
++        if (this.fieldSelector !== undefined) {
++            queryParams.fieldSelector = ObjectSerializer.serialize(this.fieldSelector, 'string');
++        }
+         this.request = await this.watch.watch(this.path, queryParams, this.watchHandler.bind(this), this.doneHandler.bind(this));
+     }
+     addOrUpdateItems(items) {
+diff --git a/dist/informer.d.ts b/dist/informer.d.ts
+index 903de9078b4b11a5fd933802be042e1a4f966079..4177cf12b5705a373def8f22d235416cd82114c6 100644
+--- a/dist/informer.d.ts
++++ b/dist/informer.d.ts
+@@ -16,4 +16,4 @@ export interface Informer<T extends KubernetesObject> {
+     start(): Promise<void>;
+     stop(): Promise<void>;
+ }
+-export declare function makeInformer<T extends KubernetesObject>(kubeconfig: KubeConfig, path: string, listPromiseFn: ListPromise<T>, labelSelector?: string): Informer<T>;
++export declare function makeInformer<T extends KubernetesObject>(kubeconfig: KubeConfig, path: string, listPromiseFn: ListPromise<T>, labelSelector?: string, fieldSelector?: string): Informer<T>;
+diff --git a/dist/informer.js b/dist/informer.js
+index 0dc471fc3e2d8e653a4c4795211b4774563d2d14..ae33a4357308b77bfb4e7588807e9ac0d7643ba3 100644
+--- a/dist/informer.js
++++ b/dist/informer.js
+@@ -9,8 +9,8 @@ export const DELETE = 'delete';
+ export const CONNECT = 'connect';
+ // This is issued when there is an error
+ export const ERROR = 'error';
+-export function makeInformer(kubeconfig, path, listPromiseFn, labelSelector) {
++export function makeInformer(kubeconfig, path, listPromiseFn, labelSelector, fieldSelector) {
+     const watch = new Watch(kubeconfig);
+-    return new ListWatch(path, watch, listPromiseFn, false, labelSelector);
++    return new ListWatch(path, watch, listPromiseFn, false, labelSelector, fieldSelector);
+ }
+ //# sourceMappingURL=informer.js.map

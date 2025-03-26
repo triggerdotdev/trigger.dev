@@ -8,6 +8,9 @@ patchedDependencies:
   '@changesets/assemble-release-plan@5.2.4':
     hash: 3wuhjtl4hjck4itk3w32z4cd5u
     path: patches/@changesets__assemble-release-plan@5.2.4.patch
+  '@kubernetes/client-node@1.0.0':
+    hash: s75bgwaoixupmywtvgoy5ruszq
+    path: patches/@kubernetes__client-node@1.0.0.patch
   engine.io-parser@5.2.2:
     hash: e6nctogrhpxoivwiwy37ersfu4
     path: patches/engine.io-parser@5.2.2.patch
@@ -154,7 +157,7 @@ importers:
     dependencies:
       '@kubernetes/client-node':
         specifier: ^1.0.0
-        version: 1.0.0
+        version: 1.0.0(patch_hash=s75bgwaoixupmywtvgoy5ruszq)
       '@trigger.dev/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -164,6 +167,9 @@ importers:
       nanoid:
         specifier: ^5.0.9
         version: 5.1.2
+      prom-client:
+        specifier: ^15.1.0
+        version: 15.1.0
       socket.io:
         specifier: 4.7.4
         version: 4.7.4
@@ -1547,7 +1553,7 @@ importers:
   packages/redis-worker:
     dependencies:
       '@trigger.dev/core':
-        specifier: workspace:*
+        specifier: workspace:3.3.17
         version: link:../core
       lodash.omit:
         specifier: ^4.5.0
@@ -8278,7 +8284,7 @@ packages:
       - utf-8-validate
     dev: false
 
-  /@kubernetes/client-node@1.0.0:
+  /@kubernetes/client-node@1.0.0(patch_hash=s75bgwaoixupmywtvgoy5ruszq):
     resolution: {integrity: sha512-a8NSvFDSHKFZ0sR1hbPSf8IDFNJwctEU5RodSCNiq/moRXWmrdmqhb1RRQzF+l+TSBaDgHw3YsYNxxE92STBzw==}
     dependencies:
       '@types/js-yaml': 4.0.9
@@ -8304,6 +8310,7 @@ packages:
       - encoding
       - utf-8-validate
     dev: false
+    patched: true
 
   /@lezer/common@1.0.2:
     resolution: {integrity: sha512-SVgiGtMnMnW3ActR8SXgsDhw7a0w0ChHSYAyAUxxrOiJ1OqYWEKk/xJd84tTSPo1mo6DXLObAJALNnd0Hrv7Ng==}
