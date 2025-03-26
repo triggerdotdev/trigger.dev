@@ -164,48 +164,48 @@ export function SideMenu({
             <SideMenuItem
               name="Tasks"
               icon={TaskIconSmall}
-              activeIconColor="text-blue-500"
+              activeIconColor="text-tasks"
               to={v3EnvironmentPath(organization, project, environment)}
               data-action="tasks"
             />
             <SideMenuItem
               name="Runs"
               icon={RunsIcon}
-              activeIconColor="text-indigo-500"
+              activeIconColor="text-runs"
               to={v3RunsPath(organization, project, environment)}
             />
             <SideMenuItem
               name="Batches"
               icon={Squares2X2Icon}
-              activeIconColor="text-pink-500"
+              activeIconColor="text-batches"
               to={v3BatchesPath(organization, project, environment)}
               data-action="batches"
             />
             <SideMenuItem
               name="Schedules"
               icon={ClockIcon}
-              activeIconColor="text-yellow-500"
+              activeIconColor="text-schedules"
               to={v3SchedulesPath(organization, project, environment)}
               data-action="schedules"
             />
             <SideMenuItem
               name="Queues"
               icon={RectangleStackIcon}
-              activeIconColor="text-purple-500"
+              activeIconColor="text-queues"
               to={v3QueuesPath(organization, project, environment)}
               data-action="queues"
             />
             <SideMenuItem
               name="Deployments"
               icon={ServerStackIcon}
-              activeIconColor="text-green-500"
+              activeIconColor="text-deployments"
               to={v3DeploymentsPath(organization, project, environment)}
               data-action="deployments"
             />
             <SideMenuItem
               name="Test"
               icon={BeakerIcon}
-              activeIconColor="text-lime-500"
+              activeIconColor="text-tests"
               to={v3TestPath(organization, project, environment)}
               data-action="test"
             />
@@ -215,28 +215,28 @@ export function SideMenu({
             <SideMenuItem
               name="API keys"
               icon={KeyIcon}
-              activeIconColor="text-amber-500"
+              activeIconColor="text-apiKeys"
               to={v3ApiKeysPath(organization, project, environment)}
               data-action="api keys"
             />
             <SideMenuItem
               name="Environment variables"
               icon={IdentificationIcon}
-              activeIconColor="text-pink-500"
+              activeIconColor="text-environmentVariables"
               to={v3EnvironmentVariablesPath(organization, project, environment)}
               data-action="environment variables"
             />
             <SideMenuItem
               name="Alerts"
               icon={BellAlertIcon}
-              activeIconColor="text-red-500"
+              activeIconColor="text-alerts"
               to={v3ProjectAlertsPath(organization, project, environment)}
               data-action="alerts"
             />
             <SideMenuItem
               name="Project settings"
               icon={Cog8ToothIcon}
-              activeIconColor="text-teal-500"
+              activeIconColor="text-projectSettings"
               to={v3ProjectSettingsPath(organization, project, environment)}
               data-action="project-settings"
             />
