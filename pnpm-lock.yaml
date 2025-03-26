@@ -1553,7 +1553,7 @@ importers:
   packages/redis-worker:
     dependencies:
       '@trigger.dev/core':
-        specifier: workspace:*
+        specifier: workspace:3.3.17
         version: link:../core
       lodash.omit:
         specifier: ^4.5.0
