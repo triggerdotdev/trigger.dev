@@ -298,20 +298,13 @@ export class RunEngineTriggerTaskService extends WithRunEngine {
                 span.setAttribute("queueName", queueName);
 
                 //upsert tags
-                let tags: { id: string; name: string }[] = [];
-                const bodyTags =
-                  typeof body.options?.tags === "string" ? [body.options.tags] : body.options?.tags;
-
-                if (bodyTags && bodyTags.length > 0) {
-                  const tagRecords = await createTags(
-                    {
-                      tags: bodyTags,
-                      projectId: environment.projectId,
-                    },
-                    this._prisma
-                  );
-                  tags = tagRecords.filter(Boolean).map((tr) => ({ id: tr.id, name: tr.name }));
-                }
+                const tags = await createTags(
+                  {
+                    tags: body.options?.tags,
+                    projectId: environment.projectId,
+                  },
+                  this._prisma
+                );
 
                 const depth = parentRun ? parentRun.depth + 1 : 0;
 
