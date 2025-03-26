@@ -15,7 +15,7 @@ import { TaskCachedIcon } from "~/assets/icons/TaskCachedIcon";
 import { PauseIcon } from "~/assets/icons/PauseIcon";
 import { RunFunctionIcon } from "~/assets/icons/RunFunctionIcon";
 import { MiddlewareIcon } from "~/assets/icons/MiddlewareIcon";
-import { WebhookTaskIcon } from "~/assets/icons/WebhookTaskIcon";
+import { FunctionIcon } from "~/assets/icons/WebhookTaskIcon";
 import { TriggerIcon } from "~/assets/icons/TriggerIcon";
 
 type TaskIconProps = {
@@ -93,10 +93,10 @@ export function RunIcon({ name, className, spanName }: TaskIconProps) {
     case "task-hook-onResume":
     case "task-hook-onComplete":
     case "task-hook-cleanup":
-      return <WebhookTaskIcon className={cn(className, "text-text-dimmed")} />;
+      return <FunctionIcon className={cn(className, "text-text-dimmed")} />;
     case "task-hook-onFailure":
     case "task-hook-catchError":
-      return <WebhookTaskIcon className={cn(className, "text-error")} />;
+      return <FunctionIcon className={cn(className, "text-error")} />;
   }
 
   return <InformationCircleIcon className={cn(className, "text-text-dimmed")} />;
