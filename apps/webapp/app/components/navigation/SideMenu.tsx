@@ -21,7 +21,7 @@ import { useNavigation } from "@remix-run/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import simplur from "simplur";
 import { ConnectedIcon, DisconnectedIcon } from "~/assets/icons/ConnectionIcons";
-import { RunsIcon } from "~/assets/icons/RunsIcon";
+import { RunsIconExtraSmall, RunsIconSmall } from "~/assets/icons/RunsIcon";
 import { TaskIconSmall } from "~/assets/icons/TaskIcon";
 import { Avatar } from "~/components/primitives/Avatar";
 import { type MatchedEnvironment } from "~/hooks/useEnvironment";
@@ -170,7 +170,7 @@ export function SideMenu({
             />
             <SideMenuItem
               name="Runs"
-              icon={RunsIcon}
+              icon={RunsIconExtraSmall}
               activeIconColor="text-runs"
               to={v3RunsPath(organization, project, environment)}
             />
