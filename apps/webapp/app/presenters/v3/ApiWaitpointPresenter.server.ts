@@ -1,8 +1,9 @@
-import { type RuntimeEnvironmentType } from "@trigger.dev/core/v3";
+import { logger, type RuntimeEnvironmentType } from "@trigger.dev/core/v3";
 import { type RunEngineVersion } from "@trigger.dev/database";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { BasePresenter } from "./basePresenter.server";
 import { WaitpointPresenter } from "./WaitpointPresenter.server";
+import { waitpointStatusToApiStatus } from "./WaitpointTokenListPresenter.server";
 
 export class ApiWaitpointPresenter extends BasePresenter {
   public async call(
@@ -17,30 +18,63 @@ export class ApiWaitpointPresenter extends BasePresenter {
     waitpointId: string
   ) {
     return this.trace("call", async (span) => {
-      const presenter = new WaitpointPresenter();
-      const result = await presenter.call({
-        friendlyId: waitpointId,
-        environmentId: environment.id,
-        projectId: environment.project.id,
+      const waitpoint = await this._replica.waitpoint.findFirst({
+        where: {
+          id: waitpointId,
+          environmentId: environment.id,
+        },
+        select: {
+          friendlyId: true,
+          type: true,
+          status: true,
+          idempotencyKey: true,
+          userProvidedIdempotencyKey: true,
+          idempotencyKeyExpiresAt: true,
+          inactiveIdempotencyKey: true,
+          output: true,
+          outputType: true,
+          outputIsError: true,
+          completedAfter: true,
+          completedAt: true,
+          createdAt: true,
+          connectedRuns: {
+            select: {
+              friendlyId: true,
+            },
+            take: 5,
+          },
+          tags: true,
+        },
       });
 
-      if (!result) {
+      if (!waitpoint) {
+        logger.error(`WaitpointPresenter: Waitpoint not found`, {
+          id: waitpointId,
+        });
         throw new ServiceValidationError("Waitpoint not found");
       }
 
+      let isTimeout = false;
+      if (waitpoint.outputIsError && waitpoint.output) {
+        isTimeout = true;
+      }
+
       return {
-        id: result.id,
-        status: result.status,
-        completedAt: result.completedAt ?? undefined,
-        timeoutAt: result.timeoutAt ?? undefined,
-        completedAfter: result.completedAfter ?? undefined,
-        idempotencyKey: result.userProvidedIdempotencyKey ? result.idempotencyKey : undefined,
-        idempotencyKeyExpiresAt: result.idempotencyKeyExpiresAt ?? undefined,
-        tags: result.tags ?? [],
-        createdAt: result.createdAt,
-        output: result.output,
-        outputType: result.outputType,
-        outputIsError: result.outputIsError,
+        id: waitpoint.friendlyId,
+        type: waitpoint.type,
+        status: waitpointStatusToApiStatus(waitpoint.status, waitpoint.outputIsError),
+        idempotencyKey: waitpoint.idempotencyKey,
+        userProvidedIdempotencyKey: waitpoint.userProvidedIdempotencyKey,
+        idempotencyKeyExpiresAt: waitpoint.idempotencyKeyExpiresAt ?? undefined,
+        inactiveIdempotencyKey: waitpoint.inactiveIdempotencyKey ?? undefined,
+        output: waitpoint.output ?? undefined,
+        outputType: waitpoint.outputType,
+        outputIsError: waitpoint.outputIsError,
+        timeoutAt: waitpoint.completedAfter ?? undefined,
+        completedAfter: waitpoint.completedAfter ?? undefined,
+        completedAt: waitpoint.completedAt ?? undefined,
+        createdAt: waitpoint.createdAt,
+        tags: waitpoint.tags,
       };
     });
   }
