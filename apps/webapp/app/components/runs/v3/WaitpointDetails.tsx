@@ -112,18 +112,17 @@ export function WaitpointDetailTable({
           </Property.Item>
         </>
       )}
+      <Property.Item>
+        <Property.Label>Completed</Property.Label>
+        <Property.Value>
+          {waitpoint.completedAt ? <DateTimeAccurate date={waitpoint.completedAt} /> : "–"}
+        </Property.Value>
+      </Property.Item>
       {waitpoint.status === "WAITING" ? null : waitpoint.status === "TIMED_OUT" ? (
         <></>
       ) : waitpoint.output ? (
         <PacketDisplay title="Output" data={waitpoint.output} dataType={waitpoint.outputType} />
-      ) : waitpoint.completedAfter ? (
-        <Property.Item>
-          <Property.Label>Completed at</Property.Label>
-          <Property.Value>
-            <DateTimeAccurate date={waitpoint.completedAfter} />
-          </Property.Value>
-        </Property.Item>
-      ) : (
+      ) : waitpoint.completedAfter ? null : (
         "Completed with no output"
       )}
     </Property.Table>
