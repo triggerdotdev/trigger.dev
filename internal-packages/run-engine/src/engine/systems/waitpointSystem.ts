@@ -540,7 +540,6 @@ export class WaitpointSystem {
           await this.enqueueSystem.enqueueRun({
             run,
             env: run.runtimeEnvironment,
-            timestamp: run.createdAt.getTime() - run.priorityMs,
             snapshot: {
               status: "QUEUED_EXECUTING",
               description: "Run can continue, but is waiting for concurrency",
@@ -564,7 +563,6 @@ export class WaitpointSystem {
         await this.enqueueSystem.enqueueRun({
           run,
           env: run.runtimeEnvironment,
-          timestamp: run.createdAt.getTime() - run.priorityMs,
           snapshot: {
             description: "Run was QUEUED, because all waitpoints are completed",
           },

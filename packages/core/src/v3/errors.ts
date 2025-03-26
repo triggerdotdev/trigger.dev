@@ -305,6 +305,7 @@ export function shouldRetryError(error: TaskRunError): boolean {
         case "HANDLE_ERROR_ERROR":
         case "TASK_INPUT_ERROR":
         case "TASK_OUTPUT_ERROR":
+        case "TASK_MIDDLEWARE_ERROR":
         case "POD_EVICTED":
         case "POD_UNKNOWN_ERROR":
         case "TASK_EXECUTION_ABORTED":

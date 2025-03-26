@@ -1,4 +1,4 @@
-import { RunEngine, RunDuplicateIdempotencyKeyError } from "@internal/run-engine";
+import { RunDuplicateIdempotencyKeyError, RunEngine } from "@internal/run-engine";
 import {
   IOPacket,
   packetRequiresOffloading,
@@ -14,9 +14,9 @@ import {
   sanitizeQueueName,
   stringifyDuration,
 } from "@trigger.dev/core/v3/isomorphic";
-import { Prisma, TaskRun } from "@trigger.dev/database";
+import { Prisma } from "@trigger.dev/database";
 import { env } from "~/env.server";
-import { createTag, MAX_TAGS_PER_RUN } from "~/models/taskRunTag.server";
+import { createTags, MAX_TAGS_PER_RUN } from "~/models/taskRunTag.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { autoIncrementCounter } from "~/services/autoIncrementCounter.server";
 import { logger } from "~/services/logger.server";
@@ -24,24 +24,23 @@ import { getEntitlement } from "~/services/platform.v3.server";
 import { parseDelay } from "~/utils/delays";
 import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
 import { handleMetadataPacket } from "~/utils/packets";
-import { eventRepository } from "../eventRepository.server";
-import { findCurrentWorkerFromEnvironment } from "../models/workerDeployment.server";
-import { uploadPacketToObjectStore } from "../r2.server";
-import { isFinalRunStatus } from "../taskStatus";
-import { startActiveSpan } from "../tracer.server";
-import { clampMaxDuration } from "../utils/maxDuration";
-import { ServiceValidationError, WithRunEngine } from "./baseService.server";
+import { eventRepository } from "../../v3/eventRepository.server";
+import { findCurrentWorkerFromEnvironment } from "../../v3/models/workerDeployment.server";
+import { uploadPacketToObjectStore } from "../../v3/r2.server";
+import { getTaskEventStore } from "../../v3/taskEventStore.server";
+import { isFinalRunStatus } from "../../v3/taskStatus";
+import { startActiveSpan } from "../../v3/tracer.server";
+import { clampMaxDuration } from "../../v3/utils/maxDuration";
+import { ServiceValidationError, WithRunEngine } from "../../v3/services/baseService.server";
 import {
   MAX_ATTEMPTS,
   OutOfEntitlementError,
   TriggerTaskServiceOptions,
   TriggerTaskServiceResult,
-} from "./triggerTask.server";
-import { WorkerGroupService } from "./worker/workerGroupService.server";
-import { getTaskEventStore } from "../taskEventStore.server";
+} from "../../v3/services/triggerTask.server";
+import { WorkerGroupService } from "../../v3/services/worker/workerGroupService.server";
 
-/** @deprecated Use TriggerTaskService in `triggerTask.server.ts` instead. */
-export class TriggerTaskServiceV2 extends WithRunEngine {
+export class RunEngineTriggerTaskService extends WithRunEngine {
   public async call({
     taskId,
     environment,
@@ -299,20 +298,13 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
                 span.setAttribute("queueName", queueName);
 
                 //upsert tags
-                let tags: { id: string; name: string }[] = [];
-                const bodyTags =
-                  typeof body.options?.tags === "string" ? [body.options.tags] : body.options?.tags;
-                if (bodyTags && bodyTags.length > 0) {
-                  for (const tag of bodyTags) {
-                    const tagRecord = await createTag({
-                      tag,
-                      projectId: environment.projectId,
-                    });
-                    if (tagRecord) {
-                      tags.push(tagRecord);
-                    }
-                  }
-                }
+                const tags = await createTags(
+                  {
+                    tags: body.options?.tags,
+                    projectId: environment.projectId,
+                  },
+                  this._prisma
+                );
 
                 const depth = parentRun ? parentRun.depth + 1 : 0;
 
@@ -372,6 +364,10 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
                     machine: body.options?.machine,
                     priorityMs: body.options?.priority ? body.options.priority * 1_000 : undefined,
                     releaseConcurrency: body.options?.releaseConcurrency,
+                    queueTimestamp:
+                      parentRun && body.options?.resumeParentOnCompletion
+                        ? parentRun.queueTimestamp ?? undefined
+                        : undefined,
                   },
                   this._prisma
                 );
