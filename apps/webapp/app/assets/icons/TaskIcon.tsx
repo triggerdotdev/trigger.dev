@@ -10,3 +10,16 @@ export function TaskIcon({ className }: { className?: string }) {
     </svg>
   );
 }
+
+export function TaskIconSmall({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M2 4C2 2.89543 2.89543 2 4 2H16C17.1046 2 18 2.89543 18 4V16C18 17.1046 17.1046 18 16 18H4C2.89543 18 2 17.1046 2 16V4ZM6 7C6 7.55228 6.44772 8 7 8H9L9 14C9 14.5523 9.44772 15 10 15C10.5523 15 11 14.5523 11 14V8H13C13.5523 8 14 7.55228 14 7C14 6.44772 13.5523 6 13 6H10H7C6.44772 6 6 6.44772 6 7Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
