@@ -50,21 +50,20 @@ export const waitToken = task({
       expirationTime: "1h",
     });
 
-    logger.log("Public access token", { publicAccessToken });
-
-    if (completeWithPublicToken) {
-      await auth.withAuth(
-        {
-          accessToken: token.publicAccessToken,
-        },
-        async () => {
-          await wait.completeToken<Token>(token.id, { status: "approved" });
-        }
-      );
-    }
-
     if (completeBeforeWaiting) {
-      await wait.completeToken<Token>(token.id, { status: "approved" });
+      if (completeWithPublicToken) {
+        await auth.withAuth(
+          {
+            accessToken: token.publicAccessToken,
+          },
+          async () => {
+            await wait.completeToken<Token>(token.id, { status: "approved" });
+          }
+        );
+      } else {
+        await wait.completeToken<Token>(token.id, { status: "approved" });
+      }
+
       await wait.for({ seconds: 5 });
     } else {
       await completeWaitToken.trigger({ token: token.id, delay: completionDelay });
