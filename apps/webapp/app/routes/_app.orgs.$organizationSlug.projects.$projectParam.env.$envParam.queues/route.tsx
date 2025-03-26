@@ -13,9 +13,10 @@ import { type RuntimeEnvironmentType } from "@trigger.dev/database";
 import { useEffect, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
-import { TaskIcon } from "~/assets/icons/TaskIcon";
+import { TaskIconSmall } from "~/assets/icons/TaskIcon";
 import upgradeForQueuesPath from "~/assets/images/queues-dashboard.png";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
+import { QueuesHasNoTasks } from "~/components/BlankStatePanels";
 import { environmentFullTitle } from "~/components/environments/EnvironmentLabel";
 import { Feedback } from "~/components/Feedback";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
@@ -60,7 +61,6 @@ import { docsPath, EnvironmentParamSchema, v3BillingPath } from "~/utils/pathBui
 import { PauseEnvironmentService } from "~/v3/services/pauseEnvironment.server";
 import { PauseQueueService } from "~/v3/services/pauseQueue.server";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
-import { QueuesHasNoTasks } from "~/components/BlankStatePanels";
 
 const SearchParamsSchema = z.object({
   page: z.coerce.number().min(1).default(1),
@@ -336,9 +336,9 @@ export default function Page() {
                             {queue.type === "task" ? (
                               <SimpleTooltip
                                 button={
-                                  <TaskIcon
+                                  <TaskIconSmall
                                     className={cn(
-                                      "size-4 text-blue-500",
+                                      "size-[1.125rem] text-blue-500",
                                       queue.paused && "opacity-50"
                                     )}
                                   />
@@ -350,7 +350,7 @@ export default function Page() {
                                 button={
                                   <RectangleStackIcon
                                     className={cn(
-                                      "size-4 text-purple-500",
+                                      "size-[1.125rem] text-purple-500",
                                       queue.paused && "opacity-50"
                                     )}
                                   />
