@@ -8,7 +8,6 @@
     "build": "tsc",
     "dev": "tsx --require dotenv/config --watch src/index.ts || (echo '!! Remember to run: nvm use'; exit 1)",
     "start": "node dist/index.js",
-    "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
   },
