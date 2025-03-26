@@ -1,6 +1,6 @@
 import {
   isWaitpointOutputTimeout,
-  MachinePresetName,
+  type MachinePresetName,
   prettyPrintPacket,
   TaskRunError,
 } from "@trigger.dev/core/v3";
@@ -9,9 +9,10 @@ import { RUNNING_STATUSES } from "~/components/runs/v3/TaskRunStatus";
 import { logger } from "~/services/logger.server";
 import { eventRepository } from "~/v3/eventRepository.server";
 import { machinePresetFromName } from "~/v3/machinePresets.server";
-import { getTaskEventStoreTableForRun, TaskEventStoreTable } from "~/v3/taskEventStore.server";
+import { getTaskEventStoreTableForRun, type TaskEventStoreTable } from "~/v3/taskEventStore.server";
 import { isFailedRunStatus, isFinalRunStatus } from "~/v3/taskStatus";
 import { BasePresenter } from "./basePresenter.server";
+import { WaitpointPresenter } from "./WaitpointPresenter.server";
 
 type Result = Awaited<ReturnType<SpanPresenter["call"]>>;
 export type Span = NonNullable<NonNullable<Result>["span"]>;
@@ -41,6 +42,7 @@ export class SpanPresenter extends BasePresenter {
       select: {
         traceId: true,
         runtimeEnvironmentId: true,
+        projectId: true,
         taskEventStore: true,
         createdAt: true,
         completedAt: true,
@@ -78,6 +80,7 @@ export class SpanPresenter extends BasePresenter {
       traceId,
       spanId,
       environmentId: parentRun.runtimeEnvironmentId,
+      projectId: parentRun.projectId,
       createdAt: parentRun.createdAt,
       completedAt: parentRun.completedAt,
     });
@@ -402,12 +405,14 @@ export class SpanPresenter extends BasePresenter {
     traceId,
     spanId,
     environmentId,
+    projectId,
     createdAt,
     completedAt,
   }: {
     traceId: string;
     spanId: string;
     environmentId: string;
+    projectId: string;
     eventStore: TaskEventStoreTable;
     createdAt: Date;
     completedAt: Date | null;
@@ -451,22 +456,19 @@ export class SpanPresenter extends BasePresenter {
 
     switch (span.entity.type) {
       case "waitpoint":
-        const waitpoint = await this._replica.waitpoint.findFirst({
-          where: {
-            friendlyId: span.entity.id,
-          },
-          select: {
-            friendlyId: true,
-            type: true,
-            status: true,
-            idempotencyKey: true,
-            userProvidedIdempotencyKey: true,
-            idempotencyKeyExpiresAt: true,
-            output: true,
-            outputType: true,
-            outputIsError: true,
-            completedAfter: true,
-          },
+        if (!span.entity.id) {
+          logger.error(`SpanPresenter: No waitpoint id`, {
+            spanId,
+            waitpointFriendlyId: span.entity.id,
+          });
+          return { ...data, entity: null };
+        }
+
+        const presenter = new WaitpointPresenter();
+        const waitpoint = await presenter.call({
+          friendlyId: span.entity.id,
+          environmentId,
+          projectId,
         });
 
         if (!waitpoint) {
@@ -477,37 +479,11 @@ export class SpanPresenter extends BasePresenter {
           return { ...data, entity: null };
         }
 
-        const output =
-          waitpoint.outputType === "application/store"
-            ? `/resources/packets/${environmentId}/${waitpoint.output}`
-            : typeof waitpoint.output !== "undefined" && waitpoint.output !== null
-            ? await prettyPrintPacket(waitpoint.output, waitpoint.outputType ?? undefined)
-            : undefined;
-
-        let isTimeout = false;
-        if (waitpoint.outputIsError && output) {
-          if (isWaitpointOutputTimeout(output)) {
-            isTimeout = true;
-          }
-        }
-
         return {
           ...data,
           entity: {
             type: "waitpoint" as const,
-            object: {
-              friendlyId: waitpoint.friendlyId,
-              type: waitpoint.type,
-              status: waitpoint.status,
-              idempotencyKey: waitpoint.idempotencyKey,
-              userProvidedIdempotencyKey: waitpoint.userProvidedIdempotencyKey,
-              idempotencyKeyExpiresAt: waitpoint.idempotencyKeyExpiresAt,
-              output: output,
-              outputType: waitpoint.outputType,
-              outputIsError: waitpoint.outputIsError,
-              completedAfter: waitpoint.completedAfter,
-              isTimeout,
-            },
+            object: waitpoint,
           },
         };
 

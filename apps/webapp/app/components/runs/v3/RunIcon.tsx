@@ -13,6 +13,7 @@ import { tablerIcons } from "~/utils/tablerIcons";
 import tablerSpritePath from "~/components/primitives/tabler-sprite.svg";
 import { TaskCachedIcon } from "~/assets/icons/TaskCachedIcon";
 import { PauseIcon } from "~/assets/icons/PauseIcon";
+import { TriggerIcon } from "~/assets/icons/TriggerIcon";
 
 type TaskIconProps = {
   name: string | undefined;
@@ -65,6 +66,8 @@ export function RunIcon({ name, className, spanName }: TaskIconProps) {
       return <TagIcon className={cn(className, "text-text-dimmed")} />;
     case "queue":
       return <RectangleStackIcon className={cn(className, "text-purple-500")} />;
+    case "trigger":
+      return <TriggerIcon className={cn(className, "text-orange-500")} />;
     //log levels
     case "debug":
     case "log":

@@ -54,6 +54,7 @@ import {
   v3SchedulesPath,
   v3TestPath,
   v3UsagePath,
+  v3WaitpointTokensPath,
 } from "~/utils/pathBuilder";
 import connectedImage from "../../assets/images/cli-connected.png";
 import disconnectedImage from "../../assets/images/cli-disconnected.png";
@@ -80,6 +81,7 @@ import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
 import { SideMenuSection } from "./SideMenuSection";
+import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 export type SideMenuProject = Pick<
@@ -211,6 +213,15 @@ export function SideMenu({
             />
           </div>
 
+          <SideMenuSection title="Waitpoints">
+            <SideMenuItem
+              name="Tokens"
+              icon={WaitpointTokenIcon}
+              activeIconColor="text-sky-500"
+              to={v3WaitpointTokensPath(organization, project, environment)}
+            />
+          </SideMenuSection>
+
           <SideMenuSection title="Manage">
             <SideMenuItem
               name="API keys"
@@ -293,7 +304,7 @@ function ProjectSelector({
         )}
       >
         <span className="flex items-center gap-1.5 overflow-hidden">
-          <Avatar avatar={organization.avatar} className="size-5" />
+          <Avatar avatar={organization.avatar} size={1.25} orgName={organization.title} />
           <SelectorDivider />
           <span className="truncate text-2sm font-normal text-text-bright">
             {project.name ?? "Select a project"}
@@ -308,7 +319,7 @@ function ProjectSelector({
         <div className="flex flex-col gap-2 bg-charcoal-750 p-2">
           <div className="flex items-center gap-2.5">
             <div className="box-content size-10 overflow-clip rounded-sm bg-charcoal-800">
-              <Avatar avatar={organization.avatar} className="size-10" includePadding />
+              <Avatar avatar={organization.avatar} size={2.5} orgName={organization.title} />
             </div>
             <div className="space-y-0.5">
               <Paragraph variant="small/bright">{organization.title}</Paragraph>
@@ -472,7 +483,7 @@ function SwitchOrganizations({
                 key={org.id}
                 to={organizationPath(org)}
                 title={org.title}
-                icon={<Avatar className="size-4" avatar={org.avatar} />}
+                icon={<Avatar size={1} avatar={org.avatar} orgName={org.title} />}
                 leadingIconClassName="text-text-dimmed"
                 isSelected={org.id === organization.id}
               />
