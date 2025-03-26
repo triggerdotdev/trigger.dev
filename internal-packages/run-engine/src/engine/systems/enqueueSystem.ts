@@ -25,7 +25,6 @@ export class EnqueueSystem {
   public async enqueueRun({
     run,
     env,
-    timestamp,
     tx,
     snapshot,
     previousSnapshotId,
@@ -37,7 +36,6 @@ export class EnqueueSystem {
   }: {
     run: TaskRun;
     env: MinimalAuthenticatedEnvironment;
-    timestamp: number;
     tx?: PrismaClientOrTransaction;
     snapshot?: {
       status?: Extract<TaskRunExecutionStatus, "QUEUED" | "QUEUED_EXECUTING">;
@@ -80,6 +78,8 @@ export class EnqueueSystem {
       if (run.secondaryMasterQueue) {
         masterQueues.push(run.secondaryMasterQueue);
       }
+
+      const timestamp = (run.queueTimestamp ?? run.createdAt).getTime() - run.priorityMs;
 
       await this.$.runQueue.enqueueMessage({
         env,

@@ -334,6 +334,7 @@ export class RunEngine {
       maxAttempts,
       taskEventStore,
       priorityMs,
+      queueTimestamp,
       ttl,
       tags,
       parentTaskRunId,
@@ -414,6 +415,7 @@ export class RunEngine {
               maxAttempts,
               taskEventStore,
               priorityMs,
+              queueTimestamp: queueTimestamp ?? delayUntil ?? new Date(),
               ttl,
               tags:
                 tags.length === 0
@@ -520,7 +522,6 @@ export class RunEngine {
             await this.enqueueSystem.enqueueRun({
               run: taskRun,
               env: environment,
-              timestamp: Date.now() - taskRun.priorityMs,
               workerId,
               runnerId,
               tx: prisma,

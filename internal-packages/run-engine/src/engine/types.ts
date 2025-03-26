@@ -87,6 +87,7 @@ export type TriggerParams = {
   maxAttempts?: number;
   taskEventStore?: string;
   priorityMs?: number;
+  queueTimestamp?: Date;
   ttl?: string;
   tags: { id: string; name: string }[];
   parentTaskRunId?: string;
