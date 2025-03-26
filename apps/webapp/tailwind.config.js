@@ -149,6 +149,7 @@ const warning = colors.amber[500];
 const error = colors.rose[600];
 const devEnv = colors.pink[500];
 const stagingEnv = colors.amber[400];
+const previewEnv = colors.amber[400];
 const prodEnv = mint[500];
 
 /** Icon colors */
@@ -162,7 +163,7 @@ const tests = colors.lime[500];
 const apiKeys = colors.amber[500];
 const environmentVariables = colors.pink[500];
 const alerts = colors.red[500];
-const projectSettings = charcoal[200];
+const projectSettings = colors.indigo[500];
 const docs = colors.blue[500];
 
 /** Other variables */
@@ -225,6 +226,7 @@ module.exports = {
         dev: devEnv,
         staging: stagingEnv,
         prod: prodEnv,
+        preview: previewEnv,
         tasks,
         runs,
         batches,
