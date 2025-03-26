@@ -49,18 +49,31 @@ class ManagedSupervisor {
     const workloadApiPortExternal = env.TRIGGER_WORKLOAD_API_PORT_EXTERNAL;
 
     if (env.POD_CLEANER_ENABLED) {
+      this.logger.log("[ManagedWorker] 🧹 Pod cleaner enabled", {
+        namespace: env.KUBERNETES_NAMESPACE,
+        batchSize: env.POD_CLEANER_BATCH_SIZE,
+        intervalMs: env.POD_CLEANER_INTERVAL_MS,
+      });
       this.podCleaner = new PodCleaner({
         namespace: env.KUBERNETES_NAMESPACE,
         batchSize: env.POD_CLEANER_BATCH_SIZE,
         intervalMs: env.POD_CLEANER_INTERVAL_MS,
       });
+    } else {
+      this.logger.warn("[ManagedWorker] Pod cleaner disabled");
     }
 
     if (env.FAILED_POD_HANDLER_ENABLED) {
+      this.logger.log("[ManagedWorker] 🔁 Failed pod handler enabled", {
+        namespace: env.KUBERNETES_NAMESPACE,
+        reconnectIntervalMs: env.FAILED_POD_HANDLER_RECONNECT_INTERVAL_MS,
+      });
       this.failedPodHandler = new FailedPodHandler({
         namespace: env.KUBERNETES_NAMESPACE,
         reconnectIntervalMs: env.FAILED_POD_HANDLER_RECONNECT_INTERVAL_MS,
       });
+    } else {
+      this.logger.warn("[ManagedWorker] Failed pod handler disabled");
     }
 
     if (this.warmStartUrl) {
@@ -299,13 +312,9 @@ class ManagedSupervisor {
   async start() {
     this.logger.log("[ManagedWorker] Starting up");
 
-    if (this.podCleaner) {
-      await this.podCleaner.start();
-    }
-
-    if (this.failedPodHandler) {
-      await this.failedPodHandler.start();
-    }
+    // Optional services
+    await this.podCleaner?.start();
+    await this.failedPodHandler?.start();
 
     if (env.TRIGGER_WORKLOAD_API_ENABLED) {
       this.logger.log("[ManagedWorker] Workload API enabled", {
@@ -319,7 +328,6 @@ class ManagedSupervisor {
     }
 
     await this.workerSession.start();
-
     await this.httpServer.start();
   }
 
@@ -327,13 +335,9 @@ class ManagedSupervisor {
     this.logger.log("[ManagedWorker] Shutting down");
     await this.httpServer.stop();
 
-    if (this.podCleaner) {
-      await this.podCleaner.stop();
-    }
-
-    if (this.failedPodHandler) {
-      await this.failedPodHandler.stop();
-    }
+    // Optional services
+    await this.podCleaner?.stop();
+    await this.failedPodHandler?.stop();
   }
 }
 
