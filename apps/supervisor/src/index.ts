@@ -44,6 +44,12 @@ class ManagedSupervisor {
   private readonly warmStartUrl = env.TRIGGER_WARM_START_URL;
 
   constructor() {
+    const { TRIGGER_WORKER_TOKEN, MANAGED_WORKER_SECRET, ...envWithoutSecrets } = env;
+
+    if (env.DEBUG) {
+      console.debug("[ManagedSupervisor] Starting up", { envWithoutSecrets });
+    }
+
     const workloadApiProtocol = env.TRIGGER_WORKLOAD_API_PROTOCOL;
     const workloadApiDomain = env.TRIGGER_WORKLOAD_API_DOMAIN;
     const workloadApiPortExternal = env.TRIGGER_WORKLOAD_API_PORT_EXTERNAL;

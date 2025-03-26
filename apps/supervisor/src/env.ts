@@ -63,6 +63,9 @@ const Env = z.object({
   // Failed pod handler
   FAILED_POD_HANDLER_ENABLED: BoolEnv.default(true),
   FAILED_POD_HANDLER_RECONNECT_INTERVAL_MS: z.coerce.number().int().default(1000),
+
+  // Debug
+  DEBUG: BoolEnv.default(false),
 });
 
 export const env = Env.parse(stdEnv);
