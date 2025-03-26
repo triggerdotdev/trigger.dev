@@ -13,6 +13,8 @@ import { tablerIcons } from "~/utils/tablerIcons";
 import tablerSpritePath from "~/components/primitives/tabler-sprite.svg";
 import { TaskCachedIcon } from "~/assets/icons/TaskCachedIcon";
 import { PauseIcon } from "~/assets/icons/PauseIcon";
+import { RunFunctionIcon } from "~/assets/icons/RunFunctionIcon";
+import { MiddlewareIcon } from "~/assets/icons/MiddlewareIcon";
 
 type TaskIconProps = {
   name: string | undefined;
@@ -73,13 +75,13 @@ export function RunIcon({ name, className, spanName }: TaskIconProps) {
     case "warn":
       return <InformationCircleIcon className={cn(className, "text-amber-400")} />;
     case "error":
-      return <InformationCircleIcon className={cn(className, "text-rose-500")} />;
+      return <InformationCircleIcon className={cn(className, "text-error")} />;
     case "fatal":
-      return <HandRaisedIcon className={cn(className, "text-rose-800")} />;
+      return <HandRaisedIcon className={cn(className, "text-error")} />;
     case "task-middleware":
-      return <InformationCircleIcon className={cn(className, "text-text-dimmed")} />;
+      return <MiddlewareIcon className={cn(className, "text-text-dimmed")} />;
     case "task-fn-run":
-      return <InformationCircleIcon className={cn(className, "text-text-dimmed")} />;
+      return <RunFunctionIcon className={cn(className, "text-text-dimmed")} />;
     case "task-hook-init":
       return <InformationCircleIcon className={cn(className, "text-text-dimmed")} />;
     case "task-hook-onStart":
@@ -87,7 +89,7 @@ export function RunIcon({ name, className, spanName }: TaskIconProps) {
     case "task-hook-onSuccess":
       return <InformationCircleIcon className={cn(className, "text-text-dimmed")} />;
     case "task-hook-onFailure":
-      return <InformationCircleIcon className={cn(className, "text-text-dimmed")} />;
+      return <InformationCircleIcon className={cn(className, "text-error")} />;
     case "task-hook-onComplete":
       return <InformationCircleIcon className={cn(className, "text-text-dimmed")} />;
     case "task-hook-onWait":
@@ -95,7 +97,7 @@ export function RunIcon({ name, className, spanName }: TaskIconProps) {
     case "task-hook-onResume":
       return <InformationCircleIcon className={cn(className, "text-text-dimmed")} />;
     case "task-hook-catchError":
-      return <InformationCircleIcon className={cn(className, "text-text-dimmed")} />;
+      return <InformationCircleIcon className={cn(className, "text-error")} />;
     case "task-hook-cleanup":
       return <InformationCircleIcon className={cn(className, "text-text-dimmed")} />;
   }
