@@ -51,6 +51,9 @@ export const waitToken = task({
       logger.log("Token", token);
     }
 
+    const retrievedToken = await wait.retrieveToken(token.id);
+    logger.log("Retrieved token", retrievedToken);
+
     //wait for the token
     const result = await wait.forToken<{ foo: string }>(token, { releaseConcurrency: true });
     if (!result.ok) {
@@ -63,6 +66,9 @@ export const waitToken = task({
     for await (const token of tokens2) {
       logger.log("Token2", token);
     }
+
+    const retrievedToken2 = await wait.retrieveToken(token.id);
+    logger.log("Retrieved token2", retrievedToken2);
   },
 });
 

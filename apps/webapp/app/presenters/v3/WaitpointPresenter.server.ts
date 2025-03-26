@@ -33,6 +33,8 @@ export class WaitpointPresenter extends BasePresenter {
         outputType: true,
         outputIsError: true,
         completedAfter: true,
+        completedAt: true,
+        createdAt: true,
         connectedRuns: {
           select: {
             friendlyId: true,
@@ -89,9 +91,11 @@ export class WaitpointPresenter extends BasePresenter {
       output: output,
       outputType: waitpoint.outputType,
       outputIsError: waitpoint.outputIsError,
+      timeoutAt: waitpoint.completedAfter,
       completedAfter: waitpoint.completedAfter,
+      completedAt: waitpoint.completedAt,
+      createdAt: waitpoint.createdAt,
       tags: waitpoint.tags,
-      isTimeout,
       connectedRuns,
     };
   }

@@ -38,6 +38,7 @@ import {
   WaitForDurationRequestBody,
   WaitForDurationResponseBody,
   WaitForWaitpointTokenResponseBody,
+  WaitpointRetrieveTokenResponse,
   WaitpointTokenItem,
 } from "../schemas/index.js";
 import { taskContext } from "../task-context-api.js";
@@ -697,7 +698,7 @@ export class ApiClient {
 
   retrieveWaitpointToken(friendlyId: string, requestOptions?: ZodFetchOptions) {
     return zodfetch(
-      WaitpointTokenItem,
+      WaitpointRetrieveTokenResponse,
       `${this.baseUrl}/api/v1/waitpoints/tokens/${friendlyId}`,
       {
         method: "GET",

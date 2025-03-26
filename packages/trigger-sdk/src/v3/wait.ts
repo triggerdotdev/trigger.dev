@@ -16,6 +16,8 @@ import {
   CursorPagePromise,
   WaitpointTokenItem,
   flattenAttributes,
+  WaitpointListTokenItem,
+  WaitpointTokenStatus,
 } from "@trigger.dev/core/v3";
 import { tracer } from "./tracer.js";
 import { conditionallyImportAndParsePacket } from "@trigger.dev/core/v3/utils/ioSerialization";
@@ -120,7 +122,7 @@ function createToken(
 function listTokens(
   params?: ListWaitpointTokensQueryParams,
   requestOptions?: ApiRequestOptions
-): CursorPagePromise<typeof WaitpointTokenItem> {
+): CursorPagePromise<typeof WaitpointListTokenItem> {
   const apiClient = apiClientManager.clientOrThrow();
 
   const $requestOptions = mergeRequestOptions(
@@ -139,6 +141,26 @@ function listTokens(
 }
 
 /**
+ * A waitpoint token that has been retrieved.
+ *
+ * If the status is `WAITING`, this means the waitpoint is still pending.
+ * For `COMPLETED` the `output` will be the data you passed in when completing the waitpoint.
+ * For `TIMED_OUT` there will be an `error`.
+ */
+export type WaitpointRetrievedToken<T> = {
+  id: string;
+  status: WaitpointTokenStatus;
+  completedAt?: Date;
+  timeoutAt?: Date;
+  idempotencyKey?: string;
+  idempotencyKeyExpiresAt?: Date;
+  tags: string[];
+  createdAt: Date;
+  output?: T;
+  error?: Error;
+};
+
+/**
  * Retrieves a waitpoint token by its ID.
  *
  * @example
@@ -151,12 +173,12 @@ function listTokens(
  * @param token - The token to retrieve.
  * This can be a string token ID or an object with an `id` property.
  * @param requestOptions - Optional API request options.
- * @returns The waitpoint token details.
+ * @returns The waitpoint token details, including the output or error if the waitpoint is completed or timed out.
  */
-function retrieveToken(
+async function retrieveToken<T>(
   token: string | { id: string },
   requestOptions?: ApiRequestOptions
-): ApiPromise<WaitpointTokenItem> {
+): Promise<WaitpointRetrievedToken<T>> {
   const apiClient = apiClientManager.clientOrThrow();
 
   const $tokenId = typeof token === "string" ? token : token.id;
@@ -182,7 +204,36 @@ function retrieveToken(
     requestOptions
   );
 
-  return apiClient.retrieveWaitpointToken($tokenId, $requestOptions);
+  const result = await apiClient.retrieveWaitpointToken($tokenId, $requestOptions);
+
+  const data = result.output
+    ? await conditionallyImportAndParsePacket(
+        { data: result.output, dataType: result.outputType ?? "application/json" },
+        apiClient
+      )
+    : undefined;
+
+  let error: Error | undefined = undefined;
+  let output: T | undefined = undefined;
+
+  if (result.outputIsError) {
+    error = new WaitpointTimeoutError(data.message);
+  } else {
+    output = data as T;
+  }
+
+  return {
+    id: result.id,
+    status: result.status,
+    completedAt: result.completedAt,
+    timeoutAt: result.timeoutAt,
+    idempotencyKey: result.idempotencyKey,
+    idempotencyKeyExpiresAt: result.idempotencyKeyExpiresAt,
+    tags: result.tags,
+    createdAt: result.createdAt,
+    output,
+    error,
+  };
 }
 
 /**

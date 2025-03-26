@@ -957,13 +957,27 @@ export const WaitpointTokenItem = z.object({
   status: WaitpointTokenStatus,
   completedAt: z.coerce.date().optional(),
   completedAfter: z.coerce.date().optional(),
+  timeoutAt: z.coerce.date().optional(),
   idempotencyKey: z.string().optional(),
   idempotencyKeyExpiresAt: z.coerce.date().optional(),
   tags: z.array(z.string()),
-  isTimeout: z.boolean(),
   createdAt: z.coerce.date(),
 });
 export type WaitpointTokenItem = z.infer<typeof WaitpointTokenItem>;
+
+export const WaitpointListTokenItem = WaitpointTokenItem.omit({
+  completedAfter: true,
+});
+export type WaitpointListTokenItem = z.infer<typeof WaitpointListTokenItem>;
+
+export const WaitpointRetrieveTokenResponse = WaitpointListTokenItem.and(
+  z.object({
+    output: z.string().optional(),
+    outputType: z.string().optional(),
+    outputIsError: z.boolean().optional(),
+  })
+);
+export type WaitpointRetrieveTokenResponse = z.infer<typeof WaitpointRetrieveTokenResponse>;
 
 export const CompleteWaitpointTokenRequestBody = z.object({
   data: z.any().nullish(),

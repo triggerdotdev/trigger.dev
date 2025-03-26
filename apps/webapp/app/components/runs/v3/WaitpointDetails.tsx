@@ -87,7 +87,7 @@ export function WaitpointDetailTable({
                   {waitpoint.status === "WAITING" && <ForceTimeout waitpoint={waitpoint} />}
                 </div>
                 <Paragraph variant="extra-small" className="text-text-dimmed/70">
-                  {waitpoint.isTimeout
+                  {waitpoint.status === "TIMED_OUT"
                     ? "The waitpoint timed out"
                     : waitpoint.status === "COMPLETED"
                     ? "The waitpoint completed before this timeout was reached"
@@ -112,7 +112,7 @@ export function WaitpointDetailTable({
           </Property.Item>
         </>
       )}
-      {waitpoint.status === "WAITING" ? null : waitpoint.isTimeout ? (
+      {waitpoint.status === "WAITING" ? null : waitpoint.status === "TIMED_OUT" ? (
         <></>
       ) : waitpoint.output ? (
         <PacketDisplay title="Output" data={waitpoint.output} dataType={waitpoint.outputType} />
