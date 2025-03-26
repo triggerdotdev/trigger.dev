@@ -8,12 +8,12 @@ export function RunFunctionIcon({ className }: { className?: string }) {
         height="19"
         rx="2.5"
         stroke="currentColor"
-        strokeOpacity="0.5"
+        strokeOpacity={0.5}
       />
       <path
         fillRule="evenodd"
         clipRule="evenodd"
-        d="M12.0334 11.6638C12.0334 10.3784 13.0754 9.33638 14.3608 9.33638H15.5275V7.00305H14.3608C13.5122 7.00305 12.7166 7.22983 12.0312 7.6261V7.00305H9.70006V11.6638V12.046V17.5035H12.0334V11.6638Z"
+        d="M12 8H10V12V16.5159H12V12C12 10.8954 12.8954 10 14 10H15.5V8H14C13.2714 8 12.5883 8.19479 12 8.53513V8Z"
         fill="currentColor"
       />
     </svg>
