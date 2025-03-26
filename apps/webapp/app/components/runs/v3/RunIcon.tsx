@@ -44,6 +44,9 @@ export function RunIcon({ name, className, spanName }: TaskIconProps) {
   }
 
   if (!name) return <Squares2X2Icon className={cn(className, "text-text-dimmed")} />;
+  if (tablerIcons.has(name)) {
+    return <TablerIcon name={name} className={className} />;
+  }
 
   switch (name) {
     case "task":
@@ -73,6 +76,28 @@ export function RunIcon({ name, className, spanName }: TaskIconProps) {
       return <InformationCircleIcon className={cn(className, "text-rose-500")} />;
     case "fatal":
       return <HandRaisedIcon className={cn(className, "text-rose-800")} />;
+    case "task-middleware":
+      return <InformationCircleIcon className={cn(className, "text-text-dimmed")} />;
+    case "task-fn-run":
+      return <InformationCircleIcon className={cn(className, "text-text-dimmed")} />;
+    case "task-hook-init":
+      return <InformationCircleIcon className={cn(className, "text-text-dimmed")} />;
+    case "task-hook-onStart":
+      return <InformationCircleIcon className={cn(className, "text-text-dimmed")} />;
+    case "task-hook-onSuccess":
+      return <InformationCircleIcon className={cn(className, "text-text-dimmed")} />;
+    case "task-hook-onFailure":
+      return <InformationCircleIcon className={cn(className, "text-text-dimmed")} />;
+    case "task-hook-onComplete":
+      return <InformationCircleIcon className={cn(className, "text-text-dimmed")} />;
+    case "task-hook-onWait":
+      return <InformationCircleIcon className={cn(className, "text-text-dimmed")} />;
+    case "task-hook-onResume":
+      return <InformationCircleIcon className={cn(className, "text-text-dimmed")} />;
+    case "task-hook-catchError":
+      return <InformationCircleIcon className={cn(className, "text-text-dimmed")} />;
+    case "task-hook-cleanup":
+      return <InformationCircleIcon className={cn(className, "text-text-dimmed")} />;
   }
 
   return <InformationCircleIcon className={cn(className, "text-text-dimmed")} />;
