@@ -656,7 +656,7 @@ function AppliedIdempotencyKeyFilter() {
   return (
     <FilterMenuProvider>
       {(search, setSearch) => (
-        <WaitpointIdDropdown
+        <IdempotencyKeyDropdown
           trigger={
             <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
               <AppliedFilter
