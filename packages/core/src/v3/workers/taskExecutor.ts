@@ -596,7 +596,7 @@ export class TaskExecutor {
         if (taskInitHook) {
           const [hookError, taskResult] = await tryCatch(
             this._tracer.startActiveSpan(
-              "init/task",
+              "init()",
               async (span) => {
                 const result = await taskInitHook({ payload, ctx, signal, task: this.task.id });
 
@@ -611,6 +611,7 @@ export class TaskExecutor {
                 attributes: {
                   [SemanticInternalAttributes.STYLE_ICON]: "task-hook-init",
                   [SemanticInternalAttributes.COLLAPSED]: true,
+                  ...this.#lifecycleHookAccessoryAttributes("task"),
                 },
               }
             )
