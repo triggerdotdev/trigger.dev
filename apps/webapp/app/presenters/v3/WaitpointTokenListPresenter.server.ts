@@ -187,7 +187,7 @@ export class WaitpointTokenListPresenter extends BasePresenter {
       }
       ${
         idempotencyKey
-          ? Prisma.sql`AND w."idempotencyKey" = ${idempotencyKey} OR w."inactiveIdempotencyKey" = ${idempotencyKey}`
+          ? Prisma.sql`AND (w."idempotencyKey" = ${idempotencyKey} OR w."inactiveIdempotencyKey" = ${idempotencyKey})`
           : Prisma.empty
       }
       ${
