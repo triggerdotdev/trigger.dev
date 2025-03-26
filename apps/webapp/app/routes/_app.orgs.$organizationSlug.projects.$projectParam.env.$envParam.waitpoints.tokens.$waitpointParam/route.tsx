@@ -18,6 +18,7 @@ import { CompleteWaitpointForm } from "../resources.orgs.$organizationSlug.proje
 import { WaitpointDetailTable } from "~/components/runs/v3/WaitpointDetails";
 import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { InfoIconTooltip } from "~/components/primitives/Tooltip";
+import { logger } from "~/services/logger.server";
 
 const Params = EnvironmentParamSchema.extend({
   waitpointParam: z.string(),
@@ -60,7 +61,13 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
     return typedjson({ waitpoint: result });
   } catch (error) {
-    console.error(error);
+    logger.error("Error loading waitpoint for inspector", {
+      error,
+      organizationSlug,
+      projectParam,
+      envParam,
+      waitpointParam,
+    });
     throw new Response(undefined, {
       status: 400,
       statusText: "Something went wrong, if this problem persists please contact support.",
