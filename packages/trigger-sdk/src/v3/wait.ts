@@ -19,16 +19,11 @@ import {
   WaitpointListTokenItem,
   WaitpointTokenStatus,
   WaitpointRetrieveTokenResponse,
+  CreateWaitpointTokenResponse,
 } from "@trigger.dev/core/v3";
 import { tracer } from "./tracer.js";
 import { conditionallyImportAndParsePacket } from "@trigger.dev/core/v3/utils/ioSerialization";
 import { SpanStatusCode } from "@opentelemetry/api";
-
-export type CreateWaitpointTokenResponse = Prettify<
-  CreateWaitpointTokenResponseBody & {
-    publicAccessToken: string;
-  }
->;
 
 /**
  * This creates a waitpoint token.
