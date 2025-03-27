@@ -1,4 +1,3 @@
-import { logger } from "~/services/logger.server";
 import { BasePresenter } from "./basePresenter.server";
 
 export type TagListOptions = {
@@ -24,14 +23,14 @@ export class RunTagListPresenter extends BasePresenter {
     page = 1,
     pageSize = DEFAULT_PAGE_SIZE,
   }: TagListOptions) {
-    const hasFilters = name;
+    const hasFilters = Boolean(name?.trim());
 
     const tags = await this._replica.taskRunTag.findMany({
       where: {
         projectId,
         name: name
           ? {
-              contains: name,
+              startsWith: name,
               mode: "insensitive",
             }
           : undefined,
@@ -41,12 +40,6 @@ export class RunTagListPresenter extends BasePresenter {
       },
       take: pageSize + 1,
       skip: (page - 1) * pageSize,
-    });
-
-    logger.log("tags", {
-      tags,
-      projectId,
-      name,
     });
 
     return {
