@@ -93,7 +93,7 @@ export const python = {
           throw new Error(
             `${scriptPath} ${scriptArgs.join(" ")} exited with a non-zero code ${
               result.exitCode
-            }:\n${result.stderr}`
+            }:\n${result.stdout}\n${result.stderr}`
           );
         }
 

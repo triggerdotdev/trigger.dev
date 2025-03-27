@@ -136,13 +136,24 @@ export const rowAgentRunner = schemaTask({
     jsonSchema: z.any().describe("The JSON schema of the result"),
   }),
   run: async ({ row, waitToken, jsonSchema }) => {
-    const result = await python.runScript("./src/trigger/python/agent.py", []);
+    const inputData = JSON.stringify({
+      row,
+      waitToken,
+      jsonSchema,
+    });
+
+    const result = await python.runScript("./src/trigger/python/agent.py", [inputData]);
 
     logger.debug("row-agent-runner", {
       result,
     });
 
     return {} as unknown as RowEnrichmentResult;
+  },
+  catchError: async ({ error }) => {
+    logger.error("row-agent-runner", {
+      error,
+    });
   },
 });
 

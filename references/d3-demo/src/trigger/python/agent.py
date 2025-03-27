@@ -33,10 +33,10 @@ class CompanyInfo(BaseModel):
     industry: str = Field(description="The industry of the company")
 
 class SocialInfo(BaseModel):
-    twitter: Optional[HttpUrl] = Field(None, description="The Twitter URL of the person")
-    linkedin: Optional[HttpUrl] = Field(None, description="The LinkedIn URL of the person")
-    facebook: Optional[HttpUrl] = Field(None, description="The Facebook URL of the person")
-    instagram: Optional[HttpUrl] = Field(None, description="The Instagram URL of the person")
+    twitter: Optional[str] = Field(None, description="The Twitter username of the person")
+    linkedin: Optional[str] = Field(None, description="The LinkedIn username of the person")
+    facebook: Optional[str] = Field(None, description="The Facebook username of the person")
+    instagram: Optional[str] = Field(None, description="The Instagram username of the person")
 
 class RowEnrichmentResult(BaseModel):
     basicInfo: BasicInfo
@@ -50,7 +50,7 @@ def notify_trigger(wait_token: WaitToken, result: dict):
         "Authorization": f"Bearer {wait_token.publicAccessToken}",
         "Content-Type": "application/json"
     }
-    response = requests.post(url, json=result, headers=headers)
+    response = requests.post(url, json={"data": result}, headers=headers)
     response.raise_for_status()
     return response.json()
 
@@ -121,13 +121,17 @@ async def main(agent_input: AgentInput):
         """
     )
 
+    enriched_data = result.final_output
+    if isinstance(enriched_data, BaseModel):
+        enriched_data = enriched_data.model_dump()
+
     print("Final Output:")
     # Pretty print the final output
-    print(json.dumps(result.final_output, indent=2))
+    print(json.dumps(enriched_data, indent=2))
     
     try:        
         # Send the result back to Trigger.dev
-        notify_trigger(agent_input.waitToken, result.final_output)
+        notify_trigger(agent_input.waitToken, enriched_data)
         
         print("Successfully enriched data and notified Trigger.dev")
         
