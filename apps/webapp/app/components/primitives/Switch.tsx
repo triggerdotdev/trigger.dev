@@ -3,7 +3,15 @@
 import * as React from "react";
 import * as SwitchPrimitives from "@radix-ui/react-switch";
 import { cn } from "~/utils/cn";
-import { ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
+import { type ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
+
+const small = {
+  container:
+    "flex items-center h-[1.5rem] gap-x-1.5 rounded hover:bg-tertiary disabled:hover:bg-transparent pr-1 py-[0.1rem] pl-1.5 transition focus-custom disabled:hover:text-charcoal-400 disabled:opacity-50 text-charcoal-400 hover:text-charcoal-200 disabled:hover:cursor-not-allowed hover:cursor-pointer",
+  root: "h-3 w-6",
+  thumb: "size-2.5 data-[state=checked]:translate-x-2.5 data-[state=unchecked]:translate-x-0",
+  text: "text-xs text-text-dimmed",
+};
 
 const variations = {
   large: {
@@ -12,12 +20,15 @@ const variations = {
     thumb: "size-5 data-[state=checked]:translate-x-5 data-[state=unchecked]:translate-x-0",
     text: "text-sm text-text-dimmed",
   },
-  small: {
-    container:
-      "flex items-center h-[1.5rem] gap-x-1.5 rounded hover:bg-tertiary disabled:hover:bg-transparent pr-1 py-[0.1rem] pl-1.5 transition focus-custom disabled:hover:text-charcoal-400 disabled:opacity-50 text-charcoal-400 hover:text-charcoal-200 disabled:hover:cursor-not-allowed hover:cursor-pointer",
-    root: "h-3 w-6",
-    thumb: "size-2.5 data-[state=checked]:translate-x-2.5 data-[state=unchecked]:translate-x-0",
-    text: "text-xs text-text-dimmed",
+  small,
+  "tertiary/small": {
+    container: small.container,
+    root: cn(
+      small.root,
+      "group-data-[state=unchecked]:bg-charcoal-600 group-data-[state=unchecked]:group-hover:bg-charcoal-500/50"
+    ),
+    thumb: small.thumb,
+    text: cn(small.text, "transition group-hover:text-text-bright"),
   },
 };
 
