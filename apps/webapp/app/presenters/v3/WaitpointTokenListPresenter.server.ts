@@ -46,6 +46,7 @@ type Result =
         previous: string | undefined;
       };
       hasFilters: boolean;
+      hasAnyTokens: boolean;
       filters: WaitpointSearchParams;
     }
   | {
@@ -58,6 +59,7 @@ type Result =
         previous: undefined;
       };
       hasFilters: false;
+      hasAnyTokens: false;
       filters: undefined;
     };
 
@@ -87,6 +89,7 @@ export class WaitpointTokenListPresenter extends BasePresenter {
           previous: undefined,
         },
         hasFilters: false,
+        hasAnyTokens: false,
         filters: undefined,
       };
     }
@@ -242,6 +245,20 @@ export class WaitpointTokenListPresenter extends BasePresenter {
         ? tokens.slice(1, pageSize + 1)
         : tokens.slice(0, pageSize);
 
+    let hasAnyTokens = tokensToReturn.length > 0;
+    if (!hasAnyTokens) {
+      const firstToken = await this._replica.waitpoint.findFirst({
+        where: {
+          environmentId: environment.id,
+          type: "MANUAL",
+        },
+      });
+
+      if (firstToken) {
+        hasAnyTokens = true;
+      }
+    }
+
     return {
       success: true,
       tokens: tokensToReturn.map((token) => ({
@@ -262,6 +279,7 @@ export class WaitpointTokenListPresenter extends BasePresenter {
         previous,
       },
       hasFilters,
+      hasAnyTokens,
       filters: {
         id,
         statuses: statuses?.length ? statuses : undefined,
