@@ -33,23 +33,15 @@ export const loader = createSSELoader({
     }
 
     const presenceKey = DevPresenceStream.getPresenceKey(environment.id);
-    const presenceChannel = DevPresenceStream.getPresenceChannel(environment.id);
 
-    // Create two Redis clients - one for subscribing and one for regular commands
-    const redisConfig = {
+    const cmdRedis = new Redis({
       port: env.RUN_ENGINE_DEV_PRESENCE_REDIS_PORT ?? undefined,
       host: env.RUN_ENGINE_DEV_PRESENCE_REDIS_HOST ?? undefined,
       username: env.RUN_ENGINE_DEV_PRESENCE_REDIS_USERNAME ?? undefined,
       password: env.RUN_ENGINE_DEV_PRESENCE_REDIS_PASSWORD ?? undefined,
       enableAutoPipelining: true,
       ...(env.RUN_ENGINE_DEV_PRESENCE_REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
-    };
-
-    // Subscriber client for pubsub
-    const subRedis = new Redis(redisConfig);
-
-    // Command client for regular Redis commands
-    const cmdRedis = new Redis(redisConfig);
+    });
 
     const checkAndSendPresence = async (send: SendFunction) => {
       try {
@@ -93,24 +85,11 @@ export const loader = createSSELoader({
       beforeStream: async () => {
         logger.debug("Start dev presence listening SSE session", {
           environmentId: environment.id,
-          presenceChannel,
+          presenceKey,
         });
       },
       initStream: async ({ send }) => {
         await checkAndSendPresence(send);
-
-        //start subscribing with the subscriber client
-        await subRedis.subscribe(presenceChannel);
-
-        subRedis.on("message", async (channel, message) => {
-          if (channel === presenceChannel) {
-            try {
-              await checkAndSendPresence(send);
-            } catch (error) {
-              logger.error("Failed to parse presence message", { error, message });
-            }
-          }
-        });
 
         send({ event: "time", data: new Date().toISOString() });
       },
@@ -119,9 +98,6 @@ export const loader = createSSELoader({
       },
       cleanup: async ({ send }) => {
         await checkAndSendPresence(send);
-
-        await subRedis.unsubscribe(presenceChannel);
-        await subRedis.quit();
         await cmdRedis.quit();
       },
     };

@@ -29,50 +29,26 @@ export const loader = createSSELoader({
     const environmentId = authentication.environment.id;
 
     const presenceKey = DevPresenceStream.getPresenceKey(environmentId);
-    const presenceChannel = DevPresenceStream.getPresenceChannel(environmentId);
+
+    const ttl = (env.DEV_PRESENCE_POLL_INTERVAL_MS / 1000) * 2;
 
     return {
       beforeStream: async () => {
         logger.debug("Start dev presence SSE session", {
           environmentId,
           presenceKey,
-          presenceChannel,
         });
       },
       initStream: async ({ send }) => {
         // Set initial presence with more context
-        await redis.setex(presenceKey, env.DEV_PRESENCE_TTL_MS / 1000, new Date().toISOString());
-
-        // Publish presence update
-        await redis.publish(
-          presenceChannel,
-          JSON.stringify({
-            type: "connected",
-            environmentId,
-            timestamp: Date.now(),
-          })
-        );
-
+        await redis.setex(presenceKey, ttl, new Date().toISOString());
         send({ event: "start", data: `Started ${id}` });
       },
       iterator: async ({ send, date }) => {
-        await redis.setex(presenceKey, env.DEV_PRESENCE_TTL_MS / 1000, date.toISOString());
-
+        await redis.setex(presenceKey, ttl, date.toISOString());
         send({ event: "time", data: new Date().toISOString() });
       },
-      cleanup: async () => {
-        await redis.del(presenceKey);
-
-        // Publish disconnect event
-        await redis.publish(
-          presenceChannel,
-          JSON.stringify({
-            type: "disconnected",
-            environmentId,
-            timestamp: Date.now(),
-          })
-        );
-      },
+      cleanup: async () => {},
     };
   },
 });
