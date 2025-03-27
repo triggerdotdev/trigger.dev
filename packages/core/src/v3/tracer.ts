@@ -17,6 +17,7 @@ import { clock } from "./clock-api.js";
 import { usage } from "./usage-api.js";
 import { taskContext } from "./task-context-api.js";
 import { recordSpanException } from "./otel/utils.js";
+import { isCompleteTaskWithOutput } from "./errors.js";
 
 export type TriggerTracerConfig =
   | {
@@ -131,6 +132,14 @@ export class TriggerTracer {
         try {
           return await fn(span);
         } catch (e) {
+          if (isCompleteTaskWithOutput(e)) {
+            if (!spanEnded) {
+              span.end(clock.preciseNow());
+            }
+
+            throw e;
+          }
+
           if (!spanEnded) {
             if (typeof e === "string" || e instanceof Error) {
               span.recordException(e);

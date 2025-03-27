@@ -1,4 +1,4 @@
-import { timeoutError } from "@trigger.dev/core/v3";
+import { timeoutError, tryCatch } from "@trigger.dev/core/v3";
 import { WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import {
   $transaction,
@@ -66,65 +66,51 @@ export class WaitpointSystem {
       isError: boolean;
     };
   }): Promise<Waitpoint> {
-    const result = await $transaction(
-      this.$.prisma,
-      async (tx) => {
-        // 1. Find the TaskRuns blocked by this waitpoint
-        const affectedTaskRuns = await tx.taskRunWaitpoint.findMany({
-          where: { waitpointId: id },
-          select: { taskRunId: true, spanIdToComplete: true, createdAt: true },
-        });
+    // 1. Find the TaskRuns blocked by this waitpoint
+    const affectedTaskRuns = await this.$.prisma.taskRunWaitpoint.findMany({
+      where: { waitpointId: id },
+      select: { taskRunId: true, spanIdToComplete: true, createdAt: true },
+    });
 
-        if (affectedTaskRuns.length === 0) {
-          this.$.logger.warn(`completeWaitpoint: No TaskRunWaitpoints found for waitpoint`, {
-            waitpointId: id,
-          });
-        }
-
-        // 2. Update the waitpoint to completed (only if it's pending)
-        let waitpoint: Waitpoint | null = null;
-        try {
-          waitpoint = await tx.waitpoint.update({
-            where: { id, status: "PENDING" },
-            data: {
-              status: "COMPLETED",
-              completedAt: new Date(),
-              output: output?.value,
-              outputType: output?.type,
-              outputIsError: output?.isError,
-            },
-          });
-        } catch (error) {
-          if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
-            waitpoint = await tx.waitpoint.findFirst({
-              where: { id },
-            });
-          } else {
-            this.$.logger.log("completeWaitpoint: error updating waitpoint:", { error });
-            throw error;
-          }
-        }
-
-        return { waitpoint, affectedTaskRuns };
-      },
-      (error) => {
-        this.$.logger.error(`completeWaitpoint: Error completing waitpoint ${id}, retrying`, {
-          error,
-        });
-        throw error;
-      }
-    );
-
-    if (!result) {
-      throw new Error(`Waitpoint couldn't be updated`);
+    if (affectedTaskRuns.length === 0) {
+      this.$.logger.debug(`completeWaitpoint: No TaskRunWaitpoints found for waitpoint`, {
+        waitpointId: id,
+      });
     }
 
-    if (!result.waitpoint) {
+    let [waitpointError, waitpoint] = await tryCatch(
+      this.$.prisma.waitpoint.update({
+        where: { id, status: "PENDING" },
+        data: {
+          status: "COMPLETED",
+          completedAt: new Date(),
+          output: output?.value,
+          outputType: output?.type,
+          outputIsError: output?.isError,
+        },
+      })
+    );
+
+    if (waitpointError) {
+      if (
+        waitpointError instanceof Prisma.PrismaClientKnownRequestError &&
+        waitpointError.code === "P2025"
+      ) {
+        waitpoint = await this.$.prisma.waitpoint.findFirst({
+          where: { id },
+        });
+      } else {
+        this.$.logger.log("completeWaitpoint: error updating waitpoint:", { waitpointError });
+        throw waitpointError;
+      }
+    }
+
+    if (!waitpoint) {
       throw new Error(`Waitpoint ${id} not found`);
     }
 
     //schedule trying to continue the runs
-    for (const run of result.affectedTaskRuns) {
+    for (const run of affectedTaskRuns) {
       await this.$.worker.enqueue({
         //this will debounce the call
         id: `continueRunIfUnblocked:${run.taskRunId}`,
@@ -148,7 +134,7 @@ export class WaitpointSystem {
       }
     }
 
-    return result.waitpoint;
+    return waitpoint;
   }
 
   /**

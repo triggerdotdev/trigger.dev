@@ -76,6 +76,13 @@ import {
   UpdateEnvironmentVariableParams,
 } from "./types.js";
 import { AsyncIterableStream } from "../streams/asyncIterableStream.js";
+import { Prettify } from "../types/utils.js";
+
+export type CreateWaitpointTokenResponse = Prettify<
+  CreateWaitpointTokenResponseBody & {
+    publicAccessToken: string;
+  }
+>;
 
 export type {
   CreateEnvironmentVariableParams,
@@ -217,7 +224,7 @@ export class ApiClient {
       mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     )
       .withResponse()
-      .then(async ({ response, data }) => {
+      .then(async ({ data, response }) => {
         const jwtHeader = response.headers.get("x-trigger-jwt");
 
         if (typeof jwtHeader === "string") {
@@ -264,7 +271,7 @@ export class ApiClient {
       mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     )
       .withResponse()
-      .then(async ({ response, data }) => {
+      .then(async ({ data, response }) => {
         const claimsHeader = response.headers.get("x-trigger-jwt-claims");
         const claims = claimsHeader ? JSON.parse(claimsHeader) : undefined;
 
@@ -669,8 +676,37 @@ export class ApiClient {
         headers: this.#getHeaders(false),
         body: JSON.stringify(options),
       },
-      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
-    );
+      {
+        ...mergeRequestOptions(this.defaultRequestOptions, requestOptions),
+        prepareData: async (data, response) => {
+          const jwtHeader = response.headers.get("x-trigger-jwt");
+
+          if (typeof jwtHeader === "string") {
+            return {
+              ...data,
+              publicAccessToken: jwtHeader,
+            };
+          }
+
+          const claimsHeader = response.headers.get("x-trigger-jwt-claims");
+          const claims = claimsHeader ? JSON.parse(claimsHeader) : undefined;
+
+          const jwt = await generateJWT({
+            secretKey: this.accessToken,
+            payload: {
+              ...claims,
+              scopes: [`write:waitpoints:${data.id}`],
+            },
+            expirationTime: "24h",
+          });
+
+          return {
+            ...data,
+            publicAccessToken: jwt,
+          };
+        },
+      }
+    ) as ApiPromise<CreateWaitpointTokenResponse>;
   }
 
   listWaitpointTokens(
@@ -721,7 +757,9 @@ export class ApiClient {
         headers: this.#getHeaders(false),
         body: JSON.stringify(options),
       },
-      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+      {
+        ...mergeRequestOptions(this.defaultRequestOptions, requestOptions),
+      }
     );
   }
 

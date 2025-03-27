@@ -4,6 +4,7 @@ import { ApiError, RateLimitError } from "../apiClient/errors.js";
 import { ConsoleInterceptor } from "../consoleInterceptor.js";
 import {
   InternalError,
+  isCompleteTaskWithOutput,
   isInternalError,
   parseError,
   sanitizeError,
@@ -150,7 +151,15 @@ export class TaskExecutor {
                   await this.#callOnStartFunctions(payload, ctx, initOutput, signal);
                 }
 
-                return await this.#callRun(payload, ctx, initOutput, signal);
+                try {
+                  return await this.#callRun(payload, ctx, initOutput, signal);
+                } catch (error) {
+                  if (isCompleteTaskWithOutput(error)) {
+                    return error.output;
+                  }
+
+                  throw error;
+                }
               })()
             );
 
