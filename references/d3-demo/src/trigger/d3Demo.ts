@@ -134,12 +134,21 @@ export const rowAgentRunner = schemaTask({
         ),
     }),
     jsonSchema: z.any().describe("The JSON schema of the result"),
+    disableWaitTokenCompletion: z
+      .boolean()
+      .default(false)
+      .describe("Whether to disable wait token completion"),
   }),
-  run: async ({ row, waitToken, jsonSchema }) => {
+  run: async ({ row, waitToken, jsonSchema, disableWaitTokenCompletion }) => {
     const inputData = JSON.stringify({
       row,
       waitToken,
       jsonSchema,
+      disableWaitTokenCompletion,
+    });
+
+    logger.info("process.env", {
+      env: process.env,
     });
 
     const result = await python.runScript("./src/trigger/python/agent.py", [inputData]);

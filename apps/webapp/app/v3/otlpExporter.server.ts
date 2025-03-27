@@ -27,6 +27,7 @@ import {
 import { logger } from "~/services/logger.server";
 import { trace, Tracer } from "@opentelemetry/api";
 import { startSpan } from "./tracing.server";
+import { enrichCreatableEvents } from "./utils/enrichCreatableEvents.server";
 
 export type OTLPExporterConfig = {
   batchSize: number;
@@ -54,14 +55,16 @@ class OTLPExporter {
         return convertSpansToCreateableEvents(resourceSpan);
       });
 
-      this.#logEventsVerbose(events);
+      const enrichedEvents = enrichCreatableEvents(events);
 
-      span.setAttribute("event_count", events.length);
+      this.#logEventsVerbose(enrichedEvents);
+
+      span.setAttribute("event_count", enrichedEvents.length);
 
       if (immediate) {
-        await this._eventRepository.insertManyImmediate(events);
+        await this._eventRepository.insertManyImmediate(enrichedEvents);
       } else {
-        await this._eventRepository.insertMany(events);
+        await this._eventRepository.insertMany(enrichedEvents);
       }
 
       return ExportTraceServiceResponse.create();
@@ -79,14 +82,16 @@ class OTLPExporter {
         return convertLogsToCreateableEvents(resourceLog);
       });
 
-      this.#logEventsVerbose(events);
+      const enrichedEvents = enrichCreatableEvents(events);
 
-      span.setAttribute("event_count", events.length);
+      this.#logEventsVerbose(enrichedEvents);
+
+      span.setAttribute("event_count", enrichedEvents.length);
 
       if (immediate) {
-        await this._eventRepository.insertManyImmediate(events);
+        await this._eventRepository.insertManyImmediate(enrichedEvents);
       } else {
-        await this._eventRepository.insertMany(events);
+        await this._eventRepository.insertMany(enrichedEvents);
       }
 
       return ExportLogsServiceResponse.create();
@@ -135,16 +140,28 @@ class OTLPExporter {
         (attribute) => attribute.key === SemanticInternalAttributes.TRIGGER
       );
 
-      if (!triggerAttribute) {
+      const executionEnvironmentAttribute = resourceSpan.resource?.attributes.find(
+        (attribute) => attribute.key === SemanticInternalAttributes.EXECUTION_ENVIRONMENT
+      );
+
+      if (!triggerAttribute && !executionEnvironmentAttribute) {
         logger.debug("Skipping resource span without trigger attribute", {
           attributes: resourceSpan.resource?.attributes,
           spans: resourceSpan.scopeSpans.flatMap((scopeSpan) => scopeSpan.spans),
         });
 
-        return;
+        return true; // go ahead and let this resource span through
       }
 
-      return isBoolValue(triggerAttribute.value) ? triggerAttribute.value.boolValue : false;
+      const executionEnvironment = isStringValue(executionEnvironmentAttribute?.value)
+        ? executionEnvironmentAttribute.value.stringValue
+        : undefined;
+
+      if (executionEnvironment === "trigger") {
+        return true; // go ahead and let this resource span through
+      }
+
+      return isBoolValue(triggerAttribute?.value) ? triggerAttribute.value.boolValue : false;
     });
   }
 

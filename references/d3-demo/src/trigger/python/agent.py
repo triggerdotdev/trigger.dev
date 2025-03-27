@@ -4,8 +4,18 @@ import os
 import json
 import requests
 from typing import Optional
-from pydantic import BaseModel, Field, HttpUrl
-from agents import Agent, Runner, WebSearchTool
+from pydantic import BaseModel, Field
+from agents import Agent, Runner, WebSearchTool, trace
+import logfire
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
+from logfire.propagate import attach_context
+
+logfire.configure(
+    service_name='d3-demo',
+    send_to_logfire="if-token-present",
+    distributed_tracing=True
+)
+logfire.instrument_openai_agents()
 
 class CSVRowPayload(BaseModel):
     header: str = Field(description="The header of the CSV dataset")
@@ -20,7 +30,8 @@ class AgentInput(BaseModel):
     row: CSVRowPayload
     waitToken: WaitToken
     jsonSchema: dict
-
+    disableWaitTokenCompletion: bool = Field(default=False, description="Whether to disable wait token completion")
+    
 class BasicInfo(BaseModel):
     name: str = Field(description="The name of the row")
     email: str = Field(description="The email of the row")
@@ -43,16 +54,17 @@ class RowEnrichmentResult(BaseModel):
     companyInfo: CompanyInfo
     socialInfo: SocialInfo
 
-def notify_trigger(wait_token: WaitToken, result: dict):
+def complete_wait_token(wait_token: WaitToken, result: dict):
     """Send the enrichment result back to Trigger.dev"""
-    url = f"{os.environ['TRIGGER_API_URL']}/api/v1/waitpoints/tokens/{wait_token.id}/complete"
-    headers = {
-        "Authorization": f"Bearer {wait_token.publicAccessToken}",
-        "Content-Type": "application/json"
-    }
-    response = requests.post(url, json={"data": result}, headers=headers)
-    response.raise_for_status()
-    return response.json()
+    with trace("complete_wait_token"):
+        url = f"{os.environ['TRIGGER_API_URL']}/api/v1/waitpoints/tokens/{wait_token.id}/complete"
+        headers = {
+            "Authorization": f"Bearer {wait_token.publicAccessToken}",
+            "Content-Type": "application/json"
+        }
+        response = requests.post(url, json={"data": result}, headers=headers)
+        response.raise_for_status()
+        return response.json()
 
 basic_info_agent = Agent(
     name="Basic Info Agent",
@@ -128,23 +140,32 @@ async def main(agent_input: AgentInput):
     print("Final Output:")
     # Pretty print the final output
     print(json.dumps(enriched_data, indent=2))
+
+    if not agent_input.disableWaitTokenCompletion:
+        try:        
+            # Send the result back to Trigger.dev
+            complete_wait_token(agent_input.waitToken, enriched_data)
+        
+            print("Successfully enriched data and notified Trigger.dev")
+        
+        except json.JSONDecodeError:  
+          print("Error: Agent output was not valid JSON")
+          sys.exit(1)
     
-    try:        
-        # Send the result back to Trigger.dev
-        notify_trigger(agent_input.waitToken, enriched_data)
-        
-        print("Successfully enriched data and notified Trigger.dev")
-        
-    except json.JSONDecodeError:
-        print("Error: Agent output was not valid JSON")
-        sys.exit(1)
+    # Make sure to flush the logfire context
+    logfire.force_flush()
 
 if __name__ == "__main__":
     # Parse command line input as JSON
     if len(sys.argv) < 2:
         print("Usage: python agent.py '<json_input>'")
         sys.exit(1)
+
+    # Extract the traceparent os.environ['TRACEPARENT']
+    carrier ={'traceparent': os.environ['TRACEPARENT']}
+    ctx = TraceContextTextMapPropagator().extract(carrier=carrier)
     
-    # Parse the input JSON into our Pydantic model
-    input_data = AgentInput.model_validate_json(sys.argv[1])
-    asyncio.run(main(input_data))
+    with attach_context(carrier=carrier, third_party=True):
+        # Parse the input JSON into our Pydantic model
+        input_data = AgentInput.model_validate_json(sys.argv[1])
+        asyncio.run(main(input_data))
