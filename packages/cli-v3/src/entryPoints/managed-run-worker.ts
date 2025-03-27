@@ -376,6 +376,8 @@ const zodIpc = new ZodIpcConnection({
           return;
         }
 
+        runMetadataManager.runId = execution.run.id;
+
         const executor = new TaskExecutor(task, {
           tracer,
           tracingSDK,

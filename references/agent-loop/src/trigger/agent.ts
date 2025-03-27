@@ -39,6 +39,7 @@ export const agentLoopExample = schemaTask({
           const token = await wait.createToken({ timeout: "1d" });
 
           metadata.set("waitToken", token);
+          await metadata.flush();
 
           const result = streamText({
             model: aiModel,

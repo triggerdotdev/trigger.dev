@@ -6,36 +6,79 @@ import { useState } from "react";
 import { Send } from "lucide-react";
 import ChatInterface from "@/components/chat-interface";
 import InitialPrompt from "@/components/initial-prompt";
-import { useRealtimeTaskTriggerWithStreams } from "@trigger.dev/react-hooks";
+import { useRealtimeTaskTriggerWithStreams, useWaitToken } from "@trigger.dev/react-hooks";
 import type { agentLoopExample } from "@/trigger/agent";
+import { AgentLoopMetadata } from "@/trigger/schemas";
+import type { TextStreamPart } from "ai";
 
 type ChatConversation = Array<{ role: "user" | "assistant"; content: string }>;
 
+type ResponseStreams = {
+  [K in `responses.${number | string}`]: TextStreamPart<{}>;
+};
+
 export function useAgentLoop({ publicAccessToken }: { publicAccessToken: string }) {
-  const triggerInstance = useRealtimeTaskTriggerWithStreams<typeof agentLoopExample>(
-    "agent-loop-example",
-    {
-      accessToken: publicAccessToken,
-      baseURL: process.env.NEXT_PUBLIC_TRIGGER_API_URL,
-    }
-  );
+  const triggerInstance = useRealtimeTaskTriggerWithStreams<
+    typeof agentLoopExample,
+    ResponseStreams
+  >("agent-loop-example", {
+    accessToken: publicAccessToken,
+    baseURL: process.env.NEXT_PUBLIC_TRIGGER_API_URL,
+  });
   const [conversation, setConversation] = useState<ChatConversation>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [waitToken, setWaitToken] = useState<AgentLoopMetadata | null>(null);
+
+  const waitTokenInstance = useWaitToken(waitToken?.waitToken.id, {
+    enabled: !!waitToken?.waitToken.id,
+    accessToken: waitToken?.waitToken.publicAccessToken,
+    baseURL: process.env.NEXT_PUBLIC_TRIGGER_API_URL,
+  });
+
+  const waitTokenStream = waitToken?.waitToken.id
+    ? triggerInstance.streams[`responses.${waitToken?.waitToken.id}`]
+    : undefined;
+
+  const textStream = waitTokenStream
+    ?.map((part) => {
+      if (part.type === "text-delta") {
+        return part.textDelta;
+      }
+    })
+    .join("");
+
+  console.log("textStream", textStream);
 
   if (triggerInstance.run) {
     console.log("run", triggerInstance.run);
+
+    const metadata = AgentLoopMetadata.safeParse(triggerInstance.run.metadata);
+
+    if (!metadata.success) {
+      console.error("Failed to parse metadata", metadata.error);
+    } else {
+      console.log("metadata", metadata.data);
+
+      setWaitToken(metadata.data);
+    }
   }
 
   return {
     continueConversation: (prompt: string) => {
-      const result = triggerInstance.submit({
-        model: "gpt-4o-mini",
-        prompt,
-      });
+      if (waitTokenInstance.isReady) {
+        waitTokenInstance.complete({
+          message: prompt,
+        });
+      } else {
+        const result = triggerInstance.submit({
+          model: "gpt-4o-mini",
+          prompt,
+        });
 
-      setConversation((prev) => [...prev, { role: "user", content: prompt }]);
+        setConversation((prev) => [...prev, { role: "user", content: prompt }]);
 
-      return result;
+        return result;
+      }
     },
     conversation,
     isLoading,

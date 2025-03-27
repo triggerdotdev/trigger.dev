@@ -17,6 +17,8 @@ export interface WaitTokenInstance<TOutput> {
   isCompleted: boolean;
   /** Any error that occurred during completion */
   error?: Error;
+  /** Whether the waitpoint is ready to be completed */
+  isReady: boolean;
 }
 
 /**
@@ -36,7 +38,7 @@ export interface WaitTokenInstance<TOutput> {
  * ```
  */
 export function useWaitToken<TOutput>(
-  waitpointId: string,
+  waitpointId?: string,
   options?: UseApiClientOptions
 ): WaitTokenInstance<TOutput> {
   const apiClient = useApiClient(options);
@@ -44,6 +46,10 @@ export function useWaitToken<TOutput>(
   async function completeWaitpoint(id: string, { arg: { output } }: { arg: { output: TOutput } }) {
     if (!apiClient) {
       throw new Error("Could not complete waitpoint in useWaitToken: Missing access token");
+    }
+
+    if (!waitpointId) {
+      throw new Error("Could not complete waitpoint in useWaitToken: Missing waitpoint ID");
     }
 
     const result = await apiClient.completeWaitpointToken(waitpointId, {
@@ -62,6 +68,7 @@ export function useWaitToken<TOutput>(
     },
     isLoading: mutation.isMutating,
     isCompleted: !!mutation.data?.success,
+    isReady: !!waitpointId,
     error: mutation.error,
   };
 }
