@@ -201,7 +201,7 @@ export default function Page() {
                 <TypedAwait resolve={data}>
                   {(list) => (
                     <>
-                      {list.runs.length === 0 && !list.hasFilters ? (
+                      {list.runs.length === 0 && !list.hasAnyRuns ? (
                         list.possibleTasks.length === 0 ? (
                           <CreateFirstTaskInstructions />
                         ) : (

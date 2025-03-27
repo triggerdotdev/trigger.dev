@@ -48,6 +48,9 @@ export const BatchListFilters = z.object({
     BatchStatus.array().optional()
   ),
   id: z.string().optional(),
+  period: z.preprocess((value) => (value === "all" ? undefined : value), z.string().optional()),
+  from: z.coerce.number().optional(),
+  to: z.coerce.number().optional(),
 });
 
 export type BatchListFilters = z.infer<typeof BatchListFilters>;

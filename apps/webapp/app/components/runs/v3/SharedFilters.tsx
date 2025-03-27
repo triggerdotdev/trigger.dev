@@ -106,38 +106,42 @@ export const timeFilters = ({
   to,
 }: {
   period?: string;
-  from?: string;
-  to?: string;
-}): { period?: string; from?: Date; to?: Date } => {
+  from?: string | number;
+  to?: string | number;
+}): { period?: string; from?: Date; to?: Date; isDefault: boolean } => {
   if (period) {
-    return { period };
+    return { period, isDefault: period === defaultPeriod };
   }
 
   if (from && to) {
     return {
-      from: dateFromString(from),
-      to: dateFromString(to),
+      from: typeof from === "string" ? dateFromString(from) : new Date(from),
+      to: typeof to === "string" ? dateFromString(to) : new Date(to),
+      isDefault: false,
     };
   }
 
   if (from) {
-    const fromDate = dateFromString(from);
+    const fromDate = typeof from === "string" ? dateFromString(from) : new Date(from);
 
     return {
       from: fromDate,
+      isDefault: false,
     };
   }
 
   if (to) {
-    const toDate = dateFromString(to);
+    const toDate = typeof to === "string" ? dateFromString(to) : new Date(to);
 
     return {
       to: toDate,
+      isDefault: false,
     };
   }
 
   return {
     period: defaultPeriod,
+    isDefault: true,
   };
 };
 
