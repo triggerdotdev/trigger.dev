@@ -22,6 +22,7 @@ import {
 } from "@trigger.dev/core/v3/workers";
 import { HttpServer, type CheckpointClient } from "@trigger.dev/core/v3/serverOnly";
 import { type IncomingMessage } from "node:http";
+import { register } from "../metrics.js";
 
 // Use the official export when upgrading to socket.io@4.8.0
 interface DefaultEventsMap {
@@ -121,7 +122,19 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
   }
 
   private createHttpServer({ host, port }: { host: string; port: number }) {
-    return new HttpServer({ port, host })
+    return new HttpServer({
+      port,
+      host,
+      metrics: {
+        register,
+        expose: false,
+      },
+    })
+      .route("/health", "GET", {
+        handler: async ({ reply }) => {
+          reply.text("OK");
+        },
+      })
       .route(
         "/api/v1/workload-actions/runs/:runFriendlyId/snapshots/:snapshotFriendlyId/attempts/start",
         "POST",

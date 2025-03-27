@@ -26,6 +26,7 @@ const Env = z.object({
     .transform((s) => z.enum(["http", "https"]).parse(s.toLowerCase()))
     .default("http"),
   TRIGGER_WORKLOAD_API_DOMAIN: z.string().optional(), // If unset, will use orchestrator-specific default
+  TRIGGER_WORKLOAD_API_HOST_INTERNAL: z.string().default("0.0.0.0"),
   TRIGGER_WORKLOAD_API_PORT_INTERNAL: z.coerce.number().default(8020), // This is the port the workload API listens on
   TRIGGER_WORKLOAD_API_PORT_EXTERNAL: z.coerce.number().default(8020), // This is the exposed port passed to the run controller
 
@@ -53,7 +54,10 @@ const Env = z.object({
   EPHEMERAL_STORAGE_SIZE_REQUEST: z.string().default("2Gi"),
 
   // Metrics
+  METRICS_ENABLED: BoolEnv.default(true),
   METRICS_COLLECT_DEFAULTS: BoolEnv.default(true),
+  METRICS_HOST: z.string().default("127.0.0.1"),
+  METRICS_PORT: z.coerce.number().int().default(9090),
 
   // Pod cleaner
   POD_CLEANER_ENABLED: BoolEnv.default(true),
