@@ -45,11 +45,11 @@ const { action, loader } = createActionApiRoute(
         throw json({ error: "Waitpoint not found" }, { status: 404 });
       }
 
-      // if (waitpoint.status === "COMPLETED") {
-      //   return json<CompleteWaitpointTokenResponseBody>({
-      //     success: true,
-      //   });
-      // }
+      if (waitpoint.status === "COMPLETED") {
+        return json<CompleteWaitpointTokenResponseBody>({
+          success: true,
+        });
+      }
 
       const stringifiedData = await stringifyIO(body.data);
       const finalData = await conditionallyExportPacket(
