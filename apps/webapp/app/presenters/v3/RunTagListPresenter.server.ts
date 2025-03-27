@@ -5,8 +5,7 @@ export type TagListOptions = {
   userId?: string;
   projectId: string;
   //filters
-  names?: string[];
-  environments?: string[];
+  name?: string;
   //pagination
   page?: number;
   pageSize?: number;
@@ -21,31 +20,19 @@ export class RunTagListPresenter extends BasePresenter {
   public async call({
     userId,
     projectId,
-    names,
-    environments,
+    name,
     page = 1,
     pageSize = DEFAULT_PAGE_SIZE,
   }: TagListOptions) {
-    const hasFilters =
-      (names !== undefined && names.length > 0) ||
-      (environments !== undefined && environments.length > 0);
+    const hasFilters = name;
 
     const tags = await this._replica.taskRunTag.findMany({
       where: {
         projectId,
-        OR:
-          names && names.length > 0
-            ? names.map((name) => ({ name: { contains: name, mode: "insensitive" } }))
-            : undefined,
-        project: environments
+        name: name
           ? {
-              environments: {
-                some: {
-                  id: {
-                    in: environments,
-                  },
-                },
-              },
+              contains: name,
+              mode: "insensitive",
             }
           : undefined,
       },
@@ -59,8 +46,7 @@ export class RunTagListPresenter extends BasePresenter {
     logger.log("tags", {
       tags,
       projectId,
-      names,
-      environments,
+      name,
     });
 
     return {
