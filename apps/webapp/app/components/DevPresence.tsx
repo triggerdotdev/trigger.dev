@@ -45,9 +45,8 @@ export function DevPresenceProvider({ children, enabled = true }: DevPresencePro
 
     try {
       const data = JSON.parse(streamedEvents) as any;
-      if ("lastSeen" in data && data.lastSeen) {
+      if ("isConnected" in data && data.isConnected) {
         try {
-          const lastSeenDate = new Date(data.lastSeen);
           setIsConnected(true);
         } catch (error) {
           console.log("DevPresence: Failed to parse lastSeen timestamp", { error });

@@ -9,7 +9,7 @@ import { findCurrentWorkerDeployment } from "../models/workerDeployment.server";
 import { logger } from "~/services/logger.server";
 import { env } from "~/env.server";
 import Redis from "ioredis";
-import { DevPresenceStream } from "~/presenters/v3/DevPresenceStream.server";
+import { devPresence, DevPresence } from "~/presenters/v3/DevPresence.server";
 
 const redis = new Redis({
   port: env.RUN_ENGINE_DEV_PRESENCE_REDIS_PORT ?? undefined,
@@ -75,10 +75,9 @@ export class TriggerScheduledTaskService extends BaseService {
           !instance.environment.currentSession ||
           instance.environment.currentSession.disconnectedAt;
         //v4
-        const presenceKey = DevPresenceStream.getPresenceKey(instance.environment.id);
-        const v4Disconnected = await redis.get(presenceKey);
+        const v4Connected = await devPresence.isConnected(instance.environment.id);
 
-        if (v3Disconnected && v4Disconnected) {
+        if (v3Disconnected && !v4Connected) {
           shouldTrigger = false;
         }
       }

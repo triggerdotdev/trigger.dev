@@ -1,11 +1,10 @@
 import { $replica } from "~/db.server";
+import { env } from "~/env.server";
+import { devPresence } from "~/presenters/v3/DevPresence.server";
+import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
-import { env } from "~/env.server";
-import { DevPresenceStream } from "~/presenters/v3/DevPresenceStream.server";
-import { logger } from "~/services/logger.server";
 import { createSSELoader, type SendFunction } from "~/utils/sse";
-import Redis from "ioredis";
 
 export const loader = createSSELoader({
   timeout: env.DEV_PRESENCE_SSE_TIMEOUT,
@@ -32,44 +31,17 @@ export const loader = createSSELoader({
       throw new Response("Not Found", { status: 404 });
     }
 
-    const presenceKey = DevPresenceStream.getPresenceKey(environment.id);
-
-    const cmdRedis = new Redis({
-      port: env.RUN_ENGINE_DEV_PRESENCE_REDIS_PORT ?? undefined,
-      host: env.RUN_ENGINE_DEV_PRESENCE_REDIS_HOST ?? undefined,
-      username: env.RUN_ENGINE_DEV_PRESENCE_REDIS_USERNAME ?? undefined,
-      password: env.RUN_ENGINE_DEV_PRESENCE_REDIS_PASSWORD ?? undefined,
-      enableAutoPipelining: true,
-      ...(env.RUN_ENGINE_DEV_PRESENCE_REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
-    });
-
     const checkAndSendPresence = async (send: SendFunction) => {
       try {
         // Use the command client for the GET operation
-        const currentPresenceValue = await cmdRedis.get(presenceKey);
-        const isConnected = !!currentPresenceValue;
-
-        // Format lastSeen as ISO string if it exists
-        let lastSeen = null;
-        if (currentPresenceValue) {
-          try {
-            lastSeen = new Date(currentPresenceValue).toISOString();
-          } catch (e) {
-            // If parsing fails, use current time as fallback
-            lastSeen = new Date().toISOString();
-            logger.warn("Failed to parse lastSeen value, using current time", {
-              originalValue: currentPresenceValue,
-            });
-          }
-        }
+        const isConnected = await devPresence.isConnected(environment.id);
 
         send({
           event: "presence",
           data: JSON.stringify({
-            type: isConnected ? "connected" : "disconnected",
+            isConnected,
             environmentId: environment.id,
-            timestamp: new Date().toISOString(), // Also standardize this to ISO
-            lastSeen: lastSeen,
+            timestamp: new Date().toISOString(),
           }),
         });
 
@@ -85,7 +57,6 @@ export const loader = createSSELoader({
       beforeStream: async () => {
         logger.debug("Start dev presence listening SSE session", {
           environmentId: environment.id,
-          presenceKey,
         });
       },
       initStream: async ({ send }) => {
@@ -98,7 +69,6 @@ export const loader = createSSELoader({
       },
       cleanup: async ({ send }) => {
         await checkAndSendPresence(send);
-        await cmdRedis.quit();
       },
     };
   },
