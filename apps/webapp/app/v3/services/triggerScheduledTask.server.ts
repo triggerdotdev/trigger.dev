@@ -7,6 +7,18 @@ import { stringifyIO } from "@trigger.dev/core/v3";
 import { nextScheduledTimestamps } from "../utils/calculateNextSchedule.server";
 import { findCurrentWorkerDeployment } from "../models/workerDeployment.server";
 import { logger } from "~/services/logger.server";
+import { env } from "~/env.server";
+import Redis from "ioredis";
+import { DevPresenceStream } from "~/presenters/v3/DevPresenceStream.server";
+
+const redis = new Redis({
+  port: env.RUN_ENGINE_DEV_PRESENCE_REDIS_PORT ?? undefined,
+  host: env.RUN_ENGINE_DEV_PRESENCE_REDIS_HOST ?? undefined,
+  username: env.RUN_ENGINE_DEV_PRESENCE_REDIS_USERNAME ?? undefined,
+  password: env.RUN_ENGINE_DEV_PRESENCE_REDIS_PASSWORD ?? undefined,
+  enableAutoPipelining: true,
+  ...(env.RUN_ENGINE_DEV_PRESENCE_REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
+});
 
 export class TriggerScheduledTaskService extends BaseService {
   public async call(instanceId: string, finalAttempt: boolean) {
@@ -57,11 +69,18 @@ export class TriggerScheduledTaskService extends BaseService {
         shouldTrigger = false;
       }
 
-      if (
-        instance.environment.type === "DEVELOPMENT" &&
-        (!instance.environment.currentSession || instance.environment.currentSession.disconnectedAt)
-      ) {
-        shouldTrigger = false;
+      if (instance.environment.type === "DEVELOPMENT") {
+        //v3
+        const v3Disconnected =
+          !instance.environment.currentSession ||
+          instance.environment.currentSession.disconnectedAt;
+        //v4
+        const presenceKey = DevPresenceStream.getPresenceKey(instance.environment.id);
+        const v4Disconnected = await redis.get(presenceKey);
+
+        if (v3Disconnected && v4Disconnected) {
+          shouldTrigger = false;
+        }
       }
 
       if (instance.environment.type !== "DEVELOPMENT") {
