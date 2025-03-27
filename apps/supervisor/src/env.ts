@@ -45,6 +45,24 @@ const Env = z.object({
   // Used by the resource monitor
   OVERRIDE_CPU_TOTAL: z.coerce.number().optional(),
   OVERRIDE_MEMORY_TOTAL_GB: z.coerce.number().optional(),
+
+  // Kubernetes specific settings
+  KUBERNETES_FORCE_ENABLED: BoolEnv.default(false),
+  KUBERNETES_NAMESPACE: z.string().default("default"),
+  EPHEMERAL_STORAGE_SIZE_LIMIT: z.string().default("10Gi"),
+  EPHEMERAL_STORAGE_SIZE_REQUEST: z.string().default("2Gi"),
+
+  // Metrics
+  METRICS_COLLECT_DEFAULTS: BoolEnv.default(true),
+
+  // Pod cleaner
+  POD_CLEANER_ENABLED: BoolEnv.default(true),
+  POD_CLEANER_INTERVAL_MS: z.coerce.number().int().default(10000),
+  POD_CLEANER_BATCH_SIZE: z.coerce.number().int().default(500),
+
+  // Failed pod handler
+  FAILED_POD_HANDLER_ENABLED: BoolEnv.default(true),
+  FAILED_POD_HANDLER_RECONNECT_INTERVAL_MS: z.coerce.number().int().default(1000),
 });
 
 export const env = Env.parse(stdEnv);

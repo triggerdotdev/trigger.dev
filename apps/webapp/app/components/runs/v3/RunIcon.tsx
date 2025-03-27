@@ -2,6 +2,7 @@ import {
   ClockIcon,
   HandRaisedIcon,
   InformationCircleIcon,
+  RectangleStackIcon,
   Squares2X2Icon,
   TagIcon,
 } from "@heroicons/react/20/solid";
@@ -12,6 +13,10 @@ import { tablerIcons } from "~/utils/tablerIcons";
 import tablerSpritePath from "~/components/primitives/tabler-sprite.svg";
 import { TaskCachedIcon } from "~/assets/icons/TaskCachedIcon";
 import { PauseIcon } from "~/assets/icons/PauseIcon";
+import { RunFunctionIcon } from "~/assets/icons/RunFunctionIcon";
+import { MiddlewareIcon } from "~/assets/icons/MiddlewareIcon";
+import { FunctionIcon } from "~/assets/icons/FunctionIcon";
+import { TriggerIcon } from "~/assets/icons/TriggerIcon";
 
 type TaskIconProps = {
   name: string | undefined;
@@ -43,6 +48,9 @@ export function RunIcon({ name, className, spanName }: TaskIconProps) {
   }
 
   if (!name) return <Squares2X2Icon className={cn(className, "text-text-dimmed")} />;
+  if (tablerIcons.has(name)) {
+    return <TablerIcon name={name} className={className} />;
+  }
 
   switch (name) {
     case "task":
@@ -59,6 +67,10 @@ export function RunIcon({ name, className, spanName }: TaskIconProps) {
       return <Squares2X2Icon className={cn(className, "text-text-dimmed")} />;
     case "tag":
       return <TagIcon className={cn(className, "text-text-dimmed")} />;
+    case "queue":
+      return <RectangleStackIcon className={cn(className, "text-purple-500")} />;
+    case "trigger":
+      return <TriggerIcon className={cn(className, "text-orange-500")} />;
     //log levels
     case "debug":
     case "log":
@@ -67,9 +79,24 @@ export function RunIcon({ name, className, spanName }: TaskIconProps) {
     case "warn":
       return <InformationCircleIcon className={cn(className, "text-amber-400")} />;
     case "error":
-      return <InformationCircleIcon className={cn(className, "text-rose-500")} />;
+      return <InformationCircleIcon className={cn(className, "text-error")} />;
     case "fatal":
-      return <HandRaisedIcon className={cn(className, "text-rose-800")} />;
+      return <HandRaisedIcon className={cn(className, "text-error")} />;
+    case "task-middleware":
+      return <MiddlewareIcon className={cn(className, "text-text-dimmed")} />;
+    case "task-fn-run":
+      return <RunFunctionIcon className={cn(className, "text-text-dimmed")} />;
+    case "task-hook-init":
+    case "task-hook-onStart":
+    case "task-hook-onSuccess":
+    case "task-hook-onWait":
+    case "task-hook-onResume":
+    case "task-hook-onComplete":
+    case "task-hook-cleanup":
+      return <FunctionIcon className={cn(className, "text-text-dimmed")} />;
+    case "task-hook-onFailure":
+    case "task-hook-catchError":
+      return <FunctionIcon className={cn(className, "text-error")} />;
   }
 
   return <InformationCircleIcon className={cn(className, "text-text-dimmed")} />;

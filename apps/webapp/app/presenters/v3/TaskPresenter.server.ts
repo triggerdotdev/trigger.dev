@@ -24,7 +24,6 @@ export class TaskPresenter {
         id: true,
         slug: true,
         filePath: true,
-        exportName: true,
         friendlyId: true,
         createdAt: true,
         worker: {

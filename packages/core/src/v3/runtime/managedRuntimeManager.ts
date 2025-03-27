@@ -1,3 +1,4 @@
+import { lifecycleHooks } from "../lifecycle-hooks-api.js";
 import {
   BatchTaskRunExecutionResult,
   CompletedWaitpoint,
@@ -44,8 +45,18 @@ export class ManagedRuntimeManager implements RuntimeManager {
         this.resolversByWaitId.set(params.id, resolve);
       });
 
+      await lifecycleHooks.callOnWaitHookListeners({
+        type: "task",
+        runId: params.id,
+      });
+
       const waitpoint = await promise;
       const result = this.waitpointToTaskRunExecutionResult(waitpoint);
+
+      await lifecycleHooks.callOnResumeHookListeners({
+        type: "task",
+        runId: params.id,
+      });
 
       return result;
     });
@@ -70,7 +81,19 @@ export class ManagedRuntimeManager implements RuntimeManager {
         })
       );
 
+      await lifecycleHooks.callOnWaitHookListeners({
+        type: "batch",
+        batchId: params.id,
+        runCount: params.runCount,
+      });
+
       const waitpoints = await promise;
+
+      await lifecycleHooks.callOnResumeHookListeners({
+        type: "batch",
+        batchId: params.id,
+        runCount: params.runCount,
+      });
 
       return {
         id: params.id,
@@ -91,7 +114,31 @@ export class ManagedRuntimeManager implements RuntimeManager {
         this.resolversByWaitId.set(waitpointFriendlyId, resolve);
       });
 
+      if (finishDate) {
+        await lifecycleHooks.callOnWaitHookListeners({
+          type: "duration",
+          date: finishDate,
+        });
+      } else {
+        await lifecycleHooks.callOnWaitHookListeners({
+          type: "token",
+          token: waitpointFriendlyId,
+        });
+      }
+
       const waitpoint = await promise;
+
+      if (finishDate) {
+        await lifecycleHooks.callOnResumeHookListeners({
+          type: "duration",
+          date: finishDate,
+        });
+      } else {
+        await lifecycleHooks.callOnResumeHookListeners({
+          type: "token",
+          token: waitpointFriendlyId,
+        });
+      }
 
       return {
         ok: !waitpoint.outputIsError,

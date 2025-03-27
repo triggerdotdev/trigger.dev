@@ -1,13 +1,9 @@
-import {
-  assertNonNullable,
-  containerTest,
-  setupAuthenticatedEnvironment,
-  setupBackgroundWorker,
-} from "@internal/testcontainers";
+import { assertNonNullable, containerTest } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
 import { expect } from "vitest";
 import { RunEngine } from "../index.js";
 import { setTimeout } from "node:timers/promises";
+import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -50,7 +46,7 @@ describe("RunEngine triggerAndWait", () => {
       const childTask = "child-task";
 
       //create background worker
-      await setupBackgroundWorker(prisma, authenticatedEnvironment, [parentTask, childTask]);
+      await setupBackgroundWorker(engine, authenticatedEnvironment, [parentTask, childTask]);
 
       //trigger the run
       const parentRun = await engine.trigger(
@@ -66,7 +62,7 @@ describe("RunEngine triggerAndWait", () => {
           traceId: "t12345",
           spanId: "s12345",
           masterQueue: "main",
-          queueName: `task/${parentTask}`,
+          queue: `task/${parentTask}`,
           isTest: false,
           tags: [],
         },
@@ -101,7 +97,7 @@ describe("RunEngine triggerAndWait", () => {
           traceId: "t12345",
           spanId: "s12345",
           masterQueue: "main",
-          queueName: `task/${childTask}`,
+          queue: `task/${childTask}`,
           isTest: false,
           tags: [],
           resumeParentOnCompletion: true,
@@ -238,7 +234,7 @@ describe("RunEngine triggerAndWait", () => {
         const childTask = "child-task";
 
         //create background worker
-        await setupBackgroundWorker(prisma, authenticatedEnvironment, [parentTask, childTask]);
+        await setupBackgroundWorker(engine, authenticatedEnvironment, [parentTask, childTask]);
 
         //trigger the run
         const parentRun1 = await engine.trigger(
@@ -254,7 +250,7 @@ describe("RunEngine triggerAndWait", () => {
             traceId: "t12345",
             spanId: "s12345",
             masterQueue: "main",
-            queueName: `task/${parentTask}`,
+            queue: `task/${parentTask}`,
             isTest: false,
             tags: [],
           },
@@ -286,7 +282,7 @@ describe("RunEngine triggerAndWait", () => {
             traceId: "t12345",
             spanId: "s12345",
             masterQueue: "main",
-            queueName: `task/${childTask}`,
+            queue: `task/${childTask}`,
             isTest: false,
             tags: [],
             resumeParentOnCompletion: true,
@@ -343,7 +339,7 @@ describe("RunEngine triggerAndWait", () => {
             traceId: "t12346",
             spanId: "s12346",
             masterQueue: "main",
-            queueName: `task/${parentTask}`,
+            queue: `task/${parentTask}`,
             isTest: false,
             tags: [],
           },
@@ -372,7 +368,6 @@ describe("RunEngine triggerAndWait", () => {
         const blockedResult = await engine.blockRunWithWaitpoint({
           runId: parentRun2.id,
           waitpoints: childRunWithWaitpoint.associatedWaitpoint!.id,
-          environmentId: authenticatedEnvironment.id,
           projectId: authenticatedEnvironment.project.id,
           organizationId: authenticatedEnvironment.organizationId,
           tx: prisma,

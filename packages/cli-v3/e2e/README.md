@@ -216,3 +216,22 @@ This will test your fixture project, and generate outputs in the `packages/cli-v
     ```
 
     > You might expect a specific error for a specific test, so use those configuration option at your discretion.
+
+## Updating the SDK in the fixtures
+
+The `@trigger.dev/sdk` package is installed in the fixtures as a real dependency (not from the monorepo).
+
+To update it, you'll need to update the version in the `package.json` file, and then run the following commands:
+
+> NOTE: Some fixtures don't support all the package managers, like the monorepo-react-email only supports yarn and pnpm.
+
+```sh
+cd packages/cli-v3/e2e/fixtures/<fixture-name>
+rm -rf **/node_modules
+corepack use pnpm@8.15.5
+rm -rf **/node_modules
+npm install
+rm -rf **/node_modules
+corepack use yarn@4.2.2
+rm -rf **/node_modules
+```

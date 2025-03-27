@@ -38,7 +38,7 @@ jobs:
         run: pnpm run generate
 
       - name: 🧪 Run Webapp Unit Tests
-        run: pnpm run test --filter webapp
+        run: pnpm run test:webapp
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
           DIRECT_URL: postgresql://postgres:postgres@localhost:5432/postgres
@@ -47,7 +47,7 @@ jobs:
           ENCRYPTION_KEY: "secret"
       
       - name: 🧪 Run Package Unit Tests
-        run: pnpm run test --filter "@trigger.dev/*"
+        run: pnpm run test:packages
       
       - name: 🧪 Run Internal Unit Tests
-        run: pnpm run test --filter "@internal/*"
+        run: pnpm run test:internal

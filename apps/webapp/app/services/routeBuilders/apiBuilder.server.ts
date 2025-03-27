@@ -39,7 +39,12 @@ type ApiKeyRouteBuilderOptions<
     params: TParamsSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
       ? z.infer<TParamsSchema>
       : undefined,
-    authentication: ApiAuthenticationResultSuccess
+    authentication: ApiAuthenticationResultSuccess,
+    searchParams: TSearchParamsSchema extends
+      | z.ZodFirstPartySchemaTypes
+      | z.ZodDiscriminatedUnion<any, any>
+      ? z.infer<TSearchParamsSchema>
+      : undefined
   ) => Promise<TResource | undefined>;
   shouldRetryNotFound?: boolean;
   authorization?: {
@@ -179,7 +184,7 @@ export function createLoaderApiRoute<
       }
 
       // Find the resource
-      const resource = await findResource(parsedParams, authenticationResult);
+      const resource = await findResource(parsedParams, authenticationResult, parsedSearchParams);
 
       if (!resource) {
         return await wrapResponse(

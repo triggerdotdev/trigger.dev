@@ -1,15 +1,11 @@
-import {
-  assertNonNullable,
-  containerTest,
-  setupAuthenticatedEnvironment,
-  setupBackgroundWorker,
-} from "@internal/testcontainers";
+import { assertNonNullable, containerTest } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
 import { expect } from "vitest";
 import { RunEngine } from "../index.js";
-import { setTimeout } from "timers/promises";
+import { setTimeout } from "node:timers/promises";
 import { EventBusEventArgs } from "../eventBus.js";
 import { isWaitpointOutputTimeout } from "@trigger.dev/core/v3";
+import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -51,7 +47,7 @@ describe("RunEngine Waitpoints", () => {
       const taskIdentifier = "test-task";
 
       //create background worker
-      await setupBackgroundWorker(prisma, authenticatedEnvironment, taskIdentifier);
+      await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
 
       //trigger the run
       const run = await engine.trigger(
@@ -67,7 +63,7 @@ describe("RunEngine Waitpoints", () => {
           traceId: "t12345",
           spanId: "s12345",
           masterQueue: "main",
-          queueName: "task/test-task",
+          queue: "task/test-task",
           isTest: false,
           tags: [],
         },
@@ -102,12 +98,9 @@ describe("RunEngine Waitpoints", () => {
       const result = await engine.blockRunWithWaitpoint({
         runId: run.id,
         waitpoints: [waitpoint.id],
-        environmentId: authenticatedEnvironment.id,
         projectId: authenticatedEnvironment.project.id,
         organizationId: authenticatedEnvironment.organization.id,
-        releaseConcurrency: {
-          releaseQueue: true,
-        },
+        releaseConcurrency: true,
       });
       expect(result.executionStatus).toBe("EXECUTING_WITH_WAITPOINTS");
       expect(result.runStatus).toBe("EXECUTING");
@@ -169,7 +162,7 @@ describe("RunEngine Waitpoints", () => {
       const taskIdentifier = "test-task";
 
       //create background worker
-      await setupBackgroundWorker(prisma, authenticatedEnvironment, taskIdentifier);
+      await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
 
       //trigger the run
       const run = await engine.trigger(
@@ -185,7 +178,7 @@ describe("RunEngine Waitpoints", () => {
           traceId: "t12345",
           spanId: "s12345",
           masterQueue: "main",
-          queueName: "task/test-task",
+          queue: "task/test-task",
           isTest: false,
           tags: [],
         },
@@ -218,7 +211,6 @@ describe("RunEngine Waitpoints", () => {
       const result = await engine.blockRunWithWaitpoint({
         runId: run.id,
         waitpoints: [waitpoint.id],
-        environmentId: authenticatedEnvironment.id,
         projectId: authenticatedEnvironment.project.id,
         organizationId: authenticatedEnvironment.organization.id,
       });
@@ -312,7 +304,7 @@ describe("RunEngine Waitpoints", () => {
         const taskIdentifier = "test-task";
 
         //create background worker
-        await setupBackgroundWorker(prisma, authenticatedEnvironment, taskIdentifier);
+        await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
 
         //trigger the run
         const run = await engine.trigger(
@@ -328,7 +320,7 @@ describe("RunEngine Waitpoints", () => {
             traceId: "t12345",
             spanId: "s12345",
             masterQueue: "main",
-            queueName: "task/test-task",
+            queue: "task/test-task",
             isTest: false,
             tags: [],
           },
@@ -360,7 +352,6 @@ describe("RunEngine Waitpoints", () => {
         await engine.blockRunWithWaitpoint({
           runId: run.id,
           waitpoints: result.waitpoint.id,
-          environmentId: authenticatedEnvironment.id,
           projectId: authenticatedEnvironment.projectId,
           organizationId: authenticatedEnvironment.organizationId,
         });
@@ -451,7 +442,7 @@ describe("RunEngine Waitpoints", () => {
       const taskIdentifier = "test-task";
 
       //create background worker
-      await setupBackgroundWorker(prisma, authenticatedEnvironment, taskIdentifier);
+      await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
 
       //trigger the run
       const run = await engine.trigger(
@@ -467,7 +458,7 @@ describe("RunEngine Waitpoints", () => {
           traceId: "t12345",
           spanId: "s12345",
           masterQueue: "main",
-          queueName: "task/test-task",
+          queue: "task/test-task",
           isTest: false,
           tags: [],
         },
@@ -500,7 +491,6 @@ describe("RunEngine Waitpoints", () => {
       await engine.blockRunWithWaitpoint({
         runId: run.id,
         waitpoints: result.waitpoint.id,
-        environmentId: authenticatedEnvironment.id,
         projectId: authenticatedEnvironment.projectId,
         organizationId: authenticatedEnvironment.organizationId,
       });
@@ -569,7 +559,7 @@ describe("RunEngine Waitpoints", () => {
         const taskIdentifier = "test-task";
 
         //create background worker
-        await setupBackgroundWorker(prisma, authenticatedEnvironment, taskIdentifier);
+        await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
 
         //trigger the run
         const run = await engine.trigger(
@@ -585,7 +575,7 @@ describe("RunEngine Waitpoints", () => {
             traceId: "t12345",
             spanId: "s12345",
             masterQueue: "main",
-            queueName: "task/test-task",
+            queue: "task/test-task",
             isTest: false,
             tags: [],
           },
@@ -627,7 +617,6 @@ describe("RunEngine Waitpoints", () => {
               engine.blockRunWithWaitpoint({
                 runId: run.id,
                 waitpoints: result.waitpoint.id,
-                environmentId: authenticatedEnvironment.id,
                 projectId: authenticatedEnvironment.projectId,
                 organizationId: authenticatedEnvironment.organizationId,
               })
@@ -719,7 +708,7 @@ describe("RunEngine Waitpoints", () => {
         const taskIdentifier = "test-task";
 
         //create background worker
-        await setupBackgroundWorker(prisma, authenticatedEnvironment, taskIdentifier);
+        await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
 
         //trigger the run
         const run = await engine.trigger(
@@ -735,7 +724,7 @@ describe("RunEngine Waitpoints", () => {
             traceId: "t12345",
             spanId: "s12345",
             masterQueue: "main",
-            queueName: "task/test-task",
+            queue: "task/test-task",
             isTest: false,
             tags: [],
           },
@@ -770,7 +759,6 @@ describe("RunEngine Waitpoints", () => {
         await engine.blockRunWithWaitpoint({
           runId: run.id,
           waitpoints: result.waitpoint.id,
-          environmentId: authenticatedEnvironment.id,
           projectId: authenticatedEnvironment.projectId,
           organizationId: authenticatedEnvironment.organizationId,
         });
@@ -868,7 +856,7 @@ describe("RunEngine Waitpoints", () => {
       const taskIdentifier = "test-task";
 
       //create background worker
-      await setupBackgroundWorker(prisma, authenticatedEnvironment, taskIdentifier);
+      await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
 
       //trigger the run
       const run = await engine.trigger(
@@ -884,7 +872,7 @@ describe("RunEngine Waitpoints", () => {
           traceId: "t12345",
           spanId: "s12345",
           masterQueue: "main",
-          queueName: "task/test-task",
+          queue: "task/test-task",
           isTest: false,
           tags: [],
         },
@@ -921,7 +909,6 @@ describe("RunEngine Waitpoints", () => {
       await engine.blockRunWithWaitpoint({
         runId: run.id,
         waitpoints: result.waitpoint.id,
-        environmentId: authenticatedEnvironment.id,
         projectId: authenticatedEnvironment.projectId,
         organizationId: authenticatedEnvironment.organizationId,
       });
@@ -1020,7 +1007,7 @@ describe("RunEngine Waitpoints", () => {
       const taskIdentifier = "test-task";
 
       //create background worker
-      await setupBackgroundWorker(prisma, authenticatedEnvironment, taskIdentifier);
+      await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
 
       //trigger the run
       const run = await engine.trigger(
@@ -1036,7 +1023,7 @@ describe("RunEngine Waitpoints", () => {
           traceId: "t12345",
           spanId: "s12345",
           masterQueue: "main",
-          queueName: "task/test-task",
+          queue: "task/test-task",
           isTest: false,
           tags: [],
         },
@@ -1082,7 +1069,6 @@ describe("RunEngine Waitpoints", () => {
       await engine.blockRunWithWaitpoint({
         runId: run.id,
         waitpoints: result.waitpoint.id,
-        environmentId: authenticatedEnvironment.id,
         projectId: authenticatedEnvironment.projectId,
         organizationId: authenticatedEnvironment.organizationId,
       });
@@ -1143,4 +1129,219 @@ describe("RunEngine Waitpoints", () => {
       engine.quit();
     }
   });
+
+  containerTest(
+    "continueRunIfUnblocked enqueues run when cannot reacquire concurrency",
+    async ({ prisma, redisOptions }) => {
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      const engine = new RunEngine({
+        prisma,
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+        },
+        runLock: {
+          redis: redisOptions,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0001,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      try {
+        const taskIdentifier = "test-task";
+
+        // Create background worker
+        await setupBackgroundWorker(
+          engine,
+          authenticatedEnvironment,
+          taskIdentifier,
+          undefined,
+          undefined,
+          {
+            concurrencyLimit: 1,
+          }
+        );
+
+        // Create first run with queue concurrency limit of 1
+        const firstRun = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: "run_first",
+            environment: authenticatedEnvironment,
+            taskIdentifier,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t12345-first",
+            spanId: "s12345-first",
+            masterQueue: "main",
+            queue: "task/test-task",
+            isTest: false,
+            tags: [],
+          },
+          prisma
+        );
+
+        // Dequeue and start the first run
+        const dequeuedFirst = await engine.dequeueFromMasterQueue({
+          consumerId: "test_12345",
+          masterQueue: firstRun.masterQueue,
+          maxRunCount: 10,
+        });
+
+        const firstAttempt = await engine.startRunAttempt({
+          runId: dequeuedFirst[0].run.id,
+          snapshotId: dequeuedFirst[0].snapshot.id,
+        });
+        expect(firstAttempt.snapshot.executionStatus).toBe("EXECUTING");
+
+        // Create a manual waitpoint for the first run
+        const waitpoint = await engine.createManualWaitpoint({
+          environmentId: authenticatedEnvironment.id,
+          projectId: authenticatedEnvironment.projectId,
+        });
+        expect(waitpoint.waitpoint.status).toBe("PENDING");
+
+        // Block the first run with releaseConcurrency set to true
+        const blockedResult = await engine.blockRunWithWaitpoint({
+          runId: firstRun.id,
+          waitpoints: waitpoint.waitpoint.id,
+          projectId: authenticatedEnvironment.projectId,
+          organizationId: authenticatedEnvironment.organizationId,
+          releaseConcurrency: true,
+        });
+
+        // Verify first run is blocked
+        const firstRunData = await engine.getRunExecutionData({ runId: firstRun.id });
+        expect(firstRunData?.snapshot.executionStatus).toBe("EXECUTING_WITH_WAITPOINTS");
+
+        // Create and start second run on the same queue
+        const secondRun = await engine.trigger(
+          {
+            number: 2,
+            friendlyId: "run_second",
+            environment: authenticatedEnvironment,
+            taskIdentifier,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t12345-second",
+            spanId: "s12345-second",
+            masterQueue: "main",
+            queue: "task/test-task",
+            isTest: false,
+            tags: [],
+          },
+          prisma
+        );
+
+        // Dequeue and start the second run
+        const dequeuedSecond = await engine.dequeueFromMasterQueue({
+          consumerId: "test_12345",
+          masterQueue: secondRun.masterQueue,
+          maxRunCount: 10,
+        });
+
+        const secondAttempt = await engine.startRunAttempt({
+          runId: dequeuedSecond[0].run.id,
+          snapshotId: dequeuedSecond[0].snapshot.id,
+        });
+        expect(secondAttempt.snapshot.executionStatus).toBe("EXECUTING");
+
+        // Now complete the waitpoint for the first run
+        await engine.completeWaitpoint({
+          id: waitpoint.waitpoint.id,
+        });
+
+        // Wait for the continueRunIfUnblocked to process
+        await setTimeout(500);
+
+        // Verify the first run is now in QUEUED_EXECUTING state
+        const executionDataAfter = await engine.getRunExecutionData({ runId: firstRun.id });
+        expect(executionDataAfter?.snapshot.executionStatus).toBe("QUEUED_EXECUTING");
+        expect(executionDataAfter?.snapshot.description).toBe(
+          "Run can continue, but is waiting for concurrency"
+        );
+
+        // Verify the waitpoint is no longer blocking the first run
+        const runWaitpoint = await prisma.taskRunWaitpoint.findFirst({
+          where: {
+            taskRunId: firstRun.id,
+          },
+          include: {
+            waitpoint: true,
+          },
+        });
+        expect(runWaitpoint).toBeNull();
+
+        // Verify the waitpoint itself is completed
+        const completedWaitpoint = await prisma.waitpoint.findUnique({
+          where: {
+            id: waitpoint.waitpoint.id,
+          },
+        });
+        assertNonNullable(completedWaitpoint);
+        expect(completedWaitpoint.status).toBe("COMPLETED");
+
+        // Complete the second run so the first run can be dequeued
+        const result = await engine.completeRunAttempt({
+          runId: dequeuedSecond[0].run.id,
+          snapshotId: secondAttempt.snapshot.id,
+          completion: {
+            ok: true,
+            id: dequeuedSecond[0].run.id,
+            output: `{"foo":"bar"}`,
+            outputType: "application/json",
+          },
+        });
+
+        await setTimeout(500);
+
+        let event: EventBusEventArgs<"workerNotification">[0] | undefined = undefined;
+        engine.eventBus.on("workerNotification", (result) => {
+          event = result;
+        });
+
+        // Verify the first run is back in the queue
+        const queuedRun = await engine.dequeueFromMasterQueue({
+          consumerId: "test_12345",
+          masterQueue: firstRun.masterQueue,
+          maxRunCount: 10,
+        });
+
+        expect(queuedRun.length).toBe(0);
+
+        // Get the latest execution snapshot and make sure it's EXECUTING
+        const executionData = await engine.getRunExecutionData({ runId: firstRun.id });
+        assertNonNullable(executionData);
+        expect(executionData.snapshot.executionStatus).toBe("EXECUTING");
+
+        assertNonNullable(event);
+        const notificationEvent = event as EventBusEventArgs<"workerNotification">[0];
+        expect(notificationEvent.run.id).toBe(firstRun.id);
+        expect(notificationEvent.snapshot.executionStatus).toBe("EXECUTING");
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
 });

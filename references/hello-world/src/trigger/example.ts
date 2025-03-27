@@ -1,9 +1,11 @@
-import { logger, task, timeout, wait } from "@trigger.dev/sdk";
+import { batch, logger, task, timeout, wait } from "@trigger.dev/sdk";
 import { setTimeout } from "timers/promises";
 
 export const helloWorldTask = task({
   id: "hello-world",
   run: async (payload: any, { ctx }) => {
+    logger.info("Hello, world from the init", { ctx, payload });
+
     logger.debug("debug: Hello, world!", { payload });
     logger.info("info: Hello, world!", { payload });
     logger.log("log: Hello, world!", { payload });
@@ -22,7 +24,12 @@ export const parentTask = task({
   id: "parent",
   run: async (payload: any, { ctx }) => {
     logger.log("Hello, world from the parent", { payload });
-    await childTask.triggerAndWait({ message: "Hello, world!" });
+    await childTask.triggerAndWait(
+      { message: "Hello, world!" },
+      {
+        releaseConcurrency: true,
+      }
+    );
   },
 });
 
@@ -131,5 +138,57 @@ export const batchTask = task({
       batchCount: payload.count,
       results,
     };
+  },
+});
+
+const nonExportedTask = task({
+  id: "non-exported",
+  run: async (payload: { message: string }, { ctx }) => {
+    logger.info("Hello, world from the non-exported task", { message: payload.message });
+  },
+});
+
+export const hooksTask = task({
+  id: "hooks",
+  run: async (payload: { message: string }, { ctx }) => {
+    logger.info("Hello, world from the hooks task", { message: payload.message });
+
+    await wait.for({ seconds: 5 });
+
+    return {
+      message: "Hello, world!",
+    };
+  },
+  init: async () => {
+    return {
+      foobar: "baz",
+    };
+  },
+  onWait: async ({ payload, wait, ctx, init }) => {
+    logger.info("Hello, world from the onWait hook", { payload, init, wait });
+  },
+  onResume: async ({ payload, wait, ctx, init }) => {
+    logger.info("Hello, world from the onResume hook", { payload, init, wait });
+  },
+  onStart: async ({ payload, ctx, init }) => {
+    logger.info("Hello, world from the onStart hook", { payload, init });
+  },
+  onSuccess: async ({ payload, output, ctx }) => {
+    logger.info("Hello, world from the onSuccess hook", { payload, output });
+  },
+  onFailure: async ({ payload, error, ctx }) => {
+    logger.info("Hello, world from the onFailure hook", { payload, error });
+  },
+  onComplete: async ({ ctx, payload, result }) => {
+    logger.info("Hello, world from the onComplete hook", { payload, result });
+  },
+  handleError: async ({ payload, error, ctx, retry }) => {
+    logger.info("Hello, world from the handleError hook", { payload, error, retry });
+  },
+  catchError: async ({ ctx, payload, error, retry }) => {
+    logger.info("Hello, world from the catchError hook", { payload, error, retry });
+  },
+  cleanup: async ({ ctx, payload }) => {
+    logger.info("Hello, world from the cleanup hook", { payload });
   },
 });

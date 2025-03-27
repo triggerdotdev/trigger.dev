@@ -2,10 +2,10 @@ import { Prisma, type TaskRunStatus } from "@trigger.dev/database";
 import parse from "parse-duration";
 import { sqlDatabaseSchema } from "~/db.server";
 import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
-import { isCancellableRunStatus, isFinalRunStatus } from "~/v3/taskStatus";
+import { isCancellableRunStatus, isFinalRunStatus, isPendingRunStatus } from "~/v3/taskStatus";
 import { BasePresenter } from "./basePresenter.server";
 import { getAllTaskIdentifiers } from "~/models/task.server";
-import { Direction } from "~/components/ListPagination";
+import { type Direction } from "~/components/ListPagination";
 
 export type RunListOptions = {
   userId?: string;
@@ -24,7 +24,7 @@ export type RunListOptions = {
   isTest?: boolean;
   rootOnly?: boolean;
   batchId?: string;
-  runId?: string;
+  runIds?: string[];
   //pagination
   direction?: Direction;
   cursor?: string;
@@ -52,7 +52,7 @@ export class RunListPresenter extends BasePresenter {
     isTest,
     rootOnly,
     batchId,
-    runId,
+    runIds,
     from,
     to,
     direction = "forward",
@@ -65,7 +65,6 @@ export class RunListPresenter extends BasePresenter {
       (tasks !== undefined && tasks.length > 0) ||
       (versions !== undefined && versions.length > 0) ||
       hasStatusFilters ||
-      (environments !== undefined && environments.length > 0) ||
       (period !== undefined && period !== "all") ||
       (bulkId !== undefined && bulkId !== "") ||
       from !== undefined ||
@@ -73,7 +72,7 @@ export class RunListPresenter extends BasePresenter {
       (scheduleId !== undefined && scheduleId !== "") ||
       (tags !== undefined && tags.length > 0) ||
       batchId !== undefined ||
-      runId !== undefined ||
+      (runIds !== undefined && runIds.length > 0) ||
       typeof isTest === "boolean" ||
       rootOnly === true;
 
@@ -183,7 +182,7 @@ export class RunListPresenter extends BasePresenter {
     }
 
     //show all runs if we are filtering by batchId or runId
-    if (batchId || runId || scheduleId || tasks?.length) {
+    if (batchId || runIds?.length || scheduleId || tasks?.length) {
       rootOnly = false;
     }
 
@@ -262,7 +261,7 @@ WHERE
         : Prisma.empty
     }
     -- filters
-    ${runId ? Prisma.sql`AND tr."friendlyId" = ${runId}` : Prisma.empty}
+    ${runIds ? Prisma.sql`AND tr."friendlyId" IN (${Prisma.join(runIds)})` : Prisma.empty}
     ${batchId ? Prisma.sql`AND tr."batchId" = ${batchId}` : Prisma.empty}
     ${
       restrictToRunIds
@@ -368,6 +367,7 @@ WHERE
           spanId: run.spanId,
           isReplayable: true,
           isCancellable: isCancellableRunStatus(run.status),
+          isPending: isPendingRunStatus(run.status),
           environment: displayableEnvironment(environment, userId),
           idempotencyKey: run.idempotencyKey ? run.idempotencyKey : undefined,
           ttl: run.ttl ? run.ttl : undefined,

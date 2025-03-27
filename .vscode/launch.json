@@ -138,15 +138,15 @@
       "type": "node-terminal",
       "request": "launch",
       "name": "Debug RunEngine tests",
-      "command": "pnpm run test --filter @internal/run-engine",
-      "cwd": "${workspaceFolder}",
+      "command": "pnpm run test ./src/engine/tests/releaseConcurrencyQueue.test.ts -t 'Should manage token bucket and queue correctly'",
+      "cwd": "${workspaceFolder}/internal-packages/run-engine",
       "sourceMaps": true
     },
     {
       "type": "node-terminal",
       "request": "launch",
       "name": "Debug RunQueue tests",
-      "command": "pnpm run test ./src/engine/tests/waitpoints.test.ts",
+      "command": "pnpm run test ./src/run-queue/index.test.ts",
       "cwd": "${workspaceFolder}/internal-packages/run-engine",
       "sourceMaps": true
     }

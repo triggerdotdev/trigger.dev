@@ -1,9 +1,9 @@
-import { BatchTaskRunStatus, Prisma } from "@trigger.dev/database";
+import { type BatchTaskRunStatus, Prisma } from "@trigger.dev/database";
 import parse from "parse-duration";
 import { sqlDatabaseSchema } from "~/db.server";
 import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { BasePresenter } from "./basePresenter.server";
-import { Direction } from "~/components/ListPagination";
+import { type Direction } from "~/components/ListPagination";
 
 export type BatchListOptions = {
   userId?: string;
@@ -45,7 +45,6 @@ export class BatchListPresenter extends BasePresenter {
 
     const hasFilters =
       hasStatusFilters ||
-      (environments !== undefined && environments.length > 0) ||
       (period !== undefined && period !== "all") ||
       friendlyId !== undefined ||
       from !== undefined ||

@@ -21,6 +21,10 @@ export function toFriendlyId(entityName: string, internalId: string): string {
     throw new Error("Internal ID cannot be empty");
   }
 
+  if (internalId.startsWith(`${entityName}_`)) {
+    return internalId;
+  }
+
   return `${entityName}_${internalId}`;
 }
 
@@ -90,3 +94,25 @@ export const RunId = new IdUtil("run");
 export const SnapshotId = new IdUtil("snapshot");
 export const WaitpointId = new IdUtil("waitpoint");
 export const BatchId = new IdUtil("batch");
+
+export class IdGenerator {
+  private alphabet: string;
+  private length: number;
+  private prefix: string;
+
+  constructor({ alphabet, length, prefix }: { alphabet: string; length: number; prefix: string }) {
+    this.alphabet = alphabet;
+    this.length = length;
+    this.prefix = prefix;
+  }
+
+  generate(): string {
+    return `${this.prefix}${customAlphabet(this.alphabet, this.length)()}`;
+  }
+}
+
+export const RunnerId = new IdGenerator({
+  alphabet: "123456789abcdefghijkmnopqrstuvwxyz",
+  length: 20,
+  prefix: "runner_",
+});

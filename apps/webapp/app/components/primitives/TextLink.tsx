@@ -1,12 +1,12 @@
 import { Link } from "@remix-run/react";
 import { cn } from "~/utils/cn";
-import { Icon, RenderIcon } from "./Icon";
+import { Icon, type RenderIcon } from "./Icon";
 
 const variations = {
   primary:
     "text-indigo-500 transition hover:text-indigo-400 inline-flex gap-0.5 items-center group focus-visible:focus-custom",
   secondary:
-    "text-text-dimmed transition underline underline-offset-2 decoration-dimmed/50 hover:decoration-dimmed inline-flex gap-0.5 items-center group focus-visible:focus-custom",
+    "text-text-dimmed transition hover:text-text-bright inline-flex gap-0.5 items-center group focus-visible:focus-custom",
 } as const;
 
 type TextLinkProps = {

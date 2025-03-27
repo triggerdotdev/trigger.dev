@@ -424,6 +424,9 @@ function apiStatusFromRunStatus(status: string): RunStatus {
     case "DELAYED": {
       return "DELAYED";
     }
+    case "PENDING_VERSION": {
+      return "PENDING_VERSION";
+    }
     case "WAITING_FOR_DEPLOY": {
       return "WAITING_FOR_DEPLOY";
     }

@@ -1,9 +1,10 @@
-import { Link, LinkProps, NavLink, NavLinkProps } from "@remix-run/react";
-import React, { forwardRef, ReactNode, useImperativeHandle, useRef } from "react";
-import { ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
+import { Link, type LinkProps, NavLink, type NavLinkProps } from "@remix-run/react";
+import React, { forwardRef, type ReactNode, useImperativeHandle, useRef } from "react";
+import { type ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
 import { ShortcutKey } from "./ShortcutKey";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./Tooltip";
+import { Icon, type RenderIcon } from "./Icon";
 
 const sizes = {
   small: {
@@ -141,7 +142,7 @@ const variant = {
     textColor: "text-text-bright",
     button:
       "h-[1.8rem] px-[0.4rem] text-2sm rounded-sm text-text-dimmed bg-transparent group-hover/button:bg-charcoal-750",
-    icon: "h-4",
+    icon: "h-[1.125rem]",
     iconSpacing: "gap-x-1.5",
     shortcutVariant: undefined,
     shortcut: undefined,
@@ -164,8 +165,8 @@ const allVariants = {
 
 export type ButtonContentPropsType = {
   children?: React.ReactNode;
-  LeadingIcon?: React.ComponentType<any>;
-  TrailingIcon?: React.ComponentType<any>;
+  LeadingIcon?: RenderIcon;
+  TrailingIcon?: RenderIcon;
   trailingIconClassName?: string;
   leadingIconClassName?: string;
   fullWidth?: boolean;
@@ -220,7 +221,8 @@ export function ButtonContent(props: ButtonContentPropsType) {
         )}
       >
         {LeadingIcon && (
-          <LeadingIcon
+          <Icon
+            icon={LeadingIcon}
             className={cn(
               iconClassName,
               variation.icon,
@@ -245,7 +247,8 @@ export function ButtonContent(props: ButtonContentPropsType) {
           renderShortcutKey()}
 
         {TrailingIcon && (
-          <TrailingIcon
+          <Icon
+            icon={TrailingIcon}
             className={cn(
               iconClassName,
               variation.icon,

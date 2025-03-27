@@ -34,11 +34,28 @@ export async function requireUserId(request: Request, redirectTo?: string) {
   return userId;
 }
 
+export type UserFromSession = Awaited<ReturnType<typeof requireUser>>;
+
 export async function requireUser(request: Request) {
   const userId = await requireUserId(request);
 
+  const impersonationId = await getImpersonationId(request);
   const user = await getUserById(userId);
-  if (user) return user;
+  if (user) {
+    return {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      displayName: user.displayName,
+      avatarUrl: user.avatarUrl,
+      admin: user.admin,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+      dashboardPreferences: user.dashboardPreferences,
+      confirmedBasicDetails: user.confirmedBasicDetails,
+      isImpersonating: !!impersonationId,
+    };
+  }
 
   throw await logout(request);
 }

@@ -1,23 +1,23 @@
-import { Outlet, ShouldRevalidateFunction, UIMatch } from "@remix-run/react";
+import { Outlet, type ShouldRevalidateFunction, type UIMatch } from "@remix-run/react";
 import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { typedjson } from "remix-typedjson";
 import { z } from "zod";
 import { RouteErrorDisplay } from "~/components/ErrorDisplay";
-import { MainBody } from "~/components/layout/AppLayout";
-import { SideMenu } from "~/components/navigation/SideMenu";
 import { useOptionalOrganization } from "~/hooks/useOrganizations";
 import { useTypedMatchesData } from "~/hooks/useTypedMatchData";
-import { useUser } from "~/hooks/useUser";
 import { OrganizationsPresenter } from "~/presenters/OrganizationsPresenter.server";
 import { getImpersonationId } from "~/services/impersonation.server";
-import { getCachedUsage, getCurrentPlan, getUsage } from "~/services/platform.v3.server";
-import { requireUserId } from "~/services/session.server";
+import { getCachedUsage, getCurrentPlan } from "~/services/platform.v3.server";
+import { requireUser } from "~/services/session.server";
 import { telemetry } from "~/services/telemetry.server";
 import { organizationPath } from "~/utils/pathBuilder";
+import { isEnvironmentPauseResumeFormSubmission } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.queues/route";
+import { logger } from "~/services/logger.server";
 
 const ParamsSchema = z.object({
   organizationSlug: z.string(),
   projectParam: z.string().optional(),
+  envParam: z.string().optional(),
 });
 
 export function useCurrentPlan(matches?: UIMatch[]) {
@@ -42,6 +42,14 @@ export const shouldRevalidate: ShouldRevalidateFunction = (params) => {
     if (current.data.projectParam !== next.data.projectParam) {
       return true;
     }
+    if (current.data.envParam !== next.data.envParam) {
+      return true;
+    }
+  }
+
+  // Invalidate if the environment has been paused or resumed
+  if (isEnvironmentPauseResumeFormSubmission(params.formMethod, params.formData)) {
+    return true;
   }
 
   // This prevents revalidation when there are search params changes
@@ -51,17 +59,18 @@ export const shouldRevalidate: ShouldRevalidateFunction = (params) => {
 
 // IMPORTANT: Make sure to update shouldRevalidate if this loader depends on search params
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const userId = await requireUserId(request);
+  const user = await requireUser(request);
   const impersonationId = await getImpersonationId(request);
 
-  const { organizationSlug, projectParam } = ParamsSchema.parse(params);
+  const { organizationSlug, projectParam, envParam } = ParamsSchema.parse(params);
 
   const orgsPresenter = new OrganizationsPresenter();
-  const { organizations, organization, project } = await orgsPresenter.call({
-    userId,
+  const { organizations, organization, project, environment } = await orgsPresenter.call({
+    user,
     request,
     organizationSlug,
     projectSlug: projectParam,
+    environmentSlug: envParam,
   });
 
   telemetry.organization.identify({ organization });
@@ -95,31 +104,14 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     organizations,
     organization,
     project,
+    environment,
     isImpersonating: !!impersonationId,
     currentPlan: { ...plan, v3Usage: { ...usage, hasExceededFreeTier, usagePercentage } },
   });
 };
 
 export default function Organization() {
-  const { organization, project, organizations, isImpersonating } =
-    useTypedLoaderData<typeof loader>();
-  const user = useUser();
-
-  return (
-    <>
-      <div className="grid grid-cols-[14rem_1fr] overflow-hidden">
-        <SideMenu
-          user={{ ...user, isImpersonating }}
-          project={project}
-          organization={organization}
-          organizations={organizations}
-        />
-        <MainBody>
-          <Outlet />
-        </MainBody>
-      </div>
-    </>
-  );
+  return <Outlet />;
 }
 
 export function ErrorBoundary() {

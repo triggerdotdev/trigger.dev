@@ -32,7 +32,7 @@ import {
   DevDequeueResponseBody,
   PromoteDeploymentResponseBody,
 } from "@trigger.dev/core/v3";
-import { zodfetch, zodfetchSSE, ApiError } from "@trigger.dev/core/v3/zodfetch";
+import { ApiResult, wrapZodFetch, zodfetchSSE } from "@trigger.dev/core/v3/zodfetch";
 import { logger } from "./utilities/logger.js";
 import {
   WorkloadDebugLogRequestBody,
@@ -40,7 +40,6 @@ import {
   WorkloadHeartbeatResponseBody,
   WorkloadRunAttemptCompleteRequestBody,
   WorkloadRunAttemptCompleteResponseBody,
-  WorkloadRunAttemptStartRequestBody,
   WorkloadRunAttemptStartResponseBody,
   WorkloadRunLatestSnapshotResponseBody,
 } from "@trigger.dev/core/v3/workers";
@@ -48,6 +47,7 @@ import {
 export class CliApiClient {
   constructor(
     public readonly apiURL: string,
+    // TODO: consider making this required
     public readonly accessToken?: string
   ) {
     this.apiURL = apiURL.replace(/\/$/, "");
@@ -640,52 +640,5 @@ export class CliApiClient {
         body: JSON.stringify(body),
       }
     );
-  }
-}
-
-type ApiResult<TSuccessResult> =
-  | { success: true; data: TSuccessResult }
-  | {
-      success: false;
-      error: string;
-    };
-
-async function wrapZodFetch<T extends z.ZodTypeAny>(
-  schema: T,
-  url: string,
-  requestInit?: RequestInit
-): Promise<ApiResult<z.infer<T>>> {
-  try {
-    const response = await zodfetch(schema, url, requestInit, {
-      retry: {
-        minTimeoutInMs: 500,
-        maxTimeoutInMs: 5000,
-        maxAttempts: 5,
-        factor: 2,
-        randomize: false,
-      },
-    });
-
-    return {
-      success: true,
-      data: response,
-    };
-  } catch (error) {
-    if (error instanceof ApiError) {
-      return {
-        success: false,
-        error: error.message,
-      };
-    } else if (error instanceof Error) {
-      return {
-        success: false,
-        error: error.message,
-      };
-    } else {
-      return {
-        success: false,
-        error: String(error),
-      };
-    }
   }
 }

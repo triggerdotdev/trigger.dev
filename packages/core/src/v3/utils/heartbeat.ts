@@ -54,6 +54,11 @@ export class HeartbeatService {
     this.#scheduleNextHeartbeat();
   }
 
+  updateInterval(intervalMs: number) {
+    this._intervalMs = intervalMs;
+    this.resetCurrentInterval();
+  }
+
   #doHeartbeat = async () => {
     this.#clearNextHeartbeat();
 

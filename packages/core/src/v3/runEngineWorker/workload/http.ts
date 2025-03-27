@@ -14,12 +14,12 @@ import {
 } from "./schemas.js";
 import { WorkloadClientCommonOptions } from "./types.js";
 import { getDefaultWorkloadHeaders } from "./util.js";
-import { ApiError, zodfetch } from "../../zodfetch.js";
+import { wrapZodFetch } from "../../zodfetch.js";
 
 type WorkloadHttpClientOptions = WorkloadClientCommonOptions;
 
 export class WorkloadHttpClient {
-  private readonly apiUrl: string;
+  private apiUrl: string;
   private readonly deploymentId: string;
   private readonly defaultHeaders: Record<string, string>;
 
@@ -35,6 +35,10 @@ export class WorkloadHttpClient {
     if (!this.deploymentId) {
       throw new Error("deploymentId is required and needs to be a non-empty string");
     }
+  }
+
+  updateApiUrl(apiUrl: string) {
+    this.apiUrl = apiUrl.replace(/\/$/, "");
   }
 
   async heartbeatRun(runId: string, snapshotId: string, body: WorkloadHeartbeatRequestBody) {
@@ -161,52 +165,5 @@ export class WorkloadHttpClient {
         },
       }
     );
-  }
-}
-
-type ApiResult<TSuccessResult> =
-  | { success: true; data: TSuccessResult }
-  | {
-      success: false;
-      error: string;
-    };
-
-async function wrapZodFetch<T extends z.ZodTypeAny>(
-  schema: T,
-  url: string,
-  requestInit?: RequestInit
-): Promise<ApiResult<z.infer<T>>> {
-  try {
-    const response = await zodfetch(schema, url, requestInit, {
-      retry: {
-        minTimeoutInMs: 500,
-        maxTimeoutInMs: 5000,
-        maxAttempts: 5,
-        factor: 2,
-        randomize: false,
-      },
-    });
-
-    return {
-      success: true,
-      data: response,
-    };
-  } catch (error) {
-    if (error instanceof ApiError) {
-      return {
-        success: false,
-        error: error.message,
-      };
-    } else if (error instanceof Error) {
-      return {
-        success: false,
-        error: error.message,
-      };
-    } else {
-      return {
-        success: false,
-        error: String(error),
-      };
-    }
   }
 }

@@ -165,6 +165,7 @@ export const TaskRunInternalError = z.object({
     "TASK_RUN_CANCELLED",
     "TASK_INPUT_ERROR",
     "TASK_OUTPUT_ERROR",
+    "TASK_MIDDLEWARE_ERROR",
     "HANDLE_ERROR_ERROR",
     "GRACEFUL_EXIT_TIMEOUT",
     "TASK_RUN_HEARTBEAT_TIMEOUT",
@@ -176,8 +177,6 @@ export const TaskRunInternalError = z.object({
     "TASK_HAS_N0_EXECUTION_SNAPSHOT",
     "TASK_DEQUEUED_INVALID_STATE",
     "TASK_DEQUEUED_QUEUE_NOT_FOUND",
-    "TASK_DEQUEUED_INVALID_RETRY_CONFIG",
-    "TASK_DEQUEUED_NO_RETRY_CONFIG",
     "TASK_RUN_DEQUEUED_MAX_RETRIES",
     "TASK_RUN_STALLED_EXECUTING",
     "TASK_RUN_STALLED_EXECUTING_WITH_WAITPOINTS",
@@ -242,7 +241,7 @@ export type TaskRun = z.infer<typeof TaskRun>;
 export const TaskRunExecutionTask = z.object({
   id: z.string(),
   filePath: z.string(),
-  exportName: z.string(),
+  exportName: z.string().optional(),
 });
 
 export type TaskRunExecutionTask = z.infer<typeof TaskRunExecutionTask>;

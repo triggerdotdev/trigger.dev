@@ -1,15 +1,8 @@
-import { coerce, date, z } from "zod";
+import { z } from "zod";
 import { DeserializedJsonSchema } from "../../schemas/json.js";
-import {
-  FlushedRunMetadata,
-  MachinePresetName,
-  RunMetadataChangeOperation,
-  SerializedError,
-  TaskRunError,
-} from "./common.js";
+import { FlushedRunMetadata, MachinePresetName, SerializedError, TaskRunError } from "./common.js";
 import { BackgroundWorkerMetadata } from "./resources.js";
-import { QueueOptions } from "./schemas.js";
-import { DequeuedMessage, MachineResources, WaitpointStatus } from "./runEngine.js";
+import { DequeuedMessage, MachineResources } from "./runEngine.js";
 
 export const RunEngineVersion = z.union([z.literal("V1"), z.literal("V2")]);
 
@@ -104,7 +97,13 @@ export const TriggerTaskRequestBody = z.object({
        */
       lockToVersion: z.string().optional(),
 
-      queue: QueueOptions.optional(),
+      queue: z
+        .object({
+          name: z.string(),
+          // @deprecated, this is now specified on the queue
+          concurrencyLimit: z.number().int().optional(),
+        })
+        .optional(),
       concurrencyKey: z.string().optional(),
       delay: z.string().or(z.coerce.date()).optional(),
       idempotencyKey: z.string().optional(),
@@ -119,6 +118,7 @@ export const TriggerTaskRequestBody = z.object({
       test: z.boolean().optional(),
       ttl: z.string().or(z.number().nonnegative().int()).optional(),
       priority: z.number().optional(),
+      releaseConcurrency: z.boolean().optional(),
     })
     .optional(),
 });
@@ -157,7 +157,11 @@ export const BatchTriggerTaskItem = z.object({
       metadataType: z.string().optional(),
       parentAttempt: z.string().optional(),
       payloadType: z.string().optional(),
-      queue: QueueOptions.optional(),
+      queue: z
+        .object({
+          name: z.string(),
+        })
+        .optional(),
       tags: RunTags.optional(),
       test: z.boolean().optional(),
       ttl: z.string().or(z.number().nonnegative().int()).optional(),
@@ -375,7 +379,7 @@ export const GetDeploymentResponseBody = z.object({
           id: z.string(),
           slug: z.string(),
           filePath: z.string(),
-          exportName: z.string(),
+          exportName: z.string().optional(),
         })
       ),
     })
@@ -605,6 +609,8 @@ export const TimezonesResult = z.object({
 export type TimezonesResult = z.infer<typeof TimezonesResult>;
 
 export const RunStatus = z.enum([
+  /// Task is waiting for a version update because it cannot execute without additional information (task, queue, etc.). Replaces WAITING_FOR_DEPLOY
+  "PENDING_VERSION",
   /// Task hasn't been deployed yet but is waiting to be executed
   "WAITING_FOR_DEPLOY",
   /// Task is waiting to be executed by a worker
@@ -919,6 +925,20 @@ export const CreateWaitpointTokenRequestBody = z.object({
    * You can pass a `Date` object, or a string in this format: "30s", "1m", "2h", "3d", "4w".
    */
   timeout: TimePeriod.optional(),
+  /**
+   * Tags to attach to the waitpoint. Tags can be used to filter waitpoints in the dashboard.
+   *
+   * You can set up to 10 tags per waitpoint, they must be less than 128 characters each.
+   *
+   * We recommend prefixing tags with a namespace using an underscore or colon, like `user_1234567` or `org:9876543`.
+   *
+   * @example
+   *
+   * ```ts
+   * await wait.createToken({ tags: ["user:1234567", "org:9876543"] });
+   * ```
+   */
+  tags: RunTags.optional(),
 });
 export type CreateWaitpointTokenRequestBody = z.infer<typeof CreateWaitpointTokenRequestBody>;
 
@@ -927,6 +947,37 @@ export const CreateWaitpointTokenResponseBody = z.object({
   isCached: z.boolean(),
 });
 export type CreateWaitpointTokenResponseBody = z.infer<typeof CreateWaitpointTokenResponseBody>;
+
+export const waitpointTokenStatuses = ["WAITING", "COMPLETED", "TIMED_OUT"] as const;
+export const WaitpointTokenStatus = z.enum(waitpointTokenStatuses);
+export type WaitpointTokenStatus = z.infer<typeof WaitpointTokenStatus>;
+
+export const WaitpointTokenItem = z.object({
+  id: z.string(),
+  status: WaitpointTokenStatus,
+  completedAt: z.coerce.date().optional(),
+  completedAfter: z.coerce.date().optional(),
+  timeoutAt: z.coerce.date().optional(),
+  idempotencyKey: z.string().optional(),
+  idempotencyKeyExpiresAt: z.coerce.date().optional(),
+  tags: z.array(z.string()),
+  createdAt: z.coerce.date(),
+});
+export type WaitpointTokenItem = z.infer<typeof WaitpointTokenItem>;
+
+export const WaitpointListTokenItem = WaitpointTokenItem.omit({
+  completedAfter: true,
+});
+export type WaitpointListTokenItem = z.infer<typeof WaitpointListTokenItem>;
+
+export const WaitpointRetrieveTokenResponse = WaitpointListTokenItem.and(
+  z.object({
+    output: z.string().optional(),
+    outputType: z.string().optional(),
+    outputIsError: z.boolean().optional(),
+  })
+);
+export type WaitpointRetrieveTokenResponse = z.infer<typeof WaitpointRetrieveTokenResponse>;
 
 export const CompleteWaitpointTokenRequestBody = z.object({
   data: z.any().nullish(),
@@ -956,6 +1007,19 @@ export const WaitForDurationRequestBody = z.object({
    * This means after that time if you pass the same idempotency key again, you will get a new waitpoint.
    */
   idempotencyKeyTTL: z.string().optional(),
+
+  /**
+   * If set to true, this will cause the waitpoint to release the current run from the queue's concurrency.
+   *
+   * This is useful if you want to allow other runs to execute while the waiting
+   *
+   * @default false
+   */
+  releaseConcurrency: z.boolean().optional(),
+
+  /**
+   * The date that the waitpoint will complete.
+   */
   date: z.coerce.date(),
 });
 export type WaitForDurationRequestBody = z.infer<typeof WaitForDurationRequestBody>;

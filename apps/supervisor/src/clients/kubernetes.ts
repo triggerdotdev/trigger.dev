@@ -1,4 +1,7 @@
 import * as k8s from "@kubernetes/client-node";
+import { Informer } from "@kubernetes/client-node";
+import { ListPromise } from "@kubernetes/client-node";
+import { KubernetesObject } from "@kubernetes/client-node";
 import { assertExhaustive } from "@trigger.dev/core/utils";
 
 export const RUNTIME_ENV = process.env.KUBERNETES_PORT ? "kubernetes" : "local";
@@ -6,10 +9,20 @@ export const RUNTIME_ENV = process.env.KUBERNETES_PORT ? "kubernetes" : "local";
 export function createK8sApi() {
   const kubeConfig = getKubeConfig();
 
+  function makeInformer<T extends KubernetesObject>(
+    path: string,
+    listPromiseFn: ListPromise<T>,
+    labelSelector?: string,
+    fieldSelector?: string
+  ): Informer<T> {
+    return k8s.makeInformer(kubeConfig, path, listPromiseFn, labelSelector, fieldSelector);
+  }
+
   const api = {
     core: kubeConfig.makeApiClient(k8s.CoreV1Api),
     batch: kubeConfig.makeApiClient(k8s.BatchV1Api),
     apps: kubeConfig.makeApiClient(k8s.AppsV1Api),
+    makeInformer,
   };
 
   return api;

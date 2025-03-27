@@ -1,23 +1,30 @@
 import type { Tracer } from "@opentelemetry/api";
 import type { Logger } from "@opentelemetry/api-logs";
 import {
+  AnyOnCatchErrorHookFunction,
+  AnyOnFailureHookFunction,
+  AnyOnInitHookFunction,
+  AnyOnStartHookFunction,
+  AnyOnSuccessHookFunction,
+  apiClientManager,
   clock,
+  ExecutorToWorkerMessageCatalog,
   type HandleErrorFunction,
+  lifecycleHooks,
+  localsAPI,
   logger,
   LogLevel,
+  resourceCatalog,
+  runMetadata,
   runtime,
-  taskCatalog,
+  runTimelineMetrics,
   TaskRunErrorCodes,
   TaskRunExecution,
-  WorkerToExecutorMessageCatalog,
-  TriggerConfig,
-  WorkerManifest,
-  ExecutorToWorkerMessageCatalog,
   timeout,
-  runMetadata,
+  TriggerConfig,
   waitUntil,
-  apiClientManager,
-  runTimelineMetrics,
+  WorkerManifest,
+  WorkerToExecutorMessageCatalog,
 } from "@trigger.dev/core/v3";
 import { TriggerTracer } from "@trigger.dev/core/v3/tracer";
 import {
@@ -27,18 +34,20 @@ import {
   getEnvVar,
   getNumberEnvVar,
   logLevels,
+  ManagedRuntimeManager,
   OtelTaskLogger,
   ProdUsageManager,
-  StandardTaskCatalog,
+  StandardLifecycleHooksManager,
+  StandardLocalsManager,
+  StandardMetadataManager,
+  StandardResourceCatalog,
+  StandardRunTimelineMetricsManager,
+  StandardWaitUntilManager,
   TaskExecutor,
   TracingDiagnosticLogLevel,
   TracingSDK,
   usage,
   UsageTimeoutManager,
-  StandardMetadataManager,
-  StandardWaitUntilManager,
-  ManagedRuntimeManager,
-  StandardRunTimelineMetricsManager,
 } from "@trigger.dev/core/v3/workers";
 import { ZodIpcConnection } from "@trigger.dev/core/v3/zodIpc";
 import { readFile } from "node:fs/promises";
@@ -93,6 +102,12 @@ const usageEventUrl = getEnvVar("USAGE_EVENT_URL");
 const triggerJWT = getEnvVar("TRIGGER_JWT");
 const heartbeatIntervalMs = getEnvVar("HEARTBEAT_INTERVAL_MS");
 
+const standardLocalsManager = new StandardLocalsManager();
+localsAPI.setGlobalLocalsManager(standardLocalsManager);
+
+const standardLifecycleHooksManager = new StandardLifecycleHooksManager();
+lifecycleHooks.setGlobalLifecycleHooksManager(standardLifecycleHooksManager);
+
 const standardRunTimelineMetricsManager = new StandardRunTimelineMetricsManager();
 runTimelineMetrics.setGlobalManager(standardRunTimelineMetricsManager);
 standardRunTimelineMetricsManager.seedMetricsFromEnvironment();
@@ -107,7 +122,7 @@ const prodUsageManager = new ProdUsageManager(devUsageManager, {
 usage.setGlobalUsageManager(prodUsageManager);
 timeout.setGlobalManager(new UsageTimeoutManager(devUsageManager));
 
-taskCatalog.setGlobalTaskCatalog(new StandardTaskCatalog());
+resourceCatalog.setGlobalResourceCatalog(new StandardResourceCatalog());
 const durableClock = new DurableClock();
 clock.setGlobalClock(durableClock);
 const runMetadataManager = new StandardMetadataManager(
@@ -148,6 +163,8 @@ async function loadWorkerManifest() {
 async function bootstrap() {
   const workerManifest = await loadWorkerManifest();
 
+  resourceCatalog.registerWorkerManifest(workerManifest);
+
   const { config, handleError } = await importConfig(
     normalizeImportPath(workerManifest.configPath)
   );
@@ -178,11 +195,38 @@ async function bootstrap() {
 
   logger.setGlobalTaskLogger(otelTaskLogger);
 
-  for (const task of workerManifest.tasks) {
-    taskCatalog.registerTaskFileMetadata(task.id, {
-      exportName: task.exportName,
-      filePath: task.filePath,
-      entryPoint: task.entryPoint,
+  if (config.init) {
+    lifecycleHooks.registerGlobalInitHook({
+      id: "config",
+      fn: config.init as AnyOnInitHookFunction,
+    });
+  }
+
+  if (config.onStart) {
+    lifecycleHooks.registerGlobalStartHook({
+      id: "config",
+      fn: config.onStart as AnyOnStartHookFunction,
+    });
+  }
+
+  if (config.onSuccess) {
+    lifecycleHooks.registerGlobalSuccessHook({
+      id: "config",
+      fn: config.onSuccess as AnyOnSuccessHookFunction,
+    });
+  }
+
+  if (config.onFailure) {
+    lifecycleHooks.registerGlobalFailureHook({
+      id: "config",
+      fn: config.onFailure as AnyOnFailureHookFunction,
+    });
+  }
+
+  if (handleError) {
+    lifecycleHooks.registerGlobalCatchErrorHook({
+      id: "config",
+      fn: handleError as AnyOnCatchErrorHookFunction,
     });
   }
 
@@ -191,7 +235,6 @@ async function bootstrap() {
     tracingSDK,
     consoleInterceptor,
     config,
-    handleErrorFn: handleError,
     workerManifest,
   };
 }
@@ -233,7 +276,7 @@ const zodIpc = new ZodIpcConnection({
       }
 
       try {
-        const { tracer, tracingSDK, consoleInterceptor, config, handleErrorFn, workerManifest } =
+        const { tracer, tracingSDK, consoleInterceptor, config, workerManifest } =
           await bootstrap();
 
         _tracingSDK = tracingSDK;
@@ -272,7 +315,9 @@ const zodIpc = new ZodIpcConnection({
             },
             async () => {
               const beforeImport = performance.now();
+              resourceCatalog.setCurrentFileContext(taskManifest.entryPoint, taskManifest.filePath);
               await import(normalizeImportPath(taskManifest.entryPoint));
+              resourceCatalog.clearCurrentFileContext();
               const durationMs = performance.now() - beforeImport;
 
               console.log(
@@ -307,7 +352,7 @@ const zodIpc = new ZodIpcConnection({
         process.title = `trigger-dev-worker: ${execution.task.id} ${execution.run.id}`;
 
         // Import the task module
-        const task = taskCatalog.getTask(execution.task.id);
+        const task = resourceCatalog.getTask(execution.task.id);
 
         if (!task) {
           console.error(`Could not find task ${execution.task.id}`);
@@ -331,12 +376,13 @@ const zodIpc = new ZodIpcConnection({
           return;
         }
 
+        runMetadataManager.runId = execution.run.id;
+
         const executor = new TaskExecutor(task, {
           tracer,
           tracingSDK,
           consoleInterceptor,
-          config,
-          handleErrorFn,
+          retries: config.retries,
         });
 
         try {
@@ -354,42 +400,7 @@ const zodIpc = new ZodIpcConnection({
             ? timeout.abortAfterTimeout(execution.run.maxDuration)
             : undefined;
 
-          signal?.addEventListener("abort", async (e) => {
-            if (_isRunning) {
-              _isRunning = false;
-              _execution = undefined;
-
-              const usageSample = usage.stop(measurement);
-
-              await sender.send("TASK_RUN_COMPLETED", {
-                execution,
-                result: {
-                  ok: false,
-                  id: execution.run.id,
-                  error: {
-                    type: "INTERNAL_ERROR",
-                    code: TaskRunErrorCodes.MAX_DURATION_EXCEEDED,
-                    message:
-                      signal.reason instanceof Error
-                        ? signal.reason.message
-                        : String(signal.reason),
-                  },
-                  usage: {
-                    durationMs: usageSample.cpuTime,
-                  },
-                  metadata: runMetadataManager.stopAndReturnLastFlush(),
-                },
-              });
-            }
-          });
-
-          const { result } = await executor.execute(
-            execution,
-            metadata,
-            traceContext,
-            measurement,
-            signal
-          );
+          const { result } = await executor.execute(execution, metadata, traceContext, signal);
 
           const usageSample = usage.stop(measurement);
 

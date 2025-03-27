@@ -2,6 +2,8 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { z } from "zod";
 import { SimpleStructuredLogger } from "../utils/structuredLogger.js";
 import { HttpReply, getJsonBody } from "../apps/http.js";
+import { Registry, Histogram, Counter } from "prom-client";
+import { tryCatch } from "../../utils.js";
 
 const logger = new SimpleStructuredLogger("worker-http");
 
@@ -16,7 +18,7 @@ type RouteHandler<
   req: IncomingMessage;
   res: ServerResponse;
   reply: HttpReply;
-}) => Promise<void>;
+}) => Promise<any>;
 
 interface RouteDefinition<
   TParams extends z.ZodFirstPartySchemaTypes = z.ZodUnknown,
@@ -51,21 +53,72 @@ type RouteMap = Partial<{
 type HttpServerOptions = {
   port: number;
   host: string;
+  metrics?: {
+    register?: Registry;
+    expose?: boolean;
+    collect?: boolean;
+  };
 };
 
 export class HttpServer {
+  private static httpRequestDuration?: Histogram;
+  private static httpRequestTotal?: Counter;
+
+  private readonly metricsRegister?: Registry;
+
   private readonly port: number;
   private readonly host: string;
   private routes: RouteMap = {};
-
   public readonly server: ReturnType<typeof createServer>;
 
   constructor(options: HttpServerOptions) {
     this.port = options.port;
     this.host = options.host;
+    this.metricsRegister = options.metrics?.register;
+    const collectMetrics = options.metrics?.collect ?? true;
+    const exposeMetrics = options.metrics?.expose ?? false;
+
+    // Initialize metrics only if registry is provided and not already initialized
+    if (this.metricsRegister && collectMetrics) {
+      if (!HttpServer.httpRequestDuration) {
+        HttpServer.httpRequestDuration = new Histogram({
+          name: "http_request_duration_seconds",
+          help: "Duration of HTTP requests in seconds",
+          labelNames: ["method", "route", "status", "port", "host"],
+          registers: [this.metricsRegister],
+        });
+      }
+
+      if (!HttpServer.httpRequestTotal) {
+        HttpServer.httpRequestTotal = new Counter({
+          name: "http_requests_total",
+          help: "Total number of HTTP requests",
+          labelNames: ["method", "route", "status", "port", "host"],
+          registers: [this.metricsRegister],
+        });
+      }
+    }
+
+    if (exposeMetrics) {
+      // Register metrics route
+      this.route("/metrics", "GET", {
+        handler: async ({ reply }) => {
+          if (!this.metricsRegister) {
+            return reply.text("Metrics registry not found", 500);
+          }
+
+          return reply.text(
+            await this.metricsRegister.metrics(),
+            200,
+            this.metricsRegister.contentType
+          );
+        },
+      });
+    }
 
     this.server = createServer(async (req, res) => {
       const reply = new HttpReply(res);
+      const startTime = process.hrtime();
 
       try {
         const { url, method } = req;
@@ -97,13 +150,6 @@ export class HttpServer {
         }
 
         const routeDefinition = this.routes[route]?.[httpMethod.data];
-
-        // logger.debug("Matched route", {
-        //   url,
-        //   method,
-        //   route,
-        //   routeDefinition,
-        // });
 
         if (!routeDefinition) {
           logger.error("Invalid method", { url, method, parsedMethod: httpMethod.data });
@@ -141,25 +187,29 @@ export class HttpServer {
           return reply.json({ ok: false, error: "Invalid body" }, false, 400);
         }
 
-        try {
-          await handler({
+        const [error] = await tryCatch(
+          handler({
             reply,
             req,
             res,
             params: parsedParams.data,
             queryParams: parsedQueryParams.data,
             body: parsedBody.data,
-          });
-        } catch (handlerError) {
-          logger.error("Route handler error", { error: handlerError });
+          })
+        );
+
+        if (error) {
+          logger.error("Route handler error", { error });
           return reply.empty(500);
         }
       } catch (error) {
         logger.error("Failed to handle request", { error });
         return reply.empty(500);
+      } finally {
+        this.collectMetrics(req, res, startTime);
       }
 
-      return;
+      return reply.empty(501);
     });
 
     this.server.on("clientError", (_, socket) => {
@@ -195,6 +245,25 @@ export class HttpServer {
         resolve();
       });
     });
+  }
+
+  private collectMetrics(req: IncomingMessage, res: ServerResponse, startTime: [number, number]) {
+    if (!this.metricsRegister || !HttpServer.httpRequestDuration || !HttpServer.httpRequestTotal) {
+      return;
+    }
+
+    const [seconds, nanoseconds] = process.hrtime(startTime);
+    const duration = seconds + nanoseconds / 1e9;
+
+    const route = this.findRoute(req.url ?? "") ?? "unknown";
+    const method = req.method ?? "unknown";
+    const status = res.statusCode.toString();
+
+    HttpServer.httpRequestDuration.observe(
+      { method, route, status, port: this.port, host: this.host },
+      duration
+    );
+    HttpServer.httpRequestTotal.inc({ method, route, status, port: this.port, host: this.host });
   }
 
   private optionalSchema<

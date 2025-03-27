@@ -5,7 +5,7 @@ export { getEnvVar, getNumberEnvVar } from "../utils/getEnv.js";
 export { OtelTaskLogger, logLevels } from "../logger/taskLogger.js";
 export { ConsoleInterceptor } from "../consoleInterceptor.js";
 export { TracingSDK, type TracingDiagnosticLogLevel, recordSpanException } from "../otel/index.js";
-export { StandardTaskCatalog } from "../task-catalog/standardTaskCatalog.js";
+export { StandardResourceCatalog } from "../resource-catalog/standardResourceCatalog.js";
 export {
   TaskContextSpanProcessor,
   TaskContextLogProcessor,
@@ -19,3 +19,6 @@ export { StandardWaitUntilManager } from "../waitUntil/manager.js";
 export { ManagedRuntimeManager } from "../runtime/managedRuntimeManager.js";
 export * from "../runEngineWorker/index.js";
 export { StandardRunTimelineMetricsManager } from "../runTimelineMetrics/runTimelineMetricsManager.js";
+export { WarmStartClient, type WarmStartClientOptions } from "../workers/warmStartClient.js";
+export { StandardLifecycleHooksManager } from "../lifecycleHooks/manager.js";
+export { StandardLocalsManager } from "../locals/manager.js";

@@ -95,6 +95,7 @@ async function indexDeployment({
         packageVersion: buildManifest.packageVersion,
         cliPackageVersion: buildManifest.cliPackageVersion,
         tasks: workerManifest.tasks,
+        queues: workerManifest.queues,
         sourceFiles,
       },
       engine: "V2",

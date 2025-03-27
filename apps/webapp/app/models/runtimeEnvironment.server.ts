@@ -1,4 +1,4 @@
-import { AuthenticatedEnvironment } from "@internal/testcontainers";
+import type { AuthenticatedEnvironment } from "@internal/run-engine";
 import type { Prisma, PrismaClientOrTransaction, RuntimeEnvironment } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
 import { getUsername } from "~/utils/username";
@@ -67,6 +67,37 @@ export async function findEnvironmentById(id: string): Promise<AuthenticatedEnvi
   }
 
   return environment;
+}
+
+export async function findEnvironmentBySlug(
+  projectId: string,
+  envSlug: string,
+  userId: string
+): Promise<AuthenticatedEnvironment | null> {
+  return prisma.runtimeEnvironment.findFirst({
+    where: {
+      projectId: projectId,
+      slug: envSlug,
+      OR: [
+        {
+          type: {
+            in: ["PREVIEW", "STAGING", "PRODUCTION"],
+          },
+        },
+        {
+          type: "DEVELOPMENT",
+          orgMember: {
+            userId,
+          },
+        },
+      ],
+    },
+    include: {
+      project: true,
+      organization: true,
+      orgMember: true,
+    },
+  });
 }
 
 export async function findEnvironmentFromRun(
