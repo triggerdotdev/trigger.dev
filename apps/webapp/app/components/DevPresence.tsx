@@ -6,12 +6,12 @@ import { useProject } from "~/hooks/useProject";
 
 // Define Context types
 type DevPresenceContextType = {
-  isConnected: boolean;
+  isConnected: boolean | undefined;
 };
 
 // Create Context with default values
 const DevPresenceContext = createContext<DevPresenceContextType>({
-  isConnected: false,
+  isConnected: undefined,
 });
 
 // Provider component with enabled prop
@@ -27,19 +27,19 @@ export function DevPresenceProvider({ children, enabled = true }: DevPresencePro
 
   // Only subscribe to event source if enabled is true
   const streamedEvents = useEventSource(
-    `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/dev/presence`,
+    `/resources/orgs/${organization.slug}/projects/${project.slug}/dev/presence`,
     {
       event: "presence",
       disabled: !enabled,
     }
   );
 
-  const [isConnected, setIsConnected] = useState<boolean>(false);
+  const [isConnected, setIsConnected] = useState<boolean | undefined>(undefined);
 
   useEffect(() => {
-    // If disabled or no events, set lastSeen to null
+    // If disabled or no events
     if (!enabled || streamedEvents === null) {
-      setIsConnected(false);
+      setIsConnected(undefined);
       return;
     }
 

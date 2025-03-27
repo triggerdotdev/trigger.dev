@@ -3,7 +3,7 @@ import { env } from "~/env.server";
 import { devPresence } from "~/presenters/v3/DevPresence.server";
 import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
-import { EnvironmentParamSchema } from "~/utils/pathBuilder";
+import { ProjectParamSchema } from "~/utils/pathBuilder";
 import { createSSELoader, type SendFunction } from "~/utils/sse";
 
 export const loader = createSSELoader({
@@ -12,11 +12,10 @@ export const loader = createSSELoader({
   debug: true,
   handler: async ({ id, controller, debug, request, params }) => {
     const userId = await requireUserId(request);
-    const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
+    const { organizationSlug, projectParam } = ProjectParamSchema.parse(params);
 
     const environment = await $replica.runtimeEnvironment.findFirst({
       where: {
-        slug: envParam,
         type: "DEVELOPMENT",
         orgMember: {
           userId,
