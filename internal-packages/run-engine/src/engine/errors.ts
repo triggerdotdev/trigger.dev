@@ -49,8 +49,6 @@ export function runStatusFromError(error: TaskRunError): TaskRunStatus {
     case "TASK_EXECUTION_ABORTED":
     case "TASK_EXECUTION_FAILED":
     case "TASK_PROCESS_SIGTERM":
-    case "TASK_DEQUEUED_INVALID_RETRY_CONFIG":
-    case "TASK_DEQUEUED_NO_RETRY_CONFIG":
     case "TASK_DID_CONCURRENT_WAIT":
       return "SYSTEM_FAILURE";
     default:

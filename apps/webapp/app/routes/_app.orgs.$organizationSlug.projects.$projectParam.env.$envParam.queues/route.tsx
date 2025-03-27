@@ -486,7 +486,7 @@ function EnvironmentPauseResumeButton({
                 <DialogTrigger asChild>
                   <Button
                     type="button"
-                    variant="tertiary/small"
+                    variant="secondary/small"
                     LeadingIcon={env.paused ? PlayIcon : PauseIcon}
                     leadingIconClassName={env.paused ? "text-success" : "text-amber-500"}
                   >
@@ -495,7 +495,7 @@ function EnvironmentPauseResumeButton({
                 </DialogTrigger>
               </div>
             </TooltipTrigger>
-            <TooltipContent side="right" className={"text-xs"}>
+            <TooltipContent className={"text-xs"}>
               {env.paused
                 ? `Resume processing runs in ${environmentFullTitle(env)}.`
                 : `Pause processing runs in ${environmentFullTitle(env)}.`}

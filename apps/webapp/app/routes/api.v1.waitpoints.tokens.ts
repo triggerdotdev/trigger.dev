@@ -13,6 +13,7 @@ import {
   createActionApiRoute,
   createLoaderApiRoute,
 } from "~/services/routeBuilders/apiBuilder.server";
+import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { parseDelay } from "~/utils/delays";
 import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
 import { engine } from "~/v3/runEngine.server";
@@ -77,12 +78,14 @@ const { action } = createActionApiRoute(
         tags: bodyTags,
       });
 
+      const $responseHeaders = await responseHeaders(authentication.environment);
+
       return json<CreateWaitpointTokenResponseBody>(
         {
           id: WaitpointId.toFriendlyId(result.waitpoint.id),
           isCached: result.isCached,
         },
-        { status: 200 }
+        { status: 200, headers: $responseHeaders }
       );
     } catch (error) {
       if (error instanceof ServiceValidationError) {
@@ -95,5 +98,18 @@ const { action } = createActionApiRoute(
     }
   }
 );
+
+async function responseHeaders(
+  environment: AuthenticatedEnvironment
+): Promise<Record<string, string>> {
+  const claimsHeader = JSON.stringify({
+    sub: environment.id,
+    pub: true,
+  });
+
+  return {
+    "x-trigger-jwt-claims": claimsHeader,
+  };
+}
 
 export { action };
