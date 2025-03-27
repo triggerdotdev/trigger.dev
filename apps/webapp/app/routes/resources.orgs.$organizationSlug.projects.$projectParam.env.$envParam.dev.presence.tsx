@@ -8,8 +8,8 @@ import { createSSELoader, type SendFunction } from "~/utils/sse";
 import Redis from "ioredis";
 
 export const loader = createSSELoader({
-  timeout: env.DEV_PRESENCE_TTL_MS,
-  interval: env.DEV_PRESENCE_POLL_INTERVAL_MS,
+  timeout: env.DEV_PRESENCE_SSE_TIMEOUT,
+  interval: env.DEV_PRESENCE_POLL_MS,
   debug: true,
   handler: async ({ id, controller, debug, request, params }) => {
     const userId = await requireUserId(request);

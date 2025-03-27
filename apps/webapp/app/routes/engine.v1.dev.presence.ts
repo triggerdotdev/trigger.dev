@@ -16,8 +16,8 @@ const redis = new Redis({
 });
 
 export const loader = createSSELoader({
-  timeout: env.DEV_PRESENCE_TTL_MS,
-  interval: env.DEV_PRESENCE_POLL_INTERVAL_MS,
+  timeout: env.DEV_PRESENCE_SSE_TIMEOUT,
+  interval: env.DEV_PRESENCE_TTL_MS * 0.8,
   debug: true,
   handler: async ({ id, controller, debug, request }) => {
     const authentication = await authenticateApiRequestWithFailure(request);
@@ -30,7 +30,7 @@ export const loader = createSSELoader({
 
     const presenceKey = DevPresenceStream.getPresenceKey(environmentId);
 
-    const ttl = (env.DEV_PRESENCE_POLL_INTERVAL_MS / 1000) * 2;
+    const ttl = env.DEV_PRESENCE_TTL_MS / 1000;
 
     return {
       beforeStream: async () => {

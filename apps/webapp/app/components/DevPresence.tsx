@@ -1,5 +1,4 @@
 import { createContext, type ReactNode, useContext, useEffect, useMemo, useState } from "react";
-import { useDebounce } from "~/hooks/useDebounce";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useEventSource } from "~/hooks/useEventSource";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -7,13 +6,11 @@ import { useProject } from "~/hooks/useProject";
 
 // Define Context types
 type DevPresenceContextType = {
-  lastSeen: Date | null;
   isConnected: boolean;
 };
 
 // Create Context with default values
 const DevPresenceContext = createContext<DevPresenceContextType>({
-  lastSeen: null,
   isConnected: false,
 });
 
@@ -37,16 +34,12 @@ export function DevPresenceProvider({ children, enabled = true }: DevPresencePro
     }
   );
 
-  const [lastSeen, setLastSeen] = useState<Date | null>(null);
-
-  const debouncer = useDebounce((seen: Date | null) => {
-    setLastSeen(seen);
-  }, 3_000);
+  const [isConnected, setIsConnected] = useState<boolean>(false);
 
   useEffect(() => {
     // If disabled or no events, set lastSeen to null
     if (!enabled || streamedEvents === null) {
-      debouncer(null);
+      setIsConnected(false);
       return;
     }
 
@@ -55,25 +48,24 @@ export function DevPresenceProvider({ children, enabled = true }: DevPresencePro
       if ("lastSeen" in data && data.lastSeen) {
         try {
           const lastSeenDate = new Date(data.lastSeen);
-          debouncer(lastSeenDate);
+          setIsConnected(true);
         } catch (error) {
           console.log("DevPresence: Failed to parse lastSeen timestamp", { error });
-          debouncer(null);
+          setIsConnected(false);
         }
       } else {
-        debouncer(null);
+        setIsConnected(false);
       }
     } catch (error) {
       console.log("DevPresence: Failed to parse presence message", { error });
-      debouncer(null);
+      setIsConnected(false);
     }
   }, [streamedEvents, enabled]);
 
   // Calculate isConnected and memoize the context value
   const contextValue = useMemo(() => {
-    const isConnected = enabled && lastSeen !== null && lastSeen > new Date(Date.now() - 120_000);
-    return { lastSeen, isConnected };
-  }, [lastSeen, enabled]);
+    return { isConnected };
+  }, [isConnected, enabled]);
 
   return <DevPresenceContext.Provider value={contextValue}>{children}</DevPresenceContext.Provider>;
 }
