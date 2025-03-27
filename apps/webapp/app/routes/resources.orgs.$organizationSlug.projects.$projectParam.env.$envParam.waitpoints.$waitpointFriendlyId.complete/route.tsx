@@ -7,6 +7,7 @@ import {
   IOPacket,
   stringifyIO,
   timeoutError,
+  WaitpointTokenStatus,
 } from "@trigger.dev/core/v3";
 import { WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import type { Waitpoint } from "@trigger.dev/database";
@@ -189,7 +190,9 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   }
 };
 
-type FormWaitpoint = Pick<Waitpoint, "friendlyId" | "type" | "completedAfter" | "status">;
+type FormWaitpoint = Pick<Waitpoint, "id" | "type" | "completedAfter"> & {
+  status: WaitpointTokenStatus;
+};
 
 export function CompleteWaitpointForm({ waitpoint }: { waitpoint: FormWaitpoint }) {
   return (
@@ -198,7 +201,7 @@ export function CompleteWaitpointForm({ waitpoint }: { waitpoint: FormWaitpoint 
         waitpoint.completedAfter ? (
           <CompleteDateTimeWaitpointForm
             waitpoint={{
-              friendlyId: waitpoint.friendlyId,
+              friendlyId: waitpoint.id,
               completedAfter: waitpoint.completedAfter,
             }}
           />
@@ -281,7 +284,7 @@ function CompleteDateTimeWaitpointForm({
   );
 }
 
-function CompleteManualWaitpointForm({ waitpoint }: { waitpoint: { friendlyId: string } }) {
+function CompleteManualWaitpointForm({ waitpoint }: { waitpoint: { id: string } }) {
   const location = useLocation();
   const navigation = useNavigation();
   const submit = useSubmit();
@@ -291,7 +294,7 @@ function CompleteManualWaitpointForm({ waitpoint }: { waitpoint: { friendlyId: s
   const environment = useEnvironment();
 
   const currentJson = useRef<string>("{\n\n}");
-  const formAction = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/waitpoints/${waitpoint.friendlyId}/complete`;
+  const formAction = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/waitpoints/${waitpoint.id}/complete`;
 
   const submitForm = useCallback(
     (e: React.FormEvent<HTMLFormElement>) => {
@@ -374,7 +377,7 @@ function CompleteManualWaitpointForm({ waitpoint }: { waitpoint: { friendlyId: s
   );
 }
 
-export function ForceTimeout({ waitpoint }: { waitpoint: { friendlyId: string } }) {
+export function ForceTimeout({ waitpoint }: { waitpoint: { id: string } }) {
   const location = useLocation();
   const navigation = useNavigation();
   const isLoading = navigation.state !== "idle";
@@ -382,7 +385,7 @@ export function ForceTimeout({ waitpoint }: { waitpoint: { friendlyId: string } 
   const project = useProject();
   const environment = useEnvironment();
 
-  const formAction = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/waitpoints/${waitpoint.friendlyId}/complete`;
+  const formAction = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/waitpoints/${waitpoint.id}/complete`;
 
   return (
     <Form action={formAction} method="post">

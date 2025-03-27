@@ -2,7 +2,6 @@ import * as Ariakit from "@ariakit/react";
 import type { RuntimeEnvironment } from "@trigger.dev/database";
 import type { ReactNode } from "react";
 import { startTransition, useCallback, useMemo, useState } from "react";
-import { EnvironmentLabel, environmentTitle } from "~/components/environments/EnvironmentLabel";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
 import { DateField } from "~/components/primitives/DateField";
 import { DateTime } from "~/components/primitives/DateTime";
@@ -14,7 +13,6 @@ import {
   SelectList,
   SelectPopover,
   SelectProvider,
-  shortcutFromIndex,
 } from "~/components/primitives/Select";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { Button } from "../../primitives/Buttons";
@@ -48,102 +46,6 @@ export function FilterMenuProvider({
     >
       {children(searchValue, setSearchValue)}
     </ComboboxProvider>
-  );
-}
-
-export function EnvironmentsDropdown({
-  trigger,
-  clearSearchValue,
-  searchValue,
-  onClose,
-  possibleEnvironments,
-}: {
-  trigger: ReactNode;
-  clearSearchValue: () => void;
-  searchValue: string;
-  onClose?: () => void;
-  possibleEnvironments: DisplayableEnvironment[];
-}) {
-  const { values, replace } = useSearchParams();
-
-  const handleChange = (values: string[]) => {
-    clearSearchValue();
-    replace({ environments: values, cursor: undefined, direction: undefined });
-  };
-
-  const filtered = useMemo(() => {
-    return possibleEnvironments.filter((item) => {
-      const title = environmentTitle(item, item.userName);
-      return title.toLowerCase().includes(searchValue.toLowerCase());
-    });
-  }, [searchValue, possibleEnvironments]);
-
-  return (
-    <SelectProvider value={values("environments")} setValue={handleChange} virtualFocus={true}>
-      {trigger}
-      <SelectPopover
-        className="min-w-0 max-w-[min(240px,var(--popover-available-width))]"
-        hideOnEscape={() => {
-          if (onClose) {
-            onClose();
-            return false;
-          }
-
-          return true;
-        }}
-      >
-        <ComboBox placeholder={"Filter by environment..."} value={searchValue} />
-        <SelectList>
-          {filtered.map((item, index) => (
-            <SelectItem
-              key={item.id}
-              value={item.id}
-              shortcut={shortcutFromIndex(index, { shortcutsEnabled: true })}
-            >
-              <EnvironmentLabel environment={item} />
-            </SelectItem>
-          ))}
-        </SelectList>
-      </SelectPopover>
-    </SelectProvider>
-  );
-}
-
-export function AppliedEnvironmentFilter({
-  possibleEnvironments,
-}: {
-  possibleEnvironments: DisplayableEnvironment[];
-}) {
-  const { values, del } = useSearchParams();
-
-  if (values("environments").length === 0) {
-    return null;
-  }
-
-  return (
-    <FilterMenuProvider>
-      {(search, setSearch) => (
-        <EnvironmentsDropdown
-          trigger={
-            <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
-              <AppliedFilter
-                label="Environment"
-                value={appliedSummary(
-                  values("environments").map((v) => {
-                    const environment = possibleEnvironments.find((env) => env.id === v);
-                    return environment ? environmentTitle(environment, environment.userName) : v;
-                  })
-                )}
-                onRemove={() => del(["environments", "cursor", "direction"])}
-              />
-            </Ariakit.Select>
-          }
-          searchValue={search}
-          clearSearchValue={() => setSearch("")}
-          possibleEnvironments={possibleEnvironments}
-        />
-      )}
-    </FilterMenuProvider>
   );
 }
 

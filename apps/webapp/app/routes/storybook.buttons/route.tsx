@@ -108,7 +108,10 @@ export default function Story() {
         </div>
         <div className="flex flex-col items-start gap-2">
           <Header3 className="mb-1 uppercase">Loading</Header3>
-          <Button variant="primary/small" LeadingIcon={Spinner}>
+          <Button
+            variant="primary/small"
+            LeadingIcon={<Spinner color="white" className="size-3.5" />}
+          >
             Loading Primary…
           </Button>
           <Button variant="secondary/small" LeadingIcon={Spinner}>
@@ -120,7 +123,10 @@ export default function Story() {
           <Button variant="minimal/small" LeadingIcon={Spinner}>
             Loading Minimal…
           </Button>
-          <Button variant="danger/small" LeadingIcon={Spinner}>
+          <Button
+            variant="danger/small"
+            LeadingIcon={<Spinner color="white" className="size-3.5" />}
+          >
             Loading Danger…
           </Button>
         </div>
@@ -231,7 +237,10 @@ export default function Story() {
         </div>
         <div className="flex flex-col items-start gap-2">
           <Header3 className="mb-1 uppercase">Loading</Header3>
-          <Button variant="primary/medium" LeadingIcon={Spinner}>
+          <Button
+            variant="primary/medium"
+            LeadingIcon={<Spinner color="white" className="size-4" />}
+          >
             Loading Primary…
           </Button>
           <Button variant="secondary/medium" LeadingIcon={Spinner}>
@@ -243,7 +252,10 @@ export default function Story() {
           <Button variant="minimal/medium" LeadingIcon={Spinner}>
             Loading Minimal…
           </Button>
-          <Button variant="danger/medium" LeadingIcon={Spinner}>
+          <Button
+            variant="danger/medium"
+            LeadingIcon={<Spinner color="white" className="size-4" />}
+          >
             Loading Danger…
           </Button>
         </div>
@@ -279,12 +291,12 @@ export default function Story() {
         <div className="flex flex-col gap-2">
           <div className="flex flex-col items-start gap-2">
             <Button variant="primary/large" fullWidth>
-              <GitHubDarkIcon className={"mr-1.5 size-[1.2rem]"} />
-              <span className="text-charcoal-900">Continue with GitHub</span>
+              <GitHubLightIcon className={"mr-1.5 size-[1.2rem]"} />
+              <span className="text-text-bright">Continue with GitHub</span>
             </Button>
             <Button variant="secondary/large" fullWidth>
-              <EnvelopeIcon className={"mr-1.5 h-5 w-5 text-secondary transition"} />
-              <span className="text-secondary">Continue with Email</span>
+              <EnvelopeIcon className={"mr-1.5 size-[1.2rem] text-text-bright transition"} />
+              <span className="text-text-bright">Continue with Email</span>
             </Button>
             <Button variant="tertiary/large" fullWidth>
               <GitHubLightIcon className={"mr-1.5 size-[1.2rem]"} />
@@ -306,22 +318,20 @@ export default function Story() {
         <div className="flex flex-col gap-2">
           <div className="flex flex-col items-start gap-2">
             <Button variant="primary/extra-large" fullWidth>
-              <GitHubDarkIcon className={"mr-1.5 h-5 w-5"} />
-              <span className="text-charcoal-900">Continue with GitHub</span>
+              <GitHubLightIcon className={"mr-1.5 size-5"} />
+              <span className="text-text-bright">Continue with GitHub</span>
             </Button>
             <Button variant="secondary/extra-large" fullWidth>
-              <EnvelopeIcon className={"mr-1.5 h-5 w-5 text-secondary transition"} />
-              <span className="text-secondary">Continue with Email</span>
+              <EnvelopeIcon className={"mr-1.5 h-5 w-5 text-text-bright transition"} />
+              <span className="text-text-bright">Continue with Email</span>
             </Button>
             <Button variant="tertiary/extra-large" fullWidth>
-              <GitHubLightIcon className={"mr-1.5 h-5 w-5"} />
+              <GitHubLightIcon className={"mr-1.5 size-5"} />
               <span className="text-text-bright">Continue with GitHub</span>
             </Button>
             <Button variant="danger/extra-large" fullWidth>
               <TrashIcon
-                className={
-                  "mr-1.5 h-5 w-5 text-text-bright transition group-hover:text-text-bright"
-                }
+                className={"mr-1.5 size-5 text-text-bright transition group-hover:text-text-bright"}
               />
               <span className="text-text-bright">This is a delete button</span>
             </Button>
