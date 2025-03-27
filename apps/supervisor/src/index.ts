@@ -234,6 +234,7 @@ class ManagedSupervisor {
     // Responds to workload requests only
     this.workloadServer = new WorkloadServer({
       port: env.TRIGGER_WORKLOAD_API_PORT_INTERNAL,
+      host: env.TRIGGER_WORKLOAD_API_HOST_INTERNAL,
       workerClient: this.workerSession.httpClient,
       checkpointClient: this.checkpointClient,
     });

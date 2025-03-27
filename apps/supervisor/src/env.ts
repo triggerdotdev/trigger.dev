@@ -26,6 +26,7 @@ const Env = z.object({
     .transform((s) => z.enum(["http", "https"]).parse(s.toLowerCase()))
     .default("http"),
   TRIGGER_WORKLOAD_API_DOMAIN: z.string().optional(), // If unset, will use orchestrator-specific default
+  TRIGGER_WORKLOAD_API_HOST_INTERNAL: z.string().default("0.0.0.0"),
   TRIGGER_WORKLOAD_API_PORT_INTERNAL: z.coerce.number().default(8020), // This is the port the workload API listens on
   TRIGGER_WORKLOAD_API_PORT_EXTERNAL: z.coerce.number().default(8020), // This is the exposed port passed to the run controller
 
