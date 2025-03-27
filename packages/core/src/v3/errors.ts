@@ -140,6 +140,20 @@ export class TaskPayloadParsedError extends Error {
   }
 }
 
+export class CompleteTaskWithOutput extends Error {
+  public readonly output: unknown;
+
+  constructor(output?: unknown) {
+    super("Complete task with output");
+    this.name = "CompleteTaskWithOutput";
+    this.output = output;
+  }
+}
+
+export function isCompleteTaskWithOutput(error: unknown): error is CompleteTaskWithOutput {
+  return error instanceof Error && error.name === "CompleteTaskWithOutput";
+}
+
 export function parseError(error: unknown): TaskRunError {
   if (isInternalError(error)) {
     return {
@@ -291,8 +305,6 @@ export function shouldRetryError(error: TaskRunError): boolean {
         // run engine errors
         case "TASK_DEQUEUED_INVALID_STATE":
         case "TASK_DEQUEUED_QUEUE_NOT_FOUND":
-        case "TASK_DEQUEUED_INVALID_RETRY_CONFIG":
-        case "TASK_DEQUEUED_NO_RETRY_CONFIG":
         case "TASK_HAS_N0_EXECUTION_SNAPSHOT":
         case "TASK_RUN_DEQUEUED_MAX_RETRIES":
           return false;

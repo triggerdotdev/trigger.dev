@@ -33,6 +33,7 @@ export {
   UnprocessableEntityError,
   AbortTaskRunError,
   OutOfMemoryError,
+  CompleteTaskWithOutput,
   logger,
   type LogLevel,
 } from "@trigger.dev/core/v3";

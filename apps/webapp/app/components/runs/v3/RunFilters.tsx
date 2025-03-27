@@ -61,6 +61,7 @@ import {
   TaskRunStatusCombo,
 } from "./TaskRunStatus";
 import { TaskTriggerSourceIcon } from "./TaskTriggerSource";
+import { StatusIcon } from "~/assets/icons/StatusIcon";
 
 export const TaskAttemptStatus = z.enum(allTaskRunStatuses);
 
@@ -148,11 +149,7 @@ const filterTypes = [
   {
     name: "statuses",
     title: "Status",
-    icon: (
-      <div className="flex size-4 items-center justify-center">
-        <div className="size-3 rounded-full border-2 border-text-dimmed" />
-      </div>
-    ),
+    icon: <StatusIcon className="size-4" />,
   },
   { name: "tasks", title: "Tasks", icon: <TaskIcon className="size-4" /> },
   { name: "tags", title: "Tags", icon: <TagIcon className="size-4" /> },

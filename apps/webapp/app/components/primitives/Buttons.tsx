@@ -42,17 +42,17 @@ type Size = keyof typeof sizes;
 const theme = {
   primary: {
     textColor:
-      "text-charcoal-900 group-hover/button:text-charcoal-900 transition group-disabled/button:text-charcoal-900",
+      "text-text-bright group-hover/button:text-white transition group-disabled/button:text-text-dimmed",
     button:
-      "bg-primary group-hover/button:bg-apple-200 group-disabled/button:opacity-50 group-disabled/button:bg-primary group-disabled/button:pointer-events-none",
+      "bg-indigo-600 border border-indigo-500 group-hover/button:bg-indigo-500 group-hover/button:border-indigo-400 group-disabled/button:opacity-50 group-disabled/button:bg-indigo-600 group-disabled/button:border-indigo-500 group-disabled/button:pointer-events-none",
     shortcut:
-      "border-black/40 text-charcoal-900 group-hover/button:border-black/60 group-hover/button:text-charcoal-900",
-    icon: "text-charcoal-900",
+      "border-text-bright/40 text-text-bright group-hover/button:border-text-bright/60 group-hover/button:text-text-bright",
+    icon: "text-text-bright",
   },
   secondary: {
     textColor: "text-text-bright transition group-disabled/button:text-text-dimmed/80",
     button:
-      "bg-secondary group-hover/button:bg-charcoal-600 group-hover/button:border-charcoal-650 border border-charcoal-600 group-disabled/button:bg-secondary group-disabled/button:opacity-60 group-disabled/button:pointer-events-none",
+      "bg-secondary group-hover/button:bg-charcoal-600 group-hover/button:border-charcoal-550 border border-charcoal-600 group-disabled/button:bg-secondary group-disabled/button:opacity-60 group-disabled/button:pointer-events-none",
     shortcut:
       "border-text-dimmed/40 text-text-dimmed group-hover/button:text-text-bright group-hover/button:border-text-dimmed",
     icon: "text-text-bright",
@@ -142,7 +142,7 @@ const variant = {
     textColor: "text-text-bright",
     button:
       "h-[1.8rem] px-[0.4rem] text-2sm rounded-sm text-text-dimmed bg-transparent group-hover/button:bg-charcoal-750",
-    icon: "h-4",
+    icon: "h-[1.125rem]",
     iconSpacing: "gap-x-1.5",
     shortcutVariant: undefined,
     shortcut: undefined,

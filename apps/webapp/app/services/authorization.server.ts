@@ -1,6 +1,6 @@
 export type AuthorizationAction = "read" | "write" | string; // Add more actions as needed
 
-const ResourceTypes = ["tasks", "tags", "runs", "batch"] as const;
+const ResourceTypes = ["tasks", "tags", "runs", "batch", "waitpoints"] as const;
 
 export type AuthorizationResources = {
   [key in (typeof ResourceTypes)[number]]?: string | string[];
