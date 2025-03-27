@@ -200,8 +200,7 @@ export function TestHasNoTasks() {
       accessory={
         <LinkButton
           to={v3EnvironmentPath(organization, project, environment)}
-          variant="secondary/small"
-          LeadingIcon={PlusIcon}
+          variant="primary/small"
         >
           Create a task
         </LinkButton>
@@ -396,8 +395,7 @@ export function QueuesHasNoTasks() {
       accessory={
         <LinkButton
           to={v3EnvironmentPath(organization, project, environment)}
-          variant="secondary/small"
-          LeadingIcon={PlusIcon}
+          variant="primary/small"
         >
           Create a task
         </LinkButton>
