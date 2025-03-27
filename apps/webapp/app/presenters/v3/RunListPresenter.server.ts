@@ -425,6 +425,8 @@ WHERE
         versions: versions || [],
         statuses: statuses || [],
         environments: environments || [],
+        from: time.from,
+        to: time.to,
       },
       hasFilters,
       hasAnyRuns,

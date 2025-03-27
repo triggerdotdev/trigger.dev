@@ -1,4 +1,4 @@
-import { PrismaClientOrTransaction } from "~/db.server";
+import { type PrismaClientOrTransaction } from "~/db.server";
 import { BaseService } from "./baseService.server";
 import { workerQueue } from "~/services/worker.server";
 import { RegisterNextTaskScheduleInstanceService } from "./registerNextTaskScheduleInstance.server";
@@ -145,6 +145,15 @@ export class TriggerScheduledTaskService extends BaseService {
             data: {
               scheduleId: instance.taskSchedule.id,
               scheduleInstanceId: instance.id,
+            },
+          });
+
+          await this._prisma.taskSchedule.update({
+            where: {
+              id: instance.taskSchedule.id,
+            },
+            data: {
+              lastRunTriggeredAt: new Date(),
             },
           });
         }
