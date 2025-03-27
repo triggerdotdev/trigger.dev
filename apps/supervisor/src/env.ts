@@ -42,6 +42,7 @@ const Env = z.object({
   DOCKER_NETWORK: z.string().default("host"),
   OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url(),
   ENFORCE_MACHINE_PRESETS: z.coerce.boolean().default(false),
+  KUBERNETES_IMAGE_PULL_SECRETS: z.string().optional(), // csv
 
   // Used by the resource monitor
   OVERRIDE_CPU_TOTAL: z.coerce.number().optional(),

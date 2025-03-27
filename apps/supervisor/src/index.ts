@@ -97,6 +97,7 @@ class ManagedSupervisor {
         workloadApiDomain,
         workloadApiPort: workloadApiPortExternal,
         warmStartUrl: this.warmStartUrl,
+        imagePullSecrets: env.KUBERNETES_IMAGE_PULL_SECRETS?.split(","),
       });
     } else {
       this.resourceMonitor = new DockerResourceMonitor(new Docker());
