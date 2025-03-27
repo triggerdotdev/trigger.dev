@@ -54,7 +54,10 @@ const Env = z.object({
   EPHEMERAL_STORAGE_SIZE_REQUEST: z.string().default("2Gi"),
 
   // Metrics
+  METRICS_ENABLED: BoolEnv.default(true),
   METRICS_COLLECT_DEFAULTS: BoolEnv.default(true),
+  METRICS_HOST: z.string().default("127.0.0.1"),
+  METRICS_PORT: z.coerce.number().int().default(9090),
 
   // Pod cleaner
   POD_CLEANER_ENABLED: BoolEnv.default(true),

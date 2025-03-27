@@ -30,7 +30,7 @@ if (env.METRICS_COLLECT_DEFAULTS) {
 
 class ManagedSupervisor {
   private readonly workerSession: SupervisorSession;
-  private readonly httpServer: HttpServer;
+  private readonly metricsServer?: HttpServer;
   private readonly workloadServer: WorkloadServer;
   private readonly workloadManager: WorkloadManager;
   private readonly logger = new SimpleStructuredLogger("managed-worker");
@@ -50,6 +50,7 @@ class ManagedSupervisor {
 
     if (env.POD_CLEANER_ENABLED) {
       this.podCleaner = new PodCleaner({
+        register,
         namespace: env.KUBERNETES_NAMESPACE,
         batchSize: env.POD_CLEANER_BATCH_SIZE,
         intervalMs: env.POD_CLEANER_INTERVAL_MS,
@@ -58,6 +59,7 @@ class ManagedSupervisor {
 
     if (env.FAILED_POD_HANDLER_ENABLED) {
       this.failedPodHandler = new FailedPodHandler({
+        register,
         namespace: env.KUBERNETES_NAMESPACE,
         reconnectIntervalMs: env.FAILED_POD_HANDLER_RECONNECT_INTERVAL_MS,
       });
@@ -224,12 +226,16 @@ class ManagedSupervisor {
       }
     });
 
-    // Used for health checks and metrics
-    this.httpServer = new HttpServer({ port: 8080, host: "0.0.0.0" }).route("/health", "GET", {
-      handler: async ({ reply }) => {
-        reply.text("OK");
-      },
-    });
+    if (env.METRICS_ENABLED) {
+      this.metricsServer = new HttpServer({
+        port: env.METRICS_PORT,
+        host: env.METRICS_HOST,
+        metrics: {
+          register,
+          expose: true,
+        },
+      });
+    }
 
     // Responds to workload requests only
     this.workloadServer = new WorkloadServer({
@@ -320,13 +326,12 @@ class ManagedSupervisor {
     }
 
     await this.workerSession.start();
-
-    await this.httpServer.start();
+    await this.metricsServer?.start();
   }
 
   async stop() {
     this.logger.log("[ManagedWorker] Shutting down");
-    await this.httpServer.stop();
+    await this.workerSession.stop();
 
     if (this.podCleaner) {
       await this.podCleaner.stop();
@@ -335,6 +340,8 @@ class ManagedSupervisor {
     if (this.failedPodHandler) {
       await this.failedPodHandler.stop();
     }
+
+    await this.metricsServer?.stop();
   }
 }
 
