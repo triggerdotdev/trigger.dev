@@ -494,10 +494,14 @@ export class CliApiClient {
     });
   }
 
-  private async devPresenceConnection(): Promise<EventSource> {
+  private devPresenceConnection(): EventSource {
     if (!this.accessToken) {
       throw new Error("connectToPresence: No access token");
     }
+
+    let retryCount = 0;
+    const maxRetries = 5;
+    const retryDelay = 1000; // Start with 1 second delay
 
     const eventSource = new EventSource(`${this.apiURL}/engine/v1/dev/presence`, {
       fetch: (input, init) =>
@@ -510,26 +514,40 @@ export class CliApiClient {
         }),
     });
 
-    return new Promise((resolve, reject) => {
-      eventSource.onopen = () => {
-        logger.debug("Presence connection established");
-        resolve(eventSource);
-      };
+    eventSource.onopen = () => {
+      logger.debug("Presence connection established");
+      retryCount = 0; // Reset retry count on successful connection
+    };
 
-      eventSource.onerror = (error: any) => {
-        // The connection will automatically try to reconnect
-        logger.debug("Presence connection error, will automatically attempt to reconnect", {
-          error,
-          readyState: eventSource.readyState, // 0 = connecting, 1 = open, 2 = closed
-        });
+    eventSource.onerror = (error: any) => {
+      // The connection will automatically try to reconnect
+      logger.debug("Presence connection error, will automatically attempt to reconnect", {
+        error,
+        readyState: eventSource.readyState,
+      });
 
-        // If you want to detect when it's permanently failed and not reconnecting
-        if (eventSource.readyState === EventSource.CLOSED) {
-          logger.debug("Presence connection permanently closed", { error });
-          reject(new Error(`Failed to connect to ${this.apiURL}`));
+      if (eventSource.readyState === EventSource.CLOSED) {
+        logger.debug("Presence connection permanently closed", { error, retryCount });
+
+        if (retryCount < maxRetries) {
+          retryCount++;
+          const backoffDelay = retryDelay * Math.pow(2, retryCount - 1); // Exponential backoff
+
+          logger.debug(
+            `Attempting reconnection in ${backoffDelay}ms (attempt ${retryCount}/${maxRetries})`
+          );
+          eventSource.close();
+
+          setTimeout(() => {
+            this.devPresenceConnection();
+          }, backoffDelay);
+        } else {
+          logger.debug("Max retry attempts reached, giving up");
         }
-      };
-    });
+      }
+    };
+
+    return eventSource;
   }
 
   private async devDequeue(

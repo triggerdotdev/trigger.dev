@@ -1,4 +1,3 @@
-import upgradeForWaitpointsPath from "~/assets/images/waitpoints-dashboard.png";
 import { BookOpenIcon } from "@heroicons/react/20/solid";
 import { Outlet, useParams, type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
@@ -8,6 +7,7 @@ import { NoWaitpointTokens } from "~/components/BlankStatePanels";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { ListPagination } from "~/components/ListPagination";
 import { LinkButton } from "~/components/primitives/Buttons";
+import { CopyableText } from "~/components/primitives/CopyableText";
 import { DateTime } from "~/components/primitives/DateTime";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -39,8 +39,6 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { WaitpointTokenListPresenter } from "~/presenters/v3/WaitpointTokenListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { docsPath, EnvironmentParamSchema, v3WaitpointTokenPath } from "~/utils/pathBuilder";
-import { determineEngineVersion } from "~/v3/engineVersion.server";
-import { CopyableText } from "~/components/primitives/CopyableText";
 
 export const meta: MetaFunction = () => {
   return [
@@ -103,7 +101,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 export default function Page() {
-  const { success, tokens, pagination, hasFilters, filters } = useTypedLoaderData<typeof loader>();
+  const { success, tokens, pagination, hasFilters, hasAnyTokens, filters } =
+    useTypedLoaderData<typeof loader>();
 
   const organization = useOrganization();
   const project = useProject();
@@ -124,7 +123,7 @@ export default function Page() {
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
-        {!hasFilters && tokens.length === 0 ? (
+        {!hasAnyTokens ? (
           <MainCenteredContainer className="max-w-md">
             <NoWaitpointTokens />
           </MainCenteredContainer>

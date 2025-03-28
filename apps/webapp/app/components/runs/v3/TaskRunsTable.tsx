@@ -288,7 +288,7 @@ export function TaskRunsTable({
           <BlankState isLoading={isLoading} filters={filters} />
         ) : (
           runs.map((run, index) => {
-            const path = v3RunSpanPath(organization, project, environment, run, {
+            const path = v3RunSpanPath(organization, project, run.environment, run, {
               spanId: run.spanId,
             });
             return (

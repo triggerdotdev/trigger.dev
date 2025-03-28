@@ -36,14 +36,7 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { type loader as tagsLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.waitpoints.tags";
-import {
-  AppliedCustomDateRangeFilter,
-  AppliedPeriodFilter,
-  appliedSummary,
-  CreatedAtDropdown,
-  CustomDateRangeDropdown,
-  FilterMenuProvider,
-} from "./SharedFilters";
+import { TimeFilter, appliedSummary, FilterMenuProvider } from "./SharedFilters";
 import { WaitpointStatusCombo, waitpointStatusTitle } from "./WaitpointStatus";
 
 export const WaitpointSearchParamsSchema = z.object({
@@ -71,16 +64,14 @@ export function WaitpointTokenFilters(props: WaitpointTokenFiltersProps) {
   const searchParams = new URLSearchParams(location.search);
   const hasFilters =
     searchParams.has("statuses") ||
-    searchParams.has("period") ||
     searchParams.has("tags") ||
-    searchParams.has("from") ||
-    searchParams.has("to") ||
     searchParams.has("id") ||
     searchParams.has("idempotencyKey");
 
   return (
     <div className="flex flex-row flex-wrap items-center gap-1">
       <FilterMenu />
+      <TimeFilter />
       <AppliedFilters />
       {hasFilters && (
         <Form className="h-6">
@@ -100,8 +91,6 @@ const filterTypes = [
     icon: <StatusIcon className="size-4" />,
   },
   { name: "tags", title: "Tags", icon: <TagIcon className="size-4" /> },
-  { name: "created", title: "Created", icon: <CalendarIcon className="size-4" /> },
-  { name: "daterange", title: "Custom date range", icon: <CalendarIcon className="size-4" /> },
   { name: "id", title: "Waitpoint ID", icon: <FingerPrintIcon className="size-4" /> },
   { name: "idempotencyKey", title: "Idempotency key", icon: <ListChecks className="size-4" /> },
 ] as const;
@@ -148,8 +137,6 @@ function AppliedFilters() {
     <>
       <AppliedStatusFilter />
       <AppliedTagsFilter />
-      <AppliedPeriodFilter />
-      <AppliedCustomDateRangeFilter />
       <AppliedWaitpointIdFilter />
       <AppliedIdempotencyKeyFilter />
     </>
@@ -170,10 +157,6 @@ function Menu(props: MenuProps) {
       return <MainMenu {...props} />;
     case "statuses":
       return <StatusDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
-    case "created":
-      return <CreatedAtDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
-    case "daterange":
-      return <CustomDateRangeDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
     case "tags":
       return <TagsDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
     case "id":
@@ -186,7 +169,6 @@ function Menu(props: MenuProps) {
 function MainMenu({ searchValue, trigger, clearSearchValue, setFilterType }: MenuProps) {
   const filtered = useMemo(() => {
     return filterTypes.filter((item) => {
-      if (item.name === "daterange") return false;
       return item.title.toLowerCase().includes(searchValue.toLowerCase());
     });
   }, [searchValue]);
