@@ -1,8 +1,6 @@
 import * as Ariakit from "@ariakit/react";
 import {
-  CalendarIcon,
   ClockIcon,
-  CpuChipIcon,
   FingerPrintIcon,
   Squares2X2Icon,
   TagIcon,
@@ -14,6 +12,7 @@ import { ListChecks, ListFilterIcon } from "lucide-react";
 import { matchSorter } from "match-sorter";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { z } from "zod";
+import { StatusIcon } from "~/assets/icons/StatusIcon";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
 import { DateTime } from "~/components/primitives/DateTime";
@@ -45,14 +44,7 @@ import { useSearchParams } from "~/hooks/useSearchParam";
 import { type loader as tagsLoader } from "~/routes/resources.projects.$projectParam.runs.tags";
 import { Button } from "../../primitives/Buttons";
 import { BulkActionStatusCombo } from "./BulkAction";
-import {
-  AppliedCustomDateRangeFilter,
-  AppliedPeriodFilter,
-  appliedSummary,
-  CreatedAtDropdown,
-  CustomDateRangeDropdown,
-  FilterMenuProvider,
-} from "./SharedFilters";
+import { appliedSummary, FilterMenuProvider, TimeFilter } from "./SharedFilters";
 import {
   allTaskRunStatuses,
   descriptionForTaskRunStatus,
@@ -87,8 +79,8 @@ export const TaskRunListSearchFilters = z.object({
     (value) => (typeof value === "string" ? [value] : value),
     z.string().array().optional()
   ),
-  period: z.preprocess((value) => (value === "all" ? undefined : value), z.string().optional()),
   bulkId: z.string().optional(),
+  period: z.preprocess((value) => (value === "all" ? undefined : value), z.string().optional()),
   from: z.coerce.number().optional(),
   to: z.coerce.number().optional(),
   rootOnly: z.coerce.boolean().optional(),
@@ -116,11 +108,8 @@ export function RunsFilters(props: RunFiltersProps) {
   const hasFilters =
     searchParams.has("statuses") ||
     searchParams.has("tasks") ||
-    searchParams.has("period") ||
     searchParams.has("bulkId") ||
     searchParams.has("tags") ||
-    searchParams.has("from") ||
-    searchParams.has("to") ||
     searchParams.has("batchId") ||
     searchParams.has("runId") ||
     searchParams.has("scheduleId");
@@ -129,6 +118,7 @@ export function RunsFilters(props: RunFiltersProps) {
     <div className="flex flex-row flex-wrap items-center gap-1">
       <FilterMenu {...props} />
       <RootOnlyToggle defaultValue={props.rootOnlyDefault} />
+      <TimeFilter />
       <AppliedFilters {...props} />
       {hasFilters && (
         <Form className="h-6">
@@ -148,16 +138,10 @@ const filterTypes = [
   {
     name: "statuses",
     title: "Status",
-    icon: (
-      <div className="flex size-4 items-center justify-center">
-        <div className="size-3 rounded-full border-2 border-text-dimmed" />
-      </div>
-    ),
+    icon: <StatusIcon className="size-4" />,
   },
   { name: "tasks", title: "Tasks", icon: <TaskIcon className="size-4" /> },
   { name: "tags", title: "Tags", icon: <TagIcon className="size-4" /> },
-  { name: "created", title: "Created", icon: <CalendarIcon className="size-4" /> },
-  { name: "daterange", title: "Custom date range", icon: <CalendarIcon className="size-4" /> },
   { name: "run", title: "Run ID", icon: <FingerPrintIcon className="size-4" /> },
   { name: "batch", title: "Batch ID", icon: <Squares2X2Icon className="size-4" /> },
   { name: "schedule", title: "Schedule ID", icon: <ClockIcon className="size-4" /> },
@@ -178,7 +162,7 @@ function FilterMenu(props: RunFiltersProps) {
           <ListFilterIcon className="size-3.5" />
         </div>
       }
-      variant={"minimal/small"}
+      variant={"tertiary/small"}
       shortcut={shortcut}
       tooltipTitle={"Filter runs"}
     >
@@ -208,8 +192,6 @@ function AppliedFilters({ possibleTasks, bulkActions }: RunFiltersProps) {
       <AppliedStatusFilter />
       <AppliedTaskFilter possibleTasks={possibleTasks} />
       <AppliedTagsFilter />
-      <AppliedPeriodFilter />
-      <AppliedCustomDateRangeFilter />
       <AppliedRunIdFilter />
       <AppliedBatchIdFilter />
       <AppliedScheduleIdFilter />
@@ -232,13 +214,8 @@ function Menu(props: MenuProps) {
       return <MainMenu {...props} />;
     case "statuses":
       return <StatusDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
-
     case "tasks":
       return <TasksDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
-    case "created":
-      return <CreatedAtDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
-    case "daterange":
-      return <CustomDateRangeDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
     case "bulk":
       return <BulkActionsDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
     case "tags":
@@ -255,7 +232,6 @@ function Menu(props: MenuProps) {
 function MainMenu({ searchValue, trigger, clearSearchValue, setFilterType }: MenuProps) {
   const filtered = useMemo(() => {
     return filterTypes.filter((item) => {
-      if (item.name === "daterange") return false;
       return item.title.toLowerCase().includes(searchValue.toLowerCase());
     });
   }, [searchValue]);
@@ -702,9 +678,10 @@ function RootOnlyToggle({ defaultValue }: { defaultValue: boolean }) {
   return (
     <Switch
       disabled={disabled}
-      variant="small"
+      variant="tertiary/small"
       label="Root only"
       checked={disabled ? false : rootOnly}
+      className="bg-tertiary transition hover:bg-charcoal-600"
       onCheckedChange={(checked) => {
         replace({
           rootOnly: checked ? "true" : "false",

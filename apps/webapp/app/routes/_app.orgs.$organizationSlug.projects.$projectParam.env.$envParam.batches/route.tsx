@@ -99,7 +99,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 export default function Page() {
-  const { batches, hasFilters, filters, pagination } = useTypedLoaderData<typeof loader>();
+  const { batches, hasFilters, hasAnyBatches, filters, pagination } =
+    useTypedLoaderData<typeof loader>();
 
   return (
     <PageContainer>
@@ -117,7 +118,7 @@ export default function Page() {
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
-        {!hasFilters && batches.length === 0 ? (
+        {!hasAnyBatches ? (
           <MainCenteredContainer className="max-w-md">
             <BatchesNone />
           </MainCenteredContainer>
@@ -135,6 +136,7 @@ export default function Page() {
               filters={filters}
               hasFilters={hasFilters}
               pagination={pagination}
+              hasAnyBatches={hasAnyBatches}
             />
           </div>
         )}
@@ -186,15 +188,7 @@ function BatchesTable({ batches, hasFilters, filters }: BatchList) {
         </TableRow>
       </TableHeader>
       <TableBody>
-        {batches.length === 0 && !hasFilters ? (
-          <TableBlankRow colSpan={8}>
-            {!isLoading && (
-              <div className="flex items-center justify-center">
-                <Paragraph className="w-auto">No batches</Paragraph>
-              </div>
-            )}
-          </TableBlankRow>
-        ) : batches.length === 0 ? (
+        {batches.length === 0 ? (
           <TableBlankRow colSpan={8}>
             <div className="flex items-center justify-center">
               <Paragraph className="w-auto">No batches match these filters</Paragraph>

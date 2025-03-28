@@ -1,4 +1,4 @@
-import { RunStatus } from "../schemas/index.js";
+import { RunStatus, WaitpointTokenStatus } from "../schemas/index.js";
 import { CursorPageParams } from "./pagination.js";
 
 export interface ImportEnvironmentVariablesParams {
@@ -41,4 +41,13 @@ export interface ListProjectRunsQueryParams extends CursorPageParams, ListRunsQu
 export interface SubscribeToRunsQueryParams {
   tasks?: Array<string> | string;
   tags?: Array<string> | string;
+}
+
+export interface ListWaitpointTokensQueryParams extends CursorPageParams {
+  status?: Array<WaitpointTokenStatus> | WaitpointTokenStatus;
+  idempotencyKey?: string;
+  tags?: Array<string> | string;
+  period?: string;
+  from?: Date | number;
+  to?: Date | number;
 }

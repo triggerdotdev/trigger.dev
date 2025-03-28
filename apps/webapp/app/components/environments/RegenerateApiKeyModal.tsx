@@ -39,7 +39,7 @@ export function RegenerateApiKeyModal({ id, title }: ModalProps) {
         </Button>
       </DialogTrigger>
       <DialogContent>
-        <DialogHeader>{`Regenerate ${title.toUpperCase()} environment key`}</DialogHeader>
+        <DialogHeader>{`Regenerate ${title} environment key`}</DialogHeader>
         <RegenerateApiKeyModalContent
           id={id}
           title={title}

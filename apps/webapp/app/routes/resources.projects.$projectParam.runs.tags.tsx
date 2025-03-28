@@ -26,7 +26,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   const presenter = new RunTagListPresenter();
   const result = await presenter.call({
     projectId: project.id,
-    names: name ? [decodeURIComponent(name)] : undefined,
+    name: name ? decodeURIComponent(name) : undefined,
   });
   return result;
 }

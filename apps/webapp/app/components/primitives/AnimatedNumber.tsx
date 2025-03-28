@@ -1,13 +1,16 @@
-import { motion, useSpring, useTransform } from "framer-motion";
+import { motion, useSpring, useTransform, useMotionValue, animate } from "framer-motion";
 import { useEffect } from "react";
 
 export function AnimatedNumber({ value }: { value: number }) {
-  let spring = useSpring(value, { mass: 0.8, stiffness: 75, damping: 15 });
-  let display = useTransform(spring, (current) => Math.round(current).toLocaleString());
+  const motionValue = useMotionValue(value);
+  let display = useTransform(motionValue, (current) => Math.round(current).toLocaleString());
 
   useEffect(() => {
-    spring.set(value);
-  }, [spring, value]);
+    animate(motionValue, value, {
+      duration: 0.5,
+      ease: "easeInOut",
+    });
+  }, [value]);
 
   return <motion.span>{display}</motion.span>;
 }

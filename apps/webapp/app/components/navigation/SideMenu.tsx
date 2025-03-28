@@ -20,9 +20,13 @@ import {
 import { useNavigation } from "@remix-run/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import simplur from "simplur";
-import { ConnectedIcon, DisconnectedIcon } from "~/assets/icons/ConnectionIcons";
-import { RunsIcon } from "~/assets/icons/RunsIcon";
-import { TaskIcon } from "~/assets/icons/TaskIcon";
+import {
+  CheckingConnectionIcon,
+  ConnectedIcon,
+  DisconnectedIcon,
+} from "~/assets/icons/ConnectionIcons";
+import { RunsIconExtraSmall, RunsIconSmall } from "~/assets/icons/RunsIcon";
+import { TaskIconSmall } from "~/assets/icons/TaskIcon";
 import { Avatar } from "~/components/primitives/Avatar";
 import { type MatchedEnvironment } from "~/hooks/useEnvironment";
 import { type MatchedOrganization } from "~/hooks/useOrganizations";
@@ -54,6 +58,7 @@ import {
   v3SchedulesPath,
   v3TestPath,
   v3UsagePath,
+  v3WaitpointTokensPath,
 } from "~/utils/pathBuilder";
 import connectedImage from "../../assets/images/cli-connected.png";
 import disconnectedImage from "../../assets/images/cli-disconnected.png";
@@ -80,6 +85,8 @@ import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
 import { SideMenuSection } from "./SideMenuSection";
+import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
+import { Spinner } from "../primitives/Spinner";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 export type SideMenuProject = Pick<
@@ -150,7 +157,7 @@ export function SideMenu({
         <div className="mb-6 flex flex-col gap-4 px-1">
           <div className="space-y-1">
             <SideMenuHeader title={"Environment"} />
-            <div className="flex items-center gap-1">
+            <div className="flex items-center">
               <EnvironmentSelector
                 organization={organization}
                 project={project}
@@ -163,80 +170,89 @@ export function SideMenu({
           <div>
             <SideMenuItem
               name="Tasks"
-              icon={TaskIcon}
-              activeIconColor="text-blue-500"
+              icon={TaskIconSmall}
+              activeIconColor="text-tasks"
               to={v3EnvironmentPath(organization, project, environment)}
               data-action="tasks"
             />
             <SideMenuItem
               name="Runs"
-              icon={RunsIcon}
-              activeIconColor="text-teal-500"
+              icon={RunsIconExtraSmall}
+              activeIconColor="text-runs"
               to={v3RunsPath(organization, project, environment)}
             />
             <SideMenuItem
               name="Batches"
               icon={Squares2X2Icon}
-              activeIconColor="text-blue-500"
+              activeIconColor="text-batches"
               to={v3BatchesPath(organization, project, environment)}
               data-action="batches"
             />
             <SideMenuItem
               name="Schedules"
               icon={ClockIcon}
-              activeIconColor="text-sun-500"
+              activeIconColor="text-schedules"
               to={v3SchedulesPath(organization, project, environment)}
               data-action="schedules"
             />
             <SideMenuItem
               name="Queues"
               icon={RectangleStackIcon}
-              activeIconColor="text-blue-500"
+              activeIconColor="text-queues"
               to={v3QueuesPath(organization, project, environment)}
               data-action="queues"
             />
             <SideMenuItem
               name="Deployments"
               icon={ServerStackIcon}
-              activeIconColor="text-blue-500"
+              activeIconColor="text-deployments"
               to={v3DeploymentsPath(organization, project, environment)}
               data-action="deployments"
             />
             <SideMenuItem
               name="Test"
               icon={BeakerIcon}
-              activeIconColor="text-lime-500"
+              activeIconColor="text-tests"
               to={v3TestPath(organization, project, environment)}
               data-action="test"
             />
           </div>
 
+          <SideMenuSection title="Waitpoints">
+            <SideMenuItem
+              name="Tokens"
+              icon={WaitpointTokenIcon}
+              activeIconColor="text-sky-500"
+              to={v3WaitpointTokensPath(organization, project, environment)}
+            />
+          </SideMenuSection>
+
           <SideMenuSection title="Manage">
             <SideMenuItem
               name="API keys"
               icon={KeyIcon}
-              activeIconColor="text-amber-500"
+              activeIconColor="text-apiKeys"
               to={v3ApiKeysPath(organization, project, environment)}
               data-action="api keys"
             />
             <SideMenuItem
               name="Environment variables"
               icon={IdentificationIcon}
-              activeIconColor="text-pink-500"
+              activeIconColor="text-environmentVariables"
               to={v3EnvironmentVariablesPath(organization, project, environment)}
               data-action="environment variables"
             />
             <SideMenuItem
               name="Alerts"
               icon={BellAlertIcon}
-              activeIconColor="text-red-500"
+              activeIconColor="text-alerts"
               to={v3ProjectAlertsPath(organization, project, environment)}
               data-action="alerts"
             />
             <SideMenuItem
               name="Project settings"
               icon={Cog8ToothIcon}
-              activeIconColor="text-teal-500"
+              activeIconColor="text-projectSettings"
               to={v3ProjectSettingsPath(organization, project, environment)}
               data-action="project-settings"
             />
@@ -293,7 +309,7 @@ function ProjectSelector({
         )}
       >
         <span className="flex items-center gap-1.5 overflow-hidden">
-          <Avatar avatar={organization.avatar} className="size-5" />
+          <Avatar avatar={organization.avatar} size={1.25} orgName={organization.title} />
           <SelectorDivider />
           <span className="truncate text-2sm font-normal text-text-bright">
             {project.name ?? "Select a project"}
@@ -308,7 +324,7 @@ function ProjectSelector({
         <div className="flex flex-col gap-2 bg-charcoal-750 p-2">
           <div className="flex items-center gap-2.5">
             <div className="box-content size-10 overflow-clip rounded-sm bg-charcoal-800">
-              <Avatar avatar={organization.avatar} className="size-10" includePadding />
+              <Avatar avatar={organization.avatar} size={2.5} orgName={organization.title} />
             </div>
             <div className="space-y-0.5">
               <Paragraph variant="small/bright">{organization.title}</Paragraph>
@@ -472,7 +488,7 @@ function SwitchOrganizations({
                 key={org.id}
                 to={organizationPath(org)}
                 title={org.title}
-                icon={<Avatar className="size-4" avatar={org.avatar} />}
+                icon={<Avatar size={1} avatar={org.avatar} orgName={org.title} />}
                 leadingIconClassName="text-text-dimmed"
                 isSelected={org.id === organization.id}
               />
@@ -512,46 +528,56 @@ export function DevConnection() {
 
   return (
     <Dialog>
-      <div>
-        <TooltipProvider disableHoverableContent={true}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div>
-                <DialogTrigger asChild>
-                  <Button
-                    variant="minimal/small"
-                    className="px-1"
-                    LeadingIcon={
-                      isConnected ? (
-                        <ConnectedIcon className="size-5" />
-                      ) : (
-                        <DisconnectedIcon className="size-5" />
-                      )
-                    }
-                  />
-                </DialogTrigger>
-              </div>
-            </TooltipTrigger>
-            <TooltipContent side="right" className={"text-xs"}>
-              {isConnected ? "Your dev server is connected" : "Your dev server is not connected"}
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      </div>
+      <TooltipProvider disableHoverableContent={true}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="inline-flex">
+              <DialogTrigger asChild>
+                <Button
+                  variant="minimal/small"
+                  className="aspect-square h-7 p-1"
+                  LeadingIcon={
+                    isConnected === undefined ? (
+                      <CheckingConnectionIcon className="size-5" />
+                    ) : isConnected ? (
+                      <ConnectedIcon className="size-5" />
+                    ) : (
+                      <DisconnectedIcon className="size-5" />
+                    )
+                  }
+                />
+              </DialogTrigger>
+            </div>
+          </TooltipTrigger>
+          <TooltipContent side="right" className={"text-xs"}>
+            {isConnected === undefined
+              ? "Checking connection..."
+              : isConnected
+              ? "Your dev server is connected"
+              : "Your dev server is not connected"}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
       <DialogContent>
         <DialogHeader>
-          {isConnected ? "Your dev server is connected" : "Your dev server is not connected"}
+          {isConnected === undefined
+            ? "Checking connection..."
+            : isConnected
+            ? "Your dev server is connected"
+            : "Your dev server is not connected"}
         </DialogHeader>
         <div className="mt-2 flex flex-col gap-3 px-2">
           <div className="flex flex-col items-center justify-center gap-6 px-6 py-10">
             <img
-              src={isConnected ? connectedImage : disconnectedImage}
-              alt={isConnected ? "Connected" : "Disconnected"}
+              src={isConnected === true ? connectedImage : disconnectedImage}
+              alt={isConnected === true ? "Connected" : "Disconnected"}
               width={282}
               height={45}
             />
             <Paragraph variant="small" className={isConnected ? "text-success" : "text-error"}>
-              {isConnected
+              {isConnected === undefined
+                ? "Checking connection..."
+                : isConnected
                 ? "Your local dev server is connected to Trigger.dev"
                 : "Your local dev server is not connected to Trigger.dev"}
             </Paragraph>

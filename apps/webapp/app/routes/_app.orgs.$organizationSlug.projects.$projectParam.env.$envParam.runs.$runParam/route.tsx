@@ -18,6 +18,7 @@ import {
   formatDurationMilliseconds,
   millisecondsToNanoseconds,
   nanosecondsToMilliseconds,
+  tryCatch,
 } from "@trigger.dev/core/v3";
 import { type RuntimeEnvironmentType } from "@trigger.dev/database";
 import { motion } from "framer-motion";
@@ -77,7 +78,7 @@ import { useProject } from "~/hooks/useProject";
 import { useReplaceSearchParams } from "~/hooks/useReplaceSearchParams";
 import { type Shortcut, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { useHasAdminAccess } from "~/hooks/useUser";
-import { RunPresenter } from "~/presenters/v3/RunPresenter.server";
+import { RunEnvironmentMismatchError, RunPresenter } from "~/presenters/v3/RunPresenter.server";
 import { getImpersonationId } from "~/services/impersonation.server";
 import { getResizableSnapshot } from "~/services/resizablePanel.server";
 import { requireUserId } from "~/services/session.server";
@@ -88,12 +89,15 @@ import {
   v3BillingPath,
   v3RunParamsSchema,
   v3RunPath,
+  v3RunRedirectPath,
   v3RunSpanPath,
   v3RunStreamingPath,
   v3RunsPath,
 } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { SpanView } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.$runParam.spans.$spanParam/route";
+import { redirectWithErrorMessage } from "~/models/message.server";
+import { redirect } from "remix-typedjson";
 
 const resizableSettings = {
   parent: {
@@ -133,13 +137,30 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { projectParam, organizationSlug, envParam, runParam } = v3RunParamsSchema.parse(params);
 
   const presenter = new RunPresenter();
-  const result = await presenter.call({
-    userId,
-    organizationSlug,
-    showDeletedLogs: !!impersonationId,
-    projectSlug: projectParam,
-    runFriendlyId: runParam,
-  });
+  const [error, result] = await tryCatch(
+    presenter.call({
+      userId,
+      organizationSlug,
+      showDeletedLogs: !!impersonationId,
+      projectSlug: projectParam,
+      runFriendlyId: runParam,
+      environmentSlug: envParam,
+    })
+  );
+
+  if (error) {
+    if (error instanceof RunEnvironmentMismatchError) {
+      throw redirect(
+        v3RunRedirectPath(
+          { slug: organizationSlug },
+          { slug: projectParam },
+          { friendlyId: runParam }
+        )
+      );
+    }
+
+    throw error;
+  }
 
   //resizable settings
   const parent = await getResizableSnapshot(request, resizableSettings.parent.autosaveId);
@@ -631,11 +652,11 @@ function TasksTreeView({
                     </div>
 
                     <div className="flex w-full items-center justify-between gap-2 pl-1">
-                      <div className="flex items-center gap-2 overflow-x-hidden">
+                      <div className="flex items-center gap-1.5 overflow-x-hidden">
                         <RunIcon
                           name={node.data.style?.icon}
                           spanName={node.data.message}
-                          className="h-4 min-h-4 w-4 min-w-4"
+                          className="size-5 min-h-5 min-w-5"
                         />
                         <NodeText node={node} />
                         {node.data.isRoot && !rootRun && <Badge variant="extra-small">Root</Badge>}

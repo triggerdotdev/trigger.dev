@@ -374,7 +374,7 @@ export default function Page() {
   );
 }
 
-function LogoForm({ organization }: { organization: { avatar: Avatar } }) {
+function LogoForm({ organization }: { organization: { avatar: Avatar; title: string } }) {
   const navigation = useNavigation();
 
   const isSubmitting =
@@ -392,7 +392,7 @@ function LogoForm({ organization }: { organization: { avatar: Avatar } }) {
         <Label>Icon</Label>
         <div className="flex w-full items-end justify-between gap-2">
           <div className="grid place-items-center overflow-hidden rounded-sm border border-charcoal-750 bg-background-bright">
-            <Avatar avatar={avatar} className="size-20" includePadding />
+            <Avatar avatar={avatar} size={5} includePadding orgName={organization.title} />
           </div>
           {/* Letters */}
           <Form method="post">
@@ -416,8 +416,9 @@ function LogoForm({ organization }: { organization: { avatar: Avatar } }) {
                   type: "letters",
                   hex,
                 }}
-                className="size-10"
+                size={2.5}
                 includePadding
+                orgName={organization.title}
               />
             </button>
           </Form>
@@ -447,8 +448,9 @@ function LogoForm({ organization }: { organization: { avatar: Avatar } }) {
                     name,
                     hex,
                   }}
-                  className="size-10"
+                  size={2.5}
                   includePadding
+                  orgName={organization.title}
                 />
               </button>
             </Form>
