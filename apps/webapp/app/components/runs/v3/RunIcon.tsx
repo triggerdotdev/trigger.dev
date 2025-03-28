@@ -17,6 +17,7 @@ import { RunFunctionIcon } from "~/assets/icons/RunFunctionIcon";
 import { MiddlewareIcon } from "~/assets/icons/MiddlewareIcon";
 import { FunctionIcon } from "~/assets/icons/FunctionIcon";
 import { TriggerIcon } from "~/assets/icons/TriggerIcon";
+import { PythonLogoIcon } from "~/assets/icons/PythonLogoIcon";
 
 type TaskIconProps = {
   name: string | undefined;
@@ -71,6 +72,8 @@ export function RunIcon({ name, className, spanName }: TaskIconProps) {
       return <RectangleStackIcon className={cn(className, "text-purple-500")} />;
     case "trigger":
       return <TriggerIcon className={cn(className, "text-orange-500")} />;
+    case "python":
+      return <PythonLogoIcon />;
     //log levels
     case "debug":
     case "log":
