@@ -59,8 +59,8 @@ export function HasNoTasksDev() {
           <InitCommandV3 />
           <Paragraph spacing>
             You'll notice a new folder in your project called{" "}
-            <InlineCode variant="small">trigger</InlineCode>. We've added a very simple example task
-            in here to help you get started.
+            <InlineCode variant="small">trigger</InlineCode>. We've added a few simple example tasks
+            in there to help you get started.
           </Paragraph>
         </StepContentContainer>
         <StepNumber stepNumber="2" title="Run the CLI 'dev' command" />
