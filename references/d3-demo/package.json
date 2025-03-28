@@ -12,17 +12,23 @@
     "python:install-requirements": "uv pip sync requirements.txt",
     "python:compile-requirements": "uv pip compile requirements.in -o requirements.txt",
     "python:install": "pnpm run python:compile-requirements && pnpm run python:install-requirements",
-    "python:create-env": "uv venv .venv"
+    "python:create-env": "uv venv .venv",
+    "db:migrate": "tsx -r dotenv/config src/lib/migrate.ts up",
+    "db:migrate:down": "tsx -r dotenv/config src/lib/migrate.ts down",
+    "tunnel": "ngrok http --url=d3-demo.ngrok.dev 3000"
   },
   "dependencies": {
     "@ai-sdk/openai": "1.3.3",
+    "@slack/web-api": "^6.8.1",
+    "@trigger.dev/python": "workspace:*",
     "@trigger.dev/react-hooks": "workspace:*",
     "@trigger.dev/sdk": "workspace:*",
-    "@trigger.dev/python": "workspace:*",
+    "@vercel/postgres": "^0.10.0",
     "ai": "4.2.5",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.484.0",
+    "nanoid": "^5.1.5",
     "next": "15.2.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
@@ -33,12 +39,14 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@trigger.dev/build": "workspace:*",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "dotenv": "16.4.7",
     "tailwindcss": "^4.0.17",
     "trigger.dev": "workspace:*",
-    "@trigger.dev/build": "workspace:*",
+    "tsx": "4.19.3",
     "typescript": "^5"
   }
 }
