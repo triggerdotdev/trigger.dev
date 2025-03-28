@@ -1,19 +1,15 @@
+import { CURRENT_DEPLOYMENT_LABEL } from "@trigger.dev/core/v3/isomorphic";
 import {
   Prisma,
-  type TaskTriggerSource,
-  type TaskRunStatus as TaskRunStatusType,
-  type RuntimeEnvironment,
   type TaskRunStatus as DBTaskRunStatus,
+  type TaskRunStatus as TaskRunStatusType,
+  type TaskTriggerSource,
 } from "@trigger.dev/database";
 import { QUEUED_STATUSES } from "~/components/runs/v3/TaskRunStatus";
+import { TaskRunStatus } from "~/database-types";
 import { sqlDatabaseSchema } from "~/db.server";
-import type { Organization } from "~/models/organization.server";
-import type { Project } from "~/models/project.server";
-import type { User } from "~/models/user.server";
 import { logger } from "~/services/logger.server";
 import { BasePresenter } from "./basePresenter.server";
-import { TaskRunStatus } from "~/database-types";
-import { CURRENT_DEPLOYMENT_LABEL } from "@trigger.dev/core/v3/isomorphic";
 
 export type TaskListItem = {
   slug: string;
@@ -27,34 +23,7 @@ type Return = Awaited<ReturnType<TaskListPresenter["call"]>>;
 export type TaskActivity = Awaited<Return["activity"]>[string];
 
 export class TaskListPresenter extends BasePresenter {
-  public async call({
-    userId,
-    projectSlug,
-    organizationSlug,
-    environmentSlug,
-  }: {
-    userId: User["id"];
-    projectSlug: Project["slug"];
-    organizationSlug: Organization["slug"];
-    environmentSlug: RuntimeEnvironment["slug"];
-  }) {
-    const environment = await this._replica.runtimeEnvironment.findFirstOrThrow({
-      select: {
-        id: true,
-        type: true,
-        projectId: true,
-      },
-      where: {
-        slug: environmentSlug,
-        project: {
-          slug: projectSlug,
-        },
-        organization: {
-          slug: organizationSlug,
-        },
-      },
-    });
-
+  public async call({ environmentId, projectId }: { environmentId: string; projectId: string }) {
     const tasks = await this._replica.$queryRaw<
       {
         id: string;
@@ -69,13 +38,13 @@ export class TaskListPresenter extends BasePresenter {
       FROM ${sqlDatabaseSchema}."WorkerDeploymentPromotion" wdp
       INNER JOIN ${sqlDatabaseSchema}."WorkerDeployment" wd
         ON wd.id = wdp."deploymentId"
-      WHERE wdp."environmentId" = ${environment.id}
+      WHERE wdp."environmentId" = ${environmentId}
         AND wdp."label" = ${CURRENT_DEPLOYMENT_LABEL}
     ),
     workers AS (
       SELECT DISTINCT ON ("runtimeEnvironmentId") id, "runtimeEnvironmentId", version
       FROM ${sqlDatabaseSchema}."BackgroundWorker"
-      WHERE "runtimeEnvironmentId" = ${environment.id}
+      WHERE "runtimeEnvironmentId" = ${environmentId}
         OR id IN (SELECT id FROM non_dev_workers)
       ORDER BY "runtimeEnvironmentId", "createdAt" DESC
     )
@@ -87,23 +56,23 @@ export class TaskListPresenter extends BasePresenter {
     //then get the activity for each task
     const activity = this.#getActivity(
       tasks.map((t) => t.slug),
-      environment.projectId,
-      environment.id
+      projectId,
+      environmentId
     );
 
     const runningStats = this.#getRunningStats(
       tasks.map((t) => t.slug),
-      environment.projectId,
-      environment.id
+      projectId,
+      environmentId
     );
 
     const durations = this.#getAverageDurations(
       tasks.map((t) => t.slug),
-      environment.projectId,
-      environment.id
+      projectId,
+      environmentId
     );
 
-    return { tasks, environment, activity, runningStats, durations };
+    return { tasks, activity, runningStats, durations };
   }
 
   async #getActivity(tasks: string[], projectId: string, environmentId: string) {
