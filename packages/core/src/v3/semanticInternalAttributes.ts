@@ -57,4 +57,5 @@ export const SemanticInternalAttributes = {
   RATE_LIMIT_RESET: "response.rateLimit.reset",
   SPAN_ATTEMPT: "$span.attempt",
   METRIC_EVENTS: "$metrics.events",
+  EXECUTION_ENVIRONMENT: "exec_env",
 };

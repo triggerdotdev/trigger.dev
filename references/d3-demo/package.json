@@ -1,0 +1,44 @@
+{
+  "name": "references-d3-demo",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "dev:trigger": "trigger dev",
+    "deploy": "pnpm run python:compile-requirements && trigger deploy",
+    "python:install-requirements": "uv pip sync requirements.txt",
+    "python:compile-requirements": "uv pip compile requirements.in -o requirements.txt",
+    "python:install": "pnpm run python:compile-requirements && pnpm run python:install-requirements",
+    "python:create-env": "uv venv .venv"
+  },
+  "dependencies": {
+    "@ai-sdk/openai": "1.3.3",
+    "@trigger.dev/react-hooks": "workspace:*",
+    "@trigger.dev/sdk": "workspace:*",
+    "@trigger.dev/python": "workspace:*",
+    "ai": "4.2.5",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.484.0",
+    "next": "15.2.4",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tailwind-merge": "^3.0.2",
+    "tw-animate-css": "^1.2.4",
+    "zod": "3.23.8",
+    "zod-to-json-schema": "^3.24.5"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "tailwindcss": "^4.0.17",
+    "trigger.dev": "workspace:*",
+    "@trigger.dev/build": "workspace:*",
+    "typescript": "^5"
+  }
+}
