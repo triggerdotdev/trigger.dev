@@ -7,7 +7,7 @@ import { type ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKey
 
 const small = {
   container:
-    "flex items-center h-[1.5rem] gap-x-1.5 rounded hover:bg-tertiary disabled:hover:bg-transparent pr-1 py-[0.1rem] pl-1.5 transition focus-custom disabled:hover:text-charcoal-400 disabled:opacity-50 text-charcoal-400 hover:text-charcoal-200 disabled:hover:cursor-not-allowed hover:cursor-pointer",
+    "flex items-center h-[1.5rem] gap-x-1.5 rounded hover:bg-tertiary pr-1 py-[0.1rem] pl-1.5 hover:disabled:bg-charcoal-700 transition focus-custom disabled:opacity-50 text-text-dimmed hover:text-text-bright disabled:hover:cursor-not-allowed hover:cursor-pointer disabled:hover:text-rose-500",
   root: "h-3 w-6",
   thumb: "size-2.5 data-[state=checked]:translate-x-2.5 data-[state=unchecked]:translate-x-0",
   text: "text-xs text-text-dimmed",
@@ -28,7 +28,10 @@ const variations = {
       "group-data-[state=unchecked]:bg-charcoal-600 group-data-[state=unchecked]:group-hover:bg-charcoal-500/50"
     ),
     thumb: small.thumb,
-    text: cn(small.text, "transition group-hover:text-text-bright"),
+    text: cn(
+      small.text,
+      "transition group-hover:text-text-bright group-disabled:group-hover:text-text-dimmed"
+    ),
   },
 };
 
@@ -64,7 +67,12 @@ export const Switch = React.forwardRef<React.ElementRef<typeof SwitchPrimitives.
         ref={innerRef}
       >
         {label ? (
-          <label className={cn("whitespace-nowrap", text)}>
+          <label
+            className={cn(
+              "cursor-pointer whitespace-nowrap group-disabled:cursor-not-allowed",
+              text
+            )}
+          >
             {typeof label === "string" ? <span>{label}</span> : label}
           </label>
         ) : null}
