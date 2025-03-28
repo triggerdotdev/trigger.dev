@@ -9,7 +9,7 @@ export class TestTaskService extends BaseService {
     const triggerTaskService = new TriggerTaskService();
 
     switch (data.triggerSource) {
-      case "STANDARD":
+      case "STANDARD": {
         const result = await triggerTaskService.call(data.taskIdentifier, environment, {
           payload: data.payload,
           options: {
@@ -19,6 +19,7 @@ export class TestTaskService extends BaseService {
         });
 
         return result?.run;
+      }
       case "SCHEDULED": {
         const payload = {
           scheduleId: "sched_1234",
