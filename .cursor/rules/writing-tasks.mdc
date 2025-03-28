@@ -1,5 +1,5 @@
 ---
-globs: **/trigger/**/*.ts, **/trigger/**/*.tsx,**/trigger/**/*.js,**/trigger/**/*.jsx
+globs: [ '**/trigger/**/*.ts', '**/trigger/**/*.tsx', '**/trigger/**/*.js', '**/trigger/**/*.jsx' ]
 description: Guidelines for writing Trigger.dev tasks
 alwaysApply: false
 ---
