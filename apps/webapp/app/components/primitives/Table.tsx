@@ -1,6 +1,6 @@
 import { ChevronRightIcon } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
-import React, { ReactNode, forwardRef, useState, useContext, createContext } from "react";
+import React, { type ReactNode, forwardRef, useState, useContext, createContext } from "react";
 import { cn } from "~/utils/cn";
 import { Popover, PopoverContent, PopoverVerticalEllipseTrigger } from "./Popover";
 import { InfoIconTooltip } from "./Tooltip";
@@ -302,6 +302,7 @@ export const TableCellMenu = forwardRef<
     onClick?: (event: React.MouseEvent<HTMLButtonElement, MouseEvent>) => void;
     visibleButtons?: ReactNode;
     hiddenButtons?: ReactNode;
+    hiddenSoloButton?: ReactNode;
     popoverContent?: ReactNode;
     children?: ReactNode;
     isSelected?: boolean;
@@ -314,6 +315,7 @@ export const TableCellMenu = forwardRef<
       onClick,
       visibleButtons,
       hiddenButtons,
+      hiddenSoloButton,
       popoverContent,
       children,
       isSelected,
@@ -350,6 +352,10 @@ export const TableCellMenu = forwardRef<
               >
                 {hiddenButtons}
               </div>
+            )}
+            {/* Hidden solo button that shows on hover. To be used without the ellipsis popover content */}
+            {hiddenSoloButton && (
+              <div className={cn("hidden group-hover/table-row:block")}>{hiddenSoloButton}</div>
             )}
             {/* Always visible buttons  */}
             {visibleButtons}
