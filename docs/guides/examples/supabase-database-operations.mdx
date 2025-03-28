@@ -5,6 +5,7 @@ description: "These examples demonstrate how to run basic CRUD operations on a t
 ---
 
 import SupabaseDocsCards from "/snippets/supabase-docs-cards.mdx";
+import SupabaseAuthInfo from "/snippets/supabase-auth-info.mdx";
 
 ## Add a new user to a table in a Supabase database
 
@@ -27,21 +28,36 @@ This is a basic task which inserts a new row into a table from a Trigger.dev tas
 ```ts trigger/supabase-database-insert.ts
 import { createClient } from "@supabase/supabase-js";
 import { task } from "@trigger.dev/sdk/v3";
+import jwt from "jsonwebtoken";
 // Generate the Typescript types using the Supabase CLI: https://supabase.com/docs/guides/api/rest/generating-types
 import { Database } from "database.types";
-
-// Create a single Supabase client for interacting with your database
-// 'Database' supplies the type definitions to supabase-js
-const supabase = createClient<Database>(
-  // These details can be found in your Supabase project settings under `API`
-  process.env.SUPABASE_PROJECT_URL as string, // e.g. https://abc123.supabase.co - replace 'abc123' with your project ID
-  process.env.SUPABASE_SERVICE_ROLE_KEY as string // Your service role secret key
-);
 
 export const supabaseDatabaseInsert = task({
   id: "add-new-user",
   run: async (payload: { userId: string }) => {
     const { userId } = payload;
+
+    // Get JWT secret from env vars
+    const jwtSecret = process.env.SUPABASE_JWT_SECRET;
+    if (!jwtSecret) {
+      throw new Error("SUPABASE_JWT_SECRET is not defined in environment variables");
+    }
+
+    // Create JWT token for the user
+    const token = jwt.sign({ sub: userId }, jwtSecret, { expiresIn: "1h" });
+
+    // Initialize Supabase client with JWT
+    const supabase = createClient<Database>(
+      process.env.SUPABASE_URL as string,
+      process.env.SUPABASE_ANON_KEY as string,
+      {
+        global: {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      }
+    );
 
     // Insert a new row into the user_subscriptions table with the provided userId
     const { error } = await supabase.from("user_subscriptions").insert({
@@ -60,12 +76,7 @@ export const supabaseDatabaseInsert = task({
 });
 ```
 
-<Note>
-  This task uses your service role secret key to bypass Row Level Security. There are different ways
-  of configuring your [RLS
-  policies](https://supabase.com/docs/guides/database/postgres/row-level-security), so always make
-  sure you have the correct permissions set up for your project.
-</Note>
+<SupabaseAuthInfo />
 
 ### Testing your task
 
