@@ -208,6 +208,9 @@ export const generateAndExecuteSQL = schemaTask({
         generateId,
         getUserTodos,
       },
+      experimental_telemetry: {
+        isEnabled: true,
+      },
     });
 
     const stream = await metadata.stream("ai", result.fullStream);
