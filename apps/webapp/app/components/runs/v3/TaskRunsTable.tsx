@@ -472,7 +472,7 @@ function RunActionsCell({ run, path }: { run: RunListItem; path: string }) {
         </>
       }
       hiddenButtons={
-        <div className="flex items-center">
+        <>
           {run.isCancellable && (
             <SimpleTooltip
               button={
@@ -518,7 +518,7 @@ function RunActionsCell({ run, path }: { run: RunListItem; path: string }) {
               disableHoverableContent
             />
           )}
-        </div>
+        </>
       }
     />
   );
