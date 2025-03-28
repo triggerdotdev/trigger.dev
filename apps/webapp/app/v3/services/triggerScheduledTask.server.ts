@@ -1,24 +1,13 @@
+import { stringifyIO } from "@trigger.dev/core/v3";
 import { type PrismaClientOrTransaction } from "~/db.server";
-import { BaseService } from "./baseService.server";
+import { devPresence } from "~/presenters/v3/DevPresence.server";
+import { logger } from "~/services/logger.server";
 import { workerQueue } from "~/services/worker.server";
+import { findCurrentWorkerDeployment } from "../models/workerDeployment.server";
+import { nextScheduledTimestamps } from "../utils/calculateNextSchedule.server";
+import { BaseService } from "./baseService.server";
 import { RegisterNextTaskScheduleInstanceService } from "./registerNextTaskScheduleInstance.server";
 import { TriggerTaskService } from "./triggerTask.server";
-import { stringifyIO } from "@trigger.dev/core/v3";
-import { nextScheduledTimestamps } from "../utils/calculateNextSchedule.server";
-import { findCurrentWorkerDeployment } from "../models/workerDeployment.server";
-import { logger } from "~/services/logger.server";
-import { env } from "~/env.server";
-import Redis from "ioredis";
-import { devPresence, DevPresence } from "~/presenters/v3/DevPresence.server";
-
-const redis = new Redis({
-  port: env.RUN_ENGINE_DEV_PRESENCE_REDIS_PORT ?? undefined,
-  host: env.RUN_ENGINE_DEV_PRESENCE_REDIS_HOST ?? undefined,
-  username: env.RUN_ENGINE_DEV_PRESENCE_REDIS_USERNAME ?? undefined,
-  password: env.RUN_ENGINE_DEV_PRESENCE_REDIS_PASSWORD ?? undefined,
-  enableAutoPipelining: true,
-  ...(env.RUN_ENGINE_DEV_PRESENCE_REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
-});
 
 export class TriggerScheduledTaskService extends BaseService {
   public async call(instanceId: string, finalAttempt: boolean) {
