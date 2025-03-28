@@ -1,33 +1,25 @@
 import { stringifyIO } from "@trigger.dev/core/v3";
-import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
+import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { TestTaskData } from "../testTask";
 import { BaseService } from "./baseService.server";
 import { TriggerTaskService } from "./triggerTask.server";
 
 export class TestTaskService extends BaseService {
-  public async call(userId: string, data: TestTaskData) {
-    const authenticatedEnvironment = await findEnvironmentById(data.environmentId);
-    if (!authenticatedEnvironment) {
-      return;
-    }
-
+  public async call(environment: AuthenticatedEnvironment, data: TestTaskData) {
     const triggerTaskService = new TriggerTaskService();
 
     switch (data.triggerSource) {
-      case "STANDARD":
-        const result = await triggerTaskService.call(
-          data.taskIdentifier,
-          authenticatedEnvironment,
-          {
-            payload: data.payload,
-            options: {
-              test: true,
-              metadata: data.metadata,
-            },
-          }
-        );
+      case "STANDARD": {
+        const result = await triggerTaskService.call(data.taskIdentifier, environment, {
+          payload: data.payload,
+          options: {
+            test: true,
+            metadata: data.metadata,
+          },
+        });
 
         return result?.run;
+      }
       case "SCHEDULED": {
         const payload = {
           scheduleId: "sched_1234",
@@ -42,7 +34,7 @@ export class TestTaskService extends BaseService {
 
         const result = await triggerTaskService.call(
           data.taskIdentifier,
-          authenticatedEnvironment,
+          environment,
           {
             payload: payloadPacket.data,
             options: { payloadType: payloadPacket.dataType, test: true },
