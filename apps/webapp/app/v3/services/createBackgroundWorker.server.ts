@@ -246,6 +246,8 @@ async function createWorkerTask(
       queue = await createWorkerQueue(
         {
           name: `task/${task.id}`,
+          concurrencyLimit: task.queue?.concurrencyLimit,
+          releaseConcurrencyOnWaitpoint: task.queue?.releaseConcurrencyOnWaitpoint,
         },
         task.id,
         "VIRTUAL",
