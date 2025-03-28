@@ -368,18 +368,6 @@ export const TableCellMenu = forwardRef<
                 </PopoverContent>
               </Popover>
             )}
-            {/* Optionally pass in children to render in a popover */}
-            {!visibleButtons && !hiddenButtons && !popoverContent && (
-              <Popover onOpenChange={(open) => setIsOpen(open)}>
-                <PopoverVerticalEllipseTrigger isOpen={isOpen} />
-                <PopoverContent
-                  className="w-fit max-w-[10rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
-                  align="end"
-                >
-                  <div className="flex flex-col gap-1 p-1">{children}</div>
-                </PopoverContent>
-              </Popover>
-            )}
           </div>
         </div>
       </TableCell>
