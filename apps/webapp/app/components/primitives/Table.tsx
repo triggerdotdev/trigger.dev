@@ -21,7 +21,7 @@ const variants = {
     stickyCell: "group-hover/table-row:bg-charcoal-800",
     menuButton:
       "bg-background-dimmed group-hover/table-row:bg-charcoal-800 group-hover/table-row:ring-grid-bright group-has-[[tabindex='0']:focus]/table-row:bg-background-bright",
-    menuButtonDivider: "group-hover/table-row:border-grid-dimmed",
+    menuButtonDivider: "group-hover/table-row:border-grid-bright",
     rowSelected: "bg-charcoal-750 group-hover/table-row:bg-charcoal-750",
   },
 } as const;
@@ -302,7 +302,6 @@ export const TableCellMenu = forwardRef<
     onClick?: (event: React.MouseEvent<HTMLButtonElement, MouseEvent>) => void;
     visibleButtons?: ReactNode;
     hiddenButtons?: ReactNode;
-    hiddenSoloButton?: ReactNode;
     popoverContent?: ReactNode;
     children?: ReactNode;
     isSelected?: boolean;
@@ -315,7 +314,6 @@ export const TableCellMenu = forwardRef<
       onClick,
       visibleButtons,
       hiddenButtons,
-      hiddenSoloButton,
       popoverContent,
       children,
       isSelected,
@@ -346,16 +344,13 @@ export const TableCellMenu = forwardRef<
             {hiddenButtons && (
               <div
                 className={cn(
-                  "hidden pr-0.5 group-hover/table-row:block group-hover/table-row:border-r",
+                  "hidden group-hover/table-row:block",
+                  popoverContent && "pr-0.5 group-hover/table-row:border-r",
                   variants[variant].menuButtonDivider
                 )}
               >
-                {hiddenButtons}
+                <div className={cn("flex items-center gap-x-0.5")}>{hiddenButtons}</div>
               </div>
-            )}
-            {/* Hidden solo button that shows on hover. To be used without the ellipsis popover content */}
-            {hiddenSoloButton && (
-              <div className={cn("hidden group-hover/table-row:block")}>{hiddenSoloButton}</div>
             )}
             {/* Always visible buttons  */}
             {visibleButtons}

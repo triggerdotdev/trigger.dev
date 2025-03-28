@@ -399,9 +399,7 @@ export default function Page() {
                         <TableCellMenu
                           isSticky
                           visibleButtons={queue.paused && <QueuePauseResumeButton queue={queue} />}
-                          hiddenSoloButton={
-                            !queue.paused && <QueuePauseResumeButton queue={queue} />
-                          }
+                          hiddenButtons={!queue.paused && <QueuePauseResumeButton queue={queue} />}
                         />
                       </TableRow>
                     ))
