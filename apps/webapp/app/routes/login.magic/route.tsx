@@ -175,14 +175,14 @@ export default function LoginMagicLinkPage() {
                   data-action="send a magic link"
                 >
                   {isLoading ? (
-                    <Spinner className="mr-2 size-5 text-background-dimmed" color="dark" />
+                    <Spinner className="mr-2 size-5" color="white" />
                   ) : (
-                    <EnvelopeIcon className="mr-2 size-5 text-background-dimmed" />
+                    <EnvelopeIcon className="mr-2 size-5 text-text-bright" />
                   )}
                   {isLoading ? (
-                    <span className="text-background-dimmed">Sending…</span>
+                    <span className="text-text-bright">Sending…</span>
                   ) : (
-                    <span className="text-background-dimmed">Send a magic link</span>
+                    <span className="text-text-bright">Send a magic link</span>
                   )}
                 </Button>
                 {magicLinkError && <FormError>{magicLinkError}</FormError>}
