@@ -22,7 +22,7 @@ export function flattenAttributes(
     return result;
   }
 
-  if (Array.isArray(obj)) {
+  if (Array.isArray(obj) && obj.length === 0) {
     result[prefix || ""] = EMPTY_ARRAY_SENTINEL;
     return result;
   }
