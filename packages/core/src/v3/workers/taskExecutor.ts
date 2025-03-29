@@ -383,7 +383,7 @@ export class TaskExecutor {
             reject(
               new InternalError({
                 code: TaskRunErrorCodes.MAX_DURATION_EXCEEDED,
-                message: `Task execution exceeded maximum duration of ${maxDuration}ms`,
+                message: `Run exceeded maximum compute time (maxDuration) of ${maxDuration} seconds`,
               })
             );
           });
