@@ -358,8 +358,12 @@ export default function Page() {
                 iconClassName="text-indigo-500"
                 variant="info"
                 accessory={
-                  <LinkButton to="https://trigger.dev/docs/v3/tasks-scheduled" variant="docs/small">
-                    Docs
+                  <LinkButton
+                    to="https://trigger.dev/docs/v3/tasks-scheduled"
+                    variant="docs/small"
+                    LeadingIcon={BookOpenIcon}
+                  >
+                    Schedules docs
                   </LinkButton>
                 }
                 panelClassName="max-w-full"

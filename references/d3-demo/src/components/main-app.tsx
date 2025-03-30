@@ -7,7 +7,7 @@ import { Send } from "lucide-react";
 import ChatInterface from "@/components/chat-interface";
 import InitialPrompt from "@/components/initial-prompt";
 import { useRealtimeTaskTriggerWithStreams, useWaitToken } from "@trigger.dev/react-hooks";
-import type { agentLoopExample } from "@/trigger/agent";
+import type { chatExample } from "@/trigger/chat";
 import { AgentLoopMetadata } from "@/trigger/schemas";
 import type { TextStreamPart } from "ai";
 
@@ -17,14 +17,14 @@ type ResponseStreams = {
   [K in `responses.${number | string}`]: TextStreamPart<{}>;
 };
 
-export function useAgentLoop({ publicAccessToken }: { publicAccessToken: string }) {
-  const triggerInstance = useRealtimeTaskTriggerWithStreams<
-    typeof agentLoopExample,
-    ResponseStreams
-  >("agent-loop-example", {
-    accessToken: publicAccessToken,
-    baseURL: process.env.NEXT_PUBLIC_TRIGGER_API_URL,
-  });
+export function useChat({ publicAccessToken }: { publicAccessToken: string }) {
+  const triggerInstance = useRealtimeTaskTriggerWithStreams<typeof chatExample, ResponseStreams>(
+    "chat-example",
+    {
+      accessToken: publicAccessToken,
+      baseURL: process.env.NEXT_PUBLIC_TRIGGER_API_URL,
+    }
+  );
   const [conversation, setConversation] = useState<ChatConversation>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [waitToken, setWaitToken] = useState<AgentLoopMetadata | null>(null);
@@ -86,7 +86,7 @@ export function useAgentLoop({ publicAccessToken }: { publicAccessToken: string 
 }
 
 export default function MainApp({ publicAccessToken }: { publicAccessToken: string }) {
-  const { continueConversation, conversation, isLoading } = useAgentLoop({ publicAccessToken });
+  const { continueConversation, conversation, isLoading } = useChat({ publicAccessToken });
   const [input, setInput] = useState("");
 
   const handleSubmit = (e: React.FormEvent) => {

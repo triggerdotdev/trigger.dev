@@ -70,6 +70,8 @@ import { useEventSource } from "~/hooks/useEventSource";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useTextFilter } from "~/hooks/useTextFilter";
+import { findProjectBySlug } from "~/models/project.server";
+import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
   type TaskActivity,
   type TaskListItem,
@@ -104,20 +106,33 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
 
+  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
+  if (!project) {
+    throw new Response(undefined, {
+      status: 404,
+      statusText: "Project not found",
+    });
+  }
+
+  const environment = await findEnvironmentBySlug(project.id, envParam, userId);
+  if (!environment) {
+    throw new Response(undefined, {
+      status: 404,
+      statusText: "Environment not found",
+    });
+  }
+
   try {
     const presenter = new TaskListPresenter();
-    const { tasks, environment, activity, runningStats, durations } = await presenter.call({
-      userId,
-      organizationSlug,
-      projectSlug: projectParam,
-      environmentSlug: envParam,
+    const { tasks, activity, runningStats, durations } = await presenter.call({
+      environmentId: environment.id,
+      projectId: project.id,
     });
 
     const usefulLinksPreference = await getUsefulLinksPreference(request);
 
     return typeddefer({
       tasks,
-      environment,
       activity,
       runningStats,
       durations,

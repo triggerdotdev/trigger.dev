@@ -333,7 +333,7 @@ class DevSupervisor implements WorkerRuntime {
 
   async #startPresenceConnection() {
     try {
-      const eventSource = await this.options.client.dev.presenceConnection();
+      const eventSource = this.options.client.dev.presenceConnection();
 
       // Regular "ping" messages
       eventSource.addEventListener("presence", (event: any) => {

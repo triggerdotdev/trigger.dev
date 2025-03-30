@@ -59,8 +59,8 @@ export function HasNoTasksDev() {
           <InitCommandV3 />
           <Paragraph spacing>
             You'll notice a new folder in your project called{" "}
-            <InlineCode variant="small">trigger</InlineCode>. We've added a very simple example task
-            in here to help you get started.
+            <InlineCode variant="small">trigger</InlineCode>. We've added a few simple example tasks
+            in there to help you get started.
           </Paragraph>
         </StepContentContainer>
         <StepNumber stepNumber="2" title="Run the CLI 'dev' command" />
@@ -200,8 +200,7 @@ export function TestHasNoTasks() {
       accessory={
         <LinkButton
           to={v3EnvironmentPath(organization, project, environment)}
-          variant="secondary/small"
-          LeadingIcon={PlusIcon}
+          variant="primary/small"
         >
           Create a task
         </LinkButton>
@@ -396,8 +395,7 @@ export function QueuesHasNoTasks() {
       accessory={
         <LinkButton
           to={v3EnvironmentPath(organization, project, environment)}
-          variant="secondary/small"
-          LeadingIcon={PlusIcon}
+          variant="primary/small"
         >
           Create a task
         </LinkButton>

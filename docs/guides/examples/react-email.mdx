@@ -1,0 +1,123 @@
+---
+title: "Send emails using React Email"
+sidebarTitle: "React Email"
+description: "Learn how to send beautiful emails using React Email and Trigger.dev."
+---
+
+## Overview
+
+This example demonstrates how to use Trigger.dev to send emails using React Email.
+
+<Note>
+  This example uses [Resend](https://resend.com) as the email provider. You can use other email
+  providers like [SendGrid](https://sendgrid.com) or [Loops](https://loops.so) as well. Full list of
+  their integrations can be found [here](https://react.email/docs/introduction#integrations).
+</Note>
+
+## Task code
+
+<Warning>
+  This email is built using React components. To use React components in your task, it must be a
+  .tsx file.
+</Warning>
+
+```tsx trigger/sendReactEmail.tsx
+import { Body, Button, Container, Head, Heading, Html, Preview } from "@react-email/components";
+import { logger, task } from "@trigger.dev/sdk/v3";
+import { Resend } from "resend";
+
+// Initialize Resend client
+const resend = new Resend(process.env.RESEND_API_KEY);
+
+// React Email template component
+const EmailTemplate = ({ name, message }: { name: string; message: string }) => (
+  <Html lang="en">
+    <Head />
+    <Preview>New message from {name}</Preview>
+    <Body style={{ fontFamily: "Arial, sans-serif", margin: "0", padding: "0" }}>
+      <Container style={{ padding: "20px", maxWidth: "600px" }}>
+        <Heading>Hello from Acme Inc.</Heading>
+        <p>Hi {name},</p>
+        <p>{message}</p>
+        <Button
+          href="https://trigger.dev"
+          style={{
+            backgroundColor: "#0070f3",
+            color: "white",
+            padding: "12px 20px",
+            borderRadius: "8px",
+          }}
+        >
+          Go to Acme Inc.
+        </Button>
+      </Container>
+    </Body>
+  </Html>
+);
+
+export const sendEmail = task({
+  id: "send-react-email",
+  run: async (payload: {
+    to: string;
+    name: string;
+    message: string;
+    subject: string;
+    from?: string;
+  }) => {
+    try {
+      logger.info("Sending email using React.email and Resend", {
+        to: payload.to,
+      });
+
+      // Send the email using Resend
+      const { data, error } = await resend.emails.send({
+        // The from address needs to be a verified email address you own
+        from: payload.from || "email@acmeinc.com", // Default from address
+        to: payload.to,
+        subject: payload.subject,
+        react: <EmailTemplate name={payload.name} message={payload.message} />,
+      });
+
+      if (error) {
+        logger.error("Failed to send email", { error });
+        throw new Error(`Failed to send email: ${error.message}`);
+      }
+
+      logger.info("Email sent successfully", { emailId: data?.id });
+
+      // Return the response from Resend
+      return {
+        id: data?.id,
+        status: "sent",
+      };
+    } catch (error) {
+      logger.error("Unexpected error sending email", { error });
+      throw error;
+    }
+  },
+});
+```
+
+## How the email should look
+
+This example email should look like this:
+![React Email](/images/react-email.png)
+
+This is just a simple implementation, you can customize the email to be as complex as you want. Check out the [React email templates](https://react.email/templates) for more inspiration.
+
+## Testing your task
+
+To test this task in the [dashboard](https://cloud.trigger.dev), you can use the following payload:
+
+```json
+{
+  "to": "recipient@example.com",
+  "name": "Jane Doe",
+  "message": "Thank you for signing up for our service!",
+  "subject": "Welcome to Acme Inc."
+}
+```
+
+## Deploying your task
+
+Deploy the task to production using the Trigger.dev CLI `deploy` command.

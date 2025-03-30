@@ -149,11 +149,7 @@ export type HandleErrorArgs = {
   signal?: AbortSignal;
 };
 
-export type HandleErrorFunction = (
-  payload: any,
-  error: unknown,
-  params: HandleErrorArgs
-) => HandleErrorResult;
+export type HandleErrorFunction = AnyOnCatchErrorHookFunction;
 
 type CommonTaskOptions<
   TIdentifier extends string,

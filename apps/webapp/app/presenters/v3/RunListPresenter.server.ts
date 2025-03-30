@@ -6,6 +6,7 @@ import { isCancellableRunStatus, isFinalRunStatus, isPendingRunStatus } from "~/
 import { BasePresenter } from "./basePresenter.server";
 import { getAllTaskIdentifiers } from "~/models/task.server";
 import { type Direction } from "~/components/ListPagination";
+import { timeFilters } from "~/components/runs/v3/SharedFilters";
 
 export type RunListOptions = {
   userId?: string;
@@ -59,22 +60,27 @@ export class RunListPresenter extends BasePresenter {
     cursor,
     pageSize = DEFAULT_PAGE_SIZE,
   }: RunListOptions) {
+    //get the time values from the raw values (including a default period)
+    const time = timeFilters({
+      period,
+      from,
+      to,
+    });
+
     const hasStatusFilters = statuses && statuses.length > 0;
 
     const hasFilters =
       (tasks !== undefined && tasks.length > 0) ||
       (versions !== undefined && versions.length > 0) ||
       hasStatusFilters ||
-      (period !== undefined && period !== "all") ||
       (bulkId !== undefined && bulkId !== "") ||
-      from !== undefined ||
-      to !== undefined ||
       (scheduleId !== undefined && scheduleId !== "") ||
       (tags !== undefined && tags.length > 0) ||
       batchId !== undefined ||
       (runIds !== undefined && runIds.length > 0) ||
       typeof isTest === "boolean" ||
-      rootOnly === true;
+      rootOnly === true ||
+      !time.isDefault;
 
     // Find the project scoped to the organization
     const project = await this._replica.project.findFirstOrThrow({
@@ -186,7 +192,7 @@ export class RunListPresenter extends BasePresenter {
       rootOnly = false;
     }
 
-    const periodMs = period ? parse(period) : undefined;
+    const periodMs = time.period ? parse(time.period) : undefined;
 
     //get the runs
     const runs = await this._replica.$queryRaw<
@@ -293,12 +299,12 @@ WHERE
         : Prisma.empty
     }
     ${
-      from
-        ? Prisma.sql`AND tr."createdAt" >= ${new Date(from).toISOString()}::timestamp`
+      time.from
+        ? Prisma.sql`AND tr."createdAt" >= ${time.from.toISOString()}::timestamp`
         : Prisma.empty
     }
     ${
-      to ? Prisma.sql`AND tr."createdAt" <= ${new Date(to).toISOString()}::timestamp` : Prisma.empty
+      time.to ? Prisma.sql`AND tr."createdAt" <= ${time.to.toISOString()}::timestamp` : Prisma.empty
     }
     ${
       tags && tags.length > 0
@@ -337,6 +343,24 @@ WHERE
 
     const runsToReturn =
       direction === "backward" && hasMore ? runs.slice(1, pageSize + 1) : runs.slice(0, pageSize);
+
+    let hasAnyRuns = runsToReturn.length > 0;
+    if (!hasAnyRuns) {
+      const firstRun = await this._replica.taskRun.findFirst({
+        where: {
+          projectId: project.id,
+          runtimeEnvironmentId: environments
+            ? {
+                in: environments,
+              }
+            : undefined,
+        },
+      });
+
+      if (firstRun) {
+        hasAnyRuns = true;
+      }
+    }
 
     return {
       runs: runsToReturn.map((run) => {
@@ -401,10 +425,11 @@ WHERE
         versions: versions || [],
         statuses: statuses || [],
         environments: environments || [],
-        from,
-        to,
+        from: time.from,
+        to: time.to,
       },
       hasFilters,
+      hasAnyRuns,
     };
   }
 }

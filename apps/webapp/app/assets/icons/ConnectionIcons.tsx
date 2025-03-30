@@ -46,3 +46,28 @@ export function DisconnectedIcon({ className }: { className?: string }) {
     </svg>
   );
 }
+
+export function CheckingConnectionIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect
+        x="0.5"
+        y="-0.5"
+        width="19"
+        height="1"
+        rx="0.5"
+        transform="matrix(1 0 0 -1 1.99998 20)"
+        stroke="#878C99"
+      />
+      <path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M18 6.5L6.00001 6.5C5.72387 6.5 5.50001 6.72386 5.50001 7L5.50001 15C5.50001 15.2761 5.72387 15.5 6.00001 15.5L18 15.5C18.2762 15.5 18.5 15.2761 18.5 15V7C18.5 6.72386 18.2762 6.5 18 6.5ZM6.00001 5C4.89545 5 4.00001 5.89543 4.00001 7L4.00001 15C4.00001 16.1046 4.89545 17 6.00001 17L18 17C19.1046 17 20 16.1046 20 15V7C20 5.89543 19.1046 5 18 5L6.00001 5Z"
+        fill="#878C99"
+      />
+      <circle cx="9" cy="11" r="1" fill="#878C99" />
+      <circle cx="12" cy="11" r="1" fill="#878C99" />
+      <circle cx="15" cy="11" r="1" fill="#878C99" />
+    </svg>
+  );
+}
