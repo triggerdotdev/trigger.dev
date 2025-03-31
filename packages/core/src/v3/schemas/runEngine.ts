@@ -161,6 +161,7 @@ export type CheckpointType = z.infer<typeof CheckpointType>;
 export const CheckpointInput = z.object({
   type: CheckpointType,
   location: z.string(),
+  imageRef: z.string().nullish(),
   reason: z.string().nullish(),
 });
 
@@ -170,7 +171,6 @@ export const TaskRunCheckpoint = CheckpointInput.merge(
   z.object({
     id: z.string(),
     friendlyId: z.string(),
-    imageRef: z.string(),
   })
 );
 
