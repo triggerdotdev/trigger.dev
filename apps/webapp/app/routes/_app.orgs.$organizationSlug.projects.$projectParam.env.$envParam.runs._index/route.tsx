@@ -8,6 +8,7 @@ import { ListChecks, ListX } from "lucide-react";
 import { Suspense, useState } from "react";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
+import { DevPresenceBanner, useDevPresence } from "~/components/DevPresence";
 import { StepContentContainer } from "~/components/StepContentContainer";
 import { MainCenteredContainer, PageBody } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
@@ -161,11 +162,26 @@ export default function Page() {
   const { data, rootOnlyDefault } = useTypedLoaderData<typeof loader>();
   const navigation = useNavigation();
   const isLoading = navigation.state !== "idle";
+  const { isConnected } = useDevPresence();
+  const environment = useEnvironment();
 
   return (
     <>
       <NavBar>
         <PageTitle title="Runs" />
+        <AnimatePresence>
+          {environment.type === "DEVELOPMENT" && !isConnected && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.3 }}
+              className="flex"
+            >
+              <DevPresenceBanner />
+            </motion.div>
+          )}
+        </AnimatePresence>
         <PageAccessories>
           <LinkButton
             variant={"docs/small"}
