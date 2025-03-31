@@ -45,7 +45,7 @@ export class HttpReply {
   constructor(private response: Parameters<RequestListener>[1]) {}
 
   empty(status?: number) {
-    if (this.alreadyReplied) {
+    if (this.hasReplied) {
       return;
     }
 
@@ -53,7 +53,7 @@ export class HttpReply {
   }
 
   text(text: string, status?: number, contentType?: string) {
-    if (this.alreadyReplied) {
+    if (this.hasReplied) {
       return;
     }
 
@@ -63,7 +63,7 @@ export class HttpReply {
   }
 
   json(value: any, pretty?: boolean, status?: number) {
-    if (this.alreadyReplied) {
+    if (this.hasReplied) {
       return;
     }
 
@@ -74,7 +74,7 @@ export class HttpReply {
     );
   }
 
-  private get alreadyReplied() {
+  get hasReplied() {
     return this.response.headersSent;
   }
 }

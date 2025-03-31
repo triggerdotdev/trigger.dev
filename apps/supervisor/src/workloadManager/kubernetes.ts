@@ -182,18 +182,15 @@ export class KubernetesWorkloadManager implements WorkloadManager {
     }
   }
 
+  private getImagePullSecrets(): k8s.V1LocalObjectReference[] | undefined {
+    return this.opts.imagePullSecrets?.map((name) => ({ name }));
+  }
+
   get #defaultPodSpec(): Omit<k8s.V1PodSpec, "containers"> {
     return {
       restartPolicy: "Never",
       automountServiceAccountToken: false,
-      imagePullSecrets: [
-        {
-          name: "registry-trigger",
-        },
-        {
-          name: "registry-trigger-failover",
-        },
-      ],
+      imagePullSecrets: this.getImagePullSecrets(),
       nodeSelector: {
         nodetype: "worker-re2",
       },
