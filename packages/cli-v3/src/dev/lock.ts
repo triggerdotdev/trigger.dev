@@ -2,7 +2,7 @@ import path from "node:path";
 import { readFile } from "../utilities/fileSystem.js";
 import { tryCatch } from "@trigger.dev/core/utils";
 import { logger } from "../utilities/logger.js";
-import { writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { existsSync, unlinkSync } from "node:fs";
 import { onExit } from "signal-exit";
 
@@ -76,7 +76,7 @@ export async function createLockFile(cwd: string) {
   }
 
   // Now write the current pid to the lockfile
-  await writeFile(lockFilePath, currentPid.toString());
+  await writeFileAndEnsureDirExists(lockFilePath, currentPid.toString());
 
   logger.debug("Lockfile created", { lockFilePath, currentPid });
 
@@ -84,4 +84,10 @@ export async function createLockFile(cwd: string) {
     removeExitListener();
     removeLockFile();
   };
+}
+
+async function writeFileAndEnsureDirExists(filePath: string, data: string) {
+  const dir = path.dirname(filePath);
+  await mkdir(dir, { recursive: true });
+  await writeFile(filePath, data);
 }
