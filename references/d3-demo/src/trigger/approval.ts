@@ -7,63 +7,67 @@ import { z } from "zod";
 import { WebClient } from "@slack/web-api";
 import { QueryApproval } from "./schemas";
 import { tool } from "ai";
+import { ai } from "@trigger.dev/sdk/ai";
 
-const queryApproval = tool({
-  description: "Use this tool to get approval for a SQL query from an admin",
-  parameters: z.object({
+const queryApprovalTask = schemaTask({
+  id: "query-approval",
+  description: "Get approval for a SQL query from an admin",
+  schema: z.object({
     userId: z.string().describe("The user_id to get approval for"),
     input: z.string().describe("The input to get approval for"),
     query: z.string().describe("The SQL query to execute"),
   }),
-  execute: async ({ userId, input, query }) => {
-    return await logger.trace(
-      "queryApproval",
-      async (span) => {
-        const token = await wait.createToken({
-          tags: [`user:${userId}`, "approval"],
-          timeout: "1m",
-        });
+  run: async ({ userId, input, query }) => {
+    const toolOptions = ai.currentToolOptions();
 
-        logger.info("waiting for approval", {
+    if (toolOptions) {
+      logger.info("tool options", {
+        toolOptions,
+      });
+    }
+
+    const token = await wait.createToken({
+      tags: [`user:${userId}`, "approval"],
+      timeout: "1m",
+    });
+
+    logger.info("waiting for approval", {
+      query,
+    });
+
+    await sendSQLApprovalMessage({
+      query,
+      userId,
+      tokenId: token.id,
+      publicAccessToken: token.publicAccessToken,
+      input,
+    });
+
+    const result = await wait.forToken<QueryApproval>(token);
+
+    if (!result.ok) {
+      return {
+        approved: false,
+      };
+    } else {
+      if (result.output.approved) {
+        logger.info("query approved", {
           query,
         });
-
-        await sendSQLApprovalMessage({
+      } else {
+        logger.warn("query denied", {
           query,
-          userId,
-          tokenId: token.id,
-          publicAccessToken: token.publicAccessToken,
-          input,
         });
-
-        const result = await wait.forToken<QueryApproval>(token);
-
-        if (!result.ok) {
-          return {
-            approved: false,
-          };
-        } else {
-          if (result.output.approved) {
-            logger.info("query approved", {
-              query,
-            });
-          } else {
-            logger.warn("query denied", {
-              query,
-            });
-          }
-
-          return {
-            approved: result.output.approved,
-          };
-        }
-      },
-      {
-        icon: "tabler-tool",
       }
-    );
+
+      return {
+        approved: result.output.approved,
+      };
+    }
   },
 });
+
+const queryApproval = ai.tool(queryApprovalTask);
 
 const executeSql = tool({
   description: "Use this tool to execute a SQL query",
@@ -71,15 +75,7 @@ const executeSql = tool({
     query: z.string().describe("The SQL query to execute"),
   }),
   execute: async ({ query }) => {
-    return await logger.trace(
-      "executeSql",
-      async (span) => {
-        return await sql.query(query);
-      },
-      {
-        icon: "tabler-tool",
-      }
-    );
+    return await sql.query(query);
   },
 });
 
@@ -89,21 +85,7 @@ const generateId = tool({
     prefix: z.string().describe("The prefix for the ID (defaults to 'todo')").default("todo"),
   }),
   execute: async ({ prefix }) => {
-    return await logger.trace(
-      "generateId",
-      async (span) => {
-        const id = `${prefix}_${nanoid(12)}`;
-
-        span.setAttributes({
-          id,
-        });
-
-        return id;
-      },
-      {
-        icon: "tabler-tool",
-      }
-    );
+    return `${prefix}_${nanoid(12)}`;
   },
 });
 
@@ -113,21 +95,9 @@ const getUserTodos = tool({
     userId: z.string().describe("The user_id to get todos for"),
   }),
   execute: async ({ userId }) => {
-    return await logger.trace(
-      "getUserTodos",
-      async (span) => {
-        const result = await sql`SELECT * FROM todos WHERE user_id = ${userId}`;
+    const result = await sql`SELECT * FROM todos WHERE user_id = ${userId}`;
 
-        span.setAttributes({
-          userId,
-        });
-
-        return result.rows;
-      },
-      {
-        icon: "tabler-tool",
-      }
-    );
+    return result.rows;
   },
 });
 
