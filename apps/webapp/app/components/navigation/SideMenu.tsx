@@ -139,7 +139,7 @@ export function SideMenu({
     >
       <div
         className={cn(
-          "flex items-center justify-between border-b px-1 py-1 transition duration-300",
+          "flex items-center justify-between overflow-hidden border-b px-1 py-1 transition duration-300",
           showHeaderDivider ? "border-grid-bright" : "border-transparent"
         )}
       >
@@ -304,7 +304,7 @@ function ProjectSelector({
         isOpen={isOrgMenuOpen}
         overflowHidden
         className={cn(
-          "h-8 w-full justify-between overflow-hidden py-1 pl-1.5",
+          "h-8 w-full justify-between py-1 pl-1.5",
           user.isImpersonating && "border border-dashed border-amber-400"
         )}
       >

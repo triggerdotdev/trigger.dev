@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { ConsoleInterceptor } from "../src/v3/consoleInterceptor.js";
 import {
+  RetryOptions,
   RunFnParams,
   ServerBackgroundWorker,
   TaskMetadataWithFunctions,
@@ -784,6 +785,48 @@ describe("TaskExecutor", () => {
     expect((result as any).result.retry.delay).toBeLessThan(30100);
   });
 
+  test("should use the default retry settings if no catch error hook is provided", async () => {
+    const expectedError = new Error("Task failed intentionally");
+
+    const task = {
+      id: "test-task",
+      fns: {
+        run: async (payload: any, params: RunFnParams<any>) => {
+          throw expectedError;
+        },
+      },
+    };
+
+    const result = await executeTask(task, { test: "data" }, undefined, {
+      maxAttempts: 3,
+      minTimeoutInMs: 1000,
+      maxTimeoutInMs: 5000,
+      factor: 2,
+    });
+
+    // Verify the final result contains the specific retry timing
+    expect(result).toEqual({
+      result: {
+        ok: false,
+        id: "test-run-id",
+        error: {
+          type: "BUILT_IN_ERROR",
+          message: "Task failed intentionally",
+          name: "Error",
+          stackTrace: expect.any(String),
+        },
+        retry: {
+          timestamp: expect.any(Number),
+          delay: expect.any(Number),
+        },
+        skippedRetrying: false,
+      },
+    });
+
+    expect((result as any).result.retry.delay).toBeGreaterThan(1000);
+    expect((result as any).result.retry.delay).toBeLessThan(3000);
+  });
+
   test("should execute middleware hooks in correct order around other hooks", async () => {
     const executionOrder: string[] = [];
 
@@ -1417,7 +1460,7 @@ describe("TaskExecutor", () => {
 
   test("should handle max duration abort signal and call hooks in correct order", async () => {
     const executionOrder: string[] = [];
-    const maxDurationMs = 1000;
+    const maxDurationSeconds = 1000;
 
     // Create an abort controller that we'll trigger manually
     const controller = new AbortController();
@@ -1439,7 +1482,7 @@ describe("TaskExecutor", () => {
       fn: async ({ error }) => {
         executionOrder.push("failure");
         expect((error as Error).message).toBe(
-          `Task execution exceeded maximum duration of ${maxDurationMs}ms`
+          `Run exceeded maximum compute time (maxDuration) of ${maxDurationSeconds} seconds`
         );
       },
     });
@@ -1494,7 +1537,7 @@ describe("TaskExecutor", () => {
         error: {
           type: "INTERNAL_ERROR",
           code: TaskRunErrorCodes.MAX_DURATION_EXCEEDED,
-          message: "Task execution exceeded maximum duration of 1000ms",
+          message: "Run exceeded maximum compute time (maxDuration) of 1000 seconds",
           stackTrace: expect.any(String),
         },
         skippedRetrying: false,
@@ -1623,7 +1666,12 @@ describe("TaskExecutor", () => {
   });
 });
 
-function executeTask(task: TaskMetadataWithFunctions, payload: any, signal?: AbortSignal) {
+function executeTask(
+  task: TaskMetadataWithFunctions,
+  payload: any,
+  signal?: AbortSignal,
+  retrySettings?: RetryOptions
+) {
   const tracingSDK = new TracingSDK({
     url: "http://localhost:4318",
   });
@@ -1643,7 +1691,7 @@ function executeTask(task: TaskMetadataWithFunctions, payload: any, signal?: Abo
     consoleInterceptor,
     retries: {
       enabledInDev: false,
-      default: {
+      default: retrySettings ?? {
         maxAttempts: 1,
       },
     },
