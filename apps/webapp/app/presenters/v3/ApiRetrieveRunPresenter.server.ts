@@ -52,6 +52,7 @@ const commonRunSelect = {
       friendlyId: true,
     },
   },
+  runTags: true,
 } satisfies Prisma.TaskRunSelect;
 
 type CommonRelatedRun = Prisma.Result<
@@ -69,16 +70,20 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
         friendlyId,
         runtimeEnvironmentId: env.id,
       },
-      include: {
-        attempts: true,
-        lockedToVersion: true,
-        tags: true,
-        batch: {
+      select: {
+        ...commonRunSelect,
+        payload: true,
+        payloadType: true,
+        output: true,
+        outputType: true,
+        error: true,
+        attempts: {
           select: {
             id: true,
-            friendlyId: true,
           },
         },
+        attemptNumber: true,
+        engine: true,
         parentTaskRun: {
           select: commonRunSelect,
         },
@@ -86,9 +91,7 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
           select: commonRunSelect,
         },
         childRuns: {
-          select: {
-            ...commonRunSelect,
-          },
+          select: commonRunSelect,
         },
       },
     });
@@ -124,29 +127,23 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
       }
 
       if (taskRun.status === "COMPLETED_SUCCESSFULLY") {
-        const completedAttempt = taskRun.attempts.find(
-          (a) => a.status === "COMPLETED" && typeof a.output !== null
-        );
+        const outputPacket = await conditionallyImportPacket({
+          data: taskRun.output ?? undefined,
+          dataType: taskRun.outputType,
+        });
 
-        if (completedAttempt && completedAttempt.output) {
-          const outputPacket = await conditionallyImportPacket({
-            data: completedAttempt.output,
-            dataType: completedAttempt.outputType,
-          });
-
-          if (
-            outputPacket.dataType === "application/store" &&
-            typeof outputPacket.data === "string"
-          ) {
-            $outputPresignedUrl = await generatePresignedUrl(
-              env.project.externalRef,
-              env.slug,
-              outputPacket.data,
-              "GET"
-            );
-          } else {
-            $output = await parsePacket(outputPacket);
-          }
+        if (
+          outputPacket.dataType === "application/store" &&
+          typeof outputPacket.data === "string"
+        ) {
+          $outputPresignedUrl = await generatePresignedUrl(
+            env.project.externalRef,
+            env.slug,
+            outputPacket.data,
+            "GET"
+          );
+        } else {
+          $output = await parsePacket(outputPacket);
         }
       }
 
@@ -159,7 +156,8 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
         error: ApiRetrieveRunPresenter.apiErrorFromError(taskRun.error),
         schedule: await resolveSchedule(taskRun),
         // We're removing attempts from the API
-        attemptCount: taskRun.attempts.length,
+        attemptCount:
+          taskRun.engine === "V1" ? taskRun.attempts.length : taskRun.attemptNumber ?? 0,
         attempts: [],
         relatedRuns: {
           root: taskRun.rootTaskRun
