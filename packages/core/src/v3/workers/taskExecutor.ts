@@ -1027,6 +1027,14 @@ export class TaskExecutor {
       }
     }
 
+    const defaultRetryResult =
+      typeof defaultDelay === "undefined"
+        ? { status: "noop" as const }
+        : {
+            status: "retry" as const,
+            retry: { timestamp: Date.now() + defaultDelay, delay: defaultDelay },
+          };
+
     // Check if retries are enabled in dev environment
     if (
       execution.environment.type === "DEVELOPMENT" &&
@@ -1040,7 +1048,7 @@ export class TaskExecutor {
     const globalCatchErrorHooks = lifecycleHooks.getGlobalCatchErrorHooks();
 
     if (globalCatchErrorHooks.length === 0 && !taskCatchErrorHook) {
-      return { status: "noop" };
+      return defaultRetryResult;
     }
 
     return this._tracer.startActiveSpan(
@@ -1085,12 +1093,7 @@ export class TaskExecutor {
         }
 
         // If no hooks handled the error, use default retry behavior
-        return typeof defaultDelay === "undefined"
-          ? { status: "noop" as const }
-          : {
-              status: "retry" as const,
-              retry: { timestamp: Date.now() + defaultDelay, delay: defaultDelay },
-            };
+        return defaultRetryResult;
       },
       {
         attributes: {

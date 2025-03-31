@@ -282,6 +282,12 @@ export class RunEngineTriggerTaskService extends WithRunEngine {
                         runtimeEnvironmentId: environment.id,
                         version: body.options?.lockToVersion,
                       },
+                      select: {
+                        id: true,
+                        version: true,
+                        sdkVersion: true,
+                        cliVersion: true,
+                      },
                     })
                   : undefined;
 
