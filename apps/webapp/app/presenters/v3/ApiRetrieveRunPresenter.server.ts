@@ -84,6 +84,7 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
         },
         attemptNumber: true,
         engine: true,
+        taskEventStore: true,
         parentTaskRun: {
           select: commonRunSelect,
         },
