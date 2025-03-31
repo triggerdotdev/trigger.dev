@@ -245,10 +245,12 @@ async function createWorkerTask(
       // Create a TaskQueue
       queue = await createWorkerQueue(
         {
-          name: `task/${task.id}`,
+          name: task.queue?.name ?? `task/${task.id}`,
+          concurrencyLimit: task.queue?.concurrencyLimit,
+          releaseConcurrencyOnWaitpoint: task.queue?.releaseConcurrencyOnWaitpoint,
         },
         task.id,
-        "VIRTUAL",
+        task.queue?.name ? "NAMED" : "VIRTUAL",
         worker,
         environment,
         prisma

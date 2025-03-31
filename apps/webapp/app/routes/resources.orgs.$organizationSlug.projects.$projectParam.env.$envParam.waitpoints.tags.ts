@@ -31,7 +31,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   const presenter = new WaitpointTagListPresenter();
   const result = await presenter.call({
     environmentId: environment.id,
-    names: name ? [decodeURIComponent(name)] : undefined,
+    name: name ? decodeURIComponent(name) : undefined,
   });
   return result;
 }

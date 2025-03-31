@@ -80,11 +80,6 @@ export default function Page() {
   const { tasks } = useTypedLoaderData<typeof loader>();
   const { taskParam } = useParams();
 
-  const navigation = useNavigation();
-
-  const isLoadingTasks =
-    navigation.state === "loading" && navigation.location.pathname === location.pathname;
-
   return (
     <PageContainer>
       <NavBar>

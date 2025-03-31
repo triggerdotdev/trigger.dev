@@ -10,12 +10,12 @@ import { Button } from "./Buttons";
 
 const variants = {
   small: {
-    fieldStyles: "h-5 text-sm rounded-sm px-0.5",
+    fieldStyles: "h-5 text-xs rounded-sm px-0.5",
     nowButtonVariant: "tertiary/small" as const,
     clearButtonVariant: "tertiary/small" as const,
   },
   medium: {
-    fieldStyles: "h-7 text-base rounded px-1",
+    fieldStyles: "h-7 text-sm rounded px-1",
     nowButtonVariant: "tertiary/medium" as const,
     clearButtonVariant: "minimal/medium" as const,
   },

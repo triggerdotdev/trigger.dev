@@ -1036,11 +1036,17 @@ export class TaskExecutor {
       return { status: "skipped" };
     }
 
+    const taskCatchErrorHook = lifecycleHooks.getTaskCatchErrorHook(this.task.id);
+    const globalCatchErrorHooks = lifecycleHooks.getGlobalCatchErrorHooks();
+
+    if (globalCatchErrorHooks.length === 0 && !taskCatchErrorHook) {
+      return { status: "noop" };
+    }
+
     return this._tracer.startActiveSpan(
       "catchError",
       async (span) => {
         // Try task-specific catch error hook first
-        const taskCatchErrorHook = lifecycleHooks.getTaskCatchErrorHook(this.task.id);
         if (taskCatchErrorHook) {
           const result = await taskCatchErrorHook({
             payload,
@@ -1060,7 +1066,6 @@ export class TaskExecutor {
         }
 
         // Try global catch error hooks in order
-        const globalCatchErrorHooks = lifecycleHooks.getGlobalCatchErrorHooks();
         for (const hook of globalCatchErrorHooks) {
           const result = await hook.fn({
             payload,

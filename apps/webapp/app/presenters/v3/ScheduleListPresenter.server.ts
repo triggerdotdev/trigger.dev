@@ -162,6 +162,7 @@ export class ScheduleListPresenter extends BasePresenter {
           },
         },
         active: true,
+        lastRunTriggeredAt: true,
       },
       where: {
         projectId: project.id,
@@ -209,23 +210,7 @@ export class ScheduleListPresenter extends BasePresenter {
       skip: (page - 1) * pageSize,
     });
 
-    const latestRuns =
-      rawSchedules.length > 0
-        ? await this._replica.$queryRaw<{ scheduleId: string; createdAt: Date }[]>`
-    SELECT t."scheduleId", t."createdAt"
-    FROM (
-      SELECT "scheduleId", MAX("createdAt") as "LatestRun"
-      FROM ${sqlDatabaseSchema}."TaskRun"
-      WHERE "scheduleId" IN (${Prisma.join(rawSchedules.map((s) => s.id))})
-      GROUP BY "scheduleId"
-    ) r
-    JOIN ${sqlDatabaseSchema}."TaskRun" t
-    ON t."scheduleId" = r."scheduleId" AND t."createdAt" = r."LatestRun";`
-        : [];
-
     const schedules: ScheduleListItem[] = rawSchedules.map((schedule) => {
-      const latestRun = latestRuns.find((r) => r.scheduleId === schedule.id);
-
       return {
         id: schedule.id,
         type: schedule.type,
@@ -238,7 +223,7 @@ export class ScheduleListPresenter extends BasePresenter {
         timezone: schedule.timezone,
         active: schedule.active,
         externalId: schedule.externalId,
-        lastRun: latestRun?.createdAt,
+        lastRun: schedule.lastRunTriggeredAt ?? undefined,
         nextRun: calculateNextScheduledTimestamp(schedule.generatorExpression, schedule.timezone),
         environments: schedule.instances.map((instance) => {
           const environment = project.environments.find((env) => env.id === instance.environmentId);

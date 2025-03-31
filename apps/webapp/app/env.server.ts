@@ -574,8 +574,9 @@ const EnvironmentSchema = z.object({
   RUN_ENGINE_RELEASE_CONCURRENCY_BATCH_SIZE: z.coerce.number().int().default(10),
 
   /** How long should the presence ttl last */
-  DEV_PRESENCE_TTL_MS: z.coerce.number().int().default(30_000),
-  DEV_PRESENCE_POLL_INTERVAL_MS: z.coerce.number().int().default(5_000),
+  DEV_PRESENCE_SSE_TIMEOUT: z.coerce.number().int().default(30_000),
+  DEV_PRESENCE_TTL_MS: z.coerce.number().int().default(5_000),
+  DEV_PRESENCE_POLL_MS: z.coerce.number().int().default(1_000),
   /** How many ms to wait until dequeuing again, if there was a run last time */
   DEV_DEQUEUE_INTERVAL_WITH_RUN: z.coerce.number().int().default(250),
   /** How many ms to wait until dequeuing again, if there was no run last time */

@@ -1,12 +1,13 @@
-import { PrismaClientOrTransaction } from "~/db.server";
-import { BaseService } from "./baseService.server";
+import { stringifyIO } from "@trigger.dev/core/v3";
+import { type PrismaClientOrTransaction } from "~/db.server";
+import { devPresence } from "~/presenters/v3/DevPresence.server";
+import { logger } from "~/services/logger.server";
 import { workerQueue } from "~/services/worker.server";
+import { findCurrentWorkerDeployment } from "../models/workerDeployment.server";
+import { nextScheduledTimestamps } from "../utils/calculateNextSchedule.server";
+import { BaseService } from "./baseService.server";
 import { RegisterNextTaskScheduleInstanceService } from "./registerNextTaskScheduleInstance.server";
 import { TriggerTaskService } from "./triggerTask.server";
-import { stringifyIO } from "@trigger.dev/core/v3";
-import { nextScheduledTimestamps } from "../utils/calculateNextSchedule.server";
-import { findCurrentWorkerDeployment } from "../models/workerDeployment.server";
-import { logger } from "~/services/logger.server";
 
 export class TriggerScheduledTaskService extends BaseService {
   public async call(instanceId: string, finalAttempt: boolean) {
@@ -57,11 +58,17 @@ export class TriggerScheduledTaskService extends BaseService {
         shouldTrigger = false;
       }
 
-      if (
-        instance.environment.type === "DEVELOPMENT" &&
-        (!instance.environment.currentSession || instance.environment.currentSession.disconnectedAt)
-      ) {
-        shouldTrigger = false;
+      if (instance.environment.type === "DEVELOPMENT") {
+        //v3
+        const v3Disconnected =
+          !instance.environment.currentSession ||
+          instance.environment.currentSession.disconnectedAt;
+        //v4
+        const v4Connected = await devPresence.isConnected(instance.environment.id);
+
+        if (v3Disconnected && !v4Connected) {
+          shouldTrigger = false;
+        }
       }
 
       if (instance.environment.type !== "DEVELOPMENT") {
@@ -145,6 +152,15 @@ export class TriggerScheduledTaskService extends BaseService {
             data: {
               scheduleId: instance.taskSchedule.id,
               scheduleInstanceId: instance.id,
+            },
+          });
+
+          await this._prisma.taskSchedule.update({
+            where: {
+              id: instance.taskSchedule.id,
+            },
+            data: {
+              lastRunTriggeredAt: new Date(),
             },
           });
         }
