@@ -1460,7 +1460,7 @@ describe("TaskExecutor", () => {
 
   test("should handle max duration abort signal and call hooks in correct order", async () => {
     const executionOrder: string[] = [];
-    const maxDurationMs = 1000;
+    const maxDurationSeconds = 1000;
 
     // Create an abort controller that we'll trigger manually
     const controller = new AbortController();
@@ -1482,7 +1482,7 @@ describe("TaskExecutor", () => {
       fn: async ({ error }) => {
         executionOrder.push("failure");
         expect((error as Error).message).toBe(
-          `Task execution exceeded maximum duration of ${maxDurationMs}ms`
+          `Run exceeded maximum compute time (maxDuration) of ${maxDurationSeconds} seconds`
         );
       },
     });
@@ -1537,7 +1537,7 @@ describe("TaskExecutor", () => {
         error: {
           type: "INTERNAL_ERROR",
           code: TaskRunErrorCodes.MAX_DURATION_EXCEEDED,
-          message: "Task execution exceeded maximum duration of 1000ms",
+          message: "Run exceeded maximum compute time (maxDuration) of 1000 seconds",
           stackTrace: expect.any(String),
         },
         skippedRetrying: false,
