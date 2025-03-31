@@ -54,36 +54,6 @@ class ManagedSupervisor {
     const workloadApiDomain = env.TRIGGER_WORKLOAD_API_DOMAIN;
     const workloadApiPortExternal = env.TRIGGER_WORKLOAD_API_PORT_EXTERNAL;
 
-    if (env.POD_CLEANER_ENABLED) {
-      this.logger.log("[ManagedWorker] 🧹 Pod cleaner enabled", {
-        namespace: env.KUBERNETES_NAMESPACE,
-        batchSize: env.POD_CLEANER_BATCH_SIZE,
-        intervalMs: env.POD_CLEANER_INTERVAL_MS,
-      });
-      this.podCleaner = new PodCleaner({
-        register,
-        namespace: env.KUBERNETES_NAMESPACE,
-        batchSize: env.POD_CLEANER_BATCH_SIZE,
-        intervalMs: env.POD_CLEANER_INTERVAL_MS,
-      });
-    } else {
-      this.logger.warn("[ManagedWorker] Pod cleaner disabled");
-    }
-
-    if (env.FAILED_POD_HANDLER_ENABLED) {
-      this.logger.log("[ManagedWorker] 🔁 Failed pod handler enabled", {
-        namespace: env.KUBERNETES_NAMESPACE,
-        reconnectIntervalMs: env.FAILED_POD_HANDLER_RECONNECT_INTERVAL_MS,
-      });
-      this.failedPodHandler = new FailedPodHandler({
-        register,
-        namespace: env.KUBERNETES_NAMESPACE,
-        reconnectIntervalMs: env.FAILED_POD_HANDLER_RECONNECT_INTERVAL_MS,
-      });
-    } else {
-      this.logger.warn("[ManagedWorker] Failed pod handler disabled");
-    }
-
     if (this.warmStartUrl) {
       this.logger.log("[ManagedWorker] 🔥 Warm starts enabled", {
         warmStartUrl: this.warmStartUrl,
@@ -91,6 +61,36 @@ class ManagedSupervisor {
     }
 
     if (this.isKubernetes) {
+      if (env.POD_CLEANER_ENABLED) {
+        this.logger.log("[ManagedWorker] 🧹 Pod cleaner enabled", {
+          namespace: env.KUBERNETES_NAMESPACE,
+          batchSize: env.POD_CLEANER_BATCH_SIZE,
+          intervalMs: env.POD_CLEANER_INTERVAL_MS,
+        });
+        this.podCleaner = new PodCleaner({
+          register,
+          namespace: env.KUBERNETES_NAMESPACE,
+          batchSize: env.POD_CLEANER_BATCH_SIZE,
+          intervalMs: env.POD_CLEANER_INTERVAL_MS,
+        });
+      } else {
+        this.logger.warn("[ManagedWorker] Pod cleaner disabled");
+      }
+
+      if (env.FAILED_POD_HANDLER_ENABLED) {
+        this.logger.log("[ManagedWorker] 🔁 Failed pod handler enabled", {
+          namespace: env.KUBERNETES_NAMESPACE,
+          reconnectIntervalMs: env.FAILED_POD_HANDLER_RECONNECT_INTERVAL_MS,
+        });
+        this.failedPodHandler = new FailedPodHandler({
+          register,
+          namespace: env.KUBERNETES_NAMESPACE,
+          reconnectIntervalMs: env.FAILED_POD_HANDLER_RECONNECT_INTERVAL_MS,
+        });
+      } else {
+        this.logger.warn("[ManagedWorker] Failed pod handler disabled");
+      }
+
       this.resourceMonitor = new KubernetesResourceMonitor(createK8sApi(), "");
       this.workloadManager = new KubernetesWorkloadManager({
         workloadApiProtocol,
