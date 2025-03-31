@@ -47,7 +47,13 @@ export class WorkerGroupService extends WithRunEngine {
         },
       });
 
-      if (managedCount === 1) {
+      const getFlag = makeFlags(this._prisma);
+      const defaultWorkerInstanceGroupId = await getFlag({
+        key: "defaultWorkerInstanceGroupId",
+      });
+
+      // If there's no global default yet we should set it to the new worker group
+      if (!defaultWorkerInstanceGroupId) {
         const setFlag = makeSetFlags(this._prisma);
         await setFlag({
           key: "defaultWorkerInstanceGroupId",
