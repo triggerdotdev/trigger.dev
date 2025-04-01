@@ -128,9 +128,9 @@ export function ChatContainer({ triggerToken }: { triggerToken: string }) {
   });
 
   return (
-    <div className="max-w-4xl mx-auto">
-      <div className="bg-white border border-gray-200 rounded-lg shadow-sm">
-        <div className="border-b border-gray-200 px-4 py-3 flex items-center">
+    <div className="max-w-6xl mx-auto h-[calc(100vh-5rem)] mb-4">
+      <div className="bg-white border-x border-gray-200 h-full flex flex-col">
+        <div className="border-b border-gray-200 px-4 py-2 flex items-center shrink-0">
           <h2 className="text-sm font-medium text-gray-700">Chat Session</h2>
           <span className="ml-2 bg-green-100 text-green-800 text-xs px-2 py-0.5 rounded-full">
             Active
@@ -164,22 +164,24 @@ export function ChatContainer({ triggerToken }: { triggerToken: string }) {
           </div>
         </div>
 
-        <div className="h-[600px] overflow-y-auto p-4 space-y-4">
-          {messages.map((message) =>
-            message.role === "tool" ? (
-              <ToolCallMessage
-                key={message.id}
-                name={message.name}
-                input={message.input}
-                output={message.output}
-              />
-            ) : (
-              <ChatMessage key={message.id} role={message.role} content={message.content} />
-            )
-          )}
+        <div className="flex-1 overflow-y-auto">
+          <div className="p-4 space-y-4">
+            {messages.map((message) =>
+              message.role === "tool" ? (
+                <ToolCallMessage
+                  key={message.id}
+                  name={message.name}
+                  input={message.input}
+                  output={message.output}
+                />
+              ) : (
+                <ChatMessage key={message.id} role={message.role} content={message.content} />
+              )
+            )}
+          </div>
         </div>
 
-        <div className="border-t border-gray-200 p-4">
+        <div className="border-t border-gray-200 p-3 shrink-0">
           <ChatInput
             isSubmitting={isSubmitting}
             onSubmit={(input) => {
