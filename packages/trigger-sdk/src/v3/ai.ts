@@ -38,12 +38,12 @@ function toolFromTask<
     );
   }
 
-  const serializedOptions = options ? JSON.parse(JSON.stringify(options)) : undefined;
-
   return tool({
     description: task.description,
     parameters: convertTaskSchemaToToolParameters(task.schema),
     execute: async (args, options) => {
+      const serializedOptions = options ? JSON.parse(JSON.stringify(options)) : undefined;
+
       return await task
         .triggerAndWait(args, {
           metadata: {
