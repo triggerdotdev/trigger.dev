@@ -184,25 +184,26 @@ export function DevDisconnectedBanner({ isConnected }: { isConnected: boolean | 
   return (
     <Dialog>
       <AnimatePresence>
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.3 }}
-          className="flex"
-        >
-          {isConnected === false && (
+        {isConnected === false && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
+            className="flex"
+          >
             <DialogTrigger asChild>
               <Button
                 variant="minimal/small"
-                className="py-1 pl-1 pr-2 text-error"
+                className="border border-error/20 bg-error/10 py-1 pl-1 pr-2 group-hover/button:border-error/30 group-hover/button:bg-error/20"
+                iconSpacing="gap-1"
                 LeadingIcon={<ConnectionIcon isConnected={false} />}
               >
                 Your local dev server is not connected to Trigger.dev
               </Button>
             </DialogTrigger>
-          )}
-        </motion.div>
+          </motion.div>
+        )}
       </AnimatePresence>
       <DevPresencePanel isConnected={isConnected} />
     </Dialog>

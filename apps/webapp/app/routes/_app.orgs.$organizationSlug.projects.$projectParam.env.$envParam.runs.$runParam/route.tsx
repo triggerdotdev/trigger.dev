@@ -672,9 +672,6 @@ function TasksTreeView({
                       </div>
                     </div>
                   </div>
-                  {!isCompleted &&
-                    environmentType === "DEVELOPMENT" &&
-                    index === displayEvents.length - 1 && <ConnectedDevWarning />}
                 </>
               )}
               onScroll={(scrollTop) => {
@@ -1273,32 +1270,6 @@ function CurrentTimeIndicator({
         );
       }}
     </Timeline.FollowCursor>
-  );
-}
-
-function ConnectedDevWarning() {
-  const { isConnected } = useDevPresence();
-
-  return (
-    <div
-      className={cn(
-        "flex items-center overflow-hidden pl-5 pr-2 transition-opacity duration-500",
-        isConnected ? "h-0 opacity-0" : "opacity-100"
-      )}
-    >
-      <Callout
-        variant="error"
-        icon={<DisconnectedIcon className="size-5 shrink-0" />}
-        className="mt-2"
-      >
-        <div className="flex flex-col gap-1">
-          <Paragraph variant="small" spacing>
-            Your local dev server is not connectedr. Check you're running the CLI:
-          </Paragraph>
-          <ClipboardField variant="secondary/small" value="npx trigger.dev@latest dev" />
-        </div>
-      </Callout>
-    </div>
   );
 }
 
