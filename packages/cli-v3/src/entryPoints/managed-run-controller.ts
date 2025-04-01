@@ -1108,12 +1108,6 @@ class ManagedRunController {
   async start() {
     logger.debug("[ManagedRunController] Starting up");
 
-    // TODO: remove this after testing
-    setTimeout(() => {
-      console.error("[ManagedRunController] Exiting after 5 minutes");
-      this.exitProcess(1);
-    }, 60 * 5000);
-
     // Websocket notifications are only an optimisation so we don't need to wait for a successful connection
     this.createSocket();
 
