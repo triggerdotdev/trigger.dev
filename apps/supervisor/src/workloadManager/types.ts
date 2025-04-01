@@ -8,6 +8,7 @@ export interface WorkloadManagerOptions {
   imagePullSecrets?: string[];
   heartbeatIntervalSeconds?: number;
   snapshotPollIntervalSeconds?: number;
+  additionalEnvVars?: Record<string, string>;
 }
 
 export interface WorkloadManager {

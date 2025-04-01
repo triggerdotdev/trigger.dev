@@ -150,6 +150,12 @@ export class KubernetesWorkloadManager implements WorkloadManager {
                         },
                       ]
                     : []),
+                  ...(this.opts.additionalEnvVars
+                    ? Object.entries(this.opts.additionalEnvVars).map(([key, value]) => ({
+                        name: key,
+                        value: value,
+                      }))
+                    : []),
                 ],
               },
             ],

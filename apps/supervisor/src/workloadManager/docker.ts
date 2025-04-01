@@ -57,6 +57,12 @@ export class DockerWorkloadManager implements WorkloadManager {
       );
     }
 
+    if (this.opts.additionalEnvVars) {
+      Object.entries(this.opts.additionalEnvVars).forEach(([key, value]) => {
+        runArgs.push(`--env=${key}=${value}`);
+      });
+    }
+
     if (env.ENFORCE_MACHINE_PRESETS) {
       runArgs.push(`--cpus=${opts.machine.cpu}`, `--memory=${opts.machine.memory}G`);
       runArgs.push(`--env=TRIGGER_MACHINE_CPU=${opts.machine.cpu}`);

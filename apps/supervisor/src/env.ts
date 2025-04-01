@@ -1,14 +1,7 @@
 import { randomUUID } from "crypto";
 import { env as stdEnv } from "std-env";
 import { z } from "zod";
-
-const BoolEnv = z.preprocess((val) => {
-  if (typeof val !== "string") {
-    return val;
-  }
-
-  return ["true", "1"].includes(val.toLowerCase().trim());
-}, z.boolean());
+import { AdditionalEnvVars, BoolEnv } from "./envUtil.js";
 
 const Env = z.object({
   // This will come from `spec.nodeName` in k8s
@@ -75,6 +68,9 @@ const Env = z.object({
 
   // Debug
   DEBUG: BoolEnv.default(false),
+
+  // Additional environment variables (CSV format)
+  RUNNER_ADDITIONAL_ENV_VARS: AdditionalEnvVars,
 });
 
 export const env = Env.parse(stdEnv);
