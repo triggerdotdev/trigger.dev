@@ -21,13 +21,17 @@ import {
   tryCatch,
 } from "@trigger.dev/core/v3";
 import { type RuntimeEnvironmentType } from "@trigger.dev/database";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { DisconnectedIcon } from "~/assets/icons/ConnectionIcons";
 import { ShowParentIcon, ShowParentIconSelected } from "~/assets/icons/ShowParentIcon";
 import tileBgPath from "~/assets/images/error-banner-tile@2x.png";
-import { useDevPresence } from "~/components/DevPresence";
+import {
+  DevDisconnectedBanner,
+  useCrossEngineIsConnected,
+  useDevPresence,
+} from "~/components/DevPresence";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { PageBody } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
@@ -184,6 +188,10 @@ export default function Page() {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
+  const isConnected = useCrossEngineIsConnected({
+    logCount: trace?.events.length ?? 0,
+    isCompleted: run.completedAt !== null,
+  });
 
   return (
     <>
@@ -195,6 +203,7 @@ export default function Page() {
           }}
           title={`Run #${run.number}`}
         />
+        {environment.type === "DEVELOPMENT" && <DevDisconnectedBanner isConnected={isConnected} />}
         <PageAccessories>
           <AdminDebugTooltip>
             <Property.Table>
@@ -666,9 +675,6 @@ function TasksTreeView({
                       </div>
                     </div>
                   </div>
-                  {!isCompleted &&
-                    environmentType === "DEVELOPMENT" &&
-                    index === displayEvents.length - 1 && <ConnectedDevWarning />}
                 </>
               )}
               onScroll={(scrollTop) => {
@@ -1267,32 +1273,6 @@ function CurrentTimeIndicator({
         );
       }}
     </Timeline.FollowCursor>
-  );
-}
-
-function ConnectedDevWarning() {
-  const { isConnected } = useDevPresence();
-
-  return (
-    <div
-      className={cn(
-        "flex items-center overflow-hidden pl-5 pr-2 transition-opacity duration-500",
-        isConnected ? "h-0 opacity-0" : "opacity-100"
-      )}
-    >
-      <Callout
-        variant="error"
-        icon={<DisconnectedIcon className="size-5 shrink-0" />}
-        className="mt-2"
-      >
-        <div className="flex flex-col gap-1">
-          <Paragraph variant="small" spacing>
-            Your local dev server is not connectedr. Check you're running the CLI:
-          </Paragraph>
-          <ClipboardField variant="secondary/small" value="npx trigger.dev@latest dev" />
-        </div>
-      </Callout>
-    </div>
   );
 }
 
