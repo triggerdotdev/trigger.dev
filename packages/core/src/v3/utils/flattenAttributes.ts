@@ -3,6 +3,17 @@ import { Attributes } from "@opentelemetry/api";
 export const NULL_SENTINEL = "$@null((";
 export const CIRCULAR_REFERENCE_SENTINEL = "$@circular((";
 
+const DOT = "__DOT__";
+
+function escapeKey(key: string) {
+  return key.replace(/\./g, DOT); // Replace . with __DOT__
+}
+
+function unescapeKey(key: string) {
+  let re = new RegExp(DOT, "g");
+  return key.replace(re, '.'); // Replace __DOT__ back with . (dot)
+}
+
 export function flattenAttributes(
   obj: Record<string, unknown> | Array<unknown> | string | boolean | number | null | undefined,
   prefix?: string,
@@ -52,7 +63,8 @@ export function flattenAttributes(
   }
 
   for (const [key, value] of Object.entries(obj)) {
-    const newPrefix = `${prefix ? `${prefix}.` : ""}${Array.isArray(obj) ? `[${key}]` : key}`;
+    const escapedKey = escapeKey(key);
+    const newPrefix = `${prefix ? `${prefix}.` : ""}${Array.isArray(obj) ? `[${key}]` : escapedKey}`;
     if (Array.isArray(value)) {
       for (let i = 0; i < value.length; i++) {
         if (typeof value[i] === "object" && value[i] !== null) {
@@ -117,10 +129,10 @@ export function unflattenAttributes(
             acc.push(parseInt(match[1]));
           } else {
             // Remove brackets for non-numeric array keys
-            acc.push(part.slice(1, -1));
+            acc.push(unescapeKey(part.slice(1, -1)));
           }
         } else {
-          acc.push(part);
+          acc.push(unescapeKey(part));
         }
         return acc;
       },
