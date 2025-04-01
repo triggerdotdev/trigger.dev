@@ -245,10 +245,12 @@ async function createWorkerTask(
       // Create a TaskQueue
       queue = await createWorkerQueue(
         {
-          name: `task/${task.id}`,
+          name: task.queue?.name ?? `task/${task.id}`,
+          concurrencyLimit: task.queue?.concurrencyLimit,
+          releaseConcurrencyOnWaitpoint: task.queue?.releaseConcurrencyOnWaitpoint,
         },
         task.id,
-        "VIRTUAL",
+        task.queue?.name ? "NAMED" : "VIRTUAL",
         worker,
         environment,
         prisma
@@ -361,43 +363,14 @@ async function createWorkerQueue(
         )
       : queue.concurrencyLimit;
 
-  let taskQueue = await prisma.taskQueue.findFirst({
-    where: {
-      runtimeEnvironmentId: worker.runtimeEnvironmentId,
-      name: queueName,
-    },
-  });
-
-  if (!taskQueue) {
-    taskQueue = await prisma.taskQueue.create({
-      data: {
-        friendlyId: generateFriendlyId("queue"),
-        version: "V2",
-        name: queueName,
-        orderableName,
-        concurrencyLimit,
-        runtimeEnvironmentId: worker.runtimeEnvironmentId,
-        projectId: worker.projectId,
-        type: queueType,
-        workers: {
-          connect: {
-            id: worker.id,
-          },
-        },
-      },
-    });
-  } else {
-    await prisma.taskQueue.update({
-      where: {
-        id: taskQueue.id,
-      },
-      data: {
-        workers: { connect: { id: worker.id } },
-        version: "V2",
-        orderableName,
-      },
-    });
-  }
+  const taskQueue = await upsertWorkerQueueRecord(
+    queueName,
+    concurrencyLimit ?? undefined,
+    orderableName,
+    queueType,
+    worker,
+    prisma
+  );
 
   if (typeof concurrencyLimit === "number") {
     logger.debug("createWorkerQueue: updating concurrency limit", {
@@ -424,6 +397,75 @@ async function createWorkerQueue(
   return taskQueue;
 }
 
+async function upsertWorkerQueueRecord(
+  queueName: string,
+  concurrencyLimit: number | undefined,
+  orderableName: string,
+  queueType: TaskQueueType,
+  worker: BackgroundWorker,
+  prisma: PrismaClientOrTransaction,
+  attempt: number = 0
+): Promise<TaskQueue> {
+  if (attempt > 3) {
+    throw new Error("Failed to insert queue record");
+  }
+
+  try {
+    let taskQueue = await prisma.taskQueue.findFirst({
+      where: {
+        runtimeEnvironmentId: worker.runtimeEnvironmentId,
+        name: queueName,
+      },
+    });
+
+    if (!taskQueue) {
+      taskQueue = await prisma.taskQueue.create({
+        data: {
+          friendlyId: generateFriendlyId("queue"),
+          version: "V2",
+          name: queueName,
+          orderableName,
+          concurrencyLimit,
+          runtimeEnvironmentId: worker.runtimeEnvironmentId,
+          projectId: worker.projectId,
+          type: queueType,
+          workers: {
+            connect: {
+              id: worker.id,
+            },
+          },
+        },
+      });
+    } else {
+      await prisma.taskQueue.update({
+        where: {
+          id: taskQueue.id,
+        },
+        data: {
+          workers: { connect: { id: worker.id } },
+          version: "V2",
+          orderableName,
+        },
+      });
+    }
+
+    return taskQueue;
+  } catch (error) {
+    // If the queue already exists, let's try again
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return await upsertWorkerQueueRecord(
+        queueName,
+        concurrencyLimit,
+        orderableName,
+        queueType,
+        worker,
+        prisma,
+        attempt + 1
+      );
+    }
+    throw error;
+  }
+}
 //CreateDeclarativeScheduleError with a message
 export class CreateDeclarativeScheduleError extends Error {
   constructor(message: string) {

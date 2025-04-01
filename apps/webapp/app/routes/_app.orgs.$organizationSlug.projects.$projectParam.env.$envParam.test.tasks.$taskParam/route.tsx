@@ -104,9 +104,20 @@ export const action: ActionFunction = async ({ request, params }) => {
     return json(submission);
   }
 
+  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
+  if (!project) {
+    return redirectBackWithErrorMessage(request, "Project not found");
+  }
+
+  const environment = await findEnvironmentBySlug(project.id, envParam, userId);
+
+  if (!environment) {
+    return redirectBackWithErrorMessage(request, "Environment not found");
+  }
+
   const testService = new TestTaskService();
   try {
-    const run = await testService.call(userId, submission.value);
+    const run = await testService.call(environment, submission.value);
 
     if (!run) {
       return redirectBackWithErrorMessage(

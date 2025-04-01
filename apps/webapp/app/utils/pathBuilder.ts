@@ -242,6 +242,14 @@ export function v3RunPath(
   return `${v3RunsPath(organization, project, environment)}/${run.friendlyId}`;
 }
 
+export function v3RunRedirectPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  run: v3RunForPath
+) {
+  return `${v3ProjectPath(organization, project)}/runs/${run.friendlyId}`;
+}
+
 export function v3RunDownloadLogsPath(run: v3RunForPath) {
   return `/resources/runs/${run.friendlyId}/logs/download`;
 }

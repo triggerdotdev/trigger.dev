@@ -1,4 +1,4 @@
-import { type Span, SpanStatusCode } from "@opentelemetry/api";
+import { type Span, SpanStatusCode, context, propagation } from "@opentelemetry/api";
 
 export function recordSpanException(span: Span, error: unknown) {
   if (error instanceof Error) {
@@ -19,4 +19,11 @@ function sanitizeSpanError(error: Error) {
   sanitizedError.stack = error.stack?.replace(/\0/g, "");
 
   return sanitizedError;
+}
+
+export function carrierFromContext(): Record<string, string> {
+  const carrier = {};
+  propagation.inject(context.active(), carrier);
+
+  return carrier;
 }

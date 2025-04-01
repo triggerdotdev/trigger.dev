@@ -28,6 +28,7 @@ interface RouteDefinition<
   paramsSchema?: TParams;
   querySchema?: TQuery;
   bodySchema?: TBody;
+  keepConnectionAlive?: boolean;
   handler: RouteHandler<TParams, TQuery, TBody>;
 }
 
@@ -156,7 +157,8 @@ export class HttpServer {
           return reply.empty(405);
         }
 
-        const { handler, paramsSchema, querySchema, bodySchema } = routeDefinition;
+        const { handler, paramsSchema, querySchema, bodySchema, keepConnectionAlive } =
+          routeDefinition;
 
         const params = this.parseRouteParams(route, url);
         const parsedParams = this.optionalSchema(paramsSchema, params);
@@ -201,6 +203,11 @@ export class HttpServer {
         if (error) {
           logger.error("Route handler error", { error });
           return reply.empty(500);
+        }
+
+        if (keepConnectionAlive) {
+          // Return early to keep the connection alive
+          return;
         }
       } catch (error) {
         logger.error("Failed to handle request", { error });

@@ -1,14 +1,7 @@
 import { randomUUID } from "crypto";
 import { env as stdEnv } from "std-env";
 import { z } from "zod";
-
-const BoolEnv = z.preprocess((val) => {
-  if (typeof val !== "string") {
-    return val;
-  }
-
-  return ["true", "1"].includes(val.toLowerCase().trim());
-}, z.boolean());
+import { AdditionalEnvVars, BoolEnv } from "./envUtil.js";
 
 const Env = z.object({
   // This will come from `spec.nodeName` in k8s
@@ -26,8 +19,14 @@ const Env = z.object({
     .transform((s) => z.enum(["http", "https"]).parse(s.toLowerCase()))
     .default("http"),
   TRIGGER_WORKLOAD_API_DOMAIN: z.string().optional(), // If unset, will use orchestrator-specific default
+  TRIGGER_WORKLOAD_API_HOST_INTERNAL: z.string().default("0.0.0.0"),
   TRIGGER_WORKLOAD_API_PORT_INTERNAL: z.coerce.number().default(8020), // This is the port the workload API listens on
   TRIGGER_WORKLOAD_API_PORT_EXTERNAL: z.coerce.number().default(8020), // This is the exposed port passed to the run controller
+
+  // Runner settings
+  RUNNER_HEARTBEAT_INTERVAL_SECONDS: z.coerce.number().optional(),
+  RUNNER_SNAPSHOT_POLL_INTERVAL_SECONDS: z.coerce.number().optional(),
+  RUNNER_ADDITIONAL_ENV_VARS: AdditionalEnvVars, // optional (csv)
 
   // Dequeue settings (provider mode)
   TRIGGER_DEQUEUE_ENABLED: BoolEnv.default("true"),
@@ -41,6 +40,7 @@ const Env = z.object({
   DOCKER_NETWORK: z.string().default("host"),
   OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url(),
   ENFORCE_MACHINE_PRESETS: z.coerce.boolean().default(false),
+  KUBERNETES_IMAGE_PULL_SECRETS: z.string().optional(), // csv
 
   // Used by the resource monitor
   OVERRIDE_CPU_TOTAL: z.coerce.number().optional(),
@@ -53,7 +53,10 @@ const Env = z.object({
   EPHEMERAL_STORAGE_SIZE_REQUEST: z.string().default("2Gi"),
 
   // Metrics
+  METRICS_ENABLED: BoolEnv.default(true),
   METRICS_COLLECT_DEFAULTS: BoolEnv.default(true),
+  METRICS_HOST: z.string().default("127.0.0.1"),
+  METRICS_PORT: z.coerce.number().int().default(9090),
 
   // Pod cleaner
   POD_CLEANER_ENABLED: BoolEnv.default(true),
@@ -63,6 +66,9 @@ const Env = z.object({
   // Failed pod handler
   FAILED_POD_HANDLER_ENABLED: BoolEnv.default(true),
   FAILED_POD_HANDLER_RECONNECT_INTERVAL_MS: z.coerce.number().int().default(1000),
+
+  // Debug
+  DEBUG: BoolEnv.default(false),
 });
 
 export const env = Env.parse(stdEnv);

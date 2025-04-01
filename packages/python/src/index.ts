@@ -2,8 +2,10 @@ import {
   AsyncIterableStream,
   createAsyncIterableStreamFromAsyncIterable,
   SemanticInternalAttributes,
+  taskContext,
 } from "@trigger.dev/core/v3";
 import { logger } from "@trigger.dev/sdk/v3";
+import { carrierFromContext } from "@trigger.dev/core/v3/otel";
 import assert from "node:assert";
 import fs from "node:fs";
 import { Result, x, Options as XOptions } from "tinyexec";
@@ -17,6 +19,8 @@ export const python = {
   async run(scriptArgs: string[] = [], options: PythonExecOptions = {}): Promise<Result> {
     const pythonBin = process.env.PYTHON_BIN_PATH || "python";
 
+    const carrier = carrierFromContext();
+
     return await logger.trace(
       "python.run()",
       async (span) => {
@@ -27,6 +31,12 @@ export const python = {
             env: {
               ...process.env,
               ...options.env,
+              TRACEPARENT: carrier["traceparent"],
+              OTEL_RESOURCE_ATTRIBUTES: `${
+                SemanticInternalAttributes.EXECUTION_ENVIRONMENT
+              }=trigger,${Object.entries(taskContext.attributes)
+                .map(([key, value]) => `${key}=${value}`)
+                .join(",")}`,
             },
           },
           throwOnError: false, // Ensure errors are handled manually
@@ -50,7 +60,7 @@ export const python = {
         attributes: {
           pythonBin,
           args: scriptArgs.join(" "),
-          [SemanticInternalAttributes.STYLE_ICON]: "brand-python",
+          [SemanticInternalAttributes.STYLE_ICON]: "python",
         },
       }
     );
@@ -69,6 +79,8 @@ export const python = {
       async (span) => {
         span.setAttribute("scriptPath", scriptPath);
 
+        const carrier = carrierFromContext();
+
         const result = await x(
           process.env.PYTHON_BIN_PATH || "python",
           [scriptPath, ...scriptArgs],
@@ -79,6 +91,13 @@ export const python = {
               env: {
                 ...process.env,
                 ...options.env,
+                TRACEPARENT: carrier["traceparent"],
+                OTEL_RESOURCE_ATTRIBUTES: `${
+                  SemanticInternalAttributes.EXECUTION_ENVIRONMENT
+                }=trigger,${Object.entries(taskContext.attributes)
+                  .map(([key, value]) => `${key}=${value}`)
+                  .join(",")}`,
+                OTEL_LOG_LEVEL: "DEBUG",
               },
             },
             throwOnError: false,
@@ -93,7 +112,7 @@ export const python = {
           throw new Error(
             `${scriptPath} ${scriptArgs.join(" ")} exited with a non-zero code ${
               result.exitCode
-            }:\n${result.stderr}`
+            }:\n${result.stdout}\n${result.stderr}`
           );
         }
 
@@ -104,7 +123,7 @@ export const python = {
           pythonBin: process.env.PYTHON_BIN_PATH || "python",
           scriptPath,
           args: scriptArgs.join(" "),
-          [SemanticInternalAttributes.STYLE_ICON]: "brand-python",
+          [SemanticInternalAttributes.STYLE_ICON]: "python",
         },
       }
     );
@@ -124,6 +143,8 @@ export const python = {
           async (tempFilePath) => {
             span.setAttribute("tempFilePath", tempFilePath);
 
+            const carrier = carrierFromContext();
+
             const pythonBin = process.env.PYTHON_BIN_PATH || "python";
             const result = await x(pythonBin, [tempFilePath], {
               ...options,
@@ -132,6 +153,12 @@ export const python = {
                 env: {
                   ...process.env,
                   ...options.env,
+                  TRACEPARENT: carrier["traceparent"],
+                  OTEL_RESOURCE_ATTRIBUTES: `${
+                    SemanticInternalAttributes.EXECUTION_ENVIRONMENT
+                  }=trigger,${Object.entries(taskContext.attributes)
+                    .map(([key, value]) => `${key}=${value}`)
+                    .join(",")}`,
                 },
               },
               throwOnError: false,
@@ -157,7 +184,7 @@ export const python = {
           pythonBin: process.env.PYTHON_BIN_PATH || "python",
           contentPreview:
             scriptContent.substring(0, 100) + (scriptContent.length > 100 ? "..." : ""),
-          [SemanticInternalAttributes.STYLE_ICON]: "brand-python",
+          [SemanticInternalAttributes.STYLE_ICON]: "python",
         },
       }
     );
@@ -167,6 +194,8 @@ export const python = {
     run(scriptArgs: string[] = [], options: PythonExecOptions = {}): AsyncIterableStream<string> {
       const pythonBin = process.env.PYTHON_BIN_PATH || "python";
 
+      const carrier = carrierFromContext();
+
       const pythonProcess = x(pythonBin, scriptArgs, {
         ...options,
         nodeOptions: {
@@ -174,6 +203,12 @@ export const python = {
           env: {
             ...process.env,
             ...options.env,
+            TRACEPARENT: carrier["traceparent"],
+            OTEL_RESOURCE_ATTRIBUTES: `${
+              SemanticInternalAttributes.EXECUTION_ENVIRONMENT
+            }=trigger,${Object.entries(taskContext.attributes)
+              .map(([key, value]) => `${key}=${value}`)
+              .join(",")}`,
           },
         },
         throwOnError: false,
@@ -183,7 +218,7 @@ export const python = {
         attributes: {
           pythonBin,
           args: scriptArgs.join(" "),
-          [SemanticInternalAttributes.STYLE_ICON]: "brand-python",
+          [SemanticInternalAttributes.STYLE_ICON]: "python",
         },
       });
 
@@ -206,6 +241,8 @@ export const python = {
 
       const pythonBin = process.env.PYTHON_BIN_PATH || "python";
 
+      const carrier = carrierFromContext();
+
       const pythonProcess = x(pythonBin, [scriptPath, ...scriptArgs], {
         ...options,
         nodeOptions: {
@@ -213,6 +250,12 @@ export const python = {
           env: {
             ...process.env,
             ...options.env,
+            TRACEPARENT: carrier["traceparent"],
+            OTEL_RESOURCE_ATTRIBUTES: `${
+              SemanticInternalAttributes.EXECUTION_ENVIRONMENT
+            }=trigger,${Object.entries(taskContext.attributes)
+              .map(([key, value]) => `${key}=${value}`)
+              .join(",")}`,
           },
         },
         throwOnError: false,
@@ -223,7 +266,7 @@ export const python = {
           pythonBin,
           scriptPath,
           args: scriptArgs.join(" "),
-          [SemanticInternalAttributes.STYLE_ICON]: "brand-python",
+          [SemanticInternalAttributes.STYLE_ICON]: "python",
         },
       });
 
@@ -243,6 +286,8 @@ export const python = {
 
       const pythonScriptPath = createTempFileSync(`script_${Date.now()}.py`, scriptContent);
 
+      const carrier = carrierFromContext();
+
       const pythonProcess = x(pythonBin, [pythonScriptPath], {
         ...options,
         nodeOptions: {
@@ -250,6 +295,12 @@ export const python = {
           env: {
             ...process.env,
             ...options.env,
+            TRACEPARENT: carrier["traceparent"],
+            OTEL_RESOURCE_ATTRIBUTES: `${
+              SemanticInternalAttributes.EXECUTION_ENVIRONMENT
+            }=trigger,${Object.entries(taskContext.attributes)
+              .map(([key, value]) => `${key}=${value}`)
+              .join(",")}`,
           },
         },
         throwOnError: false,
@@ -260,7 +311,7 @@ export const python = {
           pythonBin,
           contentPreview:
             scriptContent.substring(0, 100) + (scriptContent.length > 100 ? "..." : ""),
-          [SemanticInternalAttributes.STYLE_ICON]: "brand-python",
+          [SemanticInternalAttributes.STYLE_ICON]: "python",
         },
       });
 

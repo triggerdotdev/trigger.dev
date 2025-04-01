@@ -134,6 +134,28 @@ export class KubernetesWorkloadManager implements WorkloadManager {
                   ...(this.opts.warmStartUrl
                     ? [{ name: "TRIGGER_WARM_START_URL", value: this.opts.warmStartUrl }]
                     : []),
+                  ...(this.opts.heartbeatIntervalSeconds
+                    ? [
+                        {
+                          name: "TRIGGER_HEARTBEAT_INTERVAL_SECONDS",
+                          value: `${this.opts.heartbeatIntervalSeconds}`,
+                        },
+                      ]
+                    : []),
+                  ...(this.opts.snapshotPollIntervalSeconds
+                    ? [
+                        {
+                          name: "TRIGGER_SNAPSHOT_POLL_INTERVAL_SECONDS",
+                          value: `${this.opts.snapshotPollIntervalSeconds}`,
+                        },
+                      ]
+                    : []),
+                  ...(this.opts.additionalEnvVars
+                    ? Object.entries(this.opts.additionalEnvVars).map(([key, value]) => ({
+                        name: key,
+                        value: value,
+                      }))
+                    : []),
                 ],
               },
             ],
@@ -182,18 +204,15 @@ export class KubernetesWorkloadManager implements WorkloadManager {
     }
   }
 
+  private getImagePullSecrets(): k8s.V1LocalObjectReference[] | undefined {
+    return this.opts.imagePullSecrets?.map((name) => ({ name }));
+  }
+
   get #defaultPodSpec(): Omit<k8s.V1PodSpec, "containers"> {
     return {
       restartPolicy: "Never",
       automountServiceAccountToken: false,
-      imagePullSecrets: [
-        {
-          name: "registry-trigger",
-        },
-        {
-          name: "registry-trigger-failover",
-        },
-      ],
+      imagePullSecrets: this.getImagePullSecrets(),
       nodeSelector: {
         nodetype: "worker-re2",
       },

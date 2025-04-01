@@ -20,7 +20,11 @@ import {
 import { useNavigation } from "@remix-run/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import simplur from "simplur";
-import { ConnectedIcon, DisconnectedIcon } from "~/assets/icons/ConnectionIcons";
+import {
+  CheckingConnectionIcon,
+  ConnectedIcon,
+  DisconnectedIcon,
+} from "~/assets/icons/ConnectionIcons";
 import { RunsIconExtraSmall, RunsIconSmall } from "~/assets/icons/RunsIcon";
 import { TaskIconSmall } from "~/assets/icons/TaskIcon";
 import { Avatar } from "~/components/primitives/Avatar";
@@ -82,6 +86,7 @@ import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
 import { SideMenuSection } from "./SideMenuSection";
 import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
+import { Spinner } from "../primitives/Spinner";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 export type SideMenuProject = Pick<
@@ -134,7 +139,7 @@ export function SideMenu({
     >
       <div
         className={cn(
-          "flex items-center justify-between border-b px-1 py-1 transition duration-300",
+          "flex items-center justify-between overflow-hidden border-b px-1 py-1 transition duration-300",
           showHeaderDivider ? "border-grid-bright" : "border-transparent"
         )}
       >
@@ -299,7 +304,7 @@ function ProjectSelector({
         isOpen={isOrgMenuOpen}
         overflowHidden
         className={cn(
-          "h-8 w-full justify-between overflow-hidden py-1 pl-1.5",
+          "h-8 w-full justify-between py-1 pl-1.5",
           user.isImpersonating && "border border-dashed border-amber-400"
         )}
       >
@@ -532,7 +537,9 @@ export function DevConnection() {
                   variant="minimal/small"
                   className="aspect-square h-7 p-1"
                   LeadingIcon={
-                    isConnected ? (
+                    isConnected === undefined ? (
+                      <CheckingConnectionIcon className="size-5" />
+                    ) : isConnected ? (
                       <ConnectedIcon className="size-5" />
                     ) : (
                       <DisconnectedIcon className="size-5" />
@@ -543,24 +550,34 @@ export function DevConnection() {
             </div>
           </TooltipTrigger>
           <TooltipContent side="right" className={"text-xs"}>
-            {isConnected ? "Your dev server is connected" : "Your dev server is not connected"}
+            {isConnected === undefined
+              ? "Checking connection..."
+              : isConnected
+              ? "Your dev server is connected"
+              : "Your dev server is not connected"}
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
       <DialogContent>
         <DialogHeader>
-          {isConnected ? "Your dev server is connected" : "Your dev server is not connected"}
+          {isConnected === undefined
+            ? "Checking connection..."
+            : isConnected
+            ? "Your dev server is connected"
+            : "Your dev server is not connected"}
         </DialogHeader>
         <div className="mt-2 flex flex-col gap-3 px-2">
           <div className="flex flex-col items-center justify-center gap-6 px-6 py-10">
             <img
-              src={isConnected ? connectedImage : disconnectedImage}
-              alt={isConnected ? "Connected" : "Disconnected"}
+              src={isConnected === true ? connectedImage : disconnectedImage}
+              alt={isConnected === true ? "Connected" : "Disconnected"}
               width={282}
               height={45}
             />
             <Paragraph variant="small" className={isConnected ? "text-success" : "text-error"}>
-              {isConnected
+              {isConnected === undefined
+                ? "Checking connection..."
+                : isConnected
                 ? "Your local dev server is connected to Trigger.dev"
                 : "Your local dev server is not connected to Trigger.dev"}
             </Paragraph>

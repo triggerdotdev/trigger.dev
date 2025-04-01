@@ -11,6 +11,7 @@ import { runtimeChecks } from "../utilities/runtimeCheck.js";
 import { getProjectClient, LoginResultOk } from "../utilities/session.js";
 import { login } from "./login.js";
 import { updateTriggerPackages } from "./update.js";
+import { createLockFile } from "../dev/lock.js";
 
 const DevCommandOptions = CommonCommandOptions.extend({
   debugOtel: z.boolean().default(false),
@@ -120,6 +121,8 @@ async function startDev(options: StartDevOptions) {
       displayedUpdateMessage = await updateTriggerPackages(options.cwd, { ...options }, true, true);
     }
 
+    const removeLockFile = await createLockFile(options.cwd);
+
     let devInstance: DevSessionInstance | undefined;
 
     printDevBanner(displayedUpdateMessage);
@@ -178,6 +181,7 @@ async function startDev(options: StartDevOptions) {
       stop: async () => {
         devInstance?.stop();
         await watcher?.stop();
+        removeLockFile();
       },
       waitUntilExit,
     };

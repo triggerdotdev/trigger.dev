@@ -383,7 +383,7 @@ export class TaskExecutor {
             reject(
               new InternalError({
                 code: TaskRunErrorCodes.MAX_DURATION_EXCEEDED,
-                message: `Task execution exceeded maximum duration of ${maxDuration}ms`,
+                message: `Run exceeded maximum compute time (maxDuration) of ${maxDuration} seconds`,
               })
             );
           });
@@ -1027,6 +1027,14 @@ export class TaskExecutor {
       }
     }
 
+    const defaultRetryResult =
+      typeof defaultDelay === "undefined"
+        ? { status: "noop" as const }
+        : {
+            status: "retry" as const,
+            retry: { timestamp: Date.now() + defaultDelay, delay: defaultDelay },
+          };
+
     // Check if retries are enabled in dev environment
     if (
       execution.environment.type === "DEVELOPMENT" &&
@@ -1036,11 +1044,17 @@ export class TaskExecutor {
       return { status: "skipped" };
     }
 
+    const taskCatchErrorHook = lifecycleHooks.getTaskCatchErrorHook(this.task.id);
+    const globalCatchErrorHooks = lifecycleHooks.getGlobalCatchErrorHooks();
+
+    if (globalCatchErrorHooks.length === 0 && !taskCatchErrorHook) {
+      return defaultRetryResult;
+    }
+
     return this._tracer.startActiveSpan(
       "catchError",
       async (span) => {
         // Try task-specific catch error hook first
-        const taskCatchErrorHook = lifecycleHooks.getTaskCatchErrorHook(this.task.id);
         if (taskCatchErrorHook) {
           const result = await taskCatchErrorHook({
             payload,
@@ -1060,7 +1074,6 @@ export class TaskExecutor {
         }
 
         // Try global catch error hooks in order
-        const globalCatchErrorHooks = lifecycleHooks.getGlobalCatchErrorHooks();
         for (const hook of globalCatchErrorHooks) {
           const result = await hook.fn({
             payload,
@@ -1080,12 +1093,7 @@ export class TaskExecutor {
         }
 
         // If no hooks handled the error, use default retry behavior
-        return typeof defaultDelay === "undefined"
-          ? { status: "noop" as const }
-          : {
-              status: "retry" as const,
-              retry: { timestamp: Date.now() + defaultDelay, delay: defaultDelay },
-            };
+        return defaultRetryResult;
       },
       {
         attributes: {

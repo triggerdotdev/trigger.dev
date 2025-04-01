@@ -201,7 +201,7 @@ export default function Page() {
                 <TypedAwait resolve={data}>
                   {(list) => (
                     <>
-                      {list.runs.length === 0 && !list.hasFilters ? (
+                      {list.runs.length === 0 && !list.hasAnyRuns ? (
                         list.possibleTasks.length === 0 ? (
                           <CreateFirstTaskInstructions />
                         ) : (
@@ -462,13 +462,13 @@ function RunTaskInstructions() {
       <StepNumber stepNumber="A" title="Trigger a test run" />
       <StepContentContainer>
         <Paragraph spacing>
-          You can perform a Run with any payload you want, or use one of our examples on the test
-          page.
+          Perform a test run with a payload directly from the dashboard.
         </Paragraph>
         <LinkButton
           to={v3TestPath(organization, project, environment)}
-          variant="primary/medium"
+          variant="secondary/medium"
           LeadingIcon={BeakerIcon}
+          leadingIconClassName="text-lime-500"
           className="inline-flex"
         >
           Test
@@ -483,15 +483,15 @@ function RunTaskInstructions() {
       <StepNumber stepNumber="B" title="Trigger your task for real" />
       <StepContentContainer>
         <Paragraph spacing>
-          Performing a real run depends on the type of Trigger your Task is using.
+          Performing a real run depends on the type of trigger your task is using.
         </Paragraph>
         <LinkButton
-          to="https://trigger.dev/docs"
-          variant="primary/medium"
+          to={docsPath("/triggering")}
+          variant="docs/medium"
           LeadingIcon={BookOpenIcon}
           className="inline-flex"
         >
-          How to run a task
+          How to trigger a task
         </LinkButton>
       </StepContentContainer>
     </MainCenteredContainer>

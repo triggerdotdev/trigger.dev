@@ -12,5 +12,7 @@ export function isKubernetesEnvironment(override?: boolean): boolean {
     env.KUBERNETES_SERVICE_PORT,
   ];
 
+  console.debug("k8sIndicators", { k8sIndicators });
+
   return k8sIndicators.some(Boolean);
 }

@@ -7,8 +7,7 @@ import { WorkerGroupService } from "~/v3/services/worker/workerGroupService.serv
 const RequestBodySchema = z.object({
   name: z.string().optional(),
   description: z.string().optional(),
-  projectId: z.string().optional(),
-  makeDefault: z.boolean().optional(),
+  makeDefaultForProjectId: z.string().optional(),
 });
 
 export async function action({ request }: ActionFunctionArgs) {
@@ -35,7 +34,7 @@ export async function action({ request }: ActionFunctionArgs) {
 
   try {
     const rawBody = await request.json();
-    const { name, description, projectId, makeDefault } = RequestBodySchema.parse(rawBody ?? {});
+    const { name, description, makeDefaultForProjectId } = RequestBodySchema.parse(rawBody ?? {});
 
     const service = new WorkerGroupService();
     const { workerGroup, token } = await service.createWorkerGroup({
@@ -43,14 +42,13 @@ export async function action({ request }: ActionFunctionArgs) {
       description,
     });
 
-    if (makeDefault && projectId) {
+    if (makeDefaultForProjectId) {
       await prisma.project.update({
         where: {
-          id: projectId,
+          id: makeDefaultForProjectId,
         },
         data: {
           defaultWorkerGroupId: workerGroup.id,
-          engine: "V2",
         },
       });
     }

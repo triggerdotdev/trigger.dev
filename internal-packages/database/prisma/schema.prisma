@@ -2064,7 +2064,7 @@ model TaskRunCheckpoint {
 
   type     TaskRunCheckpointType
   location String
-  imageRef String
+  imageRef String?
   reason   String?
   metadata String?
 
@@ -2917,6 +2917,8 @@ model TaskSchedule {
 
   ///Instances of the schedule that are active
   instances TaskScheduleInstance[]
+
+  lastRunTriggeredAt DateTime?
 
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   projectId String

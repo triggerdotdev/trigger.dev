@@ -5,9 +5,9 @@ import { z } from "zod";
 
 const MAX_STEPS = 10;
 
-export const agentLoopExample = schemaTask({
-  id: "agent-loop-example",
-  description: "Agent loop example",
+export const chatExample = schemaTask({
+  id: "chat-example",
+  description: "Chat example",
   schema: z.object({
     model: z.string().default("chatgpt-4o-latest"),
     prompt: z.string().default("Hello, how are you?"),
