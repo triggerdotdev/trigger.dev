@@ -110,15 +110,20 @@ export function useTodoChat({ accessToken }: { accessToken: string }) {
       triggerInstance.handle === null) ||
     triggerInstance.isLoading;
 
+  const dashboardUrl = triggerInstance.run
+    ? `${process.env.NEXT_PUBLIC_DASHBOARD_RUNS_URL}/${triggerInstance.run.id}`
+    : null;
+
   return {
     ...triggerInstance,
     messages,
     isSubmitting,
+    dashboardUrl,
   };
 }
 
 export function ChatContainer({ triggerToken }: { triggerToken: string }) {
-  const { messages, submit, isSubmitting } = useTodoChat({
+  const { messages, submit, isSubmitting, dashboardUrl } = useTodoChat({
     accessToken: triggerToken,
   });
 
@@ -130,6 +135,25 @@ export function ChatContainer({ triggerToken }: { triggerToken: string }) {
           <span className="ml-2 bg-green-100 text-green-800 text-xs px-2 py-0.5 rounded-full">
             Active
           </span>
+          {dashboardUrl && (
+            <a
+              href={dashboardUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="ml-2 text-xs text-blue-500 hover:text-blue-700 flex items-center gap-1"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-3 w-3"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+              >
+                <path d="M11 3a1 1 0 100 2h2.586l-6.293 6.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z" />
+                <path d="M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 10-2 0v3H5V7h3a1 1 0 000-2H5z" />
+              </svg>
+              View Run
+            </a>
+          )}
           <div className="ml-auto flex space-x-2">
             <button className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1 border border-gray-200 rounded">
               Clear
