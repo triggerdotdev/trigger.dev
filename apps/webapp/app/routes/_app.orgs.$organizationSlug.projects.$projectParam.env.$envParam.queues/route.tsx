@@ -439,14 +439,12 @@ export default function Page() {
             </div>
           ) : (
             <div className="grid place-items-center py-6 text-text-dimmed">
-              {code === "engine-version" ? (
-                totalQueues === 0 ? (
-                  <div className="pt-12">
-                    <QueuesHasNoTasks />
-                  </div>
-                ) : (
-                  <EngineVersionUpgradeCallout />
-                )
+              {totalQueues === 0 ? (
+                <div className="pt-12">
+                  <QueuesHasNoTasks />
+                </div>
+              ) : code === "engine-version" ? (
+                <EngineVersionUpgradeCallout />
               ) : (
                 <Callout variant="error">Something went wrong</Callout>
               )}
@@ -628,7 +626,11 @@ function EngineVersionUpgradeCallout() {
     <div className="mt-4 flex max-w-lg flex-col gap-4 rounded-sm border border-grid-bright bg-background-bright px-4">
       <div className="flex items-center justify-between gap-2 border-b border-grid-dimmed py-4">
         <h4 className="text-base text-text-bright">New queues table</h4>
-        <LinkButton LeadingIcon={BookOpenIcon} to={docsPath("v4-upgrade")} variant={"docs/small"}>
+        <LinkButton
+          LeadingIcon={BookOpenIcon}
+          to={docsPath("upgrade-to-v4")}
+          variant={"docs/small"}
+        >
           Upgrade guide
         </LinkButton>
       </div>
