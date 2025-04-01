@@ -45,6 +45,18 @@ export class DockerWorkloadManager implements WorkloadManager {
       runArgs.push(`--env=TRIGGER_WARM_START_URL=${this.opts.warmStartUrl}`);
     }
 
+    if (this.opts.heartbeatIntervalSeconds) {
+      runArgs.push(
+        `--env=TRIGGER_HEARTBEAT_INTERVAL_SECONDS=${this.opts.heartbeatIntervalSeconds}`
+      );
+    }
+
+    if (this.opts.snapshotPollIntervalSeconds) {
+      runArgs.push(
+        `--env=TRIGGER_SNAPSHOT_POLL_INTERVAL_SECONDS=${this.opts.snapshotPollIntervalSeconds}`
+      );
+    }
+
     if (env.ENFORCE_MACHINE_PRESETS) {
       runArgs.push(`--cpus=${opts.machine.cpu}`, `--memory=${opts.machine.memory}G`);
       runArgs.push(`--env=TRIGGER_MACHINE_CPU=${opts.machine.cpu}`);

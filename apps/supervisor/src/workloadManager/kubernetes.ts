@@ -134,6 +134,22 @@ export class KubernetesWorkloadManager implements WorkloadManager {
                   ...(this.opts.warmStartUrl
                     ? [{ name: "TRIGGER_WARM_START_URL", value: this.opts.warmStartUrl }]
                     : []),
+                  ...(this.opts.heartbeatIntervalSeconds
+                    ? [
+                        {
+                          name: "TRIGGER_HEARTBEAT_INTERVAL_SECONDS",
+                          value: `${this.opts.heartbeatIntervalSeconds}`,
+                        },
+                      ]
+                    : []),
+                  ...(this.opts.snapshotPollIntervalSeconds
+                    ? [
+                        {
+                          name: "TRIGGER_SNAPSHOT_POLL_INTERVAL_SECONDS",
+                          value: `${this.opts.snapshotPollIntervalSeconds}`,
+                        },
+                      ]
+                    : []),
                 ],
               },
             ],
