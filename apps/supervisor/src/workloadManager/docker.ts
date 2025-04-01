@@ -45,6 +45,10 @@ export class DockerWorkloadManager implements WorkloadManager {
       runArgs.push(`--env=TRIGGER_WARM_START_URL=${this.opts.warmStartUrl}`);
     }
 
+    if (this.opts.metadataUrl) {
+      runArgs.push(`--env=TRIGGER_METADATA_URL=${this.opts.metadataUrl}`);
+    }
+
     if (this.opts.heartbeatIntervalSeconds) {
       runArgs.push(
         `--env=TRIGGER_HEARTBEAT_INTERVAL_SECONDS=${this.opts.heartbeatIntervalSeconds}`

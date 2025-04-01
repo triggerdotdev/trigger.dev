@@ -134,6 +134,9 @@ export class KubernetesWorkloadManager implements WorkloadManager {
                   ...(this.opts.warmStartUrl
                     ? [{ name: "TRIGGER_WARM_START_URL", value: this.opts.warmStartUrl }]
                     : []),
+                  ...(this.opts.metadataUrl
+                    ? [{ name: "TRIGGER_METADATA_URL", value: this.opts.metadataUrl }]
+                    : []),
                   ...(this.opts.heartbeatIntervalSeconds
                     ? [
                         {

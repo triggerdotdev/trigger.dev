@@ -61,6 +61,7 @@ class ManagedSupervisor {
       workloadApiDomain: env.TRIGGER_WORKLOAD_API_DOMAIN,
       workloadApiPort: env.TRIGGER_WORKLOAD_API_PORT_EXTERNAL,
       warmStartUrl: this.warmStartUrl,
+      metadataUrl: env.TRIGGER_METADATA_URL,
       imagePullSecrets: env.KUBERNETES_IMAGE_PULL_SECRETS?.split(","),
       heartbeatIntervalSeconds: env.RUNNER_HEARTBEAT_INTERVAL_SECONDS,
       snapshotPollIntervalSeconds: env.RUNNER_SNAPSHOT_POLL_INTERVAL_SECONDS,
