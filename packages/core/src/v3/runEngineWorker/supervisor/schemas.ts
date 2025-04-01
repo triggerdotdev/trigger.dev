@@ -73,8 +73,8 @@ export const WorkerApiDequeueResponseBody = DequeuedMessage.array();
 export type WorkerApiDequeueResponseBody = z.infer<typeof WorkerApiDequeueResponseBody>;
 
 export const WorkerApiRunHeartbeatRequestBody = z.object({
-  cpu: z.number(),
-  memory: z.number(),
+  cpu: z.number().optional(),
+  memory: z.number().optional(),
 });
 export type WorkerApiRunHeartbeatRequestBody = z.infer<typeof WorkerApiRunHeartbeatRequestBody>;
 

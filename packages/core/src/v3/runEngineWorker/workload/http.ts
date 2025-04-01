@@ -41,7 +41,7 @@ export class WorkloadHttpClient {
     this.apiUrl = apiUrl.replace(/\/$/, "");
   }
 
-  async heartbeatRun(runId: string, snapshotId: string, body: WorkloadHeartbeatRequestBody) {
+  async heartbeatRun(runId: string, snapshotId: string, body?: WorkloadHeartbeatRequestBody) {
     return wrapZodFetch(
       WorkloadHeartbeatResponseBody,
       `${this.apiUrl}/api/v1/workload-actions/runs/${runId}/snapshots/${snapshotId}/heartbeat`,
@@ -51,7 +51,7 @@ export class WorkloadHttpClient {
           ...this.defaultHeaders,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(body),
+        body: JSON.stringify(body ?? {}),
       }
     );
   }

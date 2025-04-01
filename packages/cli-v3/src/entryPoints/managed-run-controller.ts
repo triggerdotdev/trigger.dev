@@ -220,11 +220,7 @@ class ManagedRunController {
 
         const response = await this.httpClient.heartbeatRun(
           this.runFriendlyId,
-          this.snapshotFriendlyId,
-          {
-            cpu: 0,
-            memory: 0,
-          }
+          this.snapshotFriendlyId
         );
 
         if (!response.success) {
