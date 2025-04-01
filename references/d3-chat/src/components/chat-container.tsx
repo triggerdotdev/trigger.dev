@@ -175,7 +175,12 @@ export function ChatContainer({ triggerToken }: { triggerToken: string }) {
                   output={message.output}
                 />
               ) : (
-                <ChatMessage key={message.id} role={message.role} content={message.content} />
+                <ChatMessage
+                  key={message.id}
+                  role={message.role}
+                  content={message.content}
+                  id={message.id}
+                />
               )
             )}
           </div>

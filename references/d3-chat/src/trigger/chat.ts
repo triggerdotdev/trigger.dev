@@ -9,6 +9,7 @@ import { tool } from "ai";
 import { ai } from "@trigger.dev/sdk/ai";
 import { python } from "@trigger.dev/python";
 import { sendSQLApprovalMessage } from "../lib/slack";
+import { chartTool } from "./sandbox";
 
 const crawlerTask = schemaTask({
   id: "crawler",
@@ -141,6 +142,7 @@ export type TOOLS = {
   getUserTodos: typeof getUserTodos;
   crawler: typeof crawler;
   getUserId: typeof getUserId;
+  chart: typeof chartTool;
 };
 
 export type STREAMS = {
@@ -218,6 +220,7 @@ export const todoChat = schemaTask({
         getUserTodos,
         crawler,
         getUserId,
+        chart: chartTool,
       },
       experimental_telemetry: {
         isEnabled: true,
