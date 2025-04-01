@@ -81,7 +81,7 @@ import { SideMenuSection } from "./SideMenuSection";
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 export type SideMenuProject = Pick<
   MatchedProject,
-  "id" | "name" | "slug" | "version" | "environments"
+  "id" | "name" | "slug" | "version" | "environments" | "engine"
 >;
 export type SideMenuEnvironment = MatchedEnvironment;
 
@@ -153,7 +153,7 @@ export function SideMenu({
                 project={project}
                 environment={environment}
               />
-              {environment.type === "DEVELOPMENT" && (
+              {environment.type === "DEVELOPMENT" && project.engine === "V2" && (
                 <DevConnection>
                   {({ isConnected }) => (
                     <TooltipProvider disableHoverableContent={true}>
