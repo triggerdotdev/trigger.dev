@@ -119,12 +119,27 @@ const getUserTodos = tool({
   },
 });
 
+const getUserId = tool({
+  description: "Use this tool to get the user_id for the current user",
+  parameters: z.object({}),
+  execute: async () => {
+    const userId = metadata.get("user_id");
+
+    if (!userId) {
+      throw new Error("No user_id found");
+    }
+
+    return userId;
+  },
+});
+
 export type TOOLS = {
   queryApproval: typeof queryApproval;
   executeSql: typeof executeSql;
   generateId: typeof generateId;
   getUserTodos: typeof getUserTodos;
   crawler: typeof crawler;
+  getUserId: typeof getUserId;
 };
 
 export type STREAMS = {
@@ -144,6 +159,8 @@ export const todoChat = schemaTask({
     userId: z.string(),
   }),
   run: async ({ model, input, userId }) => {
+    metadata.set("user_id", userId);
+
     const system = `
       You are a SQL (postgres) expert who can turn natural language descriptions for a todo app 
       into a SQL query which can then be executed against a SQL database. Here is the schema:
@@ -164,8 +181,6 @@ export const todoChat = schemaTask({
       );
 
       Only Create, Read, Update, and Delete operations are allowed.
-
-      The input will be a user_id and a prompt.
 
       The output will be a SQL query.
 
@@ -188,11 +203,7 @@ export const todoChat = schemaTask({
       If the user specifies a URL, you can use the crawler tool to crawl the URL and return the markdown, helping inform the SQL query.
     `;
 
-    const prompt = `
-      User ${userId} has the following prompt: ${input}
-
-      Generate a SQL query to execute.
-    `;
+    const prompt = input;
 
     const result = streamText({
       model: openai(model),
@@ -205,6 +216,7 @@ export const todoChat = schemaTask({
         generateId,
         getUserTodos,
         crawler,
+        getUserId,
       },
       experimental_telemetry: {
         isEnabled: true,
