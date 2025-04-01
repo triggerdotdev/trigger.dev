@@ -96,7 +96,13 @@ export function useDevPresence() {
 /**
  * We need this for the legacy v1 engine, where we show the banner after a delay if there are no events.
  */
-export function useCrossEngineIsConnected({ logCount }: { logCount: number }) {
+export function useCrossEngineIsConnected({
+  isCompleted,
+  logCount,
+}: {
+  isCompleted: boolean;
+  logCount: number;
+}) {
   const project = useProject();
   const environment = useEnvironment();
   const { isConnected } = useDevPresence();
@@ -111,6 +117,11 @@ export function useCrossEngineIsConnected({ logCount }: { logCount: number }) {
     }
 
     if (project.engine === "V1") {
+      if (isCompleted) {
+        setCrossEngineIsConnected(true);
+        return;
+      }
+
       if (logCount <= 1) {
         const timer = setTimeout(() => {
           setCrossEngineIsConnected(false);
@@ -120,7 +131,7 @@ export function useCrossEngineIsConnected({ logCount }: { logCount: number }) {
         setCrossEngineIsConnected(true);
       }
     }
-  }, [environment.type, project.engine, logCount, isConnected]);
+  }, [environment.type, project.engine, logCount, isConnected, isCompleted]);
 
   return crossEngineIsConnected;
 }

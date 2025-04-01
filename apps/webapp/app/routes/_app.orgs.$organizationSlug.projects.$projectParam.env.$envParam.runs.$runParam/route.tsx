@@ -188,7 +188,10 @@ export default function Page() {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
-  const isConnected = useCrossEngineIsConnected({ logCount: trace?.events.length ?? 0 });
+  const isConnected = useCrossEngineIsConnected({
+    logCount: trace?.events.length ?? 0,
+    isCompleted: run.completedAt !== null,
+  });
 
   return (
     <>
