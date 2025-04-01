@@ -46,14 +46,14 @@ export class QueueListPresenter extends BasePresenter {
             code: "engine-version",
             totalQueues: 1,
           };
-        } else {
-          return {
-            success: false as const,
-            code: "engine-version",
-            totalQueues,
-          };
         }
       }
+
+      return {
+        success: false as const,
+        code: "engine-version",
+        totalQueues,
+      };
     }
 
     return {
