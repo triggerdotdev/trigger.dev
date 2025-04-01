@@ -2,7 +2,7 @@ import { WorkerInstanceGroup, WorkerInstanceGroupType } from "@trigger.dev/datab
 import { WithRunEngine } from "../baseService.server";
 import { WorkerGroupTokenService } from "./workerGroupTokenService.server";
 import { logger } from "~/services/logger.server";
-import { makeFlags, makeSetFlags } from "~/v3/featureFlags.server";
+import { FEATURE_FLAG, makeFlags, makeSetFlags } from "~/v3/featureFlags.server";
 
 export class WorkerGroupService extends WithRunEngine {
   private readonly defaultNamePrefix = "worker_group";
@@ -49,14 +49,14 @@ export class WorkerGroupService extends WithRunEngine {
 
       const getFlag = makeFlags(this._prisma);
       const defaultWorkerInstanceGroupId = await getFlag({
-        key: "defaultWorkerInstanceGroupId",
+        key: FEATURE_FLAG.defaultWorkerInstanceGroupId,
       });
 
       // If there's no global default yet we should set it to the new worker group
       if (!defaultWorkerInstanceGroupId) {
         const setFlag = makeSetFlags(this._prisma);
         await setFlag({
-          key: "defaultWorkerInstanceGroupId",
+          key: FEATURE_FLAG.defaultWorkerInstanceGroupId,
           value: workerGroup.id,
         });
       }
@@ -169,7 +169,7 @@ export class WorkerGroupService extends WithRunEngine {
     const flags = makeFlags(this._prisma);
 
     const defaultWorkerInstanceGroupId = await flags({
-      key: "defaultWorkerInstanceGroupId",
+      key: FEATURE_FLAG.defaultWorkerInstanceGroupId,
     });
 
     if (!defaultWorkerInstanceGroupId) {

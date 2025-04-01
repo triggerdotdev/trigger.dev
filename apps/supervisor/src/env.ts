@@ -1,14 +1,7 @@
 import { randomUUID } from "crypto";
 import { env as stdEnv } from "std-env";
 import { z } from "zod";
-
-const BoolEnv = z.preprocess((val) => {
-  if (typeof val !== "string") {
-    return val;
-  }
-
-  return ["true", "1"].includes(val.toLowerCase().trim());
-}, z.boolean());
+import { AdditionalEnvVars, BoolEnv } from "./envUtil.js";
 
 const Env = z.object({
   // This will come from `spec.nodeName` in k8s
@@ -29,6 +22,11 @@ const Env = z.object({
   TRIGGER_WORKLOAD_API_HOST_INTERNAL: z.string().default("0.0.0.0"),
   TRIGGER_WORKLOAD_API_PORT_INTERNAL: z.coerce.number().default(8020), // This is the port the workload API listens on
   TRIGGER_WORKLOAD_API_PORT_EXTERNAL: z.coerce.number().default(8020), // This is the exposed port passed to the run controller
+
+  // Runner settings
+  RUNNER_HEARTBEAT_INTERVAL_SECONDS: z.coerce.number().optional(),
+  RUNNER_SNAPSHOT_POLL_INTERVAL_SECONDS: z.coerce.number().optional(),
+  RUNNER_ADDITIONAL_ENV_VARS: AdditionalEnvVars, // optional (csv)
 
   // Dequeue settings (provider mode)
   TRIGGER_DEQUEUE_ENABLED: BoolEnv.default("true"),

@@ -2,7 +2,7 @@ import { SupervisorSession } from "@trigger.dev/core/v3/workers";
 import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
 import { env } from "./env.js";
 import { WorkloadServer } from "./workloadServer/index.js";
-import { type WorkloadManager } from "./workloadManager/types.js";
+import type { WorkloadManagerOptions, WorkloadManager } from "./workloadManager/types.js";
 import Docker from "dockerode";
 import { z } from "zod";
 import { type DequeuedMessage } from "@trigger.dev/core/v3";
@@ -50,15 +50,22 @@ class ManagedSupervisor {
       console.debug("[ManagedSupervisor] Starting up", { envWithoutSecrets });
     }
 
-    const workloadApiProtocol = env.TRIGGER_WORKLOAD_API_PROTOCOL;
-    const workloadApiDomain = env.TRIGGER_WORKLOAD_API_DOMAIN;
-    const workloadApiPortExternal = env.TRIGGER_WORKLOAD_API_PORT_EXTERNAL;
-
     if (this.warmStartUrl) {
       this.logger.log("[ManagedWorker] 🔥 Warm starts enabled", {
         warmStartUrl: this.warmStartUrl,
       });
     }
+
+    const workloadManagerOptions = {
+      workloadApiProtocol: env.TRIGGER_WORKLOAD_API_PROTOCOL,
+      workloadApiDomain: env.TRIGGER_WORKLOAD_API_DOMAIN,
+      workloadApiPort: env.TRIGGER_WORKLOAD_API_PORT_EXTERNAL,
+      warmStartUrl: this.warmStartUrl,
+      imagePullSecrets: env.KUBERNETES_IMAGE_PULL_SECRETS?.split(","),
+      heartbeatIntervalSeconds: env.RUNNER_HEARTBEAT_INTERVAL_SECONDS,
+      snapshotPollIntervalSeconds: env.RUNNER_SNAPSHOT_POLL_INTERVAL_SECONDS,
+      additionalEnvVars: env.RUNNER_ADDITIONAL_ENV_VARS,
+    } satisfies WorkloadManagerOptions;
 
     if (this.isKubernetes) {
       if (env.POD_CLEANER_ENABLED) {
@@ -92,21 +99,10 @@ class ManagedSupervisor {
       }
 
       this.resourceMonitor = new KubernetesResourceMonitor(createK8sApi(), "");
-      this.workloadManager = new KubernetesWorkloadManager({
-        workloadApiProtocol,
-        workloadApiDomain,
-        workloadApiPort: workloadApiPortExternal,
-        warmStartUrl: this.warmStartUrl,
-        imagePullSecrets: env.KUBERNETES_IMAGE_PULL_SECRETS?.split(","),
-      });
+      this.workloadManager = new KubernetesWorkloadManager(workloadManagerOptions);
     } else {
       this.resourceMonitor = new DockerResourceMonitor(new Docker());
-      this.workloadManager = new DockerWorkloadManager({
-        workloadApiProtocol,
-        workloadApiDomain,
-        workloadApiPort: workloadApiPortExternal,
-        warmStartUrl: this.warmStartUrl,
-      });
+      this.workloadManager = new DockerWorkloadManager(workloadManagerOptions);
     }
 
     this.workerSession = new SupervisorSession({

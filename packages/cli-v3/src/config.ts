@@ -173,7 +173,7 @@ async function resolveConfig(
     ["run_engine_v2" as const].concat(config.compatibilityFlags ?? [])
   );
 
-  const defaultRuntime: BuildRuntime = features.run_engine_v2 ? "node-22" : DEFAULT_RUNTIME;
+  const defaultRuntime: BuildRuntime = features.run_engine_v2 ? "node" : DEFAULT_RUNTIME;
 
   const mergedConfig = defu(
     {

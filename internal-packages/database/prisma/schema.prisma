@@ -2064,7 +2064,7 @@ model TaskRunCheckpoint {
 
   type     TaskRunCheckpointType
   location String
-  imageRef String
+  imageRef String?
   reason   String?
   metadata String?
 

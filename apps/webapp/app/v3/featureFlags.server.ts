@@ -1,8 +1,12 @@
 import { z } from "zod";
 import { prisma, PrismaClientOrTransaction } from "~/db.server";
 
+export const FEATURE_FLAG = {
+  defaultWorkerInstanceGroupId: "defaultWorkerInstanceGroupId",
+} as const;
+
 const FeatureFlagCatalog = {
-  defaultWorkerInstanceGroupId: z.string(),
+  [FEATURE_FLAG.defaultWorkerInstanceGroupId]: z.string(),
 };
 
 type FeatureFlagKey = keyof typeof FeatureFlagCatalog;

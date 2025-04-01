@@ -6,6 +6,9 @@ export interface WorkloadManagerOptions {
   workloadApiPort: number;
   warmStartUrl?: string;
   imagePullSecrets?: string[];
+  heartbeatIntervalSeconds?: number;
+  snapshotPollIntervalSeconds?: number;
+  additionalEnvVars?: Record<string, string>;
 }
 
 export interface WorkloadManager {
