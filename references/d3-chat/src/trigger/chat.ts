@@ -44,7 +44,7 @@ const queryApprovalTask = schemaTask({
 
     const token = await wait.createToken({
       tags: [`user:${userId}`, "approval"],
-      timeout: "1m",
+      timeout: "5m", // timeout in 5 minutes
     });
 
     logger.info("waiting for approval", {
@@ -91,6 +91,7 @@ const executeSql = tool({
     query: z.string().describe("The SQL query to execute"),
   }),
   execute: async ({ query }) => {
+    // DANGER: This is a dangerous tool, it can execute arbitrary SQL queries.
     const result = await sql.query(query);
 
     return result.rows;
