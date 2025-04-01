@@ -93,6 +93,38 @@ export function useDevPresence() {
   return context;
 }
 
+/**
+ * We need this for the legacy v1 engine, where we show the banner after a delay if there are no events.
+ */
+export function useCrossEngineIsConnected({ logCount }: { logCount: number }) {
+  const project = useProject();
+  const environment = useEnvironment();
+  const { isConnected } = useDevPresence();
+  const [crossEngineIsConnected, setCrossEngineIsConnected] = useState<boolean | undefined>(
+    undefined
+  );
+
+  useEffect(() => {
+    if (project.engine === "V2") {
+      setCrossEngineIsConnected(isConnected);
+      return;
+    }
+
+    if (project.engine === "V1") {
+      if (logCount <= 1) {
+        const timer = setTimeout(() => {
+          setCrossEngineIsConnected(false);
+        }, 5000);
+        return () => clearTimeout(timer);
+      } else {
+        setCrossEngineIsConnected(true);
+      }
+    }
+  }, [environment.type, project.engine, logCount, isConnected]);
+
+  return crossEngineIsConnected;
+}
+
 export function ConnectionIcon({ isConnected }: { isConnected: boolean | undefined }) {
   if (isConnected === undefined) {
     return <CheckingConnectionIcon className="size-5" />;
@@ -104,66 +136,54 @@ export function ConnectionIcon({ isConnected }: { isConnected: boolean | undefin
   );
 }
 
-export function DevConnection({
-  children,
-}: {
-  children: (props: { isConnected: boolean | undefined }) => React.ReactNode;
-}) {
-  const { isConnected } = useDevPresence();
-
+export function DevPresencePanel({ isConnected }: { isConnected: boolean | undefined }) {
   return (
-    <Dialog>
-      {children({ isConnected })}
-      <DialogContent>
-        <DialogHeader>
-          {isConnected === undefined
-            ? "Checking connection..."
-            : isConnected
-            ? "Your dev server is connected"
-            : "Your dev server is not connected"}
-        </DialogHeader>
-        <div className="mt-2 flex flex-col gap-3 px-2">
-          <div className="flex flex-col items-center justify-center gap-6 px-6 py-10">
-            <img
-              src={isConnected === true ? connectedImage : disconnectedImage}
-              alt={isConnected === true ? "Connected" : "Disconnected"}
-              width={282}
-              height={45}
-            />
-            <Paragraph variant="small" className={isConnected ? "text-success" : "text-error"}>
-              {isConnected === undefined
-                ? "Checking connection..."
-                : isConnected
-                ? "Your local dev server is connected to Trigger.dev"
-                : "Your local dev server is not connected to Trigger.dev"}
+    <DialogContent>
+      <DialogHeader>
+        {isConnected === undefined
+          ? "Checking connection..."
+          : isConnected
+          ? "Your dev server is connected"
+          : "Your dev server is not connected"}
+      </DialogHeader>
+      <div className="mt-2 flex flex-col gap-3 px-2">
+        <div className="flex flex-col items-center justify-center gap-6 px-6 py-10">
+          <img
+            src={isConnected === true ? connectedImage : disconnectedImage}
+            alt={isConnected === true ? "Connected" : "Disconnected"}
+            width={282}
+            height={45}
+          />
+          <Paragraph variant="small" className={isConnected ? "text-success" : "text-error"}>
+            {isConnected === undefined
+              ? "Checking connection..."
+              : isConnected
+              ? "Your local dev server is connected to Trigger.dev"
+              : "Your local dev server is not connected to Trigger.dev"}
+          </Paragraph>
+        </div>
+        {isConnected ? null : (
+          <div className="space-y-3">
+            <PackageManagerProvider>
+              <TriggerDevStepV3 title="Run this command to connect" />
+            </PackageManagerProvider>
+            <Paragraph variant="small">
+              Run this CLI <InlineCode variant="extra-small">dev</InlineCode> command to connect to
+              the Trigger.dev servers to start developing locally. Keep it running while you develop
+              to stay connected. Learn more in the{" "}
+              <TextLink to={docsPath("cli-dev")}>CLI docs</TextLink>.
             </Paragraph>
           </div>
-          {isConnected ? null : (
-            <div className="space-y-3">
-              <PackageManagerProvider>
-                <TriggerDevStepV3 title="Run this command to connect" />
-              </PackageManagerProvider>
-              <Paragraph variant="small">
-                Run this CLI <InlineCode variant="extra-small">dev</InlineCode> command to connect
-                to the Trigger.dev servers to start developing locally. Keep it running while you
-                develop to stay connected. Learn more in the{" "}
-                <TextLink to={docsPath("cli-dev")}>CLI docs</TextLink>.
-              </Paragraph>
-            </div>
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
+        )}
+      </div>
+    </DialogContent>
   );
 }
 
-export function DevPresenceBanner() {
-  const environment = useEnvironment();
-  const { isConnected } = useDevPresence();
-
+export function DevDisconnectedBanner({ isConnected }: { isConnected: boolean | undefined }) {
   return (
-    <AnimatePresence>
-      {environment.type === "DEVELOPMENT" && !isConnected && (
+    <Dialog>
+      <AnimatePresence>
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -171,21 +191,20 @@ export function DevPresenceBanner() {
           transition={{ duration: 0.3 }}
           className="flex"
         >
-          <DevConnection>
-            {({ isConnected }) => (
-              <DialogTrigger asChild>
-                <Button
-                  variant="minimal/small"
-                  className="py-1 pl-1 pr-2 text-error"
-                  LeadingIcon={<ConnectionIcon isConnected={isConnected} />}
-                >
-                  Your local dev server is not connected to Trigger.dev
-                </Button>
-              </DialogTrigger>
-            )}
-          </DevConnection>
+          {isConnected === false && (
+            <DialogTrigger asChild>
+              <Button
+                variant="minimal/small"
+                className="py-1 pl-1 pr-2 text-error"
+                LeadingIcon={<ConnectionIcon isConnected={false} />}
+              >
+                Your local dev server is not connected to Trigger.dev
+              </Button>
+            </DialogTrigger>
+          )}
         </motion.div>
-      )}
-    </AnimatePresence>
+      </AnimatePresence>
+      <DevPresencePanel isConnected={isConnected} />
+    </Dialog>
   );
 }

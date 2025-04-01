@@ -27,7 +27,11 @@ import { useHotkeys } from "react-hotkeys-hook";
 import { DisconnectedIcon } from "~/assets/icons/ConnectionIcons";
 import { ShowParentIcon, ShowParentIconSelected } from "~/assets/icons/ShowParentIcon";
 import tileBgPath from "~/assets/images/error-banner-tile@2x.png";
-import { DevPresenceBanner, useDevPresence } from "~/components/DevPresence";
+import {
+  DevDisconnectedBanner,
+  useCrossEngineIsConnected,
+  useDevPresence,
+} from "~/components/DevPresence";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { PageBody } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
@@ -184,6 +188,7 @@ export default function Page() {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
+  const isConnected = useCrossEngineIsConnected({ logCount: trace?.events.length ?? 0 });
 
   return (
     <>
@@ -195,19 +200,7 @@ export default function Page() {
           }}
           title={`Run #${run.number}`}
         />
-        <AnimatePresence>
-          {environment.type === "DEVELOPMENT" && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.3 }}
-              className="flex"
-            >
-              <DevPresenceBanner />
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {environment.type === "DEVELOPMENT" && <DevDisconnectedBanner isConnected={isConnected} />}
         <PageAccessories>
           <AdminDebugTooltip>
             <Property.Table>

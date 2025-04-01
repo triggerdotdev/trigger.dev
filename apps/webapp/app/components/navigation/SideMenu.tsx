@@ -55,12 +55,11 @@ import {
   v3UsagePath,
   v3WaitpointTokensPath,
 } from "~/utils/pathBuilder";
-
 import { FreePlanUsage } from "../billing/FreePlanUsage";
-import { ConnectionIcon, DevConnection } from "../DevPresence";
+import { ConnectionIcon, DevPresencePanel, useDevPresence } from "../DevPresence";
 import { ImpersonationBanner } from "../ImpersonationBanner";
 import { Button, ButtonContent, LinkButton } from "../primitives/Buttons";
-import { DialogTrigger } from "../primitives/Dialog";
+import { Dialog, DialogTrigger } from "../primitives/Dialog";
 import { Paragraph } from "../primitives/Paragraph";
 import {
   Popover,
@@ -105,6 +104,7 @@ export function SideMenu({
   const borderRef = useRef<HTMLDivElement>(null);
   const [showHeaderDivider, setShowHeaderDivider] = useState(false);
   const currentPlan = useCurrentPlan();
+  const { isConnected } = useDevPresence();
   const isFreeUser = currentPlan?.v3Subscription?.isPaying === false;
 
   useEffect(() => {
@@ -154,32 +154,31 @@ export function SideMenu({
                 environment={environment}
               />
               {environment.type === "DEVELOPMENT" && project.engine === "V2" && (
-                <DevConnection>
-                  {({ isConnected }) => (
-                    <TooltipProvider disableHoverableContent={true}>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <div className="inline-flex">
-                            <DialogTrigger asChild>
-                              <Button
-                                variant="minimal/small"
-                                className="aspect-square h-7 p-1"
-                                LeadingIcon={<ConnectionIcon isConnected={isConnected} />}
-                              />
-                            </DialogTrigger>
-                          </div>
-                        </TooltipTrigger>
-                        <TooltipContent side="right" className={"text-xs"}>
-                          {isConnected === undefined
-                            ? "Checking connection..."
-                            : isConnected
-                            ? "Your dev server is connected"
-                            : "Your dev server is not connected"}
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  )}
-                </DevConnection>
+                <Dialog>
+                  <TooltipProvider disableHoverableContent={true}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="inline-flex">
+                          <DialogTrigger asChild>
+                            <Button
+                              variant="minimal/small"
+                              className="aspect-square h-7 p-1"
+                              LeadingIcon={<ConnectionIcon isConnected={isConnected} />}
+                            />
+                          </DialogTrigger>
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent side="right" className={"text-xs"}>
+                        {isConnected === undefined
+                          ? "Checking connection..."
+                          : isConnected
+                          ? "Your dev server is connected"
+                          : "Your dev server is not connected"}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                  <DevPresencePanel isConnected={isConnected} />
+                </Dialog>
               )}
             </div>
           </div>
