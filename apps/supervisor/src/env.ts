@@ -26,6 +26,7 @@ const Env = z.object({
   // Runner settings
   RUNNER_HEARTBEAT_INTERVAL_SECONDS: z.coerce.number().optional(),
   RUNNER_SNAPSHOT_POLL_INTERVAL_SECONDS: z.coerce.number().optional(),
+  RUNNER_ADDITIONAL_ENV_VARS: AdditionalEnvVars, // optional (csv)
 
   // Dequeue settings (provider mode)
   TRIGGER_DEQUEUE_ENABLED: BoolEnv.default("true"),
@@ -68,9 +69,6 @@ const Env = z.object({
 
   // Debug
   DEBUG: BoolEnv.default(false),
-
-  // Additional environment variables (CSV format)
-  RUNNER_ADDITIONAL_ENV_VARS: AdditionalEnvVars,
 });
 
 export const env = Env.parse(stdEnv);
