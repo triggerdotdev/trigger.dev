@@ -4,10 +4,26 @@ import { sql } from "@vercel/postgres";
 import { streamText, TextStreamPart } from "ai";
 import { nanoid } from "nanoid";
 import { z } from "zod";
-import { WebClient } from "@slack/web-api";
 import { QueryApproval } from "./schemas";
 import { tool } from "ai";
 import { ai } from "@trigger.dev/sdk/ai";
+import { python } from "@trigger.dev/python";
+import { sendSQLApprovalMessage } from "../lib/slack";
+
+const crawlerTask = schemaTask({
+  id: "crawler",
+  description: "Crawl a URL and return the markdown",
+  schema: z.object({
+    url: z.string().describe("The URL to crawl"),
+  }),
+  run: async ({ url }) => {
+    const results = await python.runScript("./src/trigger/python/crawler.py", [url]);
+
+    return results.stdout;
+  },
+});
+
+const crawler = ai.tool(crawlerTask);
 
 const queryApprovalTask = schemaTask({
   id: "query-approval",
@@ -108,6 +124,7 @@ export type TOOLS = {
   executeSql: typeof executeSql;
   generateId: typeof generateId;
   getUserTodos: typeof getUserTodos;
+  crawler: typeof crawler;
 };
 
 export type STREAMS = {
@@ -156,7 +173,7 @@ export const todoChat = schemaTask({
       If the queryApproval tool returns false, you will need to stop and return an error message.
       If the queryApproval tool returns true, you will need to execute the query using the executeSql tool.
 
-      The executeSql tool will return the results of the query
+      The executeSql tool will return the results of the query.
 
       The current time is ${new Date().toISOString()}.
 
@@ -167,6 +184,8 @@ export const todoChat = schemaTask({
 
       After successfully executing a mutation query, get the latest user todos and summarize them along with what has been updated.
       After successfully executing a read query, summarize the results in a human readable format.
+
+      If the user specifies a URL, you can use the crawler tool to crawl the URL and return the markdown, helping inform the SQL query.
     `;
 
     const prompt = `
@@ -185,6 +204,7 @@ export const todoChat = schemaTask({
         executeSql,
         generateId,
         getUserTodos,
+        crawler,
       },
       experimental_telemetry: {
         isEnabled: true,
@@ -204,115 +224,3 @@ export const todoChat = schemaTask({
     return textParts.join("");
   },
 });
-
-// Initialize the Slack client
-const slack = new WebClient(process.env.SLACK_BOT_TOKEN);
-
-type SendApprovalMessageParams = {
-  query: string;
-  userId: string;
-  tokenId: string;
-  publicAccessToken: string;
-  input: string;
-};
-
-export async function sendSQLApprovalMessage({
-  query,
-  userId,
-  tokenId,
-  publicAccessToken,
-  input,
-}: SendApprovalMessageParams) {
-  return await logger.trace(
-    "sendSQLApprovalMessage",
-    async (span) => {
-      const response = await slack.chat.postMessage({
-        channel: process.env.SLACK_CHANNEL_ID!,
-        text: `SQL Query Approval Required for user ${userId}`, // Fallback text for notifications
-        blocks: [
-          {
-            type: "header",
-            text: {
-              type: "plain_text",
-              text: "🚨 SQL Query Approval Required",
-              emoji: true,
-            },
-          },
-          {
-            type: "context",
-            elements: [
-              {
-                type: "mrkdwn",
-                text: `*Requested by:* <@${userId}>`,
-              },
-            ],
-          },
-          {
-            type: "section",
-            text: {
-              type: "mrkdwn",
-              text: "*User Request:*\n" + input,
-            },
-          },
-          {
-            type: "section",
-            text: {
-              type: "mrkdwn",
-              text: "*Generated Query:*\n```sql\n" + query + "\n```",
-            },
-          },
-          {
-            type: "actions",
-            block_id: "sql_approval_actions",
-            elements: [
-              {
-                type: "button",
-                text: {
-                  type: "plain_text",
-                  text: "Approve ✅",
-                  emoji: true,
-                },
-                style: "primary",
-                value: JSON.stringify({
-                  tokenId,
-                  publicAccessToken,
-                  action: "approve",
-                }),
-                action_id: "sql_approve",
-              },
-              {
-                type: "button",
-                text: {
-                  type: "plain_text",
-                  text: "Deny ❌",
-                  emoji: true,
-                },
-                style: "danger",
-                value: JSON.stringify({
-                  tokenId,
-                  publicAccessToken,
-                  action: "deny",
-                }),
-                action_id: "sql_deny",
-              },
-            ],
-          },
-          {
-            type: "context",
-            elements: [
-              {
-                type: "mrkdwn",
-                text: "⚠️ This action cannot be undone",
-              },
-            ],
-          },
-        ],
-      });
-
-      return response;
-    },
-    {
-      icon: "tabler-brand-slack",
-    }
-  );
-}

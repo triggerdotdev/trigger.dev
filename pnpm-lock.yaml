@@ -1742,6 +1742,9 @@ importers:
       '@slack/web-api':
         specifier: ^6.8.1
         version: 6.8.1
+      '@trigger.dev/python':
+        specifier: workspace:*
+        version: link:../../packages/python
       '@trigger.dev/react-hooks':
         specifier: workspace:*
         version: link:../../packages/react-hooks
