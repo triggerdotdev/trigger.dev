@@ -228,9 +228,8 @@ export function DeploymentsNone() {
       panelClassName="max-w-full"
     >
       <Paragraph spacing variant="small">
-        There are several ways to deploy your tasks. You can use the CLI, Continuous Integration
-        (like GitHub Actions), or an integration with a service like Netlify or Vercel. Make sure
-        you{" "}
+        There are several ways to deploy your tasks. You can use the CLI or a Continuous Integration
+        service like GitHub Actions. Make sure you{" "}
         <TextLink href={v3EnvironmentVariablesPath(organization, project, environment)}>
           set your environment variables
         </TextLink>{" "}
@@ -276,9 +275,8 @@ export function DeploymentsNoneDev() {
           different environment.
         </Paragraph>
         <Paragraph spacing variant="small">
-          There are several ways to deploy your tasks. You can use the CLI, Continuous Integration
-          (like GitHub Actions), or an integration with a service like Netlify or Vercel. Make sure
-          you{" "}
+          There are several ways to deploy your tasks. You can use the CLI or a Continuous
+          Integration service like GitHub Actions. Make sure you{" "}
           <TextLink href={v3EnvironmentVariablesPath(organization, project, environment)}>
             set your environment variables
           </TextLink>{" "}
