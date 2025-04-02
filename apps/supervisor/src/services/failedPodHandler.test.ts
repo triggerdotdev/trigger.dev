@@ -573,7 +573,7 @@ async function deleteAllPodsInNamespace({
   const podNames = pods.items.map((p) => p.metadata?.name ?? "");
 
   // Delete all pods
-  await k8sApi.core.deleteCollectionNamespacedPod({ namespace });
+  await k8sApi.core.deleteCollectionNamespacedPod({ namespace, gracePeriodSeconds: 0 });
 
   // Wait for all pods to be deleted
   await waitForPodsDeletion({ k8sApi, namespace, podNames });
