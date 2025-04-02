@@ -973,7 +973,7 @@ export class ApiClient {
       "Content-Type": "application/json",
       Authorization: `Bearer ${this.accessToken}`,
       "trigger-version": VERSION,
-      "x-trigger-engine-version": taskContext.worker?.engine ?? "V2",
+      "x-trigger-engine-version": "V2",
       ...Object.entries(additionalHeaders ?? {}).reduce(
         (acc, [key, value]) => {
           if (value !== undefined) {
