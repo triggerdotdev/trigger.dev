@@ -1,15 +1,15 @@
 import { openai } from "@ai-sdk/openai";
-import { logger, metadata, schemaTask, wait } from "@trigger.dev/sdk/v3";
+import { anthropic } from "@ai-sdk/anthropic";
+import { python } from "@trigger.dev/python";
+import { ai } from "@trigger.dev/sdk/ai";
+import { metadata, schemaTask, wait } from "@trigger.dev/sdk/v3";
 import { sql } from "@vercel/postgres";
-import { streamText, TextStreamPart } from "ai";
+import { streamText, TextStreamPart, tool } from "ai";
 import { nanoid } from "nanoid";
 import { z } from "zod";
-import { QueryApproval } from "./schemas";
-import { tool } from "ai";
-import { ai } from "@trigger.dev/sdk/ai";
-import { python } from "@trigger.dev/python";
 import { sendSQLApprovalMessage } from "../lib/slack";
 import { chartTool } from "./sandbox";
+import { QueryApproval } from "./schemas";
 
 const crawlerTask = schemaTask({
   id: "crawler",
@@ -35,21 +35,9 @@ const queryApprovalTask = schemaTask({
     query: z.string().describe("The SQL query to execute"),
   }),
   run: async ({ userId, input, query }) => {
-    const toolOptions = ai.currentToolOptions();
-
-    if (toolOptions) {
-      logger.info("tool options", {
-        toolOptions,
-      });
-    }
-
     const token = await wait.createToken({
       tags: [`user:${userId}`, "approval"],
       timeout: "5m", // timeout in 5 minutes
-    });
-
-    logger.info("waiting for approval", {
-      query,
     });
 
     await sendSQLApprovalMessage({
@@ -62,24 +50,13 @@ const queryApprovalTask = schemaTask({
 
     const result = await wait.forToken<QueryApproval>(token);
 
+    // result.ok === false if the token timed out
     if (!result.ok) {
       return {
         approved: false,
       };
     } else {
-      if (result.output.approved) {
-        logger.info("query approved", {
-          query,
-        });
-      } else {
-        logger.warn("query denied", {
-          query,
-        });
-      }
-
-      return {
-        approved: result.output.approved,
-      };
+      return result.output;
     }
   },
 });
@@ -135,25 +112,10 @@ const getUserId = tool({
   },
 });
 
-export type TOOLS = {
-  queryApproval: typeof queryApproval;
-  executeSql: typeof executeSql;
-  generateId: typeof generateId;
-  getUserTodos: typeof getUserTodos;
-  crawler: typeof crawler;
-  getUserId: typeof getUserId;
-  chart: typeof chartTool;
-};
-
-export type STREAMS = {
-  fullStream: TextStreamPart<TOOLS>;
-};
-
 export const todoChat = schemaTask({
   id: "todo-chat",
   description: "Chat with the todo app",
   schema: z.object({
-    model: z.string().default("gpt-4o"),
     input: z
       .string()
       .describe(
@@ -161,7 +123,7 @@ export const todoChat = schemaTask({
       ),
     userId: z.string(),
   }),
-  run: async ({ model, input, userId }) => {
+  run: async ({ input, userId }) => {
     metadata.set("user_id", userId);
 
     const system = `
@@ -209,7 +171,7 @@ export const todoChat = schemaTask({
     const prompt = input;
 
     const result = streamText({
-      model: openai(model),
+      model: getModel(),
       system,
       prompt,
       maxSteps: 10,
@@ -240,3 +202,27 @@ export const todoChat = schemaTask({
     return textParts.join("");
   },
 });
+
+export type TOOLS = {
+  queryApproval: typeof queryApproval;
+  executeSql: typeof executeSql;
+  generateId: typeof generateId;
+  getUserTodos: typeof getUserTodos;
+  crawler: typeof crawler;
+  getUserId: typeof getUserId;
+  chart: typeof chartTool;
+};
+
+export type STREAMS = {
+  fullStream: TextStreamPart<TOOLS>;
+};
+
+const CHAT_PROVIDER: "openai" | "anthropic" = "openai";
+
+function getModel() {
+  if (CHAT_PROVIDER === "openai") {
+    return openai("gpt-4o");
+  } else {
+    return anthropic("claude-3-5-sonnet-latest");
+  }
+}
