@@ -314,6 +314,102 @@ describe("FailedPodHandler Integration Tests", () => {
       await handler.stop();
     }
   }, 60000);
+
+  it("should handle graceful shutdown pods differently", async () => {
+    const handler = new FailedPodHandler({ namespace, k8s, register });
+
+    try {
+      // Create first batch of pods before starting handler
+      const firstBatchPodNames = await createTestPods({
+        k8sApi: k8s,
+        namespace,
+        count: 2,
+        exitCode: FailedPodHandler.GRACEFUL_SHUTDOWN_EXIT_CODE,
+      });
+
+      // Wait for pods to reach Failed state
+      await waitForPodsPhase({
+        k8sApi: k8s,
+        namespace,
+        podNames: firstBatchPodNames,
+        phase: "Failed",
+      });
+
+      // Start the handler
+      await handler.start();
+
+      // Wait for first batch to be deleted
+      await waitForPodsDeletion({
+        k8sApi: k8s,
+        namespace,
+        podNames: firstBatchPodNames,
+      });
+
+      // Create second batch of pods after handler is running
+      const secondBatchPodNames = await createTestPods({
+        k8sApi: k8s,
+        namespace,
+        count: 3,
+        exitCode: FailedPodHandler.GRACEFUL_SHUTDOWN_EXIT_CODE,
+      });
+
+      // Wait for second batch to be deleted
+      await waitForPodsDeletion({
+        k8sApi: k8s,
+        namespace,
+        podNames: secondBatchPodNames,
+      });
+
+      // Verify metrics
+      const metrics = handler.getMetrics();
+
+      // Check informer events were recorded for both batches
+      const informerEvents = await metrics.informerEventsTotal.get();
+      expect(informerEvents.values).toContainEqual(
+        expect.objectContaining({
+          labels: expect.objectContaining({
+            namespace,
+            verb: "add",
+          }),
+          value: 5, // 2 from first batch + 3 from second batch
+        })
+      );
+
+      // Check pods were processed as graceful shutdowns
+      const processedPods = await metrics.processedPodsTotal.get();
+
+      // Should not be marked as Failed
+      const failedPods = processedPods.values.find(
+        (v) => v.labels.namespace === namespace && v.labels.status === "Failed"
+      );
+      expect(failedPods).toBeUndefined();
+
+      // Should be marked as GracefulShutdown
+      const gracefulShutdowns = processedPods.values.find(
+        (v) => v.labels.namespace === namespace && v.labels.status === "GracefulShutdown"
+      );
+      expect(gracefulShutdowns).toBeDefined();
+      expect(gracefulShutdowns?.value).toBe(5); // Total from both batches
+
+      // Check pods were still deleted
+      const deletedPods = await metrics.deletedPodsTotal.get();
+      expect(deletedPods.values).toContainEqual(
+        expect.objectContaining({
+          labels: expect.objectContaining({
+            namespace,
+            status: "Failed",
+          }),
+          value: 5, // Total from both batches
+        })
+      );
+
+      // Check no deletion errors were recorded
+      const deletionErrors = await metrics.deletionErrorsTotal.get();
+      expect(deletionErrors.values).toHaveLength(0);
+    } finally {
+      await handler.stop();
+    }
+  }, 30000);
 });
 
 async function createTestPods({
@@ -325,6 +421,7 @@ async function createTestPods({
   namePrefix = "test-pod",
   command = ["/bin/sh", "-c", shouldFail ? "exit 1" : "exit 0"],
   randomizeName = true,
+  exitCode,
 }: {
   k8sApi: K8sApi;
   namespace: string;
@@ -334,8 +431,14 @@ async function createTestPods({
   namePrefix?: string;
   command?: string[];
   randomizeName?: boolean;
+  exitCode?: number;
 }) {
   const createdPods: string[] = [];
+
+  // If exitCode is specified, override the command
+  if (exitCode !== undefined) {
+    command = ["/bin/sh", "-c", `exit ${exitCode}`];
+  }
 
   for (let i = 0; i < count; i++) {
     const podName = randomizeName
@@ -352,7 +455,7 @@ async function createTestPods({
           restartPolicy: "Never",
           containers: [
             {
-              name: "test",
+              name: "run-controller", // Changed to match the name we check in failedPodHandler
               image: "busybox:1.37.0",
               command,
             },
