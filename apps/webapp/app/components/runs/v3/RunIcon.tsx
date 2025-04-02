@@ -73,7 +73,7 @@ export function RunIcon({ name, className, spanName }: TaskIconProps) {
     case "trigger":
       return <TriggerIcon className={cn(className, "text-orange-500")} />;
     case "python":
-      return <PythonLogoIcon />;
+      return <PythonLogoIcon className={className} />;
     //log levels
     case "debug":
     case "log":

@@ -972,7 +972,7 @@ export class TaskExecutor {
       },
       {
         attributes: {
-          [SemanticInternalAttributes.STYLE_ICON]: "clock",
+          [SemanticInternalAttributes.STYLE_ICON]: "tabler-clock",
           [SemanticInternalAttributes.COLLAPSED]: true,
         },
       }

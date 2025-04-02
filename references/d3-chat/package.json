@@ -1,5 +1,5 @@
 {
-  "name": "references-d3-demo",
+  "name": "d3-chat",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -8,37 +8,49 @@
     "start": "next start",
     "lint": "next lint",
     "dev:trigger": "trigger dev",
-    "deploy": "pnpm run python:compile-requirements && trigger deploy",
+    "tunnel": "ngrok http --url=d3-demo.ngrok.dev 3000",
     "python:install-requirements": "uv pip sync requirements.txt",
     "python:compile-requirements": "uv pip compile requirements.in -o requirements.txt",
+    "python:install-browsers": "./.venv/bin/playwright install",
     "python:install": "pnpm run python:compile-requirements && pnpm run python:install-requirements",
-    "python:create-env": "uv venv .venv"
+    "python:create-env": "uv venv .venv",
+    "db:migrate": "tsx -r dotenv/config src/lib/migrate.ts up",
+    "db:migrate:down": "tsx -r dotenv/config src/lib/migrate.ts down"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^1.2.4",
     "@ai-sdk/openai": "1.3.3",
+    "@e2b/code-interpreter": "^1.1.0",
+    "@radix-ui/react-avatar": "^1.1.3",
+    "@slack/web-api": "^6.8.1",
+    "@trigger.dev/python": "workspace:*",
     "@trigger.dev/react-hooks": "workspace:*",
     "@trigger.dev/sdk": "workspace:*",
-    "@trigger.dev/python": "workspace:*",
+    "@vercel/postgres": "^0.10.0",
     "ai": "4.2.5",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "lucide-react": "^0.484.0",
+    "lucide-react": "^0.486.0",
+    "marked": "^4.0.18",
+    "nanoid": "^5.1.5",
     "next": "15.2.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "tailwind-merge": "^3.0.2",
+    "react-markdown": "^10.1.0",
+    "tailwind-merge": "^3.1.0",
     "tw-animate-css": "^1.2.4",
-    "zod": "3.23.8",
-    "zod-to-json-schema": "^3.24.5"
+    "zod": "3.23.8"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@tailwindcss/typography": "^0.5.9",
+    "@trigger.dev/build": "workspace:*",
+    "@types/marked": "^4.0.3",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "tailwindcss": "^4.0.17",
     "trigger.dev": "workspace:*",
-    "@trigger.dev/build": "workspace:*",
     "typescript": "^5"
   }
 }
