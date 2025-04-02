@@ -1,8 +1,93 @@
 ---
 title: "Upgrading to v4"
-description: "How to upgrade to v4."
+description: "What's new in v4, how to upgrade, and breaking changes."
 ---
 
-<Note>
-  Upgrading to v4 docs are coming soon.
-</Note>
+## What's new in v4?
+
+Link to blog post here
+
+- New Run Engine
+- Wait tokens
+- Upgraded Dashboard
+- Wait idempotency
+- Priority
+- Queues
+- New global lifecycle hooks
+- onPause and onResume
+- Improved middleware
+- locals
+- Improved tracing
+- MCP Server
+- Exporting tasks or queues
+
+## Installation
+
+To opt-in to using v4, you will need to update your dependencies to the latest version of the `v4` tag.
+
+<CodeGroup>
+
+```bash npm
+npm add @trigger.dev/sdk@v4
+```
+
+```bash yarn
+yarn add @trigger.dev/sdk@v4
+```
+
+```bash pnpm
+pnpm add @trigger.dev/sdk@v4
+```
+
+</CodeGroup>
+
+You'll also need to use the `v4` version of the `trigger.dev` CLI package:
+
+<CodeGroup>
+
+```bash npx
+npx trigger.dev@v4 dev
+```
+
+```bash yarn
+yarn dlx trigger.dev@v4 dev
+```
+
+```bash pnpm
+pnpm dlx trigger.dev@v4 dev
+```
+
+</CodeGroup>
+
+Or you could install the CLI into your `devDependencies` and then use the `trigger` binary:
+
+```json package.json
+{
+  "devDependencies": {
+    "trigger.dev": "v4"
+  },
+  "scripts": {
+    "dev": "trigger dev"
+  }
+}
+```
+
+## Deprecations
+
+### Import `@trigger.dev/sdk`
+
+### toolTask
+
+## Breaking changes
+
+### Queue changes
+
+### `releaseConcurrency`
+
+### Lifecycle hooks
+
+### Context changes
+
+## Migrating to the new run engine
+
+New runs after you deploy with
