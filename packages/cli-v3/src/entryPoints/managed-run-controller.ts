@@ -485,7 +485,8 @@ class ManagedRunController {
           return;
         }
         case "FINISHED": {
-          console.log("Run is finished, nothing to do");
+          console.log("Run is finished, will wait for next run");
+          this.waitForNextRun();
           return;
         }
         case "QUEUED_EXECUTING":
