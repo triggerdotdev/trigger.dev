@@ -306,7 +306,7 @@ function TraceView({ run, trace, maximumLiveReloadingSetting, resizable }: Loade
   const shouldLiveReload = events.length <= maximumLiveReloadingSetting;
 
   const changeToSpan = useDebounce((selectedSpan: string) => {
-    replaceSearchParam("span", selectedSpan);
+    replaceSearchParam("span", selectedSpan, { replace: true });
   }, 250);
 
   const revalidator = useRevalidator();
