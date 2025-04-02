@@ -56,6 +56,8 @@ const Env = z.object({
   TRIGGER_WORKER_INSTANCE_NAME: z.string(),
   TRIGGER_HEARTBEAT_INTERVAL_SECONDS: z.coerce.number().default(30),
   TRIGGER_SNAPSHOT_POLL_INTERVAL_SECONDS: z.coerce.number().default(5),
+  TRIGGER_SUCCESS_EXIT_CODE: z.coerce.number().default(0),
+  TRIGGER_FAILURE_EXIT_CODE: z.coerce.number().default(1),
 });
 
 const env = Env.parse(stdEnv);
@@ -82,6 +84,8 @@ type Metadata = {
   TRIGGER_WORKER_INSTANCE_NAME: string | undefined;
   TRIGGER_HEARTBEAT_INTERVAL_SECONDS: number | undefined;
   TRIGGER_SNAPSHOT_POLL_INTERVAL_SECONDS: number | undefined;
+  TRIGGER_SUCCESS_EXIT_CODE: number | undefined;
+  TRIGGER_FAILURE_EXIT_CODE: number | undefined;
 };
 
 class MetadataClient {
@@ -121,6 +125,9 @@ class ManagedRunController {
 
   private workerApiUrl: string;
   private workerInstanceName: string;
+
+  private successExitCode = env.TRIGGER_SUCCESS_EXIT_CODE;
+  private failureExitCode = env.TRIGGER_FAILURE_EXIT_CODE;
 
   private state:
     | {
@@ -665,6 +672,14 @@ class ManagedRunController {
 
     logger.log("Processing env overrides", { env: overrides });
 
+    if (overrides.TRIGGER_SUCCESS_EXIT_CODE) {
+      this.successExitCode = overrides.TRIGGER_SUCCESS_EXIT_CODE;
+    }
+
+    if (overrides.TRIGGER_FAILURE_EXIT_CODE) {
+      this.failureExitCode = overrides.TRIGGER_FAILURE_EXIT_CODE;
+    }
+
     if (overrides.TRIGGER_HEARTBEAT_INTERVAL_SECONDS) {
       this.heartbeatIntervalSeconds = overrides.TRIGGER_HEARTBEAT_INTERVAL_SECONDS;
       this.runHeartbeat.updateInterval(this.heartbeatIntervalSeconds * 1000);
@@ -817,7 +832,7 @@ class ManagedRunController {
 
       if (!this.warmStartClient) {
         console.error("waitForNextRun: warm starts disabled, shutting down");
-        this.exitProcess(0);
+        this.exitProcess(this.successExitCode);
       }
 
       // Check the service is up and get additional warm start config
@@ -828,7 +843,7 @@ class ManagedRunController {
           warmStartUrl: env.TRIGGER_WARM_START_URL,
           error: connect.error,
         });
-        this.exitProcess(0);
+        this.exitProcess(this.successExitCode);
       }
 
       const connectionTimeoutMs =
@@ -856,7 +871,7 @@ class ManagedRunController {
           connectionTimeoutMs,
           keepaliveMs,
         });
-        this.exitProcess(0);
+        this.exitProcess(this.successExitCode);
       }
 
       const nextRun = await this.warmStartClient.warmStart({
@@ -867,7 +882,7 @@ class ManagedRunController {
 
       if (!nextRun) {
         console.error("waitForNextRun: warm start failed, shutting down");
-        this.exitProcess(0);
+        this.exitProcess(this.successExitCode);
       }
 
       console.log("waitForNextRun: got next run", { nextRun });
@@ -880,7 +895,7 @@ class ManagedRunController {
       return;
     } catch (error) {
       console.error("waitForNextRun: unexpected error", { error });
-      this.exitProcess(1);
+      this.exitProcess(this.failureExitCode);
     } finally {
       this.waitForNextRunLock = false;
     }
