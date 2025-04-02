@@ -159,7 +159,10 @@ export class RunPresenter {
           const offset = millisecondsToNanoseconds(
             n.data.startTime.getTime() - treeRootStartTimeMs
           );
-          totalDuration = Math.max(totalDuration, offset + n.data.duration);
+          //only let non-debug events extend the total duration
+          if (!n.data.isDebug) {
+            totalDuration = Math.max(totalDuration, offset + n.data.duration);
+          }
           return {
             ...n,
             data: {
