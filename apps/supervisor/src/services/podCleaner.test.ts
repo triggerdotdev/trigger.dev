@@ -29,7 +29,7 @@ describe("PodCleaner Integration Tests", () => {
     register.clear();
 
     // Delete all pods in the namespace
-    await k8s.core.deleteCollectionNamespacedPod({ namespace });
+    await k8s.core.deleteCollectionNamespacedPod({ namespace, gracePeriodSeconds: 0 });
   });
 
   it("should clean up succeeded pods", async () => {

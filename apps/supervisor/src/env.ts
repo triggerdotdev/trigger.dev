@@ -35,6 +35,7 @@ const Env = z.object({
   // Optional services
   TRIGGER_WARM_START_URL: z.string().optional(),
   TRIGGER_CHECKPOINT_URL: z.string().optional(),
+  TRIGGER_METADATA_URL: z.string().optional(),
 
   // Used by the workload manager, e.g docker/k8s
   DOCKER_NETWORK: z.string().default("host"),

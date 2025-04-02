@@ -1,8 +1,8 @@
+import { clock } from "../clock-api.js";
 import { lifecycleHooks } from "../lifecycle-hooks-api.js";
 import {
   BatchTaskRunExecutionResult,
   CompletedWaitpoint,
-  RuntimeWait,
   TaskRunContext,
   TaskRunExecutionResult,
   TaskRunFailedExecutionResult,
@@ -178,7 +178,6 @@ export class ManagedRuntimeManager implements RuntimeManager {
     }
 
     if (!waitId) {
-      // TODO: Handle failures better
       this.log("No waitId found for waitpoint", waitpoint);
       return;
     }
@@ -186,12 +185,14 @@ export class ManagedRuntimeManager implements RuntimeManager {
     const resolve = this.resolversByWaitId.get(waitId);
 
     if (!resolve) {
-      // TODO: Handle failures better
       this.log("No resolver found for waitId", waitId);
       return;
     }
 
     this.log("Resolving waitpoint", waitpoint);
+
+    // Ensure current time is accurate before resolving the waitpoint
+    clock.reset();
 
     resolve(waitpoint);
 
