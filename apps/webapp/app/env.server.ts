@@ -573,6 +573,8 @@ const EnvironmentSchema = z.object({
   RUN_ENGINE_RELEASE_CONCURRENCY_POLL_INTERVAL: z.coerce.number().int().default(500),
   RUN_ENGINE_RELEASE_CONCURRENCY_BATCH_SIZE: z.coerce.number().int().default(10),
 
+  RUN_ENGINE_WORKER_ENABLED: z.string().default("1"),
+
   /** How long should the presence ttl last */
   DEV_PRESENCE_SSE_TIMEOUT: z.coerce.number().int().default(30_000),
   DEV_PRESENCE_TTL_MS: z.coerce.number().int().default(5_000),

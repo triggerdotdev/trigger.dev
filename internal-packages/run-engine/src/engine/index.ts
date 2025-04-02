@@ -1,5 +1,4 @@
 import { createRedisClient, Redis } from "@internal/redis";
-import { Worker } from "@trigger.dev/redis-worker";
 import { startSpan, trace, Tracer } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
 import {
@@ -13,7 +12,7 @@ import {
   StartRunAttemptResult,
   TaskRunExecutionResult,
 } from "@trigger.dev/core/v3";
-import { BatchId, QueueId, RunId, WaitpointId } from "@trigger.dev/core/v3/isomorphic";
+import { BatchId, RunId, WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import {
   Prisma,
   PrismaClient,
@@ -22,6 +21,7 @@ import {
   TaskRunExecutionSnapshot,
   Waitpoint,
 } from "@trigger.dev/database";
+import { Worker } from "@trigger.dev/redis-worker";
 import { assertNever } from "assert-never";
 import { EventEmitter } from "node:events";
 import { FairQueueSelectionStrategy } from "../run-queue/fairQueueSelectionStrategy.js";
@@ -44,11 +44,11 @@ import {
   ExecutionSnapshotSystem,
   getLatestExecutionSnapshot,
 } from "./systems/executionSnapshotSystem.js";
+import { PendingVersionSystem } from "./systems/pendingVersionSystem.js";
 import { ReleaseConcurrencySystem } from "./systems/releaseConcurrencySystem.js";
 import { RunAttemptSystem } from "./systems/runAttemptSystem.js";
 import { SystemResources } from "./systems/systems.js";
 import { TtlSystem } from "./systems/ttlSystem.js";
-import { PendingVersionSystem } from "./systems/pendingVersionSystem.js";
 import { WaitpointSystem } from "./systems/waitpointSystem.js";
 import { EngineWorker, HeartbeatTimeouts, RunEngineOptions, TriggerParams } from "./types.js";
 import { workerCatalog } from "./workerCatalog.js";
@@ -165,7 +165,11 @@ export class RunEngine {
           await this.delayedRunSystem.enqueueDelayedRun({ runId: payload.runId });
         },
       },
-    }).start();
+    });
+
+    if (!options.worker.disabled) {
+      this.worker.start();
+    }
 
     this.tracer = options.tracer;
 

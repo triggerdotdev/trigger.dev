@@ -14,6 +14,7 @@ function createRunEngine() {
   const engine = new RunEngine({
     prisma,
     worker: {
+      disabled: env.RUN_ENGINE_WORKER_ENABLED === "0",
       workers: env.RUN_ENGINE_WORKER_COUNT,
       tasksPerWorker: env.RUN_ENGINE_TASKS_PER_WORKER,
       pollIntervalMs: env.RUN_ENGINE_WORKER_POLL_INTERVAL,
