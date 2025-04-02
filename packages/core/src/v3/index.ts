@@ -70,7 +70,14 @@ export * from "./utils/imageRef.js";
 export * from "./utils/heartbeat.js";
 
 export * from "./config.js";
-export { getSchemaParseFn, type AnySchemaParseFn, type SchemaParseFn } from "./types/schemas.js";
+export {
+  getSchemaParseFn,
+  type AnySchemaParseFn,
+  type SchemaParseFn,
+  isSchemaZodEsque,
+  isSchemaValibotEsque,
+  isSchemaArkTypeEsque,
+} from "./types/schemas.js";
 
 import { VERSION } from "../version.js";
 

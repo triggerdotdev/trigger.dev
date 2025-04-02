@@ -10,6 +10,7 @@ import { workerCatalog } from "./workerCatalog.js";
 export type RunEngineOptions = {
   prisma: PrismaClient;
   worker: {
+    disabled?: boolean;
     redis: RedisOptions;
     pollIntervalMs?: number;
     immediatePollIntervalMs?: number;

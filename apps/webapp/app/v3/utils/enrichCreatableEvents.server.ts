@@ -23,13 +23,23 @@ function enrichStyle(event: CreatableEvent) {
   // GenAI System check
   const system = props["gen_ai.system"];
   if (typeof system === "string") {
-    return { ...baseStyle, icon: `tabler-brand-${system}` };
+    return { ...baseStyle, icon: `tabler-brand-${system.split(".")[0]}` };
   }
 
   // Agent workflow check
   const name = props["name"];
   if (typeof name === "string" && name.includes("Agent workflow")) {
     return { ...baseStyle, icon: "tabler-brain" };
+  }
+
+  const message = event.message;
+
+  if (typeof message === "string" && message === "ai.toolCall") {
+    return { ...baseStyle, icon: "tabler-tool" };
+  }
+
+  if (typeof message === "string" && message.startsWith("ai.")) {
+    return { ...baseStyle, icon: "tabler-sparkles" };
   }
 
   return baseStyle;
