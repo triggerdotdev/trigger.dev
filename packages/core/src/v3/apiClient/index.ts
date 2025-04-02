@@ -973,7 +973,6 @@ export class ApiClient {
       "Content-Type": "application/json",
       Authorization: `Bearer ${this.accessToken}`,
       "trigger-version": VERSION,
-      "x-trigger-engine-version": "V2",
       ...Object.entries(additionalHeaders ?? {}).reduce(
         (acc, [key, value]) => {
           if (value !== undefined) {
@@ -989,6 +988,8 @@ export class ApiClient {
     // Only inject the context if we are inside a task
     if (taskContext.isInsideTask) {
       headers["x-trigger-worker"] = "true";
+      // Only pass the engine version if we are inside a task
+      headers["x-trigger-engine-version"] = "V2";
 
       if (spanParentAsLink) {
         headers["x-trigger-span-parent-as-link"] = "1";
