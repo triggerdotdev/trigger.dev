@@ -1,6 +1,6 @@
 {
   "mode": "pre",
-  "tag": "v4",
+  "tag": "v4-beta",
   "initialVersions": {
     "coordinator": "0.0.1",
     "docker-provider": "0.0.1",
