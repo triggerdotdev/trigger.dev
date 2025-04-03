@@ -44,7 +44,7 @@
     "changeset:add": "changeset",
     "changeset:version": "changeset version",
     "changeset:release": "pnpm run build --filter \"@trigger.dev/*\" --filter \"trigger.dev\" && changeset publish",
-    "changeset:beta": "changeset pre enter beta",
+    "changeset:v4": "changeset pre enter v4",
     "changeset:normal": "changeset pre exit",
     "clean:sourcemaps": "turbo run clean:sourcemaps",
     "storybook": "turbo run storybook"
