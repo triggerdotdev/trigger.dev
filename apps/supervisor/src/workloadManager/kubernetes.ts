@@ -217,7 +217,7 @@ export class KubernetesWorkloadManager implements WorkloadManager {
       automountServiceAccountToken: false,
       imagePullSecrets: this.getImagePullSecrets(),
       nodeSelector: {
-        nodetype: "worker-re2",
+        nodetype: env.KUBERNETES_WORKER_NODETYPE_LABEL,
       },
     };
   }
