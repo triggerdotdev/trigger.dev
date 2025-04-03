@@ -332,14 +332,15 @@
               "guides/examples/open-ai-with-retrying",
               "guides/examples/pdf-to-image",
               "guides/examples/puppeteer",
+              "guides/examples/react-pdf",
+              "guides/examples/react-email",
+              "guides/examples/resend-email-sequence",
+              "guides/examples/satori",
               "guides/examples/scrape-hacker-news",
               "guides/examples/sentry-error-tracking",
               "guides/examples/sharp-image-processing",
               "guides/examples/supabase-database-operations",
               "guides/examples/supabase-storage-upload",
-              "guides/examples/react-pdf",
-              "guides/examples/react-email",
-              "guides/examples/resend-email-sequence",
               "guides/examples/vercel-ai-sdk",
               "guides/examples/vercel-sync-env-vars"
             ]
