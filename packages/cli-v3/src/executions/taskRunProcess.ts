@@ -1,6 +1,7 @@
 import {
   CompletedWaitpoint,
   ExecutorToWorkerMessageCatalog,
+  MachinePreset,
   ServerBackgroundWorker,
   TaskRunErrorCodes,
   TaskRunExecution,
@@ -48,10 +49,15 @@ export type TaskRunProcessOptions = {
   workerManifest: WorkerManifest;
   serverWorker: ServerBackgroundWorker;
   env: Record<string, string>;
+  machine: MachinePreset;
+  isWarmStart?: boolean;
+  cwd?: string;
+};
+
+export type TaskRunProcessExecuteParams = {
   payload: TaskRunExecutionPayload;
   messageId: string;
-
-  cwd?: string;
+  env?: Record<string, string>;
 };
 
 export class TaskRunProcess {
@@ -79,9 +85,18 @@ export class TaskRunProcess {
   public onWaitForBatch: Evt<OnWaitForBatchMessage> = new Evt();
   public onWait: Evt<OnWaitMessage> = new Evt();
 
-  constructor(public readonly options: TaskRunProcessOptions) {}
+  private _isPreparedForNextRun: boolean = false;
+
+  constructor(public readonly options: TaskRunProcessOptions) {
+    this._isPreparedForNextRun = true;
+  }
+
+  get isPreparedForNextRun() {
+    return this._isPreparedForNextRun;
+  }
 
   async cancel() {
+    this._isPreparedForNextRun = false;
     this._isBeingCancelled = true;
 
     try {
@@ -94,6 +109,8 @@ export class TaskRunProcess {
   }
 
   async cleanup(kill = true) {
+    this._isPreparedForNextRun = false;
+
     try {
       await this.#flush();
     } catch (err) {
@@ -105,25 +122,12 @@ export class TaskRunProcess {
     }
   }
 
-  get runId() {
-    return this.options.payload.execution.run.id;
-  }
+  initialize() {
+    const { env: $env, workerManifest, cwd, machine } = this.options;
 
-  get isTest() {
-    return this.options.payload.execution.run.isTest;
-  }
-
-  get payload(): TaskRunExecutionPayload {
-    return this.options.payload;
-  }
-
-  async initialize() {
-    const { env: $env, workerManifest, cwd, messageId, payload } = this.options;
-
-    const maxOldSpaceSize = nodeOptionsWithMaxOldSpaceSize(undefined, payload.execution.machine);
+    const maxOldSpaceSize = nodeOptionsWithMaxOldSpaceSize(undefined, machine);
 
     const fullEnv = {
-      ...(this.isTest ? { TRIGGER_LOG_LEVEL: "debug" } : {}),
       ...$env,
       OTEL_IMPORT_HOOK_INCLUDES: workerManifest.otelImportHook?.include?.join(","),
       // TODO: this will probably need to use something different for bun (maybe --preload?)
@@ -132,7 +136,7 @@ export class TaskRunProcess {
       TRIGGER_PROCESS_FORK_START_TIME: String(Date.now()),
     };
 
-    logger.debug(`[${this.runId}] initializing task run process`, {
+    logger.debug(`initializing task run process`, {
       env: fullEnv,
       path: workerManifest.workerEntryPoint,
       cwd,
@@ -175,13 +179,13 @@ export class TaskRunProcess {
 
           resolver(result);
         },
-        READY_TO_DISPOSE: async (message) => {
-          logger.debug(`[${this.runId}] task run process is ready to dispose`);
+        READY_TO_DISPOSE: async () => {
+          logger.debug(`task run process is ready to dispose`);
 
           this.onReadyToDispose.post(this);
         },
         TASK_HEARTBEAT: async (message) => {
-          this.onTaskRunHeartbeat.post(messageId);
+          this.onTaskRunHeartbeat.post(message.id);
         },
         WAIT_FOR_TASK: async (message) => {
           this.onWaitForTask.post(message);
@@ -190,7 +194,7 @@ export class TaskRunProcess {
           this.onWaitForBatch.post(message);
         },
         UNCAUGHT_EXCEPTION: async (message) => {
-          logger.debug(`[${this.runId}] uncaught exception in task run process`, { ...message });
+          logger.debug("uncaught exception in task run process", { ...message });
         },
       },
     });
@@ -198,6 +202,8 @@ export class TaskRunProcess {
     this._child.on("exit", this.#handleExit.bind(this));
     this._child.stdout?.on("data", this.#handleLog.bind(this));
     this._child.stderr?.on("data", this.#handleStdErr.bind(this));
+
+    return this;
   }
 
   async #flush(timeoutInMs: number = 5_000) {
@@ -206,7 +212,9 @@ export class TaskRunProcess {
     await this._ipc?.sendWithAck("FLUSH", { timeoutInMs }, timeoutInMs + 1_000);
   }
 
-  async execute(): Promise<TaskRunExecutionResult> {
+  async execute(params: TaskRunProcessExecuteParams): Promise<TaskRunExecutionResult> {
+    this._isPreparedForNextRun = false;
+
     let resolver: (value: TaskRunExecutionResult) => void;
     let rejecter: (err?: any) => void;
 
@@ -215,19 +223,19 @@ export class TaskRunProcess {
       rejecter = reject;
     });
 
-    this._attemptStatuses.set(this.payload.execution.attempt.id, "PENDING");
+    this._attemptStatuses.set(params.payload.execution.attempt.id, "PENDING");
 
     // @ts-expect-error - We know that the resolver and rejecter are defined
-    this._attemptPromises.set(this.payload.execution.attempt.id, { resolver, rejecter });
+    this._attemptPromises.set(params.payload.execution.attempt.id, { resolver, rejecter });
 
-    const { execution, traceContext, metrics } = this.payload;
+    const { execution, traceContext, metrics } = params.payload;
 
     this._currentExecution = execution;
 
     if (this._child?.connected && !this._isBeingKilled && !this._child.killed) {
       logger.debug(
         `[${new Date().toISOString()}][${
-          this.runId
+          params.payload.execution.run.id
         }] sending EXECUTE_TASK_RUN message to task run process`,
         {
           pid: this.pid,
@@ -239,6 +247,8 @@ export class TaskRunProcess {
         traceContext,
         metadata: this.options.serverWorker,
         metrics,
+        env: params.env,
+        isWarmStart: this.options.isWarmStart,
       });
     }
 
@@ -398,7 +408,7 @@ export class TaskRunProcess {
   }
 
   async kill(signal?: number | NodeJS.Signals, timeoutInMs?: number) {
-    logger.debug(`[${this.runId}] killing task run process`, {
+    logger.debug(`killing task run process`, {
       signal,
       timeoutInMs,
       pid: this.pid,
@@ -414,6 +424,16 @@ export class TaskRunProcess {
 
     if (timeoutInMs) {
       await killTimeout;
+    }
+  }
+
+  forceExit() {
+    try {
+      this._isBeingKilled = true;
+
+      this._child?.kill("SIGKILL");
+    } catch (error) {
+      logger.debug("forceExit: failed to kill child process", { error });
     }
   }
 

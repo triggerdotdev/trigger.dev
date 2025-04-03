@@ -36,6 +36,7 @@ import {
   logLevels,
   ManagedRuntimeManager,
   OtelTaskLogger,
+  populateEnv,
   ProdUsageManager,
   StandardLifecycleHooksManager,
   StandardLocalsManager,
@@ -248,7 +249,16 @@ const zodIpc = new ZodIpcConnection({
   emitSchema: ExecutorToWorkerMessageCatalog,
   process,
   handlers: {
-    EXECUTE_TASK_RUN: async ({ execution, traceContext, metadata, metrics }, sender) => {
+    EXECUTE_TASK_RUN: async (
+      { execution, traceContext, metadata, metrics, env, isWarmStart },
+      sender
+    ) => {
+      if (env) {
+        populateEnv(env, {
+          override: true,
+        });
+      }
+
       standardRunTimelineMetricsManager.registerMetricsFromExecution(metrics);
 
       console.log(`[${new Date().toISOString()}] Received EXECUTE_TASK_RUN`, execution);
@@ -383,6 +393,7 @@ const zodIpc = new ZodIpcConnection({
           tracingSDK,
           consoleInterceptor,
           retries: config.retries,
+          isWarmStart,
         });
 
         try {

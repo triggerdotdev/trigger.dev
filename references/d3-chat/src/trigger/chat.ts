@@ -2,7 +2,7 @@ import { openai } from "@ai-sdk/openai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { python } from "@trigger.dev/python";
 import { ai } from "@trigger.dev/sdk/ai";
-import { metadata, schemaTask, wait } from "@trigger.dev/sdk/v3";
+import { logger, metadata, schemaTask, wait } from "@trigger.dev/sdk/v3";
 import { sql } from "@vercel/postgres";
 import { streamText, TextStreamPart, tool } from "ai";
 import { nanoid } from "nanoid";
@@ -52,6 +52,8 @@ const queryApprovalTask = schemaTask({
 
     // result.ok === false if the token timed out
     if (!result.ok) {
+      logger.debug("queryApproval: token timed out");
+
       return {
         approved: false,
       };

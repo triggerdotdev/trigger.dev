@@ -57,6 +57,7 @@ export type TaskExecutorOptions = {
     enabledInDev?: boolean;
     default?: RetryOptions;
   };
+  isWarmStart?: boolean;
 };
 
 export class TaskExecutor {
@@ -69,6 +70,7 @@ export class TaskExecutor {
         default?: RetryOptions;
       }
     | undefined;
+  private _isWarmStart: boolean | undefined;
 
   constructor(
     public task: TaskMetadataWithFunctions,
@@ -78,6 +80,7 @@ export class TaskExecutor {
     this._tracer = options.tracer;
     this._consoleInterceptor = options.consoleInterceptor;
     this._retries = options.retries;
+    this._isWarmStart = options.isWarmStart;
   }
 
   async execute(
@@ -97,6 +100,7 @@ export class TaskExecutor {
     taskContext.setGlobalTaskContext({
       ctx,
       worker,
+      isWarmStart: this._isWarmStart,
     });
 
     if (execution.run.metadata) {
@@ -297,6 +301,7 @@ export class TaskExecutor {
         kind: SpanKind.CONSUMER,
         attributes: {
           [SemanticInternalAttributes.STYLE_ICON]: "attempt",
+          [SemanticInternalAttributes.ENTITY_TYPE]: "attempt",
           [SemanticInternalAttributes.SPAN_ATTEMPT]: true,
           ...(execution.attempt.number === 1
             ? runTimelineMetrics.convertMetricsToSpanAttributes()
