@@ -5,7 +5,7 @@ description: "What's new in v4, how to upgrade, and breaking changes."
 
 ## What's new in v4?
 
-Link to blog post here
+[Read our blog post](https://trigger.dev/blog/v4-beta-launch) for an overview of the new features.
 
 ### Wait tokens
 
@@ -36,11 +36,15 @@ await wait.completeToken(tokenId, {
 You can wait for the token using the token ID:
 
 ```ts
+type ApprovalToken = {
+  status: "approved" | "rejected";
+};
+
 // Inside a task
-const result = await wait.forToken(tokenId);
+const result = await wait.forToken<ApprovalToken>(tokenId);
 
 if (result.ok) {
-  console.log("Token completed", result.output);
+  console.log("Token completed", result.output.status); // "approved" or "rejected"
 } else {
   console.log("Token timed out", result.error);
 }
@@ -51,7 +55,7 @@ if (result.ok) {
 You can now pass an idempotency key to any wait function, allowing you to skip waits if the same idempotency key is used again. This can be useful if you want to skip waits when retrying a task, for example:
 
 ```ts
-// Specify the idempotency key and TTL when creating a the token
+// Specify the idempotency key and TTL when creating a wait token
 const token = await wait.createToken({
   idempotencyKey: "my-idempotency-key",
   idempotencyKeyTTL: "1h",
@@ -80,7 +84,7 @@ You can now specify a priority when triggering a task. This allows you to priori
 await task.trigger({ foo: "bar" }, { priority: 1 });
 ```
 
-The priority value is a time duration in seconds, which offsets the timestamp of the run in the queue. If you specify a priority of `10`, the run will have over runs with a priority of `0` that were triggered within the last 10 seconds. A more concrete example:
+The priority value is a time duration in seconds, which offsets the timestamp of the run in the queue. If you specify a priority of `10`, the run will win over runs with a priority of `0` that were triggered within the last 10 seconds. A more concrete example:
 
 ```ts
 // Triggered at 12:00:00, into a queue with a large number of queued runs
@@ -93,7 +97,7 @@ In this case, the second run will be executed first, because it's priority moved
 
 <Note>
   We purposefully chose to use a time duration as the priority value instead of specifying priority
-  levels, because priority levels can cause "level starvation" where lower priortity runs are never
+  levels, because priority levels can cause "level starvation" where lower priority runs are never
   executed because there are always higher priority runs in the queue.
 </Note>
 
@@ -440,38 +444,38 @@ See the [AI SDK tool execution options docs](https://sdk.vercel.ai/docs/ai-sdk-c
 
 ## Installation
 
-To opt-in to using v4, you will need to update your dependencies to the latest version of the `v4` tag.
+To opt-in to using v4, you will need to update your dependencies to the latest version of the `v4-beta` tag.
 
 <CodeGroup>
 
 ```bash npm
-npm add @trigger.dev/sdk@v4
+npm add @trigger.dev/sdk@v4-beta
 ```
 
 ```bash yarn
-yarn add @trigger.dev/sdk@v4
+yarn add @trigger.dev/sdk@v4-beta
 ```
 
 ```bash pnpm
-pnpm add @trigger.dev/sdk@v4
+pnpm add @trigger.dev/sdk@v4-beta
 ```
 
 </CodeGroup>
 
-You'll also need to use the `v4` version of the `trigger.dev` CLI package:
+You'll also need to use the `v4-beta` version of the `trigger.dev` CLI package:
 
 <CodeGroup>
 
 ```bash npx
-npx trigger.dev@v4 dev
+npx trigger.dev@v4-beta dev
 ```
 
 ```bash yarn
-yarn dlx trigger.dev@v4 dev
+yarn dlx trigger.dev@v4-beta dev
 ```
 
 ```bash pnpm
-pnpm dlx trigger.dev@v4 dev
+pnpm dlx trigger.dev@v4-beta dev
 ```
 
 </CodeGroup>
@@ -481,7 +485,7 @@ Or you could install the CLI into your `devDependencies` and then use the `trigg
 ```json package.json
 {
   "devDependencies": {
-    "trigger.dev": "v4"
+    "trigger.dev": "v4-beta"
   },
   "scripts": {
     "dev": "trigger dev"
@@ -644,13 +648,19 @@ You can also now control whether concurrency is released when performing a wait:
 await wait.for({ seconds: 10 }, { releaseConcurrency: false });
 ```
 
-The new default behavior allows you to ensure that you can control the number of executing & waiting runs on a queue, and guarentee runs will resume once they are meant to be resumed.
+The new default behavior allows you to ensure that you can control the number of executing & waiting runs on a queue, and guarantee runs will resume once they are meant to be resumed.
 
 <Note>
   If you do choose to release concurrency on waits, be aware that it's possible a resume is delayed
   if the concurrency that was released is not available at the time the wait completes. In this
   case, the run will go back into the queue and will resume once concurrency becomes available.
 </Note>
+
+This new behavior effects all the wait functions:
+
+- Wait for duration (e.g. `wait.for({ seconds: 10 })`)
+- Wait for a child task to complete (e.g. `myTask.triggerAndWait()`, `myTask.batchTriggerAndWait([...])`)
+- Wait for a token to complete (e.g. `wait.forToken(tokenId)`)
 
 ### Lifecycle hooks
 

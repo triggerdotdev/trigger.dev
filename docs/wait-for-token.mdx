@@ -3,8 +3,437 @@ title: "Wait for token"
 description: "Wait until a token is completed."
 ---
 
-import ComingSoon from "/snippets/coming-soon-generic.mdx"
+import UpgradeToV4Note from "/snippets/upgrade-to-v4-note.mdx";
 
 Waitpoint tokens pause task runs until you complete the token. They're commonly used for approval workflows and other scenarios where you need to wait for external confirmation, such as human-in-the-loop processes.
 
-<ComingSoon />
+<UpgradeToV4Note />
+
+## Usage
+
+To get started using wait tokens, you need to first create a token using the `wait.createToken` function:
+
+```ts
+import { wait } from "@trigger.dev/sdk";
+
+// This can be called anywhere in your codebase, either in a task or in your backend code
+const token = await wait.createToken({
+  timeout: "10m", // you can optionally specify a timeout for the token
+});
+```
+
+Once you have a token, you can wait for it to be completed using the `wait.forToken` function:
+
+```ts
+import { wait } from "@trigger.dev/sdk";
+
+type ApprovalToken = {
+  status: "approved" | "rejected";
+};
+
+// This must be called inside a task run function
+const result = await wait.forToken<ApprovalToken>(tokenId);
+
+if (result.ok) {
+  console.log("Token completed", result.output.status); // "approved" or "rejected"
+} else {
+  console.log("Token timed out", result.error);
+}
+```
+
+To complete a token, you can use the `wait.completeToken` function:
+
+```ts
+import { wait } from "@trigger.dev/sdk";
+// This can be called anywhere in your codebase, or from an external service,
+// passing in the token ID and the output of the token
+await wait.completeToken<ApprovalToken>(tokenId, {
+  status: "approved",
+});
+```
+
+## wait.createToken
+
+Create a waitpoint token.
+
+### options
+
+The `createToken` function accepts an object with the following properties:
+
+<ParamField query="timeout" type="string" optional>
+  The maximum amount of time to wait for the token to be completed. Defaults to "10m".
+</ParamField>
+
+<ParamField query="idempotencyKey" type="string" optional>
+  An idempotency key for the token. If provided, the token will be completed with the same payload
+  if the same idempotency key is used again.
+</ParamField>
+
+<ParamField query="idempotencyKeyTTL" type="string" optional>
+  The time to live for the idempotency key. Defaults to "1h".
+</ParamField>
+
+<ParamField query="tags" type="string[]" optional>
+  Tags to attach to the token. Tags can be used to filter waitpoints in the dashboard.
+</ParamField>
+
+### returns
+
+The `createToken` function returns a token object with the following properties:
+
+<ParamField query="id" type="string">
+  The ID of the token. Starts with `waitpoint_`.
+</ParamField>
+
+<ParamField query="isCached" type="boolean">
+  Whether the token is cached. Will return true if the token was created with an idempotency key and
+  the same idempotency key was used again.
+</ParamField>
+
+<ParamField query="publicAccessToken" type="string">
+  A Public Access Token that can be used to complete the token from a client-side application (or
+  another backend). See our [frontend docs](/frontend/overview) for more details.
+</ParamField>
+
+### Example
+
+```ts
+import { wait } from "@trigger.dev/sdk";
+
+const token = await wait.createToken({
+  timeout: "10m",
+  idempotencyKey: "my-idempotency-key",
+  tags: ["my-tag"],
+});
+```
+
+## wait.completeToken
+
+Complete a waitpoint token.
+
+### parameters
+
+<ParamField query="id" type="string">
+  The ID of the token to complete.
+</ParamField>
+
+<ParamField query="output" type="any">
+  The data to complete the token with.
+</ParamField>
+
+### returns
+
+The `completeToken` function returns an object with the following properties:
+
+<ParamField query="success" type="boolean">
+  Whether the token was completed successfully.
+</ParamField>
+
+### Example
+
+```ts
+import { wait } from "@trigger.dev/sdk";
+
+await wait.completeToken<ApprovalToken>(tokenId, {
+  status: "approved",
+});
+```
+
+### From another language
+
+You can complete a token using a raw HTTP request or from another language.
+
+<CodeGroup>
+
+```bash curl
+curl -X POST "https://api.trigger.dev/api/v1/waitpoints/tokens/{tokenId}/complete" \
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: application/json" \
+  -d '{"output": { "status": "approved"}}'
+```
+
+```python python
+import requests
+
+response = requests.post(
+  "https://api.trigger.dev/api/v1/waitpoints/tokens/{tokenId}/complete",
+  headers={"Authorization": f"Bearer {token}"},
+  json={"output": { "status": "approved"}}
+)
+```
+
+```ruby ruby
+require "net/http"
+
+uri = URI("https://api.trigger.dev/api/v1/waitpoints/tokens/{tokenId}/complete")
+
+http = Net::HTTP.new(uri.host, uri.port)
+request = Net::HTTP::Post.new(uri)
+request["Authorization"] = "Bearer {token}"
+request["Content-Type"] = "application/json"
+request.body = JSON.generate({ output: { status: "approved" } })
+
+response = http.request(request)
+```
+
+```go go
+package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"net/http"
+)
+
+func main() {
+	url := "https://api.trigger.dev/api/v1/waitpoints/tokens/{tokenId}/complete"
+
+	payload := map[string]interface{}{
+		"output": map[string]interface{}{
+			"status": "approved",
+		},
+	}
+
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		fmt.Println("Error marshalling payload:", err)
+		return
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		fmt.Println("Error creating request:", err)
+		return
+	}
+
+	req.Header.Set("Authorization", "Bearer {token}")
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Println("Error sending request:", err)
+		return
+	}
+
+	defer resp.Body.Close()
+
+	fmt.Println("Response status:", resp.Status)
+}
+```
+
+</CodeGroup>
+
+## wait.forToken
+
+Wait for a token to be completed.
+
+### parameters
+
+<ParamField query="token" type="string | { id: string }">
+  The token to wait for.
+</ParamField>
+
+<ParamField query="options" type="object" optional>
+  Options for the wait.
+
+  <Expandable title="properties">
+    <ParamField query="releaseConcurrency" type="boolean" optional>
+      If set to true, this will cause the waitpoint to release the current run from the queue's concurrency.
+
+      This is useful if you want to allow other runs to execute while waiting
+
+      Note: It's possible that this run will not be able to resume when the waitpoint is complete if this is set to true.
+      It will go back in the queue and will resume once concurrency becomes available.
+
+      The default is `false`.
+    </ParamField>
+
+  </Expandable>
+</ParamField>
+
+### returns
+
+The `forToken` function returns a result object with the following properties:
+
+<ParamField query="ok" type="boolean">
+  Whether the token was completed successfully.
+</ParamField>
+
+<ParamField query="output" type="any">
+  If `ok` is `true`, this will be the output of the token.
+</ParamField>
+
+<ParamField query="error" type="Error">
+  If `ok` is `false`, this will be the error that occurred. The only error that can occur is a
+  timeout error.
+</ParamField>
+
+### Example
+
+```ts
+import { wait } from "@trigger.dev/sdk";
+
+const result = await wait.forToken<ApprovalToken>(tokenId);
+
+if (result.ok) {
+  console.log("Token completed", result.output.status); // "approved" or "rejected"
+} else {
+  console.log("Token timed out", result.error);
+}
+```
+
+## wait.listTokens
+
+List all tokens for an environment.
+
+### parameters
+
+The `listTokens` function accepts an object with the following properties:
+
+<ParamField query="status" type="string | string[]" optional>
+  Statuses to filter by. Can be one or more of: `WAITING`, `COMPLETED`, `TIMED_OUT`.
+</ParamField>
+
+<ParamField query="idempotencyKey" type="string" optional>
+  The idempotency key to filter by.
+</ParamField>
+
+<ParamField query="tags" type="string | string[]" optional>
+  Tags to filter by.
+</ParamField>
+
+<ParamField query="period" type="string" optional>
+  The period to filter by. Can be one of: `1h`, `1d`, `7d`, `30d`.
+</ParamField>
+
+<ParamField query="from" type="Date | number" optional>
+  The start date to filter by.
+</ParamField>
+
+<ParamField query="to" type="Date | number" optional>
+  The end date to filter by.
+</ParamField>
+
+### returns
+
+The `listTokens` function returns a list of tokens that can be iterated over using a for-await-of loop.
+
+Each token is an object with the following properties:
+
+<ParamField query="id" type="string">
+  The ID of the token.
+</ParamField>
+
+<ParamField query="status" type="string">
+  The status of the token.
+</ParamField>
+
+<ParamField query="completedAt" type="Date">
+  The date and time the token was completed.
+</ParamField>
+
+<ParamField query="timeoutAt" type="Date">
+  The date and time the token will timeout.
+</ParamField>
+
+<ParamField query="idempotencyKey" type="string">
+  The idempotency key of the token.
+</ParamField>
+
+<ParamField query="idempotencyKeyExpiresAt" type="Date">
+  The date and time the idempotency key will expire.
+</ParamField>
+
+<ParamField query="tags" type="string[]">
+  The tags of the token.
+</ParamField>
+
+<ParamField query="createdAt" type="Date">
+  The date and time the token was created.
+</ParamField>
+
+<Note>
+  The output of the token is not included in the list. To get the output, you need to retrieve the
+  token using the `wait.retrieveToken` function.
+</Note>
+
+### Example
+
+```ts
+import { wait } from "@trigger.dev/sdk";
+
+const tokens = await wait.listTokens({
+  status: "COMPLETED",
+  tags: ["user:123"],
+});
+
+for await (const token of tokens) {
+  console.log(token);
+}
+```
+
+## wait.retrieveToken
+
+Retrieve a token by ID.
+
+### parameters
+
+<ParamField query="id" type="string">
+  The ID of the token to retrieve.
+</ParamField>
+
+### returns
+
+The `retrieveToken` function returns a token object with the following properties:
+
+<ParamField query="id" type="string">
+  The ID of the token.
+</ParamField>
+
+<ParamField query="status" type="string">
+  The status of the token.
+</ParamField>
+
+<ParamField query="completedAt" type="Date">
+  The date and time the token was completed.
+</ParamField>
+
+<ParamField query="timeoutAt" type="Date">
+  The date and time the token will timeout.
+</ParamField>
+
+<ParamField query="idempotencyKey" type="string">
+  The idempotency key of the token.
+</ParamField>
+
+<ParamField query="idempotencyKeyExpiresAt" type="Date">
+  The date and time the idempotency key will expire.
+</ParamField>
+
+<ParamField query="tags" type="string[]">
+  The tags of the token.
+</ParamField>
+
+<ParamField query="createdAt" type="Date">
+  The date and time the token was created.
+</ParamField>
+
+<ParamField query="output" type="any">
+  The output of the token.
+</ParamField>
+
+<ParamField query="error" type="Error">
+  The error that occurred.
+</ParamField>
+
+### Example
+
+```ts
+import { wait } from "@trigger.dev/sdk";
+
+const token = await wait.retrieveToken(tokenId);
+
+console.log(token);
+```
