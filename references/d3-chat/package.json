@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "dev:trigger": "trigger dev",
+    "deploy": "trigger deploy",
     "tunnel": "ngrok http --url=d3-demo.ngrok.dev 3000",
     "python:install-requirements": "uv pip sync requirements.txt",
     "python:compile-requirements": "uv pip compile requirements.in -o requirements.txt",
