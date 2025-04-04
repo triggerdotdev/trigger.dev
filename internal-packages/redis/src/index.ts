@@ -8,7 +8,7 @@ const defaultOptions: Partial<RedisOptions> = {
     const delay = Math.min(times * 50, 1000);
     return delay;
   },
-  maxRetriesPerRequest: process.env.GITHUB_ACTIONS ? 50 : process.env.VITEST ? 1 : 20,
+  maxRetriesPerRequest: process.env.GITHUB_ACTIONS ? 50 : process.env.VITEST ? 5 : 20,
 };
 
 const logger = new Logger("Redis", "debug");

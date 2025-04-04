@@ -138,7 +138,7 @@
       "type": "node-terminal",
       "request": "launch",
       "name": "Debug RunEngine tests",
-      "command": "pnpm run test ./src/engine/tests/releaseConcurrencyQueue.test.ts -t 'Should manage token bucket and queue correctly'",
+      "command": "pnpm run test ./src/engine/tests/releaseConcurrencyTokenBucketQueue.test.ts -t 'Should retrieve metrics for all queues via getQueueMetrics'",
       "cwd": "${workspaceFolder}/internal-packages/run-engine",
       "sourceMaps": true
     },
