@@ -99,7 +99,10 @@ class ManagedSupervisor {
         this.logger.warn("[ManagedWorker] Failed pod handler disabled");
       }
 
-      this.resourceMonitor = new KubernetesResourceMonitor(createK8sApi(), "");
+      this.resourceMonitor = new KubernetesResourceMonitor(
+        createK8sApi(),
+        env.TRIGGER_WORKER_INSTANCE_NAME
+      );
       this.workloadManager = new KubernetesWorkloadManager(workloadManagerOptions);
     } else {
       this.resourceMonitor = new DockerResourceMonitor(new Docker());
@@ -117,7 +120,7 @@ class ManagedSupervisor {
       runNotificationsEnabled: env.TRIGGER_WORKLOAD_API_ENABLED,
       preDequeue: async () => {
         if (this.isKubernetes) {
-          // TODO: Test k8s resource monitor and remove this
+          // Not used in k8s for now
           return {};
         }
 
@@ -235,10 +238,11 @@ class ManagedSupervisor {
           snapshotFriendlyId: message.snapshot.friendlyId,
         });
 
-        this.resourceMonitor.blockResources({
-          cpu: message.run.machine.cpu,
-          memory: message.run.machine.memory,
-        });
+        // Disabled for now
+        // this.resourceMonitor.blockResources({
+        //   cpu: message.run.machine.cpu,
+        //   memory: message.run.machine.memory,
+        // });
       } catch (error) {
         this.logger.error("[ManagedWorker] Failed to create workload", { error });
       }
