@@ -5,6 +5,7 @@ import {
   ExceptionEventProperties,
   ExceptionSpanEvent,
   NULL_SENTINEL,
+  EMPTY_ARRAY_SENTINEL,
   PRIMARY_VARIANT,
   SemanticInternalAttributes,
   SpanEvent,
@@ -1591,6 +1592,10 @@ function rehydrateJson(json: Prisma.JsonValue): any {
 
   if (json === NULL_SENTINEL) {
     return null;
+  }
+
+  if (json === EMPTY_ARRAY_SENTINEL) {
+    return [];
   }
 
   if (typeof json === "string") {
