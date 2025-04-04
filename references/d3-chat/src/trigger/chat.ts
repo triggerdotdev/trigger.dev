@@ -1,6 +1,5 @@
-import { openai } from "@ai-sdk/openai";
 import { anthropic } from "@ai-sdk/anthropic";
-import { python } from "@trigger.dev/python";
+import { openai } from "@ai-sdk/openai";
 import { ai } from "@trigger.dev/sdk/ai";
 import { logger, metadata, schemaTask, wait } from "@trigger.dev/sdk/v3";
 import { sql } from "@vercel/postgres";
@@ -8,23 +7,9 @@ import { streamText, TextStreamPart, tool } from "ai";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import { sendSQLApprovalMessage } from "../lib/slack";
+import { crawler } from "./crawler";
 import { chartTool } from "./sandbox";
 import { QueryApproval } from "./schemas";
-
-const crawlerTask = schemaTask({
-  id: "crawler",
-  description: "Crawl a URL and return the markdown",
-  schema: z.object({
-    url: z.string().describe("The URL to crawl"),
-  }),
-  run: async ({ url }) => {
-    const results = await python.runScript("./src/trigger/python/crawler.py", [url]);
-
-    return results.stdout;
-  },
-});
-
-const crawler = ai.tool(crawlerTask);
 
 const queryApprovalTask = schemaTask({
   id: "query-approval",

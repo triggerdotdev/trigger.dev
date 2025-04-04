@@ -134,6 +134,7 @@ export class TaskRunProcess {
       NODE_OPTIONS: execOptionsForRuntime(workerManifest.runtime, workerManifest, maxOldSpaceSize),
       PATH: process.env.PATH,
       TRIGGER_PROCESS_FORK_START_TIME: String(Date.now()),
+      TRIGGER_WARM_START: this.options.isWarmStart ? "true" : "false",
     };
 
     logger.debug(`initializing task run process`, {

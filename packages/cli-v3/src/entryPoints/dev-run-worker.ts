@@ -104,7 +104,6 @@ localsAPI.setGlobalLocalsManager(standardLocalsManager);
 
 const standardRunTimelineMetricsManager = new StandardRunTimelineMetricsManager();
 runTimelineMetrics.setGlobalManager(standardRunTimelineMetricsManager);
-standardRunTimelineMetricsManager.seedMetricsFromEnvironment();
 
 const standardLifecycleHooksManager = new StandardLifecycleHooksManager();
 lifecycleHooks.setGlobalLifecycleHooksManager(standardLifecycleHooksManager);
@@ -309,6 +308,7 @@ const zodIpc = new ZodIpcConnection({
             "import",
             {
               entryPoint: taskManifest.entryPoint,
+              file: taskManifest.filePath,
             },
             async () => {
               const beforeImport = performance.now();

@@ -27,6 +27,7 @@ import {
 import { recordSpanException, TracingSDK } from "../otel/index.js";
 import { runTimelineMetrics } from "../run-timeline-metrics-api.js";
 import {
+  COLD_VARIANT,
   RetryOptions,
   ServerBackgroundWorker,
   TaskRunContext,
@@ -34,6 +35,7 @@ import {
   TaskRunExecution,
   TaskRunExecutionResult,
   TaskRunExecutionRetry,
+  WARM_VARIANT,
 } from "../schemas/index.js";
 import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
 import { taskContext } from "../task-context-api.js";
@@ -305,6 +307,13 @@ export class TaskExecutor {
           [SemanticInternalAttributes.SPAN_ATTEMPT]: true,
           ...(execution.attempt.number === 1
             ? runTimelineMetrics.convertMetricsToSpanAttributes()
+            : {}),
+          ...(execution.environment.type !== "DEVELOPMENT"
+            ? {
+                [SemanticInternalAttributes.STYLE_VARIANT]: this._isWarmStart
+                  ? WARM_VARIANT
+                  : COLD_VARIANT,
+              }
             : {}),
         },
         events:

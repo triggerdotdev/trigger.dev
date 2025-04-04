@@ -111,7 +111,6 @@ lifecycleHooks.setGlobalLifecycleHooksManager(standardLifecycleHooksManager);
 
 const standardRunTimelineMetricsManager = new StandardRunTimelineMetricsManager();
 runTimelineMetrics.setGlobalManager(standardRunTimelineMetricsManager);
-standardRunTimelineMetricsManager.seedMetricsFromEnvironment();
 
 const devUsageManager = new DevUsageManager();
 const prodUsageManager = new ProdUsageManager(devUsageManager, {
@@ -322,6 +321,7 @@ const zodIpc = new ZodIpcConnection({
             "import",
             {
               entryPoint: taskManifest.entryPoint,
+              file: taskManifest.filePath,
             },
             async () => {
               const beforeImport = performance.now();

@@ -14,6 +14,8 @@ export class StandardRunTimelineMetricsManager implements RunTimelineMetricsMana
   }
 
   registerMetricsFromExecution(metrics?: TaskRunExecutionMetrics): void {
+    this.#seedMetricsFromEnvironment();
+
     if (metrics) {
       metrics.forEach((metric) => {
         this.registerMetric({
@@ -28,10 +30,12 @@ export class StandardRunTimelineMetricsManager implements RunTimelineMetricsMana
     }
   }
 
-  seedMetricsFromEnvironment() {
+  #seedMetricsFromEnvironment() {
     const forkStartTime = getEnvVar("TRIGGER_PROCESS_FORK_START_TIME");
+    const warmStart = getEnvVar("TRIGGER_WARM_START");
+    const isWarmStart = warmStart === "true";
 
-    if (typeof forkStartTime === "string") {
+    if (typeof forkStartTime === "string" && !isWarmStart) {
       const forkStartTimeMs = parseInt(forkStartTime, 10);
 
       this.registerMetric({
