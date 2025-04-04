@@ -36,12 +36,7 @@ import {
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import { TextLink } from "~/components/primitives/TextLink";
 import { InfoIconTooltip, SimpleTooltip } from "~/components/primitives/Tooltip";
-import {
-  createTimelineSpanEventsFromSpanEvents,
-  RunTimeline,
-  RunTimelineEvent,
-  SpanTimeline,
-} from "~/components/run/RunTimeline";
+import { RunTimeline, RunTimelineEvent, SpanTimeline } from "~/components/run/RunTimeline";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
 import { RunTag } from "~/components/runs/v3/RunTag";
 import { SpanEvents } from "~/components/runs/v3/SpanEvents";
@@ -76,6 +71,7 @@ import { useEnvironment } from "~/hooks/useEnvironment";
 import { WaitpointStatusCombo } from "~/components/runs/v3/WaitpointStatus";
 import { PacketDisplay } from "~/components/runs/v3/PacketDisplay";
 import { WaitpointDetailTable } from "~/components/runs/v3/WaitpointDetails";
+import { createTimelineSpanEventsFromSpanEvents } from "~/utils/timelineSpanEvents";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { projectParam, organizationSlug, envParam, runParam, spanParam } =

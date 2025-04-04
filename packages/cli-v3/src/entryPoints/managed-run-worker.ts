@@ -36,6 +36,7 @@ import {
   logLevels,
   ManagedRuntimeManager,
   OtelTaskLogger,
+  populateEnv,
   ProdUsageManager,
   StandardLifecycleHooksManager,
   StandardLocalsManager,
@@ -110,7 +111,6 @@ lifecycleHooks.setGlobalLifecycleHooksManager(standardLifecycleHooksManager);
 
 const standardRunTimelineMetricsManager = new StandardRunTimelineMetricsManager();
 runTimelineMetrics.setGlobalManager(standardRunTimelineMetricsManager);
-standardRunTimelineMetricsManager.seedMetricsFromEnvironment();
 
 const devUsageManager = new DevUsageManager();
 const prodUsageManager = new ProdUsageManager(devUsageManager, {
@@ -248,7 +248,16 @@ const zodIpc = new ZodIpcConnection({
   emitSchema: ExecutorToWorkerMessageCatalog,
   process,
   handlers: {
-    EXECUTE_TASK_RUN: async ({ execution, traceContext, metadata, metrics }, sender) => {
+    EXECUTE_TASK_RUN: async (
+      { execution, traceContext, metadata, metrics, env, isWarmStart },
+      sender
+    ) => {
+      if (env) {
+        populateEnv(env, {
+          override: true,
+        });
+      }
+
       standardRunTimelineMetricsManager.registerMetricsFromExecution(metrics);
 
       console.log(`[${new Date().toISOString()}] Received EXECUTE_TASK_RUN`, execution);
@@ -312,6 +321,7 @@ const zodIpc = new ZodIpcConnection({
             "import",
             {
               entryPoint: taskManifest.entryPoint,
+              file: taskManifest.filePath,
             },
             async () => {
               const beforeImport = performance.now();
@@ -383,6 +393,7 @@ const zodIpc = new ZodIpcConnection({
           tracingSDK,
           consoleInterceptor,
           retries: config.retries,
+          isWarmStart,
         });
 
         try {
@@ -461,11 +472,34 @@ const zodIpc = new ZodIpcConnection({
 async function flushAll(timeoutInMs: number = 10_000) {
   const now = performance.now();
 
-  await Promise.all([
+  const results = await Promise.allSettled([
     flushUsage(timeoutInMs),
     flushTracingSDK(timeoutInMs),
     flushMetadata(timeoutInMs),
   ]);
+
+  const successfulFlushes = results
+    .filter((result) => result.status === "fulfilled")
+    .map((result) => result.value.flushed);
+  const failedFlushes = ["usage", "tracingSDK", "runMetadata"].filter(
+    (flushed) => !successfulFlushes.includes(flushed)
+  );
+
+  if (failedFlushes.length > 0) {
+    console.error(`Failed to flush ${failedFlushes.join(", ")}`);
+  }
+
+  const errorMessages = results
+    .filter((result) => result.status === "rejected")
+    .map((result) => result.reason);
+
+  if (errorMessages.length > 0) {
+    console.error(errorMessages.join("\n"));
+  }
+
+  for (const flushed of successfulFlushes) {
+    console.log(`Flushed ${flushed} successfully`);
+  }
 
   const duration = performance.now() - now;
 
@@ -480,6 +514,11 @@ async function flushUsage(timeoutInMs: number = 10_000) {
   const duration = performance.now() - now;
 
   console.log(`Flushed usage in ${duration}ms`);
+
+  return {
+    flushed: "usage",
+    durationMs: duration,
+  };
 }
 
 async function flushTracingSDK(timeoutInMs: number = 10_000) {
@@ -490,6 +529,11 @@ async function flushTracingSDK(timeoutInMs: number = 10_000) {
   const duration = performance.now() - now;
 
   console.log(`Flushed tracingSDK in ${duration}ms`);
+
+  return {
+    flushed: "tracingSDK",
+    durationMs: duration,
+  };
 }
 
 async function flushMetadata(timeoutInMs: number = 10_000) {
@@ -500,6 +544,11 @@ async function flushMetadata(timeoutInMs: number = 10_000) {
   const duration = performance.now() - now;
 
   console.log(`Flushed runMetadata in ${duration}ms`);
+
+  return {
+    flushed: "runMetadata",
+    durationMs: duration,
+  };
 }
 
 const managedWorkerRuntime = new ManagedRuntimeManager(zodIpc, true);

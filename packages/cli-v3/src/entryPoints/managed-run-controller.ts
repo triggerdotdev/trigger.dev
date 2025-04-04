@@ -836,6 +836,18 @@ class ManagedRunController {
         this.exitProcess(this.successExitCode);
       }
 
+      if (this.taskRunProcess) {
+        logger.debug("waitForNextRun: eagerly recreating task run process with options");
+        this.taskRunProcess = new TaskRunProcess({
+          ...this.taskRunProcess.options,
+          isWarmStart: true,
+        }).initialize();
+      } else {
+        logger.debug(
+          "waitForNextRun: no existing task run process, so we can't eagerly recreate it"
+        );
+      }
+
       // Check the service is up and get additional warm start config
       const connect = await this.warmStartClient.connect();
 
@@ -904,6 +916,9 @@ class ManagedRunController {
 
   private exitProcess(code?: number): never {
     logger.log("Exiting process", { code });
+    if (this.taskRunProcess?.isPreparedForNextRun) {
+      this.taskRunProcess.forceExit();
+    }
     process.exit(code);
   }
 
@@ -980,30 +995,33 @@ class ManagedRunController {
   }: WorkloadRunAttemptStartResponseBody) {
     this.snapshotPoller.start();
 
-    this.taskRunProcess = new TaskRunProcess({
-      workerManifest: this.workerManifest,
-      env: envVars,
-      serverWorker: {
-        id: "unmanaged",
-        contentHash: env.TRIGGER_CONTENT_HASH,
-        version: env.TRIGGER_DEPLOYMENT_VERSION,
-        engine: "V2",
-      },
-      payload: {
-        execution,
-        traceContext: execution.run.traceContext ?? {},
-      },
-      messageId: run.friendlyId,
-    });
-
-    await this.taskRunProcess.initialize();
+    if (!this.taskRunProcess || !this.taskRunProcess.isPreparedForNextRun) {
+      this.taskRunProcess = new TaskRunProcess({
+        workerManifest: this.workerManifest,
+        env: envVars,
+        serverWorker: {
+          id: "unmanaged",
+          contentHash: env.TRIGGER_CONTENT_HASH,
+          version: env.TRIGGER_DEPLOYMENT_VERSION,
+          engine: "V2",
+        },
+        machine: execution.machine,
+      }).initialize();
+    }
 
     logger.log("executing task run process", {
       attemptId: execution.attempt.id,
       runId: execution.run.id,
     });
 
-    const completion = await this.taskRunProcess.execute();
+    const completion = await this.taskRunProcess.execute({
+      payload: {
+        execution,
+        traceContext: execution.run.traceContext ?? {},
+      },
+      messageId: run.friendlyId,
+      env: envVars,
+    });
 
     logger.log("Completed run", completion);
 

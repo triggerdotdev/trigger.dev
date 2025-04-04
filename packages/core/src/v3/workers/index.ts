@@ -27,3 +27,4 @@ export { StandardRunTimelineMetricsManager } from "../runTimelineMetrics/runTime
 export { WarmStartClient, type WarmStartClientOptions } from "../workers/warmStartClient.js";
 export { StandardLifecycleHooksManager } from "../lifecycleHooks/manager.js";
 export { StandardLocalsManager } from "../locals/manager.js";
+export { populateEnv } from "./populateEnv.js";

@@ -1,8 +1,7 @@
 import { millisecondsToNanoseconds } from "@trigger.dev/core/v3";
 import { createTreeFromFlatItems, flattenTree } from "~/components/primitives/TreeView/TreeView";
-import { createTimelineSpanEventsFromSpanEvents } from "~/components/run/RunTimeline";
 import { prisma, PrismaClient } from "~/db.server";
-import { redirectWithErrorMessage } from "~/models/message.server";
+import { createTimelineSpanEventsFromSpanEvents } from "~/utils/timelineSpanEvents";
 import { getUsername } from "~/utils/username";
 import { eventRepository } from "~/v3/eventRepository.server";
 import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";

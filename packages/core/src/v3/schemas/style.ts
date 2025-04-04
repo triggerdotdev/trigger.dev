@@ -1,8 +1,10 @@
 import { z } from "zod";
 
 export const PRIMARY_VARIANT = "primary";
+export const WARM_VARIANT = "warm";
+export const COLD_VARIANT = "cold";
 
-const Variant = z.enum([PRIMARY_VARIANT]);
+const Variant = z.enum([PRIMARY_VARIANT, WARM_VARIANT, COLD_VARIANT]);
 export type Variant = z.infer<typeof Variant>;
 
 const AccessoryItem = z.object({
