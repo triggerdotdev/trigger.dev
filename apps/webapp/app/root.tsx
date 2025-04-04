@@ -107,11 +107,21 @@ export default function App() {
     if (!features.isManagedCloud || !kapa.websiteId) return;
 
     loadScriptIfNotExists(kapa.websiteId);
-    window.Kapa("render", {
-      onRender: () => window.Kapa("open"),
-    });
 
-    return () => window.Kapa("unmount");
+    const kapaInterval = setInterval(() => {
+      if (typeof window.Kapa === "function") {
+        clearInterval(kapaInterval);
+        window.Kapa("render");
+      }
+    }, 100);
+
+    // Clear interval on unmount to prevent memory leaks
+    return () => {
+      clearInterval(kapaInterval);
+      if (typeof window.Kapa === "function") {
+        window.Kapa("unmount");
+      }
+    };
   }, [features.isManagedCloud, kapa.websiteId]);
 
   return (
@@ -149,8 +159,9 @@ function loadScriptIfNotExists(websiteId: string) {
     "data-website-id": websiteId,
     "data-project-name": "Trigger.dev",
     "data-project-color": "#ff9900",
-    "data-project-logo": "content.trigger.dev/trigger-logo-triangle.png",
+    "data-project-logo": "https://content.trigger.dev/trigger-logo-triangle.png",
     "data-render-on-load": "false",
+    "data-button-hide": "true",
   };
 
   Object.entries(attributes).forEach(([key, value]) => {
