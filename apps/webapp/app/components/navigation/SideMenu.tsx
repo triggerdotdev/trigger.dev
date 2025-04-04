@@ -300,8 +300,12 @@ export function SideMenu({
                     ref={buttonRef}
                     variant="small-menu-item"
                     data-action="ask-ai"
+                    shortcut={{ modifiers: ["mod"], key: "/" }}
+                    data-modal-override-open-class-ask-ai="true"
                     onClick={() => {
-                      // TODO: sort action
+                      if (typeof window.Kapa === "function") {
+                        window.Kapa("open");
+                      }
                     }}
                   >
                     <AISparkleIcon className="size-5" />
@@ -313,7 +317,6 @@ export function SideMenu({
                 className="flex items-center gap-1 py-1.5 pl-2.5 pr-2 text-xs"
               >
                 Ask AI
-                <ShortcutKey shortcut={{ key: "/", modifiers: ["mod"] }} variant="small" />
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
