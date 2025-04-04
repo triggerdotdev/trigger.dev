@@ -28,6 +28,8 @@ export class DockerWorkloadManager implements WorkloadManager {
       "run",
       "--detach",
       `--network=${env.DOCKER_NETWORK}`,
+      `--env=TRIGGER_DEQUEUED_AT_MS=${opts.dequeuedAt.getTime()}`,
+      `--env=TRIGGER_POD_SCHEDULED_AT_MS=${Date.now()}`,
       `--env=TRIGGER_ENV_ID=${opts.envId}`,
       `--env=TRIGGER_RUN_ID=${opts.runFriendlyId}`,
       `--env=TRIGGER_SNAPSHOT_ID=${opts.snapshotFriendlyId}`,

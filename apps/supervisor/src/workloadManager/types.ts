@@ -21,6 +21,7 @@ export interface WorkloadManagerCreateOptions {
   machine: MachinePreset;
   version: string;
   nextAttemptNumber?: number;
+  dequeuedAt: Date;
   // identifiers
   envId: string;
   envType: EnvironmentType;

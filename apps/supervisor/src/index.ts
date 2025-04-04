@@ -224,6 +224,7 @@ class ManagedSupervisor {
 
       try {
         await this.workloadManager.create({
+          dequeuedAt: message.dequeuedAt,
           envId: message.environment.id,
           envType: message.environment.type,
           image: message.image,

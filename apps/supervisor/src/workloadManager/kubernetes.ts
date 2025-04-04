@@ -62,6 +62,14 @@ export class KubernetesWorkloadManager implements WorkloadManager {
                 resources: this.#getResourcesForMachine(opts.machine),
                 env: [
                   {
+                    name: "TRIGGER_DEQUEUED_AT_MS",
+                    value: opts.dequeuedAt.getTime().toString(),
+                  },
+                  {
+                    name: "TRIGGER_POD_SCHEDULED_AT_MS",
+                    value: Date.now().toString(),
+                  },
+                  {
                     name: "TRIGGER_RUN_ID",
                     value: opts.runFriendlyId,
                   },
@@ -97,7 +105,11 @@ export class KubernetesWorkloadManager implements WorkloadManager {
                   },
                   {
                     name: "TRIGGER_WORKER_INSTANCE_NAME",
-                    value: env.TRIGGER_WORKER_INSTANCE_NAME,
+                    valueFrom: {
+                      fieldRef: {
+                        fieldPath: "spec.nodeName",
+                      },
+                    },
                   },
                   {
                     name: "OTEL_EXPORTER_OTLP_ENDPOINT",
