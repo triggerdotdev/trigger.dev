@@ -2,6 +2,7 @@ import {
   isWaitpointOutputTimeout,
   type MachinePresetName,
   prettyPrintPacket,
+  SemanticInternalAttributes,
   TaskRunError,
 } from "@trigger.dev/core/v3";
 import { getMaxDuration } from "@trigger.dev/core/v3/isomorphic";
@@ -455,7 +456,7 @@ export class SpanPresenter extends BasePresenter {
     };
 
     switch (span.entity.type) {
-      case "waitpoint":
+      case "waitpoint": {
         if (!span.entity.id) {
           logger.error(`SpanPresenter: No waitpoint id`, {
             spanId,
@@ -486,9 +487,29 @@ export class SpanPresenter extends BasePresenter {
             object: waitpoint,
           },
         };
-
+      }
+      case "attempt": {
+        return {
+          ...data,
+          entity: {
+            type: "attempt" as const,
+            object: {
+              isWarmStart: isWarmStart(span.properties),
+            },
+          },
+        };
+      }
       default:
         return { ...data, entity: null };
     }
   }
+}
+
+function isWarmStart(
+  attributes: string | number | boolean | Record<string, unknown> | null | undefined
+): boolean | undefined {
+  if (!attributes || typeof attributes !== "object") return undefined;
+  const attribute = attributes[SemanticInternalAttributes.WARM_START];
+  if (typeof attribute !== "boolean") return undefined;
+  return attribute;
 }
