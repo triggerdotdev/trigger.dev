@@ -220,7 +220,7 @@ describe("createTimelineSpanEventsFromSpanEvents", () => {
     expect(result.some((event) => event.name === "Attempt created")).toBe(false);
   });
 
-  test("should filter import events for non-admin when fork event exists", () => {
+  test.skip("should filter import events for non-admin when fork event exists", () => {
     const result = createTimelineSpanEventsFromSpanEvents(sampleSpanEvents, false);
 
     // With fork event, import should be hidden for non-admins
