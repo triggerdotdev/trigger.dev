@@ -171,7 +171,7 @@ function getAdminOnlyForEvent(event: string): boolean {
       return true;
     }
     case "import": {
-      return true;
+      return false;
     }
     case "lazy_payload": {
       return true;
