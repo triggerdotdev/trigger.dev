@@ -144,12 +144,13 @@ We recommend using our [Cursor rules](https://trigger.dev/changelog/cursor-rules
 
 #### The generated code
 
-```tsx trigger/welcome.tsx
+```tsx emails/trigger-welcome-email.tsx
 import {
   Body,
-  Button,reac
+  Button,
   Container,
   Head,
+  Heading,
   Hr,
   Html,
   Img,
@@ -159,11 +160,13 @@ import {
   Text,
 } from "@react-email/components";
 
-const baseUrl = process.env.VERCEL_URL
-  ? `https://${process.env.VERCEL_URL}`
-  : "";
+const baseUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "";
 
-export const TriggerDevWelcomeEmail = () => (
+export interface TriggerWelcomeEmailProps {
+  name: string;
+}
+
+export const TriggerWelcomeEmail = ({ name }: TriggerWelcomeEmailProps) => (
   <Html>
     <Head />
     <Preview>Welcome to Trigger.dev - Your background jobs platform!</Preview>
@@ -177,13 +180,14 @@ export const TriggerDevWelcomeEmail = () => (
             alt="Trigger.dev"
           />
           <Hr style={hr} />
+          <Heading>Welcome, {name}!</Heading>
           <Text style={paragraph}>
-            Thanks for signing up for Trigger.dev! You're now ready to start
-            creating powerful background jobs and workflows.
+            Thanks for signing up for Trigger.dev! You're now ready to start creating powerful
+            background jobs and workflows.
           </Text>
           <Text style={paragraph}>
-            You can monitor your jobs, view runs, and manage your projects right
-            from your dashboard.
+            You can monitor your jobs, view runs, and manage your projects right from your
+            dashboard.
           </Text>
           <Button style={button} href="https://cloud.trigger.dev/dashboard">
             View your Trigger.dev Dashboard
@@ -201,9 +205,8 @@ export const TriggerDevWelcomeEmail = () => (
             .
           </Text>
           <Text style={paragraph}>
-            You can create your first job using our SDK, set up integrations,
-            and configure triggers to automate your workflows. Take a look at
-            our{" "}
+            You can create your first job using our SDK, set up integrations, and configure triggers
+            to automate your workflows. Take a look at our{" "}
             <Link style={anchor} href="https://trigger.dev/docs/examples">
               examples
             </Link>{" "}
@@ -217,8 +220,7 @@ export const TriggerDevWelcomeEmail = () => (
             to connect with other developers and get help when you need it.
           </Text>
           <Text style={paragraph}>
-            We're here to help you build amazing things. If you have any
-            questions, check out our{" "}
+            We're here to help you build amazing things. If you have any questions, check out our{" "}
             <Link style={anchor} href="https://trigger.dev/docs">
               documentation
             </Link>{" "}
@@ -233,7 +235,7 @@ export const TriggerDevWelcomeEmail = () => (
   </Html>
 );
 
-export default TriggerDevWelcomeEmail;
+export default TriggerWelcomeEmail;
 
 const main = {
   backgroundColor: "#0E0C15",
@@ -286,6 +288,50 @@ const footer = {
   fontSize: "12px",
   lineHeight: "16px",
 };
+```
+
+And then to trigger the email, you can use the following task:
+
+```tsx trigger/triggerWelcomeEmail.tsx
+import { logger, task } from "@trigger.dev/sdk/v3";
+import { Resend } from "resend";
+import TriggerWelcomeEmail from "emails/triggerdotdev-welcome-email";
+
+// Initialize Resend client
+const resend = new Resend(process.env.RESEND_API_KEY);
+
+export const sendEmail = task({
+  id: "trigger-welcome-email",
+  run: async (payload: { to: string; name: string; subject: string; from?: string }) => {
+    try {
+        to: payload.to,
+      });
+
+      const { data, error } = await resend.emails.send({
+        // The from address needs to be a verified email address
+        from: payload.from || "email@acmeinc.com", // Default from address
+        to: payload.to,
+        subject: payload.subject,
+        react: <TriggerWelcomeEmail name={payload.name} />,
+      });
+
+      if (error) {
+        logger.error("Failed to send email", { error });
+        throw new Error(`Failed to send email: ${error.message}`);
+      }
+
+      logger.info("Email sent successfully", { emailId: data?.id });
+
+      return {
+        id: data?.id,
+        status: "sent",
+      };
+    } catch (error) {
+      logger.error("Unexpected error sending email", { error });
+      throw error;
+    }
+  },
+});
 ```
 
 ## Learn more
