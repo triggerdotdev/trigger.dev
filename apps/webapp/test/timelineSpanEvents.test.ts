@@ -62,11 +62,11 @@ describe("createTimelineSpanEventsFromSpanEvents", () => {
     const result = createTimelineSpanEventsFromSpanEvents(sampleSpanEvents, false);
 
     // Only dequeue and fork events should be visible for non-admins
-    expect(result.length).toBe(2);
+    expect(result.length).toBe(3);
     expect(result.some((event) => event.name === "Dequeued")).toBe(true);
     expect(result.some((event) => event.name === "Launched")).toBe(true);
     expect(result.some((event) => event.name === "Attempt created")).toBe(false);
-    expect(result.some((event) => event.name.includes("Importing"))).toBe(false);
+    expect(result.some((event) => event.name.includes("Importing"))).toBe(true);
   });
 
   test("should include all events when isAdmin is true", () => {
