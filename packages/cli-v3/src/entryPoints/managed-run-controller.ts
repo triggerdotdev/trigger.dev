@@ -5,24 +5,25 @@ import { z } from "zod";
 import { randomUUID } from "crypto";
 import { readJSONFile } from "../utilities/fileSystem.js";
 import {
-  CompleteRunAttemptResult,
+  type CompleteRunAttemptResult,
   HeartbeatService,
-  RunExecutionData,
-  TaskRunExecutionResult,
-  TaskRunFailedExecutionResult,
+  type RunExecutionData,
+  type TaskRunExecutionResult,
+  type TaskRunFailedExecutionResult,
   WorkerManifest,
 } from "@trigger.dev/core/v3";
 import {
   WarmStartClient,
   WORKLOAD_HEADERS,
-  WorkloadClientToServerEvents,
+  type WorkloadClientToServerEvents,
+  type WorkloadDebugLogRequestBody,
   WorkloadHttpClient,
-  WorkloadServerToClientEvents,
+  type WorkloadServerToClientEvents,
   type WorkloadRunAttemptStartResponseBody,
 } from "@trigger.dev/core/v3/workers";
 import { assertExhaustive } from "../utilities/assertExhaustive.js";
 import { setTimeout as sleep } from "timers/promises";
-import { io, Socket } from "socket.io-client";
+import { io, type Socket } from "socket.io-client";
 
 // All IDs are friendly IDs
 const Env = z.object({
