@@ -1,5 +1,16 @@
 # trigger.dev
 
+## 3.3.18
+
+### Patch Changes
+
+- Run Engine 2.0 (alpha) ([#1575](https://github.com/triggerdotdev/trigger.dev/pull/1575))
+- Improve warm start times by eagerly creating the child TaskRunProcess when a previous run as completed ([#1879](https://github.com/triggerdotdev/trigger.dev/pull/1879))
+- v4: New lifecycle hooks ([#1817](https://github.com/triggerdotdev/trigger.dev/pull/1817))
+- Updated dependencies:
+  - `@trigger.dev/build@3.3.18`
+  - `@trigger.dev/core@3.3.18`
+
 ## 3.3.17
 
 ### Patch Changes

@@ -1,5 +1,14 @@
 # @trigger.dev/python
 
+## 3.3.18
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/sdk@3.3.18`
+  - `@trigger.dev/build@3.3.18`
+  - `@trigger.dev/core@3.3.18`
+
 ## 3.3.17
 
 ### Patch Changes
