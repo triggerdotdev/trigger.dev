@@ -15,7 +15,10 @@ export type ReleaseConcurrencyQueueRetryOptions = {
 
 export type ReleaseConcurrencyQueueOptions<T> = {
   redis: RedisOptions;
-  executor: (releaseQueue: T, releaserId: string) => Promise<void>;
+  /**
+   * @returns true if the run was successful, false if the token should be returned to the bucket
+   */
+  executor: (releaseQueue: T, releaserId: string) => Promise<boolean>;
   keys: {
     fromDescriptor: (releaseQueue: T) => string;
     toDescriptor: (releaseQueue: string) => T;
@@ -119,7 +122,7 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
       String(Date.now())
     );
 
-    this.logger.debug("Consumed token in attemptToRelease", {
+    this.logger.info("Consumed token in attemptToRelease", {
       releaseQueueDescriptor,
       releaserId,
       maxTokens,
@@ -270,7 +273,7 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
       return false;
     }
 
-    await Promise.all(
+    await Promise.allSettled(
       result.map(([queue, releaserId, metadata]) => {
         const itemMetadata = QueueItemMetadata.parse(JSON.parse(metadata));
         const releaseQueueDescriptor = this.keys.toDescriptor(queue);
@@ -283,9 +286,29 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
 
   async #callExecutor(releaseQueueDescriptor: T, releaserId: string, metadata: QueueItemMetadata) {
     try {
-      this.logger.info("Executing run:", { releaseQueueDescriptor, releaserId });
+      this.logger.info("Calling executor for release", { releaseQueueDescriptor, releaserId });
 
-      await this.options.executor(releaseQueueDescriptor, releaserId);
+      const released = await this.options.executor(releaseQueueDescriptor, releaserId);
+
+      if (released) {
+        this.logger.info("Executor released concurrency", { releaseQueueDescriptor, releaserId });
+      } else {
+        this.logger.info("Executor did not release concurrency", {
+          releaseQueueDescriptor,
+          releaserId,
+        });
+
+        // Return the token but don't requeue
+        const releaseQueue = this.keys.fromDescriptor(releaseQueueDescriptor);
+        await this.redis.returnTokenOnly(
+          this.masterQueuesKey,
+          this.#bucketKey(releaseQueue),
+          this.#queueKey(releaseQueue),
+          this.#metadataKey(releaseQueue),
+          releaseQueue,
+          releaserId
+        );
+      }
     } catch (error) {
       this.logger.error("Error executing run:", { error });
 
@@ -401,7 +424,9 @@ local currentTokens = tonumber(redis.call("GET", bucketKey) or maxTokens)
 
 -- If we have enough tokens, then consume them
 if currentTokens >= 1 then
-  redis.call("SET", bucketKey, currentTokens - 1)
+  newCurrentTokens = currentTokens - 1
+
+  redis.call("SET", bucketKey, newCurrentTokens)
   redis.call("ZREM", queueKey, releaserId)
 
   -- Clean up metadata when successfully consuming
@@ -411,8 +436,8 @@ if currentTokens >= 1 then
   local queueLength = redis.call("ZCARD", queueKey)
 
   -- If we still have tokens and items in queue, update available queues
-  if currentTokens > 0 and queueLength > 0 then
-    redis.call("ZADD", masterQueuesKey, currentTokens, releaseQueue)
+  if newCurrentTokens > 0 and queueLength > 0 then
+    redis.call("ZADD", masterQueuesKey, newCurrentTokens, releaseQueue)
   else
     redis.call("ZREM", masterQueuesKey, releaseQueue)
   end

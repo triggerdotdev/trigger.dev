@@ -1,6 +1,7 @@
 import { redisTest, StartedRedisContainer } from "@internal/testcontainers";
 import { ReleaseConcurrencyTokenBucketQueue } from "../releaseConcurrencyTokenBucketQueue.js";
 import { setTimeout } from "node:timers/promises";
+import { createRedisClient, Redis } from "@internal/redis";
 
 type TestQueueDescriptor = {
   name: string;
@@ -20,6 +21,7 @@ function createReleaseConcurrencyQueue(
     },
     executor: async (releaseQueue, runId) => {
       executedRuns.push({ releaseQueue: releaseQueue.name, runId });
+      return true;
     },
     maxTokens: async (_) => maxTokens,
     keys: {
@@ -221,6 +223,7 @@ describe("ReleaseConcurrencyQueue", () => {
             throw new Error("Executor failed");
           }
           executedRuns.push({ releaseQueue, runId });
+          return true;
         },
         maxTokens: async (_) => 2,
         keys: {
@@ -299,6 +302,7 @@ describe("ReleaseConcurrencyQueue", () => {
         // Add small delay to simulate work
         await setTimeout(10);
         executedRuns.push({ releaseQueue, runId });
+        return true;
       },
       keys: {
         fromDescriptor: (descriptor) => descriptor,
@@ -419,6 +423,7 @@ describe("ReleaseConcurrencyQueue", () => {
         },
         executor: async (releaseQueue, runId) => {
           secondRunAttempted = true;
+          return true;
         },
         keys: {
           fromDescriptor: (descriptor) => descriptor,
@@ -515,6 +520,63 @@ describe("ReleaseConcurrencyQueue", () => {
       await queue.quit();
     }
   });
+
+  redisTest(
+    "Should return token but not requeue when executor returns false",
+    async ({ redisContainer }) => {
+      const executedRuns: { releaseQueue: string; runId: string }[] = [];
+      const runResults: Record<string, boolean> = {
+        run1: true, // This will succeed
+        run2: false, // This will return false, returning the token without requeuing
+        run3: true, // This should execute immediately when run2's token is returned
+      };
+
+      const queue = new ReleaseConcurrencyTokenBucketQueue<string>({
+        redis: {
+          keyPrefix: "release-queue:test:",
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+        },
+        executor: async (releaseQueue, runId) => {
+          const success = runResults[runId];
+
+          executedRuns.push({ releaseQueue, runId });
+
+          return success;
+        },
+        keys: {
+          fromDescriptor: (descriptor) => descriptor,
+          toDescriptor: (name) => name,
+        },
+        maxTokens: async (_) => 2, // Only 2 tokens available at a time
+        pollInterval: 100,
+      });
+
+      try {
+        // First run should execute and succeed
+        await queue.attemptToRelease("test-queue", "run1");
+        expect(executedRuns).toHaveLength(1);
+        expect(executedRuns[0]).toEqual({ releaseQueue: "test-queue", runId: "run1" });
+
+        // Second run should execute but return false, returning the token
+        await queue.attemptToRelease("test-queue", "run2");
+        expect(executedRuns).toHaveLength(2);
+        expect(executedRuns[1]).toEqual({ releaseQueue: "test-queue", runId: "run2" });
+
+        // Third run should be able to execute immediately since run2 returned its token
+        await queue.attemptToRelease("test-queue", "run3");
+
+        expect(executedRuns).toHaveLength(3);
+        expect(executedRuns[2]).toEqual({ releaseQueue: "test-queue", runId: "run3" });
+
+        // Verify that run2 was not retried (it should have been skipped)
+        const run2Attempts = executedRuns.filter((r) => r.runId === "run2");
+        expect(run2Attempts).toHaveLength(1); // Only executed once, not retried
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
 
   redisTest("Should implement exponential backoff between retries", async ({ redisContainer }) => {
     const executionTimes: number[] = [];

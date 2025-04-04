@@ -219,7 +219,7 @@ export class RunEngine {
               pollInterval: options.releaseConcurrency?.pollInterval ?? 1000,
               batchSize: options.releaseConcurrency?.batchSize ?? 10,
               executor: async (descriptor, snapshotId) => {
-                await this.releaseConcurrencySystem.executeReleaseConcurrencyForSnapshot(
+                return await this.releaseConcurrencySystem.executeReleaseConcurrencyForSnapshot(
                   snapshotId
                 );
               },
