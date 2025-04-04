@@ -28,6 +28,7 @@ export type ReleaseConcurrencyQueueOptions<T> = {
   pollInterval?: number;
   batchSize?: number;
   retry?: ReleaseConcurrencyQueueRetryOptions;
+  disableConsumers?: boolean;
 };
 
 const QueueItemMetadata = z.object({
@@ -74,7 +75,10 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
     };
 
     this.#registerCommands();
-    this.#startConsumers();
+
+    if (!options.disableConsumers) {
+      this.#startConsumers();
+    }
   }
 
   public async quit() {
@@ -93,6 +97,12 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
     const maxTokens = await this.#callMaxTokens(releaseQueueDescriptor);
 
     if (maxTokens === 0) {
+      this.logger.debug("No tokens available, skipping release", {
+        releaseQueueDescriptor,
+        releaserId,
+        maxTokens,
+      });
+
       return;
     }
 
@@ -109,6 +119,14 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
       String(Date.now())
     );
 
+    this.logger.debug("Consumed token in attemptToRelease", {
+      releaseQueueDescriptor,
+      releaserId,
+      maxTokens,
+      result,
+      releaseQueue,
+    });
+
     if (!!result) {
       await this.#callExecutor(releaseQueueDescriptor, releaserId, {
         retryCount: 0,
@@ -119,6 +137,7 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
         releaseQueueDescriptor,
         releaserId,
         maxTokens,
+        releaseQueue,
       });
     }
   }
@@ -130,12 +149,18 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
    */
   public async consumeToken(releaseQueueDescriptor: T, releaserId: string) {
     const maxTokens = await this.#callMaxTokens(releaseQueueDescriptor);
+    const releaseQueue = this.keys.fromDescriptor(releaseQueueDescriptor);
 
     if (maxTokens === 0) {
+      this.logger.debug("No tokens available, skipping consume", {
+        releaseQueueDescriptor,
+        releaserId,
+        maxTokens,
+        releaseQueue,
+      });
+
       return;
     }
-
-    const releaseQueue = this.keys.fromDescriptor(releaseQueueDescriptor);
 
     await this.redis.consumeToken(
       this.masterQueuesKey,
@@ -147,6 +172,13 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
       String(maxTokens),
       String(Date.now())
     );
+
+    this.logger.debug("Consumed token in consumeToken", {
+      releaseQueueDescriptor,
+      releaserId,
+      maxTokens,
+      releaseQueue,
+    });
   }
 
   /**
@@ -157,6 +189,11 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
   public async returnToken(releaseQueueDescriptor: T, releaserId: string) {
     const releaseQueue = this.keys.fromDescriptor(releaseQueueDescriptor);
 
+    this.logger.debug("Returning token in returnToken", {
+      releaseQueueDescriptor,
+      releaserId,
+    });
+
     await this.redis.returnTokenOnly(
       this.masterQueuesKey,
       this.#bucketKey(releaseQueue),
@@ -165,6 +202,12 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
       releaseQueue,
       releaserId
     );
+
+    this.logger.debug("Returned token in returnToken", {
+      releaseQueueDescriptor,
+      releaserId,
+      releaseQueue,
+    });
   }
 
   /**
@@ -177,10 +220,20 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
     const releaseQueue = this.keys.fromDescriptor(releaseQueueDescriptor);
 
     if (amount < 0) {
+      this.logger.debug("Cannot refill with negative tokens", {
+        releaseQueueDescriptor,
+        amount,
+      });
+
       throw new Error("Cannot refill with negative tokens");
     }
 
     if (amount === 0) {
+      this.logger.debug("Cannot refill with 0 tokens", {
+        releaseQueueDescriptor,
+        amount,
+      });
+
       return [];
     }
 
@@ -192,6 +245,13 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
       String(amount),
       String(maxTokens)
     );
+
+    this.logger.debug("Refilled tokens in refillTokens", {
+      releaseQueueDescriptor,
+      releaseQueue,
+      amount,
+      maxTokens,
+    });
   }
 
   /**

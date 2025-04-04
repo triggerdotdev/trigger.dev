@@ -201,6 +201,7 @@ export class RunEngine {
         options.releaseConcurrency.disabled
           ? undefined
           : {
+              disableConsumers: options.releaseConcurrency?.disableConsumers,
               redis: {
                 ...options.queue.redis, // Use base queue redis options
                 ...options.releaseConcurrency?.redis, // Allow overrides
