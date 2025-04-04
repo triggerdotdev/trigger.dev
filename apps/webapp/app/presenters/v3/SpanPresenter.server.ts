@@ -509,12 +509,3 @@ export class SpanPresenter extends BasePresenter {
     }
   }
 }
-
-function isWarmStart(
-  attributes: string | number | boolean | Record<string, unknown> | null | undefined
-): boolean | undefined {
-  if (!attributes || typeof attributes !== "object") return undefined;
-  const attribute = attributes[SemanticInternalAttributes.WARM_START];
-  if (typeof attribute !== "boolean") return undefined;
-  return attribute;
-}
