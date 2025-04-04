@@ -31,6 +31,7 @@ const Env = z.object({
   // Dequeue settings (provider mode)
   TRIGGER_DEQUEUE_ENABLED: BoolEnv.default("true"),
   TRIGGER_DEQUEUE_INTERVAL_MS: z.coerce.number().int().default(1000),
+  TRIGGER_DEQUEUE_MAX_RUN_COUNT: z.coerce.number().int().default(10),
 
   // Optional services
   TRIGGER_WARM_START_URL: z.string().optional(),
