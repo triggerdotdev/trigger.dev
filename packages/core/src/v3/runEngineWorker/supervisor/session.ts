@@ -17,6 +17,7 @@ type SupervisorSessionOptions = SupervisorClientCommonOptions & {
   dequeueIntervalMs?: number;
   preDequeue?: PreDequeueFn;
   preSkip?: PreSkipFn;
+  maxRunCount?: number;
 };
 
 export class SupervisorSession extends EventEmitter<WorkerEvents> {
@@ -44,6 +45,7 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
       preSkip: opts.preSkip,
       onDequeue: this.onDequeue.bind(this),
       intervalMs: opts.dequeueIntervalMs,
+      maxRunCount: opts.maxRunCount,
     });
 
     // TODO: This should be dynamic and set by (or at least overridden by) the platform

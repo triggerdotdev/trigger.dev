@@ -5,24 +5,25 @@ import { z } from "zod";
 import { randomUUID } from "crypto";
 import { readJSONFile } from "../utilities/fileSystem.js";
 import {
-  CompleteRunAttemptResult,
+  type CompleteRunAttemptResult,
   HeartbeatService,
-  RunExecutionData,
-  TaskRunExecutionResult,
-  TaskRunFailedExecutionResult,
+  type RunExecutionData,
+  type TaskRunExecutionResult,
+  type TaskRunFailedExecutionResult,
   WorkerManifest,
 } from "@trigger.dev/core/v3";
 import {
   WarmStartClient,
   WORKLOAD_HEADERS,
-  WorkloadClientToServerEvents,
+  type WorkloadClientToServerEvents,
+  type WorkloadDebugLogRequestBody,
   WorkloadHttpClient,
-  WorkloadServerToClientEvents,
+  type WorkloadServerToClientEvents,
   type WorkloadRunAttemptStartResponseBody,
 } from "@trigger.dev/core/v3/workers";
 import { assertExhaustive } from "../utilities/assertExhaustive.js";
 import { setTimeout as sleep } from "timers/promises";
-import { io, Socket } from "socket.io-client";
+import { io, type Socket } from "socket.io-client";
 
 // All IDs are friendly IDs
 const Env = z.object({
@@ -86,6 +87,7 @@ type Metadata = {
   TRIGGER_SNAPSHOT_POLL_INTERVAL_SECONDS: number | undefined;
   TRIGGER_SUCCESS_EXIT_CODE: number | undefined;
   TRIGGER_FAILURE_EXIT_CODE: number | undefined;
+  TRIGGER_RUNNER_ID: string | undefined;
 };
 
 class MetadataClient {
@@ -126,6 +128,8 @@ class ManagedRunController {
   private workerApiUrl: string;
   private workerInstanceName: string;
 
+  private runnerId: string;
+
   private successExitCode = env.TRIGGER_SUCCESS_EXIT_CODE;
   private failureExitCode = env.TRIGGER_FAILURE_EXIT_CODE;
 
@@ -144,6 +148,8 @@ class ManagedRunController {
 
     this.workerManifest = opts.workerManifest;
 
+    this.runnerId = env.TRIGGER_RUNNER_ID;
+
     this.heartbeatIntervalSeconds = env.TRIGGER_HEARTBEAT_INTERVAL_SECONDS;
     this.snapshotPollIntervalSeconds = env.TRIGGER_SNAPSHOT_POLL_INTERVAL_SECONDS;
 
@@ -156,7 +162,7 @@ class ManagedRunController {
 
     this.httpClient = new WorkloadHttpClient({
       workerApiUrl: this.workerApiUrl,
-      runnerId: env.TRIGGER_RUNNER_ID,
+      runnerId: this.runnerId,
       deploymentId: env.TRIGGER_DEPLOYMENT_ID,
       deploymentVersion: env.TRIGGER_DEPLOYMENT_VERSION,
       projectRef: env.TRIGGER_PROJECT_REF,
@@ -182,8 +188,8 @@ class ManagedRunController {
 
         console.debug("[ManagedRunController] Polling for latest snapshot");
 
-        this.httpClient.sendDebugLog(this.runFriendlyId, {
-          time: new Date(),
+        this.sendDebugLog({
+          runId: this.runFriendlyId,
           message: `snapshot poll: started`,
           properties: {
             snapshotId: this.snapshotFriendlyId,
@@ -195,8 +201,8 @@ class ManagedRunController {
         if (!response.success) {
           console.error("[ManagedRunController] Snapshot poll failed", { error: response.error });
 
-          this.httpClient.sendDebugLog(this.runFriendlyId, {
-            time: new Date(),
+          this.sendDebugLog({
+            runId: this.runFriendlyId,
             message: `snapshot poll: failed`,
             properties: {
               snapshotId: this.snapshotFriendlyId,
@@ -263,8 +269,8 @@ class ManagedRunController {
   // This should only be used when we're already executing a run. Attempt number changes are not allowed.
   private updateRunPhase(run: Run, snapshot: Snapshot) {
     if (this.state.phase !== "RUN") {
-      this.httpClient.sendDebugLog(run.friendlyId, {
-        time: new Date(),
+      this.sendDebugLog({
+        runId: run.friendlyId,
         message: `updateRunPhase: Invalid phase for updating snapshot: ${this.state.phase}`,
         properties: {
           currentPhase: this.state.phase,
@@ -276,8 +282,8 @@ class ManagedRunController {
     }
 
     if (this.state.run.friendlyId !== run.friendlyId) {
-      this.httpClient.sendDebugLog(run.friendlyId, {
-        time: new Date(),
+      this.sendDebugLog({
+        runId: run.friendlyId,
         message: `updateRunPhase: Mismatched run IDs`,
         properties: {
           currentRunId: this.state.run.friendlyId,
@@ -293,8 +299,8 @@ class ManagedRunController {
     if (this.state.snapshot.friendlyId === snapshot.friendlyId) {
       logger.debug("updateRunPhase: Snapshot not changed", { run, snapshot });
 
-      this.httpClient.sendDebugLog(run.friendlyId, {
-        time: new Date(),
+      this.sendDebugLog({
+        runId: run.friendlyId,
         message: `updateRunPhase: Snapshot not changed`,
         properties: {
           snapshotId: snapshot.friendlyId,
@@ -305,8 +311,8 @@ class ManagedRunController {
     }
 
     if (this.state.run.attemptNumber !== run.attemptNumber) {
-      this.httpClient.sendDebugLog(run.friendlyId, {
-        time: new Date(),
+      this.sendDebugLog({
+        runId: run.friendlyId,
         message: `updateRunPhase: Attempt number changed`,
         properties: {
           oldAttemptNumber: this.state.run.attemptNumber ?? undefined,
@@ -412,9 +418,9 @@ class ManagedRunController {
           snapshotId: this.snapshotFriendlyId,
         });
 
-        this.httpClient.sendDebugLog(run.friendlyId, {
-          time: new Date(),
-          message: `snapshot change: missing snapshot ID`,
+        this.sendDebugLog({
+          runId: run.friendlyId,
+          message: "snapshot change: missing snapshot ID",
           properties: {
             newSnapshotId: snapshot.friendlyId,
             newSnapshotStatus: snapshot.executionStatus,
@@ -427,9 +433,9 @@ class ManagedRunController {
       if (this.snapshotFriendlyId === snapshot.friendlyId) {
         console.debug("handleSnapshotChange: snapshot not changed, skipping", { snapshot });
 
-        this.httpClient.sendDebugLog(run.friendlyId, {
-          time: new Date(),
-          message: `snapshot change: skipping, no change`,
+        this.sendDebugLog({
+          runId: run.friendlyId,
+          message: "snapshot change: skipping, no change",
           properties: {
             snapshotId: this.snapshotFriendlyId,
             snapshotStatus: snapshot.executionStatus,
@@ -446,8 +452,8 @@ class ManagedRunController {
         completedWaitpoints: completedWaitpoints.length,
       });
 
-      this.httpClient.sendDebugLog(run.friendlyId, {
-        time: new Date(),
+      this.sendDebugLog({
+        runId: run.friendlyId,
         message: `snapshot change: ${snapshot.executionStatus}`,
         properties: {
           oldSnapshotId: this.snapshotFriendlyId,
@@ -463,6 +469,15 @@ class ManagedRunController {
           run,
           snapshot,
           error,
+        });
+
+        this.sendDebugLog({
+          runId: run.friendlyId,
+          message: "snapshot change: failed to update run phase",
+          properties: {
+            currentPhase: this.state.phase,
+            error: error instanceof Error ? error.message : String(error),
+          },
         });
 
         this.waitForNextRun();
@@ -539,8 +554,8 @@ class ManagedRunController {
               error: suspendResult.error,
             });
 
-            this.httpClient.sendDebugLog(run.friendlyId, {
-              time: new Date(),
+            this.sendDebugLog({
+              runId: run.friendlyId,
               message: "checkpoint: suspend request failed",
               properties: {
                 snapshotId: snapshot.friendlyId,
@@ -556,8 +571,8 @@ class ManagedRunController {
               suspendResult: suspendResult.data,
             });
 
-            this.httpClient.sendDebugLog(run.friendlyId, {
-              time: new Date(),
+            this.sendDebugLog({
+              runId: run.friendlyId,
               message: "checkpoint: failed to suspend run",
               properties: {
                 snapshotId: snapshot.friendlyId,
@@ -645,9 +660,9 @@ class ManagedRunController {
     } catch (error) {
       console.error("handleSnapshotChange: unexpected error", { error });
 
-      this.httpClient.sendDebugLog(run.friendlyId, {
-        time: new Date(),
-        message: `snapshot change: unexpected error`,
+      this.sendDebugLog({
+        runId: run.friendlyId,
+        message: "snapshot change: unexpected error",
         properties: {
           snapshotId: snapshot.friendlyId,
           error: error instanceof Error ? error.message : String(error),
@@ -708,6 +723,11 @@ class ManagedRunController {
       this.workerApiUrl = `${protocol}://${domain}:${port}`;
 
       this.httpClient.updateApiUrl(this.workerApiUrl);
+    }
+
+    if (overrides.TRIGGER_RUNNER_ID) {
+      this.runnerId = overrides.TRIGGER_RUNNER_ID;
+      this.httpClient.updateRunnerId(this.runnerId);
     }
   }
 
@@ -869,8 +889,8 @@ class ManagedRunController {
       });
 
       if (previousRunId) {
-        this.httpClient.sendDebugLog(previousRunId, {
-          time: new Date(),
+        this.sendDebugLog({
+          runId: previousRunId,
           message: "warm start: received config",
           properties: {
             connectionTimeoutMs,
@@ -935,8 +955,8 @@ class ManagedRunController {
     this.socket.on("run:notify", async ({ version, run }) => {
       console.log("[ManagedRunController] Received run notification", { version, run });
 
-      this.httpClient.sendDebugLog(run.friendlyId, {
-        time: new Date(),
+      this.sendDebugLog({
+        runId: run.friendlyId,
         message: "run:notify received by runner",
       });
 
@@ -955,6 +975,16 @@ class ManagedRunController {
           currentRunId: this.runFriendlyId,
           currentSnapshotId: this.snapshotFriendlyId,
         });
+
+        this.sendDebugLog({
+          runId: run.friendlyId,
+          message: "run:notify: ignoring notification for different run",
+          properties: {
+            currentRunId: this.runFriendlyId,
+            currentSnapshotId: this.snapshotFriendlyId,
+            notificationRunId: run.friendlyId,
+          },
+        });
         return;
       }
 
@@ -965,6 +995,16 @@ class ManagedRunController {
 
       if (!latestSnapshot.success) {
         console.error("Failed to get latest snapshot data", latestSnapshot.error);
+
+        this.sendDebugLog({
+          runId: this.runFriendlyId,
+          message: "run:notify: failed to get latest snapshot data",
+          properties: {
+            currentRunId: this.runFriendlyId,
+            currentSnapshotId: this.snapshotFriendlyId,
+            error: latestSnapshot.error,
+          },
+        });
         return;
       }
 
@@ -1131,6 +1171,28 @@ class ManagedRunController {
     }
 
     assertExhaustive(attemptStatus);
+  }
+
+  sendDebugLog({
+    runId,
+    message,
+    date,
+    properties,
+  }: {
+    runId: string;
+    message: string;
+    date?: Date;
+    properties?: WorkloadDebugLogRequestBody["properties"];
+  }) {
+    this.httpClient.sendDebugLog(runId, {
+      message,
+      time: date ?? new Date(),
+      properties: {
+        ...properties,
+        runnerId: this.runnerId,
+        workerName: this.workerInstanceName,
+      },
+    });
   }
 
   async cancelAttempt(runId: string) {

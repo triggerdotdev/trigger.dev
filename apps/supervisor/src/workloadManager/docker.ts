@@ -1,5 +1,4 @@
 import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
-import { RunnerId } from "@trigger.dev/core/v3/isomorphic";
 import {
   type WorkloadManager,
   type WorkloadManagerCreateOptions,
@@ -7,7 +6,7 @@ import {
 } from "./types.js";
 import { x } from "tinyexec";
 import { env } from "../env.js";
-import { getDockerHostDomain } from "../util.js";
+import { getDockerHostDomain, getRunnerId } from "../util.js";
 
 export class DockerWorkloadManager implements WorkloadManager {
   private readonly logger = new SimpleStructuredLogger("docker-workload-provider");
@@ -23,7 +22,8 @@ export class DockerWorkloadManager implements WorkloadManager {
   async create(opts: WorkloadManagerCreateOptions) {
     this.logger.log("[DockerWorkloadProvider] Creating container", { opts });
 
-    const runnerId = RunnerId.generate();
+    const runnerId = getRunnerId(opts.runFriendlyId);
+
     const runArgs = [
       "run",
       "--detach",
