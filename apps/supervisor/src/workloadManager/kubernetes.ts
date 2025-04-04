@@ -97,7 +97,11 @@ export class KubernetesWorkloadManager implements WorkloadManager {
                   },
                   {
                     name: "TRIGGER_WORKER_INSTANCE_NAME",
-                    value: env.TRIGGER_WORKER_INSTANCE_NAME,
+                    valueFrom: {
+                      fieldRef: {
+                        fieldPath: "spec.nodeName",
+                      },
+                    },
                   },
                   {
                     name: "OTEL_EXPORTER_OTLP_ENDPOINT",
