@@ -3,7 +3,7 @@ import { KeyboardLeftIcon } from "~/assets/icons/KeyboardLeftIcon";
 import { KeyboardRightIcon } from "~/assets/icons/KeyboardRightIcon";
 import { KeyboardUpIcon } from "~/assets/icons/KeyboardUpIcon";
 import { KeyboardWindowsIcon } from "~/assets/icons/KeyboardWindowsIcon";
-import { Modifier, Shortcut } from "~/hooks/useShortcutKeys";
+import { type Modifier, type Shortcut } from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
 import { useOperatingSystem } from "./OperatingSystemProvider";
 
