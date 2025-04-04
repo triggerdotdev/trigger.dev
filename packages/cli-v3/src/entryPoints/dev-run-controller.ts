@@ -369,11 +369,15 @@ export class DevRunController {
           try {
             await this.cancelAttempt();
           } catch (error) {
-            logger.debug("Failed to cancel attempt, shutting down", {
+            logger.debug("Failed to cancel attempt, killing task run process", {
               error,
             });
 
-            //todo kill the process?
+            try {
+              await this.taskRunProcess?.kill("SIGKILL");
+            } catch (error) {
+              logger.debug("Failed to cancel attempt, failed to kill task run process", { error });
+            }
 
             return;
           }
