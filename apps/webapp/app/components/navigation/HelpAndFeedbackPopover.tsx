@@ -32,6 +32,7 @@ export function HelpAndFeedback() {
       <PopoverSideMenuTrigger
         isOpen={isHelpMenuOpen}
         shortcut={{ key: "h", enabledOnInputElements: false }}
+        className="grow pr-2"
       >
         <div className="flex items-center gap-1.5">
           <QuestionMarkCircleIcon className="size-4 text-success" />
