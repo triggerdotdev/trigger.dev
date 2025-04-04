@@ -26,6 +26,11 @@ import { assertExhaustive } from "../utilities/assertExhaustive.js";
 import { setTimeout as sleep } from "timers/promises";
 import { io, type Socket } from "socket.io-client";
 
+const DateEnv = z
+  .string()
+  .transform((val) => new Date(parseInt(val, 10)))
+  .pipe(z.date());
+
 // All IDs are friendly IDs
 const Env = z.object({
   // Set at build time
@@ -52,7 +57,8 @@ const Env = z.object({
   TRIGGER_METADATA_URL: z.string().optional(),
 
   // Timeline metrics
-  TRIGGER_POD_SCHEDULED_AT_MS: z.coerce.date(),
+  TRIGGER_POD_SCHEDULED_AT_MS: DateEnv,
+  TRIGGER_DEQUEUED_AT_MS: DateEnv,
 
   // May be overridden
   TRIGGER_SUPERVISOR_API_PROTOCOL: z.enum(["http", "https"]),
@@ -1295,7 +1301,7 @@ class ManagedRunController {
       this.startAndExecuteRunAttempt({
         runFriendlyId: env.TRIGGER_RUN_ID,
         snapshotFriendlyId: env.TRIGGER_SNAPSHOT_ID,
-        dequeuedAt: new Date(),
+        dequeuedAt: env.TRIGGER_DEQUEUED_AT_MS,
         podScheduledAt: env.TRIGGER_POD_SCHEDULED_AT_MS,
       }).finally(() => {});
       return;

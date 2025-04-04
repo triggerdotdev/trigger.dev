@@ -62,6 +62,10 @@ export class KubernetesWorkloadManager implements WorkloadManager {
                 resources: this.#getResourcesForMachine(opts.machine),
                 env: [
                   {
+                    name: "TRIGGER_DEQUEUED_AT_MS",
+                    value: opts.dequeuedAt.getTime().toString(),
+                  },
+                  {
                     name: "TRIGGER_POD_SCHEDULED_AT_MS",
                     value: Date.now().toString(),
                   },
