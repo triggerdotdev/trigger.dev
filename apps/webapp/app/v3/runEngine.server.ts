@@ -77,6 +77,7 @@ function createRunEngine() {
     },
     releaseConcurrency: {
       disabled: env.RUN_ENGINE_RELEASE_CONCURRENCY_ENABLED === "0",
+      disableConsumers: env.RUN_ENGINE_RELEASE_CONCURRENCY_DISABLE_CONSUMERS === "1",
       maxTokensRatio: env.RUN_ENGINE_RELEASE_CONCURRENCY_MAX_TOKENS_RATIO,
       maxRetries: env.RUN_ENGINE_RELEASE_CONCURRENCY_MAX_RETRIES,
       consumersCount: env.RUN_ENGINE_RELEASE_CONCURRENCY_CONSUMERS_COUNT,
