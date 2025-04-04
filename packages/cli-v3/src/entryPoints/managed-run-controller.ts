@@ -242,6 +242,14 @@ class ManagedRunController {
 
         if (!response.success) {
           console.error("[ManagedRunController] Heartbeat failed", { error: response.error });
+
+          this.sendDebugLog({
+            runId: this.runFriendlyId,
+            message: "heartbeat: failed",
+            properties: {
+              error: response.error,
+            },
+          });
         }
       },
       intervalMs: this.heartbeatIntervalSeconds * 1000,
@@ -624,6 +632,14 @@ class ManagedRunController {
           if (!continuationResult.success) {
             console.error("Failed to continue execution", { error: continuationResult.error });
 
+            this.sendDebugLog({
+              runId: run.friendlyId,
+              message: "failed to continue execution",
+              properties: {
+                error: continuationResult.error,
+              },
+            });
+
             this.waitForNextRun();
             return;
           }
@@ -766,6 +782,14 @@ class ManagedRunController {
     if (!start.success) {
       console.error("[ManagedRunController] Failed to start run", { error: start.error });
 
+      this.sendDebugLog({
+        runId: runFriendlyId,
+        message: "failed to start run attempt",
+        properties: {
+          error: start.error,
+        },
+      });
+
       this.waitForNextRun();
       return;
     }
@@ -848,6 +872,14 @@ class ManagedRunController {
       if (!completionResult.success) {
         console.error("Failed to submit completion after error", {
           error: completionResult.error,
+        });
+
+        this.sendDebugLog({
+          runId: run.friendlyId,
+          message: "completion: failed to submit after error",
+          properties: {
+            error: completionResult.error,
+          },
         });
 
         this.waitForNextRun();
@@ -1137,6 +1169,14 @@ class ManagedRunController {
     if (!completionResult.success) {
       console.error("Failed to submit completion", {
         error: completionResult.error,
+      });
+
+      this.sendDebugLog({
+        runId: run.friendlyId,
+        message: "completion: failed to submit",
+        properties: {
+          error: completionResult.error,
+        },
       });
 
       this.waitForNextRun();
