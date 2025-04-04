@@ -5,12 +5,12 @@ import { RedisRealtimeStreams } from "./redisRealtimeStreams.server";
 function initializeRedisRealtimeStreams() {
   return new RedisRealtimeStreams({
     redis: {
-      port: env.REDIS_PORT,
-      host: env.REDIS_HOST,
-      username: env.REDIS_USERNAME,
-      password: env.REDIS_PASSWORD,
+      port: env.REALTIME_STREAMS_REDIS_PORT,
+      host: env.REALTIME_STREAMS_REDIS_HOST,
+      username: env.REALTIME_STREAMS_REDIS_USERNAME,
+      password: env.REALTIME_STREAMS_REDIS_PASSWORD,
       enableAutoPipelining: true,
-      ...(env.REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
+      ...(env.REALTIME_STREAMS_REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
       keyPrefix: "tr:realtime:streams:",
     },
   });
