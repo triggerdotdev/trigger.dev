@@ -4,10 +4,10 @@ import {
   type WorkloadManagerCreateOptions,
   type WorkloadManagerOptions,
 } from "./types.js";
-import { RunnerId } from "@trigger.dev/core/v3/isomorphic";
 import type { EnvironmentType, MachinePreset } from "@trigger.dev/core/v3";
 import { env } from "../env.js";
 import { type K8sApi, createK8sApi, type k8s } from "../clients/kubernetes.js";
+import { getRunnerId } from "../util.js";
 
 type ResourceQuantities = {
   [K in "cpu" | "memory" | "ephemeral-storage"]?: string;
@@ -31,7 +31,7 @@ export class KubernetesWorkloadManager implements WorkloadManager {
   async create(opts: WorkloadManagerCreateOptions) {
     this.logger.log("[KubernetesWorkloadManager] Creating container", { opts });
 
-    const runnerId = RunnerId.generate().replace(/_/g, "-");
+    const runnerId = getRunnerId(opts.runFriendlyId);
 
     try {
       await this.k8s.core.createNamespacedPod({

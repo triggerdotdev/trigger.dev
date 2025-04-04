@@ -110,9 +110,3 @@ export class IdGenerator {
     return `${this.prefix}${customAlphabet(this.alphabet, this.length)()}`;
   }
 }
-
-export const RunnerId = new IdGenerator({
-  alphabet: "123456789abcdefghijkmnopqrstuvwxyz",
-  length: 20,
-  prefix: "runner_",
-});
