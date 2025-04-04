@@ -86,6 +86,7 @@ type Metadata = {
   TRIGGER_SNAPSHOT_POLL_INTERVAL_SECONDS: number | undefined;
   TRIGGER_SUCCESS_EXIT_CODE: number | undefined;
   TRIGGER_FAILURE_EXIT_CODE: number | undefined;
+  TRIGGER_RUNNER_ID: string | undefined;
 };
 
 class MetadataClient {
@@ -126,6 +127,8 @@ class ManagedRunController {
   private workerApiUrl: string;
   private workerInstanceName: string;
 
+  private runnerId: string;
+
   private successExitCode = env.TRIGGER_SUCCESS_EXIT_CODE;
   private failureExitCode = env.TRIGGER_FAILURE_EXIT_CODE;
 
@@ -144,6 +147,8 @@ class ManagedRunController {
 
     this.workerManifest = opts.workerManifest;
 
+    this.runnerId = env.TRIGGER_RUNNER_ID;
+
     this.heartbeatIntervalSeconds = env.TRIGGER_HEARTBEAT_INTERVAL_SECONDS;
     this.snapshotPollIntervalSeconds = env.TRIGGER_SNAPSHOT_POLL_INTERVAL_SECONDS;
 
@@ -156,7 +161,7 @@ class ManagedRunController {
 
     this.httpClient = new WorkloadHttpClient({
       workerApiUrl: this.workerApiUrl,
-      runnerId: env.TRIGGER_RUNNER_ID,
+      runnerId: this.runnerId,
       deploymentId: env.TRIGGER_DEPLOYMENT_ID,
       deploymentVersion: env.TRIGGER_DEPLOYMENT_VERSION,
       projectRef: env.TRIGGER_PROJECT_REF,
@@ -708,6 +713,11 @@ class ManagedRunController {
       this.workerApiUrl = `${protocol}://${domain}:${port}`;
 
       this.httpClient.updateApiUrl(this.workerApiUrl);
+    }
+
+    if (overrides.TRIGGER_RUNNER_ID) {
+      this.runnerId = overrides.TRIGGER_RUNNER_ID;
+      this.httpClient.updateRunnerId(this.runnerId);
     }
   }
 
