@@ -12,6 +12,20 @@ export const helloWorldTask = task({
     logger.warn("warn: Hello, world!", { payload });
     logger.error("error: Hello, world!", { payload });
 
+    logger.trace("my trace", async (span) => {
+      logger.debug("some log", { span });
+    });
+
+    logger.trace(
+      "my trace",
+      async (span) => {
+        logger.debug("some log", { span });
+      },
+      {
+        icon: "tabler-ad-circle",
+      }
+    );
+
     await wait.for({ seconds: 5 });
 
     return {

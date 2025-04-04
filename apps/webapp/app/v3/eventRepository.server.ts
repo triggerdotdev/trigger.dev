@@ -1638,7 +1638,7 @@ function rehydrateShow(properties: Prisma.JsonValue): { actions?: boolean } | un
   return;
 }
 
-function rehydrateAttribute<T extends AttributeValue>(
+export function rehydrateAttribute<T extends AttributeValue>(
   properties: Prisma.JsonValue,
   key: string
 ): T | undefined {
@@ -1656,7 +1656,9 @@ function rehydrateAttribute<T extends AttributeValue>(
 
   const value = properties[key];
 
-  if (!value) return;
+  if (value === undefined) {
+    return;
+  }
 
   return value as T;
 }

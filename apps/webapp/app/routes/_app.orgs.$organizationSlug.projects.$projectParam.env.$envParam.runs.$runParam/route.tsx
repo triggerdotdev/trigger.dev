@@ -21,23 +21,18 @@ import {
   tryCatch,
 } from "@trigger.dev/core/v3";
 import { type RuntimeEnvironmentType } from "@trigger.dev/database";
-import { AnimatePresence, motion } from "framer-motion";
+import { motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
-import { DisconnectedIcon } from "~/assets/icons/ConnectionIcons";
+import { redirect } from "remix-typedjson";
 import { ShowParentIcon, ShowParentIconSelected } from "~/assets/icons/ShowParentIcon";
 import tileBgPath from "~/assets/images/error-banner-tile@2x.png";
-import {
-  DevDisconnectedBanner,
-  useCrossEngineIsConnected,
-  useDevPresence,
-} from "~/components/DevPresence";
+import { DevDisconnectedBanner, useCrossEngineIsConnected } from "~/components/DevPresence";
+import { WarmStartIconWithTooltip } from "~/components/WarmStarts";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { PageBody } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
-import { Callout } from "~/components/primitives/Callout";
-import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { DateTimeShort } from "~/components/primitives/DateTime";
 import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
 import { Header3 } from "~/components/primitives/Headers";
@@ -100,8 +95,6 @@ import {
 } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { SpanView } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.$runParam.spans.$spanParam/route";
-import { redirectWithErrorMessage } from "~/models/message.server";
-import { redirect } from "remix-typedjson";
 
 const resizableSettings = {
   parent: {
@@ -1045,7 +1038,13 @@ function NodeText({ node }: { node: TraceEvent }) {
 
 function NodeStatusIcon({ node }: { node: TraceEvent }) {
   if (node.data.level !== "TRACE") return null;
-  if (node.data.style.variant !== "primary") return null;
+  if (!node.data.style.variant) return null;
+
+  if (node.data.style.variant === "warm") {
+    return <WarmStartIconWithTooltip isWarmStart={true} className="size-4" />;
+  } else if (node.data.style.variant === "cold") {
+    return <WarmStartIconWithTooltip isWarmStart={false} className="size-4" />;
+  }
 
   if (node.data.isCancelled) {
     return (
