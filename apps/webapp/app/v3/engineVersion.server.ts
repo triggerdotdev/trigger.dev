@@ -1,9 +1,9 @@
 import { RunEngineVersion, type RuntimeEnvironmentType } from "@trigger.dev/database";
-import {
-  findCurrentWorkerDeploymentWithoutTasks,
-  findCurrentWorkerFromEnvironment,
-} from "./models/workerDeployment.server";
 import { $replica } from "~/db.server";
+import {
+  findCurrentWorkerFromEnvironment,
+  getCurrentWorkerDeploymentEngineVersion,
+} from "./models/workerDeployment.server";
 
 type Environment = {
   id: string;
@@ -65,10 +65,12 @@ export async function determineEngineVersion({
   }
 
   // Deployed: use the latest deployed BackgroundWorker
-  const currentDeployment = await findCurrentWorkerDeploymentWithoutTasks(environment.id);
-  if (currentDeployment?.type === "V1") {
-    return "V1";
+  const currentDeploymentEngineVersion = await getCurrentWorkerDeploymentEngineVersion(
+    environment.id
+  );
+  if (currentDeploymentEngineVersion) {
+    return currentDeploymentEngineVersion;
   }
 
-  return "V2";
+  return environment.project.engine;
 }

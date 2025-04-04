@@ -1,15 +1,16 @@
 import type { Instrumentation } from "@opentelemetry/instrumentation";
 import type { SpanExporter } from "@opentelemetry/sdk-trace-base";
 import type { BuildExtension } from "./build/extensions.js";
-import type { MachinePresetName } from "./schemas/common.js";
-import type { LogLevel } from "./logger/taskLogger.js";
 import type {
-  FailureFnParams,
-  InitFnParams,
-  StartFnParams,
-  SuccessFnParams,
-} from "./types/index.js";
-import type { BuildRuntime, RetryOptions } from "./index.js";
+  AnyOnFailureHookFunction,
+  AnyOnInitHookFunction,
+  AnyOnStartHookFunction,
+  AnyOnSuccessHookFunction,
+  BuildRuntime,
+  RetryOptions,
+} from "./index.js";
+import type { LogLevel } from "./logger/taskLogger.js";
+import type { MachinePresetName } from "./schemas/common.js";
 
 export type CompatibilityFlag = "run_engine_v2";
 
@@ -215,23 +216,31 @@ export type TriggerConfig = {
 
   /**
    * Run before a task is executed, for all tasks. This is useful for setting up any global state that is needed for all tasks.
+   *
+   * @deprecated, please use tasks.init instead
    */
-  init?: (payload: unknown, params: InitFnParams) => void | Promise<void>;
+  init?: AnyOnInitHookFunction;
 
   /**
    * onSuccess is called after the run function has successfully completed.
+   *
+   * @deprecated, please use tasks.onSuccess instead
    */
-  onSuccess?: (payload: unknown, output: unknown, params: SuccessFnParams<any>) => Promise<void>;
+  onSuccess?: AnyOnSuccessHookFunction;
 
   /**
    * onFailure is called after a task run has failed (meaning the run function threw an error and won't be retried anymore)
+   *
+   * @deprecated, please use tasks.onFailure instead
    */
-  onFailure?: (payload: unknown, error: unknown, params: FailureFnParams<any>) => Promise<void>;
+  onFailure?: AnyOnFailureHookFunction;
 
   /**
    * onStart is called the first time a task is executed in a run (not before every retry)
+   *
+   * @deprecated, please use tasks.onStart instead
    */
-  onStart?: (payload: unknown, params: StartFnParams) => Promise<void>;
+  onStart?: AnyOnStartHookFunction;
 
   /**
    * @deprecated Use a custom build extension to add post install commands

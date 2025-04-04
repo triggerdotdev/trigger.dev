@@ -10,6 +10,7 @@ import { workerCatalog } from "./workerCatalog.js";
 export type RunEngineOptions = {
   prisma: PrismaClient;
   worker: {
+    disabled?: boolean;
     redis: RedisOptions;
     pollIntervalMs?: number;
     immediatePollIntervalMs?: number;
@@ -50,6 +51,7 @@ export type RunEngineOptions = {
       maxDelay?: number; // Defaults to 60000
       factor?: number; // Defaults to 2
     };
+    disableConsumers?: boolean;
   };
 };
 
@@ -87,6 +89,7 @@ export type TriggerParams = {
   maxAttempts?: number;
   taskEventStore?: string;
   priorityMs?: number;
+  queueTimestamp?: Date;
   ttl?: string;
   tags: { id: string; name: string }[];
   parentTaskRunId?: string;

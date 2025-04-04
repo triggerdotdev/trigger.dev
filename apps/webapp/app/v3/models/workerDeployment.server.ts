@@ -1,5 +1,5 @@
 import type { Prettify } from "@trigger.dev/core";
-import { BackgroundWorker, WorkerDeployment } from "@trigger.dev/database";
+import { BackgroundWorker, RunEngineVersion, WorkerDeployment } from "@trigger.dev/database";
 import {
   CURRENT_DEPLOYMENT_LABEL,
   CURRENT_UNMANAGED_DEPLOYMENT_LABEL,
@@ -91,23 +91,29 @@ export async function findCurrentWorkerDeployment(
   return promotion?.deployment;
 }
 
-export async function findCurrentWorkerDeploymentWithoutTasks(
+export async function getCurrentWorkerDeploymentEngineVersion(
   environmentId: string,
   label = CURRENT_DEPLOYMENT_LABEL
-): Promise<WorkerDeployment | undefined> {
-  const promotion = await prisma.workerDeploymentPromotion.findUnique({
+): Promise<RunEngineVersion | undefined> {
+  const promotion = await prisma.workerDeploymentPromotion.findFirst({
     where: {
-      environmentId_label: {
-        environmentId,
-        label,
-      },
+      environmentId,
+      label,
     },
-    include: {
-      deployment: true,
+    select: {
+      deployment: {
+        select: {
+          type: true,
+        },
+      },
     },
   });
 
-  return promotion?.deployment;
+  if (typeof promotion?.deployment.type === "string") {
+    return promotion.deployment.type === "V1" ? "V1" : "V2";
+  }
+
+  return undefined;
 }
 
 export async function findCurrentUnmanagedWorkerDeployment(

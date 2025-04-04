@@ -38,6 +38,7 @@ export const BuildManifest = z.object({
   indexWorkerEntryPoint: z.string(), // Dev & Deploy has a indexWorkerEntryPoint
   indexControllerEntryPoint: z.string().optional(), // Only deploy has a indexControllerEntryPoint
   loaderEntryPoint: z.string().optional(),
+  initEntryPoint: z.string().optional(), // Optional init.ts entry point
   configPath: z.string(),
   externals: BuildExternal.array().optional(),
   build: z.object({
@@ -85,6 +86,7 @@ export const WorkerManifest = z.object({
   workerEntryPoint: z.string(),
   controllerEntryPoint: z.string().optional(),
   loaderEntryPoint: z.string().optional(),
+  initEntryPoint: z.string().optional(), // Optional init.ts entry point
   runtime: BuildRuntime,
   customConditions: z.array(z.string()).optional(),
   otelImportHook: z

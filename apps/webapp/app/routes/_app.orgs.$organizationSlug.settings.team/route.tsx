@@ -226,8 +226,11 @@ export default function Page() {
               icon={LockOpenIcon}
               iconClassName="text-indigo-500"
               title="Unlock more team members"
-              to={v3BillingPath(organization)}
-              buttonLabel="Upgrade"
+              accessory={
+                <LinkButton to={v3BillingPath(organization)} variant="secondary/small">
+                  Upgrade
+                </LinkButton>
+              }
               panelClassName="mt-4"
             >
               <Paragraph variant="small">

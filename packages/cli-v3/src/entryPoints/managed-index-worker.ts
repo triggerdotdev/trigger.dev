@@ -141,6 +141,7 @@ await sendMessageInCatalog(
       controllerEntryPoint: buildManifest.runControllerEntryPoint,
       loaderEntryPoint: buildManifest.loaderEntryPoint,
       customConditions: buildManifest.customConditions,
+      initEntryPoint: buildManifest.initEntryPoint,
     },
     importErrors,
   },

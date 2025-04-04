@@ -1,23 +1,23 @@
 export function ConnectedIcon({ className }: { className?: string }) {
   return (
-    <svg className={className} viewBox="0 0 20 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <svg className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
       <rect
         x="0.5"
         y="-0.5"
         width="19"
         height="1"
         rx="0.5"
-        transform="matrix(1 0 0 -1 0 17)"
+        transform="matrix(1 0 0 -1 1.99998 20)"
         stroke="#878C99"
       />
       <path
         fillRule="evenodd"
         clipRule="evenodd"
-        d="M12.4187 2L4 2C2.89543 2 2 2.89543 2 4L2 12C2 13.1046 2.89543 14 4 14L16 14C17.1046 14 18 13.1046 18 12L18 4.9816L16.5 6.4816L16.5 12C16.5 12.2761 16.2761 12.5 16 12.5L4 12.5C3.72386 12.5 3.5 12.2761 3.5 12L3.5 4C3.5 3.72386 3.72386 3.5 4 3.5L10.9187 3.5L12.4187 2Z"
+        d="M14.4187 5L6.00002 5C4.89545 5 4.00002 5.89543 4.00002 7L4.00001 15C4.00002 16.1046 4.89545 17 6.00002 17L18 17C19.1046 17 20 16.1046 20 15L20 7.9816L18.5 9.4816L18.5 15C18.5 15.2761 18.2762 15.5 18 15.5L6.00001 15.5C5.72387 15.5 5.50001 15.2761 5.50001 15L5.50002 7C5.50002 6.72386 5.72387 6.5 6.00002 6.5L12.9187 6.5L14.4187 5Z"
         fill="#878C99"
       />
       <path
-        d="M6.5 6.75L9.5 9.75L16 3"
+        d="M8.50002 9.75L11.5 12.75L18 6"
         stroke="#28BF5C"
         strokeWidth="1.5"
         strokeLinecap="round"
@@ -29,25 +29,45 @@ export function ConnectedIcon({ className }: { className?: string }) {
 
 export function DisconnectedIcon({ className }: { className?: string }) {
   return (
-    <svg className={className} viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <svg className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
       <path
         fillRule="evenodd"
         clipRule="evenodd"
-        d="M11.2279 14.8334L1.50037 14.8334C1.04013 14.8334 0.667035 15.2065 0.667035 15.6667C0.667035 16.1269 1.04013 16.5 1.50037 16.5L12.8945 16.5L11.2279 14.8334Z"
+        d="M14.673 19L2.99998 19C2.44769 19 1.99998 19.4477 1.99998 20C1.99998 20.5523 2.44769 21 2.99998 21L16.673 21L14.673 19Z"
         fill="#878C99"
       />
       <path
         fillRule="evenodd"
         clipRule="evenodd"
-        d="M2.33268 5.93927L2.33268 11.1667C2.33268 12.2713 3.22811 13.1667 4.33268 13.1667L9.56016 13.1667L8.06016 11.6667L4.33268 11.6667C4.05654 11.6667 3.83268 11.4429 3.83268 11.1667L3.83268 7.43927L2.33268 5.93927ZM14.166 10.6369L14.166 5.16675C14.166 4.8906 13.9422 4.66675 13.666 4.66675L8.19589 4.66675L6.69589 3.16675L13.666 3.16675C14.7706 3.16675 15.666 4.06218 15.666 5.16675L15.666 11.1667C15.666 11.4522 15.6062 11.7237 15.4985 11.9693L14.166 10.6369Z"
+        d="M3.99999 8.32703L3.99999 15C3.99999 16.1046 4.89542 17 5.99999 17L12.673 17L11.173 15.5L5.99999 15.5C5.72385 15.5 5.49999 15.2761 5.49999 15L5.49999 9.82703L3.99999 8.32703ZM18.5 14.2641L18.5 7C18.5 6.72386 18.2761 6.5 18 6.5L10.7358 6.5L9.23585 5L18 5C19.1046 5 20 5.89543 20 7L20 15C20 15.2292 19.9614 15.4495 19.8904 15.6546L18.5 14.2641Z"
         fill="#878C99"
       />
-      <path
-        d="M1.5 1.50006L16.5 16.5001"
-        stroke="#E11D48"
-        strokeWidth="1.5"
-        strokeLinecap="round"
+      <path d="M3.00001 3L21 21" stroke="#E11D48" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+export function CheckingConnectionIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect
+        x="0.5"
+        y="-0.5"
+        width="19"
+        height="1"
+        rx="0.5"
+        transform="matrix(1 0 0 -1 1.99998 20)"
+        stroke="#878C99"
       />
+      <path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M18 6.5L6.00001 6.5C5.72387 6.5 5.50001 6.72386 5.50001 7L5.50001 15C5.50001 15.2761 5.72387 15.5 6.00001 15.5L18 15.5C18.2762 15.5 18.5 15.2761 18.5 15V7C18.5 6.72386 18.2762 6.5 18 6.5ZM6.00001 5C4.89545 5 4.00001 5.89543 4.00001 7L4.00001 15C4.00001 16.1046 4.89545 17 6.00001 17L18 17C19.1046 17 20 16.1046 20 15V7C20 5.89543 19.1046 5 18 5L6.00001 5Z"
+        fill="#878C99"
+      />
+      <circle cx="9" cy="11" r="1" fill="#878C99" />
+      <circle cx="12" cy="11" r="1" fill="#878C99" />
+      <circle cx="15" cy="11" r="1" fill="#878C99" />
     </svg>
   );
 }

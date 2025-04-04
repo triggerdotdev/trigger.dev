@@ -97,9 +97,6 @@ export class PendingVersionSystem {
         await this.enqueueSystem.enqueueRun({
           run: updatedRun,
           env: backgroundWorker.runtimeEnvironment,
-          //add to the queue using the original run created time
-          //this should ensure they're in the correct order in the queue
-          timestamp: updatedRun.createdAt.getTime() - updatedRun.priorityMs,
           tx,
         });
       });

@@ -23,7 +23,7 @@
     "test": "vitest --sequence.concurrent=false --no-file-parallelism"
   },
   "dependencies": {
-    "@trigger.dev/core": "workspace:*",
+    "@trigger.dev/core": "workspace:3.3.17",
     "lodash.omit": "^4.5.0",
     "nanoid": "^5.0.7",
     "p-limit": "^6.2.0",

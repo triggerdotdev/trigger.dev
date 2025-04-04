@@ -4,10 +4,10 @@ import {
   type WorkloadManagerCreateOptions,
   type WorkloadManagerOptions,
 } from "./types.js";
-import { RunnerId } from "@trigger.dev/core/v3/isomorphic";
 import type { EnvironmentType, MachinePreset } from "@trigger.dev/core/v3";
 import { env } from "../env.js";
 import { type K8sApi, createK8sApi, type k8s } from "../clients/kubernetes.js";
+import { getRunnerId } from "../util.js";
 
 type ResourceQuantities = {
   [K in "cpu" | "memory" | "ephemeral-storage"]?: string;
@@ -31,7 +31,7 @@ export class KubernetesWorkloadManager implements WorkloadManager {
   async create(opts: WorkloadManagerCreateOptions) {
     this.logger.log("[KubernetesWorkloadManager] Creating container", { opts });
 
-    const runnerId = RunnerId.generate().replace(/_/g, "-");
+    const runnerId = getRunnerId(opts.runFriendlyId);
 
     try {
       await this.k8s.core.createNamespacedPod({
@@ -134,6 +134,31 @@ export class KubernetesWorkloadManager implements WorkloadManager {
                   ...(this.opts.warmStartUrl
                     ? [{ name: "TRIGGER_WARM_START_URL", value: this.opts.warmStartUrl }]
                     : []),
+                  ...(this.opts.metadataUrl
+                    ? [{ name: "TRIGGER_METADATA_URL", value: this.opts.metadataUrl }]
+                    : []),
+                  ...(this.opts.heartbeatIntervalSeconds
+                    ? [
+                        {
+                          name: "TRIGGER_HEARTBEAT_INTERVAL_SECONDS",
+                          value: `${this.opts.heartbeatIntervalSeconds}`,
+                        },
+                      ]
+                    : []),
+                  ...(this.opts.snapshotPollIntervalSeconds
+                    ? [
+                        {
+                          name: "TRIGGER_SNAPSHOT_POLL_INTERVAL_SECONDS",
+                          value: `${this.opts.snapshotPollIntervalSeconds}`,
+                        },
+                      ]
+                    : []),
+                  ...(this.opts.additionalEnvVars
+                    ? Object.entries(this.opts.additionalEnvVars).map(([key, value]) => ({
+                        name: key,
+                        value: value,
+                      }))
+                    : []),
                 ],
               },
             ],
@@ -182,20 +207,17 @@ export class KubernetesWorkloadManager implements WorkloadManager {
     }
   }
 
+  private getImagePullSecrets(): k8s.V1LocalObjectReference[] | undefined {
+    return this.opts.imagePullSecrets?.map((name) => ({ name }));
+  }
+
   get #defaultPodSpec(): Omit<k8s.V1PodSpec, "containers"> {
     return {
       restartPolicy: "Never",
       automountServiceAccountToken: false,
-      imagePullSecrets: [
-        {
-          name: "registry-trigger",
-        },
-        {
-          name: "registry-trigger-failover",
-        },
-      ],
+      imagePullSecrets: this.getImagePullSecrets(),
       nodeSelector: {
-        nodetype: "worker-re2",
+        nodetype: env.KUBERNETES_WORKER_NODETYPE_LABEL,
       },
     };
   }

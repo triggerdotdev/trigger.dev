@@ -161,7 +161,7 @@ export type CheckpointType = z.infer<typeof CheckpointType>;
 export const CheckpointInput = z.object({
   type: CheckpointType,
   location: z.string(),
-  imageRef: z.string(),
+  imageRef: z.string().nullish(),
   reason: z.string().nullish(),
 });
 
@@ -217,7 +217,7 @@ export const DequeueMessageCheckpoint = z.object({
   id: z.string(),
   type: CheckpointType,
   location: z.string(),
-  imageRef: z.string(),
+  imageRef: z.string().nullish(),
   reason: z.string().nullish(),
 });
 export type DequeueMessageCheckpoint = z.infer<typeof DequeueMessageCheckpoint>;

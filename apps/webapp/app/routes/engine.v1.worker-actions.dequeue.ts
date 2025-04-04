@@ -1,5 +1,8 @@
 import { json, TypedResponse } from "@remix-run/server-runtime";
-import { WorkerApiDequeueRequestBody, WorkerApiDequeueResponseBody } from "@trigger.dev/core/v3/workers";
+import {
+  WorkerApiDequeueRequestBody,
+  WorkerApiDequeueResponseBody,
+} from "@trigger.dev/core/v3/workers";
 import { createActionWorkerApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 
 export const action = createActionWorkerApiRoute(
@@ -10,6 +13,7 @@ export const action = createActionWorkerApiRoute(
     return json(
       await authenticatedWorker.dequeue({
         maxResources: body.maxResources,
+        maxRunCount: body.maxRunCount,
       })
     );
   }

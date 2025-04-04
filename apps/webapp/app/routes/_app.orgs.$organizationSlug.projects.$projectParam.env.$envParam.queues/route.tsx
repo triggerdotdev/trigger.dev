@@ -13,9 +13,10 @@ import { type RuntimeEnvironmentType } from "@trigger.dev/database";
 import { useEffect, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
-import { TaskIcon } from "~/assets/icons/TaskIcon";
+import { TaskIconSmall } from "~/assets/icons/TaskIcon";
 import upgradeForQueuesPath from "~/assets/images/queues-dashboard.png";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
+import { QueuesHasNoTasks } from "~/components/BlankStatePanels";
 import { environmentFullTitle } from "~/components/environments/EnvironmentLabel";
 import { Feedback } from "~/components/Feedback";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
@@ -60,7 +61,6 @@ import { docsPath, EnvironmentParamSchema, v3BillingPath } from "~/utils/pathBui
 import { PauseEnvironmentService } from "~/v3/services/pauseEnvironment.server";
 import { PauseQueueService } from "~/v3/services/pauseQueue.server";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
-import { QueuesHasNoTasks } from "~/components/BlankStatePanels";
 
 const SearchParamsSchema = z.object({
   page: z.coerce.number().min(1).default(1),
@@ -336,9 +336,9 @@ export default function Page() {
                             {queue.type === "task" ? (
                               <SimpleTooltip
                                 button={
-                                  <TaskIcon
+                                  <TaskIconSmall
                                     className={cn(
-                                      "size-4 text-blue-500",
+                                      "size-[1.125rem] text-blue-500",
                                       queue.paused && "opacity-50"
                                     )}
                                   />
@@ -350,7 +350,7 @@ export default function Page() {
                                 button={
                                   <RectangleStackIcon
                                     className={cn(
-                                      "size-4 text-purple-500",
+                                      "size-[1.125rem] text-purple-500",
                                       queue.paused && "opacity-50"
                                     )}
                                   />
@@ -405,9 +405,9 @@ export default function Page() {
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={5}>
+                      <TableCell colSpan={6}>
                         <div className="grid place-items-center py-6 text-text-dimmed">
-                          No queues found
+                          <Paragraph>No queues found</Paragraph>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -439,14 +439,12 @@ export default function Page() {
             </div>
           ) : (
             <div className="grid place-items-center py-6 text-text-dimmed">
-              {code === "engine-version" ? (
-                totalQueues === 0 ? (
-                  <div className="pt-12">
-                    <QueuesHasNoTasks />
-                  </div>
-                ) : (
-                  <EngineVersionUpgradeCallout />
-                )
+              {totalQueues === 0 ? (
+                <div className="pt-12">
+                  <QueuesHasNoTasks />
+                </div>
+              ) : code === "engine-version" ? (
+                <EngineVersionUpgradeCallout />
               ) : (
                 <Callout variant="error">Something went wrong</Callout>
               )}
@@ -486,7 +484,7 @@ function EnvironmentPauseResumeButton({
                 <DialogTrigger asChild>
                   <Button
                     type="button"
-                    variant="tertiary/small"
+                    variant="secondary/small"
                     LeadingIcon={env.paused ? PlayIcon : PauseIcon}
                     leadingIconClassName={env.paused ? "text-success" : "text-amber-500"}
                   >
@@ -495,7 +493,7 @@ function EnvironmentPauseResumeButton({
                 </DialogTrigger>
               </div>
             </TooltipTrigger>
-            <TooltipContent side="right" className={"text-xs"}>
+            <TooltipContent className={"text-xs"}>
               {env.paused
                 ? `Resume processing runs in ${environmentFullTitle(env)}.`
                 : `Pause processing runs in ${environmentFullTitle(env)}.`}
@@ -628,7 +626,11 @@ function EngineVersionUpgradeCallout() {
     <div className="mt-4 flex max-w-lg flex-col gap-4 rounded-sm border border-grid-bright bg-background-bright px-4">
       <div className="flex items-center justify-between gap-2 border-b border-grid-dimmed py-4">
         <h4 className="text-base text-text-bright">New queues table</h4>
-        <LinkButton LeadingIcon={BookOpenIcon} to={docsPath("v4-upgrade")} variant={"docs/small"}>
+        <LinkButton
+          LeadingIcon={BookOpenIcon}
+          to={docsPath("upgrade-to-v4")}
+          variant={"docs/small"}
+        >
           Upgrade guide
         </LinkButton>
       </div>

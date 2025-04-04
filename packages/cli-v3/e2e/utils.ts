@@ -314,6 +314,15 @@ export async function executeTestCaseRun({
         version: "1.0.0",
         contentHash,
       },
+      machine: {
+        name: "small-1x",
+        cpu: 1,
+        memory: 256,
+        centsPerMs: 0.0000001,
+      },
+    }).initialize();
+
+    const result = await taskRunProcess.execute({
       payload: {
         traceContext: {
           traceparent: "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
@@ -373,10 +382,6 @@ export async function executeTestCaseRun({
       },
       messageId: "run_1234",
     });
-
-    await taskRunProcess.initialize();
-
-    const result = await taskRunProcess.execute();
 
     await taskRunProcess.cleanup(true);
 

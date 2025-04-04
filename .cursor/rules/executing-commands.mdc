@@ -13,12 +13,12 @@ But often, when running tests, it's better to `cd` into the directory and then r
 
 ```
 cd apps/webapp
-pnpm run test
+pnpm run test --run
 ```
 
 This way you can run for a single file easily:
 
 ```
 cd internal-packages/run-engine
-pnpm run test ./src/engine/tests/ttl.test.ts
+pnpm run test ./src/engine/tests/ttl.test.ts --run
 ```

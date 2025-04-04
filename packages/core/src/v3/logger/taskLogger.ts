@@ -6,6 +6,7 @@ import { TriggerTracer } from "../tracer.js";
 import { flattenAttributes } from "../utils/flattenAttributes.js";
 import { ClockTime } from "../clock/clock.js";
 import { clock } from "../clock-api.js";
+import { Prettify } from "../types/utils.js";
 
 export type LogLevel = "none" | "error" | "warn" | "info" | "debug" | "log";
 
@@ -17,14 +18,20 @@ export type TaskLoggerConfig = {
   level: LogLevel;
 };
 
+export type TraceOptions = Prettify<
+  SpanOptions & {
+    icon?: string;
+  }
+>;
+
 export interface TaskLogger {
   debug(message: string, properties?: Record<string, unknown>): void;
   log(message: string, properties?: Record<string, unknown>): void;
   info(message: string, properties?: Record<string, unknown>): void;
   warn(message: string, properties?: Record<string, unknown>): void;
   error(message: string, properties?: Record<string, unknown>): void;
-  trace<T>(name: string, fn: (span: Span) => Promise<T>, options?: SpanOptions): Promise<T>;
-  startSpan(name: string, options?: SpanOptions): Span;
+  trace<T>(name: string, fn: (span: Span) => Promise<T>, options?: TraceOptions): Promise<T>;
+  startSpan(name: string, options?: TraceOptions): Span;
 }
 
 export class OtelTaskLogger implements TaskLogger {
@@ -87,12 +94,28 @@ export class OtelTaskLogger implements TaskLogger {
     });
   }
 
-  trace<T>(name: string, fn: (span: Span) => Promise<T>, options?: SpanOptions): Promise<T> {
-    return this._config.tracer.startActiveSpan(name, fn, options);
+  trace<T>(name: string, fn: (span: Span) => Promise<T>, options?: TraceOptions): Promise<T> {
+    const spanOptions = {
+      ...options,
+      attributes: {
+        ...options?.attributes,
+        ...(options?.icon ? { [SemanticInternalAttributes.STYLE_ICON]: options.icon } : {}),
+      },
+    };
+
+    return this._config.tracer.startActiveSpan(name, fn, spanOptions);
   }
 
-  startSpan(name: string, options?: SpanOptions): Span {
-    return this._config.tracer.startSpan(name, options);
+  startSpan(name: string, options?: TraceOptions): Span {
+    const spanOptions = {
+      ...options,
+      attributes: {
+        ...options?.attributes,
+        ...(options?.icon ? { [SemanticInternalAttributes.STYLE_ICON]: options.icon } : {}),
+      },
+    };
+
+    return this._config.tracer.startSpan(name, spanOptions);
   }
 
   #getTimestampInHrTime(): ClockTime {

@@ -2,7 +2,7 @@ import { ArrowsPointingOutIcon } from "@heroicons/react/20/solid";
 import { Clipboard, ClipboardCheck } from "lucide-react";
 import type { Language, PrismTheme } from "prism-react-renderer";
 import { Highlight, Prism } from "prism-react-renderer";
-import { forwardRef, ReactNode, useCallback, useState } from "react";
+import { forwardRef, ReactNode, useCallback, useEffect, useState } from "react";
 import { cn } from "~/utils/cn";
 import { Button } from "../primitives/Buttons";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../primitives/Dialog";
@@ -422,6 +422,32 @@ function HighlightCode({
   className,
   preClassName,
 }: HighlightCodeProps) {
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  useEffect(() => {
+    // This ensures the language definitions are loaded
+    Promise.all([
+      //@ts-ignore
+      import("prismjs/components/prism-json"),
+      //@ts-ignore
+      import("prismjs/components/prism-typescript"),
+    ]).then(() => setIsLoaded(true));
+  }, []);
+
+  if (!isLoaded) {
+    return (
+      <div
+        dir="ltr"
+        className={cn(
+          "overflow-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
+          className
+        )}
+      >
+        <pre className={cn("relative mr-2 font-mono leading-relaxed", preClassName)}>{code}</pre>
+      </div>
+    );
+  }
+
   return (
     <Highlight theme={theme} code={code} language={language}>
       {({

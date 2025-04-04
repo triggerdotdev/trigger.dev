@@ -29,9 +29,9 @@ import { reportInvocationUsage } from "./platform.v3.server";
 import { logger } from "./logger.server";
 import { BatchProcessingOptions, BatchTriggerV3Service } from "~/v3/services/batchTriggerV3.server";
 import {
-  BatchProcessingOptions as BatchProcessingOptionsV4,
-  BatchTriggerV4Service,
-} from "~/v3/services/batchTriggerV4.server";
+  BatchProcessingOptions as RunEngineBatchProcessingOptions,
+  RunEngineBatchTriggerService,
+} from "~/runEngine/services/batchTrigger.server";
 
 const workerCatalog = {
   scheduleEmail: DeliverEmailSchema,
@@ -99,7 +99,7 @@ const workerCatalog = {
   }),
   "v3.cancelDevSessionRuns": CancelDevSessionRunsServiceOptions,
   "v3.processBatchTaskRun": BatchProcessingOptions,
-  "v3.processBatchTaskRunV3": BatchProcessingOptionsV4,
+  "runengine.processBatchTaskRun": RunEngineBatchProcessingOptions,
 };
 
 let workerQueue: ZodWorker<typeof workerCatalog>;
@@ -341,11 +341,11 @@ function getWorkerQueue() {
           await service.processBatchTaskRun(payload);
         },
       },
-      "v3.processBatchTaskRunV3": {
+      "runengine.processBatchTaskRun": {
         priority: 0,
         maxAttempts: 5,
         handler: async (payload, job) => {
-          const service = new BatchTriggerV4Service(payload.strategy);
+          const service = new RunEngineBatchTriggerService(payload.strategy);
 
           await service.processBatchTaskRun(payload);
         },

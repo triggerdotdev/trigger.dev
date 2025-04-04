@@ -1,7 +1,7 @@
 import { millisecondsToNanoseconds } from "@trigger.dev/core/v3";
 import { createTreeFromFlatItems, flattenTree } from "~/components/primitives/TreeView/TreeView";
-import { createTimelineSpanEventsFromSpanEvents } from "~/components/run/RunTimeline";
 import { prisma, PrismaClient } from "~/db.server";
+import { createTimelineSpanEventsFromSpanEvents } from "~/utils/timelineSpanEvents";
 import { getUsername } from "~/utils/username";
 import { eventRepository } from "~/v3/eventRepository.server";
 import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
@@ -10,6 +10,13 @@ import { isFinalRunStatus } from "~/v3/taskStatus";
 type Result = Awaited<ReturnType<RunPresenter["call"]>>;
 export type Run = Result["run"];
 export type RunEvent = NonNullable<Result["trace"]>["events"][0];
+
+export class RunEnvironmentMismatchError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RunEnvironmentMismatchError";
+  }
+}
 
 export class RunPresenter {
   #prismaClient: PrismaClient;
@@ -22,12 +29,14 @@ export class RunPresenter {
     userId,
     projectSlug,
     organizationSlug,
+    environmentSlug,
     runFriendlyId,
     showDeletedLogs,
   }: {
     userId: string;
     projectSlug: string;
     organizationSlug: string;
+    environmentSlug: string;
     runFriendlyId: string;
     showDeletedLogs: boolean;
   }) {
@@ -78,6 +87,12 @@ export class RunPresenter {
         },
       },
     });
+
+    if (environmentSlug !== run.runtimeEnvironment.slug) {
+      throw new RunEnvironmentMismatchError(
+        `Run ${runFriendlyId} is not in environment ${environmentSlug}`
+      );
+    }
 
     const showLogs = showDeletedLogs || !run.logsDeletedAt;
 
@@ -143,7 +158,10 @@ export class RunPresenter {
           const offset = millisecondsToNanoseconds(
             n.data.startTime.getTime() - treeRootStartTimeMs
           );
-          totalDuration = Math.max(totalDuration, offset + n.data.duration);
+          //only let non-debug events extend the total duration
+          if (!n.data.isDebug) {
+            totalDuration = Math.max(totalDuration, offset + n.data.duration);
+          }
           return {
             ...n,
             data: {

@@ -1,5 +1,4 @@
 import { createRedisClient, Redis } from "@internal/redis";
-import { Worker } from "@trigger.dev/redis-worker";
 import { startSpan, trace, Tracer } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
 import {
@@ -13,7 +12,7 @@ import {
   StartRunAttemptResult,
   TaskRunExecutionResult,
 } from "@trigger.dev/core/v3";
-import { BatchId, QueueId, RunId, WaitpointId } from "@trigger.dev/core/v3/isomorphic";
+import { BatchId, RunId, WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import {
   Prisma,
   PrismaClient,
@@ -22,6 +21,7 @@ import {
   TaskRunExecutionSnapshot,
   Waitpoint,
 } from "@trigger.dev/database";
+import { Worker } from "@trigger.dev/redis-worker";
 import { assertNever } from "assert-never";
 import { EventEmitter } from "node:events";
 import { FairQueueSelectionStrategy } from "../run-queue/fairQueueSelectionStrategy.js";
@@ -44,11 +44,11 @@ import {
   ExecutionSnapshotSystem,
   getLatestExecutionSnapshot,
 } from "./systems/executionSnapshotSystem.js";
+import { PendingVersionSystem } from "./systems/pendingVersionSystem.js";
 import { ReleaseConcurrencySystem } from "./systems/releaseConcurrencySystem.js";
 import { RunAttemptSystem } from "./systems/runAttemptSystem.js";
 import { SystemResources } from "./systems/systems.js";
 import { TtlSystem } from "./systems/ttlSystem.js";
-import { PendingVersionSystem } from "./systems/pendingVersionSystem.js";
 import { WaitpointSystem } from "./systems/waitpointSystem.js";
 import { EngineWorker, HeartbeatTimeouts, RunEngineOptions, TriggerParams } from "./types.js";
 import { workerCatalog } from "./workerCatalog.js";
@@ -165,7 +165,11 @@ export class RunEngine {
           await this.delayedRunSystem.enqueueDelayedRun({ runId: payload.runId });
         },
       },
-    }).start();
+    });
+
+    if (!options.worker.disabled) {
+      this.worker.start();
+    }
 
     this.tracer = options.tracer;
 
@@ -197,6 +201,7 @@ export class RunEngine {
         options.releaseConcurrency.disabled
           ? undefined
           : {
+              disableConsumers: options.releaseConcurrency?.disableConsumers,
               redis: {
                 ...options.queue.redis, // Use base queue redis options
                 ...options.releaseConcurrency?.redis, // Allow overrides
@@ -334,6 +339,7 @@ export class RunEngine {
       maxAttempts,
       taskEventStore,
       priorityMs,
+      queueTimestamp,
       ttl,
       tags,
       parentTaskRunId,
@@ -414,6 +420,7 @@ export class RunEngine {
               maxAttempts,
               taskEventStore,
               priorityMs,
+              queueTimestamp: queueTimestamp ?? delayUntil ?? new Date(),
               ttl,
               tags:
                 tags.length === 0
@@ -520,7 +527,6 @@ export class RunEngine {
             await this.enqueueSystem.enqueueRun({
               run: taskRun,
               env: environment,
-              timestamp: Date.now() - taskRun.priorityMs,
               workerId,
               runnerId,
               tx: prisma,
@@ -807,12 +813,14 @@ export class RunEngine {
     idempotencyKey,
     idempotencyKeyExpiresAt,
     timeout,
+    tags,
   }: {
     environmentId: string;
     projectId: string;
     idempotencyKey?: string;
     idempotencyKeyExpiresAt?: Date;
     timeout?: Date;
+    tags?: string[];
   }): Promise<{ waitpoint: Waitpoint; isCached: boolean }> {
     return this.waitpointSystem.createManualWaitpoint({
       environmentId,
@@ -820,6 +828,7 @@ export class RunEngine {
       idempotencyKey,
       idempotencyKeyExpiresAt,
       timeout,
+      tags,
     });
   }
 

@@ -11,6 +11,7 @@ import {
 } from "@heroicons/react/20/solid";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
+import { LinkButton } from "~/components/primitives/Buttons";
 
 export default function Story() {
   return (
@@ -30,8 +31,11 @@ export default function Story() {
           title="Info with Button"
           icon={InformationCircleIcon}
           iconClassName="text-blue-500"
-          to="#"
-          buttonLabel="Learn More"
+          accessory={
+            <LinkButton to="#" variant="secondary/small">
+              Learn More
+            </LinkButton>
+          }
         >
           This panel includes a button in the top-right corner
         </InfoPanel>
@@ -42,8 +46,11 @@ export default function Story() {
           icon={BellAlertIcon}
           iconClassName="text-red-500"
           variant="upgrade"
-          to="#"
-          buttonLabel="Upgrade Now"
+          accessory={
+            <LinkButton to="#" variant="secondary/small">
+              Upgrade Now
+            </LinkButton>
+          }
         >
           This panel uses the upgrade variant with a call-to-action button
         </InfoPanel>
@@ -58,8 +65,11 @@ export default function Story() {
           title="Task Status"
           icon={TaskIcon}
           iconClassName="text-blue-500"
-          to="#"
-          buttonLabel="View Tasks"
+          accessory={
+            <LinkButton to="#" variant="secondary/small">
+              View Tasks
+            </LinkButton>
+          }
         >
           A panel showing task information with a view action
         </InfoPanel>
@@ -69,8 +79,11 @@ export default function Story() {
           title="Getting Started"
           icon={RocketLaunchIcon}
           iconClassName="text-purple-500"
-          to="#"
-          buttonLabel="Start Tutorial"
+          accessory={
+            <LinkButton to="#" variant="secondary/small">
+              Start Tutorial
+            </LinkButton>
+          }
         >
           Begin your journey with our quick start guide
         </InfoPanel>
@@ -80,8 +93,11 @@ export default function Story() {
           title="Deployment Status"
           icon={ServerStackIcon}
           iconClassName="text-indigo-500"
-          to="#"
-          buttonLabel="Deploy Now"
+          accessory={
+            <LinkButton to="#" variant="secondary/small">
+              Deploy Now
+            </LinkButton>
+          }
         >
           Ready to deploy your changes to production
         </InfoPanel>
@@ -91,8 +107,11 @@ export default function Story() {
           title="Create New"
           icon={PlusIcon}
           iconClassName="text-green-500"
-          to="#"
-          buttonLabel="New Project"
+          accessory={
+            <LinkButton to="#" variant="secondary/small">
+              New Project
+            </LinkButton>
+          }
         >
           Start a new project with our guided setup
         </InfoPanel>
@@ -107,8 +126,11 @@ export default function Story() {
           title="Documentation"
           icon={BookOpenIcon}
           iconClassName="text-green-500"
-          to="#"
-          buttonLabel="View Docs"
+          accessory={
+            <LinkButton to="#" variant="secondary/small">
+              View Docs
+            </LinkButton>
+          }
         >
           Access our comprehensive documentation
         </InfoPanel>

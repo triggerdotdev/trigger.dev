@@ -18,20 +18,26 @@ import {
   formatDurationMilliseconds,
   millisecondsToNanoseconds,
   nanosecondsToMilliseconds,
+  tryCatch,
 } from "@trigger.dev/core/v3";
 import { type RuntimeEnvironmentType } from "@trigger.dev/database";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
+import { DisconnectedIcon } from "~/assets/icons/ConnectionIcons";
 import { ShowParentIcon, ShowParentIconSelected } from "~/assets/icons/ShowParentIcon";
 import tileBgPath from "~/assets/images/error-banner-tile@2x.png";
+import {
+  DevDisconnectedBanner,
+  useCrossEngineIsConnected,
+  useDevPresence,
+} from "~/components/DevPresence";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
-import { InlineCode } from "~/components/code/InlineCode";
-import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { PageBody } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
+import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { DateTimeShort } from "~/components/primitives/DateTime";
 import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
 import { Header3 } from "~/components/primitives/Headers";
@@ -76,7 +82,7 @@ import { useProject } from "~/hooks/useProject";
 import { useReplaceSearchParams } from "~/hooks/useReplaceSearchParams";
 import { type Shortcut, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { useHasAdminAccess } from "~/hooks/useUser";
-import { RunPresenter } from "~/presenters/v3/RunPresenter.server";
+import { RunEnvironmentMismatchError, RunPresenter } from "~/presenters/v3/RunPresenter.server";
 import { getImpersonationId } from "~/services/impersonation.server";
 import { getResizableSnapshot } from "~/services/resizablePanel.server";
 import { requireUserId } from "~/services/session.server";
@@ -87,15 +93,15 @@ import {
   v3BillingPath,
   v3RunParamsSchema,
   v3RunPath,
+  v3RunRedirectPath,
   v3RunSpanPath,
   v3RunStreamingPath,
   v3RunsPath,
 } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { SpanView } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.$runParam.spans.$spanParam/route";
-import { useDevPresence } from "~/components/DevPresence";
-import { DisconnectedIcon } from "~/assets/icons/ConnectionIcons";
-import { ClipboardField } from "~/components/primitives/ClipboardField";
+import { redirectWithErrorMessage } from "~/models/message.server";
+import { redirect } from "remix-typedjson";
 
 const resizableSettings = {
   parent: {
@@ -135,13 +141,30 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { projectParam, organizationSlug, envParam, runParam } = v3RunParamsSchema.parse(params);
 
   const presenter = new RunPresenter();
-  const result = await presenter.call({
-    userId,
-    organizationSlug,
-    showDeletedLogs: !!impersonationId,
-    projectSlug: projectParam,
-    runFriendlyId: runParam,
-  });
+  const [error, result] = await tryCatch(
+    presenter.call({
+      userId,
+      organizationSlug,
+      showDeletedLogs: !!impersonationId,
+      projectSlug: projectParam,
+      runFriendlyId: runParam,
+      environmentSlug: envParam,
+    })
+  );
+
+  if (error) {
+    if (error instanceof RunEnvironmentMismatchError) {
+      throw redirect(
+        v3RunRedirectPath(
+          { slug: organizationSlug },
+          { slug: projectParam },
+          { friendlyId: runParam }
+        )
+      );
+    }
+
+    throw error;
+  }
 
   //resizable settings
   const parent = await getResizableSnapshot(request, resizableSettings.parent.autosaveId);
@@ -165,6 +188,10 @@ export default function Page() {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
+  const isConnected = useCrossEngineIsConnected({
+    logCount: trace?.events.length ?? 0,
+    isCompleted: run.completedAt !== null,
+  });
 
   return (
     <>
@@ -176,6 +203,7 @@ export default function Page() {
           }}
           title={`Run #${run.number}`}
         />
+        {environment.type === "DEVELOPMENT" && <DevDisconnectedBanner isConnected={isConnected} />}
         <PageAccessories>
           <AdminDebugTooltip>
             <Property.Table>
@@ -278,7 +306,7 @@ function TraceView({ run, trace, maximumLiveReloadingSetting, resizable }: Loade
   const shouldLiveReload = events.length <= maximumLiveReloadingSetting;
 
   const changeToSpan = useDebounce((selectedSpan: string) => {
-    replaceSearchParam("span", selectedSpan);
+    replaceSearchParam("span", selectedSpan, { replace: true });
   }, 250);
 
   const revalidator = useRevalidator();
@@ -404,8 +432,11 @@ function NoLogsView({ run, resizable }: LoaderData) {
                 icon={LockOpenIcon}
                 iconClassName="text-indigo-500"
                 title="Unlock longer log retention"
-                to={v3BillingPath(organization)}
-                buttonLabel="Upgrade"
+                accessory={
+                  <LinkButton to={v3BillingPath(organization)} variant="secondary/small">
+                    Upgrade
+                  </LinkButton>
+                }
               >
                 <Paragraph variant="small">
                   The logs for this run have been deleted because the run completed{" "}
@@ -630,11 +661,11 @@ function TasksTreeView({
                     </div>
 
                     <div className="flex w-full items-center justify-between gap-2 pl-1">
-                      <div className="flex items-center gap-2 overflow-x-hidden">
+                      <div className="flex items-center gap-1.5 overflow-x-hidden">
                         <RunIcon
                           name={node.data.style?.icon}
                           spanName={node.data.message}
-                          className="h-4 min-h-4 w-4 min-w-4"
+                          className="size-5 min-h-5 min-w-5"
                         />
                         <NodeText node={node} />
                         {node.data.isRoot && !rootRun && <Badge variant="extra-small">Root</Badge>}
@@ -644,9 +675,6 @@ function TasksTreeView({
                       </div>
                     </div>
                   </div>
-                  {!isCompleted &&
-                    environmentType === "DEVELOPMENT" &&
-                    index === displayEvents.length - 1 && <ConnectedDevWarning />}
                 </>
               )}
               onScroll={(scrollTop) => {
@@ -1245,32 +1273,6 @@ function CurrentTimeIndicator({
         );
       }}
     </Timeline.FollowCursor>
-  );
-}
-
-function ConnectedDevWarning() {
-  const { isConnected } = useDevPresence();
-
-  return (
-    <div
-      className={cn(
-        "flex items-center overflow-hidden pl-5 pr-2 transition-opacity duration-500",
-        isConnected ? "h-0 opacity-0" : "opacity-100"
-      )}
-    >
-      <Callout
-        variant="error"
-        icon={<DisconnectedIcon className="size-5 shrink-0" />}
-        className="mt-2"
-      >
-        <div className="flex flex-col gap-1">
-          <Paragraph variant="small" spacing>
-            Your local dev server is not connectedr. Check you're running the CLI:
-          </Paragraph>
-          <ClipboardField variant="secondary/small" value="npx trigger.dev@latest dev" />
-        </div>
-      </Callout>
-    </div>
   );
 }
 

@@ -20,7 +20,7 @@ export default function Story() {
         <h2 className="mb-4 text-lg font-semibold text-white">Size 8</h2>
         <div className="flex flex-wrap gap-2">
           {avatars.map((avatar, index) => (
-            <Avatar key={`small-${index}`} avatar={avatar} className="size-8" />
+            <Avatar key={`small-${index}`} avatar={avatar} size={2} orgName={`Org ${index}`} />
           ))}
         </div>
       </div>
@@ -30,7 +30,7 @@ export default function Story() {
         <h2 className="mb-4 text-lg font-semibold text-white">Size 12</h2>
         <div className="flex flex-wrap gap-4">
           {avatars.map((avatar, index) => (
-            <Avatar key={`large-${index}`} avatar={avatar} className="size-12" />
+            <Avatar key={`large-${index}`} avatar={avatar} size={3} orgName={`Org ${index}`} />
           ))}
         </div>
       </div>

@@ -98,7 +98,6 @@ export class DelayedRunSystem {
     await this.enqueueSystem.enqueueRun({
       run,
       env: run.runtimeEnvironment,
-      timestamp: run.createdAt.getTime() - run.priorityMs,
       batchId: run.batchId ?? undefined,
     });
 

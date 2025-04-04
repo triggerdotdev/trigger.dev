@@ -2,7 +2,7 @@ import { SupervisorSession } from "@trigger.dev/core/v3/workers";
 import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
 import { env } from "./env.js";
 import { WorkloadServer } from "./workloadServer/index.js";
-import { type WorkloadManager } from "./workloadManager/types.js";
+import type { WorkloadManagerOptions, WorkloadManager } from "./workloadManager/types.js";
 import Docker from "dockerode";
 import { z } from "zod";
 import { type DequeuedMessage } from "@trigger.dev/core/v3";
@@ -18,24 +18,37 @@ import {
   CheckpointClient,
   isKubernetesEnvironment,
 } from "@trigger.dev/core/v3/serverOnly";
-import { createK8sApi, RUNTIME_ENV } from "./clients/kubernetes.js";
+import { createK8sApi } from "./clients/kubernetes.js";
+import { collectDefaultMetrics } from "prom-client";
+import { register } from "./metrics.js";
+import { PodCleaner } from "./services/podCleaner.js";
+import { FailedPodHandler } from "./services/failedPodHandler.js";
+
+if (env.METRICS_COLLECT_DEFAULTS) {
+  collectDefaultMetrics({ register });
+}
 
 class ManagedSupervisor {
   private readonly workerSession: SupervisorSession;
-  private readonly httpServer: HttpServer;
+  private readonly metricsServer?: HttpServer;
   private readonly workloadServer: WorkloadServer;
   private readonly workloadManager: WorkloadManager;
   private readonly logger = new SimpleStructuredLogger("managed-worker");
   private readonly resourceMonitor: ResourceMonitor;
   private readonly checkpointClient?: CheckpointClient;
 
+  private readonly podCleaner?: PodCleaner;
+  private readonly failedPodHandler?: FailedPodHandler;
+
   private readonly isKubernetes = isKubernetesEnvironment(env.KUBERNETES_FORCE_ENABLED);
   private readonly warmStartUrl = env.TRIGGER_WARM_START_URL;
 
   constructor() {
-    const workloadApiProtocol = env.TRIGGER_WORKLOAD_API_PROTOCOL;
-    const workloadApiDomain = env.TRIGGER_WORKLOAD_API_DOMAIN;
-    const workloadApiPortExternal = env.TRIGGER_WORKLOAD_API_PORT_EXTERNAL;
+    const { TRIGGER_WORKER_TOKEN, MANAGED_WORKER_SECRET, ...envWithoutSecrets } = env;
+
+    if (env.DEBUG) {
+      console.debug("[ManagedSupervisor] Starting up", { envWithoutSecrets });
+    }
 
     if (this.warmStartUrl) {
       this.logger.log("[ManagedWorker] 🔥 Warm starts enabled", {
@@ -43,22 +56,57 @@ class ManagedSupervisor {
       });
     }
 
+    const workloadManagerOptions = {
+      workloadApiProtocol: env.TRIGGER_WORKLOAD_API_PROTOCOL,
+      workloadApiDomain: env.TRIGGER_WORKLOAD_API_DOMAIN,
+      workloadApiPort: env.TRIGGER_WORKLOAD_API_PORT_EXTERNAL,
+      warmStartUrl: this.warmStartUrl,
+      metadataUrl: env.TRIGGER_METADATA_URL,
+      imagePullSecrets: env.KUBERNETES_IMAGE_PULL_SECRETS?.split(","),
+      heartbeatIntervalSeconds: env.RUNNER_HEARTBEAT_INTERVAL_SECONDS,
+      snapshotPollIntervalSeconds: env.RUNNER_SNAPSHOT_POLL_INTERVAL_SECONDS,
+      additionalEnvVars: env.RUNNER_ADDITIONAL_ENV_VARS,
+    } satisfies WorkloadManagerOptions;
+
     if (this.isKubernetes) {
-      this.resourceMonitor = new KubernetesResourceMonitor(createK8sApi(), "");
-      this.workloadManager = new KubernetesWorkloadManager({
-        workloadApiProtocol,
-        workloadApiDomain,
-        workloadApiPort: workloadApiPortExternal,
-        warmStartUrl: this.warmStartUrl,
-      });
+      if (env.POD_CLEANER_ENABLED) {
+        this.logger.log("[ManagedWorker] 🧹 Pod cleaner enabled", {
+          namespace: env.KUBERNETES_NAMESPACE,
+          batchSize: env.POD_CLEANER_BATCH_SIZE,
+          intervalMs: env.POD_CLEANER_INTERVAL_MS,
+        });
+        this.podCleaner = new PodCleaner({
+          register,
+          namespace: env.KUBERNETES_NAMESPACE,
+          batchSize: env.POD_CLEANER_BATCH_SIZE,
+          intervalMs: env.POD_CLEANER_INTERVAL_MS,
+        });
+      } else {
+        this.logger.warn("[ManagedWorker] Pod cleaner disabled");
+      }
+
+      if (env.FAILED_POD_HANDLER_ENABLED) {
+        this.logger.log("[ManagedWorker] 🔁 Failed pod handler enabled", {
+          namespace: env.KUBERNETES_NAMESPACE,
+          reconnectIntervalMs: env.FAILED_POD_HANDLER_RECONNECT_INTERVAL_MS,
+        });
+        this.failedPodHandler = new FailedPodHandler({
+          register,
+          namespace: env.KUBERNETES_NAMESPACE,
+          reconnectIntervalMs: env.FAILED_POD_HANDLER_RECONNECT_INTERVAL_MS,
+        });
+      } else {
+        this.logger.warn("[ManagedWorker] Failed pod handler disabled");
+      }
+
+      this.resourceMonitor = new KubernetesResourceMonitor(
+        createK8sApi(),
+        env.TRIGGER_WORKER_INSTANCE_NAME
+      );
+      this.workloadManager = new KubernetesWorkloadManager(workloadManagerOptions);
     } else {
       this.resourceMonitor = new DockerResourceMonitor(new Docker());
-      this.workloadManager = new DockerWorkloadManager({
-        workloadApiProtocol,
-        workloadApiDomain,
-        workloadApiPort: workloadApiPortExternal,
-        warmStartUrl: this.warmStartUrl,
-      });
+      this.workloadManager = new DockerWorkloadManager(workloadManagerOptions);
     }
 
     this.workerSession = new SupervisorSession({
@@ -68,10 +116,11 @@ class ManagedSupervisor {
       managedWorkerSecret: env.MANAGED_WORKER_SECRET,
       dequeueIntervalMs: env.TRIGGER_DEQUEUE_INTERVAL_MS,
       queueConsumerEnabled: env.TRIGGER_DEQUEUE_ENABLED,
+      maxRunCount: env.TRIGGER_DEQUEUE_MAX_RUN_COUNT,
       runNotificationsEnabled: env.TRIGGER_WORKLOAD_API_ENABLED,
       preDequeue: async () => {
         if (this.isKubernetes) {
-          // TODO: Test k8s resource monitor and remove this
+          // Not used in k8s for now
           return {};
         }
 
@@ -189,25 +238,31 @@ class ManagedSupervisor {
           snapshotFriendlyId: message.snapshot.friendlyId,
         });
 
-        this.resourceMonitor.blockResources({
-          cpu: message.run.machine.cpu,
-          memory: message.run.machine.memory,
-        });
+        // Disabled for now
+        // this.resourceMonitor.blockResources({
+        //   cpu: message.run.machine.cpu,
+        //   memory: message.run.machine.memory,
+        // });
       } catch (error) {
         this.logger.error("[ManagedWorker] Failed to create workload", { error });
       }
     });
 
-    // Used for health checks and metrics
-    this.httpServer = new HttpServer({ port: 8080, host: "0.0.0.0" }).route("/health", "GET", {
-      handler: async ({ reply }) => {
-        reply.text("OK");
-      },
-    });
+    if (env.METRICS_ENABLED) {
+      this.metricsServer = new HttpServer({
+        port: env.METRICS_PORT,
+        host: env.METRICS_HOST,
+        metrics: {
+          register,
+          expose: true,
+        },
+      });
+    }
 
     // Responds to workload requests only
     this.workloadServer = new WorkloadServer({
       port: env.TRIGGER_WORKLOAD_API_PORT_INTERNAL,
+      host: env.TRIGGER_WORKLOAD_API_HOST_INTERNAL,
       workerClient: this.workerSession.httpClient,
       checkpointClient: this.checkpointClient,
     });
@@ -273,6 +328,11 @@ class ManagedSupervisor {
   async start() {
     this.logger.log("[ManagedWorker] Starting up");
 
+    // Optional services
+    await this.podCleaner?.start();
+    await this.failedPodHandler?.start();
+    await this.metricsServer?.start();
+
     if (env.TRIGGER_WORKLOAD_API_ENABLED) {
       this.logger.log("[ManagedWorker] Workload API enabled", {
         protocol: env.TRIGGER_WORKLOAD_API_PROTOCOL,
@@ -285,13 +345,16 @@ class ManagedSupervisor {
     }
 
     await this.workerSession.start();
-
-    await this.httpServer.start();
   }
 
   async stop() {
     this.logger.log("[ManagedWorker] Shutting down");
-    await this.httpServer.stop();
+    await this.workerSession.stop();
+
+    // Optional services
+    await this.podCleaner?.stop();
+    await this.failedPodHandler?.stop();
+    await this.metricsServer?.stop();
   }
 }
 

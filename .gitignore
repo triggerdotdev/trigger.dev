@@ -60,3 +60,6 @@ apps/**/public/build
 /packages/cli-v3/src/package.json
 .husky
 /packages/react-hooks/src/package.json
+/packages/core/src/package.json
+/packages/trigger-sdk/src/package.json
+/packages/python/src/package.json

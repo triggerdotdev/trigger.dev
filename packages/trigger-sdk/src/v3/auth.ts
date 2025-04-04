@@ -53,14 +53,16 @@ type PublicTokenPermissionProperties = {
    * Grant access to specific batch runs
    */
   batch?: string | string[];
+
+  /**
+   * Grant access to specific waitpoints
+   */
+  waitpoints?: string | string[];
 };
 
 export type PublicTokenPermissions = {
   read?: PublicTokenPermissionProperties;
 
-  /**
-   * @deprecated use trigger instead
-   */
   write?: PublicTokenPermissionProperties;
 
   /**

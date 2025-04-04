@@ -1,92 +1,153 @@
 export function DevEnvironmentIcon({ className }: { className?: string }) {
   return (
-    <svg className={className} viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <g clipPath="url(#clip0_15347_71059)">
-        <circle cx="7" cy="7" r="2" fill="currentColor" />
-        <path
-          d="M4.5 0.75H2.75C1.64543 0.75 0.75 1.64543 0.75 2.75V4.5"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        <path
-          d="M13.25 4.5L13.25 2.75C13.25 1.64543 12.3546 0.75 11.25 0.75L9.5 0.75"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        <path
-          d="M9.5 13.25L11.25 13.25C12.3546 13.25 13.25 12.3546 13.25 11.25L13.25 9.5"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        <path
-          d="M0.75 9.5L0.75 11.25C0.75 12.3546 1.64543 13.25 2.75 13.25L4.5 13.25"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </g>
-      <defs>
-        <clipPath id="clip0_15347_71059">
-          <rect width="14" height="14" fill="currentColor" />
-        </clipPath>
-      </defs>
+    <svg className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="12" cy="12" r="3" fill="currentColor" />
+      <path
+        d="M8.35714 3H5C3.89543 3 3 3.89543 3 5V8.35714"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M21 8.35714L21 5C21 3.89543 20.1046 3 19 3L15.6429 3"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M15.6429 21L19 21C20.1046 21 21 20.1046 21 19L21 15.6429"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M3 15.6429L3 19C3 20.1046 3.89543 21 5 21L8.35714 21"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+export function DevEnvironmentIconSmall({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="10" cy="10" r="2" fill="currentColor" />
+      <path
+        d="M7 3H5C3.89543 3 3 3.89543 3 5V7"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M17 7L17 5C17 3.89543 16.1046 3 15 3L13 3"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M13 17L15 17C16.1046 17 17 16.1046 17 15L17 13"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M3 13L3 15C3 16.1046 3.89543 17 5 17L7 17"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
 
 export function ProdEnvironmentIcon({ className }: { className?: string }) {
   return (
-    <svg className={className} viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <svg className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path
+        d="M12.5037 7.33603C12.3174 6.88799 11.6827 6.88799 11.4963 7.33603L10.4338 9.89064L7.6759 10.1117C7.1922 10.1505 6.99606 10.7542 7.36459 11.0698L9.46583 12.8698L8.82387 15.561C8.71128 16.033 9.22477 16.4061 9.63888 16.1532L12 14.711L14.3612 16.1532C14.7753 16.4061 15.2888 16.0331 15.1762 15.561L14.5343 12.8698L16.6355 11.0698C17.004 10.7542 16.8079 10.1505 16.3242 10.1117L13.5663 9.89064L12.5037 7.33603Z"
+        fill="white"
+      />
       <rect
-        x="0.75"
-        y="0.75"
-        width="12.5"
-        height="12.5"
-        rx="3.25"
+        x="3"
+        y="3"
+        width="18"
+        height="18"
+        rx="2"
         stroke="currentColor"
-        strokeWidth="1.5"
+        strokeWidth="2"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-      <g clipPath="url(#clip0_15515_83281)">
-        <path
-          fillRule="evenodd"
-          clipRule="evenodd"
-          d="M7.34731 4.15348C7.21887 3.84467 6.78141 3.84467 6.65298 4.15348L5.92066 5.91419L4.01982 6.06658C3.68644 6.0933 3.55126 6.50935 3.80526 6.72693L5.2535 7.96749L4.81104 9.82238C4.73344 10.1477 5.08735 10.4048 5.37277 10.2305L7.00014 9.23651L8.62752 10.2305C8.91294 10.4048 9.26685 10.1477 9.18925 9.82238L8.74679 7.96749L10.195 6.72693C10.449 6.50935 10.3138 6.0933 9.98046 6.06658L8.07963 5.91419L7.34731 4.15348Z"
-          fill="currentColor"
-        />
-      </g>
-      <defs>
-        <clipPath id="clip0_15515_83281">
-          <rect width="8" height="8" fill="currentColor" transform="translate(3 3)" />
-        </clipPath>
-      </defs>
+    </svg>
+  );
+}
+
+export function ProdEnvironmentIconSmall({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect
+        x="3"
+        y="3"
+        width="14"
+        height="14"
+        rx="3"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M10.4174 6.23514C10.263 5.86384 9.73701 5.86384 9.58258 6.23514L8.70207 8.35213L6.4166 8.53536C6.01575 8.56749 5.85322 9.06773 6.15862 9.32934L7.89991 10.8209L7.36792 13.0512C7.27461 13.4423 7.70014 13.7515 8.04332 13.5419L10 12.3467L11.9567 13.5419C12.2999 13.7515 12.7254 13.4423 12.6321 13.0512L12.1001 10.8209L13.8414 9.32934C14.1468 9.06773 13.9842 8.56749 13.5834 8.53536L11.2979 8.35213L10.4174 6.23514Z"
+        fill="currentColor"
+      />
     </svg>
   );
 }
 
 export function DeployedEnvironmentIcon({ className }: { className?: string }) {
   return (
-    <svg className={className} viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <svg className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="12" cy="12" r="3" fill="currentColor" />
       <rect
-        x="0.75"
-        y="0.75"
-        width="12.5"
-        height="12.5"
-        rx="3.25"
+        x="3"
+        y="3"
+        width="18"
+        height="18"
+        rx="2"
         stroke="currentColor"
-        strokeWidth="1.5"
+        strokeWidth="2"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-      <circle cx="7" cy="7" r="2" fill="currentColor" />
+    </svg>
+  );
+}
+
+export function DeployedEnvironmentIconSmall({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="10" cy="10" r="2" fill="currentColor" />
+      <rect
+        x="3"
+        y="3"
+        width="14"
+        height="14"
+        rx="3"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }

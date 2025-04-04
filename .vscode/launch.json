@@ -149,6 +149,14 @@
       "command": "pnpm run test ./src/run-queue/index.test.ts",
       "cwd": "${workspaceFolder}/internal-packages/run-engine",
       "sourceMaps": true
+    },
+    {
+      "type": "node-terminal",
+      "request": "launch",
+      "name": "Debug d3-demo",
+      "command": "pnpm exec trigger dev",
+      "cwd": "${workspaceFolder}/references/d3-demo",
+      "sourceMaps": true
     }
   ]
 }

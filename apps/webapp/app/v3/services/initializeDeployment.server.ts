@@ -18,8 +18,20 @@ export class InitializeDeploymentService extends BaseService {
     payload: InitializeDeploymentRequestBody
   ) {
     return this.traceWithEnv("call", environment, async (span) => {
-      if (payload.type !== "V1" && environment.project.engine !== "V2") {
-        throw new ServiceValidationError("Only V1 deployments are supported for this project");
+      if (payload.type === "UNMANAGED") {
+        throw new ServiceValidationError("UNMANAGED deployments are not supported");
+      }
+
+      // Upgrade the project to engine "V2" if it's not already. This should cover cases where people deploy to V2 without running dev first.
+      if (payload.type === "MANAGED" && environment.project.engine === "V1") {
+        await this._prisma.project.update({
+          where: {
+            id: environment.project.id,
+          },
+          data: {
+            engine: "V2",
+          },
+        });
       }
 
       const latestDeployment = await this._prisma.workerDeployment.findFirst({

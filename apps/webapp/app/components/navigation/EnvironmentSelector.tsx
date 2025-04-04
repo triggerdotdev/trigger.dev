@@ -43,7 +43,7 @@ export function EnvironmentSelector({
         isOpen={isMenuOpen}
         overflowHidden
         fullWidth
-        className={cn("h-7 overflow-hidden py-1 pl-2", className)}
+        className={cn("h-7 overflow-hidden py-1 pl-1.5", className)}
       >
         <EnvironmentCombo environment={environment} className="w-full text-2sm" />
       </PopoverArrowTrigger>

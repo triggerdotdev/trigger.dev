@@ -26,13 +26,29 @@ export class QueueListPresenter extends BasePresenter {
     const totalQueues = await this._replica.taskQueue.count({
       where: {
         runtimeEnvironmentId: environment.id,
+        version: "V2",
       },
     });
 
     //check the engine is the correct version
     const engineVersion = await determineEngineVersion({ environment });
-
     if (engineVersion === "V1") {
+      if (totalQueues === 0) {
+        const oldQueue = await this._replica.taskQueue.findFirst({
+          where: {
+            runtimeEnvironmentId: environment.id,
+            version: "V1",
+          },
+        });
+        if (oldQueue) {
+          return {
+            success: false as const,
+            code: "engine-version",
+            totalQueues: 1,
+          };
+        }
+      }
+
       return {
         success: false as const,
         code: "engine-version",

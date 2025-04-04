@@ -7,9 +7,7 @@ import {
   StarIcon,
 } from "@heroicons/react/20/solid";
 import { type Prisma } from "@trigger.dev/database";
-import { useLayoutEffect, useRef, useState } from "react";
 import { z } from "zod";
-import { useOrganization } from "~/hooks/useOrganizations";
 import { logger } from "~/services/logger.server";
 import { cn } from "~/utils/cn";
 
@@ -53,22 +51,30 @@ export function parseAvatar(json: Prisma.JsonValue, defaultAvatar: Avatar): Avat
 
 export function Avatar({
   avatar,
-  className,
+  size,
   includePadding,
+  orgName,
 }: {
   avatar: Avatar;
-  className?: string;
+  /** Size in rems of the icon */
+  size: number;
   includePadding?: boolean;
+  orgName: string;
 }) {
   switch (avatar.type) {
     case "icon":
-      return <AvatarIcon avatar={avatar} className={className} includePadding={includePadding} />;
+      return <AvatarIcon avatar={avatar} size={size} includePadding={includePadding} />;
     case "letters":
       return (
-        <AvatarLetters avatar={avatar} className={className} includePadding={includePadding} />
+        <AvatarLetters
+          avatar={avatar}
+          size={size}
+          includePadding={includePadding}
+          orgName={orgName}
+        />
       );
     case "image":
-      return <AvatarImage avatar={avatar} className={className} />;
+      return <AvatarImage avatar={avatar} size={size} />;
   }
 }
 
@@ -101,65 +107,49 @@ export const defaultAvatar: Avatar = {
   hex: defaultAvatarHex,
 };
 
+function styleFromSize(size: number) {
+  return {
+    width: `${size}rem`,
+    height: `${size}rem`,
+  };
+}
+
 function AvatarLetters({
   avatar,
-  className,
+  size,
   includePadding,
+  orgName,
 }: {
   avatar: LettersAvatar;
-  className?: string;
+  size: number;
   includePadding?: boolean;
+  orgName: string;
 }) {
-  const organization = useOrganization();
-  const containerRef = useRef<HTMLSpanElement>(null);
-  const textRef = useRef<HTMLSpanElement>(null);
-  const [fontSize, setFontSize] = useState("1rem");
+  const letters = orgName.slice(0, 2);
 
-  useLayoutEffect(() => {
-    if (containerRef.current) {
-      const containerWidth = containerRef.current.offsetWidth;
-      // Set font size to 60% of container width (adjust as needed)
-      setFontSize(`${containerWidth * 0.6}px`);
-    }
-
-    // Optional: Create a ResizeObserver for dynamic resizing
-    const resizeObserver = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        if (entry.target === containerRef.current) {
-          const containerWidth = entry.contentRect.width;
-          setFontSize(`${containerWidth * 0.6}px`);
-        }
-      }
-    });
-
-    if (containerRef.current) {
-      resizeObserver.observe(containerRef.current);
-    }
-
-    return () => {
-      resizeObserver.disconnect();
-    };
-  }, []);
-
-  const letters = organization.title.slice(0, 2);
-
-  const classes = cn("grid place-items-center", className);
   const style = {
     backgroundColor: avatar.hex,
   };
 
+  const scaleFactor = includePadding ? 0.8 : 1;
+
   return (
-    <span className={cn("grid place-items-center overflow-hidden text-charcoal-750", classes)}>
+    <span
+      className="grid shrink-0 place-items-center overflow-hidden text-charcoal-750"
+      style={styleFromSize(size)}
+    >
       {/* This is the square container */}
       <span
-        ref={containerRef}
         className={cn(
           "relative grid place-items-center overflow-hidden rounded-[10%] font-semibold",
           includePadding ? "size-[80%]" : "size-[100%]"
         )}
         style={style}
       >
-        <span ref={textRef} className="font-bold leading-none" style={{ fontSize }}>
+        <span
+          className="font-bold leading-none"
+          style={{ fontSize: `${size * 0.6 * scaleFactor}rem` }}
+        >
           {letters}
         </span>
       </span>
@@ -169,29 +159,28 @@ function AvatarLetters({
 
 function AvatarIcon({
   avatar,
-  className,
+  size,
   includePadding,
 }: {
   avatar: IconAvatar;
-  className?: string;
+  size: number;
   includePadding?: boolean;
 }) {
-  const classes = cn("aspect-square", className);
   const style = {
     color: avatar.hex,
   };
 
   const IconComponent = avatarIcons[avatar.name];
   return (
-    <span className={cn("grid place-items-center", classes)}>
+    <span className="grid aspect-square place-items-center" style={styleFromSize(size)}>
       <IconComponent className={includePadding ? "size-[80%]" : "size-[100%]"} style={style} />
     </span>
   );
 }
 
-function AvatarImage({ avatar, className }: { avatar: ImageAvatar; className?: string }) {
+function AvatarImage({ avatar, size }: { avatar: ImageAvatar; size: number }) {
   return (
-    <span className="grid place-items-center">
+    <span className="grid place-items-center" style={styleFromSize(size)}>
       <img src={avatar.url} alt="Organization avatar" className="size-6" />
     </span>
   );

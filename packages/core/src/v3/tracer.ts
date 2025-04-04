@@ -1,7 +1,6 @@
 import {
   Attributes,
   Context,
-  HrTime,
   SpanOptions,
   SpanStatusCode,
   TimeInput,
@@ -12,11 +11,12 @@ import {
   type Tracer,
 } from "@opentelemetry/api";
 import { Logger, logs } from "@opentelemetry/api-logs";
-import { SemanticInternalAttributes } from "./semanticInternalAttributes.js";
 import { clock } from "./clock-api.js";
-import { usage } from "./usage-api.js";
-import { taskContext } from "./task-context-api.js";
+import { isCompleteTaskWithOutput } from "./errors.js";
 import { recordSpanException } from "./otel/utils.js";
+import { SemanticInternalAttributes } from "./semanticInternalAttributes.js";
+import { taskContext } from "./task-context-api.js";
+import { usage } from "./usage-api.js";
 
 export type TriggerTracerConfig =
   | {
@@ -80,11 +80,20 @@ export class TriggerTracer {
 
     let spanEnded = false;
 
+    const createPartialSpanWithEvents = options?.events && options.events.length > 0;
+
     return this.tracer.startActiveSpan(
       name,
       {
         ...options,
-        attributes,
+        attributes: {
+          ...attributes,
+          ...(createPartialSpanWithEvents
+            ? {
+                [SemanticInternalAttributes.SKIP_SPAN_PARTIAL]: true,
+              }
+            : {}),
+        },
         startTime: clock.preciseNow(),
       },
       parentContext,
@@ -97,7 +106,7 @@ export class TriggerTracer {
           }
         });
 
-        if (taskContext.ctx) {
+        if (taskContext.ctx && createPartialSpanWithEvents) {
           const partialSpan = this.tracer.startSpan(
             name,
             {
@@ -131,6 +140,14 @@ export class TriggerTracer {
         try {
           return await fn(span);
         } catch (e) {
+          if (isCompleteTaskWithOutput(e)) {
+            if (!spanEnded) {
+              span.end(clock.preciseNow());
+            }
+
+            throw e;
+          }
+
           if (!spanEnded) {
             if (typeof e === "string" || e instanceof Error) {
               span.recordException(e);
@@ -168,22 +185,7 @@ export class TriggerTracer {
 
     const attributes = options?.attributes ?? {};
 
-    const span = this.tracer.startSpan(name, options, ctx);
-
-    this.tracer
-      .startSpan(
-        name,
-        {
-          ...options,
-          attributes: {
-            ...attributes,
-            [SemanticInternalAttributes.SPAN_PARTIAL]: true,
-            [SemanticInternalAttributes.SPAN_ID]: span.spanContext().spanId,
-          },
-        },
-        parentContext
-      )
-      .end();
+    const span = this.tracer.startSpan(name, options, parentContext);
 
     return span;
   }

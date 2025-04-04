@@ -1,0 +1,304 @@
+---
+title: "Send emails using React Email"
+sidebarTitle: "React Email"
+description: "Learn how to send beautiful emails using React Email and Trigger.dev."
+---
+
+## Overview
+
+This example demonstrates how to use Trigger.dev to send emails using [React Email](https://react.email/).
+
+<Note>
+  This example uses [Resend](https://resend.com) as the email provider. You can use other email
+  providers like [Loops](https://loops.so) or [SendGrid](https://sendgrid.com) etc. Full list of
+  their integrations can be found [here](https://react.email/docs/introduction#integrations).
+</Note>
+
+## Task code
+
+<Warning>
+  This email is built using React components. To use React components in your task, it must be a
+  .tsx file.
+</Warning>
+
+```tsx trigger/sendReactEmail.tsx
+import { Body, Button, Container, Head, Heading, Html, Preview } from "@react-email/components";
+import { logger, task } from "@trigger.dev/sdk/v3";
+import { Resend } from "resend";
+
+// Initialize Resend client
+const resend = new Resend(process.env.RESEND_API_KEY);
+
+// React Email template component
+const EmailTemplate = ({ name, message }: { name: string; message: string }) => (
+  <Html lang="en">
+    <Head />
+    <Preview>New message from {name}</Preview>
+    <Body style={{ fontFamily: "Arial, sans-serif", margin: "0", padding: "0" }}>
+      <Container style={{ padding: "20px", maxWidth: "600px" }}>
+        <Heading>Hello from Acme Inc.</Heading>
+        <p>Hi {name},</p>
+        <p>{message}</p>
+        <Button
+          href="https://trigger.dev"
+          style={{
+            backgroundColor: "#0070f3",
+            color: "white",
+            padding: "12px 20px",
+            borderRadius: "8px",
+          }}
+        >
+          Go to Acme Inc.
+        </Button>
+      </Container>
+    </Body>
+  </Html>
+);
+
+export const sendEmail = task({
+  id: "send-react-email",
+  run: async (payload: {
+    to: string;
+    name: string;
+    message: string;
+    subject: string;
+    from?: string;
+  }) => {
+    try {
+      logger.info("Sending email using React.email and Resend", {
+        to: payload.to,
+      });
+
+      // Send the email using Resend
+      const { data, error } = await resend.emails.send({
+        // The from address needs to be a verified email address you own
+        from: payload.from || "email@acmeinc.com", // Default from address
+        to: payload.to,
+        subject: payload.subject,
+        react: <EmailTemplate name={payload.name} message={payload.message} />,
+      });
+
+      if (error) {
+        logger.error("Failed to send email", { error });
+        throw new Error(`Failed to send email: ${error.message}`);
+      }
+
+      logger.info("Email sent successfully", { emailId: data?.id });
+
+      // Return the response from Resend
+      return {
+        id: data?.id,
+        status: "sent",
+      };
+    } catch (error) {
+      logger.error("Unexpected error sending email", { error });
+      throw error;
+    }
+  },
+});
+```
+
+## The email
+
+This example email should look like this:
+![React Email](/images/react-email.png)
+
+This is just a simple implementation, you can customize the email to be as complex as you want. Check out the [React email templates](https://react.email/templates) for more inspiration.
+
+## Testing your task
+
+To test this task in the [dashboard](https://cloud.trigger.dev), you can use the following payload:
+
+```json
+{
+  "to": "recipient@example.com",
+  "name": "Jane Doe",
+  "message": "Thank you for signing up for our service!",
+  "subject": "Welcome to Acme Inc."
+}
+```
+
+## Deploying your task
+
+Deploy the task to production using the Trigger.dev CLI `deploy` command.
+
+## Using Cursor / AI to build your emails
+
+In this video you can see how we use Cursor to build a welcome email.
+
+We recommend using our [Cursor rules](https://trigger.dev/changelog/cursor-rules-writing-tasks/) to help you build your tasks and emails.
+
+#### Video: creating a new email template using Cursor
+
+<video
+  src="https://content.trigger.dev/trigger-welcome-email-cursor.mp4"
+  controls
+  muted
+  autoPlay
+  loop
+/>
+
+#### The generated email template
+
+![Cursor](/images/react-email-welcome.png)
+
+#### The generated code
+
+```tsx trigger/welcome.tsx
+import {
+  Body,
+  Button,reac
+  Container,
+  Head,
+  Hr,
+  Html,
+  Img,
+  Link,
+  Preview,
+  Section,
+  Text,
+} from "@react-email/components";
+
+const baseUrl = process.env.VERCEL_URL
+  ? `https://${process.env.VERCEL_URL}`
+  : "";
+
+export const TriggerDevWelcomeEmail = () => (
+  <Html>
+    <Head />
+    <Preview>Welcome to Trigger.dev - Your background jobs platform!</Preview>
+    <Body style={main}>
+      <Container style={container}>
+        <Section style={box}>
+          <Img
+            src="https://trigger.dev/assets/triggerdev-lockup--light.svg"
+            width="150"
+            height="40"
+            alt="Trigger.dev"
+          />
+          <Hr style={hr} />
+          <Text style={paragraph}>
+            Thanks for signing up for Trigger.dev! You're now ready to start
+            creating powerful background jobs and workflows.
+          </Text>
+          <Text style={paragraph}>
+            You can monitor your jobs, view runs, and manage your projects right
+            from your dashboard.
+          </Text>
+          <Button style={button} href="https://cloud.trigger.dev/dashboard">
+            View your Trigger.dev Dashboard
+          </Button>
+          <Hr style={hr} />
+          <Text style={paragraph}>
+            To help you get started, check out our{" "}
+            <Link style={anchor} href="https://trigger.dev/docs">
+              documentation
+            </Link>{" "}
+            and{" "}
+            <Link style={anchor} href="https://trigger.dev/docs/quickstart">
+              quickstart guide
+            </Link>
+            .
+          </Text>
+          <Text style={paragraph}>
+            You can create your first job using our SDK, set up integrations,
+            and configure triggers to automate your workflows. Take a look at
+            our{" "}
+            <Link style={anchor} href="https://trigger.dev/docs/examples">
+              examples
+            </Link>{" "}
+            for inspiration.
+          </Text>
+          <Text style={paragraph}>
+            Join our{" "}
+            <Link style={anchor} href="https://discord.gg/kA47vcd8Qr">
+              Discord community
+            </Link>{" "}
+            to connect with other developers and get help when you need it.
+          </Text>
+          <Text style={paragraph}>
+            We're here to help you build amazing things. If you have any
+            questions, check out our{" "}
+            <Link style={anchor} href="https://trigger.dev/docs">
+              documentation
+            </Link>{" "}
+            or reach out to us on Discord.
+          </Text>
+          <Text style={paragraph}>— The Trigger.dev team</Text>
+          <Hr style={hr} />
+          <Text style={footer}>Trigger.dev Inc.</Text>
+        </Section>
+      </Container>
+    </Body>
+  </Html>
+);
+
+export default TriggerDevWelcomeEmail;
+
+const main = {
+  backgroundColor: "#0E0C15",
+  fontFamily:
+    '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Ubuntu,sans-serif',
+};
+
+const container = {
+  backgroundColor: "#1D1B27",
+  margin: "0 auto",
+  padding: "20px 0 48px",
+  marginBottom: "64px",
+};
+
+const box = {
+  padding: "0 48px",
+};
+
+const hr = {
+  borderColor: "#2D2B3B",
+  margin: "20px 0",
+};
+
+const paragraph = {
+  color: "#E1E1E3",
+  fontSize: "16px",
+  lineHeight: "24px",
+  textAlign: "left" as const,
+};
+
+const anchor = {
+  color: "#A78BFA",
+};
+
+const button = {
+  backgroundColor: "#7C3AED",
+  borderRadius: "6px",
+  color: "#fff",
+  fontSize: "16px",
+  fontWeight: "bold",
+  textDecoration: "none",
+  textAlign: "center" as const,
+  display: "block",
+  width: "100%",
+  padding: "12px",
+};
+
+const footer = {
+  color: "#9CA3AF",
+  fontSize: "12px",
+  lineHeight: "16px",
+};
+```
+
+## Learn more
+
+### React Email docs
+
+Check out the [React Email docs](https://react.email/docs) and learn how to set up and use React Email, including how to preview your emails locally.
+
+<CardGroup cols={2}>
+  <Card title="Components" icon="puzzle-piece" href="https://react.email/components">
+    Pre-built components you can copy and paste into your emails.
+  </Card>
+  <Card title="Templates" icon="rectangle-list" href="https://react.email/templates">
+    Extensive pre-built templates ready to use.
+  </Card>
+</CardGroup>

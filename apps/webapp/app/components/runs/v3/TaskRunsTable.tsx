@@ -288,7 +288,7 @@ export function TaskRunsTable({
           <BlankState isLoading={isLoading} filters={filters} />
         ) : (
           runs.map((run, index) => {
-            const path = v3RunSpanPath(organization, project, environment, run, {
+            const path = v3RunSpanPath(organization, project, run.environment, run, {
               spanId: run.spanId,
             });
             return (
@@ -384,7 +384,7 @@ export function TaskRunsTable({
                   {run.delayUntil ? <DateTime date={run.delayUntil} /> : "–"}
                 </TableCell>
                 <TableCell to={path}>{run.ttl ?? "–"}</TableCell>
-                <TableCell to={path} actionClassName="py-1">
+                <TableCell to={path} actionClassName="py-1" className="pr-16">
                   <div className="flex gap-1">
                     {run.tags.map((tag) => <RunTag key={tag} tag={tag} />) || "–"}
                   </div>
@@ -472,7 +472,7 @@ function RunActionsCell({ run, path }: { run: RunListItem; path: string }) {
         </>
       }
       hiddenButtons={
-        <div className="flex items-center">
+        <>
           {run.isCancellable && (
             <SimpleTooltip
               button={
@@ -518,7 +518,7 @@ function RunActionsCell({ run, path }: { run: RunListItem; path: string }) {
               disableHoverableContent
             />
           )}
-        </div>
+        </>
       }
     />
   );

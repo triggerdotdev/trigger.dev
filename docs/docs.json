@@ -40,7 +40,7 @@
               "errors-retrying",
               {
                 "group": "Wait",
-                "pages": ["wait", "wait-for", "wait-until", "wait-for-event", "wait-for-request"]
+                "pages": ["wait", "wait-for", "wait-until", "wait-for-token"]
               },
               "queue-concurrency",
               "versioning",
@@ -281,7 +281,8 @@
                 "pages": [
                   "guides/frameworks/supabase-guides-overview",
                   "guides/frameworks/supabase-edge-functions-basic",
-                  "guides/frameworks/supabase-edge-functions-database-webhooks"
+                  "guides/frameworks/supabase-edge-functions-database-webhooks",
+                  "guides/frameworks/supabase-authentication"
                 ]
               },
               {
@@ -331,13 +332,15 @@
               "guides/examples/open-ai-with-retrying",
               "guides/examples/pdf-to-image",
               "guides/examples/puppeteer",
+              "guides/examples/react-pdf",
+              "guides/examples/react-email",
+              "guides/examples/resend-email-sequence",
+              "guides/examples/satori",
               "guides/examples/scrape-hacker-news",
               "guides/examples/sentry-error-tracking",
               "guides/examples/sharp-image-processing",
               "guides/examples/supabase-database-operations",
               "guides/examples/supabase-storage-upload",
-              "guides/examples/react-pdf",
-              "guides/examples/resend-email-sequence",
               "guides/examples/vercel-ai-sdk",
               "guides/examples/vercel-sync-env-vars"
             ]

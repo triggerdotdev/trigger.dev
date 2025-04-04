@@ -25,7 +25,6 @@ export const action = createActionWorkerApiRoute(
     logger.debug("Suspending run", { runFriendlyId, snapshotFriendlyId, body });
 
     if (!body.success) {
-      // TODO: we could create a debug span here
       logger.error("Failed to suspend run", {
         runFriendlyId,
         snapshotFriendlyId,

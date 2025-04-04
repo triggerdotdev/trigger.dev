@@ -4,7 +4,7 @@ import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { determineEngineVersion } from "../engineVersion.server";
 import { WithRunEngine } from "./baseService.server";
 import { TriggerTaskServiceV1 } from "./triggerTaskV1.server";
-import { TriggerTaskServiceV2 } from "./triggerTaskV2.server";
+import { RunEngineTriggerTaskService } from "~/runEngine/services/triggerTask.server";
 
 export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
@@ -78,7 +78,7 @@ export class TriggerTaskService extends WithRunEngine {
     body: TriggerTaskRequestBody,
     options: TriggerTaskServiceOptions = {}
   ): Promise<TriggerTaskServiceResult | undefined> {
-    const service = new TriggerTaskServiceV2({
+    const service = new RunEngineTriggerTaskService({
       prisma: this._prisma,
       engine: this._engine,
     });

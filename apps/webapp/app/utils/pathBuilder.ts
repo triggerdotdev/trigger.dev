@@ -4,7 +4,7 @@ import { type TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
 import type { Organization } from "~/models/organization.server";
 import type { Project } from "~/models/project.server";
 import { objectToSearchParams } from "./searchParams";
-
+import { type WaitpointSearchParams } from "~/components/runs/v3/WaitpointTokenFilters";
 export type OrgForPath = Pick<Organization, "slug">;
 export type ProjectForPath = Pick<Project, "slug">;
 export type EnvironmentForPath = Pick<RuntimeEnvironment, "slug">;
@@ -242,6 +242,14 @@ export function v3RunPath(
   return `${v3RunsPath(organization, project, environment)}/${run.friendlyId}`;
 }
 
+export function v3RunRedirectPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  run: v3RunForPath
+) {
+  return `${v3ProjectPath(organization, project)}/runs/${run.friendlyId}`;
+}
+
 export function v3RunDownloadLogsPath(run: v3RunForPath) {
   return `/resources/runs/${run.friendlyId}/logs/download`;
 }
@@ -309,6 +317,29 @@ export function v3QueuesPath(
   environment: EnvironmentForPath
 ) {
   return `${v3EnvironmentPath(organization, project, environment)}/queues`;
+}
+
+export function v3WaitpointTokensPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath,
+  filters?: WaitpointSearchParams
+) {
+  const searchParams = objectToSearchParams(filters);
+  const query = searchParams ? `?${searchParams.toString()}` : "";
+  return `${v3EnvironmentPath(organization, project, environment)}/waitpoints/tokens${query}`;
+}
+
+export function v3WaitpointTokenPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath,
+  token: { id: string },
+  filters?: WaitpointSearchParams
+) {
+  const searchParams = objectToSearchParams(filters);
+  const query = searchParams ? `?${searchParams.toString()}` : "";
+  return `${v3WaitpointTokensPath(organization, project, environment)}/${token.id}${query}`;
 }
 
 export function v3BatchesPath(

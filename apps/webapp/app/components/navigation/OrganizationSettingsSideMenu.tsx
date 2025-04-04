@@ -50,8 +50,10 @@ export function OrganizationSettingsSideMenu({
         </LinkButton>
       </div>
       <div className="mb-6 flex grow flex-col gap-4 overflow-y-auto px-1 pt-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-        <div className="flex flex-col gap-1">
-          <SideMenuHeader title="Organization" />
+        <div className="flex flex-col">
+          <div className="mb-1">
+            <SideMenuHeader title="Organization" />
+          </div>
           <SideMenuItem
             name="Usage"
             icon={ChartBarIcon}
@@ -83,7 +85,7 @@ export function OrganizationSettingsSideMenu({
           <SideMenuItem
             name="Settings"
             icon={Cog8ToothIcon}
-            activeIconColor="text-blue-500"
+            activeIconColor="text-orgSettings"
             to={organizationSettingsPath(organization)}
             data-action="settings"
           />

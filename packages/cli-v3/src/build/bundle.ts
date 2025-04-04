@@ -47,6 +47,7 @@ export type BundleResult = {
   runControllerEntryPoint: string | undefined;
   indexWorkerEntryPoint: string | undefined;
   indexControllerEntryPoint: string | undefined;
+  initEntryPoint: string | undefined;
   stop: (() => Promise<void>) | undefined;
 };
 
@@ -203,6 +204,7 @@ async function createBuildOptions(
     logLevel: "silent",
     logOverride: {
       "empty-glob": "silent",
+      "package.json": "silent",
     },
   };
 }
@@ -229,10 +231,25 @@ export async function getBundleResultFromBuild(
   let runControllerEntryPoint: string | undefined;
   let indexWorkerEntryPoint: string | undefined;
   let indexControllerEntryPoint: string | undefined;
+  let initEntryPoint: string | undefined;
 
   const configEntryPoint = resolvedConfig.configFile
     ? relative(resolvedConfig.workingDir, resolvedConfig.configFile)
     : "trigger.config.ts";
+
+  // Check if the entry point is an init.ts file at the root of a trigger directory
+  function isInitEntryPoint(entryPoint: string): boolean {
+    const normalizedEntryPoint = entryPoint.replace(/\\/g, "/"); // Normalize path separators
+    const initFileNames = ["init.ts", "init.mts", "init.cts", "init.js", "init.mjs", "init.cjs"];
+
+    // Check if it's directly in one of the trigger directories
+    return resolvedConfig.dirs.some((dir) => {
+      const normalizedDir = dir.replace(/\\/g, "/");
+      return initFileNames.some(
+        (fileName) => normalizedEntryPoint === `${normalizedDir}/${fileName}`
+      );
+    });
+  }
 
   for (const [outputPath, outputMeta] of Object.entries(result.metafile.outputs)) {
     if (outputPath.endsWith(".mjs")) {
@@ -254,6 +271,8 @@ export async function getBundleResultFromBuild(
         indexControllerEntryPoint = $outputPath;
       } else if (isIndexWorkerForTarget(outputMeta.entryPoint, target)) {
         indexWorkerEntryPoint = $outputPath;
+      } else if (isInitEntryPoint(outputMeta.entryPoint)) {
+        initEntryPoint = $outputPath;
       } else {
         if (
           !outputMeta.entryPoint.startsWith("..") &&
@@ -280,6 +299,7 @@ export async function getBundleResultFromBuild(
     runControllerEntryPoint,
     indexWorkerEntryPoint,
     indexControllerEntryPoint,
+    initEntryPoint,
     contentHash: hasher.digest("hex"),
   };
 }
@@ -357,6 +377,7 @@ export async function createBuildManifestFromBundle({
     runControllerEntryPoint: bundle.runControllerEntryPoint ?? getRunControllerForTarget(target),
     runWorkerEntryPoint: bundle.runWorkerEntryPoint ?? getRunWorkerForTarget(target),
     loaderEntryPoint: bundle.loaderEntryPoint,
+    initEntryPoint: bundle.initEntryPoint,
     configPath: bundle.configPath,
     customConditions: resolvedConfig.build.conditions ?? [],
     deploy: {

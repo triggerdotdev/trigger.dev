@@ -925,6 +925,20 @@ export const CreateWaitpointTokenRequestBody = z.object({
    * You can pass a `Date` object, or a string in this format: "30s", "1m", "2h", "3d", "4w".
    */
   timeout: TimePeriod.optional(),
+  /**
+   * Tags to attach to the waitpoint. Tags can be used to filter waitpoints in the dashboard.
+   *
+   * You can set up to 10 tags per waitpoint, they must be less than 128 characters each.
+   *
+   * We recommend prefixing tags with a namespace using an underscore or colon, like `user_1234567` or `org:9876543`.
+   *
+   * @example
+   *
+   * ```ts
+   * await wait.createToken({ tags: ["user:1234567", "org:9876543"] });
+   * ```
+   */
+  tags: RunTags.optional(),
 });
 export type CreateWaitpointTokenRequestBody = z.infer<typeof CreateWaitpointTokenRequestBody>;
 
@@ -933,6 +947,37 @@ export const CreateWaitpointTokenResponseBody = z.object({
   isCached: z.boolean(),
 });
 export type CreateWaitpointTokenResponseBody = z.infer<typeof CreateWaitpointTokenResponseBody>;
+
+export const waitpointTokenStatuses = ["WAITING", "COMPLETED", "TIMED_OUT"] as const;
+export const WaitpointTokenStatus = z.enum(waitpointTokenStatuses);
+export type WaitpointTokenStatus = z.infer<typeof WaitpointTokenStatus>;
+
+export const WaitpointTokenItem = z.object({
+  id: z.string(),
+  status: WaitpointTokenStatus,
+  completedAt: z.coerce.date().optional(),
+  completedAfter: z.coerce.date().optional(),
+  timeoutAt: z.coerce.date().optional(),
+  idempotencyKey: z.string().optional(),
+  idempotencyKeyExpiresAt: z.coerce.date().optional(),
+  tags: z.array(z.string()),
+  createdAt: z.coerce.date(),
+});
+export type WaitpointTokenItem = z.infer<typeof WaitpointTokenItem>;
+
+export const WaitpointListTokenItem = WaitpointTokenItem.omit({
+  completedAfter: true,
+});
+export type WaitpointListTokenItem = z.infer<typeof WaitpointListTokenItem>;
+
+export const WaitpointRetrieveTokenResponse = WaitpointListTokenItem.and(
+  z.object({
+    output: z.string().optional(),
+    outputType: z.string().optional(),
+    outputIsError: z.boolean().optional(),
+  })
+);
+export type WaitpointRetrieveTokenResponse = z.infer<typeof WaitpointRetrieveTokenResponse>;
 
 export const CompleteWaitpointTokenRequestBody = z.object({
   data: z.any().nullish(),
@@ -963,8 +1008,18 @@ export const WaitForDurationRequestBody = z.object({
    */
   idempotencyKeyTTL: z.string().optional(),
 
+  /**
+   * If set to true, this will cause the waitpoint to release the current run from the queue's concurrency.
+   *
+   * This is useful if you want to allow other runs to execute while the waiting
+   *
+   * @default false
+   */
   releaseConcurrency: z.boolean().optional(),
 
+  /**
+   * The date that the waitpoint will complete.
+   */
   date: z.coerce.date(),
 });
 export type WaitForDurationRequestBody = z.infer<typeof WaitForDurationRequestBody>;

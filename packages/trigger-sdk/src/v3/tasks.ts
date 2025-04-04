@@ -1,4 +1,15 @@
 import {
+  onStart,
+  onFailure,
+  onSuccess,
+  onComplete,
+  onWait,
+  onResume,
+  onHandleError,
+  onCatchError,
+  middleware,
+} from "./hooks.js";
+import {
   batchTrigger,
   batchTriggerAndWait,
   createTask,
@@ -46,6 +57,8 @@ export type {
   TaskFromIdentifier,
 };
 
+export type * from "./hooks.js";
+
 /** Creates a task that can be triggered
  * @param options - Task options
  * @example 
@@ -76,4 +89,14 @@ export const tasks = {
   batchTrigger,
   triggerAndWait,
   batchTriggerAndWait,
+  onStart,
+  onFailure,
+  onSuccess,
+  onComplete,
+  onWait,
+  onResume,
+  /** @deprecated Use catchError instead */
+  handleError: onHandleError,
+  catchError: onCatchError,
+  middleware,
 };

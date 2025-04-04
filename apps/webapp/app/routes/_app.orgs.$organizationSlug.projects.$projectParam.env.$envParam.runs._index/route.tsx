@@ -8,6 +8,7 @@ import { ListChecks, ListX } from "lucide-react";
 import { Suspense, useState } from "react";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
+import { DevDisconnectedBanner, useDevPresence } from "~/components/DevPresence";
 import { StepContentContainer } from "~/components/StepContentContainer";
 import { MainCenteredContainer, PageBody } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
@@ -33,9 +34,11 @@ import { TextLink } from "~/components/primitives/TextLink";
 import { RunsFilters, TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
 import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { BULK_ACTION_RUN_LIMIT } from "~/consts";
+import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { findProjectBySlug } from "~/models/project.server";
+import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { RunListPresenter } from "~/presenters/v3/RunListPresenter.server";
 import {
   getRootOnlyFilterPreference,
@@ -47,15 +50,11 @@ import { cn } from "~/utils/cn";
 import {
   docsPath,
   EnvironmentParamSchema,
-  ProjectParamSchema,
   v3ProjectPath,
   v3RunsPath,
   v3TestPath,
 } from "~/utils/pathBuilder";
 import { ListPagination } from "../../components/ListPagination";
-import { prisma } from "~/db.server";
-import { useEnvironment } from "~/hooks/useEnvironment";
-import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 
 export const meta: MetaFunction = () => {
   return [
@@ -136,7 +135,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     from,
     to,
     batchId,
-    runId,
+    runIds: runId ? [runId] : undefined,
     scheduleId,
     rootOnly,
     direction: direction,
@@ -163,11 +162,17 @@ export default function Page() {
   const { data, rootOnlyDefault } = useTypedLoaderData<typeof loader>();
   const navigation = useNavigation();
   const isLoading = navigation.state !== "idle";
+  const { isConnected } = useDevPresence();
+  const project = useProject();
+  const environment = useEnvironment();
 
   return (
     <>
       <NavBar>
         <PageTitle title="Runs" />
+        {environment.type === "DEVELOPMENT" && project.engine === "V2" && (
+          <DevDisconnectedBanner isConnected={isConnected} />
+        )}
         <PageAccessories>
           <LinkButton
             variant={"docs/small"}
@@ -203,7 +208,7 @@ export default function Page() {
                 <TypedAwait resolve={data}>
                   {(list) => (
                     <>
-                      {list.runs.length === 0 && !list.hasFilters ? (
+                      {list.runs.length === 0 && !list.hasAnyRuns ? (
                         list.possibleTasks.length === 0 ? (
                           <CreateFirstTaskInstructions />
                         ) : (
@@ -438,8 +443,11 @@ function CreateFirstTaskInstructions() {
         iconClassName="text-blue-500"
         panelClassName="max-full"
         title="Create your first task"
-        to={v3ProjectPath(organization, project)}
-        buttonLabel="Create a task"
+        accessory={
+          <LinkButton to={v3ProjectPath(organization, project)} variant="primary/small">
+            Create a task
+          </LinkButton>
+        }
       >
         <Paragraph variant="small">
           Before running a task, you must first create one. Follow the instructions on the{" "}
@@ -461,13 +469,13 @@ function RunTaskInstructions() {
       <StepNumber stepNumber="A" title="Trigger a test run" />
       <StepContentContainer>
         <Paragraph spacing>
-          You can perform a Run with any payload you want, or use one of our examples on the test
-          page.
+          Perform a test run with a payload directly from the dashboard.
         </Paragraph>
         <LinkButton
           to={v3TestPath(organization, project, environment)}
-          variant="primary/medium"
+          variant="secondary/medium"
           LeadingIcon={BeakerIcon}
+          leadingIconClassName="text-lime-500"
           className="inline-flex"
         >
           Test
@@ -482,15 +490,15 @@ function RunTaskInstructions() {
       <StepNumber stepNumber="B" title="Trigger your task for real" />
       <StepContentContainer>
         <Paragraph spacing>
-          Performing a real run depends on the type of Trigger your Task is using.
+          Performing a real run depends on the type of trigger your task is using.
         </Paragraph>
         <LinkButton
-          to="https://trigger.dev/docs"
-          variant="primary/medium"
+          to={docsPath("/triggering")}
+          variant="docs/medium"
           LeadingIcon={BookOpenIcon}
           className="inline-flex"
         >
-          How to run a task
+          How to trigger a task
         </LinkButton>
       </StepContentContainer>
     </MainCenteredContainer>

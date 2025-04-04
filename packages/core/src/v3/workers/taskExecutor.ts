@@ -2,23 +2,46 @@ import { SpanKind } from "@opentelemetry/api";
 import { VERSION } from "../../version.js";
 import { ApiError, RateLimitError } from "../apiClient/errors.js";
 import { ConsoleInterceptor } from "../consoleInterceptor.js";
-import { isInternalError, parseError, sanitizeError, TaskPayloadParsedError } from "../errors.js";
-import { runMetadata, TriggerConfig, waitUntil } from "../index.js";
+import {
+  InternalError,
+  isCompleteTaskWithOutput,
+  isInternalError,
+  parseError,
+  sanitizeError,
+  TaskPayloadParsedError,
+} from "../errors.js";
+import {
+  accessoryAttributes,
+  flattenAttributes,
+  lifecycleHooks,
+  runMetadata,
+  waitUntil,
+} from "../index.js";
+import {
+  AnyOnMiddlewareHookFunction,
+  RegisteredHookFunction,
+  TaskCompleteResult,
+  TaskInitOutput,
+  TaskWait,
+} from "../lifecycleHooks/types.js";
 import { recordSpanException, TracingSDK } from "../otel/index.js";
 import { runTimelineMetrics } from "../run-timeline-metrics-api.js";
 import {
+  COLD_VARIANT,
+  RetryOptions,
   ServerBackgroundWorker,
   TaskRunContext,
   TaskRunErrorCodes,
   TaskRunExecution,
   TaskRunExecutionResult,
   TaskRunExecutionRetry,
+  WARM_VARIANT,
 } from "../schemas/index.js";
 import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
 import { taskContext } from "../task-context-api.js";
 import { TriggerTracer } from "../tracer.js";
-import { HandleErrorFunction, TaskMetadataWithFunctions } from "../types/index.js";
-import { UsageMeasurement } from "../usage/types.js";
+import { tryCatch } from "../tryCatch.js";
+import { HandleErrorModificationOptions, TaskMetadataWithFunctions } from "../types/index.js";
 import {
   conditionallyExportPacket,
   conditionallyImportPacket,
@@ -32,16 +55,24 @@ export type TaskExecutorOptions = {
   tracingSDK: TracingSDK;
   tracer: TriggerTracer;
   consoleInterceptor: ConsoleInterceptor;
-  config: TriggerConfig | undefined;
-  handleErrorFn: HandleErrorFunction | undefined;
+  retries?: {
+    enabledInDev?: boolean;
+    default?: RetryOptions;
+  };
+  isWarmStart?: boolean;
 };
 
 export class TaskExecutor {
   private _tracingSDK: TracingSDK;
   private _tracer: TriggerTracer;
   private _consoleInterceptor: ConsoleInterceptor;
-  private _importedConfig: TriggerConfig | undefined;
-  private _handleErrorFn: HandleErrorFunction | undefined;
+  private _retries:
+    | {
+        enabledInDev?: boolean;
+        default?: RetryOptions;
+      }
+    | undefined;
+  private _isWarmStart: boolean | undefined;
 
   constructor(
     public task: TaskMetadataWithFunctions,
@@ -50,15 +81,14 @@ export class TaskExecutor {
     this._tracingSDK = options.tracingSDK;
     this._tracer = options.tracer;
     this._consoleInterceptor = options.consoleInterceptor;
-    this._importedConfig = options.config;
-    this._handleErrorFn = options.handleErrorFn;
+    this._retries = options.retries;
+    this._isWarmStart = options.isWarmStart;
   }
 
   async execute(
     execution: TaskRunExecution,
     worker: ServerBackgroundWorker,
     traceContext: Record<string, unknown>,
-    usage: UsageMeasurement,
     signal?: AbortSignal
   ): Promise<{ result: TaskRunExecutionResult }> {
     const ctx = TaskRunContext.parse(execution);
@@ -72,6 +102,7 @@ export class TaskExecutor {
     taskContext.setGlobalTaskContext({
       ctx,
       worker,
+      isWarmStart: this._isWarmStart,
     });
 
     if (execution.run.metadata) {
@@ -91,109 +122,88 @@ export class TaskExecutor {
           let parsedPayload: any;
           let initOutput: any;
 
-          try {
-            await runTimelineMetrics.measureMetric("trigger.dev/execution", "payload", async () => {
+          const [inputError, payloadResult] = await tryCatch(
+            runTimelineMetrics.measureMetric("trigger.dev/execution", "payload", async () => {
               const payloadPacket = await conditionallyImportPacket(originalPacket, this._tracer);
-              parsedPayload = await parsePacket(payloadPacket);
-            });
-          } catch (inputError) {
-            recordSpanException(span, inputError);
+              return await parsePacket(payloadPacket);
+            })
+          );
 
-            return {
-              ok: false,
-              id: execution.run.id,
-              error: {
-                type: "INTERNAL_ERROR",
-                code: TaskRunErrorCodes.TASK_INPUT_ERROR,
-                message:
-                  inputError instanceof Error
-                    ? `${inputError.name}: ${inputError.message}`
-                    : typeof inputError === "string"
-                    ? inputError
-                    : undefined,
-                stackTrace: inputError instanceof Error ? inputError.stack : undefined,
-              },
-            } satisfies TaskRunExecutionResult;
+          if (inputError) {
+            recordSpanException(span, inputError);
+            return this.#internalErrorResult(
+              execution,
+              TaskRunErrorCodes.TASK_INPUT_ERROR,
+              inputError
+            );
           }
 
-          try {
-            parsedPayload = await this.#parsePayload(parsedPayload);
+          parsedPayload = await this.#parsePayload(payloadResult);
 
-            if (execution.attempt.number === 1) {
-              await this.#callOnStartFunctions(parsedPayload, ctx, signal);
-            }
+          lifecycleHooks.registerOnWaitHookListener(async (wait) => {
+            await this.#callOnWaitFunctions(wait, parsedPayload, ctx, initOutput, signal);
+          });
 
-            initOutput = await this.#callInitFunctions(parsedPayload, ctx, signal);
+          lifecycleHooks.registerOnResumeHookListener(async (wait) => {
+            await this.#callOnResumeFunctions(wait, parsedPayload, ctx, initOutput, signal);
+          });
 
-            const output = await this.#callRun(parsedPayload, ctx, initOutput, signal);
+          const executeTask = async (payload: any) => {
+            const [runError, output] = await tryCatch(
+              (async () => {
+                initOutput = await this.#callInitFunctions(payload, ctx, signal);
 
-            await this.#callOnSuccessFunctions(parsedPayload, output, ctx, initOutput, signal);
+                if (execution.attempt.number === 1) {
+                  await this.#callOnStartFunctions(payload, ctx, initOutput, signal);
+                }
 
-            try {
-              const stringifiedOutput = await stringifyIO(output);
+                try {
+                  return await this.#callRun(payload, ctx, initOutput, signal);
+                } catch (error) {
+                  if (isCompleteTaskWithOutput(error)) {
+                    return error.output;
+                  }
 
-              const finalOutput = await conditionallyExportPacket(
-                stringifiedOutput,
-                `${execution.attempt.id}/output`,
-                this._tracer
+                  throw error;
+                }
+              })()
+            );
+
+            if (runError) {
+              const [handleErrorError, handleErrorResult] = await tryCatch(
+                this.#handleError(execution, runError, payload, ctx, initOutput, signal)
               );
 
-              const attributes = await createPacketAttributes(
-                finalOutput,
-                SemanticInternalAttributes.OUTPUT,
-                SemanticInternalAttributes.OUTPUT_TYPE
-              );
-
-              if (attributes) {
-                span.setAttributes(attributes);
+              if (handleErrorError) {
+                recordSpanException(span, handleErrorError);
+                return this.#internalErrorResult(
+                  execution,
+                  TaskRunErrorCodes.HANDLE_ERROR_ERROR,
+                  handleErrorError
+                );
               }
-
-              return {
-                ok: true,
-                id: execution.run.id,
-                output: finalOutput.data,
-                outputType: finalOutput.dataType,
-              } satisfies TaskRunExecutionResult;
-            } catch (outputError) {
-              recordSpanException(span, outputError);
-
-              return {
-                ok: false,
-                id: execution.run.id,
-                error: {
-                  type: "INTERNAL_ERROR",
-                  code: TaskRunErrorCodes.TASK_OUTPUT_ERROR,
-                  message:
-                    outputError instanceof Error
-                      ? outputError.message
-                      : typeof outputError === "string"
-                      ? outputError
-                      : undefined,
-                },
-              } satisfies TaskRunExecutionResult;
-            }
-          } catch (runError) {
-            try {
-              const handleErrorResult = await this.#handleError(
-                execution,
-                runError,
-                parsedPayload,
-                ctx,
-                initOutput,
-                signal
-              );
 
               recordSpanException(span, handleErrorResult.error ?? runError);
 
               if (handleErrorResult.status !== "retry") {
                 await this.#callOnFailureFunctions(
-                  parsedPayload,
+                  payload,
                   handleErrorResult.error ?? runError,
                   ctx,
                   initOutput,
                   signal
                 );
+
+                await this.#callOnCompleteFunctions(
+                  payload,
+                  { ok: false, error: handleErrorResult.error ?? runError },
+                  ctx,
+                  initOutput,
+                  signal
+                );
               }
+
+              await this.#cleanupAndWaitUntil(payload, ctx, initOutput, signal);
 
               return {
                 id: execution.run.id,
@@ -206,39 +216,104 @@ export class TaskExecutor {
                 retry: handleErrorResult.status === "retry" ? handleErrorResult.retry : undefined,
                 skippedRetrying: handleErrorResult.status === "skipped",
               } satisfies TaskRunExecutionResult;
-            } catch (handleErrorError) {
-              recordSpanException(span, handleErrorError);
-
-              return {
-                ok: false,
-                id: execution.run.id,
-                error: {
-                  type: "INTERNAL_ERROR",
-                  code: TaskRunErrorCodes.HANDLE_ERROR_ERROR,
-                  message:
-                    handleErrorError instanceof Error
-                      ? handleErrorError.message
-                      : typeof handleErrorError === "string"
-                      ? handleErrorError
-                      : undefined,
-                },
-              } satisfies TaskRunExecutionResult;
             }
-          } finally {
-            await this.#callTaskCleanup(parsedPayload, ctx, initOutput, signal);
-            await this.#blockForWaitUntil();
 
-            span.setAttributes(runTimelineMetrics.convertMetricsToSpanAttributes());
-          }
+            const [outputError, stringifiedOutput] = await tryCatch(stringifyIO(output));
+
+            if (outputError) {
+              recordSpanException(span, outputError);
+              await this.#cleanupAndWaitUntil(payload, ctx, initOutput, signal);
+
+              return this.#internalErrorResult(
+                execution,
+                TaskRunErrorCodes.TASK_OUTPUT_ERROR,
+                outputError
+              );
+            }
+
+            const [exportError, finalOutput] = await tryCatch(
+              conditionallyExportPacket(
+                stringifiedOutput,
+                `${execution.attempt.id}/output`,
+                this._tracer
+              )
+            );
+
+            if (exportError) {
+              recordSpanException(span, exportError);
+              await this.#cleanupAndWaitUntil(payload, ctx, initOutput, signal);
+
+              return this.#internalErrorResult(
+                execution,
+                TaskRunErrorCodes.TASK_OUTPUT_ERROR,
+                exportError
+              );
+            }
+
+            const [attrError, attributes] = await tryCatch(
+              createPacketAttributes(
+                finalOutput,
+                SemanticInternalAttributes.OUTPUT,
+                SemanticInternalAttributes.OUTPUT_TYPE
+              )
+            );
+
+            if (!attrError && attributes) {
+              span.setAttributes(attributes);
+            }
+
+            await this.#callOnSuccessFunctions(payload, output, ctx, initOutput, signal);
+            await this.#callOnCompleteFunctions(
+              payload,
+              { ok: true, data: output },
+              ctx,
+              initOutput,
+              signal
+            );
+
+            await this.#cleanupAndWaitUntil(payload, ctx, initOutput, signal);
+
+            return {
+              ok: true,
+              id: execution.run.id,
+              output: finalOutput.data,
+              outputType: finalOutput.dataType,
+            } satisfies TaskRunExecutionResult;
+          };
+
+          const globalMiddlewareHooks = lifecycleHooks.getGlobalMiddlewareHooks();
+          const taskMiddlewareHook = lifecycleHooks.getTaskMiddlewareHook(this.task.id);
+
+          const middlewareHooks = [
+            ...globalMiddlewareHooks,
+            taskMiddlewareHook ? { id: this.task.id, fn: taskMiddlewareHook } : undefined,
+          ].filter(Boolean) as RegisteredHookFunction<AnyOnMiddlewareHookFunction>[];
+
+          return await this.#executeTaskWithMiddlewareHooks(
+            parsedPayload,
+            ctx,
+            execution,
+            middlewareHooks,
+            executeTask,
+            signal
+          );
         });
       },
       {
         kind: SpanKind.CONSUMER,
         attributes: {
           [SemanticInternalAttributes.STYLE_ICON]: "attempt",
+          [SemanticInternalAttributes.ENTITY_TYPE]: "attempt",
           [SemanticInternalAttributes.SPAN_ATTEMPT]: true,
           ...(execution.attempt.number === 1
             ? runTimelineMetrics.convertMetricsToSpanAttributes()
+            : {}),
+          ...(execution.environment.type !== "DEVELOPMENT"
+            ? {
+                [SemanticInternalAttributes.STYLE_VARIANT]: this._isWarmStart
+                  ? WARM_VARIANT
+                  : COLD_VARIANT,
+              }
             : {}),
         },
         events:
@@ -253,76 +328,340 @@ export class TaskExecutor {
     return { result };
   }
 
+  async #executeTaskWithMiddlewareHooks(
+    payload: unknown,
+    ctx: TaskRunContext,
+    execution: TaskRunExecution,
+    hooks: RegisteredHookFunction<AnyOnMiddlewareHookFunction>[],
+    executeTask: (payload: unknown) => Promise<TaskRunExecutionResult>,
+    signal?: AbortSignal
+  ) {
+    let output: any;
+    let executeError: unknown;
+
+    const runner = hooks.reduceRight(
+      (next, hook) => {
+        return async () => {
+          await this._tracer.startActiveSpan(
+            "middleware()",
+            async (span) => {
+              await hook.fn({ payload, ctx, signal, task: this.task.id, next });
+            },
+            {
+              attributes: {
+                [SemanticInternalAttributes.STYLE_ICON]: "task-middleware",
+                ...this.#lifecycleHookAccessoryAttributes(hook.name),
+              },
+            }
+          );
+        };
+      },
+      async () => {
+        const [error, result] = await tryCatch(executeTask(payload));
+        if (error) {
+          executeError = error;
+        } else {
+          output = result;
+        }
+      }
+    );
+
+    const [runnerError] = await tryCatch(runner());
+    if (runnerError) {
+      return this.#internalErrorResult(
+        execution,
+        TaskRunErrorCodes.TASK_MIDDLEWARE_ERROR,
+        runnerError
+      );
+    }
+
+    if (executeError) {
+      throw executeError;
+    }
+
+    return output;
+  }
+
   async #callRun(payload: unknown, ctx: TaskRunContext, init: unknown, signal?: AbortSignal) {
     const runFn = this.task.fns.run;
-    const middlewareFn = this.task.fns.middleware;
 
     if (!runFn) {
       throw new Error("Task does not have a run function");
     }
 
-    if (!middlewareFn) {
-      return runTimelineMetrics.measureMetric("trigger.dev/execution", "run", () =>
-        runFn(payload, { ctx, init, signal })
-      );
-    }
+    // Create a promise that rejects when the signal aborts
+    const abortPromise = signal
+      ? new Promise((_, reject) => {
+          signal.addEventListener("abort", () => {
+            const maxDuration = ctx.run.maxDuration;
+            reject(
+              new InternalError({
+                code: TaskRunErrorCodes.MAX_DURATION_EXCEEDED,
+                message: `Run exceeded maximum compute time (maxDuration) of ${maxDuration} seconds`,
+              })
+            );
+          });
+        })
+      : undefined;
 
-    return middlewareFn(payload, {
-      ctx,
-      signal,
-      next: async () =>
-        runTimelineMetrics.measureMetric("trigger.dev/execution", "run", () =>
-          runFn(payload, { ctx, init, signal })
-        ),
+    return runTimelineMetrics.measureMetric("trigger.dev/execution", "run", async () => {
+      return await this._tracer.startActiveSpan(
+        "run()",
+        async (span) => {
+          if (abortPromise) {
+            // Race between the run function and the abort promise
+            return await Promise.race([runFn(payload, { ctx, init, signal }), abortPromise]);
+          }
+
+          return await runFn(payload, { ctx, init, signal });
+        },
+        {
+          attributes: { [SemanticInternalAttributes.STYLE_ICON]: "task-fn-run" },
+        }
+      );
     });
   }
 
-  async #callInitFunctions(payload: unknown, ctx: TaskRunContext, signal?: AbortSignal) {
-    await this.#callConfigInit(payload, ctx, signal);
+  async #callOnWaitFunctions(
+    wait: TaskWait,
+    payload: unknown,
+    ctx: TaskRunContext,
+    initOutput: TaskInitOutput,
+    signal?: AbortSignal
+  ) {
+    const globalWaitHooks = lifecycleHooks.getGlobalWaitHooks();
+    const taskWaitHook = lifecycleHooks.getTaskWaitHook(this.task.id);
 
-    const initFn = this.task.fns.init;
-
-    if (!initFn) {
-      return {};
+    if (globalWaitHooks.length === 0 && !taskWaitHook) {
+      return;
     }
 
-    return this._tracer.startActiveSpan(
-      "init",
-      async (span) => {
-        return await runTimelineMetrics.measureMetric("trigger.dev/execution", "init", () =>
-          initFn(payload, { ctx, signal })
-        );
-      },
-      {
-        attributes: {
-          [SemanticInternalAttributes.STYLE_ICON]: "function",
-        },
+    const result = await runTimelineMetrics.measureMetric(
+      "trigger.dev/execution",
+      "onWait",
+      async () => {
+        for (const hook of globalWaitHooks) {
+          const [hookError] = await tryCatch(
+            this._tracer.startActiveSpan(
+              "onWait()",
+              async (span) => {
+                await hook.fn({ payload, ctx, signal, task: this.task.id, wait, init: initOutput });
+              },
+              {
+                attributes: {
+                  [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onWait",
+                  [SemanticInternalAttributes.COLLAPSED]: true,
+                  ...this.#lifecycleHookAccessoryAttributes(hook.name),
+                },
+              }
+            )
+          );
+
+          if (hookError) {
+            throw hookError;
+          }
+        }
+
+        if (taskWaitHook) {
+          const [hookError] = await tryCatch(
+            this._tracer.startActiveSpan(
+              "onWait()",
+              async (span) => {
+                await taskWaitHook({
+                  payload,
+                  ctx,
+                  signal,
+                  task: this.task.id,
+                  wait,
+                  init: initOutput,
+                });
+              },
+              {
+                attributes: {
+                  [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onWait",
+                  [SemanticInternalAttributes.COLLAPSED]: true,
+                  ...this.#lifecycleHookAccessoryAttributes("task"),
+                },
+              }
+            )
+          );
+
+          if (hookError) {
+            throw hookError;
+          }
+        }
       }
     );
   }
 
-  async #callConfigInit(payload: unknown, ctx: TaskRunContext, signal?: AbortSignal) {
-    const initFn = this._importedConfig?.init;
+  async #callOnResumeFunctions(
+    wait: TaskWait,
+    payload: unknown,
+    ctx: TaskRunContext,
+    initOutput: TaskInitOutput,
+    signal?: AbortSignal
+  ) {
+    const globalResumeHooks = lifecycleHooks.getGlobalResumeHooks();
+    const taskResumeHook = lifecycleHooks.getTaskResumeHook(this.task.id);
 
-    if (!initFn) {
+    if (globalResumeHooks.length === 0 && !taskResumeHook) {
+      return;
+    }
+
+    const result = await runTimelineMetrics.measureMetric(
+      "trigger.dev/execution",
+      "onResume",
+      async () => {
+        for (const hook of globalResumeHooks) {
+          const [hookError] = await tryCatch(
+            this._tracer.startActiveSpan(
+              "onResume()",
+              async (span) => {
+                await hook.fn({ payload, ctx, signal, task: this.task.id, wait, init: initOutput });
+              },
+              {
+                attributes: {
+                  [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onResume",
+                  [SemanticInternalAttributes.COLLAPSED]: true,
+                  ...this.#lifecycleHookAccessoryAttributes(hook.name),
+                },
+              }
+            )
+          );
+
+          if (hookError) {
+            throw hookError;
+          }
+        }
+
+        if (taskResumeHook) {
+          const [hookError] = await tryCatch(
+            this._tracer.startActiveSpan(
+              "onResume()",
+              async (span) => {
+                await taskResumeHook({
+                  payload,
+                  ctx,
+                  signal,
+                  task: this.task.id,
+                  wait,
+                  init: initOutput,
+                });
+              },
+              {
+                attributes: {
+                  [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onResume",
+                  [SemanticInternalAttributes.COLLAPSED]: true,
+                  ...this.#lifecycleHookAccessoryAttributes("task"),
+                },
+              }
+            )
+          );
+
+          if (hookError) {
+            throw hookError;
+          }
+        }
+      }
+    );
+  }
+
+  async #callInitFunctions(payload: unknown, ctx: TaskRunContext, signal?: AbortSignal) {
+    const globalInitHooks = lifecycleHooks.getGlobalInitHooks();
+    const taskInitHook = lifecycleHooks.getTaskInitHook(this.task.id);
+
+    if (globalInitHooks.length === 0 && !taskInitHook) {
       return {};
     }
 
-    return this._tracer.startActiveSpan(
-      "config.init",
-      async (span) => {
-        return await runTimelineMetrics.measureMetric(
-          "trigger.dev/execution",
-          "config.init",
-          async () => initFn(payload, { ctx, signal })
-        );
-      },
-      {
-        attributes: {
-          [SemanticInternalAttributes.STYLE_ICON]: "function",
-        },
+    const result = await runTimelineMetrics.measureMetric(
+      "trigger.dev/execution",
+      "init",
+      async () => {
+        // Store global hook results in an array
+        const globalResults = [];
+        for (const hook of globalInitHooks) {
+          const [hookError, result] = await tryCatch(
+            this._tracer.startActiveSpan(
+              "init()",
+              async (span) => {
+                const result = await hook.fn({ payload, ctx, signal, task: this.task.id });
+
+                if (result && typeof result === "object" && !Array.isArray(result)) {
+                  span.setAttributes(flattenAttributes(result));
+                  return result;
+                }
+
+                return {};
+              },
+              {
+                attributes: {
+                  [SemanticInternalAttributes.STYLE_ICON]: "task-hook-init",
+                  [SemanticInternalAttributes.COLLAPSED]: true,
+                  ...this.#lifecycleHookAccessoryAttributes(hook.name),
+                },
+              }
+            )
+          );
+
+          if (hookError) {
+            throw hookError;
+          }
+
+          if (result && typeof result === "object" && !Array.isArray(result)) {
+            globalResults.push(result);
+          }
+        }
+
+        // Merge all global results into a single object
+        const mergedGlobalResults = Object.assign({}, ...globalResults);
+
+        if (taskInitHook) {
+          const [hookError, taskResult] = await tryCatch(
+            this._tracer.startActiveSpan(
+              "init()",
+              async (span) => {
+                const result = await taskInitHook({ payload, ctx, signal, task: this.task.id });
+
+                if (result && typeof result === "object" && !Array.isArray(result)) {
+                  span.setAttributes(flattenAttributes(result));
+                  return result;
+                }
+
+                return {};
+              },
+              {
+                attributes: {
+                  [SemanticInternalAttributes.STYLE_ICON]: "task-hook-init",
+                  [SemanticInternalAttributes.COLLAPSED]: true,
+                  ...this.#lifecycleHookAccessoryAttributes("task"),
+                },
+              }
+            )
+          );
+
+          if (hookError) {
+            throw hookError;
+          }
+
+          // Only merge if taskResult is an object
+          if (taskResult && typeof taskResult === "object" && !Array.isArray(taskResult)) {
+            return { ...mergedGlobalResults, ...taskResult };
+          }
+
+          // If taskResult isn't an object, return global results
+          return mergedGlobalResults;
+        }
+
+        return mergedGlobalResults;
       }
     );
+
+    if (result && typeof result === "object" && !Array.isArray(result)) {
+      return result;
+    }
+
+    return;
   }
 
   async #callOnSuccessFunctions(
@@ -332,57 +671,72 @@ export class TaskExecutor {
     initOutput: any,
     signal?: AbortSignal
   ) {
-    await this.#callOnSuccessFunction(
-      this.task.fns.onSuccess,
-      "task.onSuccess",
-      payload,
-      output,
-      ctx,
-      initOutput,
-      signal
-    );
+    const globalSuccessHooks = lifecycleHooks.getGlobalSuccessHooks();
+    const taskSuccessHook = lifecycleHooks.getTaskSuccessHook(this.task.id);
 
-    await this.#callOnSuccessFunction(
-      this._importedConfig?.onSuccess,
-      "config.onSuccess",
-      payload,
-      output,
-      ctx,
-      initOutput,
-      signal
-    );
-  }
-
-  async #callOnSuccessFunction(
-    onSuccessFn: TaskMetadataWithFunctions["fns"]["onSuccess"],
-    name: string,
-    payload: unknown,
-    output: any,
-    ctx: TaskRunContext,
-    initOutput: any,
-    signal?: AbortSignal
-  ) {
-    if (!onSuccessFn) {
+    if (globalSuccessHooks.length === 0 && !taskSuccessHook) {
       return;
     }
 
-    try {
-      await this._tracer.startActiveSpan(
-        name,
-        async (span) => {
-          return await runTimelineMetrics.measureMetric("trigger.dev/execution", name, () =>
-            onSuccessFn(payload, output, { ctx, init: initOutput, signal })
-          );
-        },
-        {
-          attributes: {
-            [SemanticInternalAttributes.STYLE_ICON]: "function",
-          },
+    return await runTimelineMetrics.measureMetric("trigger.dev/execution", "success", async () => {
+      for (const hook of globalSuccessHooks) {
+        const [hookError] = await tryCatch(
+          this._tracer.startActiveSpan(
+            "onSuccess()",
+            async (span) => {
+              await hook.fn({
+                payload,
+                output,
+                ctx,
+                signal,
+                task: this.task.id,
+                init: initOutput,
+              });
+            },
+            {
+              attributes: {
+                [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onSuccess",
+                [SemanticInternalAttributes.COLLAPSED]: true,
+                ...this.#lifecycleHookAccessoryAttributes(hook.name),
+              },
+            }
+          )
+        );
+
+        if (hookError) {
+          throw hookError;
         }
-      );
-    } catch {
-      // Ignore errors from onSuccess functions
-    }
+      }
+
+      if (taskSuccessHook) {
+        const [hookError] = await tryCatch(
+          this._tracer.startActiveSpan(
+            "onSuccess()",
+            async (span) => {
+              await taskSuccessHook({
+                payload,
+                output,
+                ctx,
+                signal,
+                task: this.task.id,
+                init: initOutput,
+              });
+            },
+            {
+              attributes: {
+                [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onSuccess",
+                [SemanticInternalAttributes.COLLAPSED]: true,
+                ...this.#lifecycleHookAccessoryAttributes("task"),
+              },
+            }
+          )
+        );
+
+        if (hookError) {
+          throw hookError;
+        }
+      }
+    });
   }
 
   async #callOnFailureFunctions(
@@ -392,57 +746,72 @@ export class TaskExecutor {
     initOutput: any,
     signal?: AbortSignal
   ) {
-    await this.#callOnFailureFunction(
-      this.task.fns.onFailure,
-      "task.onFailure",
-      payload,
-      error,
-      ctx,
-      initOutput,
-      signal
-    );
+    const globalFailureHooks = lifecycleHooks.getGlobalFailureHooks();
+    const taskFailureHook = lifecycleHooks.getTaskFailureHook(this.task.id);
 
-    await this.#callOnFailureFunction(
-      this._importedConfig?.onFailure,
-      "config.onFailure",
-      payload,
-      error,
-      ctx,
-      initOutput,
-      signal
-    );
-  }
-
-  async #callOnFailureFunction(
-    onFailureFn: TaskMetadataWithFunctions["fns"]["onFailure"],
-    name: string,
-    payload: unknown,
-    error: unknown,
-    ctx: TaskRunContext,
-    initOutput: any,
-    signal?: AbortSignal
-  ) {
-    if (!onFailureFn) {
+    if (globalFailureHooks.length === 0 && !taskFailureHook) {
       return;
     }
 
-    try {
-      return await this._tracer.startActiveSpan(
-        name,
-        async (span) => {
-          return await runTimelineMetrics.measureMetric("trigger.dev/execution", name, () =>
-            onFailureFn(payload, error, { ctx, init: initOutput, signal })
-          );
-        },
-        {
-          attributes: {
-            [SemanticInternalAttributes.STYLE_ICON]: "function",
-          },
+    return await runTimelineMetrics.measureMetric("trigger.dev/execution", "failure", async () => {
+      for (const hook of globalFailureHooks) {
+        const [hookError] = await tryCatch(
+          this._tracer.startActiveSpan(
+            "onFailure()",
+            async (span) => {
+              await hook.fn({
+                payload,
+                error,
+                ctx,
+                signal,
+                task: this.task.id,
+                init: initOutput,
+              });
+            },
+            {
+              attributes: {
+                [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onFailure",
+                [SemanticInternalAttributes.COLLAPSED]: true,
+                ...this.#lifecycleHookAccessoryAttributes(hook.name),
+              },
+            }
+          )
+        );
+
+        if (hookError) {
+          throw hookError;
         }
-      );
-    } catch (e) {
-      // Ignore errors from onFailure functions
-    }
+      }
+
+      if (taskFailureHook) {
+        const [hookError] = await tryCatch(
+          this._tracer.startActiveSpan(
+            "onFailure()",
+            async (span) => {
+              await taskFailureHook({
+                payload,
+                error,
+                ctx,
+                signal,
+                task: this.task.id,
+                init: initOutput,
+              });
+            },
+            {
+              attributes: {
+                [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onFailure",
+                [SemanticInternalAttributes.COLLAPSED]: true,
+                ...this.#lifecycleHookAccessoryAttributes("task"),
+              },
+            }
+          )
+        );
+
+        if (hookError) {
+          throw hookError;
+        }
+      }
+    });
   }
 
   async #parsePayload(payload: unknown) {
@@ -450,78 +819,158 @@ export class TaskExecutor {
       return payload;
     }
 
-    try {
-      return await this.task.fns.parsePayload(payload);
-    } catch (e) {
-      throw new TaskPayloadParsedError(e);
+    const [parseError, result] = await tryCatch(this.task.fns.parsePayload(payload));
+    if (parseError) {
+      throw new TaskPayloadParsedError(parseError);
     }
+    return result;
   }
 
-  async #callOnStartFunctions(payload: unknown, ctx: TaskRunContext, signal?: AbortSignal) {
-    await this.#callOnStartFunction(
-      this._importedConfig?.onStart,
-      "config.onStart",
-      payload,
-      ctx,
-      {},
-      signal
-    );
-
-    await this.#callOnStartFunction(
-      this.task.fns.onStart,
-      "task.onStart",
-      payload,
-      ctx,
-      {},
-      signal
-    );
-  }
-
-  async #callOnStartFunction(
-    onStartFn: TaskMetadataWithFunctions["fns"]["onStart"],
-    name: string,
+  async #callOnStartFunctions(
     payload: unknown,
     ctx: TaskRunContext,
     initOutput: any,
     signal?: AbortSignal
   ) {
-    if (!onStartFn) {
+    const globalStartHooks = lifecycleHooks.getGlobalStartHooks();
+    const taskStartHook = lifecycleHooks.getTaskStartHook(this.task.id);
+
+    if (globalStartHooks.length === 0 && !taskStartHook) {
       return;
     }
 
-    try {
-      await this._tracer.startActiveSpan(
-        name,
-        async (span) => {
-          return await runTimelineMetrics.measureMetric("trigger.dev/execution", name, () =>
-            onStartFn(payload, { ctx, signal })
-          );
-        },
-        {
-          attributes: {
-            [SemanticInternalAttributes.STYLE_ICON]: "function",
-          },
+    return await runTimelineMetrics.measureMetric("trigger.dev/execution", "start", async () => {
+      for (const hook of globalStartHooks) {
+        const [hookError] = await tryCatch(
+          this._tracer.startActiveSpan(
+            "onStart()",
+            async (span) => {
+              await hook.fn({ payload, ctx, signal, task: this.task.id, init: initOutput });
+            },
+            {
+              attributes: {
+                [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
+                [SemanticInternalAttributes.COLLAPSED]: true,
+                ...this.#lifecycleHookAccessoryAttributes(hook.name),
+              },
+            }
+          )
+        );
+
+        if (hookError) {
+          throw hookError;
         }
-      );
-    } catch {
-      // Ignore errors from onStart functions
-    }
+      }
+
+      if (taskStartHook) {
+        const [hookError] = await tryCatch(
+          this._tracer.startActiveSpan(
+            "onStart()",
+            async (span) => {
+              await taskStartHook({
+                payload,
+                ctx,
+                signal,
+                task: this.task.id,
+                init: initOutput,
+              });
+            },
+            {
+              attributes: {
+                [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
+                [SemanticInternalAttributes.COLLAPSED]: true,
+                ...this.#lifecycleHookAccessoryAttributes("task"),
+              },
+            }
+          )
+        );
+
+        if (hookError) {
+          throw hookError;
+        }
+      }
+    });
   }
 
-  async #callTaskCleanup(
+  async #cleanupAndWaitUntil(
     payload: unknown,
     ctx: TaskRunContext,
-    init: unknown,
+    initOutput: any,
     signal?: AbortSignal
   ) {
-    const cleanupFn = this.task.fns.cleanup;
+    await this.#callCleanupFunctions(payload, ctx, initOutput, signal);
+    await this.#blockForWaitUntil();
+  }
 
-    if (!cleanupFn) {
+  async #callCleanupFunctions(
+    payload: unknown,
+    ctx: TaskRunContext,
+    initOutput: any,
+    signal?: AbortSignal
+  ) {
+    const globalCleanupHooks = lifecycleHooks.getGlobalCleanupHooks();
+    const taskCleanupHook = lifecycleHooks.getTaskCleanupHook(this.task.id);
+
+    if (globalCleanupHooks.length === 0 && !taskCleanupHook) {
       return;
     }
 
-    return this._tracer.startActiveSpan("cleanup", async (span) => {
-      return await cleanupFn(payload, { ctx, init, signal });
+    return await runTimelineMetrics.measureMetric("trigger.dev/execution", "cleanup", async () => {
+      for (const hook of globalCleanupHooks) {
+        const [hookError] = await tryCatch(
+          this._tracer.startActiveSpan(
+            "cleanup()",
+            async (span) => {
+              await hook.fn({
+                payload,
+                ctx,
+                signal,
+                task: this.task.id,
+                init: initOutput,
+              });
+            },
+            {
+              attributes: {
+                [SemanticInternalAttributes.STYLE_ICON]: "task-hook-cleanup",
+                [SemanticInternalAttributes.COLLAPSED]: true,
+                ...this.#lifecycleHookAccessoryAttributes(hook.name),
+              },
+            }
+          )
+        );
+
+        if (hookError) {
+          throw hookError;
+        }
+      }
+
+      if (taskCleanupHook) {
+        const [hookError] = await tryCatch(
+          this._tracer.startActiveSpan(
+            "cleanup()",
+            async (span) => {
+              await taskCleanupHook({
+                payload,
+                ctx,
+                signal,
+                task: this.task.id,
+                init: initOutput,
+              });
+            },
+            {
+              attributes: {
+                [SemanticInternalAttributes.STYLE_ICON]: "task-hook-cleanup",
+                [SemanticInternalAttributes.COLLAPSED]: true,
+                ...this.#lifecycleHookAccessoryAttributes("task"),
+              },
+            }
+          )
+        );
+
+        if (hookError) {
+          throw hookError;
+        }
+      }
     });
   }
 
@@ -537,7 +986,8 @@ export class TaskExecutor {
       },
       {
         attributes: {
-          [SemanticInternalAttributes.STYLE_ICON]: "clock",
+          [SemanticInternalAttributes.STYLE_ICON]: "tabler-clock",
+          [SemanticInternalAttributes.COLLAPSED]: true,
         },
       }
     );
@@ -548,21 +998,17 @@ export class TaskExecutor {
     error: unknown,
     payload: any,
     ctx: TaskRunContext,
-    init: unknown,
+    init: TaskInitOutput,
     signal?: AbortSignal
   ): Promise<
     | { status: "retry"; retry: TaskRunExecutionRetry; error?: unknown }
-    | { status: "skipped"; error?: unknown } // skipped is different than noop, it means that the task was skipped from retrying, instead of just not retrying
+    | { status: "skipped"; error?: unknown }
     | { status: "noop"; error?: unknown }
   > {
-    const retriesConfig = this._importedConfig?.retries;
-
+    const retriesConfig = this._retries;
     const retry = this.task.retry ?? retriesConfig?.default;
 
-    if (!retry) {
-      return { status: "noop" };
-    }
-
+    // Early exit conditions that prevent retrying
     if (isInternalError(error) && error.skipRetrying) {
       return { status: "skipped", error };
     }
@@ -574,23 +1020,36 @@ export class TaskExecutor {
       return { status: "skipped" };
     }
 
-    if (execution.run.maxAttempts) {
-      retry.maxAttempts = Math.max(execution.run.maxAttempts, 1);
+    // Calculate default retry delay if retry config exists
+    let defaultDelay: number | undefined;
+    if (retry) {
+      if (execution.run.maxAttempts) {
+        retry.maxAttempts = Math.max(execution.run.maxAttempts, 1);
+      }
+
+      defaultDelay = calculateNextRetryDelay(retry, execution.attempt.number);
+
+      // Handle rate limit errors
+      if (
+        defaultDelay &&
+        error instanceof Error &&
+        error.name === "TriggerApiError" &&
+        (error as ApiError).status === 429
+      ) {
+        const rateLimitError = error as RateLimitError;
+        defaultDelay = rateLimitError.millisecondsUntilReset;
+      }
     }
 
-    let delay = calculateNextRetryDelay(retry, execution.attempt.number);
+    const defaultRetryResult =
+      typeof defaultDelay === "undefined"
+        ? { status: "noop" as const }
+        : {
+            status: "retry" as const,
+            retry: { timestamp: Date.now() + defaultDelay, delay: defaultDelay },
+          };
 
-    if (
-      delay &&
-      error instanceof Error &&
-      error.name === "TriggerApiError" &&
-      (error as ApiError).status === 429
-    ) {
-      const rateLimitError = error as RateLimitError;
-
-      delay = rateLimitError.millisecondsUntilReset;
-    }
-
+    // Check if retries are enabled in dev environment
     if (
       execution.environment.type === "DEVELOPMENT" &&
       typeof retriesConfig?.enabledInDev === "boolean" &&
@@ -599,81 +1058,218 @@ export class TaskExecutor {
       return { status: "skipped" };
     }
 
+    const taskCatchErrorHook = lifecycleHooks.getTaskCatchErrorHook(this.task.id);
+    const globalCatchErrorHooks = lifecycleHooks.getGlobalCatchErrorHooks();
+
+    if (globalCatchErrorHooks.length === 0 && !taskCatchErrorHook) {
+      return defaultRetryResult;
+    }
+
     return this._tracer.startActiveSpan(
-      "handleError()",
+      "catchError",
       async (span) => {
-        const handleErrorResult = this.task.fns.handleError
-          ? await this.task.fns.handleError(payload, error, {
-              ctx,
-              init,
-              retry,
-              retryDelayInMs: delay,
-              retryAt: delay ? new Date(Date.now() + delay) : undefined,
-              signal,
-            })
-          : this._importedConfig
-          ? await this._handleErrorFn?.(payload, error, {
-              ctx,
-              init,
-              retry,
-              retryDelayInMs: delay,
-              retryAt: delay ? new Date(Date.now() + delay) : undefined,
-              signal,
-            })
-          : undefined;
+        // Try task-specific catch error hook first
+        if (taskCatchErrorHook) {
+          const result = await taskCatchErrorHook({
+            payload,
+            error,
+            ctx,
+            init,
+            retry,
+            retryDelayInMs: defaultDelay,
+            retryAt: defaultDelay ? new Date(Date.now() + defaultDelay) : undefined,
+            signal,
+            task: this.task.id,
+          });
 
-        // If handleErrorResult
-        if (!handleErrorResult) {
-          return typeof delay === "undefined"
-            ? { status: "noop" }
-            : { status: "retry", retry: { timestamp: Date.now() + delay, delay } };
+          if (result) {
+            return this.#processHandleErrorResult(result, execution.attempt.number, defaultDelay);
+          }
         }
 
-        if (handleErrorResult.skipRetrying) {
-          return { status: "skipped", error: handleErrorResult.error };
+        // Try global catch error hooks in order
+        for (const hook of globalCatchErrorHooks) {
+          const result = await hook.fn({
+            payload,
+            error,
+            ctx,
+            init,
+            retry,
+            retryDelayInMs: defaultDelay,
+            retryAt: defaultDelay ? new Date(Date.now() + defaultDelay) : undefined,
+            signal,
+            task: this.task.id,
+          });
+
+          if (result) {
+            return this.#processHandleErrorResult(result, execution.attempt.number, defaultDelay);
+          }
         }
 
-        if (typeof handleErrorResult.retryAt !== "undefined") {
-          return {
-            status: "retry",
-            retry: {
-              timestamp: handleErrorResult.retryAt.getTime(),
-              delay: handleErrorResult.retryAt.getTime() - Date.now(),
-            },
-            error: handleErrorResult.error,
-          };
-        }
-
-        if (typeof handleErrorResult.retryDelayInMs === "number") {
-          return {
-            status: "retry",
-            retry: {
-              timestamp: Date.now() + handleErrorResult.retryDelayInMs,
-              delay: handleErrorResult.retryDelayInMs,
-            },
-            error: handleErrorResult.error,
-          };
-        }
-
-        if (handleErrorResult.retry && typeof handleErrorResult.retry === "object") {
-          const delay = calculateNextRetryDelay(handleErrorResult.retry, execution.attempt.number);
-
-          return typeof delay === "undefined"
-            ? { status: "noop", error: handleErrorResult.error }
-            : {
-                status: "retry",
-                retry: { timestamp: Date.now() + delay, delay },
-                error: handleErrorResult.error,
-              };
-        }
-
-        return { status: "noop", error: handleErrorResult.error };
+        // If no hooks handled the error, use default retry behavior
+        return defaultRetryResult;
       },
       {
         attributes: {
-          [SemanticInternalAttributes.STYLE_ICON]: "exclamation-circle",
+          [SemanticInternalAttributes.STYLE_ICON]: "task-hook-catchError",
+          [SemanticInternalAttributes.COLLAPSED]: true,
         },
       }
     );
+  }
+
+  // Helper method to process handle error results
+  #processHandleErrorResult(
+    result: HandleErrorModificationOptions,
+    attemptNumber: number,
+    defaultDelay?: number
+  ):
+    | { status: "retry"; retry: TaskRunExecutionRetry; error?: unknown }
+    | { status: "skipped"; error?: unknown }
+    | { status: "noop"; error?: unknown } {
+    if (result.skipRetrying) {
+      return { status: "skipped", error: result.error };
+    }
+
+    if (typeof result.retryAt !== "undefined") {
+      return {
+        status: "retry",
+        retry: {
+          timestamp: result.retryAt.getTime(),
+          delay: result.retryAt.getTime() - Date.now(),
+        },
+        error: result.error,
+      };
+    }
+
+    if (typeof result.retryDelayInMs === "number") {
+      return {
+        status: "retry",
+        retry: {
+          timestamp: Date.now() + result.retryDelayInMs,
+          delay: result.retryDelayInMs,
+        },
+        error: result.error,
+      };
+    }
+
+    if (result.retry && typeof result.retry === "object") {
+      const delay = calculateNextRetryDelay(result.retry, attemptNumber);
+
+      return typeof delay === "undefined"
+        ? { status: "noop", error: result.error }
+        : {
+            status: "retry",
+            retry: { timestamp: Date.now() + delay, delay },
+            error: result.error,
+          };
+    }
+
+    return { status: "noop", error: result.error };
+  }
+
+  async #callOnCompleteFunctions(
+    payload: unknown,
+    result: TaskCompleteResult<unknown>,
+    ctx: TaskRunContext,
+    initOutput: any,
+    signal?: AbortSignal
+  ) {
+    const globalCompleteHooks = lifecycleHooks.getGlobalCompleteHooks();
+    const taskCompleteHook = lifecycleHooks.getTaskCompleteHook(this.task.id);
+
+    if (globalCompleteHooks.length === 0 && !taskCompleteHook) {
+      return;
+    }
+
+    return await runTimelineMetrics.measureMetric("trigger.dev/execution", "complete", async () => {
+      for (const hook of globalCompleteHooks) {
+        const [hookError] = await tryCatch(
+          this._tracer.startActiveSpan(
+            "onComplete()",
+            async (span) => {
+              await hook.fn({
+                payload,
+                result,
+                ctx,
+                signal,
+                task: this.task.id,
+                init: initOutput,
+              });
+            },
+            {
+              attributes: {
+                [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onComplete",
+                [SemanticInternalAttributes.COLLAPSED]: true,
+                ...this.#lifecycleHookAccessoryAttributes(hook.name),
+              },
+            }
+          )
+        );
+
+        if (hookError) {
+          throw hookError;
+        }
+      }
+
+      if (taskCompleteHook) {
+        const [hookError] = await tryCatch(
+          this._tracer.startActiveSpan(
+            "onComplete()",
+            async (span) => {
+              await taskCompleteHook({
+                payload,
+                result,
+                ctx,
+                signal,
+                task: this.task.id,
+                init: initOutput,
+              });
+            },
+            {
+              attributes: {
+                [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onComplete",
+                [SemanticInternalAttributes.COLLAPSED]: true,
+                ...this.#lifecycleHookAccessoryAttributes("task"),
+              },
+            }
+          )
+        );
+
+        if (hookError) {
+          throw hookError;
+        }
+      }
+    });
+  }
+
+  #internalErrorResult(execution: TaskRunExecution, code: TaskRunErrorCodes, error: unknown) {
+    return {
+      ok: false,
+      id: execution.run.id,
+      error: {
+        type: "INTERNAL_ERROR",
+        code,
+        message:
+          error instanceof Error
+            ? `${error.name}: ${error.message}`
+            : typeof error === "string"
+            ? error
+            : undefined,
+        stackTrace: error instanceof Error ? error.stack : undefined,
+      },
+    } satisfies TaskRunExecutionResult;
+  }
+
+  #lifecycleHookAccessoryAttributes(name?: string) {
+    return accessoryAttributes({
+      items: [
+        {
+          text: name ?? "global",
+          variant: "normal",
+        },
+      ],
+      style: "codepath",
+    });
   }
 }

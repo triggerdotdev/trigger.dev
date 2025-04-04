@@ -1,23 +1,30 @@
 import type { Tracer } from "@opentelemetry/api";
 import type { Logger } from "@opentelemetry/api-logs";
 import {
+  AnyOnCatchErrorHookFunction,
+  AnyOnFailureHookFunction,
+  AnyOnInitHookFunction,
+  AnyOnStartHookFunction,
+  AnyOnSuccessHookFunction,
+  apiClientManager,
   clock,
+  ExecutorToWorkerMessageCatalog,
   type HandleErrorFunction,
+  lifecycleHooks,
+  localsAPI,
   logger,
   LogLevel,
-  runtime,
   resourceCatalog,
+  runMetadata,
+  runtime,
+  runTimelineMetrics,
   TaskRunErrorCodes,
   TaskRunExecution,
-  WorkerToExecutorMessageCatalog,
-  TriggerConfig,
-  WorkerManifest,
-  ExecutorToWorkerMessageCatalog,
   timeout,
-  runMetadata,
+  TriggerConfig,
   waitUntil,
-  apiClientManager,
-  runTimelineMetrics,
+  WorkerManifest,
+  WorkerToExecutorMessageCatalog,
 } from "@trigger.dev/core/v3";
 import { TriggerTracer } from "@trigger.dev/core/v3/tracer";
 import {
@@ -27,18 +34,21 @@ import {
   getEnvVar,
   getNumberEnvVar,
   logLevels,
+  ManagedRuntimeManager,
   OtelTaskLogger,
+  populateEnv,
   ProdUsageManager,
+  StandardLifecycleHooksManager,
+  StandardLocalsManager,
+  StandardMetadataManager,
   StandardResourceCatalog,
+  StandardRunTimelineMetricsManager,
+  StandardWaitUntilManager,
   TaskExecutor,
   TracingDiagnosticLogLevel,
   TracingSDK,
   usage,
   UsageTimeoutManager,
-  StandardMetadataManager,
-  StandardWaitUntilManager,
-  ManagedRuntimeManager,
-  StandardRunTimelineMetricsManager,
 } from "@trigger.dev/core/v3/workers";
 import { ZodIpcConnection } from "@trigger.dev/core/v3/zodIpc";
 import { readFile } from "node:fs/promises";
@@ -93,9 +103,14 @@ const usageEventUrl = getEnvVar("USAGE_EVENT_URL");
 const triggerJWT = getEnvVar("TRIGGER_JWT");
 const heartbeatIntervalMs = getEnvVar("HEARTBEAT_INTERVAL_MS");
 
+const standardLocalsManager = new StandardLocalsManager();
+localsAPI.setGlobalLocalsManager(standardLocalsManager);
+
+const standardLifecycleHooksManager = new StandardLifecycleHooksManager();
+lifecycleHooks.setGlobalLifecycleHooksManager(standardLifecycleHooksManager);
+
 const standardRunTimelineMetricsManager = new StandardRunTimelineMetricsManager();
 runTimelineMetrics.setGlobalManager(standardRunTimelineMetricsManager);
-standardRunTimelineMetricsManager.seedMetricsFromEnvironment();
 
 const devUsageManager = new DevUsageManager();
 const prodUsageManager = new ProdUsageManager(devUsageManager, {
@@ -180,12 +195,46 @@ async function bootstrap() {
 
   logger.setGlobalTaskLogger(otelTaskLogger);
 
+  if (config.init) {
+    lifecycleHooks.registerGlobalInitHook({
+      id: "config",
+      fn: config.init as AnyOnInitHookFunction,
+    });
+  }
+
+  if (config.onStart) {
+    lifecycleHooks.registerGlobalStartHook({
+      id: "config",
+      fn: config.onStart as AnyOnStartHookFunction,
+    });
+  }
+
+  if (config.onSuccess) {
+    lifecycleHooks.registerGlobalSuccessHook({
+      id: "config",
+      fn: config.onSuccess as AnyOnSuccessHookFunction,
+    });
+  }
+
+  if (config.onFailure) {
+    lifecycleHooks.registerGlobalFailureHook({
+      id: "config",
+      fn: config.onFailure as AnyOnFailureHookFunction,
+    });
+  }
+
+  if (handleError) {
+    lifecycleHooks.registerGlobalCatchErrorHook({
+      id: "config",
+      fn: handleError as AnyOnCatchErrorHookFunction,
+    });
+  }
+
   return {
     tracer,
     tracingSDK,
     consoleInterceptor,
     config,
-    handleErrorFn: handleError,
     workerManifest,
   };
 }
@@ -199,7 +248,16 @@ const zodIpc = new ZodIpcConnection({
   emitSchema: ExecutorToWorkerMessageCatalog,
   process,
   handlers: {
-    EXECUTE_TASK_RUN: async ({ execution, traceContext, metadata, metrics }, sender) => {
+    EXECUTE_TASK_RUN: async (
+      { execution, traceContext, metadata, metrics, env, isWarmStart },
+      sender
+    ) => {
+      if (env) {
+        populateEnv(env, {
+          override: true,
+        });
+      }
+
       standardRunTimelineMetricsManager.registerMetricsFromExecution(metrics);
 
       console.log(`[${new Date().toISOString()}] Received EXECUTE_TASK_RUN`, execution);
@@ -227,7 +285,7 @@ const zodIpc = new ZodIpcConnection({
       }
 
       try {
-        const { tracer, tracingSDK, consoleInterceptor, config, handleErrorFn, workerManifest } =
+        const { tracer, tracingSDK, consoleInterceptor, config, workerManifest } =
           await bootstrap();
 
         _tracingSDK = tracingSDK;
@@ -263,6 +321,7 @@ const zodIpc = new ZodIpcConnection({
             "import",
             {
               entryPoint: taskManifest.entryPoint,
+              file: taskManifest.filePath,
             },
             async () => {
               const beforeImport = performance.now();
@@ -327,12 +386,14 @@ const zodIpc = new ZodIpcConnection({
           return;
         }
 
+        runMetadataManager.runId = execution.run.id;
+
         const executor = new TaskExecutor(task, {
           tracer,
           tracingSDK,
           consoleInterceptor,
-          config,
-          handleErrorFn,
+          retries: config.retries,
+          isWarmStart,
         });
 
         try {
@@ -350,42 +411,7 @@ const zodIpc = new ZodIpcConnection({
             ? timeout.abortAfterTimeout(execution.run.maxDuration)
             : undefined;
 
-          signal?.addEventListener("abort", async (e) => {
-            if (_isRunning) {
-              _isRunning = false;
-              _execution = undefined;
-
-              const usageSample = usage.stop(measurement);
-
-              await sender.send("TASK_RUN_COMPLETED", {
-                execution,
-                result: {
-                  ok: false,
-                  id: execution.run.id,
-                  error: {
-                    type: "INTERNAL_ERROR",
-                    code: TaskRunErrorCodes.MAX_DURATION_EXCEEDED,
-                    message:
-                      signal.reason instanceof Error
-                        ? signal.reason.message
-                        : String(signal.reason),
-                  },
-                  usage: {
-                    durationMs: usageSample.cpuTime,
-                  },
-                  metadata: runMetadataManager.stopAndReturnLastFlush(),
-                },
-              });
-            }
-          });
-
-          const { result } = await executor.execute(
-            execution,
-            metadata,
-            traceContext,
-            measurement,
-            signal
-          );
+          const { result } = await executor.execute(execution, metadata, traceContext, signal);
 
           const usageSample = usage.stop(measurement);
 
@@ -446,11 +472,34 @@ const zodIpc = new ZodIpcConnection({
 async function flushAll(timeoutInMs: number = 10_000) {
   const now = performance.now();
 
-  await Promise.all([
+  const results = await Promise.allSettled([
     flushUsage(timeoutInMs),
     flushTracingSDK(timeoutInMs),
     flushMetadata(timeoutInMs),
   ]);
+
+  const successfulFlushes = results
+    .filter((result) => result.status === "fulfilled")
+    .map((result) => result.value.flushed);
+  const failedFlushes = ["usage", "tracingSDK", "runMetadata"].filter(
+    (flushed) => !successfulFlushes.includes(flushed)
+  );
+
+  if (failedFlushes.length > 0) {
+    console.error(`Failed to flush ${failedFlushes.join(", ")}`);
+  }
+
+  const errorMessages = results
+    .filter((result) => result.status === "rejected")
+    .map((result) => result.reason);
+
+  if (errorMessages.length > 0) {
+    console.error(errorMessages.join("\n"));
+  }
+
+  for (const flushed of successfulFlushes) {
+    console.log(`Flushed ${flushed} successfully`);
+  }
 
   const duration = performance.now() - now;
 
@@ -465,6 +514,11 @@ async function flushUsage(timeoutInMs: number = 10_000) {
   const duration = performance.now() - now;
 
   console.log(`Flushed usage in ${duration}ms`);
+
+  return {
+    flushed: "usage",
+    durationMs: duration,
+  };
 }
 
 async function flushTracingSDK(timeoutInMs: number = 10_000) {
@@ -475,6 +529,11 @@ async function flushTracingSDK(timeoutInMs: number = 10_000) {
   const duration = performance.now() - now;
 
   console.log(`Flushed tracingSDK in ${duration}ms`);
+
+  return {
+    flushed: "tracingSDK",
+    durationMs: duration,
+  };
 }
 
 async function flushMetadata(timeoutInMs: number = 10_000) {
@@ -485,6 +544,11 @@ async function flushMetadata(timeoutInMs: number = 10_000) {
   const duration = performance.now() - now;
 
   console.log(`Flushed runMetadata in ${duration}ms`);
+
+  return {
+    flushed: "runMetadata",
+    durationMs: duration,
+  };
 }
 
 const managedWorkerRuntime = new ManagedRuntimeManager(zodIpc, true);

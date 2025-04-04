@@ -5,7 +5,7 @@ import { calculateNextRetryDelay } from "../utils/retries.js";
 import { ApiConnectionError, ApiError, ApiSchemaValidationError } from "./errors.js";
 
 import { Attributes, context, propagation, Span } from "@opentelemetry/api";
-import {suppressTracing} from "@opentelemetry/core"
+import { suppressTracing } from "@opentelemetry/core";
 import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
 import type { TriggerTracer } from "../tracer.js";
 import { accessoryAttributes } from "../utils/styleAttributes.js";
@@ -27,14 +27,14 @@ export const defaultRetryOptions = {
   randomize: false,
 } satisfies RetryOptions;
 
-export type ZodFetchOptions<T = unknown> = {
+export type ZodFetchOptions<TData = any> = {
   retry?: RetryOptions;
   tracer?: TriggerTracer;
   name?: string;
   attributes?: Attributes;
   icon?: string;
-  onResponseBody?: (body: T, span: Span) => void;
-  prepareData?: (data: T) => Promise<T> | T;
+  onResponseBody?: (body: TData, span: Span) => void;
+  prepareData?: (data: TData, response: Response) => Promise<TData> | TData;
 };
 
 export type AnyZodFetchOptions = ZodFetchOptions<any>;
@@ -144,7 +144,14 @@ export function zodfetchOffsetLimitPage<TItemSchema extends z.ZodTypeAny>(
 
   const fetchResult = _doZodFetch(offsetLimitPageSchema, $url.href, requestInit, options);
 
-  return new OffsetLimitPagePromise(fetchResult, schema, url, params, requestInit, options);
+  return new OffsetLimitPagePromise(
+    fetchResult as Promise<ZodFetchResult<OffsetLimitPageResponse<z.output<TItemSchema>>>>,
+    schema,
+    url,
+    params,
+    requestInit,
+    options
+  );
 }
 
 type ZodFetchResult<T> = {
@@ -188,7 +195,7 @@ async function _doZodFetch<TResponseBodySchema extends z.ZodTypeAny>(
   schema: TResponseBodySchema,
   url: string,
   requestInit?: PromiseOrValue<RequestInit>,
-  options?: ZodFetchOptions
+  options?: ZodFetchOptions<z.output<TResponseBodySchema>>
 ): Promise<ZodFetchResult<z.output<TResponseBodySchema>>> {
   let $requestInit = await requestInit;
 
@@ -202,7 +209,7 @@ async function _doZodFetch<TResponseBodySchema extends z.ZodTypeAny>(
     }
 
     if (options?.prepareData) {
-      result.data = await options.prepareData(result.data);
+      result.data = await options.prepareData(result.data, result.response);
     }
 
     return result;

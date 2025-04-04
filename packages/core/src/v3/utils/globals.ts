@@ -1,5 +1,7 @@
 import { ApiClientConfiguration } from "../apiClientManager/types.js";
 import { Clock } from "../clock/clock.js";
+import { LifecycleHooksManager } from "../lifecycleHooks/types.js";
+import { LocalsManager } from "../locals/types.js";
 import { ResourceCatalog } from "../resource-catalog/catalog.js";
 import { RunMetadataManager } from "../runMetadata/types.js";
 import type { RuntimeManager } from "../runtime/manager.js";
@@ -62,4 +64,6 @@ type TriggerDotDevGlobalAPI = {
   ["timeout"]?: TimeoutManager;
   ["wait-until"]?: WaitUntilManager;
   ["run-timeline-metrics"]?: RunTimelineMetricsManager;
+  ["lifecycle-hooks"]?: LifecycleHooksManager;
+  ["locals"]?: LocalsManager;
 };

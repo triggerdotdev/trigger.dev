@@ -307,41 +307,9 @@ export class DequeueSystem {
                     task: result.task.id,
                     rawRetryConfig: retryConfig,
                   });
-
-                  await this.runAttemptSystem.systemFailure({
-                    runId,
-                    error: {
-                      type: "INTERNAL_ERROR",
-                      code: "TASK_DEQUEUED_INVALID_RETRY_CONFIG",
-                      message: `Invalid retry config: ${retryConfig}`,
-                    },
-                    tx: prisma,
-                  });
-
-                  return null;
                 }
 
-                if (!parsedConfig.data) {
-                  this.$.logger.error("RunEngine.dequeueFromMasterQueue(): No retry config", {
-                    runId,
-                    task: result.task.id,
-                    rawRetryConfig: retryConfig,
-                  });
-
-                  await this.runAttemptSystem.systemFailure({
-                    runId,
-                    error: {
-                      type: "INTERNAL_ERROR",
-                      code: "TASK_DEQUEUED_NO_RETRY_CONFIG",
-                      message: `No retry config found`,
-                    },
-                    tx: prisma,
-                  });
-
-                  return null;
-                }
-
-                maxAttempts = parsedConfig.data.maxAttempts;
+                maxAttempts = parsedConfig.data?.maxAttempts;
               }
               //update the run
               const lockedTaskRun = await prisma.taskRun.update({

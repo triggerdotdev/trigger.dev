@@ -10,7 +10,11 @@ import {
   ServerStackIcon,
   Squares2X2Icon,
 } from "@heroicons/react/20/solid";
+import { useLocation } from "react-use";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
+import { useEnvironment } from "~/hooks/useEnvironment";
+import { useOrganization } from "~/hooks/useOrganizations";
+import { useProject } from "~/hooks/useProject";
 import { type MinimumEnvironment } from "~/presenters/SelectBestEnvironmentPresenter.server";
 import {
   docsPath,
@@ -22,20 +26,16 @@ import {
 import { InlineCode } from "./code/InlineCode";
 import { environmentFullTitle } from "./environments/EnvironmentLabel";
 import { Feedback } from "./Feedback";
+import { EnvironmentSelector } from "./navigation/EnvironmentSelector";
 import { Button, LinkButton } from "./primitives/Buttons";
 import { Header1 } from "./primitives/Headers";
 import { InfoPanel } from "./primitives/InfoPanel";
 import { Paragraph } from "./primitives/Paragraph";
 import { StepNumber } from "./primitives/StepNumber";
+import { TextLink } from "./primitives/TextLink";
 import { InitCommandV3, PackageManagerProvider, TriggerDevStepV3 } from "./SetupCommands";
 import { StepContentContainer } from "./StepContentContainer";
-import { useLocation } from "react-use";
-import { useEnvironment } from "~/hooks/useEnvironment";
-import { useOrganization } from "~/hooks/useOrganizations";
-import { useProject } from "~/hooks/useProject";
-import { TextLink } from "./primitives/TextLink";
-import { EnvironmentSelector } from "./navigation/EnvironmentSelector";
-import { Pi } from "lucide-react";
+import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
 
 export function HasNoTasksDev() {
   return (
@@ -59,8 +59,8 @@ export function HasNoTasksDev() {
           <InitCommandV3 />
           <Paragraph spacing>
             You'll notice a new folder in your project called{" "}
-            <InlineCode variant="small">trigger</InlineCode>. We've added a very simple example task
-            in here to help you get started.
+            <InlineCode variant="small">trigger</InlineCode>. We've added a few simple example tasks
+            in there to help you get started.
           </Paragraph>
         </StepContentContainer>
         <StepNumber stepNumber="2" title="Run the CLI 'dev' command" />
@@ -79,20 +79,24 @@ export function HasNoTasksDev() {
 export function HasNoTasksDeployed({ environment }: { environment: MinimumEnvironment }) {
   return (
     <InfoPanel
-      title="You don't have any deployed tasks"
+      title={`You don't have any deployed tasks in ${environmentFullTitle(environment)}`}
       icon={TaskIcon}
-      iconClassName="text-blue-500"
+      iconClassName="text-tasks"
+      panelClassName="max-w-full"
+      accessory={
+        <LinkButton
+          to={docsPath("deployment/overview")}
+          variant="docs/small"
+          LeadingIcon={BookOpenIcon}
+        >
+          How to deploy tasks
+        </LinkButton>
+      }
     >
       <Paragraph spacing variant="small">
-        You don't have any deployed tasks in {environmentFullTitle(environment)}.
+        Run the <TextLink to={docsPath("deployment/overview")}>CLI deploy command</TextLink> to
+        deploy your tasks to the {environmentFullTitle(environment)} environment.
       </Paragraph>
-      <LinkButton
-        to={docsPath("deployment/overview")}
-        variant="docs/medium"
-        LeadingIcon={BookOpenIcon}
-      >
-        How to deploy tasks
-      </LinkButton>
     </InfoPanel>
   );
 }
@@ -102,20 +106,22 @@ export function SchedulesNoPossibleTaskPanel() {
     <InfoPanel
       title="Create your first scheduled task"
       icon={ClockIcon}
-      iconClassName="text-sun-500"
+      iconClassName="text-schedules"
       panelClassName="max-w-full"
+      accessory={
+        <LinkButton
+          to={docsPath("v3/tasks-scheduled")}
+          variant="docs/small"
+          LeadingIcon={BookOpenIcon}
+        >
+          How to schedule tasks
+        </LinkButton>
+      }
     >
       <Paragraph spacing variant="small">
         You have no scheduled tasks in your project. Before you can schedule a task you need to
         create a <InlineCode>schedules.task</InlineCode>.
       </Paragraph>
-      <LinkButton
-        to={docsPath("v3/tasks-scheduled")}
-        variant="docs/medium"
-        LeadingIcon={BookOpenIcon}
-      >
-        View the docs
-      </LinkButton>
     </InfoPanel>
   );
 }
@@ -130,7 +136,7 @@ export function SchedulesNoneAttached() {
     <InfoPanel
       title="Attach your first schedule"
       icon={ClockIcon}
-      iconClassName="text-sun-500"
+      iconClassName="text-schedules"
       panelClassName="max-w-full"
     >
       <Paragraph spacing variant="small">
@@ -140,15 +146,16 @@ export function SchedulesNoneAttached() {
       <div className="flex gap-2">
         <LinkButton
           to={`${v3NewSchedulePath(organization, project, environment)}${location.search}`}
-          variant="primary/small"
+          variant="secondary/medium"
           LeadingIcon={RectangleGroupIcon}
           className="inline-flex"
+          leadingIconClassName="text-blue-500"
         >
           Use the dashboard
         </LinkButton>
         <LinkButton
           to={docsPath("v3/tasks-scheduled")}
-          variant="primary/small"
+          variant="docs/medium"
           LeadingIcon={BookOpenIcon}
           className="inline-flex"
         >
@@ -164,16 +171,18 @@ export function BatchesNone() {
     <InfoPanel
       title="Triggering batches"
       icon={Squares2X2Icon}
-      iconClassName="text-blue-500"
+      iconClassName="text-batches"
       panelClassName="max-w-full"
+      accessory={
+        <LinkButton to={docsPath("triggering")} variant="docs/small" LeadingIcon={BookOpenIcon}>
+          How to trigger batches
+        </LinkButton>
+      }
     >
       <Paragraph spacing variant="small">
         You have no batches in this environment. You can trigger batches from your backend or from
         inside other tasks.
       </Paragraph>
-      <LinkButton to={docsPath("triggering")} variant="docs/medium" LeadingIcon={BookOpenIcon}>
-        How to trigger batches
-      </LinkButton>
     </InfoPanel>
   );
 }
@@ -182,23 +191,26 @@ export function TestHasNoTasks() {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
-
   return (
     <InfoPanel
-      title="No tasks to test"
+      title="You don't have any tasks to test"
       icon={BeakerIcon}
-      iconClassName="text-lime-500"
+      iconClassName="text-tests"
       panelClassName="max-w-full"
+      accessory={
+        <LinkButton
+          to={v3EnvironmentPath(organization, project, environment)}
+          variant="primary/small"
+        >
+          Create a task
+        </LinkButton>
+      }
     >
       <Paragraph spacing variant="small">
-        You have no tasks in this environment.
+        Before testing a task, you must first create one. Follow the instructions on the{" "}
+        <TextLink to={v3EnvironmentPath(organization, project, environment)}>Tasks page</TextLink>{" "}
+        to create a task, then return here to test it.
       </Paragraph>
-      <LinkButton
-        to={v3EnvironmentPath(organization, project, environment)}
-        variant="tertiary/medium"
-      >
-        Add tasks
-      </LinkButton>
     </InfoPanel>
   );
 }
@@ -211,14 +223,13 @@ export function DeploymentsNone() {
   return (
     <InfoPanel
       icon={ServerStackIcon}
-      iconClassName="text-blue-500"
+      iconClassName="text-deployments"
       title="Deploy for the first time"
       panelClassName="max-w-full"
     >
       <Paragraph spacing variant="small">
-        There are several ways to deploy your tasks. You can use the CLI, Continuous Integration
-        (like GitHub Actions), or an integration with a service like Netlify or Vercel. Make sure
-        you{" "}
+        There are several ways to deploy your tasks. You can use the CLI or a Continuous Integration
+        service like GitHub Actions. Make sure you{" "}
         <TextLink href={v3EnvironmentVariablesPath(organization, project, environment)}>
           set your environment variables
         </TextLink>{" "}
@@ -255,7 +266,7 @@ export function DeploymentsNoneDev() {
     <div className="space-y-8">
       <InfoPanel
         icon={ServerStackIcon}
-        iconClassName="text-blue-500"
+        iconClassName="text-deployments"
         title="Deploying tasks"
         panelClassName="max-w-full"
       >
@@ -264,9 +275,8 @@ export function DeploymentsNoneDev() {
           different environment.
         </Paragraph>
         <Paragraph spacing variant="small">
-          There are several ways to deploy your tasks. You can use the CLI, Continuous Integration
-          (like GitHub Actions), or an integration with a service like Netlify or Vercel. Make sure
-          you{" "}
+          There are several ways to deploy your tasks. You can use the CLI or a Continuous
+          Integration service like GitHub Actions. Make sure you{" "}
           <TextLink href={v3EnvironmentVariablesPath(organization, project, environment)}>
             set your environment variables
           </TextLink>{" "}
@@ -301,7 +311,7 @@ export function AlertsNoneDev() {
     <div className="space-y-8">
       <InfoPanel
         icon={BellAlertIcon}
-        iconClassName="text-red-500"
+        iconClassName="text-alerts"
         title="Adding alerts"
         panelClassName="max-w-full"
       >
@@ -337,7 +347,7 @@ export function AlertsNoneDeployed() {
     <div className="space-y-8">
       <InfoPanel
         icon={BellAlertIcon}
-        iconClassName="text-red-500"
+        iconClassName="text-alerts"
         title="Adding alerts"
         panelClassName="max-w-full"
       >
@@ -346,7 +356,15 @@ export function AlertsNoneDeployed() {
           and webhooks.
         </Paragraph>
 
-        <div className="flex gap-3">
+        <div className="flex items-center justify-between gap-3">
+          <LinkButton
+            to={docsPath("troubleshooting-alerts")}
+            variant="docs/medium"
+            LeadingIcon={BookOpenIcon}
+            className="inline-flex"
+          >
+            Alerts docs
+          </LinkButton>
           <LinkButton
             to={v3NewProjectAlertPath(organization, project, environment)}
             variant="primary/medium"
@@ -354,14 +372,6 @@ export function AlertsNoneDeployed() {
             shortcut={{ key: "n" }}
           >
             New alert
-          </LinkButton>
-          <LinkButton
-            to={docsPath("troubleshooting-alerts")}
-            variant="docs/medium"
-            LeadingIcon={BookOpenIcon}
-            className="inline-flex"
-          >
-            Alert docs
           </LinkButton>
         </div>
       </InfoPanel>
@@ -376,20 +386,47 @@ export function QueuesHasNoTasks() {
 
   return (
     <InfoPanel
-      title="You have no queues"
+      title="You don't have any queues"
       icon={RectangleStackIcon}
-      iconClassName="text-purple-500"
-      panelClassName="max-w-full"
+      iconClassName="text-queues"
+      panelClassName="max-w-md"
+      accessory={
+        <LinkButton
+          to={v3EnvironmentPath(organization, project, environment)}
+          variant="primary/small"
+        >
+          Create a task
+        </LinkButton>
+      }
     >
       <Paragraph spacing variant="small">
-        This means you haven't got any tasks yet in this environment.
+        Queues will appear here when you have created a task in this environment. Follow the
+        instructions on the{" "}
+        <TextLink to={v3EnvironmentPath(organization, project, environment)}>Tasks page</TextLink>{" "}
+        to create a task, then return here to see its queue.
       </Paragraph>
-      <LinkButton
-        to={v3EnvironmentPath(organization, project, environment)}
-        variant="tertiary/medium"
-      >
-        Add tasks
-      </LinkButton>
+    </InfoPanel>
+  );
+}
+
+export function NoWaitpointTokens() {
+  return (
+    <InfoPanel
+      title="You don't have any waitpoint tokens"
+      icon={WaitpointTokenIcon}
+      iconClassName="text-sky-500"
+      panelClassName="max-w-md"
+      accessory={
+        <LinkButton to={docsPath("wait-for-token")} variant="docs/small" LeadingIcon={BookOpenIcon}>
+          Waitpoint docs
+        </LinkButton>
+      }
+    >
+      <Paragraph spacing variant="small">
+        Waitpoint tokens pause task runs until you complete the token. They're commonly used for
+        approval workflows and other scenarios where you need to wait for external confirmation,
+        such as human-in-the-loop processes.
+      </Paragraph>
     </InfoPanel>
   );
 }

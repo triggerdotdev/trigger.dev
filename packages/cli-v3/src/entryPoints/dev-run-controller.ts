@@ -622,6 +622,15 @@ export class DevRunController {
         version: this.opts.worker.serverWorker?.version,
         engine: "V2",
       },
+      machine: execution.machine,
+    }).initialize();
+
+    logger.debug("executing task run process", {
+      attemptId: execution.attempt.id,
+      runId: execution.run.id,
+    });
+
+    const completion = await this.taskRunProcess.execute({
       payload: {
         execution,
         traceContext: execution.run.traceContext ?? {},
@@ -629,15 +638,6 @@ export class DevRunController {
       },
       messageId: run.friendlyId,
     });
-
-    await this.taskRunProcess.initialize();
-
-    logger.debug("executing task run process", {
-      attemptId: execution.attempt.id,
-      runId: execution.run.id,
-    });
-
-    const completion = await this.taskRunProcess.execute();
 
     logger.debug("Completed run", completion);
 
