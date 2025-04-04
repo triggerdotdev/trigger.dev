@@ -1,8 +1,9 @@
 import { Callback, createRedisClient, Redis, Result, type RedisOptions } from "@internal/redis";
-import { Tracer } from "@internal/tracing";
+import { startSpan, Tracer } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
-import { setInterval } from "node:timers/promises";
 import { z } from "zod";
+import { setInterval } from "node:timers/promises";
+import { flattenAttributes } from "@trigger.dev/core/v3";
 
 export type ReleaseConcurrencyQueueRetryOptions = {
   maxRetries?: number;
@@ -81,6 +82,7 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
 
     if (!options.disableConsumers) {
       this.#startConsumers();
+      this.#startMetricsProducer();
     }
   }
 
@@ -397,12 +399,167 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
     }
   }
 
+  async #startMetricsProducer() {
+    try {
+      // Produce metrics every 60 seconds, using a tracer span
+      for await (const _ of setInterval(60_000)) {
+        const metrics = await this.getQueueMetrics();
+        this.logger.info("Queue metrics:", { metrics });
+
+        await startSpan(
+          this.options.tracer,
+          "ReleaseConcurrencyTokenBucketQueue.metrics",
+          async (span) => {},
+          {
+            attributes: {
+              ...flattenAttributes(metrics, "queues"),
+              forceRecording: true,
+            },
+          }
+        );
+      }
+    } catch (error) {
+      this.logger.error("Error starting metrics producer:", { error });
+    }
+  }
+
   #calculateBackoffScore(item: QueueItemMetadata): string {
     const delay = Math.min(
       this.backoff.maxDelay,
       this.backoff.minDelay * Math.pow(this.backoff.factor, item.retryCount)
     );
     return String(Date.now() + delay);
+  }
+
+  async getQueueMetrics(): Promise<
+    Array<{ releaseQueue: string; currentTokens: number; queueLength: number }>
+  > {
+    const streamRedis = this.redis.duplicate();
+    const queuePattern = `${this.keyPrefix}*:queue`;
+    const stream = streamRedis.scanStream({
+      match: queuePattern,
+      type: "zset",
+      count: 100,
+    });
+
+    let resolvePromise: (
+      value: Array<{ releaseQueue: string; currentTokens: number; queueLength: number }>
+    ) => void;
+    let rejectPromise: (reason?: any) => void;
+
+    const promise = new Promise<
+      Array<{ releaseQueue: string; currentTokens: number; queueLength: number }>
+    >((resolve, reject) => {
+      resolvePromise = resolve;
+      rejectPromise = reject;
+    });
+
+    const metrics: Map<
+      string,
+      { releaseQueue: string; currentTokens: number; queueLength: number }
+    > = new Map();
+
+    async function getMetricsForKeys(queueKeys: string[]) {
+      if (queueKeys.length === 0) {
+        return [];
+      }
+
+      const pipeline = streamRedis.pipeline();
+
+      queueKeys.forEach((queueKey) => {
+        const releaseQueue = queueKey
+          .replace(":queue", "")
+          .replace(streamRedis.options.keyPrefix ?? "", "");
+        const bucketKey = `${releaseQueue}:bucket`;
+
+        pipeline.get(bucketKey);
+        pipeline.zcard(`${releaseQueue}:queue`);
+      });
+
+      const result = await pipeline.exec();
+
+      if (!result) {
+        return [];
+      }
+
+      const results = result.map(([resultError, queueLengthOrCurrentTokens]) => {
+        if (resultError) {
+          return null;
+        }
+
+        return queueLengthOrCurrentTokens ? Number(queueLengthOrCurrentTokens) : 0;
+      });
+
+      // Now zip the results with the queue keys
+      const zippedResults = queueKeys.map((queueKey, index) => {
+        const releaseQueue = queueKey
+          .replace(":queue", "")
+          .replace(streamRedis.options.keyPrefix ?? "", "");
+
+        // Current tokens are at indexes 0, 2, 4, 6, etc.
+        // Queue length are at indexes 1, 3, 5, 7, etc.
+
+        const currentTokens = results[index * 2];
+        const queueLength = results[index * 2 + 1];
+
+        if (typeof currentTokens !== "number" || typeof queueLength !== "number") {
+          return null;
+        }
+
+        return {
+          releaseQueue,
+          currentTokens: currentTokens,
+          queueLength: queueLength,
+        };
+      });
+
+      return zippedResults.filter((result) => result !== null);
+    }
+
+    stream.on("end", () => {
+      streamRedis.quit();
+      resolvePromise(Array.from(metrics.values()));
+    });
+
+    stream.on("error", (error) => {
+      this.logger.error("Error getting queue metrics:", { error });
+
+      stream.pause();
+      streamRedis.quit();
+      rejectPromise(error);
+    });
+
+    stream.on("data", async (keys) => {
+      stream.pause();
+
+      const uniqueKeys = Array.from(new Set<string>(keys));
+
+      if (uniqueKeys.length === 0) {
+        stream.resume();
+        return;
+      }
+
+      const unresolvedKeys = uniqueKeys.filter((key) => !metrics.has(key));
+
+      if (unresolvedKeys.length === 0) {
+        stream.resume();
+        return;
+      }
+
+      this.logger.debug("Fetching queue metrics for keys", { keys: uniqueKeys });
+
+      await getMetricsForKeys(unresolvedKeys).then((results) => {
+        results.forEach((result) => {
+          if (result) {
+            metrics.set(result.releaseQueue, result);
+          }
+        });
+
+        stream.resume();
+      });
+    });
+
+    return promise;
   }
 
   #registerCommands() {
@@ -424,7 +581,7 @@ local currentTokens = tonumber(redis.call("GET", bucketKey) or maxTokens)
 
 -- If we have enough tokens, then consume them
 if currentTokens >= 1 then
-  newCurrentTokens = currentTokens - 1
+  local newCurrentTokens = currentTokens - 1
 
   redis.call("SET", bucketKey, newCurrentTokens)
   redis.call("ZREM", queueKey, releaserId)
