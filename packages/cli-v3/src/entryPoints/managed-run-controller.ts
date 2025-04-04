@@ -8,6 +8,7 @@ import {
   type CompleteRunAttemptResult,
   HeartbeatService,
   type RunExecutionData,
+  type TaskRunExecutionMetrics,
   type TaskRunExecutionResult,
   type TaskRunFailedExecutionResult,
   WorkerManifest,
@@ -49,6 +50,9 @@ const Env = z.object({
   TRIGGER_MACHINE_MEMORY: z.string().default("0"),
   TRIGGER_RUNNER_ID: z.string(),
   TRIGGER_METADATA_URL: z.string().optional(),
+
+  // Timeline metrics
+  TRIGGER_POD_SCHEDULED_AT_MS: z.coerce.date(),
 
   // May be overridden
   TRIGGER_SUPERVISOR_API_PROTOCOL: z.enum(["http", "https"]),
@@ -734,10 +738,14 @@ class ManagedRunController {
   private async startAndExecuteRunAttempt({
     runFriendlyId,
     snapshotFriendlyId,
+    dequeuedAt,
+    podScheduledAt,
     isWarmStart = false,
   }: {
     runFriendlyId: string;
     snapshotFriendlyId: string;
+    dequeuedAt?: Date;
+    podScheduledAt?: Date;
     isWarmStart?: boolean;
   }) {
     if (!this.socket) {
@@ -748,6 +756,8 @@ class ManagedRunController {
       run: { friendlyId: runFriendlyId },
       snapshot: { friendlyId: snapshotFriendlyId },
     });
+
+    const attemptStartedAt = Date.now();
 
     const start = await this.httpClient.startRunAttempt(runFriendlyId, snapshotFriendlyId, {
       isWarmStart,
@@ -760,6 +770,8 @@ class ManagedRunController {
       return;
     }
 
+    const attemptDuration = Date.now() - attemptStartedAt;
+
     const { run, snapshot, execution, envVars } = start.data;
 
     logger.debug("[ManagedRunController] Started run", {
@@ -767,9 +779,40 @@ class ManagedRunController {
       snapshot: snapshot.friendlyId,
     });
 
-    // TODO: We may already be executing this run, this may be a new attempt
-    //  This is the only case where incrementing the attempt number is allowed
     this.enterRunPhase(run, snapshot);
+
+    const metrics = [
+      {
+        name: "start",
+        event: "create_attempt",
+        timestamp: attemptStartedAt,
+        duration: attemptDuration,
+      },
+    ]
+      .concat(
+        dequeuedAt
+          ? [
+              {
+                name: "start",
+                event: "dequeue",
+                timestamp: dequeuedAt.getTime(),
+                duration: 0,
+              },
+            ]
+          : []
+      )
+      .concat(
+        podScheduledAt
+          ? [
+              {
+                name: "start",
+                event: "pod_scheduled",
+                timestamp: podScheduledAt.getTime(),
+                duration: 0,
+              },
+            ]
+          : []
+      ) satisfies TaskRunExecutionMetrics;
 
     const taskRunEnv = {
       ...gatherProcessEnv(),
@@ -777,11 +820,8 @@ class ManagedRunController {
     };
 
     try {
-      return await this.executeRun({ run, snapshot, envVars: taskRunEnv, execution });
+      return await this.executeRun({ run, snapshot, envVars: taskRunEnv, execution, metrics });
     } catch (error) {
-      // TODO: Handle the case where we're in the warm start phase or executing a new run
-      // This can happen if we kill the run while it's still executing, e.g. after receiving an attempt number mismatch
-
       console.error("Error while executing attempt", {
         error,
       });
@@ -809,8 +849,6 @@ class ManagedRunController {
         console.error("Failed to submit completion after error", {
           error: completionResult.error,
         });
-
-        // TODO: Maybe we should keep retrying for a while longer
 
         this.waitForNextRun();
         return;
@@ -923,6 +961,7 @@ class ManagedRunController {
       this.startAndExecuteRunAttempt({
         runFriendlyId: nextRun.run.friendlyId,
         snapshotFriendlyId: nextRun.snapshot.friendlyId,
+        dequeuedAt: nextRun.dequeuedAt,
         isWarmStart: true,
       }).finally(() => {});
       return;
@@ -1032,7 +1071,10 @@ class ManagedRunController {
     snapshot,
     envVars,
     execution,
-  }: WorkloadRunAttemptStartResponseBody) {
+    metrics,
+  }: WorkloadRunAttemptStartResponseBody & {
+    metrics?: TaskRunExecutionMetrics;
+  }) {
     this.snapshotPoller.start();
 
     if (!this.taskRunProcess || !this.taskRunProcess.isPreparedForNextRun) {
@@ -1058,6 +1100,7 @@ class ManagedRunController {
       payload: {
         execution,
         traceContext: execution.run.traceContext ?? {},
+        metrics,
       },
       messageId: run.friendlyId,
       env: envVars,
@@ -1212,6 +1255,8 @@ class ManagedRunController {
       this.startAndExecuteRunAttempt({
         runFriendlyId: env.TRIGGER_RUN_ID,
         snapshotFriendlyId: env.TRIGGER_SNAPSHOT_ID,
+        dequeuedAt: new Date(),
+        podScheduledAt: env.TRIGGER_POD_SCHEDULED_AT_MS,
       }).finally(() => {});
       return;
     }

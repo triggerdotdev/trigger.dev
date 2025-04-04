@@ -62,6 +62,10 @@ export class KubernetesWorkloadManager implements WorkloadManager {
                 resources: this.#getResourcesForMachine(opts.machine),
                 env: [
                   {
+                    name: "TRIGGER_POD_SCHEDULED_AT_MS",
+                    value: Date.now().toString(),
+                  },
+                  {
                     name: "TRIGGER_RUN_ID",
                     value: opts.runFriendlyId,
                   },
