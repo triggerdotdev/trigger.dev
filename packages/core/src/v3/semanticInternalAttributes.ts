@@ -23,6 +23,7 @@ export const SemanticInternalAttributes = {
   MACHINE_PRESET_CPU: "ctx.machine.cpu",
   MACHINE_PRESET_MEMORY: "ctx.machine.memory",
   MACHINE_PRESET_CENTS_PER_MS: "ctx.machine.centsPerMs",
+  SKIP_SPAN_PARTIAL: "$span.skip_partial",
   SPAN_PARTIAL: "$span.partial",
   SPAN_ID: "$span.span_id",
   ENTITY_TYPE: "$entity.type",
@@ -58,4 +59,5 @@ export const SemanticInternalAttributes = {
   SPAN_ATTEMPT: "$span.attempt",
   METRIC_EVENTS: "$metrics.events",
   EXECUTION_ENVIRONMENT: "exec_env",
+  WARM_START: "warm_start",
 };
