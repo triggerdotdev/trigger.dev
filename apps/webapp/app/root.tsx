@@ -1,6 +1,14 @@
 import type { LinksFunction, LoaderFunctionArgs, MetaFunction } from "@remix-run/node";
 import type { ShouldRevalidateFunction } from "@remix-run/react";
-import { Links, LiveReload, Meta, Outlet, Scripts, ScrollRestoration } from "@remix-run/react";
+import {
+  Links,
+  LiveReload,
+  Meta,
+  Outlet,
+  Scripts,
+  ScrollRestoration,
+  useMatches,
+} from "@remix-run/react";
 import { type UseDataFunctionReturn, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { ExternalScripts } from "remix-utils/external-scripts";
 import { commitSession, getSession } from "~/models/message.server";
@@ -16,6 +24,7 @@ import { getUser } from "./services/session.server";
 import { appEnvTitleTag } from "./utils";
 import { type Handle } from "./utils/handle";
 import { useEffect } from "react";
+import { useTypedMatchesData } from "./hooks/useTypedMatchData";
 
 declare global {
   interface Window {
@@ -41,6 +50,15 @@ export const meta: MetaFunction = ({ data }) => {
     },
   ];
 };
+
+export function useKapa() {
+  const matches = useMatches();
+  const routeMatch = useTypedMatchesData<typeof loader>({
+    id: "root",
+    matches,
+  });
+  return routeMatch?.kapa;
+}
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const session = await getSession(request.headers.get("cookie"));
@@ -100,29 +118,8 @@ export function ErrorBoundary() {
 }
 
 export default function App() {
-  const { posthogProjectKey, kapa, features } = useTypedLoaderData<typeof loader>();
+  const { posthogProjectKey, kapa } = useTypedLoaderData<typeof loader>();
   usePostHog(posthogProjectKey);
-
-  useEffect(() => {
-    if (!features.isManagedCloud || !kapa.websiteId) return;
-
-    loadScriptIfNotExists(kapa.websiteId);
-
-    const kapaInterval = setInterval(() => {
-      if (typeof window.Kapa === "function") {
-        clearInterval(kapaInterval);
-        window.Kapa("render");
-      }
-    }, 100);
-
-    // Clear interval on unmount to prevent memory leaks
-    return () => {
-      clearInterval(kapaInterval);
-      if (typeof window.Kapa === "function") {
-        window.Kapa("unmount");
-      }
-    };
-  }, [features.isManagedCloud, kapa.websiteId]);
 
   return (
     <>
@@ -142,33 +139,4 @@ export default function App() {
       </html>
     </>
   );
-}
-
-function loadScriptIfNotExists(websiteId: string) {
-  const scriptSrc = "https://widget.kapa.ai/kapa-widget.bundle.js";
-
-  if (document.querySelector(`script[src="${scriptSrc}"]`)) {
-    return;
-  }
-
-  const script = document.createElement("script");
-  script.async = true;
-  script.src = scriptSrc;
-
-  const attributes = {
-    "data-website-id": websiteId,
-    "data-project-name": "Trigger.dev",
-    "data-project-color": "#6366F1",
-    "data-project-logo": "https://content.trigger.dev/trigger-logo-triangle.png",
-    "data-render-on-load": "false",
-    "data-button-hide": "true",
-    "data-modal-disclaimer-bg-color": "#1A1B1F",
-    "data-modal-disclaimer-text-color": "#878C99",
-  };
-
-  Object.entries(attributes).forEach(([key, value]) => {
-    script.setAttribute(key, value);
-  });
-
-  document.head.appendChild(script);
 }

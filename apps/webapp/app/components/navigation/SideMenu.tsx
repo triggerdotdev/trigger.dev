@@ -79,6 +79,8 @@ import { SideMenuSection } from "./SideMenuSection";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
 import { ShortcutKey } from "../primitives/ShortcutKey";
+import { useFeatures } from "~/hooks/useFeatures";
+import { useKapa } from "~/root";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 export type SideMenuProject = Pick<
@@ -109,17 +111,6 @@ export function SideMenu({
   const currentPlan = useCurrentPlan();
   const { isConnected } = useDevPresence();
   const isFreeUser = currentPlan?.v3Subscription?.isPaying === false;
-  const buttonRef = useRef<HTMLButtonElement>(null);
-
-  useShortcutKeys({
-    shortcut: { key: "a", modifiers: ["mod", "shift"] },
-    action: (e) => {
-      e.preventDefault();
-      if (buttonRef.current) {
-        buttonRef.current.click();
-      }
-    },
-  });
 
   useEffect(() => {
     const handleScroll = () => {
@@ -291,37 +282,7 @@ export function SideMenu({
       </div>
       <div className="flex flex-col gap-1 border-t border-grid-bright p-1">
         <div className="flex w-full items-center justify-between">
-          <HelpAndFeedback />
-          <TooltipProvider disableHoverableContent>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div>
-                  <Button
-                    ref={buttonRef}
-                    variant="small-menu-item"
-                    data-action="ask-ai"
-                    shortcut={{ modifiers: ["mod"], key: "/", enabledOnInputElements: true }}
-                    hideShortcutKey
-                    data-modal-override-open-class-ask-ai="true"
-                    onClick={() => {
-                      if (typeof window.Kapa === "function") {
-                        window.Kapa("open");
-                      }
-                    }}
-                  >
-                    <AISparkleIcon className="size-5" />
-                  </Button>
-                </div>
-              </TooltipTrigger>
-              <TooltipContent
-                side="top"
-                className="flex items-center gap-1 py-1.5 pl-2.5 pr-2 text-xs"
-              >
-                Ask AI
-                <ShortcutKey shortcut={{ modifiers: ["mod"], key: "/" }} variant="medium/bright" />
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          <HelpAndAI />
         </div>
         {isFreeUser && (
           <FreePlanUsage
@@ -583,4 +544,91 @@ function SelectorDivider() {
       />
     </svg>
   );
+}
+
+function HelpAndAI() {
+  const features = useFeatures();
+  const kapa = useKapa();
+
+  useEffect(() => {
+    if (!features.isManagedCloud || !kapa?.websiteId) return;
+
+    loadScriptIfNotExists(kapa.websiteId);
+
+    const kapaInterval = setInterval(() => {
+      if (typeof window.Kapa === "function") {
+        clearInterval(kapaInterval);
+        window.Kapa("render");
+      }
+    }, 100);
+
+    // Clear interval on unmount to prevent memory leaks
+    return () => {
+      clearInterval(kapaInterval);
+      if (typeof window.Kapa === "function") {
+        window.Kapa("unmount");
+      }
+    };
+  }, [features.isManagedCloud, kapa?.websiteId]);
+
+  return (
+    <>
+      <HelpAndFeedback />
+      <TooltipProvider disableHoverableContent>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div>
+              <Button
+                variant="small-menu-item"
+                data-action="ask-ai"
+                shortcut={{ modifiers: ["mod"], key: "/", enabledOnInputElements: true }}
+                hideShortcutKey
+                data-modal-override-open-class-ask-ai="true"
+                onClick={() => {
+                  if (typeof window.Kapa === "function") {
+                    window.Kapa("open");
+                  }
+                }}
+              >
+                <AISparkleIcon className="size-5" />
+              </Button>
+            </div>
+          </TooltipTrigger>
+          <TooltipContent side="top" className="flex items-center gap-1 py-1.5 pl-2.5 pr-2 text-xs">
+            Ask AI
+            <ShortcutKey shortcut={{ modifiers: ["mod"], key: "/" }} variant="medium/bright" />
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    </>
+  );
+}
+
+function loadScriptIfNotExists(websiteId: string) {
+  const scriptSrc = "https://widget.kapa.ai/kapa-widget.bundle.js";
+
+  if (document.querySelector(`script[src="${scriptSrc}"]`)) {
+    return;
+  }
+
+  const script = document.createElement("script");
+  script.async = true;
+  script.src = scriptSrc;
+
+  const attributes = {
+    "data-website-id": websiteId,
+    "data-project-name": "Trigger.dev",
+    "data-project-color": "#6366F1",
+    "data-project-logo": "https://content.trigger.dev/trigger-logo-triangle.png",
+    "data-render-on-load": "false",
+    "data-button-hide": "true",
+    "data-modal-disclaimer-bg-color": "#1A1B1F",
+    "data-modal-disclaimer-text-color": "#878C99",
+  };
+
+  Object.entries(attributes).forEach(([key, value]) => {
+    script.setAttribute(key, value);
+  });
+
+  document.head.appendChild(script);
 }
