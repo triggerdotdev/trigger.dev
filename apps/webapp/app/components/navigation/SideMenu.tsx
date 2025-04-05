@@ -301,6 +301,7 @@ export function SideMenu({
                     variant="small-menu-item"
                     data-action="ask-ai"
                     shortcut={{ modifiers: ["mod"], key: "/" }}
+                    hideShortcutKey
                     data-modal-override-open-class-ask-ai="true"
                     onClick={() => {
                       if (typeof window.Kapa === "function") {
@@ -317,6 +318,7 @@ export function SideMenu({
                 className="flex items-center gap-1 py-1.5 pl-2.5 pr-2 text-xs"
               >
                 Ask AI
+                <ShortcutKey shortcut={{ modifiers: ["mod"], key: "/" }} variant="medium/bright" />
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>

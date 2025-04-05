@@ -33,9 +33,15 @@ type ShortcutKeyProps = {
   shortcut: ShortcutKeyDefinition;
   variant: ShortcutKeyVariant;
   className?: string;
+  hideShortcutKey?: boolean;
 };
 
-export function ShortcutKey({ shortcut, variant, className }: ShortcutKeyProps) {
+export function ShortcutKey({
+  shortcut,
+  variant,
+  className,
+  hideShortcutKey = false,
+}: ShortcutKeyProps) {
   const { platform } = useOperatingSystem();
   const isMac = platform === "mac";
   let relevantShortcut = "mac" in shortcut ? (isMac ? shortcut.mac : shortcut.windows) : shortcut;
@@ -43,7 +49,7 @@ export function ShortcutKey({ shortcut, variant, className }: ShortcutKeyProps) 
   const character = relevantShortcut.key ? keyString(relevantShortcut.key, isMac, variant) : null;
 
   return (
-    <span className={cn(variants[variant], className)}>
+    <span className={cn(variants[variant], hideShortcutKey && "hidden", className)}>
       {modifiers.map((k) => (
         <span key={k}>
           <span>{modifierString(k, isMac, variant)}</span>
