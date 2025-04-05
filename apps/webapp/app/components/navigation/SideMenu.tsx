@@ -300,7 +300,7 @@ export function SideMenu({
                     ref={buttonRef}
                     variant="small-menu-item"
                     data-action="ask-ai"
-                    shortcut={{ modifiers: ["mod"], key: "/" }}
+                    shortcut={{ modifiers: ["mod"], key: "/", enabledOnInputElements: true }}
                     hideShortcutKey
                     data-modal-override-open-class-ask-ai="true"
                     onClick={() => {

@@ -158,10 +158,12 @@ function loadScriptIfNotExists(websiteId: string) {
   const attributes = {
     "data-website-id": websiteId,
     "data-project-name": "Trigger.dev",
-    "data-project-color": "#ff9900",
+    "data-project-color": "#6366F1",
     "data-project-logo": "https://content.trigger.dev/trigger-logo-triangle.png",
     "data-render-on-load": "false",
     "data-button-hide": "true",
+    "data-modal-disclaimer-bg-color": "#1A1B1F",
+    "data-modal-disclaimer-text-color": "#878C99",
   };
 
   Object.entries(attributes).forEach(([key, value]) => {
