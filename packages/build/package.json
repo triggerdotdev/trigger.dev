@@ -29,7 +29,8 @@
       "./extensions/prisma": "./src/extensions/prisma.ts",
       "./extensions/audioWaveform": "./src/extensions/audioWaveform.ts",
       "./extensions/typescript": "./src/extensions/typescript.ts",
-      "./extensions/puppeteer": "./src/extensions/puppeteer.ts"
+      "./extensions/puppeteer": "./src/extensions/puppeteer.ts",
+      "./extensions/playwright": "./src/extensions/playwright.ts"
     },
     "sourceDialects": [
       "@triggerdotdev/source"
@@ -57,6 +58,9 @@
       ],
       "extensions/puppeteer": [
         "dist/commonjs/extensions/puppeteer.d.ts"
+      ],
+      "extensions/playwright": [
+        "dist/commonjs/extensions/playwright.d.ts"
       ]
     }
   },
@@ -172,6 +176,17 @@
       "require": {
         "types": "./dist/commonjs/extensions/puppeteer.d.ts",
         "default": "./dist/commonjs/extensions/puppeteer.js"
+      }
+    },
+    "./extensions/playwright": {
+      "import": {
+        "@triggerdotdev/source": "./src/extensions/playwright.ts",
+        "types": "./dist/esm/extensions/playwright.d.ts",
+        "default": "./dist/esm/extensions/playwright.js"
+      },
+      "require": {
+        "types": "./dist/commonjs/extensions/playwright.d.ts",
+        "default": "./dist/commonjs/extensions/playwright.js"
       }
     }
   },
