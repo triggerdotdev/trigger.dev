@@ -374,6 +374,7 @@ export class DequeueSystem {
                   projectId: snapshot.projectId,
                   organizationId: snapshot.organizationId,
                   checkpointId: snapshot.checkpointId ?? undefined,
+                  batchId: snapshot.batchId ?? undefined,
                   completedWaitpoints: snapshot.completedWaitpoints,
                   workerId,
                   runnerId,

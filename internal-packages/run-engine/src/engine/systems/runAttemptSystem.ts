@@ -218,6 +218,8 @@ export class RunAttemptSystem {
                 environmentType: latestSnapshot.environmentType,
                 projectId: latestSnapshot.projectId,
                 organizationId: latestSnapshot.organizationId,
+                batchId: latestSnapshot.batchId ?? undefined,
+                completedWaitpoints: latestSnapshot.completedWaitpoints,
                 workerId,
                 runnerId,
               });
