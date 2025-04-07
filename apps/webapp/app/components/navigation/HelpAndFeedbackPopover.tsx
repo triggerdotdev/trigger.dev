@@ -23,7 +23,8 @@ import { Popover, PopoverContent, PopoverSideMenuTrigger } from "../primitives/P
 import { StepNumber } from "../primitives/StepNumber";
 import { MenuCount, SideMenuItem } from "./SideMenuItem";
 import { Shortcuts } from "../Shortcuts";
-export function HelpAndFeedback() {
+
+export function HelpAndFeedback({ disableShortcut = false }: { disableShortcut?: boolean }) {
   const [isHelpMenuOpen, setHelpMenuOpen] = useState(false);
   const currentPlan = useCurrentPlan();
 
@@ -33,6 +34,7 @@ export function HelpAndFeedback() {
         isOpen={isHelpMenuOpen}
         shortcut={{ key: "h", enabledOnInputElements: false }}
         className="grow pr-2"
+        disabled={disableShortcut}
       >
         <div className="flex items-center gap-1.5">
           <QuestionMarkCircleIcon className="size-4 text-success" />

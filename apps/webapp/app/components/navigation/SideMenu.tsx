@@ -547,6 +547,7 @@ function SelectorDivider() {
 }
 
 function HelpAndAI() {
+  const [isKapaOpen, setIsKapaOpen] = useState(false);
   const features = useFeatures();
   const kapa = useKapa();
 
@@ -555,10 +556,16 @@ function HelpAndAI() {
 
     loadScriptIfNotExists(kapa.websiteId);
 
+    // Define the handler function
+    const handleModalClose = () => {
+      setIsKapaOpen(false);
+    };
+
     const kapaInterval = setInterval(() => {
       if (typeof window.Kapa === "function") {
         clearInterval(kapaInterval);
         window.Kapa("render");
+        window.Kapa("onModalClose", handleModalClose);
       }
     }, 100);
 
@@ -573,7 +580,7 @@ function HelpAndAI() {
 
   return (
     <>
-      <HelpAndFeedback />
+      <HelpAndFeedback disableShortcut={isKapaOpen} />
       <TooltipProvider disableHoverableContent>
         <Tooltip>
           <TooltipTrigger asChild>
@@ -587,6 +594,7 @@ function HelpAndAI() {
                 onClick={() => {
                   if (typeof window.Kapa === "function") {
                     window.Kapa("open");
+                    setIsKapaOpen(true);
                   }
                 }}
               >

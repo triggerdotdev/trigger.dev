@@ -28,7 +28,7 @@ import { useTypedMatchesData } from "./hooks/useTypedMatchData";
 
 declare global {
   interface Window {
-    Kapa: (command: string, options?: { onRender?: () => void }) => void;
+    Kapa: (command: string, options?: (() => void) | { onRender?: () => void }) => void;
   }
 }
 
