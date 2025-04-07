@@ -24,16 +24,15 @@ import { type RuntimeEnvironmentType } from "@trigger.dev/database";
 import { motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
-import { DisconnectedIcon } from "~/assets/icons/ConnectionIcons";
+import { redirect } from "remix-typedjson";
 import { ShowParentIcon, ShowParentIconSelected } from "~/assets/icons/ShowParentIcon";
 import tileBgPath from "~/assets/images/error-banner-tile@2x.png";
-import { useDevPresence } from "~/components/DevPresence";
+import { DevDisconnectedBanner, useCrossEngineIsConnected } from "~/components/DevPresence";
+import { WarmStartIconWithTooltip } from "~/components/WarmStarts";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { PageBody } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
-import { Callout } from "~/components/primitives/Callout";
-import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { DateTimeShort } from "~/components/primitives/DateTime";
 import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
 import { Header3 } from "~/components/primitives/Headers";
@@ -96,8 +95,6 @@ import {
 } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { SpanView } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.$runParam.spans.$spanParam/route";
-import { redirectWithErrorMessage } from "~/models/message.server";
-import { redirect } from "remix-typedjson";
 
 const resizableSettings = {
   parent: {
@@ -184,6 +181,10 @@ export default function Page() {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
+  const isConnected = useCrossEngineIsConnected({
+    logCount: trace?.events.length ?? 0,
+    isCompleted: run.completedAt !== null,
+  });
 
   return (
     <>
@@ -195,6 +196,7 @@ export default function Page() {
           }}
           title={`Run #${run.number}`}
         />
+        {environment.type === "DEVELOPMENT" && <DevDisconnectedBanner isConnected={isConnected} />}
         <PageAccessories>
           <AdminDebugTooltip>
             <Property.Table>
@@ -297,7 +299,7 @@ function TraceView({ run, trace, maximumLiveReloadingSetting, resizable }: Loade
   const shouldLiveReload = events.length <= maximumLiveReloadingSetting;
 
   const changeToSpan = useDebounce((selectedSpan: string) => {
-    replaceSearchParam("span", selectedSpan);
+    replaceSearchParam("span", selectedSpan, { replace: true });
   }, 250);
 
   const revalidator = useRevalidator();
@@ -666,9 +668,6 @@ function TasksTreeView({
                       </div>
                     </div>
                   </div>
-                  {!isCompleted &&
-                    environmentType === "DEVELOPMENT" &&
-                    index === displayEvents.length - 1 && <ConnectedDevWarning />}
                 </>
               )}
               onScroll={(scrollTop) => {
@@ -1039,7 +1038,13 @@ function NodeText({ node }: { node: TraceEvent }) {
 
 function NodeStatusIcon({ node }: { node: TraceEvent }) {
   if (node.data.level !== "TRACE") return null;
-  if (node.data.style.variant !== "primary") return null;
+  if (!node.data.style.variant) return null;
+
+  if (node.data.style.variant === "warm") {
+    return <WarmStartIconWithTooltip isWarmStart={true} className="size-4" />;
+  } else if (node.data.style.variant === "cold") {
+    return <WarmStartIconWithTooltip isWarmStart={false} className="size-4" />;
+  }
 
   if (node.data.isCancelled) {
     return (
@@ -1267,32 +1272,6 @@ function CurrentTimeIndicator({
         );
       }}
     </Timeline.FollowCursor>
-  );
-}
-
-function ConnectedDevWarning() {
-  const { isConnected } = useDevPresence();
-
-  return (
-    <div
-      className={cn(
-        "flex items-center overflow-hidden pl-5 pr-2 transition-opacity duration-500",
-        isConnected ? "h-0 opacity-0" : "opacity-100"
-      )}
-    >
-      <Callout
-        variant="error"
-        icon={<DisconnectedIcon className="size-5 shrink-0" />}
-        className="mt-2"
-      >
-        <div className="flex flex-col gap-1">
-          <Paragraph variant="small" spacing>
-            Your local dev server is not connectedr. Check you're running the CLI:
-          </Paragraph>
-          <ClipboardField variant="secondary/small" value="npx trigger.dev@latest dev" />
-        </div>
-      </Callout>
-    </div>
   );
 }
 

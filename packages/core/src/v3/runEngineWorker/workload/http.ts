@@ -20,13 +20,13 @@ type WorkloadHttpClientOptions = WorkloadClientCommonOptions;
 
 export class WorkloadHttpClient {
   private apiUrl: string;
+  private runnerId: string;
   private readonly deploymentId: string;
-  private readonly defaultHeaders: Record<string, string>;
 
-  constructor(opts: WorkloadHttpClientOptions) {
+  constructor(private opts: WorkloadHttpClientOptions) {
     this.apiUrl = opts.workerApiUrl.replace(/\/$/, "");
-    this.defaultHeaders = getDefaultWorkloadHeaders(opts);
     this.deploymentId = opts.deploymentId;
+    this.runnerId = opts.runnerId;
 
     if (!this.apiUrl) {
       throw new Error("apiURL is required and needs to be a non-empty string");
@@ -41,17 +41,28 @@ export class WorkloadHttpClient {
     this.apiUrl = apiUrl.replace(/\/$/, "");
   }
 
-  async heartbeatRun(runId: string, snapshotId: string, body: WorkloadHeartbeatRequestBody) {
+  updateRunnerId(runnerId: string) {
+    this.runnerId = runnerId;
+  }
+
+  defaultHeaders(): Record<string, string> {
+    return getDefaultWorkloadHeaders({
+      ...this.opts,
+      runnerId: this.runnerId,
+    });
+  }
+
+  async heartbeatRun(runId: string, snapshotId: string, body?: WorkloadHeartbeatRequestBody) {
     return wrapZodFetch(
       WorkloadHeartbeatResponseBody,
       `${this.apiUrl}/api/v1/workload-actions/runs/${runId}/snapshots/${snapshotId}/heartbeat`,
       {
         method: "POST",
         headers: {
-          ...this.defaultHeaders,
+          ...this.defaultHeaders(),
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(body),
+        body: JSON.stringify(body ?? {}),
       }
     );
   }
@@ -63,7 +74,7 @@ export class WorkloadHttpClient {
       {
         method: "GET",
         headers: {
-          ...this.defaultHeaders,
+          ...this.defaultHeaders(),
         },
       }
     );
@@ -76,7 +87,7 @@ export class WorkloadHttpClient {
       {
         method: "GET",
         headers: {
-          ...this.defaultHeaders,
+          ...this.defaultHeaders(),
         },
       }
     );
@@ -93,7 +104,7 @@ export class WorkloadHttpClient {
       {
         method: "POST",
         headers: {
-          ...this.defaultHeaders,
+          ...this.defaultHeaders(),
         },
         body: JSON.stringify(body),
       }
@@ -111,7 +122,7 @@ export class WorkloadHttpClient {
       {
         method: "POST",
         headers: {
-          ...this.defaultHeaders,
+          ...this.defaultHeaders(),
         },
         body: JSON.stringify(body),
       }
@@ -125,7 +136,7 @@ export class WorkloadHttpClient {
       {
         method: "GET",
         headers: {
-          ...this.defaultHeaders,
+          ...this.defaultHeaders(),
         },
       }
     );
@@ -139,7 +150,7 @@ export class WorkloadHttpClient {
         {
           method: "POST",
           headers: {
-            ...this.defaultHeaders,
+            ...this.defaultHeaders(),
             "Content-Type": "application/json",
           },
           body: JSON.stringify(body),
@@ -161,7 +172,7 @@ export class WorkloadHttpClient {
       {
         method: "GET",
         headers: {
-          ...this.defaultHeaders,
+          ...this.defaultHeaders(),
         },
       }
     );

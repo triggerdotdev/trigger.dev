@@ -57,7 +57,7 @@ class OTLPExporter {
 
       const enrichedEvents = enrichCreatableEvents(events);
 
-      this.#logEventsVerbose(enrichedEvents);
+      this.#logEventsVerbose(enrichedEvents, "exportTraces");
 
       span.setAttribute("event_count", enrichedEvents.length);
 
@@ -84,7 +84,7 @@ class OTLPExporter {
 
       const enrichedEvents = enrichCreatableEvents(events);
 
-      this.#logEventsVerbose(enrichedEvents);
+      this.#logEventsVerbose(enrichedEvents, "exportLogs");
 
       span.setAttribute("event_count", enrichedEvents.length);
 
@@ -98,11 +98,11 @@ class OTLPExporter {
     });
   }
 
-  #logEventsVerbose(events: CreatableEvent[]) {
+  #logEventsVerbose(events: CreatableEvent[], prefix: string) {
     if (!this._verbose) return;
 
     events.forEach((event) => {
-      logger.debug("Exporting event", { event });
+      logger.debug(`Exporting ${prefix} event`, { event });
     });
   }
 

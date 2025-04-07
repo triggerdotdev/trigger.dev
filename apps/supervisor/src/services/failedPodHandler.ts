@@ -6,7 +6,7 @@ import { Counter, Registry, Histogram } from "prom-client";
 import { register } from "../metrics.js";
 import { setTimeout } from "timers/promises";
 
-type PodStatus = "Pending" | "Running" | "Succeeded" | "Failed" | "Unknown";
+type PodStatus = "Pending" | "Running" | "Succeeded" | "Failed" | "Unknown" | "GracefulShutdown";
 
 export type FailedPodHandlerOptions = {
   namespace: string;
@@ -33,6 +33,8 @@ export class FailedPodHandler {
   private readonly deletionErrorsTotal: Counter;
   private readonly processingDurationSeconds: Histogram<string>;
   private readonly informerEventsTotal: Counter;
+
+  static readonly GRACEFUL_SHUTDOWN_EXIT_CODE = 200;
 
   constructor(opts: FailedPodHandlerOptions) {
     this.id = Math.random().toString(36).substring(2, 15);
@@ -206,6 +208,21 @@ export class FailedPodHandler {
 
   private async processFailedPod(pod: V1Pod) {
     this.logger.info("pod-failed: processing pod", this.podSummary(pod));
+
+    const mainContainer = pod.status?.containerStatuses?.find((c) => c.name === "run-controller");
+
+    // If it's our special "graceful shutdown" exit code, don't process it further, just delete it
+    if (
+      mainContainer?.state?.terminated?.exitCode === FailedPodHandler.GRACEFUL_SHUTDOWN_EXIT_CODE
+    ) {
+      this.logger.debug("pod-failed: graceful shutdown detected", this.podSummary(pod));
+      this.processedPodsTotal.inc({
+        namespace: this.namespace,
+        status: "GracefulShutdown",
+      });
+      return;
+    }
+
     this.processedPodsTotal.inc({
       namespace: this.namespace,
       status: this.podStatus(pod),

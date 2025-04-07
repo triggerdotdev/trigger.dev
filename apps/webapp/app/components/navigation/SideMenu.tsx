@@ -20,13 +20,9 @@ import {
 import { useNavigation } from "@remix-run/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import simplur from "simplur";
-import {
-  CheckingConnectionIcon,
-  ConnectedIcon,
-  DisconnectedIcon,
-} from "~/assets/icons/ConnectionIcons";
-import { RunsIconExtraSmall, RunsIconSmall } from "~/assets/icons/RunsIcon";
+import { RunsIconExtraSmall } from "~/assets/icons/RunsIcon";
 import { TaskIconSmall } from "~/assets/icons/TaskIcon";
+import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
 import { Avatar } from "~/components/primitives/Avatar";
 import { type MatchedEnvironment } from "~/hooks/useEnvironment";
 import { type MatchedOrganization } from "~/hooks/useOrganizations";
@@ -37,7 +33,6 @@ import { type FeedbackType } from "~/routes/resources.feedback";
 import { cn } from "~/utils/cn";
 import {
   accountPath,
-  docsPath,
   logoutPath,
   newOrganizationPath,
   newProjectPath,
@@ -60,14 +55,11 @@ import {
   v3UsagePath,
   v3WaitpointTokensPath,
 } from "~/utils/pathBuilder";
-import connectedImage from "../../assets/images/cli-connected.png";
-import disconnectedImage from "../../assets/images/cli-disconnected.png";
 import { FreePlanUsage } from "../billing/FreePlanUsage";
-import { InlineCode } from "../code/InlineCode";
-import { useDevPresence } from "../DevPresence";
+import { ConnectionIcon, DevPresencePanel, useDevPresence } from "../DevPresence";
 import { ImpersonationBanner } from "../ImpersonationBanner";
 import { Button, ButtonContent, LinkButton } from "../primitives/Buttons";
-import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "../primitives/Dialog";
+import { Dialog, DialogTrigger } from "../primitives/Dialog";
 import { Paragraph } from "../primitives/Paragraph";
 import {
   Popover,
@@ -78,20 +70,17 @@ import {
 } from "../primitives/Popover";
 import { TextLink } from "../primitives/TextLink";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
-import { PackageManagerProvider, TriggerDevStepV3 } from "../SetupCommands";
 import { UserProfilePhoto } from "../UserProfilePhoto";
 import { EnvironmentSelector } from "./EnvironmentSelector";
 import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
 import { SideMenuSection } from "./SideMenuSection";
-import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
-import { Spinner } from "../primitives/Spinner";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 export type SideMenuProject = Pick<
   MatchedProject,
-  "id" | "name" | "slug" | "version" | "environments"
+  "id" | "name" | "slug" | "version" | "environments" | "engine"
 >;
 export type SideMenuEnvironment = MatchedEnvironment;
 
@@ -115,6 +104,7 @@ export function SideMenu({
   const borderRef = useRef<HTMLDivElement>(null);
   const [showHeaderDivider, setShowHeaderDivider] = useState(false);
   const currentPlan = useCurrentPlan();
+  const { isConnected } = useDevPresence();
   const isFreeUser = currentPlan?.v3Subscription?.isPaying === false;
 
   useEffect(() => {
@@ -163,7 +153,33 @@ export function SideMenu({
                 project={project}
                 environment={environment}
               />
-              {environment.type === "DEVELOPMENT" && <DevConnection />}
+              {environment.type === "DEVELOPMENT" && project.engine === "V2" && (
+                <Dialog>
+                  <TooltipProvider disableHoverableContent={true}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="inline-flex">
+                          <DialogTrigger asChild>
+                            <Button
+                              variant="minimal/small"
+                              className="aspect-square h-7 p-1"
+                              LeadingIcon={<ConnectionIcon isConnected={isConnected} />}
+                            />
+                          </DialogTrigger>
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent side="right" className={"text-xs"}>
+                        {isConnected === undefined
+                          ? "Checking connection..."
+                          : isConnected
+                          ? "Your dev server is connected"
+                          : "Your dev server is not connected"}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                  <DevPresencePanel isConnected={isConnected} />
+                </Dialog>
+              )}
             </div>
           </div>
 
@@ -520,83 +536,5 @@ function SelectorDivider() {
         strokeLinecap="round"
       />
     </svg>
-  );
-}
-
-export function DevConnection() {
-  const { isConnected } = useDevPresence();
-
-  return (
-    <Dialog>
-      <TooltipProvider disableHoverableContent={true}>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <div className="inline-flex">
-              <DialogTrigger asChild>
-                <Button
-                  variant="minimal/small"
-                  className="aspect-square h-7 p-1"
-                  LeadingIcon={
-                    isConnected === undefined ? (
-                      <CheckingConnectionIcon className="size-5" />
-                    ) : isConnected ? (
-                      <ConnectedIcon className="size-5" />
-                    ) : (
-                      <DisconnectedIcon className="size-5" />
-                    )
-                  }
-                />
-              </DialogTrigger>
-            </div>
-          </TooltipTrigger>
-          <TooltipContent side="right" className={"text-xs"}>
-            {isConnected === undefined
-              ? "Checking connection..."
-              : isConnected
-              ? "Your dev server is connected"
-              : "Your dev server is not connected"}
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-      <DialogContent>
-        <DialogHeader>
-          {isConnected === undefined
-            ? "Checking connection..."
-            : isConnected
-            ? "Your dev server is connected"
-            : "Your dev server is not connected"}
-        </DialogHeader>
-        <div className="mt-2 flex flex-col gap-3 px-2">
-          <div className="flex flex-col items-center justify-center gap-6 px-6 py-10">
-            <img
-              src={isConnected === true ? connectedImage : disconnectedImage}
-              alt={isConnected === true ? "Connected" : "Disconnected"}
-              width={282}
-              height={45}
-            />
-            <Paragraph variant="small" className={isConnected ? "text-success" : "text-error"}>
-              {isConnected === undefined
-                ? "Checking connection..."
-                : isConnected
-                ? "Your local dev server is connected to Trigger.dev"
-                : "Your local dev server is not connected to Trigger.dev"}
-            </Paragraph>
-          </div>
-          {isConnected ? null : (
-            <div className="space-y-3">
-              <PackageManagerProvider>
-                <TriggerDevStepV3 title="Run this command to connect" />
-              </PackageManagerProvider>
-              <Paragraph variant="small">
-                Run this CLI <InlineCode variant="extra-small">dev</InlineCode> command to connect
-                to the Trigger.dev servers to start developing locally. Keep it running while you
-                develop to stay connected. Learn more in the{" "}
-                <TextLink to={docsPath("cli-dev")}>CLI docs</TextLink>.
-              </Paragraph>
-            </div>
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
   );
 }

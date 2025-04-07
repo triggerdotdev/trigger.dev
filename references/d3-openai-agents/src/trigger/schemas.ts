@@ -38,3 +38,9 @@ export const RowEnrichmentResult = z.object({
 });
 
 export type RowEnrichmentResult = z.infer<typeof RowEnrichmentResult>;
+
+export const QueryApproval = z.object({
+  approved: z.boolean().describe("Whether the query has been approved"),
+});
+
+export type QueryApproval = z.infer<typeof QueryApproval>;

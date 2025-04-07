@@ -4,13 +4,13 @@ import {
   EnvelopeIcon,
   QueueListIcon,
 } from "@heroicons/react/20/solid";
-import { Link } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import {
   formatDurationMilliseconds,
   type TaskRunError,
   taskRunErrorEnhancer,
 } from "@trigger.dev/core/v3";
+import { assertNever } from "assert-never";
 import { useEffect } from "react";
 import { typedjson, useTypedFetcher } from "remix-typedjson";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
@@ -36,18 +36,17 @@ import {
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import { TextLink } from "~/components/primitives/TextLink";
 import { InfoIconTooltip, SimpleTooltip } from "~/components/primitives/Tooltip";
-import {
-  createTimelineSpanEventsFromSpanEvents,
-  RunTimeline,
-  RunTimelineEvent,
-  SpanTimeline,
-} from "~/components/run/RunTimeline";
+import { RunTimeline, RunTimelineEvent, SpanTimeline } from "~/components/run/RunTimeline";
+import { PacketDisplay } from "~/components/runs/v3/PacketDisplay";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
 import { RunTag } from "~/components/runs/v3/RunTag";
 import { SpanEvents } from "~/components/runs/v3/SpanEvents";
 import { SpanTitle } from "~/components/runs/v3/SpanTitle";
 import { TaskRunAttemptStatusCombo } from "~/components/runs/v3/TaskRunAttemptStatus";
 import { TaskRunStatusCombo, TaskRunStatusReason } from "~/components/runs/v3/TaskRunStatus";
+import { WaitpointDetailTable } from "~/components/runs/v3/WaitpointDetails";
+import { WarmStartCombo } from "~/components/WarmStarts";
+import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
@@ -55,7 +54,6 @@ import { useHasAdminAccess } from "~/hooks/useUser";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { type Span, SpanPresenter, type SpanRun } from "~/presenters/v3/SpanPresenter.server";
 import { logger } from "~/services/logger.server";
-import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { formatCurrencyAccurate } from "~/utils/numberFormatter";
 import {
@@ -68,14 +66,8 @@ import {
   v3SchedulePath,
   v3SpanParamsSchema,
 } from "~/utils/pathBuilder";
-import {
-  CompleteWaitpointForm,
-  ForceTimeout,
-} from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.waitpoints.$waitpointFriendlyId.complete/route";
-import { useEnvironment } from "~/hooks/useEnvironment";
-import { WaitpointStatusCombo } from "~/components/runs/v3/WaitpointStatus";
-import { PacketDisplay } from "~/components/runs/v3/PacketDisplay";
-import { WaitpointDetailTable } from "~/components/runs/v3/WaitpointDetails";
+import { createTimelineSpanEventsFromSpanEvents } from "~/utils/timelineSpanEvents";
+import { CompleteWaitpointForm } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.waitpoints.$waitpointFriendlyId.complete/route";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { projectParam, organizationSlug, envParam, runParam, spanParam } =
@@ -939,6 +931,40 @@ function SpanEntity({ span }: { span: Span }) {
   }
 
   switch (span.entity.type) {
+    case "attempt": {
+      return (
+        <div className="flex flex-col gap-4 p-3">
+          <div className="border-b border-grid-bright pb-3">
+            <TaskRunAttemptStatusCombo
+              status={
+                span.isCancelled
+                  ? "CANCELED"
+                  : span.isError
+                  ? "FAILED"
+                  : span.isPartial
+                  ? "EXECUTING"
+                  : "COMPLETED"
+              }
+              className="text-sm"
+            />
+          </div>
+          <SpanTimeline
+            startTime={new Date(span.startTime)}
+            duration={span.duration}
+            inProgress={span.isPartial}
+            isError={span.isError}
+            events={createTimelineSpanEventsFromSpanEvents(span.events, isAdmin)}
+          />
+          {span.entity.object.isWarmStart !== undefined ? (
+            <WarmStartCombo
+              isWarmStart={span.entity.object.isWarmStart}
+              showTooltip
+              className="mt-3"
+            />
+          ) : null}
+        </div>
+      );
+    }
     case "waitpoint": {
       return (
         <div className="grid h-full grid-rows-[1fr_auto]">
@@ -961,7 +987,7 @@ function SpanEntity({ span }: { span: Span }) {
       );
     }
     default: {
-      return <Paragraph variant="small">No span for {span.entity.type}</Paragraph>;
+      assertNever(span.entity);
     }
   }
 }

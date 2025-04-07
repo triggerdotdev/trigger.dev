@@ -61,6 +61,7 @@ class ManagedSupervisor {
       workloadApiDomain: env.TRIGGER_WORKLOAD_API_DOMAIN,
       workloadApiPort: env.TRIGGER_WORKLOAD_API_PORT_EXTERNAL,
       warmStartUrl: this.warmStartUrl,
+      metadataUrl: env.TRIGGER_METADATA_URL,
       imagePullSecrets: env.KUBERNETES_IMAGE_PULL_SECRETS?.split(","),
       heartbeatIntervalSeconds: env.RUNNER_HEARTBEAT_INTERVAL_SECONDS,
       snapshotPollIntervalSeconds: env.RUNNER_SNAPSHOT_POLL_INTERVAL_SECONDS,
@@ -98,7 +99,10 @@ class ManagedSupervisor {
         this.logger.warn("[ManagedWorker] Failed pod handler disabled");
       }
 
-      this.resourceMonitor = new KubernetesResourceMonitor(createK8sApi(), "");
+      this.resourceMonitor = new KubernetesResourceMonitor(
+        createK8sApi(),
+        env.TRIGGER_WORKER_INSTANCE_NAME
+      );
       this.workloadManager = new KubernetesWorkloadManager(workloadManagerOptions);
     } else {
       this.resourceMonitor = new DockerResourceMonitor(new Docker());
@@ -112,10 +116,11 @@ class ManagedSupervisor {
       managedWorkerSecret: env.MANAGED_WORKER_SECRET,
       dequeueIntervalMs: env.TRIGGER_DEQUEUE_INTERVAL_MS,
       queueConsumerEnabled: env.TRIGGER_DEQUEUE_ENABLED,
+      maxRunCount: env.TRIGGER_DEQUEUE_MAX_RUN_COUNT,
       runNotificationsEnabled: env.TRIGGER_WORKLOAD_API_ENABLED,
       preDequeue: async () => {
         if (this.isKubernetes) {
-          // TODO: Test k8s resource monitor and remove this
+          // Not used in k8s for now
           return {};
         }
 
@@ -219,6 +224,7 @@ class ManagedSupervisor {
 
       try {
         await this.workloadManager.create({
+          dequeuedAt: message.dequeuedAt,
           envId: message.environment.id,
           envType: message.environment.type,
           image: message.image,
@@ -233,10 +239,11 @@ class ManagedSupervisor {
           snapshotFriendlyId: message.snapshot.friendlyId,
         });
 
-        this.resourceMonitor.blockResources({
-          cpu: message.run.machine.cpu,
-          memory: message.run.machine.memory,
-        });
+        // Disabled for now
+        // this.resourceMonitor.blockResources({
+        //   cpu: message.run.machine.cpu,
+        //   memory: message.run.machine.memory,
+        // });
       } catch (error) {
         this.logger.error("[ManagedWorker] Failed to create workload", { error });
       }

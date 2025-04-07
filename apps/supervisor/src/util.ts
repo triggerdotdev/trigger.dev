@@ -4,3 +4,7 @@ export function getDockerHostDomain() {
 
   return isMacOs || isWindows ? "host.docker.internal" : "localhost";
 }
+
+export function getRunnerId(runId: string) {
+  return `runner-${runId.replace("run_", "")}`;
+}

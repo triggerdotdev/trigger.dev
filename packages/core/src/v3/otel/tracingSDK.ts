@@ -142,6 +142,7 @@ export class TracingSDK {
 
     traceProvider.addSpanProcessor(
       new TaskContextSpanProcessor(
+        traceProvider.getTracer("trigger-dev-worker", VERSION),
         getEnvVar("OTEL_BATCH_PROCESSING_ENABLED") === "1"
           ? new BatchSpanProcessor(spanExporter, {
               maxExportBatchSize: parseInt(getEnvVar("OTEL_SPAN_MAX_EXPORT_BATCH_SIZE") ?? "64"),

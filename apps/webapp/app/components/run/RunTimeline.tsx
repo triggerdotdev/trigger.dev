@@ -11,6 +11,7 @@ import { DateTime, DateTimeAccurate } from "../primitives/DateTime";
 import { LiveTimer } from "../runs/v3/LiveTimer";
 import tileBgPath from "~/assets/images/error-banner-tile@2x.png";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
+import { getHelpTextForEvent, TimelineSpanEvent } from "~/utils/timelineSpanEvents";
 
 // Types for the RunTimeline component
 export type TimelineEventState = "complete" | "error" | "inprogress" | "delayed";
@@ -344,11 +345,11 @@ export function RunTimelineEvent({
       <div className="relative flex flex-col items-center justify-center">
         <EventMarker variant={variant} state={state} style={style} />
       </div>
-      <div className="flex items-baseline justify-between gap-3">
+      <div className="flex min-w-0 items-baseline justify-between gap-3">
         <TooltipProvider disableHoverableContent>
           <Tooltip>
-            <TooltipTrigger className="cursor-default">
-              <span className="font-medium text-text-bright">{title}</span>
+            <TooltipTrigger className="min-w-0 max-w-full cursor-default text-left">
+              <div className="truncate font-medium text-text-bright">{title}</div>
             </TooltipTrigger>
             {helpText && (
               <TooltipContent className="flex items-center gap-1 text-xs">
@@ -358,7 +359,9 @@ export function RunTimelineEvent({
           </Tooltip>
         </TooltipProvider>
         {subtitle ? (
-          <span className="text-xs tabular-nums text-text-dimmed">{subtitle}</span>
+          <span className="whitespace-nowrap text-xs tabular-nums text-text-dimmed">
+            {subtitle}
+          </span>
         ) : null}
       </div>
     </div>
@@ -673,197 +676,4 @@ export function SpanTimeline({
       </div>
     </>
   );
-}
-
-export type TimelineSpanEvent = {
-  name: string;
-  offset: number;
-  timestamp: Date;
-  duration?: number;
-  helpText?: string;
-  markerVariant: TimelineEventVariant;
-  lineVariant: TimelineLineVariant;
-};
-
-export function createTimelineSpanEventsFromSpanEvents(
-  spanEvents: SpanEvent[],
-  isAdmin: boolean,
-  relativeStartTime?: number
-): Array<TimelineSpanEvent> {
-  // Rest of function remains the same
-  if (!spanEvents) {
-    return [];
-  }
-
-  const matchingSpanEvents = spanEvents.filter((spanEvent) =>
-    spanEvent.name.startsWith("trigger.dev/")
-  );
-
-  if (matchingSpanEvents.length === 0) {
-    return [];
-  }
-
-  const sortedSpanEvents = [...matchingSpanEvents].sort((a, b) => {
-    if (a.time === b.time) {
-      return a.name.localeCompare(b.name);
-    }
-
-    const aTime = typeof a.time === "string" ? new Date(a.time) : a.time;
-    const bTime = typeof b.time === "string" ? new Date(b.time) : b.time;
-
-    return aTime.getTime() - bTime.getTime();
-  });
-
-  const visibleSpanEvents = sortedSpanEvents.filter(
-    (spanEvent) =>
-      isAdmin ||
-      !getAdminOnlyForEvent(
-        "event" in spanEvent.properties && typeof spanEvent.properties.event === "string"
-          ? spanEvent.properties.event
-          : spanEvent.name
-      )
-  );
-
-  if (visibleSpanEvents.length === 0) {
-    return [];
-  }
-
-  const firstEventTime =
-    typeof visibleSpanEvents[0].time === "string"
-      ? new Date(visibleSpanEvents[0].time)
-      : visibleSpanEvents[0].time;
-
-  const $relativeStartTime = relativeStartTime ?? firstEventTime.getTime();
-
-  const events = visibleSpanEvents.map((spanEvent, index) => {
-    const timestamp =
-      typeof spanEvent.time === "string" ? new Date(spanEvent.time) : spanEvent.time;
-
-    const offset = millisecondsToNanoseconds(timestamp.getTime() - $relativeStartTime);
-
-    const duration =
-      "duration" in spanEvent.properties && typeof spanEvent.properties.duration === "number"
-        ? spanEvent.properties.duration
-        : undefined;
-
-    const name =
-      "event" in spanEvent.properties && typeof spanEvent.properties.event === "string"
-        ? spanEvent.properties.event
-        : spanEvent.name;
-
-    let markerVariant: TimelineEventVariant = "dot-hollow";
-
-    if (index === 0) {
-      markerVariant = "start-cap";
-    }
-
-    return {
-      name: getFriendlyNameForEvent(name),
-      offset,
-      timestamp,
-      duration,
-      properties: spanEvent.properties,
-      helpText: getHelpTextForEvent(name),
-      markerVariant,
-      lineVariant: "light" as const,
-    };
-  });
-
-  // Now sort by offset, ascending
-  events.sort((a, b) => a.offset - b.offset);
-
-  return events;
-}
-
-function getFriendlyNameForEvent(event: string): string {
-  switch (event) {
-    case "dequeue": {
-      return "Dequeued";
-    }
-    case "fork": {
-      return "Launched";
-    }
-    case "create_attempt": {
-      return "Attempt created";
-    }
-    case "import": {
-      return "Imported task file";
-    }
-    case "lazy_payload": {
-      return "Lazy attempt initialized";
-    }
-    case "pod_scheduled": {
-      return "Pod scheduled";
-    }
-    default: {
-      return event;
-    }
-  }
-}
-
-function getAdminOnlyForEvent(event: string): boolean {
-  switch (event) {
-    case "dequeue": {
-      return false;
-    }
-    case "fork": {
-      return false;
-    }
-    case "create_attempt": {
-      return true;
-    }
-    case "import": {
-      return true;
-    }
-    case "lazy_payload": {
-      return true;
-    }
-    case "pod_scheduled": {
-      return true;
-    }
-    default: {
-      return true;
-    }
-  }
-}
-
-function getHelpTextForEvent(event: string): string | undefined {
-  switch (event) {
-    case "dequeue": {
-      return "The run was dequeued from the queue";
-    }
-    case "fork": {
-      return "The process was created to run the task";
-    }
-    case "create_attempt": {
-      return "An attempt was created for the run";
-    }
-    case "import": {
-      return "A task file was imported";
-    }
-    case "lazy_payload": {
-      return "The payload was initialized lazily";
-    }
-    case "pod_scheduled": {
-      return "The Kubernetes pod was scheduled to run";
-    }
-    case "Triggered": {
-      return "The run was triggered";
-    }
-    case "Dequeued": {
-      return "The run was dequeued from the queue";
-    }
-    case "Started": {
-      return "The run began executing";
-    }
-    case "Finished": {
-      return "The run completed execution";
-    }
-    case "Expired": {
-      return "The run expired before it could be started";
-    }
-    default: {
-      return undefined;
-    }
-  }
 }

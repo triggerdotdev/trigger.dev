@@ -99,7 +99,7 @@ export class OtelTaskLogger implements TaskLogger {
       ...options,
       attributes: {
         ...options?.attributes,
-        ...(options?.icon ? { [SemanticInternalAttributes.STYLE_ICON]: options.icon } : {}),
+        [SemanticInternalAttributes.STYLE_ICON]: options?.icon ?? "trace",
       },
     };
 

@@ -36,6 +36,7 @@ import {
   logLevels,
   ManagedRuntimeManager,
   OtelTaskLogger,
+  populateEnv,
   StandardLifecycleHooksManager,
   StandardLocalsManager,
   StandardMetadataManager,
@@ -103,7 +104,6 @@ localsAPI.setGlobalLocalsManager(standardLocalsManager);
 
 const standardRunTimelineMetricsManager = new StandardRunTimelineMetricsManager();
 runTimelineMetrics.setGlobalManager(standardRunTimelineMetricsManager);
-standardRunTimelineMetricsManager.seedMetricsFromEnvironment();
 
 const standardLifecycleHooksManager = new StandardLifecycleHooksManager();
 lifecycleHooks.setGlobalLifecycleHooksManager(standardLifecycleHooksManager);
@@ -238,7 +238,13 @@ const zodIpc = new ZodIpcConnection({
   emitSchema: ExecutorToWorkerMessageCatalog,
   process,
   handlers: {
-    EXECUTE_TASK_RUN: async ({ execution, traceContext, metadata, metrics }, sender) => {
+    EXECUTE_TASK_RUN: async ({ execution, traceContext, metadata, metrics, env }, sender) => {
+      if (env) {
+        populateEnv(env, {
+          override: true,
+        });
+      }
+
       log(`[${new Date().toISOString()}] Received EXECUTE_TASK_RUN`, execution);
 
       standardRunTimelineMetricsManager.registerMetricsFromExecution(metrics);
@@ -302,6 +308,7 @@ const zodIpc = new ZodIpcConnection({
             "import",
             {
               entryPoint: taskManifest.entryPoint,
+              file: taskManifest.filePath,
             },
             async () => {
               const beforeImport = performance.now();
@@ -433,6 +440,8 @@ const zodIpc = new ZodIpcConnection({
             error: {
               type: "INTERNAL_ERROR",
               code: TaskRunErrorCodes.CONFIGURED_INCORRECTLY,
+              message: err instanceof Error ? err.message : String(err),
+              stackTrace: err instanceof Error ? err.stack : undefined,
             },
             usage: {
               durationMs: 0,

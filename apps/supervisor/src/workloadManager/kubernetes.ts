@@ -4,10 +4,10 @@ import {
   type WorkloadManagerCreateOptions,
   type WorkloadManagerOptions,
 } from "./types.js";
-import { RunnerId } from "@trigger.dev/core/v3/isomorphic";
 import type { EnvironmentType, MachinePreset } from "@trigger.dev/core/v3";
 import { env } from "../env.js";
 import { type K8sApi, createK8sApi, type k8s } from "../clients/kubernetes.js";
+import { getRunnerId } from "../util.js";
 
 type ResourceQuantities = {
   [K in "cpu" | "memory" | "ephemeral-storage"]?: string;
@@ -31,7 +31,7 @@ export class KubernetesWorkloadManager implements WorkloadManager {
   async create(opts: WorkloadManagerCreateOptions) {
     this.logger.log("[KubernetesWorkloadManager] Creating container", { opts });
 
-    const runnerId = RunnerId.generate().replace(/_/g, "-");
+    const runnerId = getRunnerId(opts.runFriendlyId);
 
     try {
       await this.k8s.core.createNamespacedPod({
@@ -61,6 +61,14 @@ export class KubernetesWorkloadManager implements WorkloadManager {
                 ],
                 resources: this.#getResourcesForMachine(opts.machine),
                 env: [
+                  {
+                    name: "TRIGGER_DEQUEUED_AT_MS",
+                    value: opts.dequeuedAt.getTime().toString(),
+                  },
+                  {
+                    name: "TRIGGER_POD_SCHEDULED_AT_MS",
+                    value: Date.now().toString(),
+                  },
                   {
                     name: "TRIGGER_RUN_ID",
                     value: opts.runFriendlyId,
@@ -97,7 +105,11 @@ export class KubernetesWorkloadManager implements WorkloadManager {
                   },
                   {
                     name: "TRIGGER_WORKER_INSTANCE_NAME",
-                    value: env.TRIGGER_WORKER_INSTANCE_NAME,
+                    valueFrom: {
+                      fieldRef: {
+                        fieldPath: "spec.nodeName",
+                      },
+                    },
                   },
                   {
                     name: "OTEL_EXPORTER_OTLP_ENDPOINT",
@@ -133,6 +145,9 @@ export class KubernetesWorkloadManager implements WorkloadManager {
                   },
                   ...(this.opts.warmStartUrl
                     ? [{ name: "TRIGGER_WARM_START_URL", value: this.opts.warmStartUrl }]
+                    : []),
+                  ...(this.opts.metadataUrl
+                    ? [{ name: "TRIGGER_METADATA_URL", value: this.opts.metadataUrl }]
                     : []),
                   ...(this.opts.heartbeatIntervalSeconds
                     ? [
@@ -214,7 +229,7 @@ export class KubernetesWorkloadManager implements WorkloadManager {
       automountServiceAccountToken: false,
       imagePullSecrets: this.getImagePullSecrets(),
       nodeSelector: {
-        nodetype: "worker-re2",
+        nodetype: env.KUBERNETES_WORKER_NODETYPE_LABEL,
       },
     };
   }

@@ -224,6 +224,9 @@ export function createTask<
   return task;
 }
 
+/**
+ * @deprecated use ai.tool() instead
+ */
 export function createToolTask<
   TIdentifier extends string,
   TParameters extends ToolTaskParameters,

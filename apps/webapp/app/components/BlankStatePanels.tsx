@@ -228,9 +228,8 @@ export function DeploymentsNone() {
       panelClassName="max-w-full"
     >
       <Paragraph spacing variant="small">
-        There are several ways to deploy your tasks. You can use the CLI, Continuous Integration
-        (like GitHub Actions), or an integration with a service like Netlify or Vercel. Make sure
-        you{" "}
+        There are several ways to deploy your tasks. You can use the CLI or a Continuous Integration
+        service like GitHub Actions. Make sure you{" "}
         <TextLink href={v3EnvironmentVariablesPath(organization, project, environment)}>
           set your environment variables
         </TextLink>{" "}
@@ -276,9 +275,8 @@ export function DeploymentsNoneDev() {
           different environment.
         </Paragraph>
         <Paragraph spacing variant="small">
-          There are several ways to deploy your tasks. You can use the CLI, Continuous Integration
-          (like GitHub Actions), or an integration with a service like Netlify or Vercel. Make sure
-          you{" "}
+          There are several ways to deploy your tasks. You can use the CLI or a Continuous
+          Integration service like GitHub Actions. Make sure you{" "}
           <TextLink href={v3EnvironmentVariablesPath(organization, project, environment)}>
             set your environment variables
           </TextLink>{" "}
@@ -419,17 +417,15 @@ export function NoWaitpointTokens() {
       iconClassName="text-sky-500"
       panelClassName="max-w-md"
       accessory={
-        <LinkButton to={docsPath("wait")} variant="docs/small" LeadingIcon={BookOpenIcon}>
+        <LinkButton to={docsPath("wait-for-token")} variant="docs/small" LeadingIcon={BookOpenIcon}>
           Waitpoint docs
         </LinkButton>
       }
     >
       <Paragraph spacing variant="small">
-        Waitpoint tokens are used to pause runs until you complete the token so the run can
-        continue.
-      </Paragraph>
-      <Paragraph spacing variant="small">
-        You can build approval workflows using them, as well as other use cases.
+        Waitpoint tokens pause task runs until you complete the token. They're commonly used for
+        approval workflows and other scenarios where you need to wait for external confirmation,
+        such as human-in-the-loop processes.
       </Paragraph>
     </InfoPanel>
   );

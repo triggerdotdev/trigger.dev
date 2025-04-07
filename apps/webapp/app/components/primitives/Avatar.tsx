@@ -135,7 +135,7 @@ function AvatarLetters({
 
   return (
     <span
-      className="grid place-items-center overflow-hidden text-charcoal-750"
+      className="grid shrink-0 place-items-center overflow-hidden text-charcoal-750"
       style={styleFromSize(size)}
     >
       {/* This is the square container */}

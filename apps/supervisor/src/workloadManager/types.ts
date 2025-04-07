@@ -5,6 +5,7 @@ export interface WorkloadManagerOptions {
   workloadApiDomain?: string; // If unset, will use orchestrator-specific default
   workloadApiPort: number;
   warmStartUrl?: string;
+  metadataUrl?: string;
   imagePullSecrets?: string[];
   heartbeatIntervalSeconds?: number;
   snapshotPollIntervalSeconds?: number;
@@ -20,6 +21,7 @@ export interface WorkloadManagerCreateOptions {
   machine: MachinePreset;
   version: string;
   nextAttemptNumber?: number;
+  dequeuedAt: Date;
   // identifiers
   envId: string;
   envType: EnvironmentType;

@@ -204,6 +204,7 @@ async function createBuildOptions(
     logLevel: "silent",
     logOverride: {
       "empty-glob": "silent",
+      "package.json": "silent",
     },
   };
 }

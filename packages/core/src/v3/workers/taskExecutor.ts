@@ -27,6 +27,7 @@ import {
 import { recordSpanException, TracingSDK } from "../otel/index.js";
 import { runTimelineMetrics } from "../run-timeline-metrics-api.js";
 import {
+  COLD_VARIANT,
   RetryOptions,
   ServerBackgroundWorker,
   TaskRunContext,
@@ -34,6 +35,7 @@ import {
   TaskRunExecution,
   TaskRunExecutionResult,
   TaskRunExecutionRetry,
+  WARM_VARIANT,
 } from "../schemas/index.js";
 import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
 import { taskContext } from "../task-context-api.js";
@@ -57,6 +59,7 @@ export type TaskExecutorOptions = {
     enabledInDev?: boolean;
     default?: RetryOptions;
   };
+  isWarmStart?: boolean;
 };
 
 export class TaskExecutor {
@@ -69,6 +72,7 @@ export class TaskExecutor {
         default?: RetryOptions;
       }
     | undefined;
+  private _isWarmStart: boolean | undefined;
 
   constructor(
     public task: TaskMetadataWithFunctions,
@@ -78,6 +82,7 @@ export class TaskExecutor {
     this._tracer = options.tracer;
     this._consoleInterceptor = options.consoleInterceptor;
     this._retries = options.retries;
+    this._isWarmStart = options.isWarmStart;
   }
 
   async execute(
@@ -97,6 +102,7 @@ export class TaskExecutor {
     taskContext.setGlobalTaskContext({
       ctx,
       worker,
+      isWarmStart: this._isWarmStart,
     });
 
     if (execution.run.metadata) {
@@ -297,9 +303,17 @@ export class TaskExecutor {
         kind: SpanKind.CONSUMER,
         attributes: {
           [SemanticInternalAttributes.STYLE_ICON]: "attempt",
+          [SemanticInternalAttributes.ENTITY_TYPE]: "attempt",
           [SemanticInternalAttributes.SPAN_ATTEMPT]: true,
           ...(execution.attempt.number === 1
             ? runTimelineMetrics.convertMetricsToSpanAttributes()
+            : {}),
+          ...(execution.environment.type !== "DEVELOPMENT"
+            ? {
+                [SemanticInternalAttributes.STYLE_VARIANT]: this._isWarmStart
+                  ? WARM_VARIANT
+                  : COLD_VARIANT,
+              }
             : {}),
         },
         events:
@@ -972,7 +986,7 @@ export class TaskExecutor {
       },
       {
         attributes: {
-          [SemanticInternalAttributes.STYLE_ICON]: "clock",
+          [SemanticInternalAttributes.STYLE_ICON]: "tabler-clock",
           [SemanticInternalAttributes.COLLAPSED]: true,
         },
       }

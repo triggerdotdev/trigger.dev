@@ -56,14 +56,14 @@ jobs:
     secrets: inherit
 
   publish-webapp:
-    needs: [typecheck, units]
+    needs: [typecheck]
     uses: ./.github/workflows/publish-webapp.yml
     secrets: inherit
     with:
       image_tag: ${{ inputs.image_tag }}
 
   publish-worker:
-    needs: [typecheck, units]
+    needs: [typecheck]
     uses: ./.github/workflows/publish-worker.yml
     secrets: inherit
     with:

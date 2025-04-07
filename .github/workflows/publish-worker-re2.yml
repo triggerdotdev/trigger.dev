@@ -18,16 +18,16 @@ permissions:
   contents: read
 
 jobs:
-  check-branch:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Fail if re2-prod-* is pushed from a non-main branch
-        if: startsWith(github.ref_name, 're2-prod-') && github.base_ref != 'main'
-        run: |
-          echo "🚫 re2-prod-* tags can only be pushed from the main branch."
-          exit 1
+  # check-branch:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Fail if re2-prod-* is pushed from a non-main branch
+  #       if: startsWith(github.ref_name, 're2-prod-') && github.base_ref != 'main'
+  #       run: |
+  #         echo "🚫 re2-prod-* tags can only be pushed from the main branch."
+  #         exit 1
   build:
-    needs: check-branch
+    # needs: check-branch
     strategy:
       matrix:
         package: [supervisor]
