@@ -21,7 +21,7 @@
     "@trigger.dev/database": "workspace:*",
     "@unkey/cache": "^1.5.0",
     "assert-never": "^1.2.1",
-    "nanoid": "^3.3.4",
+    "nanoid": "3.3.8",
     "redlock": "5.0.0-beta.2",
     "seedrandom": "^3.0.5",
     "zod": "3.23.8"
