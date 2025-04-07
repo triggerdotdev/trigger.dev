@@ -163,9 +163,13 @@ export default function Page() {
                             token,
                             filters
                           );
+                          const rowIsSelected = waitpointParam === token.id;
 
                           return (
-                            <TableRow key={token.id}>
+                            <TableRow
+                              key={token.id}
+                              className={rowIsSelected ? "bg-grid-dimmed" : undefined}
+                            >
                               <TableCell to={path}>
                                 <span className="opacity-60">
                                   <DateTime date={token.createdAt} />
