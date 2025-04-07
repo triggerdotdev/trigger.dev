@@ -194,6 +194,11 @@ export class CheckpointSystem {
             metadata: snapshot.metadata,
           },
           previousSnapshotId: snapshot.id,
+          batchId: snapshot.batchId ?? undefined,
+          completedWaitpoints: snapshot.completedWaitpoints.map((waitpoint) => ({
+            id: waitpoint.id,
+            index: waitpoint.index,
+          })),
           environmentId: snapshot.environmentId,
           environmentType: snapshot.environmentType,
           projectId: snapshot.projectId,
