@@ -25,6 +25,7 @@ import { appEnvTitleTag } from "./utils";
 import { type Handle } from "./utils/handle";
 import { useEffect } from "react";
 import { useTypedMatchesData } from "./hooks/useTypedMatchData";
+import { ShortcutsProvider } from "./components/primitives/ShortcutsProvider";
 
 declare global {
   interface Window {
@@ -129,8 +130,10 @@ export default function App() {
           <Links />
         </head>
         <body className="bg-darkBackground h-full overflow-hidden">
-          <Outlet />
-          <Toast />
+          <ShortcutsProvider>
+            <Outlet />
+            <Toast />
+          </ShortcutsProvider>
           <ScrollRestoration />
           <ExternalScripts />
           <Scripts />

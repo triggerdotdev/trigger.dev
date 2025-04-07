@@ -2,7 +2,6 @@ import {
   ArrowUpRightIcon,
   BookOpenIcon,
   CalendarDaysIcon,
-  ChatBubbleLeftEllipsisIcon,
   EnvelopeIcon,
   LightBulbIcon,
   QuestionMarkCircleIcon,
@@ -13,6 +12,7 @@ import { DiscordIcon, SlackIcon } from "@trigger.dev/companyicons";
 import { Fragment, useState } from "react";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 import { Feedback } from "../Feedback";
+import { Shortcuts } from "../Shortcuts";
 import { StepContentContainer } from "../StepContentContainer";
 import { Button } from "../primitives/Buttons";
 import { ClipboardField } from "../primitives/ClipboardField";
@@ -22,7 +22,6 @@ import { Paragraph } from "../primitives/Paragraph";
 import { Popover, PopoverContent, PopoverSideMenuTrigger } from "../primitives/Popover";
 import { StepNumber } from "../primitives/StepNumber";
 import { MenuCount, SideMenuItem } from "./SideMenuItem";
-import { Shortcuts } from "../Shortcuts";
 
 export function HelpAndFeedback({ disableShortcut = false }: { disableShortcut?: boolean }) {
   const [isHelpMenuOpen, setHelpMenuOpen] = useState(false);

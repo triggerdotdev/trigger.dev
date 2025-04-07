@@ -81,6 +81,7 @@ import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
 import { ShortcutKey } from "../primitives/ShortcutKey";
 import { useFeatures } from "~/hooks/useFeatures";
 import { useKapa } from "~/root";
+import { useShortcuts } from "~/components/primitives/ShortcutsProvider";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 export type SideMenuProject = Pick<
@@ -550,6 +551,7 @@ function HelpAndAI() {
   const [isKapaOpen, setIsKapaOpen] = useState(false);
   const features = useFeatures();
   const kapa = useKapa();
+  const { disableShortcuts, enableShortcuts } = useShortcuts();
 
   useEffect(() => {
     if (!features.isManagedCloud || !kapa?.websiteId) return;
@@ -559,6 +561,7 @@ function HelpAndAI() {
     // Define the handler function
     const handleModalClose = () => {
       setIsKapaOpen(false);
+      enableShortcuts();
     };
 
     const kapaInterval = setInterval(() => {
@@ -566,6 +569,11 @@ function HelpAndAI() {
         clearInterval(kapaInterval);
         window.Kapa("render");
         window.Kapa("onModalClose", handleModalClose);
+        // Register onModalOpen handler
+        window.Kapa("onModalOpen", () => {
+          setIsKapaOpen(true);
+          disableShortcuts();
+        });
       }
     }, 100);
 
@@ -576,7 +584,7 @@ function HelpAndAI() {
         window.Kapa("unmount");
       }
     };
-  }, [features.isManagedCloud, kapa?.websiteId]);
+  }, [features.isManagedCloud, kapa?.websiteId, disableShortcuts, enableShortcuts]);
 
   return (
     <>
@@ -595,6 +603,7 @@ function HelpAndAI() {
                   if (typeof window.Kapa === "function") {
                     window.Kapa("open");
                     setIsKapaOpen(true);
+                    disableShortcuts();
                   }
                 }}
               >
