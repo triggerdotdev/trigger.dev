@@ -592,7 +592,7 @@ function HelpAndAI() {
       <TooltipProvider disableHoverableContent>
         <Tooltip>
           <TooltipTrigger asChild>
-            <div>
+            <div className="inline-flex">
               <Button
                 variant="small-menu-item"
                 data-action="ask-ai"
