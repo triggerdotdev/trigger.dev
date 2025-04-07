@@ -372,7 +372,9 @@ export class WaitpointTimeoutError extends Error {
 const DURATION_WAIT_CHARGE_THRESHOLD_MS = 5000;
 
 function printWaitBelowThreshold() {
-  console.warn(`Waits of ${DURATION_WAIT_CHARGE_THRESHOLD_MS / 1000}s or less are charged.`);
+  console.warn(
+    `Waits of ${DURATION_WAIT_CHARGE_THRESHOLD_MS / 1000}s or less count towards compute usage.`
+  );
 }
 
 export const wait = {
