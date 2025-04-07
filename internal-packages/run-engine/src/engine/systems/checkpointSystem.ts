@@ -283,6 +283,7 @@ export class CheckpointSystem {
         environmentType: snapshot.environmentType,
         projectId: snapshot.projectId,
         organizationId: snapshot.organizationId,
+        batchId: snapshot.batchId ?? undefined,
         completedWaitpoints: snapshot.completedWaitpoints,
         workerId,
         runnerId,
