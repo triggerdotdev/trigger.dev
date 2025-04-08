@@ -41,7 +41,9 @@ export class StandardResourceCatalog implements ResourceCatalog {
           message += `\n        - releaseConcurrencyOnWaitpoint: ${existingQueue.releaseConcurrencyOnWaitpoint} vs ${queue.releaseConcurrencyOnWaitpoint}`;
         }
 
-        message += "\n       Skipping the second definition.";
+        message += "\n       Keeping the first definition:";
+        message += `\n        - concurrencyLimit: ${existingQueue.concurrencyLimit}`;
+        message += `\n        - releaseConcurrencyOnWaitpoint: ${existingQueue.releaseConcurrencyOnWaitpoint}`;
         console.warn(message);
         return;
       }
