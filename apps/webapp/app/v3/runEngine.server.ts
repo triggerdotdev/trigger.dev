@@ -18,6 +18,8 @@ function createRunEngine() {
       workers: env.RUN_ENGINE_WORKER_COUNT,
       tasksPerWorker: env.RUN_ENGINE_TASKS_PER_WORKER,
       pollIntervalMs: env.RUN_ENGINE_WORKER_POLL_INTERVAL,
+      immediatePollIntervalMs: env.RUN_ENGINE_WORKER_IMMEDIATE_POLL_INTERVAL,
+      limit: env.RUN_ENGINE_WORKER_CONCURRENCY_LIMIT,
       shutdownTimeoutMs: env.RUN_ENGINE_WORKER_SHUTDOWN_TIMEOUT_MS,
       redis: {
         keyPrefix: "engine:",
