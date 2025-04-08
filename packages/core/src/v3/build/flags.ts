@@ -27,11 +27,11 @@ export function dedupFlags(flags: string): string {
     .map((flag): [string, string | boolean] => {
       const equalIndex = flag.indexOf("=");
       if (equalIndex !== -1) {
-        const key = flag.slice(0, equalIndex);
+        const key = flag.slice(0, equalIndex).replace(/_/g, "-");
         const value = flag.slice(equalIndex + 1);
         return [key, value];
       } else {
-        return [flag, true];
+        return [flag.replace(/_/g, "-"), true];
       }
     });
 
