@@ -209,6 +209,7 @@ export class RunListPresenter extends BasePresenter {
         lockedAt: Date | null;
         delayUntil: Date | null;
         updatedAt: Date;
+        completedAt: Date | null;
         isTest: boolean;
         spanId: string;
         idempotencyKey: string | null;
@@ -238,6 +239,7 @@ export class RunListPresenter extends BasePresenter {
     tr."delayUntil" AS "delayUntil",
     tr."lockedAt" AS "lockedAt",
     tr."updatedAt" AS "updatedAt",
+    tr."completedAt" AS "completedAt",
     tr."isTest" AS "isTest",
     tr."spanId" AS "spanId",
     tr."idempotencyKey" AS "idempotencyKey",
@@ -383,7 +385,9 @@ WHERE
           startedAt: startedAt ? startedAt.toISOString() : undefined,
           delayUntil: run.delayUntil ? run.delayUntil.toISOString() : undefined,
           hasFinished,
-          finishedAt: hasFinished ? run.updatedAt.toISOString() : undefined,
+          finishedAt: hasFinished
+            ? run.completedAt?.toISOString() ?? run.updatedAt.toISOString()
+            : undefined,
           isTest: run.isTest,
           status: run.status,
           version: run.version,

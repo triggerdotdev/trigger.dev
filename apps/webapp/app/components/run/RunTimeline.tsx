@@ -248,7 +248,7 @@ function buildTimelineItems(run: TimelineSpanRun): TimelineItem[] {
         items.push({
           type: "line",
           id: "executing",
-          title: formatDuration(run.executedAt, run.updatedAt),
+          title: formatDuration(run.executedAt, run.completedAt ?? run.updatedAt),
           state,
           shouldRender: true,
           variant: "normal",
@@ -271,7 +271,7 @@ function buildTimelineItems(run: TimelineSpanRun): TimelineItem[] {
         items.push({
           type: "line",
           id: "legacy-executing",
-          title: formatDuration(run.startedAt, run.updatedAt),
+          title: formatDuration(run.startedAt, run.completedAt ?? run.updatedAt),
           state,
           shouldRender: true,
           variant: "normal",
@@ -296,7 +296,7 @@ function buildTimelineItems(run: TimelineSpanRun): TimelineItem[] {
       type: "event",
       id: "finished",
       title: "Finished",
-      date: run.updatedAt,
+      date: run.completedAt ?? run.updatedAt,
       previousDate: run.executedAt ?? run.startedAt ?? undefined,
       state,
       shouldRender: true,
