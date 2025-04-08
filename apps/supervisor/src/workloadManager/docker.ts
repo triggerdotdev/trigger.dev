@@ -22,7 +22,7 @@ export class DockerWorkloadManager implements WorkloadManager {
   async create(opts: WorkloadManagerCreateOptions) {
     this.logger.log("[DockerWorkloadProvider] Creating container", { opts });
 
-    const runnerId = getRunnerId(opts.runFriendlyId);
+    const runnerId = getRunnerId(opts.runFriendlyId, opts.nextAttemptNumber);
 
     const runArgs = [
       "run",
