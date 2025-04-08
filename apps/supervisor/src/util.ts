@@ -5,6 +5,12 @@ export function getDockerHostDomain() {
   return isMacOs || isWindows ? "host.docker.internal" : "localhost";
 }
 
-export function getRunnerId(runId: string) {
-  return `runner-${runId.replace("run_", "")}`;
+export function getRunnerId(runId: string, attemptNumber?: number) {
+  const parts = ["runner", runId.replace("run_", "")];
+
+  if (attemptNumber && attemptNumber > 1) {
+    parts.push(`attempt-${attemptNumber}`);
+  }
+
+  return parts.join("-");
 }
