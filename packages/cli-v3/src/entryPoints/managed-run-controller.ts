@@ -154,18 +154,9 @@ class ManagedRunController {
       } = { phase: "IDLE" };
 
   constructor(opts: ManagedRunControllerOptions) {
-    logger.debug("[ManagedRunController] Creating controller", { env });
-
     this.workerManifest = opts.workerManifest;
 
     this.runnerId = env.TRIGGER_RUNNER_ID;
-
-    this.heartbeatIntervalSeconds = env.TRIGGER_HEARTBEAT_INTERVAL_SECONDS;
-    this.snapshotPollIntervalSeconds = env.TRIGGER_SNAPSHOT_POLL_INTERVAL_SECONDS;
-
-    if (env.TRIGGER_METADATA_URL) {
-      this.metadataClient = new MetadataClient(env.TRIGGER_METADATA_URL);
-    }
 
     this.workerApiUrl = `${env.TRIGGER_SUPERVISOR_API_PROTOCOL}://${env.TRIGGER_SUPERVISOR_API_DOMAIN}:${env.TRIGGER_SUPERVISOR_API_PORT}`;
     this.workerInstanceName = env.TRIGGER_WORKER_INSTANCE_NAME;
@@ -177,6 +168,25 @@ class ManagedRunController {
       deploymentVersion: env.TRIGGER_DEPLOYMENT_VERSION,
       projectRef: env.TRIGGER_PROJECT_REF,
     });
+
+    const properties = {
+      ...env,
+      TRIGGER_POD_SCHEDULED_AT_MS: env.TRIGGER_POD_SCHEDULED_AT_MS.toISOString(),
+      TRIGGER_DEQUEUED_AT_MS: env.TRIGGER_DEQUEUED_AT_MS.toISOString(),
+    };
+
+    this.sendDebugLog({
+      runId: env.TRIGGER_RUN_ID,
+      message: "Creating run controller",
+      properties,
+    });
+
+    this.heartbeatIntervalSeconds = env.TRIGGER_HEARTBEAT_INTERVAL_SECONDS;
+    this.snapshotPollIntervalSeconds = env.TRIGGER_SNAPSHOT_POLL_INTERVAL_SECONDS;
+
+    if (env.TRIGGER_METADATA_URL) {
+      this.metadataClient = new MetadataClient(env.TRIGGER_METADATA_URL);
+    }
 
     if (env.TRIGGER_WARM_START_URL) {
       this.warmStartClient = new WarmStartClient({
@@ -192,11 +202,17 @@ class ManagedRunController {
     this.snapshotPoller = new HeartbeatService({
       heartbeat: async () => {
         if (!this.runFriendlyId) {
-          logger.debug("[ManagedRunController] Skipping snapshot poll, no run ID");
+          this.sendDebugLog({
+            runId: env.TRIGGER_RUN_ID,
+            message: "Skipping snapshot poll, no run ID",
+          });
           return;
         }
 
-        console.debug("[ManagedRunController] Polling for latest snapshot");
+        this.sendDebugLog({
+          runId: env.TRIGGER_RUN_ID,
+          message: "Polling for latest snapshot",
+        });
 
         this.sendDebugLog({
           runId: this.runFriendlyId,
@@ -209,7 +225,13 @@ class ManagedRunController {
         const response = await this.httpClient.getRunExecutionData(this.runFriendlyId);
 
         if (!response.success) {
-          console.error("[ManagedRunController] Snapshot poll failed", { error: response.error });
+          this.sendDebugLog({
+            runId: this.runFriendlyId,
+            message: "Snapshot poll failed",
+            properties: {
+              error: response.error,
+            },
+          });
 
           this.sendDebugLog({
             runId: this.runFriendlyId,
@@ -228,18 +250,28 @@ class ManagedRunController {
       intervalMs: this.snapshotPollIntervalSeconds * 1000,
       leadingEdge: false,
       onError: async (error) => {
-        console.error("[ManagedRunController] Failed to poll for snapshot", { error });
+        this.sendDebugLog({
+          runId: this.runFriendlyId,
+          message: "Failed to poll for snapshot",
+          properties: { error: error instanceof Error ? error.message : String(error) },
+        });
       },
     });
 
     this.runHeartbeat = new HeartbeatService({
       heartbeat: async () => {
         if (!this.runFriendlyId || !this.snapshotFriendlyId) {
-          logger.debug("[ManagedRunController] Skipping heartbeat, no run ID or snapshot ID");
+          this.sendDebugLog({
+            runId: this.runFriendlyId,
+            message: "Skipping heartbeat, no run ID or snapshot ID",
+          });
           return;
         }
 
-        console.debug("[ManagedRunController] Sending heartbeat");
+        this.sendDebugLog({
+          runId: this.runFriendlyId,
+          message: "heartbeat: started",
+        });
 
         const response = await this.httpClient.heartbeatRun(
           this.runFriendlyId,
@@ -247,8 +279,6 @@ class ManagedRunController {
         );
 
         if (!response.success) {
-          console.error("[ManagedRunController] Heartbeat failed", { error: response.error });
-
           this.sendDebugLog({
             runId: this.runFriendlyId,
             message: "heartbeat: failed",
@@ -261,12 +291,19 @@ class ManagedRunController {
       intervalMs: this.heartbeatIntervalSeconds * 1000,
       leadingEdge: false,
       onError: async (error) => {
-        console.error("[ManagedRunController] Failed to send heartbeat", { error });
+        this.sendDebugLog({
+          runId: this.runFriendlyId,
+          message: "Failed to send heartbeat",
+          properties: { error: error instanceof Error ? error.message : String(error) },
+        });
       },
     });
 
     process.on("SIGTERM", async () => {
-      logger.debug("[ManagedRunController] Received SIGTERM, stopping worker");
+      this.sendDebugLog({
+        runId: this.runFriendlyId,
+        message: "Received SIGTERM, stopping worker",
+      });
       await this.stop();
     });
   }
@@ -315,7 +352,11 @@ class ManagedRunController {
     }
 
     if (this.state.snapshot.friendlyId === snapshot.friendlyId) {
-      logger.debug("updateRunPhase: Snapshot not changed", { run, snapshot });
+      this.sendDebugLog({
+        runId: run.friendlyId,
+        message: "updateRunPhase: Snapshot not changed",
+        properties: { run: run.friendlyId, snapshot: snapshot.friendlyId },
+      });
 
       this.sendDebugLog({
         runId: run.friendlyId,
@@ -355,17 +396,29 @@ class ManagedRunController {
   private onExitRunPhase(newRun: Run | undefined = undefined) {
     // We're not in a run phase, nothing to do
     if (this.state.phase !== "RUN") {
-      logger.debug("onExitRunPhase: Not in run phase, skipping", { phase: this.state.phase });
+      this.sendDebugLog({
+        runId: this.runFriendlyId,
+        message: "onExitRunPhase: Not in run phase, skipping",
+        properties: { phase: this.state.phase },
+      });
       return;
     }
 
     // This is still the same run, so we're not exiting the phase
     if (newRun?.friendlyId === this.state.run.friendlyId) {
-      logger.debug("onExitRunPhase: Same run, skipping", { newRun });
+      this.sendDebugLog({
+        runId: this.runFriendlyId,
+        message: "onExitRunPhase: Same run, skipping",
+        properties: { newRun: newRun?.friendlyId },
+      });
       return;
     }
 
-    logger.debug("onExitRunPhase: Exiting run phase", { newRun });
+    this.sendDebugLog({
+      runId: this.runFriendlyId,
+      message: "onExitRunPhase: Exiting run phase",
+      properties: { newRun: newRun?.friendlyId },
+    });
 
     this.runHeartbeat.stop();
     this.snapshotPoller.stop();
@@ -423,7 +476,10 @@ class ManagedRunController {
     completedWaitpoints,
   }: Pick<RunExecutionData, "run" | "snapshot" | "completedWaitpoints">) {
     if (this.handleSnapshotChangeLock) {
-      console.warn("handleSnapshotChange: already in progress");
+      this.sendDebugLog({
+        runId: run.friendlyId,
+        message: "handleSnapshotChange: already in progress",
+      });
       return;
     }
 
@@ -431,9 +487,13 @@ class ManagedRunController {
 
     try {
       if (!this.snapshotFriendlyId) {
-        console.error("handleSnapshotChange: Missing snapshot ID", {
+        this.sendDebugLog({
           runId: run.friendlyId,
-          snapshotId: this.snapshotFriendlyId,
+          message: "handleSnapshotChange: Missing snapshot ID",
+          properties: {
+            newSnapshotId: snapshot.friendlyId,
+            newSnapshotStatus: snapshot.executionStatus,
+          },
         });
 
         this.sendDebugLog({
@@ -449,7 +509,11 @@ class ManagedRunController {
       }
 
       if (this.snapshotFriendlyId === snapshot.friendlyId) {
-        console.debug("handleSnapshotChange: snapshot not changed, skipping", { snapshot });
+        this.sendDebugLog({
+          runId: run.friendlyId,
+          message: "handleSnapshotChange: snapshot not changed, skipping",
+          properties: { snapshot: snapshot.friendlyId },
+        });
 
         this.sendDebugLog({
           runId: run.friendlyId,
@@ -462,13 +526,6 @@ class ManagedRunController {
 
         return;
       }
-
-      console.log(`handleSnapshotChange: ${snapshot.executionStatus}`, {
-        run,
-        oldSnapshotId: this.snapshotFriendlyId,
-        newSnapshot: snapshot,
-        completedWaitpoints: completedWaitpoints.length,
-      });
 
       this.sendDebugLog({
         runId: run.friendlyId,
@@ -483,12 +540,6 @@ class ManagedRunController {
       try {
         this.updateRunPhase(run, snapshot);
       } catch (error) {
-        console.error("handleSnapshotChange: failed to update run phase", {
-          run,
-          snapshot,
-          error,
-        });
-
         this.sendDebugLog({
           runId: run.friendlyId,
           message: "snapshot change: failed to update run phase",
@@ -507,8 +558,12 @@ class ManagedRunController {
           try {
             await this.cancelAttempt(run.friendlyId);
           } catch (error) {
-            console.error("Failed to cancel attempt, shutting down", {
-              error,
+            this.sendDebugLog({
+              runId: run.friendlyId,
+              message: "snapshot change: failed to cancel attempt",
+              properties: {
+                error: error instanceof Error ? error.message : String(error),
+              },
             });
 
             this.waitForNextRun();
@@ -518,24 +573,39 @@ class ManagedRunController {
           return;
         }
         case "FINISHED": {
-          console.log("Run is finished, will wait for next run");
+          this.sendDebugLog({
+            runId: run.friendlyId,
+            message: "Run is finished, will wait for next run",
+          });
           this.waitForNextRun();
           return;
         }
         case "QUEUED_EXECUTING":
         case "EXECUTING_WITH_WAITPOINTS": {
-          console.log("Run is executing with waitpoints", { snapshot });
+          this.sendDebugLog({
+            runId: run.friendlyId,
+            message: "Run is executing with waitpoints",
+            properties: { snapshot: snapshot.friendlyId },
+          });
 
           try {
             await this.taskRunProcess?.cleanup(false);
           } catch (error) {
-            console.error("Failed to cleanup task run process", { error });
+            this.sendDebugLog({
+              runId: run.friendlyId,
+              message: "Failed to cleanup task run process",
+              properties: { error: error instanceof Error ? error.message : String(error) },
+            });
           }
 
           if (snapshot.friendlyId !== this.snapshotFriendlyId) {
-            console.debug("Snapshot changed after cleanup, abort", {
-              oldSnapshotId: snapshot.friendlyId,
-              newSnapshotId: this.snapshotFriendlyId,
+            this.sendDebugLog({
+              runId: run.friendlyId,
+              message: "Snapshot changed after cleanup, abort",
+              properties: {
+                oldSnapshotId: snapshot.friendlyId,
+                newSnapshotId: this.snapshotFriendlyId,
+              },
             });
             return;
           }
@@ -544,21 +614,27 @@ class ManagedRunController {
           await sleep(200);
 
           if (snapshot.friendlyId !== this.snapshotFriendlyId) {
-            console.debug("Snapshot changed after suspend threshold, abort", {
-              oldSnapshotId: snapshot.friendlyId,
-              newSnapshotId: this.snapshotFriendlyId,
+            this.sendDebugLog({
+              runId: run.friendlyId,
+              message: "Snapshot changed after suspend threshold, abort",
+              properties: {
+                oldSnapshotId: snapshot.friendlyId,
+                newSnapshotId: this.snapshotFriendlyId,
+              },
             });
             return;
           }
 
           if (!this.runFriendlyId || !this.snapshotFriendlyId) {
-            console.error(
-              "handleSnapshotChange: Missing run ID or snapshot ID after suspension, abort",
-              {
+            this.sendDebugLog({
+              runId: run.friendlyId,
+              message:
+                "handleSnapshotChange: Missing run ID or snapshot ID after suspension, abort",
+              properties: {
                 runId: this.runFriendlyId,
                 snapshotId: this.snapshotFriendlyId,
-              }
-            );
+              },
+            });
             return;
           }
 
@@ -568,8 +644,12 @@ class ManagedRunController {
           );
 
           if (!suspendResult.success) {
-            console.error("Failed to suspend run, staying alive 🎶", {
-              error: suspendResult.error,
+            this.sendDebugLog({
+              runId: run.friendlyId,
+              message: "Failed to suspend run, staying alive 🎶",
+              properties: {
+                error: suspendResult.error,
+              },
             });
 
             this.sendDebugLog({
@@ -585,10 +665,6 @@ class ManagedRunController {
           }
 
           if (!suspendResult.data.ok) {
-            console.error("Failed to suspend run, staying alive 🎶🎶", {
-              suspendResult: suspendResult.data,
-            });
-
             this.sendDebugLog({
               runId: run.friendlyId,
               message: "checkpoint: failed to suspend run",
@@ -601,23 +677,35 @@ class ManagedRunController {
             return;
           }
 
-          console.log("Suspending, any day now 🚬", { suspendResult: suspendResult.data });
+          this.sendDebugLog({
+            runId: run.friendlyId,
+            message: "Suspending, any day now 🚬",
+            properties: { ok: suspendResult.data.ok },
+          });
           return;
         }
         case "SUSPENDED": {
-          console.log("Run was suspended, kill the process and wait for more runs", {
-            run,
-            snapshot,
+          this.sendDebugLog({
+            runId: run.friendlyId,
+            message: "Run was suspended, kill the process and wait for more runs",
+            properties: { run: run.friendlyId, snapshot: snapshot.friendlyId },
           });
 
           this.waitForNextRun();
           return;
         }
         case "PENDING_EXECUTING": {
-          console.log("Run is pending execution", { run, snapshot });
+          this.sendDebugLog({
+            runId: run.friendlyId,
+            message: "Run is pending execution",
+            properties: { run: run.friendlyId, snapshot: snapshot.friendlyId },
+          });
 
           if (completedWaitpoints.length === 0) {
-            console.log("No waitpoints to complete, nothing to do");
+            this.sendDebugLog({
+              runId: run.friendlyId,
+              message: "No waitpoints to complete, nothing to do",
+            });
             return;
           }
 
@@ -636,8 +724,6 @@ class ManagedRunController {
           );
 
           if (!continuationResult.success) {
-            console.error("Failed to continue execution", { error: continuationResult.error });
-
             this.sendDebugLog({
               runId: run.friendlyId,
               message: "failed to continue execution",
@@ -653,17 +739,27 @@ class ManagedRunController {
           return;
         }
         case "EXECUTING": {
-          console.log("Run is now executing", { run, snapshot });
+          this.sendDebugLog({
+            runId: run.friendlyId,
+            message: "Run is now executing",
+            properties: { run: run.friendlyId, snapshot: snapshot.friendlyId },
+          });
 
           if (completedWaitpoints.length === 0) {
             return;
           }
 
-          console.log("Processing completed waitpoints", { completedWaitpoints });
+          this.sendDebugLog({
+            runId: run.friendlyId,
+            message: "Processing completed waitpoints",
+            properties: { completedWaitpoints: completedWaitpoints.length },
+          });
 
           if (!this.taskRunProcess) {
-            console.error("No task run process, ignoring completed waitpoints", {
-              completedWaitpoints,
+            this.sendDebugLog({
+              runId: run.friendlyId,
+              message: "No task run process, ignoring completed waitpoints",
+              properties: { completedWaitpoints: completedWaitpoints.length },
             });
             return;
           }
@@ -676,7 +772,11 @@ class ManagedRunController {
         }
         case "RUN_CREATED":
         case "QUEUED": {
-          console.log("Status change not handled", { status: snapshot.executionStatus });
+          this.sendDebugLog({
+            runId: run.friendlyId,
+            message: "Status change not handled",
+            properties: { status: snapshot.executionStatus },
+          });
           return;
         }
         default: {
@@ -684,8 +784,6 @@ class ManagedRunController {
         }
       }
     } catch (error) {
-      console.error("handleSnapshotChange: unexpected error", { error });
-
       this.sendDebugLog({
         runId: run.friendlyId,
         message: "snapshot change: unexpected error",
@@ -701,18 +799,28 @@ class ManagedRunController {
 
   private async processEnvOverrides() {
     if (!this.metadataClient) {
-      logger.log("No metadata client, skipping env overrides");
+      this.sendDebugLog({
+        runId: this.runFriendlyId,
+        message: "No metadata client, skipping env overrides",
+      });
       return;
     }
 
     const overrides = await this.metadataClient.getEnvOverrides();
 
     if (!overrides) {
-      logger.log("No env overrides, skipping");
+      this.sendDebugLog({
+        runId: this.runFriendlyId,
+        message: "No env overrides, skipping",
+      });
       return;
     }
 
-    logger.log("Processing env overrides", { env: overrides });
+    this.sendDebugLog({
+      runId: this.runFriendlyId,
+      message: "Processing env overrides",
+      properties: { ...overrides },
+    });
 
     if (overrides.TRIGGER_SUCCESS_EXIT_CODE) {
       this.successExitCode = overrides.TRIGGER_SUCCESS_EXIT_CODE;
@@ -771,7 +879,10 @@ class ManagedRunController {
     isWarmStart?: boolean;
   }) {
     if (!this.socket) {
-      console.warn("[ManagedRunController] Starting run without socket connection");
+      this.sendDebugLog({
+        runId: runFriendlyId,
+        message: "Starting run without socket connection",
+      });
     }
 
     this.subscribeToRunNotifications({
@@ -786,7 +897,11 @@ class ManagedRunController {
     });
 
     if (!start.success) {
-      console.error("[ManagedRunController] Failed to start run", { error: start.error });
+      this.sendDebugLog({
+        runId: runFriendlyId,
+        message: "Failed to start run",
+        properties: { error: start.error },
+      });
 
       this.sendDebugLog({
         runId: runFriendlyId,
@@ -804,9 +919,10 @@ class ManagedRunController {
 
     const { run, snapshot, execution, envVars } = start.data;
 
-    logger.debug("[ManagedRunController] Started run", {
+    this.sendDebugLog({
       runId: run.friendlyId,
-      snapshot: snapshot.friendlyId,
+      message: "Started run",
+      properties: { snapshot: snapshot.friendlyId },
     });
 
     this.enterRunPhase(run, snapshot);
@@ -852,14 +968,19 @@ class ManagedRunController {
     try {
       return await this.executeRun({ run, snapshot, envVars: taskRunEnv, execution, metrics });
     } catch (error) {
-      console.error("Error while executing attempt", {
-        error,
+      this.sendDebugLog({
+        runId: run.friendlyId,
+        message: "Error while executing attempt",
+        properties: { error: error instanceof Error ? error.message : String(error) },
       });
 
-      console.log("Submitting attempt completion", {
+      this.sendDebugLog({
         runId: run.friendlyId,
-        snapshotId: snapshot.friendlyId,
-        updatedSnapshotId: this.snapshotFriendlyId,
+        message: "Submitting attempt completion",
+        properties: {
+          snapshotId: snapshot.friendlyId,
+          updatedSnapshotId: this.snapshotFriendlyId,
+        },
       });
 
       const completion = {
@@ -876,8 +997,10 @@ class ManagedRunController {
       );
 
       if (!completionResult.success) {
-        console.error("Failed to submit completion after error", {
-          error: completionResult.error,
+        this.sendDebugLog({
+          runId: run.friendlyId,
+          message: "Failed to submit completion after error",
+          properties: { error: completionResult.error },
         });
 
         this.sendDebugLog({
@@ -892,12 +1015,24 @@ class ManagedRunController {
         return;
       }
 
-      logger.log("Attempt completion submitted after error", completionResult.data.result);
+      this.sendDebugLog({
+        runId: run.friendlyId,
+        message: "Attempt completion submitted after error",
+        properties: {
+          attemptStatus: completionResult.data.result.attemptStatus,
+          runId: completionResult.data.result.run.friendlyId,
+          snapshotId: completionResult.data.result.snapshot.friendlyId,
+        },
+      });
 
       try {
         await this.handleCompletionResult(completion, completionResult.data.result);
       } catch (error) {
-        console.error("Failed to handle completion result after error", { error });
+        this.sendDebugLog({
+          runId: run.friendlyId,
+          message: "Failed to handle completion result after error",
+          properties: { error: error instanceof Error ? error.message : String(error) },
+        });
 
         this.waitForNextRun();
         return;
@@ -912,7 +1047,10 @@ class ManagedRunController {
    *  configured duration. */
   private async waitForNextRun() {
     if (this.waitForNextRunLock) {
-      console.warn("waitForNextRun: already in progress");
+      this.sendDebugLog({
+        runId: this.runFriendlyId,
+        message: "waitForNextRun: already in progress",
+      });
       return;
     }
 
@@ -920,7 +1058,10 @@ class ManagedRunController {
     const previousRunId = this.runFriendlyId;
 
     try {
-      logger.debug("waitForNextRun: waiting for next run");
+      this.sendDebugLog({
+        runId: this.runFriendlyId,
+        message: "waitForNextRun: waiting for next run",
+      });
 
       this.enterWarmStartPhase();
 
@@ -928,29 +1069,40 @@ class ManagedRunController {
       await this.taskRunProcess?.kill("SIGKILL");
 
       if (!this.warmStartClient) {
-        console.error("waitForNextRun: warm starts disabled, shutting down");
+        this.sendDebugLog({
+          runId: this.runFriendlyId,
+          message: "waitForNextRun: warm starts disabled, shutting down",
+        });
         this.exitProcess(this.successExitCode);
       }
 
       if (this.taskRunProcess) {
-        logger.debug("waitForNextRun: eagerly recreating task run process with options");
+        this.sendDebugLog({
+          runId: this.runFriendlyId,
+          message: "waitForNextRun: eagerly recreating task run process with options",
+        });
         this.taskRunProcess = new TaskRunProcess({
           ...this.taskRunProcess.options,
           isWarmStart: true,
         }).initialize();
       } else {
-        logger.debug(
-          "waitForNextRun: no existing task run process, so we can't eagerly recreate it"
-        );
+        this.sendDebugLog({
+          runId: this.runFriendlyId,
+          message: "waitForNextRun: no existing task run process, so we can't eagerly recreate it",
+        });
       }
 
       // Check the service is up and get additional warm start config
       const connect = await this.warmStartClient.connect();
 
       if (!connect.success) {
-        console.error("waitForNextRun: failed to connect to warm start service", {
-          warmStartUrl: env.TRIGGER_WARM_START_URL,
-          error: connect.error,
+        this.sendDebugLog({
+          runId: this.runFriendlyId,
+          message: "waitForNextRun: failed to connect to warm start service",
+          properties: {
+            warmStartUrl: env.TRIGGER_WARM_START_URL,
+            error: connect.error,
+          },
         });
         this.exitProcess(this.successExitCode);
       }
@@ -959,9 +1111,13 @@ class ManagedRunController {
         connect.data.connectionTimeoutMs ?? env.TRIGGER_WARM_START_CONNECTION_TIMEOUT_MS;
       const keepaliveMs = connect.data.keepaliveMs ?? env.TRIGGER_WARM_START_KEEPALIVE_MS;
 
-      console.log("waitForNextRun: connected to warm start service", {
-        connectionTimeoutMs,
-        keepaliveMs,
+      this.sendDebugLog({
+        runId: this.runFriendlyId,
+        message: "waitForNextRun: connected to warm start service",
+        properties: {
+          connectionTimeoutMs,
+          keepaliveMs,
+        },
       });
 
       if (previousRunId) {
@@ -976,9 +1132,13 @@ class ManagedRunController {
       }
 
       if (!connectionTimeoutMs || !keepaliveMs) {
-        console.error("waitForNextRun: warm starts disabled after connect", {
-          connectionTimeoutMs,
-          keepaliveMs,
+        this.sendDebugLog({
+          runId: this.runFriendlyId,
+          message: "waitForNextRun: warm starts disabled after connect",
+          properties: {
+            connectionTimeoutMs,
+            keepaliveMs,
+          },
         });
         this.exitProcess(this.successExitCode);
       }
@@ -990,11 +1150,18 @@ class ManagedRunController {
       });
 
       if (!nextRun) {
-        console.error("waitForNextRun: warm start failed, shutting down");
+        this.sendDebugLog({
+          runId: this.runFriendlyId,
+          message: "waitForNextRun: warm start failed, shutting down",
+        });
         this.exitProcess(this.successExitCode);
       }
 
-      console.log("waitForNextRun: got next run", { nextRun });
+      this.sendDebugLog({
+        runId: this.runFriendlyId,
+        message: "waitForNextRun: got next run",
+        properties: { nextRun: nextRun.run.friendlyId },
+      });
 
       this.startAndExecuteRunAttempt({
         runFriendlyId: nextRun.run.friendlyId,
@@ -1004,7 +1171,11 @@ class ManagedRunController {
       }).finally(() => {});
       return;
     } catch (error) {
-      console.error("waitForNextRun: unexpected error", { error });
+      this.sendDebugLog({
+        runId: this.runFriendlyId,
+        message: "waitForNextRun: unexpected error",
+        properties: { error: error instanceof Error ? error.message : String(error) },
+      });
       this.exitProcess(this.failureExitCode);
     } finally {
       this.waitForNextRunLock = false;
@@ -1012,7 +1183,11 @@ class ManagedRunController {
   }
 
   private exitProcess(code?: number): never {
-    logger.log("Exiting process", { code });
+    this.sendDebugLog({
+      runId: this.runFriendlyId,
+      message: "Exiting process",
+      properties: { code },
+    });
     if (this.taskRunProcess?.isPreparedForNextRun) {
       this.taskRunProcess.forceExit();
     }
@@ -1030,29 +1205,25 @@ class ManagedRunController {
       },
     });
     this.socket.on("run:notify", async ({ version, run }) => {
-      console.log("[ManagedRunController] Received run notification", { version, run });
-
       this.sendDebugLog({
         runId: run.friendlyId,
         message: "run:notify received by runner",
+        properties: { version, runId: run.friendlyId },
       });
 
       if (!this.runFriendlyId) {
-        logger.debug("[ManagedRunController] Ignoring notification, no local run ID", {
+        this.sendDebugLog({
           runId: run.friendlyId,
-          currentRunId: this.runFriendlyId,
-          currentSnapshotId: this.snapshotFriendlyId,
+          message: "run:notify: ignoring notification, no local run ID",
+          properties: {
+            currentRunId: this.runFriendlyId,
+            currentSnapshotId: this.snapshotFriendlyId,
+          },
         });
         return;
       }
 
       if (run.friendlyId !== this.runFriendlyId) {
-        console.log("[ManagedRunController] Ignoring notification for different run", {
-          runId: run.friendlyId,
-          currentRunId: this.runFriendlyId,
-          currentSnapshotId: this.snapshotFriendlyId,
-        });
-
         this.sendDebugLog({
           runId: run.friendlyId,
           message: "run:notify: ignoring notification for different run",
@@ -1071,8 +1242,6 @@ class ManagedRunController {
       const latestSnapshot = await this.httpClient.getRunExecutionData(this.runFriendlyId);
 
       if (!latestSnapshot.success) {
-        console.error("Failed to get latest snapshot data", latestSnapshot.error);
-
         this.sendDebugLog({
           runId: this.runFriendlyId,
           message: "run:notify: failed to get latest snapshot data",
@@ -1088,7 +1257,10 @@ class ManagedRunController {
       await this.handleSnapshotChange(latestSnapshot.data.execution);
     });
     this.socket.on("connect", () => {
-      console.log("[ManagedRunController] Connected to supervisor");
+      this.sendDebugLog({
+        runId: this.runFriendlyId,
+        message: "Connected to supervisor",
+      });
 
       // This should handle the case where we reconnect after being restored
       if (this.state.phase === "RUN") {
@@ -1097,10 +1269,18 @@ class ManagedRunController {
       }
     });
     this.socket.on("connect_error", (error) => {
-      console.error("[ManagedRunController] Connection error", { error });
+      this.sendDebugLog({
+        runId: this.runFriendlyId,
+        message: "Connection error",
+        properties: { error: error instanceof Error ? error.message : String(error) },
+      });
     });
     this.socket.on("disconnect", (reason, description) => {
-      console.log("[ManagedRunController] Disconnected from supervisor", { reason, description });
+      this.sendDebugLog({
+        runId: this.runFriendlyId,
+        message: "Disconnected from supervisor",
+        properties: { reason, description: description?.toString() },
+      });
     });
   }
 
@@ -1129,9 +1309,13 @@ class ManagedRunController {
       }).initialize();
     }
 
-    logger.log("executing task run process", {
-      attemptId: execution.attempt.id,
-      runId: execution.run.id,
+    this.sendDebugLog({
+      runId: this.runFriendlyId,
+      message: "executing task run process",
+      properties: {
+        attemptId: execution.attempt.id,
+        runId: execution.run.id,
+      },
     });
 
     const completion = await this.taskRunProcess.execute({
@@ -1144,20 +1328,30 @@ class ManagedRunController {
       env: envVars,
     });
 
-    logger.log("Completed run", completion);
+    this.sendDebugLog({
+      runId: this.runFriendlyId,
+      message: "Completed run",
+      properties: { completion: completion.ok },
+    });
 
     try {
       await this.taskRunProcess.cleanup(true);
     } catch (error) {
-      console.error("Failed to cleanup task run process, submitting completion anyway", {
-        error,
+      this.sendDebugLog({
+        runId: this.runFriendlyId,
+        message: "Failed to cleanup task run process, submitting completion anyway",
+        properties: { error: error instanceof Error ? error.message : String(error) },
       });
     }
 
     if (!this.runFriendlyId || !this.snapshotFriendlyId) {
-      console.error("executeRun: Missing run ID or snapshot ID after execution", {
+      this.sendDebugLog({
         runId: this.runFriendlyId,
-        snapshotId: this.snapshotFriendlyId,
+        message: "executeRun: Missing run ID or snapshot ID after execution",
+        properties: {
+          runId: this.runFriendlyId,
+          snapshotId: this.snapshotFriendlyId,
+        },
       });
 
       this.waitForNextRun();
@@ -1173,8 +1367,12 @@ class ManagedRunController {
     );
 
     if (!completionResult.success) {
-      console.error("Failed to submit completion", {
-        error: completionResult.error,
+      this.sendDebugLog({
+        runId: run.friendlyId,
+        message: "completion: failed to submit",
+        properties: {
+          error: completionResult.error,
+        },
       });
 
       this.sendDebugLog({
@@ -1189,12 +1387,24 @@ class ManagedRunController {
       return;
     }
 
-    logger.log("Attempt completion submitted", completionResult.data.result);
+    this.sendDebugLog({
+      runId: run.friendlyId,
+      message: "Attempt completion submitted",
+      properties: {
+        attemptStatus: completionResult.data.result.attemptStatus,
+        runId: completionResult.data.result.run.friendlyId,
+        snapshotId: completionResult.data.result.snapshot.friendlyId,
+      },
+    });
 
     try {
       await this.handleCompletionResult(completion, completionResult.data.result);
     } catch (error) {
-      console.error("Failed to handle completion result", { error });
+      this.sendDebugLog({
+        runId: run.friendlyId,
+        message: "Failed to handle completion result",
+        properties: { error: error instanceof Error ? error.message : String(error) },
+      });
 
       this.waitForNextRun();
       return;
@@ -1205,33 +1415,55 @@ class ManagedRunController {
     completion: TaskRunExecutionResult,
     result: CompleteRunAttemptResult
   ) {
-    logger.debug("[ManagedRunController] Handling completion result", { completion, result });
+    this.sendDebugLog({
+      runId: this.runFriendlyId,
+      message: "Handling completion result",
+      properties: {
+        completion: completion.ok,
+        attemptStatus: result.attemptStatus,
+        snapshotId: result.snapshot.friendlyId,
+        runId: result.run.friendlyId,
+      },
+    });
 
     const { attemptStatus, snapshot: completionSnapshot, run } = result;
 
     try {
       this.updateRunPhase(run, completionSnapshot);
     } catch (error) {
-      console.error("Failed to update run phase after completion", { error });
+      this.sendDebugLog({
+        runId: run.friendlyId,
+        message: "Failed to update run phase after completion",
+        properties: { error: error instanceof Error ? error.message : String(error) },
+      });
 
       this.waitForNextRun();
       return;
     }
 
     if (attemptStatus === "RUN_FINISHED") {
-      logger.debug("Run finished");
+      this.sendDebugLog({
+        runId: run.friendlyId,
+        message: "Run finished",
+      });
 
       this.waitForNextRun();
       return;
     }
 
     if (attemptStatus === "RUN_PENDING_CANCEL") {
-      logger.debug("Run pending cancel");
+      this.sendDebugLog({
+        runId: run.friendlyId,
+        message: "Run pending cancel",
+      });
       return;
     }
 
     if (attemptStatus === "RETRY_QUEUED") {
-      logger.debug("Retry queued");
+      this.sendDebugLog({
+        runId: run.friendlyId,
+        message: "Retry queued",
+      });
 
       this.waitForNextRun();
       return;
@@ -1268,30 +1500,54 @@ class ManagedRunController {
     date,
     properties,
   }: {
-    runId: string;
+    runId?: string;
     message: string;
     date?: Date;
     properties?: WorkloadDebugLogRequestBody["properties"];
   }) {
+    if (!runId) {
+      runId = this.runFriendlyId;
+    }
+
+    if (!runId) {
+      runId = env.TRIGGER_RUN_ID;
+    }
+
+    if (!runId) {
+      return;
+    }
+
+    const mergedProperties = {
+      ...properties,
+      runId,
+      runnerId: this.runnerId,
+      workerName: this.workerInstanceName,
+    };
+
+    console.log(message, mergedProperties);
+
     this.httpClient.sendDebugLog(runId, {
       message,
       time: date ?? new Date(),
-      properties: {
-        ...properties,
-        runnerId: this.runnerId,
-        workerName: this.workerInstanceName,
-      },
+      properties: mergedProperties,
     });
   }
 
   async cancelAttempt(runId: string) {
-    logger.log("cancelling attempt", { runId });
+    this.sendDebugLog({
+      runId,
+      message: "cancelling attempt",
+      properties: { runId },
+    });
 
     await this.taskRunProcess?.cancel();
   }
 
   async start() {
-    logger.debug("[ManagedRunController] Starting up");
+    this.sendDebugLog({
+      runId: this.runFriendlyId,
+      message: "Starting up",
+    });
 
     // Websocket notifications are only an optimisation so we don't need to wait for a successful connection
     this.createSocket();
@@ -1313,7 +1569,10 @@ class ManagedRunController {
   }
 
   async stop() {
-    logger.debug("[ManagedRunController] Shutting down");
+    this.sendDebugLog({
+      runId: this.runFriendlyId,
+      message: "Shutting down",
+    });
 
     if (this.taskRunProcess) {
       await this.taskRunProcess.cleanup(true);
