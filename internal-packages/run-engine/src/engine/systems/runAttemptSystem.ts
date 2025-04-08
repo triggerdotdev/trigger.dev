@@ -692,6 +692,7 @@ export class RunAttemptSystem {
                   traceContext: run.traceContext as Record<string, string | undefined>,
                   baseCostInCents: run.baseCostInCents,
                   spanId: run.spanId,
+                  nextMachineAfterOOM: retryResult.machine,
                 },
                 organization: {
                   id: run.runtimeEnvironment.organizationId,

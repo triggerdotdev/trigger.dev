@@ -85,6 +85,7 @@ export type EventBusEvents = {
         traceContext: Record<string, string | undefined>;
         taskIdentifier: string;
         baseCostInCents: number;
+        nextMachineAfterOOM?: string;
       };
       organization: {
         id: string;
