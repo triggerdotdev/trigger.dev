@@ -370,7 +370,9 @@ export function TaskRunsTable({
                 </TableCell>
                 {showCompute && (
                   <TableCell to={path} className="tabular-nums">
-                    {run.costInCents > 0 ? formatCurrencyAccurate(run.costInCents / 100) : "–"}
+                    {run.costInCents > 0
+                      ? formatCurrencyAccurate((run.costInCents + run.baseCostInCents) / 100)
+                      : "–"}
                   </TableCell>
                 )}
                 <TableCell to={path}>
