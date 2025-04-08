@@ -206,6 +206,7 @@ type CommonTaskOptions<
   queue?: {
     name?: string;
     concurrencyLimit?: number;
+    releaseConcurrencyOnWaitpoint?: boolean;
   };
   /** Configure the spec of the [machine](https://trigger.dev/docs/machines) you want your task to run on.
    *
