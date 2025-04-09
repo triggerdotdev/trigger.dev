@@ -442,6 +442,28 @@ See the [AI SDK tool execution options docs](https://sdk.vercel.ai/docs/ai-sdk-c
   that implement a `.toJsonSchema()` function.
 </Note>
 
+## How to migrate to v4
+
+First read the deprecations, breaking changes, and known issues sections below.
+
+We recommend the following steps to migrate to v4:
+
+1. Install the v4 package.
+2. Run the `trigger dev` CLI command and test your tasks locally, fixing any breaking changes.
+3. Deploy to the staging environment and test your tasks in staging, fixing any breaking changes. (this step is optional, but highly recommended)
+4. Once you've verified that v4 is working as expected, you should deploy your application backend with the updated v4 package.
+5. Once you've deployed your application backend, you should deploy your tasks to the production environment.
+
+Note that between steps 4 and 5, runs triggered with the v4 package will continue using v3, and only new runs triggered after step 5 is complete will use v4.
+
+<Warning>
+  Once v4 is activated in your environment, there will be a period of time where old runs will
+  continue to execute using v3, while new runs will use v4. Because these engines use completely
+  different underlying queues and concurrency models, it's possible you may have up to double the
+  amount of concurrently executing runs. Once the runs drain from the old run engine, the
+  concurrency will return to normal.
+</Warning>
+
 ## Installation
 
 To opt-in to using v4, you will need to update your dependencies to the latest version of the `v4-beta` tag.
@@ -492,6 +514,12 @@ Or you could install the CLI into your `devDependencies` and then use the `trigg
   }
 }
 ```
+
+## Known issues
+
+During the beta we will be releasing regular fixes. Here are the current known issues:
+
+- In some cases when using `batchTriggerAndWait` with a queue that has `releaseConcurrencyOnWaitpoint`, the concurrency isn't released when the runs are started.
 
 ## Deprecations
 
@@ -714,25 +742,3 @@ We've made a few small changes to the `ctx` object:
 
 - `ctx.attempt.id` and `ctx.attempt.status` have been removed. `ctx.attempt.number` is still available.
 - `ctx.task.exportName` has been removed (since we no longer require tasks to be exported to be triggered).
-
-## Migrating to the new run engine
-
-The new run engine is a complete rewrite of the previous engine, and will automatically be used when you upgrade to the v4 package.
-
-We recommend the following steps to migrate to the new run engine:
-
-1. Upgrade to the v4 package.
-2. Run the `trigger dev` CLI command and test your tasks locally, fixing any breaking changes.
-3. Deploy to the staging environment and test your tasks in staging, fixing any breaking changes. (this step is optional, but recommended)
-4. Once you've verified that the new run engine is working as expected, you should deploy your application backend with the updated v4 package.
-5. Once you've deployed your application backend, you should deploy your tasks to the production environment.
-
-Note that between steps 4 and 5, runs triggered with the v4 package will continue using the previous engine, and only new runs triggered after step 5 is complete will use the new engine.
-
-<Warning>
-  Once the new run engine is activated, there will be a period of time where old runs will continue
-  to execute using the previous engine, while new runs will use the new engine. Because these
-  engines use completely different underlying queues and concurrency models, it's possible you may
-  have up to double the amount of concurrently executing runs. Once the runs drain from the old run
-  engine, the concurrency will return to normal.
-</Warning>
