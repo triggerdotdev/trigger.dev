@@ -55,6 +55,7 @@ const Env = z.object({
   TRIGGER_MACHINE_MEMORY: z.string().default("0"),
   TRIGGER_RUNNER_ID: z.string(),
   TRIGGER_METADATA_URL: z.string().optional(),
+  TRIGGER_PRE_SUSPEND_WAIT_MS: z.coerce.number().default(200),
 
   // Timeline metrics
   TRIGGER_POD_SCHEDULED_AT_MS: DateEnv,
@@ -610,8 +611,7 @@ class ManagedRunController {
             return;
           }
 
-          // TODO: Make this configurable and add wait debounce
-          await sleep(200);
+          await sleep(env.TRIGGER_PRE_SUSPEND_WAIT_MS);
 
           if (snapshot.friendlyId !== this.snapshotFriendlyId) {
             this.sendDebugLog({
