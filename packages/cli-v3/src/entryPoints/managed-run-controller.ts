@@ -8,6 +8,7 @@ import {
   type CompleteRunAttemptResult,
   HeartbeatService,
   type RunExecutionData,
+  SuspendedProcessError,
   type TaskRunExecutionMetrics,
   type TaskRunExecutionResult,
   type TaskRunFailedExecutionResult,
@@ -590,6 +591,7 @@ class ManagedRunController {
           });
 
           try {
+            // This should never throw. It should also never fail the run.
             await this.taskRunProcess?.cleanup(false);
           } catch (error) {
             this.sendDebugLog({
@@ -691,7 +693,9 @@ class ManagedRunController {
             properties: { run: run.friendlyId, snapshot: snapshot.friendlyId },
           });
 
-          this.waitForNextRun();
+          // This will kill the process and fail the execution with a SuspendedProcessError
+          await this.taskRunProcess?.suspend();
+
           return;
         }
         case "PENDING_EXECUTING": {
@@ -865,149 +869,62 @@ class ManagedRunController {
     }
   }
 
+  private activeRunExecution: Promise<void> | null = null;
+
   private async startAndExecuteRunAttempt({
     runFriendlyId,
     snapshotFriendlyId,
     dequeuedAt,
     podScheduledAt,
-    isWarmStart = false,
+    isWarmStart,
+    skipLockCheckForImmediateRetry: skipLockCheck,
   }: {
     runFriendlyId: string;
     snapshotFriendlyId: string;
     dequeuedAt?: Date;
     podScheduledAt?: Date;
     isWarmStart?: boolean;
+    skipLockCheckForImmediateRetry?: boolean;
   }) {
-    if (!this.socket) {
+    if (!skipLockCheck && this.activeRunExecution) {
       this.sendDebugLog({
         runId: runFriendlyId,
-        message: "Starting run without socket connection",
+        message: "startAndExecuteRunAttempt: already in progress",
       });
-    }
-
-    this.subscribeToRunNotifications({
-      run: { friendlyId: runFriendlyId },
-      snapshot: { friendlyId: snapshotFriendlyId },
-    });
-
-    const attemptStartedAt = Date.now();
-
-    const start = await this.httpClient.startRunAttempt(runFriendlyId, snapshotFriendlyId, {
-      isWarmStart,
-    });
-
-    if (!start.success) {
-      this.sendDebugLog({
-        runId: runFriendlyId,
-        message: "Failed to start run",
-        properties: { error: start.error },
-      });
-
-      this.sendDebugLog({
-        runId: runFriendlyId,
-        message: "failed to start run attempt",
-        properties: {
-          error: start.error,
-        },
-      });
-
-      this.waitForNextRun();
       return;
     }
 
-    const attemptDuration = Date.now() - attemptStartedAt;
-
-    const { run, snapshot, execution, envVars } = start.data;
-
-    this.sendDebugLog({
-      runId: run.friendlyId,
-      message: "Started run",
-      properties: { snapshot: snapshot.friendlyId },
-    });
-
-    this.enterRunPhase(run, snapshot);
-
-    const metrics = [
-      {
-        name: "start",
-        event: "create_attempt",
-        timestamp: attemptStartedAt,
-        duration: attemptDuration,
-      },
-    ]
-      .concat(
-        dequeuedAt
-          ? [
-              {
-                name: "start",
-                event: "dequeue",
-                timestamp: dequeuedAt.getTime(),
-                duration: 0,
-              },
-            ]
-          : []
-      )
-      .concat(
-        podScheduledAt
-          ? [
-              {
-                name: "start",
-                event: "pod_scheduled",
-                timestamp: podScheduledAt.getTime(),
-                duration: 0,
-              },
-            ]
-          : []
-      ) satisfies TaskRunExecutionMetrics;
-
-    const taskRunEnv = {
-      ...gatherProcessEnv(),
-      ...envVars,
-    };
-
-    try {
-      return await this.executeRun({ run, snapshot, envVars: taskRunEnv, execution, metrics });
-    } catch (error) {
-      this.sendDebugLog({
-        runId: run.friendlyId,
-        message: "Error while executing attempt",
-        properties: { error: error instanceof Error ? error.message : String(error) },
-      });
-
-      this.sendDebugLog({
-        runId: run.friendlyId,
-        message: "Submitting attempt completion",
-        properties: {
-          snapshotId: snapshot.friendlyId,
-          updatedSnapshotId: this.snapshotFriendlyId,
-        },
-      });
-
-      const completion = {
-        id: execution.run.id,
-        ok: false,
-        retry: undefined,
-        error: TaskRunProcess.parseExecuteError(error),
-      } satisfies TaskRunFailedExecutionResult;
-
-      const completionResult = await this.httpClient.completeRunAttempt(
-        run.friendlyId,
-        this.snapshotFriendlyId ?? snapshot.friendlyId,
-        { completion }
-      );
-
-      if (!completionResult.success) {
+    const execution = async () => {
+      if (!this.socket) {
         this.sendDebugLog({
-          runId: run.friendlyId,
-          message: "Failed to submit completion after error",
-          properties: { error: completionResult.error },
+          runId: runFriendlyId,
+          message: "Starting run without socket connection",
+        });
+      }
+
+      this.subscribeToRunNotifications({
+        run: { friendlyId: runFriendlyId },
+        snapshot: { friendlyId: snapshotFriendlyId },
+      });
+
+      const attemptStartedAt = Date.now();
+
+      const start = await this.httpClient.startRunAttempt(runFriendlyId, snapshotFriendlyId, {
+        isWarmStart,
+      });
+
+      if (!start.success) {
+        this.sendDebugLog({
+          runId: runFriendlyId,
+          message: "Failed to start run",
+          properties: { error: start.error },
         });
 
         this.sendDebugLog({
-          runId: run.friendlyId,
-          message: "completion: failed to submit after error",
+          runId: runFriendlyId,
+          message: "failed to start run attempt",
           properties: {
-            error: completionResult.error,
+            error: start.error,
           },
         });
 
@@ -1015,28 +932,156 @@ class ManagedRunController {
         return;
       }
 
+      const attemptDuration = Date.now() - attemptStartedAt;
+
+      const { run, snapshot, execution, envVars } = start.data;
+
       this.sendDebugLog({
         runId: run.friendlyId,
-        message: "Attempt completion submitted after error",
-        properties: {
-          attemptStatus: completionResult.data.result.attemptStatus,
-          runId: completionResult.data.result.run.friendlyId,
-          snapshotId: completionResult.data.result.snapshot.friendlyId,
-        },
+        message: "Started run",
+        properties: { snapshot: snapshot.friendlyId },
       });
 
+      this.enterRunPhase(run, snapshot);
+
+      const metrics = [
+        {
+          name: "start",
+          event: "create_attempt",
+          timestamp: attemptStartedAt,
+          duration: attemptDuration,
+        },
+      ]
+        .concat(
+          dequeuedAt
+            ? [
+                {
+                  name: "start",
+                  event: "dequeue",
+                  timestamp: dequeuedAt.getTime(),
+                  duration: 0,
+                },
+              ]
+            : []
+        )
+        .concat(
+          podScheduledAt
+            ? [
+                {
+                  name: "start",
+                  event: "pod_scheduled",
+                  timestamp: podScheduledAt.getTime(),
+                  duration: 0,
+                },
+              ]
+            : []
+        ) satisfies TaskRunExecutionMetrics;
+
+      const taskRunEnv = {
+        ...gatherProcessEnv(),
+        ...envVars,
+      };
+
       try {
-        await this.handleCompletionResult(completion, completionResult.data.result);
+        return await this.executeRun({ run, snapshot, envVars: taskRunEnv, execution, metrics });
       } catch (error) {
+        if (error instanceof SuspendedProcessError) {
+          this.sendDebugLog({
+            runId: run.friendlyId,
+            message: "Run was suspended and task run process was killed, waiting for next run",
+            properties: { run: run.friendlyId, snapshot: snapshot.friendlyId },
+          });
+
+          this.waitForNextRun();
+          return;
+        }
+
         this.sendDebugLog({
           runId: run.friendlyId,
-          message: "Failed to handle completion result after error",
+          message: "Error while executing attempt",
           properties: { error: error instanceof Error ? error.message : String(error) },
         });
 
-        this.waitForNextRun();
-        return;
+        this.sendDebugLog({
+          runId: run.friendlyId,
+          message: "Submitting attempt completion",
+          properties: {
+            snapshotId: snapshot.friendlyId,
+            updatedSnapshotId: this.snapshotFriendlyId,
+          },
+        });
+
+        const completion = {
+          id: execution.run.id,
+          ok: false,
+          retry: undefined,
+          error: TaskRunProcess.parseExecuteError(error),
+        } satisfies TaskRunFailedExecutionResult;
+
+        const completionResult = await this.httpClient.completeRunAttempt(
+          run.friendlyId,
+          // FIXME: if the snapshot has changed since starting the run, this won't be accurate
+          // ..but we probably shouldn't fetch the latest snapshot either because we may be in an "unhealthy" state while the next runner has already taken over
+          this.snapshotFriendlyId ?? snapshot.friendlyId,
+          { completion }
+        );
+
+        if (!completionResult.success) {
+          this.sendDebugLog({
+            runId: run.friendlyId,
+            message: "Failed to submit completion after error",
+            properties: { error: completionResult.error },
+          });
+
+          this.sendDebugLog({
+            runId: run.friendlyId,
+            message: "completion: failed to submit after error",
+            properties: {
+              error: completionResult.error,
+            },
+          });
+
+          this.waitForNextRun();
+          return;
+        }
+
+        this.sendDebugLog({
+          runId: run.friendlyId,
+          message: "Attempt completion submitted after error",
+          properties: {
+            attemptStatus: completionResult.data.result.attemptStatus,
+            runId: completionResult.data.result.run.friendlyId,
+            snapshotId: completionResult.data.result.snapshot.friendlyId,
+          },
+        });
+
+        try {
+          await this.handleCompletionResult(completion, completionResult.data.result);
+        } catch (error) {
+          this.sendDebugLog({
+            runId: run.friendlyId,
+            message: "Failed to handle completion result after error",
+            properties: { error: error instanceof Error ? error.message : String(error) },
+          });
+
+          this.waitForNextRun();
+          return;
+        }
       }
+    };
+
+    this.activeRunExecution = execution();
+
+    try {
+      await this.activeRunExecution;
+    } catch (error) {
+      this.sendDebugLog({
+        runId: runFriendlyId,
+        message: "startAndExecuteRunAttempt: unexpected error",
+        properties: { error: error instanceof Error ? error.message : String(error) },
+      });
+    } finally {
+      this.activeRunExecution = null;
     }
   }
 
@@ -1058,15 +1103,24 @@ class ManagedRunController {
     const previousRunId = this.runFriendlyId;
 
     try {
+      // If there's a run execution in progress, we need to kill it and wait for it to finish
+      if (this.activeRunExecution) {
+        this.sendDebugLog({
+          runId: this.runFriendlyId,
+          message: "waitForNextRun: waiting for existing run execution to finish",
+        });
+        await this.activeRunExecution;
+      }
+
+      // Just for good measure
+      await this.taskRunProcess?.kill("SIGKILL");
+
       this.sendDebugLog({
         runId: this.runFriendlyId,
         message: "waitForNextRun: waiting for next run",
       });
 
       this.enterWarmStartPhase();
-
-      // Kill the run process
-      await this.taskRunProcess?.kill("SIGKILL");
 
       if (!this.warmStartClient) {
         this.sendDebugLog({
@@ -1335,6 +1389,7 @@ class ManagedRunController {
     });
 
     try {
+      // The execution has finished, so we can cleanup the task run process. Killing it should be safe.
       await this.taskRunProcess.cleanup(true);
     } catch (error) {
       this.sendDebugLog({
@@ -1487,6 +1542,7 @@ class ManagedRunController {
       this.startAndExecuteRunAttempt({
         runFriendlyId: run.friendlyId,
         snapshotFriendlyId: this.snapshotFriendlyId,
+        skipLockCheckForImmediateRetry: true,
       }).finally(() => {});
       return;
     }
