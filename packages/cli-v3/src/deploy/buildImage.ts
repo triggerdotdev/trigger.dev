@@ -688,8 +688,7 @@ ENV TRIGGER_PROJECT_ID=\${TRIGGER_PROJECT_ID} \
     TRIGGER_CONTENT_HASH=\${TRIGGER_CONTENT_HASH} \
     TRIGGER_PROJECT_REF=\${TRIGGER_PROJECT_REF} \
     NODE_EXTRA_CA_CERTS=\${NODE_EXTRA_CA_CERTS} \
-    NODE_ENV=production \
-    NODE_OPTIONS="--max_old_space_size=8192"
+    NODE_ENV=production
 
 # Copy the files from the install stage
 COPY --from=build --chown=node:node /app ./

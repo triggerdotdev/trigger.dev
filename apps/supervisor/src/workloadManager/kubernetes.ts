@@ -31,7 +31,7 @@ export class KubernetesWorkloadManager implements WorkloadManager {
   async create(opts: WorkloadManagerCreateOptions) {
     this.logger.log("[KubernetesWorkloadManager] Creating container", { opts });
 
-    const runnerId = getRunnerId(opts.runFriendlyId);
+    const runnerId = getRunnerId(opts.runFriendlyId, opts.nextAttemptNumber);
 
     try {
       await this.k8s.core.createNamespacedPod({

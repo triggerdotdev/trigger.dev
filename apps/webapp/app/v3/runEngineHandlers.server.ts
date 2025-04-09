@@ -326,12 +326,19 @@ export function registerRunEngineEventBusHandlers() {
 
   engine.eventBus.on("runRetryScheduled", async ({ time, run, environment, retryAt }) => {
     try {
-      await eventRepository.recordEvent(`Retry #${run.attemptNumber} delay`, {
+      let retryMessage = `Retry #${run.attemptNumber} delay`;
+
+      if (run.nextMachineAfterOOM) {
+        retryMessage += ` after OOM`;
+      }
+
+      await eventRepository.recordEvent(retryMessage, {
         taskSlug: run.taskIdentifier,
         environment,
         attributes: {
           properties: {
             retryAt: retryAt.toISOString(),
+            nextMachine: run.nextMachineAfterOOM,
           },
           runId: run.friendlyId,
           style: {

@@ -110,7 +110,7 @@ export default function Page() {
         </div>
         <div className="flex flex-col gap-1 pt-6">
           <div className="mb-1 flex items-center gap-1 pl-3">
-            <Header3>5 related runs</Header3>
+            <Header3>Related runs</Header3>
             <InfoIconTooltip content="These runs have been blocked by this waitpoint." />
           </div>
           <TaskRunsTable
