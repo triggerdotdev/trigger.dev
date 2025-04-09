@@ -579,7 +579,15 @@ class ManagedRunController {
             runId: run.friendlyId,
             message: "Run is finished, will wait for next run",
           });
-            this.waitForNextRun();
+
+          if (this.activeRunExecution) {
+            // Let's pretend we've just suspended the run. This will kill the process and should automatically wait for the next run.
+            // We still explicitly call waitForNextRun() afterwards in case of race conditions. Locks will prevent this from causing issues.
+            await this.taskRunProcess?.suspend();
+          }
+
+          this.waitForNextRun();
+
           return;
         }
         case "QUEUED_EXECUTING":
