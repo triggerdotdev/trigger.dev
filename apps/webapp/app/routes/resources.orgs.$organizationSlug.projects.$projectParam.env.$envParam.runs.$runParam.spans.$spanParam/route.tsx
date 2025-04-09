@@ -959,7 +959,16 @@ function SpanEntity({ span }: { span: Span }) {
             <WarmStartCombo
               isWarmStart={span.entity.object.isWarmStart}
               showTooltip
-              className="mt-3"
+              className="my-3"
+            />
+          ) : null}
+          {span.events.length > 0 && <SpanEvents spanEvents={span.events} />}
+          {span.properties !== undefined ? (
+            <CodeBlock
+              rowTitle="Properties"
+              code={span.properties}
+              maxLines={20}
+              showLineNumbers={false}
             />
           ) : null}
         </div>
