@@ -239,13 +239,13 @@ describe("RunEngine Waitpoints", () => {
         },
       });
       expect(failResult.attemptStatus).toBe("RETRY_IMMEDIATELY");
-      expect(failResult.snapshot.executionStatus).toBe("PENDING_EXECUTING");
+      expect(failResult.snapshot.executionStatus).toBe("EXECUTING");
       expect(failResult.run.attemptNumber).toBe(1);
       expect(failResult.run.status).toBe("RETRYING_AFTER_FAILURE");
 
       const executionData2 = await engine.getRunExecutionData({ runId: run.id });
       assertNonNullable(executionData2);
-      expect(executionData2.snapshot.executionStatus).toBe("PENDING_EXECUTING");
+      expect(executionData2.snapshot.executionStatus).toBe("EXECUTING");
       expect(executionData2.run.attemptNumber).toBe(1);
       expect(executionData2.run.status).toBe("RETRYING_AFTER_FAILURE");
       expect(executionData2.completedWaitpoints.length).toBe(0);
