@@ -739,7 +739,7 @@ export class RunAttemptSystem {
                 {
                   run,
                   snapshot: {
-                    executionStatus: "PENDING_EXECUTING",
+                    executionStatus: "EXECUTING",
                     description: "Attempt failed with a short delay, starting a new attempt",
                   },
                   previousSnapshotId: latestSnapshot.id,
