@@ -471,18 +471,20 @@ To opt-in to using v4, you will need to update your dependencies to the latest v
 <CodeGroup>
 
 ```bash npm
-npm add @trigger.dev/sdk@v4-beta
+npm add @trigger.dev/sdk@v4-beta -E
 ```
 
 ```bash yarn
-yarn add @trigger.dev/sdk@v4-beta
+yarn add @trigger.dev/sdk@v4-beta -E
 ```
 
 ```bash pnpm
-pnpm add @trigger.dev/sdk@v4-beta
+pnpm add @trigger.dev/sdk@v4-beta -E
 ```
 
 </CodeGroup>
+
+<Note> You will need to do this for all your `@trigger.dev/*` packages. </Note>
 
 You'll also need to use the `v4-beta` version of the `trigger.dev` CLI package:
 
@@ -501,19 +503,6 @@ pnpm dlx trigger.dev@v4-beta dev
 ```
 
 </CodeGroup>
-
-Or you could install the CLI into your `devDependencies` and then use the `trigger` binary:
-
-```json package.json
-{
-  "devDependencies": {
-    "trigger.dev": "v4-beta"
-  },
-  "scripts": {
-    "dev": "trigger dev"
-  }
-}
-```
 
 ## Known issues
 
