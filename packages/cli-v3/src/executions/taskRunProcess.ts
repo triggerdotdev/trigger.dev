@@ -215,7 +215,10 @@ export class TaskRunProcess {
     await this._ipc?.sendWithAck("FLUSH", { timeoutInMs }, timeoutInMs + 1_000);
   }
 
-  async execute(params: TaskRunProcessExecuteParams): Promise<TaskRunExecutionResult> {
+  async execute(
+    params: TaskRunProcessExecuteParams,
+    isWarmStart?: boolean
+  ): Promise<TaskRunExecutionResult> {
     this._isPreparedForNextRun = false;
 
     let resolver: (value: TaskRunExecutionResult) => void;
@@ -251,7 +254,7 @@ export class TaskRunProcess {
         metadata: this.options.serverWorker,
         metrics,
         env: params.env,
-        isWarmStart: this.options.isWarmStart,
+        isWarmStart: isWarmStart ?? this.options.isWarmStart,
       });
     }
 

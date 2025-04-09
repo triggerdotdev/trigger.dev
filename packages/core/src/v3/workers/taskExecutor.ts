@@ -89,7 +89,8 @@ export class TaskExecutor {
     execution: TaskRunExecution,
     worker: ServerBackgroundWorker,
     traceContext: Record<string, unknown>,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    isWarmStart?: boolean
   ): Promise<{ result: TaskRunExecutionResult }> {
     const ctx = TaskRunContext.parse(execution);
     const attemptMessage = `Attempt ${execution.attempt.number}`;
@@ -102,7 +103,7 @@ export class TaskExecutor {
     taskContext.setGlobalTaskContext({
       ctx,
       worker,
-      isWarmStart: this._isWarmStart,
+      isWarmStart: isWarmStart ?? this._isWarmStart,
     });
 
     if (execution.run.metadata) {

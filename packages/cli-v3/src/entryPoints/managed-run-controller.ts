@@ -579,7 +579,7 @@ class ManagedRunController {
             runId: run.friendlyId,
             message: "Run is finished, will wait for next run",
           });
-          this.waitForNextRun();
+            this.waitForNextRun();
           return;
         }
         case "QUEUED_EXECUTING":
@@ -983,7 +983,14 @@ class ManagedRunController {
       };
 
       try {
-        return await this.executeRun({ run, snapshot, envVars: taskRunEnv, execution, metrics });
+        return await this.executeRun({
+          run,
+          snapshot,
+          envVars: taskRunEnv,
+          execution,
+          metrics,
+          isWarmStart,
+        });
       } catch (error) {
         if (error instanceof SuspendedProcessError) {
           this.sendDebugLog({
@@ -1344,8 +1351,10 @@ class ManagedRunController {
     envVars,
     execution,
     metrics,
+    isWarmStart,
   }: WorkloadRunAttemptStartResponseBody & {
     metrics?: TaskRunExecutionMetrics;
+    isWarmStart?: boolean;
   }) {
     this.snapshotPoller.start();
 
@@ -1360,6 +1369,7 @@ class ManagedRunController {
           engine: "V2",
         },
         machine: execution.machine,
+        isWarmStart,
       }).initialize();
     }
 
@@ -1372,15 +1382,18 @@ class ManagedRunController {
       },
     });
 
-    const completion = await this.taskRunProcess.execute({
-      payload: {
-        execution,
-        traceContext: execution.run.traceContext ?? {},
-        metrics,
+    const completion = await this.taskRunProcess.execute(
+      {
+        payload: {
+          execution,
+          traceContext: execution.run.traceContext ?? {},
+          metrics,
+        },
+        messageId: run.friendlyId,
+        env: envVars,
       },
-      messageId: run.friendlyId,
-      env: envVars,
-    });
+      isWarmStart
+    );
 
     this.sendDebugLog({
       runId: this.runFriendlyId,
@@ -1543,6 +1556,7 @@ class ManagedRunController {
         runFriendlyId: run.friendlyId,
         snapshotFriendlyId: this.snapshotFriendlyId,
         skipLockCheckForImmediateRetry: true,
+        isWarmStart: true,
       }).finally(() => {});
       return;
     }
