@@ -104,13 +104,13 @@ describe("RunEngine attempt failures", () => {
         },
       });
       expect(result.attemptStatus).toBe("RETRY_IMMEDIATELY");
-      expect(result.snapshot.executionStatus).toBe("PENDING_EXECUTING");
+      expect(result.snapshot.executionStatus).toBe("EXECUTING");
       expect(result.run.status).toBe("RETRYING_AFTER_FAILURE");
 
       //state should be pending
       const executionData3 = await engine.getRunExecutionData({ runId: run.id });
       assertNonNullable(executionData3);
-      expect(executionData3.snapshot.executionStatus).toBe("PENDING_EXECUTING");
+      expect(executionData3.snapshot.executionStatus).toBe("EXECUTING");
       //only when the new attempt is created, should the attempt be increased
       expect(executionData3.run.attemptNumber).toBe(1);
       expect(executionData3.run.status).toBe("RETRYING_AFTER_FAILURE");
