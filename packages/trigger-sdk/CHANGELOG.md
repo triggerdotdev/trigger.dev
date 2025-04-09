@@ -1,5 +1,19 @@
 # @trigger.dev/sdk
 
+## 4.0.0-v4-beta.0
+
+### Major Changes
+
+- Trigger.dev v4 release. Please see our upgrade to v4 docs to view the full changelog: https://trigger.dev/docs/upgrade-to-v4 ([#1869](https://github.com/triggerdotdev/trigger.dev/pull/1869))
+
+### Patch Changes
+
+- Run Engine 2.0 (alpha) ([#1575](https://github.com/triggerdotdev/trigger.dev/pull/1575))
+- Deprecate toolTask and replace with `ai.tool(mySchemaTask)` ([#1863](https://github.com/triggerdotdev/trigger.dev/pull/1863))
+- v4: New lifecycle hooks ([#1817](https://github.com/triggerdotdev/trigger.dev/pull/1817))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.0`
+
 ## 3.3.17
 
 ### Patch Changes

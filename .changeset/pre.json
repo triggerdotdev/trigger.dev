@@ -16,5 +16,13 @@
     "@trigger.dev/rsc": "3.3.17",
     "@trigger.dev/sdk": "3.3.17"
   },
-  "changesets": []
+  "changesets": [
+    "breezy-turtles-talk",
+    "four-needles-add",
+    "honest-files-decide",
+    "nice-colts-boil",
+    "red-wasps-cover",
+    "smart-coins-hammer",
+    "weak-jobs-hide"
+  ]
 }
