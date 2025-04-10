@@ -1024,8 +1024,15 @@ function TimelineView({
                           )}
                           durationMs={
                             node.data.duration
-                              ? nanosecondsToMilliseconds(Math.min(node.data.duration, duration))
-                              : nanosecondsToMilliseconds(duration - node.data.offset)
+                              ? //completed
+                                nanosecondsToMilliseconds(Math.min(node.data.duration, duration))
+                              : //in progress
+                                nanosecondsToMilliseconds(
+                                  Math.min(
+                                    duration + (queuedDuration ?? 0) - node.data.offset,
+                                    duration
+                                  )
+                                )
                           }
                           node={node}
                           fadeLeft={isTopSpan && queuedDuration !== undefined}
