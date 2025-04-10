@@ -942,6 +942,8 @@ function TimelineView({
               getTreeProps={getTreeProps}
               parentClassName="h-full scrollbar-hide"
               renderNode={({ node, state, index, virtualizer, virtualItem }) => {
+                const isTopSpan = node.id === events[0]?.id;
+
                 return (
                   <Timeline.Row
                     key={index}
@@ -988,7 +990,7 @@ function TimelineView({
                               {(ms) => (
                                 <motion.div
                                   className={cn(
-                                    "-ml-1 size-[0.3125rem] rounded-full border bg-background-bright",
+                                    "-ml-[0.1562rem] size-[0.3125rem] rounded-full border bg-background-bright",
                                     eventBorderClassName(node.data)
                                   )}
                                   layoutId={`${node.id}-${event.name}`}
@@ -1025,6 +1027,7 @@ function TimelineView({
                               : nanosecondsToMilliseconds(duration - node.data.offset)
                           }
                           node={node}
+                          fadeLeft={isTopSpan && queuedDuration !== undefined}
                         />
                       </>
                     ) : (
@@ -1036,7 +1039,7 @@ function TimelineView({
                         {(ms) => (
                           <motion.div
                             className={cn(
-                              "-ml-1 size-3 rounded-full border-2 border-background-bright",
+                              "-ml-0.5 size-3 rounded-full border-2 border-background-bright",
                               eventBackgroundClassName(node.data)
                             )}
                             layoutId={node.id}
@@ -1222,15 +1225,18 @@ function PulsingDot() {
 function SpanWithDuration({
   showDuration,
   node,
+  fadeLeft,
   ...props
-}: Timeline.SpanProps & { node: TraceEvent; showDuration: boolean }) {
+}: Timeline.SpanProps & { node: TraceEvent; showDuration: boolean; fadeLeft: boolean }) {
   return (
     <Timeline.Span {...props}>
       <motion.div
         className={cn(
-          "relative flex h-4 w-full min-w-0.5 items-center rounded-sm",
-          eventBackgroundClassName(node.data)
+          "relative flex h-4 w-full min-w-0.5 items-center",
+          eventBackgroundClassName(node.data),
+          fadeLeft ? "rounded-r-sm bg-gradient-to-r from-black/50 to-transparent" : "rounded-sm"
         )}
+        style={{ backgroundSize: "20px 100%", backgroundRepeat: "no-repeat" }}
         layoutId={node.id}
       >
         {node.data.isPartial && (
