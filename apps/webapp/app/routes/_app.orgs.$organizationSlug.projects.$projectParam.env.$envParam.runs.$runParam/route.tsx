@@ -1017,11 +1017,11 @@ function TimelineView({
                         <SpanWithDuration
                           showDuration={state.selected ? true : showDurations}
                           startMs={nanosecondsToMilliseconds(
-                            queueAdjustedNs(node.data.offset, queuedDuration)
+                            Math.max(queueAdjustedNs(node.data.offset, queuedDuration), 0)
                           )}
                           durationMs={
                             node.data.duration
-                              ? nanosecondsToMilliseconds(node.data.duration)
+                              ? nanosecondsToMilliseconds(Math.min(node.data.duration, duration))
                               : nanosecondsToMilliseconds(duration - node.data.offset)
                           }
                           node={node}
