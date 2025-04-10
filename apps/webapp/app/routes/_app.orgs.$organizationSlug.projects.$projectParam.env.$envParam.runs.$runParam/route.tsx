@@ -567,6 +567,7 @@ function TasksTreeView({
           label="Queue time"
           checked={showQueueTime}
           onCheckedChange={(e) => setShowQueueTime(e.valueOf())}
+          shortcut={{ key: "Q" }}
         />
         <Switch
           variant="small"
@@ -1357,6 +1358,7 @@ function KeyboardShortcuts({
         title="Collapse all"
       />
       <NumberShortcuts toggleLevel={(number) => toggleExpandLevel(number)} />
+      <ShortcutWithAction shortcut={{ key: "Q" }} title="Queue time" action={() => {}} />
     </>
   );
 }
