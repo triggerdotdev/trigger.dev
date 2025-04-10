@@ -1239,19 +1239,22 @@ function SpanWithDuration({
             style={{ backgroundImage: `url(${tileBgPath})`, backgroundSize: "8px 8px" }}
           />
         )}
-        <div
+        <motion.div
           className={cn(
-            "sticky left-0 z-10 transition group-hover:opacity-100",
+            "sticky left-0 z-10 transition-opacity group-hover:opacity-100",
             !showDuration && "opacity-0"
           )}
         >
-          <div className="whitespace-nowrap rounded-sm px-1 py-0.5 text-xxs text-text-bright text-shadow-custom">
+          <motion.div
+            className="whitespace-nowrap rounded-sm px-1 py-0.5 text-xxs text-text-bright text-shadow-custom"
+            layout="position"
+          >
             {formatDurationMilliseconds(props.durationMs, {
               style: "short",
               maxDecimalPoints: props.durationMs < 1000 ? 0 : 1,
             })}
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       </motion.div>
     </Timeline.Span>
   );
