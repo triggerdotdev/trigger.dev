@@ -333,6 +333,7 @@ export function registerRunEngineEventBusHandlers() {
       }
 
       await eventRepository.recordEvent(retryMessage, {
+        startTime: BigInt(time.getTime() * 1000000),
         taskSlug: run.taskIdentifier,
         environment,
         attributes: {
@@ -347,7 +348,6 @@ export function registerRunEngineEventBusHandlers() {
           queueName: run.queue,
         },
         context: run.traceContext as Record<string, string | undefined>,
-        spanIdSeed: `retry-${run.attemptNumber + 1}`,
         endTime: retryAt,
       });
     } catch (error) {
