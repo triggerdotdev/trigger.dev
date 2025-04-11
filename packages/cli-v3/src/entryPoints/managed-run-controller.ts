@@ -1,8 +1,6 @@
 import { logger } from "../utilities/logger.js";
 import { TaskRunProcess } from "../executions/taskRunProcess.js";
 import { env as stdEnv } from "std-env";
-import { z } from "zod";
-import { randomUUID } from "crypto";
 import { readJSONFile } from "../utilities/fileSystem.js";
 import {
   type CompleteRunAttemptResult,
@@ -26,56 +24,12 @@ import {
 import { assertExhaustive } from "../utilities/assertExhaustive.js";
 import { setTimeout as sleep } from "timers/promises";
 import { io, type Socket } from "socket.io-client";
-
-const DateEnv = z
-  .string()
-  .transform((val) => new Date(parseInt(val, 10)))
-  .pipe(z.date());
-
-// All IDs are friendly IDs
-const Env = z.object({
-  // Set at build time
-  TRIGGER_CONTENT_HASH: z.string(),
-  TRIGGER_DEPLOYMENT_ID: z.string(),
-  TRIGGER_DEPLOYMENT_VERSION: z.string(),
-  TRIGGER_PROJECT_ID: z.string(),
-  TRIGGER_PROJECT_REF: z.string(),
-  NODE_ENV: z.string().default("production"),
-  NODE_EXTRA_CA_CERTS: z.string().optional(),
-
-  // Set at runtime
-  TRIGGER_WORKLOAD_CONTROLLER_ID: z.string().default(`controller_${randomUUID()}`),
-  TRIGGER_ENV_ID: z.string(),
-  TRIGGER_RUN_ID: z.string().optional(), // This is only useful for cold starts
-  TRIGGER_SNAPSHOT_ID: z.string().optional(), // This is only useful for cold starts
-  OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url(),
-  TRIGGER_WARM_START_URL: z.string().optional(),
-  TRIGGER_WARM_START_CONNECTION_TIMEOUT_MS: z.coerce.number().default(30_000),
-  TRIGGER_WARM_START_KEEPALIVE_MS: z.coerce.number().default(300_000),
-  TRIGGER_MACHINE_CPU: z.string().default("0"),
-  TRIGGER_MACHINE_MEMORY: z.string().default("0"),
-  TRIGGER_RUNNER_ID: z.string(),
-  TRIGGER_METADATA_URL: z.string().optional(),
-  TRIGGER_PRE_SUSPEND_WAIT_MS: z.coerce.number().default(200),
-
-  // Timeline metrics
-  TRIGGER_POD_SCHEDULED_AT_MS: DateEnv,
-  TRIGGER_DEQUEUED_AT_MS: DateEnv,
-
-  // May be overridden
-  TRIGGER_SUPERVISOR_API_PROTOCOL: z.enum(["http", "https"]),
-  TRIGGER_SUPERVISOR_API_DOMAIN: z.string(),
-  TRIGGER_SUPERVISOR_API_PORT: z.coerce.number(),
-  TRIGGER_WORKER_INSTANCE_NAME: z.string(),
-  TRIGGER_HEARTBEAT_INTERVAL_SECONDS: z.coerce.number().default(30),
-  TRIGGER_SNAPSHOT_POLL_INTERVAL_SECONDS: z.coerce.number().default(5),
-  TRIGGER_SUCCESS_EXIT_CODE: z.coerce.number().default(0),
-  TRIGGER_FAILURE_EXIT_CODE: z.coerce.number().default(1),
-});
-
-const env = Env.parse(stdEnv);
+import { RunnerEnv } from "./managed/env.js";
+import { MetadataClient } from "./managed/overrides.js";
 
 logger.loggerLevel = "debug";
+
+const env = new RunnerEnv(stdEnv);
 
 type ManagedRunControllerOptions = {
   workerManifest: WorkerManifest;
@@ -90,40 +44,10 @@ type Snapshot = {
   friendlyId: string;
 };
 
-type Metadata = {
-  TRIGGER_SUPERVISOR_API_PROTOCOL: string | undefined;
-  TRIGGER_SUPERVISOR_API_DOMAIN: string | undefined;
-  TRIGGER_SUPERVISOR_API_PORT: number | undefined;
-  TRIGGER_WORKER_INSTANCE_NAME: string | undefined;
-  TRIGGER_HEARTBEAT_INTERVAL_SECONDS: number | undefined;
-  TRIGGER_SNAPSHOT_POLL_INTERVAL_SECONDS: number | undefined;
-  TRIGGER_SUCCESS_EXIT_CODE: number | undefined;
-  TRIGGER_FAILURE_EXIT_CODE: number | undefined;
-  TRIGGER_RUNNER_ID: string | undefined;
-};
-
-class MetadataClient {
-  private readonly url: URL;
-
-  constructor(url: string) {
-    this.url = new URL(url);
-  }
-
-  async getEnvOverrides(): Promise<Metadata | null> {
-    try {
-      const response = await fetch(new URL("/env", this.url));
-      return response.json();
-    } catch (error) {
-      console.error("Failed to fetch metadata", { error });
-      return null;
-    }
-  }
-}
-
 class ManagedRunController {
   private taskRunProcess?: TaskRunProcess;
 
-  private workerManifest: WorkerManifest;
+  private readonly workerManifest: WorkerManifest;
 
   private readonly httpClient: WorkloadHttpClient;
   private readonly warmStartClient: WarmStartClient | undefined;
@@ -132,18 +56,35 @@ class ManagedRunController {
   private socket: Socket<WorkloadServerToClientEvents, WorkloadClientToServerEvents>;
 
   private readonly runHeartbeat: HeartbeatService;
-  private heartbeatIntervalSeconds: number;
-
   private readonly snapshotPoller: HeartbeatService;
-  private snapshotPollIntervalSeconds: number;
 
-  private workerApiUrl: string;
-  private workerInstanceName: string;
+  get heartbeatIntervalSeconds() {
+    return env.TRIGGER_HEARTBEAT_INTERVAL_SECONDS;
+  }
 
-  private runnerId: string;
+  get snapshotPollIntervalSeconds() {
+    return env.TRIGGER_SNAPSHOT_POLL_INTERVAL_SECONDS;
+  }
 
-  private successExitCode = env.TRIGGER_SUCCESS_EXIT_CODE;
-  private failureExitCode = env.TRIGGER_FAILURE_EXIT_CODE;
+  get runnerId() {
+    return env.TRIGGER_RUNNER_ID;
+  }
+
+  get successExitCode() {
+    return env.TRIGGER_SUCCESS_EXIT_CODE;
+  }
+
+  get failureExitCode() {
+    return env.TRIGGER_FAILURE_EXIT_CODE;
+  }
+
+  get workerApiUrl() {
+    return env.TRIGGER_SUPERVISOR_API_URL;
+  }
+
+  get workerInstanceName() {
+    return env.TRIGGER_WORKER_INSTANCE_NAME;
+  }
 
   private state:
     | {
@@ -158,11 +99,6 @@ class ManagedRunController {
   constructor(opts: ManagedRunControllerOptions) {
     this.workerManifest = opts.workerManifest;
 
-    this.runnerId = env.TRIGGER_RUNNER_ID;
-
-    this.workerApiUrl = `${env.TRIGGER_SUPERVISOR_API_PROTOCOL}://${env.TRIGGER_SUPERVISOR_API_DOMAIN}:${env.TRIGGER_SUPERVISOR_API_PORT}`;
-    this.workerInstanceName = env.TRIGGER_WORKER_INSTANCE_NAME;
-
     this.httpClient = new WorkloadHttpClient({
       workerApiUrl: this.workerApiUrl,
       runnerId: this.runnerId,
@@ -172,7 +108,7 @@ class ManagedRunController {
     });
 
     const properties = {
-      ...env,
+      ...env.raw,
       TRIGGER_POD_SCHEDULED_AT_MS: env.TRIGGER_POD_SCHEDULED_AT_MS.toISOString(),
       TRIGGER_DEQUEUED_AT_MS: env.TRIGGER_DEQUEUED_AT_MS.toISOString(),
     };
@@ -182,9 +118,6 @@ class ManagedRunController {
       message: "Creating run controller",
       properties,
     });
-
-    this.heartbeatIntervalSeconds = env.TRIGGER_HEARTBEAT_INTERVAL_SECONDS;
-    this.snapshotPollIntervalSeconds = env.TRIGGER_SNAPSHOT_POLL_INTERVAL_SECONDS;
 
     if (env.TRIGGER_METADATA_URL) {
       this.metadataClient = new MetadataClient(env.TRIGGER_METADATA_URL);
@@ -834,45 +767,24 @@ class ManagedRunController {
       properties: { ...overrides },
     });
 
-    if (overrides.TRIGGER_SUCCESS_EXIT_CODE) {
-      this.successExitCode = overrides.TRIGGER_SUCCESS_EXIT_CODE;
-    }
+    // Override the env with the new values
+    env.override(overrides);
 
-    if (overrides.TRIGGER_FAILURE_EXIT_CODE) {
-      this.failureExitCode = overrides.TRIGGER_FAILURE_EXIT_CODE;
-    }
-
+    // Update services and clients with the new values
     if (overrides.TRIGGER_HEARTBEAT_INTERVAL_SECONDS) {
-      this.heartbeatIntervalSeconds = overrides.TRIGGER_HEARTBEAT_INTERVAL_SECONDS;
-      this.runHeartbeat.updateInterval(this.heartbeatIntervalSeconds * 1000);
+      this.runHeartbeat.updateInterval(env.TRIGGER_HEARTBEAT_INTERVAL_SECONDS * 1000);
     }
-
     if (overrides.TRIGGER_SNAPSHOT_POLL_INTERVAL_SECONDS) {
-      this.snapshotPollIntervalSeconds = overrides.TRIGGER_SNAPSHOT_POLL_INTERVAL_SECONDS;
-      this.snapshotPoller.updateInterval(this.snapshotPollIntervalSeconds * 1000);
+      this.snapshotPoller.updateInterval(env.TRIGGER_SNAPSHOT_POLL_INTERVAL_SECONDS * 1000);
     }
-
-    if (overrides.TRIGGER_WORKER_INSTANCE_NAME) {
-      this.workerInstanceName = overrides.TRIGGER_WORKER_INSTANCE_NAME;
-    }
-
     if (
       overrides.TRIGGER_SUPERVISOR_API_PROTOCOL ||
       overrides.TRIGGER_SUPERVISOR_API_DOMAIN ||
       overrides.TRIGGER_SUPERVISOR_API_PORT
     ) {
-      const protocol =
-        overrides.TRIGGER_SUPERVISOR_API_PROTOCOL ?? env.TRIGGER_SUPERVISOR_API_PROTOCOL;
-      const domain = overrides.TRIGGER_SUPERVISOR_API_DOMAIN ?? env.TRIGGER_SUPERVISOR_API_DOMAIN;
-      const port = overrides.TRIGGER_SUPERVISOR_API_PORT ?? env.TRIGGER_SUPERVISOR_API_PORT;
-
-      this.workerApiUrl = `${protocol}://${domain}:${port}`;
-
       this.httpClient.updateApiUrl(this.workerApiUrl);
     }
-
     if (overrides.TRIGGER_RUNNER_ID) {
-      this.runnerId = overrides.TRIGGER_RUNNER_ID;
       this.httpClient.updateRunnerId(this.runnerId);
     }
   }
@@ -1670,9 +1582,9 @@ await prodWorker.start();
 
 function gatherProcessEnv(): Record<string, string> {
   const $env = {
-    NODE_ENV: env.NODE_ENV,
-    NODE_EXTRA_CA_CERTS: env.NODE_EXTRA_CA_CERTS,
-    OTEL_EXPORTER_OTLP_ENDPOINT: env.OTEL_EXPORTER_OTLP_ENDPOINT,
+    NODE_ENV: stdEnv.NODE_ENV,
+    NODE_EXTRA_CA_CERTS: stdEnv.NODE_EXTRA_CA_CERTS,
+    OTEL_EXPORTER_OTLP_ENDPOINT: stdEnv.OTEL_EXPORTER_OTLP_ENDPOINT,
   };
 
   // Filter out undefined values
