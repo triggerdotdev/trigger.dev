@@ -1439,7 +1439,7 @@ class ManagedRunController {
     await this.taskRunProcess?.cancel();
   }
 
-  async start() {
+  start() {
     this.sendDebugLog({
       runId: this.runFriendlyId,
       message: "Starting up",
@@ -1478,12 +1478,7 @@ class ManagedRunController {
   }
 }
 
-const workerManifest = await loadWorkerManifest();
+const manifest = await readJSONFile("./index.json");
+const workerManifest = WorkerManifest.parse(manifest);
 
-const prodWorker = new ManagedRunController({ workerManifest });
-await prodWorker.start();
-
-async function loadWorkerManifest() {
-  const manifest = await readJSONFile("./index.json");
-  return WorkerManifest.parse(manifest);
-}
+new ManagedRunController({ workerManifest }).start();
