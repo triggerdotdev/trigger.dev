@@ -378,7 +378,7 @@ export class RunEngine {
           }
         } else {
           // For deployed runs, we add the env/worker id as the secondary master queue
-          let secondaryMasterQueue = this.#environmentMasterQueueKey(environment.id);
+          secondaryMasterQueue = this.#environmentMasterQueueKey(environment.id);
           if (lockedToVersionId) {
             secondaryMasterQueue = this.#backgroundWorkerQueueKey(lockedToVersionId);
           }
