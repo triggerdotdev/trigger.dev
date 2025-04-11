@@ -2,6 +2,8 @@ import { Bar, BarChart, CartesianGrid, Line, LineChart, XAxis, YAxis } from "rec
 import {
   type ChartConfig,
   ChartContainer,
+  ChartLegend,
+  ChartLegendContent,
   ChartTooltip,
   ChartTooltipContent,
 } from "~/components/primitives/charts/Chart";
@@ -90,6 +92,51 @@ export function ChartLine({
             dot={false}
           />
         </LineChart>
+      )}
+    </ChartContainer>
+  );
+}
+
+//TODO: draw a separate line to indicate concurrency level
+
+export function ChartStacked({
+  config,
+  data,
+  dataKey,
+  loading = false,
+}: {
+  config: ChartConfig;
+  data: any[];
+  dataKey: string;
+  loading?: boolean;
+}) {
+  return (
+    <ChartContainer config={config} className="min-h-full w-full">
+      {loading ? (
+        <div className="grid h-full place-items-center">
+          <Spinner className="size-6" />
+        </div>
+      ) : (
+        <BarChart accessibilityLayer data={data}>
+          <CartesianGrid vertical={false} stroke="#272A2E" />
+          <XAxis dataKey={dataKey} tickLine={false} tickMargin={10} axisLine={false} />
+          <YAxis axisLine={false} tickLine={false} tickMargin={8} />
+          <ChartTooltip content={<ChartTooltipContent hideLabel />} />
+          <Bar
+            dataKey="completed"
+            stackId="a"
+            fill="var(--color-completed)"
+            radius={[0, 0, 4, 4]}
+          />
+          <Bar
+            dataKey="in-progress"
+            stackId="a"
+            fill="var(--color-in-progress)"
+            radius={[0, 0, 0, 0]}
+          />
+          <Bar dataKey="canceled" stackId="a" fill="var(--color-canceled)" radius={[0, 0, 0, 0]} />
+          <Bar dataKey="failed" stackId="a" fill="var(--color-failed)" radius={[4, 4, 0, 0]} />
+        </BarChart>
       )}
     </ChartContainer>
   );
