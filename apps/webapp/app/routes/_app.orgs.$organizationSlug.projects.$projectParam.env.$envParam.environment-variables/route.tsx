@@ -2,7 +2,9 @@ import { useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import {
   BookOpenIcon,
+  CheckIcon,
   InformationCircleIcon,
+  LockClosedIcon,
   PencilSquareIcon,
   PlusIcon,
   TrashIcon,
@@ -23,6 +25,7 @@ import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
+import { CopyableText } from "~/components/primitives/CopyableText";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
@@ -43,6 +46,7 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { prisma } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -188,7 +192,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
 export default function Page() {
   const [revealAll, setRevealAll] = useState(false);
-  const { environmentVariables, environments, hasStaging } = useTypedLoaderData<typeof loader>();
+  const { environmentVariables, environments } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -231,11 +235,8 @@ export default function Page() {
             <TableHeader>
               <TableRow>
                 <TableHeaderCell>Key</TableHeaderCell>
-                {environments.map((environment) => (
-                  <TableHeaderCell key={environment.id} className="pl-1">
-                    <EnvironmentCombo environment={environment} className="text-sm" />
-                  </TableHeaderCell>
-                ))}
+                <TableHeaderCell>Value</TableHeaderCell>
+                <TableHeaderCell>Environment</TableHeaderCell>
                 <TableHeaderCell hiddenLabel>Actions</TableHeaderCell>
               </TableRow>
             </TableHeader>
@@ -243,37 +244,41 @@ export default function Page() {
               {environmentVariables.length > 0 ? (
                 environmentVariables.map((variable) => (
                   <TableRow key={variable.id}>
-                    <TableCell>{variable.key}</TableCell>
-                    {environments.map((environment) => {
-                      const value = variable.values[environment.id]?.value;
+                    <TableCell>
+                      <CopyableText value={variable.key} className="font-mono" />
+                    </TableCell>
+                    <TableCell>
+                      {variable.isSecret ? (
+                        <SimpleTooltip
+                          button={<LockClosedIcon className="size-4 text-charcoal-400" />}
+                          content="This variable is secret and cannot be revealed."
+                        />
+                      ) : (
+                        <ClipboardField
+                          className="-ml-2"
+                          secure={!revealAll}
+                          value={variable.value}
+                          variant={"secondary/small"}
+                        />
+                      )}
+                    </TableCell>
 
-                      if (!value) {
-                        return <TableCell key={environment.id}>Not set</TableCell>;
-                      }
-                      return (
-                        <TableCell key={environment.id}>
-                          <ClipboardField
-                            className="-ml-2"
-                            secure={!revealAll}
-                            value={value}
-                            variant={"secondary/small"}
-                          />
-                        </TableCell>
-                      );
-                    })}
+                    <TableCell>
+                      <EnvironmentCombo environment={variable.environment} className="text-sm" />
+                    </TableCell>
                     <TableCellMenu
                       isSticky
                       popoverContent={
                         <>
-                          <EditEnvironmentVariablePanel
+                          {/* <EditEnvironmentVariablePanel
                             environments={environments}
                             variable={variable}
                             revealAll={revealAll}
-                          />
+                          /> */}
                           <DeleteEnvironmentVariableButton variable={variable} />
                         </>
                       }
-                    ></TableCellMenu>
+                    />
                   </TableRow>
                 ))
               ) : (
@@ -309,132 +314,132 @@ export default function Page() {
   );
 }
 
-function EditEnvironmentVariablePanel({
-  variable,
-  environments,
-  revealAll,
-}: {
-  variable: EnvironmentVariableWithSetValues;
-  environments: Pick<RuntimeEnvironment, "id" | "type">[];
-  revealAll: boolean;
-}) {
-  const [reveal, setReveal] = useState(revealAll);
+// function EditEnvironmentVariablePanel({
+//   variable,
+//   environments,
+//   revealAll,
+// }: {
+//   variable: EnvironmentVariableWithSetValues;
+//   environments: Pick<RuntimeEnvironment, "id" | "type">[];
+//   revealAll: boolean;
+// }) {
+//   const [reveal, setReveal] = useState(revealAll);
 
-  const [isOpen, setIsOpen] = useState(false);
-  const lastSubmission = useActionData();
-  const navigation = useNavigation();
+//   const [isOpen, setIsOpen] = useState(false);
+//   const lastSubmission = useActionData();
+//   const navigation = useNavigation();
 
-  const hiddenValues = Object.values(variable.values).filter(
-    (value) => !environments.map((e) => e.id).includes(value.environment.id)
-  );
+//   const hiddenValues = Object.values(variable.values).filter(
+//     (value) => !environments.map((e) => e.id).includes(value.environment.id)
+//   );
 
-  const isLoading =
-    navigation.state !== "idle" &&
-    navigation.formMethod === "post" &&
-    navigation.formData?.get("action") === "edit";
+//   const isLoading =
+//     navigation.state !== "idle" &&
+//     navigation.formMethod === "post" &&
+//     navigation.formData?.get("action") === "edit";
 
-  const [form, { id }] = useForm({
-    id: "edit-environment-variable",
-    // TODO: type this
-    lastSubmission: lastSubmission as any,
-    onValidate({ formData }) {
-      return parse(formData, { schema });
-    },
-    shouldRevalidate: "onSubmit",
-  });
+//   const [form, { id }] = useForm({
+//     id: "edit-environment-variable",
+//     // TODO: type this
+//     lastSubmission: lastSubmission as any,
+//     onValidate({ formData }) {
+//       return parse(formData, { schema });
+//     },
+//     shouldRevalidate: "onSubmit",
+//   });
 
-  return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogTrigger asChild>
-        <Button variant="small-menu-item" LeadingIcon={PencilSquareIcon} fullWidth textAlignLeft>
-          Edit
-        </Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>Edit {variable.key}</DialogHeader>
-        <Form method="post" {...form.props}>
-          <input type="hidden" name="action" value="edit" />
-          <input type="hidden" name="id" value={variable.id} />
-          <input type="hidden" name="key" value={variable.key} />
-          {hiddenValues.map((value, index) => (
-            <Fragment key={index}>
-              <input
-                type="hidden"
-                name={`values[${index}].environmentId`}
-                value={value.environment.id}
-              />
-              <input type="hidden" name={`values[${index}].value`} value={value.value} />
-            </Fragment>
-          ))}
-          <FormError id={id.errorId}>{id.error}</FormError>
-          <Fieldset>
-            <InputGroup fullWidth className="mb-5 mt-2">
-              <Label>Key</Label>
-              <InlineCode variant="base" className="pl-1.5">
-                {variable.key}
-              </InlineCode>
-            </InputGroup>
-          </Fieldset>
-          <Fieldset>
-            <InputGroup fullWidth>
-              <div className="flex justify-between gap-1">
-                <Label>Values</Label>
-                <Switch
-                  variant="small"
-                  label="Reveal"
-                  checked={reveal}
-                  onCheckedChange={(e) => setReveal(e.valueOf())}
-                />
-              </div>
-              <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-2">
-                {environments.map((environment, index) => {
-                  const value = variable.values[environment.id]?.value;
-                  index += hiddenValues.length;
-                  return (
-                    <Fragment key={environment.id}>
-                      <input
-                        type="hidden"
-                        name={`values[${index}].environmentId`}
-                        value={environment.id}
-                      />
-                      <label
-                        className="flex items-center justify-end"
-                        htmlFor={`values[${index}].value`}
-                      >
-                        <EnvironmentCombo environment={environment} className="text-sm" />
-                      </label>
-                      <Input
-                        name={`values[${index}].value`}
-                        placeholder="Not set"
-                        defaultValue={value}
-                        type={reveal ? "text" : "password"}
-                      />
-                    </Fragment>
-                  );
-                })}
-              </div>
-            </InputGroup>
+//   return (
+//     <Dialog open={isOpen} onOpenChange={setIsOpen}>
+//       <DialogTrigger asChild>
+//         <Button variant="small-menu-item" LeadingIcon={PencilSquareIcon} fullWidth textAlignLeft>
+//           Edit
+//         </Button>
+//       </DialogTrigger>
+//       <DialogContent>
+//         <DialogHeader>Edit {variable.key}</DialogHeader>
+//         <Form method="post" {...form.props}>
+//           <input type="hidden" name="action" value="edit" />
+//           <input type="hidden" name="id" value={variable.id} />
+//           <input type="hidden" name="key" value={variable.key} />
+//           {hiddenValues.map((value, index) => (
+//             <Fragment key={index}>
+//               <input
+//                 type="hidden"
+//                 name={`values[${index}].environmentId`}
+//                 value={value.environment.id}
+//               />
+//               <input type="hidden" name={`values[${index}].value`} value={value.value} />
+//             </Fragment>
+//           ))}
+//           <FormError id={id.errorId}>{id.error}</FormError>
+//           <Fieldset>
+//             <InputGroup fullWidth className="mb-5 mt-2">
+//               <Label>Key</Label>
+//               <InlineCode variant="base" className="pl-1.5">
+//                 {variable.key}
+//               </InlineCode>
+//             </InputGroup>
+//           </Fieldset>
+//           <Fieldset>
+//             <InputGroup fullWidth>
+//               <div className="flex justify-between gap-1">
+//                 <Label>Values</Label>
+//                 <Switch
+//                   variant="small"
+//                   label="Reveal"
+//                   checked={reveal}
+//                   onCheckedChange={(e) => setReveal(e.valueOf())}
+//                 />
+//               </div>
+//               <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-2">
+//                 {environments.map((environment, index) => {
+//                   const value = variable.values[environment.id]?.value;
+//                   index += hiddenValues.length;
+//                   return (
+//                     <Fragment key={environment.id}>
+//                       <input
+//                         type="hidden"
+//                         name={`values[${index}].environmentId`}
+//                         value={environment.id}
+//                       />
+//                       <label
+//                         className="flex items-center justify-end"
+//                         htmlFor={`values[${index}].value`}
+//                       >
+//                         <EnvironmentCombo environment={environment} className="text-sm" />
+//                       </label>
+//                       <Input
+//                         name={`values[${index}].value`}
+//                         placeholder="Not set"
+//                         defaultValue={value}
+//                         type={reveal ? "text" : "password"}
+//                       />
+//                     </Fragment>
+//                   );
+//                 })}
+//               </div>
+//             </InputGroup>
 
-            <FormError>{form.error}</FormError>
+//             <FormError>{form.error}</FormError>
 
-            <FormButtons
-              confirmButton={
-                <Button type="submit" variant="primary/medium" disabled={isLoading}>
-                  {isLoading ? "Saving…" : "Save"}
-                </Button>
-              }
-              cancelButton={
-                <Button onClick={() => setIsOpen(false)} variant="tertiary/medium" type="button">
-                  Cancel
-                </Button>
-              }
-            />
-          </Fieldset>
-        </Form>
-      </DialogContent>
-    </Dialog>
-  );
-}
+//             <FormButtons
+//               confirmButton={
+//                 <Button type="submit" variant="primary/medium" disabled={isLoading}>
+//                   {isLoading ? "Saving…" : "Save"}
+//                 </Button>
+//               }
+//               cancelButton={
+//                 <Button onClick={() => setIsOpen(false)} variant="tertiary/medium" type="button">
+//                   Cancel
+//                 </Button>
+//               }
+//             />
+//           </Fieldset>
+//         </Form>
+//       </DialogContent>
+//     </Dialog>
+//   );
+// }
 
 function DeleteEnvironmentVariableButton({
   variable,
