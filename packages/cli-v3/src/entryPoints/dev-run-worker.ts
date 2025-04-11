@@ -472,7 +472,34 @@ const zodIpc = new ZodIpcConnection({
 async function flushAll(timeoutInMs: number = 10_000) {
   const now = performance.now();
 
-  await Promise.all([flushTracingSDK(timeoutInMs), flushMetadata(timeoutInMs)]);
+  const results = await Promise.allSettled([
+    flushTracingSDK(timeoutInMs),
+    flushMetadata(timeoutInMs),
+  ]);
+
+  const successfulFlushes = results
+    .filter((result) => result.status === "fulfilled")
+    .map((result) => result.value.flushed);
+
+  const failedFlushes = ["tracingSDK", "runMetadata"].filter(
+    (flushed) => !successfulFlushes.includes(flushed)
+  );
+
+  if (failedFlushes.length > 0) {
+    logError(`Failed to flush ${failedFlushes.join(", ")}`);
+  }
+
+  const errorMessages = results
+    .filter((result) => result.status === "rejected")
+    .map((result) => result.reason);
+
+  if (errorMessages.length > 0) {
+    logError(errorMessages.join("\n"));
+  }
+
+  for (const flushed of successfulFlushes) {
+    log(`Flushed ${flushed} successfully`);
+  }
 
   const duration = performance.now() - now;
 
@@ -487,6 +514,11 @@ async function flushTracingSDK(timeoutInMs: number = 10_000) {
   const duration = performance.now() - now;
 
   log(`Flushed tracingSDK in ${duration}ms`);
+
+  return {
+    flushed: "tracingSDK",
+    durationMs: duration,
+  };
 }
 
 async function flushMetadata(timeoutInMs: number = 10_000) {
@@ -497,6 +529,11 @@ async function flushMetadata(timeoutInMs: number = 10_000) {
   const duration = performance.now() - now;
 
   log(`Flushed runMetadata in ${duration}ms`);
+
+  return {
+    flushed: "runMetadata",
+    durationMs: duration,
+  };
 }
 
 const managedWorkerRuntime = new ManagedRuntimeManager(zodIpc, showInternalLogs);
