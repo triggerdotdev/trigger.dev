@@ -3,7 +3,6 @@ import { env as stdEnv } from "std-env";
 import { readJSONFile } from "../utilities/fileSystem.js";
 import {
   type CompleteRunAttemptResult,
-  HeartbeatService,
   type RunExecutionData,
   SuspendedProcessError,
   type TaskRunExecutionMetrics,
@@ -26,6 +25,7 @@ import { RunnerEnv } from "./managed/env.js";
 import { MetadataClient } from "./managed/overrides.js";
 import { RunLogger, SendDebugLogOptions } from "./managed/logger.js";
 import { RunExecutionHeartbeat } from "./managed/heartbeat.js";
+import { RunExecutionSnapshotPoller } from "./managed/poller.js";
 
 const env = new RunnerEnv(stdEnv);
 
@@ -54,8 +54,8 @@ class ManagedRunController {
   private socket: Socket<WorkloadServerToClientEvents, WorkloadClientToServerEvents>;
   private readonly logger: RunLogger;
 
-  private readonly runHeartbeat: HeartbeatService;
-  private readonly snapshotPoller: RunExecutionHeartbeat;
+  private readonly runHeartbeat: RunExecutionHeartbeat;
+  private readonly snapshotPoller: RunExecutionSnapshotPoller;
 
   constructor(opts: ManagedRunControllerOptions) {
     this.workerManifest = opts.workerManifest;
@@ -100,7 +100,18 @@ class ManagedRunController {
       });
     }
 
-    this.snapshotPoller = new RunExecutionHeartbeat({
+    this.snapshotPoller = new RunExecutionSnapshotPoller({
+      // @ts-expect-error
+      runFriendlyId: env.TRIGGER_RUN_ID,
+      // @ts-expect-error
+      snapshotFriendlyId: env.TRIGGER_SNAPSHOT_ID,
+      httpClient: this.httpClient,
+      logger: this.logger,
+      snapshotPollIntervalSeconds: this.snapshotPollIntervalSeconds,
+      handleSnapshotChange: this.handleSnapshotChange,
+    });
+
+    this.runHeartbeat = new RunExecutionHeartbeat({
       // @ts-expect-error
       runFriendlyId: env.TRIGGER_RUN_ID,
       // @ts-expect-error
@@ -108,47 +119,6 @@ class ManagedRunController {
       httpClient: this.httpClient,
       logger: this.logger,
       heartbeatIntervalSeconds: this.heartbeatIntervalSeconds,
-    });
-
-    this.runHeartbeat = new HeartbeatService({
-      heartbeat: async () => {
-        if (!this.runFriendlyId || !this.snapshotFriendlyId) {
-          this.sendDebugLog({
-            runId: this.runFriendlyId,
-            message: "Skipping heartbeat, no run ID or snapshot ID",
-          });
-          return;
-        }
-
-        this.sendDebugLog({
-          runId: this.runFriendlyId,
-          message: "heartbeat: started",
-        });
-
-        const response = await this.httpClient.heartbeatRun(
-          this.runFriendlyId,
-          this.snapshotFriendlyId
-        );
-
-        if (!response.success) {
-          this.sendDebugLog({
-            runId: this.runFriendlyId,
-            message: "heartbeat: failed",
-            properties: {
-              error: response.error,
-            },
-          });
-        }
-      },
-      intervalMs: this.heartbeatIntervalSeconds * 1000,
-      leadingEdge: false,
-      onError: async (error) => {
-        this.sendDebugLog({
-          runId: this.runFriendlyId,
-          message: "Failed to send heartbeat",
-          properties: { error: error instanceof Error ? error.message : String(error) },
-        });
-      },
     });
 
     process.on("SIGTERM", async () => {
@@ -429,6 +399,8 @@ class ManagedRunController {
 
       try {
         this.updateRunPhase(run, snapshot);
+
+        this.runHeartbeat.updateSnapshotId(snapshot.friendlyId);
         this.snapshotPoller.updateSnapshotId(snapshot.friendlyId);
       } catch (error) {
         this.sendDebugLog({
