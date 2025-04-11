@@ -32,12 +32,15 @@ import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { logger } from "../utilities/logger.js";
 import { spinner } from "../utilities/windows.js";
 import { login } from "./login.js";
+import { VERSION } from "../version.js";
+
+const cliVersion = VERSION as string;
+const cliTag = cliVersion.includes("v4-beta") ? "v4-beta" : "latest";
 
 const InitCommandOptions = CommonCommandOptions.extend({
   projectRef: z.string().optional(),
   overrideConfig: z.boolean().default(false),
-  // TODO: Revert this to "latest" once we have a stable release
-  tag: z.string().default("v4-beta"),
+  tag: z.string().default(cliVersion),
   skipPackageInstall: z.boolean().default(false),
   runtime: z.string().default("node"),
   pkgArgs: z.string().optional(),
@@ -61,8 +64,7 @@ export function configureInitCommand(program: Command) {
       .option(
         "-t, --tag <package tag>",
         "The version of the @trigger.dev/sdk package to install",
-        // TODO: Revert this to "latest" once we have a stable release
-        "v4-beta"
+        cliVersion
       )
       .option(
         "-r, --runtime <runtime>",
@@ -195,7 +197,7 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
   log.info("Next steps:");
   log.info(
     `   1. To start developing, run ${chalk.green(
-      `npx trigger.dev@${options.tag} dev${options.profile ? "" : ` --profile ${options.profile}`}`
+      `npx trigger.dev@${cliTag} dev${options.profile ? "" : ` --profile ${options.profile}`}`
     )} in your project directory`
   );
   log.info(`   2. Visit your ${projectDashboard} to view your newly created tasks.`);
