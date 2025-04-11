@@ -66,6 +66,7 @@ export type WorkerApiConnectResponseBody = z.infer<typeof WorkerApiConnectRespon
 
 export const WorkerApiDequeueRequestBody = z.object({
   maxResources: MachineResources.optional(),
+  maxRunCount: z.number().optional(),
 });
 export type WorkerApiDequeueRequestBody = z.infer<typeof WorkerApiDequeueRequestBody>;
 

@@ -31,6 +31,7 @@ const Env = z.object({
   // Dequeue settings (provider mode)
   TRIGGER_DEQUEUE_ENABLED: BoolEnv.default("true"),
   TRIGGER_DEQUEUE_INTERVAL_MS: z.coerce.number().int().default(1000),
+  TRIGGER_DEQUEUE_MAX_RUN_COUNT: z.coerce.number().int().default(10),
 
   // Optional services
   TRIGGER_WARM_START_URL: z.string().optional(),
@@ -50,6 +51,7 @@ const Env = z.object({
   // Kubernetes specific settings
   KUBERNETES_FORCE_ENABLED: BoolEnv.default(false),
   KUBERNETES_NAMESPACE: z.string().default("default"),
+  KUBERNETES_WORKER_NODETYPE_LABEL: z.string().default("v4-worker"),
   EPHEMERAL_STORAGE_SIZE_LIMIT: z.string().default("10Gi"),
   EPHEMERAL_STORAGE_SIZE_REQUEST: z.string().default("2Gi"),
 

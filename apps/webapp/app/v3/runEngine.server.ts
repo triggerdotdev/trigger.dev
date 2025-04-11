@@ -18,6 +18,8 @@ function createRunEngine() {
       workers: env.RUN_ENGINE_WORKER_COUNT,
       tasksPerWorker: env.RUN_ENGINE_TASKS_PER_WORKER,
       pollIntervalMs: env.RUN_ENGINE_WORKER_POLL_INTERVAL,
+      immediatePollIntervalMs: env.RUN_ENGINE_WORKER_IMMEDIATE_POLL_INTERVAL,
+      limit: env.RUN_ENGINE_WORKER_CONCURRENCY_LIMIT,
       shutdownTimeoutMs: env.RUN_ENGINE_WORKER_SHUTDOWN_TIMEOUT_MS,
       redis: {
         keyPrefix: "engine:",
@@ -77,6 +79,7 @@ function createRunEngine() {
     },
     releaseConcurrency: {
       disabled: env.RUN_ENGINE_RELEASE_CONCURRENCY_ENABLED === "0",
+      disableConsumers: env.RUN_ENGINE_RELEASE_CONCURRENCY_DISABLE_CONSUMERS === "1",
       maxTokensRatio: env.RUN_ENGINE_RELEASE_CONCURRENCY_MAX_TOKENS_RATIO,
       maxRetries: env.RUN_ENGINE_RELEASE_CONCURRENCY_MAX_RETRIES,
       consumersCount: env.RUN_ENGINE_RELEASE_CONCURRENCY_CONSUMERS_COUNT,

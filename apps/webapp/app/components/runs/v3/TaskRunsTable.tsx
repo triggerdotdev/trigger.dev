@@ -73,7 +73,6 @@ export function TaskRunsTable({
   allowSelection = false,
   variant = "dimmed",
 }: RunsTableProps) {
-  const user = useUser();
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -81,7 +80,7 @@ export function TaskRunsTable({
   const { selectedItems, has, hasAll, select, deselect, toggle } = useSelectedItems(allowSelection);
   const { isManagedCloud } = useFeatures();
 
-  const showCompute = user.admin && isManagedCloud;
+  const showCompute = isManagedCloud;
 
   const navigateCheckboxes = useCallback(
     (event: React.KeyboardEvent<HTMLInputElement>, index: number) => {
@@ -371,7 +370,9 @@ export function TaskRunsTable({
                 </TableCell>
                 {showCompute && (
                   <TableCell to={path} className="tabular-nums">
-                    {run.costInCents > 0 ? formatCurrencyAccurate(run.costInCents / 100) : "–"}
+                    {run.costInCents > 0
+                      ? formatCurrencyAccurate((run.costInCents + run.baseCostInCents) / 100)
+                      : "–"}
                   </TableCell>
                 )}
                 <TableCell to={path}>

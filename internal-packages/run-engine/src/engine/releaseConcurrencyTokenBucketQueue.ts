@@ -1,8 +1,9 @@
 import { Callback, createRedisClient, Redis, Result, type RedisOptions } from "@internal/redis";
-import { Tracer } from "@internal/tracing";
+import { startSpan, Tracer } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
-import { setInterval } from "node:timers/promises";
 import { z } from "zod";
+import { setInterval } from "node:timers/promises";
+import { flattenAttributes } from "@trigger.dev/core/v3";
 
 export type ReleaseConcurrencyQueueRetryOptions = {
   maxRetries?: number;
@@ -15,7 +16,10 @@ export type ReleaseConcurrencyQueueRetryOptions = {
 
 export type ReleaseConcurrencyQueueOptions<T> = {
   redis: RedisOptions;
-  executor: (releaseQueue: T, releaserId: string) => Promise<void>;
+  /**
+   * @returns true if the run was successful, false if the token should be returned to the bucket
+   */
+  executor: (releaseQueue: T, releaserId: string) => Promise<boolean>;
   keys: {
     fromDescriptor: (releaseQueue: T) => string;
     toDescriptor: (releaseQueue: string) => T;
@@ -28,6 +32,7 @@ export type ReleaseConcurrencyQueueOptions<T> = {
   pollInterval?: number;
   batchSize?: number;
   retry?: ReleaseConcurrencyQueueRetryOptions;
+  disableConsumers?: boolean;
 };
 
 const QueueItemMetadata = z.object({
@@ -74,7 +79,11 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
     };
 
     this.#registerCommands();
-    this.#startConsumers();
+
+    if (!options.disableConsumers) {
+      this.#startConsumers();
+      this.#startMetricsProducer();
+    }
   }
 
   public async quit() {
@@ -93,6 +102,12 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
     const maxTokens = await this.#callMaxTokens(releaseQueueDescriptor);
 
     if (maxTokens === 0) {
+      this.logger.debug("No tokens available, skipping release", {
+        releaseQueueDescriptor,
+        releaserId,
+        maxTokens,
+      });
+
       return;
     }
 
@@ -109,6 +124,14 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
       String(Date.now())
     );
 
+    this.logger.info("Consumed token in attemptToRelease", {
+      releaseQueueDescriptor,
+      releaserId,
+      maxTokens,
+      result,
+      releaseQueue,
+    });
+
     if (!!result) {
       await this.#callExecutor(releaseQueueDescriptor, releaserId, {
         retryCount: 0,
@@ -119,6 +142,7 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
         releaseQueueDescriptor,
         releaserId,
         maxTokens,
+        releaseQueue,
       });
     }
   }
@@ -130,12 +154,18 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
    */
   public async consumeToken(releaseQueueDescriptor: T, releaserId: string) {
     const maxTokens = await this.#callMaxTokens(releaseQueueDescriptor);
+    const releaseQueue = this.keys.fromDescriptor(releaseQueueDescriptor);
 
     if (maxTokens === 0) {
+      this.logger.debug("No tokens available, skipping consume", {
+        releaseQueueDescriptor,
+        releaserId,
+        maxTokens,
+        releaseQueue,
+      });
+
       return;
     }
-
-    const releaseQueue = this.keys.fromDescriptor(releaseQueueDescriptor);
 
     await this.redis.consumeToken(
       this.masterQueuesKey,
@@ -147,6 +177,13 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
       String(maxTokens),
       String(Date.now())
     );
+
+    this.logger.debug("Consumed token in consumeToken", {
+      releaseQueueDescriptor,
+      releaserId,
+      maxTokens,
+      releaseQueue,
+    });
   }
 
   /**
@@ -157,6 +194,11 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
   public async returnToken(releaseQueueDescriptor: T, releaserId: string) {
     const releaseQueue = this.keys.fromDescriptor(releaseQueueDescriptor);
 
+    this.logger.debug("Returning token in returnToken", {
+      releaseQueueDescriptor,
+      releaserId,
+    });
+
     await this.redis.returnTokenOnly(
       this.masterQueuesKey,
       this.#bucketKey(releaseQueue),
@@ -165,6 +207,12 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
       releaseQueue,
       releaserId
     );
+
+    this.logger.debug("Returned token in returnToken", {
+      releaseQueueDescriptor,
+      releaserId,
+      releaseQueue,
+    });
   }
 
   /**
@@ -177,10 +225,20 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
     const releaseQueue = this.keys.fromDescriptor(releaseQueueDescriptor);
 
     if (amount < 0) {
+      this.logger.debug("Cannot refill with negative tokens", {
+        releaseQueueDescriptor,
+        amount,
+      });
+
       throw new Error("Cannot refill with negative tokens");
     }
 
     if (amount === 0) {
+      this.logger.debug("Cannot refill with 0 tokens", {
+        releaseQueueDescriptor,
+        amount,
+      });
+
       return [];
     }
 
@@ -192,6 +250,13 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
       String(amount),
       String(maxTokens)
     );
+
+    this.logger.debug("Refilled tokens in refillTokens", {
+      releaseQueueDescriptor,
+      releaseQueue,
+      amount,
+      maxTokens,
+    });
   }
 
   /**
@@ -210,7 +275,7 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
       return false;
     }
 
-    await Promise.all(
+    await Promise.allSettled(
       result.map(([queue, releaserId, metadata]) => {
         const itemMetadata = QueueItemMetadata.parse(JSON.parse(metadata));
         const releaseQueueDescriptor = this.keys.toDescriptor(queue);
@@ -223,9 +288,29 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
 
   async #callExecutor(releaseQueueDescriptor: T, releaserId: string, metadata: QueueItemMetadata) {
     try {
-      this.logger.info("Executing run:", { releaseQueueDescriptor, releaserId });
+      this.logger.info("Calling executor for release", { releaseQueueDescriptor, releaserId });
 
-      await this.options.executor(releaseQueueDescriptor, releaserId);
+      const released = await this.options.executor(releaseQueueDescriptor, releaserId);
+
+      if (released) {
+        this.logger.info("Executor released concurrency", { releaseQueueDescriptor, releaserId });
+      } else {
+        this.logger.info("Executor did not release concurrency", {
+          releaseQueueDescriptor,
+          releaserId,
+        });
+
+        // Return the token but don't requeue
+        const releaseQueue = this.keys.fromDescriptor(releaseQueueDescriptor);
+        await this.redis.returnTokenOnly(
+          this.masterQueuesKey,
+          this.#bucketKey(releaseQueue),
+          this.#queueKey(releaseQueue),
+          this.#metadataKey(releaseQueue),
+          releaseQueue,
+          releaserId
+        );
+      }
     } catch (error) {
       this.logger.error("Error executing run:", { error });
 
@@ -314,12 +399,167 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
     }
   }
 
+  async #startMetricsProducer() {
+    try {
+      // Produce metrics every 60 seconds, using a tracer span
+      for await (const _ of setInterval(60_000)) {
+        const metrics = await this.getQueueMetrics();
+        this.logger.info("Queue metrics:", { metrics });
+
+        await startSpan(
+          this.options.tracer,
+          "ReleaseConcurrencyTokenBucketQueue.metrics",
+          async (span) => {},
+          {
+            attributes: {
+              ...flattenAttributes(metrics, "queues"),
+              forceRecording: true,
+            },
+          }
+        );
+      }
+    } catch (error) {
+      this.logger.error("Error starting metrics producer:", { error });
+    }
+  }
+
   #calculateBackoffScore(item: QueueItemMetadata): string {
     const delay = Math.min(
       this.backoff.maxDelay,
       this.backoff.minDelay * Math.pow(this.backoff.factor, item.retryCount)
     );
     return String(Date.now() + delay);
+  }
+
+  async getQueueMetrics(): Promise<
+    Array<{ releaseQueue: string; currentTokens: number; queueLength: number }>
+  > {
+    const streamRedis = this.redis.duplicate();
+    const queuePattern = `${this.keyPrefix}*:queue`;
+    const stream = streamRedis.scanStream({
+      match: queuePattern,
+      type: "zset",
+      count: 100,
+    });
+
+    let resolvePromise: (
+      value: Array<{ releaseQueue: string; currentTokens: number; queueLength: number }>
+    ) => void;
+    let rejectPromise: (reason?: any) => void;
+
+    const promise = new Promise<
+      Array<{ releaseQueue: string; currentTokens: number; queueLength: number }>
+    >((resolve, reject) => {
+      resolvePromise = resolve;
+      rejectPromise = reject;
+    });
+
+    const metrics: Map<
+      string,
+      { releaseQueue: string; currentTokens: number; queueLength: number }
+    > = new Map();
+
+    async function getMetricsForKeys(queueKeys: string[]) {
+      if (queueKeys.length === 0) {
+        return [];
+      }
+
+      const pipeline = streamRedis.pipeline();
+
+      queueKeys.forEach((queueKey) => {
+        const releaseQueue = queueKey
+          .replace(":queue", "")
+          .replace(streamRedis.options.keyPrefix ?? "", "");
+        const bucketKey = `${releaseQueue}:bucket`;
+
+        pipeline.get(bucketKey);
+        pipeline.zcard(`${releaseQueue}:queue`);
+      });
+
+      const result = await pipeline.exec();
+
+      if (!result) {
+        return [];
+      }
+
+      const results = result.map(([resultError, queueLengthOrCurrentTokens]) => {
+        if (resultError) {
+          return null;
+        }
+
+        return queueLengthOrCurrentTokens ? Number(queueLengthOrCurrentTokens) : 0;
+      });
+
+      // Now zip the results with the queue keys
+      const zippedResults = queueKeys.map((queueKey, index) => {
+        const releaseQueue = queueKey
+          .replace(":queue", "")
+          .replace(streamRedis.options.keyPrefix ?? "", "");
+
+        // Current tokens are at indexes 0, 2, 4, 6, etc.
+        // Queue length are at indexes 1, 3, 5, 7, etc.
+
+        const currentTokens = results[index * 2];
+        const queueLength = results[index * 2 + 1];
+
+        if (typeof currentTokens !== "number" || typeof queueLength !== "number") {
+          return null;
+        }
+
+        return {
+          releaseQueue,
+          currentTokens: currentTokens,
+          queueLength: queueLength,
+        };
+      });
+
+      return zippedResults.filter((result) => result !== null);
+    }
+
+    stream.on("end", () => {
+      streamRedis.quit();
+      resolvePromise(Array.from(metrics.values()));
+    });
+
+    stream.on("error", (error) => {
+      this.logger.error("Error getting queue metrics:", { error });
+
+      stream.pause();
+      streamRedis.quit();
+      rejectPromise(error);
+    });
+
+    stream.on("data", async (keys) => {
+      stream.pause();
+
+      const uniqueKeys = Array.from(new Set<string>(keys));
+
+      if (uniqueKeys.length === 0) {
+        stream.resume();
+        return;
+      }
+
+      const unresolvedKeys = uniqueKeys.filter((key) => !metrics.has(key));
+
+      if (unresolvedKeys.length === 0) {
+        stream.resume();
+        return;
+      }
+
+      this.logger.debug("Fetching queue metrics for keys", { keys: uniqueKeys });
+
+      await getMetricsForKeys(unresolvedKeys).then((results) => {
+        results.forEach((result) => {
+          if (result) {
+            metrics.set(result.releaseQueue, result);
+          }
+        });
+
+        stream.resume();
+      });
+    });
+
+    return promise;
   }
 
   #registerCommands() {
@@ -341,7 +581,9 @@ local currentTokens = tonumber(redis.call("GET", bucketKey) or maxTokens)
 
 -- If we have enough tokens, then consume them
 if currentTokens >= 1 then
-  redis.call("SET", bucketKey, currentTokens - 1)
+  local newCurrentTokens = currentTokens - 1
+
+  redis.call("SET", bucketKey, newCurrentTokens)
   redis.call("ZREM", queueKey, releaserId)
 
   -- Clean up metadata when successfully consuming
@@ -351,8 +593,8 @@ if currentTokens >= 1 then
   local queueLength = redis.call("ZCARD", queueKey)
 
   -- If we still have tokens and items in queue, update available queues
-  if currentTokens > 0 and queueLength > 0 then
-    redis.call("ZADD", masterQueuesKey, currentTokens, releaseQueue)
+  if newCurrentTokens > 0 and queueLength > 0 then
+    redis.call("ZADD", masterQueuesKey, newCurrentTokens, releaseQueue)
   else
     redis.call("ZREM", masterQueuesKey, releaseQueue)
   end

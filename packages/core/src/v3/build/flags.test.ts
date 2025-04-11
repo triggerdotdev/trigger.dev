@@ -18,6 +18,11 @@ describe("dedupFlags", () => {
     expect(dedupFlags("--log=info --log=warn --log=error")).toBe("--log=error");
   });
 
+  it("should treat underscores as hyphens", () => {
+    expect(dedupFlags("--debug_level=info")).toBe("--debug-level=info");
+    expect(dedupFlags("--debug_level=info --debug-level=warn")).toBe("--debug-level=warn");
+  });
+
   it("should handle mix of flags with and without values", () => {
     expect(dedupFlags("--debug=false -v --debug=true")).toBe("-v --debug=true");
     expect(dedupFlags("-v --quiet -v")).toBe("--quiet -v");

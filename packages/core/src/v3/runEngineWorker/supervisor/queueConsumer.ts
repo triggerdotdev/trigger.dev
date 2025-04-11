@@ -7,6 +7,7 @@ type RunQueueConsumerOptions = {
   intervalMs?: number;
   preDequeue?: PreDequeueFn;
   preSkip?: PreSkipFn;
+  maxRunCount?: number;
   onDequeue: (messages: WorkerApiDequeueResponseBody) => Promise<void>;
 };
 
@@ -14,6 +15,7 @@ export class RunQueueConsumer {
   private readonly client: SupervisorHttpClient;
   private readonly preDequeue?: PreDequeueFn;
   private readonly preSkip?: PreSkipFn;
+  private readonly maxRunCount?: number;
   private readonly onDequeue: (messages: WorkerApiDequeueResponseBody) => Promise<void>;
 
   private intervalMs: number;
@@ -24,6 +26,7 @@ export class RunQueueConsumer {
     this.intervalMs = opts.intervalMs ?? 5_000;
     this.preDequeue = opts.preDequeue;
     this.preSkip = opts.preSkip;
+    this.maxRunCount = opts.maxRunCount;
     this.onDequeue = opts.onDequeue;
     this.client = opts.client;
   }
@@ -87,6 +90,7 @@ export class RunQueueConsumer {
     try {
       const response = await this.client.dequeue({
         maxResources: preDequeueResult?.maxResources,
+        maxRunCount: this.maxRunCount,
       });
 
       if (!response.success) {

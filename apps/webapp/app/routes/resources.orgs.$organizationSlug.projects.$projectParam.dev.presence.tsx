@@ -9,7 +9,7 @@ import { createSSELoader, type SendFunction } from "~/utils/sse";
 export const loader = createSSELoader({
   timeout: env.DEV_PRESENCE_SSE_TIMEOUT,
   interval: env.DEV_PRESENCE_POLL_MS,
-  debug: true,
+  debug: false,
   handler: async ({ id, controller, debug, request, params }) => {
     const userId = await requireUserId(request);
     const { organizationSlug, projectParam } = ProjectParamSchema.parse(params);

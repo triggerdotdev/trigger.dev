@@ -51,6 +51,7 @@ export type RunEngineOptions = {
       maxDelay?: number; // Defaults to 60000
       factor?: number; // Defaults to 2
     };
+    disableConsumers?: boolean;
   };
 };
 

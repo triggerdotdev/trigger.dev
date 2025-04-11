@@ -215,6 +215,8 @@ export const WorkerToExecutorMessageCatalog = {
       traceContext: z.record(z.unknown()),
       metadata: ServerBackgroundWorker,
       metrics: TaskRunExecutionMetrics.optional(),
+      env: z.record(z.string()).optional(),
+      isWarmStart: z.boolean().optional(),
     }),
   },
   TASK_RUN_COMPLETED_NOTIFICATION: {

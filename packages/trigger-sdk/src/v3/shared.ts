@@ -119,7 +119,6 @@ export { SubtaskUnwrapError, TaskRunPromise };
 export type Context = TaskRunContext;
 
 export function queue(options: QueueOptions): Queue {
-  // TODO register queue here
   resourceCatalog.registerQueueMetadata(options);
 
   // @ts-expect-error
@@ -215,6 +214,7 @@ export function createTask<
     resourceCatalog.registerQueueMetadata({
       name: queue.name,
       concurrencyLimit: queue.concurrencyLimit,
+      releaseConcurrencyOnWaitpoint: queue.releaseConcurrencyOnWaitpoint,
     });
   }
 
@@ -346,6 +346,7 @@ export function createSchemaTask<
     resourceCatalog.registerQueueMetadata({
       name: queue.name,
       concurrencyLimit: queue.concurrencyLimit,
+      releaseConcurrencyOnWaitpoint: queue.releaseConcurrencyOnWaitpoint,
     });
   }
 

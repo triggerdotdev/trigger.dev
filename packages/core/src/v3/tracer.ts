@@ -80,11 +80,20 @@ export class TriggerTracer {
 
     let spanEnded = false;
 
+    const createPartialSpanWithEvents = options?.events && options.events.length > 0;
+
     return this.tracer.startActiveSpan(
       name,
       {
         ...options,
-        attributes,
+        attributes: {
+          ...attributes,
+          ...(createPartialSpanWithEvents
+            ? {
+                [SemanticInternalAttributes.SKIP_SPAN_PARTIAL]: true,
+              }
+            : {}),
+        },
         startTime: clock.preciseNow(),
       },
       parentContext,
@@ -96,6 +105,29 @@ export class TriggerTracer {
             span.end();
           }
         });
+
+        if (taskContext.ctx && createPartialSpanWithEvents) {
+          const partialSpan = this.tracer.startSpan(
+            name,
+            {
+              ...options,
+              attributes: {
+                ...attributes,
+                [SemanticInternalAttributes.SPAN_PARTIAL]: true,
+                [SemanticInternalAttributes.SPAN_ID]: span.spanContext().spanId,
+              },
+            },
+            parentContext
+          );
+
+          if (options?.events) {
+            for (const event of options.events) {
+              partialSpan.addEvent(event.name, event.attributes, event.startTime);
+            }
+          }
+
+          partialSpan.end();
+        }
 
         if (options?.events) {
           for (const event of options.events) {
