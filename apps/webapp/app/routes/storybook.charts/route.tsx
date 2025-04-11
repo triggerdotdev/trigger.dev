@@ -1,46 +1,59 @@
+import { Card } from "~/components/primitives/charts/Card";
 import { type ChartConfig } from "~/components/primitives/charts/Chart";
 import { ChartBar } from "~/components/primitives/charts/Charts";
 import { Header2 } from "~/components/primitives/Headers";
 
-const chartData = [
-  { month: "Nov_21", desktop: 186 },
-  { month: "Nov_22", desktop: 305 },
-  { month: "Nov_23", desktop: 237 },
-  { month: "Nov_24", desktop: 73 },
-  { month: "Nov_25", desktop: 209 },
-  { month: "Nov_26", desktop: 214 },
+const barChartData = [
+  { day: "Nov 21", value: 186 },
+  { day: "Nov 22", value: 305 },
+  { day: "Nov 23", value: 237 },
+  { day: "Nov 24", value: 73 },
+  { day: "Nov 25", value: 209 },
+  { day: "Nov 26", value: 214 },
+  { day: "Nov 27", value: 546 },
 ];
 
 const chartConfig = {
-  desktop: {
-    label: "Desktop",
-    color: "#2563eb",
-  },
-  mobile: {
-    label: "Mobile",
-    color: "#60a5fa",
+  value: {
+    label: "Value",
+    color: "#6366F1",
   },
 } satisfies ChartConfig;
 
 export default function Story() {
   return (
-    <div className="grid grid-cols-3">
-      <div className="flex flex-col items-start gap-y-4 p-4">
-        <Header2>Bar charts</Header2>
-        <ChartBar config={chartConfig} data={chartData} />
-      </div>
-      <div className="flex flex-col items-start gap-y-4 p-4">
-        <Header2>Line charts</Header2>
-        <ChartBar config={chartConfig} data={chartData} />
-      </div>
-      <div className="flex flex-col items-start gap-y-4 p-4">
-        <Header2>Big numbers</Header2>
-        <ChartBar config={chartConfig} data={chartData} />
-      </div>
-      <div className="flex flex-col items-start gap-y-4 p-4">
-        <Header2>Stepped charts</Header2>
-        <ChartBar config={chartConfig} data={chartData} />
-      </div>
+    <div className="grid grid-cols-3 gap-4 p-8">
+      <Card>
+        <Card.Header>Bar chart</Card.Header>
+        <Card.Content>
+          <ChartBar config={chartConfig} data={barChartData} dataKey="value" />
+        </Card.Content>
+      </Card>
+
+      <Card>
+        <Card.Header>Line chart</Card.Header>
+        <Card.Content>
+          <ChartBar config={chartConfig} data={barChartData} dataKey="value" />
+        </Card.Content>
+      </Card>
+      <Card>
+        <Card.Header>Big number</Card.Header>
+        <Card.Content>
+          <ChartBar config={chartConfig} data={barChartData} dataKey="value" />
+        </Card.Content>
+      </Card>
+      <Card>
+        <Card.Header>Stepped chart</Card.Header>
+        <Card.Content>
+          <ChartBar config={chartConfig} data={barChartData} dataKey="value" />
+        </Card.Content>
+      </Card>
+      <Card>
+        <Card.Header>Stacked chart</Card.Header>
+        <Card.Content>
+          <ChartBar config={chartConfig} data={barChartData} dataKey="value" />
+        </Card.Content>
+      </Card>
     </div>
   );
 }
