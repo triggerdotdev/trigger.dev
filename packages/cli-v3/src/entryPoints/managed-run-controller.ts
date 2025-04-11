@@ -1,4 +1,3 @@
-import { logger } from "../utilities/logger.js";
 import { TaskRunProcess } from "../executions/taskRunProcess.js";
 import { env as stdEnv } from "std-env";
 import { readJSONFile } from "../utilities/fileSystem.js";
@@ -16,7 +15,6 @@ import {
   WarmStartClient,
   WORKLOAD_HEADERS,
   type WorkloadClientToServerEvents,
-  type WorkloadDebugLogRequestBody,
   WorkloadHttpClient,
   type WorkloadServerToClientEvents,
   type WorkloadRunAttemptStartResponseBody,
@@ -26,8 +24,7 @@ import { setTimeout as sleep } from "timers/promises";
 import { io, type Socket } from "socket.io-client";
 import { RunnerEnv } from "./managed/env.js";
 import { MetadataClient } from "./managed/overrides.js";
-
-logger.loggerLevel = "debug";
+import { RunLogger, SendDebugLogOptions } from "./managed/logger.js";
 
 const env = new RunnerEnv(stdEnv);
 
@@ -54,6 +51,7 @@ class ManagedRunController {
   private readonly metadataClient?: MetadataClient;
 
   private socket: Socket<WorkloadServerToClientEvents, WorkloadClientToServerEvents>;
+  private readonly logger: RunLogger;
 
   private readonly runHeartbeat: HeartbeatService;
   private readonly snapshotPoller: HeartbeatService;
@@ -105,6 +103,11 @@ class ManagedRunController {
       deploymentId: env.TRIGGER_DEPLOYMENT_ID,
       deploymentVersion: env.TRIGGER_DEPLOYMENT_VERSION,
       projectRef: env.TRIGGER_PROJECT_REF,
+    });
+
+    this.logger = new RunLogger({
+      httpClient: this.httpClient,
+      env,
     });
 
     const properties = {
@@ -1484,43 +1487,8 @@ class ManagedRunController {
     assertExhaustive(attemptStatus);
   }
 
-  sendDebugLog({
-    runId,
-    message,
-    date,
-    properties,
-  }: {
-    runId?: string;
-    message: string;
-    date?: Date;
-    properties?: WorkloadDebugLogRequestBody["properties"];
-  }) {
-    if (!runId) {
-      runId = this.runFriendlyId;
-    }
-
-    if (!runId) {
-      runId = env.TRIGGER_RUN_ID;
-    }
-
-    if (!runId) {
-      return;
-    }
-
-    const mergedProperties = {
-      ...properties,
-      runId,
-      runnerId: this.runnerId,
-      workerName: this.workerInstanceName,
-    };
-
-    console.log(message, mergedProperties);
-
-    this.httpClient.sendDebugLog(runId, {
-      message,
-      time: date ?? new Date(),
-      properties: mergedProperties,
-    });
+  sendDebugLog(opts: SendDebugLogOptions) {
+    this.logger.sendDebugLog(opts);
   }
 
   async cancelAttempt(runId: string) {
