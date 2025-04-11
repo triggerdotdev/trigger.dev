@@ -23,7 +23,8 @@
               "quick-start",
               "video-walkthrough",
               "how-it-works",
-              "limits"
+              "limits",
+              "upgrade-to-v4"
             ]
           },
           {
@@ -31,11 +32,7 @@
             "pages": [
               {
                 "group": "Tasks",
-                "pages": [
-                  "tasks/overview",
-                  "tasks/schemaTask",
-                  "tasks/scheduled"
-                ]
+                "pages": ["tasks/overview", "tasks/schemaTask", "tasks/scheduled"]
               },
               "triggering",
               "runs",
@@ -50,12 +47,7 @@
               "errors-retrying",
               {
                 "group": "Wait",
-                "pages": [
-                  "wait",
-                  "wait-for",
-                  "wait-until",
-                  "wait-for-token"
-                ]
+                "pages": ["wait", "wait-for", "wait-until", "wait-for-token"]
               },
               "queue-concurrency",
               "versioning",
@@ -99,9 +91,7 @@
           },
           {
             "group": "Development",
-            "pages": [
-              "cli-dev"
-            ]
+            "pages": ["cli-dev"]
           },
           {
             "group": "Deployment",
@@ -112,9 +102,7 @@
               "deployment/atomic-deployment",
               {
                 "group": "Deployment integrations",
-                "pages": [
-                  "vercel-integration"
-                ]
+                "pages": ["vercel-integration"]
               }
             ]
           },
@@ -165,12 +153,7 @@
           },
           {
             "group": "Using the Dashboard",
-            "pages": [
-              "run-tests",
-              "troubleshooting-alerts",
-              "replaying",
-              "bulk-actions"
-            ]
+            "pages": ["run-tests", "troubleshooting-alerts", "replaying", "bulk-actions"]
           },
           {
             "group": "Troubleshooting",
@@ -178,7 +161,7 @@
               "troubleshooting",
               "troubleshooting-debugging-in-vscode",
               "upgrading-packages",
-              "upgrade-to-v4",
+
               "troubleshooting-uptime-status",
               "troubleshooting-github-issues",
               "request-feature"
@@ -196,11 +179,7 @@
           },
           {
             "group": "Help",
-            "pages": [
-              "community",
-              "help-slack",
-              "help-email"
-            ]
+            "pages": ["community", "help-slack", "help-email"]
           }
         ]
       },
@@ -221,10 +200,7 @@
           },
           {
             "group": "Tasks API",
-            "pages": [
-              "management/tasks/trigger",
-              "management/tasks/batch-trigger"
-            ]
+            "pages": ["management/tasks/trigger", "management/tasks/batch-trigger"]
           },
           {
             "group": "Runs API",
@@ -270,9 +246,7 @@
         "groups": [
           {
             "group": "Introduction",
-            "pages": [
-              "guides/introduction"
-            ]
+            "pages": ["guides/introduction"]
           },
           {
             "group": "Frameworks",
@@ -397,10 +371,7 @@
     "href": "https://trigger.dev"
   },
   "api": {
-    "openapi": [
-      "openapi.yml",
-      "v3-openapi.yaml"
-    ],
+    "openapi": ["openapi.yml", "v3-openapi.yaml"],
     "playground": {
       "display": "simple"
     }

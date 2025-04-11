@@ -1080,7 +1080,7 @@ importers:
   packages/build:
     dependencies:
       '@trigger.dev/core':
-        specifier: workspace:4.0.0-v4-beta.0
+        specifier: workspace:4.0.0-v4-beta.1
         version: link:../core
       pkg-types:
         specifier: ^1.1.3
@@ -1156,10 +1156,10 @@ importers:
         specifier: 1.25.1
         version: 1.25.1
       '@trigger.dev/build':
-        specifier: workspace:4.0.0-v4-beta.0
+        specifier: workspace:4.0.0-v4-beta.1
         version: link:../build
       '@trigger.dev/core':
-        specifier: workspace:4.0.0-v4-beta.0
+        specifier: workspace:4.0.0-v4-beta.1
         version: link:../core
       c12:
         specifier: ^1.11.1
@@ -1485,7 +1485,7 @@ importers:
   packages/python:
     dependencies:
       '@trigger.dev/core':
-        specifier: workspace:4.0.0-v4-beta.0
+        specifier: workspace:4.0.0-v4-beta.1
         version: link:../core
       tinyexec:
         specifier: ^0.3.2
@@ -1495,10 +1495,10 @@ importers:
         specifier: ^0.15.4
         version: 0.15.4
       '@trigger.dev/build':
-        specifier: workspace:4.0.0-v4-beta.0
+        specifier: workspace:4.0.0-v4-beta.1
         version: link:../build
       '@trigger.dev/sdk':
-        specifier: workspace:4.0.0-v4-beta.0
+        specifier: workspace:4.0.0-v4-beta.1
         version: link:../trigger-sdk
       '@types/node':
         specifier: 20.14.14
@@ -1522,7 +1522,7 @@ importers:
   packages/react-hooks:
     dependencies:
       '@trigger.dev/core':
-        specifier: workspace:^4.0.0-v4-beta.0
+        specifier: workspace:^4.0.0-v4-beta.1
         version: link:../core
       react:
         specifier: ^18.0 || ^19.0 || ^19.0.0-rc
@@ -1556,7 +1556,7 @@ importers:
   packages/redis-worker:
     dependencies:
       '@trigger.dev/core':
-        specifier: workspace:4.0.0-v4-beta.0
+        specifier: workspace:4.0.0-v4-beta.1
         version: link:../core
       lodash.omit:
         specifier: ^4.5.0
@@ -1602,7 +1602,7 @@ importers:
   packages/rsc:
     dependencies:
       '@trigger.dev/core':
-        specifier: workspace:^4.0.0-v4-beta.0
+        specifier: workspace:^4.0.0-v4-beta.1
         version: link:../core
       mlly:
         specifier: ^1.7.1
@@ -1618,7 +1618,7 @@ importers:
         specifier: ^0.15.4
         version: 0.15.4
       '@trigger.dev/build':
-        specifier: workspace:^4.0.0-v4-beta.0
+        specifier: workspace:^4.0.0-v4-beta.1
         version: link:../build
       '@types/node':
         specifier: ^20.14.14
@@ -1651,7 +1651,7 @@ importers:
         specifier: 1.25.1
         version: 1.25.1
       '@trigger.dev/core':
-        specifier: workspace:4.0.0-v4-beta.0
+        specifier: workspace:4.0.0-v4-beta.1
         version: link:../core
       chalk:
         specifier: ^5.2.0
@@ -19445,6 +19445,14 @@ packages:
       acorn: ^6.0.0 || ^7.0.0 || ^8.0.0
     dependencies:
       acorn: 8.12.1
+    dev: true
+
+  /acorn-jsx@5.3.2(acorn@8.14.1):
+    resolution: {integrity: sha512-rq9s+JNhf0IChjtDXxllJ7g41oZk5SlXtp0LHwyA5cejwn7vKmKp4pPri6YEePv2PU65sAsegbXtIinmDFDXgQ==}
+    peerDependencies:
+      acorn: ^6.0.0 || ^7.0.0 || ^8.0.0
+    dependencies:
+      acorn: 8.14.1
 
   /acorn-node@1.8.2:
     resolution: {integrity: sha512-8mt+fslDufLYntIoPAaIMUe/lrbrehIiwmR3t2k9LljIzoigEPF27eLk2hy8zSGzmR/ogr7zbRKINMo1u0yh5A==}
@@ -19487,7 +19495,6 @@ packages:
     resolution: {integrity: sha512-OvQ/2pUDKmgfCg++xsTX1wGxfTaszcHVcTctW4UJB4hibJx2HXxxO5UmVgyjMa+ZDsiaf5wWLXYpRWMmBI0QHg==}
     engines: {node: '>=0.4.0'}
     hasBin: true
-    dev: false
 
   /acorn@8.8.1:
     resolution: {integrity: sha512-7zFpHzhnqYKrkYdUjF1HI1bzd0VygEGX8lFk4k5zVMqHEoES+P+7TKI+EvLO9WVMJ8eekdO0aDEK044xTXwPPA==}
@@ -21177,7 +21184,7 @@ packages:
     dependencies:
       '@jridgewell/sourcemap-codec': 1.5.0
       '@types/estree': 1.0.6
-      acorn: 8.12.1
+      acorn: 8.14.1
       estree-walker: 3.0.3
       periscopic: 3.1.0
 
@@ -23703,8 +23710,8 @@ packages:
     resolution: {integrity: sha512-oruZaFkjorTpF32kDSI5/75ViwGeZginGGy2NoOSg3Q9bnwlnmDm4HLnkl0RE3n+njDXR037aY1+x58Z/zFdwQ==}
     engines: {node: ^12.22.0 || ^14.17.0 || >=16.0.0}
     dependencies:
-      acorn: 8.12.1
-      acorn-jsx: 5.3.2(acorn@8.12.1)
+      acorn: 8.14.1
+      acorn-jsx: 5.3.2(acorn@8.14.1)
       eslint-visitor-keys: 3.4.3
 
   /esprima@4.0.1:
@@ -32961,7 +32968,7 @@ packages:
       '@jridgewell/sourcemap-codec': 1.5.0
       '@jridgewell/trace-mapping': 0.3.25
       '@types/estree': 1.0.6
-      acorn: 8.12.1
+      acorn: 8.14.1
       aria-query: 5.3.0
       axobject-query: 4.1.0
       code-red: 1.0.4
