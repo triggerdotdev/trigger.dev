@@ -46,38 +46,50 @@ export class NoopRunMetadataManager implements RunMetadataManager {
   }
 
   get parent(): RunMetadataUpdater {
-    return {
-      append: () => this.parent,
-      set: () => this.parent,
-      del: () => this.parent,
-      increment: () => this.parent,
-      decrement: () => this.parent,
-      remove: () => this.parent,
+    // Store a reference to this object
+    const self = this;
+    
+    // Create a local reference to ensure proper context
+    const parentUpdater: RunMetadataUpdater = {
+      append: () => parentUpdater,
+      set: () => parentUpdater,
+      del: () => parentUpdater,
+      increment: () => parentUpdater,
+      decrement: () => parentUpdater,
+      remove: () => parentUpdater,
       stream: () =>
         Promise.resolve({
           [Symbol.asyncIterator]: () => ({
             next: () => Promise.resolve({ done: true, value: undefined }),
           }),
         }),
-      update: () => this.parent,
+      update: () => parentUpdater,
     };
+    
+    return parentUpdater;
   }
 
   get root(): RunMetadataUpdater {
-    return {
-      append: () => this.root,
-      set: () => this.root,
-      del: () => this.root,
-      increment: () => this.root,
-      decrement: () => this.root,
-      remove: () => this.root,
+    // Store a reference to this object
+    const self = this;
+    
+    // Create a local reference to ensure proper context
+    const rootUpdater: RunMetadataUpdater = {
+      append: () => rootUpdater,
+      set: () => rootUpdater,
+      del: () => rootUpdater,
+      increment: () => rootUpdater,
+      decrement: () => rootUpdater,
+      remove: () => rootUpdater,
       stream: () =>
         Promise.resolve({
           [Symbol.asyncIterator]: () => ({
             next: () => Promise.resolve({ done: true, value: undefined }),
           }),
         }),
-      update: () => this.root,
+      update: () => rootUpdater,
     };
+    
+    return rootUpdater;
   }
 }
