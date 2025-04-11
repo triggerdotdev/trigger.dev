@@ -1,6 +1,7 @@
+import { Button } from "~/components/primitives/Buttons";
 import { Card } from "~/components/primitives/charts/Card";
 import { type ChartConfig } from "~/components/primitives/charts/Chart";
-import { ChartBar } from "~/components/primitives/charts/Charts";
+import { BigNumber, ChartBar } from "~/components/primitives/charts/Charts";
 import { Header2 } from "~/components/primitives/Headers";
 
 const barChartData = [
@@ -37,9 +38,14 @@ export default function Story() {
         </Card.Content>
       </Card>
       <Card>
-        <Card.Header>Big number</Card.Header>
+        <Card.Header>
+          Big number
+          <Card.Accessory>
+            <Button variant="secondary/small">Example button</Button>
+          </Card.Accessory>
+        </Card.Header>
         <Card.Content>
-          <ChartBar config={chartConfig} data={barChartData} dataKey="value" />
+          <BigNumber value={101} suffix="USD" />
         </Card.Content>
       </Card>
       <Card>
