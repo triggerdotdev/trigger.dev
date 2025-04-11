@@ -59,6 +59,8 @@ export class ManagedRunController {
   private readonly runHeartbeat: RunExecutionHeartbeat;
   private readonly snapshotPoller: RunExecutionSnapshotPoller;
 
+  private warmStartCount = 0;
+
   constructor(opts: ManagedRunControllerOptions) {
     const env = new RunnerEnv(opts.env);
     this.env = env;
@@ -136,6 +138,12 @@ export class ManagedRunController {
       });
       await this.stop();
     });
+  }
+
+  get metrics() {
+    return {
+      warmStartCount: this.warmStartCount,
+    };
   }
 
   // These settings depend on env vars that may be overridden, e.g. after runs and restores
@@ -1076,6 +1084,8 @@ export class ManagedRunController {
         this.exitProcess(this.successExitCode);
       }
 
+      this.warmStartCount++;
+
       this.sendDebugLog({
         runId: this.runFriendlyId,
         message: "waitForNextRun: got next run",
@@ -1429,7 +1439,13 @@ export class ManagedRunController {
   }
 
   sendDebugLog(opts: SendDebugLogOptions) {
-    this.logger.sendDebugLog(opts);
+    this.logger.sendDebugLog({
+      ...opts,
+      properties: {
+        ...opts.properties,
+        warmStartCount: this.warmStartCount,
+      },
+    });
   }
 
   async cancelAttempt(runId: string) {
