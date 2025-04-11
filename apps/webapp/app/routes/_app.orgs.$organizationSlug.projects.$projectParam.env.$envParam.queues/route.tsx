@@ -21,7 +21,6 @@ import { QueuesHasNoTasks } from "~/components/BlankStatePanels";
 import { environmentFullTitle } from "~/components/environments/EnvironmentLabel";
 import { Feedback } from "~/components/Feedback";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { BigNumber } from "~/components/metrics/BigNumber";
 import { Badge } from "~/components/primitives/Badge";
 import { Button, type ButtonVariant, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
@@ -62,12 +61,18 @@ import { docsPath, EnvironmentParamSchema, v3BillingPath, v3RunsPath } from "~/u
 import { PauseEnvironmentService } from "~/v3/services/pauseEnvironment.server";
 import { PauseQueueService } from "~/v3/services/pauseQueue.server";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
+<<<<<<< ours
 import { Header3 } from "~/components/primitives/Headers";
 import { Input } from "~/components/primitives/Input";
 import { useThrottle } from "~/hooks/useThrottle";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { useAutoRevalidate } from "~/hooks/useAutoRevalidate";
 import { env } from "~/env.server";
+||||||| ancestor
+=======
+import { BigNumber } from "~/components/primitives/charts/Charts";
+import { Card } from "~/components/primitives/charts/Card";
+>>>>>>> theirs
 
 const SearchParamsSchema = z.object({
   query: z.string().optional(),
@@ -260,99 +265,63 @@ export default function Page() {
       <PageBody scrollable={false}>
         <div className="grid max-h-full grid-rows-[auto_1fr] overflow-hidden">
           <div className="grid grid-cols-3 gap-3 p-3">
-            <BigNumber
-              title="Queued"
-              value={environment.queued}
-              suffix={env.paused && environment.queued > 0 ? "paused" : undefined}
-              animate
-              accessory={
-                <div className="flex items-start gap-1">
-                  <LinkButton
-                    variant="tertiary/small"
-                    to={v3RunsPath(organization, project, env, {
-                      statuses: ["PENDING"],
-                      period: "30d",
-                      rootOnly: false,
-                    })}
-                  >
-                    View runs
-                  </LinkButton>
-                  {environment.runsEnabled ? <EnvironmentPauseResumeButton env={env} /> : null}
-                </div>
-              }
-              valueClassName={env.paused ? "text-warning" : undefined}
-              compactThreshold={1000000}
-            />
-            <BigNumber
-              title="Running"
-              value={environment.running}
-              animate
-              valueClassName={limitClassName}
-              suffix={
-                limitStatus === "burst" ? (
-                  <span className={cn(limitClassName, "flex items-center gap-1")}>
-                    Including {environment.running - environment.concurrencyLimit} burst runs{" "}
-                    <BurstFactorTooltip environment={environment} />
-                  </span>
-                ) : limitStatus === "limit" ? (
-                  "At concurrency limit"
-                ) : undefined
-              }
-              accessory={
-                <LinkButton
-                  variant="tertiary/small"
-                  to={v3RunsPath(organization, project, env, {
-                    statuses: ["DEQUEUED", "EXECUTING"],
-                    period: "30d",
-                    rootOnly: false,
-                  })}
-                >
-                  View runs
-                </LinkButton>
-              }
-              compactThreshold={1000000}
-            />
-            <BigNumber
-              title="Concurrency limit"
-              value={environment.concurrencyLimit}
-              animate
-              valueClassName={limitClassName}
-              suffix={
-                environment.burstFactor > 1 ? (
-                  <span className={cn(limitClassName, "flex items-center gap-1")}>
-                    Burst limit {environment.burstFactor * environment.concurrencyLimit}{" "}
-                    <BurstFactorTooltip environment={environment} />
-                  </span>
-                ) : undefined
-              }
-              accessory={
-                plan ? (
-                  plan?.v3Subscription?.plan?.limits.concurrentRuns.canExceed ? (
-                    <Feedback
-                      button={
-                        <Button
-                          variant="tertiary/small"
-                          LeadingIcon={ChatBubbleLeftEllipsisIcon}
-                          leadingIconClassName="text-indigo-500"
-                        >
-                          Increase limit…
-                        </Button>
-                      }
-                      defaultValue="concurrency"
-                    />
-                  ) : (
-                    <LinkButton
-                      to={v3BillingPath(organization, "Upgrade your plan for more concurrency")}
-                      variant="secondary/small"
-                      LeadingIcon={ArrowUpCircleIcon}
-                      leadingIconClassName="text-indigo-500"
-                    >
-                      Increase limit
-                    </LinkButton>
-                  )
-                ) : null
-              }
-            />
+            <Card>
+              <Card.Header>
+                Queued
+                <Card.Accessory>
+                  <EnvironmentPauseResumeButton env={env} />
+                </Card.Accessory>
+              </Card.Header>
+              <Card.Content>
+                <BigNumber
+                  value={environment.queued}
+                  suffix={env.paused && environment.queued > 0 ? "paused" : undefined}
+                  animate
+                  valueClassName={env.paused ? "text-amber-500" : undefined}
+                />
+              </Card.Content>
+            </Card>
+            <Card>
+              <Card.Header>Running</Card.Header>
+              <Card.Content>
+                <BigNumber value={environment.running} animate />
+              </Card.Content>
+            </Card>
+            <Card>
+              <Card.Header>
+                Concurrency limit
+                <Card.Accessory>
+                  {plan ? (
+                    plan?.v3Subscription?.plan?.limits.concurrentRuns.canExceed ? (
+                      <Feedback
+                        button={
+                          <Button
+                            variant="tertiary/small"
+                            LeadingIcon={ChatBubbleLeftEllipsisIcon}
+                            leadingIconClassName="text-indigo-500"
+                          >
+                            Increase limit
+                          </Button>
+                        }
+                        defaultValue="help"
+                      />
+                    ) : (
+                      <LinkButton
+                        to={v3BillingPath(organization, "Upgrade your plan for more concurrency")}
+                        variant="secondary/small"
+                        LeadingIcon={ArrowUpCircleIcon}
+                        leadingIconClassName="text-indigo-500"
+                      >
+                        Increase limit
+                      </LinkButton>
+                    )
+                  ) : null}
+                </Card.Accessory>
+              </Card.Header>
+              <Card.Content>
+                <BigNumber value={environment.concurrencyLimit} animate />
+              </Card.Content>
+            </Card>
           </div>
 
           {success ? (
