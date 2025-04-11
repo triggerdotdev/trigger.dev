@@ -545,6 +545,8 @@ function TaskActivityGraph({ activity }: { activity: TaskActivity }) {
         <Bar dataKey="SYSTEM_FAILURE" fill="#F43F5E" stackId="a" strokeWidth={0} barSize={10} />
         <Bar dataKey="PAUSED" fill="#FCD34D" stackId="a" strokeWidth={0} barSize={10} />
         <Bar dataKey="CRASHED" fill="#F43F5E" stackId="a" strokeWidth={0} barSize={10} />
+        <Bar dataKey="EXPIRED" fill="#F43F5E" stackId="a" strokeWidth={0} barSize={10} />
+        <Bar dataKey="TIMED_OUT" fill="#F43F5E" stackId="a" strokeWidth={0} barSize={10} />
       </BarChart>
     </ResponsiveContainer>
   );
