@@ -106,7 +106,6 @@ class RunExecutionSnapshotPoller {
 
   private readonly runFriendlyId: string;
   private readonly snapshotFriendlyId: string;
-  private readonly snapshotPollIntervalSeconds: number;
 
   private readonly handleSnapshotChange: (execution: RunExecutionData) => Promise<void>;
 
@@ -167,7 +166,7 @@ class RunExecutionSnapshotPoller {
 
         await this.handleSnapshotChange(response.data.execution);
       },
-      intervalMs: this.snapshotPollIntervalSeconds * 1000,
+      intervalMs: opts.snapshotPollIntervalSeconds * 1000,
       leadingEdge: false,
       onError: async (error) => {
         this.logger.sendDebugLog({
@@ -177,6 +176,10 @@ class RunExecutionSnapshotPoller {
         });
       },
     });
+  }
+
+  resetCurrentInterval() {
+    this.poller.resetCurrentInterval();
   }
 
   updateInterval(intervalMs: number) {

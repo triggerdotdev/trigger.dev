@@ -49,13 +49,13 @@ export async function startWorkerRuntime(options: WorkerRuntimeOptions): Promise
  *   - Receiving snapshot update pings (via socket)
  */
 class DevSupervisor implements WorkerRuntime {
-  private config: DevConfigResponseBody;
+  private config?: DevConfigResponseBody;
   private disconnectPresence: (() => void) | undefined;
   private lastManifest?: BuildManifest;
   private latestWorkerId?: string;
 
   /** Receive notifications when runs change state */
-  private socket: Socket<WorkerServerToClientEvents, WorkerClientToServerEvents>;
+  private socket?: Socket<WorkerServerToClientEvents, WorkerClientToServerEvents>;
   private socketIsReconnecting = false;
 
   /** Workers are versions of the code */
@@ -93,7 +93,7 @@ class DevSupervisor implements WorkerRuntime {
 
     this.runLimiter = pLimit(maxConcurrentRuns);
 
-    this.#createSocket();
+    this.socket = this.#createSocket();
 
     //start an SSE connection for presence
     this.disconnectPresence = await this.#startPresenceConnection();
@@ -105,7 +105,7 @@ class DevSupervisor implements WorkerRuntime {
   async shutdown(): Promise<void> {
     this.disconnectPresence?.();
     try {
-      this.socket.close();
+      this.socket?.close();
     } catch (error) {
       logger.debug("[DevSupervisor] shutdown, socket failed to close", { error });
     }
@@ -187,6 +187,10 @@ class DevSupervisor implements WorkerRuntime {
    * For the latest version we will pull from the main queue, so we don't specify that.
    */
   async #dequeueRuns() {
+    if (!this.config) {
+      throw new Error("No config, can't dequeue runs");
+    }
+
     if (!this.latestWorkerId) {
       //try again later
       logger.debug(`[DevSupervisor] dequeueRuns. No latest worker ID, trying again later`);
@@ -409,13 +413,14 @@ class DevSupervisor implements WorkerRuntime {
     const wsUrl = new URL(this.options.client.apiURL);
     wsUrl.pathname = "/dev-worker";
 
-    this.socket = io(wsUrl.href, {
+    const socket = io(wsUrl.href, {
       transports: ["websocket"],
       extraHeaders: {
         Authorization: `Bearer ${this.options.client.accessToken}`,
       },
     });
-    this.socket.on("run:notify", async ({ version, run }) => {
+
+    socket.on("run:notify", async ({ version, run }) => {
       logger.debug("[DevSupervisor] Received run notification", { version, run });
 
       this.options.client.dev.sendDebugLog(run.friendlyId, {
@@ -434,10 +439,11 @@ class DevSupervisor implements WorkerRuntime {
 
       await controller.getLatestSnapshot();
     });
-    this.socket.on("connect", () => {
+
+    socket.on("connect", () => {
       logger.debug("[DevSupervisor] Connected to supervisor");
 
-      if (this.socket.recovered || this.socketIsReconnecting) {
+      if (socket.recovered || this.socketIsReconnecting) {
         logger.debug("[DevSupervisor] Socket recovered");
         eventBus.emit("socketConnectionReconnected", `Connection was recovered`);
       }
@@ -448,19 +454,21 @@ class DevSupervisor implements WorkerRuntime {
         controller.resubscribeToRunNotifications();
       }
     });
-    this.socket.on("connect_error", (error) => {
+
+    socket.on("connect_error", (error) => {
       logger.debug("[DevSupervisor] Connection error", { error });
     });
-    this.socket.on("disconnect", (reason, description) => {
+
+    socket.on("disconnect", (reason, description) => {
       logger.debug("[DevSupervisor] socket was disconnected", {
         reason,
         description,
-        active: this.socket.active,
+        active: socket.active,
       });
 
       if (reason === "io server disconnect") {
         // the disconnection was initiated by the server, you need to manually reconnect
-        this.socket.connect();
+        socket.connect();
       } else {
         this.socketIsReconnecting = true;
         eventBus.emit("socketConnectionDisconnected", reason);
@@ -472,6 +480,8 @@ class DevSupervisor implements WorkerRuntime {
         connections: Array.from(this.socketConnections),
       });
     }, 5000);
+
+    return socket;
   }
 
   #subscribeToRunNotifications() {
