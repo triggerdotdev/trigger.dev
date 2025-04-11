@@ -34,7 +34,7 @@
     "lucide-react": "^0.486.0",
     "marked": "^4.0.18",
     "nanoid": "^5.1.5",
-    "next": "15.2.4",
+    "next": "14.2.26",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-markdown": "^10.1.0",
