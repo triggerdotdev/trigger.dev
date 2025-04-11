@@ -898,7 +898,7 @@ class ManagedRunController {
         ) satisfies TaskRunExecutionMetrics;
 
       const taskRunEnv = {
-        ...gatherProcessEnv(),
+        ...env.gatherProcessEnv(),
         ...envVars,
       };
 
@@ -1579,19 +1579,6 @@ const workerManifest = await loadWorkerManifest();
 
 const prodWorker = new ManagedRunController({ workerManifest });
 await prodWorker.start();
-
-function gatherProcessEnv(): Record<string, string> {
-  const $env = {
-    NODE_ENV: stdEnv.NODE_ENV,
-    NODE_EXTRA_CA_CERTS: stdEnv.NODE_EXTRA_CA_CERTS,
-    OTEL_EXPORTER_OTLP_ENDPOINT: stdEnv.OTEL_EXPORTER_OTLP_ENDPOINT,
-  };
-
-  // Filter out undefined values
-  return Object.fromEntries(
-    Object.entries($env).filter(([key, value]) => value !== undefined)
-  ) as Record<string, string>;
-}
 
 async function loadWorkerManifest() {
   const manifest = await readJSONFile("./index.json");
