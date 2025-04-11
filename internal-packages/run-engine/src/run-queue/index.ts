@@ -683,6 +683,39 @@ export class RunQueue {
     );
   }
 
+  public async removeEnvironmentQueuesFromMasterQueue(
+    masterQueue: string,
+    organizationId: string,
+    projectId: string
+  ) {
+    // Use scanStream to find all matching members
+    const stream = this.redis.zscanStream(masterQueue, {
+      match: this.keys.queueKey(organizationId, projectId, "*", "*"),
+      count: 100,
+    });
+
+    return new Promise<void>((resolve, reject) => {
+      const matchingQueues: string[] = [];
+
+      stream.on("data", (resultKeys) => {
+        // zscanStream returns [member1, score1, member2, score2, ...]
+        // We only want the members (even indices)
+        for (let i = 0; i < resultKeys.length; i += 2) {
+          matchingQueues.push(resultKeys[i]);
+        }
+      });
+
+      stream.on("end", async () => {
+        if (matchingQueues.length > 0) {
+          await this.redis.zrem(masterQueue, matchingQueues);
+        }
+        resolve();
+      });
+
+      stream.on("error", (err) => reject(err));
+    });
+  }
+
   async quit() {
     await this.subscriber.unsubscribe();
     await this.subscriber.quit();

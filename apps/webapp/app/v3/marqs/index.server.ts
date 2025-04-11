@@ -193,6 +193,38 @@ export class MarQS {
     return this.redis.scard(this.keys.envReserveConcurrencyKey(env.id));
   }
 
+  public async removeEnvironmentQueuesFromMasterQueue(orgId: string, environmentId: string) {
+    const sharedQueue = this.keys.sharedQueueKey();
+    const queuePattern = this.keys.queueKey(orgId, environmentId, "*");
+
+    // Use scanStream to find all matching members
+    const stream = this.redis.zscanStream(sharedQueue, {
+      match: queuePattern,
+      count: 100,
+    });
+
+    return new Promise<void>((resolve, reject) => {
+      const matchingQueues: string[] = [];
+
+      stream.on("data", (resultKeys) => {
+        // zscanStream returns [member1, score1, member2, score2, ...]
+        // We only want the members (even indices)
+        for (let i = 0; i < resultKeys.length; i += 2) {
+          matchingQueues.push(resultKeys[i]);
+        }
+      });
+
+      stream.on("end", async () => {
+        if (matchingQueues.length > 0) {
+          await this.redis.zrem(sharedQueue, matchingQueues);
+        }
+        resolve();
+      });
+
+      stream.on("error", (err) => reject(err));
+    });
+  }
+
   public async enqueueMessage(
     env: AuthenticatedEnvironment,
     queue: string,

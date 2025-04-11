@@ -378,7 +378,7 @@ export class RunEngine {
           }
         } else {
           // For deployed runs, we add the env/worker id as the secondary master queue
-          let secondaryMasterQueue = this.#environmentMasterQueueKey(environment.id);
+          secondaryMasterQueue = this.#environmentMasterQueueKey(environment.id);
           if (lockedToVersionId) {
             secondaryMasterQueue = this.#backgroundWorkerQueueKey(lockedToVersionId);
           }
@@ -773,6 +773,22 @@ export class RunEngine {
     queues: string[]
   ): Promise<Record<string, number>> {
     return this.runQueue.currentConcurrencyOfQueues(environment, queues);
+  }
+
+  async removeEnvironmentQueuesFromMasterQueue({
+    masterQueue,
+    organizationId,
+    projectId,
+  }: {
+    masterQueue: string;
+    organizationId: string;
+    projectId: string;
+  }) {
+    return this.runQueue.removeEnvironmentQueuesFromMasterQueue(
+      masterQueue,
+      organizationId,
+      projectId
+    );
   }
 
   /**

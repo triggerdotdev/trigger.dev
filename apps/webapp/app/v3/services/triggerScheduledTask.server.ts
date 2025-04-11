@@ -43,6 +43,16 @@ export class TriggerScheduledTaskService extends BaseService {
       return;
     }
 
+    if (instance.environment.project.deletedAt) {
+      logger.debug("Project is deleted, disabling schedule", {
+        instanceId,
+        scheduleId: instance.taskSchedule.friendlyId,
+        projectId: instance.environment.project.id,
+      });
+
+      return;
+    }
+
     try {
       let shouldTrigger = true;
 
