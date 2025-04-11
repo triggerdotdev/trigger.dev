@@ -1,27 +1,32 @@
 import { Button } from "~/components/primitives/Buttons";
 import { Card } from "~/components/primitives/charts/Card";
 import { type ChartConfig } from "~/components/primitives/charts/Chart";
-import { BigNumber, ChartBar, ChartLine } from "~/components/primitives/charts/Charts";
+import {
+  BigNumber,
+  ChartBar,
+  ChartLine,
+  ChartStacked,
+} from "~/components/primitives/charts/Charts";
 
 export default function Story() {
   return (
     <div className="grid grid-cols-3 gap-4 p-8">
       <Card>
-        <Card.Header>Bar chart</Card.Header>
+        <Card.Header>ChartBar</Card.Header>
         <Card.Content>
           <ChartBar config={barChartConfig} data={barChartData} dataKey="value" />
         </Card.Content>
       </Card>
 
       <Card>
-        <Card.Header>Line chart</Card.Header>
+        <Card.Header>ChartLine</Card.Header>
         <Card.Content>
           <ChartLine config={lineChartConfig} data={lineChartData} dataKey="value" />
         </Card.Content>
       </Card>
       <Card>
         <Card.Header>
-          Big number
+          BigNumber
           <Card.Accessory>
             <Button variant="secondary/small">Example button</Button>
           </Card.Accessory>
@@ -31,15 +36,15 @@ export default function Story() {
         </Card.Content>
       </Card>
       <Card>
-        <Card.Header>Stepped chart</Card.Header>
+        <Card.Header>ChartStepped</Card.Header>
         <Card.Content>
           <ChartBar config={barChartConfig} data={barChartData} dataKey="value" />
         </Card.Content>
       </Card>
       <Card>
-        <Card.Header>Stacked chart</Card.Header>
+        <Card.Header>ChartStacked</Card.Header>
         <Card.Content>
-          <ChartBar config={barChartConfig} data={barChartData} dataKey="value" />
+          <ChartStacked config={stackedChartConfig} data={stackedChartData} dataKey="value" />
         </Card.Content>
       </Card>
     </div>
@@ -83,3 +88,31 @@ const lineChartData = [
   { day: "Nov 26", desktop: 214, mobile: 140 },
   { day: "Nov 27", desktop: 546, mobile: 150 },
 ];
+
+const stackedChartData = [
+  { month: "Nov 21", "in-progress": 8432, canceled: 0, completed: 10456, failed: 2341 },
+  { month: "Nov 22", "in-progress": 156, canceled: 4521, completed: 0, failed: 7890 },
+  { month: "Nov 23", "in-progress": 9876, canceled: 120, completed: 0, failed: 5432 },
+  { month: "Nov 24", "in-progress": 8765, canceled: 0, completed: 3421, failed: 6543 },
+  { month: "Nov 25", "in-progress": 7123, canceled: 0, completed: 9876, failed: 2109 },
+  { month: "Nov 26", "in-progress": 4567, canceled: 6789, completed: 0, failed: 8901 },
+  { month: "Nov 27", "in-progress": 3210, canceled: 9012, completed: 0, failed: 6789 },
+];
+const stackedChartConfig = {
+  "in-progress": {
+    label: "In Progress",
+    color: "#3B82F6",
+  },
+  canceled: {
+    label: "Canceled",
+    color: "#878C99",
+  },
+  completed: {
+    label: "Completed",
+    color: "#28BF5C",
+  },
+  failed: {
+    label: "Failed",
+    color: "#E11D48",
+  },
+} satisfies ChartConfig;
