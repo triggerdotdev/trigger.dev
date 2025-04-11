@@ -25,6 +25,7 @@ import { io, type Socket } from "socket.io-client";
 import { RunnerEnv } from "./managed/env.js";
 import { MetadataClient } from "./managed/overrides.js";
 import { RunLogger, SendDebugLogOptions } from "./managed/logger.js";
+import { RunExecutionHeartbeat } from "./managed/heartbeat.js";
 
 const env = new RunnerEnv(stdEnv);
 
@@ -54,45 +55,7 @@ class ManagedRunController {
   private readonly logger: RunLogger;
 
   private readonly runHeartbeat: HeartbeatService;
-  private readonly snapshotPoller: HeartbeatService;
-
-  get heartbeatIntervalSeconds() {
-    return env.TRIGGER_HEARTBEAT_INTERVAL_SECONDS;
-  }
-
-  get snapshotPollIntervalSeconds() {
-    return env.TRIGGER_SNAPSHOT_POLL_INTERVAL_SECONDS;
-  }
-
-  get runnerId() {
-    return env.TRIGGER_RUNNER_ID;
-  }
-
-  get successExitCode() {
-    return env.TRIGGER_SUCCESS_EXIT_CODE;
-  }
-
-  get failureExitCode() {
-    return env.TRIGGER_FAILURE_EXIT_CODE;
-  }
-
-  get workerApiUrl() {
-    return env.TRIGGER_SUPERVISOR_API_URL;
-  }
-
-  get workerInstanceName() {
-    return env.TRIGGER_WORKER_INSTANCE_NAME;
-  }
-
-  private state:
-    | {
-        phase: "RUN";
-        run: Run;
-        snapshot: Snapshot;
-      }
-    | {
-        phase: "IDLE" | "WARM_START";
-      } = { phase: "IDLE" };
+  private readonly snapshotPoller: RunExecutionHeartbeat;
 
   constructor(opts: ManagedRunControllerOptions) {
     this.workerManifest = opts.workerManifest;
@@ -137,63 +100,14 @@ class ManagedRunController {
       });
     }
 
-    this.snapshotPoller = new HeartbeatService({
-      heartbeat: async () => {
-        if (!this.runFriendlyId) {
-          this.sendDebugLog({
-            runId: env.TRIGGER_RUN_ID,
-            message: "Skipping snapshot poll, no run ID",
-          });
-          return;
-        }
-
-        this.sendDebugLog({
-          runId: env.TRIGGER_RUN_ID,
-          message: "Polling for latest snapshot",
-        });
-
-        this.sendDebugLog({
-          runId: this.runFriendlyId,
-          message: `snapshot poll: started`,
-          properties: {
-            snapshotId: this.snapshotFriendlyId,
-          },
-        });
-
-        const response = await this.httpClient.getRunExecutionData(this.runFriendlyId);
-
-        if (!response.success) {
-          this.sendDebugLog({
-            runId: this.runFriendlyId,
-            message: "Snapshot poll failed",
-            properties: {
-              error: response.error,
-            },
-          });
-
-          this.sendDebugLog({
-            runId: this.runFriendlyId,
-            message: `snapshot poll: failed`,
-            properties: {
-              snapshotId: this.snapshotFriendlyId,
-              error: response.error,
-            },
-          });
-
-          return;
-        }
-
-        await this.handleSnapshotChange(response.data.execution);
-      },
-      intervalMs: this.snapshotPollIntervalSeconds * 1000,
-      leadingEdge: false,
-      onError: async (error) => {
-        this.sendDebugLog({
-          runId: this.runFriendlyId,
-          message: "Failed to poll for snapshot",
-          properties: { error: error instanceof Error ? error.message : String(error) },
-        });
-      },
+    this.snapshotPoller = new RunExecutionHeartbeat({
+      // @ts-expect-error
+      runFriendlyId: env.TRIGGER_RUN_ID,
+      // @ts-expect-error
+      snapshotFriendlyId: env.TRIGGER_SNAPSHOT_ID,
+      httpClient: this.httpClient,
+      logger: this.logger,
+      heartbeatIntervalSeconds: this.heartbeatIntervalSeconds,
     });
 
     this.runHeartbeat = new HeartbeatService({
@@ -245,6 +159,44 @@ class ManagedRunController {
       await this.stop();
     });
   }
+
+  get heartbeatIntervalSeconds() {
+    return env.TRIGGER_HEARTBEAT_INTERVAL_SECONDS;
+  }
+
+  get snapshotPollIntervalSeconds() {
+    return env.TRIGGER_SNAPSHOT_POLL_INTERVAL_SECONDS;
+  }
+
+  get runnerId() {
+    return env.TRIGGER_RUNNER_ID;
+  }
+
+  get successExitCode() {
+    return env.TRIGGER_SUCCESS_EXIT_CODE;
+  }
+
+  get failureExitCode() {
+    return env.TRIGGER_FAILURE_EXIT_CODE;
+  }
+
+  get workerApiUrl() {
+    return env.TRIGGER_SUPERVISOR_API_URL;
+  }
+
+  get workerInstanceName() {
+    return env.TRIGGER_WORKER_INSTANCE_NAME;
+  }
+
+  private state:
+    | {
+        phase: "RUN";
+        run: Run;
+        snapshot: Snapshot;
+      }
+    | {
+        phase: "IDLE" | "WARM_START";
+      } = { phase: "IDLE" };
 
   private enterRunPhase(run: Run, snapshot: Snapshot) {
     this.onExitRunPhase(run);
@@ -477,6 +429,7 @@ class ManagedRunController {
 
       try {
         this.updateRunPhase(run, snapshot);
+        this.snapshotPoller.updateSnapshotId(snapshot.friendlyId);
       } catch (error) {
         this.sendDebugLog({
           runId: run.friendlyId,
