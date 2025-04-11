@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Metadata } from "./overrides.js";
 import { z } from "zod";
+import { EnvObject } from "std-env";
 
 const DateEnv = z
   .string()
@@ -54,7 +55,7 @@ export class RunnerEnv {
   private env: Env;
   public readonly initial: Env;
 
-  constructor(env: Record<string, string | undefined>) {
+  constructor(env: EnvObject) {
     this.env = Env.parse(env);
     this.initial = { ...this.env };
   }
