@@ -1,5 +1,17 @@
 # trigger.dev
 
+## 4.0.0-v4-beta.1
+
+### Patch Changes
+
+- Fix init.ts in custom trigger dirs ([#1914](https://github.com/triggerdotdev/trigger.dev/pull/1914))
+- Init command will now correctly install v4-beta packages ([#1914](https://github.com/triggerdotdev/trigger.dev/pull/1914))
+- Update nypm package to support test-based bun.lock files ([#1914](https://github.com/triggerdotdev/trigger.dev/pull/1914))
+- Handle flush errors gracefully in dev ([#1914](https://github.com/triggerdotdev/trigger.dev/pull/1914))
+- Updated dependencies:
+  - `@trigger.dev/build@4.0.0-v4-beta.1`
+  - `@trigger.dev/core@4.0.0-v4-beta.1`
+
 ## 4.0.0-v4-beta.0
 
 ### Major Changes
