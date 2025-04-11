@@ -42,6 +42,8 @@ type Snapshot = {
   friendlyId: string;
 };
 
+type SupervisorSocket = Socket<WorkloadServerToClientEvents, WorkloadClientToServerEvents>;
+
 class ManagedRunController {
   private taskRunProcess?: TaskRunProcess;
 
@@ -51,7 +53,7 @@ class ManagedRunController {
   private readonly warmStartClient: WarmStartClient | undefined;
   private readonly metadataClient?: MetadataClient;
 
-  private socket: Socket<WorkloadServerToClientEvents, WorkloadClientToServerEvents>;
+  private socket: SupervisorSocket;
   private readonly logger: RunLogger;
 
   private readonly runHeartbeat: RunExecutionHeartbeat;
@@ -121,6 +123,9 @@ class ManagedRunController {
       heartbeatIntervalSeconds: this.heartbeatIntervalSeconds,
     });
 
+    // Websocket notifications are only an optimisation so we don't need to wait for a successful connection
+    this.socket = this.createSupervisorSocket();
+
     process.on("SIGTERM", async () => {
       this.sendDebugLog({
         runId: this.runFriendlyId,
@@ -129,6 +134,8 @@ class ManagedRunController {
       await this.stop();
     });
   }
+
+  // These settings depend on env vars that may be overridden, e.g. after runs and restores
 
   get heartbeatIntervalSeconds() {
     return env.TRIGGER_HEARTBEAT_INTERVAL_SECONDS;
@@ -1103,17 +1110,18 @@ class ManagedRunController {
     process.exit(code);
   }
 
-  createSocket() {
+  createSupervisorSocket(): SupervisorSocket {
     const wsUrl = new URL("/workload", this.workerApiUrl);
 
-    this.socket = io(wsUrl.href, {
+    const socket = io(wsUrl.href, {
       transports: ["websocket"],
       extraHeaders: {
         [WORKLOAD_HEADERS.DEPLOYMENT_ID]: env.TRIGGER_DEPLOYMENT_ID,
         [WORKLOAD_HEADERS.RUNNER_ID]: env.TRIGGER_RUNNER_ID,
       },
-    });
-    this.socket.on("run:notify", async ({ version, run }) => {
+    }) satisfies SupervisorSocket;
+
+    socket.on("run:notify", async ({ version, run }) => {
       this.sendDebugLog({
         runId: run.friendlyId,
         message: "run:notify received by runner",
@@ -1165,7 +1173,8 @@ class ManagedRunController {
 
       await this.handleSnapshotChange(latestSnapshot.data.execution);
     });
-    this.socket.on("connect", () => {
+
+    socket.on("connect", () => {
       this.sendDebugLog({
         runId: this.runFriendlyId,
         message: "Connected to supervisor",
@@ -1177,20 +1186,24 @@ class ManagedRunController {
         this.subscribeToRunNotifications({ run, snapshot });
       }
     });
-    this.socket.on("connect_error", (error) => {
+
+    socket.on("connect_error", (error) => {
       this.sendDebugLog({
         runId: this.runFriendlyId,
         message: "Connection error",
         properties: { error: error instanceof Error ? error.message : String(error) },
       });
     });
-    this.socket.on("disconnect", (reason, description) => {
+
+    socket.on("disconnect", (reason, description) => {
       this.sendDebugLog({
         runId: this.runFriendlyId,
         message: "Disconnected from supervisor",
         properties: { reason, description: description?.toString() },
       });
     });
+
+    return socket;
   }
 
   private async executeRun({
@@ -1431,9 +1444,6 @@ class ManagedRunController {
       runId: this.runFriendlyId,
       message: "Starting up",
     });
-
-    // Websocket notifications are only an optimisation so we don't need to wait for a successful connection
-    this.createSocket();
 
     // If we have run and snapshot IDs, we can start an attempt immediately
     if (env.TRIGGER_RUN_ID && env.TRIGGER_SNAPSHOT_ID) {
