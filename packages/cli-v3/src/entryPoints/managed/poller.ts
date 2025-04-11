@@ -19,10 +19,6 @@ export class RunExecutionSnapshotPoller {
   private readonly runFriendlyId: string;
   private snapshotFriendlyId: string;
 
-  private readonly snapshotPollIntervalSeconds: number;
-
-  private readonly handleSnapshotChange: (execution: RunExecutionData) => Promise<void>;
-
   constructor(opts: RunExecutionSnapshotPollerOptions) {
     this.logger = opts.logger;
     this.httpClient = opts.httpClient;
@@ -30,7 +26,15 @@ export class RunExecutionSnapshotPoller {
     this.runFriendlyId = opts.runFriendlyId;
     this.snapshotFriendlyId = opts.snapshotFriendlyId;
 
-    this.handleSnapshotChange = opts.handleSnapshotChange;
+    this.logger.sendDebugLog({
+      runId: this.runFriendlyId,
+      message: "RunExecutionSnapshotPoller",
+      properties: {
+        runFriendlyId: this.runFriendlyId,
+        snapshotFriendlyId: this.snapshotFriendlyId,
+        snapshotPollIntervalSeconds: opts.snapshotPollIntervalSeconds,
+      },
+    });
 
     this.poller = new HeartbeatService({
       heartbeat: async () => {
@@ -78,9 +82,9 @@ export class RunExecutionSnapshotPoller {
           return;
         }
 
-        await this.handleSnapshotChange(response.data.execution);
+        await opts.handleSnapshotChange(response.data.execution);
       },
-      intervalMs: this.snapshotPollIntervalSeconds * 1000,
+      intervalMs: opts.snapshotPollIntervalSeconds * 1000,
       leadingEdge: false,
       onError: async (error) => {
         this.logger.sendDebugLog({

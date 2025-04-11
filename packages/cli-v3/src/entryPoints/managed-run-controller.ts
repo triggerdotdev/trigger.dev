@@ -108,7 +108,7 @@ class ManagedRunController {
       httpClient: this.httpClient,
       logger: this.logger,
       snapshotPollIntervalSeconds: this.snapshotPollIntervalSeconds,
-      handleSnapshotChange: this.handleSnapshotChange,
+      handleSnapshotChange: this.handleSnapshotChange.bind(this),
     });
 
     this.runHeartbeat = new RunExecutionHeartbeat({

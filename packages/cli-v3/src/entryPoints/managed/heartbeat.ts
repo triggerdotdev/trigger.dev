@@ -25,6 +25,16 @@ export class RunExecutionHeartbeat {
     this.runFriendlyId = opts.runFriendlyId;
     this.snapshotFriendlyId = opts.snapshotFriendlyId;
 
+    this.logger.sendDebugLog({
+      runId: this.runFriendlyId,
+      message: "RunExecutionHeartbeat",
+      properties: {
+        runFriendlyId: this.runFriendlyId,
+        snapshotFriendlyId: this.snapshotFriendlyId,
+        heartbeatIntervalSeconds: opts.heartbeatIntervalSeconds,
+      },
+    });
+
     this.heartbeat = new HeartbeatService({
       heartbeat: async () => {
         this.logger.sendDebugLog({
