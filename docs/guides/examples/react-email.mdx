@@ -295,7 +295,7 @@ And then to trigger the email, you can use the following task:
 ```tsx trigger/triggerWelcomeEmail.tsx
 import { logger, task } from "@trigger.dev/sdk/v3";
 import { Resend } from "resend";
-import TriggerWelcomeEmail from "emails/triggerdotdev-welcome-email";
+import TriggerWelcomeEmail from "emails/trigger-welcome-email";
 
 // Initialize Resend client
 const resend = new Resend(process.env.RESEND_API_KEY);
