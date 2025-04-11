@@ -40,14 +40,13 @@ export class DeleteProjectService {
       await marqs?.removeEnvironmentQueuesFromMasterQueue(project.organization.id, environment.id);
     }
 
-    // Delete all queues from the RunEngine 2 master queues
+    // Delete all queues from the RunEngine 2 prod master queues
     const workerGroups = await this.#prismaClient.workerInstanceGroup.findMany({
       select: {
         masterQueue: true,
       },
     });
     const engineMasterQueues = workerGroups.map((group) => group.masterQueue);
-
     for (const masterQueue of engineMasterQueues) {
       await engine.removeEnvironmentQueuesFromMasterQueue({
         masterQueue,
@@ -55,6 +54,8 @@ export class DeleteProjectService {
         projectId: project.id,
       });
     }
+
+    // todo Delete all queues from the RunEngine 2 dev master queues
 
     // Mark the project as deleted (do this last because it makes it impossible to try again)
     // - This disables all API keys
