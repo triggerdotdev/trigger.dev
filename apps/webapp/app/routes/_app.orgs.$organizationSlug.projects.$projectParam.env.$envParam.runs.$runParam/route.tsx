@@ -224,9 +224,10 @@ export default function Page() {
           <Dialog key={`replay-${run.friendlyId}`}>
             <DialogTrigger asChild>
               <Button
-                variant="tertiary/small"
+                variant="secondary/small"
                 LeadingIcon={ArrowUturnLeftIcon}
                 shortcut={{ key: "R" }}
+                className="pr-2"
               >
                 Replay run
               </Button>
