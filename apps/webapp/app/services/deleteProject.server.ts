@@ -1,6 +1,7 @@
 import { PrismaClient } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
-import { logger } from "./logger.server";
+import { marqs } from "~/v3/marqs/index.server";
+import { engine } from "~/v3/runEngine.server";
 
 type Options = ({ projectId: string } | { projectSlug: string }) & {
   userId: string;
@@ -34,7 +35,9 @@ export class DeleteProjectService {
       return;
     }
 
-    //mark the project as deleted
+    // Mark the project as deleted
+    // - This disables all API keys
+    // - This disables all schedules from being scheduled
     await this.#prismaClient.project.update({
       where: {
         id: project.id,
@@ -43,6 +46,27 @@ export class DeleteProjectService {
         deletedAt: new Date(),
       },
     });
+
+    // Remove queues from MARQS
+    for (const environment of project.environments) {
+      await marqs?.removeEnvironmentQueuesFromMasterQueue(project.organization.id, environment.id);
+    }
+
+    // Delete all queues from the RunEngine 2 master queues
+    const workerGroups = await this.#prismaClient.workerInstanceGroup.findMany({
+      select: {
+        masterQueue: true,
+      },
+    });
+    const engineMasterQueues = workerGroups.map((group) => group.masterQueue);
+
+    for (const masterQueue of engineMasterQueues) {
+      await engine.removeEnvironmentQueuesFromMasterQueue({
+        masterQueue,
+        organizationId: project.organization.id,
+        projectId: project.id,
+      });
+    }
   }
 
   async #getProjectId(options: Options) {

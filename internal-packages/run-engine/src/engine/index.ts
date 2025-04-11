@@ -775,6 +775,22 @@ export class RunEngine {
     return this.runQueue.currentConcurrencyOfQueues(environment, queues);
   }
 
+  async removeEnvironmentQueuesFromMasterQueue({
+    masterQueue,
+    organizationId,
+    projectId,
+  }: {
+    masterQueue: string;
+    organizationId: string;
+    projectId: string;
+  }) {
+    return this.runQueue.removeEnvironmentQueuesFromMasterQueue(
+      masterQueue,
+      organizationId,
+      projectId
+    );
+  }
+
   /**
    * This creates a DATETIME waitpoint, that will be completed automatically when the specified date is reached.
    * If you pass an `idempotencyKey`, the waitpoint will be created only if it doesn't already exist.
