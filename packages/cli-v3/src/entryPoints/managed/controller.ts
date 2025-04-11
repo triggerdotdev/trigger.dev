@@ -60,6 +60,7 @@ export class ManagedRunController {
   private readonly snapshotPoller: RunExecutionSnapshotPoller;
 
   private warmStartCount = 0;
+  private restoreCount = 0;
 
   constructor(opts: ManagedRunControllerOptions) {
     const env = new RunnerEnv(opts.env);
@@ -143,6 +144,7 @@ export class ManagedRunController {
   get metrics() {
     return {
       warmStartCount: this.warmStartCount,
+      restoreCount: this.restoreCount,
     };
   }
 
@@ -601,6 +603,7 @@ export class ManagedRunController {
           }
 
           // There are waitpoints to complete so we've been restored after being suspended
+          this.restoreCount++;
 
           // Short delay to give websocket time to reconnect
           await sleep(100);
@@ -1444,6 +1447,7 @@ export class ManagedRunController {
       properties: {
         ...opts.properties,
         warmStartCount: this.warmStartCount,
+        restoreCount: this.restoreCount,
       },
     });
   }
