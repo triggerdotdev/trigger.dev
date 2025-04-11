@@ -13,7 +13,7 @@ import {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
-} from "~/components/primitives/Chart";
+} from "~/components/primitives/charts/Chart";
 import { Header2 } from "~/components/primitives/Headers";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";

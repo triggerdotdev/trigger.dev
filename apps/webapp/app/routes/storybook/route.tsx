@@ -25,6 +25,10 @@ const stories: Story[] = [
     slug: "callout",
   },
   {
+    name: "Charts",
+    slug: "charts",
+  },
+  {
     name: "Checkboxes",
     slug: "checkboxes",
   },
