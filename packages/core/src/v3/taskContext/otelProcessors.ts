@@ -29,15 +29,12 @@ export class TaskContextSpanProcessor implements SpanProcessor {
       );
     }
 
-    if (!isPartialSpan(span)) {
+    if (!isPartialSpan(span) && !skipPartialSpan(span)) {
       const partialSpan = createPartialSpan(this._tracer, span, parentContext);
-
-      this._innerProcessor.onStart(span, parentContext);
-
       partialSpan.end();
-    } else {
-      this._innerProcessor.onStart(span, parentContext);
     }
+
+    this._innerProcessor.onStart(span, parentContext);
   }
 
   // Delegate the rest of the methods to the wrapped processor
@@ -57,6 +54,10 @@ export class TaskContextSpanProcessor implements SpanProcessor {
 
 function isPartialSpan(span: Span) {
   return span.attributes[SemanticInternalAttributes.SPAN_PARTIAL] === true;
+}
+
+function skipPartialSpan(span: Span) {
+  return span.attributes[SemanticInternalAttributes.SKIP_SPAN_PARTIAL] === true;
 }
 
 function createPartialSpan(tracer: Tracer, span: Span, parentContext: Context) {

@@ -201,6 +201,7 @@ export class RunEngine {
         options.releaseConcurrency.disabled
           ? undefined
           : {
+              disableConsumers: options.releaseConcurrency?.disableConsumers,
               redis: {
                 ...options.queue.redis, // Use base queue redis options
                 ...options.releaseConcurrency?.redis, // Allow overrides
@@ -218,7 +219,7 @@ export class RunEngine {
               pollInterval: options.releaseConcurrency?.pollInterval ?? 1000,
               batchSize: options.releaseConcurrency?.batchSize ?? 10,
               executor: async (descriptor, snapshotId) => {
-                await this.releaseConcurrencySystem.executeReleaseConcurrencyForSnapshot(
+                return await this.releaseConcurrencySystem.executeReleaseConcurrencyForSnapshot(
                   snapshotId
                 );
               },

@@ -18,6 +18,7 @@ import { MiddlewareIcon } from "~/assets/icons/MiddlewareIcon";
 import { FunctionIcon } from "~/assets/icons/FunctionIcon";
 import { TriggerIcon } from "~/assets/icons/TriggerIcon";
 import { PythonLogoIcon } from "~/assets/icons/PythonLogoIcon";
+import { TraceIcon } from "~/assets/icons/TraceIcon";
 
 type TaskIconProps = {
   name: string | undefined;
@@ -65,7 +66,7 @@ export function RunIcon({ name, className, spanName }: TaskIconProps) {
     case "wait":
       return <PauseIcon className={cn(className, "text-teal-500")} />;
     case "trace":
-      return <Squares2X2Icon className={cn(className, "text-text-dimmed")} />;
+      return <TraceIcon className={cn(className, "text-text-dimmed")} />;
     case "tag":
       return <TagIcon className={cn(className, "text-text-dimmed")} />;
     case "queue":

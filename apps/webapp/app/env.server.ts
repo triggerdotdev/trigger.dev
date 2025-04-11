@@ -151,6 +151,38 @@ const EnvironmentSchema = z.object({
   CACHE_REDIS_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
   CACHE_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
 
+  REALTIME_STREAMS_REDIS_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_HOST),
+  REALTIME_STREAMS_REDIS_READER_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_READER_HOST),
+  REALTIME_STREAMS_REDIS_READER_PORT: z.coerce
+    .number()
+    .optional()
+    .transform(
+      (v) =>
+        v ?? (process.env.REDIS_READER_PORT ? parseInt(process.env.REDIS_READER_PORT) : undefined)
+    ),
+  REALTIME_STREAMS_REDIS_PORT: z.coerce
+    .number()
+    .optional()
+    .transform((v) => v ?? (process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined)),
+  REALTIME_STREAMS_REDIS_USERNAME: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_USERNAME),
+  REALTIME_STREAMS_REDIS_PASSWORD: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_PASSWORD),
+  REALTIME_STREAMS_REDIS_TLS_DISABLED: z
+    .string()
+    .default(process.env.REDIS_TLS_DISABLED ?? "false"),
+  REALTIME_STREAMS_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
+
   PUBSUB_REDIS_HOST: z
     .string()
     .optional()
@@ -412,7 +444,9 @@ const EnvironmentSchema = z.object({
   // Run Engine 2.0
   RUN_ENGINE_WORKER_COUNT: z.coerce.number().int().default(4),
   RUN_ENGINE_TASKS_PER_WORKER: z.coerce.number().int().default(10),
+  RUN_ENGINE_WORKER_CONCURRENCY_LIMIT: z.coerce.number().int().default(10),
   RUN_ENGINE_WORKER_POLL_INTERVAL: z.coerce.number().int().default(100),
+  RUN_ENGINE_WORKER_IMMEDIATE_POLL_INTERVAL: z.coerce.number().int().default(100),
   RUN_ENGINE_TIMEOUT_PENDING_EXECUTING: z.coerce.number().int().default(60_000),
   RUN_ENGINE_TIMEOUT_PENDING_CANCEL: z.coerce.number().int().default(60_000),
   RUN_ENGINE_TIMEOUT_EXECUTING: z.coerce.number().int().default(60_000),
@@ -567,6 +601,7 @@ const EnvironmentSchema = z.object({
   RUN_ENGINE_RATE_LIMIT_LIMITER_LOGS_ENABLED: z.string().default("0"),
 
   RUN_ENGINE_RELEASE_CONCURRENCY_ENABLED: z.string().default("0"),
+  RUN_ENGINE_RELEASE_CONCURRENCY_DISABLE_CONSUMERS: z.string().default("0"),
   RUN_ENGINE_RELEASE_CONCURRENCY_MAX_TOKENS_RATIO: z.coerce.number().default(1),
   RUN_ENGINE_RELEASE_CONCURRENCY_MAX_RETRIES: z.coerce.number().int().default(3),
   RUN_ENGINE_RELEASE_CONCURRENCY_CONSUMERS_COUNT: z.coerce.number().int().default(1),

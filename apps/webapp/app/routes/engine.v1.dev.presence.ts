@@ -8,7 +8,7 @@ import { createSSELoader } from "~/utils/sse";
 export const loader = createSSELoader({
   timeout: env.DEV_PRESENCE_SSE_TIMEOUT,
   interval: env.DEV_PRESENCE_TTL_MS * 0.8,
-  debug: true,
+  debug: false,
   handler: async ({ id, controller, debug, request }) => {
     const authentication = await authenticateApiRequestWithFailure(request);
 

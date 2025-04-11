@@ -24,8 +24,8 @@ export const engineRateLimiter = authorizationRateLimitMiddleware({
     stale: 60_000 * 20, // Date is stale after 20 minutes
   },
   pathMatchers: [/^\/engine/],
-  // Allow /api/v1/tasks/:id/callback/:secret
-  pathWhiteList: [],
+  // Regex allow any path starting with /engine/v1/worker-actions/
+  pathWhiteList: [/^\/engine\/v1\/worker-actions\/.*/],
   log: {
     rejections: env.RUN_ENGINE_RATE_LIMIT_REJECTION_LOGS_ENABLED === "1",
     requests: env.RUN_ENGINE_RATE_LIMIT_REQUEST_LOGS_ENABLED === "1",

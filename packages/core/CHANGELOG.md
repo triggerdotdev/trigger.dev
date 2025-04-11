@@ -1,5 +1,18 @@
 # internal-platform
 
+## 4.0.0-v4-beta.0
+
+### Major Changes
+
+- Trigger.dev v4 release. Please see our upgrade to v4 docs to view the full changelog: https://trigger.dev/docs/upgrade-to-v4 ([#1869](https://github.com/triggerdotdev/trigger.dev/pull/1869))
+
+### Patch Changes
+
+- Run Engine 2.0 (alpha) ([#1575](https://github.com/triggerdotdev/trigger.dev/pull/1575))
+- Suppress external instrumentation for fetch calls from ApiClient ([#1788](https://github.com/triggerdotdev/trigger.dev/pull/1788))
+- fix: Realtime streams: prevent enqueuing into closed ReadableStream ([#1781](https://github.com/triggerdotdev/trigger.dev/pull/1781))
+- v4: New lifecycle hooks ([#1817](https://github.com/triggerdotdev/trigger.dev/pull/1817))
+
 ## 3.3.17
 
 ### Patch Changes
