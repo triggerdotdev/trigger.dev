@@ -92,29 +92,31 @@ export class EnvironmentVariablesPresenter {
     const variables = await repository.getProject(project.id);
 
     return {
-      environmentVariables: environmentVariables.flatMap((environmentVariable) => {
-        const variable = variables.find((v) => v.key === environmentVariable.key);
+      environmentVariables: environmentVariables
+        .flatMap((environmentVariable) => {
+          const variable = variables.find((v) => v.key === environmentVariable.key);
 
-        return sortedEnvironments.flatMap((env) => {
-          const val = variable?.values.find((v) => v.environment.id === env.id);
-          const isSecret =
-            environmentVariable.values.find((v) => v.environmentId === env.id)?.isSecret ?? false;
+          return sortedEnvironments.flatMap((env) => {
+            const val = variable?.values.find((v) => v.environment.id === env.id);
+            const isSecret =
+              environmentVariable.values.find((v) => v.environmentId === env.id)?.isSecret ?? false;
 
-          if (!val) {
-            return [];
-          }
+            if (!val) {
+              return [];
+            }
 
-          return [
-            {
-              id: environmentVariable.id,
-              key: environmentVariable.key,
-              environment: { type: env.type, id: env.id },
-              value: isSecret ? "" : val.value,
-              isSecret,
-            },
-          ];
-        });
-      }),
+            return [
+              {
+                id: environmentVariable.id,
+                key: environmentVariable.key,
+                environment: { type: env.type, id: env.id },
+                value: isSecret ? "" : val.value,
+                isSecret,
+              },
+            ];
+          });
+        })
+        .sort((a, b) => a.key.localeCompare(b.key)),
       environments: sortedEnvironments.map((environment) => ({
         id: environment.id,
         type: environment.type,
