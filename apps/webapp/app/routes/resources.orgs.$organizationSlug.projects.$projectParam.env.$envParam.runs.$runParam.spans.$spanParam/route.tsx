@@ -59,6 +59,7 @@ import { formatCurrencyAccurate } from "~/utils/numberFormatter";
 import {
   docsPath,
   v3BatchPath,
+  v3DeploymentVersionPath,
   v3RunDownloadLogsPath,
   v3RunPath,
   v3RunSpanPath,
@@ -527,7 +528,22 @@ function RunBody({
                   <Property.Label>Version</Property.Label>
                   <Property.Value>
                     {run.version ? (
-                      run.version
+                      <SimpleTooltip
+                        button={
+                          <TextLink
+                            to={v3DeploymentVersionPath(
+                              organization,
+                              project,
+                              environment,
+                              run.version
+                            )}
+                            className="group flex flex-wrap items-center gap-x-1 gap-y-0"
+                          >
+                            {run.version}
+                          </TextLink>
+                        }
+                        content={"Jump to deployment"}
+                      />
                     ) : (
                       <span className="flex items-center gap-1">
                         <span>Never started</span>

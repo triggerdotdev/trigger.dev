@@ -1,12 +1,11 @@
 import { ArrowPathIcon, ArrowUturnLeftIcon, BookOpenIcon } from "@heroicons/react/20/solid";
-import { type MetaFunction, Outlet, useLocation, useParams } from "@remix-run/react";
+import { type MetaFunction, Outlet, useLocation, useParams, useNavigate } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { PromoteIcon } from "~/assets/icons/PromoteIcon";
 import { DeploymentsNone, DeploymentsNoneDev } from "~/components/BlankStatePanels";
 import { UserAvatar } from "~/components/UserProfilePhoto";
-import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
@@ -53,6 +52,7 @@ import { EnvironmentParamSchema, docsPath, v3DeploymentPath } from "~/utils/path
 import { createSearchParams } from "~/utils/searchParams";
 import { deploymentIndexingIsRetryable } from "~/v3/deploymentStatus";
 import { compareDeploymentVersions } from "~/v3/utils/deploymentVersions";
+import { useEffect } from "react";
 
 export const meta: MetaFunction = () => {
   return [
@@ -64,6 +64,7 @@ export const meta: MetaFunction = () => {
 
 const SearchParams = z.object({
   page: z.coerce.number().optional(),
+  version: z.string().optional(),
 });
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
@@ -71,10 +72,29 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
 
   const searchParams = createSearchParams(request.url, SearchParams);
-  const page = searchParams.success ? searchParams.params.get("page") ?? 1 : 1;
+
+  let page = searchParams.success ? Number(searchParams.params.get("page") ?? 1) : 1;
+  const version = searchParams.success ? searchParams.params.get("version")?.toString() : undefined;
+
+  const presenter = new DeploymentListPresenter();
+
+  // If we have a version, find its page
+  if (version) {
+    try {
+      page = await presenter.findPageForVersion({
+        userId,
+        organizationSlug,
+        projectSlug: projectParam,
+        environmentSlug: envParam,
+        version,
+      });
+    } catch (error) {
+      console.error("Error finding page for version", error);
+      // Carry on, we'll just show the selected page
+    }
+  }
 
   try {
-    const presenter = new DeploymentListPresenter();
     const result = await presenter.call({
       userId,
       organizationSlug,
@@ -83,7 +103,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       page,
     });
 
-    return typedjson(result);
+    // If we have a version, find the deployment
+    const selectedDeployment = version
+      ? result.deployments.find((d) => d.version === version)
+      : undefined;
+
+    return typedjson({ ...result, selectedDeployment });
   } catch (error) {
     console.error(error);
     throw new Response(undefined, {
@@ -97,10 +122,23 @@ export default function Page() {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
-  const { deployments, currentPage, totalPages } = useTypedLoaderData<typeof loader>();
+  const { deployments, currentPage, totalPages, selectedDeployment } =
+    useTypedLoaderData<typeof loader>();
   const hasDeployments = totalPages > 0;
 
   const { deploymentParam } = useParams();
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // If we have a selected deployment from the version param, show it
+  useEffect(() => {
+    if (selectedDeployment && !deploymentParam) {
+      const searchParams = new URLSearchParams(location.search);
+      searchParams.delete("version");
+      searchParams.set("page", currentPage.toString());
+      navigate(`${location.pathname}/${selectedDeployment.shortCode}?${searchParams.toString()}`);
+    }
+  }, [selectedDeployment, deploymentParam, location.search]);
 
   const currentDeployment = deployments.find((d) => d.isCurrent);
 
