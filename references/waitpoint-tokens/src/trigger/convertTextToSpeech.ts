@@ -29,9 +29,9 @@ export const createAudioStreamFromText = async (text: string): Promise<Buffer> =
   return content;
 };
 
-export const generatePresignedUrl = async (objectKey: string) => {
+export const generatePresignedUrl = async (objectKey: string, bucket: string) => {
   const getObjectParams = {
-    Bucket: "articles",
+    Bucket: bucket,
     Key: objectKey,
     Expires: 3600,
   };
@@ -39,11 +39,12 @@ export const generatePresignedUrl = async (objectKey: string) => {
   const url = await getSignedUrl(s3, command, { expiresIn: 3600 });
   return url;
 };
-export const uploadAudioStreamToS3 = async (audioStream: Buffer) => {
+
+export const uploadAudioStreamToS3 = async (audioStream: Buffer, bucket: string) => {
   const remotePath = `${randomUUID()}.mp3`;
   await s3.send(
     new PutObjectCommand({
-      Bucket: "articles",
+      Bucket: bucket,
       Key: remotePath,
       Body: audioStream,
       ContentType: "audio/mpeg",
@@ -56,13 +57,18 @@ export const convertTextToSpeech = task({
   id: "convert-text-to-speech",
   maxDuration: 300,
   run: async (payload: { text: string }) => {
+    const bucket = process.env.AWS_S3_BUCKET;
+    if (!bucket) {
+      throw new Error("AWS_S3_BUCKET is not set");
+    }
+
     const audioStream = await createAudioStreamFromText(payload.text);
     logger.info("Audio stream created");
 
-    const s3path = await uploadAudioStreamToS3(audioStream);
+    const s3path = await uploadAudioStreamToS3(audioStream, bucket);
     logger.info("Audio stream uploaded to S3");
 
-    const audioUrl = await generatePresignedUrl(s3path);
+    const audioUrl = await generatePresignedUrl(s3path, bucket);
     logger.info("Audio URL generated");
 
     return {

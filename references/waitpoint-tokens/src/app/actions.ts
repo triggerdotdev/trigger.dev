@@ -2,12 +2,7 @@
 
 import type { articleWorkflow } from "@/trigger/articleWorkflow";
 import type { ReviewPayload } from "@/trigger/reviewSummary";
-import { tasks, wait } from "@trigger.dev/sdk/v3";
-
-// A user identifier that could be fetched from your auth mechanism.
-// This is out of scope for this example, so we just hardcode it.
-const user = "reactflowtest";
-const userTag = `user_${user}`;
+import { auth, tasks, wait } from "@trigger.dev/sdk/v3";
 
 const randomStr = (length: number) =>
   [...Array(length)]
@@ -21,30 +16,41 @@ const randomStr = (length: number) =>
 
 export async function triggerArticleWorkflow(prevState: any, formData: FormData) {
   const articleUrl = formData.get("articleUrl") as string;
-  const uniqueTag = `reactflow_${randomStr(20)}`;
+  const workflowTag = `reactflow_${randomStr(20)}`;
 
   const reviewWaitpointToken = await wait.createToken({
-    tags: [uniqueTag, userTag],
+    tags: [workflowTag],
     timeout: "1h",
-    idempotencyKey: `review-summary-${uniqueTag}`,
+    idempotencyKey: `review-summary-${workflowTag}`,
   });
 
-  const handle = await tasks.trigger<typeof articleWorkflow>(
-    "article-workflow",
-    {
-      articleUrl,
-      approvalWaitpointTokenId: reviewWaitpointToken.id,
-    },
-    {
-      tags: [uniqueTag, userTag],
-    }
-  );
+  const [workflowPublicAccessToken] = await Promise.all([
+    // We generate a public access token to use the Trigger.dev realtime API and listen to changes in task runs using react hooks.
+    // This token has access to all runs tagged with the unique workflow tag.
+    auth.createPublicToken({
+      scopes: {
+        read: {
+          tags: [workflowTag],
+        },
+      },
+    }),
+    ,
+    tasks.trigger<typeof articleWorkflow>(
+      "article-workflow",
+      {
+        articleUrl,
+        approvalWaitpointTokenId: reviewWaitpointToken.id,
+      },
+      {
+        tags: [workflowTag],
+      }
+    ),
+  ]);
 
   return {
     articleUrl,
-    runId: handle.id,
-    runTag: uniqueTag,
-    reviewWaitpointTokenId: reviewWaitpointToken.id,
+    workflowTag,
+    workflowPublicAccessToken,
   };
 }
 
@@ -54,7 +60,7 @@ export async function approveArticleSummary(tokenId: string) {
     {
       approved: true,
       approvedAt: new Date(),
-      approvedBy: user,
+      approvedBy: "Alice",
     }
   );
 }
@@ -65,7 +71,7 @@ export async function rejectArticleSummary(tokenId: string) {
     {
       approved: false,
       rejectedAt: new Date(),
-      rejectedBy: user,
+      rejectedBy: "Alice",
       reason: "It's no good",
     }
   );

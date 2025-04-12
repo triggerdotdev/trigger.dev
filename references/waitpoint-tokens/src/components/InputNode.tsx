@@ -4,7 +4,10 @@ import React, { useActionState, useEffect } from "react";
 import { Handle, Position, NodeProps, Node, useReactFlow } from "@xyflow/react";
 import { triggerArticleWorkflow } from "@/app/actions";
 
-export type InputNodeData = Node<{ trigger: { currentRunTag?: string } }, "input_url">;
+export type InputNodeData = Node<
+  { workflowRun?: { tag: string; accessToken: string } },
+  "input_url"
+>;
 
 export const isInputNode = (node: Node): node is InputNodeData => {
   return node.type === "input_url";
@@ -16,7 +19,12 @@ function InputNode({ id }: NodeProps<InputNodeData>) {
 
   useEffect(() => {
     if (state) {
-      updateNodeData(id, { trigger: { currentRunTag: state.runTag } });
+      updateNodeData(id, {
+        workflowRun: {
+          tag: state.workflowTag,
+          accessToken: state.workflowPublicAccessToken,
+        },
+      });
     }
   }, [state, id, updateNodeData]);
 

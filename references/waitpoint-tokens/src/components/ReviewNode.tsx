@@ -1,34 +1,17 @@
 "use client";
 
-import React, { useEffect, useState, useTransition } from "react";
-import { Handle, Position, NodeProps, Node, useReactFlow } from "@xyflow/react";
+import React, { useTransition } from "react";
+import { Handle, Position, NodeProps, Node } from "@xyflow/react";
 import { Split, Check, X, Clock } from "lucide-react";
-import { useRealtimeRunsWithTag } from "@trigger.dev/react-hooks";
 import { approveArticleSummary, rejectArticleSummary } from "@/app/actions";
 import type { ReviewStatus } from "@/trigger/reviewSummary";
+import type { RealtimeRun, AnyTask } from "@trigger.dev/sdk";
 
 export type ReviewNodeData = Node<
   {
     trigger: {
       taskIdentifier: string;
-      userTag: string;
-      currentRunTag?: string;
-      currentRunStatus?:
-        | "WAITING_FOR_DEPLOY"
-        | "PENDING_VERSION"
-        | "QUEUED"
-        | "EXECUTING"
-        | "REATTEMPTING"
-        | "FROZEN"
-        | "COMPLETED"
-        | "CANCELED"
-        | "FAILED"
-        | "CRASHED"
-        | "INTERRUPTED"
-        | "SYSTEM_FAILURE"
-        | "DELAYED"
-        | "EXPIRED"
-        | "TIMED_OUT";
+      currentRun?: RealtimeRun<AnyTask>;
     };
   },
   "review"
@@ -38,43 +21,13 @@ export const isReviewNode = (node: Node): node is ReviewNodeData => {
   return node.type === "review";
 };
 
-function ReviewNode({ id, data }: NodeProps<ReviewNodeData>) {
-  const { runs } = useRealtimeRunsWithTag(data.trigger.userTag);
-  const { updateNodeData } = useReactFlow<ReviewNodeData>();
+function ReviewNode({ data }: NodeProps<ReviewNodeData>) {
+  const { currentRun } = data.trigger;
+  const waitpointTokenId = currentRun?.metadata?.waitpointTokenId as string | undefined;
+  const audioSummaryUrl = currentRun?.metadata?.audioSummaryUrl as string | undefined;
+  const reviewStatus = currentRun?.metadata?.reviewStatus as ReviewStatus | undefined;
 
-  const [waitpointTokenId, setWaitpointTokenId] = useState<string | undefined>(undefined);
-  const [audioSummaryUrl, setAudioSummaryUrl] = useState<string | undefined>(undefined);
-  const [reviewStatus, setReviewStatus] = useState<ReviewStatus | undefined>(undefined);
   const [isReviewActionPending, startReviewActionTransition] = useTransition();
-
-  useEffect(() => {
-    if (!data.trigger.currentRunTag && data.trigger.currentRunStatus !== undefined) {
-      updateNodeData(id, { trigger: { ...data.trigger, currentRunStatus: undefined } });
-      setWaitpointTokenId(undefined);
-      setAudioSummaryUrl(undefined);
-      setReviewStatus(undefined);
-      return;
-    }
-
-    const run = runs.find(
-      (run) =>
-        run.tags.includes(data.trigger.currentRunTag as string) &&
-        run.taskIdentifier === data.trigger.taskIdentifier
-    );
-    if (!run) {
-      if (data.trigger.currentRunStatus !== undefined) {
-        updateNodeData(id, { trigger: { ...data.trigger, currentRunStatus: undefined } });
-        setWaitpointTokenId(undefined);
-        setAudioSummaryUrl(undefined);
-        setReviewStatus(undefined);
-      }
-      return;
-    }
-    setWaitpointTokenId(run.metadata?.waitpointTokenId as string);
-    setAudioSummaryUrl(run.metadata?.audioSummaryUrl as string);
-    setReviewStatus(run.metadata?.reviewStatus as ReviewStatus);
-    updateNodeData(id, { trigger: { ...data.trigger, currentRunStatus: run.status } });
-  }, [runs, id, updateNodeData]);
 
   return (
     <div className="p-2 shadow-md bg-white border-1 border-zinc-200 text-sm relative rounded-lg">
