@@ -2,7 +2,6 @@ import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import {
   BookOpenIcon,
-  CheckIcon,
   InformationCircleIcon,
   LockClosedIcon,
   PencilSquareIcon,
@@ -16,8 +15,7 @@ import {
   json,
   redirectDocument,
 } from "@remix-run/server-runtime";
-import { type RuntimeEnvironment } from "@trigger.dev/database";
-import { Fragment, useState } from "react";
+import { useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { InlineCode } from "~/components/code/InlineCode";
@@ -69,7 +67,7 @@ import {
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import {
   DeleteEnvironmentVariable,
-  EditEnvironmentVariable,
+  DeleteEnvironmentVariableValue,
   EditEnvironmentVariableValue,
 } from "~/v3/environmentVariables/repository";
 
@@ -108,7 +106,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
 const schema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("edit"), ...EditEnvironmentVariableValue.shape }),
-  z.object({ action: z.literal("delete"), key: z.string(), ...DeleteEnvironmentVariable.shape }),
+  z.object({
+    action: z.literal("delete"),
+    key: z.string(),
+    ...DeleteEnvironmentVariableValue.shape,
+  }),
 ]);
 
 export const action = async ({ request, params }: ActionFunctionArgs) => {
@@ -148,11 +150,8 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
   switch (submission.value.action) {
     case "edit": {
-      logger.debug("ENVVARS edit", { submission: submission.value });
       const repository = new EnvironmentVariablesRepository(prisma);
       const result = await repository.editValue(project.id, submission.value);
-
-      logger.debug("ENVVARS edit result", { result });
 
       if (!result.success) {
         submission.error.key = result.error;
@@ -175,7 +174,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     }
     case "delete": {
       const repository = new EnvironmentVariablesRepository(prisma);
-      const result = await repository.delete(project.id, submission.value);
+      const result = await repository.deleteValue(project.id, submission.value);
 
       if (!result.success) {
         submission.error.key = result.error;
@@ -448,6 +447,7 @@ function DeleteEnvironmentVariableButton({
     <Form method="post" {...form.props}>
       <input type="hidden" name="id" value={variable.id} />
       <input type="hidden" name="key" value={variable.key} />
+      <input type="hidden" name="environmentId" value={variable.environment.id} />
       <Button
         name="action"
         value="delete"
