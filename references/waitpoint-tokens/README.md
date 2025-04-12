@@ -34,7 +34,9 @@ This guide assumes that you have followed the [Contributing.md](https://github.c
 
     Note that you'll need to use this profile for the subsequent commands.
 
-4. Run the CLI
+4. Create an `.env` file by copying [.env.example](.env.example) and fill in the required environment variables. The example file includes a description for each variable.
+
+5. Run the CLI
 
     ```bash
     pnpm exec trigger dev
@@ -42,7 +44,7 @@ This guide assumes that you have followed the [Contributing.md](https://github.c
 
     You should see now the `dev` command spitting out messages, including that it's started a background worker.
 
-5. Run the Trigger Flow app:
+6. Run the ReactFlow app:
 
     ```bash
     pnpm run dev
