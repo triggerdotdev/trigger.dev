@@ -109,7 +109,7 @@ export class EnvironmentVariablesPresenter {
               id: environmentVariable.id,
               key: environmentVariable.key,
               environment: { type: env.type, id: env.id },
-              value: val.value,
+              value: isSecret ? "" : val.value,
               isSecret,
             },
           ];

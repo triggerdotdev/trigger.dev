@@ -353,6 +353,85 @@ export class EnvironmentVariablesRepository implements Repository {
     }
   }
 
+  async editValue(
+    projectId: string,
+    options: {
+      id: string;
+      environmentId: string;
+      value: string;
+    }
+  ): Promise<Result> {
+    const project = await this.prismaClient.project.findFirst({
+      where: {
+        id: projectId,
+        deletedAt: null,
+      },
+      select: {
+        environments: {
+          select: {
+            id: true,
+          },
+        },
+      },
+    });
+
+    if (!project) {
+      return { success: false as const, error: "Project not found" };
+    }
+
+    if (!project.environments.some((e) => e.id === options.environmentId)) {
+      return { success: false as const, error: "Environment not found" };
+    }
+
+    const environmentVariable = await this.prismaClient.environmentVariable.findFirst({
+      select: {
+        id: true,
+        key: true,
+        values: {
+          where: {
+            environmentId: options.environmentId,
+          },
+          select: {
+            valueReferenceId: true,
+          },
+        },
+      },
+      where: {
+        id: options.id,
+      },
+    });
+
+    if (!environmentVariable) {
+      return { success: false as const, error: "Environment variable not found" };
+    }
+
+    if (environmentVariable.values.length === 0) {
+      return { success: false as const, error: "Environment variable value not found" };
+    }
+
+    try {
+      await $transaction(this.prismaClient, "edit env var value", async (tx) => {
+        const secretStore = getSecretStore("DATABASE", {
+          prismaClient: tx,
+        });
+
+        const key = secretKey(projectId, options.environmentId, environmentVariable.key);
+        await secretStore.setSecret<{ secret: string }>(key, {
+          secret: options.value,
+        });
+      });
+
+      return {
+        success: true as const,
+      };
+    } catch (error) {
+      return {
+        success: false as const,
+        error: error instanceof Error ? error.message : "Something went wrong",
+      };
+    }
+  }
+
   async getProject(projectId: string): Promise<ProjectEnvironmentVariable[]> {
     const project = await this.prismaClient.project.findFirst({
       where: {

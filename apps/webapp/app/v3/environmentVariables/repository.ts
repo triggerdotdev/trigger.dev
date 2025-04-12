@@ -47,6 +47,13 @@ export const DeleteEnvironmentVariableValue = z.object({
 });
 export type DeleteEnvironmentVariableValue = z.infer<typeof DeleteEnvironmentVariableValue>;
 
+export const EditEnvironmentVariableValue = z.object({
+  id: z.string(),
+  environmentId: z.string(),
+  value: z.string(),
+});
+export type EditEnvironmentVariableValue = z.infer<typeof EditEnvironmentVariableValue>;
+
 export type Result =
   | {
       success: true;
@@ -75,6 +82,7 @@ export type EnvironmentVariable = {
 export interface Repository {
   create(projectId: string, options: CreateEnvironmentVariables): Promise<CreateResult>;
   edit(projectId: string, options: EditEnvironmentVariable): Promise<Result>;
+  editValue(projectId: string, options: EditEnvironmentVariableValue): Promise<Result>;
   getProject(projectId: string): Promise<ProjectEnvironmentVariable[]>;
   getEnvironment(projectId: string, environmentId: string): Promise<EnvironmentVariable[]>;
   getEnvironmentVariables(projectId: string, environmentId: string): Promise<EnvironmentVariable[]>;
