@@ -323,6 +323,7 @@
               "guides/example-projects/turborepo-monorepo-prisma",
               "guides/example-projects/realtime-fal-ai",
               "guides/example-projects/realtime-csv-importer",
+              "guides/example-projects/human-in-the-loop-workflow",
               "guides/example-projects/vercel-ai-sdk-image-generator"
             ]
           },
