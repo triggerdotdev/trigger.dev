@@ -33,7 +33,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     return new Response("Not found", { status: 404 });
   }
 
-  // Redirect to the project's runs page
+  // Redirect to the project's deployments page
   return redirect(
     `/orgs/${project.organization.slug}/projects/${project.slug}/deployments/${validatedParams.deploymentParam}`
   );
