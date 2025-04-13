@@ -1,16 +1,17 @@
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { prisma } from "~/db.server";
-import { requireUserId } from "~/services/session.server";
+import { requireUser } from "~/services/session.server";
 import { v3RunParamsSchema } from "~/utils/pathBuilder";
-import { PreparedEvent, RunPreparedEvent, eventRepository } from "~/v3/eventRepository.server";
+import { RunPreparedEvent, eventRepository } from "~/v3/eventRepository.server";
 import { createGzip } from "zlib";
 import { Readable } from "stream";
 import { formatDurationMilliseconds } from "@trigger.dev/core/v3/utils/durations";
 import { getDateFromNanoseconds } from "~/utils/taskEvent";
 import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
+import { TaskEventKind } from "@trigger.dev/database";
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
-  const userId = await requireUserId(request);
+  const user = await requireUser(request);
   const parsedParams = v3RunParamsSchema.pick({ runParam: true }).parse(params);
 
   const run = await prisma.taskRun.findFirst({
@@ -20,7 +21,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
         organization: {
           members: {
             some: {
-              userId,
+              userId: user.id,
             },
           },
         },
@@ -44,6 +45,10 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     read() {
       runEvents.forEach((event) => {
         try {
+          if (!user.admin && event.kind === TaskEventKind.LOG) {
+            // Only return debug logs for admins
+            return;
+          }
           this.push(formatRunEvent(event) + "\n");
         } catch {}
       });

@@ -295,7 +295,8 @@ function TraceView({ run, trace, maximumLiveReloadingSetting, resizable }: Loade
     return <></>;
   }
 
-  const { events, parentRunFriendlyId, duration, rootSpanStatus, rootStartedAt } = trace;
+  const { events, parentRunFriendlyId, duration, rootSpanStatus, rootStartedAt, queuedDuration } =
+    trace;
   const shouldLiveReload = events.length <= maximumLiveReloadingSetting;
 
   const changeToSpan = useDebounce((selectedSpan: string) => {
@@ -345,6 +346,7 @@ function TraceView({ run, trace, maximumLiveReloadingSetting, resizable }: Loade
             totalDuration={duration}
             rootSpanStatus={rootSpanStatus}
             rootStartedAt={rootStartedAt ? new Date(rootStartedAt) : undefined}
+            queuedDuration={queuedDuration}
             environmentType={run.environment.type}
             shouldLiveReload={shouldLiveReload}
             maximumLiveReloadingSetting={maximumLiveReloadingSetting}
@@ -472,6 +474,7 @@ type TasksTreeViewProps = {
   totalDuration: number;
   rootSpanStatus: "executing" | "completed" | "failed";
   rootStartedAt: Date | undefined;
+  queuedDuration: number | undefined;
   environmentType: RuntimeEnvironmentType;
   shouldLiveReload: boolean;
   maximumLiveReloadingSetting: number;
@@ -491,6 +494,7 @@ function TasksTreeView({
   totalDuration,
   rootSpanStatus,
   rootStartedAt,
+  queuedDuration,
   environmentType,
   shouldLiveReload,
   maximumLiveReloadingSetting,
@@ -502,12 +506,14 @@ function TasksTreeView({
   const [errorsOnly, setErrorsOnly] = useState(false);
   const [showDebug, setShowDebug] = useState(false);
   const [showDurations, setShowDurations] = useState(true);
+  const [showQueueTime, setShowQueueTime] = useState(false);
   const [scale, setScale] = useState(0);
   const parentRef = useRef<HTMLDivElement>(null);
   const treeScrollRef = useRef<HTMLDivElement>(null);
   const timelineScrollRef = useRef<HTMLDivElement>(null);
 
   const displayEvents = showDebug ? events : events.filter((event) => !event.data.isDebug);
+  const queuedTime = showQueueTime ? undefined : queuedDuration;
 
   const {
     nodes,
@@ -556,6 +562,13 @@ function TasksTreeView({
             onCheckedChange={(e) => setShowDebug(e.valueOf())}
           />
         )}
+        <Switch
+          variant="small"
+          label="Queue time"
+          checked={showQueueTime}
+          onCheckedChange={(e) => setShowQueueTime(e.valueOf())}
+          shortcut={{ key: "Q" }}
+        />
         <Switch
           variant="small"
           label="Errors only"
@@ -692,6 +705,7 @@ function TasksTreeView({
             events={events}
             rootSpanStatus={rootSpanStatus}
             rootStartedAt={rootStartedAt}
+            queuedDuration={queuedTime}
             parentRef={parentRef}
             timelineScrollRef={timelineScrollRef}
             nodes={nodes}
@@ -754,7 +768,7 @@ function TasksTreeView({
 
 type TimelineViewProps = Pick<
   TasksTreeViewProps,
-  "totalDuration" | "rootSpanStatus" | "events" | "rootStartedAt"
+  "totalDuration" | "rootSpanStatus" | "events" | "rootStartedAt" | "queuedDuration"
 > & {
   scale: number;
   parentRef: React.RefObject<HTMLDivElement>;
@@ -785,27 +799,32 @@ function TimelineView({
   toggleNodeSelection,
   showDurations,
   treeScrollRef,
+  queuedDuration,
 }: TimelineViewProps) {
-  const isAdmin = useHasAdminAccess();
   const timelineContainerRef = useRef<HTMLDivElement>(null);
   const initialTimelineDimensions = useInitialDimensions(timelineContainerRef);
   const minTimelineWidth = initialTimelineDimensions?.width ?? 300;
   const maxTimelineWidth = minTimelineWidth * 10;
 
   //we want to live-update the duration if the root span is still executing
-  const [duration, setDuration] = useState(totalDuration);
+  const [duration, setDuration] = useState(queueAdjustedNs(totalDuration, queuedDuration));
   useEffect(() => {
     if (rootSpanStatus !== "executing" || !rootStartedAt) {
-      setDuration(totalDuration);
+      setDuration(queueAdjustedNs(totalDuration, queuedDuration));
       return;
     }
 
     const interval = setInterval(() => {
-      setDuration(millisecondsToNanoseconds(Date.now() - rootStartedAt.getTime()));
+      setDuration(
+        queueAdjustedNs(
+          millisecondsToNanoseconds(Date.now() - rootStartedAt.getTime()),
+          queuedDuration
+        )
+      );
     }, 500);
 
     return () => clearInterval(interval);
-  }, [totalDuration, rootSpanStatus]);
+  }, [totalDuration, rootSpanStatus, queuedDuration, rootStartedAt]);
 
   return (
     <div
@@ -820,7 +839,11 @@ function TimelineView({
         maxWidth={maxTimelineWidth}
       >
         {/* Follows the cursor */}
-        <CurrentTimeIndicator totalDuration={duration} rootStartedAt={rootStartedAt} />
+        <CurrentTimeIndicator
+          totalDuration={duration}
+          rootStartedAt={rootStartedAt}
+          queuedDurationNs={queuedDuration}
+        />
 
         <Timeline.Row className="grid h-full grid-rows-[2rem_1fr]">
           {/* The duration labels */}
@@ -920,6 +943,8 @@ function TimelineView({
               getTreeProps={getTreeProps}
               parentClassName="h-full scrollbar-hide"
               renderNode={({ node, state, index, virtualizer, virtualItem }) => {
+                const isTopSpan = node.id === events[0]?.id;
+
                 return (
                   <Timeline.Row
                     key={index}
@@ -941,7 +966,9 @@ function TimelineView({
                           eventIndex === 0 ? (
                             <Timeline.Point
                               key={eventIndex}
-                              ms={nanosecondsToMilliseconds(event.offset)}
+                              ms={nanosecondsToMilliseconds(
+                                queueAdjustedNs(event.offset, queuedDuration)
+                              )}
                             >
                               {(ms) => (
                                 <motion.div
@@ -956,13 +983,15 @@ function TimelineView({
                           ) : (
                             <Timeline.Point
                               key={eventIndex}
-                              ms={nanosecondsToMilliseconds(event.offset)}
+                              ms={nanosecondsToMilliseconds(
+                                queueAdjustedNs(event.offset, queuedDuration)
+                              )}
                               className="z-10"
                             >
                               {(ms) => (
                                 <motion.div
                                   className={cn(
-                                    "-ml-1 size-[0.3125rem] rounded-full border bg-background-bright",
+                                    "-ml-[0.1562rem] size-[0.3125rem] rounded-full border bg-background-bright",
                                     eventBorderClassName(node.data)
                                   )}
                                   layoutId={`${node.id}-${event.name}`}
@@ -975,7 +1004,9 @@ function TimelineView({
                         node.data.timelineEvents[0] &&
                         node.data.timelineEvents[0].offset < node.data.offset ? (
                           <Timeline.Span
-                            startMs={nanosecondsToMilliseconds(node.data.timelineEvents[0].offset)}
+                            startMs={nanosecondsToMilliseconds(
+                              queueAdjustedNs(node.data.timelineEvents[0].offset, queuedDuration)
+                            )}
                             durationMs={nanosecondsToMilliseconds(
                               node.data.offset - node.data.timelineEvents[0].offset
                             )}
@@ -988,21 +1019,35 @@ function TimelineView({
                         ) : null}
                         <SpanWithDuration
                           showDuration={state.selected ? true : showDurations}
-                          startMs={nanosecondsToMilliseconds(node.data.offset)}
+                          startMs={nanosecondsToMilliseconds(
+                            Math.max(queueAdjustedNs(node.data.offset, queuedDuration), 0)
+                          )}
                           durationMs={
                             node.data.duration
-                              ? nanosecondsToMilliseconds(node.data.duration)
-                              : nanosecondsToMilliseconds(duration - node.data.offset)
+                              ? //completed
+                                nanosecondsToMilliseconds(Math.min(node.data.duration, duration))
+                              : //in progress
+                                nanosecondsToMilliseconds(
+                                  Math.min(
+                                    duration + (queuedDuration ?? 0) - node.data.offset,
+                                    duration
+                                  )
+                                )
                           }
                           node={node}
+                          fadeLeft={isTopSpan && queuedDuration !== undefined}
                         />
                       </>
                     ) : (
-                      <Timeline.Point ms={nanosecondsToMilliseconds(node.data.offset)}>
+                      <Timeline.Point
+                        ms={nanosecondsToMilliseconds(
+                          queueAdjustedNs(node.data.offset, queuedDuration)
+                        )}
+                      >
                         {(ms) => (
                           <motion.div
                             className={cn(
-                              "-ml-1 size-3 rounded-full border-2 border-background-bright",
+                              "-ml-0.5 size-3 rounded-full border-2 border-background-bright",
                               eventBackgroundClassName(node.data)
                             )}
                             layoutId={node.id}
@@ -1025,6 +1070,14 @@ function TimelineView({
       </Timeline.Root>
     </div>
   );
+}
+
+function queueAdjustedNs(timeNs: number, queuedDurationNs: number | undefined) {
+  if (queuedDurationNs) {
+    return timeNs - queuedDurationNs;
+  }
+
+  return timeNs;
 }
 
 function NodeText({ node }: { node: TraceEvent }) {
@@ -1180,15 +1233,18 @@ function PulsingDot() {
 function SpanWithDuration({
   showDuration,
   node,
+  fadeLeft,
   ...props
-}: Timeline.SpanProps & { node: TraceEvent; showDuration: boolean }) {
+}: Timeline.SpanProps & { node: TraceEvent; showDuration: boolean; fadeLeft: boolean }) {
   return (
     <Timeline.Span {...props}>
       <motion.div
         className={cn(
-          "relative flex h-4 w-full min-w-0.5 items-center rounded-sm",
-          eventBackgroundClassName(node.data)
+          "relative flex h-4 w-full min-w-0.5 items-center",
+          eventBackgroundClassName(node.data),
+          fadeLeft ? "rounded-r-sm bg-gradient-to-r from-black/50 to-transparent" : "rounded-sm"
         )}
+        style={{ backgroundSize: "20px 100%", backgroundRepeat: "no-repeat" }}
         layoutId={node.id}
       >
         {node.data.isPartial && (
@@ -1197,19 +1253,22 @@ function SpanWithDuration({
             style={{ backgroundImage: `url(${tileBgPath})`, backgroundSize: "8px 8px" }}
           />
         )}
-        <div
+        <motion.div
           className={cn(
-            "sticky left-0 z-10 transition group-hover:opacity-100",
+            "sticky left-0 z-10 transition-opacity group-hover:opacity-100",
             !showDuration && "opacity-0"
           )}
         >
-          <div className="whitespace-nowrap rounded-sm px-1 py-0.5 text-xxs text-text-bright text-shadow-custom">
+          <motion.div
+            className="whitespace-nowrap rounded-sm px-1 py-0.5 text-xxs text-text-bright text-shadow-custom"
+            layout="position"
+          >
             {formatDurationMilliseconds(props.durationMs, {
               style: "short",
               maxDecimalPoints: props.durationMs < 1000 ? 0 : 1,
             })}
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       </motion.div>
     </Timeline.Span>
   );
@@ -1220,9 +1279,11 @@ const edgeBoundary = 0.17;
 function CurrentTimeIndicator({
   totalDuration,
   rootStartedAt,
+  queuedDurationNs,
 }: {
   totalDuration: number;
   rootStartedAt: Date | undefined;
+  queuedDurationNs: number | undefined;
 }) {
   return (
     <Timeline.FollowCursor>
@@ -1235,7 +1296,11 @@ function CurrentTimeIndicator({
           offset = lerp(0.5, 1, (ratio - (1 - edgeBoundary)) / edgeBoundary);
         }
 
-        const currentTime = rootStartedAt ? new Date(rootStartedAt.getTime() + ms) : undefined;
+        const currentTime = rootStartedAt
+          ? new Date(
+              rootStartedAt.getTime() + ms + nanosecondsToMilliseconds(queuedDurationNs ?? 0)
+            )
+          : undefined;
         const currentTimeComponent = currentTime ? <DateTimeShort date={currentTime} /> : <></>;
 
         return (
@@ -1300,6 +1365,7 @@ function KeyboardShortcuts({
         title="Collapse all"
       />
       <NumberShortcuts toggleLevel={(number) => toggleExpandLevel(number)} />
+      <ShortcutWithAction shortcut={{ key: "Q" }} title="Queue time" action={() => {}} />
     </>
   );
 }

@@ -3,7 +3,7 @@ import { DEFAULT_RUNTIME, ResolvedConfig } from "@trigger.dev/core/v3/build";
 import { BuildManifest, BuildTarget, TaskFile } from "@trigger.dev/core/v3/schemas";
 import * as esbuild from "esbuild";
 import { createHash } from "node:crypto";
-import { join, relative, resolve } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { createFile } from "../utilities/fileSystem.js";
 import { logger } from "../utilities/logger.js";
 import { resolveFileSources } from "../utilities/sourceFiles.js";
@@ -239,15 +239,18 @@ export async function getBundleResultFromBuild(
 
   // Check if the entry point is an init.ts file at the root of a trigger directory
   function isInitEntryPoint(entryPoint: string): boolean {
-    const normalizedEntryPoint = entryPoint.replace(/\\/g, "/"); // Normalize path separators
     const initFileNames = ["init.ts", "init.mts", "init.cts", "init.js", "init.mjs", "init.cjs"];
 
     // Check if it's directly in one of the trigger directories
     return resolvedConfig.dirs.some((dir) => {
-      const normalizedDir = dir.replace(/\\/g, "/");
-      return initFileNames.some(
-        (fileName) => normalizedEntryPoint === `${normalizedDir}/${fileName}`
-      );
+      const normalizedDir = resolve(dir);
+      const normalizedEntryDir = resolve(dirname(entryPoint));
+
+      if (normalizedDir !== normalizedEntryDir) {
+        return false;
+      }
+
+      return initFileNames.includes(basename(entryPoint));
     });
   }
 

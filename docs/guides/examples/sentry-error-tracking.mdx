@@ -49,6 +49,7 @@ export default defineConfig({
   },
   init: async () => {
     Sentry.init({
+      defaultIntegrations: false,
       // The Data Source Name (DSN) is a unique identifier for your Sentry project.
       dsn: process.env.SENTRY_DSN,
       // Update this to match the environment you want to track errors for
