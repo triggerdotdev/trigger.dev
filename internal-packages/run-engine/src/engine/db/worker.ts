@@ -289,10 +289,43 @@ export async function getWorkerFromCurrentlyPromotedDeployment(
     return null;
   }
 
+  if (promotion.deployment.type === "MANAGED") {
+    // This is a run engine v2 deployment, so return it
+    return {
+      worker: promotion.deployment.worker,
+      tasks: promotion.deployment.worker.tasks,
+      queues: promotion.deployment.worker.queues,
+      deployment: promotion.deployment,
+    };
+  }
+
+  // We need to get the latest run engine v2 deployment
+  const latestV2Deployment = await prisma.workerDeployment.findFirst({
+    where: {
+      environmentId,
+      type: "MANAGED",
+    },
+    orderBy: {
+      id: "desc",
+    },
+    include: {
+      worker: {
+        include: {
+          tasks: true,
+          queues: true,
+        },
+      },
+    },
+  });
+
+  if (!latestV2Deployment?.worker) {
+    return null;
+  }
+
   return {
-    worker: promotion.deployment.worker,
-    tasks: promotion.deployment.worker.tasks,
-    queues: promotion.deployment.worker.queues,
-    deployment: promotion.deployment,
+    worker: latestV2Deployment.worker,
+    tasks: latestV2Deployment.worker.tasks,
+    queues: latestV2Deployment.worker.queues,
+    deployment: latestV2Deployment,
   };
 }
