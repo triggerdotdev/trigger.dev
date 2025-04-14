@@ -28,7 +28,7 @@ import { useUser } from "~/hooks/useUser";
 import { DeploymentPresenter } from "~/presenters/v3/DeploymentPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { v3DeploymentParams, v3DeploymentsPath } from "~/utils/pathBuilder";
+import { v3DeploymentParams, v3DeploymentsPath, v3RunsPath } from "~/utils/pathBuilder";
 import { capitalizeWord } from "~/utils/string";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
@@ -231,16 +231,19 @@ export default function Page() {
                 </TableHeader>
                 <TableBody>
                   {deployment.tasks.map((t) => {
+                    const path = v3RunsPath(organization, project, environment, {
+                      tasks: [t.slug],
+                    });
                     return (
                       <TableRow key={t.slug}>
-                        <TableCell>
+                        <TableCell to={path}>
                           <div className="inline-flex flex-col gap-0.5">
                             <Paragraph variant="extra-small" className="text-text-dimmed">
                               {t.slug}
                             </Paragraph>
                           </div>
                         </TableCell>
-                        <TableCell>{t.filePath}</TableCell>
+                        <TableCell to={path}>{t.filePath}</TableCell>
                       </TableRow>
                     );
                   })}

@@ -73,7 +73,9 @@ export class TriggerScheduledTaskService extends BaseService {
 
       if (instance.environment.type !== "DEVELOPMENT") {
         // Get the current backgroundWorker for this environment
-        const currentWorkerDeployment = await findCurrentWorkerDeployment(instance.environment.id);
+        const currentWorkerDeployment = await findCurrentWorkerDeployment({
+          environmentId: instance.environment.id,
+        });
 
         if (!currentWorkerDeployment) {
           logger.debug("No current worker deployment found, skipping task trigger", {

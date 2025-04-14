@@ -56,7 +56,7 @@ export class TestPresenter extends BasePresenter {
         JOIN ${sqlDatabaseSchema}."BackgroundWorkerTask" bwt ON bwt."workerId" = latest_workers.id
         ORDER BY slug ASC;`;
     } else {
-      const currentDeployment = await findCurrentWorkerDeployment(envId);
+      const currentDeployment = await findCurrentWorkerDeployment({ environmentId: envId });
       return currentDeployment?.worker?.tasks ?? [];
     }
   }
