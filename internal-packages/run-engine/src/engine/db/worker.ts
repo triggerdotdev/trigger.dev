@@ -100,7 +100,7 @@ export async function getRunWithBackgroundWorkerTasks(
   } else {
     workerWithTasks = workerId
       ? await getWorkerDeploymentFromWorker(prisma, workerId)
-      : await getWorkerFromCurrentlyPromotedDeployment(prisma, run.runtimeEnvironmentId);
+      : await getManagedWorkerFromCurrentlyPromotedDeployment(prisma, run.runtimeEnvironmentId);
   }
 
   if (!workerWithTasks) {
@@ -260,7 +260,7 @@ export async function getWorkerById(
   return { worker, tasks: worker.tasks, queues: worker.queues, deployment: worker.deployment };
 }
 
-export async function getWorkerFromCurrentlyPromotedDeployment(
+export async function getManagedWorkerFromCurrentlyPromotedDeployment(
   prisma: PrismaClientOrTransaction,
   environmentId: string
 ): Promise<WorkerDeploymentWithWorkerTasks | null> {
