@@ -88,7 +88,7 @@ export class TestTaskPresenter {
   }: TestTaskOptions): Promise<TestTaskResult> {
     let task: BackgroundWorkerTaskSlim | null = null;
     if (environment.type !== "DEVELOPMENT") {
-      const deployment = await findCurrentWorkerDeployment(environment.id);
+      const deployment = await findCurrentWorkerDeployment({ environmentId: environment.id });
       if (deployment) {
         task = deployment.worker?.tasks.find((t) => t.slug === taskIdentifier) ?? null;
       }

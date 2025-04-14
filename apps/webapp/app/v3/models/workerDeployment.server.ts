@@ -1,5 +1,5 @@
 import type { Prettify } from "@trigger.dev/core";
-import { BackgroundWorker, RunEngineVersion, WorkerDeployment } from "@trigger.dev/database";
+import { BackgroundWorker, RunEngineVersion, WorkerDeploymentType } from "@trigger.dev/database";
 import {
   CURRENT_DEPLOYMENT_LABEL,
   CURRENT_UNMANAGED_DEPLOYMENT_LABEL,
@@ -56,10 +56,23 @@ type WorkerDeploymentWithWorkerTasks = Prisma.WorkerDeploymentGetPayload<{
   };
 }>;
 
-export async function findCurrentWorkerDeployment(
-  environmentId: string,
-  label = CURRENT_DEPLOYMENT_LABEL
-): Promise<WorkerDeploymentWithWorkerTasks | undefined> {
+/**
+ * Finds the current worker deployment for a given environment.
+ *
+ * @param environmentId - The ID of the environment to find the current worker deployment for.
+ * @param label - The label of the current worker deployment to find.
+ * @param type - The type of worker deployment to find. If the current deployment is NOT of this type,
+ *   we will return the latest deployment of the given type.
+ */
+export async function findCurrentWorkerDeployment({
+  environmentId,
+  label = CURRENT_DEPLOYMENT_LABEL,
+  type,
+}: {
+  environmentId: string;
+  label?: string;
+  type?: WorkerDeploymentType;
+}): Promise<WorkerDeploymentWithWorkerTasks | undefined> {
   const promotion = await prisma.workerDeploymentPromotion.findFirst({
     where: {
       environmentId,
@@ -93,16 +106,19 @@ export async function findCurrentWorkerDeployment(
     return undefined;
   }
 
-  if (promotion.deployment.type === "V1") {
-    // This is a run engine v1 deployment, so return it
+  if (!type) {
     return promotion.deployment;
   }
 
-  // We need to get the latest run engine v1 deployment
-  const latestV1Deployment = await prisma.workerDeployment.findFirst({
+  if (promotion.deployment.type === type) {
+    return promotion.deployment;
+  }
+
+  // We need to get the latest deployment of the given type
+  const latestDeployment = await prisma.workerDeployment.findFirst({
     where: {
       environmentId,
-      type: "V1",
+      type,
     },
     orderBy: {
       id: "desc",
@@ -127,11 +143,11 @@ export async function findCurrentWorkerDeployment(
     },
   });
 
-  if (!latestV1Deployment) {
+  if (!latestDeployment) {
     return undefined;
   }
 
-  return latestV1Deployment;
+  return latestDeployment;
 }
 
 export async function getCurrentWorkerDeploymentEngineVersion(
@@ -162,7 +178,11 @@ export async function getCurrentWorkerDeploymentEngineVersion(
 export async function findCurrentUnmanagedWorkerDeployment(
   environmentId: string
 ): Promise<WorkerDeploymentWithWorkerTasks | undefined> {
-  return await findCurrentWorkerDeployment(environmentId, CURRENT_UNMANAGED_DEPLOYMENT_LABEL);
+  return await findCurrentWorkerDeployment({
+    environmentId,
+    label: CURRENT_UNMANAGED_DEPLOYMENT_LABEL,
+    type: "UNMANAGED",
+  });
 }
 
 export async function findCurrentWorkerFromEnvironment(
@@ -183,7 +203,10 @@ export async function findCurrentWorkerFromEnvironment(
     });
     return latestDevWorker;
   } else {
-    const deployment = await findCurrentWorkerDeployment(environment.id, label);
+    const deployment = await findCurrentWorkerDeployment({
+      environmentId: environment.id,
+      label,
+    });
     return deployment?.worker ?? null;
   }
 }
