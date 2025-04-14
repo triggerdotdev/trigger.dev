@@ -169,6 +169,11 @@ export class ManagedRunController {
       return;
     }
 
+    this.sendDebugLog({
+      runId: runFriendlyId,
+      message: "startAndExecuteRunAttempt: called",
+    });
+
     const execution = async () => {
       if (!this.socket) {
         this.sendDebugLog({
