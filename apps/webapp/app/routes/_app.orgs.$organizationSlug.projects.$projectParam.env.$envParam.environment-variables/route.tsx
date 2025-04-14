@@ -54,7 +54,6 @@ import {
   type EnvironmentVariableWithSetValues,
   EnvironmentVariablesPresenter,
 } from "~/presenters/v3/EnvironmentVariablesPresenter.server";
-import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import {
@@ -66,7 +65,6 @@ import {
 } from "~/utils/pathBuilder";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import {
-  DeleteEnvironmentVariable,
   DeleteEnvironmentVariableValue,
   EditEnvironmentVariableValue,
 } from "~/v3/environmentVariables/repository";
@@ -238,9 +236,9 @@ export default function Page() {
           <Table containerClassName={cn(environmentVariables.length === 0 && "border-t-0")}>
             <TableHeader>
               <TableRow>
-                <TableHeaderCell>Key</TableHeaderCell>
-                <TableHeaderCell>Value</TableHeaderCell>
-                <TableHeaderCell>Environment</TableHeaderCell>
+                <TableHeaderCell className="w-[25%]">Key</TableHeaderCell>
+                <TableHeaderCell className="w-[55%]">Value</TableHeaderCell>
+                <TableHeaderCell className="w-[20%]">Environment</TableHeaderCell>
                 <TableHeaderCell hiddenLabel className="pl-24">
                   Actions
                 </TableHeaderCell>
@@ -258,7 +256,7 @@ export default function Page() {
                         <SimpleTooltip
                           button={
                             <div className="flex items-center gap-x-1.5">
-                              <LockClosedIcon className="size-4 text-text-dimmed" />
+                              <LockClosedIcon className="size-3 text-text-dimmed" />
                               <span className="text-sm text-text-dimmed">Secret</span>
                             </div>
                           }
@@ -266,12 +264,10 @@ export default function Page() {
                         />
                       ) : (
                         <ClipboardField
-                          className="-ml-2"
                           secure={!revealAll}
                           value={variable.value}
-                          variant={"tertiary/small"}
-                          iconButton
-                          fullWidth={false}
+                          variant={"secondary/small"}
+                          fullWidth={true}
                         />
                       )}
                     </TableCell>
@@ -445,7 +441,7 @@ function DeleteEnvironmentVariableButton({
         textAlignLeft
         LeadingIcon={TrashIcon}
         leadingIconClassName="text-rose-500 group-hover/button:text-text-bright transition-colors"
-        className="transition-colors group-hover/button:bg-error"
+        className="ml-0.5 transition-colors group-hover/button:bg-error"
       >
         {isLoading ? "Deleting" : "Delete"}
       </Button>
