@@ -51,6 +51,7 @@ export class EnvironmentVariablesRepository implements Repository {
     options: {
       override: boolean;
       environmentIds: string[];
+      isSecret?: boolean;
       variables: {
         key: string;
         value: string;
@@ -187,8 +188,11 @@ export class EnvironmentVariablesRepository implements Repository {
                 variableId: environmentVariable.id,
                 environmentId: environmentId,
                 valueReferenceId: secretReference.id,
+                isSecret: options.isSecret,
               },
-              update: {},
+              update: {
+                isSecret: options.isSecret,
+              },
             });
 
             await secretStore.setSecret<{ secret: string }>(key, {

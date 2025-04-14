@@ -40,6 +40,7 @@ import { useList } from "~/hooks/useList";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { EnvironmentVariablesPresenter } from "~/presenters/v3/EnvironmentVariablesPresenter.server";
+import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import {
@@ -86,6 +87,10 @@ const schema = z.object({
     if (i === "true") return true;
     if (i === "false") return false;
     return;
+  }, z.boolean()),
+  isSecret: z.preprocess((i) => {
+    if (i === "true") return true;
+    return false;
   }, z.boolean()),
   environmentIds: z.preprocess((i) => {
     if (typeof i === "string") return [i];
@@ -194,7 +199,7 @@ export default function Page() {
     shouldRevalidate: "onSubmit",
   });
 
-  const [revealAll, setRevealAll] = useState(false);
+  const [revealAll, setRevealAll] = useState(true);
 
   useEffect(() => {
     setIsOpen(true);
@@ -256,6 +261,15 @@ export default function Page() {
                 Dev environment variables specified here will be overridden by ones in your .env
                 file when running locally.
               </Hint>
+            </InputGroup>
+            <InputGroup className="w-auto">
+              <Switch
+                name="isSecret"
+                variant="large"
+                label="Secret?"
+                defaultChecked={false}
+                value="true"
+              />
             </InputGroup>
             <InputGroup fullWidth>
               <FieldLayout showDeleteButton={false}>

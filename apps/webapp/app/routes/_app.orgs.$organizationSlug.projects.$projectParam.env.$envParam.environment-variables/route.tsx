@@ -330,8 +330,6 @@ function EditEnvironmentVariablePanel({
   variable: EnvironmentVariableWithSetValues;
   revealAll: boolean;
 }) {
-  const [reveal, setReveal] = useState(revealAll);
-
   const [isOpen, setIsOpen] = useState(false);
   const lastSubmission = useActionData();
   const navigation = useNavigation();
@@ -350,8 +348,6 @@ function EditEnvironmentVariablePanel({
     },
     shouldRevalidate: "onSubmit",
   });
-
-  console.log("edit form", { form, variable, id, environmentId, value });
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
@@ -380,21 +376,13 @@ function EditEnvironmentVariablePanel({
             </InputGroup>
             <EnvironmentCombo environment={variable.environment} className="text-sm" />
 
-            <div className="flex justify-between gap-1">
-              <Switch
-                variant="small"
-                label="Reveal"
-                checked={reveal}
-                onCheckedChange={(e) => setReveal(e.valueOf())}
-              />
-            </div>
             <InputGroup fullWidth>
               <Label>Value</Label>
               <Input
                 {...conform.input(value, { type: "text" })}
                 placeholder={variable.isSecret ? "Set new secret value" : "Not set"}
                 defaultValue={variable.value}
-                type={reveal ? "text" : "password"}
+                type={"text"}
               />
               <FormError id={value.errorId}>{value.error}</FormError>
             </InputGroup>
