@@ -51,7 +51,7 @@ export function CopyableText({ value, className }: { value: string; className?: 
               )}
             </span>
           }
-          content={copied ? "Copied!" : "Copy text"}
+          content={copied ? "Copied!" : "Copy"}
           className="font-sans"
           disableHoverableContent
         />
