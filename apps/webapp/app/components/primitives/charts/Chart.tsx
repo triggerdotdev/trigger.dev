@@ -9,6 +9,7 @@ export type ChartConfig = {
   [k in string]: {
     label?: React.ReactNode;
     icon?: React.ComponentType;
+    value?: number;
   } & (
     | { color?: string; theme?: never }
     | { color?: never; theme: Record<keyof typeof THEMES, string> }
@@ -290,6 +291,86 @@ const ChartLegendContent = React.forwardRef<
 });
 ChartLegendContent.displayName = "ChartLegend";
 
+const ChartLegendContentRows = React.forwardRef<
+  HTMLDivElement,
+  React.ComponentProps<"div"> &
+    Pick<RechartsPrimitive.LegendProps, "payload" | "verticalAlign"> & {
+      hideIcon?: boolean;
+      nameKey?: string;
+      onMouseEnter?: (e: any) => void;
+      onMouseLeave?: (e: any) => void;
+      data?: Record<string, number>;
+    }
+>(
+  (
+    {
+      className,
+      hideIcon = false,
+      payload,
+      verticalAlign = "bottom",
+      nameKey,
+      onMouseEnter,
+      onMouseLeave,
+      data,
+    },
+    ref
+  ) => {
+    const { config } = useChart();
+
+    if (!payload?.length) {
+      return null;
+    }
+
+    return (
+      <div
+        ref={ref}
+        className={cn(
+          "flex flex-col items-start justify-between",
+          verticalAlign === "top" ? "pb-4" : "pt-4",
+          className
+        )}
+      >
+        {payload.map((item) => {
+          const key = `${nameKey || item.dataKey || "value"}`;
+          const itemConfig = getPayloadConfigFromPayload(config, item, key);
+          const total = item.dataKey && data ? data[item.dataKey as string] : undefined;
+
+          return (
+            <div
+              key={key}
+              className="flex w-full items-center justify-between gap-2 rounded px-2 py-1 transition hover:bg-grid-dimmed"
+              onMouseEnter={() => onMouseEnter?.(item)}
+              onMouseLeave={() => onMouseLeave?.(item)}
+            >
+              <div
+                className={cn(
+                  "flex items-center gap-1.5 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:text-text-dimmed"
+                )}
+              >
+                {itemConfig?.icon && !hideIcon ? (
+                  <itemConfig.icon />
+                ) : (
+                  <div
+                    className="h-3 w-1 shrink-0 rounded-[2px]"
+                    style={{
+                      backgroundColor: item.color,
+                    }}
+                  />
+                )}
+                {itemConfig?.label}
+              </div>
+              {total !== undefined && (
+                <span className="tabular-nums text-text-dimmed">{total.toLocaleString()}</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+);
+ChartLegendContentRows.displayName = "ChartLegendRows";
+
 // Helper to extract item config from a payload.
 function getPayloadConfigFromPayload(config: ChartConfig, payload: unknown, key: string) {
   if (typeof payload !== "object" || payload === null) {
@@ -322,5 +403,6 @@ export {
   ChartTooltipContent,
   ChartLegend,
   ChartLegendContent,
+  ChartLegendContentRows,
   ChartStyle,
 };
