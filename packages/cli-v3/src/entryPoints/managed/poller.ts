@@ -12,19 +12,22 @@ export type RunExecutionSnapshotPollerOptions = {
 };
 
 export class RunExecutionSnapshotPoller {
-  private readonly logger: RunLogger;
-  private readonly poller: HeartbeatService;
-  private readonly httpClient: WorkloadHttpClient;
-
-  private readonly runFriendlyId: string;
+  private runFriendlyId: string;
   private snapshotFriendlyId: string;
 
-  constructor(opts: RunExecutionSnapshotPollerOptions) {
-    this.logger = opts.logger;
-    this.httpClient = opts.httpClient;
+  private readonly httpClient: WorkloadHttpClient;
+  private readonly logger: RunLogger;
+  private readonly snapshotPollIntervalMs: number;
+  private readonly handleSnapshotChange: (runData: RunExecutionData) => Promise<void>;
+  private readonly poller: HeartbeatService;
 
+  constructor(opts: RunExecutionSnapshotPollerOptions) {
     this.runFriendlyId = opts.runFriendlyId;
     this.snapshotFriendlyId = opts.snapshotFriendlyId;
+    this.httpClient = opts.httpClient;
+    this.logger = opts.logger;
+    this.snapshotPollIntervalMs = opts.snapshotPollIntervalSeconds * 1000;
+    this.handleSnapshotChange = opts.handleSnapshotChange;
 
     this.logger.sendDebugLog({
       runId: this.runFriendlyId,
@@ -82,7 +85,7 @@ export class RunExecutionSnapshotPoller {
           return;
         }
 
-        await opts.handleSnapshotChange(response.data.execution);
+        await this.handleSnapshotChange(response.data.execution);
       },
       intervalMs: opts.snapshotPollIntervalSeconds * 1000,
       leadingEdge: false,
@@ -100,8 +103,8 @@ export class RunExecutionSnapshotPoller {
     this.poller.resetCurrentInterval();
   }
 
-  updateSnapshotId(snapshotId: string) {
-    this.snapshotFriendlyId = snapshotId;
+  updateSnapshotId(snapshotFriendlyId: string) {
+    this.snapshotFriendlyId = snapshotFriendlyId;
   }
 
   updateInterval(intervalMs: number) {

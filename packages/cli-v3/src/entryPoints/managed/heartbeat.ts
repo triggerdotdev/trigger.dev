@@ -11,19 +11,20 @@ export type RunExecutionHeartbeatOptions = {
 };
 
 export class RunExecutionHeartbeat {
-  private readonly logger: RunLogger;
-  private readonly heartbeat: HeartbeatService;
-  private readonly httpClient: WorkloadHttpClient;
-
   private readonly runFriendlyId: string;
   private snapshotFriendlyId: string;
 
-  constructor(opts: RunExecutionHeartbeatOptions) {
-    this.logger = opts.logger;
-    this.httpClient = opts.httpClient;
+  private readonly httpClient: WorkloadHttpClient;
+  private readonly logger: RunLogger;
+  private readonly heartbeatIntervalMs: number;
+  private readonly heartbeat: HeartbeatService;
 
+  constructor(opts: RunExecutionHeartbeatOptions) {
     this.runFriendlyId = opts.runFriendlyId;
     this.snapshotFriendlyId = opts.snapshotFriendlyId;
+    this.httpClient = opts.httpClient;
+    this.logger = opts.logger;
+    this.heartbeatIntervalMs = opts.heartbeatIntervalSeconds * 1000;
 
     this.logger.sendDebugLog({
       runId: this.runFriendlyId,
@@ -57,7 +58,7 @@ export class RunExecutionHeartbeat {
           });
         }
       },
-      intervalMs: opts.heartbeatIntervalSeconds * 1000,
+      intervalMs: this.heartbeatIntervalMs,
       leadingEdge: false,
       onError: async (error) => {
         this.logger.sendDebugLog({
@@ -73,8 +74,8 @@ export class RunExecutionHeartbeat {
     this.heartbeat.resetCurrentInterval();
   }
 
-  updateSnapshotId(snapshotId: string) {
-    this.snapshotFriendlyId = snapshotId;
+  updateSnapshotId(snapshotFriendlyId: string) {
+    this.snapshotFriendlyId = snapshotFriendlyId;
   }
 
   updateInterval(intervalMs: number) {

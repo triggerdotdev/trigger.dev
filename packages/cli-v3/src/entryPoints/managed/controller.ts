@@ -143,7 +143,7 @@ export class ManagedRunController {
   }
 
   private get snapshotFriendlyId() {
-    return this.currentExecution?.snapshotFriendlyId;
+    return this.currentExecution?.currentSnapshotFriendlyId;
   }
 
   private lockedRunExecution: Promise<void> | null = null;
@@ -182,28 +182,33 @@ export class ManagedRunController {
         });
       }
 
-      this.subscribeToRunNotifications(runFriendlyId, snapshotFriendlyId);
-
       // Create a new RunExecution instance for this attempt
       const newExecution = new RunExecution({
-        runFriendlyId,
-        snapshotFriendlyId,
-        dequeuedAt,
-        podScheduledAt,
-        isWarmStart,
         workerManifest: this.workerManifest,
         env: this.env,
         httpClient: this.httpClient,
         logger: this.logger,
       });
 
+      // If we have a current execution with task run env, prepare the new execution
       if (this.currentExecution?.taskRunEnv) {
-        newExecution.prepareForExecution(this.currentExecution.taskRunEnv);
+        newExecution.prepareForExecution({
+          taskRunEnv: this.currentExecution.taskRunEnv,
+        });
       }
 
       this.currentExecution = newExecution;
 
-      await this.currentExecution.execute();
+      // Subscribe to run notifications
+      this.subscribeToRunNotifications(runFriendlyId, snapshotFriendlyId);
+
+      await this.currentExecution.execute({
+        runFriendlyId,
+        snapshotFriendlyId,
+        dequeuedAt,
+        podScheduledAt,
+        isWarmStart,
+      });
     };
 
     this.lockedRunExecution = execution();
