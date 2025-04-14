@@ -619,7 +619,7 @@ export class DevRunController {
         version: this.opts.worker.serverWorker?.version,
         engine: "V2",
       },
-      machine: execution.machine,
+      machineResources: execution.machine,
     }).initialize();
 
     logger.debug("executing task run process", {
