@@ -5,7 +5,7 @@ import {
   RuntimeEnvironmentType,
 } from "@trigger.dev/database";
 import { z } from "zod";
-import { environmentTitle } from "~/components/environments/EnvironmentLabel";
+import { environmentFullTitle, environmentTitle } from "~/components/environments/EnvironmentLabel";
 import { $transaction, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
@@ -128,7 +128,7 @@ export class EnvironmentVariablesRepository implements Repository {
           variableErrors: existingVariableKeys.map((val) => ({
             key: val.key,
             error: `Variable already set in ${val.environments
-              .map((e) => environmentTitle({ type: e }))
+              .map((e) => environmentFullTitle({ type: e }))
               .join(", ")}.`,
           })),
         };
