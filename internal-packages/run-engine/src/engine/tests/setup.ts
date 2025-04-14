@@ -97,6 +97,7 @@ export async function setupBackgroundWorker(
       runtimeEnvironmentId: environment.id,
       version: nextVersion,
       metadata: {},
+      engine: "V2",
     },
   });
 
@@ -234,6 +235,7 @@ export async function setupBackgroundWorker(
         projectId: environment.project.id,
         environmentId: environment.id,
         workerId: worker.id,
+        type: "MANAGED",
       },
     });
 

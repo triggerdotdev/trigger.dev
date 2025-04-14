@@ -71,6 +71,7 @@ export async function findCurrentWorkerDeployment(
           id: true,
           imageReference: true,
           version: true,
+          type: true,
           worker: {
             select: {
               id: true,
@@ -88,7 +89,49 @@ export async function findCurrentWorkerDeployment(
     },
   });
 
-  return promotion?.deployment;
+  if (!promotion) {
+    return undefined;
+  }
+
+  if (promotion.deployment.type === "V1") {
+    // This is a run engine v1 deployment, so return it
+    return promotion.deployment;
+  }
+
+  // We need to get the latest run engine v1 deployment
+  const latestV1Deployment = await prisma.workerDeployment.findFirst({
+    where: {
+      environmentId,
+      type: "V1",
+    },
+    orderBy: {
+      id: "desc",
+    },
+    select: {
+      id: true,
+      imageReference: true,
+      version: true,
+      type: true,
+      worker: {
+        select: {
+          id: true,
+          friendlyId: true,
+          version: true,
+          sdkVersion: true,
+          cliVersion: true,
+          supportsLazyAttempts: true,
+          tasks: true,
+          engine: true,
+        },
+      },
+    },
+  });
+
+  if (!latestV1Deployment) {
+    return undefined;
+  }
+
+  return latestV1Deployment;
 }
 
 export async function getCurrentWorkerDeploymentEngineVersion(
