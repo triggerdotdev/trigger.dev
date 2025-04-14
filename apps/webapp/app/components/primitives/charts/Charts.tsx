@@ -25,15 +25,17 @@ export function ChartBar({
   return (
     <ChartContainer config={config} className="min-h-full w-full">
       {loading ? (
-        <div className="grid h-full place-items-center">
-          <Spinner className="size-6" />
-        </div>
+        <ChartLoading />
       ) : (
-        <BarChart accessibilityLayer data={data}>
+        <BarChart accessibilityLayer data={data} barCategoryGap={2}>
           <CartesianGrid vertical={false} stroke="#272A2E" />
           <XAxis dataKey={dataKey} tickLine={false} tickMargin={8} axisLine={false} />
           <YAxis axisLine={false} tickLine={false} tickMargin={8} />
-          <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel />} />
+          <ChartTooltip
+            cursor={false}
+            animationDuration={200}
+            content={<ChartTooltipContent hideLabel />}
+          />
           <Bar dataKey="value" fill="#6366F1" radius={4} />
         </BarChart>
       )}
@@ -55,9 +57,7 @@ export function ChartLine({
   return (
     <ChartContainer config={config} className="min-h-[200px] w-full">
       {loading ? (
-        <div className="grid h-full place-items-center">
-          <Spinner className="size-6" />
-        </div>
+        <ChartLoading />
       ) : (
         <LineChart
           accessibilityLayer
@@ -68,25 +68,67 @@ export function ChartLine({
           }}
         >
           <CartesianGrid vertical={false} stroke="#272A2E" />
-          <XAxis
-            dataKey={dataKey}
-            tickLine={false}
-            axisLine={false}
-            tickMargin={8}
-            tickFormatter={(value) => value.slice(0, 3)}
-          />
+          <XAxis dataKey={dataKey} tickLine={false} axisLine={false} tickMargin={8} />
           <YAxis axisLine={false} tickLine={false} tickMargin={8} />
           <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
           <Line
             dataKey="desktop"
-            type="monotone"
+            type="linear"
             stroke="var(--color-desktop)"
             strokeWidth={2}
             dot={false}
           />
           <Line
             dataKey="mobile"
-            type="monotone"
+            type="linear"
+            stroke="var(--color-mobile)"
+            strokeWidth={2}
+            dot={false}
+          />
+        </LineChart>
+      )}
+    </ChartContainer>
+  );
+}
+
+export function ChartStepped({
+  config,
+  data,
+  dataKey,
+  loading = false,
+}: {
+  config: ChartConfig;
+  data: any[];
+  dataKey: string;
+  loading?: boolean;
+}) {
+  return (
+    <ChartContainer config={config} className="min-h-[200px] w-full">
+      {loading ? (
+        <ChartLoading />
+      ) : (
+        <LineChart
+          accessibilityLayer
+          data={data}
+          margin={{
+            left: 12,
+            right: 12,
+          }}
+        >
+          <CartesianGrid vertical={false} stroke="#272A2E" />
+          <XAxis dataKey={dataKey} tickLine={false} axisLine={false} tickMargin={8} />
+          <YAxis axisLine={false} tickLine={false} tickMargin={8} />
+          <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
+          <Line
+            dataKey="desktop"
+            type="step"
+            stroke="var(--color-desktop)"
+            strokeWidth={2}
+            dot={false}
+          />
+          <Line
+            dataKey="mobile"
+            type="step"
             stroke="var(--color-mobile)"
             strokeWidth={2}
             dot={false}
@@ -113,11 +155,9 @@ export function ChartStacked({
   return (
     <ChartContainer config={config} className="min-h-full w-full">
       {loading ? (
-        <div className="grid h-full place-items-center">
-          <Spinner className="size-6" />
-        </div>
+        <ChartLoading />
       ) : (
-        <BarChart accessibilityLayer data={data}>
+        <BarChart accessibilityLayer data={data} barCategoryGap={2}>
           <CartesianGrid vertical={false} stroke="#272A2E" />
           <XAxis dataKey={dataKey} tickLine={false} tickMargin={10} axisLine={false} />
           <YAxis axisLine={false} tickLine={false} tickMargin={8} />
@@ -127,15 +167,29 @@ export function ChartStacked({
             stackId="a"
             fill="var(--color-completed)"
             radius={[0, 0, 4, 4]}
+            activeBar={false}
           />
           <Bar
             dataKey="in-progress"
             stackId="a"
             fill="var(--color-in-progress)"
             radius={[0, 0, 0, 0]}
+            activeBar={false}
           />
-          <Bar dataKey="canceled" stackId="a" fill="var(--color-canceled)" radius={[0, 0, 0, 0]} />
-          <Bar dataKey="failed" stackId="a" fill="var(--color-failed)" radius={[4, 4, 0, 0]} />
+          <Bar
+            dataKey="canceled"
+            stackId="a"
+            fill="var(--color-canceled)"
+            radius={[0, 0, 0, 0]}
+            activeBar={false}
+          />
+          <Bar
+            dataKey="failed"
+            stackId="a"
+            fill="var(--color-failed)"
+            radius={[4, 4, 0, 0]}
+            activeBar={false}
+          />
         </BarChart>
       )}
     </ChartContainer>
@@ -181,6 +235,14 @@ export function BigNumber({
       ) : (
         "–"
       )}
+    </div>
+  );
+}
+
+function ChartLoading() {
+  return (
+    <div className="grid h-full place-items-center">
+      <Spinner className="size-6" />
     </div>
   );
 }
