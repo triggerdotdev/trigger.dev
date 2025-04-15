@@ -68,6 +68,7 @@ export {
 
 export * from "./utils/imageRef.js";
 export * from "./utils/interval.js";
+export * from "./utils/heartbeat.js";
 
 export * from "./config.js";
 export {
