@@ -372,10 +372,23 @@ const ChartLegendContentRows = React.forwardRef<
                       }}
                     />
                   )}
-                  {itemConfig?.label}
+                  {itemConfig?.label && (
+                    <span
+                      className={
+                        activeKey === item.dataKey ? "text-text-bright" : "text-text-dimmed"
+                      }
+                    >
+                      {itemConfig.label}
+                    </span>
+                  )}
                 </div>
                 {total !== undefined && (
-                  <span className="tabular-nums text-text-dimmed">
+                  <span
+                    className={cn(
+                      "tabular-nums",
+                      activeKey === item.dataKey ? "text-text-bright" : "text-text-dimmed"
+                    )}
+                  >
                     <AnimatedNumber value={total} duration={animationDuration} />
                   </span>
                 )}
