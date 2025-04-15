@@ -18,6 +18,7 @@ import { RunExecutionHeartbeat } from "./heartbeat.js";
 import { RunExecutionSnapshotPoller } from "./poller.js";
 import { assertExhaustive, tryCatch } from "@trigger.dev/core/utils";
 import { MetadataClient } from "./overrides.js";
+import { randomBytes } from "node:crypto";
 
 class ExecutionAbortError extends Error {
   constructor(message: string) {
@@ -46,6 +47,7 @@ type RunExecutionRunOptions = {
 };
 
 export class RunExecution {
+  private id: string;
   private executionAbortController: AbortController;
 
   private _runFriendlyId?: string;
@@ -65,6 +67,7 @@ export class RunExecution {
   private snapshotPoller?: RunExecutionSnapshotPoller;
 
   constructor(opts: RunExecutionOptions) {
+    this.id = randomBytes(4).toString("hex");
     this.workerManifest = opts.workerManifest;
     this.env = opts.env;
     this.httpClient = opts.httpClient;
@@ -578,20 +581,15 @@ export class RunExecution {
       this.taskRunProcess = this.createTaskRunProcess({ envVars, isWarmStart });
     }
 
-    this.sendDebugLog("executing task run process", {
-      attemptId: execution.attempt.id,
-      runId: execution.run.id,
-    });
+    this.sendDebugLog("executing task run process", { runId: execution.run.id });
 
     // Set up an abort handler that will cleanup the task run process
     this.executionAbortController.signal.addEventListener("abort", async () => {
       this.sendDebugLog("Execution aborted during task run, cleaning up process", {
-        attemptId: execution.attempt.id,
         runId: execution.run.id,
       });
 
       await this.taskRunProcess?.cleanup(true);
-      throw new ExecutionAbortError("Execution aborted during task run");
     });
 
     const completion = await this.taskRunProcess.execute(
@@ -871,6 +869,7 @@ export class RunExecution {
         ...properties,
         runId: this.runFriendlyId,
         snapshotId: this.currentSnapshotId,
+        executionId: this.id,
         executionRestoreCount: this.restoreCount,
       },
     });
