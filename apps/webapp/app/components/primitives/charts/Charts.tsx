@@ -115,9 +115,14 @@ export function ChartStacked({
             tickMargin={10}
             axisLine={false}
             ticks={[data[0]?.[dataKey], data[data.length - 1]?.[dataKey]]}
-            tick={{ fill: "#878C99" }}
+            tick={{ fill: "#878C99", fontSize: 12 }}
           />
-          <YAxis axisLine={false} tickLine={false} tickMargin={8} tick={{ fill: "#878C99" }} />
+          <YAxis
+            axisLine={false}
+            tickLine={false}
+            tickMargin={8}
+            tick={{ fill: "#878C99", fontSize: 12 }}
+          />
           <ChartTooltip
             cursor={{ fill: "#212327" }}
             content={<XAxisTooltip />}
