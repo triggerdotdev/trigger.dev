@@ -23,12 +23,7 @@ export function ChartStacked({
   dataKey: string;
   loading?: boolean;
 }) {
-  const [opacity, setOpacity] = React.useState({
-    completed: 1,
-    "in-progress": 1,
-    canceled: 1,
-    failed: 1,
-  });
+  const [opacity, setOpacity] = React.useState<Record<string, number>>({});
 
   const dimmedOpacity = 0.2;
 
@@ -44,32 +39,45 @@ export function ChartStacked({
     }, {} as Record<string, number>);
   }, [data, dataKey]);
 
+  // Initialize opacity state with all keys from config
+  React.useEffect(() => {
+    const initialOpacity = Object.keys(config).reduce((acc, key) => {
+      if (key !== dataKey) {
+        acc[key] = 1;
+      }
+      return acc;
+    }, {} as Record<string, number>);
+    setOpacity(initialOpacity);
+  }, [config, dataKey]);
+
   const handleMouseEnter = (e: any) => {
     const key = e.dataKey;
-    setOpacity((op) => ({
-      ...op,
-      completed: key === "completed" ? 1 : dimmedOpacity,
-      "in-progress": key === "in-progress" ? 1 : dimmedOpacity,
-      canceled: key === "canceled" ? 1 : dimmedOpacity,
-      failed: key === "failed" ? 1 : dimmedOpacity,
-    }));
+    setOpacity((op) =>
+      Object.keys(op).reduce((acc, k) => {
+        acc[k] = k === key ? 1 : dimmedOpacity;
+        return acc;
+      }, {} as Record<string, number>)
+    );
   };
 
   const handleMouseLeave = () => {
-    setOpacity({
-      completed: 1,
-      "in-progress": 1,
-      canceled: 1,
-      failed: 1,
-    });
+    setOpacity((op) =>
+      Object.keys(op).reduce((acc, k) => {
+        acc[k] = 1;
+        return acc;
+      }, {} as Record<string, number>)
+    );
   };
 
   const style = {
-    "--opacity-completed": opacity.completed,
-    "--opacity-in-progress": opacity["in-progress"],
-    "--opacity-canceled": opacity.canceled,
-    "--opacity-failed": opacity.failed,
+    ...Object.entries(opacity).reduce((acc, [key, value]) => {
+      acc[`--opacity-${key}`] = value;
+      return acc;
+    }, {} as Record<string, string | number>),
   } as React.CSSProperties;
+
+  // Get all data keys except the x-axis key
+  const dataKeys = Object.keys(config).filter((k) => k !== dataKey);
 
   return (
     <ChartContainer
@@ -99,42 +107,23 @@ export function ChartStacked({
             offset={16}
             allowEscapeViewBox={{ x: false, y: true }}
           />
-          <Bar
-            dataKey="completed"
-            stackId="a"
-            fill="var(--color-completed)"
-            radius={[0, 0, 4, 4]}
-            activeBar={false}
-            style={{ transition: "fill-opacity var(--transition-duration)" }}
-            fillOpacity={opacity.completed}
-          />
-          <Bar
-            dataKey="in-progress"
-            stackId="a"
-            fill="var(--color-in-progress)"
-            radius={[0, 0, 0, 0]}
-            activeBar={false}
-            style={{ transition: "fill-opacity var(--transition-duration)" }}
-            fillOpacity={opacity["in-progress"]}
-          />
-          <Bar
-            dataKey="canceled"
-            stackId="a"
-            fill="var(--color-canceled)"
-            radius={[0, 0, 0, 0]}
-            activeBar={false}
-            style={{ transition: "fill-opacity var(--transition-duration)" }}
-            fillOpacity={opacity.canceled}
-          />
-          <Bar
-            dataKey="failed"
-            stackId="a"
-            fill="var(--color-failed)"
-            radius={[4, 4, 0, 0]}
-            activeBar={false}
-            style={{ transition: "fill-opacity var(--transition-duration)" }}
-            fillOpacity={opacity.failed}
-          />
+          {dataKeys.map((key, index, array) => (
+            <Bar
+              key={key}
+              dataKey={key}
+              stackId="a"
+              fill={`var(--color-${key})`}
+              radius={[
+                index === array.length - 1 ? 4 : 0, // top-left radius
+                index === array.length - 1 ? 4 : 0, // top-right radius
+                index === 0 ? 4 : 0, // bottom-right radius
+                index === 0 ? 4 : 0, // bottom-left radius
+              ]}
+              activeBar={false}
+              style={{ transition: "fill-opacity var(--transition-duration)" }}
+              fillOpacity={opacity[key]}
+            />
+          ))}
           <ChartLegend
             content={
               <ChartLegendContentRows
