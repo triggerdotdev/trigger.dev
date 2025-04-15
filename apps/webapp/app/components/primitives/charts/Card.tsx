@@ -16,7 +16,9 @@ export const Card = ({ children, className }: { children: ReactNode; className?:
 };
 
 const CardHeader = ({ children }: { children: ReactNode }) => {
-  return <Header3 className="flex items-center justify-between gap-2 px-4">{children}</Header3>;
+  return (
+    <Header3 className="mb-2 flex items-center justify-between gap-2 px-4">{children}</Header3>
+  );
 };
 
 const CardContent = ({ children }: { children: ReactNode }) => {

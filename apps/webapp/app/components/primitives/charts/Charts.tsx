@@ -12,6 +12,9 @@ import { AnimatedNumber } from "../AnimatedNumber";
 import { Spinner } from "../Spinner";
 import React from "react";
 
+//TODO: draw a separate line to indicate e.g. concurrency level
+//TODO: render a vertical line that follows the mouse
+
 export function ChartStacked({
   config,
   data,
@@ -313,8 +316,6 @@ export function ChartStepped({
   );
 }
 
-//TODO: draw a separate line to indicate concurrency level
-
 interface BigNumberProps {
   animate?: boolean;
   loading?: boolean;
@@ -371,10 +372,10 @@ const XAxisTooltip = ({ active, payload, label, viewBox, coordinate }: any) => {
 
   return (
     <div
-      className="absolute whitespace-nowrap rounded border border-grid-bright bg-background-dimmed px-2 py-1 text-xs tabular-nums text-text-dimmed"
+      className="absolute whitespace-nowrap rounded border border-grid-bright bg-background-dimmed px-2 py-1 text-xxs tabular-nums text-text-dimmed"
       style={{
         left: coordinate?.x,
-        top: viewBox?.height + 12,
+        top: viewBox?.height + 14,
         transform: "translateX(-50%)",
       }}
     >
