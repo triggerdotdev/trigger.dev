@@ -6,7 +6,7 @@ export const Card = ({ children, className }: { children: ReactNode; className?:
   return (
     <div
       className={cn(
-        "flex flex-col gap-4 rounded-lg border border-grid-bright bg-background-bright py-4 pl-5 pr-4",
+        "flex flex-col gap-4 rounded-lg border border-grid-bright bg-background-bright pb-2 pt-4",
         className
       )}
     >
@@ -16,11 +16,11 @@ export const Card = ({ children, className }: { children: ReactNode; className?:
 };
 
 const CardHeader = ({ children }: { children: ReactNode }) => {
-  return <Header3 className="flex items-center justify-between gap-2">{children}</Header3>;
+  return <Header3 className="flex items-center justify-between gap-2 px-4">{children}</Header3>;
 };
 
 const CardContent = ({ children }: { children: ReactNode }) => {
-  return <div>{children}</div>;
+  return <div className="px-2">{children}</div>;
 };
 
 const CardAccessory = ({ children }: { children: ReactNode }) => {
