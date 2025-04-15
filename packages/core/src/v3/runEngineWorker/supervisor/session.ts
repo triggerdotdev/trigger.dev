@@ -8,7 +8,7 @@ import { VERSION } from "../../../version.js";
 import { io, Socket } from "socket.io-client";
 import { WorkerClientToServerEvents, WorkerServerToClientEvents } from "../types.js";
 import { getDefaultWorkerHeaders } from "./util.js";
-import { HeartbeatService } from "../../utils/interval.js";
+import { IntervalService } from "../../utils/interval.js";
 
 type SupervisorSessionOptions = SupervisorClientCommonOptions & {
   queueConsumerEnabled?: boolean;
@@ -29,7 +29,7 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
   private readonly queueConsumerEnabled: boolean;
   private readonly queueConsumer: RunQueueConsumer;
 
-  private readonly heartbeatService: HeartbeatService;
+  private readonly heartbeat: IntervalService;
   private readonly heartbeatIntervalSeconds: number;
 
   constructor(private opts: SupervisorSessionOptions) {
@@ -50,8 +50,8 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
 
     // TODO: This should be dynamic and set by (or at least overridden by) the platform
     this.heartbeatIntervalSeconds = opts.heartbeatIntervalSeconds || 30;
-    this.heartbeatService = new HeartbeatService({
-      heartbeat: async () => {
+    this.heartbeat = new IntervalService({
+      onInterval: async () => {
         console.debug("[SupervisorSession] Sending heartbeat");
 
         const body = this.getHeartbeatBody();
@@ -182,7 +182,7 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
     if (this.queueConsumerEnabled) {
       console.log("[SupervisorSession] Queue consumer enabled");
       this.queueConsumer.start();
-      this.heartbeatService.start();
+      this.heartbeat.start();
     } else {
       console.warn("[SupervisorSession] Queue consumer disabled");
     }
@@ -196,7 +196,7 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
   }
 
   async stop() {
-    this.heartbeatService.stop();
+    this.heartbeat.stop();
     this.runNotificationsSocket?.disconnect();
   }
 

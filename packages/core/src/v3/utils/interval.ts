@@ -1,57 +1,59 @@
-type HeartbeatServiceOptions = {
-  heartbeat: () => Promise<void>;
+type IntervalServiceOptions = {
+  onInterval: () => Promise<void>;
+  onError?: (error: unknown) => Promise<void>;
   intervalMs?: number;
   leadingEdge?: boolean;
-  onError?: (error: unknown) => Promise<void>;
 };
 
-export class HeartbeatService {
-  private _heartbeat: () => Promise<void>;
-  private _intervalMs: number;
-  private _nextHeartbeat: NodeJS.Timeout | undefined;
-  private _leadingEdge: boolean;
-  private _isHeartbeating: boolean;
+export class IntervalService {
+  private _onInterval: () => Promise<void>;
   private _onError?: (error: unknown) => Promise<void>;
 
-  constructor(opts: HeartbeatServiceOptions) {
-    this._heartbeat = opts.heartbeat;
-    this._intervalMs = opts.intervalMs ?? 45_000;
-    this._nextHeartbeat = undefined;
-    this._leadingEdge = opts.leadingEdge ?? false;
-    this._isHeartbeating = false;
+  private _intervalMs: number;
+  private _nextInterval: NodeJS.Timeout | undefined;
+  private _leadingEdge: boolean;
+  private _isEnabled: boolean;
+
+  constructor(opts: IntervalServiceOptions) {
+    this._onInterval = opts.onInterval;
     this._onError = opts.onError;
+
+    this._intervalMs = opts.intervalMs ?? 45_000;
+    this._nextInterval = undefined;
+    this._leadingEdge = opts.leadingEdge ?? false;
+    this._isEnabled = false;
   }
 
   start() {
-    if (this._isHeartbeating) {
+    if (this._isEnabled) {
       return;
     }
 
-    this._isHeartbeating = true;
+    this._isEnabled = true;
 
     if (this._leadingEdge) {
-      this.#doHeartbeat();
+      this.#doInterval();
     } else {
-      this.#scheduleNextHeartbeat();
+      this.#scheduleNextInterval();
     }
   }
 
   stop() {
-    if (!this._isHeartbeating) {
+    if (!this._isEnabled) {
       return;
     }
 
-    this._isHeartbeating = false;
-    this.#clearNextHeartbeat();
+    this._isEnabled = false;
+    this.#clearNextInterval();
   }
 
   resetCurrentInterval() {
-    if (!this._isHeartbeating) {
+    if (!this._isEnabled) {
       return;
     }
 
-    this.#clearNextHeartbeat();
-    this.#scheduleNextHeartbeat();
+    this.#clearNextInterval();
+    this.#scheduleNextInterval();
   }
 
   updateInterval(intervalMs: number) {
@@ -59,35 +61,35 @@ export class HeartbeatService {
     this.resetCurrentInterval();
   }
 
-  #doHeartbeat = async () => {
-    this.#clearNextHeartbeat();
+  #doInterval = async () => {
+    this.#clearNextInterval();
 
-    if (!this._isHeartbeating) {
+    if (!this._isEnabled) {
       return;
     }
 
     try {
-      await this._heartbeat();
+      await this._onInterval();
     } catch (error) {
       if (this._onError) {
         try {
           await this._onError(error);
         } catch (error) {
-          console.error("Error handling heartbeat error", error);
+          console.error("Error during interval error handler", error);
         }
       }
     }
 
-    this.#scheduleNextHeartbeat();
+    this.#scheduleNextInterval();
   };
 
-  #clearNextHeartbeat() {
-    if (this._nextHeartbeat) {
-      clearTimeout(this._nextHeartbeat);
+  #clearNextInterval() {
+    if (this._nextInterval) {
+      clearTimeout(this._nextInterval);
     }
   }
 
-  #scheduleNextHeartbeat() {
-    this._nextHeartbeat = setTimeout(this.#doHeartbeat, this._intervalMs);
+  #scheduleNextInterval() {
+    this._nextInterval = setTimeout(this.#doInterval, this._intervalMs);
   }
 }
