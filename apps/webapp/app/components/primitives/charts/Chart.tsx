@@ -344,35 +344,42 @@ const ChartLegendContentRows = React.forwardRef<
             <div
               key={key}
               className={cn(
-                "flex w-full items-center justify-between gap-2 rounded px-2 py-1 transition",
-                total === 0 && "opacity-50",
-                activeKey === item.dataKey ? "bg-grid-dimmed" : "hover:bg-grid-dimmed"
+                "relative flex w-full items-center justify-between gap-2 rounded px-2 py-1 transition",
+                total === 0 && "opacity-50"
               )}
               onMouseEnter={() => onMouseEnter?.(item)}
               onMouseLeave={() => onMouseLeave?.(item)}
             >
-              <div
-                className={cn(
-                  "flex items-center gap-1.5 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:text-text-dimmed"
-                )}
-              >
-                {itemConfig?.icon && !hideIcon ? (
-                  <itemConfig.icon />
-                ) : (
-                  <div
-                    className="h-3 w-1 shrink-0 rounded-[2px]"
-                    style={{
-                      backgroundColor: item.color,
-                    }}
-                  />
-                )}
-                {itemConfig?.label}
-              </div>
-              {total !== undefined && (
-                <span className="tabular-nums text-text-dimmed">
-                  <AnimatedNumber value={total} duration={animationDuration} />
-                </span>
+              {activeKey === item.dataKey && item.color && (
+                <div
+                  className="absolute inset-0 rounded opacity-10"
+                  style={{ backgroundColor: item.color }}
+                />
               )}
+              <div className="relative flex w-full items-center justify-between gap-2">
+                <div
+                  className={cn(
+                    "flex items-center gap-1.5 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:text-text-dimmed"
+                  )}
+                >
+                  {itemConfig?.icon && !hideIcon ? (
+                    <itemConfig.icon />
+                  ) : (
+                    <div
+                      className="h-3 w-1 shrink-0 rounded-[2px]"
+                      style={{
+                        backgroundColor: item.color,
+                      }}
+                    />
+                  )}
+                  {itemConfig?.label}
+                </div>
+                {total !== undefined && (
+                  <span className="tabular-nums text-text-dimmed">
+                    <AnimatedNumber value={total} duration={animationDuration} />
+                  </span>
+                )}
+              </div>
             </div>
           );
         })}
