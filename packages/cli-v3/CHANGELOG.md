@@ -1,5 +1,14 @@
 # trigger.dev
 
+## 4.0.0-v4-beta.2
+
+### Patch Changes
+
+- Managed run controller performance and reliability improvements ([#1927](https://github.com/triggerdotdev/trigger.dev/pull/1927))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.2`
+  - `@trigger.dev/build@4.0.0-v4-beta.2`
+
 ## 4.0.0-v4-beta.1
 
 ### Patch Changes
