@@ -118,7 +118,7 @@ function generateRandomStackedData(numDays: number) {
     currentDate.setDate(startDate.getDate() + i);
     const day = currentDate.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 
-    // Generate random values with similar ranges to the original data
+    // Generate random values
     const completed = Math.random() < 0.5 ? 0 : Math.floor(Math.random() * 10000) + 500;
     const inProgress = Math.floor(Math.random() * 8000) + 1000;
     const canceled = Math.random() < 0.5 ? 0 : Math.floor(Math.random() * 9000) + 100;
