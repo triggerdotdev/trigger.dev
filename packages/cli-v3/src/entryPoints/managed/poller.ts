@@ -87,7 +87,7 @@ export class RunExecutionSnapshotPoller {
 
         await this.handleSnapshotChange(response.data.execution);
       },
-      intervalMs: opts.snapshotPollIntervalSeconds * 1000,
+      intervalMs: this.snapshotPollIntervalMs,
       leadingEdge: false,
       onError: async (error) => {
         this.logger.sendDebugLog({
