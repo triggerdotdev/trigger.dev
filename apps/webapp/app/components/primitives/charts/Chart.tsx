@@ -302,6 +302,7 @@ const ChartLegendContentRows = React.forwardRef<
       onMouseLeave?: (e: any) => void;
       data?: Record<string, number>;
       animationDuration?: number;
+      activeKey?: string | null;
     }
 >(
   (
@@ -315,6 +316,7 @@ const ChartLegendContentRows = React.forwardRef<
       onMouseLeave,
       data,
       animationDuration,
+      activeKey,
     },
     ref
   ) => {
@@ -342,8 +344,9 @@ const ChartLegendContentRows = React.forwardRef<
             <div
               key={key}
               className={cn(
-                "flex w-full items-center justify-between gap-2 rounded px-2 py-1 transition hover:bg-grid-dimmed",
-                total === 0 && "opacity-50"
+                "flex w-full items-center justify-between gap-2 rounded px-2 py-1 transition",
+                total === 0 && "opacity-50",
+                activeKey === item.dataKey ? "bg-grid-dimmed" : "hover:bg-grid-dimmed"
               )}
               onMouseEnter={() => onMouseEnter?.(item)}
               onMouseLeave={() => onMouseLeave?.(item)}
