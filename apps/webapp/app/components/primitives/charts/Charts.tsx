@@ -25,6 +25,7 @@ export function ChartStacked({
 }) {
   const [opacity, setOpacity] = React.useState<Record<string, number>>({});
   const [activePayload, setActivePayload] = React.useState<any[] | null>(null);
+  const [activeBarKey, setActiveBarKey] = React.useState<string | null>(null);
 
   const dimmedOpacity = 0.2;
   const animationDuration = 0.3;
@@ -52,33 +53,6 @@ export function ChartStacked({
     setOpacity(initialOpacity);
   }, [config, dataKey]);
 
-  const handleMouseEnter = (e: any) => {
-    const key = e.dataKey;
-    setOpacity((op) =>
-      Object.keys(op).reduce((acc, k) => {
-        acc[k] = k === key ? 1 : dimmedOpacity;
-        return acc;
-      }, {} as Record<string, number>)
-    );
-  };
-
-  const handleMouseLeave = () => {
-    setOpacity((op) =>
-      Object.keys(op).reduce((acc, k) => {
-        acc[k] = 1;
-        return acc;
-      }, {} as Record<string, number>)
-    );
-    setActivePayload(null);
-  };
-
-  const style = {
-    ...Object.entries(opacity).reduce((acc, [key, value]) => {
-      acc[`--opacity-${key}`] = value;
-      return acc;
-    }, {} as Record<string, string | number>),
-  } as React.CSSProperties;
-
   // Get all data keys except the x-axis key
   const dataKeys = Object.keys(config).filter((k) => k !== dataKey);
 
@@ -87,6 +61,13 @@ export function ChartStacked({
       acc[item.dataKey] = item.value;
       return acc;
     }, {} as Record<string, number>) ?? totals;
+
+  const style = {
+    ...Object.entries(opacity).reduce((acc, [key, value]) => {
+      acc[`--opacity-${key}`] = value;
+      return acc;
+    }, {} as Record<string, string | number>),
+  } as React.CSSProperties;
 
   return (
     <ChartContainer
@@ -101,11 +82,72 @@ export function ChartStacked({
           accessibilityLayer
           data={data}
           barCategoryGap={2}
-          onMouseLeave={handleMouseLeave}
-          onMouseMove={(state) => {
-            if (state?.activePayload) {
+          height={300}
+          onMouseMove={(state: any) => {
+            if (state?.activePayload?.length > 0) {
+              const CHART_HEIGHT = 300;
+              const total = state.activePayload.reduce((sum: number, p: any) => sum + p.value, 0);
               setActivePayload(state.activePayload);
+
+              // Get the actual height of all bars combined
+              const maxValue = Math.max(
+                ...data.map((d) =>
+                  Object.keys(d)
+                    .filter((key) => key !== dataKey)
+                    .reduce((sum, key) => sum + (d[key] || 0), 0)
+                )
+              );
+
+              // Scale the bars to fit the chart height
+              const scale = CHART_HEIGHT / maxValue;
+
+              // Invert the mouse position (300 - mouseY) so 0 is at the bottom
+              const mouseY = CHART_HEIGHT - state.chartY;
+
+              // Only process hover if mouse is within the actual bars
+              if (mouseY <= maxValue * scale) {
+                // Calculate position of each section from bottom to top
+                let runningTotal = 0;
+                for (const bar of state.activePayload) {
+                  const startPercent = runningTotal / total;
+                  runningTotal += bar.value;
+                  const endPercent = runningTotal / total;
+
+                  const sectionBottom = startPercent * CHART_HEIGHT;
+                  const sectionTop = endPercent * CHART_HEIGHT;
+
+                  if (mouseY >= sectionBottom && mouseY <= sectionTop) {
+                    setActiveBarKey(bar.dataKey);
+                    setOpacity((op) =>
+                      Object.keys(op).reduce((acc, k) => {
+                        acc[k] = k === bar.dataKey ? 1 : dimmedOpacity;
+                        return acc;
+                      }, {} as Record<string, number>)
+                    );
+                    break;
+                  }
+                }
+              } else {
+                // Reset when mouse is above the bars
+                setActiveBarKey(null);
+                setOpacity((op) =>
+                  Object.keys(op).reduce((acc, k) => {
+                    acc[k] = 1;
+                    return acc;
+                  }, {} as Record<string, number>)
+                );
+              }
             }
+          }}
+          onMouseLeave={() => {
+            setActiveBarKey(null);
+            setActivePayload(null);
+            setOpacity((op) =>
+              Object.keys(op).reduce((acc, k) => {
+                acc[k] = 1;
+                return acc;
+              }, {} as Record<string, number>)
+            );
           }}
         >
           <CartesianGrid vertical={false} stroke="#272A2E" />
@@ -115,13 +157,13 @@ export function ChartStacked({
             tickMargin={10}
             axisLine={false}
             ticks={[data[0]?.[dataKey], data[data.length - 1]?.[dataKey]]}
-            tick={{ fill: "#878C99", fontSize: 12 }}
+            tick={{ fill: "#878C99", fontSize: 11, style: { fontVariantNumeric: "tabular-nums" } }}
           />
           <YAxis
             axisLine={false}
             tickLine={false}
             tickMargin={8}
-            tick={{ fill: "#878C99", fontSize: 12 }}
+            tick={{ fill: "#878C99", fontSize: 11, style: { fontVariantNumeric: "tabular-nums" } }}
           />
           <ChartTooltip
             cursor={{ fill: "#212327" }}
@@ -153,10 +195,27 @@ export function ChartStacked({
           <ChartLegend
             content={
               <ChartLegendContentRows
-                onMouseEnter={handleMouseEnter}
-                onMouseLeave={handleMouseLeave}
+                onMouseEnter={(data) => {
+                  setActiveBarKey(data.dataKey);
+                  setOpacity((op) =>
+                    Object.keys(op).reduce((acc, k) => {
+                      acc[k] = k === data.dataKey ? 1 : dimmedOpacity;
+                      return acc;
+                    }, {} as Record<string, number>)
+                  );
+                }}
+                onMouseLeave={() => {
+                  setActiveBarKey(null);
+                  setOpacity((op) =>
+                    Object.keys(op).reduce((acc, k) => {
+                      acc[k] = 1;
+                      return acc;
+                    }, {} as Record<string, number>)
+                  );
+                }}
                 data={currentData}
                 animationDuration={animationDuration}
+                activeKey={activeBarKey}
               />
             }
           />
