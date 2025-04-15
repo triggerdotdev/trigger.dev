@@ -30,6 +30,8 @@ export function ChartStacked({
     failed: 1,
   });
 
+  const dimmedOpacity = 0.2;
+
   // Calculate totals for each category
   const totals = React.useMemo(() => {
     return data.reduce((acc, item) => {
@@ -46,10 +48,10 @@ export function ChartStacked({
     const key = e.dataKey;
     setOpacity((op) => ({
       ...op,
-      completed: key === "completed" ? 1 : 0.3,
-      "in-progress": key === "in-progress" ? 1 : 0.3,
-      canceled: key === "canceled" ? 1 : 0.3,
-      failed: key === "failed" ? 1 : 0.3,
+      completed: key === "completed" ? 1 : dimmedOpacity,
+      "in-progress": key === "in-progress" ? 1 : dimmedOpacity,
+      canceled: key === "canceled" ? 1 : dimmedOpacity,
+      failed: key === "failed" ? 1 : dimmedOpacity,
     }));
   };
 
@@ -80,8 +82,23 @@ export function ChartStacked({
       ) : (
         <BarChart accessibilityLayer data={data} barCategoryGap={2}>
           <CartesianGrid vertical={false} stroke="#272A2E" />
-          <XAxis dataKey={dataKey} tickLine={false} tickMargin={10} axisLine={false} />
-          <YAxis axisLine={false} tickLine={false} tickMargin={8} />
+          <XAxis
+            dataKey={dataKey}
+            tickLine={false}
+            tickMargin={10}
+            axisLine={false}
+            ticks={[data[0]?.[dataKey], data[data.length - 1]?.[dataKey]]}
+            tick={{ fill: "#878C99" }}
+          />
+          <YAxis axisLine={false} tickLine={false} tickMargin={8} tick={{ fill: "#878C99" }} />
+          <ChartTooltip
+            cursor={{ fill: "#212327" }}
+            content={<XAxisTooltip />}
+            position={{ y: undefined }}
+            coordinate={{ y: undefined }}
+            offset={16}
+            allowEscapeViewBox={{ x: false, y: true }}
+          />
           <Bar
             dataKey="completed"
             stackId="a"
@@ -313,3 +330,20 @@ function ChartLoading() {
     </div>
   );
 }
+
+const XAxisTooltip = ({ active, payload, label, viewBox, coordinate }: any) => {
+  if (!active || !payload?.length) return null;
+
+  return (
+    <div
+      className="absolute whitespace-nowrap rounded border border-grid-bright bg-background-dimmed px-2 py-1 text-xs tabular-nums text-text-dimmed"
+      style={{
+        left: coordinate?.x,
+        top: viewBox?.height + 12,
+        transform: "translateX(-50%)",
+      }}
+    >
+      {label}
+    </div>
+  );
+};
