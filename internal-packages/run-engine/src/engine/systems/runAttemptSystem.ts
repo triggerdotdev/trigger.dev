@@ -139,12 +139,10 @@ export class RunAttemptSystem {
             throw new ServiceValidationError("Task run is not locked", 400);
           }
 
-          const queue = await prisma.taskQueue.findUnique({
+          const queue = await prisma.taskQueue.findFirst({
             where: {
-              runtimeEnvironmentId_name: {
-                runtimeEnvironmentId: environment.id,
-                name: taskRun.queue,
-              },
+              runtimeEnvironmentId: environment.id,
+              name: taskRun.queue,
             },
           });
 
@@ -1199,7 +1197,7 @@ export class RunAttemptSystem {
 
   async #getAuthenticatedEnvironmentFromRun(runId: string, tx?: PrismaClientOrTransaction) {
     const prisma = tx ?? this.$.prisma;
-    const taskRun = await prisma.taskRun.findUnique({
+    const taskRun = await prisma.taskRun.findFirst({
       where: {
         id: runId,
       },

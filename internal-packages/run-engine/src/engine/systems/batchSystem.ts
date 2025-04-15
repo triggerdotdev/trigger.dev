@@ -34,7 +34,7 @@ export class BatchSystem {
    */
   async #tryCompleteBatch({ batchId }: { batchId: string }) {
     return startSpan(this.$.tracer, "#tryCompleteBatch", async (span) => {
-      const batch = await this.$.prisma.batchTaskRun.findUnique({
+      const batch = await this.$.prisma.batchTaskRun.findFirst({
         select: {
           status: true,
           runtimeEnvironmentId: true,

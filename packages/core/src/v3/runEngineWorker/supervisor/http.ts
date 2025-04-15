@@ -81,6 +81,7 @@ export class SupervisorHttpClient {
     );
   }
 
+  /** @deprecated Not currently used */
   async dequeueFromVersion(deploymentId: string, maxRunCount = 1, runnerId?: string) {
     return wrapZodFetch(
       WorkerApiDequeueResponseBody,
