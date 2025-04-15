@@ -159,12 +159,10 @@ export class WaitpointSystem {
     const prisma = tx ?? this.$.prisma;
 
     const existingWaitpoint = idempotencyKey
-      ? await prisma.waitpoint.findUnique({
+      ? await prisma.waitpoint.findFirst({
           where: {
-            environmentId_idempotencyKey: {
-              environmentId,
-              idempotencyKey,
-            },
+            environmentId,
+            idempotencyKey,
           },
         })
       : undefined;
@@ -241,12 +239,10 @@ export class WaitpointSystem {
     tags?: string[];
   }): Promise<{ waitpoint: Waitpoint; isCached: boolean }> {
     const existingWaitpoint = idempotencyKey
-      ? await this.$.prisma.waitpoint.findUnique({
+      ? await this.$.prisma.waitpoint.findFirst({
           where: {
-            environmentId_idempotencyKey: {
-              environmentId,
-              idempotencyKey,
-            },
+            environmentId,
+            idempotencyKey,
           },
         })
       : undefined;

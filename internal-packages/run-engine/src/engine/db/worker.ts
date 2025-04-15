@@ -264,13 +264,10 @@ export async function getManagedWorkerFromCurrentlyPromotedDeployment(
   prisma: PrismaClientOrTransaction,
   environmentId: string
 ): Promise<WorkerDeploymentWithWorkerTasks | null> {
-  // TODO: fixme
-  const promotion = await prisma.workerDeploymentPromotion.findUnique({
+  const promotion = await prisma.workerDeploymentPromotion.findFirst({
     where: {
-      environmentId_label: {
-        environmentId,
-        label: CURRENT_DEPLOYMENT_LABEL,
-      },
+      environmentId,
+      label: CURRENT_DEPLOYMENT_LABEL,
     },
     include: {
       deployment: {
