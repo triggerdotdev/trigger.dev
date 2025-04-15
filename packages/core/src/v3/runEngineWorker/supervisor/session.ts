@@ -8,7 +8,7 @@ import { VERSION } from "../../../version.js";
 import { io, Socket } from "socket.io-client";
 import { WorkerClientToServerEvents, WorkerServerToClientEvents } from "../types.js";
 import { getDefaultWorkerHeaders } from "./util.js";
-import { HeartbeatService } from "../../utils/heartbeat.js";
+import { HeartbeatService } from "../../utils/interval.js";
 
 type SupervisorSessionOptions = SupervisorClientCommonOptions & {
   queueConsumerEnabled?: boolean;

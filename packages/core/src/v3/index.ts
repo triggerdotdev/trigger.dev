@@ -67,7 +67,7 @@ export {
 } from "./utils/ioSerialization.js";
 
 export * from "./utils/imageRef.js";
-export * from "./utils/heartbeat.js";
+export * from "./utils/interval.js";
 
 export * from "./config.js";
 export {
