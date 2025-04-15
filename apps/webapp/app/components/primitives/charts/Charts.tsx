@@ -27,6 +27,7 @@ export function ChartStacked({
   const [activePayload, setActivePayload] = React.useState<any[] | null>(null);
 
   const dimmedOpacity = 0.2;
+  const animationDuration = 0.3;
 
   // Calculate totals for each category
   const totals = React.useMemo(() => {
@@ -150,6 +151,7 @@ export function ChartStacked({
                 onMouseEnter={handleMouseEnter}
                 onMouseLeave={handleMouseLeave}
                 data={currentData}
+                animationDuration={animationDuration}
               />
             }
           />

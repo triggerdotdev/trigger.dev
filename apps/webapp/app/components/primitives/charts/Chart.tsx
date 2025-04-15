@@ -1,6 +1,7 @@
 import * as React from "react";
 import * as RechartsPrimitive from "recharts";
 import { cn } from "~/utils/cn";
+import { AnimatedNumber } from "../AnimatedNumber";
 
 // Format: { THEME_NAME: CSS_SELECTOR }
 const THEMES = { light: "", dark: ".dark" } as const;
@@ -300,6 +301,7 @@ const ChartLegendContentRows = React.forwardRef<
       onMouseEnter?: (e: any) => void;
       onMouseLeave?: (e: any) => void;
       data?: Record<string, number>;
+      animationDuration?: number;
     }
 >(
   (
@@ -312,6 +314,7 @@ const ChartLegendContentRows = React.forwardRef<
       onMouseEnter,
       onMouseLeave,
       data,
+      animationDuration,
     },
     ref
   ) => {
@@ -338,7 +341,10 @@ const ChartLegendContentRows = React.forwardRef<
           return (
             <div
               key={key}
-              className="flex w-full items-center justify-between gap-2 rounded px-2 py-1 transition hover:bg-grid-dimmed"
+              className={cn(
+                "flex w-full items-center justify-between gap-2 rounded px-2 py-1 transition hover:bg-grid-dimmed",
+                total === 0 && "opacity-50"
+              )}
               onMouseEnter={() => onMouseEnter?.(item)}
               onMouseLeave={() => onMouseLeave?.(item)}
             >
@@ -360,7 +366,9 @@ const ChartLegendContentRows = React.forwardRef<
                 {itemConfig?.label}
               </div>
               {total !== undefined && (
-                <span className="tabular-nums text-text-dimmed">{total.toLocaleString()}</span>
+                <span className="tabular-nums text-text-dimmed">
+                  <AnimatedNumber value={total} duration={animationDuration} />
+                </span>
               )}
             </div>
           );
