@@ -11,7 +11,7 @@ import {
 
 export default function Story() {
   return (
-    <div className="grid grid-cols-2 gap-4 p-8">
+    <div className="grid grid-cols-2 gap-4 p-3">
       <Card>
         <Card.Header>ChartStacked</Card.Header>
         <Card.Content>
@@ -90,15 +90,34 @@ const lineChartData = [
   { day: "Nov 27", desktop: 546, mobile: 150 },
 ];
 
-const stackedChartData = [
-  { day: "Nov 21", "in-progress": 8432, canceled: 0, completed: 10456, failed: 2341 },
-  { day: "Nov 22", "in-progress": 156, canceled: 4521, completed: 0, failed: 7890 },
-  { day: "Nov 23", "in-progress": 9876, canceled: 120, completed: 0, failed: 5432 },
-  { day: "Nov 24", "in-progress": 8765, canceled: 0, completed: 3421, failed: 6543 },
-  { day: "Nov 25", "in-progress": 7123, canceled: 0, completed: 9876, failed: 2109 },
-  { day: "Nov 26", "in-progress": 4567, canceled: 6789, completed: 0, failed: 8901 },
-  { day: "Nov 27", "in-progress": 3210, canceled: 9012, completed: 0, failed: 6789 },
-];
+function generateRandomStackedData(numDays: number) {
+  const data = [];
+  const startDate = new Date(2023, 10, 21); // Nov 21, 2023
+
+  for (let i = 0; i < numDays; i++) {
+    const currentDate = new Date(startDate);
+    currentDate.setDate(startDate.getDate() + i);
+    const day = currentDate.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+
+    // Generate random values with similar ranges to the original data
+    const inProgress = Math.floor(Math.random() * 8000) + 1000;
+    const canceled = Math.random() < 0.5 ? 0 : Math.floor(Math.random() * 9000) + 100;
+    const completed = Math.random() < 0.5 ? 0 : Math.floor(Math.random() * 10000) + 500;
+    const failed = Math.floor(Math.random() * 6000) + 2000;
+
+    data.push({
+      day,
+      "in-progress": inProgress,
+      canceled,
+      completed,
+      failed,
+    });
+  }
+
+  return data;
+}
+
+const stackedChartData = generateRandomStackedData(70);
 const stackedChartConfig = {
   "in-progress": {
     label: "In Progress",
