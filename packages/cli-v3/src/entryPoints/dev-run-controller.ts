@@ -369,11 +369,15 @@ export class DevRunController {
           try {
             await this.cancelAttempt();
           } catch (error) {
-            logger.debug("Failed to cancel attempt, shutting down", {
+            logger.debug("Failed to cancel attempt, killing task run process", {
               error,
             });
 
-            //todo kill the process?
+            try {
+              await this.taskRunProcess?.kill("SIGKILL");
+            } catch (error) {
+              logger.debug("Failed to cancel attempt, failed to kill task run process", { error });
+            }
 
             return;
           }
@@ -512,8 +516,6 @@ export class DevRunController {
       snapshot: snapshot.friendlyId,
     });
 
-    // TODO: We may already be executing this run, this may be a new attempt
-    //  This is the only case where incrementing the attempt number is allowed
     this.enterRunPhase(run, snapshot);
 
     const metrics = [
@@ -539,9 +541,6 @@ export class DevRunController {
     try {
       return await this.executeRun({ run, snapshot, execution, envVars, metrics });
     } catch (error) {
-      // TODO: Handle the case where we're in the warm start phase or executing a new run
-      // This can happen if we kill the run while it's still executing, e.g. after receiving an attempt number mismatch
-
       logger.debug("Error while executing attempt", {
         error,
       });
@@ -569,8 +568,6 @@ export class DevRunController {
         logger.debug("Failed to submit completion after error", {
           error: completionResult.error,
         });
-
-        // TODO: Maybe we should keep retrying for a while longer
 
         this.runFinished();
         return;

@@ -8,7 +8,7 @@ import { createSSELoader } from "~/utils/sse";
 export const loader = createSSELoader({
   timeout: env.QUEUE_SSE_AUTORELOAD_TIMEOUT_MS,
   interval: env.QUEUE_SSE_AUTORELOAD_INTERVAL_MS,
-  debug: true,
+  debug: false,
   handler: async ({ request, params }) => {
     const userId = await requireUserId(request);
     const { projectParam, envParam } = EnvironmentParamSchema.parse(params);

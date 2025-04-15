@@ -1,0 +1,91 @@
+---
+title: "Human-in-the-loop workflow with ReactFlow and Trigger.dev waitpoint tokens"
+sidebarTitle: "Human-in-the-loop workflow"
+description: "This example project creates audio summaries of newspaper articles using a human-in-the-loop workflow built with ReactFlow and Trigger.dev waitpoint tokens."
+---
+
+import UpgradeToV4Note from "/snippets/upgrade-to-v4-note.mdx";
+
+## Overview
+
+This demo is a full stack example that uses the following:
+
+- [Next.js](https://nextjs.org/) for the web application
+- [ReactFlow](https://reactflow.dev/) for the workflow UI
+- [Trigger.dev Realtime](/realtime/overview) to subscribe to task runs and show the real-time status of the workflow steps
+- [Trigger.dev waitpoint tokens](/wait-for-token) to create a human-in-the-loop flow with a review step
+- [OpenAI API](https://openai.com/api/) to generate article summaries
+- [ElevenLabs](https://elevenlabs.io/text-to-speech) to convert text to speech
+
+## GitHub repo
+
+<Card
+  title="View the human-in-the-loop workflow repo"
+  icon="GitHub"
+  href="https://github.com/triggerdotdev/examples/tree/main/article-summary-workflow"
+>
+  Click here to view the full code for this project in our examples repository on GitHub. You can
+  fork it and use it as a starting point for your own project.
+</Card>
+
+## Video
+
+<video
+  controls
+  className="w-full aspect-video"
+  src="https://content.trigger.dev/reactflow-waitpoints-example.mov"
+></video>
+
+## Relevant code
+
+Each node in the workflow corresponds to a Trigger.dev task. The idea is to enable building flows by composition of different tasks. The output of one task serves as input for another.
+
+- **Trigger.dev task splitting**:
+  - The [summarizeArticle](https://github.com/triggerdotdev/examples/blob/main/article-summary-workflow/src/trigger/summarizeArticle.ts) task uses the OpenAI API to generate a summary an article.
+  - The [convertTextToSpeech](https://github.com/triggerdotdev/examples/blob/main/article-summary-workflow/src/trigger/convertTextToSpeech.ts) task uses the ElevenLabs API to convert the summary into an audio stream and upload it to an S3 bucket.
+  - The [reviewSummary](https://github.com/triggerdotdev/examples/blob/main/article-summary-workflow/src/trigger/reviewSummary.ts) task is a human-in-the-loop step that shows the result and waits for approval of the summary before continuing.
+  - [articleWorkflow](https://github.com/triggerdotdev/examples/blob/main/article-summary-workflow/src/trigger/articleWorkflow.ts) is the entrypoint that ties the workflow together and orchestrates the tasks. You might choose to approach the orchestration differently, depending on your use case.
+- **ReactFlow Nodes**: there are three types of nodes in this example. All of them are custom ReactFlow nodes.
+  - The [InputNode](https://github.com/triggerdotdev/examples/blob/main/article-summary-workflow/src/components/InputNode.tsx) is the starting node of the workflow. It triggers the workflow by submitting an article URL.
+  - The [ActionNode](https://github.com/triggerdotdev/examples/blob/main/article-summary-workflow/src/components/ActionNode.tsx) is a node that shows the status of a task run in Trigger.dev, in real-time using the React hooks for Trigger.dev.
+  - The [ReviewNode](https://github.com/triggerdotdev/examples/blob/main/article-summary-workflow/src/components/ReviewNode.tsx) is a node that shows the summary result and prompts the user for approval before continuing. It uses the Realtime API to fetch details about the review status. Also, it interacts with the Trigger.dev waitpoint API for completing the waitpoint token using Next.js server actions.
+- **Workflow orchestration**:
+  - The workflow is orchestrated by the [Flow](https://github.com/triggerdotdev/examples/blob/main/article-summary-workflow/src/components/Flow.tsx) component. It lays out the nodes, the connections between them, as well as the mapping to the Trigger.dev tasks.
+    It also uses the `useRealtimeRunsWithTag` hook to subscribe to task runs associated with the workflow and passes down the run details to the nodes.
+
+The waitpoint token is created in [a Next.js server action](https://github.com/triggerdotdev/examples/blob/main/article-summary-workflow/src/app/actions.ts#L26):
+
+```ts
+const reviewWaitpointToken = await wait.createToken({
+  tags: [workflowTag],
+  timeout: "1h",
+  idempotencyKey: `review-summary-${workflowTag}`,
+});
+```
+
+and later completed in another server action in the same file:
+
+```ts
+await wait.completeToken<ReviewPayload>(
+  { id: tokenId },
+  {
+    approved: true,
+    approvedAt: new Date(),
+    approvedBy: user,
+  }
+);
+```
+
+<UpgradeToV4Note />
+
+
+While the workflow in this example is static and does not allow changing the connections between nodes in the UI, it serves as a good baseline for understanding how to build completely custom workflow builders using Trigger.dev and ReactFlow.
+
+## Learn more about Trigger.dev Realtime and waitpoint tokens
+
+To learn more, take a look at the following resources:
+
+- [Trigger.dev Realtime](/realtime) - learn more about how to subscribe to runs and get real-time updates
+- [Realtime streaming](/realtime/streams) - learn more about streaming data from your tasks
+- [React hooks](/frontend/react-hooks) - learn more about using React hooks to interact with the Trigger.dev API
+- [Waitpoint tokens](/wait-for-token) - learn about waitpoint tokens in Trigger.dev and human-in-the-loop flows

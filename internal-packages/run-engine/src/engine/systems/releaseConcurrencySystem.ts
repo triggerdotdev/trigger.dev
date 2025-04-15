@@ -104,9 +104,9 @@ export class ReleaseConcurrencySystem {
     );
   }
 
-  public async executeReleaseConcurrencyForSnapshot(snapshotId: string) {
+  public async executeReleaseConcurrencyForSnapshot(snapshotId: string): Promise<boolean> {
     if (!this.releaseConcurrencyQueue) {
-      return;
+      return false;
     }
 
     this.$.logger.debug("Executing released concurrency", {
@@ -136,14 +136,14 @@ export class ReleaseConcurrencySystem {
         snapshotId,
       });
 
-      return;
+      return false;
     }
 
     // - Runlock the run
     // - Get latest snapshot
     // - If the run is non suspended or going to be, then bail
     // - If the run is suspended or going to be, then release the concurrency
-    await this.$.runLock.lock([snapshot.runId], 5_000, async () => {
+    return await this.$.runLock.lock([snapshot.runId], 5_000, async () => {
       const latestSnapshot = await getLatestExecutionSnapshot(this.$.prisma, snapshot.runId);
 
       const isValidSnapshot =
@@ -159,7 +159,7 @@ export class ReleaseConcurrencySystem {
           snapshot,
         });
 
-        return;
+        return false;
       }
 
       if (!canReleaseConcurrency(latestSnapshot.executionStatus)) {
@@ -168,20 +168,21 @@ export class ReleaseConcurrencySystem {
           snapshot: latestSnapshot,
         });
 
-        return;
+        return false;
       }
 
       const metadata = this.#parseMetadata(snapshot.metadata);
 
       if (typeof metadata.releaseConcurrency === "boolean") {
         if (metadata.releaseConcurrency) {
-          return await this.$.runQueue.releaseAllConcurrency(
-            snapshot.organizationId,
-            snapshot.runId
-          );
+          await this.$.runQueue.releaseAllConcurrency(snapshot.organizationId, snapshot.runId);
+
+          return true;
         }
 
-        return await this.$.runQueue.releaseEnvConcurrency(snapshot.organizationId, snapshot.runId);
+        await this.$.runQueue.releaseEnvConcurrency(snapshot.organizationId, snapshot.runId);
+
+        return true;
       }
 
       // Get the locked queue
@@ -198,10 +199,14 @@ export class ReleaseConcurrencySystem {
         (typeof taskQueue.concurrencyLimit === "undefined" ||
           taskQueue.releaseConcurrencyOnWaitpoint)
       ) {
-        return await this.$.runQueue.releaseAllConcurrency(snapshot.organizationId, snapshot.runId);
+        await this.$.runQueue.releaseAllConcurrency(snapshot.organizationId, snapshot.runId);
+
+        return true;
       }
 
-      return await this.$.runQueue.releaseEnvConcurrency(snapshot.organizationId, snapshot.runId);
+      await this.$.runQueue.releaseEnvConcurrency(snapshot.organizationId, snapshot.runId);
+
+      return true;
     });
   }
 

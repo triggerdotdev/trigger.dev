@@ -444,7 +444,9 @@ const EnvironmentSchema = z.object({
   // Run Engine 2.0
   RUN_ENGINE_WORKER_COUNT: z.coerce.number().int().default(4),
   RUN_ENGINE_TASKS_PER_WORKER: z.coerce.number().int().default(10),
+  RUN_ENGINE_WORKER_CONCURRENCY_LIMIT: z.coerce.number().int().default(10),
   RUN_ENGINE_WORKER_POLL_INTERVAL: z.coerce.number().int().default(100),
+  RUN_ENGINE_WORKER_IMMEDIATE_POLL_INTERVAL: z.coerce.number().int().default(100),
   RUN_ENGINE_TIMEOUT_PENDING_EXECUTING: z.coerce.number().int().default(60_000),
   RUN_ENGINE_TIMEOUT_PENDING_CANCEL: z.coerce.number().int().default(60_000),
   RUN_ENGINE_TIMEOUT_EXECUTING: z.coerce.number().int().default(60_000),

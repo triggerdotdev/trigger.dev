@@ -50,6 +50,7 @@ export class RunPresenter {
         spanId: true,
         friendlyId: true,
         status: true,
+        startedAt: true,
         completedAt: true,
         logsDeletedAt: true,
         rootTaskRun: {
@@ -104,6 +105,7 @@ export class RunPresenter {
       spanId: run.spanId,
       status: run.status,
       isFinished: isFinalRunStatus(run.status),
+      startedAt: run.startedAt,
       completedAt: run.completedAt,
       logsDeletedAt: showDeletedLogs ? null : run.logsDeletedAt,
       rootTaskRun: run.rootTaskRun,
@@ -201,6 +203,10 @@ export class RunPresenter {
           tree?.id === traceSummary.rootSpan.id ? undefined : traceSummary.rootSpan.runId,
         duration: totalDuration,
         rootStartedAt: tree?.data.startTime,
+        startedAt: run.startedAt,
+        queuedDuration: run.startedAt
+          ? millisecondsToNanoseconds(run.startedAt.getTime() - run.createdAt.getTime())
+          : undefined,
       },
     };
   }

@@ -365,9 +365,12 @@ async function createWorkerQueue(
 
   const taskQueue = await upsertWorkerQueueRecord(
     queueName,
-    concurrencyLimit ?? undefined,
+    concurrencyLimit ?? null,
     orderableName,
     queueType,
+    typeof queue.releaseConcurrencyOnWaitpoint === "boolean"
+      ? queue.releaseConcurrencyOnWaitpoint
+      : false,
     worker,
     prisma
   );
@@ -399,9 +402,10 @@ async function createWorkerQueue(
 
 async function upsertWorkerQueueRecord(
   queueName: string,
-  concurrencyLimit: number | undefined,
+  concurrencyLimit: number | null,
   orderableName: string,
   queueType: TaskQueueType,
+  releaseConcurrencyOnWaitpoint: boolean,
   worker: BackgroundWorker,
   prisma: PrismaClientOrTransaction,
   attempt: number = 0
@@ -426,6 +430,7 @@ async function upsertWorkerQueueRecord(
           name: queueName,
           orderableName,
           concurrencyLimit,
+          releaseConcurrencyOnWaitpoint,
           runtimeEnvironmentId: worker.runtimeEnvironmentId,
           projectId: worker.projectId,
           type: queueType,
@@ -437,7 +442,7 @@ async function upsertWorkerQueueRecord(
         },
       });
     } else {
-      await prisma.taskQueue.update({
+      taskQueue = await prisma.taskQueue.update({
         where: {
           id: taskQueue.id,
         },
@@ -445,6 +450,8 @@ async function upsertWorkerQueueRecord(
           workers: { connect: { id: worker.id } },
           version: "V2",
           orderableName,
+          concurrencyLimit,
+          releaseConcurrencyOnWaitpoint,
         },
       });
     }
@@ -458,6 +465,7 @@ async function upsertWorkerQueueRecord(
         concurrencyLimit,
         orderableName,
         queueType,
+        releaseConcurrencyOnWaitpoint,
         worker,
         prisma,
         attempt + 1

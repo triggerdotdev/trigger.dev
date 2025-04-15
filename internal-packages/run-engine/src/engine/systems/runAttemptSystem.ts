@@ -218,6 +218,8 @@ export class RunAttemptSystem {
                 environmentType: latestSnapshot.environmentType,
                 projectId: latestSnapshot.projectId,
                 organizationId: latestSnapshot.organizationId,
+                batchId: latestSnapshot.batchId ?? undefined,
+                completedWaitpoints: latestSnapshot.completedWaitpoints,
                 workerId,
                 runnerId,
               });
@@ -690,6 +692,7 @@ export class RunAttemptSystem {
                   traceContext: run.traceContext as Record<string, string | undefined>,
                   baseCostInCents: run.baseCostInCents,
                   spanId: run.spanId,
+                  nextMachineAfterOOM: retryResult.machine,
                 },
                 organization: {
                   id: run.runtimeEnvironment.organizationId,
@@ -736,7 +739,7 @@ export class RunAttemptSystem {
                 {
                   run,
                   snapshot: {
-                    executionStatus: "PENDING_EXECUTING",
+                    executionStatus: "EXECUTING",
                     description: "Attempt failed with a short delay, starting a new attempt",
                   },
                   previousSnapshotId: latestSnapshot.id,

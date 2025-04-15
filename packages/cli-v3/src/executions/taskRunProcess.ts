@@ -29,6 +29,7 @@ import {
   internalErrorFromUnexpectedExit,
   GracefulExitTimeoutError,
   UnexpectedExitError,
+  SuspendedProcessError,
 } from "@trigger.dev/core/v3/errors";
 
 export type OnWaitForDurationMessage = InferSocketMessageSchema<
@@ -73,6 +74,7 @@ export class TaskRunProcess {
   private _gracefulExitTimeoutElapsed: boolean = false;
   private _isBeingKilled: boolean = false;
   private _isBeingCancelled: boolean = false;
+  private _isBeingSuspended: boolean = false;
   private _stderr: Array<string> = [];
 
   public onTaskRunHeartbeat: Evt<string> = new Evt();
@@ -213,7 +215,10 @@ export class TaskRunProcess {
     await this._ipc?.sendWithAck("FLUSH", { timeoutInMs }, timeoutInMs + 1_000);
   }
 
-  async execute(params: TaskRunProcessExecuteParams): Promise<TaskRunExecutionResult> {
+  async execute(
+    params: TaskRunProcessExecuteParams,
+    isWarmStart?: boolean
+  ): Promise<TaskRunExecutionResult> {
     this._isPreparedForNextRun = false;
 
     let resolver: (value: TaskRunExecutionResult) => void;
@@ -249,7 +254,7 @@ export class TaskRunProcess {
         metadata: this.options.serverWorker,
         metrics,
         env: params.env,
-        isWarmStart: this.options.isWarmStart,
+        isWarmStart: isWarmStart ?? this.options.isWarmStart,
       });
     }
 
@@ -347,7 +352,11 @@ export class TaskRunProcess {
           // Order matters, this has to be before the graceful exit timeout
           rejecter(new GracefulExitTimeoutError());
         } else if (this._isBeingKilled) {
-          rejecter(new CleanupProcessError());
+          if (this._isBeingSuspended) {
+            rejecter(new SuspendedProcessError());
+          } else {
+            rejecter(new CleanupProcessError());
+          }
         } else {
           rejecter(
             new UnexpectedExitError(
@@ -426,6 +435,11 @@ export class TaskRunProcess {
     if (timeoutInMs) {
       await killTimeout;
     }
+  }
+
+  async suspend() {
+    this._isBeingSuspended = true;
+    await this.kill("SIGKILL");
   }
 
   forceExit() {

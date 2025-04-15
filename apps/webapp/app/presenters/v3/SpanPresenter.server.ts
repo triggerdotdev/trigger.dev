@@ -2,12 +2,13 @@ import {
   isWaitpointOutputTimeout,
   type MachinePresetName,
   prettyPrintPacket,
+  SemanticInternalAttributes,
   TaskRunError,
 } from "@trigger.dev/core/v3";
 import { getMaxDuration } from "@trigger.dev/core/v3/isomorphic";
 import { RUNNING_STATUSES } from "~/components/runs/v3/TaskRunStatus";
 import { logger } from "~/services/logger.server";
-import { eventRepository } from "~/v3/eventRepository.server";
+import { eventRepository, rehydrateAttribute } from "~/v3/eventRepository.server";
 import { machinePresetFromName } from "~/v3/machinePresets.server";
 import { getTaskEventStoreTableForRun, type TaskEventStoreTable } from "~/v3/taskEventStore.server";
 import { isFailedRunStatus, isFinalRunStatus } from "~/v3/taskStatus";
@@ -455,7 +456,7 @@ export class SpanPresenter extends BasePresenter {
     };
 
     switch (span.entity.type) {
-      case "waitpoint":
+      case "waitpoint": {
         if (!span.entity.id) {
           logger.error(`SpanPresenter: No waitpoint id`, {
             spanId,
@@ -486,7 +487,23 @@ export class SpanPresenter extends BasePresenter {
             object: waitpoint,
           },
         };
+      }
+      case "attempt": {
+        const isWarmStart = rehydrateAttribute<boolean>(
+          span.metadata,
+          SemanticInternalAttributes.WARM_START
+        );
 
+        return {
+          ...data,
+          entity: {
+            type: "attempt" as const,
+            object: {
+              isWarmStart,
+            },
+          },
+        };
+      }
       default:
         return { ...data, entity: null };
     }

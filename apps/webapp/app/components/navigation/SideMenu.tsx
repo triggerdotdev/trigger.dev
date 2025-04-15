@@ -481,7 +481,7 @@ function SwitchOrganizations({
 
   return (
     <Popover onOpenChange={(open) => setMenuOpen(open)} open={isMenuOpen}>
-      <div onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
+      <div onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} className="flex">
         <PopoverTrigger className="w-full justify-between overflow-hidden focus-custom">
           <ButtonContent
             variant="small-menu-item"

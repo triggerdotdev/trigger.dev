@@ -1,5 +1,32 @@
 # trigger.dev
 
+## 4.0.0-v4-beta.1
+
+### Patch Changes
+
+- Fix init.ts in custom trigger dirs ([#1914](https://github.com/triggerdotdev/trigger.dev/pull/1914))
+- Init command will now correctly install v4-beta packages ([#1914](https://github.com/triggerdotdev/trigger.dev/pull/1914))
+- Update nypm package to support test-based bun.lock files ([#1914](https://github.com/triggerdotdev/trigger.dev/pull/1914))
+- Handle flush errors gracefully in dev ([#1914](https://github.com/triggerdotdev/trigger.dev/pull/1914))
+- Updated dependencies:
+  - `@trigger.dev/build@4.0.0-v4-beta.1`
+  - `@trigger.dev/core@4.0.0-v4-beta.1`
+
+## 4.0.0-v4-beta.0
+
+### Major Changes
+
+- Trigger.dev v4 release. Please see our upgrade to v4 docs to view the full changelog: https://trigger.dev/docs/upgrade-to-v4 ([#1869](https://github.com/triggerdotdev/trigger.dev/pull/1869))
+
+### Patch Changes
+
+- Run Engine 2.0 (alpha) ([#1575](https://github.com/triggerdotdev/trigger.dev/pull/1575))
+- Improve warm start times by eagerly creating the child TaskRunProcess when a previous run as completed ([#1879](https://github.com/triggerdotdev/trigger.dev/pull/1879))
+- v4: New lifecycle hooks ([#1817](https://github.com/triggerdotdev/trigger.dev/pull/1817))
+- Updated dependencies:
+  - `@trigger.dev/build@4.0.0-v4-beta.0`
+  - `@trigger.dev/core@4.0.0-v4-beta.0`
+
 ## 3.3.17
 
 ### Patch Changes

@@ -22,12 +22,14 @@ export class DockerWorkloadManager implements WorkloadManager {
   async create(opts: WorkloadManagerCreateOptions) {
     this.logger.log("[DockerWorkloadProvider] Creating container", { opts });
 
-    const runnerId = getRunnerId(opts.runFriendlyId);
+    const runnerId = getRunnerId(opts.runFriendlyId, opts.nextAttemptNumber);
 
     const runArgs = [
       "run",
       "--detach",
       `--network=${env.DOCKER_NETWORK}`,
+      `--env=TRIGGER_DEQUEUED_AT_MS=${opts.dequeuedAt.getTime()}`,
+      `--env=TRIGGER_POD_SCHEDULED_AT_MS=${Date.now()}`,
       `--env=TRIGGER_ENV_ID=${opts.envId}`,
       `--env=TRIGGER_RUN_ID=${opts.runFriendlyId}`,
       `--env=TRIGGER_SNAPSHOT_ID=${opts.snapshotFriendlyId}`,

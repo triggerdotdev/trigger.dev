@@ -248,7 +248,7 @@ function buildTimelineItems(run: TimelineSpanRun): TimelineItem[] {
         items.push({
           type: "line",
           id: "executing",
-          title: formatDuration(run.executedAt, run.updatedAt),
+          title: formatDuration(run.executedAt, run.completedAt ?? run.updatedAt),
           state,
           shouldRender: true,
           variant: "normal",
@@ -271,7 +271,7 @@ function buildTimelineItems(run: TimelineSpanRun): TimelineItem[] {
         items.push({
           type: "line",
           id: "legacy-executing",
-          title: formatDuration(run.startedAt, run.updatedAt),
+          title: formatDuration(run.startedAt, run.completedAt ?? run.updatedAt),
           state,
           shouldRender: true,
           variant: "normal",
@@ -296,7 +296,7 @@ function buildTimelineItems(run: TimelineSpanRun): TimelineItem[] {
       type: "event",
       id: "finished",
       title: "Finished",
-      date: run.updatedAt,
+      date: run.completedAt ?? run.updatedAt,
       previousDate: run.executedAt ?? run.startedAt ?? undefined,
       state,
       shouldRender: true,
@@ -345,11 +345,11 @@ export function RunTimelineEvent({
       <div className="relative flex flex-col items-center justify-center">
         <EventMarker variant={variant} state={state} style={style} />
       </div>
-      <div className="flex items-baseline justify-between gap-3">
+      <div className="flex min-w-0 items-baseline justify-between gap-3">
         <TooltipProvider disableHoverableContent>
           <Tooltip>
-            <TooltipTrigger className="cursor-default">
-              <span className="font-medium text-text-bright">{title}</span>
+            <TooltipTrigger className="min-w-0 max-w-full cursor-default text-left">
+              <div className="truncate font-medium text-text-bright">{title}</div>
             </TooltipTrigger>
             {helpText && (
               <TooltipContent className="flex items-center gap-1 text-xs">
@@ -359,7 +359,9 @@ export function RunTimelineEvent({
           </Tooltip>
         </TooltipProvider>
         {subtitle ? (
-          <span className="text-xs tabular-nums text-text-dimmed">{subtitle}</span>
+          <span className="whitespace-nowrap text-xs tabular-nums text-text-dimmed">
+            {subtitle}
+          </span>
         ) : null}
       </div>
     </div>

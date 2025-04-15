@@ -369,6 +369,14 @@ export class WaitpointTimeoutError extends Error {
   }
 }
 
+const DURATION_WAIT_CHARGE_THRESHOLD_MS = 5000;
+
+function printWaitBelowThreshold() {
+  console.warn(
+    `Waits of ${DURATION_WAIT_CHARGE_THRESHOLD_MS / 1000}s or less count towards compute usage.`
+  );
+}
+
 export const wait = {
   for: async (options: WaitForOptions) => {
     const ctx = taskContext.ctx;
@@ -380,6 +388,36 @@ export const wait = {
 
     const start = Date.now();
     const durationInMs = calculateDurationInMs(options);
+
+    if (durationInMs <= DURATION_WAIT_CHARGE_THRESHOLD_MS) {
+      return tracer.startActiveSpan(
+        `wait.for()`,
+        async (span) => {
+          if (durationInMs <= 0) {
+            return;
+          }
+
+          printWaitBelowThreshold();
+
+          await new Promise((resolve) => setTimeout(resolve, durationInMs));
+        },
+        {
+          attributes: {
+            [SemanticInternalAttributes.STYLE_ICON]: "wait",
+            ...accessoryAttributes({
+              items: [
+                {
+                  text: nameForWaitOptions(options),
+                  variant: "normal",
+                },
+              ],
+              style: "codepath",
+            }),
+          },
+        }
+      );
+    }
+
     const date = new Date(start + durationInMs);
     const result = await apiClient.waitForDuration(ctx.run.id, {
       date: date,
@@ -415,6 +453,46 @@ export const wait = {
     const ctx = taskContext.ctx;
     if (!ctx) {
       throw new Error("wait.forToken can only be used from inside a task.run()");
+    }
+
+    // Calculate duration in ms
+    const durationInMs = options.date.getTime() - Date.now();
+
+    if (durationInMs <= DURATION_WAIT_CHARGE_THRESHOLD_MS) {
+      return tracer.startActiveSpan(
+        `wait.for()`,
+        async (span) => {
+          if (durationInMs === 0) {
+            return;
+          }
+
+          if (durationInMs < 0) {
+            if (options.throwIfInThePast) {
+              throw new Error("Date is in the past");
+            }
+
+            return;
+          }
+
+          printWaitBelowThreshold();
+
+          await new Promise((resolve) => setTimeout(resolve, durationInMs));
+        },
+        {
+          attributes: {
+            [SemanticInternalAttributes.STYLE_ICON]: "wait",
+            ...accessoryAttributes({
+              items: [
+                {
+                  text: options.date.toISOString(),
+                  variant: "normal",
+                },
+              ],
+              style: "codepath",
+            }),
+          },
+        }
+      );
     }
 
     const apiClient = apiClientManager.clientOrThrow();

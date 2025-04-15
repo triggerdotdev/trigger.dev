@@ -497,6 +497,14 @@ export class CleanupProcessError extends Error {
   }
 }
 
+export class SuspendedProcessError extends Error {
+  constructor() {
+    super("Suspended");
+
+    this.name = "SuspendedProcessError";
+  }
+}
+
 export class CancelledProcessError extends Error {
   constructor() {
     super("Cancelled");
