@@ -90,6 +90,25 @@ const lineChartData = [
   { day: "Nov 27", desktop: 546, mobile: 150 },
 ];
 
+const stackedChartConfig = {
+  completed: {
+    label: "Completed",
+    color: "#28BF5C",
+  },
+  "in-progress": {
+    label: "In Progress",
+    color: "#3B82F6",
+  },
+  canceled: {
+    label: "Canceled",
+    color: "#878C99",
+  },
+  failed: {
+    label: "Failed",
+    color: "#E11D48",
+  },
+} satisfies ChartConfig;
+
 function generateRandomStackedData(numDays: number) {
   const data = [];
   const startDate = new Date(2023, 10, 21); // Nov 21, 2023
@@ -100,16 +119,16 @@ function generateRandomStackedData(numDays: number) {
     const day = currentDate.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 
     // Generate random values with similar ranges to the original data
+    const completed = Math.random() < 0.5 ? 0 : Math.floor(Math.random() * 10000) + 500;
     const inProgress = Math.floor(Math.random() * 8000) + 1000;
     const canceled = Math.random() < 0.5 ? 0 : Math.floor(Math.random() * 9000) + 100;
-    const completed = Math.random() < 0.5 ? 0 : Math.floor(Math.random() * 10000) + 500;
     const failed = Math.floor(Math.random() * 6000) + 2000;
 
     data.push({
       day,
+      completed,
       "in-progress": inProgress,
       canceled,
-      completed,
       failed,
     });
   }
@@ -118,21 +137,3 @@ function generateRandomStackedData(numDays: number) {
 }
 
 const stackedChartData = generateRandomStackedData(70);
-const stackedChartConfig = {
-  "in-progress": {
-    label: "In Progress",
-    color: "#3B82F6",
-  },
-  canceled: {
-    label: "Canceled",
-    color: "#878C99",
-  },
-  completed: {
-    label: "Completed",
-    color: "#28BF5C",
-  },
-  failed: {
-    label: "Failed",
-    color: "#E11D48",
-  },
-} satisfies ChartConfig;
