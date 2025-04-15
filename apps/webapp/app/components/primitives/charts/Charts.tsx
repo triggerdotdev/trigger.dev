@@ -24,6 +24,7 @@ export function ChartStacked({
   loading?: boolean;
 }) {
   const [opacity, setOpacity] = React.useState<Record<string, number>>({});
+  const [activePayload, setActivePayload] = React.useState<any[] | null>(null);
 
   const dimmedOpacity = 0.2;
 
@@ -39,7 +40,7 @@ export function ChartStacked({
     }, {} as Record<string, number>);
   }, [data, dataKey]);
 
-  // Initialize opacity state with all keys from config
+  // Handle opacity
   React.useEffect(() => {
     const initialOpacity = Object.keys(config).reduce((acc, key) => {
       if (key !== dataKey) {
@@ -67,6 +68,7 @@ export function ChartStacked({
         return acc;
       }, {} as Record<string, number>)
     );
+    setActivePayload(null);
   };
 
   const style = {
@@ -79,6 +81,12 @@ export function ChartStacked({
   // Get all data keys except the x-axis key
   const dataKeys = Object.keys(config).filter((k) => k !== dataKey);
 
+  const currentData =
+    activePayload?.reduce((acc, item) => {
+      acc[item.dataKey] = item.value;
+      return acc;
+    }, {} as Record<string, number>) ?? totals;
+
   return (
     <ChartContainer
       config={config}
@@ -88,7 +96,17 @@ export function ChartStacked({
       {loading ? (
         <ChartLoading />
       ) : (
-        <BarChart accessibilityLayer data={data} barCategoryGap={2}>
+        <BarChart
+          accessibilityLayer
+          data={data}
+          barCategoryGap={2}
+          onMouseLeave={handleMouseLeave}
+          onMouseMove={(state) => {
+            if (state?.activePayload) {
+              setActivePayload(state.activePayload);
+            }
+          }}
+        >
           <CartesianGrid vertical={false} stroke="#272A2E" />
           <XAxis
             dataKey={dataKey}
@@ -113,12 +131,14 @@ export function ChartStacked({
               dataKey={key}
               stackId="a"
               fill={`var(--color-${key})`}
-              radius={[
-                index === array.length - 1 ? 4 : 0, // top-left radius
-                index === array.length - 1 ? 4 : 0, // top-right radius
-                index === 0 ? 4 : 0, // bottom-right radius
-                index === 0 ? 4 : 0, // bottom-left radius
-              ]}
+              radius={
+                [
+                  index === array.length - 1 ? 4 : 0,
+                  index === array.length - 1 ? 4 : 0,
+                  index === 0 ? 4 : 0,
+                  index === 0 ? 4 : 0,
+                ] as [number, number, number, number]
+              }
               activeBar={false}
               style={{ transition: "fill-opacity var(--transition-duration)" }}
               fillOpacity={opacity[key]}
@@ -129,7 +149,7 @@ export function ChartStacked({
               <ChartLegendContentRows
                 onMouseEnter={handleMouseEnter}
                 onMouseLeave={handleMouseLeave}
-                data={totals}
+                data={currentData}
               />
             }
           />
