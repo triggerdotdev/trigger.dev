@@ -82,61 +82,9 @@ export function ChartStacked({
           accessibilityLayer
           data={data}
           barCategoryGap={2}
-          height={300}
           onMouseMove={(state: any) => {
             if (state?.activePayload?.length > 0) {
-              const CHART_HEIGHT = 300;
-              const total = state.activePayload.reduce((sum: number, p: any) => sum + p.value, 0);
               setActivePayload(state.activePayload);
-
-              // Get the actual height of all bars combined
-              const maxValue = Math.max(
-                ...data.map((d) =>
-                  Object.keys(d)
-                    .filter((key) => key !== dataKey)
-                    .reduce((sum, key) => sum + (d[key] || 0), 0)
-                )
-              );
-
-              // Scale the bars to fit the chart height
-              const scale = CHART_HEIGHT / maxValue;
-
-              // Invert the mouse position (300 - mouseY) so 0 is at the bottom
-              const mouseY = CHART_HEIGHT - state.chartY;
-
-              // Only process hover if mouse is within the actual bars
-              if (mouseY <= maxValue * scale) {
-                // Calculate position of each section from bottom to top
-                let runningTotal = 0;
-                for (const bar of state.activePayload) {
-                  const startPercent = runningTotal / total;
-                  runningTotal += bar.value;
-                  const endPercent = runningTotal / total;
-
-                  const sectionBottom = startPercent * CHART_HEIGHT;
-                  const sectionTop = endPercent * CHART_HEIGHT;
-
-                  if (mouseY >= sectionBottom && mouseY <= sectionTop) {
-                    setActiveBarKey(bar.dataKey);
-                    setOpacity((op) =>
-                      Object.keys(op).reduce((acc, k) => {
-                        acc[k] = k === bar.dataKey ? 1 : dimmedOpacity;
-                        return acc;
-                      }, {} as Record<string, number>)
-                    );
-                    break;
-                  }
-                }
-              } else {
-                // Reset when mouse is above the bars
-                setActiveBarKey(null);
-                setOpacity((op) =>
-                  Object.keys(op).reduce((acc, k) => {
-                    acc[k] = 1;
-                    return acc;
-                  }, {} as Record<string, number>)
-                );
-              }
             }
           }}
           onMouseLeave={() => {
@@ -190,6 +138,18 @@ export function ChartStacked({
               activeBar={false}
               style={{ transition: "fill-opacity var(--transition-duration)" }}
               fillOpacity={opacity[key]}
+              onMouseOver={(data) => {
+                if (data.tooltipPayload?.[0]) {
+                  const { dataKey: hoveredKey } = data.tooltipPayload[0];
+                  setActiveBarKey(hoveredKey);
+                  setOpacity((op) =>
+                    Object.keys(op).reduce((acc, k) => {
+                      acc[k] = k === hoveredKey ? 1 : dimmedOpacity;
+                      return acc;
+                    }, {} as Record<string, number>)
+                  );
+                }
+              }}
             />
           ))}
           <ChartLegend
