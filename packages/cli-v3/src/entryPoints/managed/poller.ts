@@ -1,6 +1,6 @@
 import { WorkloadHttpClient } from "@trigger.dev/core/v3/runEngineWorker";
 import { RunLogger } from "./logger.js";
-import { HeartbeatService, RunExecutionData } from "@trigger.dev/core/v3";
+import { IntervalService, RunExecutionData } from "@trigger.dev/core/v3";
 
 export type RunExecutionSnapshotPollerOptions = {
   runFriendlyId: string;
@@ -19,7 +19,7 @@ export class RunExecutionSnapshotPoller {
   private readonly logger: RunLogger;
   private readonly snapshotPollIntervalMs: number;
   private readonly handleSnapshotChange: (runData: RunExecutionData) => Promise<void>;
-  private readonly poller: HeartbeatService;
+  private readonly poller: IntervalService;
 
   constructor(opts: RunExecutionSnapshotPollerOptions) {
     this.runFriendlyId = opts.runFriendlyId;
@@ -39,8 +39,8 @@ export class RunExecutionSnapshotPoller {
       },
     });
 
-    this.poller = new HeartbeatService({
-      heartbeat: async () => {
+    this.poller = new IntervalService({
+      onInterval: async () => {
         if (!this.runFriendlyId) {
           this.logger.sendDebugLog({
             runId: this.runFriendlyId,

@@ -1,7 +1,7 @@
 import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
 import { K8sApi } from "../clients/kubernetes.js";
 import { createK8sApi } from "../clients/kubernetes.js";
-import { HeartbeatService } from "@trigger.dev/core/v3";
+import { IntervalService } from "@trigger.dev/core/v3";
 import { Counter, Gauge, Registry } from "prom-client";
 import { register } from "../metrics.js";
 
@@ -19,7 +19,7 @@ export class PodCleaner {
   private readonly namespace: string;
 
   private readonly batchSize: number;
-  private readonly deletionHeartbeat: HeartbeatService;
+  private readonly deletionInterval: IntervalService;
 
   // Metrics
   private readonly register: Registry;
@@ -32,10 +32,10 @@ export class PodCleaner {
     this.namespace = opts.namespace;
     this.batchSize = opts.batchSize ?? 500;
 
-    this.deletionHeartbeat = new HeartbeatService({
+    this.deletionInterval = new IntervalService({
       intervalMs: opts.intervalMs ?? 10000,
       leadingEdge: true,
-      heartbeat: this.deleteCompletedPods.bind(this),
+      onInterval: this.deleteCompletedPods.bind(this),
     });
 
     // Initialize metrics
@@ -57,11 +57,11 @@ export class PodCleaner {
   }
 
   async start() {
-    this.deletionHeartbeat.start();
+    this.deletionInterval.start();
   }
 
   async stop() {
-    this.deletionHeartbeat.stop();
+    this.deletionInterval.stop();
   }
 
   private async deleteCompletedPods() {
