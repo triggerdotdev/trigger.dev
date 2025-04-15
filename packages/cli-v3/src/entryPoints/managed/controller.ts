@@ -148,60 +148,49 @@ export class ManagedRunController {
 
   private lockedRunExecution: Promise<void> | null = null;
 
-  private async startAndExecuteRunAttempt({
+  private async startRunExecution({
     runFriendlyId,
     snapshotFriendlyId,
     dequeuedAt,
     podScheduledAt,
     isWarmStart,
+    previousRunId,
   }: {
     runFriendlyId: string;
     snapshotFriendlyId: string;
     dequeuedAt?: Date;
     podScheduledAt?: Date;
     isWarmStart?: boolean;
+    previousRunId?: string;
   }) {
+    this.sendDebugLog({
+      runId: runFriendlyId,
+      message: "startAndExecuteRunAttempt()",
+      properties: { previousRunId },
+    });
+
     if (this.lockedRunExecution) {
       this.sendDebugLog({
         runId: runFriendlyId,
-        message: "startAndExecuteRunAttempt: already in progress",
+        message: "startAndExecuteRunAttempt: execution already locked",
       });
       return;
     }
 
-    this.sendDebugLog({
-      runId: runFriendlyId,
-      message: "startAndExecuteRunAttempt: called",
-    });
-
     const execution = async () => {
-      if (!this.socket) {
-        this.sendDebugLog({
-          runId: runFriendlyId,
-          message: "Starting run without socket connection",
+      if (!this.currentExecution || !this.currentExecution.isPreparedForNextRun) {
+        this.currentExecution = new RunExecution({
+          workerManifest: this.workerManifest,
+          env: this.env,
+          httpClient: this.httpClient,
+          logger: this.logger,
         });
       }
-
-      // Create a new RunExecution instance for this attempt
-      const newExecution = new RunExecution({
-        workerManifest: this.workerManifest,
-        env: this.env,
-        httpClient: this.httpClient,
-        logger: this.logger,
-      });
-
-      // If we have a current execution with task run env, prepare the new execution
-      if (this.currentExecution?.taskRunEnv) {
-        newExecution.prepareForExecution({
-          taskRunEnv: this.currentExecution.taskRunEnv,
-        });
-      }
-
-      this.currentExecution = newExecution;
 
       // Subscribe to run notifications
       this.subscribeToRunNotifications(runFriendlyId, snapshotFriendlyId);
 
+      // We're prepared for the next run so we can start executing
       await this.currentExecution.execute({
         runFriendlyId,
         snapshotFriendlyId,
@@ -223,6 +212,12 @@ export class ManagedRunController {
       });
     }
 
+    const metrics = this.currentExecution?.metrics;
+
+    if (metrics?.restoreCount) {
+      this.restoreCount += metrics.restoreCount;
+    }
+
     this.lockedRunExecution = null;
     this.unsubscribeFromRunNotifications(runFriendlyId, snapshotFriendlyId);
     this.waitForNextRun();
@@ -230,43 +225,61 @@ export class ManagedRunController {
 
   private waitForNextRunLock = false;
 
-  /** This will kill the child process before spinning up a new one. It will never throw,
-   *  but may exit the process on any errors or when no runs are available after the
-   *  configured duration. */
+  /**
+   *  This will eagerly create a new run execution. It will never throw, but may exit
+   *  the process on any errors or when no runs are available after the configured duration.
+   */
   private async waitForNextRun() {
+    this.sendDebugLog({
+      runId: this.runFriendlyId,
+      message: "waitForNextRun()",
+    });
+
     if (this.waitForNextRunLock) {
       this.sendDebugLog({
         runId: this.runFriendlyId,
-        message: "waitForNextRun: already in progress",
+        message: "waitForNextRun: already in progress, skipping",
+      });
+      return;
+    }
+
+    if (this.lockedRunExecution) {
+      this.sendDebugLog({
+        runId: this.runFriendlyId,
+        message: "waitForNextRun: execution locked, skipping",
       });
       return;
     }
 
     this.waitForNextRunLock = true;
-    const previousRunId = this.runFriendlyId;
 
     try {
-      // If there's a run execution in progress, we need to wait for it to finish
-      if (this.lockedRunExecution) {
-        this.sendDebugLog({
-          runId: this.runFriendlyId,
-          message: "waitForNextRun: waiting for existing run execution to finish",
-        });
-        // TODO: maybe kill the process?
-        await this.lockedRunExecution;
-      }
-
-      this.sendDebugLog({
-        runId: this.runFriendlyId,
-        message: "waitForNextRun: waiting for next run",
-      });
-
       if (!this.warmStartClient) {
         this.sendDebugLog({
           runId: this.runFriendlyId,
           message: "waitForNextRun: warm starts disabled, shutting down",
         });
         this.exitProcess(this.successExitCode);
+      }
+
+      const previousRunId = this.runFriendlyId;
+
+      if (this.currentExecution?.taskRunEnv) {
+        this.sendDebugLog({
+          runId: this.runFriendlyId,
+          message: "waitForNextRun: eagerly recreating task run process",
+        });
+
+        const previousTaskRunEnv = this.currentExecution.taskRunEnv;
+
+        this.currentExecution = new RunExecution({
+          workerManifest: this.workerManifest,
+          env: this.env,
+          httpClient: this.httpClient,
+          logger: this.logger,
+        }).prepareForExecution({
+          taskRunEnv: previousTaskRunEnv,
+        });
       }
 
       // Check the service is up and get additional warm start config
@@ -288,34 +301,22 @@ export class ManagedRunController {
         connect.data.connectionTimeoutMs ?? this.env.TRIGGER_WARM_START_CONNECTION_TIMEOUT_MS;
       const keepaliveMs = connect.data.keepaliveMs ?? this.env.TRIGGER_WARM_START_KEEPALIVE_MS;
 
+      const warmStartConfig = {
+        connectionTimeoutMs,
+        keepaliveMs,
+      };
+
       this.sendDebugLog({
         runId: this.runFriendlyId,
         message: "waitForNextRun: connected to warm start service",
-        properties: {
-          connectionTimeoutMs,
-          keepaliveMs,
-        },
+        properties: warmStartConfig,
       });
-
-      if (previousRunId) {
-        this.sendDebugLog({
-          runId: previousRunId,
-          message: "warm start: received config",
-          properties: {
-            connectionTimeoutMs,
-            keepaliveMs,
-          },
-        });
-      }
 
       if (!connectionTimeoutMs || !keepaliveMs) {
         this.sendDebugLog({
           runId: this.runFriendlyId,
           message: "waitForNextRun: warm starts disabled after connect",
-          properties: {
-            connectionTimeoutMs,
-            keepaliveMs,
-          },
+          properties: warmStartConfig,
         });
         this.exitProcess(this.successExitCode);
       }
@@ -330,6 +331,7 @@ export class ManagedRunController {
         this.sendDebugLog({
           runId: this.runFriendlyId,
           message: "waitForNextRun: warm start failed, shutting down",
+          properties: warmStartConfig,
         });
         this.exitProcess(this.successExitCode);
       }
@@ -339,14 +341,18 @@ export class ManagedRunController {
       this.sendDebugLog({
         runId: this.runFriendlyId,
         message: "waitForNextRun: got next run",
-        properties: { nextRun: nextRun.run.friendlyId },
+        properties: {
+          ...warmStartConfig,
+          nextRunId: nextRun.run.friendlyId,
+        },
       });
 
-      this.startAndExecuteRunAttempt({
+      this.startRunExecution({
         runFriendlyId: nextRun.run.friendlyId,
         snapshotFriendlyId: nextRun.snapshot.friendlyId,
         dequeuedAt: nextRun.dequeuedAt,
         isWarmStart: true,
+        previousRunId,
       }).finally(() => {});
     } catch (error) {
       this.sendDebugLog({
@@ -454,11 +460,19 @@ export class ManagedRunController {
     socket.on("connect", () => {
       this.sendDebugLog({
         runId: this.runFriendlyId,
-        message: "Connected to supervisor",
+        message: "Socket connected to supervisor",
       });
 
       // This should handle the case where we reconnect after being restored
-      if (this.runFriendlyId && this.snapshotFriendlyId) {
+      if (
+        this.runFriendlyId &&
+        this.snapshotFriendlyId &&
+        this.runFriendlyId !== this.env.TRIGGER_RUN_ID
+      ) {
+        this.sendDebugLog({
+          runId: this.runFriendlyId,
+          message: "Subscribing to notifications for in-progress run",
+        });
         this.subscribeToRunNotifications(this.runFriendlyId, this.snapshotFriendlyId);
       }
     });
@@ -466,7 +480,7 @@ export class ManagedRunController {
     socket.on("connect_error", (error) => {
       this.sendDebugLog({
         runId: this.runFriendlyId,
-        message: "Connection error",
+        message: "Socket connection error",
         properties: { error: error instanceof Error ? error.message : String(error) },
       });
     });
@@ -474,7 +488,7 @@ export class ManagedRunController {
     socket.on("disconnect", (reason, description) => {
       this.sendDebugLog({
         runId: this.runFriendlyId,
-        message: "Disconnected from supervisor",
+        message: "Socket disconnected from supervisor",
         properties: { reason, description: description?.toString() },
       });
     });
@@ -500,7 +514,7 @@ export class ManagedRunController {
 
     // If we have run and snapshot IDs, we can start an attempt immediately
     if (this.env.TRIGGER_RUN_ID && this.env.TRIGGER_SNAPSHOT_ID) {
-      this.startAndExecuteRunAttempt({
+      this.startRunExecution({
         runFriendlyId: this.env.TRIGGER_RUN_ID,
         snapshotFriendlyId: this.env.TRIGGER_SNAPSHOT_ID,
         dequeuedAt: this.env.TRIGGER_DEQUEUED_AT_MS,
@@ -527,6 +541,7 @@ export class ManagedRunController {
   sendDebugLog(opts: SendDebugLogOptions) {
     this.logger.sendDebugLog({
       ...opts,
+      message: `[controller] ${opts.message}`,
       properties: {
         ...opts.properties,
         runnerWarmStartCount: this.warmStartCount,
