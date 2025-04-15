@@ -33,7 +33,7 @@ export class TtlSystem {
       }
 
       //only expire "PENDING" runs
-      const run = await prisma.taskRun.findUnique({ where: { id: runId } });
+      const run = await prisma.taskRun.findFirst({ where: { id: runId } });
 
       if (!run) {
         this.$.logger.debug("Could not find enqueued run to expire", {

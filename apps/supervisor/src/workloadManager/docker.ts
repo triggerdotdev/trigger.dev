@@ -43,6 +43,10 @@ export class DockerWorkloadManager implements WorkloadManager {
       `--name=${runnerId}`,
     ];
 
+    if (this.opts.dockerAutoremove) {
+      runArgs.push("--rm");
+    }
+
     if (this.opts.warmStartUrl) {
       runArgs.push(`--env=TRIGGER_WARM_START_URL=${this.opts.warmStartUrl}`);
     }

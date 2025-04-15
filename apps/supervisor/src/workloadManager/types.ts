@@ -10,6 +10,7 @@ export interface WorkloadManagerOptions {
   heartbeatIntervalSeconds?: number;
   snapshotPollIntervalSeconds?: number;
   additionalEnvVars?: Record<string, string>;
+  dockerAutoremove?: boolean;
 }
 
 export interface WorkloadManager {

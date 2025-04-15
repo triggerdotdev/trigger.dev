@@ -193,7 +193,7 @@ export async function getWorkerDeploymentFromWorker(
   prisma: PrismaClientOrTransaction,
   workerId: string
 ): Promise<WorkerDeploymentWithWorkerTasks | null> {
-  const worker = await prisma.backgroundWorker.findUnique({
+  const worker = await prisma.backgroundWorker.findFirst({
     where: {
       id: workerId,
     },
@@ -264,12 +264,10 @@ export async function getManagedWorkerFromCurrentlyPromotedDeployment(
   prisma: PrismaClientOrTransaction,
   environmentId: string
 ): Promise<WorkerDeploymentWithWorkerTasks | null> {
-  const promotion = await prisma.workerDeploymentPromotion.findUnique({
+  const promotion = await prisma.workerDeploymentPromotion.findFirst({
     where: {
-      environmentId_label: {
-        environmentId,
-        label: CURRENT_DEPLOYMENT_LABEL,
-      },
+      environmentId,
+      label: CURRENT_DEPLOYMENT_LABEL,
     },
     include: {
       deployment: {
