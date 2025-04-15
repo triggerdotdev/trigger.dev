@@ -84,7 +84,8 @@ export function ChartStacked({
         <BarChart
           accessibilityLayer
           data={data}
-          barCategoryGap={2}
+          barCategoryGap={1}
+          className="pr-2"
           onMouseMove={(state: any) => {
             if (state?.activePayload?.length > 0) {
               setActivePayload(state.activePayload);
@@ -119,9 +120,6 @@ export function ChartStacked({
           <ChartTooltip
             cursor={{ fill: "#212327" }}
             content={<XAxisTooltip />}
-            position={{ y: undefined }}
-            coordinate={{ y: undefined }}
-            offset={16}
             allowEscapeViewBox={{ x: false, y: true }}
           />
           {dataKeys.map((key, index, array) => (
@@ -132,10 +130,10 @@ export function ChartStacked({
               fill={`var(--color-${key})`}
               radius={
                 [
-                  index === array.length - 1 ? 4 : 0,
-                  index === array.length - 1 ? 4 : 0,
-                  index === 0 ? 4 : 0,
-                  index === 0 ? 4 : 0,
+                  index === array.length - 1 ? 2 : 0,
+                  index === array.length - 1 ? 2 : 0,
+                  index === 0 ? 2 : 0,
+                  index === 0 ? 2 : 0,
                 ] as [number, number, number, number]
               }
               activeBar={false}
