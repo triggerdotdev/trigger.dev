@@ -141,7 +141,7 @@ export function ChartStacked({
               activeBar={false}
               style={{ transition: "fill-opacity var(--transition-duration)" }}
               fillOpacity={opacity[key]}
-              onMouseOver={(data) => {
+              onMouseEnter={(data) => {
                 if (data.tooltipPayload?.[0]) {
                   const { dataKey: hoveredKey } = data.tooltipPayload[0];
                   setActiveBarKey(hoveredKey);
@@ -152,6 +152,16 @@ export function ChartStacked({
                     }, {} as Record<string, number>)
                   );
                 }
+              }}
+              onMouseLeave={() => {
+                setActiveBarKey(null);
+                setActivePayload(null);
+                setOpacity((op) =>
+                  Object.keys(op).reduce((acc, k) => {
+                    acc[k] = 1;
+                    return acc;
+                  }, {} as Record<string, number>)
+                );
               }}
             />
           ))}
@@ -169,6 +179,7 @@ export function ChartStacked({
                 }}
                 onMouseLeave={() => {
                   setActiveBarKey(null);
+                  setActivePayload(null);
                   setOpacity((op) =>
                     Object.keys(op).reduce((acc, k) => {
                       acc[k] = 1;
