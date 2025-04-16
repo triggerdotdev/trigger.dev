@@ -422,7 +422,8 @@ export class WaitpointSystem {
           environmentType: snapshot.environmentType,
           projectId: snapshot.projectId,
           organizationId: snapshot.organizationId,
-          batchId: batch?.id ?? snapshot.batchId ?? undefined,
+          // Do NOT carry over the batchId from the previous snapshot
+          batchId: batch?.id,
           workerId,
           runnerId,
         });
