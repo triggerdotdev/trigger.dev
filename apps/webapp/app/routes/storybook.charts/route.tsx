@@ -173,9 +173,15 @@ function generateTaskConfig(numTasks: number) {
   const colors = Object.values(tailwindColors);
   return Array.from({ length: numTasks }, () => {
     const taskName = generateRandomTaskName();
+    const taskId = generateRandomId();
     return {
       [taskName]: {
-        label: taskName,
+        label: (
+          <div className="flex items-center gap-2">
+            <span>{taskName}</span>
+            <span className="text-text-dimmed/50">{taskId}</span>
+          </div>
+        ),
         color: colors[Math.floor(Math.random() * colors.length)],
       },
     };
