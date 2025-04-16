@@ -510,11 +510,6 @@ export class WaitpointSystem {
     await this.$.runLock.lock([runId], 5000, async () => {
       const snapshot = await getLatestExecutionSnapshot(this.$.prisma, runId);
 
-      this.$.logger.debug("continueRunIfUnblocked", {
-        runId,
-        snapshot,
-      });
-
       //run is still executing, send a message to the worker
       if (isExecuting(snapshot.executionStatus)) {
         const result = await this.$.runQueue.reacquireConcurrency(
