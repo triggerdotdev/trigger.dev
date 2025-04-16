@@ -253,6 +253,8 @@ export class ManagedRunController {
 
     this.waitForNextRunLock = true;
 
+    const previousRunId = this.runFriendlyId;
+
     try {
       if (!this.warmStartClient) {
         this.sendDebugLog({
@@ -261,8 +263,6 @@ export class ManagedRunController {
         });
         this.exitProcess(this.successExitCode);
       }
-
-      const previousRunId = this.runFriendlyId;
 
       if (this.currentExecution?.taskRunEnv) {
         this.sendDebugLog({
@@ -307,14 +307,14 @@ export class ManagedRunController {
       };
 
       this.sendDebugLog({
-        runId: this.runFriendlyId,
+        runId: previousRunId,
         message: "waitForNextRun: connected to warm start service",
         properties: warmStartConfig,
       });
 
       if (!connectionTimeoutMs || !keepaliveMs) {
         this.sendDebugLog({
-          runId: this.runFriendlyId,
+          runId: previousRunId,
           message: "waitForNextRun: warm starts disabled after connect",
           properties: warmStartConfig,
         });
@@ -329,7 +329,7 @@ export class ManagedRunController {
 
       if (!nextRun) {
         this.sendDebugLog({
-          runId: this.runFriendlyId,
+          runId: previousRunId,
           message: "waitForNextRun: warm start failed, shutting down",
           properties: warmStartConfig,
         });
@@ -339,7 +339,7 @@ export class ManagedRunController {
       this.warmStartCount++;
 
       this.sendDebugLog({
-        runId: this.runFriendlyId,
+        runId: previousRunId,
         message: "waitForNextRun: got next run",
         properties: {
           ...warmStartConfig,
@@ -356,7 +356,7 @@ export class ManagedRunController {
       }).finally(() => {});
     } catch (error) {
       this.sendDebugLog({
-        runId: this.runFriendlyId,
+        runId: previousRunId,
         message: "waitForNextRun: unexpected error",
         properties: { error: error instanceof Error ? error.message : String(error) },
       });
