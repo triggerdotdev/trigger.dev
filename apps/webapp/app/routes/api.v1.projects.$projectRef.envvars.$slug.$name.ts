@@ -132,6 +132,8 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
   }
 
   return json({
+    name: environmentVariable.key,
     value: environmentVariable.value,
+    isSecret: environmentVariable.isSecret,
   });
 }

@@ -17,6 +17,7 @@ import {
   DeletedScheduleObject,
   EnvironmentVariableResponseBody,
   EnvironmentVariableValue,
+  EnvironmentVariableWithSecret,
   EnvironmentVariables,
   ListQueueOptions,
   ListRunResponseItem,
@@ -549,7 +550,7 @@ export class ApiClient {
 
   listEnvVars(projectRef: string, slug: string, requestOptions?: ZodFetchOptions) {
     return zodfetch(
-      EnvironmentVariables,
+      z.array(EnvironmentVariableWithSecret),
       `${this.baseUrl}/api/v1/projects/${projectRef}/envvars/${slug}`,
       {
         method: "GET",
@@ -579,7 +580,7 @@ export class ApiClient {
 
   retrieveEnvVar(projectRef: string, slug: string, key: string, requestOptions?: ZodFetchOptions) {
     return zodfetch(
-      EnvironmentVariableValue,
+      EnvironmentVariableWithSecret,
       `${this.baseUrl}/api/v1/projects/${projectRef}/envvars/${slug}/${key}`,
       {
         method: "GET",

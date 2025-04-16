@@ -806,10 +806,25 @@ export const EnvironmentVariable = z.object({
   name: z.string(),
   value: z.string(),
 });
-
 export const EnvironmentVariables = z.array(EnvironmentVariable);
 
 export type EnvironmentVariables = z.infer<typeof EnvironmentVariables>;
+
+export const EnvironmentVariableWithSecret = z.object({
+  /** The name of the env var, e.g. `DATABASE_URL` */
+  name: z.string(),
+  /** The value of the env var. If it's a secret, this will be a redacted value, not the real value.  */
+  value: z.string(),
+  /**
+   * Whether the env var is a secret or not.
+   * When you create env vars you can mark them as secrets.
+   *
+   * You can't view the value of a secret env var after setting it initially.
+   * For a secret env var, the value will be redacted.
+   */
+  isSecret: z.boolean(),
+});
+export type EnvironmentVariableWithSecret = z.infer<typeof EnvironmentVariableWithSecret>;
 
 export const UpdateMetadataRequestBody = FlushedRunMetadata;
 

@@ -82,5 +82,11 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
 
   const variables = await repository.getEnvironment(environment.project.id, environment.id);
 
-  return json(variables.map((variable) => ({ name: variable.key, value: variable.value })));
+  return json(
+    variables.map((variable) => ({
+      name: variable.key,
+      value: variable.value,
+      isSecret: variable.isSecret,
+    }))
+  );
 }

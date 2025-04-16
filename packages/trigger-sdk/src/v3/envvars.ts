@@ -4,6 +4,7 @@ import type {
   CreateEnvironmentVariableParams,
   EnvironmentVariableResponseBody,
   EnvironmentVariableValue,
+  EnvironmentVariableWithSecret,
   EnvironmentVariables,
   ImportEnvironmentVariablesParams,
   UpdateEnvironmentVariableParams,
@@ -84,13 +85,15 @@ export function list(
   projectRef: string,
   slug: string,
   requestOptions?: ApiRequestOptions
-): ApiPromise<EnvironmentVariables>;
-export function list(requestOptions?: ApiRequestOptions): ApiPromise<EnvironmentVariables>;
+): ApiPromise<EnvironmentVariableWithSecret[]>;
+export function list(
+  requestOptions?: ApiRequestOptions
+): ApiPromise<EnvironmentVariableWithSecret[]>;
 export function list(
   projectRefOrRequestOptions?: string | ApiRequestOptions,
   slug?: string,
   requestOptions?: ApiRequestOptions
-): ApiPromise<EnvironmentVariables> {
+): ApiPromise<EnvironmentVariableWithSecret[]> {
   const $projectRef = !isRequestOptions(projectRefOrRequestOptions)
     ? projectRefOrRequestOptions
     : taskContext.ctx?.project.ref;
@@ -188,17 +191,17 @@ export function retrieve(
   slug: string,
   name: string,
   requestOptions?: ApiRequestOptions
-): ApiPromise<EnvironmentVariableValue>;
+): ApiPromise<EnvironmentVariableWithSecret>;
 export function retrieve(
   name: string,
   requestOptions?: ApiRequestOptions
-): ApiPromise<EnvironmentVariableValue>;
+): ApiPromise<EnvironmentVariableWithSecret>;
 export function retrieve(
   projectRefOrName: string,
   slugOrRequestOptions?: string | ApiRequestOptions,
   name?: string,
   requestOptions?: ApiRequestOptions
-): ApiPromise<EnvironmentVariableValue> {
+): ApiPromise<EnvironmentVariableWithSecret> {
   let $projectRef: string;
   let $slug: string;
   let $name: string;

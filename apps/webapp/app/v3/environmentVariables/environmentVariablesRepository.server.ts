@@ -15,6 +15,7 @@ import {
   DeleteEnvironmentVariable,
   DeleteEnvironmentVariableValue,
   EnvironmentVariable,
+  EnvironmentVariableWithSecret,
   ProjectEnvironmentVariable,
   Repository,
   Result,
@@ -509,7 +510,10 @@ export class EnvironmentVariablesRepository implements Repository {
     return results;
   }
 
-  async getEnvironment(projectId: string, environmentId: string): Promise<EnvironmentVariable[]> {
+  async getEnvironment(
+    projectId: string,
+    environmentId: string
+  ): Promise<EnvironmentVariableWithSecret[]> {
     const project = await this.prismaClient.project.findFirst({
       where: {
         id: projectId,
@@ -531,7 +535,36 @@ export class EnvironmentVariablesRepository implements Repository {
       return [];
     }
 
-    return this.getEnvironmentVariables(projectId, environmentId);
+    // Get the keys of all secret variables
+    const secretValues = await this.prismaClient.environmentVariableValue.findMany({
+      where: {
+        environmentId,
+        isSecret: true,
+      },
+      select: {
+        variable: {
+          select: {
+            key: true,
+          },
+        },
+      },
+    });
+    const secretVarKeys = secretValues.map((r) => r.variable.key);
+
+    const variables = await this.getEnvironmentVariables(projectId, environmentId);
+
+    // Filter out secret variables if includeSecrets is false
+    return variables.map((v) => {
+      if (secretVarKeys.includes(v.key)) {
+        return {
+          key: v.key,
+          value: "<redacted>",
+          isSecret: true,
+        };
+      }
+
+      return { key: v.key, value: v.value, isSecret: false };
+    });
   }
 
   async #getSecretEnvironmentVariables(
