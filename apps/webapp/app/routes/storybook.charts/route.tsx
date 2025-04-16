@@ -139,14 +139,41 @@ const taskNouns = [
   "metadata",
 ];
 
-function generateRandomTaskName() {
-  const verb = taskVerbs[Math.floor(Math.random() * taskVerbs.length)];
-  const noun = taskNouns[Math.floor(Math.random() * taskNouns.length)];
+// Seeded random number generator
+function seededRandom(seed: number) {
+  return function () {
+    seed = (seed * 16807) % 2147483647;
+    return (seed - 1) / 2147483646;
+  };
+}
+
+function generateTaskConfig(numTasks: number) {
+  const random = seededRandom(123); // Fixed seed for consistent generation
+  const colors = Object.values(tailwindColors);
+  return Array.from({ length: numTasks }, () => {
+    const taskName = generateRandomTaskName(random);
+    return {
+      [taskName]: {
+        label: (
+          <div className="flex items-center gap-2">
+            <span>{taskName}</span>
+            <span className="text-text-dimmed/50">{generateRandomId(random)}</span>
+          </div>
+        ),
+        color: colors[Math.floor(random() * colors.length)],
+      },
+    };
+  }).reduce((acc, curr) => ({ ...acc, ...curr }), {}) satisfies ChartConfig;
+}
+
+function generateRandomTaskName(random: () => number) {
+  const verb = taskVerbs[Math.floor(random() * taskVerbs.length)];
+  const noun = taskNouns[Math.floor(random() * taskNouns.length)];
   return `${verb}-${noun}`;
 }
 
-function generateRandomId() {
-  return Array.from({ length: 16 }, () => Math.floor(Math.random() * 36).toString(36)).join("");
+function generateRandomId(random: () => number) {
+  return Array.from({ length: 16 }, () => Math.floor(random() * 36).toString(36)).join("");
 }
 
 const tailwindColors = {
@@ -168,25 +195,6 @@ const tailwindColors = {
   pink: "#EC4899",
   rose: "#F43F5E",
 };
-
-function generateTaskConfig(numTasks: number) {
-  const colors = Object.values(tailwindColors);
-  return Array.from({ length: numTasks }, () => {
-    const taskName = generateRandomTaskName();
-    const taskId = generateRandomId();
-    return {
-      [taskName]: {
-        label: (
-          <div className="flex items-center gap-2">
-            <span>{taskName}</span>
-            <span className="text-text-dimmed/50">{taskId}</span>
-          </div>
-        ),
-        color: colors[Math.floor(Math.random() * colors.length)],
-      },
-    };
-  }).reduce((acc, curr) => ({ ...acc, ...curr }), {}) satisfies ChartConfig;
-}
 
 const barChartBigDatasetConfig = generateTaskConfig(8);
 
