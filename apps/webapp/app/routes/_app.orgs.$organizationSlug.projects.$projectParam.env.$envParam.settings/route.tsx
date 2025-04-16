@@ -27,9 +27,11 @@ import * as Property from "~/components/primitives/PropertyTable";
 import { SpinnerWhite } from "~/components/primitives/Spinner";
 import { prisma } from "~/db.server";
 import { useProject } from "~/hooks/useProject";
-import { redirectWithSuccessMessage } from "~/models/message.server";
+import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
+import { DeleteProjectService } from "~/services/deleteProject.server";
+import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
-import { v3ProjectPath } from "~/utils/pathBuilder";
+import { organizationPath, v3ProjectPath } from "~/utils/pathBuilder";
 
 export const meta: MetaFunction = () => {
   return [
@@ -48,6 +50,27 @@ export function createSchema(
     z.object({
       action: z.literal("rename"),
       projectName: z.string().min(3, "Project name must have at least 3 characters").max(50),
+    }),
+    z.object({
+      action: z.literal("delete"),
+      projectSlug: z.string().superRefine((slug, ctx) => {
+        if (constraints.getSlugMatch === undefined) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: conform.VALIDATION_UNDEFINED,
+          });
+        } else {
+          const { isMatch, projectSlug } = constraints.getSlugMatch(slug);
+          if (isMatch) {
+            return;
+          }
+
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `The slug must match ${projectSlug}`,
+          });
+        }
+      }),
     }),
   ]);
 }
@@ -97,6 +120,27 @@ export const action: ActionFunction = async ({ request, params }) => {
           `Project renamed to ${submission.value.projectName}`
         );
       }
+      case "delete": {
+        const deleteProjectService = new DeleteProjectService();
+        try {
+          await deleteProjectService.call({ projectSlug: projectParam, userId });
+
+          return redirectWithSuccessMessage(
+            organizationPath({ slug: organizationSlug }),
+            request,
+            "Project deleted"
+          );
+        } catch (error: unknown) {
+          logger.error("Project could not be deleted", {
+            error: error instanceof Error ? error.message : JSON.stringify(error),
+          });
+          return redirectWithErrorMessage(
+            v3ProjectPath({ slug: organizationSlug }, { slug: projectParam }),
+            request,
+            `Project ${projectParam} could not be deleted`
+          );
+        }
+      }
     }
   } catch (error: any) {
     return json({ errors: { body: error.message } }, { status: 400 });
@@ -122,6 +166,25 @@ export default function Page() {
 
   const isRenameLoading =
     navigation.formData?.get("action") === "rename" &&
+    (navigation.state === "submitting" || navigation.state === "loading");
+
+  const [deleteForm, { projectSlug }] = useForm({
+    id: "delete-project",
+    // TODO: type this
+    lastSubmission: lastSubmission as any,
+    shouldValidate: "onInput",
+    shouldRevalidate: "onSubmit",
+    onValidate({ formData }) {
+      return parse(formData, {
+        schema: createSchema({
+          getSlugMatch: (slug) => ({ isMatch: slug === project.slug, projectSlug: project.slug }),
+        }),
+      });
+    },
+  });
+
+  const isDeleteLoading =
+    navigation.formData?.get("action") === "delete" &&
     (navigation.state === "submitting" || navigation.state === "loading");
 
   return (
@@ -194,6 +257,47 @@ export default function Page() {
                 />
               </Fieldset>
             </Form>
+
+            <div>
+              <Header2 spacing>Danger zone</Header2>
+              <Form
+                method="post"
+                {...deleteForm.props}
+                className="w-full rounded-sm border border-rose-500/40"
+              >
+                <input type="hidden" name="action" value="delete" />
+                <Fieldset className="p-4">
+                  <InputGroup>
+                    <Label htmlFor={projectSlug.id}>Delete project</Label>
+                    <Input
+                      {...conform.input(projectSlug, { type: "text" })}
+                      placeholder="Your project slug"
+                      icon="warning"
+                    />
+                    <FormError id={projectSlug.errorId}>{projectSlug.error}</FormError>
+                    <FormError>{deleteForm.error}</FormError>
+                    <Hint>
+                      This change is irreversible, so please be certain. Type in the Project slug
+                      <InlineCode variant="extra-small">{project.slug}</InlineCode> and then press
+                      Delete.
+                    </Hint>
+                  </InputGroup>
+                  <FormButtons
+                    confirmButton={
+                      <Button
+                        type="submit"
+                        variant={"danger/small"}
+                        LeadingIcon={isDeleteLoading ? "spinner-white" : "trash-can"}
+                        leadingIconClassName="text-white"
+                        disabled={isDeleteLoading}
+                      >
+                        Delete project
+                      </Button>
+                    }
+                  />
+                </Fieldset>
+              </Form>
+            </div>
           </div>
         </MainHorizontallyCenteredContainer>
       </PageBody>
