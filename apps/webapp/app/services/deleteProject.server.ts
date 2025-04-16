@@ -55,8 +55,6 @@ export class DeleteProjectService {
       });
     }
 
-    // todo Delete all queues from the RunEngine 2 dev master queues
-
     // Mark the project as deleted (do this last because it makes it impossible to try again)
     // - This disables all API keys
     // - This disables all schedules from being scheduled
