@@ -110,6 +110,7 @@ export class RunExecution {
       env: {
         ...envVars,
         ...this.env.gatherProcessEnv(),
+        HEARTBEAT_INTERVAL_MS: String(this.env.TRIGGER_HEARTBEAT_INTERVAL_SECONDS * 1000),
       },
       serverWorker: {
         id: "managed",
