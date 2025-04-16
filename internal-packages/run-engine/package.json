@@ -36,8 +36,7 @@
   "scripts": {
     "clean": "rimraf dist",
     "typecheck": "tsc --noEmit -p tsconfig.build.json",
-    "test": "vitest --sequence.concurrent=false --no-file-parallelism --run",
-    "test:dev": "vitest --sequence.concurrent=false --no-file-parallelism",
+    "test": "vitest --sequence.concurrent=false --no-file-parallelism",
     "test:coverage": "vitest --sequence.concurrent=false --no-file-parallelism --coverage.enabled",
     "build": "pnpm run clean && tsc -p tsconfig.build.json",
     "dev": "tsc --watch  -p tsconfig.build.json"
