@@ -315,9 +315,9 @@ export default function Page() {
                         {variable.isSecret ? (
                           <SimpleTooltip
                             button={
-                              <div className="flex items-center gap-x-1.5">
+                              <div className="flex items-center gap-x-1">
                                 <LockClosedIcon className="size-3 text-text-dimmed" />
-                                <span className="text-sm text-text-dimmed">Secret</span>
+                                <span className="text-xs text-text-dimmed">Secret</span>
                               </div>
                             }
                             content="This variable is secret and cannot be revealed."
@@ -429,13 +429,15 @@ function EditEnvironmentVariablePanel({
           <FormError id={id.errorId}>{id.error}</FormError>
           <FormError id={environmentId.errorId}>{environmentId.error}</FormError>
           <Fieldset>
-            <InputGroup fullWidth className="mb-5 mt-2">
+            <InputGroup fullWidth className="mt-2 gap-0">
               <Label>Key</Label>
-              <InlineCode variant="base" className="pl-1.5">
-                {variable.key}
-              </InlineCode>
+              <CopyableText value={variable.key} className="w-fit font-mono text-sm" />
             </InputGroup>
-            <EnvironmentCombo environment={variable.environment} className="text-sm" />
+
+            <InputGroup fullWidth>
+              <Label>Environment</Label>
+              <EnvironmentCombo environment={variable.environment} className="text-sm" />
+            </InputGroup>
 
             <InputGroup fullWidth>
               <Label>Value</Label>
