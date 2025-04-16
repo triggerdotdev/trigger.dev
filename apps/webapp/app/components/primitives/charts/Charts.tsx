@@ -1,4 +1,14 @@
-import { Bar, BarChart, CartesianGrid, Line, LineChart, Legend, XAxis, YAxis } from "recharts";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Line,
+  LineChart,
+  Legend,
+  XAxis,
+  YAxis,
+  ReferenceLine,
+} from "recharts";
 import {
   type ChartConfig,
   ChartContainer,
@@ -14,14 +24,16 @@ import React from "react";
 import { Button } from "../Buttons";
 import { Paragraph } from "../Paragraph";
 
-//TODO: cap the number of legend items
-//TODO: display the hovered over bar in the legend if it's not visible in the legend
 //TODO: do a better job of showing extra data in the legend - like in a table
 //TODO: hover over a bar and dim all other bars
-//TODO: render a vertical line that follows the mouse
 //TODO: drag on the chart to zoom in
-//TODO: draw a separate line to indicate e.g. concurrency level
+//TODO: render a vertical line that follows the mouse
 //TODO: fix the first and last bars not having rounded corners
+
+type ReferenceLineProps = {
+  value: number;
+  label: string;
+};
 
 export function ChartBar({
   config,
@@ -29,12 +41,14 @@ export function ChartBar({
   dataKey,
   loading = false,
   maxLegendItems = 5,
+  referenceLine,
 }: {
   config: ChartConfig;
   data: any[];
   dataKey: string;
   loading?: boolean;
   maxLegendItems?: number;
+  referenceLine?: ReferenceLineProps;
 }) {
   const [opacity, setOpacity] = React.useState<Record<string, number>>({});
   const [activePayload, setActivePayload] = React.useState<any[] | null>(null);
@@ -171,6 +185,15 @@ export function ChartBar({
             content={<XAxisTooltip />}
             allowEscapeViewBox={{ x: false, y: true }}
           />
+          {referenceLine && (
+            <ReferenceLine
+              y={referenceLine.value}
+              label={referenceLine.label}
+              isFront={true}
+              stroke="#3B3E45"
+              strokeDasharray="4 4"
+            />
+          )}
           {dataKeys.map((key, index, array) => (
             <Bar
               key={key}

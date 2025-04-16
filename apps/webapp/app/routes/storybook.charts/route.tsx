@@ -9,7 +9,15 @@ export default function Story() {
       <Card>
         <Card.Header>Bar Chart – stacked</Card.Header>
         <Card.Content>
-          <ChartBar config={barChartConfig} data={barChartData} dataKey="day" />
+          <ChartBar
+            config={barChartConfig}
+            data={barChartData}
+            dataKey="day"
+            referenceLine={{
+              value: 30000,
+              label: "Max concurrency",
+            }}
+          />
         </Card.Content>
       </Card>
       <Card>
