@@ -229,7 +229,7 @@ export function ChartBar({
                 activeKey={activeBarKey}
                 payload={legendPayload}
                 renderViewMore={(remainingCount: number) => (
-                  <ViewAllDataRow remainingCount={remainingCount} />
+                  <ViewAllDataRow key="view-more" remainingCount={remainingCount} />
                 )}
               />
             }
