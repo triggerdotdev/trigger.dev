@@ -204,12 +204,12 @@ export function ButtonContent(props: ButtonContentPropsType) {
   const textColorClassName = variation.textColor;
 
   const renderShortcutKey = () =>
-    shortcut && (
+    shortcut &&
+    !hideShortcutKey && (
       <ShortcutKey
         className={cn(shortcutClassName)}
         shortcut={shortcut}
         variant={variation.shortcutVariant ?? "medium"}
-        hideShortcutKey={hideShortcutKey}
       />
     );
 
