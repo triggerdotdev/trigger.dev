@@ -15,7 +15,7 @@ import {
   json,
   redirectDocument,
 } from "@remix-run/server-runtime";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { InlineCode } from "~/components/code/InlineCode";
@@ -199,6 +199,43 @@ export default function Page() {
   const project = useProject();
   const environment = useEnvironment();
 
+  // Add isFirst and isLast to each environment variable
+  // They're set based on if they're the first or last time that `key` has been seen in the list
+  const groupedEnvironmentVariables = useMemo(() => {
+    // Create a map to track occurrences of each key
+    const keyOccurrences = new Map<string, number>();
+
+    // First pass: count total occurrences of each key
+    environmentVariables.forEach((variable) => {
+      keyOccurrences.set(variable.key, (keyOccurrences.get(variable.key) || 0) + 1);
+    });
+
+    // Second pass: add isFirstTime, isLastTime, and occurrences flags
+    const seenKeys = new Set<string>();
+    const currentOccurrences = new Map<string, number>();
+
+    return environmentVariables.map((variable) => {
+      // Track current occurrence number for this key
+      const currentCount = (currentOccurrences.get(variable.key) || 0) + 1;
+      currentOccurrences.set(variable.key, currentCount);
+
+      const totalOccurrences = keyOccurrences.get(variable.key) || 1;
+      const isFirstTime = !seenKeys.has(variable.key);
+      const isLastTime = currentCount === totalOccurrences;
+
+      if (isFirstTime) {
+        seenKeys.add(variable.key);
+      }
+
+      return {
+        ...variable,
+        isFirstTime,
+        isLastTime,
+        occurences: totalOccurrences,
+      };
+    });
+  }, [environmentVariables]);
+
   return (
     <PageContainer>
       <NavBar>
@@ -245,47 +282,79 @@ export default function Page() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {environmentVariables.length > 0 ? (
-                environmentVariables.map((variable) => (
-                  <TableRow key={`${variable.id}-${variable.environment.id}`}>
-                    <TableCell>
-                      <CopyableText value={variable.key} className="font-mono" />
-                    </TableCell>
-                    <TableCell>
-                      {variable.isSecret ? (
-                        <SimpleTooltip
-                          button={
-                            <div className="flex items-center gap-x-1.5">
-                              <LockClosedIcon className="size-3 text-text-dimmed" />
-                              <span className="text-sm text-text-dimmed">Secret</span>
-                            </div>
-                          }
-                          content="This variable is secret and cannot be revealed."
-                        />
-                      ) : (
-                        <ClipboardField
-                          secure={!revealAll}
-                          value={variable.value}
-                          variant={"secondary/small"}
-                          fullWidth={true}
-                        />
-                      )}
-                    </TableCell>
+              {groupedEnvironmentVariables.length > 0 ? (
+                groupedEnvironmentVariables.map((variable) => {
+                  let cellClassName = "";
+                  let borderedCellClassName = "";
 
-                    <TableCell>
-                      <EnvironmentCombo environment={variable.environment} className="text-sm" />
-                    </TableCell>
-                    <TableCellMenu
-                      isSticky
-                      hiddenButtons={
-                        <>
-                          <EditEnvironmentVariablePanel variable={variable} revealAll={revealAll} />
-                          <DeleteEnvironmentVariableButton variable={variable} />
-                        </>
+                  if (variable.occurences > 1) {
+                    cellClassName = "py-1";
+                    borderedCellClassName =
+                      "relative after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-grid-bright";
+                    if (variable.isLastTime) {
+                      cellClassName = "pt-1 pb-2";
+                      borderedCellClassName = "";
+                    } else if (variable.isFirstTime) {
+                      cellClassName = "pt-2 pb-1";
+                    }
+                  } else {
+                    cellClassName = "py-2";
+                  }
+
+                  return (
+                    <TableRow
+                      key={`${variable.id}-${variable.environment.id}`}
+                      className={
+                        variable.isLastTime ? "after:bg-charcoal-600" : "after:bg-transparent"
                       }
-                    />
-                  </TableRow>
-                ))
+                    >
+                      <TableCell className={cellClassName}>
+                        {variable.isFirstTime ? (
+                          <CopyableText value={variable.key} className="font-mono" />
+                        ) : null}
+                      </TableCell>
+                      <TableCell
+                        className={cn(cellClassName, borderedCellClassName, "after:left-3")}
+                      >
+                        {variable.isSecret ? (
+                          <SimpleTooltip
+                            button={
+                              <div className="flex items-center gap-x-1.5">
+                                <LockClosedIcon className="size-3 text-text-dimmed" />
+                                <span className="text-sm text-text-dimmed">Secret</span>
+                              </div>
+                            }
+                            content="This variable is secret and cannot be revealed."
+                          />
+                        ) : (
+                          <ClipboardField
+                            secure={!revealAll}
+                            value={variable.value}
+                            variant={"secondary/small"}
+                            fullWidth={true}
+                          />
+                        )}
+                      </TableCell>
+
+                      <TableCell className={cn(cellClassName, borderedCellClassName)}>
+                        <EnvironmentCombo environment={variable.environment} className="text-sm" />
+                      </TableCell>
+                      <TableCellMenu
+                        className={cn(cellClassName, borderedCellClassName)}
+                        isSticky
+                        hiddenButtons={
+                          <>
+                            <EditEnvironmentVariablePanel
+                              variable={variable}
+                              revealAll={revealAll}
+                            />
+                            <DeleteEnvironmentVariableButton variable={variable} />
+                          </>
+                        }
+                      />
+                    </TableRow>
+                  );
+                })
               ) : (
                 <TableRow>
                   <TableCell colSpan={4}>
