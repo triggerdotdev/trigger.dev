@@ -99,16 +99,27 @@ export function ChartBar({
     const visiblePayload = allPayload.slice(0, maxLegendItems);
     const remainingCount = allPayload.length - maxLegendItems;
 
-    visiblePayload.push({
-      dataKey: "view-more",
-      type: "rect" as const,
-      color: "transparent",
-      value: "view-more",
-      payload: { remainingCount } as any,
-    });
+    // If we're hovering over an item that's not visible in the legend,
+    // add it as a 6th item instead of showing the "view more" row
+    if (activeBarKey && !visiblePayload.some((item) => item.dataKey === activeBarKey)) {
+      const hoveredItem = allPayload.find((item) => item.dataKey === activeBarKey);
+      if (hoveredItem) {
+        return [...visiblePayload, hoveredItem];
+      }
+    }
 
-    return visiblePayload;
-  }, [config, dataKeys, maxLegendItems]);
+    // Otherwise show the "view more" row
+    return [
+      ...visiblePayload,
+      {
+        dataKey: "view-more",
+        type: "rect" as const,
+        color: "transparent",
+        value: "view-more",
+        payload: { remainingCount },
+      },
+    ];
+  }, [config, dataKeys, maxLegendItems, activeBarKey]);
 
   return (
     <ChartContainer
