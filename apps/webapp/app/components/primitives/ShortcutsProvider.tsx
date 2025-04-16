@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, type ReactNode } from "react";
+import { createContext, useContext, useState, useCallback, useMemo, type ReactNode } from "react";
 
 type ShortcutsContextType = {
   areShortcutsEnabled: boolean;
@@ -15,20 +15,19 @@ type ShortcutsProviderProps = {
 export function ShortcutsProvider({ children }: ShortcutsProviderProps) {
   const [areShortcutsEnabled, setAreShortcutsEnabled] = useState(true);
 
-  const disableShortcuts = () => setAreShortcutsEnabled(false);
-  const enableShortcuts = () => setAreShortcutsEnabled(true);
+  const disableShortcuts = useCallback(() => setAreShortcutsEnabled(false), []);
+  const enableShortcuts = useCallback(() => setAreShortcutsEnabled(true), []);
 
-  return (
-    <ShortcutsContext.Provider
-      value={{
-        areShortcutsEnabled,
-        disableShortcuts,
-        enableShortcuts,
-      }}
-    >
-      {children}
-    </ShortcutsContext.Provider>
+  const value = useMemo(
+    () => ({
+      areShortcutsEnabled,
+      disableShortcuts,
+      enableShortcuts,
+    }),
+    [areShortcutsEnabled, disableShortcuts, enableShortcuts]
   );
+
+  return <ShortcutsContext.Provider value={value}>{children}</ShortcutsContext.Provider>;
 }
 
 const throwIfNoProvider = () => {
