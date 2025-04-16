@@ -5,6 +5,10 @@ export class NoopUsageManager implements UsageManager {
     // Noop
   }
 
+  async flush(): Promise<void> {
+    // Noop
+  }
+
   start(): UsageMeasurement {
     return {
       sample: () => ({ cpuTime: 0, wallTime: 0 }),

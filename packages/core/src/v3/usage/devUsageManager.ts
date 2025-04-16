@@ -48,6 +48,8 @@ export class DevUsageManager implements UsageManager {
 
   disable(): void {}
 
+  async flush(): Promise<void> {}
+
   sample(): UsageSample | undefined {
     return this._firstMeasurement?.sample();
   }
