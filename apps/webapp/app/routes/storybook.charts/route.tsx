@@ -1,11 +1,35 @@
 import { Button } from "~/components/primitives/Buttons";
 import { Card } from "~/components/primitives/charts/Card";
 import { type ChartConfig } from "~/components/primitives/charts/Chart";
-import { BigNumber, ChartBar, ChartLine } from "~/components/primitives/charts/Charts";
+import {
+  BigNumber,
+  ChartBar,
+  ChartLine,
+  ZoomableChartBar,
+} from "~/components/primitives/charts/Charts";
 
 export default function Story() {
   return (
     <div className="grid grid-cols-2 gap-4 p-3">
+      <Card>
+        <Card.Header>
+          Zoomable Bar Chart
+          <Card.Accessory>
+            <Button variant="secondary/small">Example button</Button>
+          </Card.Accessory>
+        </Card.Header>
+        <Card.Content>
+          <ZoomableChartBar
+            config={barChartBigDatasetConfig}
+            data={barChartBigDatasetData}
+            dataKey="day"
+            referenceLine={{
+              value: 30000,
+              label: "Max concurrency",
+            }}
+          />
+        </Card.Content>
+      </Card>
       <Card>
         <Card.Header>Bar Chart – stacked</Card.Header>
         <Card.Content>
