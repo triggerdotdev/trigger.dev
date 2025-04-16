@@ -1,5 +1,15 @@
 # trigger.dev
 
+## 4.0.0-v4-beta.3
+
+### Patch Changes
+
+- Improve usage flushing ([#1931](https://github.com/triggerdotdev/trigger.dev/pull/1931))
+- Fix stalled run detection ([#1934](https://github.com/triggerdotdev/trigger.dev/pull/1934))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.3`
+  - `@trigger.dev/build@4.0.0-v4-beta.3`
+
 ## 4.0.0-v4-beta.2
 
 ### Patch Changes

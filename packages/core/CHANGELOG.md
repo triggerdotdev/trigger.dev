@@ -1,5 +1,11 @@
 # internal-platform
 
+## 4.0.0-v4-beta.3
+
+### Patch Changes
+
+- Improve usage flushing ([#1931](https://github.com/triggerdotdev/trigger.dev/pull/1931))
+
 ## 4.0.0-v4-beta.2
 
 ### Patch Changes
