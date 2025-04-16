@@ -64,6 +64,8 @@ export class RunExecution {
   private taskRunProcess?: TaskRunProcess;
   private snapshotPoller?: RunExecutionSnapshotPoller;
 
+  private lastHeartbeat?: Date;
+
   constructor(opts: RunExecutionOptions) {
     this.id = randomBytes(4).toString("hex");
     this.workerManifest = opts.workerManifest;
@@ -884,6 +886,8 @@ export class RunExecution {
     if (!response.success) {
       this.sendDebugLog("Heartbeat: failed", { error: response.error });
     }
+
+    this.lastHeartbeat = new Date();
   }
 
   sendDebugLog(
@@ -900,6 +904,7 @@ export class RunExecution {
         snapshotId: this.currentSnapshotId,
         executionId: this.id,
         executionRestoreCount: this.restoreCount,
+        lastHeartbeat: this.lastHeartbeat?.toISOString(),
       },
     });
   }
