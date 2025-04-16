@@ -43,7 +43,7 @@ const Env = z.object({
   TRIGGER_SUPERVISOR_API_DOMAIN: z.string(),
   TRIGGER_SUPERVISOR_API_PORT: z.coerce.number(),
   TRIGGER_WORKER_INSTANCE_NAME: z.string(),
-  TRIGGER_HEARTBEAT_INTERVAL_SECONDS: z.coerce.number().default(30),
+  TRIGGER_HEARTBEAT_INTERVAL_SECONDS: z.coerce.number().default(20),
   TRIGGER_SNAPSHOT_POLL_INTERVAL_SECONDS: z.coerce.number().default(5),
   TRIGGER_SUCCESS_EXIT_CODE: z.coerce.number().default(0),
   TRIGGER_FAILURE_EXIT_CODE: z.coerce.number().default(1),
