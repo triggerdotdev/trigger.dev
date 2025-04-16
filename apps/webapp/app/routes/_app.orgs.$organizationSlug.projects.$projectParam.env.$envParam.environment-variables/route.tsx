@@ -284,21 +284,17 @@ export default function Page() {
             <TableBody>
               {groupedEnvironmentVariables.length > 0 ? (
                 groupedEnvironmentVariables.map((variable) => {
-                  let cellClassName = "";
+                  const cellClassName = "py-2";
                   let borderedCellClassName = "";
 
                   if (variable.occurences > 1) {
-                    cellClassName = "py-1";
                     borderedCellClassName =
-                      "relative after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-grid-bright";
+                      "relative after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-grid-bright group-hover/table-row:after:bg-grid-bright group-hover/table-row:before:bg-grid-bright";
                     if (variable.isLastTime) {
-                      cellClassName = "pt-1 pb-2";
                       borderedCellClassName = "";
                     } else if (variable.isFirstTime) {
-                      cellClassName = "pt-2 pb-1";
                     }
                   } else {
-                    cellClassName = "py-2";
                   }
 
                   return (
