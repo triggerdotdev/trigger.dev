@@ -14,8 +14,9 @@ import React from "react";
 
 //TODO: draw a separate line to indicate e.g. concurrency level
 //TODO: render a vertical line that follows the mouse
+//TODO: drag on the chart to zoom in
 
-export function ChartStacked({
+export function ChartBar({
   config,
   data,
   dataKey,
@@ -197,87 +198,7 @@ export function ChartStacked({
   );
 }
 
-export function ChartBar({
-  config,
-  data,
-  dataKey,
-  loading = false,
-}: {
-  config: ChartConfig;
-  data: any[];
-  dataKey: string;
-  loading?: boolean;
-}) {
-  return (
-    <ChartContainer config={config} className="min-h-full w-full">
-      {loading ? (
-        <ChartLoading />
-      ) : (
-        <BarChart accessibilityLayer data={data} barCategoryGap={2}>
-          <CartesianGrid vertical={false} stroke="#272A2E" />
-          <XAxis dataKey={dataKey} tickLine={false} tickMargin={8} axisLine={false} />
-          <YAxis axisLine={false} tickLine={false} tickMargin={8} />
-          <ChartTooltip
-            cursor={false}
-            animationDuration={200}
-            content={<ChartTooltipContent hideLabel />}
-          />
-          <Bar dataKey="value" fill="#6366F1" radius={4} />
-        </BarChart>
-      )}
-    </ChartContainer>
-  );
-}
-
 export function ChartLine({
-  config,
-  data,
-  dataKey,
-  loading = false,
-}: {
-  config: ChartConfig;
-  data: any[];
-  dataKey: string;
-  loading?: boolean;
-}) {
-  return (
-    <ChartContainer config={config} className="min-h-[200px] w-full">
-      {loading ? (
-        <ChartLoading />
-      ) : (
-        <LineChart
-          accessibilityLayer
-          data={data}
-          margin={{
-            left: 12,
-            right: 12,
-          }}
-        >
-          <CartesianGrid vertical={false} stroke="#272A2E" />
-          <XAxis dataKey={dataKey} tickLine={false} axisLine={false} tickMargin={8} />
-          <YAxis axisLine={false} tickLine={false} tickMargin={8} />
-          <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
-          <Line
-            dataKey="desktop"
-            type="linear"
-            stroke="var(--color-desktop)"
-            strokeWidth={2}
-            dot={false}
-          />
-          <Line
-            dataKey="mobile"
-            type="linear"
-            stroke="var(--color-mobile)"
-            strokeWidth={2}
-            dot={false}
-          />
-        </LineChart>
-      )}
-    </ChartContainer>
-  );
-}
-
-export function ChartStepped({
   config,
   data,
   dataKey,

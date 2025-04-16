@@ -1,45 +1,32 @@
 import { Button } from "~/components/primitives/Buttons";
 import { Card } from "~/components/primitives/charts/Card";
 import { type ChartConfig } from "~/components/primitives/charts/Chart";
-import {
-  BigNumber,
-  ChartBar,
-  ChartLine,
-  ChartStacked,
-  ChartStepped,
-} from "~/components/primitives/charts/Charts";
+import { BigNumber, ChartBar, ChartLine } from "~/components/primitives/charts/Charts";
 
 export default function Story() {
   return (
     <div className="grid grid-cols-2 gap-4 p-3">
       <Card>
-        <Card.Header>ChartStacked</Card.Header>
-        <Card.Content>
-          <ChartStacked config={stackedChartConfig} data={stackedChartData} dataKey="day" />
-        </Card.Content>
-      </Card>
-
-      <Card>
-        <Card.Header>ChartLine</Card.Header>
-        <Card.Content>
-          <ChartLine config={lineChartConfig} data={lineChartData} dataKey="day" />
-        </Card.Content>
-      </Card>
-      <Card>
-        <Card.Header>ChartBar</Card.Header>
+        <Card.Header>Bar Chart – stacked</Card.Header>
         <Card.Content>
           <ChartBar config={barChartConfig} data={barChartData} dataKey="day" />
         </Card.Content>
       </Card>
       <Card>
-        <Card.Header>ChartStepped</Card.Header>
+        <Card.Header>Bar Chart – big dataset</Card.Header>
         <Card.Content>
-          <ChartStepped config={lineChartConfig} data={lineChartData} dataKey="day" />
+          <ChartBar config={barChartBigDatasetConfig} data={barChartBigDatasetData} dataKey="day" />
+        </Card.Content>
+      </Card>
+      <Card>
+        <Card.Header>Line Chart – stepped</Card.Header>
+        <Card.Content>
+          <ChartLine config={lineChartConfig} data={lineChartData} dataKey="day" />
         </Card.Content>
       </Card>
       <Card>
         <Card.Header>
-          BigNumber
+          Big Number
           <Card.Accessory>
             <Button variant="secondary/small">Example button</Button>
           </Card.Accessory>
@@ -52,22 +39,7 @@ export default function Story() {
   );
 }
 
-const barChartConfig = {
-  value: {
-    label: "Runs",
-    color: "#6366F1",
-  },
-} satisfies ChartConfig;
-
-const barChartData = [
-  { day: "Nov 21", value: 186 },
-  { day: "Nov 22", value: 305 },
-  { day: "Nov 23", value: 237 },
-  { day: "Nov 24", value: 73 },
-  { day: "Nov 25", value: 209 },
-  { day: "Nov 26", value: 214 },
-  { day: "Nov 27", value: 546 },
-];
+// Mock chart data
 
 const lineChartConfig = {
   desktop: {
@@ -90,7 +62,7 @@ const lineChartData = [
   { day: "Nov 27", desktop: 546, mobile: 150 },
 ];
 
-const stackedChartConfig = {
+const barChartConfig = {
   completed: {
     label: "Completed",
     color: "#28BF5C",
@@ -111,7 +83,7 @@ const stackedChartConfig = {
 
 function generateRandomStackedData(numDays: number) {
   const data = [];
-  const startDate = new Date(2023, 10, 21); // Nov 21, 2023
+  const startDate = new Date(2023, 10, 21);
 
   for (let i = 0; i < numDays; i++) {
     const currentDate = new Date(startDate);
@@ -136,4 +108,101 @@ function generateRandomStackedData(numDays: number) {
   return data;
 }
 
-const stackedChartData = generateRandomStackedData(70);
+const barChartData = generateRandomStackedData(168);
+
+const taskVerbs = [
+  "sync",
+  "process",
+  "upload",
+  "extract",
+  "compress",
+  "schedule",
+  "convert",
+  "analyze",
+  "backup",
+  "validate",
+  "transform",
+  "optimize",
+];
+const taskNouns = [
+  "data",
+  "video",
+  "audio",
+  "image",
+  "file",
+  "document",
+  "pdf",
+  "media",
+  "content",
+  "backup",
+  "report",
+  "metadata",
+];
+
+function generateRandomTaskName() {
+  const verb = taskVerbs[Math.floor(Math.random() * taskVerbs.length)];
+  const noun = taskNouns[Math.floor(Math.random() * taskNouns.length)];
+  return `${verb}-${noun}`;
+}
+
+function generateRandomId() {
+  return Array.from({ length: 16 }, () => Math.floor(Math.random() * 36).toString(36)).join("");
+}
+
+const tailwindColors = {
+  red: "#EF4444",
+  orange: "#F97316",
+  amber: "#F59E0B",
+  yellow: "#EAB308",
+  lime: "#84CC16",
+  green: "#22C55E",
+  emerald: "#10B981",
+  teal: "#14B8A6",
+  cyan: "#06B6D4",
+  sky: "#0EA5E9",
+  blue: "#3B82F6",
+  indigo: "#6366F1",
+  violet: "#8B5CF6",
+  purple: "#A855F7",
+  fuchsia: "#D946EF",
+  pink: "#EC4899",
+  rose: "#F43F5E",
+};
+
+function generateTaskConfig(numTasks: number) {
+  const colors = Object.values(tailwindColors);
+  return Array.from({ length: numTasks }, () => {
+    const taskName = generateRandomTaskName();
+    return {
+      [taskName]: {
+        label: taskName,
+        color: colors[Math.floor(Math.random() * colors.length)],
+      },
+    };
+  }).reduce((acc, curr) => ({ ...acc, ...curr }), {}) satisfies ChartConfig;
+}
+
+const barChartBigDatasetConfig = generateTaskConfig(8);
+
+function generateRandomBigDatasetData(numDays: number) {
+  const data = [];
+  const startDate = new Date(2023, 10, 21);
+  const taskNames = Object.keys(barChartBigDatasetConfig);
+
+  for (let i = 0; i < numDays; i++) {
+    const currentDate = new Date(startDate);
+    currentDate.setDate(startDate.getDate() + i);
+    const day = currentDate.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+
+    const dataPoint: Record<string, string | number> = { day };
+    taskNames.forEach((taskName) => {
+      dataPoint[taskName] = Math.random() < 0.5 ? 0 : Math.floor(Math.random() * 10000) + 500;
+    });
+
+    data.push(dataPoint);
+  }
+
+  return data;
+}
+
+const barChartBigDatasetData = generateRandomBigDatasetData(70);
