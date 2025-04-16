@@ -43,6 +43,8 @@ export function useKapaWidget() {
     };
   }, [features.isManagedCloud, kapa?.websiteId, disableShortcuts, enableShortcuts]);
 
+  //todo remove listeners
+
   const openKapa = useCallback(() => {
     if (!features.isManagedCloud || !kapa?.websiteId) return;
 
