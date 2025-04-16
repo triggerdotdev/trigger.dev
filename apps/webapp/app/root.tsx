@@ -52,7 +52,7 @@ export const meta: MetaFunction = ({ data }) => {
   ];
 };
 
-export function useKapa() {
+export function useKapaConfig() {
   const matches = useMatches();
   const routeMatch = useTypedMatchesData<typeof loader>({
     id: "root",
