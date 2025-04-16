@@ -91,10 +91,14 @@ export interface Repository {
   /**
    * Get the environment variables for a given environment, it does NOT return values for secret variables
    */
-  getEnvironment(
+  getEnvironmentWithRedactedSecrets(
     projectId: string,
     environmentId: string
   ): Promise<EnvironmentVariableWithSecret[]>;
+  /**
+   * Get the environment variables for a given environment
+   */
+  getEnvironment(projectId: string, environmentId: string): Promise<EnvironmentVariable[]>;
   /**
    * Return all env vars, including secret variables with values. Should only be used for executing tasks.
    */
