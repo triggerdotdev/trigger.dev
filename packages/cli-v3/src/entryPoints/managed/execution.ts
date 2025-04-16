@@ -953,5 +953,6 @@ export class RunExecution {
 
   private stopServices() {
     this.snapshotPoller?.stop();
+    this.taskRunProcess?.onTaskRunHeartbeat.detach();
   }
 }
