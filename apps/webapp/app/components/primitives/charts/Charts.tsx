@@ -11,21 +11,30 @@ import { cn } from "~/utils/cn";
 import { AnimatedNumber } from "../AnimatedNumber";
 import { Spinner } from "../Spinner";
 import React from "react";
+import { Button } from "../Buttons";
+import { Paragraph } from "../Paragraph";
 
-//TODO: draw a separate line to indicate e.g. concurrency level
+//TODO: cap the number of legend items
+//TODO: display the hovered over bar in the legend if it's not visible in the legend
+//TODO: do a better job of showing extra data in the legend - like in a table
+//TODO: hover over a bar and dim all other bars
 //TODO: render a vertical line that follows the mouse
 //TODO: drag on the chart to zoom in
+//TODO: draw a separate line to indicate e.g. concurrency level
+//TODO: fix the first and last bars not having rounded corners
 
 export function ChartBar({
   config,
   data,
   dataKey,
   loading = false,
+  maxLegendItems = 5,
 }: {
   config: ChartConfig;
   data: any[];
   dataKey: string;
   loading?: boolean;
+  maxLegendItems?: number;
 }) {
   const [opacity, setOpacity] = React.useState<Record<string, number>>({});
   const [activePayload, setActivePayload] = React.useState<any[] | null>(null);
@@ -72,6 +81,34 @@ export function ChartBar({
       return acc;
     }, {} as Record<string, string | number>),
   } as React.CSSProperties;
+
+  // Prepare legend payload with capped items
+  const legendPayload = React.useMemo(() => {
+    const allPayload = dataKeys.map((key) => ({
+      dataKey: key,
+      type: "rect" as const,
+      color: config[key].color,
+      value: key,
+      payload: {} as any,
+    }));
+
+    if (allPayload.length <= maxLegendItems) {
+      return allPayload;
+    }
+
+    const visiblePayload = allPayload.slice(0, maxLegendItems);
+    const remainingCount = allPayload.length - maxLegendItems;
+
+    visiblePayload.push({
+      dataKey: "view-more",
+      type: "rect" as const,
+      color: "transparent",
+      value: "view-more",
+      payload: { remainingCount } as any,
+    });
+
+    return visiblePayload;
+  }, [config, dataKeys, maxLegendItems]);
 
   return (
     <ChartContainer
@@ -168,6 +205,7 @@ export function ChartBar({
             content={
               <ChartLegendContentRows
                 onMouseEnter={(data) => {
+                  if (data.dataKey === "view-more") return;
                   setActiveBarKey(data.dataKey);
                   setOpacity((op) =>
                     Object.keys(op).reduce((acc, k) => {
@@ -189,8 +227,13 @@ export function ChartBar({
                 data={currentData}
                 animationDuration={animationDuration}
                 activeKey={activeBarKey}
+                payload={legendPayload}
+                renderViewMore={(remainingCount: number) => (
+                  <ViewAllDataRow remainingCount={remainingCount} />
+                )}
               />
             }
+            payload={legendPayload}
           />
         </BarChart>
       )}
@@ -313,3 +356,19 @@ const XAxisTooltip = ({ active, payload, label, viewBox, coordinate }: any) => {
     </div>
   );
 };
+
+function ViewAllDataRow({ remainingCount }: { remainingCount: number }) {
+  return (
+    <Button variant="minimal/small" fullWidth iconSpacing="justify-between" className="px-2 py-1">
+      <div className="flex items-center gap-1.5 text-text-dimmed">
+        <div className="h-3 w-1 rounded-[2px] border border-charcoal-600" />
+        <Paragraph variant="extra-small" className="tabular-nums">
+          {remainingCount} more…
+        </Paragraph>
+      </div>
+      <Paragraph variant="extra-small" className="text-indigo-500">
+        View all
+      </Paragraph>
+    </Button>
+  );
+}

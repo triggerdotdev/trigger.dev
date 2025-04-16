@@ -239,6 +239,12 @@ ChartTooltipContent.displayName = "ChartTooltip";
 
 const ChartLegend = RechartsPrimitive.Legend;
 
+type ExtendedLegendPayload = Parameters<
+  NonNullable<RechartsPrimitive.LegendProps["formatter"]>
+>[0] & {
+  payload?: { remainingCount?: number };
+};
+
 const ChartLegendContent = React.forwardRef<
   HTMLDivElement,
   React.ComponentProps<"div"> &
@@ -295,7 +301,8 @@ ChartLegendContent.displayName = "ChartLegend";
 const ChartLegendContentRows = React.forwardRef<
   HTMLDivElement,
   React.ComponentProps<"div"> &
-    Pick<RechartsPrimitive.LegendProps, "payload" | "verticalAlign"> & {
+    Omit<Pick<RechartsPrimitive.LegendProps, "payload" | "verticalAlign">, "payload"> & {
+      payload?: ExtendedLegendPayload[];
       hideIcon?: boolean;
       nameKey?: string;
       onMouseEnter?: (e: any) => void;
@@ -303,6 +310,7 @@ const ChartLegendContentRows = React.forwardRef<
       data?: Record<string, number>;
       animationDuration?: number;
       activeKey?: string | null;
+      renderViewMore?: (remainingCount: number) => React.ReactNode;
     }
 >(
   (
@@ -317,6 +325,7 @@ const ChartLegendContentRows = React.forwardRef<
       data,
       animationDuration,
       activeKey,
+      renderViewMore,
     },
     ref
   ) => {
@@ -338,6 +347,12 @@ const ChartLegendContentRows = React.forwardRef<
         {payload.map((item) => {
           const key = `${nameKey || item.dataKey || "value"}`;
           const itemConfig = getPayloadConfigFromPayload(config, item, key);
+
+          // Handle view more button
+          if (item.dataKey === "view-more" && renderViewMore && item.payload?.remainingCount) {
+            return renderViewMore(item.payload.remainingCount);
+          }
+
           const total = item.dataKey && data ? data[item.dataKey as string] : undefined;
 
           return (
@@ -365,12 +380,14 @@ const ChartLegendContentRows = React.forwardRef<
                   {itemConfig?.icon && !hideIcon ? (
                     <itemConfig.icon />
                   ) : (
-                    <div
-                      className="h-3 w-1 shrink-0 rounded-[2px]"
-                      style={{
-                        backgroundColor: item.color,
-                      }}
-                    />
+                    item.color && (
+                      <div
+                        className="h-3 w-1 shrink-0 rounded-[2px]"
+                        style={{
+                          backgroundColor: item.color,
+                        }}
+                      />
+                    )
                   )}
                   {itemConfig?.label && (
                     <span
