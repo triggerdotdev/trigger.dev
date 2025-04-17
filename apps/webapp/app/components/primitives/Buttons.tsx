@@ -177,6 +177,7 @@ export type ButtonContentPropsType = {
   shortcutPosition?: "before-trailing-icon" | "after-trailing-icon";
   tooltip?: ReactNode;
   iconSpacing?: string;
+  hideShortcutKey?: boolean;
 };
 
 export function ButtonContent(props: ButtonContentPropsType) {
@@ -192,6 +193,7 @@ export function ButtonContent(props: ButtonContentPropsType) {
     className,
     tooltip,
     iconSpacing,
+    hideShortcutKey,
   } = props;
   const variation = allVariants.variant[props.variant];
 
@@ -202,7 +204,8 @@ export function ButtonContent(props: ButtonContentPropsType) {
   const textColorClassName = variation.textColor;
 
   const renderShortcutKey = () =>
-    shortcut && (
+    shortcut &&
+    !hideShortcutKey && (
       <ShortcutKey
         className={cn(shortcutClassName)}
         shortcut={shortcut}

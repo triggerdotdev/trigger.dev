@@ -1,8 +1,10 @@
+import { useState } from "react";
 import { Button } from "~/components/primitives/Buttons";
 import { Header1 } from "~/components/primitives/Headers";
 import { OperatingSystemContextProvider } from "~/components/primitives/OperatingSystemProvider";
 import { ShortcutKey } from "~/components/primitives/ShortcutKey";
-import { ShortcutDefinition } from "~/hooks/useShortcutKeys";
+import { useShortcuts } from "~/components/primitives/ShortcutsProvider";
+import { type ShortcutDefinition } from "~/hooks/useShortcutKeys";
 
 const shortcuts: ShortcutDefinition[] = [
   { key: "esc" },
@@ -19,6 +21,10 @@ const shortcuts: ShortcutDefinition[] = [
 export default function Story() {
   return (
     <div className="flex flex-col items-start gap-y-4 p-12">
+      <div className="flex flex-col gap-y-4">
+        <Header1 spacing>Enable/disable</Header1>
+        <DisableTester />
+      </div>
       <Collection platform="mac" />
       <Collection platform="windows" />
     </div>
@@ -64,5 +70,35 @@ function Collection({ platform }: { platform: "mac" | "windows" }) {
         </div>
       ))}
     </OperatingSystemContextProvider>
+  );
+}
+
+function DisableTester() {
+  const { disableShortcuts, enableShortcuts, areShortcutsEnabled } = useShortcuts();
+  const [count, setCount] = useState(0);
+
+  return (
+    <div className="flex flex-col gap-y-4">
+      <div className="flex items-center gap-x-4">
+        <div>Shortcuts are: {areShortcutsEnabled ? "Enabled" : "Disabled"}</div>
+        <Button
+          variant="primary/small"
+          onClick={() => (areShortcutsEnabled ? disableShortcuts() : enableShortcuts())}
+        >
+          {areShortcutsEnabled ? "Disable" : "Enable"} Shortcuts
+        </Button>
+      </div>
+
+      <div className="flex items-center gap-x-4">
+        <Button
+          variant="secondary/medium"
+          shortcut={{ key: "i" }}
+          onClick={() => setCount((c) => c + 1)}
+        >
+          Increment Counter
+        </Button>
+        <div>Count: {count}</div>
+      </div>
+    </div>
   );
 }

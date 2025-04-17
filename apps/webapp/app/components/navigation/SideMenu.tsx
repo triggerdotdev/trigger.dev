@@ -76,6 +76,14 @@ import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
 import { SideMenuSection } from "./SideMenuSection";
+import { useShortcutKeys } from "~/hooks/useShortcutKeys";
+import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
+import { ShortcutKey } from "../primitives/ShortcutKey";
+import { useFeatures } from "~/hooks/useFeatures";
+import { useKapaConfig } from "~/root";
+import { useShortcuts } from "~/components/primitives/ShortcutsProvider";
+import { useKapaWidget } from "../../hooks/useKapaWidget";
+import { ShortcutsAutoOpen } from "../Shortcuts";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 export type SideMenuProject = Pick<
@@ -276,7 +284,9 @@ export function SideMenu({
         </div>
       </div>
       <div className="flex flex-col gap-1 border-t border-grid-bright p-1">
-        <HelpAndFeedback />
+        <div className="flex w-full items-center justify-between">
+          <HelpAndAI />
+        </div>
         {isFreeUser && (
           <FreePlanUsage
             to={v3BillingPath(organization)}
@@ -536,5 +546,45 @@ function SelectorDivider() {
         strokeLinecap="round"
       />
     </svg>
+  );
+}
+
+function HelpAndAI() {
+  const { isKapaEnabled, openKapa, isKapaOpen } = useKapaWidget();
+
+  return (
+    <>
+      <ShortcutsAutoOpen />
+      <HelpAndFeedback disableShortcut={isKapaOpen} />
+      {isKapaEnabled && (
+        <TooltipProvider disableHoverableContent>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="inline-flex">
+                <Button
+                  variant="small-menu-item"
+                  data-action="ask-ai"
+                  shortcut={{ modifiers: ["mod"], key: "/", enabledOnInputElements: true }}
+                  hideShortcutKey
+                  data-modal-override-open-class-ask-ai="true"
+                  onClick={() => {
+                    openKapa();
+                  }}
+                >
+                  <AISparkleIcon className="size-5" />
+                </Button>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent
+              side="top"
+              className="flex items-center gap-1 py-1.5 pl-2.5 pr-2 text-xs"
+            >
+              Ask AI
+              <ShortcutKey shortcut={{ modifiers: ["mod"], key: "/" }} variant="medium/bright" />
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      )}
+    </>
   );
 }

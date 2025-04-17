@@ -1,19 +1,35 @@
 import type { LinksFunction, LoaderFunctionArgs, MetaFunction } from "@remix-run/node";
 import type { ShouldRevalidateFunction } from "@remix-run/react";
-import { Links, LiveReload, Meta, Outlet, Scripts, ScrollRestoration } from "@remix-run/react";
-import { UseDataFunctionReturn, typedjson, useTypedLoaderData } from "remix-typedjson";
+import {
+  Links,
+  LiveReload,
+  Meta,
+  Outlet,
+  Scripts,
+  ScrollRestoration,
+  useMatches,
+} from "@remix-run/react";
+import { type UseDataFunctionReturn, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { ExternalScripts } from "remix-utils/external-scripts";
 import type { ToastMessage } from "~/models/message.server";
 import { commitSession, getSession } from "~/models/message.server";
 import tailwindStylesheetUrl from "~/tailwind.css";
 import { RouteErrorDisplay } from "./components/ErrorDisplay";
 import { AppContainer, MainCenteredContainer } from "./components/layout/AppLayout";
+import { ShortcutsProvider } from "./components/primitives/ShortcutsProvider";
 import { Toast } from "./components/primitives/Toast";
 import { env } from "./env.server";
 import { featuresForRequest } from "./features.server";
 import { usePostHog } from "./hooks/usePostHog";
+import { useTypedMatchesData } from "./hooks/useTypedMatchData";
 import { getUser } from "./services/session.server";
 import { appEnvTitleTag } from "./utils";
+
+declare global {
+  interface Window {
+    Kapa: (command: string, options?: (() => void) | { onRender?: () => void }) => void;
+  }
+}
 
 export const links: LinksFunction = () => {
   return [{ rel: "stylesheet", href: tailwindStylesheetUrl }];
@@ -34,11 +50,24 @@ export const meta: MetaFunction = ({ data }) => {
   ];
 };
 
+export function useKapaConfig() {
+  const matches = useMatches();
+  const routeMatch = useTypedMatchesData<typeof loader>({
+    id: "root",
+    matches,
+  });
+  return routeMatch?.kapa;
+}
+
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const session = await getSession(request.headers.get("cookie"));
   const toastMessage = session.get("toastMessage") as ToastMessage;
   const posthogProjectKey = env.POSTHOG_PROJECT_KEY;
   const features = featuresForRequest(request);
+
+  const kapa = {
+    websiteId: env.KAPA_AI_WEBSITE_ID,
+  };
 
   return typedjson(
     {
@@ -48,6 +77,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       features,
       appEnv: env.APP_ENV,
       appOrigin: env.APP_ORIGIN,
+      kapa,
     },
     { headers: { "Set-Cookie": await commitSession(session) } }
   );
@@ -73,7 +103,7 @@ export function ErrorBoundary() {
           <Meta />
           <Links />
         </head>
-        <body className="bg-darkBackground h-full overflow-hidden">
+        <body className="h-full overflow-hidden bg-background-dimmed">
           <AppContainer>
             <MainCenteredContainer>
               <RouteErrorDisplay />
@@ -86,7 +116,7 @@ export function ErrorBoundary() {
   );
 }
 
-function App() {
+export default function App() {
   const { posthogProjectKey } = useTypedLoaderData<typeof loader>();
   usePostHog(posthogProjectKey);
 
@@ -97,9 +127,11 @@ function App() {
           <Meta />
           <Links />
         </head>
-        <body className="bg-darkBackground h-full overflow-hidden">
-          <Outlet />
-          <Toast />
+        <body className="h-full overflow-hidden bg-background-dimmed">
+          <ShortcutsProvider>
+            <Outlet />
+            <Toast />
+          </ShortcutsProvider>
           <ScrollRestoration />
           <ExternalScripts />
           <Scripts />
@@ -109,5 +141,3 @@ function App() {
     </>
   );
 }
-
-export default App;
