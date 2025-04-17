@@ -1,12 +1,8 @@
 import { Button } from "~/components/primitives/Buttons";
 import { Card } from "~/components/primitives/charts/Card";
 import { type ChartConfig } from "~/components/primitives/charts/Chart";
-import {
-  BigNumber,
-  ChartBar,
-  ChartLine,
-  ZoomableChartBar,
-} from "~/components/primitives/charts/Charts";
+import { BigNumber, ChartBar } from "~/components/primitives/charts/ChartBar";
+import { ChartLine } from "~/components/primitives/charts/ChartLine";
 
 export default function Story() {
   return (
@@ -19,7 +15,7 @@ export default function Story() {
           </Card.Accessory>
         </Card.Header>
         <Card.Content>
-          <ZoomableChartBar
+          <ChartBar
             config={barChartBigDatasetConfig}
             data={barChartBigDatasetData}
             dataKey="day"
