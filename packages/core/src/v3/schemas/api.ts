@@ -432,6 +432,7 @@ export const DevConfigResponseBody = z.object({
   dequeueIntervalWithRun: z.number(),
   dequeueIntervalWithoutRun: z.number(),
   maxConcurrentRuns: z.number(),
+  engineUrl: z.string(),
 });
 export type DevConfigResponseBody = z.infer<typeof DevConfigResponseBody>;
 
