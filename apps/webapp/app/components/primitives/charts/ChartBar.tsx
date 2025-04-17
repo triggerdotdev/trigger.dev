@@ -28,7 +28,7 @@ import { ChartLoading } from "./ChartLoading";
 //TODO: set the chart data when zooming to only get the new start and end dates
 //TODO: make the text on the chart not selectable when zooming
 //TODO: do a better job of showing extra data in the legend - like in a table
-//TODO: render a vertical line that follows the mouse - show this on all charts
+//TODO: render a vertical line that follows the mouse - show this on all charts. Use a reference line
 //TODO: hover over a single bar in the stack and dim all other bars
 //TODO: fix the first and last bars not having rounded corners
 
