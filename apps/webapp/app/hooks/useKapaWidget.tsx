@@ -76,12 +76,18 @@ function loadScriptIfNotExists(websiteId: string) {
   const attributes = {
     "data-website-id": websiteId,
     "data-project-name": "Trigger.dev",
-    "data-project-color": "#6366F1",
-    "data-project-logo": "https://content.trigger.dev/trigger-logo-triangle.png",
+    "data-project-color": "#C7D2FE",
+    "data-project-logo": "https://content.trigger.dev/trigger-logo-circle.png",
     "data-render-on-load": "false",
     "data-button-hide": "true",
     "data-modal-disclaimer-bg-color": "#1A1B1F",
     "data-modal-disclaimer-text-color": "#878C99",
+    "data-modal-header-bg-color": "#2C3034",
+    "data-modal-body-bg-color": "#4D525B",
+    "data-query-input-text-color": "#15171A",
+    "data-query-input-placeholder-text-color": "#878C99",
+    "data-modal-title-color": "#D7D9DD",
+    "data-button-text-color": "#D7D9DD",
   };
 
   Object.entries(attributes).forEach(([key, value]) => {
