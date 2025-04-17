@@ -543,6 +543,8 @@ export class WaitpointSystem {
             }
           );
 
+          await this.releaseConcurrencySystem.refillTokensForSnapshot(snapshot);
+
           await sendNotificationToWorker({
             runId,
             snapshot: newSnapshot,

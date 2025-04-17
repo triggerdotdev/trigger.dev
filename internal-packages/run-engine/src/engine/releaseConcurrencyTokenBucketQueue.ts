@@ -259,6 +259,59 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
     });
   }
 
+  public async getReleaseQueueMetrics(releaseQueueDescriptor: T) {
+    const releaseQueue = this.keys.fromDescriptor(releaseQueueDescriptor);
+    const currentTokensRaw = await this.redis.get(this.#bucketKey(releaseQueue));
+    const queueLength = await this.redis.zcard(this.#queueKey(releaseQueue));
+
+    const currentTokens = currentTokensRaw ? Number(currentTokensRaw) : undefined;
+
+    return { currentTokens, queueLength };
+  }
+
+  /**
+   * Refill a token only if the releaserId is not in the release queue.
+   * Returns true if the token was refilled, false if the releaserId was found in the queue.
+   */
+  public async refillTokenIfNotInQueue(
+    releaseQueueDescriptor: T,
+    releaserId: string
+  ): Promise<boolean> {
+    const maxTokens = await this.#callMaxTokens(releaseQueueDescriptor);
+    const releaseQueue = this.keys.fromDescriptor(releaseQueueDescriptor);
+
+    if (maxTokens === 0) {
+      this.logger.debug("No tokens available, skipping refill", {
+        releaseQueueDescriptor,
+        releaserId,
+        maxTokens,
+        releaseQueue,
+      });
+
+      return false;
+    }
+
+    const result = await this.redis.refillTokenIfNotInQueue(
+      this.masterQueuesKey,
+      this.#bucketKey(releaseQueue),
+      this.#queueKey(releaseQueue),
+      this.#metadataKey(releaseQueue),
+      releaseQueue,
+      releaserId,
+      String(maxTokens)
+    );
+
+    this.logger.debug("Attempted to refill token if not in queue", {
+      releaseQueueDescriptor,
+      releaserId,
+      maxTokens,
+      releaseQueue,
+      result,
+    });
+
+    return result === "true";
+  }
+
   /**
    * Get the next queue that has available capacity and process one item from it
    * Returns true if an item was processed, false if no items were available
@@ -783,6 +836,51 @@ end
 return true
       `,
     });
+
+    this.redis.defineCommand("refillTokenIfNotInQueue", {
+      numberOfKeys: 4,
+      lua: `
+local masterQueuesKey = KEYS[1]
+local bucketKey = KEYS[2]
+local queueKey = KEYS[3]
+local metadataKey = KEYS[4]
+
+local releaseQueue = ARGV[1]
+local releaserId = ARGV[2]
+local maxTokens = tonumber(ARGV[3])
+
+-- Check if the releaserId is in the queue
+local score = redis.call("ZSCORE", queueKey, releaserId)
+if score then
+  -- Item is in queue, don't refill token
+  return redis.status_reply("false")
+end
+
+-- Return the token to the bucket
+local currentTokens = tonumber(redis.call("GET", bucketKey) or maxTokens)
+local remainingTokens = currentTokens + 1
+
+-- Don't exceed maxTokens
+if remainingTokens > maxTokens then
+  remainingTokens = maxTokens
+end
+
+redis.call("SET", bucketKey, remainingTokens)
+
+-- Clean up any metadata just in case
+redis.call("HDEL", metadataKey, releaserId)
+
+-- Update the master queue based on remaining queue length
+local queueLength = redis.call("ZCARD", queueKey)
+if queueLength > 0 then
+  redis.call("ZADD", masterQueuesKey, remainingTokens, releaseQueue)
+else
+  redis.call("ZREM", masterQueuesKey, releaseQueue)
+end
+
+return redis.status_reply("true")
+      `,
+    });
   }
 }
 
@@ -839,6 +937,17 @@ declare module "@internal/redis" {
       releaserId: string,
       callback?: Callback<void>
     ): Result<void, Context>;
+
+    refillTokenIfNotInQueue(
+      masterQueuesKey: string,
+      bucketKey: string,
+      queueKey: string,
+      metadataKey: string,
+      releaseQueue: string,
+      releaserId: string,
+      maxTokens: string,
+      callback?: Callback<string>
+    ): Result<string, Context>;
   }
 }
 

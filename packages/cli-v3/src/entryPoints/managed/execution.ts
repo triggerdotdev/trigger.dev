@@ -14,7 +14,6 @@ import { RunLogger, SendDebugLogOptions } from "./logger.js";
 import { RunnerEnv } from "./env.js";
 import { WorkloadHttpClient } from "@trigger.dev/core/v3/workers";
 import { setTimeout as sleep } from "timers/promises";
-import { RunExecutionHeartbeat } from "./heartbeat.js";
 import { RunExecutionSnapshotPoller } from "./poller.js";
 import { assertExhaustive, tryCatch } from "@trigger.dev/core/utils";
 import { MetadataClient } from "./overrides.js";
@@ -63,8 +62,9 @@ export class RunExecution {
   private restoreCount: number;
 
   private taskRunProcess?: TaskRunProcess;
-  private runHeartbeat?: RunExecutionHeartbeat;
   private snapshotPoller?: RunExecutionSnapshotPoller;
+
+  private lastHeartbeat?: Date;
 
   constructor(opts: RunExecutionOptions) {
     this.id = randomBytes(4).toString("hex");
@@ -105,11 +105,12 @@ export class RunExecution {
     envVars: Record<string, string>;
     isWarmStart?: boolean;
   }) {
-    return new TaskRunProcess({
+    const taskRunProcess = new TaskRunProcess({
       workerManifest: this.workerManifest,
       env: {
         ...envVars,
         ...this.env.gatherProcessEnv(),
+        HEARTBEAT_INTERVAL_MS: String(this.env.TRIGGER_HEARTBEAT_INTERVAL_SECONDS * 1000),
       },
       serverWorker: {
         id: "managed",
@@ -123,6 +124,29 @@ export class RunExecution {
       },
       isWarmStart,
     }).initialize();
+
+    taskRunProcess.onTaskRunHeartbeat.attach(async (runId) => {
+      if (!this.runFriendlyId) {
+        this.sendDebugLog("onTaskRunHeartbeat: missing run ID", { heartbeatRunId: runId });
+        return;
+      }
+
+      if (runId !== this.runFriendlyId) {
+        this.sendDebugLog("onTaskRunHeartbeat: mismatched run ID", {
+          heartbeatRunId: runId,
+          expectedRunId: this.runFriendlyId,
+        });
+        return;
+      }
+
+      const [error] = await tryCatch(this.onHeartbeat());
+
+      if (error) {
+        this.sendDebugLog("onTaskRunHeartbeat: failed", { error: error.message });
+      }
+    });
+
+    return taskRunProcess;
   }
 
   /**
@@ -229,7 +253,6 @@ export class RunExecution {
     this.currentSnapshotId = snapshot.friendlyId;
 
     // Update services
-    this.runHeartbeat?.updateSnapshotId(snapshot.friendlyId);
     this.snapshotPoller?.updateSnapshotId(snapshot.friendlyId);
 
     switch (snapshot.executionStatus) {
@@ -450,13 +473,6 @@ export class RunExecution {
     this.podScheduledAt = runOpts.podScheduledAt;
 
     // Create and start services
-    this.runHeartbeat = new RunExecutionHeartbeat({
-      runFriendlyId: this.runFriendlyId,
-      snapshotFriendlyId: this.currentSnapshotId,
-      httpClient: this.httpClient,
-      logger: this.logger,
-      heartbeatIntervalSeconds: this.env.TRIGGER_HEARTBEAT_INTERVAL_SECONDS,
-    });
     this.snapshotPoller = new RunExecutionSnapshotPoller({
       runFriendlyId: this.runFriendlyId,
       snapshotFriendlyId: this.currentSnapshotId,
@@ -466,7 +482,6 @@ export class RunExecution {
       handleSnapshotChange: this.handleSnapshotChange.bind(this),
     });
 
-    this.runHeartbeat.start();
     this.snapshotPoller.start();
 
     const [startError, start] = await tryCatch(
@@ -839,9 +854,6 @@ export class RunExecution {
     this.env.override(overrides);
 
     // Update services with new values
-    if (overrides.TRIGGER_HEARTBEAT_INTERVAL_SECONDS) {
-      this.runHeartbeat?.updateInterval(this.env.TRIGGER_HEARTBEAT_INTERVAL_SECONDS * 1000);
-    }
     if (overrides.TRIGGER_SNAPSHOT_POLL_INTERVAL_SECONDS) {
       this.snapshotPoller?.updateInterval(this.env.TRIGGER_SNAPSHOT_POLL_INTERVAL_SECONDS * 1000);
     }
@@ -855,6 +867,28 @@ export class RunExecution {
     if (overrides.TRIGGER_RUNNER_ID) {
       this.httpClient.updateRunnerId(this.env.TRIGGER_RUNNER_ID);
     }
+  }
+
+  private async onHeartbeat() {
+    if (!this.runFriendlyId) {
+      this.sendDebugLog("Heartbeat: missing run ID");
+      return;
+    }
+
+    if (!this.currentSnapshotId) {
+      this.sendDebugLog("Heartbeat: missing snapshot ID");
+      return;
+    }
+
+    this.sendDebugLog("Heartbeat: started");
+
+    const response = await this.httpClient.heartbeatRun(this.runFriendlyId, this.currentSnapshotId);
+
+    if (!response.success) {
+      this.sendDebugLog("Heartbeat: failed", { error: response.error });
+    }
+
+    this.lastHeartbeat = new Date();
   }
 
   sendDebugLog(
@@ -871,6 +905,7 @@ export class RunExecution {
         snapshotId: this.currentSnapshotId,
         executionId: this.id,
         executionRestoreCount: this.restoreCount,
+        lastHeartbeat: this.lastHeartbeat?.toISOString(),
       },
     });
   }
@@ -917,7 +952,7 @@ export class RunExecution {
   }
 
   private stopServices() {
-    this.runHeartbeat?.stop();
     this.snapshotPoller?.stop();
+    this.taskRunProcess?.onTaskRunHeartbeat.detach();
   }
 }

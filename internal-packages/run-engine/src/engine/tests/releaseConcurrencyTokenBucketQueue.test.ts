@@ -713,4 +713,114 @@ describe("ReleaseConcurrencyQueue", () => {
       await queue.quit();
     }
   );
+
+  redisTest(
+    "refillTokenIfNotInQueue should refill token when releaserId is not in queue",
+    async ({ redisContainer }) => {
+      const { queue, executedRuns } = createReleaseConcurrencyQueue(redisContainer, 2);
+
+      try {
+        // Use up all tokens
+        await queue.attemptToRelease({ name: "test-queue" }, "run1");
+        await queue.attemptToRelease({ name: "test-queue" }, "run2");
+
+        // Verify tokens were used
+        expect(executedRuns).toHaveLength(2);
+
+        // Try to refill token for a releaserId that's not in queue
+        const wasRefilled = await queue.refillTokenIfNotInQueue({ name: "test-queue" }, "run3");
+        expect(wasRefilled).toBe(true);
+
+        // Verify we can now execute a new run
+        await queue.attemptToRelease({ name: "test-queue" }, "run3");
+        await setTimeout(100);
+        expect(executedRuns).toHaveLength(3);
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
+
+  redisTest(
+    "refillTokenIfNotInQueue should not refill token when releaserId is in queue",
+    async ({ redisContainer }) => {
+      const { queue, executedRuns } = createReleaseConcurrencyQueue(redisContainer, 1);
+
+      try {
+        // Use the only token
+        await queue.attemptToRelease({ name: "test-queue" }, "run1");
+        expect(executedRuns).toHaveLength(1);
+
+        // Queue up run2
+        await queue.attemptToRelease({ name: "test-queue" }, "run2");
+        expect(executedRuns).toHaveLength(1); // run2 is queued
+
+        // Try to refill token for run2 which is in queue
+        const wasRefilled = await queue.refillTokenIfNotInQueue({ name: "test-queue" }, "run2");
+        expect(wasRefilled).toBe(false);
+
+        // Verify run2 is still queued by refilling a token normally
+        await queue.refillTokens({ name: "test-queue" }, 1);
+        await setTimeout(100);
+        expect(executedRuns).toHaveLength(2);
+        expect(executedRuns[1]).toEqual({ releaseQueue: "test-queue", runId: "run2" });
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
+
+  redisTest(
+    "refillTokenIfNotInQueue should handle multiple queues independently",
+    async ({ redisContainer }) => {
+      const { queue, executedRuns } = createReleaseConcurrencyQueue(redisContainer, 1);
+
+      try {
+        // Use tokens in both queues
+        await queue.attemptToRelease({ name: "queue1" }, "run1");
+        await queue.attemptToRelease({ name: "queue2" }, "run2");
+        expect(executedRuns).toHaveLength(2);
+
+        // Queue up more runs
+        await queue.attemptToRelease({ name: "queue1" }, "run3");
+        await queue.attemptToRelease({ name: "queue2" }, "run4");
+        expect(executedRuns).toHaveLength(2); // run3 and run4 are queued
+
+        // Try to refill tokens for different releaserIds
+        const wasRefilled1 = await queue.refillTokenIfNotInQueue({ name: "queue1" }, "run5");
+        const wasRefilled2 = await queue.refillTokenIfNotInQueue({ name: "queue2" }, "run4");
+
+        expect(wasRefilled1).toBe(true); // run5 not in queue1
+        expect(wasRefilled2).toBe(false); // run4 is in queue2
+
+        // Verify queue1 can execute a new run with the refilled token
+        await queue.attemptToRelease({ name: "queue1" }, "run5");
+        await setTimeout(100);
+        expect(executedRuns).toHaveLength(3);
+        expect(executedRuns[2]).toEqual({ releaseQueue: "queue1", runId: "run5" });
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
+
+  redisTest("refillTokenIfNotInQueue should not exceed maxTokens", async ({ redisContainer }) => {
+    const { queue } = createReleaseConcurrencyQueue(redisContainer, 1);
+
+    try {
+      // First refill should work
+      const firstRefill = await queue.refillTokenIfNotInQueue({ name: "test-queue" }, "run1");
+      expect(firstRefill).toBe(true);
+
+      // Second refill should work but not exceed maxTokens
+      const secondRefill = await queue.refillTokenIfNotInQueue({ name: "test-queue" }, "run2");
+      expect(secondRefill).toBe(true);
+
+      // Get metrics to verify token count
+      const metrics = await queue.getReleaseQueueMetrics({ name: "test-queue" });
+      expect(metrics.currentTokens).toBe(1); // Should not exceed maxTokens
+    } finally {
+      await queue.quit();
+    }
+  });
 });

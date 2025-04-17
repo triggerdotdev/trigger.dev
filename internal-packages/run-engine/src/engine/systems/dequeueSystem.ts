@@ -11,23 +11,27 @@ import { ExecutionSnapshotSystem, getLatestExecutionSnapshot } from "./execution
 import { RunAttemptSystem } from "./runAttemptSystem.js";
 import { SystemResources } from "./systems.js";
 import { sendNotificationToWorker } from "../eventBus.js";
+import { ReleaseConcurrencySystem } from "./releaseConcurrencySystem.js";
 
 export type DequeueSystemOptions = {
   resources: SystemResources;
   machines: RunEngineOptions["machines"];
   executionSnapshotSystem: ExecutionSnapshotSystem;
   runAttemptSystem: RunAttemptSystem;
+  releaseConcurrencySystem: ReleaseConcurrencySystem;
 };
 
 export class DequeueSystem {
   private readonly $: SystemResources;
   private readonly executionSnapshotSystem: ExecutionSnapshotSystem;
   private readonly runAttemptSystem: RunAttemptSystem;
+  private readonly releaseConcurrencySystem: ReleaseConcurrencySystem;
 
   constructor(private readonly options: DequeueSystemOptions) {
     this.$ = options.resources;
     this.executionSnapshotSystem = options.executionSnapshotSystem;
     this.runAttemptSystem = options.runAttemptSystem;
+    this.releaseConcurrencySystem = options.releaseConcurrencySystem;
   }
 
   /**
@@ -157,6 +161,12 @@ export class DequeueSystem {
                     })),
                   }
                 );
+
+                if (snapshot.previousSnapshotId) {
+                  await this.releaseConcurrencySystem.refillTokensForSnapshot(
+                    snapshot.previousSnapshotId
+                  );
+                }
 
                 await sendNotificationToWorker({
                   runId,
