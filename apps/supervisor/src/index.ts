@@ -118,6 +118,7 @@ class ManagedSupervisor {
       dequeueIntervalMs: env.TRIGGER_DEQUEUE_INTERVAL_MS,
       queueConsumerEnabled: env.TRIGGER_DEQUEUE_ENABLED,
       maxRunCount: env.TRIGGER_DEQUEUE_MAX_RUN_COUNT,
+      maxConsumerCount: env.TRIGGER_DEQUEUE_MAX_CONSUMER_COUNT,
       runNotificationsEnabled: env.TRIGGER_WORKLOAD_API_ENABLED,
       preDequeue: async () => {
         if (this.isKubernetes) {
