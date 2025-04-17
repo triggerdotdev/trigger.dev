@@ -23,8 +23,8 @@ export class BatchSystem {
       id: `tryCompleteBatch:${batchId}`,
       job: "tryCompleteBatch",
       payload: { batchId: batchId },
-      //2s in the future
-      availableAt: new Date(Date.now() + 2_000),
+      //200ms in the future
+      availableAt: new Date(Date.now() + 200),
     });
   }
 
