@@ -1,5 +1,13 @@
 # @trigger.dev/sdk
 
+## 4.0.0-v4-beta.4
+
+### Patch Changes
+
+- maintain proper context in metadata.root and parent getters ([#1917](https://github.com/triggerdotdev/trigger.dev/pull/1917))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.4`
+
 ## 4.0.0-v4-beta.3
 
 ### Patch Changes
