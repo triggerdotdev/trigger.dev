@@ -61,18 +61,14 @@ import { docsPath, EnvironmentParamSchema, v3BillingPath, v3RunsPath } from "~/u
 import { PauseEnvironmentService } from "~/v3/services/pauseEnvironment.server";
 import { PauseQueueService } from "~/v3/services/pauseQueue.server";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
-<<<<<<< ours
 import { Header3 } from "~/components/primitives/Headers";
 import { Input } from "~/components/primitives/Input";
 import { useThrottle } from "~/hooks/useThrottle";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { useAutoRevalidate } from "~/hooks/useAutoRevalidate";
 import { env } from "~/env.server";
-||||||| ancestor
-=======
-import { BigNumber } from "~/components/primitives/charts/Charts";
+import { BigNumber } from "~/components/primitives/charts/ChartBar";
 import { Card } from "~/components/primitives/charts/Card";
->>>>>>> theirs
 
 const SearchParamsSchema = z.object({
   query: z.string().optional(),
