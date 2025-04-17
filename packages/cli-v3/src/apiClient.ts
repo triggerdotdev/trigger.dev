@@ -45,12 +45,15 @@ import {
 } from "@trigger.dev/core/v3/workers";
 
 export class CliApiClient {
+  private engineURL: string;
+
   constructor(
     public readonly apiURL: string,
     // TODO: consider making this required
     public readonly accessToken?: string
   ) {
     this.apiURL = apiURL.replace(/\/$/, "");
+    this.engineURL = this.apiURL;
   }
 
   async createAuthorizationCode() {
@@ -418,6 +421,7 @@ export class CliApiClient {
       heartbeatRun: this.devHeartbeatRun.bind(this),
       startRunAttempt: this.devStartRunAttempt.bind(this),
       completeRunAttempt: this.devCompleteRunAttempt.bind(this),
+      setEngineURL: this.setEngineURL.bind(this),
     } as const;
   }
 
@@ -486,7 +490,7 @@ export class CliApiClient {
       throw new Error("devConfig: No access token");
     }
 
-    return wrapZodFetch(DevConfigResponseBody, `${this.apiURL}/engine/v1/dev/config`, {
+    return wrapZodFetch(DevConfigResponseBody, `${this.engineURL}/engine/v1/dev/config`, {
       headers: {
         Authorization: `Bearer ${this.accessToken}`,
         Accept: "application/json",
@@ -503,7 +507,7 @@ export class CliApiClient {
     const maxRetries = 5;
     const retryDelay = 1000; // Start with 1 second delay
 
-    const eventSource = new EventSource(`${this.apiURL}/engine/v1/dev/presence`, {
+    const eventSource = new EventSource(`${this.engineURL}/engine/v1/dev/presence`, {
       fetch: (input, init) =>
         fetch(input, {
           ...init,
@@ -557,7 +561,7 @@ export class CliApiClient {
       throw new Error("devConfig: No access token");
     }
 
-    return wrapZodFetch(DevDequeueResponseBody, `${this.apiURL}/engine/v1/dev/dequeue`, {
+    return wrapZodFetch(DevDequeueResponseBody, `${this.engineURL}/engine/v1/dev/dequeue`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${this.accessToken}`,
@@ -575,7 +579,7 @@ export class CliApiClient {
       throw new Error("devConfig: No access token");
     }
 
-    return wrapZodFetch(z.unknown(), `${this.apiURL}/engine/v1/dev/runs/${runId}/logs/debug`, {
+    return wrapZodFetch(z.unknown(), `${this.engineURL}/engine/v1/dev/runs/${runId}/logs/debug`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${this.accessToken}`,
@@ -591,7 +595,7 @@ export class CliApiClient {
   ): Promise<ApiResult<WorkloadRunLatestSnapshotResponseBody>> {
     return wrapZodFetch(
       WorkloadRunLatestSnapshotResponseBody,
-      `${this.apiURL}/engine/v1/dev/runs/${runId}/snapshots/latest`,
+      `${this.engineURL}/engine/v1/dev/runs/${runId}/snapshots/latest`,
       {
         method: "GET",
         headers: {
@@ -609,7 +613,7 @@ export class CliApiClient {
   ): Promise<ApiResult<WorkloadHeartbeatResponseBody>> {
     return wrapZodFetch(
       WorkloadHeartbeatResponseBody,
-      `${this.apiURL}/engine/v1/dev/runs/${runId}/snapshots/${snapshotId}/heartbeat`,
+      `${this.engineURL}/engine/v1/dev/runs/${runId}/snapshots/${snapshotId}/heartbeat`,
       {
         method: "POST",
         headers: {
@@ -628,7 +632,7 @@ export class CliApiClient {
   ): Promise<ApiResult<WorkloadRunAttemptStartResponseBody>> {
     return wrapZodFetch(
       WorkloadRunAttemptStartResponseBody,
-      `${this.apiURL}/engine/v1/dev/runs/${runId}/snapshots/${snapshotId}/attempts/start`,
+      `${this.engineURL}/engine/v1/dev/runs/${runId}/snapshots/${snapshotId}/attempts/start`,
       {
         method: "POST",
         headers: {
@@ -648,7 +652,7 @@ export class CliApiClient {
   ): Promise<ApiResult<WorkloadRunAttemptCompleteResponseBody>> {
     return wrapZodFetch(
       WorkloadRunAttemptCompleteResponseBody,
-      `${this.apiURL}/engine/v1/dev/runs/${runId}/snapshots/${snapshotId}/attempts/complete`,
+      `${this.engineURL}/engine/v1/dev/runs/${runId}/snapshots/${snapshotId}/attempts/complete`,
       {
         method: "POST",
         headers: {
@@ -658,5 +662,9 @@ export class CliApiClient {
         body: JSON.stringify(body),
       }
     );
+  }
+
+  private setEngineURL(engineURL: string) {
+    this.engineURL = engineURL.replace(/\/$/, "");
   }
 }
