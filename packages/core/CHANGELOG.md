@@ -1,5 +1,7 @@
 # internal-platform
 
+## 4.0.0-v4-beta.5
+
 ## 4.0.0-v4-beta.4
 
 ## 4.0.0-v4-beta.3
