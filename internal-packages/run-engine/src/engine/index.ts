@@ -290,6 +290,7 @@ export class RunEngine {
 
     this.batchSystem = new BatchSystem({
       resources,
+      waitpointSystem: this.waitpointSystem,
     });
 
     this.runAttemptSystem = new RunAttemptSystem({
@@ -903,43 +904,6 @@ export class RunEngine {
       }
       throw error;
     }
-  }
-
-  /**
-   * This is called when all the runs for a batch have been created.
-   * This does NOT mean that all the runs for the batch are completed.
-   */
-  async unblockRunForCreatedBatch({
-    runId,
-    batchId,
-    tx,
-  }: {
-    runId: string;
-    batchId: string;
-    environmentId: string;
-    projectId: string;
-    tx?: PrismaClientOrTransaction;
-  }): Promise<void> {
-    const prisma = tx ?? this.prisma;
-
-    const waitpoint = await prisma.waitpoint.findFirst({
-      where: {
-        completedByBatchId: batchId,
-      },
-    });
-
-    if (!waitpoint) {
-      this.logger.error("RunEngine.unblockRunForBatch(): Waitpoint not found", {
-        runId,
-        batchId,
-      });
-      throw new ServiceValidationError("Waitpoint not found for batch", 404);
-    }
-
-    await this.completeWaitpoint({
-      id: waitpoint.id,
-      output: { value: "Batch waitpoint completed", isError: false },
-    });
   }
 
   async tryCompleteBatch({ batchId }: { batchId: string }): Promise<void> {
