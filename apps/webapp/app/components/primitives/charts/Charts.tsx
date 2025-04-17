@@ -26,10 +26,12 @@ import React from "react";
 import { Button } from "../Buttons";
 import { Paragraph } from "../Paragraph";
 
+//TODO: turn off all chart animations
+//TODO: set the chart data when zooming to only get the new start and end dates
+//TODO: make the text on the chart not selectable when zooming
 //TODO: do a better job of showing extra data in the legend - like in a table
-//TODO: hover over a bar and dim all other bars
-//TODO: drag on the chart to zoom in
-//TODO: render a vertical line that follows the mouse
+//TODO: render a vertical line that follows the mouse - show this on all charts
+//TODO: hover over a single bar in the stack and dim all other bars
 //TODO: fix the first and last bars not having rounded corners
 
 type ReferenceLineProps = {
@@ -187,15 +189,6 @@ export function ChartBar({
             content={<XAxisTooltip />}
             allowEscapeViewBox={{ x: false, y: true }}
           />
-          {referenceLine && (
-            <ReferenceLine
-              y={referenceLine.value}
-              label={referenceLine.label}
-              isFront={true}
-              stroke="#3B3E45"
-              strokeDasharray="4 4"
-            />
-          )}
           {dataKeys.map((key, index, array) => (
             <Bar
               key={key}
@@ -237,6 +230,16 @@ export function ChartBar({
               }}
             />
           ))}
+          {referenceLine && (
+            <ReferenceLine
+              y={referenceLine.value}
+              label={referenceLine.label}
+              isFront={true}
+              stroke="#3B3E45"
+              strokeDasharray="4 4"
+            />
+          )}
+
           <ChartLegend
             content={
               <ChartLegendContentRows
@@ -482,11 +485,24 @@ export function ZoomableChartBar({
   // Get all data keys except the x-axis key
   const dataKeys = Object.keys(config).filter((k) => k !== dataKey);
 
-  const currentData =
-    activePayload?.reduce((acc, item) => {
-      acc[item.dataKey] = item.value;
+  // Get current data for the legend based on hover state
+  const currentData = React.useMemo(() => {
+    if (!activePayload?.length) return totals;
+
+    // If we have activePayload data from hovering over a bar
+    const hoverData = activePayload.reduce((acc, item) => {
+      if (item.dataKey && item.value !== undefined) {
+        acc[item.dataKey] = item.value;
+      }
       return acc;
-    }, {} as Record<string, number>) ?? totals;
+    }, {} as Record<string, number>);
+
+    // Return a merged object - totals for keys not in the hover data
+    return {
+      ...totals,
+      ...hoverData,
+    };
+  }, [activePayload, totals]);
 
   const style = {
     ...Object.entries(opacity).reduce((acc, [key, value]) => {
@@ -693,7 +709,17 @@ export function ZoomableChartBar({
               barCategoryGap={1}
               className="pr-2"
               onMouseDown={handleMouseDown}
-              onMouseMove={handleMouseMove}
+              onMouseMove={(state: any) => {
+                // Handle both selection and active payload update
+                if (isSelecting && state?.activeLabel) {
+                  setRefAreaRight(state.activeLabel);
+                }
+
+                // Update active payload for legend
+                if (state?.activePayload?.length) {
+                  setActivePayload(state.activePayload);
+                }
+              }}
               onMouseUp={handleMouseUp}
               onMouseLeave={() => {
                 handleMouseUp();
@@ -739,15 +765,6 @@ export function ZoomableChartBar({
                 content={<XAxisTooltip />}
                 allowEscapeViewBox={{ x: false, y: true }}
               />
-              {referenceLine && (
-                <ReferenceLine
-                  y={referenceLine.value}
-                  label={referenceLine.label}
-                  isFront={true}
-                  stroke="#3B3E45"
-                  strokeDasharray="4 4"
-                />
-              )}
               {dataKeys.map((key, index, array) => (
                 <Bar
                   key={key}
@@ -787,8 +804,19 @@ export function ZoomableChartBar({
                       }, {} as Record<string, number>)
                     );
                   }}
+                  isAnimationActive={false}
                 />
               ))}
+              {referenceLine && (
+                <ReferenceLine
+                  y={referenceLine.value}
+                  label={referenceLine.label}
+                  isFront={true}
+                  stroke="#3B3E45"
+                  strokeDasharray="4 4"
+                />
+              )}
+
               {refAreaLeft && refAreaRight && (
                 <ReferenceArea
                   x1={refAreaLeft}
@@ -798,6 +826,7 @@ export function ZoomableChartBar({
                   fillOpacity={0.1}
                 />
               )}
+
               <ChartLegend
                 content={
                   <ChartLegendContentRows
