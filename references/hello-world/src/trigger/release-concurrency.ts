@@ -147,3 +147,24 @@ export const waitReleaseConcurrencyTestTask = task({
     };
   },
 });
+
+export const batchTriggerAndWaitReleaseConcurrency = task({
+  id: "batch-trigger-and-wait-release-concurrency",
+  retry: {
+    maxAttempts: 1,
+  },
+  run: async (payload, { ctx }) => {
+    return await batch.triggerAndWait([
+      { id: batchTriggerAndWaitChildTask.id, payload: { waitSeconds: 1 } },
+      { id: batchTriggerAndWaitChildTask.id, payload: { waitSeconds: 1 } },
+      { id: batchTriggerAndWaitChildTask.id, payload: { waitSeconds: 1 } },
+    ]);
+  },
+});
+
+const batchTriggerAndWaitChildTask = task({
+  id: "batch-trigger-and-wait-child-task",
+  run: async (payload: { waitSeconds: number }, { ctx }) => {
+    await setTimeout(payload.waitSeconds * 1000);
+  },
+});
