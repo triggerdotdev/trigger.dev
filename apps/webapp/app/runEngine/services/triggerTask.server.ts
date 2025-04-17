@@ -237,7 +237,11 @@ export class RunEngineTriggerTaskService extends WithRunEngine {
           })
         : undefined;
 
-      if (parentRun && isFinalRunStatus(parentRun.status)) {
+      if (
+        parentRun &&
+        isFinalRunStatus(parentRun.status) &&
+        body.options?.resumeParentOnCompletion
+      ) {
         logger.debug("Parent run is in a terminal state", {
           parentRun,
         });
