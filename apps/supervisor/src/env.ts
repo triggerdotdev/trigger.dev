@@ -27,6 +27,7 @@ const Env = z.object({
   RUNNER_HEARTBEAT_INTERVAL_SECONDS: z.coerce.number().optional(),
   RUNNER_SNAPSHOT_POLL_INTERVAL_SECONDS: z.coerce.number().optional(),
   RUNNER_ADDITIONAL_ENV_VARS: AdditionalEnvVars, // optional (csv)
+  RUNNER_DOCKER_AUTOREMOVE: BoolEnv.default(true),
 
   // Dequeue settings (provider mode)
   TRIGGER_DEQUEUE_ENABLED: BoolEnv.default("true"),

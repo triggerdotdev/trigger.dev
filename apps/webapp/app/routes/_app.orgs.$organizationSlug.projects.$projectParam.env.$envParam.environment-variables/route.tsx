@@ -1,8 +1,9 @@
-import { useForm } from "@conform-to/react";
+import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import {
   BookOpenIcon,
   InformationCircleIcon,
+  LockClosedIcon,
   PencilSquareIcon,
   PlusIcon,
   TrashIcon,
@@ -14,8 +15,7 @@ import {
   json,
   redirectDocument,
 } from "@remix-run/server-runtime";
-import { type RuntimeEnvironment } from "@trigger.dev/database";
-import { Fragment, useState } from "react";
+import { useMemo, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { InlineCode } from "~/components/code/InlineCode";
@@ -23,6 +23,7 @@ import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
+import { CopyableText } from "~/components/primitives/CopyableText";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
@@ -43,6 +44,7 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { prisma } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -63,8 +65,8 @@ import {
 } from "~/utils/pathBuilder";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import {
-  DeleteEnvironmentVariable,
-  EditEnvironmentVariable,
+  DeleteEnvironmentVariableValue,
+  EditEnvironmentVariableValue,
 } from "~/v3/environmentVariables/repository";
 
 export const meta: MetaFunction = () => {
@@ -101,8 +103,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 const schema = z.discriminatedUnion("action", [
-  z.object({ action: z.literal("edit"), key: z.string(), ...EditEnvironmentVariable.shape }),
-  z.object({ action: z.literal("delete"), key: z.string(), ...DeleteEnvironmentVariable.shape }),
+  z.object({ action: z.literal("edit"), ...EditEnvironmentVariableValue.shape }),
+  z.object({
+    action: z.literal("delete"),
+    key: z.string(),
+    ...DeleteEnvironmentVariableValue.shape,
+  }),
 ]);
 
 export const action = async ({ request, params }: ActionFunctionArgs) => {
@@ -143,7 +149,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   switch (submission.value.action) {
     case "edit": {
       const repository = new EnvironmentVariablesRepository(prisma);
-      const result = await repository.edit(project.id, submission.value);
+      const result = await repository.editValue(project.id, submission.value);
 
       if (!result.success) {
         submission.error.key = result.error;
@@ -166,7 +172,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     }
     case "delete": {
       const repository = new EnvironmentVariablesRepository(prisma);
-      const result = await repository.delete(project.id, submission.value);
+      const result = await repository.deleteValue(project.id, submission.value);
 
       if (!result.success) {
         submission.error.key = result.error;
@@ -188,10 +194,47 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
 export default function Page() {
   const [revealAll, setRevealAll] = useState(false);
-  const { environmentVariables, environments, hasStaging } = useTypedLoaderData<typeof loader>();
+  const { environmentVariables, environments } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
+
+  // Add isFirst and isLast to each environment variable
+  // They're set based on if they're the first or last time that `key` has been seen in the list
+  const groupedEnvironmentVariables = useMemo(() => {
+    // Create a map to track occurrences of each key
+    const keyOccurrences = new Map<string, number>();
+
+    // First pass: count total occurrences of each key
+    environmentVariables.forEach((variable) => {
+      keyOccurrences.set(variable.key, (keyOccurrences.get(variable.key) || 0) + 1);
+    });
+
+    // Second pass: add isFirstTime, isLastTime, and occurrences flags
+    const seenKeys = new Set<string>();
+    const currentOccurrences = new Map<string, number>();
+
+    return environmentVariables.map((variable) => {
+      // Track current occurrence number for this key
+      const currentCount = (currentOccurrences.get(variable.key) || 0) + 1;
+      currentOccurrences.set(variable.key, currentCount);
+
+      const totalOccurrences = keyOccurrences.get(variable.key) || 1;
+      const isFirstTime = !seenKeys.has(variable.key);
+      const isLastTime = currentCount === totalOccurrences;
+
+      if (isFirstTime) {
+        seenKeys.add(variable.key);
+      }
+
+      return {
+        ...variable,
+        isFirstTime,
+        isLastTime,
+        occurences: totalOccurrences,
+      };
+    });
+  }, [environmentVariables]);
 
   return (
     <PageContainer>
@@ -230,55 +273,87 @@ export default function Page() {
           <Table containerClassName={cn(environmentVariables.length === 0 && "border-t-0")}>
             <TableHeader>
               <TableRow>
-                <TableHeaderCell>Key</TableHeaderCell>
-                {environments.map((environment) => (
-                  <TableHeaderCell key={environment.id} className="pl-1">
-                    <EnvironmentCombo environment={environment} className="text-sm" />
-                  </TableHeaderCell>
-                ))}
-                <TableHeaderCell hiddenLabel>Actions</TableHeaderCell>
+                <TableHeaderCell className="w-[25%]">Key</TableHeaderCell>
+                <TableHeaderCell className="w-[55%]">Value</TableHeaderCell>
+                <TableHeaderCell className="w-[20%]">Environment</TableHeaderCell>
+                <TableHeaderCell hiddenLabel className="pl-24">
+                  Actions
+                </TableHeaderCell>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {environmentVariables.length > 0 ? (
-                environmentVariables.map((variable) => (
-                  <TableRow key={variable.id}>
-                    <TableCell>{variable.key}</TableCell>
-                    {environments.map((environment) => {
-                      const value = variable.values[environment.id]?.value;
+              {groupedEnvironmentVariables.length > 0 ? (
+                groupedEnvironmentVariables.map((variable) => {
+                  const cellClassName = "py-2";
+                  let borderedCellClassName = "";
 
-                      if (!value) {
-                        return <TableCell key={environment.id}>Not set</TableCell>;
+                  if (variable.occurences > 1) {
+                    borderedCellClassName =
+                      "relative after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-grid-bright group-hover/table-row:after:bg-grid-bright group-hover/table-row:before:bg-grid-bright";
+                    if (variable.isLastTime) {
+                      borderedCellClassName = "";
+                    } else if (variable.isFirstTime) {
+                    }
+                  } else {
+                  }
+
+                  return (
+                    <TableRow
+                      key={`${variable.id}-${variable.environment.id}`}
+                      className={
+                        variable.isLastTime ? "after:bg-charcoal-600" : "after:bg-transparent"
                       }
-                      return (
-                        <TableCell key={environment.id}>
+                    >
+                      <TableCell className={cellClassName}>
+                        {variable.isFirstTime ? (
+                          <CopyableText value={variable.key} className="font-mono" />
+                        ) : null}
+                      </TableCell>
+                      <TableCell
+                        className={cn(cellClassName, borderedCellClassName, "after:left-3")}
+                      >
+                        {variable.isSecret ? (
+                          <SimpleTooltip
+                            button={
+                              <div className="flex items-center gap-x-1">
+                                <LockClosedIcon className="size-3 text-text-dimmed" />
+                                <span className="text-xs text-text-dimmed">Secret</span>
+                              </div>
+                            }
+                            content="This variable is secret and cannot be revealed."
+                          />
+                        ) : (
                           <ClipboardField
-                            className="-ml-2"
                             secure={!revealAll}
-                            value={value}
+                            value={variable.value}
                             variant={"secondary/small"}
+                            fullWidth={true}
                           />
-                        </TableCell>
-                      );
-                    })}
-                    <TableCellMenu
-                      isSticky
-                      popoverContent={
-                        <>
-                          <EditEnvironmentVariablePanel
-                            environments={environments}
-                            variable={variable}
-                            revealAll={revealAll}
-                          />
-                          <DeleteEnvironmentVariableButton variable={variable} />
-                        </>
-                      }
-                    ></TableCellMenu>
-                  </TableRow>
-                ))
+                        )}
+                      </TableCell>
+
+                      <TableCell className={cn(cellClassName, borderedCellClassName)}>
+                        <EnvironmentCombo environment={variable.environment} className="text-sm" />
+                      </TableCell>
+                      <TableCellMenu
+                        className={cn(cellClassName, borderedCellClassName)}
+                        isSticky
+                        hiddenButtons={
+                          <>
+                            <EditEnvironmentVariablePanel
+                              variable={variable}
+                              revealAll={revealAll}
+                            />
+                            <DeleteEnvironmentVariableButton variable={variable} />
+                          </>
+                        }
+                      />
+                    </TableRow>
+                  );
+                })
               ) : (
                 <TableRow>
-                  <TableCell colSpan={environments.length + 2}>
+                  <TableCell colSpan={4}>
                     <div className="flex flex-col items-center justify-center gap-y-4 py-8">
                       <Header2>You haven't set any environment variables yet.</Header2>
                       <LinkButton
@@ -311,29 +386,21 @@ export default function Page() {
 
 function EditEnvironmentVariablePanel({
   variable,
-  environments,
   revealAll,
 }: {
   variable: EnvironmentVariableWithSetValues;
-  environments: Pick<RuntimeEnvironment, "id" | "type">[];
   revealAll: boolean;
 }) {
-  const [reveal, setReveal] = useState(revealAll);
-
   const [isOpen, setIsOpen] = useState(false);
   const lastSubmission = useActionData();
   const navigation = useNavigation();
-
-  const hiddenValues = Object.values(variable.values).filter(
-    (value) => !environments.map((e) => e.id).includes(value.environment.id)
-  );
 
   const isLoading =
     navigation.state !== "idle" &&
     navigation.formMethod === "post" &&
     navigation.formData?.get("action") === "edit";
 
-  const [form, { id }] = useForm({
+  const [form, { id, environmentId, value }] = useForm({
     id: "edit-environment-variable",
     // TODO: type this
     lastSubmission: lastSubmission as any,
@@ -351,68 +418,36 @@ function EditEnvironmentVariablePanel({
         </Button>
       </DialogTrigger>
       <DialogContent>
-        <DialogHeader>Edit {variable.key}</DialogHeader>
+        <DialogHeader>Edit environment variable</DialogHeader>
         <Form method="post" {...form.props}>
           <input type="hidden" name="action" value="edit" />
-          <input type="hidden" name="id" value={variable.id} />
-          <input type="hidden" name="key" value={variable.key} />
-          {hiddenValues.map((value, index) => (
-            <Fragment key={index}>
-              <input
-                type="hidden"
-                name={`values[${index}].environmentId`}
-                value={value.environment.id}
-              />
-              <input type="hidden" name={`values[${index}].value`} value={value.value} />
-            </Fragment>
-          ))}
+          <input {...conform.input(id, { type: "hidden" })} value={variable.id} />
+          <input
+            {...conform.input(environmentId, { type: "hidden" })}
+            value={variable.environment.id}
+          />
           <FormError id={id.errorId}>{id.error}</FormError>
+          <FormError id={environmentId.errorId}>{environmentId.error}</FormError>
           <Fieldset>
-            <InputGroup fullWidth className="mb-5 mt-2">
+            <InputGroup fullWidth className="mt-2 gap-0">
               <Label>Key</Label>
-              <InlineCode variant="base" className="pl-1.5">
-                {variable.key}
-              </InlineCode>
+              <CopyableText value={variable.key} className="w-fit font-mono text-sm" />
             </InputGroup>
-          </Fieldset>
-          <Fieldset>
+
             <InputGroup fullWidth>
-              <div className="flex justify-between gap-1">
-                <Label>Values</Label>
-                <Switch
-                  variant="small"
-                  label="Reveal"
-                  checked={reveal}
-                  onCheckedChange={(e) => setReveal(e.valueOf())}
-                />
-              </div>
-              <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-2">
-                {environments.map((environment, index) => {
-                  const value = variable.values[environment.id]?.value;
-                  index += hiddenValues.length;
-                  return (
-                    <Fragment key={environment.id}>
-                      <input
-                        type="hidden"
-                        name={`values[${index}].environmentId`}
-                        value={environment.id}
-                      />
-                      <label
-                        className="flex items-center justify-end"
-                        htmlFor={`values[${index}].value`}
-                      >
-                        <EnvironmentCombo environment={environment} className="text-sm" />
-                      </label>
-                      <Input
-                        name={`values[${index}].value`}
-                        placeholder="Not set"
-                        defaultValue={value}
-                        type={reveal ? "text" : "password"}
-                      />
-                    </Fragment>
-                  );
-                })}
-              </div>
+              <Label>Environment</Label>
+              <EnvironmentCombo environment={variable.environment} className="text-sm" />
+            </InputGroup>
+
+            <InputGroup fullWidth>
+              <Label>Value</Label>
+              <Input
+                {...conform.input(value, { type: "text" })}
+                placeholder={variable.isSecret ? "Set new secret value" : "Not set"}
+                defaultValue={variable.value}
+                type={"text"}
+              />
+              <FormError id={value.errorId}>{value.error}</FormError>
             </InputGroup>
 
             <FormError>{form.error}</FormError>
@@ -463,6 +498,7 @@ function DeleteEnvironmentVariableButton({
     <Form method="post" {...form.props}>
       <input type="hidden" name="id" value={variable.id} />
       <input type="hidden" name="key" value={variable.key} />
+      <input type="hidden" name="environmentId" value={variable.environment.id} />
       <Button
         name="action"
         value="delete"
@@ -472,7 +508,7 @@ function DeleteEnvironmentVariableButton({
         textAlignLeft
         LeadingIcon={TrashIcon}
         leadingIconClassName="text-rose-500 group-hover/button:text-text-bright transition-colors"
-        className="transition-colors group-hover/button:bg-error"
+        className="ml-0.5 transition-colors group-hover/button:bg-error"
       >
         {isLoading ? "Deleting" : "Delete"}
       </Button>

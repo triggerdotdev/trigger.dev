@@ -66,6 +66,7 @@ class ManagedSupervisor {
       heartbeatIntervalSeconds: env.RUNNER_HEARTBEAT_INTERVAL_SECONDS,
       snapshotPollIntervalSeconds: env.RUNNER_SNAPSHOT_POLL_INTERVAL_SECONDS,
       additionalEnvVars: env.RUNNER_ADDITIONAL_ENV_VARS,
+      dockerAutoremove: env.RUNNER_DOCKER_AUTOREMOVE,
     } satisfies WorkloadManagerOptions;
 
     if (this.isKubernetes) {

@@ -159,12 +159,10 @@ export class WaitpointSystem {
     const prisma = tx ?? this.$.prisma;
 
     const existingWaitpoint = idempotencyKey
-      ? await prisma.waitpoint.findUnique({
+      ? await prisma.waitpoint.findFirst({
           where: {
-            environmentId_idempotencyKey: {
-              environmentId,
-              idempotencyKey,
-            },
+            environmentId,
+            idempotencyKey,
           },
         })
       : undefined;
@@ -241,12 +239,10 @@ export class WaitpointSystem {
     tags?: string[];
   }): Promise<{ waitpoint: Waitpoint; isCached: boolean }> {
     const existingWaitpoint = idempotencyKey
-      ? await this.$.prisma.waitpoint.findUnique({
+      ? await this.$.prisma.waitpoint.findFirst({
           where: {
-            environmentId_idempotencyKey: {
-              environmentId,
-              idempotencyKey,
-            },
+            environmentId,
+            idempotencyKey,
           },
         })
       : undefined;
@@ -426,13 +422,19 @@ export class WaitpointSystem {
           environmentType: snapshot.environmentType,
           projectId: snapshot.projectId,
           organizationId: snapshot.organizationId,
-          batchId: batch?.id ?? snapshot.batchId ?? undefined,
+          // Do NOT carry over the batchId from the previous snapshot
+          batchId: batch?.id,
           workerId,
           runnerId,
         });
 
         // Let the worker know immediately, so it can suspend the run
         await sendNotificationToWorker({ runId, snapshot, eventBus: this.$.eventBus });
+
+        if (isRunBlocked) {
+          //release concurrency
+          await this.releaseConcurrencySystem.releaseConcurrencyForSnapshot(snapshot);
+        }
       }
 
       if (timeout) {
@@ -451,10 +453,7 @@ export class WaitpointSystem {
 
       //no pending waitpoint, schedule unblocking the run
       //debounce if we're rapidly adding waitpoints
-      if (isRunBlocked) {
-        //release concurrency
-        await this.releaseConcurrencySystem.releaseConcurrencyForSnapshot(snapshot);
-      } else {
+      if (!isRunBlocked) {
         await this.$.worker.enqueue({
           //this will debounce the call
           id: `continueRunIfUnblocked:${runId}`,
@@ -545,6 +544,8 @@ export class WaitpointSystem {
               })),
             }
           );
+
+          await this.releaseConcurrencySystem.refillTokensForSnapshot(snapshot);
 
           await sendNotificationToWorker({
             runId,

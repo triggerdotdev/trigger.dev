@@ -163,6 +163,7 @@ export class ScheduleListPresenter extends BasePresenter {
         },
         active: true,
         lastRunTriggeredAt: true,
+        createdAt: true,
       },
       where: {
         projectId: project.id,
@@ -205,6 +206,9 @@ export class ScheduleListPresenter extends BasePresenter {
               ],
             }
           : undefined,
+      },
+      orderBy: {
+        createdAt: "desc",
       },
       take: pageSize,
       skip: (page - 1) * pageSize,

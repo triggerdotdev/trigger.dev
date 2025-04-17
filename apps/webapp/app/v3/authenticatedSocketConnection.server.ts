@@ -1,6 +1,6 @@
 import {
   clientWebsocketMessages,
-  HeartbeatService,
+  IntervalService,
   serverWebsocketMessages,
 } from "@trigger.dev/core/v3";
 import { ZodMessageHandler, ZodMessageSender } from "@trigger.dev/core/v3/zodMessageHandler";
@@ -19,7 +19,7 @@ export class AuthenticatedSocketConnection {
   private _sender: ZodMessageSender<typeof serverWebsocketMessages>;
   private _consumer: DevQueueConsumer;
   private _messageHandler: ZodMessageHandler<typeof clientWebsocketMessages>;
-  private _pingService: HeartbeatService;
+  private _pingService: IntervalService;
 
   constructor(
     public ws: WebSocket,
@@ -75,8 +75,8 @@ export class AuthenticatedSocketConnection {
       // });
     });
 
-    this._pingService = new HeartbeatService({
-      heartbeat: async () => {
+    this._pingService = new IntervalService({
+      onInterval: async () => {
         if (ws.readyState !== WebSocket.OPEN) {
           logger.debug("[AuthenticatedSocketConnection] Websocket not open, skipping ping");
           return;

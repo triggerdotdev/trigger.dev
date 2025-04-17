@@ -3,6 +3,7 @@ import { trace } from "@internal/tracing";
 import { RunEngine } from "../index.js";
 import { setTimeout } from "node:timers/promises";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
+import { EventBusEventArgs } from "../eventBus.js";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -1085,6 +1086,422 @@ describe("RunEngine Releasing Concurrency", () => {
       );
 
       expect(queueConcurrencyAfterReturn).toBe(1);
+    }
+  );
+
+  containerTest(
+    "refills token bucket after waitpoint completion when snapshot not in release queue",
+    async ({ prisma, redisOptions }) => {
+      //create environment
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      const engine = new RunEngine({
+        prisma,
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+        },
+        runLock: {
+          redis: redisOptions,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0001,
+        },
+        releaseConcurrency: {
+          maxTokensRatio: 0.1, // 10% of the concurrency limit = 1 token
+          maxRetries: 3,
+          consumersCount: 1,
+          pollInterval: 500,
+          batchSize: 1,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+      const taskIdentifier = "test-task";
+
+      await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+      const run = await engine.trigger(
+        {
+          number: 1,
+          friendlyId: "run_p1234",
+          environment: authenticatedEnvironment,
+          taskIdentifier,
+          payload: "{}",
+          payloadType: "application/json",
+          context: {},
+          traceContext: {},
+          traceId: "t12345",
+          spanId: "s12345",
+          masterQueue: "main",
+          queue: `task/${taskIdentifier}`,
+          isTest: false,
+          tags: [],
+        },
+        prisma
+      );
+
+      const dequeued = await engine.dequeueFromMasterQueue({
+        consumerId: "test_12345",
+        masterQueue: run.masterQueue,
+        maxRunCount: 10,
+      });
+
+      const queueConcurrency = await engine.runQueue.currentConcurrencyOfQueue(
+        authenticatedEnvironment,
+        `task/${taskIdentifier}`
+      );
+
+      expect(queueConcurrency).toBe(1);
+
+      const envConcurrency = await engine.runQueue.currentConcurrencyOfEnvironment(
+        authenticatedEnvironment
+      );
+
+      expect(envConcurrency).toBe(1);
+
+      // create an attempt
+      const attemptResult = await engine.startRunAttempt({
+        runId: dequeued[0].run.id,
+        snapshotId: dequeued[0].snapshot.id,
+      });
+
+      expect(attemptResult.snapshot.executionStatus).toBe("EXECUTING");
+
+      // create a manual waitpoint
+      const result = await engine.createManualWaitpoint({
+        environmentId: authenticatedEnvironment.id,
+        projectId: authenticatedEnvironment.projectId,
+      });
+
+      // Block the run, not specifying any release concurrency option
+      const executingWithWaitpointSnapshot = await engine.blockRunWithWaitpoint({
+        runId: run.id,
+        waitpoints: result.waitpoint.id,
+        projectId: authenticatedEnvironment.projectId,
+        organizationId: authenticatedEnvironment.organizationId,
+      });
+
+      expect(executingWithWaitpointSnapshot.executionStatus).toBe("EXECUTING_WITH_WAITPOINTS");
+
+      // Now confirm the environment concurrency has been released
+      const envConcurrencyAfter = await engine.runQueue.currentConcurrencyOfEnvironment(
+        authenticatedEnvironment
+      );
+
+      expect(envConcurrencyAfter).toBe(0);
+
+      // And confirm the release concurrency system has consumed the token
+      const queueMetrics =
+        await engine.releaseConcurrencySystem.releaseConcurrencyQueue?.getReleaseQueueMetrics({
+          orgId: authenticatedEnvironment.organizationId,
+          projectId: authenticatedEnvironment.projectId,
+          envId: authenticatedEnvironment.id,
+        });
+
+      expect(queueMetrics?.currentTokens).toBe(0);
+
+      await engine.completeWaitpoint({
+        id: result.waitpoint.id,
+      });
+
+      await setTimeout(1_000);
+
+      const executionData2 = await engine.getRunExecutionData({ runId: run.id });
+      expect(executionData2?.snapshot.executionStatus).toBe("EXECUTING");
+
+      const queueMetricsAfter =
+        await engine.releaseConcurrencySystem.releaseConcurrencyQueue?.getReleaseQueueMetrics({
+          orgId: authenticatedEnvironment.organizationId,
+          projectId: authenticatedEnvironment.projectId,
+          envId: authenticatedEnvironment.id,
+        });
+
+      expect(queueMetricsAfter?.currentTokens).toBe(1);
+    }
+  );
+
+  containerTest(
+    "refills token bucket after waitpoint completion when unable to reacquire concurrency, after dequeuing the queued executing run",
+    async ({ prisma, redisOptions }) => {
+      //create environment
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      const engine = new RunEngine({
+        prisma,
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+        },
+        runLock: {
+          redis: redisOptions,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0001,
+        },
+        releaseConcurrency: {
+          maxTokensRatio: 1,
+          maxRetries: 3,
+          consumersCount: 1,
+          pollInterval: 500,
+          batchSize: 1,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+      const taskIdentifier = "test-task";
+
+      await setupBackgroundWorker(
+        engine,
+        authenticatedEnvironment,
+        taskIdentifier,
+        undefined,
+        undefined,
+        {
+          concurrencyLimit: 1,
+        }
+      );
+
+      const run = await engine.trigger(
+        {
+          number: 1,
+          friendlyId: "run_p1234",
+          environment: authenticatedEnvironment,
+          taskIdentifier,
+          payload: "{}",
+          payloadType: "application/json",
+          context: {},
+          traceContext: {},
+          traceId: "t12345",
+          spanId: "s12345",
+          masterQueue: "main",
+          queue: `task/${taskIdentifier}`,
+          isTest: false,
+          tags: [],
+        },
+        prisma
+      );
+
+      const dequeued = await engine.dequeueFromMasterQueue({
+        consumerId: "test_12345",
+        masterQueue: run.masterQueue,
+        maxRunCount: 10,
+      });
+
+      const queueConcurrency = await engine.runQueue.currentConcurrencyOfQueue(
+        authenticatedEnvironment,
+        `task/${taskIdentifier}`
+      );
+
+      expect(queueConcurrency).toBe(1);
+
+      const envConcurrency = await engine.runQueue.currentConcurrencyOfEnvironment(
+        authenticatedEnvironment
+      );
+
+      expect(envConcurrency).toBe(1);
+
+      // create an attempt
+      const attemptResult = await engine.startRunAttempt({
+        runId: dequeued[0].run.id,
+        snapshotId: dequeued[0].snapshot.id,
+      });
+
+      expect(attemptResult.snapshot.executionStatus).toBe("EXECUTING");
+
+      // create a manual waitpoint
+      const result = await engine.createManualWaitpoint({
+        environmentId: authenticatedEnvironment.id,
+        projectId: authenticatedEnvironment.projectId,
+      });
+
+      // Block the run, specifying the release concurrency option as true
+      const executingWithWaitpointSnapshot = await engine.blockRunWithWaitpoint({
+        runId: run.id,
+        waitpoints: result.waitpoint.id,
+        projectId: authenticatedEnvironment.projectId,
+        organizationId: authenticatedEnvironment.organizationId,
+        releaseConcurrency: true,
+      });
+
+      expect(executingWithWaitpointSnapshot.executionStatus).toBe("EXECUTING_WITH_WAITPOINTS");
+
+      // Now confirm the environment concurrency has been released
+      const envConcurrencyAfter = await engine.runQueue.currentConcurrencyOfEnvironment(
+        authenticatedEnvironment
+      );
+
+      expect(envConcurrencyAfter).toBe(0);
+
+      const queueConcurrencyAfter = await engine.runQueue.currentConcurrencyOfQueue(
+        authenticatedEnvironment,
+        `task/${taskIdentifier}`
+      );
+
+      expect(queueConcurrencyAfter).toBe(0);
+
+      // And confirm the release concurrency system has consumed the token
+      const queueMetrics =
+        await engine.releaseConcurrencySystem.releaseConcurrencyQueue?.getReleaseQueueMetrics({
+          orgId: authenticatedEnvironment.organizationId,
+          projectId: authenticatedEnvironment.projectId,
+          envId: authenticatedEnvironment.id,
+        });
+
+      expect(queueMetrics?.currentTokens).toBe(9);
+
+      // Create and start second run on the same queue
+      const secondRun = await engine.trigger(
+        {
+          number: 2,
+          friendlyId: "run_second",
+          environment: authenticatedEnvironment,
+          taskIdentifier,
+          payload: "{}",
+          payloadType: "application/json",
+          context: {},
+          traceContext: {},
+          traceId: "t12345-second",
+          spanId: "s12345-second",
+          masterQueue: "main",
+          queue: "task/test-task",
+          isTest: false,
+          tags: [],
+        },
+        prisma
+      );
+
+      // Dequeue and start the second run
+      const dequeuedSecond = await engine.dequeueFromMasterQueue({
+        consumerId: "test_12345",
+        masterQueue: secondRun.masterQueue,
+        maxRunCount: 10,
+      });
+
+      // Now confirm the environment concurrency has been released
+      const envConcurrencyAfterSecond = await engine.runQueue.currentConcurrencyOfEnvironment(
+        authenticatedEnvironment
+      );
+
+      expect(envConcurrencyAfterSecond).toBe(1);
+
+      const queueConcurrencyAfterSecond = await engine.runQueue.currentConcurrencyOfQueue(
+        authenticatedEnvironment,
+        `task/${taskIdentifier}`
+      );
+
+      expect(queueConcurrencyAfterSecond).toBe(1);
+
+      const secondAttempt = await engine.startRunAttempt({
+        runId: dequeuedSecond[0].run.id,
+        snapshotId: dequeuedSecond[0].snapshot.id,
+      });
+
+      expect(secondAttempt.snapshot.executionStatus).toBe("EXECUTING");
+
+      // Complete the waitpoint that's blocking the first run
+      await engine.completeWaitpoint({
+        id: result.waitpoint.id,
+      });
+
+      await setTimeout(1_000);
+
+      // Verify that the first run could not reacquire the concurrency so it's back in the queue
+      const executionData2 = await engine.getRunExecutionData({ runId: run.id });
+      expect(executionData2?.snapshot.executionStatus).toBe("QUEUED_EXECUTING");
+
+      const queueMetricsAfter =
+        await engine.releaseConcurrencySystem.releaseConcurrencyQueue?.getReleaseQueueMetrics({
+          orgId: authenticatedEnvironment.organizationId,
+          projectId: authenticatedEnvironment.projectId,
+          envId: authenticatedEnvironment.id,
+        });
+
+      // We've consumed 1 token, so we should have 9 left
+      expect(queueMetricsAfter?.currentTokens).toBe(9);
+
+      // Complete the second run so the first run can be dequeued
+      await engine.completeRunAttempt({
+        runId: dequeuedSecond[0].run.id,
+        snapshotId: secondAttempt.snapshot.id,
+        completion: {
+          ok: true,
+          id: dequeuedSecond[0].run.id,
+          output: `{"foo":"bar"}`,
+          outputType: "application/json",
+        },
+      });
+
+      await setTimeout(500);
+
+      // Check the current concurrency of the queue/environment
+      const queueConcurrencyAfterSecondFinished = await engine.runQueue.currentConcurrencyOfQueue(
+        authenticatedEnvironment,
+        `task/${taskIdentifier}`
+      );
+
+      expect(queueConcurrencyAfterSecondFinished).toBe(0);
+
+      const envConcurrencyAfterSecondFinished =
+        await engine.runQueue.currentConcurrencyOfEnvironment(authenticatedEnvironment);
+
+      expect(envConcurrencyAfterSecondFinished).toBe(0);
+
+      let event: EventBusEventArgs<"workerNotification">[0] | undefined = undefined;
+      engine.eventBus.on("workerNotification", (result) => {
+        event = result;
+      });
+
+      // Verify the first run is back in the queue
+      const queuedRun = await engine.dequeueFromMasterQueue({
+        consumerId: "test_12345",
+        masterQueue: run.masterQueue,
+        maxRunCount: 10,
+      });
+
+      // We don't actually return the run here from dequeuing, it's instead sent to the cluster as a workerNotification
+      expect(queuedRun.length).toBe(0);
+
+      assertNonNullable(event);
+      const notificationEvent = event as EventBusEventArgs<"workerNotification">[0];
+      expect(notificationEvent.run.id).toBe(run.id);
+      expect(notificationEvent.snapshot.executionStatus).toBe("EXECUTING");
+
+      // Make sure the token bucket is refilled
+      const queueMetricsAfterSecondFinished =
+        await engine.releaseConcurrencySystem.releaseConcurrencyQueue?.getReleaseQueueMetrics({
+          orgId: authenticatedEnvironment.organizationId,
+          projectId: authenticatedEnvironment.projectId,
+          envId: authenticatedEnvironment.id,
+        });
+
+      expect(queueMetricsAfterSecondFinished?.currentTokens).toBe(10);
     }
   );
 });

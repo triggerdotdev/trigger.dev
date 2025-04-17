@@ -1,7 +1,7 @@
 import {
   CompleteRunAttemptResult,
   DequeuedMessage,
-  HeartbeatService,
+  IntervalService,
   LogLevel,
   RunExecutionData,
   TaskRunExecution,
@@ -44,9 +44,9 @@ export class DevRunController {
   private taskRunProcess?: TaskRunProcess;
   private readonly worker: BackgroundWorker;
   private readonly httpClient: CliApiClient;
-  private readonly runHeartbeat: HeartbeatService;
+  private readonly runHeartbeat: IntervalService;
   private readonly heartbeatIntervalSeconds: number;
-  private readonly snapshotPoller: HeartbeatService;
+  private readonly snapshotPoller: IntervalService;
   private readonly snapshotPollIntervalSeconds: number;
 
   private state:
@@ -78,8 +78,8 @@ export class DevRunController {
 
     this.httpClient = opts.httpClient;
 
-    this.snapshotPoller = new HeartbeatService({
-      heartbeat: async () => {
+    this.snapshotPoller = new IntervalService({
+      onInterval: async () => {
         if (!this.runFriendlyId) {
           logger.debug("[DevRunController] Skipping snapshot poll, no run ID");
           return;
@@ -121,8 +121,8 @@ export class DevRunController {
       },
     });
 
-    this.runHeartbeat = new HeartbeatService({
-      heartbeat: async () => {
+    this.runHeartbeat = new IntervalService({
+      onInterval: async () => {
         if (!this.runFriendlyId || !this.snapshotFriendlyId) {
           logger.debug("[DevRunController] Skipping heartbeat, no run ID or snapshot ID");
           return;
@@ -619,7 +619,7 @@ export class DevRunController {
         version: this.opts.worker.serverWorker?.version,
         engine: "V2",
       },
-      machine: execution.machine,
+      machineResources: execution.machine,
     }).initialize();
 
     logger.debug("executing task run process", {

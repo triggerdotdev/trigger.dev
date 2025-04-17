@@ -11,7 +11,7 @@ import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Select, SelectItem } from "~/components/primitives/Select";
-import { ButtonSpinner, Spinner } from "~/components/primitives/Spinner";
+import { Spinner, SpinnerWhite } from "~/components/primitives/Spinner";
 import { type loader } from "~/routes/resources.taskruns.$runParam.replay";
 
 type ReplayRunDialogProps = {
@@ -157,7 +157,7 @@ function ReplayForm({
         <Button
           type="submit"
           variant="primary/medium"
-          LeadingIcon={isSubmitting ? ButtonSpinner : undefined}
+          LeadingIcon={isSubmitting ? SpinnerWhite : undefined}
           disabled={isSubmitting}
           shortcut={{ modifiers: ["mod"], key: "enter", enabledOnInputElements: true }}
         >

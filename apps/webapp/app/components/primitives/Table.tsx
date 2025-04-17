@@ -349,7 +349,9 @@ export const TableCellMenu = forwardRef<
                   variants[variant].menuButtonDivider
                 )}
               >
-                <div className={cn("flex items-center gap-x-0.5")}>{hiddenButtons}</div>
+                <div className={cn("flex items-center gap-x-0.5 divide-x divide-grid-bright")}>
+                  {hiddenButtons}
+                </div>
               </div>
             )}
             {/* Always visible buttons  */}

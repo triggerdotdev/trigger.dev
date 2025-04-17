@@ -1,6 +1,6 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { InformationCircleIcon } from "@heroicons/react/20/solid";
+import { InformationCircleIcon, ArrowUpCircleIcon } from "@heroicons/react/20/solid";
 import { EnvelopeIcon } from "@heroicons/react/24/solid";
 import { Form, useActionData, useLocation, useNavigation } from "@remix-run/react";
 import { type ReactNode, useEffect, useState } from "react";
@@ -64,7 +64,9 @@ export function Feedback({ button, defaultValue = "bug" }: FeedbackProps) {
               How can we help? We read every message and will respond as quickly as we can.
             </Paragraph>
           </div>
-          <hr className="border-charcoal-800" />
+          {!(type === "feature" || type === "help" || type === "concurrency") && (
+            <hr className="border-grid-dimmed" />
+          )}
           <Form method="post" action="/resources/feedback" {...form.props} className="w-full">
             <Fieldset className="max-w-full gap-y-3">
               <input value={location.pathname} {...conform.input(path, { type: "hidden" })} />
@@ -94,6 +96,19 @@ export function Feedback({ button, defaultValue = "bug" }: FeedbackProps) {
                     <Paragraph variant="small">
                       The quickest way to get answers from the Trigger.dev team and community is to{" "}
                       <TextLink to="https://trigger.dev/discord">ask in our Discord</TextLink>.
+                    </Paragraph>
+                  </InfoPanel>
+                )}
+                {type === "concurrency" && (
+                  <InfoPanel
+                    icon={ArrowUpCircleIcon}
+                    iconClassName="text-indigo-500"
+                    panelClassName="w-full mb-2"
+                  >
+                    <Paragraph variant="small">
+                      How much extra concurrency do you need? You can add bundles of 50 for
+                      $50/month each. To help us advise you, please let us know what your tasks do,
+                      your typical run volume, and if your workload is spiky (many runs at once).
                     </Paragraph>
                   </InfoPanel>
                 )}

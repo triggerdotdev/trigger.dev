@@ -165,6 +165,7 @@ export class WorkloadHttpClient {
     }
   }
 
+  /** @deprecated Not currently used */
   async dequeue() {
     return wrapZodFetch(
       WorkloadDequeueFromVersionResponseBody,

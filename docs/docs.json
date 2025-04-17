@@ -321,6 +321,7 @@
               "guides/example-projects/batch-llm-evaluator",
               "guides/example-projects/claude-thinking-chatbot",
               "guides/example-projects/human-in-the-loop-workflow",
+              "guides/example-projects/meme-generator-human-in-the-loop",
               "guides/example-projects/realtime-csv-importer",
               "guides/example-projects/realtime-fal-ai",
               "guides/example-projects/turborepo-monorepo-prisma",

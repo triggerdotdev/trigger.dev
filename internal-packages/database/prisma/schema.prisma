@@ -2728,8 +2728,12 @@ model EnvironmentVariableValue {
   variableId       String
   environment      RuntimeEnvironment  @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   environmentId    String
-  createdAt        DateTime            @default(now())
-  updatedAt        DateTime            @updatedAt
+
+  /// If true, the value is secret and cannot be revealed
+  isSecret Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([variableId, environmentId])
 }
@@ -2929,6 +2933,9 @@ model TaskSchedule {
   active Boolean @default(true)
 
   @@unique([projectId, deduplicationKey])
+  /// Dashboard list view
+  @@index([projectId])
+  @@index([projectId, createdAt(sort: Desc)])
 }
 
 enum ScheduleType {
