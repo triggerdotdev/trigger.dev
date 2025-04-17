@@ -430,6 +430,11 @@ export class WaitpointSystem {
 
         // Let the worker know immediately, so it can suspend the run
         await sendNotificationToWorker({ runId, snapshot, eventBus: this.$.eventBus });
+
+        if (isRunBlocked) {
+          //release concurrency
+          await this.releaseConcurrencySystem.releaseConcurrencyForSnapshot(snapshot);
+        }
       }
 
       if (timeout) {
@@ -448,10 +453,7 @@ export class WaitpointSystem {
 
       //no pending waitpoint, schedule unblocking the run
       //debounce if we're rapidly adding waitpoints
-      if (isRunBlocked) {
-        //release concurrency
-        await this.releaseConcurrencySystem.releaseConcurrencyForSnapshot(snapshot);
-      } else {
+      if (!isRunBlocked) {
         await this.$.worker.enqueue({
           //this will debounce the call
           id: `continueRunIfUnblocked:${runId}`,
