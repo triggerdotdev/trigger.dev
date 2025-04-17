@@ -2933,6 +2933,9 @@ model TaskSchedule {
   active Boolean @default(true)
 
   @@unique([projectId, deduplicationKey])
+  /// Dashboard list view
+  @@index([projectId])
+  @@index([projectId, createdAt(sort: Desc)])
 }
 
 enum ScheduleType {
