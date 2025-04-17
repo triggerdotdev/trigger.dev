@@ -262,10 +262,10 @@ export default function Page() {
                           LeadingIcon={ChatBubbleLeftEllipsisIcon}
                           leadingIconClassName="text-indigo-500"
                         >
-                          Increase limit
+                          Increase limit…
                         </Button>
                       }
-                      defaultValue="help"
+                      defaultValue="concurrency"
                     />
                   ) : (
                     <LinkButton
