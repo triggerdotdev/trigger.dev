@@ -40,6 +40,7 @@ import { useList } from "~/hooks/useList";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { EnvironmentVariablesPresenter } from "~/presenters/v3/EnvironmentVariablesPresenter.server";
+import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import {
@@ -86,6 +87,10 @@ const schema = z.object({
     if (i === "true") return true;
     if (i === "false") return false;
     return;
+  }, z.boolean()),
+  isSecret: z.preprocess((i) => {
+    if (i === "true") return true;
+    return false;
   }, z.boolean()),
   environmentIds: z.preprocess((i) => {
     if (typeof i === "string") return [i];
@@ -194,7 +199,7 @@ export default function Page() {
     shouldRevalidate: "onSubmit",
   });
 
-  const [revealAll, setRevealAll] = useState(false);
+  const [revealAll, setRevealAll] = useState(true);
 
   useEffect(() => {
     setIsOpen(true);
@@ -209,14 +214,10 @@ export default function Page() {
         }
       }}
     >
-      <DialogContent className="md:max-w-2xl lg:max-w-3xl">
-        <DialogHeader>New environment variables</DialogHeader>
-        <Form
-          method="post"
-          {...form.props}
-          className="max-h-[70vh] overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
-        >
-          <Fieldset className="mt-2">
+      <DialogContent className="p-0 pt-2.5 md:max-w-2xl lg:max-w-3xl">
+        <DialogHeader className="px-4">New environment variables</DialogHeader>
+        <Form method="post" {...form.props}>
+          <Fieldset className="max-h-[70vh] overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
             <InputGroup fullWidth>
               <Label>Environments</Label>
               <div className="flex items-center gap-2">
@@ -237,7 +238,7 @@ export default function Page() {
                       <TooltipTrigger>
                         <TextLink
                           to={v3BillingPath(organization)}
-                          className="flex w-fit cursor-pointer items-center gap-2 rounded border border-dashed border-charcoal-600 py-3 pl-3 pr-4 transition hover:border-charcoal-500 hover:bg-charcoal-850"
+                          className="flex w-fit cursor-pointer items-center gap-2 rounded border border-dashed border-charcoal-600 py-2.5 pl-3 pr-4 transition hover:border-charcoal-500 hover:bg-charcoal-850"
                         >
                           <LockClosedIcon className="size-4 text-charcoal-500" />
                           <EnvironmentLabel environment={{ type: "STAGING" }} className="text-sm" />
@@ -257,8 +258,21 @@ export default function Page() {
                 file when running locally.
               </Hint>
             </InputGroup>
+            <InputGroup className="w-auto">
+              <Switch
+                name="isSecret"
+                variant="medium"
+                defaultChecked={false}
+                value="true"
+                className="-ml-2 inline-flex w-fit"
+                label={<span className="text-text-bright">Secret value</span>}
+              />
+              <Hint className="-mt-1">
+                If enabled, you and your team will not be able to view the values after creation.
+              </Hint>
+            </InputGroup>
             <InputGroup fullWidth>
-              <FieldLayout showDeleteButton={false}>
+              <FieldLayout>
                 <Label>Keys</Label>
                 <div className="flex justify-between gap-1">
                   <Label>Values</Label>
@@ -280,61 +294,47 @@ export default function Page() {
             </InputGroup>
 
             <FormError>{form.error}</FormError>
-            <FormButtons
-              confirmButton={
-                <div className="flex flex-row-reverse items-center gap-2">
-                  <Button
-                    type="submit"
-                    variant="primary/medium"
-                    disabled={isLoading}
-                    name="override"
-                    value="false"
-                  >
-                    {isLoading ? "Saving" : "Save"}
-                  </Button>
-                  <Button
-                    variant="secondary/medium"
-                    disabled={isLoading}
-                    name="override"
-                    value="true"
-                  >
-                    {isLoading ? "Overriding" : "Override"}
-                  </Button>
-                </div>
-              }
-              cancelButton={
-                <LinkButton
-                  to={v3EnvironmentVariablesPath(organization, project, environment)}
-                  variant="tertiary/medium"
-                >
-                  Cancel
-                </LinkButton>
-              }
-            />
           </Fieldset>
+          <FormButtons
+            className="px-4 pb-4"
+            confirmButton={
+              <div className="flex flex-row-reverse items-center gap-2">
+                <Button
+                  type="submit"
+                  variant="primary/medium"
+                  disabled={isLoading}
+                  name="override"
+                  value="false"
+                >
+                  {isLoading ? "Saving" : "Save"}
+                </Button>
+                <Button
+                  variant="secondary/medium"
+                  disabled={isLoading}
+                  name="override"
+                  value="true"
+                >
+                  {isLoading ? "Overriding" : "Override"}
+                </Button>
+              </div>
+            }
+            cancelButton={
+              <LinkButton
+                to={v3EnvironmentVariablesPath(organization, project, environment)}
+                variant="tertiary/medium"
+              >
+                Cancel
+              </LinkButton>
+            }
+          />
         </Form>
       </DialogContent>
     </Dialog>
   );
 }
 
-function FieldLayout({
-  children,
-  showDeleteButton,
-}: {
-  children: React.ReactNode;
-  showDeleteButton: boolean;
-}) {
-  return (
-    <div
-      className={cn(
-        "grid w-full gap-1.5",
-        showDeleteButton ? "grid-cols-[1fr_1fr_2rem]" : "grid-cols-[1fr_1fr]"
-      )}
-    >
-      {children}
-    </div>
-  );
+function FieldLayout({ children }: { children: React.ReactNode }) {
+  return <div className="grid w-full grid-cols-[1fr_1fr] gap-1.5">{children}</div>;
 }
 
 function VariableFields({
@@ -409,9 +409,9 @@ function VariableFields({
           />
         );
       })}
-      <div className={cn("flex items-center justify-between gap-4", items.length > 1 && "pr-10")}>
+      <div className="flex items-center justify-between gap-4">
         <Paragraph variant="extra-small">
-          Tip: Paste your .env into this form to populate it.
+          Tip: Paste all your .env values at once into this form to populate it.
         </Paragraph>
         <Button
           variant="tertiary/medium"
@@ -457,7 +457,7 @@ function VariableField({
 
   return (
     <fieldset ref={ref}>
-      <FieldLayout showDeleteButton={showDeleteButton}>
+      <FieldLayout>
         <Input
           id={`${formId}-${baseFieldName}.key`}
           name={`${baseFieldName}.key`}
@@ -467,22 +467,24 @@ function VariableField({
           autoFocus={index === 0}
           onPaste={onPaste}
         />
-        <Input
-          id={`${formId}-${baseFieldName}.value`}
-          name={`${baseFieldName}.value`}
-          type={showValue ? "text" : "password"}
-          placeholder="Not set"
-          value={value.value}
-          onChange={(e) => onChange({ ...value, value: e.currentTarget.value })}
-        />
-        {showDeleteButton && (
-          <Button
-            variant="minimal/medium"
-            type="button"
-            onClick={() => onDelete()}
-            LeadingIcon={XMarkIcon}
+        <div className={cn("flex items-center justify-between gap-1")}>
+          <Input
+            id={`${formId}-${baseFieldName}.value`}
+            name={`${baseFieldName}.value`}
+            type={showValue ? "text" : "password"}
+            placeholder="Not set"
+            value={value.value}
+            onChange={(e) => onChange({ ...value, value: e.currentTarget.value })}
           />
-        )}
+          {showDeleteButton && (
+            <Button
+              variant="minimal/medium"
+              type="button"
+              onClick={() => onDelete()}
+              LeadingIcon={XMarkIcon}
+            />
+          )}
+        </div>
       </FieldLayout>
       <div className="space-y-2">
         <FormError id={fields.key.errorId}>{fields.key.error}</FormError>
