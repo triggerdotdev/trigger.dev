@@ -677,7 +677,7 @@ export function ZoomableChartBar({
       <div
         ref={containerRef}
         className="mt-8 h-[400px] w-full"
-        style={{ touchAction: "none" }}
+        style={{ touchAction: "none", userSelect: "none" }}
         onWheel={handleWheel}
       >
         <ChartContainer
