@@ -26,7 +26,6 @@ import { Spinner } from "../Spinner";
 import { ChartLoading } from "./ChartLoading";
 
 //TODO: set the chart data when zooming to only get the new start and end dates
-//TODO: turn off all chart animations
 //TODO: make the text on the chart not selectable when zooming
 //TODO: do a better job of showing extra data in the legend - like in a table
 //TODO: render a vertical line that follows the mouse - show this on all charts
