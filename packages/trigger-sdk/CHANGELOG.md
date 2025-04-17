@@ -1,5 +1,13 @@
 # @trigger.dev/sdk
 
+## 4.0.0-v4-beta.5
+
+### Patch Changes
+
+- The envvars.list() and retrieve() functions receive isSecret for each value. Secret values are always redacted. ([#1942](https://github.com/triggerdotdev/trigger.dev/pull/1942))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.5`
+
 ## 4.0.0-v4-beta.4
 
 ### Patch Changes
