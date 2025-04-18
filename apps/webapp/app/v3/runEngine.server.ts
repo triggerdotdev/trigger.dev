@@ -58,6 +58,7 @@ function createRunEngine() {
         maximumEnvCount: env.RUN_ENGINE_MAXIMUM_ENV_COUNT,
         tracer,
       },
+      maxDequeueLoopAttempts: env.RUN_ENGINE_MAX_DEQUEUE_LOOP_ATTEMPTS,
     },
     runLock: {
       redis: {

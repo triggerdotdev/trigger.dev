@@ -109,6 +109,7 @@ export class RunEngine {
       logger: new Logger("RunQueue", "debug"),
       redis: { ...options.queue.redis, keyPrefix: `${options.queue.redis.keyPrefix}runqueue:` },
       retryOptions: options.queue?.retryOptions,
+      maxDequeueLoopAttempts: options.queue?.maxDequeueLoopAttempts ?? 10,
     });
 
     this.worker = new Worker({
