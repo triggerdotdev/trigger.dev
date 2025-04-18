@@ -624,6 +624,9 @@ const EnvironmentSchema = z.object({
   /** The maximum concurrent local run processes executing at once in dev */
   DEV_MAX_CONCURRENT_RUNS: z.coerce.number().int().default(25),
 
+  /** The CLI should connect to this for dev runs */
+  DEV_ENGINE_URL: z.string().default(process.env.APP_ORIGIN ?? "http://localhost:3030"),
+
   LEGACY_RUN_ENGINE_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
   LEGACY_RUN_ENGINE_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(2),
   LEGACY_RUN_ENGINE_WORKER_CONCURRENCY_TASKS_PER_WORKER: z.coerce.number().int().default(1),

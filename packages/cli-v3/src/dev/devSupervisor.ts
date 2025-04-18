@@ -84,6 +84,8 @@ class DevSupervisor implements WorkerRuntime {
     logger.debug("[DevSupervisor] Got dev settings", { settings: settings.data });
     this.config = settings.data;
 
+    this.options.client.dev.setEngineURL(this.config.engineUrl);
+
     const maxConcurrentRuns = Math.min(
       this.config.maxConcurrentRuns,
       this.options.args.maxConcurrentRuns ?? this.config.maxConcurrentRuns
