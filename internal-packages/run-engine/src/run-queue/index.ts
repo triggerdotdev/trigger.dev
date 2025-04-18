@@ -49,7 +49,7 @@ export type RunQueueOptions = {
   keys: RunQueueKeyProducer;
   queueSelectionStrategy: RunQueueSelectionStrategy;
   verbose?: boolean;
-  logger: Logger;
+  logger?: Logger;
   retryOptions?: RetryOptions;
 };
 
@@ -88,7 +88,7 @@ export class RunQueue {
         });
       },
     });
-    this.logger = options.logger;
+    this.logger = options.logger ?? new Logger("RunQueue", "warn");
 
     this.keys = options.keys;
     this.queueSelectionStrategy = options.queueSelectionStrategy;
@@ -404,11 +404,17 @@ export class RunQueue {
           tenantQueues[env.envId] = [...env.queues]; // Create a copy of the queues array
         }
 
+        // Track if we successfully dequeued any message in a complete cycle
+        let successfulDequeueInCycle = false;
+
         // Continue until we've hit max count or all tenants have empty queue lists
         while (
           messages.length < maxCount &&
           Object.values(tenantQueues).some((queues) => queues.length > 0)
         ) {
+          // Reset the success flag at the start of each cycle
+          successfulDequeueInCycle = false;
+
           for (const env of envQueues) {
             attemptedEnvs++;
 
@@ -428,6 +434,7 @@ export class RunQueue {
 
             if (message) {
               messages.push(message);
+              successfulDequeueInCycle = true;
               // Re-add this queue at the end, since it might have more messages
               tenantQueues[env.envId].push(queue);
             }
@@ -437,6 +444,14 @@ export class RunQueue {
             if (messages.length >= maxCount) {
               break;
             }
+          }
+
+          // If we completed a full cycle through all tenants with no successful dequeues,
+          // exit early as we're likely hitting concurrency limits or have no ready messages
+          if (!successfulDequeueInCycle) {
+            // IMPORTANT: Keep this log message as it's used in tests
+            this.logger.log("No successful dequeues in a full cycle, exiting...");
+            break;
           }
         }
 
