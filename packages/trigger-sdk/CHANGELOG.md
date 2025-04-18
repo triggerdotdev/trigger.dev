@@ -1,5 +1,13 @@
 # @trigger.dev/sdk
 
+## 4.0.0-v4-beta.6
+
+### Patch Changes
+
+- Fix issue where realtime streams would cut off after 5 minutes ([#1952](https://github.com/triggerdotdev/trigger.dev/pull/1952))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.6`
+
 ## 4.0.0-v4-beta.5
 
 ### Patch Changes
