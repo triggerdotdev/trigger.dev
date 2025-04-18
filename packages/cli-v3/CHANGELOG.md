@@ -1,5 +1,14 @@
 # trigger.dev
 
+## 4.0.0-v4-beta.6
+
+### Patch Changes
+
+- The dev command will now use the platform-provided engine URL ([#1949](https://github.com/triggerdotdev/trigger.dev/pull/1949))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.6`
+  - `@trigger.dev/build@4.0.0-v4-beta.6`
+
 ## 4.0.0-v4-beta.5
 
 ### Patch Changes
