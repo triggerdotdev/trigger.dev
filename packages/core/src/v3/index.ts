@@ -44,6 +44,7 @@ export {
   primitiveValueOrflattenedAttributes,
   unflattenAttributes,
   NULL_SENTINEL,
+  EMPTY_ARRAY_SENTINEL,
 } from "./utils/flattenAttributes.js";
 export { omit } from "./utils/omit.js";
 export {
