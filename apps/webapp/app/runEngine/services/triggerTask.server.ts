@@ -251,6 +251,123 @@ export class RunEngineTriggerTaskService extends WithRunEngine {
         );
       }
 
+      const lockedToBackgroundWorker = body.options?.lockToVersion
+        ? await this._prisma.backgroundWorker.findFirst({
+            where: {
+              projectId: environment.projectId,
+              runtimeEnvironmentId: environment.id,
+              version: body.options?.lockToVersion,
+            },
+            select: {
+              id: true,
+              version: true,
+              sdkVersion: true,
+              cliVersion: true,
+            },
+          })
+        : undefined;
+
+      let queueName: string;
+      let lockedQueueId: string | undefined;
+
+      // Determine queue name based on lockToVersion and provided options
+      if (lockedToBackgroundWorker) {
+        // Task is locked to a specific worker version
+        if (body.options?.queue?.name) {
+          const specifiedQueueName = body.options.queue.name;
+          // A specific queue name is provided
+          const specifiedQueue = await this._prisma.taskQueue.findFirst({
+            // Validate it exists for the locked worker
+            where: {
+              name: specifiedQueueName,
+              workers: { some: { id: lockedToBackgroundWorker.id } }, // Ensure the queue is associated with any task of the locked worker
+            },
+          });
+
+          if (!specifiedQueue) {
+            throw new ServiceValidationError(
+              `Specified queue '${specifiedQueueName}' not found or not associated with locked worker version '${
+                body.options?.lockToVersion ?? "<unknown>"
+              }'.`
+            );
+          }
+          // Use the validated queue name directly
+          queueName = specifiedQueue.name;
+          lockedQueueId = specifiedQueue.id;
+        } else {
+          // No specific queue name provided, use the default queue for the task on the locked worker
+          const lockedTask = await this._prisma.backgroundWorkerTask.findFirst({
+            where: {
+              workerId: lockedToBackgroundWorker.id,
+              slug: taskId,
+            },
+            include: {
+              queue: true,
+            },
+          });
+
+          if (!lockedTask) {
+            throw new ServiceValidationError(
+              `Task '${taskId}' not found on locked worker version '${
+                body.options?.lockToVersion ?? "<unknown>"
+              }'.`
+            );
+          }
+
+          if (!lockedTask.queue) {
+            // This case should ideally be prevented by earlier checks or schema constraints,
+            // but handle it defensively.
+            logger.error("Task found on locked worker, but has no associated queue record", {
+              taskId,
+              workerId: lockedToBackgroundWorker.id,
+              version: lockedToBackgroundWorker.version,
+            });
+            throw new ServiceValidationError(
+              `Default queue configuration for task '${taskId}' missing on locked worker version '${
+                body.options?.lockToVersion ?? "<unknown>"
+              }'.`
+            );
+          }
+          // Use the task's default queue name
+          queueName = lockedTask.queue.name;
+          lockedQueueId = lockedTask.queue.id;
+        }
+      } else {
+        // Task is not locked to a specific version, use regular logic
+        if (body.options?.lockToVersion) {
+          // This should only happen if the findFirst failed, indicating the version doesn't exist
+          throw new ServiceValidationError(
+            `Task locked to version '${body.options.lockToVersion}', but no worker found with that version.`
+          );
+        }
+
+        // Get queue name using the helper for non-locked case (handles provided name or finds default)
+        queueName = await this.#getQueueName(taskId, environment, body.options?.queue?.name);
+      }
+
+      // Sanitize the final determined queue name once
+      const sanitizedQueueName = sanitizeQueueName(queueName);
+
+      // Check that the queuename is not an empty string
+      if (!sanitizedQueueName) {
+        queueName = sanitizeQueueName(`task/${taskId}`); // Fallback if sanitization results in empty
+      } else {
+        queueName = sanitizedQueueName;
+      }
+
+      //upsert tags
+      const tags = await createTags(
+        {
+          tags: body.options?.tags,
+          projectId: environment.projectId,
+        },
+        this._prisma
+      );
+
+      const depth = parentRun ? parentRun.depth + 1 : 0;
+
+      const masterQueue = await this.#getMasterQueueForEnvironment(environment);
+
       try {
         return await eventRepository.traceEvent(
           taskId,
@@ -279,49 +396,10 @@ export class RunEngineTriggerTaskService extends WithRunEngine {
             const result = await autoIncrementCounter.incrementInTransaction(
               `v3-run:${environment.id}:${taskId}`,
               async (num, tx) => {
-                const lockedToBackgroundWorker = body.options?.lockToVersion
-                  ? await tx.backgroundWorker.findFirst({
-                      where: {
-                        projectId: environment.projectId,
-                        runtimeEnvironmentId: environment.id,
-                        version: body.options?.lockToVersion,
-                      },
-                      select: {
-                        id: true,
-                        version: true,
-                        sdkVersion: true,
-                        cliVersion: true,
-                      },
-                    })
-                  : undefined;
-
-                let queueName = sanitizeQueueName(
-                  await this.#getQueueName(taskId, environment, body.options?.queue?.name)
-                );
-
-                // Check that the queuename is not an empty string
-                if (!queueName) {
-                  queueName = sanitizeQueueName(`task/${taskId}`);
-                }
-
                 event.setAttribute("queueName", queueName);
                 span.setAttribute("queueName", queueName);
-
-                //upsert tags
-                const tags = await createTags(
-                  {
-                    tags: body.options?.tags,
-                    projectId: environment.projectId,
-                  },
-                  this._prisma
-                );
-
-                const depth = parentRun ? parentRun.depth + 1 : 0;
-
                 event.setAttribute("runId", runFriendlyId);
                 span.setAttribute("runId", runFriendlyId);
-
-                const masterQueue = await this.#getMasterQueueForEnvironment(environment);
 
                 const taskRun = await this._engine.trigger(
                   {
@@ -345,6 +423,7 @@ export class RunEngineTriggerTaskService extends WithRunEngine {
                     cliVersion: lockedToBackgroundWorker?.cliVersion,
                     concurrencyKey: body.options?.concurrencyKey,
                     queue: queueName,
+                    lockedQueueId,
                     masterQueue: masterQueue,
                     isTest: body.options?.test ?? false,
                     delayUntil,
@@ -473,6 +552,7 @@ export class RunEngineTriggerTaskService extends WithRunEngine {
     return workerGroup.masterQueue;
   }
 
+  // Gets the queue name when the task is NOT locked to a specific version
   async #getQueueName(taskId: string, environment: AuthenticatedEnvironment, queueName?: string) {
     if (queueName) {
       return queueName;
@@ -480,6 +560,7 @@ export class RunEngineTriggerTaskService extends WithRunEngine {
 
     const defaultQueueName = `task/${taskId}`;
 
+    // Find the current worker for the environment
     const worker = await findCurrentWorkerFromEnvironment(environment);
 
     if (!worker) {

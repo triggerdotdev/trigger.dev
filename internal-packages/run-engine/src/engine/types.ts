@@ -84,6 +84,7 @@ export type TriggerParams = {
   concurrencyKey?: string;
   masterQueue?: string;
   queue: string;
+  lockedQueueId?: string;
   isTest: boolean;
   delayUntil?: Date;
   queuedAt?: Date;
