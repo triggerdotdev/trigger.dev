@@ -147,7 +147,7 @@ export default function Page() {
           </LinkButton>
           <Dialog>
             <DialogTrigger asChild>
-              <Button variant="primary/small">Create new token</Button>
+              <Button variant="primary/small">Create new token…</Button>
             </DialogTrigger>
             <DialogContent className="max-w-md">
               <DialogHeader>Create a Personal Access Token</DialogHeader>
@@ -231,8 +231,8 @@ function CreatePersonalAccessToken() {
   return (
     <div className="max-w-full overflow-x-hidden">
       {token ? (
-        <div className="flex flex-col gap-2 p-2">
-          <Header2>Successfully generated a new token</Header2>
+        <div className="flex flex-col gap-2 pt-3">
+          <Label>Successfully generated a new token</Label>
           <Callout variant="success">
             Copy this access token and store it in a secure place - you will not be able to see it
             again.
@@ -241,18 +241,19 @@ function CreatePersonalAccessToken() {
             secure
             value={token.token}
             variant={"secondary/medium"}
-            icon={<ShieldExclamationIcon className="h-5 w-5 text-emerald-500" />}
+            icon={<ShieldExclamationIcon className="size-5 text-success" />}
+            className="mt-3"
           />
         </div>
       ) : (
         <fetcher.Form method="post" {...form.props}>
           <input type="hidden" name="action" value="create" />
-          <Fieldset>
+          <Fieldset className="mt-3">
             <InputGroup>
               <Label htmlFor={tokenName.id}>Name</Label>
               <Input
                 {...conform.input(tokenName, { type: "text" })}
-                placeholder="The name of your Personal Access Token"
+                placeholder="Name your Personal Access Token"
                 defaultValue=""
                 icon={ShieldCheckIcon}
                 autoComplete="off"
@@ -268,12 +269,12 @@ function CreatePersonalAccessToken() {
             <FormButtons
               confirmButton={
                 <Button type="submit" variant={"primary/small"}>
-                  Update
+                  Create token
                 </Button>
               }
               cancelButton={
                 <DialogClose asChild>
-                  <Button variant={"tertiary/medium"}>Cancel</Button>
+                  <Button variant={"tertiary/small"}>Cancel</Button>
                 </DialogClose>
               }
             />
@@ -309,7 +310,7 @@ function RevokePersonalAccessToken({ token }: { token: ObfuscatedPersonalAccessT
           <DialogContent className="max-w-md">
             <DialogHeader>Revoke Personal Access Token</DialogHeader>
             <div className="flex flex-col gap-3 pt-3">
-              <Paragraph spacing>
+              <Paragraph className="mb-1">
                 Are you sure you want to revoke "{token.name}"? This can't be reversed.
               </Paragraph>
               <FormButtons
