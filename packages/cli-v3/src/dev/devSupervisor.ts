@@ -206,6 +206,7 @@ class DevSupervisor implements WorkerRuntime {
     ) {
       logger.debug(`[DevSupervisor] dequeueRuns. Run limit reached, trying again later`);
       setTimeout(() => this.#dequeueRuns(), this.config.dequeueIntervalWithoutRun);
+      return;
     }
 
     //get relevant versions
