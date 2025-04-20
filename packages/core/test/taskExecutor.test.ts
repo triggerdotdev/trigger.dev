@@ -7,12 +7,15 @@ import {
   TaskMetadataWithFunctions,
   TaskRunErrorCodes,
   TaskRunExecution,
+  TaskRunExecutionResult,
+  TaskRunExecutionRetry,
 } from "../src/v3/index.js";
 import { TracingSDK } from "../src/v3/otel/tracingSDK.js";
 import { TriggerTracer } from "../src/v3/tracer.js";
 import { TaskExecutor } from "../src/v3/workers/taskExecutor.js";
 import { StandardLifecycleHooksManager } from "../src/v3/lifecycleHooks/manager.js";
 import { lifecycleHooks } from "../src/v3/index.js";
+import { ApiError } from "../src/v3/apiClient/errors.js";
 
 describe("TaskExecutor", () => {
   beforeEach(() => {
@@ -1663,6 +1666,150 @@ describe("TaskExecutor", () => {
         outputType: "application/super+json",
       },
     });
+  });
+
+  test("should skip retrying for unretryable API errors", async () => {
+    const unretryableStatusCodes = [400, 401, 403, 404, 422];
+    const retryableStatusCodes = [408, 429, 500, 502, 503, 504];
+
+    // Register global init hook
+    lifecycleHooks.registerGlobalInitHook({
+      id: "test-init",
+      fn: async () => {
+        return {
+          foo: "bar",
+        };
+      },
+    });
+
+    // Test each unretryable status code
+    for (const status of unretryableStatusCodes) {
+      const apiError = ApiError.generate(
+        status,
+        { error: { message: "API Error" } },
+        "API Error",
+        {}
+      );
+
+      const task = {
+        id: "test-task",
+        fns: {
+          run: async () => {
+            throw apiError;
+          },
+        },
+        retry: {
+          maxAttempts: 3,
+          minDelay: 1000,
+          maxDelay: 5000,
+          factor: 2,
+        },
+      };
+
+      const result = await executeTask(task, { test: "data" }, undefined);
+
+      // Verify that retrying is skipped for these status codes
+      expect(result.result).toMatchObject({
+        ok: false,
+        id: "test-run-id",
+        error: {
+          type: "BUILT_IN_ERROR",
+          message: `${status} API Error`,
+          name: "TriggerApiError",
+          stackTrace: expect.any(String),
+        },
+        skippedRetrying: true,
+      });
+    }
+
+    // Test each retryable status code
+    for (const status of retryableStatusCodes) {
+      const apiError = ApiError.generate(
+        status,
+        { error: { message: "API Error" } },
+        "API Error",
+        {}
+      );
+
+      const task = {
+        id: "test-task",
+        fns: {
+          run: async () => {
+            throw apiError;
+          },
+        },
+        retry: {
+          maxAttempts: 3,
+          minDelay: 1000,
+          maxDelay: 5000,
+          factor: 2,
+        },
+      };
+
+      const result = await executeTask(task, { test: "data" }, undefined);
+
+      // Verify that retrying is NOT skipped for these status codes
+      expect(result.result.ok).toBe(false);
+      expect(result.result).toMatchObject({
+        ok: false,
+        skippedRetrying: false,
+        retry: expect.objectContaining({
+          delay: expect.any(Number),
+          timestamp: expect.any(Number),
+        }),
+      });
+
+      if (status === 429) {
+        // Rate limit errors should use the rate limit retry delay
+        expect((result.result as any).retry.delay).toBeGreaterThan(0);
+      } else {
+        // Other retryable errors should use the exponential backoff
+        expect((result.result as any).retry.delay).toBeGreaterThan(1000);
+        expect((result.result as any).retry.delay).toBeLessThan(5000);
+      }
+    }
+  });
+
+  test("should respect rate limit headers for 429 errors", async () => {
+    const resetTime = Date.now() + 30000; // 30 seconds from now
+    const apiError = ApiError.generate(
+      429,
+      { error: { message: "Rate limit exceeded" } },
+      "Rate limit exceeded",
+      { "x-ratelimit-reset": resetTime.toString() }
+    );
+
+    const task = {
+      id: "test-task",
+      fns: {
+        run: async () => {
+          throw apiError;
+        },
+      },
+      retry: {
+        maxAttempts: 3,
+        minDelay: 1000,
+        maxDelay: 5000,
+        factor: 2,
+      },
+    };
+
+    const result = await executeTask(task, { test: "data" }, undefined);
+
+    // Verify that the retry delay matches the rate limit reset time (with some jitter)
+    expect(result.result.ok).toBe(false);
+    expect(result.result).toMatchObject({
+      ok: false,
+      skippedRetrying: false,
+      retry: expect.objectContaining({
+        delay: expect.any(Number),
+        timestamp: expect.any(Number),
+      }),
+    });
+
+    const delay = (result.result as any).retry.delay;
+    expect(delay).toBeGreaterThan(29900); // Allow for some time passing during test
+    expect(delay).toBeLessThan(32000); // Account for max 2000ms jitter
   });
 });
 

@@ -286,7 +286,7 @@ export class RunEngineTriggerTaskService extends WithRunEngine {
 
           if (!specifiedQueue) {
             throw new ServiceValidationError(
-              `Specified queue '${specifiedQueueName}' not found or not associated with locked worker version '${
+              `Specified queue '${specifiedQueueName}' not found or not associated with locked version '${
                 body.options?.lockToVersion ?? "<unknown>"
               }'.`
             );
@@ -308,7 +308,7 @@ export class RunEngineTriggerTaskService extends WithRunEngine {
 
           if (!lockedTask) {
             throw new ServiceValidationError(
-              `Task '${taskId}' not found on locked worker version '${
+              `Task '${taskId}' not found on locked version '${
                 body.options?.lockToVersion ?? "<unknown>"
               }'.`
             );
@@ -317,13 +317,13 @@ export class RunEngineTriggerTaskService extends WithRunEngine {
           if (!lockedTask.queue) {
             // This case should ideally be prevented by earlier checks or schema constraints,
             // but handle it defensively.
-            logger.error("Task found on locked worker, but has no associated queue record", {
+            logger.error("Task found on locked version, but has no associated queue record", {
               taskId,
               workerId: lockedToBackgroundWorker.id,
               version: lockedToBackgroundWorker.version,
             });
             throw new ServiceValidationError(
-              `Default queue configuration for task '${taskId}' missing on locked worker version '${
+              `Default queue configuration for task '${taskId}' missing on locked version '${
                 body.options?.lockToVersion ?? "<unknown>"
               }'.`
             );

@@ -116,7 +116,7 @@ const { action, loader } = createActionApiRoute(
       );
     } catch (error) {
       if (error instanceof ServiceValidationError) {
-        return json({ error: error.message }, { status: 422 });
+        return json({ error: error.message }, { status: error.status ?? 422 });
       } else if (error instanceof OutOfEntitlementError) {
         return json({ error: error.message }, { status: 422 });
       } else if (error instanceof Error) {
