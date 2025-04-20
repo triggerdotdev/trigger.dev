@@ -1,9 +1,9 @@
-import { useShortcuts } from "../components/primitives/ShortcutsProvider";
-import { useFeatures } from "~/hooks/useFeatures";
+import { useMatches, useSearchParams } from "@remix-run/react";
 import { useCallback, useEffect, useState } from "react";
-import { useMatches } from "@remix-run/react";
-import { useTypedMatchesData } from "./useTypedMatchData";
+import { useFeatures } from "~/hooks/useFeatures";
 import { type loader } from "~/root";
+import { useShortcuts } from "../components/primitives/ShortcutsProvider";
+import { useTypedMatchesData } from "./useTypedMatchData";
 
 type OpenOptions = { mode: string; query: string; submit: boolean };
 
@@ -11,7 +11,7 @@ declare global {
   interface Window {
     Kapa: (
       command: string,
-      options?: (() => void) | OpenOptions,
+      options?: (() => void) | { onRender?: () => void } | OpenOptions,
       remove?: string | { onRender?: () => void }
     ) => void;
   }
@@ -77,6 +77,7 @@ export function useKapaWidget() {
   const features = useFeatures();
   const { disableShortcuts, enableShortcuts, areShortcutsEnabled } = useShortcuts();
   const [isKapaOpen, setIsKapaOpen] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const handleModalClose = useCallback(() => {
     setIsKapaOpen(false);
@@ -88,10 +89,25 @@ export function useKapaWidget() {
     disableShortcuts();
   }, [disableShortcuts]);
 
+  // Handle opening/closing
   useEffect(() => {
     if (!features.isManagedCloud || !kapa?.websiteId) return;
 
-    window.Kapa("render");
+    window.Kapa("render", {
+      onRender: () => {
+        const aiHelp = searchParams.get("aiHelp");
+        if (aiHelp) {
+          setSearchParams((prev) => {
+            prev.delete("aiHelp");
+            return prev;
+          });
+
+          //we need to decode the aiHelp string because it's urlencoded
+          const decodedAiHelp = decodeURIComponent(aiHelp);
+          openKapa(decodedAiHelp);
+        }
+      },
+    });
     window.Kapa("onModalOpen", handleModalOpen);
     window.Kapa("onModalClose", handleModalClose);
 
@@ -99,8 +115,9 @@ export function useKapaWidget() {
       window.Kapa("onModalOpen", handleModalOpen, "remove");
       window.Kapa("onModalClose", handleModalClose, "remove");
     };
-  }, [features.isManagedCloud, kapa?.websiteId]);
+  }, [features.isManagedCloud, kapa?.websiteId, searchParams, setSearchParams]);
 
+  // Handle opening the Kapa widget
   const openKapa = useCallback(
     (query?: string) => {
       if (!features.isManagedCloud || !kapa?.websiteId) return;
