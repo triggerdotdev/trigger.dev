@@ -104,7 +104,9 @@ export function useKapaWidget() {
 
           //we need to decode the aiHelp string because it's urlencoded
           const decodedAiHelp = decodeURIComponent(aiHelp);
-          openKapa(decodedAiHelp);
+          setTimeout(() => {
+            openKapa(decodedAiHelp);
+          }, 500);
         }
       },
     });
