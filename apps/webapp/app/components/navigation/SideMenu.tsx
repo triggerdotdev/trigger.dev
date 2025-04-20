@@ -20,6 +20,7 @@ import {
 import { useLocation, useNavigation } from "@remix-run/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import simplur from "simplur";
+import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
 import { RunsIconExtraSmall } from "~/assets/icons/RunsIcon";
 import { TaskIconSmall } from "~/assets/icons/TaskIcon";
 import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
@@ -55,6 +56,7 @@ import {
   v3UsagePath,
   v3WaitpointTokensPath,
 } from "~/utils/pathBuilder";
+import { useKapaWidget } from "../../hooks/useKapaWidget";
 import { FreePlanUsage } from "../billing/FreePlanUsage";
 import { ConnectionIcon, DevPresencePanel, useDevPresence } from "../DevPresence";
 import { ImpersonationBanner } from "../ImpersonationBanner";
@@ -68,22 +70,16 @@ import {
   PopoverMenuItem,
   PopoverTrigger,
 } from "../primitives/Popover";
+import { ShortcutKey } from "../primitives/ShortcutKey";
 import { TextLink } from "../primitives/TextLink";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
+import { ShortcutsAutoOpen } from "../Shortcuts";
 import { UserProfilePhoto } from "../UserProfilePhoto";
 import { EnvironmentSelector } from "./EnvironmentSelector";
 import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
 import { SideMenuSection } from "./SideMenuSection";
-import { useShortcutKeys } from "~/hooks/useShortcutKeys";
-import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
-import { ShortcutKey } from "../primitives/ShortcutKey";
-import { useFeatures } from "~/hooks/useFeatures";
-import { useKapaConfig } from "~/root";
-import { useShortcuts } from "~/components/primitives/ShortcutsProvider";
-import { useKapaWidget } from "../../hooks/useKapaWidget";
-import { ShortcutsAutoOpen } from "../Shortcuts";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 export type SideMenuProject = Pick<

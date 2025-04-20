@@ -24,6 +24,7 @@ import { usePostHog } from "./hooks/usePostHog";
 import { useTypedMatchesData } from "./hooks/useTypedMatchData";
 import { getUser } from "./services/session.server";
 import { appEnvTitleTag } from "./utils";
+import { KapaScripts } from "./hooks/useKapaWidget";
 
 export const links: LinksFunction = () => {
   return [{ rel: "stylesheet", href: tailwindStylesheetUrl }];
@@ -43,15 +44,6 @@ export const meta: MetaFunction = ({ data }) => {
     },
   ];
 };
-
-export function useKapaConfig() {
-  const matches = useMatches();
-  const routeMatch = useTypedMatchesData<typeof loader>({
-    id: "root",
-    matches,
-  });
-  return routeMatch?.kapa;
-}
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const session = await getSession(request.headers.get("cookie"));
@@ -111,7 +103,7 @@ export function ErrorBoundary() {
 }
 
 export default function App() {
-  const { posthogProjectKey } = useTypedLoaderData<typeof loader>();
+  const { posthogProjectKey, kapa } = useTypedLoaderData<typeof loader>();
   usePostHog(posthogProjectKey);
 
   return (
@@ -120,6 +112,7 @@ export default function App() {
         <head>
           <Meta />
           <Links />
+          <KapaScripts websiteId={kapa.websiteId} />
         </head>
         <body className="h-full overflow-hidden bg-background-dimmed">
           <ShortcutsProvider>
