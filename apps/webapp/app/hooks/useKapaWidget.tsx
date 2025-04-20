@@ -5,11 +5,13 @@ import { useCallback, useEffect, useState } from "react";
 
 declare global {
   interface Window {
-    Kapa: (
+    Kapa: ((
       command: string,
       options?: () => void,
       remove?: string | { onRender?: () => void }
-    ) => void;
+    ) => void) & {
+      open: (options?: { mode: string; query: string; submit: boolean }) => void;
+    };
   }
 }
 
@@ -58,15 +60,26 @@ export function useKapaWidget() {
     };
   }, [features.isManagedCloud, kapa?.websiteId, disableShortcuts, enableShortcuts]);
 
-  const openKapa = useCallback(() => {
-    if (!features.isManagedCloud || !kapa?.websiteId) return;
+  const openKapa = useCallback(
+    (query?: string) => {
+      if (!features.isManagedCloud || !kapa?.websiteId) return;
 
-    if (typeof window.Kapa === "function") {
-      window.Kapa("open");
-      setIsKapaOpen(true);
-      disableShortcuts();
-    }
-  }, [disableShortcuts, features.isManagedCloud, kapa?.websiteId]);
+      if (typeof window.Kapa === "function") {
+        window.Kapa.open(
+          query
+            ? {
+                mode: "ai",
+                query,
+                submit: true,
+              }
+            : undefined
+        );
+        setIsKapaOpen(true);
+        disableShortcuts();
+      }
+    },
+    [disableShortcuts, features.isManagedCloud, kapa?.websiteId]
+  );
 
   return {
     isKapaEnabled: features.isManagedCloud && kapa?.websiteId,
