@@ -3,6 +3,16 @@ import { useShortcuts } from "../components/primitives/ShortcutsProvider";
 import { useFeatures } from "~/hooks/useFeatures";
 import { useCallback, useEffect, useState } from "react";
 
+declare global {
+  interface Window {
+    Kapa: (
+      command: string,
+      options?: () => void,
+      remove?: string | { onRender?: () => void }
+    ) => void;
+  }
+}
+
 export function useKapaWidget() {
   const kapa = useKapaConfig();
   const features = useFeatures();
@@ -20,6 +30,11 @@ export function useKapaWidget() {
       enableShortcuts();
     };
 
+    const handleModalOpen = () => {
+      setIsKapaOpen(true);
+      disableShortcuts();
+    };
+
     const kapaInterval = setInterval(() => {
       if (typeof window.Kapa === "function") {
         clearInterval(kapaInterval);
@@ -27,10 +42,7 @@ export function useKapaWidget() {
         window.Kapa("onModalClose", handleModalClose);
 
         // Register onModalOpen handler
-        window.Kapa("onModalOpen", () => {
-          setIsKapaOpen(true);
-          disableShortcuts();
-        });
+        window.Kapa("onModalOpen", handleModalOpen);
       }
     }, 100);
 
@@ -39,11 +51,12 @@ export function useKapaWidget() {
       clearInterval(kapaInterval);
       if (typeof window.Kapa === "function") {
         window.Kapa("unmount");
+
+        window.Kapa("onModalOpen", handleModalOpen, "remove");
+        window.Kapa("onModalClose", handleModalClose, "remove");
       }
     };
   }, [features.isManagedCloud, kapa?.websiteId, disableShortcuts, enableShortcuts]);
-
-  //todo remove listeners
 
   const openKapa = useCallback(() => {
     if (!features.isManagedCloud || !kapa?.websiteId) return;

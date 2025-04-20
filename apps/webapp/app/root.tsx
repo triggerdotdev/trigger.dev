@@ -25,12 +25,6 @@ import { useTypedMatchesData } from "./hooks/useTypedMatchData";
 import { getUser } from "./services/session.server";
 import { appEnvTitleTag } from "./utils";
 
-declare global {
-  interface Window {
-    Kapa: (command: string, options?: (() => void) | { onRender?: () => void }) => void;
-  }
-}
-
 export const links: LinksFunction = () => {
   return [{ rel: "stylesheet", href: tailwindStylesheetUrl }];
 };
