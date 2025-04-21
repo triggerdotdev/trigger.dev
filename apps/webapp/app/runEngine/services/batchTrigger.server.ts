@@ -16,9 +16,9 @@ import { logger } from "~/services/logger.server";
 import { getEntitlement } from "~/services/platform.v3.server";
 import { workerQueue } from "~/services/worker.server";
 import { downloadPacketFromObjectStore, uploadPacketToObjectStore } from "../../v3/r2.server";
-import { startActiveSpan } from "../../v3/tracer.server";
 import { ServiceValidationError, WithRunEngine } from "../../v3/services/baseService.server";
 import { OutOfEntitlementError, TriggerTaskService } from "../../v3/services/triggerTask.server";
+import { startActiveSpan } from "../../v3/tracer.server";
 
 const PROCESSING_BATCH_SIZE = 50;
 const ASYNC_BATCH_PROCESS_SIZE_THRESHOLD = 20;
