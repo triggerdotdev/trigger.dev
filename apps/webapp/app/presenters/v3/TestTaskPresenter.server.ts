@@ -125,7 +125,7 @@ export class TestTaskPresenter {
           tr."runtimeEnvironmentId" = ${environment.id}
       ORDER BY
           tr."createdAt" DESC
-      LIMIT 5
+      LIMIT 10
     )
     SELECT
         taskr.id,
