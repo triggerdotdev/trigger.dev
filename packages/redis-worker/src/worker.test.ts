@@ -324,7 +324,6 @@ describe("Worker", () => {
       const processedPayloads: string[] = [];
       const jobStarted: string[] = [];
       let firstJobCompleted = false;
-      const events: string[] = [];
 
       const worker = new Worker({
         name: "test-worker",
@@ -344,7 +343,6 @@ describe("Worker", () => {
           testJob: async ({ payload }) => {
             // Record when the job starts processing
             jobStarted.push(payload.value);
-            events.push(`Job started: ${payload.value}`);
 
             if (payload.value === "first-attempt") {
               // First job takes a long time to process
@@ -354,7 +352,6 @@ describe("Worker", () => {
 
             // Record when the job completes
             processedPayloads.push(payload.value);
-            events.push(`Job completed: ${payload.value}`);
           },
         },
         concurrency: {
@@ -373,11 +370,9 @@ describe("Worker", () => {
         job: "testJob",
         payload: { value: "first-attempt" },
       });
-      events.push("First job enqueued");
 
       // Verify initial queue size
       const size1 = await worker.queue.size({ includeFuture: true });
-      events.push(`Queue size after first enqueue: ${size1}`);
       expect(size1).toBe(1);
 
       // Wait until we know the first job has started processing
@@ -393,26 +388,20 @@ describe("Worker", () => {
         payload: { value: "second-attempt" },
         availableAt: new Date(Date.now() + 1500),
       });
-      events.push("Second job enqueued with future availableAt");
 
       // Verify queue size after second enqueue
       const size2 = await worker.queue.size({ includeFuture: true });
       const size2Present = await worker.queue.size({ includeFuture: false });
-      events.push(`Queue size after second enqueue (including future): ${size2}`);
-      events.push(`Queue size after second enqueue (present only): ${size2Present}`);
       expect(size2).toBe(1); // Should still be 1 as it's the same ID
 
       // Wait for the first job to complete
       while (!firstJobCompleted) {
         await new Promise((resolve) => setTimeout(resolve, 10));
       }
-      events.push("First job completed");
 
       // Check queue size right after first job completes
       const size3 = await worker.queue.size({ includeFuture: true });
       const size3Present = await worker.queue.size({ includeFuture: false });
-      events.push(`Queue size after first job completes (including future): ${size3}`);
-      events.push(`Queue size after first job completes (present only): ${size3Present}`);
 
       // Wait long enough for the second job to become available and potentially run
       await new Promise((resolve) => setTimeout(resolve, 2000));
@@ -420,10 +409,6 @@ describe("Worker", () => {
       // Final queue size
       const size4 = await worker.queue.size({ includeFuture: true });
       const size4Present = await worker.queue.size({ includeFuture: false });
-      events.push(`Final queue size (including future): ${size4}`);
-      events.push(`Final queue size (present only): ${size4Present}`);
-
-      console.log("Event sequence:", events);
 
       // First job should have run
       expect(processedPayloads).toContain("first-attempt");

@@ -208,12 +208,16 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
   async ack(id: string, deduplicationKey?: string): Promise<void> {
     try {
       const result = await this.redis.ackItem(`queue`, `items`, id, deduplicationKey ?? "");
-      if (result === 0) {
-        this.logger.error(`SimpleQueue ${this.name}.ack(): ack operation returned 0`, {
-          queue: this.name,
-          id,
-          deduplicationKey,
-        });
+      if (result !== 1) {
+        this.logger.debug(
+          `SimpleQueue ${this.name}.ack(): ack operation returned ${result}. This means it was not removed from the queue.`,
+          {
+            queue: this.name,
+            id,
+            deduplicationKey,
+            result,
+          }
+        );
       }
     } catch (e) {
       this.logger.error(`SimpleQueue ${this.name}.ack(): error acknowledging item`, {
