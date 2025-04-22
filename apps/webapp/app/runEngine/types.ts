@@ -60,6 +60,7 @@ export type TriggerTaskServiceOptions = {
 // domain/triggerTask.ts
 export type TriggerTaskRequest = {
   taskId: string;
+  friendlyId: string;
   environment: AuthenticatedEnvironment;
   body: TriggerTaskRequestBody;
   options?: TriggerTaskServiceOptions;
@@ -103,10 +104,5 @@ export interface QueueManager {
 }
 
 export interface PayloadProcessor {
-  process(payload: any, type: string, pathPrefix: string): Promise<IOPacket>;
-}
-
-// Domain validation
-export class TriggerTaskValidator {
-  // Pure validation functions here
+  process(request: TriggerTaskRequest): Promise<IOPacket>;
 }
