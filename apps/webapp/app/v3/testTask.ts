@@ -4,46 +4,42 @@ export const TestTaskData = z
   .discriminatedUnion("triggerSource", [
     z.object({
       triggerSource: z.literal("STANDARD"),
-      payload: z.string().transform((payload, ctx) => {
-        try {
-          const data = JSON.parse(payload);
-          return data as any;
-        } catch (e) {
-          console.log("parsing error", e);
-
-          if (e instanceof Error) {
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              message: e.message,
-            });
-          } else {
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              message: "This is invalid JSON",
-            });
+      payload: z
+        .string()
+        .optional()
+        .transform((val, ctx) => {
+          if (!val) {
+            return {};
           }
-        }
-      }),
-      metadata: z.string().transform((metadata, ctx) => {
-        try {
-          const data = JSON.parse(metadata);
-          return data as any;
-        } catch (e) {
-          console.log("parsing error", e);
 
-          if (e instanceof Error) {
+          try {
+            return JSON.parse(val);
+          } catch {
             ctx.addIssue({
               code: z.ZodIssueCode.custom,
-              message: e.message,
+              message: "Payload must be a valid JSON string",
             });
-          } else {
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              message: "This is invalid JSON",
-            });
+            return z.NEVER;
           }
-        }
-      }),
+        }),
+      metadata: z
+        .string()
+        .optional()
+        .transform((val, ctx) => {
+          if (!val) {
+            return {};
+          }
+
+          try {
+            return JSON.parse(val);
+          } catch {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "Metadata must be a valid JSON string",
+            });
+            return z.NEVER;
+          }
+        }),
     }),
     z.object({
       triggerSource: z.literal("SCHEDULED"),
