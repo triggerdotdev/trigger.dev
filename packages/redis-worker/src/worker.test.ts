@@ -250,4 +250,192 @@ describe("Worker", () => {
       await redisClient.quit();
     }
   );
+
+  redisTest(
+    "Should process a job with the same ID only once when rescheduled",
+    { timeout: 30_000 },
+    async ({ redisContainer }) => {
+      const processedPayloads: string[] = [];
+
+      const worker = new Worker({
+        name: "test-worker",
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        catalog: {
+          testJob: {
+            schema: z.object({ value: z.string() }),
+            visibilityTimeoutMs: 5000,
+            retry: { maxAttempts: 3 },
+          },
+        },
+        jobs: {
+          testJob: async ({ payload }) => {
+            await new Promise((resolve) => setTimeout(resolve, 30)); // Simulate work
+            processedPayloads.push(payload.value);
+          },
+        },
+        concurrency: {
+          workers: 1,
+          tasksPerWorker: 1,
+        },
+        pollIntervalMs: 10, // Ensure quick polling to detect the scheduled item
+        logger: new Logger("test", "log"),
+      }).start();
+
+      // Unique ID to use for both enqueues
+      const testJobId = "duplicate-job-id";
+
+      // Enqueue the first item immediately
+      await worker.enqueue({
+        id: testJobId,
+        job: "testJob",
+        payload: { value: "first-attempt" },
+        availableAt: new Date(Date.now() + 50),
+      });
+
+      // Enqueue another item with the same ID but scheduled 50ms in the future
+      await worker.enqueue({
+        id: testJobId,
+        job: "testJob",
+        payload: { value: "second-attempt" },
+        availableAt: new Date(Date.now() + 50),
+      });
+
+      // Wait enough time for both jobs to be processed if they were going to be
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      // Verify that only one job was processed (the second one should have replaced the first)
+      expect(processedPayloads.length).toBe(1);
+
+      // Verify that the second job's payload was the one processed
+      expect(processedPayloads[0]).toBe("second-attempt");
+
+      await worker.stop();
+    }
+  );
+
+  redisTest(
+    "Should process second job with same ID when enqueued during first job execution with future availableAt",
+    { timeout: 30_000 },
+    async ({ redisContainer }) => {
+      const processedPayloads: string[] = [];
+      const jobStarted: string[] = [];
+      let firstJobCompleted = false;
+      const events: string[] = [];
+
+      const worker = new Worker({
+        name: "test-worker",
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        catalog: {
+          testJob: {
+            schema: z.object({ value: z.string() }),
+            visibilityTimeoutMs: 5000,
+            retry: { maxAttempts: 3 },
+          },
+        },
+        jobs: {
+          testJob: async ({ payload }) => {
+            // Record when the job starts processing
+            jobStarted.push(payload.value);
+            events.push(`Job started: ${payload.value}`);
+
+            if (payload.value === "first-attempt") {
+              // First job takes a long time to process
+              await new Promise((resolve) => setTimeout(resolve, 1_000));
+              firstJobCompleted = true;
+            }
+
+            // Record when the job completes
+            processedPayloads.push(payload.value);
+            events.push(`Job completed: ${payload.value}`);
+          },
+        },
+        concurrency: {
+          workers: 1,
+          tasksPerWorker: 1,
+        },
+        pollIntervalMs: 10,
+        logger: new Logger("test", "log"),
+      }).start();
+
+      const testJobId = "long-running-job-id";
+
+      // Queue the first job
+      await worker.enqueue({
+        id: testJobId,
+        job: "testJob",
+        payload: { value: "first-attempt" },
+      });
+      events.push("First job enqueued");
+
+      // Verify initial queue size
+      const size1 = await worker.queue.size({ includeFuture: true });
+      events.push(`Queue size after first enqueue: ${size1}`);
+      expect(size1).toBe(1);
+
+      // Wait until we know the first job has started processing
+      while (jobStarted.length === 0) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+
+      // Now that first job is running, queue second job with same ID
+      // Set availableAt to be 1.5 seconds in the future (after first job completes)
+      await worker.enqueue({
+        id: testJobId,
+        job: "testJob",
+        payload: { value: "second-attempt" },
+        availableAt: new Date(Date.now() + 1500),
+      });
+      events.push("Second job enqueued with future availableAt");
+
+      // Verify queue size after second enqueue
+      const size2 = await worker.queue.size({ includeFuture: true });
+      const size2Present = await worker.queue.size({ includeFuture: false });
+      events.push(`Queue size after second enqueue (including future): ${size2}`);
+      events.push(`Queue size after second enqueue (present only): ${size2Present}`);
+      expect(size2).toBe(1); // Should still be 1 as it's the same ID
+
+      // Wait for the first job to complete
+      while (!firstJobCompleted) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      events.push("First job completed");
+
+      // Check queue size right after first job completes
+      const size3 = await worker.queue.size({ includeFuture: true });
+      const size3Present = await worker.queue.size({ includeFuture: false });
+      events.push(`Queue size after first job completes (including future): ${size3}`);
+      events.push(`Queue size after first job completes (present only): ${size3Present}`);
+
+      // Wait long enough for the second job to become available and potentially run
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+
+      // Final queue size
+      const size4 = await worker.queue.size({ includeFuture: true });
+      const size4Present = await worker.queue.size({ includeFuture: false });
+      events.push(`Final queue size (including future): ${size4}`);
+      events.push(`Final queue size (present only): ${size4Present}`);
+
+      console.log("Event sequence:", events);
+
+      // First job should have run
+      expect(processedPayloads).toContain("first-attempt");
+
+      // These assertions should fail - demonstrating the bug
+      // The second job should run after its availableAt time, but doesn't because
+      // the ack from the first job removed it from Redis entirely
+      expect(jobStarted).toContain("second-attempt");
+      expect(processedPayloads).toContain("second-attempt");
+      expect(processedPayloads.length).toBe(2);
+
+      await worker.stop();
+    }
+  );
 });
