@@ -3,7 +3,6 @@ import { PrismaClientOrTransaction } from "@trigger.dev/database";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.server";
-import { ServiceValidationError } from "~/v3/services/baseService.server";
 import {
   LockedBackgroundWorker,
   QueueManager,
@@ -14,6 +13,7 @@ import {
 import { WorkerGroupService } from "~/v3/services/worker/workerGroupService.server";
 import type { RunEngine } from "~/v3/runEngine.server";
 import { env } from "~/env.server";
+import { EngineServiceValidationError } from "./errors";
 
 export class DefaultQueueManager implements QueueManager {
   constructor(
@@ -43,7 +43,7 @@ export class DefaultQueueManager implements QueueManager {
         });
 
         if (!specifiedQueue) {
-          throw new ServiceValidationError(
+          throw new EngineServiceValidationError(
             `Specified queue '${specifiedQueueName}' not found or not associated with locked version '${
               lockedBackgroundWorker.version ?? "<unknown>"
             }'.`
@@ -65,7 +65,7 @@ export class DefaultQueueManager implements QueueManager {
         });
 
         if (!lockedTask) {
-          throw new ServiceValidationError(
+          throw new EngineServiceValidationError(
             `Task '${request.taskId}' not found on locked version '${
               lockedBackgroundWorker.version ?? "<unknown>"
             }'.`
@@ -80,7 +80,7 @@ export class DefaultQueueManager implements QueueManager {
             workerId: lockedBackgroundWorker.id,
             version: lockedBackgroundWorker.version,
           });
-          throw new ServiceValidationError(
+          throw new EngineServiceValidationError(
             `Default queue configuration for task '${request.taskId}' missing on locked version '${
               lockedBackgroundWorker.version ?? "<unknown>"
             }'.`
@@ -94,7 +94,7 @@ export class DefaultQueueManager implements QueueManager {
       // Task is not locked to a specific version, use regular logic
       if (request.body.options?.lockToVersion) {
         // This should only happen if the findFirst failed, indicating the version doesn't exist
-        throw new ServiceValidationError(
+        throw new EngineServiceValidationError(
           `Task locked to version '${request.body.options.lockToVersion}', but no worker found with that version.`
         );
       }
@@ -130,7 +130,7 @@ export class DefaultQueueManager implements QueueManager {
     const defaultQueueName = `task/${taskId}`;
 
     // Find the current worker for the environment
-    const worker = await findCurrentWorkerFromEnvironment(environment);
+    const worker = await findCurrentWorkerFromEnvironment(environment, this.prisma);
 
     if (!worker) {
       logger.debug("Failed to get queue name: No worker found", {
@@ -208,7 +208,7 @@ export class DefaultQueueManager implements QueueManager {
     });
 
     if (!workerGroup) {
-      throw new ServiceValidationError("No worker group found");
+      throw new EngineServiceValidationError("No worker group found");
     }
 
     return workerGroup.masterQueue;

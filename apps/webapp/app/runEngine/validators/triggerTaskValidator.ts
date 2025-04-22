@@ -1,46 +1,17 @@
-import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { MAX_TAGS_PER_RUN } from "~/models/taskRunTag.server";
-import { getEntitlement } from "~/services/platform.v3.server";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
-import { OutOfEntitlementError, MAX_ATTEMPTS } from "~/v3/services/triggerTask.server";
-import { TaskRun } from "@trigger.dev/database";
 import { logger } from "~/services/logger.server";
+import { getEntitlement } from "~/services/platform.v3.server";
+import { MAX_ATTEMPTS, OutOfEntitlementError } from "~/v3/services/triggerTask.server";
 import { isFinalRunStatus } from "~/v3/taskStatus";
-
-export interface TagValidationParams {
-  tags?: string[] | string;
-}
-
-export interface EntitlementValidationParams {
-  environment: AuthenticatedEnvironment;
-}
-
-export interface MaxAttemptsValidationParams {
-  taskId: string;
-  attempt: number;
-}
-
-export interface ParentRunValidationParams {
-  taskId: string;
-  parentRun?: TaskRun;
-  resumeParentOnCompletion?: boolean;
-}
-
-export type ValidationResult =
-  | {
-      ok: true;
-    }
-  | {
-      ok: false;
-      error: Error;
-    };
-
-export interface TriggerTaskValidator {
-  validateTags(params: TagValidationParams): ValidationResult;
-  validateEntitlement(params: EntitlementValidationParams): Promise<ValidationResult>;
-  validateMaxAttempts(params: MaxAttemptsValidationParams): ValidationResult;
-  validateParentRun(params: ParentRunValidationParams): ValidationResult;
-}
+import { EngineServiceValidationError } from "../concerns/errors";
+import {
+  EntitlementValidationParams,
+  MaxAttemptsValidationParams,
+  ParentRunValidationParams,
+  TagValidationParams,
+  TriggerTaskValidator,
+  ValidationResult,
+} from "../types";
 
 export class DefaultTriggerTaskValidator implements TriggerTaskValidator {
   validateTags(params: TagValidationParams): ValidationResult {
@@ -57,7 +28,7 @@ export class DefaultTriggerTaskValidator implements TriggerTaskValidator {
     if (tags.length > MAX_TAGS_PER_RUN) {
       return {
         ok: false,
-        error: new ServiceValidationError(
+        error: new EngineServiceValidationError(
           `Runs can only have ${MAX_TAGS_PER_RUN} tags, you're trying to set ${tags.length}.`
         ),
       };
@@ -91,7 +62,7 @@ export class DefaultTriggerTaskValidator implements TriggerTaskValidator {
     if (attempt > MAX_ATTEMPTS) {
       return {
         ok: false,
-        error: new ServiceValidationError(
+        error: new EngineServiceValidationError(
           `Failed to trigger ${taskId} after ${MAX_ATTEMPTS} attempts.`
         ),
       };
@@ -121,7 +92,7 @@ export class DefaultTriggerTaskValidator implements TriggerTaskValidator {
 
       return {
         ok: false,
-        error: new ServiceValidationError(
+        error: new EngineServiceValidationError(
           `Cannot trigger ${taskId} as the parent run has a status of ${parentRun.status}`
         ),
       };

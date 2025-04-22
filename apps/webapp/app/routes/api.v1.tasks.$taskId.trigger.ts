@@ -7,6 +7,7 @@ import {
 import { TaskRun } from "@trigger.dev/database";
 import { z } from "zod";
 import { env } from "~/env.server";
+import { EngineServiceValidationError } from "~/runEngine/concerns/errors";
 import { AuthenticatedEnvironment, getOneTimeUseToken } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
@@ -116,6 +117,8 @@ const { action, loader } = createActionApiRoute(
       );
     } catch (error) {
       if (error instanceof ServiceValidationError) {
+        return json({ error: error.message }, { status: error.status ?? 422 });
+      } else if (error instanceof EngineServiceValidationError) {
         return json({ error: error.message }, { status: error.status ?? 422 });
       } else if (error instanceof OutOfEntitlementError) {
         return json({ error: error.message }, { status: 422 });

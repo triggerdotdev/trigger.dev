@@ -1,46 +1,8 @@
-import { BackgroundWorker, TaskRun, WorkerDeployment } from "@trigger.dev/database";
+import { BackgroundWorker, TaskRun } from "@trigger.dev/database";
 
-import { RunDuplicateIdempotencyKeyError, RunEngine } from "@internal/run-engine";
-import { TriggerOptions } from "@trigger.dev/core/v3";
-import {
-  IOPacket,
-  packetRequiresOffloading,
-  SemanticInternalAttributes,
-  TaskRunError,
-  taskRunErrorEnhancer,
-  taskRunErrorToString,
-  TriggerTaskRequestBody,
-} from "@trigger.dev/core/v3";
-import {
-  BatchId,
-  RunId,
-  sanitizeQueueName,
-  stringifyDuration,
-} from "@trigger.dev/core/v3/isomorphic";
-import { Prisma } from "@trigger.dev/database";
-import { env } from "~/env.server";
-import { createTags, MAX_TAGS_PER_RUN } from "~/models/taskRunTag.server";
+import { IOPacket, TaskRunError, TriggerTaskRequestBody } from "@trigger.dev/core/v3";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
-import { autoIncrementCounter } from "~/services/autoIncrementCounter.server";
-import { logger } from "~/services/logger.server";
-import { getEntitlement } from "~/services/platform.v3.server";
-import { parseDelay } from "~/utils/delays";
-import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
-import { handleMetadataPacket } from "~/utils/packets";
-import { eventRepository } from "../v3/eventRepository.server";
-import { findCurrentWorkerFromEnvironment } from "../v3/models/workerDeployment.server";
-import { uploadPacketToObjectStore } from "../v3/r2.server";
-import { getTaskEventStore } from "../v3/taskEventStore.server";
-import { isFinalRunStatus } from "../v3/taskStatus";
-import { startActiveSpan } from "../v3/tracer.server";
-import { clampMaxDuration } from "../v3/utils/maxDuration";
-import { ServiceValidationError, WithRunEngine } from "../v3/services/baseService.server";
-import {
-  MAX_ATTEMPTS,
-  OutOfEntitlementError,
-  TriggerTaskServiceResult,
-} from "../v3/services/triggerTask.server";
-import { WorkerGroupService } from "../v3/services/worker/workerGroupService.server";
+import { EventBuilder } from "~/v3/eventRepository.server";
 
 export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
@@ -105,4 +67,75 @@ export interface QueueManager {
 
 export interface PayloadProcessor {
   process(request: TriggerTaskRequest): Promise<IOPacket>;
+}
+
+export interface RunNumberIncrementer {
+  incrementRunNumber<T>(
+    request: TriggerTaskRequest,
+    callback: (num: number) => Promise<T>
+  ): Promise<T | undefined>;
+}
+
+export interface TagValidationParams {
+  tags?: string[] | string;
+}
+
+export interface EntitlementValidationParams {
+  environment: AuthenticatedEnvironment;
+}
+
+export interface MaxAttemptsValidationParams {
+  taskId: string;
+  attempt: number;
+}
+
+export interface ParentRunValidationParams {
+  taskId: string;
+  parentRun?: TaskRun;
+  resumeParentOnCompletion?: boolean;
+}
+
+export type ValidationResult =
+  | {
+      ok: true;
+    }
+  | {
+      ok: false;
+      error: Error;
+    };
+
+export interface TriggerTaskValidator {
+  validateTags(params: TagValidationParams): ValidationResult;
+  validateEntitlement(params: EntitlementValidationParams): Promise<ValidationResult>;
+  validateMaxAttempts(params: MaxAttemptsValidationParams): ValidationResult;
+  validateParentRun(params: ParentRunValidationParams): ValidationResult;
+}
+
+export type TracedEventSpan = {
+  traceId: string;
+  spanId: string;
+  traceContext: Record<string, string | undefined>;
+  traceparent?: {
+    traceId: string;
+    spanId: string;
+  };
+  setAttribute: (key: string, value: string) => void;
+  failWithError: (error: TaskRunError) => void;
+};
+
+export interface TraceEventConcern {
+  traceRun<T>(
+    request: TriggerTaskRequest,
+    callback: (span: TracedEventSpan) => Promise<T>
+  ): Promise<T>;
+  traceIdempotentRun<T>(
+    request: TriggerTaskRequest,
+    options: {
+      existingRun: TaskRun;
+      idempotencyKey: string;
+      incomplete: boolean;
+      isError: boolean;
+    },
+    callback: (span: TracedEventSpan) => Promise<T>
+  ): Promise<T>;
 }

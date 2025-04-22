@@ -1,11 +1,9 @@
-import { PrismaClientOrTransaction, TaskRun } from "@trigger.dev/database";
-import { TriggerTaskRequest } from "../types";
-import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
+import { RunId } from "@trigger.dev/core/v3/isomorphic";
+import type { PrismaClientOrTransaction, TaskRun } from "@trigger.dev/database";
 import { logger } from "~/services/logger.server";
-import { eventRepository } from "~/v3/eventRepository.server";
-import { SemanticInternalAttributes } from "@trigger.dev/core/v3/semanticInternalAttributes";
-import { BatchId, RunId } from "@trigger.dev/core/v3/isomorphic";
-import { RunEngine } from "~/v3/runEngine.server";
+import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
+import type { RunEngine } from "~/v3/runEngine.server";
+import type { TraceEventConcern, TriggerTaskRequest } from "../types";
 
 export type IdempotencyKeyConcernResult =
   | { isCached: true; run: TaskRun }
@@ -14,7 +12,8 @@ export type IdempotencyKeyConcernResult =
 export class IdempotencyKeyConcern {
   constructor(
     private readonly prisma: PrismaClientOrTransaction,
-    private readonly engine: RunEngine
+    private readonly engine: RunEngine,
+    private readonly traceEventConcern: TraceEventConcern
   ) {}
 
   async handleTriggerRequest(request: TriggerTaskRequest): Promise<IdempotencyKeyConcernResult> {
@@ -60,48 +59,15 @@ export class IdempotencyKeyConcern {
           request.body.options?.resumeParentOnCompletion &&
           request.body.options?.parentRunId
         ) {
-          await eventRepository.traceEvent(
-            `${request.taskId} (cached)`,
+          await this.traceEventConcern.traceIdempotentRun(
+            request,
             {
-              context: request.options?.traceContext,
-              spanParentAsLink: request.options?.spanParentAsLink,
-              parentAsLinkType: request.options?.parentAsLinkType,
-              kind: "SERVER",
-              environment: request.environment,
-              taskSlug: request.taskId,
-              attributes: {
-                properties: {
-                  [SemanticInternalAttributes.SHOW_ACTIONS]: true,
-                  [SemanticInternalAttributes.ORIGINAL_RUN_ID]: existingRun.friendlyId,
-                },
-                style: {
-                  icon: "task-cached",
-                },
-                runIsTest: request.body.options?.test ?? false,
-                batchId: request.options?.batchId
-                  ? BatchId.toFriendlyId(request.options.batchId)
-                  : undefined,
-                idempotencyKey,
-                runId: existingRun.friendlyId,
-              },
+              existingRun,
+              idempotencyKey,
               incomplete: existingRun.associatedWaitpoint.status === "PENDING",
               isError: existingRun.associatedWaitpoint.outputIsError,
-              immediate: true,
             },
             async (event) => {
-              //log a message
-              await eventRepository.recordEvent(
-                `There's an existing run for idempotencyKey: ${idempotencyKey}`,
-                {
-                  taskSlug: request.taskId,
-                  environment: request.environment,
-                  attributes: {
-                    runId: existingRun.friendlyId,
-                  },
-                  context: request.options?.traceContext,
-                  parentId: event.spanId,
-                }
-              );
               //block run with waitpoint
               await this.engine.blockRunWithWaitpoint({
                 runId: RunId.fromFriendlyId(request.body.options!.parentRunId!),

@@ -3,7 +3,7 @@ import { PayloadProcessor, TriggerTaskRequest } from "../types";
 import { env } from "~/env.server";
 import { startActiveSpan } from "~/v3/tracer.server";
 import { uploadPacketToObjectStore } from "~/v3/r2.server";
-import { ServiceValidationError } from "~/v3/services/baseService.server";
+import { EngineServiceValidationError } from "./errors";
 
 export class DefaultPayloadProcessor implements PayloadProcessor {
   async process(request: TriggerTaskRequest): Promise<IOPacket> {
@@ -36,7 +36,10 @@ export class DefaultPayloadProcessor implements PayloadProcessor {
       );
 
       if (uploadError) {
-        throw new ServiceValidationError("Failed to upload large payload to object store", 500); // This is retryable
+        throw new EngineServiceValidationError(
+          "Failed to upload large payload to object store",
+          500
+        ); // This is retryable
       }
 
       return {
