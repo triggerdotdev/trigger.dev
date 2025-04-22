@@ -1,10 +1,11 @@
 import {
-  AuthenticatableIntegration,
+  type AuthenticatableIntegration,
   OrgIntegrationRepository,
 } from "~/models/orgIntegration.server";
-import { logger } from "~/services/logger.server";
 import { BasePresenter } from "./basePresenter.server";
-import { WebClient } from "@slack/web-api";
+import { type WebClient } from "@slack/web-api";
+import { tryCatch } from "@trigger.dev/core";
+import { logger } from "~/services/logger.server";
 
 export class NewAlertChannelPresenter extends BasePresenter {
   public async call(projectId: string) {
@@ -30,41 +31,57 @@ export class NewAlertChannelPresenter extends BasePresenter {
 
     // If there is a slack integration, then we need to get a list of Slack Channels
     if (slackIntegration) {
-      const channels = await getSlackChannelsForToken(slackIntegration);
+      const [error, channels] = await tryCatch(getSlackChannelsForToken(slackIntegration));
+
+      if (error) {
+        if (isSlackError(error) && error.data.error === "token_revoked") {
+          return {
+            slack: {
+              status: "ACCESS_REVOKED" as const,
+            },
+          };
+        }
+
+        logger.error("Failed fetching Slack channels for creating alerts", {
+          error,
+          slackIntegrationId: slackIntegration.id,
+        });
+
+        return {
+          slack: {
+            status: "FAILED_FETCHING_CHANNELS" as const,
+          },
+        };
+      }
 
       return {
         slack: {
           status: "READY" as const,
-          channels,
+          channels: channels ?? [],
           integrationId: slackIntegration.id,
         },
       };
-    } else {
-      if (OrgIntegrationRepository.isSlackSupported) {
-        return {
-          slack: {
-            status: "NOT_CONFIGURED" as const,
-          },
-        };
-      } else {
-        return {
-          slack: {
-            status: "NOT_AVAILABLE" as const,
-          },
-        };
-      }
     }
+
+    if (OrgIntegrationRepository.isSlackSupported) {
+      return {
+        slack: {
+          status: "NOT_CONFIGURED" as const,
+        },
+      };
+    }
+
+    return {
+      slack: {
+        status: "NOT_AVAILABLE" as const,
+      },
+    };
   }
 }
 
 async function getSlackChannelsForToken(integration: AuthenticatableIntegration) {
   const client = await OrgIntegrationRepository.getAuthenticatedClientForIntegration(integration);
-
   const channels = await getAllSlackConversations(client);
-
-  logger.debug("Received a list of slack conversations", {
-    channels,
-  });
 
   return (channels ?? [])
     .filter((channel) => !channel.is_archived)
@@ -99,4 +116,16 @@ async function getAllSlackConversations(client: WebClient) {
   } while (nextCursor);
 
   return channels;
+}
+
+function isSlackError(obj: unknown): obj is { data: { error: string } } {
+  return Boolean(
+    typeof obj === "object" &&
+      obj !== null &&
+      "data" in obj &&
+      typeof obj.data === "object" &&
+      obj.data !== null &&
+      "error" in obj.data &&
+      typeof obj.data.error === "string"
+  );
 }
