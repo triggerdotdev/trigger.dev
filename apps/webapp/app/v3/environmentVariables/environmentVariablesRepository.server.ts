@@ -5,7 +5,7 @@ import {
   RuntimeEnvironmentType,
 } from "@trigger.dev/database";
 import { z } from "zod";
-import { environmentTitle } from "~/components/environments/EnvironmentLabel";
+import { environmentFullTitle, environmentTitle } from "~/components/environments/EnvironmentLabel";
 import { $transaction, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
@@ -15,6 +15,7 @@ import {
   DeleteEnvironmentVariable,
   DeleteEnvironmentVariableValue,
   EnvironmentVariable,
+  EnvironmentVariableWithSecret,
   ProjectEnvironmentVariable,
   Repository,
   Result,
@@ -51,6 +52,7 @@ export class EnvironmentVariablesRepository implements Repository {
     options: {
       override: boolean;
       environmentIds: string[];
+      isSecret?: boolean;
       variables: {
         key: string;
         value: string;
@@ -127,7 +129,7 @@ export class EnvironmentVariablesRepository implements Repository {
           variableErrors: existingVariableKeys.map((val) => ({
             key: val.key,
             error: `Variable already set in ${val.environments
-              .map((e) => environmentTitle({ type: e }))
+              .map((e) => environmentFullTitle({ type: e }))
               .join(", ")}.`,
           })),
         };
@@ -187,8 +189,11 @@ export class EnvironmentVariablesRepository implements Repository {
                 variableId: environmentVariable.id,
                 environmentId: environmentId,
                 valueReferenceId: secretReference.id,
+                isSecret: options.isSecret,
               },
-              update: {},
+              update: {
+                isSecret: options.isSecret,
+              },
             });
 
             await secretStore.setSecret<{ secret: string }>(key, {
@@ -353,6 +358,85 @@ export class EnvironmentVariablesRepository implements Repository {
     }
   }
 
+  async editValue(
+    projectId: string,
+    options: {
+      id: string;
+      environmentId: string;
+      value: string;
+    }
+  ): Promise<Result> {
+    const project = await this.prismaClient.project.findFirst({
+      where: {
+        id: projectId,
+        deletedAt: null,
+      },
+      select: {
+        environments: {
+          select: {
+            id: true,
+          },
+        },
+      },
+    });
+
+    if (!project) {
+      return { success: false as const, error: "Project not found" };
+    }
+
+    if (!project.environments.some((e) => e.id === options.environmentId)) {
+      return { success: false as const, error: "Environment not found" };
+    }
+
+    const environmentVariable = await this.prismaClient.environmentVariable.findFirst({
+      select: {
+        id: true,
+        key: true,
+        values: {
+          where: {
+            environmentId: options.environmentId,
+          },
+          select: {
+            valueReferenceId: true,
+          },
+        },
+      },
+      where: {
+        id: options.id,
+      },
+    });
+
+    if (!environmentVariable) {
+      return { success: false as const, error: "Environment variable not found" };
+    }
+
+    if (environmentVariable.values.length === 0) {
+      return { success: false as const, error: "Environment variable value not found" };
+    }
+
+    try {
+      await $transaction(this.prismaClient, "edit env var value", async (tx) => {
+        const secretStore = getSecretStore("DATABASE", {
+          prismaClient: tx,
+        });
+
+        const key = secretKey(projectId, options.environmentId, environmentVariable.key);
+        await secretStore.setSecret<{ secret: string }>(key, {
+          secret: options.value,
+        });
+      });
+
+      return {
+        success: true as const,
+      };
+    } catch (error) {
+      return {
+        success: false as const,
+        error: error instanceof Error ? error.message : "Something went wrong",
+      };
+    }
+  }
+
   async getProject(projectId: string): Promise<ProjectEnvironmentVariable[]> {
     const project = await this.prismaClient.project.findFirst({
       where: {
@@ -424,6 +508,42 @@ export class EnvironmentVariablesRepository implements Repository {
     }
 
     return results;
+  }
+
+  async getEnvironmentWithRedactedSecrets(
+    projectId: string,
+    environmentId: string
+  ): Promise<EnvironmentVariableWithSecret[]> {
+    const variables = await this.getEnvironment(projectId, environmentId);
+
+    // Get the keys of all secret variables
+    const secretValues = await this.prismaClient.environmentVariableValue.findMany({
+      where: {
+        environmentId,
+        isSecret: true,
+      },
+      select: {
+        variable: {
+          select: {
+            key: true,
+          },
+        },
+      },
+    });
+    const secretVarKeys = secretValues.map((r) => r.variable.key);
+
+    // Filter out secret variables if includeSecrets is false
+    return variables.map((v) => {
+      if (secretVarKeys.includes(v.key)) {
+        return {
+          key: v.key,
+          value: "<redacted>",
+          isSecret: true,
+        };
+      }
+
+      return { key: v.key, value: v.value, isSecret: false };
+    });
   }
 
   async getEnvironment(projectId: string, environmentId: string): Promise<EnvironmentVariable[]> {

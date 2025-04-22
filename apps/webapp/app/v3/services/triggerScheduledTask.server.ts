@@ -43,6 +43,16 @@ export class TriggerScheduledTaskService extends BaseService {
       return;
     }
 
+    if (instance.environment.project.deletedAt) {
+      logger.debug("Project is deleted, disabling schedule", {
+        instanceId,
+        scheduleId: instance.taskSchedule.friendlyId,
+        projectId: instance.environment.project.id,
+      });
+
+      return;
+    }
+
     try {
       let shouldTrigger = true;
 
@@ -73,7 +83,9 @@ export class TriggerScheduledTaskService extends BaseService {
 
       if (instance.environment.type !== "DEVELOPMENT") {
         // Get the current backgroundWorker for this environment
-        const currentWorkerDeployment = await findCurrentWorkerDeployment(instance.environment.id);
+        const currentWorkerDeployment = await findCurrentWorkerDeployment({
+          environmentId: instance.environment.id,
+        });
 
         if (!currentWorkerDeployment) {
           logger.debug("No current worker deployment found, skipping task trigger", {

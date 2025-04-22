@@ -33,6 +33,13 @@ const variations = {
       "transition group-hover:text-text-bright group-disabled:group-hover:text-text-dimmed"
     ),
   },
+  medium: {
+    container:
+      "flex items-center gap-x-2 rounded-md hover:bg-tertiary py-1.5 px-2 transition focus-custom",
+    root: "h-4 w-8",
+    thumb: "size-3.5 data-[state=checked]:translate-x-3.5 data-[state=unchecked]:translate-x-0",
+    text: "text-sm text-text-dimmed",
+  },
 };
 
 type SwitchProps = React.ComponentPropsWithoutRef<typeof SwitchPrimitives.Root> & {

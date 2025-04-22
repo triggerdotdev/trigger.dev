@@ -5,6 +5,9 @@ type HeartbeatServiceOptions = {
   onError?: (error: unknown) => Promise<void>;
 };
 
+/**
+ * @deprecated Use IntervalService instead
+ */
 export class HeartbeatService {
   private _heartbeat: () => Promise<void>;
   private _intervalMs: number;

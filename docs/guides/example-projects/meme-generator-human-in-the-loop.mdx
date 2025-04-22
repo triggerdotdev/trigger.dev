@@ -1,0 +1,59 @@
+---
+title: "Meme generator with human-in-the-loop approval"
+sidebarTitle: "AI meme generator"
+description: "This example project creates memes using OpenAI's DALL-E 3 with a human-in-the-loop approval workflow built using Trigger.dev waitpoint tokens."
+---
+
+import UpgradeToV4Note from "/snippets/upgrade-to-v4-note.mdx";
+
+<UpgradeToV4Note />
+
+## Overview
+
+This demo is a full stack example that uses the following:
+
+- A [Next.js](https://nextjs.org/) app, with an [endpoint](https://github.com/triggerdotdev/examples/blob/main/meme-generator-human-in-the-loop/src/app/endpoints/[slug]/page.tsx) for approving the generated memes
+- [Trigger.dev](https://trigger.dev) tasks to generate the images and orchestrate the waitpoint workflow
+- [OpenAI DALL-E 3](https://platform.openai.com/docs/guides/images) for generating the images
+- A [Slack app](https://api.slack.com/quickstart) for the human-in-the-loop step, with the approval buttons linked to the endpoint
+
+## GitHub repo
+
+<Card
+  title="View the meme generator human-in-the-loop example repo"
+  icon="GitHub"
+  href="https://github.com/triggerdotdev/examples/tree/main/meme-generator-human-in-the-loop"
+>
+  Click here to view the full code for this project in our examples repository on GitHub. You can
+  fork it and use it as a starting point for your own project.
+</Card>
+
+## Post to Slack
+
+![Meme Generator with Human-in-the-Loop Approval](/images/slack-meme-approval.png)
+
+## Relevant code
+
+- **Meme generator task**:
+
+  - The [memegenerator.ts](https://github.com/triggerdotdev/examples/blob/main/meme-generator-human-in-the-loop/src/trigger/memegenerator.ts) task:
+    - Generates two meme variants using DALL-E 3
+    - Uses [batchTriggerAndWait](/triggering#yourtask-batchtriggerandwait) to generate multiple meme variants simultaneously (this is because you can only generate 1 image at a time with DALL-E 3)
+    - Creates a [waitpoint token](/wait-for-token)
+    - Sends the generated images with approval buttons to Slack for review
+    - Handles the approval workflow
+
+- **Approval Endpoint**:
+  - The waitpoint approval handling is in [page.tsx](https://github.com/triggerdotdev/examples/blob/main/meme-generator-human-in-the-loop/src/app/endpoints/[slug]/page.tsx), which processes:
+    - User selections from Slack buttons
+    - Waitpoint completion with the chosen meme variant
+    - Success/failure feedback to the approver
+
+## Learn more
+
+To learn more, take a look at the following resources:
+
+- [Waitpoint tokens](/wait-for-token) - learn about waitpoint tokens in Trigger.dev and human-in-the-loop flows
+- [OpenAI DALL-E API](https://platform.openai.com/docs/guides/images) - learn about the DALL-E image generation API
+- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API
+- [Slack Incoming Webhooks](https://api.slack.com/messaging/webhooks) - learn about integrating with Slack

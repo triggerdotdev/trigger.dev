@@ -98,9 +98,6 @@ process.on("uncaughtException", function (error, origin) {
   }
 });
 
-const usageIntervalMs = getEnvVar("USAGE_HEARTBEAT_INTERVAL_MS");
-const usageEventUrl = getEnvVar("USAGE_EVENT_URL");
-const triggerJWT = getEnvVar("TRIGGER_JWT");
 const heartbeatIntervalMs = getEnvVar("HEARTBEAT_INTERVAL_MS");
 
 const standardLocalsManager = new StandardLocalsManager();
@@ -112,17 +109,8 @@ lifecycleHooks.setGlobalLifecycleHooksManager(standardLifecycleHooksManager);
 const standardRunTimelineMetricsManager = new StandardRunTimelineMetricsManager();
 runTimelineMetrics.setGlobalManager(standardRunTimelineMetricsManager);
 
-const devUsageManager = new DevUsageManager();
-const prodUsageManager = new ProdUsageManager(devUsageManager, {
-  heartbeatIntervalMs: usageIntervalMs ? parseInt(usageIntervalMs, 10) : undefined,
-  url: usageEventUrl,
-  jwt: triggerJWT,
-});
-
-usage.setGlobalUsageManager(prodUsageManager);
-timeout.setGlobalManager(new UsageTimeoutManager(devUsageManager));
-
 resourceCatalog.setGlobalResourceCatalog(new StandardResourceCatalog());
+
 const durableClock = new DurableClock();
 clock.setGlobalClock(durableClock);
 const runMetadataManager = new StandardMetadataManager(
@@ -257,6 +245,12 @@ const zodIpc = new ZodIpcConnection({
           override: true,
         });
       }
+
+      initializeUsageManager({
+        usageIntervalMs: getEnvVar("USAGE_HEARTBEAT_INTERVAL_MS"),
+        usageEventUrl: getEnvVar("USAGE_EVENT_URL"),
+        triggerJWT: getEnvVar("TRIGGER_JWT"),
+      });
 
       standardRunTimelineMetricsManager.registerMetricsFromExecution(metrics);
 
@@ -509,7 +503,7 @@ async function flushAll(timeoutInMs: number = 10_000) {
 async function flushUsage(timeoutInMs: number = 10_000) {
   const now = performance.now();
 
-  await Promise.race([prodUsageManager.flush(), setTimeout(timeoutInMs)]);
+  await Promise.race([usage.flush(), setTimeout(timeoutInMs)]);
 
   const duration = performance.now() - now;
 
@@ -551,6 +545,26 @@ async function flushMetadata(timeoutInMs: number = 10_000) {
   };
 }
 
+function initializeUsageManager({
+  usageIntervalMs,
+  usageEventUrl,
+  triggerJWT,
+}: {
+  usageIntervalMs?: string;
+  usageEventUrl?: string;
+  triggerJWT?: string;
+}) {
+  const devUsageManager = new DevUsageManager();
+  const prodUsageManager = new ProdUsageManager(devUsageManager, {
+    heartbeatIntervalMs: usageIntervalMs ? parseInt(usageIntervalMs, 10) : undefined,
+    url: usageEventUrl,
+    jwt: triggerJWT,
+  });
+
+  usage.setGlobalUsageManager(prodUsageManager);
+  timeout.setGlobalManager(new UsageTimeoutManager(devUsageManager));
+}
+
 const managedWorkerRuntime = new ManagedRuntimeManager(zodIpc, true);
 
 runtime.setGlobalRuntimeManager(managedWorkerRuntime);
@@ -562,7 +576,7 @@ const heartbeatInterval = parseInt(heartbeatIntervalMs ?? "30000", 10);
 for await (const _ of setInterval(heartbeatInterval)) {
   if (_isRunning && _execution) {
     try {
-      await zodIpc.send("TASK_HEARTBEAT", { id: _execution.attempt.id });
+      await zodIpc.send("TASK_HEARTBEAT", { id: _execution.run.id });
     } catch (err) {
       console.error("Failed to send HEARTBEAT message", err);
     }

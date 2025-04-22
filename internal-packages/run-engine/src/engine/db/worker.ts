@@ -100,7 +100,7 @@ export async function getRunWithBackgroundWorkerTasks(
   } else {
     workerWithTasks = workerId
       ? await getWorkerDeploymentFromWorker(prisma, workerId)
-      : await getWorkerFromCurrentlyPromotedDeployment(prisma, run.runtimeEnvironmentId);
+      : await getManagedWorkerFromCurrentlyPromotedDeployment(prisma, run.runtimeEnvironmentId);
   }
 
   if (!workerWithTasks) {
@@ -193,7 +193,7 @@ export async function getWorkerDeploymentFromWorker(
   prisma: PrismaClientOrTransaction,
   workerId: string
 ): Promise<WorkerDeploymentWithWorkerTasks | null> {
-  const worker = await prisma.backgroundWorker.findUnique({
+  const worker = await prisma.backgroundWorker.findFirst({
     where: {
       id: workerId,
     },
@@ -260,16 +260,14 @@ export async function getWorkerById(
   return { worker, tasks: worker.tasks, queues: worker.queues, deployment: worker.deployment };
 }
 
-export async function getWorkerFromCurrentlyPromotedDeployment(
+export async function getManagedWorkerFromCurrentlyPromotedDeployment(
   prisma: PrismaClientOrTransaction,
   environmentId: string
 ): Promise<WorkerDeploymentWithWorkerTasks | null> {
-  const promotion = await prisma.workerDeploymentPromotion.findUnique({
+  const promotion = await prisma.workerDeploymentPromotion.findFirst({
     where: {
-      environmentId_label: {
-        environmentId,
-        label: CURRENT_DEPLOYMENT_LABEL,
-      },
+      environmentId,
+      label: CURRENT_DEPLOYMENT_LABEL,
     },
     include: {
       deployment: {
@@ -289,10 +287,43 @@ export async function getWorkerFromCurrentlyPromotedDeployment(
     return null;
   }
 
+  if (promotion.deployment.type === "MANAGED") {
+    // This is a run engine v2 deployment, so return it
+    return {
+      worker: promotion.deployment.worker,
+      tasks: promotion.deployment.worker.tasks,
+      queues: promotion.deployment.worker.queues,
+      deployment: promotion.deployment,
+    };
+  }
+
+  // We need to get the latest run engine v2 deployment
+  const latestV2Deployment = await prisma.workerDeployment.findFirst({
+    where: {
+      environmentId,
+      type: "MANAGED",
+    },
+    orderBy: {
+      id: "desc",
+    },
+    include: {
+      worker: {
+        include: {
+          tasks: true,
+          queues: true,
+        },
+      },
+    },
+  });
+
+  if (!latestV2Deployment?.worker) {
+    return null;
+  }
+
   return {
-    worker: promotion.deployment.worker,
-    tasks: promotion.deployment.worker.tasks,
-    queues: promotion.deployment.worker.queues,
-    deployment: promotion.deployment,
+    worker: latestV2Deployment.worker,
+    tasks: latestV2Deployment.worker.tasks,
+    queues: latestV2Deployment.worker.queues,
+    deployment: latestV2Deployment,
   };
 }

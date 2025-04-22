@@ -1,7 +1,7 @@
 import {
   CompletedWaitpoint,
   ExecutorToWorkerMessageCatalog,
-  MachinePreset,
+  MachinePresetResources,
   ServerBackgroundWorker,
   TaskRunErrorCodes,
   TaskRunExecution,
@@ -50,7 +50,7 @@ export type TaskRunProcessOptions = {
   workerManifest: WorkerManifest;
   serverWorker: ServerBackgroundWorker;
   env: Record<string, string>;
-  machine: MachinePreset;
+  machineResources: MachinePresetResources;
   isWarmStart?: boolean;
   cwd?: string;
 };
@@ -125,7 +125,7 @@ export class TaskRunProcess {
   }
 
   initialize() {
-    const { env: $env, workerManifest, cwd, machine } = this.options;
+    const { env: $env, workerManifest, cwd, machineResources: machine } = this.options;
 
     const maxOldSpaceSize = nodeOptionsWithMaxOldSpaceSize(undefined, machine);
 

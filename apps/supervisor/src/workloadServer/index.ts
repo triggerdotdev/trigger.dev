@@ -452,7 +452,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
         logger.debug("runConnected", { ...getSocketMetadata() });
 
         // If there's already a run ID set, we should "disconnect" it from this socket
-        if (socket.data.runFriendlyId) {
+        if (socket.data.runFriendlyId && socket.data.runFriendlyId !== friendlyId) {
           logger.debug("runConnected: disconnecting existing run", {
             ...getSocketMetadata(),
             newRunId: friendlyId,

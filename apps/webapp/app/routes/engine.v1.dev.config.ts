@@ -21,6 +21,7 @@ export const loader = createLoaderApiRoute(
         dequeueIntervalWithRun: env.DEV_DEQUEUE_INTERVAL_WITH_RUN,
         dequeueIntervalWithoutRun: env.DEV_DEQUEUE_INTERVAL_WITHOUT_RUN,
         maxConcurrentRuns: env.DEV_MAX_CONCURRENT_RUNS,
+        engineUrl: env.DEV_ENGINE_URL,
       });
     } catch (error) {
       logger.error("Failed to get dev settings", {

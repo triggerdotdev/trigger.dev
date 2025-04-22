@@ -69,6 +69,52 @@ export class ReleaseConcurrencySystem {
     await this.releaseConcurrencyQueue.quit();
   }
 
+  public async refillTokensForSnapshot(snapshotId: string | undefined): Promise<void>;
+  public async refillTokensForSnapshot(snapshot: TaskRunExecutionSnapshot): Promise<void>;
+  public async refillTokensForSnapshot(
+    snapshotOrId: TaskRunExecutionSnapshot | string | undefined
+  ) {
+    if (!this.releaseConcurrencyQueue) {
+      return;
+    }
+
+    if (typeof snapshotOrId === "undefined") {
+      return;
+    }
+
+    const snapshot =
+      typeof snapshotOrId === "string"
+        ? await this.$.prisma.taskRunExecutionSnapshot.findFirst({
+            where: { id: snapshotOrId },
+          })
+        : snapshotOrId;
+
+    if (!snapshot) {
+      this.$.logger.error("Snapshot not found", {
+        snapshotId: snapshotOrId,
+      });
+
+      return;
+    }
+
+    if (snapshot.executionStatus !== "EXECUTING_WITH_WAITPOINTS") {
+      this.$.logger.debug("Snapshot is not in a valid state to refill tokens", {
+        snapshot,
+      });
+
+      return;
+    }
+
+    await this.releaseConcurrencyQueue.refillTokenIfNotInQueue(
+      {
+        orgId: snapshot.organizationId,
+        projectId: snapshot.projectId,
+        envId: snapshot.environmentId,
+      },
+      snapshot.id
+    );
+  }
+
   public async checkpointCreatedOnEnvironment(environment: RuntimeEnvironment) {
     if (!this.releaseConcurrencyQueue) {
       return;
@@ -86,11 +132,19 @@ export class ReleaseConcurrencySystem {
 
   public async releaseConcurrencyForSnapshot(snapshot: TaskRunExecutionSnapshot) {
     if (!this.releaseConcurrencyQueue) {
+      this.$.logger.debug("Release concurrency queue not enabled, skipping release", {
+        snapshotId: snapshot.id,
+      });
+
       return;
     }
 
     // Go ahead and release concurrency immediately if the run is in a development environment
     if (snapshot.environmentType === "DEVELOPMENT") {
+      this.$.logger.debug("Immediate release of concurrency for development environment", {
+        snapshotId: snapshot.id,
+      });
+
       return await this.executeReleaseConcurrencyForSnapshot(snapshot.id);
     }
 

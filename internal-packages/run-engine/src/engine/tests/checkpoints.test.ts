@@ -1166,13 +1166,6 @@ describe("RunEngine checkpoints", () => {
       expect(batchWaitpoint?.waitpoint.type).toBe("BATCH");
       expect(batchWaitpoint?.waitpoint.completedByBatchId).toBe(batch.id);
 
-      await engine.unblockRunForCreatedBatch({
-        runId: parentRun.id,
-        batchId: batch.id,
-        environmentId: authenticatedEnvironment.id,
-        projectId: authenticatedEnvironment.projectId,
-      });
-
       // Create a checkpoint
       const checkpointResult = await engine.createCheckpoint({
         runId: parentRun.id,

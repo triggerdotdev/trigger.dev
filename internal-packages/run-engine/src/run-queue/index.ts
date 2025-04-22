@@ -49,8 +49,9 @@ export type RunQueueOptions = {
   keys: RunQueueKeyProducer;
   queueSelectionStrategy: RunQueueSelectionStrategy;
   verbose?: boolean;
-  logger: Logger;
+  logger?: Logger;
   retryOptions?: RetryOptions;
+  maxDequeueLoopAttempts?: number;
 };
 
 type DequeuedMessage = {
@@ -77,6 +78,7 @@ export class RunQueue {
   private redis: Redis;
   public keys: RunQueueKeyProducer;
   private queueSelectionStrategy: RunQueueSelectionStrategy;
+  private maxDequeueLoopAttempts: number;
 
   constructor(private readonly options: RunQueueOptions) {
     this.retryOptions = options.retryOptions ?? defaultRetrySettings;
@@ -88,10 +90,11 @@ export class RunQueue {
         });
       },
     });
-    this.logger = options.logger;
+    this.logger = options.logger ?? new Logger("RunQueue", "warn");
 
     this.keys = options.keys;
     this.queueSelectionStrategy = options.queueSelectionStrategy;
+    this.maxDequeueLoopAttempts = options.maxDequeueLoopAttempts ?? 10;
 
     this.subscriber = createRedisClient(options.redis, {
       onError: (error) => {
@@ -393,6 +396,7 @@ export class RunQueue {
 
         let attemptedEnvs = 0;
         let attemptedQueues = 0;
+        let dequeueLoopAttempts = 0;
 
         const messages: DequeuedMessage[] = [];
 
@@ -407,8 +411,11 @@ export class RunQueue {
         // Continue until we've hit max count or all tenants have empty queue lists
         while (
           messages.length < maxCount &&
-          Object.values(tenantQueues).some((queues) => queues.length > 0)
+          Object.values(tenantQueues).some((queues) => queues.length > 0) &&
+          dequeueLoopAttempts < this.maxDequeueLoopAttempts
         ) {
+          dequeueLoopAttempts++;
+
           for (const env of envQueues) {
             attemptedEnvs++;
 
@@ -681,6 +688,39 @@ export class RunQueue {
         },
       }
     );
+  }
+
+  public async removeEnvironmentQueuesFromMasterQueue(
+    masterQueue: string,
+    organizationId: string,
+    projectId: string
+  ) {
+    // Use scanStream to find all matching members
+    const stream = this.redis.zscanStream(masterQueue, {
+      match: this.keys.queueKey(organizationId, projectId, "*", "*"),
+      count: 100,
+    });
+
+    return new Promise<void>((resolve, reject) => {
+      const matchingQueues: string[] = [];
+
+      stream.on("data", (resultKeys) => {
+        // zscanStream returns [member1, score1, member2, score2, ...]
+        // We only want the members (even indices)
+        for (let i = 0; i < resultKeys.length; i += 2) {
+          matchingQueues.push(resultKeys[i]);
+        }
+      });
+
+      stream.on("end", async () => {
+        if (matchingQueues.length > 0) {
+          await this.redis.zrem(masterQueue, matchingQueues);
+        }
+        resolve();
+      });
+
+      stream.on("error", (err) => reject(err));
+    });
   }
 
   async quit() {

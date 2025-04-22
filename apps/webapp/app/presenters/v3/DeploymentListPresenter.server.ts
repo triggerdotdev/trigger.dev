@@ -168,4 +168,52 @@ LIMIT ${pageSize} OFFSET ${pageSize * (page - 1)};`;
       }),
     };
   }
+
+  public async findPageForVersion({
+    userId,
+    projectSlug,
+    organizationSlug,
+    environmentSlug,
+    version,
+  }: {
+    userId: User["id"];
+    projectSlug: Project["slug"];
+    organizationSlug: Organization["slug"];
+    environmentSlug: string;
+    version: string;
+  }) {
+    const project = await this.#prismaClient.project.findFirstOrThrow({
+      select: {
+        id: true,
+      },
+      where: {
+        slug: projectSlug,
+        organization: {
+          slug: organizationSlug,
+          members: {
+            some: {
+              userId,
+            },
+          },
+        },
+      },
+    });
+
+    const environment = await findEnvironmentBySlug(project.id, environmentSlug, userId);
+    if (!environment) {
+      throw new Error(`Environment not found`);
+    }
+
+    // Find how many deployments have been made since this version
+    const deploymentsSinceVersion = await this.#prismaClient.$queryRaw<{ count: BigInt }[]>`
+      SELECT COUNT(*) as count
+      FROM ${sqlDatabaseSchema}."WorkerDeployment"
+      WHERE "projectId" = ${project.id}
+        AND "environmentId" = ${environment.id}
+        AND string_to_array(version, '.')::int[] > string_to_array(${version}, '.')::int[]
+    `;
+
+    const count = Number(deploymentsSinceVersion[0].count);
+    return Math.floor(count / pageSize) + 1;
+  }
 }

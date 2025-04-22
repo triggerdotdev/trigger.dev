@@ -47,6 +47,13 @@ export const DeleteEnvironmentVariableValue = z.object({
 });
 export type DeleteEnvironmentVariableValue = z.infer<typeof DeleteEnvironmentVariableValue>;
 
+export const EditEnvironmentVariableValue = z.object({
+  id: z.string(),
+  environmentId: z.string(),
+  value: z.string(),
+});
+export type EditEnvironmentVariableValue = z.infer<typeof EditEnvironmentVariableValue>;
+
 export type Result =
   | {
       success: true;
@@ -72,11 +79,29 @@ export type EnvironmentVariable = {
   value: string;
 };
 
+export type EnvironmentVariableWithSecret = EnvironmentVariable & {
+  isSecret: boolean;
+};
+
 export interface Repository {
   create(projectId: string, options: CreateEnvironmentVariables): Promise<CreateResult>;
   edit(projectId: string, options: EditEnvironmentVariable): Promise<Result>;
+  editValue(projectId: string, options: EditEnvironmentVariableValue): Promise<Result>;
   getProject(projectId: string): Promise<ProjectEnvironmentVariable[]>;
+  /**
+   * Get the environment variables for a given environment, it does NOT return values for secret variables
+   */
+  getEnvironmentWithRedactedSecrets(
+    projectId: string,
+    environmentId: string
+  ): Promise<EnvironmentVariableWithSecret[]>;
+  /**
+   * Get the environment variables for a given environment
+   */
   getEnvironment(projectId: string, environmentId: string): Promise<EnvironmentVariable[]>;
+  /**
+   * Return all env vars, including secret variables with values. Should only be used for executing tasks.
+   */
   getEnvironmentVariables(projectId: string, environmentId: string): Promise<EnvironmentVariable[]>;
   delete(projectId: string, options: DeleteEnvironmentVariable): Promise<Result>;
   deleteValue(projectId: string, options: DeleteEnvironmentVariableValue): Promise<Result>;

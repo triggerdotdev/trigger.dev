@@ -66,6 +66,7 @@ class ManagedSupervisor {
       heartbeatIntervalSeconds: env.RUNNER_HEARTBEAT_INTERVAL_SECONDS,
       snapshotPollIntervalSeconds: env.RUNNER_SNAPSHOT_POLL_INTERVAL_SECONDS,
       additionalEnvVars: env.RUNNER_ADDITIONAL_ENV_VARS,
+      dockerAutoremove: env.RUNNER_DOCKER_AUTOREMOVE,
     } satisfies WorkloadManagerOptions;
 
     if (this.isKubernetes) {
@@ -117,6 +118,7 @@ class ManagedSupervisor {
       dequeueIntervalMs: env.TRIGGER_DEQUEUE_INTERVAL_MS,
       queueConsumerEnabled: env.TRIGGER_DEQUEUE_ENABLED,
       maxRunCount: env.TRIGGER_DEQUEUE_MAX_RUN_COUNT,
+      maxConsumerCount: env.TRIGGER_DEQUEUE_MAX_CONSUMER_COUNT,
       runNotificationsEnabled: env.TRIGGER_WORKLOAD_API_ENABLED,
       preDequeue: async () => {
         if (this.isKubernetes) {

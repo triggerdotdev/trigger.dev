@@ -1,6 +1,5 @@
 import { redisTest } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
-import { Logger } from "@trigger.dev/core/logger";
 import { describe } from "node:test";
 import { FairQueueSelectionStrategy } from "../fairQueueSelectionStrategy.js";
 import { RunQueue } from "../index.js";
@@ -12,7 +11,6 @@ const testOptions = {
   tracer: trace.getTracer("rq"),
   workers: 1,
   defaultEnvConcurrency: 25,
-  logger: new Logger("RunQueue", "warn"),
   retryOptions: {
     maxAttempts: 5,
     factor: 1.1,

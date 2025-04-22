@@ -1,9 +1,7 @@
 import { parse } from "@conform-to/zod";
-import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
-import { PlainClient, uiComponent } from "@team-plain/typescript-sdk";
-import { inspect } from "util";
+import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
+import { type PlainClient, uiComponent } from "@team-plain/typescript-sdk";
 import { z } from "zod";
-import { env } from "~/env.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { requireUser } from "~/services/session.server";
 import { sendToPlain } from "~/utils/plain.server";
@@ -16,6 +14,7 @@ export const feedbackTypeLabel = {
   help: "Help me out",
   enterprise: "Enterprise enquiry",
   feedback: "General feedback",
+  concurrency: "Increase my concurrency",
 };
 
 export type FeedbackType = keyof typeof feedbackTypeLabel;

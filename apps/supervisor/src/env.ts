@@ -27,11 +27,13 @@ const Env = z.object({
   RUNNER_HEARTBEAT_INTERVAL_SECONDS: z.coerce.number().optional(),
   RUNNER_SNAPSHOT_POLL_INTERVAL_SECONDS: z.coerce.number().optional(),
   RUNNER_ADDITIONAL_ENV_VARS: AdditionalEnvVars, // optional (csv)
+  RUNNER_DOCKER_AUTOREMOVE: BoolEnv.default(true),
 
   // Dequeue settings (provider mode)
   TRIGGER_DEQUEUE_ENABLED: BoolEnv.default("true"),
   TRIGGER_DEQUEUE_INTERVAL_MS: z.coerce.number().int().default(1000),
   TRIGGER_DEQUEUE_MAX_RUN_COUNT: z.coerce.number().int().default(10),
+  TRIGGER_DEQUEUE_MAX_CONSUMER_COUNT: z.coerce.number().int().default(1),
 
   // Optional services
   TRIGGER_WARM_START_URL: z.string().optional(),

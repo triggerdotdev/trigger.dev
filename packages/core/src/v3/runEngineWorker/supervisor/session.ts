@@ -8,7 +8,7 @@ import { VERSION } from "../../../version.js";
 import { io, Socket } from "socket.io-client";
 import { WorkerClientToServerEvents, WorkerServerToClientEvents } from "../types.js";
 import { getDefaultWorkerHeaders } from "./util.js";
-import { HeartbeatService } from "../../utils/heartbeat.js";
+import { IntervalService } from "../../utils/interval.js";
 
 type SupervisorSessionOptions = SupervisorClientCommonOptions & {
   queueConsumerEnabled?: boolean;
@@ -18,6 +18,7 @@ type SupervisorSessionOptions = SupervisorClientCommonOptions & {
   preDequeue?: PreDequeueFn;
   preSkip?: PreSkipFn;
   maxRunCount?: number;
+  maxConsumerCount?: number;
 };
 
 export class SupervisorSession extends EventEmitter<WorkerEvents> {
@@ -27,9 +28,9 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
   private runNotificationsSocket?: Socket<WorkerServerToClientEvents, WorkerClientToServerEvents>;
 
   private readonly queueConsumerEnabled: boolean;
-  private readonly queueConsumer: RunQueueConsumer;
+  private readonly queueConsumers: RunQueueConsumer[];
 
-  private readonly heartbeatService: HeartbeatService;
+  private readonly heartbeat: IntervalService;
   private readonly heartbeatIntervalSeconds: number;
 
   constructor(private opts: SupervisorSessionOptions) {
@@ -39,19 +40,21 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
     this.queueConsumerEnabled = opts.queueConsumerEnabled ?? true;
 
     this.httpClient = new SupervisorHttpClient(opts);
-    this.queueConsumer = new RunQueueConsumer({
-      client: this.httpClient,
-      preDequeue: opts.preDequeue,
-      preSkip: opts.preSkip,
-      onDequeue: this.onDequeue.bind(this),
-      intervalMs: opts.dequeueIntervalMs,
-      maxRunCount: opts.maxRunCount,
+    this.queueConsumers = Array.from({ length: opts.maxConsumerCount ?? 1 }, () => {
+      return new RunQueueConsumer({
+        client: this.httpClient,
+        preDequeue: opts.preDequeue,
+        preSkip: opts.preSkip,
+        onDequeue: this.onDequeue.bind(this),
+        intervalMs: opts.dequeueIntervalMs,
+        maxRunCount: opts.maxRunCount,
+      });
     });
 
     // TODO: This should be dynamic and set by (or at least overridden by) the platform
     this.heartbeatIntervalSeconds = opts.heartbeatIntervalSeconds || 30;
-    this.heartbeatService = new HeartbeatService({
-      heartbeat: async () => {
+    this.heartbeat = new IntervalService({
+      onInterval: async () => {
         console.debug("[SupervisorSession] Sending heartbeat");
 
         const body = this.getHeartbeatBody();
@@ -181,8 +184,8 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
 
     if (this.queueConsumerEnabled) {
       console.log("[SupervisorSession] Queue consumer enabled");
-      this.queueConsumer.start();
-      this.heartbeatService.start();
+      await Promise.allSettled(this.queueConsumers.map(async (q) => q.start()));
+      this.heartbeat.start();
     } else {
       console.warn("[SupervisorSession] Queue consumer disabled");
     }
@@ -196,7 +199,8 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
   }
 
   async stop() {
-    this.heartbeatService.stop();
+    await Promise.allSettled(this.queueConsumers.map(async (q) => q.stop()));
+    this.heartbeat.stop();
     this.runNotificationsSocket?.disconnect();
   }
 

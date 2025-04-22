@@ -1,5 +1,28 @@
 # internal-platform
 
+## 4.0.0-v4-beta.6
+
+### Patch Changes
+
+- The dev command will now use the platform-provided engine URL ([#1949](https://github.com/triggerdotdev/trigger.dev/pull/1949))
+- Configurable queue consumer count in supervisor session ([#1949](https://github.com/triggerdotdev/trigger.dev/pull/1949))
+
+## 4.0.0-v4-beta.5
+
+## 4.0.0-v4-beta.4
+
+## 4.0.0-v4-beta.3
+
+### Patch Changes
+
+- Improve usage flushing ([#1931](https://github.com/triggerdotdev/trigger.dev/pull/1931))
+
+## 4.0.0-v4-beta.2
+
+### Patch Changes
+
+- Managed run controller performance and reliability improvements ([#1927](https://github.com/triggerdotdev/trigger.dev/pull/1927))
+
 ## 4.0.0-v4-beta.1
 
 ## 4.0.0-v4-beta.0

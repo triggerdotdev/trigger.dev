@@ -123,6 +123,8 @@ export const MachinePreset = z.object({
 
 export type MachinePreset = z.infer<typeof MachinePreset>;
 
+export type MachinePresetResources = Pick<MachinePreset, "memory" | "cpu">;
+
 export const TaskRunBuiltInError = z.object({
   type: z.literal("BUILT_IN_ERROR"),
   name: z.string(),

@@ -109,6 +109,7 @@ export class RunEngine {
       logger: new Logger("RunQueue", "debug"),
       redis: { ...options.queue.redis, keyPrefix: `${options.queue.redis.keyPrefix}runqueue:` },
       retryOptions: options.queue?.retryOptions,
+      maxDequeueLoopAttempts: options.queue?.maxDequeueLoopAttempts ?? 10,
     });
 
     this.worker = new Worker({
@@ -290,6 +291,7 @@ export class RunEngine {
 
     this.batchSystem = new BatchSystem({
       resources,
+      waitpointSystem: this.waitpointSystem,
     });
 
     this.runAttemptSystem = new RunAttemptSystem({
@@ -305,6 +307,7 @@ export class RunEngine {
       executionSnapshotSystem: this.executionSnapshotSystem,
       runAttemptSystem: this.runAttemptSystem,
       machines: this.options.machines,
+      releaseConcurrencySystem: this.releaseConcurrencySystem,
     });
   }
 
@@ -378,7 +381,7 @@ export class RunEngine {
           }
         } else {
           // For deployed runs, we add the env/worker id as the secondary master queue
-          let secondaryMasterQueue = this.#environmentMasterQueueKey(environment.id);
+          secondaryMasterQueue = this.#environmentMasterQueueKey(environment.id);
           if (lockedToVersionId) {
             secondaryMasterQueue = this.#backgroundWorkerQueueKey(lockedToVersionId);
           }
@@ -775,6 +778,22 @@ export class RunEngine {
     return this.runQueue.currentConcurrencyOfQueues(environment, queues);
   }
 
+  async removeEnvironmentQueuesFromMasterQueue({
+    masterQueue,
+    organizationId,
+    projectId,
+  }: {
+    masterQueue: string;
+    organizationId: string;
+    projectId: string;
+  }) {
+    return this.runQueue.removeEnvironmentQueuesFromMasterQueue(
+      masterQueue,
+      organizationId,
+      projectId
+    );
+  }
+
   /**
    * This creates a DATETIME waitpoint, that will be completed automatically when the specified date is reached.
    * If you pass an `idempotencyKey`, the waitpoint will be created only if it doesn't already exist.
@@ -886,43 +905,6 @@ export class RunEngine {
       }
       throw error;
     }
-  }
-
-  /**
-   * This is called when all the runs for a batch have been created.
-   * This does NOT mean that all the runs for the batch are completed.
-   */
-  async unblockRunForCreatedBatch({
-    runId,
-    batchId,
-    tx,
-  }: {
-    runId: string;
-    batchId: string;
-    environmentId: string;
-    projectId: string;
-    tx?: PrismaClientOrTransaction;
-  }): Promise<void> {
-    const prisma = tx ?? this.prisma;
-
-    const waitpoint = await prisma.waitpoint.findFirst({
-      where: {
-        completedByBatchId: batchId,
-      },
-    });
-
-    if (!waitpoint) {
-      this.logger.error("RunEngine.unblockRunForBatch(): Waitpoint not found", {
-        runId,
-        batchId,
-      });
-      throw new ServiceValidationError("Waitpoint not found for batch", 404);
-    }
-
-    await this.completeWaitpoint({
-      id: waitpoint.id,
-      output: { value: "Batch waitpoint completed", isError: false },
-    });
   }
 
   async tryCompleteBatch({ batchId }: { batchId: string }): Promise<void> {
