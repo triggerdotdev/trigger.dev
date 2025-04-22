@@ -221,11 +221,13 @@ export const resourceMonitorTest = task({
 
     resMon.startMonitoring(1_000);
 
-    resMon.logResourceSnapshot();
+    await resMon.logResourceSnapshot();
 
     await wait.for({ seconds: 5 });
 
-    resMon.logResourceSnapshot();
+    await resMon.logResourceSnapshot();
+
+    resMon.stopMonitoring();
 
     return {
       message: "Hello, resources!",
