@@ -438,4 +438,129 @@ describe("Worker", () => {
       await worker.stop();
     }
   );
+
+  redisTest(
+    "Should properly remove future-scheduled job after completion",
+    { timeout: 30_000 },
+    async ({ redisContainer }) => {
+      const processedPayloads: string[] = [];
+
+      const worker = new Worker({
+        name: "test-worker",
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        catalog: {
+          testJob: {
+            schema: z.object({ value: z.string() }),
+            visibilityTimeoutMs: 5000,
+            retry: { maxAttempts: 3 },
+          },
+        },
+        jobs: {
+          testJob: async ({ payload }) => {
+            processedPayloads.push(payload.value);
+          },
+        },
+        concurrency: {
+          workers: 1,
+          tasksPerWorker: 1,
+        },
+        pollIntervalMs: 10,
+        logger: new Logger("test", "debug"), // Use debug to see all logs
+      }).start();
+
+      // Schedule a job 500ms in the future
+      await worker.enqueue({
+        id: "future-job",
+        job: "testJob",
+        payload: { value: "test" },
+        availableAt: new Date(Date.now() + 500),
+      });
+
+      // Verify it's in the future queue
+      const initialSize = await worker.queue.size();
+      const initialSizeWithFuture = await worker.queue.size({ includeFuture: true });
+      expect(initialSize).toBe(0);
+      expect(initialSizeWithFuture).toBe(1);
+
+      // Wait for job to be processed
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      // Verify job was processed
+      expect(processedPayloads).toContain("test");
+
+      // Verify queue is completely empty
+      const finalSize = await worker.queue.size();
+      const finalSizeWithFuture = await worker.queue.size({ includeFuture: true });
+      expect(finalSize).toBe(0);
+      expect(finalSizeWithFuture).toBe(0);
+
+      await worker.stop();
+    }
+  );
+
+  redisTest(
+    "Should properly remove immediate job after completion",
+    { timeout: 30_000 },
+    async ({ redisContainer }) => {
+      const processedPayloads: string[] = [];
+
+      const worker = new Worker({
+        name: "test-worker",
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        catalog: {
+          testJob: {
+            schema: z.object({ value: z.string() }),
+            visibilityTimeoutMs: 5000,
+            retry: { maxAttempts: 3 },
+          },
+        },
+        jobs: {
+          testJob: async ({ payload }) => {
+            processedPayloads.push(payload.value);
+          },
+        },
+        concurrency: {
+          workers: 1,
+          tasksPerWorker: 1,
+        },
+        pollIntervalMs: 10,
+        logger: new Logger("test", "debug"), // Use debug to see all logs
+      }).start();
+
+      // Enqueue a job to run immediately
+      await worker.enqueue({
+        id: "immediate-job",
+        job: "testJob",
+        payload: { value: "test" },
+      });
+
+      // Verify it's in the present queue
+      const initialSize = await worker.queue.size();
+      const initialSizeWithFuture = await worker.queue.size({ includeFuture: true });
+      expect(initialSize).toBe(1);
+      expect(initialSizeWithFuture).toBe(1);
+
+      // Wait for job to be processed
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      // Verify job was processed
+      expect(processedPayloads).toContain("test");
+
+      // Verify queue is completely empty
+      const finalSize = await worker.queue.size();
+      const finalSizeWithFuture = await worker.queue.size({ includeFuture: true });
+      expect(finalSize).toBe(0);
+      expect(finalSizeWithFuture).toBe(0);
+
+      await worker.stop();
+    }
+  );
 });
