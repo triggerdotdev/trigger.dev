@@ -269,6 +269,13 @@ export class RunExecution {
         this.abortExecution();
         return;
       }
+      case "QUEUED": {
+        this.sendDebugLog("Run was re-queued", snapshotMetadata);
+
+        // Pretend we've just suspended the run. This will kill the process without failing the run.
+        await this.taskRunProcess?.suspend();
+        return;
+      }
       case "FINISHED": {
         this.sendDebugLog("Run is finished", snapshotMetadata);
 
@@ -402,8 +409,7 @@ export class RunExecution {
 
         return;
       }
-      case "RUN_CREATED":
-      case "QUEUED": {
+      case "RUN_CREATED": {
         this.sendDebugLog("Invalid status change", snapshotMetadata);
 
         this.abortExecution();
