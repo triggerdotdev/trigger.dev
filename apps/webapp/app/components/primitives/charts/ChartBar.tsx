@@ -89,7 +89,6 @@ export function ChartBar({
   }, []);
 
   const dimmedOpacity = 0.2;
-  const animationDuration = 0.3;
 
   // Calculate totals for each category
   const totals = React.useMemo(() => {
@@ -333,7 +332,6 @@ export function ChartBar({
                       ] as [number, number, number, number]
                     }
                     activeBar={false}
-                    style={{ transition: `fill-opacity ${animationDuration}s` }}
                     fillOpacity={1} // We'll use a custom Cell component to handle opacity
                     onMouseEnter={(entry, index) => {
                       if (entry.tooltipPayload?.[0]) {
@@ -407,7 +405,6 @@ export function ChartBar({
                     }}
                     onMouseLeave={resetHighlightState}
                     data={currentData}
-                    animationDuration={animationDuration}
                     activeKey={activeBarKey}
                     payload={legendPayload}
                     renderViewMore={(remainingCount: number) => (
