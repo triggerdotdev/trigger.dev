@@ -28,23 +28,32 @@ export class ApiError extends Error {
   }
 
   private static makeMessage(status: number | undefined, error: any, message: string | undefined) {
-    const msg = error?.message
+    const errorMessage = error?.message
       ? typeof error.message === "string"
         ? error.message
         : JSON.stringify(error.message)
+      : typeof error === "string"
+      ? error
       : error
       ? JSON.stringify(error)
-      : message;
+      : undefined;
 
-    if (status && msg) {
-      return `${status} ${msg}`;
+    if (errorMessage) {
+      return errorMessage;
     }
+
+    if (status && message) {
+      return `${status} ${message}`;
+    }
+
     if (status) {
       return `${status} status code (no body)`;
     }
-    if (msg) {
-      return msg;
+
+    if (message) {
+      return message;
     }
+
     return "(no status code or body)";
   }
 

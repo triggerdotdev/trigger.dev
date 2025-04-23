@@ -268,8 +268,6 @@ To fix this, you can:
 1. Enable releaseConcurrencyOnWaitpoint on the queue
 2. Use a different queue for the child task
 3. Increase the concurrency limits
-4. Use trigger() instead of triggerAndWait() if you don't need to wait
-
-Learn more about concurrency and deadlocks at https://trigger.dev/docs/queue-concurrency`;
+4. Use trigger() instead of triggerAndWait() if you don't need to wait`;
   }
 }

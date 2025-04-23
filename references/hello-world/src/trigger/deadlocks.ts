@@ -3,7 +3,7 @@ import { task, queue } from "@trigger.dev/sdk";
 const deadlockQueue = queue({
   name: "deadlock-queue",
   concurrencyLimit: 1,
-  releaseConcurrencyOnWaitpoint: true,
+  releaseConcurrencyOnWaitpoint: false,
 });
 
 export const deadlockTester = task({
