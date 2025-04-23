@@ -30,6 +30,7 @@ import { ChartLoading } from "./ChartLoading";
 //TODO: do a better job of showing extra data in the legend - like in a table
 //TODO: fix the first and last bars in a stack not having rounded corners
 //TODO: change the cursor to a crosshair when hovering over the chart
+//TODO: make a nice loading state for the chart
 
 type ReferenceLineProps = {
   value: number;
@@ -233,71 +234,6 @@ export function ChartBar({
     setZoomMessage(null);
   };
 
-  // Handle wheel zoom
-  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
-    e.preventDefault();
-
-    if (!containerRef.current) return;
-
-    const zoomFactor = 0.1;
-    const direction = e.deltaY < 0 ? 1 : -1; // 1 for zoom in, -1 for zoom out
-
-    // If zooming out and we're already at the original data set, do nothing
-    if (direction < 0 && startIndex === 0 && endIndex === originalData.length - 1) {
-      showZoomMessage("Maximum zoom out reached");
-      return;
-    }
-
-    const currentDataLength = endIndex - startIndex + 1;
-
-    // If zooming in and we can't zoom in any further, do nothing
-    const MIN_VISIBLE_ITEMS = 3;
-    if (direction > 0 && currentDataLength <= MIN_VISIBLE_ITEMS) {
-      showZoomMessage("Maximum zoom in reached");
-      return;
-    }
-
-    // Get chart bounds and mouse position
-    const chartRect = containerRef.current.getBoundingClientRect();
-    const mouseX = e.clientX - chartRect.left;
-    const chartWidth = chartRect.width;
-    const mousePercentage = Math.max(0, Math.min(1, mouseX / chartWidth));
-
-    // Calculate how many items to add/remove
-    const removeCount = Math.max(
-      1,
-      Math.floor(currentDataLength * zoomFactor * Math.abs(direction))
-    );
-
-    if (direction > 0) {
-      // Zoom in - remove items from both sides based on mouse position
-      const leftRemove = Math.max(0, Math.floor(removeCount * mousePercentage));
-      const rightRemove = Math.max(0, removeCount - leftRemove);
-
-      const newStartIndex = Math.min(startIndex + leftRemove, endIndex - MIN_VISIBLE_ITEMS + 1);
-      const newEndIndex = Math.max(startIndex + MIN_VISIBLE_ITEMS - 1, endIndex - rightRemove);
-
-      if (newEndIndex - newStartIndex >= MIN_VISIBLE_ITEMS - 1) {
-        setStartIndex(newStartIndex);
-        setEndIndex(newEndIndex);
-      } else {
-        showZoomMessage("Maximum zoom in reached");
-      }
-    } else {
-      // Zoom out - add items from original data
-      // Calculate how many items to add on each side based on mouse position
-      const leftAdd = Math.floor(removeCount * mousePercentage);
-      const rightAdd = removeCount - leftAdd;
-
-      // Expand the range
-      const newStartIndex = Math.max(0, startIndex - leftAdd);
-      const newEndIndex = Math.min(originalData.length - 1, endIndex + rightAdd);
-
-      setStartIndex(newStartIndex);
-      setEndIndex(newEndIndex);
-    }
-  };
-
   return (
     <div className="relative flex w-full flex-col">
       <div className="absolute left-0 right-0 top-0 z-10 mb-2 flex items-center justify-between">
@@ -315,7 +251,6 @@ export function ChartBar({
         ref={containerRef}
         className="mt-8 h-[400px] w-full"
         style={{ touchAction: "none", userSelect: "none" }}
-        onWheel={handleWheel}
       >
         <ChartContainer config={config} className="h-full w-full">
           {loading ? (
