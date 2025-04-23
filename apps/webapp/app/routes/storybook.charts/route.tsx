@@ -9,7 +9,7 @@ export default function Story() {
     <div className="grid grid-cols-2 gap-4 p-3">
       <Card>
         <Card.Header>
-          Zoomable Bar Chart
+          Bar Chart 1
           <Card.Accessory>
             <Button variant="secondary/small">Example button</Button>
           </Card.Accessory>
@@ -27,7 +27,7 @@ export default function Story() {
         </Card.Content>
       </Card>
       <Card>
-        <Card.Header>Bar Chart – stacked</Card.Header>
+        <Card.Header>Bar Chart 2</Card.Header>
         <Card.Content>
           <ChartBar
             config={barChartConfig}
@@ -41,13 +41,7 @@ export default function Story() {
         </Card.Content>
       </Card>
       <Card>
-        <Card.Header>Bar Chart – big dataset</Card.Header>
-        <Card.Content>
-          <ChartBar config={barChartBigDatasetConfig} data={barChartBigDatasetData} dataKey="day" />
-        </Card.Content>
-      </Card>
-      <Card>
-        <Card.Header>Line Chart – stepped</Card.Header>
+        <Card.Header>Line Chart</Card.Header>
         <Card.Content>
           <ChartLine config={lineChartConfig} data={lineChartData} dataKey="day" />
         </Card.Content>
