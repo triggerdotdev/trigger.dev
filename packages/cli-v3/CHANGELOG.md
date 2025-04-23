@@ -1,5 +1,14 @@
 # trigger.dev
 
+## 4.0.0-v4-beta.8
+
+### Patch Changes
+
+- Prevent large outputs from overwriting each other ([#1971](https://github.com/triggerdotdev/trigger.dev/pull/1971))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.8`
+  - `@trigger.dev/build@4.0.0-v4-beta.8`
+
 ## 4.0.0-v4-beta.7
 
 ### Patch Changes

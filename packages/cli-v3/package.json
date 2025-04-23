@@ -1,6 +1,6 @@
 {
   "name": "trigger.dev",
-  "version": "4.0.0-v4-beta.7",
+  "version": "4.0.0-v4-beta.8",
   "description": "A Command-Line Interface for Trigger.dev (v3) projects",
   "type": "module",
   "license": "MIT",
@@ -89,8 +89,8 @@
     "@opentelemetry/sdk-trace-base": "1.25.1",
     "@opentelemetry/sdk-trace-node": "1.25.1",
     "@opentelemetry/semantic-conventions": "1.25.1",
-    "@trigger.dev/build": "workspace:4.0.0-v4-beta.7",
-    "@trigger.dev/core": "workspace:4.0.0-v4-beta.7",
+    "@trigger.dev/build": "workspace:4.0.0-v4-beta.8",
+    "@trigger.dev/core": "workspace:4.0.0-v4-beta.8",
     "c12": "^1.11.1",
     "chalk": "^5.2.0",
     "chokidar": "^3.6.0",
