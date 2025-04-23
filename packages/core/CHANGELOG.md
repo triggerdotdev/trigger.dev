@@ -1,5 +1,11 @@
 # internal-platform
 
+## 4.0.0-v4-beta.7
+
+### Patch Changes
+
+- Fix QUEUED status snapshot handler ([#1963](https://github.com/triggerdotdev/trigger.dev/pull/1963))
+
 ## 4.0.0-v4-beta.6
 
 ### Patch Changes
