@@ -623,7 +623,7 @@ export class DevRunController {
     }).initialize();
 
     logger.debug("executing task run process", {
-      attemptId: execution.attempt.id,
+      attemptNumber: execution.attempt.number,
       runId: execution.run.id,
     });
 
