@@ -1,7 +1,13 @@
 import { type RedisOptions } from "@internal/redis";
 import { Worker, type WorkerConcurrencyOptions } from "@trigger.dev/redis-worker";
 import { Tracer } from "@internal/tracing";
-import { MachinePreset, MachinePresetName, QueueOptions, RetryOptions } from "@trigger.dev/core/v3";
+import {
+  MachinePreset,
+  MachinePresetName,
+  QueueOptions,
+  RetryOptions,
+  RunChainState,
+} from "@trigger.dev/core/v3";
 import { PrismaClient } from "@trigger.dev/database";
 import { FairQueueSelectionStrategyOptions } from "../run-queue/fairQueueSelectionStrategy.js";
 import { MinimalAuthenticatedEnvironment } from "../shared/index.js";
@@ -112,6 +118,7 @@ export type TriggerParams = {
   workerId?: string;
   runnerId?: string;
   releaseConcurrency?: boolean;
+  runChainState?: RunChainState;
 };
 
 export type EngineWorker = Worker<typeof workerCatalog>;

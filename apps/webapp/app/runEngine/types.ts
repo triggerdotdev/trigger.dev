@@ -1,8 +1,13 @@
 import { BackgroundWorker, TaskRun } from "@trigger.dev/database";
 
-import { IOPacket, TaskRunError, TriggerTaskRequestBody } from "@trigger.dev/core/v3";
+import {
+  IOPacket,
+  RunChainState,
+  TaskRunError,
+  TriggerTaskRequestBody,
+} from "@trigger.dev/core/v3";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
-import { EventBuilder } from "~/v3/eventRepository.server";
+import { z } from "zod";
 
 export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
@@ -138,4 +143,11 @@ export interface TraceEventConcern {
     },
     callback: (span: TracedEventSpan) => Promise<T>
   ): Promise<T>;
+}
+
+export interface RunChainStateManager {
+  validateRunChain(
+    request: TriggerTaskRequest,
+    options: { parentRun?: TaskRun; queueName: string; lockedQueueId?: string }
+  ): Promise<RunChainState>;
 }

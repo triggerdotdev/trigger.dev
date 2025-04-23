@@ -13,6 +13,8 @@ import { tracer } from "../tracer.server";
 import { WithRunEngine } from "./baseService.server";
 import { TriggerTaskServiceV1 } from "./triggerTaskV1.server";
 import { DefaultTraceEventsConcern } from "~/runEngine/concerns/traceEvents.server";
+import { DefaultRunChainStateManager } from "~/runEngine/concerns/runChainStates.server";
+import { env } from "~/env.server";
 
 export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
@@ -92,10 +94,17 @@ export class TriggerTaskService extends WithRunEngine {
       queueConcern: new DefaultQueueManager(this._prisma, this._engine),
       validator: new DefaultTriggerTaskValidator(),
       payloadProcessor: new DefaultPayloadProcessor(),
-      eventRepo: eventRepository,
-      idempotencyKeyConcern: new IdempotencyKeyConcern(this._prisma, this._engine, eventRepository),
+      idempotencyKeyConcern: new IdempotencyKeyConcern(
+        this._prisma,
+        this._engine,
+        new DefaultTraceEventsConcern(eventRepository)
+      ),
       runNumberIncrementer: new DefaultRunNumberIncrementer(),
       traceEventConcern: new DefaultTraceEventsConcern(eventRepository),
+      runChainStateManager: new DefaultRunChainStateManager(
+        this._prisma,
+        env.RUN_ENGINE_RELEASE_CONCURRENCY_ENABLED === "1"
+      ),
       tracer: tracer,
     });
     return await service.call({

@@ -21,6 +21,7 @@ import {
 } from "~/runEngine/types";
 import { RunEngineTriggerTaskService } from "../../app/runEngine/services/triggerTask.server";
 import { TaskRun, TaskRunStatus } from "@trigger.dev/database";
+import { DefaultRunChainStateManager } from "~/runEngine/concerns/runChainStates.server";
 
 vi.setConfig({ testTimeout: 30_000 }); // 30 seconds timeout
 
@@ -139,6 +140,8 @@ describe("RunEngineTriggerTaskService", () => {
       new MockTraceEventConcern()
     );
 
+    const runChainStateManager = new DefaultRunChainStateManager(prisma, true);
+
     const triggerTaskService = new RunEngineTriggerTaskService({
       engine,
       prisma,
@@ -148,6 +151,7 @@ describe("RunEngineTriggerTaskService", () => {
       idempotencyKeyConcern,
       validator: new MockTriggerTaskValidator(),
       traceEventConcern: new MockTraceEventConcern(),
+      runChainStateManager,
       tracer: trace.getTracer("test", "0.0.0"),
     });
 
@@ -229,6 +233,8 @@ describe("RunEngineTriggerTaskService", () => {
       new MockTraceEventConcern()
     );
 
+    const runChainStateManager = new DefaultRunChainStateManager(prisma, true);
+
     const triggerTaskService = new RunEngineTriggerTaskService({
       engine,
       prisma,
@@ -238,6 +244,7 @@ describe("RunEngineTriggerTaskService", () => {
       idempotencyKeyConcern,
       validator: new MockTriggerTaskValidator(),
       traceEventConcern: new MockTraceEventConcern(),
+      runChainStateManager,
       tracer: trace.getTracer("test", "0.0.0"),
     });
 
@@ -370,6 +377,8 @@ describe("RunEngineTriggerTaskService", () => {
         new MockTraceEventConcern()
       );
 
+      const runChainStateManager = new DefaultRunChainStateManager(prisma, true);
+
       const triggerTaskService = new RunEngineTriggerTaskService({
         engine,
         prisma,
@@ -379,6 +388,7 @@ describe("RunEngineTriggerTaskService", () => {
         idempotencyKeyConcern,
         validator: new MockTriggerTaskValidator(),
         traceEventConcern: new MockTraceEventConcern(),
+        runChainStateManager,
         tracer: trace.getTracer("test", "0.0.0"),
       });
 
@@ -452,6 +462,165 @@ describe("RunEngineTriggerTaskService", () => {
       expect(result4).toBeDefined();
       expect(result4?.run.queue).toBe("non-existent-queue");
       expect(result4?.run.status).toBe("PENDING");
+
+      await engine.quit();
+    }
+  );
+
+  containerTest(
+    "should handle run chains correctly when release concurrency is enabled",
+    async ({ prisma, redisOptions }) => {
+      const engine = new RunEngine({
+        prisma,
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+        },
+        runLock: {
+          redis: redisOptions,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0005,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      const taskIdentifier = "test-task";
+
+      //create background worker
+      const { worker } = await setupBackgroundWorker(
+        engine,
+        authenticatedEnvironment,
+        taskIdentifier,
+        undefined,
+        undefined,
+        {
+          releaseConcurrencyOnWaitpoint: false,
+          concurrencyLimit: 2,
+        }
+      );
+
+      const queuesManager = new DefaultQueueManager(prisma, engine);
+
+      const idempotencyKeyConcern = new IdempotencyKeyConcern(
+        prisma,
+        engine,
+        new MockTraceEventConcern()
+      );
+
+      const runChainStateManager = new DefaultRunChainStateManager(prisma, true);
+
+      const triggerTaskService = new RunEngineTriggerTaskService({
+        engine,
+        prisma,
+        runNumberIncrementer: new MockRunNumberIncrementer(),
+        payloadProcessor: new MockPayloadProcessor(),
+        queueConcern: queuesManager,
+        idempotencyKeyConcern,
+        validator: new MockTriggerTaskValidator(),
+        traceEventConcern: new MockTraceEventConcern(),
+        runChainStateManager,
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      const result = await triggerTaskService.call({
+        taskId: taskIdentifier,
+        environment: authenticatedEnvironment,
+        body: { payload: { test: "test" } },
+      });
+
+      console.log(result);
+
+      expect(result).toBeDefined();
+      expect(result?.run.friendlyId).toBeDefined();
+      expect(result?.run.status).toBe("PENDING");
+      expect(result?.isCached).toBe(false);
+
+      // Lets make sure the task is in the queue
+      const queueLength = await engine.runQueue.lengthOfQueue(
+        authenticatedEnvironment,
+        `task/${taskIdentifier}`
+      );
+      expect(queueLength).toBe(1);
+
+      // Now we need to dequeue the run so so we can trigger a subtask
+      const dequeued = await engine.dequeueFromMasterQueue({
+        consumerId: "test_12345",
+        masterQueue: result?.run.masterQueue!,
+        maxRunCount: 1,
+      });
+
+      expect(dequeued.length).toBe(1);
+      expect(dequeued[0].run.id).toBe(result?.run.id);
+
+      // Now, lets trigger a subtask, with the same task identifier and queue
+      const subtaskResult = await triggerTaskService.call({
+        taskId: taskIdentifier,
+        environment: authenticatedEnvironment,
+        body: {
+          payload: { test: "test" },
+          options: {
+            parentRunId: result?.run.friendlyId,
+            resumeParentOnCompletion: true,
+            lockToVersion: worker.version,
+          },
+        },
+      });
+
+      expect(subtaskResult).toBeDefined();
+      expect(subtaskResult?.run.status).toBe("PENDING");
+      expect(subtaskResult?.run.parentTaskRunId).toBe(result?.run.id);
+      expect(subtaskResult?.run.lockedQueueId).toBeDefined();
+      expect(subtaskResult?.run.runChainState).toEqual({
+        concurrency: {
+          queues: [
+            { id: subtaskResult?.run.lockedQueueId, name: subtaskResult?.run.queue, holding: 1 },
+          ],
+          environment: 0,
+        },
+      });
+
+      // Okay, now lets dequeue the subtask
+      const dequeuedSubtask = await engine.dequeueFromMasterQueue({
+        consumerId: "test_12345",
+        masterQueue: subtaskResult?.run.masterQueue!,
+        maxRunCount: 1,
+      });
+
+      expect(dequeuedSubtask.length).toBe(1);
+      expect(dequeuedSubtask[0].run.id).toBe(subtaskResult?.run.id);
+
+      // Now, when we trigger the subtask, it should raise a deadlock error
+      await expect(
+        triggerTaskService.call({
+          taskId: taskIdentifier,
+          environment: authenticatedEnvironment,
+          body: {
+            payload: { test: "test" },
+            options: {
+              parentRunId: subtaskResult?.run.friendlyId,
+              resumeParentOnCompletion: true,
+              lockToVersion: worker.version,
+            },
+          },
+        })
+      ).rejects.toThrow("Deadlock detected");
 
       await engine.quit();
     }

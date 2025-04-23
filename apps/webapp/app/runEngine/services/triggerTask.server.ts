@@ -25,6 +25,7 @@ import { IdempotencyKeyConcern } from "../concerns/idempotencyKeys.server";
 import type {
   PayloadProcessor,
   QueueManager,
+  RunChainStateManager,
   RunNumberIncrementer,
   TraceEventConcern,
   TriggerTaskRequest,
@@ -41,6 +42,7 @@ export class RunEngineTriggerTaskService {
   private readonly engine: RunEngine;
   private readonly tracer: Tracer;
   private readonly traceEventConcern: TraceEventConcern;
+  private readonly runChainStateManager: RunChainStateManager;
 
   constructor(opts: {
     prisma: PrismaClientOrTransaction;
@@ -51,6 +53,7 @@ export class RunEngineTriggerTaskService {
     idempotencyKeyConcern: IdempotencyKeyConcern;
     runNumberIncrementer: RunNumberIncrementer;
     traceEventConcern: TraceEventConcern;
+    runChainStateManager: RunChainStateManager;
     tracer: Tracer;
   }) {
     this.prisma = opts.prisma;
@@ -62,6 +65,7 @@ export class RunEngineTriggerTaskService {
     this.runNumberIncrementer = opts.runNumberIncrementer;
     this.tracer = opts.tracer;
     this.traceEventConcern = opts.traceEventConcern;
+    this.runChainStateManager = opts.runChainStateManager;
   }
 
   public async call({
@@ -176,8 +180,6 @@ export class RunEngineTriggerTaskService {
         }
       }
 
-      const payloadPacket = await this.payloadProcessor.process(triggerRequest);
-
       const metadataPacket = body.options?.metadata
         ? handleMetadataPacket(
             body.options?.metadata,
@@ -217,6 +219,12 @@ export class RunEngineTriggerTaskService {
 
       const depth = parentRun ? parentRun.depth + 1 : 0;
 
+      const runChainState = await this.runChainStateManager.validateRunChain(triggerRequest, {
+        parentRun: parentRun ?? undefined,
+        queueName,
+        lockedQueueId,
+      });
+
       const masterQueue = await this.queueConcern.getMasterQueue(environment);
 
       try {
@@ -228,6 +236,8 @@ export class RunEngineTriggerTaskService {
               span.setAttribute("queueName", queueName);
               event.setAttribute("runId", runFriendlyId);
               span.setAttribute("runId", runFriendlyId);
+
+              const payloadPacket = await this.payloadProcessor.process(triggerRequest);
 
               const taskRun = await this.engine.trigger(
                 {
@@ -285,6 +295,7 @@ export class RunEngineTriggerTaskService {
                     parentRun && body.options?.resumeParentOnCompletion
                       ? parentRun.queueTimestamp ?? undefined
                       : undefined,
+                  runChainState,
                 },
                 this.prisma
               );
