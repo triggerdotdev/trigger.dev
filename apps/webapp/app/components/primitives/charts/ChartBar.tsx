@@ -25,12 +25,10 @@ import { Paragraph } from "../Paragraph";
 import { Spinner } from "../Spinner";
 import { ChartLoading } from "./ChartLoading";
 
-//TODO: set the chart data when zooming to only get the new start and end dates
-//TODO: make the text on the chart not selectable when zooming
-//TODO: do a better job of showing extra data in the legend - like in a table
-//TODO: render a vertical line that follows the mouse - show this on all charts. Use a reference line
 //TODO: hover over a single bar in the stack and dim all other bars
-//TODO: fix the first and last bars not having rounded corners
+//TODO: render a vertical line that follows the mouse - show this on all charts. Use a reference line
+//TODO: do a better job of showing extra data in the legend - like in a table
+//TODO: fix the first and last bars in a stack not having rounded corners
 
 type ReferenceLineProps = {
   value: number;
@@ -59,17 +57,24 @@ export function ChartBar({
   // Zoom state
   const [refAreaLeft, setRefAreaLeft] = React.useState<string | null>(null);
   const [refAreaRight, setRefAreaRight] = React.useState<string | null>(null);
-  const [data, setData] = React.useState<any[]>(initialData);
+  const [startIndex, setStartIndex] = React.useState<number>(0);
+  const [endIndex, setEndIndex] = React.useState<number>(initialData.length - 1);
   const [originalData, setOriginalData] = React.useState<any[]>(initialData);
   const [isSelecting, setIsSelecting] = React.useState(false);
   const [zoomMessage, setZoomMessage] = React.useState<string | null>(null);
   const containerRef = React.useRef<HTMLDivElement>(null);
   const zoomMessageTimeoutRef = React.useRef<number | null>(null);
 
+  // Compute the visible data based on the current zoom indices
+  const data = React.useMemo(() => {
+    return originalData.slice(startIndex, endIndex + 1);
+  }, [originalData, startIndex, endIndex]);
+
   // Initialize data
   React.useEffect(() => {
-    setData(initialData);
     setOriginalData(initialData);
+    setStartIndex(0);
+    setEndIndex(initialData.length - 1);
   }, [initialData]);
 
   // Clear zoom message timeout on unmount
@@ -218,9 +223,10 @@ export function ChartBar({
       if (end - start <= 1) {
         showZoomMessage("Selection too small to zoom");
       } else {
-        // Update the data with the zoomed range
+        // Update the start and end indices
         if (start !== -1 && end !== -1) {
-          setData(originalData.slice(start, end + 1));
+          setStartIndex(start);
+          setEndIndex(end);
         }
       }
     }
@@ -232,7 +238,8 @@ export function ChartBar({
 
   // Reset zoom
   const handleReset = () => {
-    setData(originalData);
+    setStartIndex(0);
+    setEndIndex(originalData.length - 1);
     setZoomMessage(null);
   };
 
@@ -246,14 +253,16 @@ export function ChartBar({
     const direction = e.deltaY < 0 ? 1 : -1; // 1 for zoom in, -1 for zoom out
 
     // If zooming out and we're already at the original data set, do nothing
-    if (direction < 0 && data.length === originalData.length) {
+    if (direction < 0 && startIndex === 0 && endIndex === originalData.length - 1) {
       showZoomMessage("Maximum zoom out reached");
       return;
     }
 
+    const currentDataLength = endIndex - startIndex + 1;
+
     // If zooming in and we can't zoom in any further, do nothing
     const MIN_VISIBLE_ITEMS = 3;
-    if (direction > 0 && data.length <= MIN_VISIBLE_ITEMS) {
+    if (direction > 0 && currentDataLength <= MIN_VISIBLE_ITEMS) {
       showZoomMessage("Maximum zoom in reached");
       return;
     }
@@ -265,40 +274,37 @@ export function ChartBar({
     const mousePercentage = Math.max(0, Math.min(1, mouseX / chartWidth));
 
     // Calculate how many items to add/remove
-    const removeCount = Math.max(1, Math.floor(data.length * zoomFactor * Math.abs(direction)));
+    const removeCount = Math.max(
+      1,
+      Math.floor(currentDataLength * zoomFactor * Math.abs(direction))
+    );
 
     if (direction > 0) {
       // Zoom in - remove items from both sides based on mouse position
       const leftRemove = Math.max(0, Math.floor(removeCount * mousePercentage));
       const rightRemove = Math.max(0, removeCount - leftRemove);
 
-      const newStartIndex = Math.min(leftRemove, data.length - MIN_VISIBLE_ITEMS);
-      const newEndIndex = Math.max(MIN_VISIBLE_ITEMS - 1, data.length - rightRemove - 1);
+      const newStartIndex = Math.min(startIndex + leftRemove, endIndex - MIN_VISIBLE_ITEMS + 1);
+      const newEndIndex = Math.max(startIndex + MIN_VISIBLE_ITEMS - 1, endIndex - rightRemove);
 
       if (newEndIndex - newStartIndex >= MIN_VISIBLE_ITEMS - 1) {
-        setData(data.slice(newStartIndex, newEndIndex + 1));
+        setStartIndex(newStartIndex);
+        setEndIndex(newEndIndex);
       } else {
         showZoomMessage("Maximum zoom in reached");
       }
     } else {
       // Zoom out - add items from original data
-      // Find where current data starts in original data
-      const currentFirstItem = data[0][dataKey];
-      const currentLastItem = data[data.length - 1][dataKey];
-      let startIdx = originalData.findIndex((item) => item[dataKey] === currentFirstItem);
-      let endIdx = originalData.findIndex((item) => item[dataKey] === currentLastItem);
-
-      if (startIdx === -1 || endIdx === -1) return;
-
       // Calculate how many items to add on each side based on mouse position
       const leftAdd = Math.floor(removeCount * mousePercentage);
       const rightAdd = removeCount - leftAdd;
 
       // Expand the range
-      startIdx = Math.max(0, startIdx - leftAdd);
-      endIdx = Math.min(originalData.length - 1, endIdx + rightAdd);
+      const newStartIndex = Math.max(0, startIndex - leftAdd);
+      const newEndIndex = Math.min(originalData.length - 1, endIndex + rightAdd);
 
-      setData(originalData.slice(startIdx, endIdx + 1));
+      setStartIndex(newStartIndex);
+      setEndIndex(newEndIndex);
     }
   };
 
@@ -309,7 +315,7 @@ export function ChartBar({
         <Button
           variant="secondary/small"
           onClick={handleReset}
-          disabled={data.length === originalData.length}
+          disabled={startIndex === 0 && endIndex === originalData.length - 1}
         >
           Reset Zoom
         </Button>
@@ -446,9 +452,9 @@ export function ChartBar({
                 <ReferenceArea
                   x1={refAreaLeft}
                   x2={refAreaRight}
-                  strokeOpacity={0.3}
+                  strokeOpacity={0.4}
                   fill="#3B82F6"
-                  fillOpacity={0.1}
+                  fillOpacity={0.2}
                 />
               )}
 
