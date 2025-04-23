@@ -7,6 +7,7 @@ import {
   AnyOnStartHookFunction,
   AnyOnSuccessHookFunction,
   apiClientManager,
+  attemptKey,
   clock,
   ExecutorToWorkerMessageCatalog,
   type HandleErrorFunction,
@@ -546,7 +547,7 @@ const heartbeatInterval = parseInt(heartbeatIntervalMs ?? "30000", 10);
 for await (const _ of setInterval(heartbeatInterval)) {
   if (_isRunning && _execution) {
     try {
-      await zodIpc.send("TASK_HEARTBEAT", { id: _execution.attempt.id });
+      await zodIpc.send("TASK_HEARTBEAT", { id: attemptKey(_execution) });
     } catch (err) {
       logError("Failed to send HEARTBEAT message", err);
     }

@@ -12,6 +12,7 @@ import {
 } from "../errors.js";
 import {
   accessoryAttributes,
+  attemptKey,
   flattenAttributes,
   lifecycleHooks,
   runMetadata,
@@ -235,7 +236,7 @@ export class TaskExecutor {
             const [exportError, finalOutput] = await tryCatch(
               conditionallyExportPacket(
                 stringifiedOutput,
-                `${execution.attempt.id}/output`,
+                `${attemptKey(ctx)}/output`,
                 this._tracer
               )
             );
