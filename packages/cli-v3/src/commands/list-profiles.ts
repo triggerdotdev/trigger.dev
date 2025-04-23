@@ -7,7 +7,10 @@ import { readAuthConfigFile } from "../utilities/configFiles.js";
 import { printInitialBanner } from "../utilities/initialBanner.js";
 import { logger } from "../utilities/logger.js";
 
-const ListProfilesOptions = CommonCommandOptions;
+const ListProfilesOptions = CommonCommandOptions.pick({
+  logLevel: true,
+  skipTelemetry: true,
+});
 
 type ListProfilesOptions = z.infer<typeof ListProfilesOptions>;
 
@@ -43,12 +46,12 @@ export async function listProfiles(options: ListProfilesOptions) {
     return;
   }
 
-  const profiles = Object.keys(authConfig);
+  const profileNames = Object.keys(authConfig.profiles);
 
   log.message("Profiles:");
 
-  for (const profile of profiles) {
-    const profileConfig = authConfig[profile];
+  for (const profile of profileNames) {
+    const profileConfig = authConfig.profiles[profile];
 
     log.info(`${profile}${profileConfig?.apiUrl ? ` - ${chalkGrey(profileConfig.apiUrl)}` : ""}`);
   }

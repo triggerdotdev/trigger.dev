@@ -4,6 +4,7 @@ import { Button } from "~/components/primitives/Buttons";
 import { DialogContent, DialogHeader } from "~/components/primitives/Dialog";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { SpinnerWhite } from "~/components/primitives/Spinner";
 
 type CheckBatchCompletionDialogProps = {
   batchId: string;
@@ -37,7 +38,7 @@ export function CheckBatchCompletionDialog({
                 name="redirectUrl"
                 value={redirectPath}
                 variant="primary/medium"
-                LeadingIcon={isLoading ? "spinner-white" : undefined}
+                LeadingIcon={isLoading ? SpinnerWhite : undefined}
                 disabled={isLoading}
                 shortcut={{ modifiers: ["mod"], key: "enter" }}
               >

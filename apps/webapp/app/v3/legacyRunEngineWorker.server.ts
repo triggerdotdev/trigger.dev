@@ -1,4 +1,4 @@
-import { Worker as RedisWorker } from "@internal/redis-worker";
+import { Worker as RedisWorker } from "@trigger.dev/redis-worker";
 import { Logger } from "@trigger.dev/core/logger";
 import { z } from "zod";
 import { env } from "~/env.server";
@@ -7,6 +7,7 @@ import { singleton } from "~/utils/singleton";
 import { TaskRunHeartbeatFailedService } from "./taskRunHeartbeatFailed.server";
 import { completeBatchTaskRunItemV3 } from "./services/batchTriggerV3.server";
 import { prisma } from "~/db.server";
+import { marqs } from "./marqs/index.server";
 
 function initializeWorker() {
   const redisOptions = {
@@ -49,6 +50,15 @@ function initializeWorker() {
           maxAttempts: 10,
         },
       },
+      scheduleRequeueMessage: {
+        schema: z.object({
+          messageId: z.string(),
+        }),
+        visibilityTimeoutMs: 60_000,
+        retry: {
+          maxAttempts: 5,
+        },
+      },
     },
     concurrency: {
       workers: env.LEGACY_RUN_ENGINE_WORKER_CONCURRENCY_WORKERS,
@@ -57,6 +67,7 @@ function initializeWorker() {
     },
     pollIntervalMs: env.LEGACY_RUN_ENGINE_WORKER_POLL_INTERVAL,
     immediatePollIntervalMs: env.LEGACY_RUN_ENGINE_WORKER_IMMEDIATE_POLL_INTERVAL,
+    shutdownTimeoutMs: env.LEGACY_RUN_ENGINE_WORKER_SHUTDOWN_TIMEOUT_MS,
     logger: new Logger("LegacyRunEngineWorker", "debug"),
     jobs: {
       runHeartbeat: async ({ payload }) => {
@@ -73,6 +84,9 @@ function initializeWorker() {
           payload.taskRunAttemptId,
           attempt
         );
+      },
+      scheduleRequeueMessage: async ({ payload }) => {
+        await marqs.requeueMessageById(payload.messageId);
       },
     },
   });

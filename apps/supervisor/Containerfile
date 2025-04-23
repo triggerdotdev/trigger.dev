@@ -1,0 +1,53 @@
+FROM node:22-alpine@sha256:9bef0ef1e268f60627da9ba7d7605e8831d5b56ad07487d24d1aa386336d1944 AS node-22-alpine
+
+WORKDIR /app
+
+FROM node-22-alpine AS pruner
+
+COPY --chown=node:node . .
+RUN npx -q turbo@1.10.9 prune --scope=supervisor --docker
+
+FROM node-22-alpine AS base
+
+RUN apk add --no-cache dumb-init
+
+COPY --chown=node:node .gitignore .gitignore
+COPY --from=pruner --chown=node:node /app/out/json/ .
+COPY --from=pruner --chown=node:node /app/out/pnpm-lock.yaml ./pnpm-lock.yaml
+COPY --from=pruner --chown=node:node /app/out/pnpm-workspace.yaml ./pnpm-workspace.yaml
+
+RUN corepack enable && corepack prepare --activate
+
+FROM base AS deps-fetcher
+RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store pnpm fetch --frozen-lockfile
+
+FROM deps-fetcher AS dev-deps
+ENV NODE_ENV development
+
+RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store pnpm install --frozen-lockfile --offline --ignore-scripts
+
+FROM base AS builder
+
+COPY --from=pruner --chown=node:node /app/out/full/ .
+COPY --from=dev-deps --chown=node:node /app/ .
+COPY --chown=node:node turbo.json turbo.json
+COPY --chown=node:node .configs/tsconfig.base.json .configs/tsconfig.base.json
+COPY --chown=node:node scripts/updateVersion.ts scripts/updateVersion.ts
+
+RUN pnpm run generate && \
+  pnpm run --filter supervisor... build&& \
+  pnpm deploy --filter=supervisor --prod /prod/supervisor
+
+FROM base AS runner
+
+ENV NODE_ENV production
+
+COPY --from=builder /prod/supervisor /app/apps/supervisor
+
+EXPOSE 8000
+USER node
+
+# ensure pnpm is installed during build and not silently downloaded at runtime
+RUN pnpm -v
+
+CMD [ "/usr/bin/dumb-init", "--", "pnpm", "run", "--filter", "supervisor", "start"]

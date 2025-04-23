@@ -4,11 +4,14 @@ import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
 import { Context } from "@opentelemetry/api";
 import { flattenAttributes } from "../utils/flattenAttributes.js";
 import { taskContext } from "../task-context-api.js";
+import { Tracer } from "@opentelemetry/api";
 
 export class TaskContextSpanProcessor implements SpanProcessor {
   private _innerProcessor: SpanProcessor;
+  private _tracer: Tracer;
 
-  constructor(innerProcessor: SpanProcessor) {
+  constructor(tracer: Tracer, innerProcessor: SpanProcessor) {
+    this._tracer = tracer;
     this._innerProcessor = innerProcessor;
   }
 
@@ -24,6 +27,11 @@ export class TaskContextSpanProcessor implements SpanProcessor {
           SemanticInternalAttributes.METADATA
         )
       );
+    }
+
+    if (!isPartialSpan(span) && !skipPartialSpan(span)) {
+      const partialSpan = createPartialSpan(this._tracer, span, parentContext);
+      partialSpan.end();
     }
 
     this._innerProcessor.onStart(span, parentContext);
@@ -42,6 +50,48 @@ export class TaskContextSpanProcessor implements SpanProcessor {
   forceFlush(): Promise<void> {
     return this._innerProcessor.forceFlush();
   }
+}
+
+function isPartialSpan(span: Span) {
+  return span.attributes[SemanticInternalAttributes.SPAN_PARTIAL] === true;
+}
+
+function skipPartialSpan(span: Span) {
+  return span.attributes[SemanticInternalAttributes.SKIP_SPAN_PARTIAL] === true;
+}
+
+function createPartialSpan(tracer: Tracer, span: Span, parentContext: Context) {
+  const partialSpan = tracer.startSpan(
+    span.name,
+    {
+      attributes: {
+        [SemanticInternalAttributes.SPAN_PARTIAL]: true,
+        [SemanticInternalAttributes.SPAN_ID]: span.spanContext().spanId,
+        ...span.attributes,
+      },
+    },
+    parentContext
+  );
+
+  if (taskContext.ctx) {
+    partialSpan.setAttributes(
+      flattenAttributes(
+        {
+          [SemanticInternalAttributes.ATTEMPT_ID]: taskContext.ctx.attempt.id,
+          [SemanticInternalAttributes.ATTEMPT_NUMBER]: taskContext.ctx.attempt.number,
+        },
+        SemanticInternalAttributes.METADATA
+      )
+    );
+  }
+
+  if (span.events) {
+    for (const event of span.events) {
+      partialSpan.addEvent(event.name, event.attributes, event.time);
+    }
+  }
+
+  return partialSpan;
 }
 
 export class TaskContextLogProcessor implements LogRecordProcessor {

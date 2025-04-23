@@ -1,8 +1,10 @@
 import { PostgreSqlContainer, StartedPostgreSqlContainer } from "@testcontainers/postgresql";
-import { RedisContainer } from "@testcontainers/redis";
+import { RedisContainer, StartedRedisContainer } from "@testcontainers/redis";
+import Redis from "ioredis";
 import path from "path";
-import { GenericContainer, StartedNetwork } from "testcontainers";
+import { GenericContainer, StartedNetwork, Wait } from "testcontainers";
 import { x } from "tinyexec";
+import { expect } from "vitest";
 
 export async function createPostgresContainer(network: StartedNetwork) {
   const container = await new PostgreSqlContainer("docker.io/postgres:14")
@@ -39,12 +41,61 @@ export async function createPostgresContainer(network: StartedNetwork) {
   return { url: container.getConnectionUri(), container, network };
 }
 
-export async function createRedisContainer() {
-  const container = await new RedisContainer().start();
+export async function createRedisContainer({
+  port,
+  network,
+}: {
+  port?: number;
+  network?: StartedNetwork;
+}) {
+  let container = new RedisContainer().withExposedPorts(port ?? 6379).withStartupTimeout(120_000); // 2 minutes
+
+  if (network) {
+    container = container.withNetwork(network).withNetworkAliases("redis");
+  }
+
+  const startedContainer = await container
+    .withHealthCheck({
+      test: ["CMD", "redis-cli", "ping"],
+      interval: 1000,
+      timeout: 3000,
+      retries: 5,
+    })
+    .withWaitStrategy(
+      Wait.forAll([Wait.forHealthCheck(), Wait.forLogMessage("Ready to accept connections")])
+    )
+    .start();
+
+  // Add a verification step
+  await verifyRedisConnection(startedContainer);
 
   return {
-    container,
+    container: startedContainer,
   };
+}
+
+async function verifyRedisConnection(container: StartedRedisContainer) {
+  const redis = new Redis({
+    host: container.getHost(),
+    port: container.getPort(),
+    password: container.getPassword(),
+    maxRetriesPerRequest: 20,
+    connectTimeout: 10000,
+    retryStrategy(times) {
+      const delay = Math.min(times * 50, 2000);
+      return delay;
+    },
+  });
+
+  redis.on("error", (error) => {
+    // swallow the error
+  });
+
+  try {
+    await redis.ping();
+  } finally {
+    await redis.quit();
+  }
 }
 
 export async function createElectricContainer(
@@ -56,7 +107,7 @@ export async function createElectricContainer(
   )}:5432/${postgresContainer.getDatabase()}?sslmode=disable`;
 
   const container = await new GenericContainer(
-    "electricsql/electric:1.0.0-beta.1@sha256:2262f6f09caf5fa45f233731af97b84999128170a9529e5f9b9b53642308493f"
+    "electricsql/electric:1.0.0-beta.15@sha256:4ae0f895753b82684aa31ea1c708e9e86d0a9bca355acb7270dcb24062520810"
   )
     .withExposedPorts(3000)
     .withNetwork(network)
@@ -69,4 +120,9 @@ export async function createElectricContainer(
     container,
     origin: `http://${container.getHost()}:${container.getMappedPort(3000)}`,
   };
+}
+
+export function assertNonNullable<T>(value: T): asserts value is NonNullable<T> {
+  expect(value).toBeDefined();
+  expect(value).not.toBeNull();
 }

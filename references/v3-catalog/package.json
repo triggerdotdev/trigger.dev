@@ -6,7 +6,7 @@
     "schema": "./prisma/schema.zmodel"
   },
   "scripts": {
-    "dev:trigger": "trigger dev",
+    "dev": "trigger dev",
     "deploy": "trigger deploy --self-hosted --load-image",
     "management": "tsx -r dotenv/config ./src/management.ts",
     "queues": "ts-node -r dotenv/config -r tsconfig-paths/register ./src/queues.ts",
@@ -73,16 +73,15 @@
     "@opentelemetry/sdk-trace-node": "^1.22.0",
     "@opentelemetry/semantic-conventions": "^1.22.0",
     "@trigger.dev/build": "workspace:*",
+    "@trigger.dev/python": "workspace:*",
     "@types/email-reply-parser": "^1.4.2",
     "@types/fluent-ffmpeg": "^2.1.26",
-    "@types/node": "20.4.2",
     "@types/react": "^18.3.1",
     "esbuild": "^0.19.11",
     "prisma": "5.19.0",
     "prisma-kysely": "^1.8.0",
     "trigger.dev": "workspace:*",
     "ts-node": "^10.9.2",
-    "tsconfig-paths": "^4.2.0",
-    "typescript": "^5.5.4"
+    "tsconfig-paths": "^4.2.0"
   }
 }

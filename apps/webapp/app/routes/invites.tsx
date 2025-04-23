@@ -16,6 +16,7 @@ import { acceptInvite, declineInvite, getUsersInvites } from "~/models/member.se
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { requireUser, requireUserId } from "~/services/session.server";
 import { invitesPath, rootPath } from "~/utils/pathBuilder";
+import { EnvelopeIcon } from "@heroicons/react/20/solid";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
@@ -101,7 +102,7 @@ export default function Page() {
       <MainCenteredContainer>
         <div>
           <FormTitle
-            LeadingIcon="envelope"
+            LeadingIcon={<EnvelopeIcon className="size-6 text-cyan-500" />}
             className="mb-0 text-sky-500"
             title={simplur`You have ${invites.length} new invitation[|s]`}
           />

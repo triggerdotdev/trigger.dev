@@ -127,13 +127,15 @@ When a run is canceled:
 
 ### Time-to-live (TTL)
 
-You can set a TTL when triggering a run:
+TTL is a time-to-live setting that defines the maximum duration a run can remain in a queued state before being automatically expired. You can set a TTL when triggering a run:
 
 ```ts
 await yourTask.trigger({ foo: "bar" }, { ttl: "10m" });
 ```
 
-If the run hasn't started within the specified TTL, it will automatically expire. This is useful for time-sensitive tasks. Note that dev runs automatically have a 10-minute TTL.
+If the run hasn't started within the specified TTL, it will automatically expire, returning the status `Expired`. This is useful for time-sensitive tasks where immediate execution is important. For example, when you queue many runs simultaneously and exceed your concurrency limits, some runs might be delayed - using TTL ensures they only execute if they can start within your specified timeframe.
+
+Note that dev runs automatically have a 10-minute TTL. In Staging and Production environments, no TTL is set by default.
 
 ![Run with TTL](/images/run-with-ttl.png)
 

@@ -1,8 +1,11 @@
+import { ArrowsPointingOutIcon } from "@heroicons/react/20/solid";
 import { Clipboard, ClipboardCheck } from "lucide-react";
 import type { Language, PrismTheme } from "prism-react-renderer";
 import { Highlight, Prism } from "prism-react-renderer";
-import { forwardRef, ReactNode, useCallback, useState } from "react";
+import { forwardRef, ReactNode, useCallback, useEffect, useState } from "react";
 import { cn } from "~/utils/cn";
+import { Button } from "../primitives/Buttons";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../primitives/Dialog";
 import { Paragraph } from "../primitives/Paragraph";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
 
@@ -50,7 +53,10 @@ type CodeBlockProps = {
   fileName?: string;
 
   /** title text for the Title row */
-  rowTitle?: string;
+  rowTitle?: ReactNode;
+
+  /** Whether to show the open in modal button */
+  showOpenInModal?: boolean;
 };
 
 const dimAmount = 0.5;
@@ -178,6 +184,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
     {
       showCopyButton = true,
       showLineNumbers = true,
+      showOpenInModal = true,
       highlightedRanges,
       code,
       className,
@@ -193,6 +200,9 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
   ) => {
     const [mouseOver, setMouseOver] = useState(false);
     const [copied, setCopied] = useState(false);
+    const [modalCopied, setModalCopied] = useState(false);
+    const [isModalOpen, setIsModalOpen] = useState(false);
+
     const onCopied = useCallback(
       (event: React.MouseEvent<HTMLButtonElement>) => {
         event.preventDefault();
@@ -201,6 +211,19 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
         setCopied(true);
         setTimeout(() => {
           setCopied(false);
+        }, 1500);
+      },
+      [code]
+    );
+
+    const onModalCopied = useCallback(
+      (event: React.MouseEvent<HTMLButtonElement>) => {
+        event.preventDefault();
+        event.stopPropagation();
+        navigator.clipboard.writeText(code);
+        setModalCopied(true);
+        setTimeout(() => {
+          setModalCopied(false);
         }, 1500);
       },
       [code]
@@ -222,147 +245,130 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
     const shouldHighlight = lineCount <= 1000;
 
     return (
-      <div
-        className={cn("relative overflow-hidden rounded-md border border-grid-bright", className)}
-        style={{
-          backgroundColor: theme.plain.backgroundColor,
-        }}
-        ref={ref}
-        {...props}
-        translate="no"
-      >
-        {showChrome && <Chrome title={fileName} />}
-        {rowTitle && <TitleRow title={rowTitle} />}
-        {showCopyButton && (
-          <TooltipProvider>
-            <Tooltip open={copied || mouseOver}>
-              <TooltipTrigger
-                onClick={onCopied}
-                onMouseEnter={() => setMouseOver(true)}
-                onMouseLeave={() => setMouseOver(false)}
-                className={cn(
-                  "absolute right-3 z-50 transition-colors duration-100 focus-custom hover:cursor-pointer",
-                  showChrome ? "top-10" : "top-2.5",
-                  copied ? "text-emerald-500" : "text-charcoal-500 hover:text-charcoal-300"
-                )}
-              >
-                {copied ? <ClipboardCheck className="size-4" /> : <Clipboard className="size-4" />}
-              </TooltipTrigger>
-              <TooltipContent side="left" className="text-xs">
-                {copied ? "Copied" : "Copy"}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
+      <>
+        <div
+          className={cn("relative overflow-hidden rounded-md border border-grid-bright", className)}
+          style={{
+            backgroundColor: theme.plain.backgroundColor,
+          }}
+          ref={ref}
+          {...props}
+          translate="no"
+        >
+          {showChrome && <Chrome title={fileName} />}
+          {rowTitle && <TitleRow title={rowTitle} />}
+          <div
+            className={cn(
+              "absolute right-3 top-2.5 z-50 flex gap-3",
+              showChrome ? "right-1.5 top-1.5" : "top-2.5"
+            )}
+          >
+            {showCopyButton && (
+              <TooltipProvider>
+                <Tooltip open={copied || mouseOver} disableHoverableContent>
+                  <TooltipTrigger
+                    onClick={onCopied}
+                    onMouseEnter={() => setMouseOver(true)}
+                    onMouseLeave={() => setMouseOver(false)}
+                    className={cn(
+                      "transition-colors duration-100 focus-custom hover:cursor-pointer",
+                      copied ? "text-success" : "text-text-dimmed hover:text-text-bright"
+                    )}
+                  >
+                    {copied ? (
+                      <ClipboardCheck className="size-4" />
+                    ) : (
+                      <Clipboard className="size-4" />
+                    )}
+                  </TooltipTrigger>
+                  <TooltipContent side="left" className="text-xs">
+                    {copied ? "Copied" : "Copy"}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+            {showOpenInModal && (
+              <TooltipProvider>
+                <Tooltip disableHoverableContent>
+                  <TooltipTrigger onClick={() => setIsModalOpen(true)}>
+                    <ArrowsPointingOutIcon className="size-4 transition-colors hover:text-text-bright" />
+                  </TooltipTrigger>
+                  <TooltipContent side="left" className="text-xs">
+                    Expand
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+          </div>
 
-        {shouldHighlight ? (
-          <Highlight theme={theme} code={code} language={language}>
-            {({
-              className: inheritedClassName,
-              style: inheritedStyle,
-              tokens,
-              getLineProps,
-              getTokenProps,
-            }) => (
+          {shouldHighlight ? (
+            <HighlightCode
+              theme={theme}
+              code={code}
+              language={language}
+              showLineNumbers={showLineNumbers}
+              highlightLines={highlightLines}
+              maxLineWidth={maxLineWidth}
+              className="px-2 py-3"
+              preClassName="text-xs"
+            />
+          ) : (
+            <div
+              dir="ltr"
+              className="overflow-auto px-2 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+              style={{
+                maxHeight,
+              }}
+            >
+              <pre className="relative mr-2 p-2 font-mono text-xs leading-relaxed" dir="ltr">
+                {code}
+              </pre>
+            </div>
+          )}
+        </div>
+
+        <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+          <DialogContent className="flex flex-col gap-0 p-0 pt-[2.9rem] sm:h-[80vh] sm:max-h-[80vh] sm:max-w-[80vw]">
+            <DialogHeader className="h-fit">
+              <DialogTitle className="absolute left-3.5 top-2.5">
+                {fileName && fileName}
+                {rowTitle && rowTitle}
+              </DialogTitle>
+              <Button
+                variant="tertiary/small"
+                onClick={onModalCopied}
+                className="absolute right-4 top-16 z-50"
+                LeadingIcon={modalCopied ? undefined : Clipboard}
+                leadingIconClassName="size-3 -ml-1"
+              >
+                {modalCopied ? "Copied" : "Copy"}
+              </Button>
+            </DialogHeader>
+
+            {shouldHighlight ? (
+              <HighlightCode
+                theme={theme}
+                code={code}
+                language={language}
+                showLineNumbers={showLineNumbers}
+                highlightLines={highlightLines}
+                maxLineWidth={maxLineWidth}
+                className="min-h-full"
+                preClassName="text-sm"
+              />
+            ) : (
               <div
                 dir="ltr"
-                className="overflow-auto px-2 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
-                style={{
-                  maxHeight,
-                }}
+                className="overflow-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
               >
-                <pre
-                  className={cn(
-                    "relative mr-2 font-mono text-xs leading-relaxed",
-                    inheritedClassName
-                  )}
-                  style={inheritedStyle}
-                  dir="ltr"
-                >
-                  {tokens
-                    .map((line, index) => {
-                      if (
-                        index === tokens.length - 1 &&
-                        line.length === 1 &&
-                        line[0].content === "\n"
-                      ) {
-                        return null;
-                      }
-
-                      const lineNumber = index + 1;
-                      const lineProps = getLineProps({ line, key: index });
-
-                      let hasAnyHighlights = highlightLines ? highlightLines.length > 0 : false;
-
-                      let shouldDim = hasAnyHighlights;
-                      if (hasAnyHighlights && highlightLines?.includes(lineNumber)) {
-                        shouldDim = false;
-                      }
-
-                      return (
-                        <div
-                          key={lineNumber}
-                          {...lineProps}
-                          className={cn(
-                            "flex w-full justify-start transition-opacity duration-500",
-                            lineProps.className
-                          )}
-                          style={{
-                            opacity: shouldDim ? dimAmount : undefined,
-                            ...lineProps.style,
-                          }}
-                        >
-                          {showLineNumbers && (
-                            <div
-                              className={
-                                "mr-2 flex-none select-none text-right text-charcoal-500 transition-opacity duration-500"
-                              }
-                              style={{
-                                width: `calc(8 * ${maxLineWidth / 16}rem)`,
-                              }}
-                            >
-                              {lineNumber}
-                            </div>
-                          )}
-
-                          <div className="flex-1">
-                            {line.map((token, key) => {
-                              const tokenProps = getTokenProps({ token, key });
-                              return (
-                                <span
-                                  key={key}
-                                  {...tokenProps}
-                                  style={{
-                                    color: tokenProps?.style?.color as string,
-                                    ...tokenProps.style,
-                                  }}
-                                />
-                              );
-                            })}
-                          </div>
-                          <div className="w-4 flex-none" />
-                        </div>
-                      );
-                    })
-                    .filter(Boolean)}
+                <pre className="relative mr-2 p-2 font-mono text-base leading-relaxed" dir="ltr">
+                  {code}
                 </pre>
               </div>
             )}
-          </Highlight>
-        ) : (
-          <div
-            dir="ltr"
-            className="overflow-auto px-2 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
-            style={{
-              maxHeight,
-            }}
-          >
-            <pre className="relative mr-2 p-2 font-mono text-xs leading-relaxed" dir="ltr">
-              {code}
-            </pre>
-          </div>
-        )}
-      </div>
+          </DialogContent>
+        </Dialog>
+      </>
     );
   }
 );
@@ -392,5 +398,146 @@ export function TitleRow({ title }: { title: ReactNode }) {
         {title}
       </Paragraph>
     </div>
+  );
+}
+
+type HighlightCodeProps = {
+  theme: PrismTheme;
+  code: string;
+  language: Language;
+  showLineNumbers: boolean;
+  highlightLines?: number[];
+  maxLineWidth?: number;
+  className?: string;
+  preClassName?: string;
+};
+
+function HighlightCode({
+  theme,
+  code,
+  language,
+  showLineNumbers,
+  highlightLines,
+  maxLineWidth,
+  className,
+  preClassName,
+}: HighlightCodeProps) {
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  useEffect(() => {
+    // This ensures the language definitions are loaded
+    Promise.all([
+      //@ts-ignore
+      import("prismjs/components/prism-json"),
+      //@ts-ignore
+      import("prismjs/components/prism-typescript"),
+    ]).then(() => setIsLoaded(true));
+  }, []);
+
+  if (!isLoaded) {
+    return (
+      <div
+        dir="ltr"
+        className={cn(
+          "overflow-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
+          className
+        )}
+      >
+        <pre className={cn("relative mr-2 font-mono leading-relaxed", preClassName)}>{code}</pre>
+      </div>
+    );
+  }
+
+  return (
+    <Highlight theme={theme} code={code} language={language}>
+      {({
+        className: inheritedClassName,
+        style: inheritedStyle,
+        tokens,
+        getLineProps,
+        getTokenProps,
+      }) => (
+        <div
+          dir="ltr"
+          className={cn(
+            "overflow-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
+            className
+          )}
+        >
+          <pre
+            className={cn(
+              "relative mr-2 font-mono leading-relaxed",
+              inheritedClassName,
+              preClassName
+            )}
+            style={inheritedStyle}
+            dir="ltr"
+          >
+            {tokens
+              .map((line, index) => {
+                if (index === tokens.length - 1 && line.length === 1 && line[0].content === "\n") {
+                  return null;
+                }
+
+                const lineNumber = index + 1;
+                const lineProps = getLineProps({ line, key: index });
+
+                let hasAnyHighlights = highlightLines ? highlightLines.length > 0 : false;
+
+                let shouldDim = hasAnyHighlights;
+                if (hasAnyHighlights && highlightLines?.includes(lineNumber)) {
+                  shouldDim = false;
+                }
+
+                return (
+                  <div
+                    key={lineNumber}
+                    {...lineProps}
+                    className={cn(
+                      "flex w-full justify-start transition-opacity duration-500",
+                      lineProps.className
+                    )}
+                    style={{
+                      opacity: shouldDim ? dimAmount : undefined,
+                      ...lineProps.style,
+                    }}
+                  >
+                    {showLineNumbers && (
+                      <div
+                        className={
+                          "mr-2 flex-none select-none text-right text-charcoal-500 transition-opacity duration-500"
+                        }
+                        style={{
+                          width: `calc(8 * ${(maxLineWidth as number) / 16}rem)`,
+                        }}
+                      >
+                        {lineNumber}
+                      </div>
+                    )}
+
+                    <div className="flex-1">
+                      {line.map((token, key) => {
+                        const tokenProps = getTokenProps({ token, key });
+                        return (
+                          <span
+                            key={key}
+                            {...tokenProps}
+                            style={{
+                              color: tokenProps?.style?.color as string,
+                              ...tokenProps.style,
+                            }}
+                          />
+                        );
+                      })}
+                    </div>
+                    <div className="w-4 flex-none" />
+                  </div>
+                );
+              })
+              .filter(Boolean)}
+          </pre>
+        </div>
+      )}
+    </Highlight>
   );
 }

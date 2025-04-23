@@ -21,8 +21,8 @@
     "@radix-ui/react-scroll-area": "^1.2.0",
     "@radix-ui/react-slot": "^1.1.0",
     "@radix-ui/react-tabs": "^1.0.3",
-    "@trigger.dev/react-hooks": "workspace:^",
-    "@trigger.dev/sdk": "workspace:^3",
+    "@trigger.dev/react-hooks": "workspace:*",
+    "@trigger.dev/sdk": "workspace:*",
     "@uploadthing/react": "^7.0.3",
     "ai": "^4.0.0",
     "class-variance-authority": "^0.7.0",
@@ -30,7 +30,7 @@
     "date-fns": "^4.1.0",
     "langsmith": "^0.2.15",
     "lucide-react": "^0.451.0",
-    "next": "14.2.15",
+    "next": "14.2.21",
     "openai": "^4.68.4",
     "react": "^18",
     "react-dom": "^18",
@@ -41,13 +41,11 @@
   },
   "devDependencies": {
     "@next/bundle-analyzer": "^15.0.2",
-    "@trigger.dev/rsc": "workspace:^3",
-    "@types/node": "^20",
+    "@trigger.dev/rsc": "workspace:*",
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "postcss": "^8",
     "tailwindcss": "^3.4.1",
-    "trigger.dev": "workspace:^3",
-    "typescript": "^5"
+    "trigger.dev": "workspace:*"
   }
 }

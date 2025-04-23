@@ -3,11 +3,12 @@ import {
   ExternalBuildData,
   prepareDeploymentError,
 } from "@trigger.dev/core/v3";
-import { WorkerDeployment } from "@trigger.dev/database";
-import { PrismaClient, prisma } from "~/db.server";
-import { Organization } from "~/models/organization.server";
-import { Project } from "~/models/project.server";
-import { User } from "~/models/user.server";
+import { RuntimeEnvironment, type WorkerDeployment } from "@trigger.dev/database";
+import { type PrismaClient, prisma } from "~/db.server";
+import { type Organization } from "~/models/organization.server";
+import { type Project } from "~/models/project.server";
+import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
+import { type User } from "~/models/user.server";
 import { getUsername } from "~/utils/username";
 
 export type ErrorData = {
@@ -28,11 +29,13 @@ export class DeploymentPresenter {
     userId,
     projectSlug,
     organizationSlug,
+    environmentSlug,
     deploymentShortCode,
   }: {
     userId: User["id"];
     projectSlug: Project["slug"];
     organizationSlug: Organization["slug"];
+    environmentSlug: RuntimeEnvironment["slug"];
     deploymentShortCode: WorkerDeployment["shortCode"];
   }) {
     const project = await this.#prismaClient.project.findFirstOrThrow({
@@ -53,10 +56,16 @@ export class DeploymentPresenter {
       },
     });
 
+    const environment = await findEnvironmentBySlug(project.id, environmentSlug, userId);
+    if (!environment) {
+      throw new Error(`Environment not found`);
+    }
+
     const deployment = await this.#prismaClient.workerDeployment.findFirstOrThrow({
       where: {
         projectId: project.id,
         shortCode: deploymentShortCode,
+        environmentId: environment.id,
       },
       select: {
         id: true,
@@ -66,6 +75,7 @@ export class DeploymentPresenter {
         imageReference: true,
         externalBuildData: true,
         projectId: true,
+        type: true,
         environment: {
           select: {
             id: true,
@@ -98,11 +108,10 @@ export class DeploymentPresenter {
             tasks: {
               select: {
                 slug: true,
-                exportName: true,
                 filePath: true,
               },
               orderBy: {
-                exportName: "asc",
+                slug: "asc",
               },
             },
             sdkVersion: true,
@@ -152,6 +161,7 @@ export class DeploymentPresenter {
         organizationId: project.organizationId,
         errorData: DeploymentPresenter.prepareErrorData(deployment.errorData),
         isBuilt: !!deployment.builtAt,
+        type: deployment.type,
       },
     };
   }

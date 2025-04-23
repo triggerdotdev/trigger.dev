@@ -8,6 +8,7 @@ type DurationOptions = {
   style?: "long" | "short";
   maxDecimalPoints?: number;
   units?: Unit[];
+  maxUnits?: number;
 };
 
 export function formatDuration(
@@ -48,7 +49,7 @@ export function formatDurationMilliseconds(
       ? belowOneSecondUnits
       : aboveOneSecondUnits,
     maxDecimalPoints: options?.maxDecimalPoints ?? 1,
-    largest: 2,
+    largest: options?.maxUnits ?? 2,
   });
 
   if (!options) {

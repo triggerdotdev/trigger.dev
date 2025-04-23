@@ -1,12 +1,12 @@
+import { EnvelopeIcon } from "@heroicons/react/20/solid";
 import type { LoaderFunctionArgs, MetaFunction } from "@remix-run/node";
 import { Form } from "@remix-run/react";
-import { GitHubDarkIcon } from "@trigger.dev/companyicons";
+import { GitHubLightIcon } from "@trigger.dev/companyicons";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { LoginPageLayout } from "~/components/LoginPageLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { Header1 } from "~/components/primitives/Headers";
-import { NamedIcon } from "~/components/primitives/NamedIcon";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { TextLink } from "~/components/primitives/TextLink";
 import { isGithubAuthSupported } from "~/services/auth.server";
@@ -89,18 +89,18 @@ export default function LoginPage() {
                   fullWidth
                   data-action="continue with github"
                 >
-                  <GitHubDarkIcon className={"mr-2 size-5"} />
-                  <span className="text-charcoal-900">Continue with GitHub</span>
+                  <GitHubLightIcon className={"mr-2 size-5"} />
+                  <span className="text-text-bright">Continue with GitHub</span>
                 </Button>
               )}
               <LinkButton
                 to="/login/magic"
-                variant="tertiary/extra-large"
+                variant="secondary/extra-large"
                 fullWidth
                 data-action="continue with email"
                 className="text-text-bright"
               >
-                <NamedIcon name={"envelope"} className={"mr-2 size-5 text-text-bright"} />
+                <EnvelopeIcon className="mr-2 size-5 text-text-bright" />
                 Continue with Email
               </LinkButton>
             </div>

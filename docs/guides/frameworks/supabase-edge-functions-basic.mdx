@@ -17,6 +17,8 @@ import NextjsTroubleshootingButtonSyntax from "/snippets/nextjs-button-syntax.md
 import WorkerFailedToStartWhenRunningDevCommand from "/snippets/worker-failed-to-start.mdx";
 import SupabaseDocsCards from "/snippets/supabase-docs-cards.mdx";
 
+import SupabaseAuthInfo from "/snippets/supabase-auth-info.mdx";
+
 ## Overview
 
 Supabase edge functions allow you to trigger tasks either when an event is sent from a third party (e.g. when a new Stripe payment is processed, when a new user signs up to a service, etc), or when there are any changes or updates to your Supabase database.
@@ -29,7 +31,7 @@ This guide shows you how to set up and deploy a simple Supabase edge function ex
 - Since Supabase CLI version 1.123.4, you must have [Docker Desktop installed](https://supabase.com/docs/guides/functions/deploy#deploy-your-edge-functions) to deploy Edge Functions
 - Ensure TypeScript is installed
 - [Create a Trigger.dev account](https://cloud.trigger.dev)
-- [Create a new Trigger.dev project](/guides/dashboard/creating-a-project)
+- Create a new Trigger.dev project
 
 ## GitHub repo
 
@@ -109,11 +111,12 @@ You can now deploy your edge function with the following command in your termina
 supabase functions deploy edge-function-trigger --no-verify-jwt
 ```
 
-<Note>
+<Warning>
   `--no-verify-jwt` removes the JSON Web Tokens requirement from the authorization header. By
-  default this should be on, but it is not required for this example. Learn more about JWTs
-  [here](https://supabase.com/docs/guides/auth/jwts).
-</Note>
+  default this should be on, but it is not strictly required for this hello world example.
+</Warning>
+
+<SupabaseAuthInfo />
 
 Follow the CLI instructions and once complete you should now see your new edge function deployment in your Supabase edge functions dashboard.
 

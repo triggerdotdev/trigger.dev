@@ -1,3 +1,4 @@
+import { ArrowLeftIcon, EnvelopeIcon } from "@heroicons/react/20/solid";
 import { InboxArrowDownIcon } from "@heroicons/react/24/solid";
 import type { ActionFunctionArgs, LoaderFunctionArgs, MetaFunction } from "@remix-run/node";
 import { redirect } from "@remix-run/node";
@@ -12,8 +13,8 @@ import { FormError } from "~/components/primitives/FormError";
 import { Header1 } from "~/components/primitives/Headers";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
-import { NamedIcon } from "~/components/primitives/NamedIcon";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { Spinner } from "~/components/primitives/Spinner";
 import { TextLink } from "~/components/primitives/TextLink";
 import { authenticator } from "~/services/auth.server";
 import { commitSession, getUserSession } from "~/services/sessionStorage.server";
@@ -124,7 +125,7 @@ export default function LoginMagicLinkPage() {
                       name="action"
                       value="reset"
                       variant="minimal/small"
-                      LeadingIcon="arrow-left"
+                      LeadingIcon={ArrowLeftIcon}
                       leadingIconClassName="text-text-dimmed group-hover:text-text-bright transition"
                       data-action="re-enter email"
                     >
@@ -173,14 +174,15 @@ export default function LoginMagicLinkPage() {
                   fullWidth
                   data-action="send a magic link"
                 >
-                  <NamedIcon
-                    name={isLoading ? "spinner-dark" : "envelope"}
-                    className={"mr-2 size-5 text-background-dimmed"}
-                  />
                   {isLoading ? (
-                    <span className="text-background-dimmed">Sending…</span>
+                    <Spinner className="mr-2 size-5" color="white" />
                   ) : (
-                    <span className="text-background-dimmed">Send a magic link</span>
+                    <EnvelopeIcon className="mr-2 size-5 text-text-bright" />
+                  )}
+                  {isLoading ? (
+                    <span className="text-text-bright">Sending…</span>
+                  ) : (
+                    <span className="text-text-bright">Send a magic link</span>
                   )}
                 </Button>
                 {magicLinkError && <FormError>{magicLinkError}</FormError>}
@@ -200,7 +202,7 @@ export default function LoginMagicLinkPage() {
               <LinkButton
                 to="/login"
                 variant={"minimal/small"}
-                LeadingIcon={"arrow-left"}
+                LeadingIcon={ArrowLeftIcon}
                 leadingIconClassName="text-text-dimmed group-hover:text-text-bright transition"
                 data-action="all login options"
               >

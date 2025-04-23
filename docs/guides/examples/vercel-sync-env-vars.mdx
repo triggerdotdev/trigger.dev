@@ -28,13 +28,27 @@ export default defineConfig({
   // Your other config settings...
   build: {
     // Add the syncVercelEnvVars build extension
-    extensions: [syncVercelEnvVars()],
+    extensions: [
+      syncVercelEnvVars({
+        // A personal access token created in your Vercel account settings
+        // Used to authenticate API requests to Vercel
+        // Generate at: https://vercel.com/account/tokens
+        vercelAccessToken: process.env.VERCEL_ACCESS_TOKEN,
+        // The unique identifier of your Vercel project
+        // Found in Project Settings > General > Project ID
+        projectId: process.env.VERCEL_PROJECT_ID,
+        // Optional: The ID of your Vercel team
+        // Only required for team projects
+        // Found in Team Settings > General > Team ID
+        vercelTeamId: process.env.VERCEL_TEAM_ID,
+      }),
+    ],
   },
 });
 ```
 
 <Note>
-  [Build extensions](/config/config-file#extensions) allow you to hook into the build system and
+  [Build extensions](/config/extensions/overview) allow you to hook into the build system and
   customize the build process or the resulting bundle and container image (in the case of
   deploying). You can use pre-built extensions or create your own.
 </Note>

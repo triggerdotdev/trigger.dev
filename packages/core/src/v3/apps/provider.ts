@@ -50,6 +50,7 @@ export interface TaskOperationsCreateOptions {
   orgId: string;
   projectId: string;
   runId: string;
+  dequeuedAt?: number;
 }
 
 export interface TaskOperationsRestoreOptions {
@@ -151,6 +152,7 @@ export class ProviderShell implements Provider {
                 orgId: message.data.orgId,
                 projectId: message.data.projectId,
                 runId: message.data.runId,
+                dequeuedAt: message.data.dequeuedAt,
               });
             } catch (error) {
               logger.error("create failed", error);

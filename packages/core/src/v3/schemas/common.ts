@@ -1,5 +1,8 @@
 import { z } from "zod";
 import { DeserializedJsonSchema } from "../../schemas/json.js";
+import type { RuntimeEnvironmentType as DBRuntimeEnvironmentType } from "@trigger.dev/database";
+
+export type Enum<T extends string> = { [K in T]: K };
 
 export const RunMetadataUpdateOperation = z.object({
   type: z.literal("update"),
@@ -120,6 +123,8 @@ export const MachinePreset = z.object({
 
 export type MachinePreset = z.infer<typeof MachinePreset>;
 
+export type MachinePresetResources = Pick<MachinePreset, "memory" | "cpu">;
+
 export const TaskRunBuiltInError = z.object({
   type: z.literal("BUILT_IN_ERROR"),
   name: z.string(),
@@ -162,6 +167,7 @@ export const TaskRunInternalError = z.object({
     "TASK_RUN_CANCELLED",
     "TASK_INPUT_ERROR",
     "TASK_OUTPUT_ERROR",
+    "TASK_MIDDLEWARE_ERROR",
     "HANDLE_ERROR_ERROR",
     "GRACEFUL_EXIT_TIMEOUT",
     "TASK_RUN_HEARTBEAT_TIMEOUT",
@@ -170,8 +176,15 @@ export const TaskRunInternalError = z.object({
     "DISK_SPACE_EXCEEDED",
     "POD_EVICTED",
     "POD_UNKNOWN_ERROR",
+    "TASK_HAS_N0_EXECUTION_SNAPSHOT",
+    "TASK_DEQUEUED_INVALID_STATE",
+    "TASK_DEQUEUED_QUEUE_NOT_FOUND",
+    "TASK_RUN_DEQUEUED_MAX_RETRIES",
+    "TASK_RUN_STALLED_EXECUTING",
+    "TASK_RUN_STALLED_EXECUTING_WITH_WAITPOINTS",
     "OUTDATED_SDK_VERSION",
     "TASK_DID_CONCURRENT_WAIT",
+    "RECURSIVE_WAIT_DEADLOCK",
   ]),
   message: z.string().optional(),
   stackTrace: z.string().optional(),
@@ -195,19 +208,34 @@ export const TaskRun = z.object({
   id: z.string(),
   payload: z.string(),
   payloadType: z.string(),
-  context: z.any(),
   tags: z.array(z.string()),
   isTest: z.boolean().default(false),
   createdAt: z.coerce.date(),
   startedAt: z.coerce.date().default(() => new Date()),
   idempotencyKey: z.string().optional(),
   maxAttempts: z.number().optional(),
-  durationMs: z.number().default(0),
-  costInCents: z.number().default(0),
-  baseCostInCents: z.number().default(0),
   version: z.string().optional(),
   metadata: z.record(DeserializedJsonSchema).optional(),
   maxDuration: z.number().optional(),
+  /** @deprecated */
+  context: z.any(),
+  /**
+   * @deprecated For live values use the `usage` SDK functions
+   * @link https://trigger.dev/docs/run-usage
+   */
+  durationMs: z.number().default(0),
+  /**
+   * @deprecated For live values use the `usage` SDK functions
+   * @link https://trigger.dev/docs/run-usage
+   */
+  costInCents: z.number().default(0),
+  /**
+   * @deprecated For live values use the `usage` SDK functions
+   * @link https://trigger.dev/docs/run-usage
+   */
+  baseCostInCents: z.number().default(0),
+  /** The priority of the run. Wih a value of 10 it will be dequeued before runs that were triggered 9 seconds before it (assuming they had no priority set).  */
+  priority: z.number().optional(),
 });
 
 export type TaskRun = z.infer<typeof TaskRun>;
@@ -215,17 +243,21 @@ export type TaskRun = z.infer<typeof TaskRun>;
 export const TaskRunExecutionTask = z.object({
   id: z.string(),
   filePath: z.string(),
-  exportName: z.string(),
+  exportName: z.string().optional(),
 });
 
 export type TaskRunExecutionTask = z.infer<typeof TaskRunExecutionTask>;
 
 export const TaskRunExecutionAttempt = z.object({
-  id: z.string(),
   number: z.number(),
   startedAt: z.coerce.date(),
+  /** @deprecated */
+  id: z.string(),
+  /** @deprecated */
   backgroundWorkerId: z.string(),
+  /** @deprecated */
   backgroundWorkerTaskId: z.string(),
+  /** @deprecated */
   status: z.string(),
 });
 
@@ -270,13 +302,17 @@ export const TaskRunExecutionBatch = z.object({
 export const TaskRunExecution = z.object({
   task: TaskRunExecutionTask,
   attempt: TaskRunExecutionAttempt,
-  run: TaskRun,
+  run: TaskRun.and(
+    z.object({
+      traceContext: z.record(z.unknown()).optional(),
+    })
+  ),
   queue: TaskRunExecutionQueue,
   environment: TaskRunExecutionEnvironment,
   organization: TaskRunExecutionOrganization,
   project: TaskRunExecutionProject,
   batch: TaskRunExecutionBatch.optional(),
-  machine: MachinePreset.optional(),
+  machine: MachinePreset,
 });
 
 export type TaskRunExecution = z.infer<typeof TaskRunExecution>;
@@ -300,6 +336,7 @@ export type TaskRunContext = z.infer<typeof TaskRunContext>;
 
 export const TaskRunExecutionRetry = z.object({
   timestamp: z.number(),
+  /** Retry delay in milliseconds */
   delay: z.number(),
   error: z.unknown().optional(),
 });
@@ -353,6 +390,23 @@ export const BatchTaskRunExecutionResult = z.object({
 
 export type BatchTaskRunExecutionResult = z.infer<typeof BatchTaskRunExecutionResult>;
 
+export const WaitpointTokenResult = z.object({
+  ok: z.boolean(),
+  output: z.string().optional(),
+  outputType: z.string().optional(),
+});
+export type WaitpointTokenResult = z.infer<typeof WaitpointTokenResult>;
+
+export type WaitpointTokenTypedResult<T> =
+  | {
+      ok: true;
+      output: T;
+    }
+  | {
+      ok: false;
+      error: Error;
+    };
+
 export const SerializedError = z.object({
   message: z.string(),
   name: z.string().optional(),
@@ -360,3 +414,17 @@ export const SerializedError = z.object({
 });
 
 export type SerializedError = z.infer<typeof SerializedError>;
+
+export const RuntimeEnvironmentType = {
+  PRODUCTION: "PRODUCTION",
+  STAGING: "STAGING",
+  DEVELOPMENT: "DEVELOPMENT",
+  PREVIEW: "PREVIEW",
+} satisfies Enum<DBRuntimeEnvironmentType>;
+
+export type RuntimeEnvironmentType =
+  (typeof RuntimeEnvironmentType)[keyof typeof RuntimeEnvironmentType];
+
+export const RuntimeEnvironmentTypeSchema = z.enum(
+  Object.values(RuntimeEnvironmentType) as [DBRuntimeEnvironmentType]
+);

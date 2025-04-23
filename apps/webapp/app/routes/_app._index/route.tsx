@@ -1,9 +1,15 @@
-import { LoaderFunctionArgs, redirect } from "@remix-run/server-runtime";
+import { type LoaderFunctionArgs, redirect } from "@remix-run/server-runtime";
 import { prisma } from "~/db.server";
 import { getUsersInvites } from "~/models/member.server";
-import { SelectBestProjectPresenter } from "~/presenters/SelectBestProjectPresenter.server";
+import { SelectBestEnvironmentPresenter } from "~/presenters/SelectBestEnvironmentPresenter.server";
 import { requireUser } from "~/services/session.server";
-import { invitesPath, newOrganizationPath, newProjectPath, projectPath } from "~/utils/pathBuilder";
+import {
+  invitesPath,
+  newOrganizationPath,
+  newProjectPath,
+  v3EnvironmentPath,
+  v3ProjectPath,
+} from "~/utils/pathBuilder";
 
 //this loader chooses the best project to redirect you to, ideally based on the cookie
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -15,11 +21,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     return redirect(invitesPath());
   }
 
-  const presenter = new SelectBestProjectPresenter();
+  const presenter = new SelectBestEnvironmentPresenter();
   try {
-    const { project, organization } = await presenter.call({ userId: user.id, request });
+    const { project, organization, environment } = await presenter.call({
+      user,
+    });
     //redirect them to the most appropriate project
-    return redirect(projectPath(organization, project));
+    return redirect(v3EnvironmentPath(organization, project, environment));
   } catch (e) {
     const organization = await prisma.organization.findFirst({
       where: {

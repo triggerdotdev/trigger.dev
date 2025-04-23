@@ -135,6 +135,7 @@ export class FinalizeDeploymentV2Service extends BaseService {
     const finalizedDeployment = await finalizeService.call(authenticatedEnv, id, {
       imageReference: fullImage,
       skipRegistryProxy: true,
+      skipPromotion: body.skipPromotion,
     });
 
     return finalizedDeployment;

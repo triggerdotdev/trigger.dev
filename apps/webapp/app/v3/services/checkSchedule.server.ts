@@ -4,6 +4,7 @@ import { BaseService, ServiceValidationError } from "./baseService.server";
 import { getLimit } from "~/services/platform.v3.server";
 import { getTimezones } from "~/utils/timezones.server";
 import { env } from "~/env.server";
+import { type PrismaClientOrTransaction, type RuntimeEnvironmentType } from "@trigger.dev/database";
 
 type Schedule = {
   cron: string;
@@ -69,6 +70,12 @@ export class CheckScheduleService extends BaseService {
         },
         select: {
           organizationId: true,
+          environments: {
+            select: {
+              id: true,
+              type: true,
+            },
+          },
         },
       });
 
@@ -77,10 +84,9 @@ export class CheckScheduleService extends BaseService {
       }
 
       const limit = await getLimit(project.organizationId, "schedules", 100_000_000);
-      const schedulesCount = await this._prisma.taskSchedule.count({
-        where: {
-          projectId,
-        },
+      const schedulesCount = await CheckScheduleService.getUsedSchedulesCount({
+        prisma: this._prisma,
+        environments: project.environments,
       });
 
       if (schedulesCount >= limit) {
@@ -89,5 +95,28 @@ export class CheckScheduleService extends BaseService {
         );
       }
     }
+  }
+
+  static async getUsedSchedulesCount({
+    prisma,
+    environments,
+  }: {
+    prisma: PrismaClientOrTransaction;
+    environments: { id: string; type: RuntimeEnvironmentType }[];
+  }) {
+    const deployedEnvironments = environments.filter((env) => env.type !== "DEVELOPMENT");
+    const schedulesCount = await prisma.taskScheduleInstance.count({
+      where: {
+        environmentId: {
+          in: deployedEnvironments.map((env) => env.id),
+        },
+        active: true,
+        taskSchedule: {
+          active: true,
+        },
+      },
+    });
+
+    return schedulesCount;
   }
 }

@@ -297,6 +297,10 @@ export default defineConfig({
 
 <Info>Errors thrown in the `onFailure` function are ignored.</Info>
 
+<Note>
+  `onFailure` doesn’t fire for some of the run statuses like `Crashed`, `System failures`, and `Canceled`.
+</Note>
+
 ### `handleError` functions
 
 You can define a function that will be called when an error is thrown in the `run` function, that allows you to control how the error is handled and whether the task should be retried.

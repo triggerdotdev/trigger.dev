@@ -7,6 +7,7 @@ import { CRASHABLE_ATTEMPT_STATUSES, isCrashableRunStatus } from "../taskStatus"
 import { sanitizeError, TaskRunErrorCodes, TaskRunInternalError } from "@trigger.dev/core/v3";
 import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
 import { FailedTaskRunRetryHelper } from "../failedTaskRun.server";
+import { getTaskEventStoreTableForRun } from "../taskEventStore.server";
 
 export type CrashTaskRunServiceOptions = {
   reason?: string;
@@ -120,9 +121,12 @@ export class CrashTaskRunService extends BaseService {
     });
 
     const inProgressEvents = await eventRepository.queryIncompleteEvents(
+      getTaskEventStoreTableForRun(taskRun),
       {
         runId: taskRun.friendlyId,
       },
+      taskRun.createdAt,
+      taskRun.completedAt ?? undefined,
       options?.overrideCompletion
     );
 

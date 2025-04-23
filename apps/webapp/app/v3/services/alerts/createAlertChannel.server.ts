@@ -100,6 +100,7 @@ export class CreateAlertChannelService extends BaseService {
         return {
           url: channel.url,
           secret: await encryptSecret(env.ENCRYPTION_KEY, channel.secret ?? nanoid()),
+          version: "v2",
         };
       case "SLACK":
         return {

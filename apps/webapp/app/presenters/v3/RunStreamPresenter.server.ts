@@ -39,7 +39,7 @@ export class RunStreamPresenter {
       traceId: run.traceId,
     });
 
-    let pinger: NodeJS.Timer | undefined = undefined;
+    let pinger: NodeJS.Timeout | undefined = undefined;
 
     const { unsubscribe, eventEmitter } = await eventRepository.subscribeToTrace(run.traceId);
 

@@ -1,7 +1,6 @@
-import { Form } from "@remix-run/react";
-import { Paragraph } from "./primitives/Paragraph";
-import { Button } from "./primitives/Buttons";
 import { UserMinusIcon } from "@heroicons/react/20/solid";
+import { Form } from "@remix-run/react";
+import { Button } from "./primitives/Buttons";
 
 export function ImpersonationBanner() {
   return (
@@ -13,6 +12,7 @@ export function ImpersonationBanner() {
           LeadingIcon={UserMinusIcon}
           fullWidth
           textAlignLeft
+          className="text-amber-400"
         >
           Stop impersonating
         </Button>

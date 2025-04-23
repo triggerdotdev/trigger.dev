@@ -37,16 +37,18 @@ const TooltipContent = React.forwardRef<
   React.ElementRef<typeof TooltipPrimitive.Content>,
   TooltipContentProps
 >(({ className, sideOffset = 4, variant = "basic", ...props }, ref) => (
-  <TooltipPrimitive.Content
-    ref={ref}
-    sideOffset={sideOffset}
-    className={cn(
-      "z-50 overflow-hidden animate-in data-[side=bottom]:slide-in-from-top-1 data-[side=left]:slide-in-from-right-1 data-[side=right]:slide-in-from-left-1 data-[side=top]:slide-in-from-bottom-1 focus-visible:outline-none",
-      variantClasses[variant],
-      className
-    )}
-    {...props}
-  />
+  <TooltipPrimitive.Portal>
+    <TooltipPrimitive.Content
+      ref={ref}
+      sideOffset={sideOffset}
+      className={cn(
+        "z-50 overflow-hidden animate-in data-[side=bottom]:slide-in-from-top-1 data-[side=left]:slide-in-from-right-1 data-[side=right]:slide-in-from-left-1 data-[side=top]:slide-in-from-bottom-1 focus-visible:outline-none",
+        variantClasses[variant],
+        className
+      )}
+      {...props}
+    />
+  </TooltipPrimitive.Portal>
 ));
 TooltipContent.displayName = TooltipPrimitive.Content.displayName;
 
@@ -59,6 +61,7 @@ function SimpleTooltip({
   disableHoverableContent = false,
   className,
   buttonClassName,
+  asChild = false,
 }: {
   button: React.ReactNode;
   content: React.ReactNode;
@@ -68,11 +71,12 @@ function SimpleTooltip({
   disableHoverableContent?: boolean;
   className?: string;
   buttonClassName?: string;
+  asChild?: boolean;
 }) {
   return (
     <TooltipProvider disableHoverableContent={disableHoverableContent}>
       <Tooltip>
-        <TooltipTrigger tabIndex={-1} className={cn("h-fit", buttonClassName)}>
+        <TooltipTrigger tabIndex={-1} className={cn("h-fit", buttonClassName)} asChild={asChild}>
           {button}
         </TooltipTrigger>
         <TooltipContent

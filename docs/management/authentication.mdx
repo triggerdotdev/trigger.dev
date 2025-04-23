@@ -1,0 +1,97 @@
+---
+title: Authentication
+sidebarTitle: Authentication
+description: Authenticating with the Trigger.dev management API
+---
+
+There are two methods of authenticating with the management API: using a secret key associated with a specific environment in a project (`secretKey`), or using a personal access token (`personalAccessToken`). Both methods should only be used in a backend server, as they provide full access to the project.
+
+<Note>
+  There is a separate authentication strategy when making requests from your frontend application.
+  See the [Frontend guide](/frontend/overview) for more information. This guide is for backend usage
+  only.
+</Note>
+
+Certain API functions work with both authentication methods, but require different arguments depending on the method used. For example, the `runs.list` function can be called using either a `secretKey` or a `personalAccessToken`, but the `projectRef` argument is required when using a `personalAccessToken`:
+
+```ts
+import { configure, runs } from "@trigger.dev/sdk/v3";
+
+// Using secretKey authentication
+configure({
+  secretKey: process.env["TRIGGER_SECRET_KEY"], // starts with tr_dev_ or tr_prod_
+});
+
+function secretKeyExample() {
+  return runs.list({
+    limit: 10,
+    status: ["COMPLETED"],
+  });
+}
+
+// Using personalAccessToken authentication
+configure({
+  secretKey: process.env["TRIGGER_ACCESS_TOKEN"], // starts with tr_pat_
+});
+
+function personalAccessTokenExample() {
+  // Notice the projectRef argument is required when using a personalAccessToken
+  return runs.list("prof_1234", {
+    limit: 10,
+    status: ["COMPLETED"],
+    projectRef: "tr_proj_1234567890",
+  });
+}
+```
+
+<Accordion title="View endpoint support">
+  Consult the following table to see which endpoints support each authentication method.
+
+| Endpoint               | Secret key | Personal Access Token |
+| ---------------------- | ---------- | --------------------- |
+| `task.trigger`         | ✅         |                       |
+| `task.batchTrigger`    | ✅         |                       |
+| `runs.list`            | ✅         | ✅                    |
+| `runs.retrieve`        | ✅         |                       |
+| `runs.cancel`          | ✅         |                       |
+| `runs.replay`          | ✅         |                       |
+| `envvars.list`         | ✅         | ✅                    |
+| `envvars.retrieve`     | ✅         | ✅                    |
+| `envvars.upload`       | ✅         | ✅                    |
+| `envvars.create`       | ✅         | ✅                    |
+| `envvars.update`       | ✅         | ✅                    |
+| `envvars.del`          | ✅         | ✅                    |
+| `schedules.list`       | ✅         |                       |
+| `schedules.create`     | ✅         |                       |
+| `schedules.retrieve`   | ✅         |                       |
+| `schedules.update`     | ✅         |                       |
+| `schedules.activate`   | ✅         |                       |
+| `schedules.deactivate` | ✅         |                       |
+| `schedules.del`        | ✅         |                       |
+
+</Accordion>
+
+### Secret key
+
+Secret key authentication scopes the API access to a specific environment in a project, and works with certain endpoints. You can read our [API Keys guide](/apikeys) for more information.
+
+### Personal Access Token (PAT)
+
+A PAT is a token associated with a specific user, and gives access to all the orgs, projects, and environments that the user has access to. You can identify a PAT by the `tr_pat_` prefix. Because a PAT does not scope access to a specific environment, you must provide the `projectRef` argument when using a PAT (and sometimes the environment as well).
+
+For example, when uploading environment variables using a PAT, you must provide the `projectRef` and `environment` arguments:
+
+```ts
+import { configure, envvars } from "@trigger.dev/sdk/v3";
+
+configure({
+  secretKey: process.env["TRIGGER_ACCESS_TOKEN"], // starts with tr_pat_
+});
+
+await envvars.upload("proj_1234", "dev", {
+  variables: {
+    MY_ENV_VAR: "MY_ENV_VAR_VALUE",
+  },
+  override: true,
+});
+```

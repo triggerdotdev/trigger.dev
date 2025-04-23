@@ -1,0 +1,5 @@
+html2text==2024.2.26
+requests==2.32.3
+urllib3==2.3.0
+idna==3.10
+certifi==2025.1.31

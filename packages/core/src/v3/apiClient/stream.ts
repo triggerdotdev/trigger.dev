@@ -9,6 +9,7 @@ import {
   type Row,
   type ShapeStreamInterface,
 } from "@electric-sql/client";
+import { AsyncIterableStream, createAsyncIterableStream } from "../streams/asyncIterableStream.js";
 
 export type ZodShapeStreamOptions = {
   headers?: Record<string, string>;
@@ -82,65 +83,16 @@ export function zodShapeStream<TShapeSchema extends z.ZodTypeAny>(
   };
 }
 
-export type AsyncIterableStream<T> = AsyncIterable<T> & ReadableStream<T>;
-
-export function createAsyncIterableStream<S, T>(
-  source: ReadableStream<S>,
-  transformer: Transformer<S, T>
-): AsyncIterableStream<T> {
-  const transformedStream: any = source.pipeThrough(new TransformStream(transformer));
-
-  transformedStream[Symbol.asyncIterator] = () => {
-    const reader = transformedStream.getReader();
-    return {
-      async next(): Promise<IteratorResult<string>> {
-        const { done, value } = await reader.read();
-        return done ? { done: true, value: undefined } : { done: false, value };
-      },
-    };
-  };
-
-  return transformedStream;
-}
-
-export function createAsyncIterableReadable<S, T>(
-  source: ReadableStream<S>,
-  transformer: Transformer<S, T>,
-  signal: AbortSignal
-): AsyncIterableStream<T> {
-  return new ReadableStream<T>({
-    async start(controller) {
-      const transformedStream = source.pipeThrough(new TransformStream(transformer));
-      const reader = transformedStream.getReader();
-
-      signal.addEventListener("abort", () => {
-        queueMicrotask(() => {
-          reader.cancel();
-          controller.close();
-        });
-      });
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-          controller.close();
-          break;
-        }
-
-        controller.enqueue(value);
-      }
-    },
-  }) as AsyncIterableStream<T>;
-}
-
 class ReadableShapeStream<T extends Row<unknown> = Row> {
   readonly #stream: ShapeStreamInterface<T>;
   readonly #currentState: Map<string, T> = new Map();
   readonly #changeStream: AsyncIterableStream<T>;
   #error: FetchError | false = false;
   #unsubscribe?: () => void;
+  #isStreamClosed: boolean = false;
 
   stop() {
+    this.#isStreamClosed = true;
     this.#unsubscribe?.();
   }
 
@@ -151,52 +103,69 @@ class ReadableShapeStream<T extends Row<unknown> = Row> {
     const source = new ReadableStream<Message<T>[]>({
       start: (controller) => {
         this.#unsubscribe = this.#stream.subscribe(
-          (messages) => controller.enqueue(messages),
+          (messages) => {
+            if (!this.#isStreamClosed) {
+              controller.enqueue(messages);
+            }
+          },
           this.#handleError.bind(this)
         );
       },
+      cancel: () => {
+        this.#isStreamClosed = true;
+        this.#unsubscribe?.();
+      }
     });
 
     // Create the transformed stream that processes messages and emits complete rows
     this.#changeStream = createAsyncIterableStream(source, {
       transform: (messages, controller) => {
-        const updatedKeys = new Set<string>();
-
-        for (const message of messages) {
-          if (isChangeMessage(message)) {
-            const key = message.key;
-            switch (message.headers.operation) {
-              case "insert": {
-                // New row entirely
-                this.#currentState.set(key, message.value);
-                updatedKeys.add(key);
-                break;
-              }
-              case "update": {
-                // Merge updates into existing row if any, otherwise treat as new
-                const existingRow = this.#currentState.get(key);
-                const updatedRow = existingRow
-                  ? { ...existingRow, ...message.value }
-                  : message.value;
-                this.#currentState.set(key, updatedRow);
-                updatedKeys.add(key);
-                break;
-              }
-            }
-          } else if (isControlMessage(message)) {
-            if (message.headers.control === "must-refetch") {
-              this.#currentState.clear();
-              this.#error = false;
-            }
-          }
+        if (this.#isStreamClosed) {
+          return;
         }
 
-        // Now enqueue only one updated row per key, after all messages have been processed.
-        for (const key of updatedKeys) {
-          const finalRow = this.#currentState.get(key);
-          if (finalRow) {
-            controller.enqueue(finalRow);
+        try {
+          const updatedKeys = new Set<string>();
+
+          for (const message of messages) {
+            if (isChangeMessage(message)) {
+              const key = message.key;
+              switch (message.headers.operation) {
+                case "insert": {
+                  this.#currentState.set(key, message.value);
+                  updatedKeys.add(key);
+                  break;
+                }
+                case "update": {
+                  const existingRow = this.#currentState.get(key);
+                  const updatedRow = existingRow
+                    ? { ...existingRow, ...message.value }
+                    : message.value;
+                  this.#currentState.set(key, updatedRow);
+                  updatedKeys.add(key);
+                  break;
+                }
+              }
+            } else if (isControlMessage(message)) {
+              if (message.headers.control === "must-refetch") {
+                this.#currentState.clear();
+                this.#error = false;
+              }
+            }
           }
+
+          // Now enqueue only one updated row per key, after all messages have been processed.
+          if (!this.#isStreamClosed) {
+            for (const key of updatedKeys) {
+              const finalRow = this.#currentState.get(key);
+              if (finalRow) {
+                controller.enqueue(finalRow);
+              }
+            }
+          }
+        } catch (error) {
+          console.error("Error processing stream messages:", error);
+          this.#handleError(error as Error);
         }
       },
     });
@@ -242,6 +211,8 @@ class ReadableShapeStream<T extends Row<unknown> = Row> {
     if (e instanceof FetchError) {
       this.#error = e;
     }
+    this.#isStreamClosed = true;
+    this.#unsubscribe?.();
   }
 }
 

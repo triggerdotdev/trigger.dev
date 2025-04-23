@@ -1,10 +1,13 @@
-import type { Prisma, RuntimeEnvironment } from "@trigger.dev/database";
+import type { AuthenticatedEnvironment } from "@internal/run-engine";
+import type { Prisma, PrismaClientOrTransaction, RuntimeEnvironment } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
 import { getUsername } from "~/utils/username";
 
 export type { RuntimeEnvironment };
 
-export async function findEnvironmentByApiKey(apiKey: string) {
+export async function findEnvironmentByApiKey(
+  apiKey: string
+): Promise<AuthenticatedEnvironment | null> {
   const environment = await prisma.runtimeEnvironment.findFirst({
     where: {
       apiKey,
@@ -24,7 +27,9 @@ export async function findEnvironmentByApiKey(apiKey: string) {
   return environment;
 }
 
-export async function findEnvironmentByPublicApiKey(apiKey: string) {
+export async function findEnvironmentByPublicApiKey(
+  apiKey: string
+): Promise<AuthenticatedEnvironment | null> {
   const environment = await prisma.runtimeEnvironment.findFirst({
     where: {
       pkApiKey: apiKey,
@@ -44,7 +49,7 @@ export async function findEnvironmentByPublicApiKey(apiKey: string) {
   return environment;
 }
 
-export async function findEnvironmentById(id: string) {
+export async function findEnvironmentById(id: string): Promise<AuthenticatedEnvironment | null> {
   const environment = await prisma.runtimeEnvironment.findFirst({
     where: {
       id,
@@ -62,6 +67,63 @@ export async function findEnvironmentById(id: string) {
   }
 
   return environment;
+}
+
+export async function findEnvironmentBySlug(
+  projectId: string,
+  envSlug: string,
+  userId: string
+): Promise<AuthenticatedEnvironment | null> {
+  return prisma.runtimeEnvironment.findFirst({
+    where: {
+      projectId: projectId,
+      slug: envSlug,
+      OR: [
+        {
+          type: {
+            in: ["PREVIEW", "STAGING", "PRODUCTION"],
+          },
+        },
+        {
+          type: "DEVELOPMENT",
+          orgMember: {
+            userId,
+          },
+        },
+      ],
+    },
+    include: {
+      project: true,
+      organization: true,
+      orgMember: true,
+    },
+  });
+}
+
+export async function findEnvironmentFromRun(
+  runId: string,
+  tx?: PrismaClientOrTransaction
+): Promise<AuthenticatedEnvironment | null> {
+  const taskRun = await (tx ?? prisma).taskRun.findFirst({
+    where: {
+      id: runId,
+    },
+    include: {
+      runtimeEnvironment: {
+        include: {
+          project: true,
+          organization: true,
+          orgMember: true,
+        },
+      },
+    },
+  });
+
+  if (!taskRun) {
+    return null;
+  }
+
+  return taskRun?.runtimeEnvironment;
 }
 
 export async function createNewSession(environment: RuntimeEnvironment, ipAddress: string) {

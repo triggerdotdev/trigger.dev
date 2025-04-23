@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/core",
-  "version": "3.3.13",
+  "version": "4.0.0-v4-beta.6",
   "description": "Core code used across the Trigger.dev SDK and platform",
   "license": "MIT",
   "publishConfig": {
@@ -23,15 +23,9 @@
       "./package.json": "./package.json",
       ".": "./src/index.ts",
       "./logger": "./src/logger.ts",
-      "./bloom": "./src/bloom.ts",
-      "./eventFilterMatches": "./src/eventFilterMatches.ts",
-      "./replacements": "./src/replacements.ts",
-      "./requestFilterMatches": "./src/requestFilterMatches.ts",
-      "./retry": "./src/retry.ts",
       "./utils": "./src/utils.ts",
       "./schemas": "./src/schemas/index.ts",
       "./types": "./src/types.ts",
-      "./versions": "./src/versions.ts",
       "./v3": "./src/v3/index.ts",
       "./v3/tracer": "./src/v3/tracer.ts",
       "./v3/build": "./src/v3/build/index.ts",
@@ -53,10 +47,12 @@
       "./v3/zodSocket": "./src/v3/zodSocket.ts",
       "./v3/zodIpc": "./src/v3/zodIpc.ts",
       "./v3/utils/timers": "./src/v3/utils/timers.ts",
-      "./v3/dev": "./src/v3/dev/index.ts",
-      "./v3/prod": "./src/v3/prod/index.ts",
       "./v3/workers": "./src/v3/workers/index.ts",
-      "./v3/schemas": "./src/v3/schemas/index.ts"
+      "./v3/schemas": "./src/v3/schemas/index.ts",
+      "./v3/runEngineWorker": "./src/v3/runEngineWorker/index.ts",
+      "./v3/machines": "./src/v3/machines/index.ts",
+      "./v3/serverOnly": "./src/v3/serverOnly/index.ts",
+      "./v3/isomorphic": "./src/v3/isomorphic/index.ts"
     },
     "sourceDialects": [
       "@triggerdotdev/source"
@@ -67,21 +63,6 @@
       "logger": [
         "dist/commonjs/logger.d.ts"
       ],
-      "bloom": [
-        "dist/commonjs/bloom.d.ts"
-      ],
-      "eventFilterMatches": [
-        "dist/commonjs/eventFilterMatches.d.ts"
-      ],
-      "replacements": [
-        "dist/commonjs/replacements.d.ts"
-      ],
-      "requestFilterMatches": [
-        "dist/commonjs/requestFilterMatches.d.ts"
-      ],
-      "retry": [
-        "dist/commonjs/retry.d.ts"
-      ],
       "utils": [
         "dist/commonjs/utils.d.ts"
       ],
@@ -90,9 +71,6 @@
       ],
       "types": [
         "dist/commonjs/types.d.ts"
-      ],
-      "versions": [
-        "dist/commonjs/versions.d.ts"
       ],
       "v3": [
         "dist/commonjs/v3/index.d.ts"
@@ -154,12 +132,6 @@
       "v3/utils/timers": [
         "dist/commonjs/v3/utils/timers.d.ts"
       ],
-      "v3/dev": [
-        "dist/commonjs/v3/dev/index.d.ts"
-      ],
-      "v3/prod": [
-        "dist/commonjs/v3/prod/index.d.ts"
-      ],
       "v3/workers": [
         "dist/commonjs/v3/workers/index.d.ts"
       ],
@@ -168,12 +140,24 @@
       ],
       "v3/jwt": [
         "dist/commonjs/v3/jwt.d.ts"
+      ],
+      "v3/runEngineWorker": [
+        "dist/commonjs/v3/runEngineWorker/index.d.ts"
+      ],
+      "v3/machines": [
+        "dist/commonjs/v3/machines/index.d.ts"
+      ],
+      "v3/serverOnly": [
+        "dist/commonjs/v3/serverOnly/index.d.ts"
+      ],
+      "v3/isomorphic": [
+        "dist/commonjs/v3/isomorphic/index.d.ts"
       ]
     }
   },
   "sideEffects": false,
   "scripts": {
-    "clean": "rimraf dist",
+    "clean": "rimraf dist .tshy .tshy-build .turbo",
     "update-version": "tsx ../../scripts/updateVersion.ts",
     "build": "tshy && pnpm run update-version",
     "dev": "tshy --watch",
@@ -182,11 +166,13 @@
     "check-exports": "attw --pack ."
   },
   "dependencies": {
+    "@bugsnag/cuid": "^3.1.1",
     "@electric-sql/client": "1.0.0-beta.1",
     "@google-cloud/precise-date": "^4.0.0",
     "@jsonhero/path": "^1.0.21",
     "@opentelemetry/api": "1.9.0",
     "@opentelemetry/api-logs": "0.52.1",
+    "@opentelemetry/core": "^1.30.1",
     "@opentelemetry/exporter-logs-otlp-http": "0.52.1",
     "@opentelemetry/exporter-trace-otlp-http": "0.52.1",
     "@opentelemetry/instrumentation": "0.52.1",
@@ -202,9 +188,13 @@
     "execa": "^8.0.1",
     "humanize-duration": "^3.27.3",
     "jose": "^5.4.0",
-    "nanoid": "^3.3.4",
+    "nanoid": "3.3.8",
+    "prom-client": "^15.1.0",
+    "socket.io": "4.7.4",
     "socket.io-client": "4.7.5",
+    "std-env": "^3.8.1",
     "superjson": "^2.2.1",
+    "tinyexec": "^0.3.2",
     "zod": "3.23.8",
     "zod-error": "1.5.0",
     "zod-validation-error": "^1.5.0"
@@ -213,18 +203,16 @@
     "@ai-sdk/provider-utils": "^1.0.22",
     "@arethetypeswrong/cli": "^0.15.4",
     "@epic-web/test-server": "^0.1.0",
+    "@trigger.dev/database": "workspace:*",
     "@types/humanize-duration": "^3.27.1",
-    "@types/node": "20.14.14",
     "@types/readable-stream": "^4.0.14",
     "ai": "^3.4.33",
     "defu": "^6.1.4",
     "esbuild": "^0.23.0",
     "rimraf": "^3.0.2",
-    "socket.io": "4.7.4",
     "ts-essentials": "10.0.1",
     "tshy": "^3.0.2",
     "tsx": "4.17.0",
-    "typescript": "^5.5.4",
     "vitest": "^1.6.0"
   },
   "engines": {
@@ -252,61 +240,6 @@
       "require": {
         "types": "./dist/commonjs/logger.d.ts",
         "default": "./dist/commonjs/logger.js"
-      }
-    },
-    "./bloom": {
-      "import": {
-        "@triggerdotdev/source": "./src/bloom.ts",
-        "types": "./dist/esm/bloom.d.ts",
-        "default": "./dist/esm/bloom.js"
-      },
-      "require": {
-        "types": "./dist/commonjs/bloom.d.ts",
-        "default": "./dist/commonjs/bloom.js"
-      }
-    },
-    "./eventFilterMatches": {
-      "import": {
-        "@triggerdotdev/source": "./src/eventFilterMatches.ts",
-        "types": "./dist/esm/eventFilterMatches.d.ts",
-        "default": "./dist/esm/eventFilterMatches.js"
-      },
-      "require": {
-        "types": "./dist/commonjs/eventFilterMatches.d.ts",
-        "default": "./dist/commonjs/eventFilterMatches.js"
-      }
-    },
-    "./replacements": {
-      "import": {
-        "@triggerdotdev/source": "./src/replacements.ts",
-        "types": "./dist/esm/replacements.d.ts",
-        "default": "./dist/esm/replacements.js"
-      },
-      "require": {
-        "types": "./dist/commonjs/replacements.d.ts",
-        "default": "./dist/commonjs/replacements.js"
-      }
-    },
-    "./requestFilterMatches": {
-      "import": {
-        "@triggerdotdev/source": "./src/requestFilterMatches.ts",
-        "types": "./dist/esm/requestFilterMatches.d.ts",
-        "default": "./dist/esm/requestFilterMatches.js"
-      },
-      "require": {
-        "types": "./dist/commonjs/requestFilterMatches.d.ts",
-        "default": "./dist/commonjs/requestFilterMatches.js"
-      }
-    },
-    "./retry": {
-      "import": {
-        "@triggerdotdev/source": "./src/retry.ts",
-        "types": "./dist/esm/retry.d.ts",
-        "default": "./dist/esm/retry.js"
-      },
-      "require": {
-        "types": "./dist/commonjs/retry.d.ts",
-        "default": "./dist/commonjs/retry.js"
       }
     },
     "./utils": {
@@ -340,17 +273,6 @@
       "require": {
         "types": "./dist/commonjs/types.d.ts",
         "default": "./dist/commonjs/types.js"
-      }
-    },
-    "./versions": {
-      "import": {
-        "@triggerdotdev/source": "./src/versions.ts",
-        "types": "./dist/esm/versions.d.ts",
-        "default": "./dist/esm/versions.js"
-      },
-      "require": {
-        "types": "./dist/commonjs/versions.d.ts",
-        "default": "./dist/commonjs/versions.js"
       }
     },
     "./v3": {
@@ -584,28 +506,6 @@
         "default": "./dist/commonjs/v3/utils/timers.js"
       }
     },
-    "./v3/dev": {
-      "import": {
-        "@triggerdotdev/source": "./src/v3/dev/index.ts",
-        "types": "./dist/esm/v3/dev/index.d.ts",
-        "default": "./dist/esm/v3/dev/index.js"
-      },
-      "require": {
-        "types": "./dist/commonjs/v3/dev/index.d.ts",
-        "default": "./dist/commonjs/v3/dev/index.js"
-      }
-    },
-    "./v3/prod": {
-      "import": {
-        "@triggerdotdev/source": "./src/v3/prod/index.ts",
-        "types": "./dist/esm/v3/prod/index.d.ts",
-        "default": "./dist/esm/v3/prod/index.js"
-      },
-      "require": {
-        "types": "./dist/commonjs/v3/prod/index.d.ts",
-        "default": "./dist/commonjs/v3/prod/index.js"
-      }
-    },
     "./v3/workers": {
       "import": {
         "@triggerdotdev/source": "./src/v3/workers/index.ts",
@@ -626,6 +526,50 @@
       "require": {
         "types": "./dist/commonjs/v3/schemas/index.d.ts",
         "default": "./dist/commonjs/v3/schemas/index.js"
+      }
+    },
+    "./v3/runEngineWorker": {
+      "import": {
+        "@triggerdotdev/source": "./src/v3/runEngineWorker/index.ts",
+        "types": "./dist/esm/v3/runEngineWorker/index.d.ts",
+        "default": "./dist/esm/v3/runEngineWorker/index.js"
+      },
+      "require": {
+        "types": "./dist/commonjs/v3/runEngineWorker/index.d.ts",
+        "default": "./dist/commonjs/v3/runEngineWorker/index.js"
+      }
+    },
+    "./v3/machines": {
+      "import": {
+        "@triggerdotdev/source": "./src/v3/machines/index.ts",
+        "types": "./dist/esm/v3/machines/index.d.ts",
+        "default": "./dist/esm/v3/machines/index.js"
+      },
+      "require": {
+        "types": "./dist/commonjs/v3/machines/index.d.ts",
+        "default": "./dist/commonjs/v3/machines/index.js"
+      }
+    },
+    "./v3/serverOnly": {
+      "import": {
+        "@triggerdotdev/source": "./src/v3/serverOnly/index.ts",
+        "types": "./dist/esm/v3/serverOnly/index.d.ts",
+        "default": "./dist/esm/v3/serverOnly/index.js"
+      },
+      "require": {
+        "types": "./dist/commonjs/v3/serverOnly/index.d.ts",
+        "default": "./dist/commonjs/v3/serverOnly/index.js"
+      }
+    },
+    "./v3/isomorphic": {
+      "import": {
+        "@triggerdotdev/source": "./src/v3/isomorphic/index.ts",
+        "types": "./dist/esm/v3/isomorphic/index.d.ts",
+        "default": "./dist/esm/v3/isomorphic/index.js"
+      },
+      "require": {
+        "types": "./dist/commonjs/v3/isomorphic/index.d.ts",
+        "default": "./dist/commonjs/v3/isomorphic/index.js"
       }
     }
   },

@@ -1,5 +1,109 @@
 # @trigger.dev/sdk
 
+## 4.0.0-v4-beta.6
+
+### Patch Changes
+
+- Fix issue where realtime streams would cut off after 5 minutes ([#1952](https://github.com/triggerdotdev/trigger.dev/pull/1952))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.6`
+
+## 4.0.0-v4-beta.5
+
+### Patch Changes
+
+- The envvars.list() and retrieve() functions receive isSecret for each value. Secret values are always redacted. ([#1942](https://github.com/triggerdotdev/trigger.dev/pull/1942))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.5`
+
+## 4.0.0-v4-beta.4
+
+### Patch Changes
+
+- maintain proper context in metadata.root and parent getters ([#1917](https://github.com/triggerdotdev/trigger.dev/pull/1917))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.4`
+
+## 4.0.0-v4-beta.3
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.3`
+
+## 4.0.0-v4-beta.2
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.2`
+
+## 4.0.0-v4-beta.1
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.1`
+
+## 4.0.0-v4-beta.0
+
+### Major Changes
+
+- Trigger.dev v4 release. Please see our upgrade to v4 docs to view the full changelog: https://trigger.dev/docs/upgrade-to-v4 ([#1869](https://github.com/triggerdotdev/trigger.dev/pull/1869))
+
+### Patch Changes
+
+- Run Engine 2.0 (alpha) ([#1575](https://github.com/triggerdotdev/trigger.dev/pull/1575))
+- Deprecate toolTask and replace with `ai.tool(mySchemaTask)` ([#1863](https://github.com/triggerdotdev/trigger.dev/pull/1863))
+- v4: New lifecycle hooks ([#1817](https://github.com/triggerdotdev/trigger.dev/pull/1817))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.0`
+
+## 3.3.17
+
+### Patch Changes
+
+- Add support for two-phase deployments and task version pinning ([#1739](https://github.com/triggerdotdev/trigger.dev/pull/1739))
+- Updated dependencies:
+  - `@trigger.dev/core@3.3.17`
+
+## 3.3.16
+
+### Patch Changes
+
+- You can add Alerts in the dashboard. One of these is a webhook, which this change greatly improves. ([#1703](https://github.com/triggerdotdev/trigger.dev/pull/1703))
+
+  The main change is that there's now an SDK function to verify and parse them (similar to Stripe SDK).
+
+  ```ts
+  const event = await webhooks.constructEvent(request, process.env.ALERT_WEBHOOK_SECRET!);
+  ```
+
+  If the signature you provide matches the one from the dashboard when you create the webhook, you will get a nicely typed object back for these three types:
+
+  - "alert.run.failed"
+  - "alert.deployment.success"
+  - "alert.deployment.failed"
+
+- Updated dependencies:
+  - `@trigger.dev/core@3.3.16`
+
+## 3.3.15
+
+### Patch Changes
+
+- Detect ffmpeg OOM errors, added manual OutOfMemoryError ([#1694](https://github.com/triggerdotdev/trigger.dev/pull/1694))
+- Updated dependencies:
+  - `@trigger.dev/core@3.3.15`
+
+## 3.3.14
+
+### Patch Changes
+
+- Added the ability to retry runs that fail with an Out Of Memory (OOM) error on a larger machine. ([#1691](https://github.com/triggerdotdev/trigger.dev/pull/1691))
+- Updated dependencies:
+  - `@trigger.dev/core@3.3.14`
+
 ## 3.3.13
 
 ### Patch Changes

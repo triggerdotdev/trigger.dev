@@ -1,13 +1,22 @@
 import { millisecondsToNanoseconds } from "@trigger.dev/core/v3";
 import { createTreeFromFlatItems, flattenTree } from "~/components/primitives/TreeView/TreeView";
-import { PrismaClient, prisma } from "~/db.server";
+import { prisma, PrismaClient } from "~/db.server";
+import { createTimelineSpanEventsFromSpanEvents } from "~/utils/timelineSpanEvents";
 import { getUsername } from "~/utils/username";
 import { eventRepository } from "~/v3/eventRepository.server";
+import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
 import { isFinalRunStatus } from "~/v3/taskStatus";
 
 type Result = Awaited<ReturnType<RunPresenter["call"]>>;
 export type Run = Result["run"];
 export type RunEvent = NonNullable<Result["trace"]>["events"][0];
+
+export class RunEnvironmentMismatchError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RunEnvironmentMismatchError";
+  }
+}
 
 export class RunPresenter {
   #prismaClient: PrismaClient;
@@ -20,23 +29,28 @@ export class RunPresenter {
     userId,
     projectSlug,
     organizationSlug,
+    environmentSlug,
     runFriendlyId,
     showDeletedLogs,
   }: {
     userId: string;
     projectSlug: string;
     organizationSlug: string;
+    environmentSlug: string;
     runFriendlyId: string;
     showDeletedLogs: boolean;
   }) {
     const run = await this.#prismaClient.taskRun.findFirstOrThrow({
       select: {
         id: true,
+        createdAt: true,
+        taskEventStore: true,
         number: true,
         traceId: true,
         spanId: true,
         friendlyId: true,
         status: true,
+        startedAt: true,
         completedAt: true,
         logsDeletedAt: true,
         rootTaskRun: {
@@ -44,6 +58,7 @@ export class RunPresenter {
             friendlyId: true,
             taskIdentifier: true,
             spanId: true,
+            createdAt: true,
           },
         },
         runtimeEnvironment: {
@@ -74,6 +89,12 @@ export class RunPresenter {
       },
     });
 
+    if (environmentSlug !== run.runtimeEnvironment.slug) {
+      throw new RunEnvironmentMismatchError(
+        `Run ${runFriendlyId} is not in environment ${environmentSlug}`
+      );
+    }
+
     const showLogs = showDeletedLogs || !run.logsDeletedAt;
 
     const runData = {
@@ -84,6 +105,7 @@ export class RunPresenter {
       spanId: run.spanId,
       status: run.status,
       isFinished: isFinalRunStatus(run.status),
+      startedAt: run.startedAt,
       completedAt: run.completedAt,
       logsDeletedAt: showDeletedLogs ? null : run.logsDeletedAt,
       rootTaskRun: run.rootTaskRun,
@@ -105,13 +127,27 @@ export class RunPresenter {
     }
 
     // get the events
-    const traceSummary = await eventRepository.getTraceSummary(run.traceId);
+    const traceSummary = await eventRepository.getTraceSummary(
+      getTaskEventStoreTableForRun(run),
+      run.traceId,
+      run.rootTaskRun?.createdAt ?? run.createdAt,
+      run.completedAt ?? undefined
+    );
     if (!traceSummary) {
       return {
         run: runData,
         trace: undefined,
       };
     }
+
+    const user = await this.#prismaClient.user.findFirst({
+      where: {
+        id: userId,
+      },
+      select: {
+        admin: true,
+      },
+    });
 
     //this tree starts at the passed in span (hides parent elements if there are any)
     const tree = createTreeFromFlatItems(traceSummary.spans, run.spanId);
@@ -124,11 +160,19 @@ export class RunPresenter {
           const offset = millisecondsToNanoseconds(
             n.data.startTime.getTime() - treeRootStartTimeMs
           );
-          totalDuration = Math.max(totalDuration, offset + n.data.duration);
+          //only let non-debug events extend the total duration
+          if (!n.data.isDebug) {
+            totalDuration = Math.max(totalDuration, offset + n.data.duration);
+          }
           return {
             ...n,
             data: {
               ...n.data,
+              timelineEvents: createTimelineSpanEventsFromSpanEvents(
+                n.data.events,
+                user?.admin ?? false,
+                treeRootStartTimeMs
+              ),
               //set partial nodes to null duration
               duration: n.data.isPartial ? null : n.data.duration,
               offset,
@@ -159,6 +203,10 @@ export class RunPresenter {
           tree?.id === traceSummary.rootSpan.id ? undefined : traceSummary.rootSpan.runId,
         duration: totalDuration,
         rootStartedAt: tree?.data.startTime,
+        startedAt: run.startedAt,
+        queuedDuration: run.startedAt
+          ? millisecondsToNanoseconds(run.startedAt.getTime() - run.createdAt.getTime())
+          : undefined,
       },
     };
   }

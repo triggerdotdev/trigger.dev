@@ -11,19 +11,8 @@ export async function triggerExampleTask() {
     id: randomUUID(),
   });
 
-  const publicToken = await auth.createPublicToken({
-    scopes: {
-      read: {
-        runs: [handle.id],
-      },
-    },
-    expirationTime: "2s",
-  });
-
-  console.log("Setting the run JWT in a cookie", publicToken);
-
   // Set JWT in a secure, HTTP-only cookie
-  cookies().set("run_token", publicToken);
+  cookies().set("run_token", handle.publicAccessToken);
 
   // Redirect to the details page
   redirect(`/runs/${handle.id}`);

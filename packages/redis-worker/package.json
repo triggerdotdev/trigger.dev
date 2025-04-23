@@ -1,0 +1,56 @@
+{
+  "name": "@trigger.dev/redis-worker",
+  "version": "4.0.0-v4-beta.6",
+  "description": "Redis worker for trigger.dev",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/triggerdotdev/trigger.dev",
+    "directory": "packages/redis-worker"
+  },
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "clean": "rimraf dist .turbo",
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit -p tsconfig.src.json",
+    "test": "vitest --sequence.concurrent=false --no-file-parallelism"
+  },
+  "dependencies": {
+    "@trigger.dev/core": "workspace:4.0.0-v4-beta.6",
+    "lodash.omit": "^4.5.0",
+    "nanoid": "^5.0.7",
+    "p-limit": "^6.2.0",
+    "prom-client": "^15.1.0",
+    "zod": "3.23.8"
+  },
+  "devDependencies": {
+    "@internal/redis": "workspace:*",
+    "@internal/testcontainers": "workspace:*",
+    "@internal/tracing": "workspace:*",
+    "@types/lodash.omit": "^4.5.7",
+    "rimraf": "6.0.1",
+    "tsup": "^8.4.0",
+    "tsx": "4.17.0",
+    "vitest": "^1.4.0"
+  },
+  "engines": {
+    "node": ">=18.20.0"
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  }
+}

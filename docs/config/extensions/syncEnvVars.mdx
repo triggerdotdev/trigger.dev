@@ -1,0 +1,116 @@
+---
+title: "Sync env vars"
+sidebarTitle: "syncEnvVars"
+description: "Use the syncEnvVars build extension to automatically sync environment variables to Trigger.dev"
+---
+
+The `syncEnvVars` build extension will sync env vars from another service into Trigger.dev before the deployment starts. This is useful if you are using a secret store service like Infisical or AWS Secrets Manager to store your secrets.
+
+`syncEnvVars` takes an async callback function, and any env vars returned from the callback will be synced to Trigger.dev.
+
+```ts
+import { defineConfig } from "@trigger.dev/sdk/v3";
+import { syncEnvVars } from "@trigger.dev/build/extensions/core";
+
+export default defineConfig({
+  build: {
+    extensions: [
+      syncEnvVars(async (ctx) => {
+        return [
+          { name: "SECRET_KEY", value: "secret-value" },
+          { name: "ANOTHER_SECRET", value: "another-secret-value" },
+        ];
+      }),
+    ],
+  },
+});
+```
+
+The callback is passed a context object with the following properties:
+
+- `environment`: The environment name that the task is being deployed to (e.g. `production`, `staging`, etc.)
+- `projectRef`: The project ref of the Trigger.dev project
+- `env`: The environment variables that are currently set in the Trigger.dev project
+
+### Example: Sync env vars from Infisical
+
+In this example we're using env vars from [Infisical](https://infisical.com).
+
+```ts trigger.config.ts
+import { defineConfig } from "@trigger.dev/sdk/v3";
+import { syncEnvVars } from "@trigger.dev/build/extensions/core";
+import { InfisicalSDK } from "@infisical/sdk";
+
+export default defineConfig({
+  build: {
+    extensions: [
+      syncEnvVars(async (ctx) => {
+        const client = new InfisicalSDK();
+
+        await client.auth().universalAuth.login({
+          clientId: process.env.INFISICAL_CLIENT_ID!,
+          clientSecret: process.env.INFISICAL_CLIENT_SECRET!,
+        });
+
+        const { secrets } = await client.secrets().listSecrets({
+          environment: ctx.environment,
+          projectId: process.env.INFISICAL_PROJECT_ID!,
+        });
+
+        return secrets.map((secret) => ({
+          name: secret.secretKey,
+          value: secret.secretValue,
+        }));
+      }),
+    ],
+  },
+});
+```
+
+### syncVercelEnvVars
+
+The `syncVercelEnvVars` build extension syncs environment variables from your Vercel project to Trigger.dev.
+
+<Note>
+  You need to set the `VERCEL_ACCESS_TOKEN` and `VERCEL_PROJECT_ID` environment variables, or pass
+  in the token and project ID as arguments to the `syncVercelEnvVars` build extension. If you're
+  working with a team project, you'll also need to set `VERCEL_TEAM_ID`, which can be found in your
+  team settings. You can find / generate the `VERCEL_ACCESS_TOKEN` in your Vercel
+  [dashboard](https://vercel.com/account/settings/tokens). Make sure the scope of the token covers
+  the project with the environment variables you want to sync.
+</Note>
+
+```ts
+import { defineConfig } from "@trigger.dev/sdk/v3";
+import { syncVercelEnvVars } from "@trigger.dev/build/extensions/core";
+
+export default defineConfig({
+  project: "<project ref>",
+  // Your other config settings...
+  build: {
+    // This will automatically use the VERCEL_ACCESS_TOKEN and VERCEL_PROJECT_ID environment variables
+    extensions: [syncVercelEnvVars()],
+  },
+});
+```
+
+Or you can pass in the token and project ID as arguments:
+
+```ts
+import { defineConfig } from "@trigger.dev/sdk/v3";
+import { syncVercelEnvVars } from "@trigger.dev/build/extensions/core";
+
+export default defineConfig({
+  project: "<project ref>",
+  // Your other config settings...
+  build: {
+    extensions: [
+      syncVercelEnvVars({
+        projectId: "your-vercel-project-id",
+        vercelAccessToken: "your-vercel-access-token",
+        vercelTeamId: "your-vercel-team-id", // optional
+      }),
+    ],
+  },
+});
+```

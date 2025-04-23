@@ -12,6 +12,7 @@ import NextjsTroubleshootingMissingApiKey from "/snippets/nextjs-missing-api-key
 import NextjsTroubleshootingButtonSyntax from "/snippets/nextjs-button-syntax.mdx";
 import WorkerFailedToStartWhenRunningDevCommand from "/snippets/worker-failed-to-start.mdx";
 import SupabaseDocsCards from "/snippets/supabase-docs-cards.mdx";
+import SupabaseAuthInfo from "/snippets/supabase-auth-info.mdx";
 
 ## Overview
 
@@ -31,7 +32,7 @@ Supabase and Trigger.dev can be used together to create powerful workflows trigg
 - Since Supabase CLI version 1.123.4, you must have [Docker Desktop installed](https://supabase.com/docs/guides/functions/deploy#deploy-your-edge-functions) to deploy Edge Functions
 - Ensure TypeScript is installed
 - [Create a Trigger.dev account](https://cloud.trigger.dev)
-- [Create a new Trigger.dev project](/guides/dashboard/creating-a-project)
+- Create a new Trigger.dev project
 - [Create a new Deepgram account](https://deepgram.com/) and get your API key from the dashboard
 
 ## GitHub repo
@@ -136,6 +137,12 @@ yarn install @deepgram/sdk @supabase/supabase-js fluent-ffmpeg
 
 These dependencies will allow you to interact with the Deepgram and Supabase APIs and extract audio from a video using FFmpeg.
 
+<Warning>
+  When updating your tables from a Trigger.dev task which has been triggered by a database change,
+  be extremely careful to not cause an infinite loop. Ensure you have the correct conditions in
+  place to prevent this.
+</Warning>
+
 ```ts /trigger/videoProcessAndUpdate.ts
 // Install any missing dependencies below
 import { createClient as createDeepgramClient } from "@deepgram/sdk";
@@ -235,10 +242,11 @@ export const videoProcessAndUpdate = task({
 ```
 
 <Warning>
-  When updating your tables from a Trigger.dev task which has been triggered by a database change,
-  be extremely careful to not cause an infinite loop. Ensure you have the correct conditions in
-  place to prevent this.
+  This task uses your service role secret key to bypass Row Level Security. This is not recommended
+  for production use as it has unlimited access and bypasses all security checks.
 </Warning>
+
+<SupabaseAuthInfo />
 
 ### Adding the FFmpeg build extension
 
@@ -260,7 +268,7 @@ export default defineConfig({
 ```
 
 <Note>
-  [Build extensions](/config/config-file#extensions) allow you to hook into the build system and
+  [Build extensions](/config/extensions/overview) allow you to hook into the build system and
   customize the build process or the resulting bundle and container image (in the case of
   deploying). You can use pre-built extensions or create your own.
 </Note>
@@ -269,6 +277,8 @@ export default defineConfig({
   You'll also need to add `@trigger.dev/build` to your `package.json` file under `devDependencies`
   if you don't already have it there.
 </Note>
+
+If you are modifying this example and using popular FFmpeg libraries like `fluent-ffmpeg` you'll also need to add them to [`external`](/config/config-file#external) in your `trigger.config.ts` file.
 
 ### Add your Deepgram and Supabase environment variables to your Trigger.dev project
 

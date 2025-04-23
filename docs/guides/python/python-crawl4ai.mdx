@@ -1,0 +1,228 @@
+---
+title: "Python headless browser web crawler example"
+sidebarTitle: "Python headless web crawler"
+description: "Learn how to use Python, Crawl4AI and Playwright to create a headless browser web crawler with Trigger.dev."
+---
+
+import ScrapingWarning from "/snippets/web-scraping-warning.mdx";
+import PythonLearnMore from "/snippets/python-learn-more.mdx";
+
+## Overview
+
+This demo showcases how to use Trigger.dev with Python to build a web crawler that uses a headless browser to navigate websites and extract content.
+
+## Prerequisites
+
+- A project with [Trigger.dev initialized](/quick-start)
+- [Python](https://www.python.org/) installed on your local machine
+
+## Features
+
+- [Trigger.dev](https://trigger.dev) for background task orchestration
+- Our [Python build extension](/config/extensions/pythonExtension) to install the dependencies and run the Python script
+- [Crawl4AI](https://github.com/unclecode/crawl4ai), an open source LLM friendly web crawler
+- A custom [Playwright extension](https://playwright.dev/) to create a headless chromium browser
+- Proxy support
+
+## Using Proxies
+
+<ScrapingWarning />
+
+Some popular proxy services are:
+
+- [Smartproxy](https://smartproxy.com/)
+- [Bright Data](https://brightdata.com/)
+- [Browserbase](https://browserbase.com/)
+- [Oxylabs](https://oxylabs.io/)
+- [ScrapingBee](https://scrapingbee.com/)
+
+Once you have a proxy service, set the following environment variables in your Trigger.dev .env file, and add them in the Trigger.dev dashboard:
+
+- `PROXY_URL`: The URL of your proxy server (e.g., `http://proxy.example.com:8080`)
+- `PROXY_USERNAME`: Username for authenticated proxies (optional)
+- `PROXY_PASSWORD`: Password for authenticated proxies (optional)
+
+## GitHub repo
+
+<Card
+  title="View the project on GitHub"
+  icon="GitHub"
+  href="https://github.com/triggerdotdev/examples/tree/main/python-crawl4ai"
+>
+  Click here to view the full code for this project in our examples repository on GitHub. You can
+  fork it and use it as a starting point for your own project.
+</Card>
+
+## The code
+
+### Build configuration
+
+After you've initialized your project with Trigger.dev, add these build settings to your `trigger.config.ts` file:
+
+```ts trigger.config.ts
+import { defineConfig } from "@trigger.dev/sdk/v3";
+import { pythonExtension } from "@trigger.dev/python/extension";
+import type { BuildContext, BuildExtension } from "@trigger.dev/core/v3/build";
+
+export default defineConfig({
+  project: "<project ref>",
+  // Your other config settings...
+  build: {
+    extensions: [
+      // This is required to use the Python extension
+      pythonExtension(),
+      // This is required to create a headless chromium browser with Playwright
+      installPlaywrightChromium(),
+    ],
+  },
+});
+
+// This is a custom build extension to install Playwright and Chromium
+export function installPlaywrightChromium(): BuildExtension {
+  return {
+    name: "InstallPlaywrightChromium",
+    onBuildComplete(context: BuildContext) {
+      const instructions = [
+        // Base and Chromium dependencies
+        `RUN apt-get update && apt-get install -y --no-install-recommends \
+          curl unzip npm libnspr4 libatk1.0-0 libatk-bridge2.0-0 libatspi2.0-0 \
+          libasound2 libnss3 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
+          libgbm1 libxkbcommon0 \
+          && apt-get clean && rm -rf /var/lib/apt/lists/*`,
+
+        // Install Playwright and Chromium
+        `RUN npm install -g playwright`,
+        `RUN mkdir -p /ms-playwright`,
+        `RUN PLAYWRIGHT_BROWSERS_PATH=/ms-playwright python -m playwright install --with-deps chromium`,
+      ];
+
+      context.addLayer({
+        id: "playwright",
+        image: { instructions },
+        deploy: {
+          env: {
+            PLAYWRIGHT_BROWSERS_PATH: "/ms-playwright",
+            PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1",
+            PLAYWRIGHT_SKIP_BROWSER_VALIDATION: "1",
+          },
+          override: true,
+        },
+      });
+    },
+  };
+}
+```
+
+<Info>
+  Learn more about executing scripts in your Trigger.dev project using our Python build extension
+  [here](/config/extensions/pythonExtension).
+</Info>
+
+### Task code
+
+This task uses the `python.runScript` method to run the `crawl-url.py` script with the given URL as an argument. You can see the original task in our examples repository [here](https://github.com/triggerdotdev/examples/blob/main/python-crawl4ai/src/trigger/pythonTasks.ts).
+
+```ts src/trigger/pythonTasks.ts
+import { logger, schemaTask, task } from "@trigger.dev/sdk/v3";
+import { python } from "@trigger.dev/python";
+import { z } from "zod";
+
+export const convertUrlToMarkdown = schemaTask({
+  id: "convert-url-to-markdown",
+  schema: z.object({
+    url: z.string().url(),
+  }),
+  run: async (payload) => {
+    // Pass through any proxy environment variables
+    const env = {
+      PROXY_URL: process.env.PROXY_URL,
+      PROXY_USERNAME: process.env.PROXY_USERNAME,
+      PROXY_PASSWORD: process.env.PROXY_PASSWORD,
+    };
+
+    const result = await python.runScript("./src/python/crawl-url.py", [payload.url], { env });
+
+    logger.debug("convert-url-to-markdown", {
+      url: payload.url,
+      result,
+    });
+
+    return result.stdout;
+  },
+});
+```
+
+### Add a requirements.txt file
+
+Add the following to your `requirements.txt` file. This is required in Python projects to install the dependencies.
+
+```txt requirements.txt
+crawl4ai
+playwright
+urllib3<2.0.0
+```
+
+### The Python script
+
+The Python script is a simple script using Crawl4AI that takes a URL and returns the markdown content of the page. You can see the original script in our examples repository [here](https://github.com/triggerdotdev/examples/blob/main/python-crawl4ai/src/python/crawl-url.py).
+
+```python src/python/crawl-url.py
+import asyncio
+import sys
+import os
+from crawl4ai import *
+from crawl4ai.async_configs import BrowserConfig
+
+async def main(url: str):
+    # Get proxy configuration from environment variables
+    proxy_url = os.environ.get("PROXY_URL")
+    proxy_username = os.environ.get("PROXY_USERNAME")
+    proxy_password = os.environ.get("PROXY_PASSWORD")
+
+    # Configure the proxy
+    browser_config = None
+    if proxy_url:
+        if proxy_username and proxy_password:
+            # Use authenticated proxy
+            proxy_config = {
+                "server": proxy_url,
+                "username": proxy_username,
+                "password": proxy_password
+            }
+            browser_config = BrowserConfig(proxy_config=proxy_config)
+        else:
+            # Use simple proxy
+            browser_config = BrowserConfig(proxy=proxy_url)
+    else:
+        browser_config = BrowserConfig()
+
+    async with AsyncWebCrawler(config=browser_config) as crawler:
+        result = await crawler.arun(
+            url=url,
+        )
+        print(result.markdown)
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print("Usage: python crawl-url.py <url>")
+        sys.exit(1)
+    url = sys.argv[1]
+    asyncio.run(main(url))
+```
+
+## Testing your task
+
+1. Create a virtual environment `python -m venv venv`
+2. Activate the virtual environment, depending on your OS: On Mac/Linux: `source venv/bin/activate`, on Windows: `venv\Scripts\activate`
+3. Install the Python dependencies `pip install -r requirements.txt`
+4. If you haven't already, copy your project ref from your [Trigger.dev dashboard](https://cloud.trigger.dev) and add it to the `trigger.config.ts` file.
+5. Run the Trigger.dev CLI `dev` command (it may ask you to authorize the CLI if you haven't already).
+6. Test the task in the dashboard, using a URL of your choice.
+
+<ScrapingWarning />
+
+## Deploying your task
+
+Deploy the task to production using the Trigger.dev CLI `deploy` command.
+
+<PythonLearnMore />

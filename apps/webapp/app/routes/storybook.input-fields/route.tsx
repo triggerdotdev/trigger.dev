@@ -1,7 +1,6 @@
+import { MagnifyingGlassIcon } from "@heroicons/react/20/solid";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { Input } from "~/components/primitives/Input";
-import { InputGroup } from "~/components/primitives/InputGroup";
-import { TimeFrameFilter } from "~/components/runs/TimeFrameFilter";
 
 export default function Story() {
   return (
@@ -26,28 +25,28 @@ function InputFieldSet({ disabled }: { disabled?: boolean }) {
           disabled={disabled}
           variant="large"
           placeholder="Search"
-          icon="search"
+          icon={MagnifyingGlassIcon}
           shortcut="⌘K"
         />
         <Input
           disabled={disabled}
           variant="medium"
           placeholder="Search"
-          icon="search"
+          icon={MagnifyingGlassIcon}
           shortcut="⌘K"
         />
         <Input
           disabled={disabled}
           variant="small"
           placeholder="Search"
-          icon="search"
+          icon={MagnifyingGlassIcon}
           shortcut="⌘K"
         />
         <Input
           disabled={disabled}
           variant="tertiary"
           placeholder="Search"
-          icon="search"
+          icon={MagnifyingGlassIcon}
           shortcut="⌘K"
         />
       </div>
@@ -56,14 +55,14 @@ function InputFieldSet({ disabled }: { disabled?: boolean }) {
           disabled={disabled}
           variant="large"
           placeholder="Search"
-          icon={<EnvironmentLabel environment={{ type: "DEVELOPMENT" }} size="large" />}
+          icon={<EnvironmentLabel environment={{ type: "DEVELOPMENT" }} />}
           shortcut="⌘K"
         />
         <Input
           disabled={disabled}
           variant="medium"
           placeholder="Search"
-          icon={<EnvironmentLabel environment={{ type: "DEVELOPMENT" }} size="large" />}
+          icon={<EnvironmentLabel environment={{ type: "DEVELOPMENT" }} />}
           shortcut="⌘K"
         />
         <Input

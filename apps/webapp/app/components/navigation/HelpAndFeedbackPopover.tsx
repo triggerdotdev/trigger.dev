@@ -1,10 +1,12 @@
 import {
   ArrowUpRightIcon,
+  BookOpenIcon,
   CalendarDaysIcon,
   ChatBubbleLeftEllipsisIcon,
   EnvelopeIcon,
   LightBulbIcon,
   SignalIcon,
+  StarIcon,
 } from "@heroicons/react/20/solid";
 import { DiscordIcon, SlackIcon } from "@trigger.dev/companyicons";
 import { Fragment, useState } from "react";
@@ -40,7 +42,7 @@ export function HelpAndFeedback() {
           <div className="flex flex-col gap-1 p-1">
             <SideMenuItem
               name="Documentation"
-              icon="docs"
+              icon={BookOpenIcon}
               trailingIcon={ArrowUpRightIcon}
               trailingIconClassName="text-text-dimmed"
               inactiveIconColor="text-green-500"
@@ -75,7 +77,7 @@ export function HelpAndFeedback() {
             />
             <SideMenuItem
               name="Changelog"
-              icon="star"
+              icon={StarIcon}
               trailingIcon={ArrowUpRightIcon}
               trailingIconClassName="text-text-dimmed"
               inactiveIconColor="text-sun-500"

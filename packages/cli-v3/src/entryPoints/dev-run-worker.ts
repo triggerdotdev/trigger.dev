@@ -1,48 +1,61 @@
 import type { Tracer } from "@opentelemetry/api";
 import type { Logger } from "@opentelemetry/api-logs";
 import {
+  AnyOnCatchErrorHookFunction,
+  AnyOnFailureHookFunction,
+  AnyOnInitHookFunction,
+  AnyOnStartHookFunction,
+  AnyOnSuccessHookFunction,
+  apiClientManager,
   clock,
+  ExecutorToWorkerMessageCatalog,
   type HandleErrorFunction,
+  lifecycleHooks,
+  localsAPI,
   logger,
   LogLevel,
+  resourceCatalog,
+  runMetadata,
   runtime,
-  taskCatalog,
+  runTimelineMetrics,
   TaskRunErrorCodes,
   TaskRunExecution,
-  WorkerToExecutorMessageCatalog,
-  TriggerConfig,
-  WorkerManifest,
-  ExecutorToWorkerMessageCatalog,
   timeout,
-  runMetadata,
+  TriggerConfig,
   waitUntil,
-  apiClientManager,
+  WorkerManifest,
+  WorkerToExecutorMessageCatalog,
 } from "@trigger.dev/core/v3";
 import { TriggerTracer } from "@trigger.dev/core/v3/tracer";
-import { DevRuntimeManager } from "@trigger.dev/core/v3/dev";
 import {
   ConsoleInterceptor,
   DevUsageManager,
-  UsageTimeoutManager,
   DurableClock,
   getEnvVar,
+  getNumberEnvVar,
   logLevels,
+  ManagedRuntimeManager,
   OtelTaskLogger,
-  StandardTaskCatalog,
+  populateEnv,
+  StandardLifecycleHooksManager,
+  StandardLocalsManager,
+  StandardMetadataManager,
+  StandardResourceCatalog,
+  StandardRunTimelineMetricsManager,
+  StandardWaitUntilManager,
   TaskExecutor,
   TracingDiagnosticLogLevel,
   TracingSDK,
   usage,
-  getNumberEnvVar,
-  StandardMetadataManager,
-  StandardWaitUntilManager,
+  UsageTimeoutManager,
 } from "@trigger.dev/core/v3/workers";
 import { ZodIpcConnection } from "@trigger.dev/core/v3/zodIpc";
 import { readFile } from "node:fs/promises";
+import { setInterval, setTimeout } from "node:timers/promises";
 import sourceMapSupport from "source-map-support";
-import { VERSION } from "../version.js";
 import { env } from "std-env";
 import { normalizeImportPath } from "../utilities/normalizeImportPath.js";
+import { VERSION } from "../version.js";
 
 sourceMapSupport.install({
   handleUncaughtExceptions: false,
@@ -51,44 +64,60 @@ sourceMapSupport.install({
 });
 
 process.on("uncaughtException", function (error, origin) {
+  logError("Uncaught exception", { error, origin });
   if (error instanceof Error) {
     process.send &&
       process.send({
-        type: "UNCAUGHT_EXCEPTION",
-        payload: {
-          error: { name: error.name, message: error.message, stack: error.stack },
-          origin,
+        type: "EVENT",
+        message: {
+          type: "UNCAUGHT_EXCEPTION",
+          payload: {
+            error: { name: error.name, message: error.message, stack: error.stack },
+            origin,
+          },
+          version: "v1",
         },
-        version: "v1",
       });
   } else {
     process.send &&
       process.send({
-        type: "UNCAUGHT_EXCEPTION",
-        payload: {
-          error: {
-            name: "Error",
-            message: typeof error === "string" ? error : JSON.stringify(error),
+        type: "EVENT",
+        message: {
+          type: "UNCAUGHT_EXCEPTION",
+          payload: {
+            error: {
+              name: "Error",
+              message: typeof error === "string" ? error : JSON.stringify(error),
+            },
+            origin,
           },
-          origin,
+          version: "v1",
         },
-        version: "v1",
       });
   }
 });
 
-taskCatalog.setGlobalTaskCatalog(new StandardTaskCatalog());
-const durableClock = new DurableClock();
-clock.setGlobalClock(durableClock);
+const heartbeatIntervalMs = getEnvVar("HEARTBEAT_INTERVAL_MS");
+
+const standardLocalsManager = new StandardLocalsManager();
+localsAPI.setGlobalLocalsManager(standardLocalsManager);
+
+const standardRunTimelineMetricsManager = new StandardRunTimelineMetricsManager();
+runTimelineMetrics.setGlobalManager(standardRunTimelineMetricsManager);
+
+const standardLifecycleHooksManager = new StandardLifecycleHooksManager();
+lifecycleHooks.setGlobalLifecycleHooksManager(standardLifecycleHooksManager);
+
 const devUsageManager = new DevUsageManager();
 usage.setGlobalUsageManager(devUsageManager);
-const devRuntimeManager = new DevRuntimeManager();
-runtime.setGlobalRuntimeManager(devRuntimeManager);
 timeout.setGlobalManager(new UsageTimeoutManager(devUsageManager));
+resourceCatalog.setGlobalResourceCatalog(new StandardResourceCatalog());
+
+const durableClock = new DurableClock();
+clock.setGlobalClock(durableClock);
 const runMetadataManager = new StandardMetadataManager(
   apiClientManager.clientOrThrow(),
-  getEnvVar("TRIGGER_STREAM_URL", getEnvVar("TRIGGER_API_URL")) ?? "https://api.trigger.dev",
-  (getEnvVar("TRIGGER_REALTIME_STREAM_VERSION") ?? "v1") as "v1" | "v2"
+  getEnvVar("TRIGGER_STREAM_URL", getEnvVar("TRIGGER_API_URL")) ?? "https://api.trigger.dev"
 );
 runMetadata.setGlobalManager(runMetadataManager);
 const waitUntilManager = new StandardWaitUntilManager();
@@ -100,6 +129,7 @@ waitUntil.register({
 });
 
 const triggerLogLevel = getEnvVar("TRIGGER_LOG_LEVEL");
+const showInternalLogs = getEnvVar("RUN_WORKER_SHOW_LOGS") === "true";
 
 async function importConfig(
   configPath: string
@@ -123,6 +153,8 @@ async function loadWorkerManifest() {
 
 async function bootstrap() {
   const workerManifest = await loadWorkerManifest();
+
+  resourceCatalog.registerWorkerManifest(workerManifest);
 
   const { config, handleError } = await importConfig(workerManifest.configPath);
 
@@ -153,11 +185,38 @@ async function bootstrap() {
 
   logger.setGlobalTaskLogger(otelTaskLogger);
 
-  for (const task of workerManifest.tasks) {
-    taskCatalog.registerTaskFileMetadata(task.id, {
-      exportName: task.exportName,
-      filePath: task.filePath,
-      entryPoint: task.entryPoint,
+  if (config.init) {
+    lifecycleHooks.registerGlobalInitHook({
+      id: "config",
+      fn: config.init as AnyOnInitHookFunction,
+    });
+  }
+
+  if (config.onStart) {
+    lifecycleHooks.registerGlobalStartHook({
+      id: "config",
+      fn: config.onStart as AnyOnStartHookFunction,
+    });
+  }
+
+  if (config.onSuccess) {
+    lifecycleHooks.registerGlobalSuccessHook({
+      id: "config",
+      fn: config.onSuccess as AnyOnSuccessHookFunction,
+    });
+  }
+
+  if (config.onFailure) {
+    lifecycleHooks.registerGlobalFailureHook({
+      id: "config",
+      fn: config.onFailure as AnyOnFailureHookFunction,
+    });
+  }
+
+  if (handleError) {
+    lifecycleHooks.registerGlobalCatchErrorHook({
+      id: "config",
+      fn: handleError as AnyOnCatchErrorHookFunction,
     });
   }
 
@@ -166,7 +225,6 @@ async function bootstrap() {
     tracingSDK,
     consoleInterceptor,
     config,
-    handleErrorFn: handleError,
     workerManifest,
   };
 }
@@ -180,9 +238,19 @@ const zodIpc = new ZodIpcConnection({
   emitSchema: ExecutorToWorkerMessageCatalog,
   process,
   handlers: {
-    EXECUTE_TASK_RUN: async ({ execution, traceContext, metadata }, sender) => {
+    EXECUTE_TASK_RUN: async ({ execution, traceContext, metadata, metrics, env }, sender) => {
+      if (env) {
+        populateEnv(env, {
+          override: true,
+        });
+      }
+
+      log(`[${new Date().toISOString()}] Received EXECUTE_TASK_RUN`, execution);
+
+      standardRunTimelineMetricsManager.registerMetricsFromExecution(metrics);
+
       if (_isRunning) {
-        console.error("Worker is already running a task");
+        logError("Worker is already running a task");
 
         await sender.send("TASK_RUN_COMPLETED", {
           execution,
@@ -196,36 +264,7 @@ const zodIpc = new ZodIpcConnection({
             usage: {
               durationMs: 0,
             },
-            taskIdentifier: execution.task.id,
-          },
-        });
-
-        return;
-      }
-
-      const { tracer, tracingSDK, consoleInterceptor, config, handleErrorFn, workerManifest } =
-        await bootstrap();
-
-      _tracingSDK = tracingSDK;
-
-      const taskManifest = workerManifest.tasks.find((t) => t.id === execution.task.id);
-
-      if (!taskManifest) {
-        console.error(`Could not find task ${execution.task.id}`);
-
-        await sender.send("TASK_RUN_COMPLETED", {
-          execution,
-          result: {
-            ok: false,
-            id: execution.run.id,
-            error: {
-              type: "INTERNAL_ERROR",
-              code: TaskRunErrorCodes.COULD_NOT_FIND_TASK,
-            },
-            usage: {
-              durationMs: 0,
-            },
-            taskIdentifier: execution.task.id,
+            metadata: runMetadataManager.stopAndReturnLastFlush(),
           },
         });
 
@@ -233,9 +272,165 @@ const zodIpc = new ZodIpcConnection({
       }
 
       try {
-        await import(normalizeImportPath(taskManifest.entryPoint));
+        const { tracer, tracingSDK, consoleInterceptor, config, workerManifest } =
+          await bootstrap();
+
+        _tracingSDK = tracingSDK;
+
+        const taskManifest = workerManifest.tasks.find((t) => t.id === execution.task.id);
+
+        if (!taskManifest) {
+          logError(`Could not find task ${execution.task.id}`);
+
+          await sender.send("TASK_RUN_COMPLETED", {
+            execution,
+            result: {
+              ok: false,
+              id: execution.run.id,
+              error: {
+                type: "INTERNAL_ERROR",
+                code: TaskRunErrorCodes.COULD_NOT_FIND_TASK,
+                message: `Could not find task ${execution.task.id}. Make sure the task is exported and the ID is correct.`,
+              },
+              usage: {
+                durationMs: 0,
+              },
+              metadata: runMetadataManager.stopAndReturnLastFlush(),
+            },
+          });
+
+          return;
+        }
+
+        try {
+          await runTimelineMetrics.measureMetric(
+            "trigger.dev/start",
+            "import",
+            {
+              entryPoint: taskManifest.entryPoint,
+              file: taskManifest.filePath,
+            },
+            async () => {
+              const beforeImport = performance.now();
+              resourceCatalog.setCurrentFileContext(taskManifest.entryPoint, taskManifest.filePath);
+
+              // Load init file if it exists
+              if (workerManifest.initEntryPoint) {
+                try {
+                  await import(normalizeImportPath(workerManifest.initEntryPoint));
+                  log(`Loaded init file from ${workerManifest.initEntryPoint}`);
+                } catch (err) {
+                  logError(`Failed to load init file`, err);
+                  throw err;
+                }
+              }
+
+              await import(normalizeImportPath(taskManifest.entryPoint));
+              resourceCatalog.clearCurrentFileContext();
+              const durationMs = performance.now() - beforeImport;
+
+              log(
+                `Imported task ${execution.task.id} [${taskManifest.entryPoint}] in ${durationMs}ms`
+              );
+            }
+          );
+        } catch (err) {
+          logError(`Failed to import task ${execution.task.id}`, err);
+
+          await sender.send("TASK_RUN_COMPLETED", {
+            execution,
+            result: {
+              ok: false,
+              id: execution.run.id,
+              error: {
+                type: "INTERNAL_ERROR",
+                code: TaskRunErrorCodes.COULD_NOT_IMPORT_TASK,
+                message: err instanceof Error ? err.message : String(err),
+                stackTrace: err instanceof Error ? err.stack : undefined,
+              },
+              usage: {
+                durationMs: 0,
+              },
+              metadata: runMetadataManager.stopAndReturnLastFlush(),
+            },
+          });
+
+          return;
+        }
+
+        process.title = `trigger-dev-worker: ${execution.task.id} ${execution.run.id}`;
+
+        // Import the task module
+        const task = resourceCatalog.getTask(execution.task.id);
+
+        if (!task) {
+          logError(`Could not find task ${execution.task.id}`);
+
+          await sender.send("TASK_RUN_COMPLETED", {
+            execution,
+            result: {
+              ok: false,
+              id: execution.run.id,
+              error: {
+                type: "INTERNAL_ERROR",
+                code: TaskRunErrorCodes.COULD_NOT_FIND_EXECUTOR,
+              },
+              usage: {
+                durationMs: 0,
+              },
+              metadata: runMetadataManager.stopAndReturnLastFlush(),
+            },
+          });
+
+          return;
+        }
+
+        runMetadataManager.runId = execution.run.id;
+
+        const executor = new TaskExecutor(task, {
+          tracer,
+          tracingSDK,
+          consoleInterceptor,
+          retries: config.retries,
+        });
+
+        try {
+          _execution = execution;
+          _isRunning = true;
+
+          runMetadataManager.startPeriodicFlush(
+            getNumberEnvVar("TRIGGER_RUN_METADATA_FLUSH_INTERVAL", 1000)
+          );
+
+          const measurement = usage.start();
+
+          // This lives outside of the executor because this will eventually be moved to the controller level
+          const signal = execution.run.maxDuration
+            ? timeout.abortAfterTimeout(execution.run.maxDuration)
+            : undefined;
+
+          const { result } = await executor.execute(execution, metadata, traceContext, signal);
+
+          const usageSample = usage.stop(measurement);
+
+          if (_isRunning) {
+            return sender.send("TASK_RUN_COMPLETED", {
+              execution,
+              result: {
+                ...result,
+                usage: {
+                  durationMs: usageSample.cpuTime,
+                },
+                metadata: runMetadataManager.stopAndReturnLastFlush(),
+              },
+            });
+          }
+        } finally {
+          _execution = undefined;
+          _isRunning = false;
+        }
       } catch (err) {
-        console.error(`Failed to import task ${execution.task.id}`, err);
+        logError("Failed to execute task", err);
 
         await sender.send("TASK_RUN_COMPLETED", {
           execution,
@@ -244,167 +439,128 @@ const zodIpc = new ZodIpcConnection({
             id: execution.run.id,
             error: {
               type: "INTERNAL_ERROR",
-              code: TaskRunErrorCodes.COULD_NOT_IMPORT_TASK,
+              code: TaskRunErrorCodes.CONFIGURED_INCORRECTLY,
               message: err instanceof Error ? err.message : String(err),
               stackTrace: err instanceof Error ? err.stack : undefined,
             },
             usage: {
               durationMs: 0,
             },
-            taskIdentifier: execution.task.id,
+            metadata: runMetadataManager.stopAndReturnLastFlush(),
           },
         });
-
-        return;
-      }
-
-      process.title = `trigger-dev-worker: ${execution.task.id} ${execution.run.id}`;
-
-      // Import the task module
-      const task = taskCatalog.getTask(execution.task.id);
-
-      if (!task) {
-        console.error(`Could not find task ${execution.task.id}`);
-
-        await sender.send("TASK_RUN_COMPLETED", {
-          execution,
-          result: {
-            ok: false,
-            id: execution.run.id,
-            error: {
-              type: "INTERNAL_ERROR",
-              code: TaskRunErrorCodes.COULD_NOT_FIND_EXECUTOR,
-            },
-            usage: {
-              durationMs: 0,
-            },
-            taskIdentifier: execution.task.id,
-          },
-        });
-
-        return;
-      }
-
-      const executor = new TaskExecutor(task, {
-        tracer,
-        tracingSDK,
-        consoleInterceptor,
-        config,
-        handleErrorFn,
-      });
-
-      try {
-        _execution = execution;
-        _isRunning = true;
-
-        runMetadataManager.runId = execution.run.id;
-
-        runMetadataManager.startPeriodicFlush(
-          getNumberEnvVar("TRIGGER_RUN_METADATA_FLUSH_INTERVAL", 1000)
-        );
-        const measurement = usage.start();
-
-        // This lives outside of the executor because this will eventually be moved to the controller level
-        const signal = execution.run.maxDuration
-          ? timeout.abortAfterTimeout(execution.run.maxDuration)
-          : undefined;
-
-        signal?.addEventListener("abort", async (e) => {
-          if (_isRunning) {
-            _isRunning = false;
-            _execution = undefined;
-
-            const usageSample = usage.stop(measurement);
-
-            await sender.send("TASK_RUN_COMPLETED", {
-              execution,
-              result: {
-                ok: false,
-                id: execution.run.id,
-                error: {
-                  type: "INTERNAL_ERROR",
-                  code: TaskRunErrorCodes.MAX_DURATION_EXCEEDED,
-                  message:
-                    signal.reason instanceof Error ? signal.reason.message : String(signal.reason),
-                },
-                usage: {
-                  durationMs: usageSample.cpuTime,
-                },
-                taskIdentifier: execution.task.id,
-                metadata: runMetadataManager.stopAndReturnLastFlush(),
-              },
-            });
-          }
-        });
-
-        const { result } = await executor.execute(
-          execution,
-          metadata,
-          traceContext,
-          measurement,
-          signal
-        );
-
-        const usageSample = usage.stop(measurement);
-
-        if (_isRunning) {
-          return sender.send("TASK_RUN_COMPLETED", {
-            execution,
-            result: {
-              ...result,
-              usage: {
-                durationMs: usageSample.cpuTime,
-              },
-              taskIdentifier: execution.task.id,
-              metadata: runMetadataManager.stopAndReturnLastFlush(),
-            },
-          });
-        }
-      } finally {
-        _execution = undefined;
-        _isRunning = false;
       }
     },
-    TASK_RUN_COMPLETED_NOTIFICATION: async (payload) => {
-      switch (payload.version) {
-        case "v1": {
-          devRuntimeManager.resumeTask(payload.completion, payload.execution.run.id);
-          break;
-        }
-        case "v2": {
-          devRuntimeManager.resumeTask(payload.completion, payload.completion.id);
-          break;
-        }
-      }
+    TASK_RUN_COMPLETED_NOTIFICATION: async () => {
+      await managedWorkerRuntime.completeWaitpoints([]);
+    },
+    WAIT_COMPLETED_NOTIFICATION: async () => {
+      await managedWorkerRuntime.completeWaitpoints([]);
     },
     FLUSH: async ({ timeoutInMs }, sender) => {
-      await Promise.allSettled([_tracingSDK?.flush(), runMetadataManager.flush()]);
+      await flushAll(timeoutInMs);
+    },
+    WAITPOINT_CREATED: async ({ wait, waitpoint }) => {
+      managedWorkerRuntime.associateWaitWithWaitpoint(wait.id, waitpoint.id);
+    },
+    WAITPOINT_COMPLETED: async ({ waitpoint }) => {
+      managedWorkerRuntime.completeWaitpoints([waitpoint]);
     },
   },
 });
 
-process.title = "trigger-dev-worker";
+async function flushAll(timeoutInMs: number = 10_000) {
+  const now = performance.now();
 
-async function asyncHeartbeat(initialDelayInSeconds: number = 30, intervalInSeconds: number = 30) {
-  async function _doHeartbeat() {
-    while (true) {
-      if (_isRunning && _execution) {
-        try {
-          await zodIpc.send("TASK_HEARTBEAT", { id: _execution.attempt.id });
-        } catch (err) {
-          console.error("Failed to send HEARTBEAT message", err);
-        }
-      }
+  const results = await Promise.allSettled([
+    flushTracingSDK(timeoutInMs),
+    flushMetadata(timeoutInMs),
+  ]);
 
-      await new Promise((resolve) => setTimeout(resolve, 1000 * intervalInSeconds));
-    }
+  const successfulFlushes = results
+    .filter((result) => result.status === "fulfilled")
+    .map((result) => result.value.flushed);
+
+  const failedFlushes = ["tracingSDK", "runMetadata"].filter(
+    (flushed) => !successfulFlushes.includes(flushed)
+  );
+
+  if (failedFlushes.length > 0) {
+    logError(`Failed to flush ${failedFlushes.join(", ")}`);
   }
 
-  // Wait for the initial delay
-  await new Promise((resolve) => setTimeout(resolve, 1000 * initialDelayInSeconds));
+  const errorMessages = results
+    .filter((result) => result.status === "rejected")
+    .map((result) => result.reason);
 
-  // Wait for 5 seconds before the next execution
-  return _doHeartbeat();
+  if (errorMessages.length > 0) {
+    logError(errorMessages.join("\n"));
+  }
+
+  for (const flushed of successfulFlushes) {
+    log(`Flushed ${flushed} successfully`);
+  }
+
+  const duration = performance.now() - now;
+
+  log(`Flushed all in ${duration}ms`);
 }
 
-await asyncHeartbeat();
+async function flushTracingSDK(timeoutInMs: number = 10_000) {
+  const now = performance.now();
+
+  await Promise.race([_tracingSDK?.flush(), setTimeout(timeoutInMs)]);
+
+  const duration = performance.now() - now;
+
+  log(`Flushed tracingSDK in ${duration}ms`);
+
+  return {
+    flushed: "tracingSDK",
+    durationMs: duration,
+  };
+}
+
+async function flushMetadata(timeoutInMs: number = 10_000) {
+  const now = performance.now();
+
+  await Promise.race([runMetadataManager.flush(), setTimeout(timeoutInMs)]);
+
+  const duration = performance.now() - now;
+
+  log(`Flushed runMetadata in ${duration}ms`);
+
+  return {
+    flushed: "runMetadata",
+    durationMs: duration,
+  };
+}
+
+const managedWorkerRuntime = new ManagedRuntimeManager(zodIpc, showInternalLogs);
+runtime.setGlobalRuntimeManager(managedWorkerRuntime);
+
+process.title = "trigger-managed-worker";
+
+const heartbeatInterval = parseInt(heartbeatIntervalMs ?? "30000", 10);
+
+for await (const _ of setInterval(heartbeatInterval)) {
+  if (_isRunning && _execution) {
+    try {
+      await zodIpc.send("TASK_HEARTBEAT", { id: _execution.attempt.id });
+    } catch (err) {
+      logError("Failed to send HEARTBEAT message", err);
+    }
+  }
+}
+
+function log(message: string, ...args: any[]) {
+  if (!showInternalLogs) return;
+  console.log(`[${new Date().toISOString()}] ${message}`, args);
+}
+
+function logError(message: string, error?: any) {
+  if (!showInternalLogs) return;
+  console.error(`[${new Date().toISOString()}] ${message}`, error);
+}
+
+log(`Executor started`);

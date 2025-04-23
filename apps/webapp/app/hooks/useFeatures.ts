@@ -1,5 +1,5 @@
 import { useTypedRouteLoaderData } from "remix-typedjson";
-import { loader } from "../root";
+import { type loader } from "../root";
 import type { TriggerFeatures } from "~/features.server";
 
 export function useFeatures(): TriggerFeatures {

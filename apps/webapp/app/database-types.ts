@@ -29,6 +29,7 @@ export const TaskRunAttemptStatus = {
 
 export const TaskRunStatus = {
   PENDING: "PENDING",
+  PENDING_VERSION: "PENDING_VERSION",
   WAITING_FOR_DEPLOY: "WAITING_FOR_DEPLOY",
   EXECUTING: "EXECUTING",
   WAITING_TO_RESUME: "WAITING_TO_RESUME",
@@ -69,3 +70,11 @@ export const RuntimeEnvironmentType = {
   DEVELOPMENT: "DEVELOPMENT",
   PREVIEW: "PREVIEW",
 } as const satisfies Record<RuntimeEnvironmentTypeType, RuntimeEnvironmentTypeType>;
+
+export function isTaskRunAttemptStatus(value: string): value is keyof typeof TaskRunAttemptStatus {
+  return Object.values(TaskRunAttemptStatus).includes(value as keyof typeof TaskRunAttemptStatus);
+}
+
+export function isTaskRunStatus(value: string): value is keyof typeof TaskRunStatus {
+  return Object.values(TaskRunStatus).includes(value as keyof typeof TaskRunStatus);
+}

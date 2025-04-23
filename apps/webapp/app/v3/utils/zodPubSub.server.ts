@@ -116,6 +116,10 @@ export class ZodPubSub<TMessageCatalog extends ZodMessageCatalogSchema> {
     this._publisher = createRedisClient("trigger:zodSubscriber", _options.redis);
   }
 
+  get redisOptions() {
+    return this._options.redis;
+  }
+
   public async publish<K extends keyof TMessageCatalog>(
     channel: string,
     type: K,

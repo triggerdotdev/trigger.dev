@@ -1,4 +1,8 @@
-import { clientWebsocketMessages, serverWebsocketMessages } from "@trigger.dev/core/v3";
+import {
+  clientWebsocketMessages,
+  IntervalService,
+  serverWebsocketMessages,
+} from "@trigger.dev/core/v3";
 import { ZodMessageHandler, ZodMessageSender } from "@trigger.dev/core/v3/zodMessageHandler";
 import { Evt } from "evt";
 import { randomUUID } from "node:crypto";
@@ -7,7 +11,6 @@ import { WebSocket } from "ws";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { DevQueueConsumer } from "./marqs/devQueueConsumer.server";
-import { HeartbeatService } from "./services/heartbeatService.server";
 
 export class AuthenticatedSocketConnection {
   public id: string;
@@ -16,7 +19,7 @@ export class AuthenticatedSocketConnection {
   private _sender: ZodMessageSender<typeof serverWebsocketMessages>;
   private _consumer: DevQueueConsumer;
   private _messageHandler: ZodMessageHandler<typeof clientWebsocketMessages>;
-  private _pingService: HeartbeatService;
+  private _pingService: IntervalService;
 
   constructor(
     public ws: WebSocket,
@@ -43,9 +46,12 @@ export class AuthenticatedSocketConnection {
           });
         });
       },
+      canSendMessage() {
+        return ws.readyState === WebSocket.OPEN;
+      },
     });
 
-    this._consumer = new DevQueueConsumer(authenticatedEnv, this._sender, {
+    this._consumer = new DevQueueConsumer(this.id, authenticatedEnv, this._sender, {
       ipAddress: Array.isArray(this.ipAddress) ? this.ipAddress.join(", ") : this.ipAddress,
     });
 
@@ -69,8 +75,8 @@ export class AuthenticatedSocketConnection {
       // });
     });
 
-    this._pingService = new HeartbeatService({
-      heartbeat: async () => {
+    this._pingService = new IntervalService({
+      onInterval: async () => {
         if (ws.readyState !== WebSocket.OPEN) {
           logger.debug("[AuthenticatedSocketConnection] Websocket not open, skipping ping");
           return;
@@ -83,6 +89,7 @@ export class AuthenticatedSocketConnection {
 
         ws.ping();
       },
+      intervalMs: 45_000,
     });
     this._pingService.start();
 

@@ -1,8 +1,8 @@
 import { Attributes } from "@opentelemetry/api";
 import { ServerBackgroundWorker, TaskRunContext } from "../schemas/index.js";
+import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
 import { getGlobal, registerGlobal, unregisterGlobal } from "../utils/globals.js";
 import { TaskContext } from "./types.js";
-import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
 
 const API_NAME = "task-context";
 
@@ -31,11 +31,16 @@ export class TaskContextAPI {
     return this.#getTaskContext()?.worker;
   }
 
+  get isWarmStart(): boolean | undefined {
+    return this.#getTaskContext()?.isWarmStart;
+  }
+
   get attributes(): Attributes {
     if (this.ctx) {
       return {
         ...this.contextAttributes,
         ...this.workerAttributes,
+        [SemanticInternalAttributes.WARM_START]: !!this.isWarmStart,
       };
     }
 

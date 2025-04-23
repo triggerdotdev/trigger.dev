@@ -11,7 +11,8 @@ export * from "./idempotencyKeys.js";
 export * from "./tags.js";
 export * from "./metadata.js";
 export * from "./timeout.js";
-export * from "./waitUntil.js";
+export * from "./webhooks.js";
+export * from "./locals.js";
 export type { Context };
 
 import type { Context } from "./shared.js";
@@ -31,6 +32,8 @@ export {
   RateLimitError,
   UnprocessableEntityError,
   AbortTaskRunError,
+  OutOfMemoryError,
+  CompleteTaskWithOutput,
   logger,
   type LogLevel,
 } from "@trigger.dev/core/v3";
@@ -47,6 +50,7 @@ export {
 } from "./runs.js";
 export * as schedules from "./schedules/index.js";
 export * as envvars from "./envvars.js";
+export * as queues from "./queues.js";
 export type { ImportEnvironmentVariablesParams } from "./envvars.js";
 
 export { configure, auth } from "./auth.js";

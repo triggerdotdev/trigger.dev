@@ -1,0 +1,66 @@
+---
+title: Errors and retries
+sidebarTitle: Errors and retries
+description: Handling errors and retries with the Trigger.dev management API
+---
+
+## Handling errors
+
+When the SDK method is unable to connect to the API server, or the API server returns a non-successful response, the SDK will throw an `ApiError` that you can catch and handle:
+
+```ts
+import { runs, APIError } from "@trigger.dev/sdk/v3";
+
+async function main() {
+  try {
+    const run = await runs.retrieve("run_1234");
+  } catch (error) {
+    if (error instanceof ApiError) {
+      console.error(`API error: ${error.status}, ${error.headers}, ${error.body}`);
+    } else {
+      console.error(`Unknown error: ${error.message}`);
+    }
+  }
+}
+```
+
+## Retries
+
+The SDK will automatically retry requests that fail due to network errors or server errors. By default, the SDK will retry requests up to 3 times, with an exponential backoff delay between retries.
+
+You can customize the retry behavior by passing a `requestOptions` option to the `configure` function:
+
+```ts
+import { configure } from "@trigger.dev/sdk/v3";
+
+configure({
+  requestOptions: {
+    retry: {
+      maxAttempts: 5,
+      minTimeoutInMs: 1000,
+      maxTimeoutInMs: 5000,
+      factor: 1.8,
+      randomize: true,
+    },
+  },
+});
+```
+
+All SDK functions also take a `requestOptions` parameter as the last argument, which can be used to customize the request options. You can use this to disable retries for a specific request:
+
+```ts
+import { runs } from "@trigger.dev/sdk/v3";
+
+async function main() {
+  const run = await runs.retrieve("run_1234", {
+    retry: {
+      maxAttempts: 1, // Disable retries
+    },
+  });
+}
+```
+
+<Note>
+  When running inside a task, the SDK ignores customized retry options for certain functions (e.g.,
+  `task.trigger`, `task.batchTrigger`), and uses retry settings optimized for task execution.
+</Note>

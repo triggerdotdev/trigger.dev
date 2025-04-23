@@ -1,5 +1,57 @@
 # internal-platform
 
+## 4.0.0-v4-beta.6
+
+### Patch Changes
+
+- The dev command will now use the platform-provided engine URL ([#1949](https://github.com/triggerdotdev/trigger.dev/pull/1949))
+- Configurable queue consumer count in supervisor session ([#1949](https://github.com/triggerdotdev/trigger.dev/pull/1949))
+
+## 4.0.0-v4-beta.5
+
+## 4.0.0-v4-beta.4
+
+## 4.0.0-v4-beta.3
+
+### Patch Changes
+
+- Improve usage flushing ([#1931](https://github.com/triggerdotdev/trigger.dev/pull/1931))
+
+## 4.0.0-v4-beta.2
+
+### Patch Changes
+
+- Managed run controller performance and reliability improvements ([#1927](https://github.com/triggerdotdev/trigger.dev/pull/1927))
+
+## 4.0.0-v4-beta.1
+
+## 4.0.0-v4-beta.0
+
+### Major Changes
+
+- Trigger.dev v4 release. Please see our upgrade to v4 docs to view the full changelog: https://trigger.dev/docs/upgrade-to-v4 ([#1869](https://github.com/triggerdotdev/trigger.dev/pull/1869))
+
+### Patch Changes
+
+- Run Engine 2.0 (alpha) ([#1575](https://github.com/triggerdotdev/trigger.dev/pull/1575))
+- Suppress external instrumentation for fetch calls from ApiClient ([#1788](https://github.com/triggerdotdev/trigger.dev/pull/1788))
+- fix: Realtime streams: prevent enqueuing into closed ReadableStream ([#1781](https://github.com/triggerdotdev/trigger.dev/pull/1781))
+- v4: New lifecycle hooks ([#1817](https://github.com/triggerdotdev/trigger.dev/pull/1817))
+
+## 3.3.17
+
+### Patch Changes
+
+- Add manual checkpoint schema ([#1709](https://github.com/triggerdotdev/trigger.dev/pull/1709))
+- - Add new run completion submission message with ack ([#1711](https://github.com/triggerdotdev/trigger.dev/pull/1711))
+  - Add timeout support to sendWithAck
+
+## 3.3.16
+
+## 3.3.15
+
+## 3.3.14
+
 ## 3.3.13
 
 ### Patch Changes

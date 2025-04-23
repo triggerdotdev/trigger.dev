@@ -1,0 +1,8 @@
+### `Cannot find matching keyid`
+
+This error occurs when using Node.js v22 with corepack, as it's not yet compatible with the latest package manager signatures. To fix this, either:
+
+1. Downgrade to Node.js v20 (LTS), or
+2. Install corepack globally: `npm i -g corepack@latest`
+
+The corepack bug and workaround are detailed in [this issue](https://github.com/npm/cli/issues/8075).

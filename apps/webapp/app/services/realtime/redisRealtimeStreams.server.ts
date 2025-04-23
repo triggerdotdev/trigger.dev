@@ -3,6 +3,7 @@ import { AuthenticatedEnvironment } from "../apiAuth.server";
 import { logger } from "../logger.server";
 import { StreamIngestor, StreamResponder } from "./types";
 import { LineTransformStream } from "./utils.server";
+import { env } from "~/env.server";
 
 export type RealtimeStreamsOptions = {
   redis: RedisOptions | undefined;
@@ -152,10 +153,30 @@ export class RedisRealtimeStreams implements StreamIngestor, StreamResponder {
           value,
         });
 
-        await redis.xadd(streamKey, "MAXLEN", "~", "1000", "*", "data", value);
+        await redis.xadd(
+          streamKey,
+          "MAXLEN",
+          "~",
+          String(env.REALTIME_STREAM_MAX_LENGTH),
+          "*",
+          "data",
+          value
+        );
       }
 
-      await redis.xadd(streamKey, "MAXLEN", "~", "1000", "*", "data", END_SENTINEL);
+      // Send the END_SENTINEL and set TTL with a pipeline.
+      const pipeline = redis.pipeline();
+      pipeline.xadd(
+        streamKey,
+        "MAXLEN",
+        "~",
+        String(env.REALTIME_STREAM_MAX_LENGTH),
+        "*",
+        "data",
+        END_SENTINEL
+      );
+      pipeline.expire(streamKey, env.REALTIME_STREAM_TTL);
+      await pipeline.exec();
 
       return new Response(null, { status: 200 });
     } catch (error) {

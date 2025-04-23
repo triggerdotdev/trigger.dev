@@ -1,9 +1,9 @@
-import ProjectPathArg from '/snippets/cli-args-project-path.mdx';
-import CommonOptions from '/snippets/cli-options-common.mdx';
-import ProjectRefOption from '/snippets/cli-options-project-ref.mdx';
-import EnvFileOption from '/snippets/cli-options-env-file.mdx';
-import ConfigFileOption from '/snippets/cli-options-config-file.mdx';
-import SkipUpdateCheckOption from '/snippets/cli-options-skip-update-check.mdx';
+import ProjectPathArg from "/snippets/cli-args-project-path.mdx";
+import CommonOptions from "/snippets/cli-options-common.mdx";
+import ProjectRefOption from "/snippets/cli-options-project-ref.mdx";
+import EnvFileOption from "/snippets/cli-options-env-file.mdx";
+import ConfigFileOption from "/snippets/cli-options-config-file.mdx";
+import SkipUpdateCheckOption from "/snippets/cli-options-skip-update-check.mdx";
 
 Run the command like this:
 
@@ -63,8 +63,8 @@ npx trigger.dev@latest deploy [path]
   Create a deployable build but don't deploy it. Prints out the build path so you can inspect it.
 </ParamField>
 
-<ParamField body="Build platform" type="--build-platform">
-  The platform to build the deployment image for. Defaults to `linux/amd64`.
+<ParamField body="Skip promotion" type="--skip-promotion">
+  Skips automatically promoting the newly deployed version to the "current" deploy.
 </ParamField>
 
 <ParamField body="Skip syncing env vars" type="--skip-sync-env-vars">
@@ -96,14 +96,15 @@ These options are typically used when [self-hosting](/open-source-self-hosting) 
 </ParamField>
 
 <ParamField body="Registry" type="--registry">
-  Specify the registry to push the image to when using `--self-hosted`. Will automatically enable `--push`.
+  Specify the registry to push the image to when using `--self-hosted`. Will automatically enable
+  `--push`.
 </ParamField>
 
 <ParamField body="Push image" type="--push">
   When using the `--self-hosted` flag, push the image to the registry.
 </ParamField>
 
-<ParamField body="Namespace" type="--namepsace">
+<ParamField body="Namespace" type="--namespace">
   The namespace to use when pushing the image to the registry. For example, if pushing to Docker
   Hub, the namespace is your Docker Hub username.
 </ParamField>

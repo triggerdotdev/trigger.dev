@@ -1,12 +1,12 @@
 import { dequal } from "dequal/lite";
 import { DeserializedJson } from "../../schemas/json.js";
 import { ApiClient } from "../apiClient/index.js";
-import { AsyncIterableStream } from "../apiClient/stream.js";
 import { FlushedRunMetadata, RunMetadataChangeOperation } from "../schemas/common.js";
 import { ApiRequestOptions } from "../zodfetch.js";
 import { MetadataStream } from "./metadataStream.js";
 import { applyMetadataOperations } from "./operations.js";
 import { RunMetadataManager, RunMetadataUpdater } from "./types.js";
+import { AsyncIterableStream } from "../streams/asyncIterableStream.js";
 
 const MAXIMUM_ACTIVE_STREAMS = 5;
 const MAXIMUM_TOTAL_STREAMS = 10;
@@ -31,71 +31,83 @@ export class StandardMetadataManager implements RunMetadataManager {
   ) {}
 
   get parent(): RunMetadataUpdater {
-    return {
+    // Store a reference to 'this' to ensure proper context
+    const self = this;
+    
+    // Create the updater object and store it in a local variable
+    const parentUpdater: RunMetadataUpdater = {
       set: (key, value) => {
-        this.queuedParentOperations.add({ type: "set", key, value });
-        return this.parent;
+        self.queuedParentOperations.add({ type: "set", key, value });
+        return parentUpdater;
       },
       del: (key) => {
-        this.queuedParentOperations.add({ type: "delete", key });
-        return this.parent;
+        self.queuedParentOperations.add({ type: "delete", key });
+        return parentUpdater;
       },
       append: (key, value) => {
-        this.queuedParentOperations.add({ type: "append", key, value });
-        return this.parent;
+        self.queuedParentOperations.add({ type: "append", key, value });
+        return parentUpdater;
       },
       remove: (key, value) => {
-        this.queuedParentOperations.add({ type: "remove", key, value });
-        return this.parent;
+        self.queuedParentOperations.add({ type: "remove", key, value });
+        return parentUpdater;
       },
       increment: (key, value) => {
-        this.queuedParentOperations.add({ type: "increment", key, value });
-        return this.parent;
+        self.queuedParentOperations.add({ type: "increment", key, value });
+        return parentUpdater;
       },
       decrement: (key, value) => {
-        this.queuedParentOperations.add({ type: "increment", key, value: -Math.abs(value) });
-        return this.parent;
+        self.queuedParentOperations.add({ type: "increment", key, value: -Math.abs(value) });
+        return parentUpdater;
       },
       update: (value) => {
-        this.queuedParentOperations.add({ type: "update", value });
-        return this.parent;
+        self.queuedParentOperations.add({ type: "update", value });
+        return parentUpdater;
       },
-      stream: (key, value, signal) => this.doStream(key, value, "parent", this.parent, signal),
+      stream: (key, value, signal) => self.doStream(key, value, "parent", parentUpdater, signal),
     };
+    
+    return parentUpdater;
   }
 
   get root(): RunMetadataUpdater {
-    return {
+    // Store a reference to 'this' to ensure proper context
+    const self = this;
+    
+    // Create the updater object and store it in a local variable
+    const rootUpdater: RunMetadataUpdater = {
       set: (key, value) => {
-        this.queuedRootOperations.add({ type: "set", key, value });
-        return this.root;
+        self.queuedRootOperations.add({ type: "set", key, value });
+        return rootUpdater;
       },
       del: (key) => {
-        this.queuedRootOperations.add({ type: "delete", key });
-        return this.root;
+        self.queuedRootOperations.add({ type: "delete", key });
+        return rootUpdater;
       },
       append: (key, value) => {
-        this.queuedRootOperations.add({ type: "append", key, value });
-        return this.root;
+        self.queuedRootOperations.add({ type: "append", key, value });
+        return rootUpdater;
       },
       remove: (key, value) => {
-        this.queuedRootOperations.add({ type: "remove", key, value });
-        return this.root;
+        self.queuedRootOperations.add({ type: "remove", key, value });
+        return rootUpdater;
       },
       increment: (key, value) => {
-        this.queuedRootOperations.add({ type: "increment", key, value });
-        return this.root;
+        self.queuedRootOperations.add({ type: "increment", key, value });
+        return rootUpdater;
       },
       decrement: (key, value) => {
-        this.queuedRootOperations.add({ type: "increment", key, value: -Math.abs(value) });
-        return this.root;
+        self.queuedRootOperations.add({ type: "increment", key, value: -Math.abs(value) });
+        return rootUpdater;
       },
       update: (value) => {
-        this.queuedRootOperations.add({ type: "update", value });
-        return this.root;
+        self.queuedRootOperations.add({ type: "update", value });
+        return rootUpdater;
       },
-      stream: (key, value, signal) => this.doStream(key, value, "root", this.root, signal),
+      stream: (key, value, signal) => self.doStream(key, value, "root", rootUpdater, signal),
     };
+    
+    return rootUpdater;
   }
 
   public enterWithMetadata(metadata: Record<string, DeserializedJson>): void {

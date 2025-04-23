@@ -2,6 +2,7 @@ import { LoaderFunctionArgs, redirect } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { requireUserId } from "~/services/session.server";
+import { v3ProjectPath, v3TestPath } from "~/utils/pathBuilder";
 
 const ParamsSchema = z.object({
   projectRef: z.string(),
@@ -33,8 +34,13 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
   }
 
   const url = new URL(request.url);
+  const environment = url.searchParams.get("environment");
 
-  return redirect(
-    `/orgs/${project.organization.slug}/projects/v3/${project.slug}/test${url.search}`
-  );
+  if (environment) {
+    return redirect(
+      v3TestPath({ slug: project.organization.slug }, { slug: project.slug }, { slug: environment })
+    );
+  }
+
+  return redirect(v3ProjectPath({ slug: project.organization.slug }, { slug: project.slug }));
 }

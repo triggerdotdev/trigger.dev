@@ -1,4 +1,4 @@
-import { NoopTaskLogger, TaskLogger } from "./taskLogger.js";
+import { NoopTaskLogger, TaskLogger, TraceOptions } from "./taskLogger.js";
 import { getGlobal, registerGlobal, unregisterGlobal } from "../utils/globals.js";
 import { Span } from "@opentelemetry/api";
 
@@ -47,8 +47,16 @@ export class LoggerAPI implements TaskLogger {
     this.#getTaskLogger().error(message, metadata);
   }
 
-  public trace<T>(name: string, fn: (span: Span) => Promise<T>): Promise<T> {
-    return this.#getTaskLogger().trace(name, fn);
+  public trace<T>(
+    name: string,
+    fn: (span: Span) => Promise<T>,
+    options?: TraceOptions
+  ): Promise<T> {
+    return this.#getTaskLogger().trace(name, fn, options);
+  }
+
+  public startSpan(name: string, options?: TraceOptions): Span {
+    return this.#getTaskLogger().startSpan(name, options);
   }
 
   #getTaskLogger(): TaskLogger {

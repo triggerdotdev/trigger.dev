@@ -7,20 +7,22 @@ import { fromZodError } from "zod-validation-error";
 import { logger } from "../utilities/logger.js";
 import { outro } from "@clack/prompts";
 import { chalkError } from "../utilities/cliOutput.js";
+import { CLOUD_API_URL } from "../consts.js";
+import { readAuthConfigCurrentProfileName } from "../utilities/configFiles.js";
 
 export const CommonCommandOptions = z.object({
   apiUrl: z.string().optional(),
   logLevel: z.enum(["debug", "info", "log", "warn", "error", "none"]).default("log"),
   skipTelemetry: z.boolean().default(false),
-  profile: z.string().default("default"),
+  profile: z.string().default(readAuthConfigCurrentProfileName()),
 });
 
 export type CommonCommandOptions = z.infer<typeof CommonCommandOptions>;
 
 export function commonOptions(command: Command) {
   return command
-    .option("--profile <profile>", "The login profile to use", "default")
-    .option("-a, --api-url <value>", "Override the API URL", "https://api.trigger.dev")
+    .option("--profile <profile>", "The login profile to use", readAuthConfigCurrentProfileName())
+    .option("-a, --api-url <value>", "Override the API URL", CLOUD_API_URL)
     .option(
       "-l, --log-level <level>",
       "The CLI log level to use (debug, info, log, warn, error, none). This does not effect the log level of your trigger.dev tasks.",

@@ -75,7 +75,7 @@ export function useTaskTrigger<TTask extends AnyTask>(
     const handle = await apiClient.triggerTask(id, {
       payload: payloadPacket.data,
       options: {
-        queue: options?.queue,
+        queue: options?.queue ? { name: options.queue } : undefined,
         concurrencyKey: options?.concurrencyKey,
         payloadType: payloadPacket.dataType,
         idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
@@ -85,6 +85,7 @@ export function useTaskTrigger<TTask extends AnyTask>(
         maxAttempts: options?.maxAttempts,
         metadata: options?.metadata,
         maxDuration: options?.maxDuration,
+        lockToVersion: options?.version,
       },
     });
 

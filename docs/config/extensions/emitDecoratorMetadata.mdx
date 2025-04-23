@@ -1,0 +1,29 @@
+---
+title: "Emit Decorator Metadata"
+sidebarTitle: "emitDecoratorMetadata"
+description: "Use the emitDecoratorMetadata build extension to enable support for the emitDecoratorMetadata TypeScript compiler option"
+---
+
+If you need support for the `emitDecoratorMetadata` typescript compiler option, import the `emitDecoratorMetadata` build extension and use it in your `trigger.config.ts` file:
+
+```ts
+import { defineConfig } from "@trigger.dev/sdk/v3";
+import { emitDecoratorMetadata } from "@trigger.dev/build/extensions/typescript";
+
+export default defineConfig({
+  project: "<project ref>",
+  // Your other config settings...
+  build: {
+    extensions: [emitDecoratorMetadata()],
+  },
+});
+```
+
+This is usually required if you are using certain ORMs, like TypeORM, that require this option to be enabled. It's not enabled by default because there is a performance cost to enabling it.
+
+<Note>
+  emitDecoratorMetadata works by hooking into the esbuild bundle process and using the TypeScript
+  compiler API to compile files where we detect the use of decorators. This means you must have
+  `emitDecoratorMetadata` enabled in your `tsconfig.json` file, as well as `typescript` installed in
+  your `devDependencies`.
+</Note>

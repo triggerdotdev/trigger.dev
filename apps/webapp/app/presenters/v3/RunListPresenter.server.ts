@@ -1,11 +1,12 @@
 import { Prisma, type TaskRunStatus } from "@trigger.dev/database";
 import parse from "parse-duration";
-import { type Direction } from "~/components/runs/RunStatuses";
 import { sqlDatabaseSchema } from "~/db.server";
 import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
-import { isCancellableRunStatus, isFinalRunStatus } from "~/v3/taskStatus";
+import { isCancellableRunStatus, isFinalRunStatus, isPendingRunStatus } from "~/v3/taskStatus";
 import { BasePresenter } from "./basePresenter.server";
 import { getAllTaskIdentifiers } from "~/models/task.server";
+import { type Direction } from "~/components/ListPagination";
+import { timeFilters } from "~/components/runs/v3/SharedFilters";
 
 export type RunListOptions = {
   userId?: string;
@@ -24,7 +25,7 @@ export type RunListOptions = {
   isTest?: boolean;
   rootOnly?: boolean;
   batchId?: string;
-  runId?: string;
+  runIds?: string[];
   //pagination
   direction?: Direction;
   cursor?: string;
@@ -52,30 +53,34 @@ export class RunListPresenter extends BasePresenter {
     isTest,
     rootOnly,
     batchId,
-    runId,
+    runIds,
     from,
     to,
     direction = "forward",
     cursor,
     pageSize = DEFAULT_PAGE_SIZE,
   }: RunListOptions) {
+    //get the time values from the raw values (including a default period)
+    const time = timeFilters({
+      period,
+      from,
+      to,
+    });
+
     const hasStatusFilters = statuses && statuses.length > 0;
 
     const hasFilters =
       (tasks !== undefined && tasks.length > 0) ||
       (versions !== undefined && versions.length > 0) ||
       hasStatusFilters ||
-      (environments !== undefined && environments.length > 0) ||
-      (period !== undefined && period !== "all") ||
       (bulkId !== undefined && bulkId !== "") ||
-      from !== undefined ||
-      to !== undefined ||
       (scheduleId !== undefined && scheduleId !== "") ||
       (tags !== undefined && tags.length > 0) ||
       batchId !== undefined ||
-      runId !== undefined ||
+      (runIds !== undefined && runIds.length > 0) ||
       typeof isTest === "boolean" ||
-      rootOnly === true;
+      rootOnly === true ||
+      !time.isDefault;
 
     // Find the project scoped to the organization
     const project = await this._replica.project.findFirstOrThrow({
@@ -183,11 +188,11 @@ export class RunListPresenter extends BasePresenter {
     }
 
     //show all runs if we are filtering by batchId or runId
-    if (batchId || runId || scheduleId || tasks?.length) {
+    if (batchId || runIds?.length || scheduleId || tasks?.length) {
       rootOnly = false;
     }
 
-    const periodMs = period ? parse(period) : undefined;
+    const periodMs = time.period ? parse(time.period) : undefined;
 
     //get the runs
     const runs = await this._replica.$queryRaw<
@@ -204,6 +209,7 @@ export class RunListPresenter extends BasePresenter {
         lockedAt: Date | null;
         delayUntil: Date | null;
         updatedAt: Date;
+        completedAt: Date | null;
         isTest: boolean;
         spanId: string;
         idempotencyKey: string | null;
@@ -233,6 +239,7 @@ export class RunListPresenter extends BasePresenter {
     tr."delayUntil" AS "delayUntil",
     tr."lockedAt" AS "lockedAt",
     tr."updatedAt" AS "updatedAt",
+    tr."completedAt" AS "completedAt",
     tr."isTest" AS "isTest",
     tr."spanId" AS "spanId",
     tr."idempotencyKey" AS "idempotencyKey",
@@ -262,7 +269,7 @@ WHERE
         : Prisma.empty
     }
     -- filters
-    ${runId ? Prisma.sql`AND tr."friendlyId" = ${runId}` : Prisma.empty}
+    ${runIds ? Prisma.sql`AND tr."friendlyId" IN (${Prisma.join(runIds)})` : Prisma.empty}
     ${batchId ? Prisma.sql`AND tr."batchId" = ${batchId}` : Prisma.empty}
     ${
       restrictToRunIds
@@ -294,12 +301,12 @@ WHERE
         : Prisma.empty
     }
     ${
-      from
-        ? Prisma.sql`AND tr."createdAt" >= ${new Date(from).toISOString()}::timestamp`
+      time.from
+        ? Prisma.sql`AND tr."createdAt" >= ${time.from.toISOString()}::timestamp`
         : Prisma.empty
     }
     ${
-      to ? Prisma.sql`AND tr."createdAt" <= ${new Date(to).toISOString()}::timestamp` : Prisma.empty
+      time.to ? Prisma.sql`AND tr."createdAt" <= ${time.to.toISOString()}::timestamp` : Prisma.empty
     }
     ${
       tags && tags.length > 0
@@ -339,6 +346,24 @@ WHERE
     const runsToReturn =
       direction === "backward" && hasMore ? runs.slice(1, pageSize + 1) : runs.slice(0, pageSize);
 
+    let hasAnyRuns = runsToReturn.length > 0;
+    if (!hasAnyRuns) {
+      const firstRun = await this._replica.taskRun.findFirst({
+        where: {
+          projectId: project.id,
+          runtimeEnvironmentId: environments
+            ? {
+                in: environments,
+              }
+            : undefined,
+        },
+      });
+
+      if (firstRun) {
+        hasAnyRuns = true;
+      }
+    }
+
     return {
       runs: runsToReturn.map((run) => {
         const environment = project.environments.find((env) => env.id === run.runtimeEnvironmentId);
@@ -360,7 +385,9 @@ WHERE
           startedAt: startedAt ? startedAt.toISOString() : undefined,
           delayUntil: run.delayUntil ? run.delayUntil.toISOString() : undefined,
           hasFinished,
-          finishedAt: hasFinished ? run.updatedAt.toISOString() : undefined,
+          finishedAt: hasFinished
+            ? run.completedAt?.toISOString() ?? run.updatedAt.toISOString()
+            : undefined,
           isTest: run.isTest,
           status: run.status,
           version: run.version,
@@ -368,6 +395,7 @@ WHERE
           spanId: run.spanId,
           isReplayable: true,
           isCancellable: isCancellableRunStatus(run.status),
+          isPending: isPendingRunStatus(run.status),
           environment: displayableEnvironment(environment, userId),
           idempotencyKey: run.idempotencyKey ? run.idempotencyKey : undefined,
           ttl: run.ttl ? run.ttl : undefined,
@@ -401,10 +429,11 @@ WHERE
         versions: versions || [],
         statuses: statuses || [],
         environments: environments || [],
-        from,
-        to,
+        from: time.from,
+        to: time.to,
       },
       hasFilters,
+      hasAnyRuns,
     };
   }
 }

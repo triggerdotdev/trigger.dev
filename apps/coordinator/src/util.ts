@@ -17,3 +17,15 @@ export const numFromEnv = (env: string, defaultValue: number): number => {
 
   return parseInt(value, 10);
 };
+
+export function safeJsonParse(json?: string): unknown {
+  if (!json) {
+    return;
+  }
+
+  try {
+    return JSON.parse(json);
+  } catch (e) {
+    return null;
+  }
+}

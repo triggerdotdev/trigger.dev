@@ -6,6 +6,8 @@ description: "Configure the number of vCPUs and GBs of RAM you want the task to 
 The `machine` configuration is optional. Using higher spec machines will increase the cost of running the task but can also improve the performance of the task if it is CPU or memory bound.
 
 ```ts /trigger/heavy-task.ts
+import {  task } from "@trigger.dev/sdk/v3";
+
 export const heavyTask = task({
   id: "heavy-task",
   machine: "large-1x",
@@ -26,19 +28,68 @@ export const config: TriggerConfig = {
 };
 ```
 
-## Out Of Memory errors
+## Machine configurations
+
+| Preset              | vCPU | Memory | Disk space |
+| :------------------ | :--- | :----- | :--------- |
+| micro               | 0.25 | 0.25   | 10GB       |
+| small-1x (default)  | 0.5  | 0.5    | 10GB       |
+| small-2x            | 1    | 1      | 10GB       |
+| medium-1x           | 1    | 2      | 10GB       |
+| medium-2x           | 2    | 4      | 10GB       |
+| large-1x            | 4    | 8      | 10GB       |
+| large-2x            | 8    | 16     | 10GB       |
+
+You can view the Trigger.dev cloud pricing for these machines [here](https://trigger.dev/pricing#computePricing).
+
+## Overriding the machine when triggering
+
+You can also override the task machine when you [trigger](/triggering) it:
+
+```ts
+await tasks.trigger<typeof heavyTask>(
+  "heavy-task",
+  { message: "hello world" },
+  { machine: "large-2x" }
+);
+```
+
+This is useful when you know that a certain payload will require more memory than the default machine. For example, you know it's a larger file or a customer that has a lot of data.
+
+## Out Of Memory (OOM) errors
 
 Sometimes you might see one of your runs fail with an "Out Of Memory" error.
 
 > TASK_PROCESS_OOM_KILLED. Your task ran out of memory. Try increasing the machine specs. If this doesn't fix it there might be a memory leak.
 
-If this happens regularly you need to either optimize the memory-efficiency of your code, or increase the machine.
+We automatically detect common Out Of Memory errors, including when ffmpeg throws an error because it ran out of memory.
+
+You can explicitly throw an Out Of Memory error in your task. This can be useful if you use a native package that detects it's going to run out of memory and then stops before it runs out. If you can detect this, you can then throw this error.
+
+```ts /trigger/heavy-task.ts
+import {  task } from "@trigger.dev/sdk/v3";
+import { OutOfMemoryError } from "@trigger.dev/sdk/v3";
+
+export const yourTask = task({
+  id: "your-task",
+  machine: "medium-1x",
+  run: async (payload: any, { ctx }) => {
+    //...
+
+    throw new OutOfMemoryError();
+  },
+});
+```
+
+If OOM errors happen regularly you need to either optimize the memory-efficiency of your code, or increase the machine.
 
 ### Retrying with a larger machine
 
-If you are seeing rare OOM errors, you can add a setting to your task to retry with a large machine if you get an OOM error:
+If you are seeing rare OOM errors, it might make sense to add a setting to your task to retry with a large machine when an OOM happens:
 
 ```ts /trigger/heavy-task.ts
+import {  task } from "@trigger.dev/sdk/v3";
+
 export const yourTask = task({
   id: "your-task",
   machine: "medium-1x",
@@ -56,17 +107,3 @@ export const yourTask = task({
 <Note>
   This will only retry the task if you get an OOM error. It won't permanently change the machine that a new run starts on, so if you consistently see OOM errors you should change the machine in the `machine` property.
 </Note>
-
-## Machine configurations
-
-| Preset              | vCPU | Memory | Disk space |
-| ------------------- | ---- | ------ | ---------- |
-| micro               | 0.25 | 0.25   | 10GB       |
-| small-1x (default)  | 0.5  | 0.5    | 10GB       |
-| small-2x            | 1    | 1      | 10GB       |
-| medium-1x           | 1    | 2      | 10GB       |
-| medium-2x           | 2    | 4      | 10GB       |
-| large-1x            | 4    | 8      | 10GB       |
-| large-2x            | 8    | 16     | 10GB       |
-
-You can view the Trigger.dev cloud pricing for these machines [here](https://trigger.dev/pricing#computePricing).

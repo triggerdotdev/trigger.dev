@@ -1,4 +1,4 @@
-import { XMarkIcon } from "@heroicons/react/20/solid";
+import { MagnifyingGlassIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { useNavigate } from "@remix-run/react";
 import { type RuntimeEnvironment } from "@trigger.dev/database";
 import { useCallback } from "react";
@@ -6,7 +6,6 @@ import { z } from "zod";
 import { Input } from "~/components/primitives/Input";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { useThrottle } from "~/hooks/useThrottle";
-import { EnvironmentLabel } from "../../environments/EnvironmentLabel";
 import { Button } from "../../primitives/Buttons";
 import { Paragraph } from "../../primitives/Paragraph";
 import {
@@ -37,16 +36,11 @@ export type ScheduleListFilters = z.infer<typeof ScheduleListFilters>;
 
 const All = "ALL";
 
-type DisplayableEnvironment = Pick<RuntimeEnvironment, "type" | "id"> & {
-  userName?: string;
-};
-
 type ScheduleFiltersProps = {
-  possibleEnvironments: DisplayableEnvironment[];
   possibleTasks: string[];
 };
 
-export function ScheduleFilters({ possibleEnvironments, possibleTasks }: ScheduleFiltersProps) {
+export function ScheduleFilters({ possibleTasks }: ScheduleFiltersProps) {
   const navigate = useNavigate();
   const location = useOptimisticLocation();
   const searchParams = new URLSearchParams(location.search);
@@ -54,8 +48,7 @@ export function ScheduleFilters({ possibleEnvironments, possibleTasks }: Schedul
     Object.fromEntries(searchParams.entries())
   );
 
-  const hasFilters =
-    searchParams.has("tasks") || searchParams.has("environments") || searchParams.has("search");
+  const hasFilters = searchParams.has("tasks") || searchParams.has("search");
 
   const handleFilterChange = useCallback((filterType: string, value: string | undefined) => {
     if (value) {
@@ -71,10 +64,6 @@ export function ScheduleFilters({ possibleEnvironments, possibleTasks }: Schedul
     handleFilterChange("tasks", value === "ALL" ? undefined : value);
   }, []);
 
-  const handleEnvironmentChange = useCallback((value: string | typeof All) => {
-    handleFilterChange("environments", value === "ALL" ? undefined : value);
-  }, []);
-
   const handleTypeChange = useCallback((value: string | typeof All) => {
     handleFilterChange("type", value === "ALL" ? undefined : value);
   }, []);
@@ -87,7 +76,6 @@ export function ScheduleFilters({ possibleEnvironments, possibleTasks }: Schedul
     searchParams.delete("page");
     searchParams.delete("enabled");
     searchParams.delete("tasks");
-    searchParams.delete("environments");
     searchParams.delete("search");
     navigate(`${location.pathname}?${searchParams.toString()}`);
   }, []);
@@ -97,7 +85,7 @@ export function ScheduleFilters({ possibleEnvironments, possibleTasks }: Schedul
       <Input
         name="search"
         placeholder="Search schedule id, external id, deduplication id or CRON pattern"
-        icon="search"
+        icon={MagnifyingGlassIcon}
         variant="tertiary"
         className="grow"
         defaultValue={search}
@@ -123,39 +111,6 @@ export function ScheduleFilters({ possibleEnvironments, possibleTasks }: Schedul
             <SelectItem value={"imperative"}>
               <ScheduleTypeCombo type="IMPERATIVE" className="text-xs text-text-dimmed" />
             </SelectItem>
-          </SelectContent>
-        </Select>
-      </SelectGroup>
-
-      <SelectGroup>
-        <Select
-          name="environment"
-          value={environments?.at(0) ?? "ALL"}
-          onValueChange={handleEnvironmentChange}
-        >
-          <SelectTrigger size="minimal" width="full">
-            <SelectValue
-              placeholder={"Select environment"}
-              className="ml-2 whitespace-nowrap p-0"
-            />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={"ALL"}>
-              <Paragraph
-                variant="extra-small"
-                className="whitespace-nowrap pl-0.5 transition group-hover:text-text-bright"
-              >
-                All environments
-              </Paragraph>
-            </SelectItem>
-            {possibleEnvironments.map((env) => (
-              <SelectItem key={env.id} value={env.id}>
-                <div className="flex items-center gap-x-2">
-                  <EnvironmentLabel environment={env} userName={env.userName} />
-                  <Paragraph variant="extra-small">environment</Paragraph>
-                </div>
-              </SelectItem>
-            ))}
           </SelectContent>
         </Select>
       </SelectGroup>

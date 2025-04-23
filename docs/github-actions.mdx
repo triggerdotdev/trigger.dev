@@ -95,8 +95,7 @@ If you already have a GitHub action file, you can just add the final step "🚀 
 
 </Steps>
 
-
-## Version pinning
+## CLI Version pinning
 
 The CLI and `@trigger.dev/*` package versions need to be in sync with the `trigger.dev` CLI, otherwise there will be errors and unpredictable behavior. Hence, the `deploy` command will automatically fail during CI on any version mismatches.
 Tip: add the deploy command to your `package.json` file to keep versions managed in the same place. For example:
@@ -121,7 +120,6 @@ Your workflow file will follow the version specified in the `package.json` scrip
 ```
 
 You should use the version you run locally during dev and manual deploy. The current version is displayed in the banner, but you can also check it by appending `--version` to any command.
-
 
 ## Self-hosting
 

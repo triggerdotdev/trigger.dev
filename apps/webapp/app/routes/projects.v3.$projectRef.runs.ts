@@ -1,7 +1,7 @@
-import { LoaderFunctionArgs, redirect } from "@remix-run/server-runtime";
+import { type LoaderFunctionArgs, redirect } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
-import { EnvSlug, isEnvSlug } from "~/models/api-key.server";
+import { type EnvSlug, isEnvSlug } from "~/models/api-key.server";
 import { requireUserId } from "~/services/session.server";
 
 const ParamsSchema = z.object({
@@ -41,15 +41,13 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     const env = await getEnvFromSlug(project.id, userId, envSlug);
 
     if (env) {
-      url.searchParams.set("environments", env.id);
+      return redirect(
+        `/orgs/${project.organization.slug}/projects/${project.slug}/env/${envSlug}/runs${url.search}`
+      );
     }
-
-    url.searchParams.delete("envSlug");
   }
 
-  return redirect(
-    `/orgs/${project.organization.slug}/projects/v3/${project.slug}/runs${url.search}`
-  );
+  return redirect(`/orgs/${project.organization.slug}/projects/${project.slug}`);
 }
 
 async function getEnvFromSlug(projectId: string, userId: string, envSlug: EnvSlug) {

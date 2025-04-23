@@ -24,6 +24,13 @@ jobs:
           node-version: 20.11.1
           cache: "pnpm"
 
+      # ..to avoid rate limits when pulling images
+      - name: 🐳 Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       - name: 📥 Download deps
         run: pnpm install --frozen-lockfile
 
@@ -31,7 +38,7 @@ jobs:
         run: pnpm run generate
 
       - name: 🧪 Run Webapp Unit Tests
-        run: pnpm run test --filter webapp
+        run: pnpm run test:webapp
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
           DIRECT_URL: postgresql://postgres:postgres@localhost:5432/postgres
@@ -40,7 +47,7 @@ jobs:
           ENCRYPTION_KEY: "secret"
       
       - name: 🧪 Run Package Unit Tests
-        run: pnpm run test --filter "@trigger.dev/*"
+        run: pnpm run test:packages
       
       - name: 🧪 Run Internal Unit Tests
-        run: pnpm run test --filter "@internal/*"
+        run: pnpm run test:internal

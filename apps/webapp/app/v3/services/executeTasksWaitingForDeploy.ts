@@ -3,6 +3,7 @@ import { workerQueue } from "~/services/worker.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { BaseService } from "./baseService.server";
 import { logger } from "~/services/logger.server";
+import { env } from "~/env.server";
 
 export class ExecuteTasksWaitingForDeployService extends BaseService {
   public async call(backgroundWorkerId: string) {
@@ -17,7 +18,11 @@ export class ExecuteTasksWaitingForDeployService extends BaseService {
             organization: true,
           },
         },
-        tasks: true,
+        tasks: {
+          select: {
+            slug: true,
+          },
+        },
       },
     });
 
@@ -25,6 +30,8 @@ export class ExecuteTasksWaitingForDeployService extends BaseService {
       logger.error("Background worker not found", { id: backgroundWorkerId });
       return;
     }
+
+    const maxCount = env.LEGACY_RUN_ENGINE_WAITING_FOR_DEPLOY_BATCH_SIZE;
 
     const runsWaitingForDeploy = await this._prisma.taskRun.findMany({
       where: {
@@ -36,8 +43,16 @@ export class ExecuteTasksWaitingForDeployService extends BaseService {
         },
       },
       orderBy: {
-        number: "asc",
+        createdAt: "asc",
       },
+      select: {
+        id: true,
+        status: true,
+        taskIdentifier: true,
+        concurrencyKey: true,
+        queue: true,
+      },
+      take: maxCount + 1,
     });
 
     if (!runsWaitingForDeploy.length) {
@@ -63,50 +78,28 @@ export class ExecuteTasksWaitingForDeployService extends BaseService {
       });
     }
 
-    if (!marqs) {
-      return;
-    }
-
-    const enqueues: Promise<any>[] = [];
-    let i = 0;
-
     for (const run of runsWaitingForDeploy) {
-      enqueues.push(
-        marqs.enqueueMessage(
-          backgroundWorker.runtimeEnvironment,
-          run.queue,
-          run.id,
-          {
-            type: "EXECUTE",
-            taskIdentifier: run.taskIdentifier,
-            projectId: backgroundWorker.runtimeEnvironment.projectId,
-            environmentId: backgroundWorker.runtimeEnvironment.id,
-            environmentType: backgroundWorker.runtimeEnvironment.type,
-          },
-          run.concurrencyKey ?? undefined,
-          Date.now() + i * 5 // slight delay to help preserve order
-        )
+      await marqs?.enqueueMessage(
+        backgroundWorker.runtimeEnvironment,
+        run.queue,
+        run.id,
+        {
+          type: "EXECUTE",
+          taskIdentifier: run.taskIdentifier,
+          projectId: backgroundWorker.runtimeEnvironment.projectId,
+          environmentId: backgroundWorker.runtimeEnvironment.id,
+          environmentType: backgroundWorker.runtimeEnvironment.type,
+        },
+        run.concurrencyKey ?? undefined
       );
-
-      i++;
     }
 
-    const settled = await Promise.allSettled(enqueues);
-
-    if (settled.some((s) => s.status === "rejected")) {
-      const rejectedRuns: { id: string; reason: any }[] = [];
-
-      runsWaitingForDeploy.forEach((run, i) => {
-        if (settled[i].status === "rejected") {
-          const rejected = settled[i] as PromiseRejectedResult;
-
-          rejectedRuns.push({ id: run.id, reason: rejected.reason });
-        }
-      });
-
-      logger.error("Failed to requeue task runs for immediate execution", {
-        rejectedRuns,
-      });
+    if (runsWaitingForDeploy.length > maxCount) {
+      await ExecuteTasksWaitingForDeployService.enqueue(
+        backgroundWorkerId,
+        this._prisma,
+        new Date(Date.now() + env.LEGACY_RUN_ENGINE_WAITING_FOR_DEPLOY_BATCH_STAGGER_MS)
+      );
     }
   }
 

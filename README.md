@@ -5,7 +5,7 @@
   <img alt="Trigger.dev logo" src="https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/a45d1fa2-0ae8-4a39-4409-f4f934bfae00/public">
 </picture>
   
-### Open source background jobs with no timeouts
+### Open source background jobs and AI infrastructure
 
 [Discord](https://trigger.dev/discord) | [Website](https://trigger.dev) | [Issues](https://github.com/triggerdotdev/trigger.dev/issues) | [Docs](https://trigger.dev/docs)
 
@@ -20,12 +20,14 @@ Trigger.dev is an open source platform and SDK which allows you to create long-r
 ### Key features:
 
 - JavaScript and TypeScript SDK
-- Write reliable code by default
 - No timeouts
 - Retries (with exponential backoff)
 - Queues and concurrency controls
 - Schedules and crons
 - Full Observability; logs, live trace views, advanced filtering
+- React hooks to interact with the Trigger API from your React app
+- Pipe LLM streams straight to your users through the Realtime API
+- Trigger tasks and display the run status and metadata anywhere in your app
 - Custom alerts, get notified by email, Slack or webhooks
 - No infrastructure to manage
 - Elastic (scaling)

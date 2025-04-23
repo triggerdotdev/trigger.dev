@@ -3,6 +3,18 @@ export type SchemaZodEsque<TInput, TParsedInput> = {
   _output: TParsedInput;
 };
 
+export function isSchemaZodEsque<TInput, TParsedInput>(
+  schema: Schema
+): schema is SchemaZodEsque<TInput, TParsedInput> {
+  return (
+    typeof schema === "object" &&
+    "_def" in schema &&
+    "parse" in schema &&
+    "parseAsync" in schema &&
+    "safeParse" in schema
+  );
+}
+
 export type SchemaValibotEsque<TInput, TParsedInput> = {
   schema: {
     _types?: {
@@ -12,10 +24,22 @@ export type SchemaValibotEsque<TInput, TParsedInput> = {
   };
 };
 
+export function isSchemaValibotEsque<TInput, TParsedInput>(
+  schema: Schema
+): schema is SchemaValibotEsque<TInput, TParsedInput> {
+  return typeof schema === "object" && "_types" in schema;
+}
+
 export type SchemaArkTypeEsque<TInput, TParsedInput> = {
   inferIn: TInput;
   infer: TParsedInput;
 };
+
+export function isSchemaArkTypeEsque<TInput, TParsedInput>(
+  schema: Schema
+): schema is SchemaArkTypeEsque<TInput, TParsedInput> {
+  return typeof schema === "object" && "_inferIn" in schema && "_infer" in schema;
+}
 
 export type SchemaMyZodEsque<TInput> = {
   parse: (input: any) => TInput;

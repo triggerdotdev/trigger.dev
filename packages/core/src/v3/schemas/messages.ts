@@ -12,9 +12,13 @@ import {
   EnvironmentType,
   ProdTaskRunExecution,
   ProdTaskRunExecutionPayload,
+  RunEngineVersionSchema,
+  RuntimeWait,
   TaskRunExecutionLazyAttemptPayload,
+  TaskRunExecutionMetrics,
   WaitReason,
 } from "./schemas.js";
+import { CompletedWaitpoint } from "./runEngine.js";
 
 export const AckCallbackResult = z.discriminatedUnion("success", [
   z.object({
@@ -52,6 +56,7 @@ export const BackgroundWorkerServerMessages = z.discriminatedUnion("type", [
     orgId: z.string(),
     projectId: z.string(),
     runId: z.string(),
+    dequeuedAt: z.number().optional(),
   }),
   z.object({
     type: z.literal("EXECUTE_RUN_LAZY_ATTEMPT"),
@@ -103,6 +108,7 @@ export const ServerBackgroundWorker = z.object({
   id: z.string(),
   version: z.string(),
   contentHash: z.string(),
+  engine: RunEngineVersionSchema.optional(),
 });
 
 export type ServerBackgroundWorker = z.infer<typeof ServerBackgroundWorker>;
@@ -193,6 +199,12 @@ export const ExecutorToWorkerMessageCatalog = {
   UNCAUGHT_EXCEPTION: {
     message: UncaughtExceptionMessage,
   },
+  WAIT: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      wait: RuntimeWait,
+    }),
+  },
 };
 
 export const WorkerToExecutorMessageCatalog = {
@@ -202,6 +214,9 @@ export const WorkerToExecutorMessageCatalog = {
       execution: TaskRunExecution,
       traceContext: z.record(z.unknown()),
       metadata: ServerBackgroundWorker,
+      metrics: TaskRunExecutionMetrics.optional(),
+      env: z.record(z.string()).optional(),
+      isWarmStart: z.boolean().optional(),
     }),
   },
   TASK_RUN_COMPLETED_NOTIFICATION: {
@@ -227,6 +242,23 @@ export const WorkerToExecutorMessageCatalog = {
       timeoutInMs: z.number(),
     }),
     callback: z.void(),
+  },
+  WAITPOINT_CREATED: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      wait: z.object({
+        id: z.string(),
+      }),
+      waitpoint: z.object({
+        id: z.string(),
+      }),
+    }),
+  },
+  WAITPOINT_COMPLETED: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      waitpoint: CompletedWaitpoint,
+    }),
   },
 };
 
@@ -435,6 +467,20 @@ export const CoordinatorToPlatformMessages = {
         .optional(),
     }),
   },
+  TASK_RUN_COMPLETED_WITH_ACK: {
+    message: z.object({
+      version: z.enum(["v1", "v2"]).default("v2"),
+      execution: ProdTaskRunExecution,
+      completion: TaskRunExecutionResult,
+      checkpoint: z
+        .object({
+          docker: z.boolean(),
+          location: z.string(),
+        })
+        .optional(),
+    }),
+    callback: AckCallbackResult,
+  },
   TASK_RUN_FAILED_TO_RUN: {
     message: z.object({
       version: z.literal("v1").default("v1"),
@@ -478,6 +524,11 @@ export const CoordinatorToPlatformMessages = {
         z.object({
           type: z.literal("RETRYING_AFTER_FAILURE"),
           attemptNumber: z.number(),
+        }),
+        z.object({
+          type: z.literal("MANUAL"),
+          /** If unspecified it will be restored immediately, e.g. for live migration */
+          restoreAtUnixTimeMs: z.number().optional(),
         }),
       ]),
     }),
@@ -653,6 +704,7 @@ export const ProdWorkerToCoordinatorMessages = {
       version: z.literal("v1").default("v1"),
       runId: z.string(),
       totalCompletions: z.number(),
+      startTime: z.number().optional(),
     }),
   },
   READY_FOR_RESUME: {

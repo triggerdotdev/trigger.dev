@@ -1,4 +1,4 @@
-import { Attributes, Link, trace, TraceFlags, Tracer } from "@opentelemetry/api";
+import { Attributes, AttributeValue, Link, trace, TraceFlags, Tracer } from "@opentelemetry/api";
 import { RandomIdGenerator } from "@opentelemetry/sdk-trace-base";
 import { SemanticResourceAttributes } from "@opentelemetry/semantic-conventions";
 import {
@@ -10,6 +10,7 @@ import {
   SpanEvent,
   SpanEvents,
   SpanMessagingEvent,
+  TaskEventEnvironment,
   TaskEventStyle,
   TaskRunError,
   correctErrorStackTrace,
@@ -19,14 +20,13 @@ import {
   omit,
   unflattenAttributes,
 } from "@trigger.dev/core/v3";
-import { Prisma, TaskEvent, TaskEventStatus, type TaskEventKind } from "@trigger.dev/database";
+import { Prisma, TaskEvent, TaskEventKind, TaskEventStatus } from "@trigger.dev/database";
 import { createHash } from "node:crypto";
 import { EventEmitter } from "node:stream";
 import { Gauge } from "prom-client";
 import { $replica, PrismaClient, PrismaReplicaClient, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { metricsRegister } from "~/metrics.server";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
 import { DynamicFlushScheduler } from "./dynamicFlushScheduler.server";
@@ -34,6 +34,7 @@ import { startActiveSpan } from "./tracer.server";
 import { createRedisClient, RedisClient, RedisWithClusterOptions } from "~/redis.server";
 import { startSpan } from "./tracing.server";
 import { nanoid } from "nanoid";
+import { TaskEventStore, TaskEventStoreTable } from "./taskEventStore.server";
 
 const MAX_FLUSH_DEPTH = 5;
 
@@ -58,6 +59,7 @@ export type TraceAttributes = Partial<
     | "attemptId"
     | "isError"
     | "isCancelled"
+    | "isDebug"
     | "runId"
     | "runIsTest"
     | "output"
@@ -83,7 +85,7 @@ export type TraceEventOptions = {
   parentAsLinkType?: "trigger" | "replay";
   spanIdSeed?: string;
   attributes: TraceAttributes;
-  environment: AuthenticatedEnvironment;
+  environment: TaskEventEnvironment;
   taskSlug: string;
   startTime?: bigint;
   endTime?: Date;
@@ -94,6 +96,8 @@ export type EventBuilder = {
   traceId: string;
   spanId: string;
   setAttribute: SetAttribute<TraceAttributes>;
+  stop: () => void;
+  failWithError: (error: TaskRunError) => void;
 };
 
 export type EventRepoConfig = {
@@ -101,6 +105,7 @@ export type EventRepoConfig = {
   batchInterval: number;
   redis: RedisWithClusterOptions;
   retentionInDays: number;
+  partitioningEnabled: boolean;
   tracer?: Tracer;
 };
 
@@ -110,7 +115,6 @@ export type TaskEventRecord = TaskEvent;
 
 export type QueriedEvent = Prisma.TaskEventGetPayload<{
   select: {
-    id: true;
     spanId: true;
     parentId: true;
     runId: true;
@@ -125,6 +129,7 @@ export type QueriedEvent = Prisma.TaskEventGetPayload<{
     level: true;
     events: true;
     environmentType: true;
+    kind: true;
   };
 }>;
 
@@ -154,7 +159,6 @@ export type SpanLink =
     };
 
 export type SpanSummary = {
-  recordId: string;
   id: string;
   parentId: string | undefined;
   runId: string;
@@ -167,6 +171,7 @@ export type SpanSummary = {
     isError: boolean;
     isPartial: boolean;
     isCancelled: boolean;
+    isDebug: boolean;
     level: NonNullable<CreatableEvent["level"]>;
     environmentType: CreatableEventEnvironmentType;
   };
@@ -181,25 +186,6 @@ export type UpdateEventOptions = {
   events?: SpanEvents;
 };
 
-type TaskEventSummary = Pick<
-  TaskEvent,
-  | "id"
-  | "spanId"
-  | "parentId"
-  | "runId"
-  | "idempotencyKey"
-  | "message"
-  | "style"
-  | "startTime"
-  | "duration"
-  | "isError"
-  | "isPartial"
-  | "isCancelled"
-  | "level"
-  | "events"
-  | "environmentType"
->;
-
 export class EventRepository {
   private readonly _flushScheduler: DynamicFlushScheduler<CreatableEvent>;
   private _randomIdGenerator = new RandomIdGenerator();
@@ -207,14 +193,15 @@ export class EventRepository {
   private _subscriberCount = 0;
   private _tracer: Tracer;
   private _lastFlushedAt: Date | undefined;
+  private taskEventStore: TaskEventStore;
 
   get subscriberCount() {
     return this._subscriberCount;
   }
 
   constructor(
-    private db: PrismaClient = prisma,
-    private readReplica: PrismaReplicaClient = $replica,
+    db: PrismaClient = prisma,
+    readReplica: PrismaReplicaClient = $replica,
     private readonly _config: EventRepoConfig
   ) {
     this._flushScheduler = new DynamicFlushScheduler({
@@ -225,6 +212,9 @@ export class EventRepository {
 
     this._redisPublishClient = createRedisClient("trigger:eventRepoPublisher", this._config.redis);
     this._tracer = _config.tracer ?? trace.getTracer("eventRepo", "0.0.1");
+
+    // Instantiate the store using the partitioning flag.
+    this.taskEventStore = new TaskEventStore(db, readReplica);
   }
 
   async insert(event: CreatableEvent) {
@@ -243,8 +233,19 @@ export class EventRepository {
     return await this.#flushBatch(nanoid(), events);
   }
 
-  async completeEvent(spanId: string, options?: UpdateEventOptions) {
-    const events = await this.queryIncompleteEvents({ spanId });
+  async completeEvent(
+    storeTable: TaskEventStoreTable,
+    spanId: string,
+    startCreatedAt: Date,
+    endCreatedAt?: Date,
+    options?: UpdateEventOptions
+  ) {
+    const events = await this.queryIncompleteEvents(
+      storeTable,
+      { spanId },
+      startCreatedAt,
+      endCreatedAt
+    );
 
     if (events.length === 0) {
       logger.warn("No incomplete events found for spanId", { spanId, options });
@@ -265,7 +266,7 @@ export class EventRepository {
       eventId: event.id,
     });
 
-    await this.insert({
+    const completedEvent = {
       ...omit(event, "id"),
       isPartial: false,
       isError: options?.attributes.isError ?? false,
@@ -285,7 +286,11 @@ export class EventRepository {
           : "application/json",
       payload: event.payload as Attributes,
       payloadType: event.payloadType,
-    });
+    } satisfies CreatableEvent;
+
+    await this.insert(completedEvent);
+
+    return completedEvent;
   }
 
   async cancelEvent(event: TaskEventRecord, cancelledAt: Date, reason: string) {
@@ -362,22 +367,35 @@ export class EventRepository {
     });
   }
 
-  async queryEvents(queryOptions: QueryOptions): Promise<TaskEventRecord[]> {
-    return await this.readReplica.taskEvent.findMany({
-      where: queryOptions,
-    });
+  async #queryEvents(
+    storeTable: TaskEventStoreTable,
+    queryOptions: QueryOptions,
+    startCreatedAt: Date,
+    endCreatedAt?: Date
+  ): Promise<TaskEventRecord[]> {
+    return await this.taskEventStore.findMany(
+      storeTable,
+      queryOptions,
+      startCreatedAt,
+      endCreatedAt
+    );
   }
 
-  async queryIncompleteEvents(queryOptions: QueryOptions, allowCompleteDuplicate = false) {
+  async queryIncompleteEvents(
+    storeTable: TaskEventStoreTable,
+    queryOptions: QueryOptions,
+    startCreatedAt: Date,
+    endCreatedAt?: Date,
+    allowCompleteDuplicate = false
+  ) {
     // First we will find all the events that match the query options (selecting minimal data).
-    const taskEvents = await this.readReplica.taskEvent.findMany({
-      where: queryOptions,
-      select: {
-        spanId: true,
-        isPartial: true,
-        isCancelled: true,
-      },
-    });
+    const taskEvents = await this.taskEventStore.findMany(
+      storeTable,
+      queryOptions,
+      startCreatedAt,
+      endCreatedAt,
+      { spanId: true, isPartial: true, isCancelled: true }
+    );
 
     const filteredTaskEvents = taskEvents.filter((event) => {
       // Event must be partial
@@ -399,37 +417,31 @@ export class EventRepository {
       return !hasCompleteDuplicate;
     });
 
-    return this.queryEvents({
-      spanId: {
-        in: filteredTaskEvents.map((event) => event.spanId),
+    return this.#queryEvents(
+      storeTable,
+      {
+        spanId: {
+          in: filteredTaskEvents.map((event) => event.spanId),
+        },
       },
-    });
+      startCreatedAt,
+      endCreatedAt
+    );
   }
 
-  public async getTraceSummary(traceId: string): Promise<TraceSummary | undefined> {
+  public async getTraceSummary(
+    storeTable: TaskEventStoreTable,
+    traceId: string,
+    startCreatedAt: Date,
+    endCreatedAt?: Date
+  ): Promise<TraceSummary | undefined> {
     return await startActiveSpan("getTraceSummary", async (span) => {
-      const events = await this.readReplica.$queryRaw<TaskEventSummary[]>`
-        SELECT 
-          id,
-          "spanId",
-          "parentId",
-          "runId",
-          "idempotencyKey",
-          LEFT(message, 256) as message,
-          style,
-          "startTime",
-          duration,
-          "isError",
-          "isPartial",
-          "isCancelled",
-          level,
-          events,
-          "environmentType"
-        FROM "TaskEvent"
-        WHERE "traceId" = ${traceId}
-        ORDER BY "startTime" ASC
-        LIMIT ${env.MAXIMUM_TRACE_SUMMARY_VIEW_COUNT}
-      `;
+      const events = await this.taskEventStore.findTraceEvents(
+        storeTable,
+        traceId,
+        startCreatedAt,
+        endCreatedAt
+      );
 
       let preparedEvents: Array<PreparedEvent> = [];
       let rootSpanId: string | undefined;
@@ -469,7 +481,6 @@ export class EventRepository {
         );
 
         const span = {
-          recordId: event.id,
           id: event.spanId,
           parentId: event.parentId ?? undefined,
           runId: event.runId,
@@ -481,6 +492,7 @@ export class EventRepository {
             isError: event.isError,
             isPartial: ancestorCancelled ? false : event.isPartial,
             isCancelled: event.isCancelled === true ? true : event.isPartial && ancestorCancelled,
+            isDebug: event.kind === TaskEventKind.LOG,
             startTime: getDateFromNanoseconds(event.startTime),
             level: event.level,
             events: event.events,
@@ -510,11 +522,22 @@ export class EventRepository {
     });
   }
 
-  public async getRunEvents(runId: string): Promise<RunPreparedEvent[]> {
+  public async getRunEvents(
+    storeTable: TaskEventStoreTable,
+    runId: string,
+    startCreatedAt: Date,
+    endCreatedAt?: Date
+  ): Promise<RunPreparedEvent[]> {
     return await startActiveSpan("getRunEvents", async (span) => {
-      const events = await this.readReplica.taskEvent.findMany({
-        select: {
-          id: true,
+      const events = await this.taskEventStore.findMany(
+        storeTable,
+        {
+          runId,
+          isPartial: false,
+        },
+        startCreatedAt,
+        endCreatedAt,
+        {
           spanId: true,
           parentId: true,
           runId: true,
@@ -526,19 +549,13 @@ export class EventRepository {
           isError: true,
           isPartial: true,
           isCancelled: true,
+          kind: true,
           level: true,
           events: true,
           environmentType: true,
           taskSlug: true,
-        },
-        where: {
-          runId,
-          isPartial: false,
-        },
-        orderBy: {
-          startTime: "asc",
-        },
-      });
+        }
+      );
 
       let preparedEvents: Array<PreparedEvent> = [];
 
@@ -552,9 +569,15 @@ export class EventRepository {
 
   // A Span can be cancelled if it is partial and has a parent that is cancelled
   // And a span's duration, if it is partial and has a cancelled parent, is the time between the start of the span and the time of the cancellation event of the parent
-  public async getSpan(spanId: string, traceId: string) {
+  public async getSpan(
+    storeTable: TaskEventStoreTable,
+    spanId: string,
+    traceId: string,
+    startCreatedAt: Date,
+    endCreatedAt?: Date
+  ) {
     return await startActiveSpan("getSpan", async (s) => {
-      const spanEvent = await this.#getSpanEvent(spanId);
+      const spanEvent = await this.#getSpanEvent(storeTable, spanId, startCreatedAt, endCreatedAt);
 
       if (!spanEvent) {
         return;
@@ -562,7 +585,12 @@ export class EventRepository {
 
       const preparedEvent = prepareEvent(spanEvent);
 
-      const span = await this.#createSpanFromEvent(preparedEvent);
+      const span = await this.#createSpanFromEvent(
+        storeTable,
+        preparedEvent,
+        startCreatedAt,
+        endCreatedAt
+      );
 
       const output = rehydrateJson(spanEvent.output);
       const payload = rehydrateJson(spanEvent.payload);
@@ -614,6 +642,19 @@ export class EventRepository {
         spanEvent.environmentType === "DEVELOPMENT"
       );
 
+      const originalRun = rehydrateAttribute<string>(
+        spanEvent.properties,
+        SemanticInternalAttributes.ORIGINAL_RUN_ID
+      );
+
+      const entity = {
+        type: rehydrateAttribute<string>(
+          spanEvent.properties,
+          SemanticInternalAttributes.ENTITY_TYPE
+        ),
+        id: rehydrateAttribute<string>(spanEvent.properties, SemanticInternalAttributes.ENTITY_ID),
+      };
+
       return {
         ...spanEvent,
         ...span.data,
@@ -623,42 +664,54 @@ export class EventRepository {
         events: spanEvents,
         show,
         links,
+        originalRun,
+        entity,
       };
     });
   }
 
-  async #createSpanFromEvent(event: PreparedEvent) {
+  async #createSpanFromEvent(
+    storeTable: TaskEventStoreTable,
+    event: PreparedEvent,
+    startCreatedAt: Date,
+    endCreatedAt?: Date
+  ) {
     return await startActiveSpan("createSpanFromEvent", async (s) => {
       let ancestorCancelled = false;
       let duration = event.duration;
 
       if (!event.isCancelled && event.isPartial) {
-        await this.#walkSpanAncestors(event, (ancestorEvent, level) => {
-          if (level >= 8) {
-            return { stop: true };
-          }
-
-          if (ancestorEvent.isCancelled) {
-            ancestorCancelled = true;
-
-            // We need to get the cancellation time from the cancellation span event
-            const cancellationEvent = ancestorEvent.events.find(
-              (event) => event.name === "cancellation"
-            );
-
-            if (cancellationEvent) {
-              duration = calculateDurationFromStart(event.startTime, cancellationEvent.time);
+        await this.#walkSpanAncestors(
+          storeTable,
+          event,
+          startCreatedAt,
+          endCreatedAt,
+          (ancestorEvent, level) => {
+            if (level >= 8) {
+              return { stop: true };
             }
 
-            return { stop: true };
-          }
+            if (ancestorEvent.isCancelled) {
+              ancestorCancelled = true;
 
-          return { stop: false };
-        });
+              // We need to get the cancellation time from the cancellation span event
+              const cancellationEvent = ancestorEvent.events.find(
+                (event) => event.name === "cancellation"
+              );
+
+              if (cancellationEvent) {
+                duration = calculateDurationFromStart(event.startTime, cancellationEvent.time);
+              }
+
+              return { stop: true };
+            }
+
+            return { stop: false };
+          }
+        );
       }
 
       const span = {
-        recordId: event.id,
         id: event.spanId,
         parentId: event.parentId ?? undefined,
         runId: event.runId,
@@ -682,7 +735,10 @@ export class EventRepository {
   }
 
   async #walkSpanAncestors(
+    storeTable: TaskEventStoreTable,
     event: PreparedEvent,
+    startCreatedAt: Date,
+    endCreatedAt: Date | undefined,
     callback: (event: PreparedEvent, level: number) => { stop: boolean }
   ) {
     const parentId = event.parentId;
@@ -691,7 +747,12 @@ export class EventRepository {
     }
 
     await startActiveSpan("walkSpanAncestors", async (s) => {
-      let parentEvent = await this.#getSpanEvent(parentId);
+      let parentEvent = await this.#getSpanEvent(
+        storeTable,
+        parentId,
+        startCreatedAt,
+        endCreatedAt
+      );
       let level = 1;
 
       while (parentEvent) {
@@ -707,49 +768,35 @@ export class EventRepository {
           return;
         }
 
-        parentEvent = await this.#getSpanEvent(preparedParentEvent.parentId);
+        parentEvent = await this.#getSpanEvent(
+          storeTable,
+          preparedParentEvent.parentId,
+          startCreatedAt,
+          endCreatedAt
+        );
 
         level++;
       }
     });
   }
 
-  async #getSpanAncestors(event: PreparedEvent, levels = 1): Promise<Array<PreparedEvent>> {
-    if (levels >= 8) {
-      return [];
-    }
-
-    if (!event.parentId) {
-      return [];
-    }
-
-    const parentEvent = await this.#getSpanEvent(event.parentId);
-
-    if (!parentEvent) {
-      return [];
-    }
-
-    const preparedParentEvent = prepareEvent(parentEvent);
-
-    if (!preparedParentEvent.parentId) {
-      return [preparedParentEvent];
-    }
-
-    const moreAncestors = await this.#getSpanAncestors(preparedParentEvent, levels + 1);
-
-    return [preparedParentEvent, ...moreAncestors];
-  }
-
-  async #getSpanEvent(spanId: string) {
+  async #getSpanEvent(
+    storeTable: TaskEventStoreTable,
+    spanId: string,
+    startCreatedAt: Date,
+    endCreatedAt?: Date
+  ) {
     return await startActiveSpan("getSpanEvent", async (s) => {
-      const events = await this.readReplica.taskEvent.findMany({
-        where: {
-          spanId,
-        },
-        orderBy: {
+      const events = await this.taskEventStore.findMany(
+        storeTable,
+        { spanId },
+        startCreatedAt,
+        endCreatedAt,
+        undefined,
+        {
           startTime: "asc",
-        },
-      });
+        }
+      );
 
       let finalEvent: TaskEvent | undefined;
 
@@ -765,14 +812,19 @@ export class EventRepository {
     });
   }
 
-  public async recordEvent(message: string, options: TraceEventOptions) {
+  public async recordEvent(
+    message: string,
+    options: TraceEventOptions & { duration?: number; parentId?: string }
+  ) {
     const propagatedContext = extractContextFromCarrier(options.context ?? {});
 
     const startTime = options.startTime ?? getNowInNanoseconds();
-    const duration = options.endTime ? calculateDurationFromStart(startTime, options.endTime) : 100;
+    const duration =
+      options.duration ??
+      (options.endTime ? calculateDurationFromStart(startTime, options.endTime) : 100);
 
     const traceId = propagatedContext?.traceparent?.traceId ?? this.generateTraceId();
-    const parentId = propagatedContext?.traceparent?.spanId;
+    const parentId = options.parentId ?? propagatedContext?.traceparent?.spanId;
     const tracestate = propagatedContext?.tracestate;
     const spanId = options.spanIdSeed
       ? this.#generateDeterministicSpanId(traceId, options.spanIdSeed)
@@ -794,7 +846,7 @@ export class EventRepository {
     };
 
     const style = {
-      [SemanticInternalAttributes.STYLE_ICON]: "play",
+      [SemanticInternalAttributes.STYLE_ICON]: options.attributes.isDebug ? "warn" : "play",
     };
 
     if (!options.attributes.runId) {
@@ -809,8 +861,8 @@ export class EventRepository {
       message: message,
       serviceName: "api server",
       serviceNamespace: "trigger.dev",
-      level: "TRACE",
-      kind: options.kind,
+      level: options.attributes.isDebug ? "WARN" : "TRACE",
+      kind: options.attributes.isDebug ? TaskEventKind.LOG : options.kind,
       status: "OK",
       startTime,
       isPartial: false,
@@ -853,7 +905,7 @@ export class EventRepository {
 
   public async traceEvent<TResult>(
     message: string,
-    options: TraceEventOptions & { incomplete?: boolean },
+    options: TraceEventOptions & { incomplete?: boolean; isError?: boolean },
     callback: (
       e: EventBuilder,
       traceContext: Record<string, string | undefined>,
@@ -895,6 +947,9 @@ export class EventRepository {
           ]
         : [];
 
+    let isStopped = false;
+    let failedWithError: TaskRunError | undefined;
+
     const eventBuilder = {
       traceId,
       spanId,
@@ -912,9 +967,19 @@ export class EventRepository {
           }
         }
       },
+      stop: () => {
+        isStopped = true;
+      },
+      failWithError: (error: TaskRunError) => {
+        failedWithError = error;
+      },
     };
 
     const result = await callback(eventBuilder, traceContext, propagatedContext?.traceparent);
+
+    if (isStopped) {
+      return result;
+    }
 
     const duration = process.hrtime.bigint() - start;
 
@@ -949,13 +1014,14 @@ export class EventRepository {
       parentId,
       tracestate,
       duration: options.incomplete ? 0 : duration,
-      isPartial: options.incomplete,
+      isPartial: failedWithError ? false : options.incomplete,
+      isError: !!failedWithError,
       message: message,
       serviceName: "api server",
       serviceNamespace: "trigger.dev",
       level: "TRACE",
       kind: options.kind,
-      status: "OK",
+      status: failedWithError ? "ERROR" : "OK",
       startTime,
       environmentId: options.environment.id,
       environmentType: options.environment.type,
@@ -983,6 +1049,17 @@ export class EventRepository {
       payload: options.attributes.payload,
       payloadType: options.attributes.payloadType,
       idempotencyKey: options.attributes.idempotencyKey,
+      events: failedWithError
+        ? [
+            {
+              name: "exception",
+              time: new Date(),
+              properties: {
+                exception: createExceptionPropertiesFromError(failedWithError),
+              },
+            },
+          ]
+        : undefined,
     };
 
     if (options.immediate) {
@@ -1054,6 +1131,10 @@ export class EventRepository {
     });
   }
 
+  private get taskEventStoreTable(): TaskEventStoreTable {
+    return this._config.partitioningEnabled ? "taskEventPartitioned" : "taskEvent";
+  }
+
   async #doFlushBatch(
     flushId: string,
     events: CreatableEvent[],
@@ -1065,9 +1146,10 @@ export class EventRepository {
         span.setAttribute("depth", depth);
         span.setAttribute("flush_id", flushId);
 
-        await this.db.taskEvent.createMany({
-          data: events as Prisma.TaskEventCreateManyInput[],
-        });
+        await this.taskEventStore.createMany(
+          this.taskEventStoreTable,
+          events as Prisma.TaskEventCreateManyInput[]
+        );
 
         span.setAttribute("inserted_event_count", events.length);
 
@@ -1186,6 +1268,7 @@ function initializeEventRepo() {
     batchSize: env.EVENTS_BATCH_SIZE,
     batchInterval: env.EVENTS_BATCH_INTERVAL,
     retentionInDays: env.EVENTS_DEFAULT_LOG_RETENTION,
+    partitioningEnabled: env.TASK_EVENT_PARTITIONING_ENABLED === "1",
     redis: {
       port: env.PUBSUB_REDIS_PORT,
       host: env.PUBSUB_REDIS_HOST,
@@ -1268,7 +1351,7 @@ function excludePartialEventsWithCorrespondingFullEvent(batch: CreatableEvent[])
   );
 }
 
-function extractContextFromCarrier(carrier: Record<string, string | undefined>) {
+export function extractContextFromCarrier(carrier: Record<string, string | undefined>) {
   const traceparent = carrier["traceparent"];
   const tracestate = carrier["tracestate"];
 
@@ -1411,35 +1494,6 @@ function findFirstCancelledAncestor(events: Map<string, PreparedEvent>, spanId: 
   return;
 }
 
-// Prioritize spans with the same id, keeping the completed spans over partial spans
-// Completed spans are either !isPartial or isCancelled
-function removeDuplicateEvents(events: PreparedEvent[]) {
-  const dedupedEvents = new Map<string, PreparedEvent>();
-
-  for (const event of events) {
-    const existingEvent = dedupedEvents.get(event.spanId);
-
-    if (!existingEvent) {
-      dedupedEvents.set(event.spanId, event);
-      continue;
-    }
-
-    if (event.isCancelled || !event.isPartial) {
-      dedupedEvents.set(event.spanId, event);
-    }
-  }
-
-  return Array.from(dedupedEvents.values());
-}
-
-function isEmptyJson(json: Prisma.JsonValue) {
-  if (json === null) {
-    return true;
-  }
-
-  return false;
-}
-
 function sanitizedAttributes(json: Prisma.JsonValue) {
   if (json === null || json === undefined) {
     return;
@@ -1516,18 +1570,6 @@ function transformException(
   };
 }
 
-function filteredAttributes(attributes: Attributes, prefix: string): Attributes {
-  const result: Attributes = {};
-
-  for (const [key, value] of Object.entries(attributes)) {
-    if (key.startsWith(prefix)) {
-      result[key] = value;
-    }
-  }
-
-  return result;
-}
-
 function calculateDurationFromStart(startTime: bigint, endTime: Date = new Date()) {
   const $endtime = typeof endTime === "string" ? new Date(endTime) : endTime;
 
@@ -1594,4 +1636,142 @@ function rehydrateShow(properties: Prisma.JsonValue): { actions?: boolean } | un
   }
 
   return;
+}
+
+export function rehydrateAttribute<T extends AttributeValue>(
+  properties: Prisma.JsonValue,
+  key: string
+): T | undefined {
+  if (properties === null || properties === undefined) {
+    return;
+  }
+
+  if (typeof properties !== "object") {
+    return;
+  }
+
+  if (Array.isArray(properties)) {
+    return;
+  }
+
+  const value = properties[key];
+
+  if (value === undefined) {
+    return;
+  }
+
+  return value as T;
+}
+
+export async function findRunForEventCreation(runId: string) {
+  return prisma.taskRun.findFirst({
+    where: {
+      id: runId,
+    },
+    select: {
+      friendlyId: true,
+      taskIdentifier: true,
+      traceContext: true,
+      runtimeEnvironment: {
+        select: {
+          id: true,
+          type: true,
+          organizationId: true,
+          projectId: true,
+          project: {
+            select: {
+              externalRef: true,
+            },
+          },
+        },
+      },
+    },
+  });
+}
+
+export async function recordRunEvent(
+  runId: string,
+  message: string,
+  options: Omit<TraceEventOptions, "environment" | "taskSlug" | "startTime"> & {
+    duration?: number;
+    parentId?: string;
+    startTime?: Date;
+  }
+): Promise<
+  | {
+      success: true;
+    }
+  | {
+      success: false;
+      code: "RUN_NOT_FOUND" | "FAILED_TO_RECORD_EVENT";
+      error?: unknown;
+    }
+> {
+  try {
+    const foundRun = await findRunForEventCreation(runId);
+
+    if (!foundRun) {
+      logger.error("Failed to find run for event creation", { runId });
+      return {
+        success: false,
+        code: "RUN_NOT_FOUND",
+      };
+    }
+
+    const { attributes, startTime, ...optionsRest } = options;
+
+    await eventRepository.recordEvent(message, {
+      environment: foundRun.runtimeEnvironment,
+      taskSlug: foundRun.taskIdentifier,
+      context: foundRun.traceContext as Record<string, string | undefined>,
+      attributes: {
+        runId: foundRun.friendlyId,
+        ...attributes,
+      },
+      startTime: BigInt((startTime?.getTime() ?? Date.now()) * 1_000_000),
+      ...optionsRest,
+    });
+
+    return {
+      success: true,
+    };
+  } catch (error) {
+    logger.error("Failed to record event for run", {
+      error: error instanceof Error ? error.message : error,
+      runId,
+    });
+
+    return {
+      success: false,
+      code: "FAILED_TO_RECORD_EVENT",
+      error,
+    };
+  }
+}
+
+export async function recordRunDebugLog(
+  runId: string,
+  message: string,
+  options: Omit<TraceEventOptions, "environment" | "taskSlug" | "startTime"> & {
+    duration?: number;
+    parentId?: string;
+    startTime?: Date;
+  }
+): Promise<
+  | {
+      success: true;
+    }
+  | {
+      success: false;
+      code: "RUN_NOT_FOUND" | "FAILED_TO_RECORD_EVENT";
+      error?: unknown;
+    }
+> {
+  return recordRunEvent(runId, message, {
+    ...options,
+    attributes: {
+      ...options?.attributes,
+      isDebug: true,
+    },
+  });
 }

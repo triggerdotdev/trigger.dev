@@ -1,33 +1,17 @@
-import { ListRunResponse, ListRunResponseItem, parsePacket, RunStatus } from "@trigger.dev/core/v3";
-import { Project, RuntimeEnvironment, TaskRunStatus } from "@trigger.dev/database";
+import {
+  type ListRunResponse,
+  type ListRunResponseItem,
+  parsePacket,
+  RunStatus,
+} from "@trigger.dev/core/v3";
+import { type Project, type RuntimeEnvironment, type TaskRunStatus } from "@trigger.dev/database";
 import assertNever from "assert-never";
 import { z } from "zod";
-import { fromZodError } from "zod-validation-error";
 import { logger } from "~/services/logger.server";
+import { CoercedDate } from "~/utils/zod";
 import { ApiRetrieveRunPresenter } from "./ApiRetrieveRunPresenter.server";
-import { RunListOptions, RunListPresenter } from "./RunListPresenter.server";
+import { type RunListOptions, RunListPresenter } from "./RunListPresenter.server";
 import { BasePresenter } from "./basePresenter.server";
-
-const CoercedDate = z.preprocess((arg) => {
-  if (arg === undefined || arg === null) {
-    return;
-  }
-
-  if (typeof arg === "number") {
-    return new Date(arg);
-  }
-
-  if (typeof arg === "string") {
-    const num = Number(arg);
-    if (!isNaN(num)) {
-      return new Date(num);
-    }
-
-    return new Date(arg);
-  }
-
-  return arg;
-}, z.date().optional());
 
 export const ApiRunListSearchParams = z.object({
   "page[size]": z.coerce.number().int().positive().min(1).max(100).optional(),
@@ -280,6 +264,9 @@ export class ApiRunListPresenter extends BasePresenter {
     switch (status) {
       case "DELAYED":
         return "DELAYED";
+      case "PENDING_VERSION": {
+        return "PENDING_VERSION";
+      }
       case "WAITING_FOR_DEPLOY": {
         return "WAITING_FOR_DEPLOY";
       }

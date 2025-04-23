@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { ConfigManifest } from "./config.js";
-import { TaskFile, TaskManifest } from "./schemas.js";
+import { QueueManifest, TaskFile, TaskManifest } from "./schemas.js";
 
 export const BuildExternal = z.object({
   name: z.string(),
@@ -9,11 +9,11 @@ export const BuildExternal = z.object({
 
 export type BuildExternal = z.infer<typeof BuildExternal>;
 
-export const BuildTarget = z.enum(["dev", "deploy"]);
+export const BuildTarget = z.enum(["dev", "deploy", "unmanaged"]);
 
 export type BuildTarget = z.infer<typeof BuildTarget>;
 
-export const BuildRuntime = z.enum(["node", "bun"]);
+export const BuildRuntime = z.enum(["node", "node-22", "bun"]);
 
 export type BuildRuntime = z.infer<typeof BuildRuntime>;
 
@@ -38,6 +38,7 @@ export const BuildManifest = z.object({
   indexWorkerEntryPoint: z.string(), // Dev & Deploy has a indexWorkerEntryPoint
   indexControllerEntryPoint: z.string().optional(), // Only deploy has a indexControllerEntryPoint
   loaderEntryPoint: z.string().optional(),
+  initEntryPoint: z.string().optional(), // Optional init.ts entry point
   configPath: z.string(),
   externals: BuildExternal.array().optional(),
   build: z.object({
@@ -81,9 +82,11 @@ export type IndexMessage = z.infer<typeof IndexMessage>;
 export const WorkerManifest = z.object({
   configPath: z.string(),
   tasks: TaskManifest.array(),
+  queues: QueueManifest.array().optional(),
   workerEntryPoint: z.string(),
   controllerEntryPoint: z.string().optional(),
   loaderEntryPoint: z.string().optional(),
+  initEntryPoint: z.string().optional(), // Optional init.ts entry point
   runtime: BuildRuntime,
   customConditions: z.array(z.string()).optional(),
   otelImportHook: z

@@ -19,9 +19,10 @@ import { FailedTaskRunService } from "../failedTaskRun.server";
 import { CancelDevSessionRunsService } from "../services/cancelDevSessionRuns.server";
 import { CompleteAttemptService } from "../services/completeAttempt.server";
 import { attributesFromAuthenticatedEnv, tracer } from "../tracer.server";
-import { getMaxDuration } from "../utils/maxDuration";
+import { getMaxDuration } from "@trigger.dev/core/v3/isomorphic";
 import { DevSubscriber, devPubSub } from "./devPubSub.server";
 import { findQueueInEnvironment, sanitizeQueueName } from "~/models/taskQueue.server";
+import { createRedisClient, RedisClient } from "~/redis.server";
 
 const MessageBody = z.discriminatedUnion("type", [
   z.object({
@@ -53,14 +54,21 @@ export class DevQueueConsumer {
   private _currentSpan: Span | undefined;
   private _endSpanInNextIteration = false;
   private _inProgressRuns: Map<string, string> = new Map(); // Keys are task run friendly IDs, values are TaskRun internal ids/queue message ids
+  private _connectionLostAt?: Date;
+  private _redisClient: RedisClient;
 
   constructor(
+    public id: string,
     public env: AuthenticatedEnvironment,
     private _sender: ZodMessageSender<typeof serverWebsocketMessages>,
     private _options: DevQueueConsumerOptions = {}
   ) {
     this._traceTimeoutSeconds = _options.traceTimeoutSeconds ?? 60;
     this._maximumItemsPerTrace = _options.maximumItemsPerTrace ?? 1_000;
+    this._redisClient = createRedisClient("tr:devQueueConsumer", {
+      keyPrefix: "tr:devQueueConsumer:",
+      ...devPubSub.redisOptions,
+    });
   }
 
   // This method is called when a background worker is deprecated and will no longer be used unless a run is locked to it
@@ -235,6 +243,8 @@ export class DevQueueConsumer {
       return;
     }
 
+    await this._redisClient.set(`connection:${this.env.id}`, this.id, "EX", 60 * 60 * 24); // 24 hours
+
     this._enabled = true;
     // Create the session
     await createNewSession(this.env, this._options.ipAddress ?? "unknown");
@@ -249,6 +259,38 @@ export class DevQueueConsumer {
 
   async #doWork() {
     if (!this._enabled) {
+      return;
+    }
+
+    const canSendMessage = await this._sender.validateCanSendMessage();
+
+    if (!canSendMessage) {
+      this._connectionLostAt ??= new Date();
+
+      if (Date.now() - this._connectionLostAt.getTime() > 60 * 1000) {
+        logger.debug("Connection lost for more than 60 seconds, stopping the consumer", {
+          env: this.env,
+        });
+
+        await this.stop("Connection lost for more than 60 seconds");
+        return;
+      }
+
+      setTimeout(() => this.#doWork(), 1000);
+      return;
+    }
+
+    this._connectionLostAt = undefined;
+
+    const currentConnection = await this._redisClient.get(`connection:${this.env.id}`);
+
+    if (currentConnection && currentConnection !== this.id) {
+      logger.debug("Another connection is active, stopping the consumer", {
+        currentConnection,
+        env: this.env,
+      });
+
+      await this.stop("Another connection is active");
       return;
     }
 
@@ -315,6 +357,8 @@ export class DevQueueConsumer {
       setTimeout(() => this.#doWork(), 1000);
       return;
     }
+
+    const dequeuedStart = Date.now();
 
     const messageBody = MessageBody.safeParse(message.data);
 
@@ -472,6 +516,14 @@ export class DevQueueConsumer {
         runId: lockedTaskRun.friendlyId,
         messageId: lockedTaskRun.id,
         isTest: lockedTaskRun.isTest,
+        metrics: [
+          {
+            name: "start",
+            event: "dequeue",
+            timestamp: dequeuedStart,
+            duration: Date.now() - dequeuedStart,
+          },
+        ],
       };
 
       try {

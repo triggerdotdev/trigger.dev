@@ -1,4 +1,4 @@
-import { parseNaturalLanguageDuration } from "@trigger.dev/core/v3/apps";
+import { parseNaturalLanguageDuration } from "@trigger.dev/core/v3/isomorphic";
 import { $transaction } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { marqs } from "~/v3/marqs/index.server";
@@ -6,6 +6,7 @@ import { BaseService } from "./baseService.server";
 import { ExpireEnqueuedRunService } from "./expireEnqueuedRun.server";
 import { commonWorker } from "../commonWorker.server";
 import { workerQueue } from "~/services/worker.server";
+import { enqueueRun } from "./enqueueRun.server";
 
 export class EnqueueDelayedRunService extends BaseService {
   public static async enqueue(runId: string, runAt?: Date) {
@@ -42,6 +43,24 @@ export class EnqueueDelayedRunService extends BaseService {
           include: {
             organization: true,
             project: true,
+          },
+        },
+        dependency: {
+          include: {
+            dependentBatchRun: {
+              include: {
+                dependentTaskAttempt: {
+                  include: {
+                    taskRun: true,
+                  },
+                },
+              },
+            },
+            dependentAttempt: {
+              include: {
+                taskRun: true,
+              },
+            },
           },
         },
       },
@@ -83,18 +102,12 @@ export class EnqueueDelayedRunService extends BaseService {
       }
     });
 
-    await marqs?.enqueueMessage(
-      run.runtimeEnvironment,
-      run.queue,
-      run.id,
-      {
-        type: "EXECUTE",
-        taskIdentifier: run.taskIdentifier,
-        projectId: run.runtimeEnvironment.projectId,
-        environmentId: run.runtimeEnvironment.id,
-        environmentType: run.runtimeEnvironment.type,
-      },
-      run.concurrencyKey ?? undefined
-    );
+    await enqueueRun({
+      env: run.runtimeEnvironment,
+      run: run,
+      dependentRun:
+        run.dependency?.dependentAttempt?.taskRun ??
+        run.dependency?.dependentBatchRun?.dependentTaskAttempt?.taskRun,
+    });
   }
 }

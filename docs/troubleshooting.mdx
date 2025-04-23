@@ -6,6 +6,7 @@ description: "Some common problems you might experience and their solutions"
 import NextjsTroubleshootingMissingApiKey from "/snippets/nextjs-missing-api-key.mdx";
 import NextjsTroubleshootingButtonSyntax from "/snippets/nextjs-button-syntax.mdx";
 import RateLimitHitUseBatchTrigger from "/snippets/rate-limit-hit-use-batchtrigger.mdx";
+import CorepackError from "/snippets/corepack-error.mdx";
 
 ## Development
 
@@ -29,6 +30,10 @@ Then change the permissions of the npm folder (if 1 doesn't work):
 sudo chown -R $(whoami) ~/.npm
 ```
 
+### Clear the build cache
+
+Ensure you have stopped your local dev server then locate the hidden `.trigger` folder in your project and delete it. You can then restart your local dev server.
+
 ## Deployment
 
 Running the [trigger.dev deploy] command builds and deploys your code. Sometimes there can be issues building your code.
@@ -46,6 +51,29 @@ There should be a link below the error message to the full build logs on your ma
 ### `Deployment encountered an error`
 
 Usually there will be some useful guidance below this message. If you can't figure out what's going wrong then join [our Discord](https://trigger.dev/discord) and create a Help forum post with a link to your deployment.
+
+### `No loader is configured for ".node" files`
+
+This happens because `.node` files are native code and can't be bundled like other packages. To fix this, add your package to [`build.external`](/config/config-file#external) in the `trigger.config.ts` file like this:
+
+```ts trigger.config.ts
+import { defineConfig } from "@trigger.dev/sdk/v3";
+
+export default defineConfig({
+  project: "<project ref>",
+  // Your other config settings...
+  build: {
+    external: ["your-node-package"],
+  },
+});
+```
+
+### `Cannot find module '/app/lib/worker.js"` when using pino
+
+If you see this error, add pino (and any other associated packages) to your `external` build settings in your `trigger.config.ts` file. Learn more about the `external` setting in the [config docs](/config/config-file#external).
+
+<CorepackError />
+
 
 ## Project setup issues
 
@@ -78,13 +106,14 @@ Your code is deployed separately from the rest of your app(s) so you need to mak
 
 ### `Error: @prisma/client did not initialize yet.`
 
-Prisma uses code generation to create the client from your schema file. This means you need to add a bit of config so we can generate this file before your tasks run: [Read the guide](/config/config-file#prisma).
+Prisma uses code generation to create the client from your schema file. This means you need to add a bit of config so we can generate this file before your tasks run: [Read the guide](/config/extensions/prismaExtension).
 
 ### `Parallel waits are not supported`
 
 In the current version, you can't perform more that one "wait" in parallel.
 
 Waits include:
+
 - `wait.for()`
 - `wait.until()`
 - `task.triggerAndWait()`

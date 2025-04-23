@@ -4,6 +4,8 @@ sidebarTitle: "Beta upgrade"
 description: "How to update to 3.0.0 from the beta"
 ---
 
+import DebuggingInVSCode from '/snippets/debugging_in_vscode.mdx';
+
 The Trigger.dev packages are now at version `3.0.x` in the `latest` tag. This is our first official release of v3 under the latest tag, and we recommend anyone still using packages in the `beta` tag to upgrade to the latest version. This guide will help you upgrade your project to the latest version of Trigger.dev.
 
 The major changes in this release are a new build system, which is more flexible and powerful than the previous build system. We've also made some changes to the `trigger.dev` CLI to improve the developer experience.
@@ -374,27 +376,7 @@ The `.env` file works slightly differently in `dev` vs `deploy`:
 
 ### dev debugging in VS Code
 
-Debugging your tasks code in `dev` is now supported via VS Code, without having to pass in any additional flags. Create a launch configuration in `.vscode/launch.json`:
-
-```json launch.json
-{
-  "version": "0.2.0",
-  "configurations": [
-    {
-      "name": "Trigger.dev: Dev",
-      "type": "node",
-      "request": "launch",
-      "cwd": "${workspaceFolder}",
-      "runtimeExecutable": "npx",
-      "runtimeArgs": ["trigger.dev@latest", "dev"],
-      "skipFiles": ["<node_internals>/**"],
-      "sourceMaps": true
-    }
-  ]
-}
-```
-
-Then you can start debugging your tasks code by selecting the `Trigger.dev: Dev` configuration in the debug panel, and set breakpoints in your tasks code.
+<DebuggingInVSCode />
 
 ### TRIGGER_ACCESS_TOKEN in dev
 

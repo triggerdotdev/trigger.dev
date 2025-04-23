@@ -1,10 +1,8 @@
-import { Link, NavLink, useLocation } from "@remix-run/react";
+import { NavLink } from "@remix-run/react";
 import { motion } from "framer-motion";
 import { ReactNode, useRef } from "react";
-import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
-import { projectPubSub } from "~/v3/services/projectPubSub.server";
 import { ShortcutKey } from "./ShortcutKey";
 
 export type TabsProps = {

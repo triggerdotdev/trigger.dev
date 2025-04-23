@@ -15,8 +15,8 @@
     "db:seed": "turbo run db:seed",
     "db:studio": "turbo run db:studio",
     "db:populate": "turbo run db:populate",
-    "dev": "turbo run dev --parallel",
-    "i:dev": "infisical run -- turbo run dev --parallel",
+    "dev": "turbo run dev",
+    "i:dev": "infisical run -- turbo run dev",
     "format": "prettier . --write --config prettier.config.js",
     "generate": "turbo run generate",
     "lint": "turbo run lint",
@@ -25,7 +25,10 @@
     "dev:docker": "docker compose -p triggerdotdev-dev-docker -f docker/dev-compose.yml up -d",
     "dev:docker:build": "docker compose -p triggerdotdev-dev-docker -f docker/dev-compose.yml up -d --build",
     "dev:docker:stop": "docker compose -p triggerdotdev-dev-docker -f docker/dev-compose.yml stop",
-    "test": "turbo run test",
+    "test": "turbo run test --concurrency=1 -- --run",
+    "test:webapp": "turbo run test --filter webapp -- --run",
+    "test:packages": "turbo run test --concurrency=1 --filter \"@trigger.dev/*\" -- --run",
+    "test:internal": "turbo run test --concurrency=1 --filter \"@internal/*\" -- --run",
     "test:dev": "turbo run test:dev",
     "start": "turbo run start",
     "check-exports": "turbo run check-exports",
@@ -41,7 +44,7 @@
     "changeset:add": "changeset",
     "changeset:version": "changeset version",
     "changeset:release": "pnpm run build --filter \"@trigger.dev/*\" --filter \"trigger.dev\" && changeset publish",
-    "changeset:beta": "changeset pre enter beta",
+    "changeset:v4": "changeset pre enter v4",
     "changeset:normal": "changeset pre exit",
     "clean:sourcemaps": "turbo run clean:sourcemaps",
     "storybook": "turbo run storybook"
@@ -53,11 +56,12 @@
     "@types/node": "20.14.14",
     "autoprefixer": "^10.4.12",
     "eslint-plugin-turbo": "^2.0.4",
+    "lefthook": "^1.11.3",
     "pkg-types": "1.1.3",
     "prettier": "^3.0.0",
     "tsx": "^3.7.1",
     "turbo": "^1.10.3",
-    "typescript": "^5.5.4",
+    "typescript": "5.5.4",
     "vite": "^4.1.1",
     "vite-tsconfig-paths": "^4.0.5",
     "vitest": "^0.28.4"
@@ -72,7 +76,10 @@
     "patchedDependencies": {
       "@changesets/assemble-release-plan@5.2.4": "patches/@changesets__assemble-release-plan@5.2.4.patch",
       "engine.io-parser@5.2.2": "patches/engine.io-parser@5.2.2.patch",
-      "graphile-worker@0.16.6": "patches/graphile-worker@0.16.6.patch"
+      "graphile-worker@0.16.6": "patches/graphile-worker@0.16.6.patch",
+      "redlock@5.0.0-beta.2": "patches/redlock@5.0.0-beta.2.patch",
+      "supports-hyperlinks@2.3.0": "patches/supports-hyperlinks@2.3.0.patch",
+      "@kubernetes/client-node@1.0.0": "patches/@kubernetes__client-node@1.0.0.patch"
     }
   }
 }

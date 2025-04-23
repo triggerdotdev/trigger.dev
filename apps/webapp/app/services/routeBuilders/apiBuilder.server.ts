@@ -17,11 +17,17 @@ import {
   PersonalAccessTokenAuthenticationResult,
 } from "../personalAccessToken.server";
 import { safeJsonParse } from "~/utils/json";
+import {
+  AuthenticatedWorkerInstance,
+  WorkerGroupTokenService,
+} from "~/v3/services/worker/workerGroupTokenService.server";
+
+type AnyZodSchema = z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;
 
 type ApiKeyRouteBuilderOptions<
-  TParamsSchema extends z.AnyZodObject | undefined = undefined,
-  TSearchParamsSchema extends z.AnyZodObject | undefined = undefined,
-  THeadersSchema extends z.AnyZodObject | undefined = undefined,
+  TParamsSchema extends AnyZodSchema | undefined = undefined,
+  TSearchParamsSchema extends AnyZodSchema | undefined = undefined,
+  THeadersSchema extends AnyZodSchema | undefined = undefined,
   TResource = never
 > = {
   params?: TParamsSchema;
@@ -30,44 +36,63 @@ type ApiKeyRouteBuilderOptions<
   allowJWT?: boolean;
   corsStrategy?: "all" | "none";
   findResource: (
-    params: TParamsSchema extends z.AnyZodObject ? z.infer<TParamsSchema> : undefined,
-    authentication: ApiAuthenticationResultSuccess
+    params: TParamsSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
+      ? z.infer<TParamsSchema>
+      : undefined,
+    authentication: ApiAuthenticationResultSuccess,
+    searchParams: TSearchParamsSchema extends
+      | z.ZodFirstPartySchemaTypes
+      | z.ZodDiscriminatedUnion<any, any>
+      ? z.infer<TSearchParamsSchema>
+      : undefined
   ) => Promise<TResource | undefined>;
   shouldRetryNotFound?: boolean;
   authorization?: {
     action: AuthorizationAction;
     resource: (
       resource: NonNullable<TResource>,
-      params: TParamsSchema extends z.AnyZodObject ? z.infer<TParamsSchema> : undefined,
-      searchParams: TSearchParamsSchema extends z.AnyZodObject
+      params: TParamsSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
+        ? z.infer<TParamsSchema>
+        : undefined,
+      searchParams: TSearchParamsSchema extends
+        | z.ZodFirstPartySchemaTypes
+        | z.ZodDiscriminatedUnion<any, any>
         ? z.infer<TSearchParamsSchema>
         : undefined,
-      headers: THeadersSchema extends z.AnyZodObject ? z.infer<THeadersSchema> : undefined
+      headers: THeadersSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
+        ? z.infer<THeadersSchema>
+        : undefined
     ) => AuthorizationResources;
     superScopes?: string[];
   };
 };
 
 type ApiKeyHandlerFunction<
-  TParamsSchema extends z.AnyZodObject | undefined,
-  TSearchParamsSchema extends z.AnyZodObject | undefined,
-  THeadersSchema extends z.AnyZodObject | undefined = undefined,
+  TParamsSchema extends AnyZodSchema | undefined,
+  TSearchParamsSchema extends AnyZodSchema | undefined,
+  THeadersSchema extends AnyZodSchema | undefined = undefined,
   TResource = never
 > = (args: {
-  params: TParamsSchema extends z.AnyZodObject ? z.infer<TParamsSchema> : undefined;
-  searchParams: TSearchParamsSchema extends z.AnyZodObject
+  params: TParamsSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
+    ? z.infer<TParamsSchema>
+    : undefined;
+  searchParams: TSearchParamsSchema extends
+    | z.ZodFirstPartySchemaTypes
+    | z.ZodDiscriminatedUnion<any, any>
     ? z.infer<TSearchParamsSchema>
     : undefined;
-  headers: THeadersSchema extends z.AnyZodObject ? z.infer<THeadersSchema> : undefined;
+  headers: THeadersSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
+    ? z.infer<THeadersSchema>
+    : undefined;
   authentication: ApiAuthenticationResultSuccess;
   request: Request;
   resource: NonNullable<TResource>;
 }) => Promise<Response>;
 
 export function createLoaderApiRoute<
-  TParamsSchema extends z.AnyZodObject | undefined = undefined,
-  TSearchParamsSchema extends z.AnyZodObject | undefined = undefined,
-  THeadersSchema extends z.AnyZodObject | undefined = undefined,
+  TParamsSchema extends AnyZodSchema | undefined = undefined,
+  TSearchParamsSchema extends AnyZodSchema | undefined = undefined,
+  THeadersSchema extends AnyZodSchema | undefined = undefined,
   TResource = never
 >(
   options: ApiKeyRouteBuilderOptions<TParamsSchema, TSearchParamsSchema, THeadersSchema, TResource>,
@@ -159,7 +184,7 @@ export function createLoaderApiRoute<
       }
 
       // Find the resource
-      const resource = await findResource(parsedParams, authenticationResult);
+      const resource = await findResource(parsedParams, authenticationResult, parsedSearchParams);
 
       if (!resource) {
         return await wrapResponse(
@@ -226,6 +251,19 @@ export function createLoaderApiRoute<
         if (error instanceof Response) {
           return await wrapResponse(request, error, corsStrategy !== "none");
         }
+
+        logger.error("Error in loader", {
+          error:
+            error instanceof Error
+              ? {
+                  name: error.name,
+                  message: error.message,
+                  stack: error.stack,
+                }
+              : String(error),
+          url: request.url,
+        });
+
         return await wrapResponse(
           request,
           json({ error: "Internal Server Error" }, { status: 500 }),
@@ -241,9 +279,9 @@ export function createLoaderApiRoute<
 }
 
 type PATRouteBuilderOptions<
-  TParamsSchema extends z.AnyZodObject | undefined = undefined,
-  TSearchParamsSchema extends z.AnyZodObject | undefined = undefined,
-  THeadersSchema extends z.AnyZodObject | undefined = undefined
+  TParamsSchema extends AnyZodSchema | undefined = undefined,
+  TSearchParamsSchema extends AnyZodSchema | undefined = undefined,
+  THeadersSchema extends AnyZodSchema | undefined = undefined
 > = {
   params?: TParamsSchema;
   searchParams?: TSearchParamsSchema;
@@ -252,23 +290,29 @@ type PATRouteBuilderOptions<
 };
 
 type PATHandlerFunction<
-  TParamsSchema extends z.AnyZodObject | undefined,
-  TSearchParamsSchema extends z.AnyZodObject | undefined,
-  THeadersSchema extends z.AnyZodObject | undefined = undefined
+  TParamsSchema extends AnyZodSchema | undefined,
+  TSearchParamsSchema extends AnyZodSchema | undefined,
+  THeadersSchema extends AnyZodSchema | undefined = undefined
 > = (args: {
-  params: TParamsSchema extends z.AnyZodObject ? z.infer<TParamsSchema> : undefined;
-  searchParams: TSearchParamsSchema extends z.AnyZodObject
+  params: TParamsSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
+    ? z.infer<TParamsSchema>
+    : undefined;
+  searchParams: TSearchParamsSchema extends
+    | z.ZodFirstPartySchemaTypes
+    | z.ZodDiscriminatedUnion<any, any>
     ? z.infer<TSearchParamsSchema>
     : undefined;
-  headers: THeadersSchema extends z.AnyZodObject ? z.infer<THeadersSchema> : undefined;
+  headers: THeadersSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
+    ? z.infer<THeadersSchema>
+    : undefined;
   authentication: PersonalAccessTokenAuthenticationResult;
   request: Request;
 }) => Promise<Response>;
 
 export function createLoaderPATApiRoute<
-  TParamsSchema extends z.AnyZodObject | undefined = undefined,
-  TSearchParamsSchema extends z.AnyZodObject | undefined = undefined,
-  THeadersSchema extends z.AnyZodObject | undefined = undefined
+  TParamsSchema extends AnyZodSchema | undefined = undefined,
+  TSearchParamsSchema extends AnyZodSchema | undefined = undefined,
+  THeadersSchema extends AnyZodSchema | undefined = undefined
 >(
   options: PATRouteBuilderOptions<TParamsSchema, TSearchParamsSchema, THeadersSchema>,
   handler: PATHandlerFunction<TParamsSchema, TSearchParamsSchema, THeadersSchema>
@@ -374,10 +418,10 @@ export function createLoaderPATApiRoute<
 }
 
 type ApiKeyActionRouteBuilderOptions<
-  TParamsSchema extends z.AnyZodObject | undefined = undefined,
-  TSearchParamsSchema extends z.AnyZodObject | undefined = undefined,
-  THeadersSchema extends z.AnyZodObject | undefined = undefined,
-  TBodySchema extends z.AnyZodObject | undefined = undefined
+  TParamsSchema extends AnyZodSchema | undefined = undefined,
+  TSearchParamsSchema extends AnyZodSchema | undefined = undefined,
+  THeadersSchema extends AnyZodSchema | undefined = undefined,
+  TBodySchema extends AnyZodSchema | undefined = undefined
 > = {
   params?: TParamsSchema;
   searchParams?: TSearchParamsSchema;
@@ -388,12 +432,20 @@ type ApiKeyActionRouteBuilderOptions<
   authorization?: {
     action: AuthorizationAction;
     resource: (
-      params: TParamsSchema extends z.AnyZodObject ? z.infer<TParamsSchema> : undefined,
-      searchParams: TSearchParamsSchema extends z.AnyZodObject
+      params: TParamsSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
+        ? z.infer<TParamsSchema>
+        : undefined,
+      searchParams: TSearchParamsSchema extends
+        | z.ZodFirstPartySchemaTypes
+        | z.ZodDiscriminatedUnion<any, any>
         ? z.infer<TSearchParamsSchema>
         : undefined,
-      headers: THeadersSchema extends z.AnyZodObject ? z.infer<THeadersSchema> : undefined,
-      body: TBodySchema extends z.AnyZodObject ? z.infer<TBodySchema> : undefined
+      headers: THeadersSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
+        ? z.infer<THeadersSchema>
+        : undefined,
+      body: TBodySchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
+        ? z.infer<TBodySchema>
+        : undefined
     ) => AuthorizationResources;
     superScopes?: string[];
   };
@@ -402,26 +454,34 @@ type ApiKeyActionRouteBuilderOptions<
 };
 
 type ApiKeyActionHandlerFunction<
-  TParamsSchema extends z.AnyZodObject | undefined,
-  TSearchParamsSchema extends z.AnyZodObject | undefined,
-  THeadersSchema extends z.AnyZodObject | undefined = undefined,
-  TBodySchema extends z.AnyZodObject | undefined = undefined
+  TParamsSchema extends AnyZodSchema | undefined,
+  TSearchParamsSchema extends AnyZodSchema | undefined,
+  THeadersSchema extends AnyZodSchema | undefined = undefined,
+  TBodySchema extends AnyZodSchema | undefined = undefined
 > = (args: {
-  params: TParamsSchema extends z.AnyZodObject ? z.infer<TParamsSchema> : undefined;
-  searchParams: TSearchParamsSchema extends z.AnyZodObject
+  params: TParamsSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
+    ? z.infer<TParamsSchema>
+    : undefined;
+  searchParams: TSearchParamsSchema extends
+    | z.ZodFirstPartySchemaTypes
+    | z.ZodDiscriminatedUnion<any, any>
     ? z.infer<TSearchParamsSchema>
     : undefined;
-  headers: THeadersSchema extends z.AnyZodObject ? z.infer<THeadersSchema> : undefined;
-  body: TBodySchema extends z.AnyZodObject ? z.infer<TBodySchema> : undefined;
+  headers: THeadersSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
+    ? z.infer<THeadersSchema>
+    : undefined;
+  body: TBodySchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
+    ? z.infer<TBodySchema>
+    : undefined;
   authentication: ApiAuthenticationResultSuccess;
   request: Request;
 }) => Promise<Response>;
 
 export function createActionApiRoute<
-  TParamsSchema extends z.AnyZodObject | undefined = undefined,
-  TSearchParamsSchema extends z.AnyZodObject | undefined = undefined,
-  THeadersSchema extends z.AnyZodObject | undefined = undefined,
-  TBodySchema extends z.AnyZodObject | undefined = undefined
+  TParamsSchema extends AnyZodSchema | undefined = undefined,
+  TSearchParamsSchema extends AnyZodSchema | undefined = undefined,
+  THeadersSchema extends AnyZodSchema | undefined = undefined,
+  TBodySchema extends AnyZodSchema | undefined = undefined
 >(
   options: ApiKeyActionRouteBuilderOptions<
     TParamsSchema,
@@ -666,4 +726,290 @@ async function wrapResponse(
         exposedHeaders: ["x-trigger-jwt", "x-trigger-jwt-claims"],
       })
     : response;
+}
+
+type WorkerLoaderRouteBuilderOptions<
+  TParamsSchema extends AnyZodSchema | undefined = undefined,
+  TSearchParamsSchema extends AnyZodSchema | undefined = undefined,
+  THeadersSchema extends AnyZodSchema | undefined = undefined
+> = {
+  params?: TParamsSchema;
+  searchParams?: TSearchParamsSchema;
+  headers?: THeadersSchema;
+};
+
+type WorkerLoaderHandlerFunction<
+  TParamsSchema extends AnyZodSchema | undefined,
+  TSearchParamsSchema extends AnyZodSchema | undefined,
+  THeadersSchema extends AnyZodSchema | undefined = undefined
+> = (args: {
+  params: TParamsSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
+    ? z.infer<TParamsSchema>
+    : undefined;
+  searchParams: TSearchParamsSchema extends
+    | z.ZodFirstPartySchemaTypes
+    | z.ZodDiscriminatedUnion<any, any>
+    ? z.infer<TSearchParamsSchema>
+    : undefined;
+  authenticatedWorker: AuthenticatedWorkerInstance;
+  request: Request;
+  headers: THeadersSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
+    ? z.infer<THeadersSchema>
+    : undefined;
+}) => Promise<Response>;
+
+export function createLoaderWorkerApiRoute<
+  TParamsSchema extends AnyZodSchema | undefined = undefined,
+  TSearchParamsSchema extends AnyZodSchema | undefined = undefined,
+  THeadersSchema extends AnyZodSchema | undefined = undefined
+>(
+  options: WorkerLoaderRouteBuilderOptions<TParamsSchema, TSearchParamsSchema, THeadersSchema>,
+  handler: WorkerLoaderHandlerFunction<TParamsSchema, TSearchParamsSchema, THeadersSchema>
+) {
+  return async function loader({ request, params }: LoaderFunctionArgs) {
+    const {
+      params: paramsSchema,
+      searchParams: searchParamsSchema,
+      headers: headersSchema,
+    } = options;
+
+    try {
+      const service = new WorkerGroupTokenService();
+      const authenticationResult = await service.authenticate(request);
+
+      if (!authenticationResult) {
+        return json({ error: "Invalid or missing worker token" }, { status: 401 });
+      }
+
+      let parsedParams: any = undefined;
+      if (paramsSchema) {
+        const parsed = paramsSchema.safeParse(params);
+        if (!parsed.success) {
+          return json(
+            { error: "Params Error", details: fromZodError(parsed.error).details },
+            { status: 400 }
+          );
+        }
+        parsedParams = parsed.data;
+      }
+
+      let parsedSearchParams: any = undefined;
+      if (searchParamsSchema) {
+        const searchParams = Object.fromEntries(new URL(request.url).searchParams);
+        const parsed = searchParamsSchema.safeParse(searchParams);
+        if (!parsed.success) {
+          return json(
+            { error: "Query Error", details: fromZodError(parsed.error).details },
+            { status: 400 }
+          );
+        }
+        parsedSearchParams = parsed.data;
+      }
+
+      let parsedHeaders: any = undefined;
+      if (headersSchema) {
+        const rawHeaders = Object.fromEntries(request.headers);
+        const headers = headersSchema.safeParse(rawHeaders);
+        if (!headers.success) {
+          return json(
+            { error: "Headers Error", details: fromZodError(headers.error).details },
+            { status: 400 }
+          );
+        }
+        parsedHeaders = headers.data;
+      }
+
+      const result = await handler({
+        params: parsedParams,
+        searchParams: parsedSearchParams,
+        authenticatedWorker: authenticationResult,
+        request,
+        headers: parsedHeaders,
+      });
+      return result;
+    } catch (error) {
+      console.error("Error in API route:", error);
+      if (error instanceof Response) {
+        return error;
+      }
+
+      logger.error("Error in loader", {
+        error:
+          error instanceof Error
+            ? {
+                name: error.name,
+                message: error.message,
+                stack: error.stack,
+              }
+            : String(error),
+        url: request.url,
+      });
+
+      return json({ error: "Internal Server Error" }, { status: 500 });
+    }
+  };
+}
+
+type WorkerActionRouteBuilderOptions<
+  TParamsSchema extends AnyZodSchema | undefined = undefined,
+  TSearchParamsSchema extends AnyZodSchema | undefined = undefined,
+  THeadersSchema extends AnyZodSchema | undefined = undefined,
+  TBodySchema extends AnyZodSchema | undefined = undefined
+> = {
+  params?: TParamsSchema;
+  searchParams?: TSearchParamsSchema;
+  headers?: THeadersSchema;
+  body?: TBodySchema;
+  method?: "POST" | "PUT" | "DELETE" | "PATCH";
+};
+
+type WorkerActionHandlerFunction<
+  TParamsSchema extends AnyZodSchema | undefined,
+  TSearchParamsSchema extends AnyZodSchema | undefined,
+  THeadersSchema extends AnyZodSchema | undefined = undefined,
+  TBodySchema extends AnyZodSchema | undefined = undefined
+> = (args: {
+  params: TParamsSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
+    ? z.infer<TParamsSchema>
+    : undefined;
+  searchParams: TSearchParamsSchema extends
+    | z.ZodFirstPartySchemaTypes
+    | z.ZodDiscriminatedUnion<any, any>
+    ? z.infer<TSearchParamsSchema>
+    : undefined;
+  authenticatedWorker: AuthenticatedWorkerInstance;
+  request: Request;
+  headers: THeadersSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
+    ? z.infer<THeadersSchema>
+    : undefined;
+  body: TBodySchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
+    ? z.infer<TBodySchema>
+    : undefined;
+}) => Promise<Response>;
+
+export function createActionWorkerApiRoute<
+  TParamsSchema extends AnyZodSchema | undefined = undefined,
+  TSearchParamsSchema extends AnyZodSchema | undefined = undefined,
+  THeadersSchema extends AnyZodSchema | undefined = undefined,
+  TBodySchema extends AnyZodSchema | undefined = undefined
+>(
+  options: WorkerActionRouteBuilderOptions<
+    TParamsSchema,
+    TSearchParamsSchema,
+    THeadersSchema,
+    TBodySchema
+  >,
+  handler: WorkerActionHandlerFunction<
+    TParamsSchema,
+    TSearchParamsSchema,
+    THeadersSchema,
+    TBodySchema
+  >
+) {
+  return async function action({ request, params }: ActionFunctionArgs) {
+    if (options.method) {
+      if (request.method.toUpperCase() !== options.method) {
+        return json(
+          { error: "Method not allowed" },
+          { status: 405, headers: { Allow: options.method } }
+        );
+      }
+    }
+
+    const {
+      params: paramsSchema,
+      searchParams: searchParamsSchema,
+      body: bodySchema,
+      headers: headersSchema,
+    } = options;
+
+    try {
+      const service = new WorkerGroupTokenService();
+      const authenticationResult = await service.authenticate(request);
+
+      if (!authenticationResult) {
+        return json({ error: "Invalid or missing worker token" }, { status: 401 });
+      }
+
+      let parsedParams: any = undefined;
+      if (paramsSchema) {
+        const parsed = paramsSchema.safeParse(params);
+        if (!parsed.success) {
+          return json(
+            { error: "Params Error", details: fromZodError(parsed.error).details },
+            { status: 400 }
+          );
+        }
+        parsedParams = parsed.data;
+      }
+
+      let parsedSearchParams: any = undefined;
+      if (searchParamsSchema) {
+        const searchParams = Object.fromEntries(new URL(request.url).searchParams);
+        const parsed = searchParamsSchema.safeParse(searchParams);
+        if (!parsed.success) {
+          return json(
+            { error: "Query Error", details: fromZodError(parsed.error).details },
+            { status: 400 }
+          );
+        }
+        parsedSearchParams = parsed.data;
+      }
+
+      let parsedHeaders: any = undefined;
+      if (headersSchema) {
+        const rawHeaders = Object.fromEntries(request.headers);
+        const headers = headersSchema.safeParse(rawHeaders);
+        if (!headers.success) {
+          return json(
+            { error: "Headers Error", details: fromZodError(headers.error).details },
+            { status: 400 }
+          );
+        }
+        parsedHeaders = headers.data;
+      }
+
+      let parsedBody: any = undefined;
+      if (bodySchema) {
+        const body = await request.clone().json();
+        const parsed = bodySchema.safeParse(body);
+        if (!parsed.success) {
+          return json(
+            { error: "Body Error", details: fromZodError(parsed.error).details },
+            { status: 400 }
+          );
+        }
+        parsedBody = parsed.data;
+      }
+
+      const result = await handler({
+        params: parsedParams,
+        searchParams: parsedSearchParams,
+        authenticatedWorker: authenticationResult,
+        request,
+        body: parsedBody,
+        headers: parsedHeaders,
+      });
+      return result;
+    } catch (error) {
+      console.error("Error in API route:", error);
+      if (error instanceof Response) {
+        return error;
+      }
+
+      logger.error("Error in action", {
+        error:
+          error instanceof Error
+            ? {
+                name: error.name,
+                message: error.message,
+                stack: error.stack,
+              }
+            : String(error),
+        url: request.url,
+      });
+
+      return json({ error: "Internal Server Error" }, { status: 500 });
+    }
+  };
 }

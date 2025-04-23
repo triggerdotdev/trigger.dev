@@ -1,0 +1,172 @@
+---
+title: "Atomic deploys"
+sidebarTitle: "Atomic deploys"
+description: "Use atomic deploys to coordinate changes to your tasks and your application."
+---
+
+Atomic deploys in Trigger.dev allow you to synchronize the deployment of your application with a specific version of your tasks. This ensures that your application always uses the correct version of its associated tasks, preventing inconsistencies or errors due to version mismatches.
+
+## How it works
+
+Atomic deploys achieve synchronization by deploying your tasks to Trigger.dev without promoting them to the default version. Instead, you explicitly specify the deployed task version in your application’s environment. Here’s the process at a glance:
+
+1. **Deploy Tasks to Trigger.dev**: Use the Trigger.dev CLI to deploy your tasks with the `--skip-promotion` flag. This creates a new task version without making it the default.
+2. **Capture the Deployment Version**: The CLI outputs the version of the deployed tasks, which you’ll use in the next step.
+3. **Deploy Your Application**: Deploy your application (e.g., to Vercel), setting an environment variable like `TRIGGER_VERSION` to the captured task version.
+
+## Vercel CLI & GitHub Actions
+
+If you deploy to Vercel via their CLI, you can use this sample workflow that demonstrates performing atomic deploys with GitHub Actions, Trigger.dev, and Vercel:
+
+```yml
+name: Deploy to Trigger.dev (prod)
+on:
+  push:
+    branches:
+      - main
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js 20.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.x"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Deploy Trigger.dev
+        id: deploy-trigger
+        env:
+          TRIGGER_ACCESS_TOKEN: ${{ secrets.TRIGGER_ACCESS_TOKEN }}
+        run: |
+          npx trigger.dev@latest deploy --skip-promotion
+
+      - name: Deploy to Vercel
+        run: npx vercel --yes --prod -e TRIGGER_VERSION=$TRIGGER_VERSION --token $VERCEL_TOKEN
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          TRIGGER_VERSION: ${{ steps.deploy-trigger.outputs.deploymentVersion }}
+
+      - name: Promote Trigger.dev Version
+        run: npx trigger.dev@latest promote $TRIGGER_VERSION
+        env:
+          TRIGGER_ACCESS_TOKEN: ${{ secrets.TRIGGER_ACCESS_TOKEN }}
+          TRIGGER_VERSION: ${{ steps.deploy-trigger.outputs.deploymentVersion }}
+```
+
+- Deploy to Trigger.dev
+
+  - The `npx trigger.dev deploy` command uses `--skip-promotion` to deploy the tasks without setting the version as the default.
+  - The step’s id: `deploy-trigger` allows us to capture the deployment version in the output (deploymentVersion).
+
+- Deploy to Vercel:
+  - The `npx vercel` command deploys the application, setting the `TRIGGER_VERSION` environment variable to the task version from the previous step.
+  - The --prod flag ensures a production deployment, and -e passes the environment variable.
+  - The `@trigger.dev/sdk` automatically uses the `TRIGGER_VERSION` environment variable to trigger the correct version of the tasks.
+
+For this workflow to work, you need to set up the following secrets in your GitHub repository:
+
+- `TRIGGER_ACCESS_TOKEN`: Your Trigger.dev personal access token. View the instructions [here](/github-actions) to learn more.
+- `VERCEL_TOKEN`: Your Vercel personal access token. You can find this in your Vercel account settings.
+
+## Vercel GitHub integration
+
+If you're are using Vercel, chances are you are using their GitHub integration and deploying your application directly from pushes to GitHub. This section covers how to achieve atomic deploys with Trigger.dev in this setup.
+
+### Turn off automatic promotion
+
+By default, Vercel automatically promotes new deployments to production. To prevent this, you need to disable the auto-promotion feature in your Vercel project settings:
+
+1. Go to your Production environment settings in Vercel at `https://vercel.com/<team-slug>/<project-slug>/settings/environments/production`
+2. Disable the "Auto-assign Custom Production Domains" setting:
+
+![Vercel project settings showing the auto-promotion setting](/deployment/auto-assign-production-domains.png)
+
+3. Hit the "Save" button to apply the changes.
+
+Now whenever you push to your main branch, Vercel will deploy your application to the production environment without promoting it, and you can control the promotion manually.
+
+### Deploy with Trigger.dev
+
+Now we want to deploy that same commit to Trigger.dev, and then promote the Vercel deployment when that completes. Here's a sample GitHub Actions workflow that does this:
+
+```yml
+name: Deploy to Trigger.dev (prod)
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js 20.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.x"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Wait for vercel deployment (push)
+        id: wait-for-vercel
+        uses: ludalex/vercel-wait@v1
+        with:
+          project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          team-id: ${{ secrets.VERCEL_SCOPE_NAME }}
+          token: ${{ secrets.VERCEL_TOKEN }}
+          sha: ${{ github.sha }}
+
+      - name: 🚀 Deploy Trigger.dev
+        id: deploy-trigger
+        env:
+          TRIGGER_ACCESS_TOKEN: ${{ secrets.TRIGGER_ACCESS_TOKEN }}
+        run: |
+          npx trigger.dev@latest deploy
+
+      - name: Promote Vercel deploy
+        run: npx vercel promote $VERCEL_DEPLOYMENT_ID --yes --token $VERCEL_TOKEN --scope $VERCEL_SCOPE_NAME
+        env:
+          VERCEL_DEPLOYMENT_ID: ${{ steps.wait-for-vercel.outputs.deployment-id }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_SCOPE_NAME: ${{ secrets.VERCEL_SCOPE_NAME }}
+```
+
+This workflow does the following:
+
+1. Waits for the Vercel deployment to complete using the `ludalex/vercel-wait` action.
+2. Deploys the tasks to Trigger.dev using the `npx trigger.dev deploy` command. There's no need to use the `--skip-promotion` flag because we want to promote the deployment.
+3. Promotes the Vercel deployment using the `npx vercel promote` command.
+
+For this workflow to work, you need to set up the following secrets in your GitHub repository:
+
+- `TRIGGER_ACCESS_TOKEN`: Your Trigger.dev personal access token. View the instructions [here](/github-actions) to learn more.
+- `VERCEL_TOKEN`: Your Vercel personal access token. You can find this in your Vercel account settings.
+- `VERCEL_PROJECT_ID`: Your Vercel project ID. You can find this in your Vercel project settings.
+- `VERCEL_SCOPE_NAME`: Your Vercel team slug.
+
+Checkout our [example repo](https://github.com/ericallam/vercel-atomic-deploys) to see this workflow in action.
+
+<Note>
+  We are using the `ludalex/vercel-wait` action above as a fork of the [official
+  tj-actions/vercel-wait](https://github.com/tj-actions/vercel-wait) action because there is a bug
+  in the official action that exits early if the deployment isn't found in the first check and due
+  to the fact that it supports treating skipped (cancelled) Vercel deployments as valid (on by default). 
+  I've opened a PR for this issue [here](https://github.com/tj-actions/vercel-wait/pull/106).
+</Note>

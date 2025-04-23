@@ -4,7 +4,6 @@ import { useEffect, useRef } from "react";
 import { useOrganizationChanged } from "./useOrganizations";
 import { useOptionalUser, useUserChanged } from "./useUser";
 import { useProjectChanged } from "./useProject";
-import { useJobChanged } from "./useJob";
 
 export const usePostHog = (apiKey?: string, logging = false, debug = false): void => {
   const postHogInitialized = useRef(false);
@@ -60,14 +59,6 @@ export const usePostHog = (apiKey?: string, logging = false, debug = false): voi
     if (project) {
       if (logging) console.log(`Grouping by project`, project);
       posthog.group("project", project.id);
-    }
-  });
-
-  useJobChanged((job) => {
-    if (postHogInitialized.current === false) return;
-    if (job) {
-      if (logging) console.log(`Grouping by job`, job);
-      posthog.group("job", job.id);
     }
   });
 

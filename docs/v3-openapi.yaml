@@ -1677,7 +1677,7 @@ components:
             type: string
             description: The status of the run
             enum:
-              - WAITING_FOR_DEPLOY
+              - PENDING_VERSION
               - QUEUED
               - EXECUTING
               - REATTEMPTING
@@ -1752,7 +1752,7 @@ components:
           type: string
           description: The status of the run
           enum:
-            - WAITING_FOR_DEPLOY
+            - PENDING_VERSION
             - QUEUED
             - EXECUTING
             - REATTEMPTING
@@ -1947,8 +1947,8 @@ components:
           type: string
           description: The status of the run
           enum:
+            - PENDING_VERSION
             - DELAYED
-            - WAITING_FOR_DEPLOY
             - QUEUED
             - EXECUTING
             - REATTEMPTING

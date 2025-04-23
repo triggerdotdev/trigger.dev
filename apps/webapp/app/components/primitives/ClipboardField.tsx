@@ -2,7 +2,6 @@ import { CheckIcon } from "@heroicons/react/20/solid";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "~/utils/cn";
 import { Button } from "./Buttons";
-import { IconNames, NamedIcon } from "./NamedIcon";
 import { ClipboardCheckIcon, ClipboardIcon } from "lucide-react";
 
 const variants = {
@@ -74,7 +73,7 @@ type ClipboardFieldProps = {
   secure?: boolean | string;
   variant: keyof typeof variants;
   className?: string;
-  icon?: IconNames | React.ReactNode;
+  icon?: React.ReactNode;
   iconButton?: boolean;
   fullWidth?: boolean;
 };
@@ -120,7 +119,7 @@ export function ClipboardField({
           onClick={() => inputIcon.current && inputIcon.current.focus()}
           className={cn(iconPosition, "flex items-center")}
         >
-          {typeof icon === "string" ? <NamedIcon name={icon} className={iconClassName} /> : icon}
+          {icon}
         </span>
       )}
       <input

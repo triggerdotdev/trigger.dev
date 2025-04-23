@@ -1,8 +1,7 @@
 import { PrismaClient } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
-import { DeleteEndpointService } from "./endpoints/deleteEndpointService";
-import { logger } from "./logger.server";
-import { DisableScheduleSourceService } from "./schedules/disableScheduleSource.server";
+import { marqs } from "~/v3/marqs/index.server";
+import { engine } from "~/v3/runEngine.server";
 
 type Options = ({ projectId: string } | { projectSlug: string }) & {
   userId: string;
@@ -19,25 +18,7 @@ export class DeleteProjectService {
     const projectId = await this.#getProjectId(options);
     const project = await this.#prismaClient.project.findFirst({
       include: {
-        environments: {
-          include: {
-            endpoints: true,
-          },
-        },
-        jobs: {
-          where: { deletedAt: null },
-          include: {
-            aliases: {
-              where: {
-                name: "latest",
-              },
-              include: {
-                version: true,
-              },
-              take: 1,
-            },
-          },
-        },
+        environments: true,
         organization: true,
       },
       where: {
@@ -54,64 +35,29 @@ export class DeleteProjectService {
       return;
     }
 
-    //disable and delete all jobs
-    const service = new DisableScheduleSourceService();
+    // Remove queues from MARQS
     for (const environment of project.environments) {
-      //disable the event dispatchers
-      await this.#prismaClient.eventDispatcher.updateMany({
-        where: {
-          environmentId: environment.id,
-        },
-        data: {
-          enabled: false,
-        },
-      });
-      const eventDispatchers = await this.#prismaClient.eventDispatcher.findMany({
-        where: {
-          environmentId: environment.id,
-        },
-      });
-
-      logger.info("Deleting jobs", { jobs: project.jobs });
-      for (const job of project.jobs) {
-        //disable all the job versions
-        await this.#prismaClient.jobVersion.updateMany({
-          where: {
-            jobId: job.id,
-          },
-          data: {
-            status: "DISABLED",
-          },
-        });
-
-        await this.#prismaClient.job.update({
-          where: {
-            id: job.id,
-          },
-          data: {
-            deletedAt: new Date(),
-          },
-        });
-
-        //disable scheduled sources
-        for (const eventDispatcher of eventDispatchers) {
-          await service.call({
-            key: job.id,
-            dispatcher: eventDispatcher,
-          });
-        }
-      }
+      await marqs?.removeEnvironmentQueuesFromMasterQueue(project.organization.id, environment.id);
     }
 
-    //delete all endpoints
-    const deleteEndpointService = new DeleteEndpointService();
-    for (const environment of project.environments) {
-      for (const endpoint of environment.endpoints) {
-        await deleteEndpointService.call(endpoint.id, options.userId);
-      }
+    // Delete all queues from the RunEngine 2 prod master queues
+    const workerGroups = await this.#prismaClient.workerInstanceGroup.findMany({
+      select: {
+        masterQueue: true,
+      },
+    });
+    const engineMasterQueues = workerGroups.map((group) => group.masterQueue);
+    for (const masterQueue of engineMasterQueues) {
+      await engine.removeEnvironmentQueuesFromMasterQueue({
+        masterQueue,
+        organizationId: project.organization.id,
+        projectId: project.id,
+      });
     }
 
-    //mark the project as deleted
+    // Mark the project as deleted (do this last because it makes it impossible to try again)
+    // - This disables all API keys
+    // - This disables all schedules from being scheduled
     await this.#prismaClient.project.update({
       where: {
         id: project.id,

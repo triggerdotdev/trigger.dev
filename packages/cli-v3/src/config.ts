@@ -1,4 +1,10 @@
-import { ResolveEnvironmentVariablesFunction, TriggerConfig } from "@trigger.dev/core/v3";
+import {
+  BuildRuntime,
+  CompatibilityFlag,
+  CompatibilityFlagFeatures,
+  ResolveEnvironmentVariablesFunction,
+  TriggerConfig,
+} from "@trigger.dev/core/v3";
 import { DEFAULT_RUNTIME, ResolvedConfig } from "@trigger.dev/core/v3/build";
 import * as c12 from "c12";
 import { defu } from "defu";
@@ -131,6 +137,12 @@ export function configPlugin(resolvedConfig: ResolvedConfig): esbuild.Plugin | u
   };
 }
 
+function featuresFromCompatibilityFlags(flags: CompatibilityFlag[]): CompatibilityFlagFeatures {
+  return {
+    run_engine_v2: flags.includes("run_engine_v2"),
+  };
+}
+
 async function resolveConfig(
   cwd: string,
   result: c12.ResolvedConfig<TriggerConfig>,
@@ -157,6 +169,12 @@ async function resolveConfig(
 
   dirs = dirs.map((dir) => resolveTriggerDir(dir, workingDir));
 
+  const features = featuresFromCompatibilityFlags(
+    ["run_engine_v2" as const].concat(config.compatibilityFlags ?? [])
+  );
+
+  const defaultRuntime: BuildRuntime = features.run_engine_v2 ? "node" : DEFAULT_RUNTIME;
+
   const mergedConfig = defu(
     {
       workingDir,
@@ -170,7 +188,7 @@ async function resolveConfig(
     config,
     {
       dirs,
-      runtime: DEFAULT_RUNTIME,
+      runtime: defaultRuntime,
       tsconfig: tsconfigPath,
       build: {
         jsx: {
@@ -182,6 +200,8 @@ async function resolveConfig(
         external: [],
         conditions: [],
       },
+      compatibilityFlags: [],
+      features,
     }
   ) as ResolvedConfig; // TODO: For some reason, without this, there is a weird type error complaining about tsconfigPath being string | nullish, which can't be assigned to string | undefined
 
@@ -189,6 +209,7 @@ async function resolveConfig(
     ...mergedConfig,
     dirs: Array.from(new Set(dirs)),
     instrumentedPackageNames: getInstrumentedPackageNames(mergedConfig),
+    runtime: mergedConfig.runtime,
   };
 }
 

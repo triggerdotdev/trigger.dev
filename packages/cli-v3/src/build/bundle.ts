@@ -1,23 +1,28 @@
-import { ResolvedConfig } from "@trigger.dev/core/v3/build";
-import { BuildTarget, TaskFile } from "@trigger.dev/core/v3/schemas";
+import { CORE_VERSION } from "@trigger.dev/core/v3";
+import { DEFAULT_RUNTIME, ResolvedConfig } from "@trigger.dev/core/v3/build";
+import { BuildManifest, BuildTarget, TaskFile } from "@trigger.dev/core/v3/schemas";
 import * as esbuild from "esbuild";
 import { createHash } from "node:crypto";
-import { join, relative, resolve } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { createFile } from "../utilities/fileSystem.js";
 import { logger } from "../utilities/logger.js";
+import { resolveFileSources } from "../utilities/sourceFiles.js";
+import { VERSION } from "../version.js";
+import { createEntryPointManager } from "./entryPoints.js";
+import { copyManifestToDir } from "./manifests.js";
 import {
-  deployEntryPoints,
-  devEntryPoints,
+  getIndexControllerForTarget,
+  getIndexWorkerForTarget,
+  getRunControllerForTarget,
+  getRunWorkerForTarget,
   isIndexControllerForTarget,
   isIndexWorkerForTarget,
   isLoaderEntryPoint,
   isRunControllerForTarget,
   isRunWorkerForTarget,
   shims,
-  telemetryEntryPoint,
 } from "./packageModules.js";
 import { buildPlugins } from "./plugins.js";
-import { createEntryPointManager } from "./entryPoints.js";
 import { cliLink, prettyError } from "../utilities/cliOutput.js";
 import { SkipLoggingError } from "../cli/common.js";
 
@@ -42,6 +47,7 @@ export type BundleResult = {
   runControllerEntryPoint: string | undefined;
   indexWorkerEntryPoint: string | undefined;
   indexControllerEntryPoint: string | undefined;
+  initEntryPoint: string | undefined;
   stop: (() => Promise<void>) | undefined;
 };
 
@@ -78,7 +84,7 @@ export async function bundleWorker(options: BundleOptions): Promise<BundleResult
       Dirs config:
       ${resolvedConfig.dirs.join("\n- ")}
 
-      Search patterns: 
+      Search patterns:
       ${entryPointManager.patterns.join("\n- ")}
 
       Possible solutions:
@@ -198,6 +204,7 @@ async function createBuildOptions(
     logLevel: "silent",
     logOverride: {
       "empty-glob": "silent",
+      "package.json": "silent",
     },
   };
 }
@@ -224,10 +231,28 @@ export async function getBundleResultFromBuild(
   let runControllerEntryPoint: string | undefined;
   let indexWorkerEntryPoint: string | undefined;
   let indexControllerEntryPoint: string | undefined;
+  let initEntryPoint: string | undefined;
 
   const configEntryPoint = resolvedConfig.configFile
     ? relative(resolvedConfig.workingDir, resolvedConfig.configFile)
     : "trigger.config.ts";
+
+  // Check if the entry point is an init.ts file at the root of a trigger directory
+  function isInitEntryPoint(entryPoint: string): boolean {
+    const initFileNames = ["init.ts", "init.mts", "init.cts", "init.js", "init.mjs", "init.cjs"];
+
+    // Check if it's directly in one of the trigger directories
+    return resolvedConfig.dirs.some((dir) => {
+      const normalizedDir = resolve(dir);
+      const normalizedEntryDir = resolve(dirname(entryPoint));
+
+      if (normalizedDir !== normalizedEntryDir) {
+        return false;
+      }
+
+      return initFileNames.includes(basename(entryPoint));
+    });
+  }
 
   for (const [outputPath, outputMeta] of Object.entries(result.metafile.outputs)) {
     if (outputPath.endsWith(".mjs")) {
@@ -249,6 +274,8 @@ export async function getBundleResultFromBuild(
         indexControllerEntryPoint = $outputPath;
       } else if (isIndexWorkerForTarget(outputMeta.entryPoint, target)) {
         indexWorkerEntryPoint = $outputPath;
+      } else if (isInitEntryPoint(outputMeta.entryPoint)) {
+        initEntryPoint = $outputPath;
       } else {
         if (
           !outputMeta.entryPoint.startsWith("..") &&
@@ -275,28 +302,9 @@ export async function getBundleResultFromBuild(
     runControllerEntryPoint,
     indexWorkerEntryPoint,
     indexControllerEntryPoint,
+    initEntryPoint,
     contentHash: hasher.digest("hex"),
   };
-}
-
-async function getEntryPoints(target: BuildTarget, config: ResolvedConfig) {
-  const projectEntryPoints = config.dirs.flatMap((dir) => dirToEntryPointGlob(dir));
-
-  if (config.configFile) {
-    projectEntryPoints.push(config.configFile);
-  }
-
-  if (target === "dev") {
-    projectEntryPoints.push(...devEntryPoints);
-  } else {
-    projectEntryPoints.push(...deployEntryPoints);
-  }
-
-  if (config.instrumentedPackageNames?.length ?? 0 > 0) {
-    projectEntryPoints.push(telemetryEntryPoint);
-  }
-
-  return projectEntryPoints;
 }
 
 // Converts a directory to a glob that matches all the entry points in that
@@ -330,4 +338,63 @@ export function logBuildFailure(errors: esbuild.Message[], warnings: esbuild.Mes
     console.error(log);
   }
   logBuildWarnings(warnings);
+}
+
+export async function createBuildManifestFromBundle({
+  bundle,
+  destination,
+  resolvedConfig,
+  workerDir,
+  environment,
+  target,
+  envVars,
+  sdkVersion,
+}: {
+  bundle: BundleResult;
+  destination: string;
+  resolvedConfig: ResolvedConfig;
+  workerDir?: string;
+  environment: string;
+  target: BuildTarget;
+  envVars?: Record<string, string>;
+  sdkVersion?: string;
+}): Promise<BuildManifest> {
+  const buildManifest: BuildManifest = {
+    contentHash: bundle.contentHash,
+    runtime: resolvedConfig.runtime ?? DEFAULT_RUNTIME,
+    environment: environment,
+    packageVersion: sdkVersion ?? CORE_VERSION,
+    cliPackageVersion: VERSION,
+    target: target,
+    files: bundle.files,
+    sources: await resolveFileSources(bundle.files, resolvedConfig),
+    externals: [],
+    config: {
+      project: resolvedConfig.project,
+      dirs: resolvedConfig.dirs,
+    },
+    outputPath: destination,
+    indexControllerEntryPoint:
+      bundle.indexControllerEntryPoint ?? getIndexControllerForTarget(target),
+    indexWorkerEntryPoint: bundle.indexWorkerEntryPoint ?? getIndexWorkerForTarget(target),
+    runControllerEntryPoint: bundle.runControllerEntryPoint ?? getRunControllerForTarget(target),
+    runWorkerEntryPoint: bundle.runWorkerEntryPoint ?? getRunWorkerForTarget(target),
+    loaderEntryPoint: bundle.loaderEntryPoint,
+    initEntryPoint: bundle.initEntryPoint,
+    configPath: bundle.configPath,
+    customConditions: resolvedConfig.build.conditions ?? [],
+    deploy: {
+      env: envVars ?? {},
+    },
+    build: {},
+    otelImportHook: {
+      include: resolvedConfig.instrumentedPackageNames ?? [],
+    },
+  };
+
+  if (!workerDir) {
+    return buildManifest;
+  }
+
+  return copyManifestToDir(buildManifest, destination, workerDir);
 }

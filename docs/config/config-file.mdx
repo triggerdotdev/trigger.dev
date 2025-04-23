@@ -129,7 +129,6 @@ Some ones we recommend:
 
 | Package                                 | Description                                                                                                              |
 | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `@opentelemetry/instrumentation-undici` | Logs all fetch calls (inc. Undici fetch)                                                                                 |
 | `@opentelemetry/instrumentation-http`   | Logs all HTTP calls                                                                                                      |
 | `@prisma/instrumentation`               | Logs all Prisma calls, you need to [enable tracing](https://github.com/prisma/prisma/tree/main/packages/instrumentation) |
 | `@traceloop/instrumentation-openai`     | Logs all OpenAI calls                                                                                                    |
@@ -137,6 +136,37 @@ Some ones we recommend:
 <Note>
   `@opentelemetry/instrumentation-fs` which logs all file system calls is currently not supported.
 </Note>
+
+### Exporters
+
+You can also configure custom exporters to send your telemetry data to other services. For example, you can send your logs to [Axiom](https://axiom.co/docs/guides/opentelemetry-nodejs#exporter-instrumentation-ts):
+
+```ts trigger.config.ts
+import { defineConfig } from "@trigger.dev/sdk/v3";
+import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-proto';
+
+// Initialize OTLP trace exporter with the endpoint URL and headers
+const axiomExporter = new OTLPTraceExporter({
+  url: 'https://api.axiom.co/v1/traces',
+  headers: {
+    'Authorization': `Bearer ${process.env.AXIOM_API_TOKEN}`,
+    'X-Axiom-Dataset': process.env.AXIOM_DATASET
+  },
+});
+
+export default defineConfig({
+  project: "<project ref>",
+  // Your other config settings...
+  telemetry: {
+    instrumentations: [
+      // Your instrumentations here
+    ],
+    exporters: [axiomExporter],
+  },
+});
+```
+
+Make sure to set the `AXIOM_API_TOKEN` and `AXIOM_DATASET` environment variables in your project.
 
 ## Runtime
 
@@ -315,460 +345,36 @@ Build extension allow you to hook into the build system and customize the build 
 
 #### additionalFiles
 
-Import the `additionalFiles` build extension and use it in your `trigger.config.ts` file:
-
-```ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
-import { additionalFiles } from "@trigger.dev/build/extensions/core";
-
-export default defineConfig({
-  project: "<project ref>",
-  // Your other config settings...
-  build: {
-    extensions: [
-      additionalFiles({ files: ["wrangler/wrangler.toml", "./assets/**", "./fonts/**"] }),
-    ],
-  },
-});
-```
-
-This will copy the files specified in the `files` array to the build directory. The `files` array can contain globs. The output paths will match the path of the file, relative to the root of the project.
-
-<Note>The root of the project is the directory that contains the trigger.config.ts file</Note>
+See the [additionalFiles documentation](/config/extensions/additionalFiles) for more information.
 
 #### `additionalPackages`
 
-Import the `additionalPackages` build extension and use it in your `trigger.config.ts` file:
-
-```ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
-import { additionalPackages } from "@trigger.dev/build/extensions/core";
-
-export default defineConfig({
-  project: "<project ref>",
-  // Your other config settings...
-  build: {
-    extensions: [additionalPackages({ packages: ["wrangler"] })],
-  },
-});
-```
-
-This allows you to include additional packages in the build that are not automatically included via imports. This is useful if you want to install a package that includes a CLI tool that you want to invoke in your tasks via `exec`. We will try to automatically resolve the version of the package but you can specify the version by using the `@` symbol:
-
-```ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
-
-export default defineConfig({
-  project: "<project ref>",
-  // Your other config settings...
-  build: {
-    extensions: [additionalPackages({ packages: ["wrangler@1.19.0"] })],
-  },
-});
-```
+See the [additionalPackages documentation](/config/extensions/additionalPackages) for more information.
 
 #### `emitDecoratorMetadata`
 
-If you need support for the `emitDecoratorMetadata` typescript compiler option, import the `emitDecoratorMetadata` build extension and use it in your `trigger.config.ts` file:
-
-```ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
-import { emitDecoratorMetadata } from "@trigger.dev/build/extensions/typescript";
-
-export default defineConfig({
-  project: "<project ref>",
-  // Your other config settings...
-  build: {
-    extensions: [emitDecoratorMetadata()],
-  },
-});
-```
-
-This is usually required if you are using certain ORMs, like TypeORM, that require this option to be enabled. It's not enabled by default because there is a performance cost to enabling it.
-
-<Note>
-  emitDecoratorMetadata works by hooking into the esbuild bundle process and using the TypeScript
-  compiler API to compile files where we detect the use of decorators. This means you must have
-  `emitDecoratorMetadata` enabled in your `tsconfig.json` file, as well as `typescript` installed in
-  your `devDependencies`.
-</Note>
+See the [emitDecoratorMetadata documentation](/config/extensions/emitDecoratorMetadata) for more information.
 
 #### Prisma
 
-If you are using Prisma, you should use the prisma build extension.
-
-- Automatically handles copying prisma files to the build directory.
-- Generates the prisma client during the deploy process
-- Optionally will migrate the database during the deploy process
-- Support for TypedSQL and multiple schema files.
-
-You can use it for a simple Prisma setup like this:
-
-```ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
-import { prismaExtension } from "@trigger.dev/build/extensions/prisma";
-
-export default defineConfig({
-  project: "<project ref>",
-  // Your other config settings...
-  build: {
-    extensions: [
-      prismaExtension({
-        version: "5.19.0", // optional, we'll automatically detect the version if not provided
-        schema: "prisma/schema.prisma",
-      }),
-    ],
-  },
-});
-```
-
-<Note>
-  This does not have any effect when running the `dev` command, only when running the `deploy`
-  command.
-</Note>
-
-If you want to also run migrations during the build process, you can pass in the `migrate` option:
-
-```ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
-import { prismaExtension } from "@trigger.dev/build/extensions/prisma";
-
-export default defineConfig({
-  project: "<project ref>",
-  // Your other config settings...
-  build: {
-    extensions: [
-      prismaExtension({
-        schema: "prisma/schema.prisma",
-        migrate: true,
-        directUrlEnvVarName: "DATABASE_URL_UNPOOLED", // optional - the name of the environment variable that contains the direct database URL if you are using a direct database URL
-      }),
-    ],
-  },
-});
-```
-
-If you have multiple `generator` statements defined in your schema file, you can pass in the `clientGenerator` option to specify the `prisma-client-js` generator, which will prevent other generators from being generated. Some examples where you may need to do this include when using the `prisma-kysely` or `prisma-json-types-generator` generators.
-
-<CodeGroup>
-
-```prisma schema.prisma
-datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DATABASE_URL_UNPOOLED")
-}
-
-// We only want to generate the prisma-client-js generator
-generator client {
-  provider        = "prisma-client-js"
-}
-
-generator kysely {
-  provider     = "prisma-kysely"
-  output       = "../../src/kysely"
-  enumFileName = "enums.ts"
-  fileName     = "types.ts"
-}
-
-generator json {
-  provider = "prisma-json-types-generator"
-}
-```
-
-```ts trigger.config.ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
-import { prismaExtension } from "@trigger.dev/build/extensions/prisma";
-
-export default defineConfig({
-  project: "<project ref>",
-  // Your other config settings...
-  build: {
-    extensions: [
-      prismaExtension({
-        schema: "prisma/schema.prisma",
-        clientGenerator: "client",
-      }),
-    ],
-  },
-});
-```
-
-</CodeGroup>
-
-If you are using [TypedSQL](https://www.prisma.io/typedsql), you'll need to enable it via the `typedSql` option:
-
-```ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
-
-export default defineConfig({
-  project: "<project ref>",
-  // Your other config settings...
-  build: {
-    extensions: [
-      prismaExtension({
-        schema: "prisma/schema.prisma",
-        typedSql: true,
-      }),
-    ],
-  },
-});
-```
-
-<Note>
-  The `prismaExtension` will inject the `DATABASE_URL` environment variable into the build process. Learn more about setting environment variables for deploying in our [Environment Variables](/deploy-environment-variables) guide.
-
-These environment variables are only used during the build process and are not embedded in the final container image.
-
-</Note>
+See the [prismaExtension documentation](/config/extensions/prismaExtension) for more information.
 
 #### syncEnvVars
 
-The `syncEnvVars` build extension replaces the deprecated `resolveEnvVars` export. Check out our [syncEnvVars documentation](/deploy-environment-variables#sync-env-vars-from-another-service) for more information.
-
-```ts
-import { syncEnvVars } from "@trigger.dev/build/extensions/core";
-
-export default defineConfig({
-  project: "<project ref>",
-  // Your other config settings...
-  build: {
-    extensions: [syncEnvVars()],
-  },
-});
-```
-
-#### syncVercelEnvVars
-
-The `syncVercelEnvVars` build extension syncs environment variables from your Vercel project to Trigger.dev.
-
-<Note>
-  You need to set the `VERCEL_ACCESS_TOKEN` and `VERCEL_PROJECT_ID` environment variables, or pass
-  in the token and project ID as arguments to the `syncVercelEnvVars` build extension. If you're
-  working with a team project, you'll also need to set `VERCEL_TEAM_ID`, which can be found in your
-  team settings. You can find / generate the `VERCEL_ACCESS_TOKEN` in your Vercel
-  [dashboard](https://vercel.com/account/settings/tokens). Make sure the scope of the token covers
-  the project with the environment variables you want to sync.
-</Note>
-
-```ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
-import { syncVercelEnvVars } from "@trigger.dev/build/extensions/core";
-
-export default defineConfig({
-  project: "<project ref>",
-  // Your other config settings...
-  build: {
-    extensions: [syncVercelEnvVars()],
-  },
-});
-```
-
-#### audioWaveform
-
-Previously, we installed [Audio Waveform](https://github.com/bbc/audiowaveform) in the build image. That's been moved to a build extension:
-
-```ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
-import { audioWaveform } from "@trigger.dev/build/extensions/audioWaveform";
-
-export default defineConfig({
-  project: "<project ref>",
-  // Your other config settings...
-  build: {
-    extensions: [audioWaveform()], // uses verson 1.1.0 of audiowaveform by default
-  },
-});
-```
+See the [syncEnvVars documentation](/config/extensions/syncEnvVars) for more information.
 
 #### puppeteer
 
-<ScrapingWarning />
-
-To use Puppeteer in your project, add these build settings to your `trigger.config.ts` file:
-
-```ts trigger.config.ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
-import { puppeteer } from "@trigger.dev/build/extensions/puppeteer";
-
-export default defineConfig({
-  project: "<project ref>",
-  // Your other config settings...
-  build: {
-    extensions: [puppeteer()],
-  },
-});
-```
-
-And add the following environment variable in your Trigger.dev dashboard on the Environment Variables page:
-
-```bash
-PUPPETEER_EXECUTABLE_PATH: "/usr/bin/google-chrome-stable",
-```
-
-Follow [this example](/guides/examples/puppeteer) to get setup with Trigger.dev and Puppeteer in your project.
+See the [puppeteer documentation](/config/extensions/puppeteer) for more information.
 
 #### ffmpeg
 
-You can add the `ffmpeg` build extension to your build process:
-
-```ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
-import { ffmpeg } from "@trigger.dev/build/extensions/core";
-
-export default defineConfig({
-  project: "<project ref>",
-  // Your other config settings...
-  build: {
-    extensions: [ffmpeg()],
-  },
-});
-```
-
-By default, this will install the version of `ffmpeg` that is available in the Debian package manager. If you need a specific version, you can pass in the version as an argument:
-
-```ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
-import { ffmpeg } from "@trigger.dev/build/extensions/core";
-
-export default defineConfig({
-  project: "<project ref>",
-  // Your other config settings...
-  build: {
-    extensions: [ffmpeg({ version: "6.0-4" })],
-  },
-});
-```
-
-This extension will also add the `FFMPEG_PATH` and `FFPROBE_PATH` to your environment variables, making it easy to use popular ffmpeg libraries like `fluent-ffmpeg`.
-
-Follow [this example](/guides/examples/ffmpeg-video-processing) to get setup with Trigger.dev and FFmpeg in your project.
+See the [ffmpeg documentation](/config/extensions/ffmpeg) for more information.
 
 #### esbuild plugins
 
-You can easily add existing or custom esbuild plugins to your build process using the `esbuildPlugin` extension:
-
-```ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
-import { esbuildPlugin } from "@trigger.dev/build/extensions";
-import { sentryEsbuildPlugin } from "@sentry/esbuild-plugin";
-
-export default defineConfig({
-  project: "<project ref>",
-  // Your other config settings...
-  build: {
-    extensions: [
-      esbuildPlugin(
-        sentryEsbuildPlugin({
-          org: process.env.SENTRY_ORG,
-          project: process.env.SENTRY_PROJECT,
-          authToken: process.env.SENTRY_AUTH_TOKEN,
-        }),
-        // optional - only runs during the deploy command, and adds the plugin to the end of the list of plugins
-        { placement: "last", target: "deploy" }
-      ),
-    ],
-  },
-});
-```
+See the [esbuild plugins documentation](/config/extensions/esbuildPlugin) for more information.
 
 #### aptGet
 
-You can install system packages into the deployed image using using the `aptGet` extension:
-
-```ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
-import { aptGet } from "@trigger.dev/build/extensions/core";
-
-export default defineConfig({
-  project: "<project ref>",
-  // Your other config settings...
-  build: {
-    extensions: [aptGet({ packages: ["ffmpeg"] })],
-  },
-});
-```
-
-If you want to install a specific version of a package, you can specify the version like this:
-
-```ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
-
-export default defineConfig({
-  project: "<project ref>",
-  // Your other config settings...
-  build: {
-    extensions: [aptGet({ packages: ["ffmpeg=6.0-4"] })],
-  },
-});
-```
-
-#### Custom extensions
-
-You can create your own extensions to further customize the build process. Extensions are an object with a `name` and zero or more lifecycle hooks (`onBuildStart` and `onBuildComplete`) that allow you to modify the `BuildContext` object that is passed to the build process through adding layers. For example, this is how the `aptGet` extension is implemented:
-
-```ts
-import { BuildExtension } from "@trigger.dev/core/v3/build";
-
-export type AptGetOptions = {
-  packages: string[];
-};
-
-export function aptGet(options: AptGetOptions): BuildExtension {
-  return {
-    name: "aptGet",
-    onBuildComplete(context) {
-      if (context.target === "dev") {
-        return;
-      }
-
-      context.logger.debug("Adding apt-get layer", {
-        pkgs: options.packages,
-      });
-
-      context.addLayer({
-        id: "apt-get",
-        image: {
-          pkgs: options.packages,
-        },
-      });
-    },
-  };
-}
-```
-
-Instead of creating this function and worrying about types, you can define an extension inline in your `trigger.config.ts` file:
-
-```ts trigger.config.ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
-
-export default defineConfig({
-  project: "<project ref>",
-  // Your other config settings...
-  build: {
-    extensions: [
-      {
-        name: "aptGet",
-        onBuildComplete(context) {
-          if (context.target === "dev") {
-            return;
-          }
-
-          context.logger.debug("Adding apt-get layer", {
-            pkgs: ["ffmpeg"],
-          });
-
-          context.addLayer({
-            id: "apt-get",
-            image: {
-              pkgs: ["ffmpeg"],
-            },
-          });
-        },
-      },
-    ],
-  },
-});
-```
-
-We'll be expanding the documentation on how to create custom extensions in the future, but for now you are encouraged to look at the existing extensions in the `@trigger.dev/build` package for inspiration, which you can see in our repo [here](https://github.com/triggerdotdev/trigger.dev/tree/main/packages/build/src/extensions)
+See the [aptGet documentation](/config/extensions/aptGet) for more information.

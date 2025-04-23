@@ -18,15 +18,16 @@ import { Header3 } from "~/components/primitives/Headers";
 import { PopoverMenuItem } from "~/components/primitives/Popover";
 import { useSelectedItems } from "~/components/primitives/SelectedItemsProvider";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
-import { useEnvironments } from "~/hooks/useEnvironments";
 import { useFeatures } from "~/hooks/useFeatures";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useUser } from "~/hooks/useUser";
-import { RunListAppliedFilters, RunListItem } from "~/presenters/v3/RunListPresenter.server";
+import {
+  type RunListAppliedFilters,
+  type RunListItem,
+} from "~/presenters/v3/RunListPresenter.server";
 import { formatCurrencyAccurate, formatNumber } from "~/utils/numberFormatter";
 import { docsPath, v3RunSpanPath, v3TestPath } from "~/utils/pathBuilder";
-import { EnvironmentLabel } from "../../environments/EnvironmentLabel";
 import { DateTime } from "../../primitives/DateTime";
 import { Paragraph } from "../../primitives/Paragraph";
 import { Spinner } from "../../primitives/Spinner";
@@ -39,7 +40,7 @@ import {
   TableHeader,
   TableHeaderCell,
   TableRow,
-  TableVariant,
+  type TableVariant,
 } from "../../primitives/Table";
 import { CancelRunDialog } from "./CancelRunDialog";
 import { LiveTimer } from "./LiveTimer";
@@ -50,6 +51,7 @@ import {
   filterableTaskRunStatuses,
   TaskRunStatusCombo,
 } from "./TaskRunStatus";
+import { useEnvironment } from "~/hooks/useEnvironment";
 
 type RunsTableProps = {
   total: number;
@@ -71,14 +73,14 @@ export function TaskRunsTable({
   allowSelection = false,
   variant = "dimmed",
 }: RunsTableProps) {
-  const user = useUser();
   const organization = useOrganization();
   const project = useProject();
+  const environment = useEnvironment();
   const checkboxes = useRef<(HTMLInputElement | null)[]>([]);
   const { selectedItems, has, hasAll, select, deselect, toggle } = useSelectedItems(allowSelection);
   const { isManagedCloud } = useFeatures();
 
-  const showCompute = user.admin && isManagedCloud;
+  const showCompute = isManagedCloud;
 
   const navigateCheckboxes = useCallback(
     (event: React.KeyboardEvent<HTMLInputElement>, index: number) => {
@@ -133,7 +135,6 @@ export function TaskRunsTable({
             </TableHeaderCell>
           )}
           <TableHeaderCell alignment="right">Run #</TableHeaderCell>
-          <TableHeaderCell>Env</TableHeaderCell>
           <TableHeaderCell>Task</TableHeaderCell>
           <TableHeaderCell>Version</TableHeaderCell>
           <TableHeaderCell
@@ -279,14 +280,16 @@ export function TaskRunsTable({
       </TableHeader>
       <TableBody>
         {total === 0 && !hasFilters ? (
-          <TableBlankRow colSpan={14}>
+          <TableBlankRow colSpan={15}>
             {!isLoading && <NoRuns title="No runs found" />}
           </TableBlankRow>
         ) : runs.length === 0 ? (
           <BlankState isLoading={isLoading} filters={filters} />
         ) : (
           runs.map((run, index) => {
-            const path = v3RunSpanPath(organization, project, run, { spanId: run.spanId });
+            const path = v3RunSpanPath(organization, project, run.environment, run, {
+              spanId: run.spanId,
+            });
             return (
               <TableRow key={run.id}>
                 {allowSelection && (
@@ -305,12 +308,6 @@ export function TaskRunsTable({
                 )}
                 <TableCell to={path} alignment="right" isTabbableCell>
                   {formatNumber(run.number)}
-                </TableCell>
-                <TableCell to={path}>
-                  <EnvironmentLabel
-                    environment={run.environment}
-                    userName={run.environment.userName}
-                  />
                 </TableCell>
                 <TableCell to={path}>
                   <span className="flex items-center gap-x-1">
@@ -332,7 +329,9 @@ export function TaskRunsTable({
                 <TableCell to={path} className="w-[1%]" actionClassName="pr-0 tabular-nums">
                   <div className="flex items-center gap-1">
                     <RectangleStackIcon className="size-4 text-text-dimmed" />
-                    {run.startedAt ? (
+                    {run.isPending ? (
+                      "–"
+                    ) : run.startedAt ? (
                       formatDuration(new Date(run.createdAt), new Date(run.startedAt), {
                         style: "short",
                       })
@@ -371,7 +370,9 @@ export function TaskRunsTable({
                 </TableCell>
                 {showCompute && (
                   <TableCell to={path} className="tabular-nums">
-                    {run.costInCents > 0 ? formatCurrencyAccurate(run.costInCents / 100) : "–"}
+                    {run.costInCents > 0
+                      ? formatCurrencyAccurate((run.costInCents + run.baseCostInCents) / 100)
+                      : "–"}
                   </TableCell>
                 )}
                 <TableCell to={path}>
@@ -384,7 +385,7 @@ export function TaskRunsTable({
                   {run.delayUntil ? <DateTime date={run.delayUntil} /> : "–"}
                 </TableCell>
                 <TableCell to={path}>{run.ttl ?? "–"}</TableCell>
-                <TableCell to={path} actionClassName="py-1">
+                <TableCell to={path} actionClassName="py-1" className="pr-16">
                   <div className="flex gap-1">
                     {run.tags.map((tag) => <RunTag key={tag} tag={tag} />) || "–"}
                   </div>
@@ -396,7 +397,7 @@ export function TaskRunsTable({
         )}
         {isLoading && (
           <TableBlankRow
-            colSpan={14}
+            colSpan={15}
             className="absolute left-0 top-0 flex h-full w-full items-center justify-center gap-2 bg-charcoal-900/90"
           >
             <Spinner /> <span className="text-text-dimmed">Loading…</span>
@@ -472,7 +473,7 @@ function RunActionsCell({ run, path }: { run: RunListItem; path: string }) {
         </>
       }
       hiddenButtons={
-        <div className="flex items-center">
+        <>
           {run.isCancellable && (
             <SimpleTooltip
               button={
@@ -518,7 +519,7 @@ function RunActionsCell({ run, path }: { run: RunListItem; path: string }) {
               disableHoverableContent
             />
           )}
-        </div>
+        </>
       }
     />
   );
@@ -535,62 +536,47 @@ function NoRuns({ title }: { title: string }) {
 function BlankState({ isLoading, filters }: Pick<RunsTableProps, "isLoading" | "filters">) {
   const organization = useOrganization();
   const project = useProject();
-  const envs = useEnvironments();
-  if (isLoading) return <TableBlankRow colSpan={14}></TableBlankRow>;
+  const environment = useEnvironment();
+  if (isLoading) return <TableBlankRow colSpan={15}></TableBlankRow>;
 
   const { environments, tasks, from, to, ...otherFilters } = filters;
 
   if (
-    filters.environments.length === 1 &&
     filters.tasks.length === 1 &&
     filters.from === undefined &&
     filters.to === undefined &&
     Object.values(otherFilters).every((filterArray) => filterArray.length === 0)
   ) {
-    const environment = envs?.find((env) => env.id === filters.environments[0]);
     return (
-      <TableBlankRow colSpan={14}>
-        <div className="py-14">
-          <Paragraph className="w-auto" variant="base/bright" spacing>
-            There are no runs for {filters.tasks[0]}
-            {environment ? (
-              <>
-                {" "}
-                in{" "}
-                <EnvironmentLabel
-                  environment={environment}
-                  userName={environment.userName}
-                  size="large"
-                />
-              </>
-            ) : null}
-          </Paragraph>
-          <div className="flex items-center justify-center gap-2">
-            <LinkButton
-              to={v3TestPath(organization, project)}
-              variant="primary/small"
-              LeadingIcon={BeakerIcon}
-              className="inline-flex"
-            >
-              Create a test run
-            </LinkButton>
-            <Paragraph variant="small">or</Paragraph>
-            <LinkButton
-              to={docsPath("v3/triggering")}
-              variant="primary/small"
-              LeadingIcon={BookOpenIcon}
-              className="inline-flex"
-            >
-              Triggering a task docs
-            </LinkButton>
-          </div>
+      <TableBlankRow colSpan={15}>
+        <Paragraph className="w-auto" variant="base/bright" spacing>
+          There are no runs for {filters.tasks[0]}
+        </Paragraph>
+        <div className="mt-6 flex items-center justify-center gap-2">
+          <LinkButton
+            to={v3TestPath(organization, project, environment)}
+            variant="tertiary/medium"
+            LeadingIcon={BeakerIcon}
+            className="inline-flex"
+          >
+            Create a test run
+          </LinkButton>
+          <Paragraph variant="small">or</Paragraph>
+          <LinkButton
+            to={docsPath("v3/triggering")}
+            variant="tertiary/medium"
+            LeadingIcon={BookOpenIcon}
+            className="inline-flex"
+          >
+            Triggering a task docs
+          </LinkButton>
         </div>
       </TableBlankRow>
     );
   }
 
   return (
-    <TableBlankRow colSpan={14}>
+    <TableBlankRow colSpan={15}>
       <div className="flex flex-col items-center justify-center gap-6">
         <Paragraph className="w-auto" variant="base/bright">
           No runs match your filters. Try refreshing, modifying your filters or run a test.
@@ -609,7 +595,7 @@ function BlankState({ isLoading, filters }: Pick<RunsTableProps, "isLoading" | "
           <LinkButton
             LeadingIcon={BeakerIcon}
             variant="tertiary/medium"
-            to={v3TestPath(organization, project)}
+            to={v3TestPath(organization, project, environment)}
           >
             Run a test
           </LinkButton>

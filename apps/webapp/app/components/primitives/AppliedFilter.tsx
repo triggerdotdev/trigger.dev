@@ -34,7 +34,14 @@ export function AppliedFilter({
 }: AppliedFilterProps) {
   const variantClassName = variants[variant];
   return (
-    <div className={cn("flex items-center transition", variantClassName.box, className)}>
+    <div
+      className={cn(
+        "flex items-center transition",
+        variantClassName.box,
+        !removable && "pr-2",
+        className
+      )}
+    >
       <div className="flex items-center gap-0.5">
         <div className="text-text-dimmed">
           <span>{label}</span>:

@@ -1,0 +1,40 @@
+{
+  "mode": "pre",
+  "tag": "v4-beta",
+  "initialVersions": {
+    "coordinator": "0.0.1",
+    "docker-provider": "0.0.1",
+    "kubernetes-provider": "0.0.1",
+    "supervisor": "0.0.1",
+    "webapp": "1.0.0",
+    "@trigger.dev/build": "3.3.17",
+    "trigger.dev": "3.3.17",
+    "@trigger.dev/core": "3.3.17",
+    "@trigger.dev/python": "3.3.17",
+    "@trigger.dev/react-hooks": "3.3.17",
+    "@trigger.dev/redis-worker": "3.3.17",
+    "@trigger.dev/rsc": "3.3.17",
+    "@trigger.dev/sdk": "3.3.17"
+  },
+  "changesets": [
+    "blue-eyes-tickle",
+    "breezy-turtles-talk",
+    "eighty-rings-divide",
+    "four-needles-add",
+    "green-lions-relate",
+    "hip-cups-wave",
+    "honest-files-decide",
+    "late-chairs-ring",
+    "moody-squids-count",
+    "nice-colts-boil",
+    "polite-lies-fix",
+    "red-wasps-cover",
+    "shiny-kiwis-beam",
+    "smart-coins-hammer",
+    "sour-mirrors-accept",
+    "tiny-buckets-teach",
+    "tricky-houses-invite",
+    "two-tigers-dream",
+    "weak-jobs-hide"
+  ]
+}

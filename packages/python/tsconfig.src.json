@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "include": ["./src/**/*.ts"],
+  "compilerOptions": {
+    "isolatedDeclarations": false,
+    "composite": true,
+    "sourceMap": true,
+    "customConditions": ["@triggerdotdev/source"]
+  }
+}

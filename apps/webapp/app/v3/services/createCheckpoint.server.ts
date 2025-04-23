@@ -1,14 +1,14 @@
-import { CoordinatorToPlatformMessages } from "@trigger.dev/core/v3";
+import { CoordinatorToPlatformMessages, ManualCheckpointMetadata } from "@trigger.dev/core/v3";
 import type { InferSocketMessageSchema } from "@trigger.dev/core/v3/zodSocket";
 import type { Checkpoint, CheckpointRestoreEvent } from "@trigger.dev/database";
 import { logger } from "~/services/logger.server";
 import { marqs } from "~/v3/marqs/index.server";
-import { generateFriendlyId } from "../friendlyIdentifiers";
 import { isFreezableAttemptStatus, isFreezableRunStatus } from "../taskStatus";
 import { BaseService } from "./baseService.server";
 import { CreateCheckpointRestoreEventService } from "./createCheckpointRestoreEvent.server";
 import { ResumeBatchRunService } from "./resumeBatchRun.server";
 import { ResumeDependentParentsService } from "./resumeDependentParents.server";
+import { CheckpointId } from "@trigger.dev/core/v3/isomorphic";
 
 export class CreateCheckpointService extends BaseService {
   public async call(
@@ -93,6 +93,99 @@ export class CreateCheckpointService extends BaseService {
       };
     }
 
+    const { reason } = params;
+
+    // Check if we should accept this checkpoint
+    switch (reason.type) {
+      case "MANUAL": {
+        // Always accept manual checkpoints
+        break;
+      }
+      case "WAIT_FOR_DURATION": {
+        // Always accept duration checkpoints
+        break;
+      }
+      case "WAIT_FOR_TASK": {
+        const childRun = await this._prisma.taskRun.findFirst({
+          where: {
+            friendlyId: reason.friendlyId,
+          },
+          select: {
+            dependency: {
+              select: {
+                resumedAt: true,
+              },
+            },
+          },
+        });
+
+        if (!childRun) {
+          logger.error("CreateCheckpointService: Pre-check - WAIT_FOR_TASK child run not found", {
+            friendlyId: reason.friendlyId,
+            params,
+          });
+
+          return {
+            success: false,
+            keepRunAlive: false,
+          };
+        }
+
+        if (childRun.dependency?.resumedAt) {
+          logger.error("CreateCheckpointService: Child run already resumed", {
+            childRun,
+            params,
+          });
+
+          return {
+            success: false,
+            keepRunAlive: true,
+          };
+        }
+
+        break;
+      }
+      case "WAIT_FOR_BATCH": {
+        const batchRun = await this._prisma.batchTaskRun.findFirst({
+          where: {
+            friendlyId: reason.batchFriendlyId,
+          },
+          select: {
+            resumedAt: true,
+          },
+        });
+
+        if (!batchRun) {
+          logger.error("CreateCheckpointService: Pre-check - Batch not found", {
+            batchFriendlyId: reason.batchFriendlyId,
+            params,
+          });
+
+          return {
+            success: false,
+            keepRunAlive: false,
+          };
+        }
+
+        if (batchRun.resumedAt) {
+          logger.error("CreateCheckpointService: Batch already resumed", {
+            batchRun,
+            params,
+          });
+
+          return {
+            success: false,
+            keepRunAlive: true,
+          };
+        }
+
+        break;
+      }
+      default: {
+        break;
+      }
+    }
+
     //sleep to test slow checkpoints
     // Sleep a random value between 4 and 30 seconds
     // await new Promise((resolve) => {
@@ -101,9 +194,22 @@ export class CreateCheckpointService extends BaseService {
     //   setTimeout(resolve, waitSeconds * 1000);
     // });
 
+    let metadata: string;
+
+    if (params.reason.type === "MANUAL") {
+      metadata = JSON.stringify({
+        ...params.reason,
+        attemptId: attempt.id,
+        previousAttemptStatus: attempt.status,
+        previousRunStatus: attempt.taskRun.status,
+      } satisfies ManualCheckpointMetadata);
+    } else {
+      metadata = JSON.stringify(params.reason);
+    }
+
     const checkpoint = await this._prisma.checkpoint.create({
       data: {
-        friendlyId: generateFriendlyId("checkpoint"),
+        ...CheckpointId.generate(),
         runtimeEnvironmentId: attempt.taskRun.runtimeEnvironmentId,
         projectId: attempt.taskRun.projectId,
         attemptId: attempt.id,
@@ -112,7 +218,7 @@ export class CreateCheckpointService extends BaseService {
         location: params.location,
         type: params.docker ? "DOCKER" : "KUBERNETES",
         reason: params.reason.type,
-        metadata: JSON.stringify(params.reason),
+        metadata,
         imageRef,
       },
     });
@@ -133,25 +239,34 @@ export class CreateCheckpointService extends BaseService {
       },
     });
 
-    const { reason } = params;
-
     let checkpointEvent: CheckpointRestoreEvent | undefined;
 
     switch (reason.type) {
+      case "MANUAL":
       case "WAIT_FOR_DURATION": {
+        let restoreAtUnixTimeMs: number;
+
+        if (reason.type === "MANUAL") {
+          // Restore immediately if not specified, useful for live migration
+          restoreAtUnixTimeMs = reason.restoreAtUnixTimeMs ?? Date.now();
+        } else {
+          restoreAtUnixTimeMs = reason.now + reason.ms;
+        }
+
         checkpointEvent = await eventService.checkpoint({
           checkpointId: checkpoint.id,
         });
 
         if (checkpointEvent) {
-          await marqs?.replaceMessage(
+          await marqs.requeueMessage(
             attempt.taskRunId,
             {
               type: "RESUME_AFTER_DURATION",
               resumableAttemptId: attempt.id,
               checkpointEventId: checkpointEvent.id,
             },
-            reason.now + reason.ms
+            restoreAtUnixTimeMs,
+            "resume"
           );
 
           return {
@@ -273,14 +388,9 @@ export class CreateCheckpointService extends BaseService {
           }
 
           //if there's a message in the queue, we make sure the checkpoint event is on it
-          await marqs?.replaceMessage(
-            attempt.taskRun.id,
-            {
-              checkpointEventId: checkpointEvent.id,
-            },
-            undefined,
-            true
-          );
+          await marqs.replaceMessage(attempt.taskRun.id, {
+            checkpointEventId: checkpointEvent.id,
+          });
 
           await ResumeBatchRunService.enqueue(
             batchRun.id,

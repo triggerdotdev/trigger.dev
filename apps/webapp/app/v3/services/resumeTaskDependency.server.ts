@@ -1,8 +1,9 @@
 import { PrismaClientOrTransaction } from "~/db.server";
+import { logger } from "~/services/logger.server";
 import { workerQueue } from "~/services/worker.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { BaseService } from "./baseService.server";
-import { logger } from "~/services/logger.server";
+import { TaskRunDependency } from "@trigger.dev/database";
 
 export class ResumeTaskDependencyService extends BaseService {
   public async call(dependencyId: string, sourceTaskAttemptId: string) {
@@ -49,6 +50,21 @@ export class ResumeTaskDependencyService extends BaseService {
           runId: dependentRun.id,
         }
       );
+
+      const wasUpdated = await this.#setDependencyToResumedOnce(dependency);
+
+      if (!wasUpdated) {
+        logger.debug("Task dependency resume: Attempt with checkpoint was already resumed", {
+          attemptId: dependency.id,
+          dependentAttempt: dependency.dependentAttempt,
+          checkpointEventId: dependency.checkpointEventId,
+          hasCheckpointEvent: !!dependency.checkpointEventId,
+          runId: dependentRun.id,
+        });
+        return;
+      }
+
+      // TODO: use the new priority queue thingie
       await marqs?.enqueueMessage(
         dependency.taskRun.runtimeEnvironment,
         dependentRun.queue,
@@ -64,7 +80,9 @@ export class ResumeTaskDependencyService extends BaseService {
           environmentType: dependency.taskRun.runtimeEnvironment.type,
         },
         dependentRun.concurrencyKey ?? undefined,
-        dependentRun.createdAt.getTime()
+        dependentRun.queueTimestamp ?? dependentRun.createdAt,
+        undefined,
+        "resume"
       );
     } else {
       logger.debug("Task dependency resume: Attempt is not paused or there's no checkpoint event", {
@@ -85,7 +103,20 @@ export class ResumeTaskDependencyService extends BaseService {
         return;
       }
 
-      await marqs?.replaceMessage(
+      const wasUpdated = await this.#setDependencyToResumedOnce(dependency);
+
+      if (!wasUpdated) {
+        logger.debug("Task dependency resume: Attempt without checkpoint was already resumed", {
+          attemptId: dependency.id,
+          dependentAttempt: dependency.dependentAttempt,
+          checkpointEventId: dependency.checkpointEventId,
+          hasCheckpointEvent: !!dependency.checkpointEventId,
+          runId: dependentRun.id,
+        });
+        return;
+      }
+
+      await marqs.requeueMessage(
         dependentRun.id,
         {
           type: "RESUME",
@@ -97,8 +128,29 @@ export class ResumeTaskDependencyService extends BaseService {
           environmentId: dependency.taskRun.runtimeEnvironment.id,
           environmentType: dependency.taskRun.runtimeEnvironment.type,
         },
-        dependentRun.createdAt.getTime()
+        (dependentRun.queueTimestamp ?? dependentRun.createdAt).getTime(),
+        "resume"
       );
+    }
+  }
+
+  async #setDependencyToResumedOnce(dependency: TaskRunDependency) {
+    const result = await this._prisma.taskRunDependency.updateMany({
+      where: {
+        id: dependency.id,
+        resumedAt: null,
+      },
+      data: {
+        resumedAt: new Date(),
+      },
+    });
+
+    // Check if any records were updated
+    if (result.count > 0) {
+      // The status was changed, so we return true
+      return true;
+    } else {
+      return false;
     }
   }
 

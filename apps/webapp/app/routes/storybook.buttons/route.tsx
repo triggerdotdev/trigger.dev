@@ -2,9 +2,14 @@ import {
   ArrowLeftIcon,
   ArrowRightIcon,
   ArrowUturnLeftIcon,
+  CheckIcon,
   ExclamationTriangleIcon,
+  FolderIcon,
+  GlobeAltIcon,
   LightBulbIcon,
   NoSymbolIcon,
+  PlusIcon,
+  TrashIcon,
 } from "@heroicons/react/20/solid";
 import { EnvelopeIcon } from "@heroicons/react/24/solid";
 import {
@@ -15,7 +20,7 @@ import {
 } from "@trigger.dev/companyicons";
 import { Button } from "~/components/primitives/Buttons";
 import { Header1, Header3 } from "~/components/primitives/Headers";
-import { NamedIcon } from "~/components/primitives/NamedIcon";
+import { Spinner } from "~/components/primitives/Spinner";
 
 export default function Story() {
   const isSelected = true;
@@ -97,25 +102,31 @@ export default function Story() {
           <Button TrailingIcon={SlackIcon} variant="secondary/small">
             Connect to Slack
           </Button>
-          <Button TrailingIcon="warning" variant="secondary/small">
+          <Button TrailingIcon={ExclamationTriangleIcon} variant="secondary/small">
             Trailing icon
           </Button>
         </div>
         <div className="flex flex-col items-start gap-2">
           <Header3 className="mb-1 uppercase">Loading</Header3>
-          <Button variant="primary/small" LeadingIcon="spinner">
+          <Button
+            variant="primary/small"
+            LeadingIcon={<Spinner color="white" className="size-3.5" />}
+          >
             Loading Primary…
           </Button>
-          <Button variant="secondary/small" LeadingIcon="spinner">
+          <Button variant="secondary/small" LeadingIcon={Spinner}>
             Loading Secondary…
           </Button>
-          <Button variant="tertiary/small" LeadingIcon="spinner">
+          <Button variant="tertiary/small" LeadingIcon={Spinner}>
             Loading Tertiary…
           </Button>
-          <Button variant="minimal/small" LeadingIcon="spinner">
+          <Button variant="minimal/small" LeadingIcon={Spinner}>
             Loading Minimal…
           </Button>
-          <Button variant="danger/small" LeadingIcon="spinner-white">
+          <Button
+            variant="danger/small"
+            LeadingIcon={<Spinner color="white" className="size-3.5" />}
+          >
             Loading Danger…
           </Button>
         </div>
@@ -141,8 +152,8 @@ export default function Story() {
           <Header3 className="mb-1 uppercase">Icon only</Header3>
           <Button variant="primary/small" LeadingIcon={ArrowRightIcon} />
           <Button variant="secondary/small" LeadingIcon={LightBulbIcon} />
-          <Button variant="tertiary/small" LeadingIcon="warning" />
-          <Button variant="minimal/small" LeadingIcon="warning" />
+          <Button variant="tertiary/small" LeadingIcon={ExclamationTriangleIcon} />
+          <Button variant="minimal/small" LeadingIcon={ExclamationTriangleIcon} />
           <Button variant="danger/small" LeadingIcon={ExclamationTriangleIcon} />
         </div>
       </div>
@@ -220,25 +231,31 @@ export default function Story() {
           <Button TrailingIcon={SlackIcon} variant="secondary/medium">
             Connect to Slack
           </Button>
-          <Button TrailingIcon="warning" variant="secondary/medium">
+          <Button TrailingIcon={ExclamationTriangleIcon} variant="secondary/medium">
             Connect to Slack
           </Button>
         </div>
         <div className="flex flex-col items-start gap-2">
           <Header3 className="mb-1 uppercase">Loading</Header3>
-          <Button variant="primary/medium" LeadingIcon="spinner">
+          <Button
+            variant="primary/medium"
+            LeadingIcon={<Spinner color="white" className="size-4" />}
+          >
             Loading Primary…
           </Button>
-          <Button variant="secondary/medium" LeadingIcon="spinner">
+          <Button variant="secondary/medium" LeadingIcon={Spinner}>
             Loading Secondary…
           </Button>
-          <Button variant="tertiary/medium" LeadingIcon="spinner">
+          <Button variant="tertiary/medium" LeadingIcon={Spinner}>
             Loading Tertiary…
           </Button>
-          <Button variant="minimal/medium" LeadingIcon="spinner">
+          <Button variant="minimal/medium" LeadingIcon={Spinner}>
             Loading Minimal…
           </Button>
-          <Button variant="danger/medium" LeadingIcon="spinner-white">
+          <Button
+            variant="danger/medium"
+            LeadingIcon={<Spinner color="white" className="size-4" />}
+          >
             Loading Danger…
           </Button>
         </div>
@@ -264,8 +281,8 @@ export default function Story() {
           <Header3 className="mb-1 uppercase">Icon only</Header3>
           <Button variant="primary/medium" LeadingIcon={ArrowRightIcon} />
           <Button variant="secondary/medium" LeadingIcon={LightBulbIcon} />
-          <Button variant="tertiary/medium" LeadingIcon="warning" />
-          <Button variant="minimal/medium" LeadingIcon="warning" />
+          <Button variant="tertiary/medium" LeadingIcon={ExclamationTriangleIcon} />
+          <Button variant="minimal/medium" LeadingIcon={ExclamationTriangleIcon} />
           <Button variant="danger/medium" LeadingIcon={ExclamationTriangleIcon} />
         </div>
       </div>
@@ -274,20 +291,19 @@ export default function Story() {
         <div className="flex flex-col gap-2">
           <div className="flex flex-col items-start gap-2">
             <Button variant="primary/large" fullWidth>
-              <GitHubDarkIcon className={"mr-1.5 size-[1.2rem]"} />
-              <span className="text-charcoal-900">Continue with GitHub</span>
+              <GitHubLightIcon className={"mr-1.5 size-[1.2rem]"} />
+              <span className="text-text-bright">Continue with GitHub</span>
             </Button>
             <Button variant="secondary/large" fullWidth>
-              <EnvelopeIcon className={"mr-1.5 h-5 w-5 text-secondary transition"} />
-              <span className="text-secondary">Continue with Email</span>
+              <EnvelopeIcon className={"mr-1.5 size-[1.2rem] text-text-bright transition"} />
+              <span className="text-text-bright">Continue with Email</span>
             </Button>
             <Button variant="tertiary/large" fullWidth>
               <GitHubLightIcon className={"mr-1.5 size-[1.2rem]"} />
               <span className="text-text-bright">Continue with GitHub</span>
             </Button>
             <Button variant="danger/large" fullWidth>
-              <NamedIcon
-                name={"trash-can"}
+              <TrashIcon
                 className={
                   "mr-1.5 h-4 w-4 text-text-bright transition group-hover:text-text-bright"
                 }
@@ -302,23 +318,20 @@ export default function Story() {
         <div className="flex flex-col gap-2">
           <div className="flex flex-col items-start gap-2">
             <Button variant="primary/extra-large" fullWidth>
-              <GitHubDarkIcon className={"mr-1.5 h-5 w-5"} />
-              <span className="text-charcoal-900">Continue with GitHub</span>
+              <GitHubLightIcon className={"mr-1.5 size-5"} />
+              <span className="text-text-bright">Continue with GitHub</span>
             </Button>
             <Button variant="secondary/extra-large" fullWidth>
-              <EnvelopeIcon className={"mr-1.5 h-5 w-5 text-secondary transition"} />
-              <span className="text-secondary">Continue with Email</span>
+              <EnvelopeIcon className={"mr-1.5 h-5 w-5 text-text-bright transition"} />
+              <span className="text-text-bright">Continue with Email</span>
             </Button>
             <Button variant="tertiary/extra-large" fullWidth>
-              <GitHubLightIcon className={"mr-1.5 h-5 w-5"} />
+              <GitHubLightIcon className={"mr-1.5 size-5"} />
               <span className="text-text-bright">Continue with GitHub</span>
             </Button>
             <Button variant="danger/extra-large" fullWidth>
-              <NamedIcon
-                name={"trash-can"}
-                className={
-                  "mr-1.5 h-5 w-5 text-text-bright transition group-hover:text-text-bright"
-                }
+              <TrashIcon
+                className={"mr-1.5 size-5 text-text-bright transition group-hover:text-text-bright"}
               />
               <span className="text-text-bright">This is a delete button</span>
             </Button>
@@ -328,26 +341,26 @@ export default function Story() {
       <Header1 className="mb-2 mt-8">Menu items</Header1>
       <div className="grid grid-cols-1">
         <div className="flex flex-col items-start gap-1 rounded border border-charcoal-800 bg-charcoal-850 p-1">
-          <Button variant="menu-item" fullWidth textAlignLeft LeadingIcon="folder">
+          <Button variant="menu-item" fullWidth textAlignLeft LeadingIcon={FolderIcon}>
             Acme Inc.
           </Button>
-          <Button variant="menu-item" fullWidth textAlignLeft LeadingIcon="plus">
+          <Button variant="menu-item" fullWidth textAlignLeft LeadingIcon={PlusIcon}>
             New Project
           </Button>
           <Button
             variant="menu-item"
             fullWidth
             textAlignLeft
-            LeadingIcon="globe"
-            TrailingIcon={isSelected ? "check" : undefined}
+            LeadingIcon={GlobeAltIcon}
+            TrailingIcon={isSelected ? CheckIcon : undefined}
             className={isSelected ? "bg-charcoal-750 group-hover:bg-charcoal-750" : undefined}
           >
             Item enabled
           </Button>
-          <Button variant="menu-item" fullWidth textAlignLeft LeadingIcon="slack">
+          <Button variant="menu-item" fullWidth textAlignLeft>
             When a Stripe payment fails re-engage the customer
           </Button>
-          <Button variant="menu-item" fullWidth textAlignLeft LeadingIcon="spinner">
+          <Button variant="menu-item" fullWidth textAlignLeft LeadingIcon={Spinner}>
             In Progress
           </Button>
           <Button

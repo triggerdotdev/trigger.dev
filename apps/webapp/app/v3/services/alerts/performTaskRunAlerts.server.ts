@@ -49,6 +49,7 @@ export class PerformTaskRunAlertsService extends BaseService {
     await DeliverAlertService.createAndSendAlert(
       {
         channelId: alertChannel.id,
+        channelType: alertChannel.type,
         projectId: run.projectId,
         environmentId: run.runtimeEnvironmentId,
         alertType: "TASK_RUN",

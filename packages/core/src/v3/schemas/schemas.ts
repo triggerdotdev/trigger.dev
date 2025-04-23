@@ -8,10 +8,26 @@ import { MachineConfig, MachinePreset, MachinePresetName, TaskRunExecution } fro
 export const EnvironmentType = z.enum(["PRODUCTION", "STAGING", "DEVELOPMENT", "PREVIEW"]);
 export type EnvironmentType = z.infer<typeof EnvironmentType>;
 
+export const RunEngineVersionSchema = z.enum(["V1", "V2"]);
+
+export const TaskRunExecutionMetric = z.object({
+  name: z.string(),
+  event: z.string(),
+  timestamp: z.number(),
+  duration: z.number(),
+});
+
+export type TaskRunExecutionMetric = z.infer<typeof TaskRunExecutionMetric>;
+
+export const TaskRunExecutionMetrics = z.array(TaskRunExecutionMetric);
+
+export type TaskRunExecutionMetrics = z.infer<typeof TaskRunExecutionMetrics>;
+
 export const TaskRunExecutionPayload = z.object({
   execution: TaskRunExecution,
   traceContext: z.record(z.unknown()),
   environment: z.record(z.string()).optional(),
+  metrics: TaskRunExecutionMetrics.optional(),
 });
 
 export type TaskRunExecutionPayload = z.infer<typeof TaskRunExecutionPayload>;
@@ -25,6 +41,7 @@ export const ProdTaskRunExecution = TaskRunExecution.extend({
     id: z.string(),
     contentHash: z.string(),
     version: z.string(),
+    type: RunEngineVersionSchema.optional(),
   }),
   machine: MachinePreset.default({ name: "small-1x", cpu: 1, memory: 1, centsPerMs: 0 }),
 });
@@ -35,6 +52,7 @@ export const ProdTaskRunExecutionPayload = z.object({
   execution: ProdTaskRunExecution,
   traceContext: z.record(z.unknown()),
   environment: z.record(z.string()).optional(),
+  metrics: TaskRunExecutionMetrics.optional(),
 });
 
 export type ProdTaskRunExecutionPayload = z.infer<typeof ProdTaskRunExecutionPayload>;
@@ -109,7 +127,7 @@ export const RetryOptions = z.object({
 
 export type RetryOptions = z.infer<typeof RetryOptions>;
 
-export const QueueOptions = z.object({
+export const QueueManifest = z.object({
   /** You can define a shared queue and then pass the name in to your task.
    *
    * @example
@@ -141,14 +159,19 @@ export const QueueOptions = z.object({
     });
    * ```
    */
-  name: z.string().optional(),
+  name: z.string(),
   /** An optional property that specifies the maximum number of concurrent run executions.
    *
    * If this property is omitted, the task can potentially use up the full concurrency of an environment */
   concurrencyLimit: z.number().int().min(0).max(1000).optional().nullable(),
+  /** An optional property that specifies whether to release concurrency on waitpoint.
+   *
+   * If this property is omitted, the task will not release concurrency on waitpoint.
+   */
+  releaseConcurrencyOnWaitpoint: z.boolean().optional(),
 });
 
-export type QueueOptions = z.infer<typeof QueueOptions>;
+export type QueueManifest = z.infer<typeof QueueManifest>;
 
 export const ScheduleMetadata = z.object({
   cron: z.string(),
@@ -158,7 +181,7 @@ export const ScheduleMetadata = z.object({
 const taskMetadata = {
   id: z.string(),
   description: z.string().optional(),
-  queue: QueueOptions.optional(),
+  queue: QueueManifest.extend({ name: z.string().optional() }).optional(),
   retry: RetryOptions.optional(),
   machine: MachineConfig.optional(),
   triggerSource: z.string().optional(),
@@ -179,7 +202,7 @@ export type TaskFile = z.infer<typeof TaskFile>;
 
 const taskFileMetadata = {
   filePath: z.string(),
-  exportName: z.string(),
+  exportName: z.string().optional(),
   entryPoint: z.string(),
 };
 
@@ -247,6 +270,30 @@ export const TaskRunExecutionLazyAttemptPayload = z.object({
   isTest: z.boolean(),
   traceContext: z.record(z.unknown()),
   environment: z.record(z.string()).optional(),
+  metrics: TaskRunExecutionMetrics.optional(),
 });
 
 export type TaskRunExecutionLazyAttemptPayload = z.infer<typeof TaskRunExecutionLazyAttemptPayload>;
+
+export const RuntimeWait = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("DATETIME"),
+    id: z.string(),
+    date: z.coerce.date(),
+  }),
+  z.object({
+    type: z.literal("MANUAL"),
+    id: z.string(),
+  }),
+]);
+
+export type RuntimeWait = z.infer<typeof RuntimeWait>;
+
+export const ManualCheckpointMetadata = z.object({
+  /** NOT a friendly ID */
+  attemptId: z.string(),
+  previousRunStatus: z.string(),
+  previousAttemptStatus: z.string(),
+});
+
+export type ManualCheckpointMetadata = z.infer<typeof ManualCheckpointMetadata>;

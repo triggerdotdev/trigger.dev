@@ -23,13 +23,19 @@ model User {
   name        String?
   avatarUrl   String?
 
-  admin             Boolean @default(false)
-  isOnCloudWaitlist Boolean @default(false)
+  admin Boolean @default(false)
+
+  /// Preferences for the dashboard
+  dashboardPreferences Json?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  /// @deprecated
+  isOnCloudWaitlist      Boolean @default(false)
+  /// @deprecated
   featureCloud           Boolean @default(false)
+  /// @deprecated
   isOnHostedRepoWaitlist Boolean @default(false)
 
   marketingEmails       Boolean @default(true)
@@ -39,7 +45,9 @@ model User {
 
   orgMemberships OrgMember[]
   sentInvites    OrgMemberInvite[]
-  apiVotes       ApiIntegrationVote[]
+
+  /// @deprecated
+  apiVotes ApiIntegrationVote[]
 
   invitationCode       InvitationCode?       @relation(fields: [invitationCodeId], references: [id])
   invitationCodeId     String?
@@ -123,11 +131,17 @@ model Organization {
 
   companySize String?
 
+  avatar Json?
+
   runsEnabled Boolean @default(true)
 
-  v3Enabled      Boolean @default(false)
+  v3Enabled Boolean @default(false)
+
+  /// @deprecated
   v2Enabled      Boolean @default(false)
+  /// @deprecated
   v2MarqsEnabled Boolean @default(false)
+  /// @deprecated
   hasRequestedV3 Boolean @default(false)
 
   environments RuntimeEnvironment[]
@@ -148,6 +162,9 @@ model Organization {
   integrations             Integration[]
   sources                  TriggerSource[]
   organizationIntegrations OrganizationIntegration[]
+  workerGroups             WorkerInstanceGroup[]
+  workerInstances          WorkerInstance[]
+  executionSnapshots       TaskRunExecutionSnapshot[]
 }
 
 model ExternalAccount {
@@ -366,7 +383,8 @@ model RuntimeEnvironment {
   ///A memorable code for the environment
   shortcode String
 
-  maximumConcurrencyLimit Int @default(5)
+  maximumConcurrencyLimit Int     @default(5)
+  paused                  Boolean @default(false)
 
   autoEnableInternalSources Boolean @default(true)
 
@@ -419,6 +437,11 @@ model RuntimeEnvironment {
   currentSession       RuntimeEnvironmentSession?  @relation("currentSession", fields: [currentSessionId], references: [id], onDelete: SetNull, onUpdate: Cascade)
   currentSessionId     String?
   taskRunNumberCounter TaskRunNumberCounter[]
+  taskRunCheckpoints   TaskRunCheckpoint[]
+  waitpoints           Waitpoint[]
+  workerInstances      WorkerInstance[]
+  executionSnapshots   TaskRunExecutionSnapshot[]
+  waitpointTags        WaitpointTag[]
 
   @@unique([projectId, slug, orgMemberId])
   @@unique([projectId, shortcode])
@@ -445,9 +468,16 @@ model Project {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  version ProjectVersion @default(V2)
+  version ProjectVersion   @default(V2)
+  engine  RunEngineVersion @default(V1)
 
   builderProjectId String?
+
+  workerGroups WorkerInstanceGroup[]
+  workers      WorkerInstance[]
+
+  defaultWorkerGroup   WorkerInstanceGroup? @relation("ProjectDefaultWorkerGroup", fields: [defaultWorkerGroupId], references: [id])
+  defaultWorkerGroupId String?
 
   environments           RuntimeEnvironment[]
   endpoints              Endpoint[]
@@ -473,6 +503,11 @@ model Project {
   alertStorages          ProjectAlertStorage[]
   bulkActionGroups       BulkActionGroup[]
   BackgroundWorkerFile   BackgroundWorkerFile[]
+  waitpoints             Waitpoint[]
+  taskRunWaitpoints      TaskRunWaitpoint[]
+  taskRunCheckpoints     TaskRunCheckpoint[]
+  executionSnapshots     TaskRunExecutionSnapshot[]
+  waitpointTags          WaitpointTag[]
 }
 
 enum ProjectVersion {
@@ -1559,6 +1594,8 @@ model BackgroundWorker {
 
   friendlyId String @unique
 
+  engine RunEngineVersion @default(V1)
+
   contentHash String
   sdkVersion  String @default("unknown")
   cliVersion  String @default("unknown")
@@ -1579,8 +1616,12 @@ model BackgroundWorker {
   attempts   TaskRunAttempt[]
   lockedRuns TaskRun[]
   files      BackgroundWorkerFile[]
+  queues     TaskQueue[]
 
   deployment WorkerDeployment?
+
+  workerGroup   WorkerInstanceGroup? @relation(fields: [workerGroupId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  workerGroupId String?
 
   supportsLazyAttempts Boolean @default(false)
 
@@ -1618,7 +1659,7 @@ model BackgroundWorkerTask {
   friendlyId String @unique
 
   filePath   String
-  exportName String
+  exportName String?
 
   worker   BackgroundWorker @relation(fields: [workerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   workerId String
@@ -1642,6 +1683,9 @@ model BackgroundWorkerTask {
   retryConfig   Json?
   machineConfig Json?
 
+  queueId String?
+  queue   TaskQueue? @relation(fields: [queueId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
   maxDurationInSeconds Int?
 
   triggerSource TaskTriggerSource @default(STANDARD)
@@ -1663,7 +1707,10 @@ model TaskRun {
   number     Int    @default(0)
   friendlyId String @unique
 
-  status TaskRunStatus @default(PENDING)
+  engine RunEngineVersion @default(V1)
+
+  status       TaskRunStatus @default(PENDING)
+  statusReason String?
 
   idempotencyKey          String?
   idempotencyKeyExpiresAt DateTime?
@@ -1685,7 +1732,17 @@ model TaskRun {
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   projectId String
 
-  queue String
+  // The specific queue this run is in
+  queue         String
+  // The queueId is set when the run is locked to a specific queue
+  lockedQueueId String?
+
+  /// The main queue that this run is part of
+  masterQueue          String  @default("main")
+  secondaryMasterQueue String?
+
+  /// From engine v2+ this will be defined after a run has been dequeued (starting at 1)
+  attemptNumber Int?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1703,7 +1760,10 @@ model TaskRun {
 
   checkpoints Checkpoint[]
 
+  /// startedAt marks the point at which a run is dequeued from MarQS
   startedAt     DateTime?
+  /// executedAt is set when the first attempt is about to execute
+  executedAt    DateTime?
   completedAt   DateTime?
   machinePreset String?
 
@@ -1718,6 +1778,10 @@ model TaskRun {
   lockedToVersion   BackgroundWorker? @relation(fields: [lockedToVersionId], references: [id])
   lockedToVersionId String?
 
+  /// The "priority" of the run. This is just a negative offset in ms for the queue timestamp
+  /// E.g. a value of 60_000 would put the run into the queue 60s ago.
+  priorityMs Int @default(0)
+
   concurrencyKey String?
 
   delayUntil  DateTime?
@@ -1729,9 +1793,24 @@ model TaskRun {
   /// optional token that can be used to authenticate the task run
   oneTimeUseToken String?
 
+  ///When this run is finished, the waitpoint will be marked as completed
+  associatedWaitpoint Waitpoint? @relation("CompletingRun")
+
+  ///If there are any blocked waitpoints, the run won't be executed
+  blockedByWaitpoints TaskRunWaitpoint[]
+
+  /// All waitpoints that blocked this run at some point, used for display purposes
+  connectedWaitpoints Waitpoint[] @relation("WaitpointRunConnections")
+
+  /// Where the logs are stored
+  taskEventStore String @default("taskEvent")
+
+  queueTimestamp DateTime?
+
   batchItems             BatchTaskRunItem[]
   dependency             TaskRunDependency?
   CheckpointRestoreEvent CheckpointRestoreEvent[]
+  executionSnapshots     TaskRunExecutionSnapshot[]
 
   alerts ProjectAlert[]
 
@@ -1830,7 +1909,10 @@ enum TaskRunStatus {
   /// Task is waiting to be executed by a worker
   PENDING
 
-  /// Task hasn't been deployed yet but is waiting to be executed
+  /// The run is pending a version update because it cannot execute without additional information (task, queue, etc.). Replaces WAITING_FOR_DEPLOY
+  PENDING_VERSION
+
+  /// Task hasn't been deployed yet but is waiting to be executed. Deprecated in favor of PENDING_VERSION
   WAITING_FOR_DEPLOY
 
   /// Task is currently being executed by a worker
@@ -1874,6 +1956,361 @@ enum TaskRunStatus {
   TIMED_OUT
 }
 
+enum RunEngineVersion {
+  /// The original version that uses marqs v1 and Graphile
+  V1
+  V2
+}
+
+/// Used by the RunEngine during TaskRun execution
+/// It has the required information to transactionally progress a run through states,
+/// and prevent side effects like heartbeats failing a run that has progressed.
+/// It is optimised for performance and is designed to be cleared at some point,
+/// so there are no cascading relationships to other models.
+model TaskRunExecutionSnapshot {
+  id String @id @default(cuid())
+
+  /// This should always be 2+ (V1 didn't use the run engine or snapshots)
+  engine RunEngineVersion @default(V2)
+
+  /// The execution status
+  executionStatus TaskRunExecutionStatus
+  /// For debugging
+  description     String
+
+  /// We store invalid snapshots as a record of the run state when we tried to move
+  isValid Boolean @default(true)
+  error   String?
+
+  /// The previous snapshot ID
+  previousSnapshotId String?
+
+  /// Run
+  runId     String
+  run       TaskRun       @relation(fields: [runId], references: [id])
+  runStatus TaskRunStatus
+
+  // Batch
+  batchId String?
+  batch   BatchTaskRun? @relation(fields: [batchId], references: [id])
+
+  /// This is the current run attempt number. Users can define how many attempts they want for a run.
+  attemptNumber Int?
+
+  /// Environment
+  environmentId   String
+  environment     RuntimeEnvironment     @relation(fields: [environmentId], references: [id])
+  environmentType RuntimeEnvironmentType
+
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id])
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  /// Waitpoints that have been completed for this execution
+  completedWaitpoints Waitpoint[] @relation("completedWaitpoints")
+
+  /// An array of waitpoint IDs in the correct order, used for batches
+  completedWaitpointOrder String[]
+
+  /// Checkpoint
+  checkpointId String?
+  checkpoint   TaskRunCheckpoint? @relation(fields: [checkpointId], references: [id])
+
+  /// Worker
+  workerId String?
+  worker   WorkerInstance? @relation(fields: [workerId], references: [id])
+
+  runnerId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lastHeartbeatAt DateTime?
+
+  /// Metadata used by various systems in the run engine
+  metadata Json?
+
+  /// Used to get the latest valid snapshot quickly
+  @@index([runId, isValid, createdAt(sort: Desc)])
+}
+
+enum TaskRunExecutionStatus {
+  /// Run has been created
+  RUN_CREATED
+  /// Run is in the RunQueue
+  QUEUED
+  /// Run is in the RunQueue, and is also executing. This happens when a run is continued cannot reacquire concurrency
+  QUEUED_EXECUTING
+  /// Run has been pulled from the queue, but isn't executing yet
+  PENDING_EXECUTING
+  /// Run is executing on a worker
+  EXECUTING
+  /// Run is executing on a worker but is waiting for waitpoints to complete
+  EXECUTING_WITH_WAITPOINTS
+  /// Run has been suspended and may be waiting for waitpoints to complete before resuming
+  SUSPENDED
+  /// Run has been scheduled for cancellation
+  PENDING_CANCEL
+  /// Run is finished (success of failure)
+  FINISHED
+}
+
+model TaskRunCheckpoint {
+  id String @id @default(cuid())
+
+  friendlyId String @unique
+
+  type     TaskRunCheckpointType
+  location String
+  imageRef String?
+  reason   String?
+  metadata String?
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
+  runtimeEnvironment   RuntimeEnvironment @relation(fields: [runtimeEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  runtimeEnvironmentId String
+
+  executionSnapshot TaskRunExecutionSnapshot[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum TaskRunCheckpointType {
+  DOCKER
+  KUBERNETES
+}
+
+/// A Waitpoint blocks a run from continuing until it's completed
+/// If there's a waitpoint blocking a run, it shouldn't be in the queue
+model Waitpoint {
+  id String @id @default(cuid())
+
+  friendlyId String @unique
+
+  type   WaitpointType
+  status WaitpointStatus @default(PENDING)
+
+  completedAt DateTime?
+
+  /// If it's an Event type waitpoint, this is the event. It can also be provided for the DATETIME type
+  idempotencyKey             String
+  /// If this is true then we can show it in the dashboard/return it from the SDK
+  userProvidedIdempotencyKey Boolean
+
+  /// If there's a user provided idempotency key, this is the time it expires at
+  idempotencyKeyExpiresAt DateTime?
+
+  /// If an idempotencyKey is no longer active, we store it here and generate a new one for the idempotencyKey field.
+  /// Clearing an idempotencyKey is useful for debounce or cancelling child runs.
+  /// This is a workaround because Prisma doesn't support partial indexes.
+  inactiveIdempotencyKey String?
+
+  /// If it's a RUN type waitpoint, this is the associated run
+  completedByTaskRunId String?  @unique
+  completedByTaskRun   TaskRun? @relation("CompletingRun", fields: [completedByTaskRunId], references: [id], onDelete: SetNull)
+
+  /// If it's a DATETIME type waitpoint, this is the date.
+  /// If it's a MANUAL waitpoint, this can be set as the `timeout`.
+  completedAfter DateTime?
+
+  /// If it's a BATCH type waitpoint, this is the associated batch
+  completedByBatchId String?
+  completedByBatch   BatchTaskRun? @relation(fields: [completedByBatchId], references: [id], onDelete: SetNull)
+
+  /// The runs this waitpoint is blocking
+  blockingTaskRuns TaskRunWaitpoint[]
+
+  /// All runs that have ever been blocked by this waitpoint, used for display purposes
+  connectedRuns TaskRun[] @relation("WaitpointRunConnections")
+
+  /// When a waitpoint is complete
+  completedExecutionSnapshots TaskRunExecutionSnapshot[] @relation("completedWaitpoints")
+
+  /// When completed, an output can be stored here
+  output        String?
+  outputType    String  @default("application/json")
+  outputIsError Boolean @default(false)
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
+  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// Denormized column that holds the raw tags
+  tags String[]
+
+  /// Quickly find an idempotent waitpoint
+  @@unique([environmentId, idempotencyKey])
+  /// Quickly find a batch waitpoint
+  @@index([completedByBatchId])
+  /// Used on the Waitpoint dashboard pages
+  /// Time period filtering
+  @@index([environmentId, type, createdAt(sort: Desc)])
+  /// Status filtering
+  @@index([environmentId, type, status])
+}
+
+enum WaitpointType {
+  RUN
+  DATETIME
+  MANUAL
+  BATCH
+}
+
+enum WaitpointStatus {
+  PENDING
+  COMPLETED
+}
+
+model TaskRunWaitpoint {
+  id String @id @default(cuid())
+
+  taskRun   TaskRun @relation(fields: [taskRunId], references: [id])
+  taskRunId String
+
+  waitpoint   Waitpoint @relation(fields: [waitpointId], references: [id])
+  waitpointId String
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
+  /// This span id is completed when the waitpoint is completed. This is used with cached runs (idempotent)
+  spanIdToComplete String?
+
+  //associated batch
+  batchId    String?
+  batch      BatchTaskRun? @relation(fields: [batchId], references: [id])
+  //if there's an associated batch and this isn't set it's for the entire batch
+  //if it is set, it's a specific run in the batch
+  batchIndex Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// There are two constraints, the one below and also one that Prisma doesn't support
+  /// The second one implemented in SQL only prevents a TaskRun + Waitpoint with a null batchIndex
+  @@unique([taskRunId, waitpointId, batchIndex])
+  @@index([taskRunId])
+  @@index([waitpointId])
+}
+
+model WaitpointTag {
+  id   String @id @default(cuid())
+  name String
+
+  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId String
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
+  createdAt DateTime @default(now())
+
+  @@unique([environmentId, name])
+}
+
+model FeatureFlag {
+  id String @id @default(cuid())
+
+  key   String @unique
+  value Json?
+}
+
+model WorkerInstance {
+  id String @id @default(cuid())
+
+  /// For example "worker-1"
+  name String
+
+  /// If managed, it will default to the name, e.g. "worker-1"
+  /// If unmanged, it will be prefixed with the deployment ID e.g. "deploy-123-worker-1"
+  resourceIdentifier String
+
+  metadata Json?
+
+  workerGroup   WorkerInstanceGroup @relation(fields: [workerGroupId], references: [id])
+  workerGroupId String
+
+  TaskRunExecutionSnapshot TaskRunExecutionSnapshot[]
+
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId String?
+
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String?
+
+  environment   RuntimeEnvironment? @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId String?
+
+  deployment   WorkerDeployment? @relation(fields: [deploymentId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  deploymentId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lastDequeueAt   DateTime?
+  lastHeartbeatAt DateTime?
+
+  @@unique([workerGroupId, resourceIdentifier])
+}
+
+enum WorkerInstanceGroupType {
+  MANAGED
+  UNMANAGED
+}
+
+model WorkerInstanceGroup {
+  id   String                  @id @default(cuid())
+  type WorkerInstanceGroupType
+
+  /// For example "us-east-1"
+  name String
+
+  /// If managed, it will default to the name, e.g. "us-east-1"
+  /// If unmanged, it will be prefixed with the project ID e.g. "project_1-us-east-1"
+  masterQueue String @unique
+
+  description String?
+  hidden      Boolean @default(false)
+
+  token   WorkerGroupToken @relation(fields: [tokenId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  tokenId String           @unique
+
+  workers           WorkerInstance[]
+  backgroundWorkers BackgroundWorker[]
+
+  defaultForProjects Project[] @relation("ProjectDefaultWorkerGroup")
+
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId String?
+
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model WorkerGroupToken {
+  id String @id @default(cuid())
+
+  tokenHash String @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workerGroup WorkerInstanceGroup?
+}
+
 model TaskRunTag {
   id   String @id @default(cuid())
   name String
@@ -1911,8 +2348,9 @@ model TaskRunDependency {
   dependentBatchRun   BatchTaskRun? @relation("dependentBatchRun", fields: [dependentBatchRunId], references: [id])
   dependentBatchRunId String?
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  resumedAt DateTime?
 
   @@index([dependentAttemptId])
   @@index([dependentBatchRunId])
@@ -1937,6 +2375,7 @@ model TaskRunNumberCounter {
   @@unique([taskIdentifier, environmentId])
 }
 
+/// This is not used from engine v2+, attempts use the TaskRunExecutionSnapshot and TaskRun
 model TaskRunAttempt {
   id     String @id @default(cuid())
   number Int    @default(0)
@@ -2011,6 +2450,8 @@ model TaskEvent {
   isError     Boolean @default(false)
   isPartial   Boolean @default(false)
   isCancelled Boolean @default(false)
+  /// deprecated: don't use this, moving this to properties, this now uses TaskEventKind.LOG
+  isDebug     Boolean @default(false)
 
   serviceName      String
   serviceNamespace String
@@ -2128,6 +2569,9 @@ model TaskQueue {
   name String
   type TaskQueueType @default(VIRTUAL)
 
+  version       TaskQueueVersion @default(V1)
+  orderableName String?
+
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   projectId String
 
@@ -2137,10 +2581,17 @@ model TaskQueue {
   concurrencyLimit Int?
   rateLimit        Json?
 
+  paused Boolean @default(false)
+
+  /// If true, when a run is paused and waiting for waitpoints to be completed, the run will release the concurrency capacity.
+  releaseConcurrencyOnWaitpoint Boolean @default(false)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   attempts TaskRunAttempt[]
+  tasks    BackgroundWorkerTask[]
+  workers  BackgroundWorker[]
 
   @@unique([runtimeEnvironmentId, name])
 }
@@ -2148,6 +2599,11 @@ model TaskQueue {
 enum TaskQueueType {
   VIRTUAL
   NAMED
+}
+
+enum TaskQueueVersion {
+  V1
+  V2
 }
 
 model BatchTaskRun {
@@ -2158,17 +2614,28 @@ model BatchTaskRun {
   runtimeEnvironment      RuntimeEnvironment @relation(fields: [runtimeEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   status                  BatchTaskRunStatus @default(PENDING)
   runtimeEnvironmentId    String
+  /// This only includes new runs, not idempotent runs.
   runs                    TaskRun[]
   createdAt               DateTime           @default(now())
   updatedAt               DateTime           @updatedAt
 
   // new columns
+  /// Friendly IDs
   runIds       String[] @default([])
   runCount     Int      @default(0)
   payload      String?
   payloadType  String   @default("application/json")
   options      Json?
   batchVersion String   @default("v1")
+
+  //engine v2
+  /// Snapshots that reference this batch
+  executionSnapshots TaskRunExecutionSnapshot[]
+  /// Specific run blockers,
+  runsBlocked        TaskRunWaitpoint[]
+  /// Waitpoints that are blocked by this batch.
+  /// When a Batch is created it blocks execution of the associated parent run (for andWait)
+  waitpoints         Waitpoint[]
 
   // This is for v3 batches
   /// sealed is set to true once no more items can be added to the batch
@@ -2206,8 +2673,10 @@ model BatchTaskRun {
 enum BatchTaskRunStatus {
   PENDING
   COMPLETED
+  ABORTED
 }
 
+///Used in engine V1 only
 model BatchTaskRunItem {
   id String @id @default(cuid())
 
@@ -2259,8 +2728,12 @@ model EnvironmentVariableValue {
   variableId       String
   environment      RuntimeEnvironment  @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   environmentId    String
-  createdAt        DateTime            @default(now())
-  updatedAt        DateTime            @updatedAt
+
+  /// If true, the value is secret and cannot be revealed
+  isSecret Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([variableId, environmentId])
 }
@@ -2340,6 +2813,12 @@ enum CheckpointRestoreEventType {
   RESTORE
 }
 
+enum WorkerDeploymentType {
+  MANAGED
+  UNMANAGED
+  V1
+}
+
 model WorkerDeployment {
   id String @id @default(cuid())
 
@@ -2353,6 +2832,7 @@ model WorkerDeployment {
   externalBuildData Json?
 
   status WorkerDeploymentStatus @default(PENDING)
+  type   WorkerDeploymentType   @default(V1)
 
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   projectId String
@@ -2375,8 +2855,9 @@ model WorkerDeployment {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  promotions WorkerDeploymentPromotion[]
-  alerts     ProjectAlert[]
+  promotions     WorkerDeploymentPromotion[]
+  alerts         ProjectAlert[]
+  workerInstance WorkerInstance[]
 
   @@unique([projectId, shortCode])
   @@unique([environmentId, version])
@@ -2441,6 +2922,8 @@ model TaskSchedule {
   ///Instances of the schedule that are active
   instances TaskScheduleInstance[]
 
+  lastRunTriggeredAt DateTime?
+
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   projectId String
 
@@ -2450,6 +2933,9 @@ model TaskSchedule {
   active Boolean @default(true)
 
   @@unique([projectId, deduplicationKey])
+  /// Dashboard list view
+  @@index([projectId])
+  @@index([projectId, createdAt(sort: Desc)])
 }
 
 enum ScheduleType {
@@ -2703,4 +3189,101 @@ model RealtimeStreamChunk {
 
   @@index([runId])
   @@index([createdAt])
+}
+
+/// This is the unified otel span/log model that will eventually be replaced by clickhouse
+model TaskEventPartitioned {
+  id      String @default(cuid())
+  /// This matches the span name for a trace event, or the log body for a log event
+  message String
+
+  traceId    String
+  spanId     String
+  parentId   String?
+  tracestate String?
+
+  isError     Boolean @default(false)
+  isPartial   Boolean @default(false)
+  isCancelled Boolean @default(false)
+
+  serviceName      String
+  serviceNamespace String
+
+  level  TaskEventLevel  @default(TRACE)
+  kind   TaskEventKind   @default(INTERNAL)
+  status TaskEventStatus @default(UNSET)
+
+  links  Json?
+  events Json?
+
+  /// This is the time the event started in nanoseconds since the epoch
+  startTime BigInt
+
+  /// This is the duration of the event in nanoseconds
+  duration BigInt @default(0)
+
+  attemptId     String?
+  attemptNumber Int?
+
+  environmentId   String
+  environmentType RuntimeEnvironmentType
+
+  organizationId String
+
+  projectId  String
+  projectRef String
+
+  runId     String
+  runIsTest Boolean @default(false)
+
+  idempotencyKey String?
+
+  taskSlug       String
+  taskPath       String?
+  taskExportName String?
+
+  workerId      String?
+  workerVersion String?
+
+  queueId   String?
+  queueName String?
+
+  batchId String?
+
+  /// This represents all the span attributes available, like http.status_code, and special attributes like $style.icon, $output, $metadata.payload.userId, as it's used for searching and filtering
+  properties Json
+
+  /// This represents all span attributes in the $metadata namespace, like $metadata.payload
+  metadata Json?
+
+  /// This represents all span attributes in the $style namespace, like $style
+  style Json?
+
+  /// This represents all span attributes in the $output namespace, like $output
+  output Json?
+
+  /// This represents the mimetype of the output, such as application/json or application/super+json
+  outputType String?
+
+  payload     Json?
+  payloadType String?
+
+  createdAt DateTime @default(now())
+
+  // This represents the amount of "usage time" the event took, e.g. the CPU time
+  usageDurationMs  Int   @default(0)
+  usageCostInCents Float @default(0)
+
+  machinePreset           String?
+  machinePresetCpu        Float?
+  machinePresetMemory     Float?
+  machinePresetCentsPerMs Float?
+
+  @@id([id, createdAt])
+  /// Used on the run page
+  @@index([traceId])
+  /// Used when looking up span events to complete when a run completes
+  @@index([spanId])
+  // Used for getting all logs for a run
+  @@index([runId])
 }

@@ -1,13 +1,16 @@
 "use client";
 
-import { ChevronDownIcon, EllipsisVerticalIcon } from "@heroicons/react/24/solid";
+import { CheckIcon } from "@heroicons/react/20/solid";
+import { EllipsisVerticalIcon } from "@heroicons/react/24/solid";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
 import * as React from "react";
+import { DropdownIcon } from "~/assets/icons/DropdownIcon";
+import * as useShortcutKeys from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
 import { type ButtonContentPropsType, LinkButton } from "./Buttons";
 import { Paragraph, type ParagraphVariant } from "./Paragraph";
 import { ShortcutKey } from "./ShortcutKey";
-import { ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
+import { type RenderIcon } from "./Icon";
 
 const Popover = PopoverPrimitive.Root;
 const PopoverTrigger = PopoverPrimitive.Trigger;
@@ -37,7 +40,7 @@ PopoverContent.displayName = PopoverPrimitive.Content.displayName;
 
 function PopoverSectionHeader({
   title,
-  variant = "extra-extra-small/dimmed/caps",
+  variant = "extra-small",
 }: {
   title: string;
   variant?: ParagraphVariant;
@@ -58,7 +61,7 @@ function PopoverMenuItem({
   leadingIconClassName,
 }: {
   to: string;
-  icon: string | React.ComponentType<any>;
+  icon?: RenderIcon;
   title: React.ReactNode;
   isSelected?: boolean;
   variant?: ButtonContentPropsType;
@@ -72,7 +75,7 @@ function PopoverMenuItem({
       leadingIconClassName={leadingIconClassName}
       fullWidth
       textAlignLeft
-      TrailingIcon={isSelected ? "check" : undefined}
+      TrailingIcon={isSelected ? CheckIcon : undefined}
       className={cn(
         "group-hover:bg-charcoal-700",
         isSelected ? "bg-charcoal-750 group-hover:bg-charcoal-600/50" : undefined
@@ -108,11 +111,12 @@ function PopoverSideMenuTrigger({
   className,
   shortcut,
   ...props
-}: { isOpen?: boolean; shortcut?: ShortcutDefinition } & React.ComponentPropsWithoutRef<
-  typeof PopoverTrigger
->) {
+}: {
+  isOpen?: boolean;
+  shortcut?: useShortcutKeys.ShortcutDefinition;
+} & React.ComponentPropsWithoutRef<typeof PopoverTrigger>) {
   const ref = React.useRef<HTMLButtonElement>(null);
-  useShortcutKeys({
+  useShortcutKeys.useShortcutKeys({
     shortcut: shortcut,
     action: (e) => {
       e.preventDefault();
@@ -157,7 +161,7 @@ function PopoverArrowTrigger({
     <PopoverTrigger
       {...props}
       className={cn(
-        "group flex h-6 items-center gap-1 rounded px-2 text-text-dimmed transition focus-custom hover:bg-charcoal-700 hover:text-text-bright",
+        "group flex h-6 items-center gap-1 rounded pl-2 pr-1 text-text-dimmed transition focus-custom hover:bg-charcoal-700 hover:text-text-bright",
         fullWidth && "w-full justify-between",
         className
       )}
@@ -171,12 +175,7 @@ function PopoverArrowTrigger({
       >
         {children}
       </Paragraph>
-      <ChevronDownIcon
-        className={cn(
-          "h-3 w-3 min-w-[0.75rem] text-charcoal-600 transition group-hover:text-text-bright",
-          isOpen && "-rotate-180"
-        )}
-      />
+      <DropdownIcon className="size-4 min-w-4 text-text-dimmed transition group-hover:text-text-bright" />
     </PopoverTrigger>
   );
 }

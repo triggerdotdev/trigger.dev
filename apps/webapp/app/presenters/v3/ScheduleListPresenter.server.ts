@@ -1,8 +1,9 @@
-import { Prisma, RuntimeEnvironmentType, ScheduleType } from "@trigger.dev/database";
-import { ScheduleListFilters } from "~/components/runs/v3/ScheduleFilters";
+import { Prisma, type RuntimeEnvironmentType, type ScheduleType } from "@trigger.dev/database";
+import { type ScheduleListFilters } from "~/components/runs/v3/ScheduleFilters";
 import { sqlDatabaseSchema } from "~/db.server";
 import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
-import { getCurrentPlan, getLimit, getLimits } from "~/services/platform.v3.server";
+import { getLimit } from "~/services/platform.v3.server";
+import { CheckScheduleService } from "~/v3/services/checkSchedule.server";
 import { calculateNextScheduledTimestamp } from "~/v3/utils/calculateNextSchedule.server";
 import { BasePresenter } from "./basePresenter.server";
 
@@ -49,10 +50,7 @@ export class ScheduleListPresenter extends BasePresenter {
     pageSize = DEFAULT_PAGE_SIZE,
   }: ScheduleListOptions) {
     const hasFilters =
-      type !== undefined ||
-      tasks !== undefined ||
-      environments !== undefined ||
-      (search !== undefined && search !== "");
+      type !== undefined || tasks !== undefined || (search !== undefined && search !== "");
 
     const filterType =
       type === "declarative" ? "DECLARATIVE" : type === "imperative" ? "IMPERATIVE" : undefined;
@@ -86,10 +84,9 @@ export class ScheduleListPresenter extends BasePresenter {
       },
     });
 
-    const schedulesCount = await this._prisma.taskSchedule.count({
-      where: {
-        projectId,
-      },
+    const schedulesCount = await CheckScheduleService.getUsedSchedulesCount({
+      prisma: this._replica,
+      environments: project.environments,
     });
 
     //get all possible scheduled tasks
@@ -165,6 +162,8 @@ export class ScheduleListPresenter extends BasePresenter {
           },
         },
         active: true,
+        lastRunTriggeredAt: true,
+        createdAt: true,
       },
       where: {
         projectId: project.id,
@@ -208,27 +207,14 @@ export class ScheduleListPresenter extends BasePresenter {
             }
           : undefined,
       },
+      orderBy: {
+        createdAt: "desc",
+      },
       take: pageSize,
       skip: (page - 1) * pageSize,
     });
 
-    const latestRuns =
-      rawSchedules.length > 0
-        ? await this._replica.$queryRaw<{ scheduleId: string; createdAt: Date }[]>`
-    SELECT t."scheduleId", t."createdAt"
-    FROM (
-      SELECT "scheduleId", MAX("createdAt") as "LatestRun"
-      FROM ${sqlDatabaseSchema}."TaskRun"
-      WHERE "scheduleId" IN (${Prisma.join(rawSchedules.map((s) => s.id))})
-      GROUP BY "scheduleId"
-    ) r
-    JOIN ${sqlDatabaseSchema}."TaskRun" t
-    ON t."scheduleId" = r."scheduleId" AND t."createdAt" = r."LatestRun";`
-        : [];
-
     const schedules: ScheduleListItem[] = rawSchedules.map((schedule) => {
-      const latestRun = latestRuns.find((r) => r.scheduleId === schedule.id);
-
       return {
         id: schedule.id,
         type: schedule.type,
@@ -241,7 +227,7 @@ export class ScheduleListPresenter extends BasePresenter {
         timezone: schedule.timezone,
         active: schedule.active,
         externalId: schedule.externalId,
-        lastRun: latestRun?.createdAt,
+        lastRun: schedule.lastRunTriggeredAt ?? undefined,
         nextRun: calculateNextScheduledTimestamp(schedule.generatorExpression, schedule.timezone),
         environments: schedule.instances.map((instance) => {
           const environment = project.environments.find((env) => env.id === instance.environmentId);

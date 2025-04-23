@@ -1,8 +1,7 @@
-import { TaskRun, TaskRunAttempt } from "@trigger.dev/database";
+import { type TaskRunAttempt } from "@trigger.dev/database";
 import { eventStream } from "remix-utils/sse/server";
-import { PrismaClient, prisma } from "~/db.server";
+import { type PrismaClient, prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
-import { eventRepository } from "~/v3/eventRepository.server";
 import { projectPubSub } from "~/v3/services/projectPubSub.server";
 
 type RunWithAttempts = {
@@ -26,11 +25,13 @@ export class TasksStreamPresenter {
     request,
     organizationSlug,
     projectSlug,
+    environmentSlug,
     userId,
   }: {
     request: Request;
     organizationSlug: string;
     projectSlug: string;
+    environmentSlug: string;
     userId: string;
   }) {
     const project = await this.#prismaClient.project.findFirst({
@@ -58,7 +59,7 @@ export class TasksStreamPresenter {
       projectSlug,
     });
 
-    let pinger: NodeJS.Timer | undefined = undefined;
+    let pinger: NodeJS.Timeout | undefined = undefined;
 
     const subscriber = await projectPubSub.subscribe(`project:${project.id}:*`);
 

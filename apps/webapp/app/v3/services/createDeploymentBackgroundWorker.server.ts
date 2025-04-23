@@ -1,15 +1,14 @@
-import { CreateBackgroundWorkerRequestBody } from "@trigger.dev/core/v3";
-import type { BackgroundWorker } from "@trigger.dev/database";
+import { CreateBackgroundWorkerRequestBody, logger, tryCatch } from "@trigger.dev/core/v3";
+import { BackgroundWorkerId } from "@trigger.dev/core/v3/isomorphic";
+import type { BackgroundWorker, WorkerDeployment } from "@trigger.dev/database";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
-import { generateFriendlyId } from "../friendlyIdentifiers";
-import { BaseService } from "./baseService.server";
+import { BaseService, ServiceValidationError } from "./baseService.server";
 import {
   createBackgroundFiles,
-  createBackgroundTasks,
+  createWorkerResources,
   syncDeclarativeSchedules,
 } from "./createBackgroundWorker.server";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
-import { logger } from "~/services/logger.server";
 
 export class CreateDeploymentBackgroundWorkerService extends BaseService {
   public async call(
@@ -36,7 +35,7 @@ export class CreateDeploymentBackgroundWorkerService extends BaseService {
 
       const backgroundWorker = await this._prisma.backgroundWorker.create({
         data: {
-          friendlyId: generateFriendlyId("worker"),
+          ...BackgroundWorkerId.generate(),
           version: deployment.version,
           runtimeEnvironmentId: environment.id,
           projectId: environment.projectId,
@@ -45,48 +44,81 @@ export class CreateDeploymentBackgroundWorkerService extends BaseService {
           cliVersion: body.metadata.cliPackageVersion,
           sdkVersion: body.metadata.packageVersion,
           supportsLazyAttempts: body.supportsLazyAttempts,
+          engine: body.engine,
         },
       });
 
-      try {
-        const tasksToBackgroundFiles = await createBackgroundFiles(
+      //upgrade the project to engine "V2" if it's not already
+      if (environment.project.engine === "V1" && body.engine === "V2") {
+        await this._prisma.project.update({
+          where: {
+            id: environment.project.id,
+          },
+          data: {
+            engine: "V2",
+          },
+        });
+      }
+
+      const [filesError, tasksToBackgroundFiles] = await tryCatch(
+        createBackgroundFiles(
           body.metadata.sourceFiles,
           backgroundWorker,
           environment,
           this._prisma
-        );
-        await createBackgroundTasks(
-          body.metadata.tasks,
+        )
+      );
+
+      if (filesError) {
+        logger.error("Error creating background worker files", {
+          error: filesError,
+        });
+
+        const serviceError = new ServiceValidationError("Error creating background worker files");
+
+        await this.#failBackgroundWorkerDeployment(deployment, serviceError);
+
+        throw serviceError;
+      }
+
+      const [resourcesError] = await tryCatch(
+        createWorkerResources(
+          body.metadata,
           backgroundWorker,
           environment,
           this._prisma,
           tasksToBackgroundFiles
-        );
-        await syncDeclarativeSchedules(
-          body.metadata.tasks,
-          backgroundWorker,
-          environment,
-          this._prisma
-        );
-      } catch (error) {
-        const name = error instanceof Error ? error.name : "UnknownError";
-        const message = error instanceof Error ? error.message : JSON.stringify(error);
+        )
+      );
 
-        await this._prisma.workerDeployment.update({
-          where: {
-            id: deployment.id,
-          },
-          data: {
-            status: "FAILED",
-            failedAt: new Date(),
-            errorData: {
-              name,
-              message,
-            },
-          },
+      if (resourcesError) {
+        logger.error("Error creating background worker resources", {
+          error: resourcesError,
         });
 
-        throw error;
+        const serviceError = new ServiceValidationError(
+          "Error creating background worker resources"
+        );
+
+        await this.#failBackgroundWorkerDeployment(deployment, serviceError);
+
+        throw serviceError;
+      }
+
+      const [schedulesError] = await tryCatch(
+        syncDeclarativeSchedules(body.metadata.tasks, backgroundWorker, environment, this._prisma)
+      );
+
+      if (schedulesError) {
+        logger.error("Error syncing declarative schedules", {
+          error: schedulesError,
+        });
+
+        const serviceError = new ServiceValidationError("Error syncing declarative schedules");
+
+        await this.#failBackgroundWorkerDeployment(deployment, serviceError);
+
+        throw serviceError;
       }
 
       // Link the deployment with the background worker
@@ -97,7 +129,8 @@ export class CreateDeploymentBackgroundWorkerService extends BaseService {
         data: {
           status: "DEPLOYING",
           workerId: backgroundWorker.id,
-          deployedAt: new Date(),
+          builtAt: new Date(),
+          type: backgroundWorker.engine === "V2" ? "MANAGED" : "V1",
         },
       });
 
@@ -105,5 +138,25 @@ export class CreateDeploymentBackgroundWorkerService extends BaseService {
 
       return backgroundWorker;
     });
+  }
+
+  async #failBackgroundWorkerDeployment(deployment: WorkerDeployment, error: Error) {
+    await this._prisma.workerDeployment.update({
+      where: {
+        id: deployment.id,
+      },
+      data: {
+        status: "FAILED",
+        failedAt: new Date(),
+        errorData: {
+          name: error.name,
+          message: error.message,
+        },
+      },
+    });
+
+    await TimeoutDeploymentService.dequeue(deployment.id, this._prisma);
+
+    throw error;
   }
 }

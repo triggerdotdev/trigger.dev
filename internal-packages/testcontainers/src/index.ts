@@ -1,10 +1,13 @@
 import { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { StartedRedisContainer } from "@testcontainers/redis";
 import { PrismaClient } from "@trigger.dev/database";
-import { Redis } from "ioredis";
+import { RedisOptions } from "ioredis";
 import { Network, type StartedNetwork } from "testcontainers";
 import { test } from "vitest";
 import { createElectricContainer, createPostgresContainer, createRedisContainer } from "./utils";
+
+export { assertNonNullable } from "./utils";
+export { StartedRedisContainer };
 
 type NetworkContext = { network: StartedNetwork };
 
@@ -13,7 +16,10 @@ type PostgresContext = NetworkContext & {
   prisma: PrismaClient;
 };
 
-type RedisContext = { redisContainer: StartedRedisContainer; redis: Redis };
+type RedisContext = NetworkContext & {
+  redisContainer: StartedRedisContainer;
+  redisOptions: RedisOptions;
+};
 
 type ElectricContext = {
   electricOrigin: string;
@@ -27,7 +33,16 @@ type Use<T> = (value: T) => Promise<void>;
 
 const network = async ({}, use: Use<StartedNetwork>) => {
   const network = await new Network().start();
-  await use(network);
+  try {
+    await use(network);
+  } finally {
+    try {
+      await network.stop();
+    } catch (error) {
+      console.warn("Network stop error (ignored):", error);
+    }
+    // Make sure to stop the network after use
+  }
 };
 
 const postgresContainer = async (
@@ -35,8 +50,11 @@ const postgresContainer = async (
   use: Use<StartedPostgreSqlContainer>
 ) => {
   const { container } = await createPostgresContainer(network);
-  await use(container);
-  await container.stop();
+  try {
+    await use(container);
+  } finally {
+    await container.stop();
+  }
 };
 
 const prisma = async (
@@ -50,32 +68,64 @@ const prisma = async (
       },
     },
   });
-  await use(prisma);
-  await prisma.$disconnect();
+  try {
+    await use(prisma);
+  } finally {
+    await prisma.$disconnect();
+  }
 };
 
 export const postgresTest = test.extend<PostgresContext>({ network, postgresContainer, prisma });
 
-const redisContainer = async ({}, use: Use<StartedRedisContainer>) => {
-  const { container } = await createRedisContainer();
-  await use(container);
-  await container.stop();
+const redisContainer = async (
+  { network }: { network: StartedNetwork },
+  use: Use<StartedRedisContainer>
+) => {
+  const { container } = await createRedisContainer({
+    port: 6379,
+    network,
+  });
+  try {
+    await use(container);
+  } finally {
+    await container.stop();
+  }
 };
 
-const redis = async (
+const redisOptions = async (
   { redisContainer }: { redisContainer: StartedRedisContainer },
-  use: Use<Redis>
+  use: Use<RedisOptions>
 ) => {
-  const redis = new Redis({
+  const options: RedisOptions = {
     host: redisContainer.getHost(),
     port: redisContainer.getPort(),
     password: redisContainer.getPassword(),
-  });
-  await use(redis);
-  await redis.quit();
+    maxRetriesPerRequest: 20, // Lower the retry attempts
+    retryStrategy(times) {
+      const delay = Math.min(times * 50, 2000);
+      return delay;
+    },
+    connectTimeout: 10000, // 10 seconds
+    // Add more robust connection options
+    enableOfflineQueue: true,
+    reconnectOnError: (err) => {
+      const targetError = "READONLY";
+      if (err.message.includes(targetError)) {
+        return true;
+      }
+      return false;
+    },
+    enableAutoPipelining: true,
+    autoResubscribe: true,
+    autoResendUnfulfilledCommands: true,
+    lazyConnect: false,
+    showFriendlyErrorStack: true,
+  };
+
+  await use(options);
 };
 
-export const redisTest = test.extend<RedisContext>({ redisContainer, redis });
+export const redisTest = test.extend<RedisContext>({ network, redisContainer, redisOptions });
 
 const electricOrigin = async (
   {
@@ -85,8 +135,11 @@ const electricOrigin = async (
   use: Use<string>
 ) => {
   const { origin, container } = await createElectricContainer(postgresContainer, network);
-  await use(origin);
-  await container.stop();
+  try {
+    await use(origin);
+  } finally {
+    await container.stop();
+  }
 };
 
 export const containerTest = test.extend<ContainerContext>({
@@ -94,7 +147,7 @@ export const containerTest = test.extend<ContainerContext>({
   postgresContainer,
   prisma,
   redisContainer,
-  redis,
+  redisOptions,
 });
 
 export const containerWithElectricTest = test.extend<ContainerWithElectricContext>({
@@ -109,6 +162,6 @@ export const containerWithElectricAndRedisTest = test.extend<ContainerWithElectr
   postgresContainer,
   prisma,
   redisContainer,
-  redis,
+  redisOptions,
   electricOrigin,
 });

@@ -3,13 +3,28 @@ title: "Concurrency & Queues"
 description: "Configure what you want to happen when there is more than one run at a time."
 ---
 
+When you trigger a task, it isn't executed immediately. Instead, the task [run](/runs) is placed into a queue for execution. By default, each task gets its own queue with unbounded concurrency—meaning the task runs as soon as resources are available, subject only to the overall concurrency limits of your environment. If you need more control (for example, to limit concurrency or share limits across multiple tasks), you can define a custom queue as described later in this document.
+
 Controlling concurrency is useful when you have a task that can't be run concurrently, or when you want to limit the number of runs to avoid overloading a resource.
 
-## One at a time
+It's important to note that only actively executing runs count towards concurrency limits. Runs that are delayed or waiting in a queue do not consume concurrency slots until they begin execution.
 
-This task will only ever have a single run executing at a time. All other runs will be queued until the current run is complete.
+## Default concurrency
+
+By default, all tasks have an unbounded concurrency limit, limited only by the overall concurrency limits of your environment. This means that each task could possibly "fill up" the entire
+concurrency limit of your environment.
+
+<Note>
+  Your environment has a maximum concurrency limit which depends on your plan. If you're a paying
+  customer you can request a higher limit by [contacting us](https://www.trigger.dev/contact).
+</Note>
+
+## Setting task concurrency
+
+You can set the concurrency limit for a task by setting the `concurrencyLimit` property on the task's queue. This limits the number of runs that can be executing at any one time:
 
 ```ts /trigger/one-at-a-time.ts
+// This task will only run one at a time
 export const oneAtATime = task({
   id: "one-at-a-time",
   queue: {
@@ -21,38 +36,14 @@ export const oneAtATime = task({
 });
 ```
 
-## Parallelism
+This is useful if you need to control access to a shared resource, like a database or an API that has rate limits.
 
-You can execute lots of tasks at once by combining high concurrency with [batch triggering](/triggering) (or just triggering in a loop).
-
-```ts /trigger/parallelism.ts
-export const parallelism = task({
-  id: "parallelism",
-  queue: {
-    concurrencyLimit: 100,
-  },
-  run: async (payload) => {
-    //...
-  },
-});
-```
-
-<Warning>
-  Be careful with high concurrency. If you're doing API requests you might hit rate limits. If
-  you're hitting your database you might overload it.
-</Warning>
-
-<Note>
-  Your organization has a maximum concurrency limit which depends on your plan. If you're a paying
-  customer you can request a higher limit by [contacting us](https://www.trigger.dev/contact).
-</Note>
-
-## Defining a queue
+## Sharing concurrency between tasks
 
 As well as putting queue settings directly on a task, you can define a queue and reuse it across multiple tasks. This allows you to share the same concurrency limit:
 
 ```ts /trigger/queue.ts
-const myQueue = queue({
+export const myQueue = queue({
   name: "my-queue",
   concurrencyLimit: 1,
 });
@@ -74,6 +65,8 @@ export const task2 = task({
 });
 ```
 
+In this example, `task1` and `task2` share the same queue, so only one of them can run at a time.
+
 ## Setting the concurrency when you trigger a run
 
 When you trigger a task you can override the concurrency limit. This is really useful if you sometimes have high priority runs.
@@ -81,7 +74,7 @@ When you trigger a task you can override the concurrency limit. This is really u
 The task:
 
 ```ts /trigger/override-concurrency.ts
-const generatePullRequest = task({
+export const generatePullRequest = task({
   id: "generate-pull-request",
   queue: {
     //normally when triggering this task it will be limited to 1 run at a time
@@ -107,7 +100,7 @@ export async function POST(request: Request) {
       queue: {
         //the "main-branch" queue will have a concurrency limit of 10
         //this triggered run will use that queue
-        name: "main-branch",
+        name: "main-branch", // Make sure to change the queue name or the task concurrency limit will be updated
         concurrencyLimit: 10,
       },
     });
@@ -123,7 +116,7 @@ export async function POST(request: Request) {
 
 ## Concurrency keys and per-tenant queuing
 
-If you're building an application where you want to run tasks for your users, you might want a separate queue for each of your users. (It doesn't have to be users, it can be any entity you want to separately limit the concurrency for.)
+If you're building an application where you want to run tasks for your users, you might want a separate queue for each of your users (or orgs, projects, etc.).
 
 You can do this by using `concurrencyKey`. It creates a separate queue for each value of the key.
 
@@ -164,3 +157,146 @@ export async function POST(request: Request) {
   }
 }
 ```
+
+## Concurrency and subtasks
+
+When you trigger a task that has subtasks, the subtasks will not inherit the concurrency settings of the parent task. Unless otherwise specified, subtasks will run on their own queue
+
+```ts /trigger/subtasks.ts
+export const parentTask = task({
+  id: "parent-task",
+  run: async (payload) => {
+    //trigger a subtask
+    await subtask.triggerAndWait(payload);
+  },
+});
+
+// This subtask will run on its own queue
+export const subtask = task({
+  id: "subtask",
+  run: async (payload) => {
+    //...
+  },
+});
+```
+
+## Waits and concurrency
+
+With our [task checkpoint system](/how-it-works#the-checkpoint-resume-system), a parent task can trigger and wait for a subtask to complete. The way this system interacts with the concurrency system is a little complicated but important to understand. There are two main scenarios that we handle slightly differently:
+
+- When a parent task waits for a subtask on a different queue.
+- When a parent task waits for a subtask on the same queue.
+
+These scenarios are discussed in more detail below:
+
+<Note>
+  We sometimes refer to the parent task as the "parent" and the subtask as the "child". Subtask and
+  child task are used interchangeably. We apologize for the confusion.
+</Note>
+
+### Waiting for a subtask on a different queue
+
+During the time when a parent task is waiting on a subtask, the "concurrency" slot of the parent task is still considered occupied on the parent task queue, but is temporarily "released" to the environment. An example will help illustrate this:
+
+```ts /trigger/waiting.ts
+export const parentTask = task({
+  id: "parent-task",
+  queue: {
+    concurrencyLimit: 1,
+  },
+  run: async (payload) => {
+    //trigger a subtask
+    await subtask.triggerAndWait(payload);
+  },
+});
+
+export const subtask = task({
+  id: "subtask",
+  run: async (payload) => {
+    //...
+  },
+});
+```
+
+For example purposes, let's say the environment concurrency limit is 1. When the parent task is triggered, it will occupy the only slot in the environment. When the parent task triggers the subtask, the subtask will be placed in the queue for the subtask. The parent task will then wait for the subtask to complete. During this time, the parent task slot is temporarily released to the environment, allowing another task to run. Once the subtask completes, the parent task slot is reoccupied.
+
+This system prevents "stuck" tasks. If the parent task were to wait on the subtask and not release the slot, the environment would be stuck with only one task running.
+
+And because only the environment slot is released, the parent task queue slot is still occupied. This means that if another task is triggered on the parent task queue, it will be placed in the queue and wait for the parent task to complete, respecting the concurrency limit.
+
+### Waiting for a subtask on the same queue
+
+Because tasks can trigger and wait recursively, or share the same queue, we've added special handling for when a parent task waits for a subtask on the same queue.
+
+Recall above that when waiting for a subtask on a different queue, the parent task slot is temporarily released to the environment. When the parent task and the subtask share a queue, we also release the parent task slot to the queue. Again, an example will help illustrate this:
+
+```ts /trigger/waiting-same-queue.ts
+export const myQueue = queue({
+  name: "my-queue",
+  concurrencyLimit: 1,
+});
+
+export const parentTask = task({
+  id: "parent-task",
+  queue: myQueue,
+  run: async (payload) => {
+    //trigger a subtask
+    await subtask.triggerAndWait(payload);
+  },
+});
+
+export const subtask = task({
+  id: "subtask",
+  queue: myQueue,
+  run: async (payload) => {
+    //...
+  },
+});
+```
+
+In this example, the parent task and the subtask share the same queue with a concurrency limit of 1. When the parent task triggers the subtask, the parent task slot is released to the queue, giving the subtask the opportunity to run. Once the subtask completes, the parent task slot is reoccupied.
+
+It's very important to note that we only release at-most X slots to the queue, where X is the concurrency limit of the queue. This means that you can only trigger and wait for X subtasks on the same queue. If you try to trigger and wait for more than X subtasks, you will receive a `RECURSIVE_WAIT_DEADLOCK` error. The following example will result in a deadlock:
+
+```ts /trigger/deadlock.ts
+export const myQueue = queue({
+  name: "my-queue",
+  concurrencyLimit: 1,
+});
+
+export const parentTask = task({
+  id: "parent-task",
+  queue: myQueue,
+  run: async (payload) => {
+    //trigger a subtask
+    await subtask.triggerAndWait(payload);
+  },
+});
+
+export const subtask = task({
+  id: "subtask",
+  queue: myQueue,
+  run: async (payload) => {
+    //trigger a subtask
+    await subsubtask.triggerAndWait(payload);
+  },
+});
+
+export const subsubtask = task({
+  id: "subsubtask",
+  queue: myQueue,
+  run: async (payload) => {
+    //...
+  },
+});
+```
+
+Now this will result in a `RECURSIVE_WAIT_DEADLOCK` error because the parent task is waiting for the subtask, and the subtask is waiting for the subsubtask, but there is no more concurrency available in the queue. It will look a bit like this in the logs:
+
+![Recursive task deadlock](/images/recursive-task-deadlock-min.png)
+
+### Mitigating recursive wait deadlocks
+
+If you are recursively triggering and waiting for tasks on the same queue, you can mitigate the risk of a deadlock by increasing the concurrency limit of the queue. This will allow you to trigger and wait for more subtasks.
+
+You can also use different queues for the parent task and the subtask. This will allow you to trigger and wait for more subtasks without the risk of a deadlock.

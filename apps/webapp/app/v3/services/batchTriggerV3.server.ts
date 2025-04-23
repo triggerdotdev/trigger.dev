@@ -456,18 +456,17 @@ export class BatchTriggerV3Service extends BaseService {
           error: result.error,
         });
 
-        await this.#enqueueBatchTaskRun({
-          batchId: batch.id,
-          processingId: "0",
-          range: {
-            start: result.workingIndex,
-            count: PROCESSING_BATCH_SIZE,
+        await this._prisma.batchTaskRun.update({
+          where: {
+            id: batch.id,
           },
-          attemptCount: 0,
-          strategy: "sequential",
+          data: {
+            status: "ABORTED",
+            completedAt: new Date(),
+          },
         });
 
-        return batch;
+        throw result.error;
       }
 
       // Update the batch to be sealed
@@ -859,7 +858,7 @@ export class BatchTriggerV3Service extends BaseService {
         spanParentAsLink: options?.spanParentAsLink,
         batchId: batch.friendlyId,
         skipChecks: true,
-        runId: task.runId,
+        runFriendlyId: task.runId,
       }
     );
 

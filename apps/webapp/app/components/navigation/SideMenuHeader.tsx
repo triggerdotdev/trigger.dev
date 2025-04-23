@@ -1,6 +1,5 @@
 import { useNavigation } from "@remix-run/react";
 import { useEffect, useState } from "react";
-import { Paragraph } from "../primitives/Paragraph";
 import { Popover, PopoverContent, PopoverCustomTrigger } from "../primitives/Popover";
 import { EllipsisHorizontalIcon } from "@heroicons/react/20/solid";
 
@@ -14,12 +13,7 @@ export function SideMenuHeader({ title, children }: { title: string; children?: 
 
   return (
     <div className="group flex items-center justify-between pl-1.5">
-      <Paragraph
-        variant="extra-extra-small/caps"
-        className="cursor-default truncate text-charcoal-500"
-      >
-        {title}
-      </Paragraph>
+      <h2 className="text-xs">{title}</h2>
       {children !== undefined ? (
         <Popover onOpenChange={(open) => setHeaderMenuOpen(open)} open={isHeaderMenuOpen}>
           <PopoverCustomTrigger className="p-1">

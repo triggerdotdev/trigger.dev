@@ -54,6 +54,80 @@ export class AbortTaskRunError extends Error {
   }
 }
 
+const MANUAL_OOM_KILL_ERROR_MESSAGE = "MANUAL_OOM_KILL_ERROR";
+
+/**
+ * This causes an Out Of Memory error on the run (if it's uncaught).
+ * This can be useful if you use a native package that detects it's run out of memory but doesn't kill Node.js
+ */
+export class OutOfMemoryError extends Error {
+  constructor() {
+    super(MANUAL_OOM_KILL_ERROR_MESSAGE);
+    this.name = "OutOfMemoryError";
+  }
+}
+
+export function isManualOutOfMemoryError(error: TaskRunError) {
+  if (error.type === "BUILT_IN_ERROR") {
+    if (error.message && error.message === MANUAL_OOM_KILL_ERROR_MESSAGE) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function isOOMRunError(error: TaskRunError) {
+  if (error.type === "INTERNAL_ERROR") {
+    if (
+      error.code === "TASK_PROCESS_OOM_KILLED" ||
+      error.code === "TASK_PROCESS_MAYBE_OOM_KILLED"
+    ) {
+      return true;
+    }
+
+    // For the purposes of retrying on a larger machine, we're going to treat this is an OOM error.
+    // This is what they look like if we're executing using k8s. They then get corrected later, but it's too late.
+    // {"code": "TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE", "type": "INTERNAL_ERROR", "message": "Process exited with code -1 after signal SIGKILL."}
+    if (
+      error.code === "TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE" &&
+      error.message &&
+      error.message.includes("-1")
+    ) {
+      if (error.message.includes("SIGKILL")) {
+        return true;
+      }
+
+      if (error.message.includes("SIGABRT") && error.stackTrace) {
+        const oomIndicators = [
+          "JavaScript heap out of memory",
+          "Reached heap limit",
+          "FATAL ERROR: Reached heap limit Allocation failed",
+        ];
+
+        if (oomIndicators.some((indicator) => error.stackTrace!.includes(indicator))) {
+          return true;
+        }
+      }
+    }
+  }
+
+  if (error.type === "BUILT_IN_ERROR") {
+    // ffmpeg also does weird stuff
+    // { "name": "Error", "type": "BUILT_IN_ERROR", "message": "ffmpeg was killed with signal SIGKILL" }
+    if (error.message && error.message.includes("ffmpeg was killed with signal SIGKILL")) {
+      return true;
+    }
+  }
+
+  // Special `OutOfMemoryError` for doing a manual OOM kill.
+  // Useful if a native library does an OOM but doesn't actually crash the run and you want to manually
+  if (isManualOutOfMemoryError(error)) {
+    return true;
+  }
+
+  return false;
+}
+
 export class TaskPayloadParsedError extends Error {
   public readonly cause: unknown;
 
@@ -64,6 +138,20 @@ export class TaskPayloadParsedError extends Error {
     this.name = "TaskPayloadParsedError";
     this.cause = cause;
   }
+}
+
+export class CompleteTaskWithOutput extends Error {
+  public readonly output: unknown;
+
+  constructor(output?: unknown) {
+    super("Complete task with output");
+    this.name = "CompleteTaskWithOutput";
+    this.output = output;
+  }
+}
+
+export function isCompleteTaskWithOutput(error: unknown): error is CompleteTaskWithOutput {
+  return error instanceof Error && error.name === "CompleteTaskWithOutput";
 }
 
 export function parseError(error: unknown): TaskRunError {
@@ -210,15 +298,26 @@ export function shouldRetryError(error: TaskRunError): boolean {
         case "TASK_RUN_CANCELLED":
         case "MAX_DURATION_EXCEEDED":
         case "DISK_SPACE_EXCEEDED":
-        case "TASK_RUN_HEARTBEAT_TIMEOUT":
         case "OUTDATED_SDK_VERSION":
+        case "TASK_RUN_HEARTBEAT_TIMEOUT":
         case "TASK_DID_CONCURRENT_WAIT":
+        case "RECURSIVE_WAIT_DEADLOCK":
+        // run engine errors
+        case "TASK_DEQUEUED_INVALID_STATE":
+        case "TASK_DEQUEUED_QUEUE_NOT_FOUND":
+        case "TASK_HAS_N0_EXECUTION_SNAPSHOT":
+        case "TASK_RUN_DEQUEUED_MAX_RETRIES":
           return false;
 
+        //new heartbeat error
+        //todo
+        case "TASK_RUN_STALLED_EXECUTING":
+        case "TASK_RUN_STALLED_EXECUTING_WITH_WAITPOINTS":
         case "GRACEFUL_EXIT_TIMEOUT":
         case "HANDLE_ERROR_ERROR":
         case "TASK_INPUT_ERROR":
         case "TASK_OUTPUT_ERROR":
+        case "TASK_MIDDLEWARE_ERROR":
         case "POD_EVICTED":
         case "POD_UNKNOWN_ERROR":
         case "TASK_EXECUTION_ABORTED":
@@ -398,6 +497,14 @@ export class CleanupProcessError extends Error {
   }
 }
 
+export class SuspendedProcessError extends Error {
+  constructor() {
+    super("Suspended");
+
+    this.name = "SuspendedProcessError";
+  }
+}
+
 export class CancelledProcessError extends Error {
   constructor() {
     super("Cancelled");
@@ -490,6 +597,14 @@ const prettyInternalErrors: Partial<
       href: links.docs.troubleshooting.concurrentWaits,
     },
   },
+  RECURSIVE_WAIT_DEADLOCK: {
+    message:
+      "This run will never execute because it was triggered recursively and the task has no remaining concurrency available.",
+    link: {
+      name: "See docs for help",
+      href: links.docs.concurrency.recursiveDeadlock,
+    },
+  },
 };
 
 const getPrettyTaskRunError = (code: TaskRunInternalError["code"]): TaskRunInternalError => {
@@ -520,6 +635,8 @@ const findSignalInMessage = (message?: string, truncateLength = 100) => {
     return "SIGSEGV";
   } else if (trunc.includes("SIGKILL")) {
     return "SIGKILL";
+  } else if (trunc.includes("SIGABRT")) {
+    return "SIGABRT";
   } else {
     return;
   }
@@ -545,6 +662,10 @@ export function taskRunErrorEnhancer(error: TaskRunError): EnhanceError<TaskRunE
               return {
                 ...getPrettyTaskRunError("TASK_PROCESS_MAYBE_OOM_KILLED"),
               };
+            case "SIGABRT":
+              return {
+                ...getPrettyTaskRunError("TASK_PROCESS_MAYBE_OOM_KILLED"),
+              };
             default:
               return {
                 ...getPrettyTaskRunError("TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE"),
@@ -562,6 +683,13 @@ export function taskRunErrorEnhancer(error: TaskRunError): EnhanceError<TaskRunE
           };
         }
       }
+
+      if (isManualOutOfMemoryError(error)) {
+        return {
+          ...getPrettyTaskRunError("TASK_PROCESS_OOM_KILLED"),
+        };
+      }
+
       break;
     }
     case "STRING_ERROR": {
@@ -584,6 +712,10 @@ export function taskRunErrorEnhancer(error: TaskRunError): EnhanceError<TaskRunE
               ...getPrettyTaskRunError("TASK_PROCESS_SIGSEGV"),
             };
           case "SIGKILL":
+            return {
+              ...getPrettyTaskRunError("TASK_PROCESS_MAYBE_OOM_KILLED"),
+            };
+          case "SIGABRT":
             return {
               ...getPrettyTaskRunError("TASK_PROCESS_MAYBE_OOM_KILLED"),
             };
@@ -640,9 +772,19 @@ export function exceptionEventEnhancer(
               ...exception,
               ...getPrettyExceptionEvent("TASK_PROCESS_MAYBE_OOM_KILLED"),
             };
+          case "SIGABRT":
+            return {
+              ...exception,
+              ...getPrettyExceptionEvent("TASK_PROCESS_MAYBE_OOM_KILLED"),
+            };
           default:
             return exception;
         }
+      } else if (exception.message?.includes(TaskRunErrorCodes.RECURSIVE_WAIT_DEADLOCK)) {
+        return {
+          ...exception,
+          ...prettyInternalErrors.RECURSIVE_WAIT_DEADLOCK,
+        };
       }
       break;
     }
@@ -867,5 +1009,22 @@ function tryJsonParse(data: string | undefined): any {
     return JSON.parse(data);
   } catch {
     return;
+  }
+}
+
+export function taskRunErrorToString(error: TaskRunError): string {
+  switch (error.type) {
+    case "INTERNAL_ERROR": {
+      return `Internal error [${error.code}]${error.message ? `: ${error.message}` : ""}`;
+    }
+    case "BUILT_IN_ERROR": {
+      return `${error.name}: ${error.message}`;
+    }
+    case "STRING_ERROR": {
+      return error.raw;
+    }
+    case "CUSTOM_ERROR": {
+      return error.raw;
+    }
   }
 }

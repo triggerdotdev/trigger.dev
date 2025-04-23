@@ -1,9 +1,9 @@
-import { WorkerDeploymentStatus } from "@trigger.dev/database";
-import { sqlDatabaseSchema, PrismaClient, prisma } from "~/db.server";
-import { Organization } from "~/models/organization.server";
-import { Project } from "~/models/project.server";
-import { User } from "~/models/user.server";
-import { getUsername } from "~/utils/username";
+import { type WorkerDeploymentStatus, type WorkerInstanceGroupType } from "@trigger.dev/database";
+import { sqlDatabaseSchema, type PrismaClient, prisma } from "~/db.server";
+import { type Organization } from "~/models/organization.server";
+import { type Project } from "~/models/project.server";
+import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
+import { type User } from "~/models/user.server";
 
 const pageSize = 20;
 
@@ -21,11 +21,13 @@ export class DeploymentListPresenter {
     userId,
     projectSlug,
     organizationSlug,
+    environmentSlug,
     page = 1,
   }: {
     userId: User["id"];
     projectSlug: Project["slug"];
     organizationSlug: Organization["slug"];
+    environmentSlug: string;
     page?: number;
   }) {
     const project = await this.#prismaClient.project.findFirstOrThrow({
@@ -63,17 +65,21 @@ export class DeploymentListPresenter {
       },
     });
 
+    const environment = await findEnvironmentBySlug(project.id, environmentSlug, userId);
+    if (!environment) {
+      throw new Error(`Environment not found`);
+    }
+
     const totalCount = await this.#prismaClient.workerDeployment.count({
       where: {
         projectId: project.id,
+        environmentId: environment.id,
       },
     });
 
     const labeledDeployments = await this.#prismaClient.workerDeploymentPromotion.findMany({
       where: {
-        environmentId: {
-          in: project.environments.map((env) => env.id),
-        },
+        environmentId: environment.id,
       },
       select: {
         deploymentId: true,
@@ -95,40 +101,38 @@ export class DeploymentListPresenter {
         userName: string | null;
         userDisplayName: string | null;
         userAvatarUrl: string | null;
+        type: WorkerInstanceGroupType;
       }[]
     >`
-    SELECT 
-  wd."id", 
-  wd."shortCode", 
-  wd."version", 
-  (SELECT COUNT(*) FROM ${sqlDatabaseSchema}."BackgroundWorkerTask" WHERE "BackgroundWorkerTask"."workerId" = wd."workerId") AS "tasksCount", 
-  wd."environmentId", 
-  wd."status", 
-  u."id" AS "userId", 
-  u."name" AS "userName", 
-  u."displayName" AS "userDisplayName", 
-  u."avatarUrl" AS "userAvatarUrl", 
+    SELECT
+  wd."id",
+  wd."shortCode",
+  wd."version",
+  (SELECT COUNT(*) FROM ${sqlDatabaseSchema}."BackgroundWorkerTask" WHERE "BackgroundWorkerTask"."workerId" = wd."workerId") AS "tasksCount",
+  wd."environmentId",
+  wd."status",
+  u."id" AS "userId",
+  u."name" AS "userName",
+  u."displayName" AS "userDisplayName",
+  u."avatarUrl" AS "userAvatarUrl",
   wd."builtAt",
-  wd."deployedAt"
-FROM 
+  wd."deployedAt",
+  wd."type"
+FROM
   ${sqlDatabaseSchema}."WorkerDeployment" as wd
-INNER JOIN 
-  ${sqlDatabaseSchema}."User" as u ON wd."triggeredById" = u."id" 
-WHERE 
+INNER JOIN
+  ${sqlDatabaseSchema}."User" as u ON wd."triggeredById" = u."id"
+WHERE
   wd."projectId" = ${project.id}
-ORDER BY 
-  string_to_array(wd."version", '.')::int[] DESC 
+  AND wd."environmentId" = ${environment.id}
+ORDER BY
+  string_to_array(wd."version", '.')::int[] DESC
 LIMIT ${pageSize} OFFSET ${pageSize * (page - 1)};`;
 
     return {
       currentPage: page,
       totalPages: Math.ceil(totalCount / pageSize),
       deployments: deployments.map((deployment, index) => {
-        const environment = project.environments.find((env) => env.id === deployment.environmentId);
-        if (!environment) {
-          throw new Error(`Environment not found for deployment ${deployment.id}`);
-        }
-
         const label = labeledDeployments.find(
           (labeledDeployment) => labeledDeployment.deploymentId === deployment.id
         );
@@ -146,12 +150,11 @@ LIMIT ${pageSize} OFFSET ${pageSize * (page - 1)};`;
           isCurrent: label?.label === "current",
           isDeployed: deployment.status === "DEPLOYED",
           isLatest: page === 1 && index === 0,
+          type: deployment.type,
           environment: {
             id: environment.id,
             type: environment.type,
             slug: environment.slug,
-            userId: environment.orgMember?.user.id,
-            userName: getUsername(environment.orgMember?.user),
           },
           deployedBy: deployment.userId
             ? {
@@ -164,5 +167,53 @@ LIMIT ${pageSize} OFFSET ${pageSize * (page - 1)};`;
         };
       }),
     };
+  }
+
+  public async findPageForVersion({
+    userId,
+    projectSlug,
+    organizationSlug,
+    environmentSlug,
+    version,
+  }: {
+    userId: User["id"];
+    projectSlug: Project["slug"];
+    organizationSlug: Organization["slug"];
+    environmentSlug: string;
+    version: string;
+  }) {
+    const project = await this.#prismaClient.project.findFirstOrThrow({
+      select: {
+        id: true,
+      },
+      where: {
+        slug: projectSlug,
+        organization: {
+          slug: organizationSlug,
+          members: {
+            some: {
+              userId,
+            },
+          },
+        },
+      },
+    });
+
+    const environment = await findEnvironmentBySlug(project.id, environmentSlug, userId);
+    if (!environment) {
+      throw new Error(`Environment not found`);
+    }
+
+    // Find how many deployments have been made since this version
+    const deploymentsSinceVersion = await this.#prismaClient.$queryRaw<{ count: BigInt }[]>`
+      SELECT COUNT(*) as count
+      FROM ${sqlDatabaseSchema}."WorkerDeployment"
+      WHERE "projectId" = ${project.id}
+        AND "environmentId" = ${environment.id}
+        AND string_to_array(version, '.')::int[] > string_to_array(${version}, '.')::int[]
+    `;
+
+    const count = Number(deploymentsSinceVersion[0].count);
+    return Math.floor(count / pageSize) + 1;
   }
 }

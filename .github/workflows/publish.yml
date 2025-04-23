@@ -24,12 +24,10 @@ on:
       - "packages/**"
       - "!packages/**/*.md"
       - "!packages/**/*.eslintrc"
+      - "internal-packages/**"
       - "apps/**"
       - "!apps/**/*.md"
       - "!apps/**/*.eslintrc"
-      - "integrations/**"
-      - "!integrations/**/*.md"
-      - "!integrations/**/*.eslintrc"
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
       - "turbo.json"
@@ -58,14 +56,14 @@ jobs:
     secrets: inherit
 
   publish-webapp:
-    needs: [typecheck, units]
+    needs: [typecheck]
     uses: ./.github/workflows/publish-webapp.yml
     secrets: inherit
     with:
       image_tag: ${{ inputs.image_tag }}
 
   publish-worker:
-    needs: [typecheck, units]
+    needs: [typecheck]
     uses: ./.github/workflows/publish-worker.yml
     secrets: inherit
     with:

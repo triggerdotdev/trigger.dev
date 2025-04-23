@@ -14,7 +14,6 @@ import {
   OperatingSystemContextProvider,
   OperatingSystemPlatform,
 } from "./components/primitives/OperatingSystemProvider";
-import { getSharedSqsEventConsumer } from "./services/events/sqsEventConsumer";
 import { singleton } from "./utils/singleton";
 
 const ABORT_DELAY = 30000;
@@ -25,6 +24,13 @@ export default function handleRequest(
   responseHeaders: Headers,
   remixContext: EntryContext
 ) {
+  const url = new URL(request.url);
+
+  if (url.pathname.startsWith("/login")) {
+    responseHeaders.set("X-Frame-Options", "SAMEORIGIN");
+    responseHeaders.set("Content-Security-Policy", "frame-ancestors 'self'");
+  }
+
   const acceptLanguage = request.headers.get("accept-language");
   const locales = parseAcceptLanguage(acceptLanguage, {
     validate: Intl.DateTimeFormat.supportedLocalesOf,
@@ -203,9 +209,10 @@ process.on("uncaughtException", (error, origin) => {
   process.exit(1);
 });
 
-const sqsEventConsumer = singleton("sqsEventConsumer", getSharedSqsEventConsumer);
+singleton("RunEngineEventBusHandlers", registerRunEngineEventBusHandlers);
 
 export { apiRateLimiter } from "./services/apiRateLimit.server";
+export { engineRateLimiter } from "./services/engineRateLimit.server";
 export { socketIo } from "./v3/handleSocketIo.server";
 export { wss } from "./v3/handleWebsockets.server";
 export { registryProxy } from "./v3/registryProxy.server";
@@ -214,6 +221,7 @@ import { eventLoopMonitor } from "./eventLoopMonitor.server";
 import { env } from "./env.server";
 import { logger } from "./services/logger.server";
 import { Prisma } from "./db.server";
+import { registerRunEngineEventBusHandlers } from "./v3/runEngineHandlers.server";
 
 if (env.EVENT_LOOP_MONITOR_ENABLED === "1") {
   eventLoopMonitor.enable();

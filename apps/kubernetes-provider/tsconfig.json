@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "target": "es2016",
+    "target": "es2018",
     "module": "commonjs",
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
@@ -8,6 +8,8 @@
     "strict": true,
     "skipLibCheck": true,
     "paths": {
+      "@trigger.dev/core": ["../../packages/core/src"],
+      "@trigger.dev/core/*": ["../../packages/core/src/*"],
       "@trigger.dev/core/v3": ["../../packages/core/src/v3"],
       "@trigger.dev/core/v3/*": ["../../packages/core/src/v3/*"]
     }

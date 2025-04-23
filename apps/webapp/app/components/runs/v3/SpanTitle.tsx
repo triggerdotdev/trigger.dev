@@ -11,13 +11,16 @@ type SpanTitleProps = {
   level: TaskEventLevel;
   isPartial: boolean;
   size: "small" | "large";
+  hideAccessory?: boolean;
 };
 
 export function SpanTitle(event: SpanTitleProps) {
   return (
     <span className={cn("flex items-center gap-x-2 overflow-x-hidden", eventTextClassName(event))}>
       <span className="truncate">{event.message}</span>{" "}
-      <SpanAccessory accessory={event.style.accessory} size={event.size} />
+      {!event.hideAccessory && (
+        <SpanAccessory accessory={event.style.accessory} size={event.size} />
+      )}
     </span>
   );
 }
@@ -75,7 +78,7 @@ export function SpanCodePathAccessory({
           <span className={cn("truncate", "text-text-dimmed")}>{item.text}</span>
           {index < accessory.items.length - 1 && (
             <span className="text-text-dimmed">
-              <ChevronRightIcon className="h-4 w-4" />
+              <ChevronRightIcon className="size-4" />
             </span>
           )}
         </Fragment>
@@ -144,6 +147,36 @@ export function eventBackgroundClassName(event: RunEvent) {
   }
 }
 
+export function eventBorderClassName(event: RunEvent) {
+  if (event.isError) {
+    return "border-error";
+  }
+
+  if (event.isCancelled) {
+    return "border-charcoal-600";
+  }
+
+  switch (event.level) {
+    case "TRACE": {
+      return borderClassNameForVariant(event.style.variant, event.isPartial);
+    }
+    case "LOG":
+    case "INFO":
+    case "DEBUG": {
+      return borderClassNameForVariant(event.style.variant, event.isPartial);
+    }
+    case "WARN": {
+      return "border-amber-400";
+    }
+    case "ERROR": {
+      return "border-error";
+    }
+    default: {
+      return borderClassNameForVariant(event.style.variant, event.isPartial);
+    }
+  }
+}
+
 function textClassNameForVariant(variant: TaskEventStyle["variant"]) {
   switch (variant) {
     case "primary": {
@@ -165,6 +198,20 @@ function backgroundClassNameForVariant(variant: TaskEventStyle["variant"], isPar
     }
     default: {
       return "bg-charcoal-500";
+    }
+  }
+}
+
+function borderClassNameForVariant(variant: TaskEventStyle["variant"], isPartial: boolean) {
+  switch (variant) {
+    case "primary": {
+      if (isPartial) {
+        return "border-blue-500";
+      }
+      return "border-success";
+    }
+    default: {
+      return "border-charcoal-500";
     }
   }
 }

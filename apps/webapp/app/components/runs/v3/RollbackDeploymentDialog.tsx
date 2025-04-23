@@ -8,6 +8,7 @@ import {
   DialogFooter,
   DialogHeader,
 } from "~/components/primitives/Dialog";
+import { SpinnerWhite } from "~/components/primitives/Spinner";
 
 type RollbackDeploymentDialogProps = {
   projectId: string;
@@ -27,7 +28,7 @@ export function RollbackDeploymentDialog({
 
   return (
     <DialogContent key="rollback">
-      <DialogHeader>Roll back to this deployment?</DialogHeader>
+      <DialogHeader>Rollback to this deployment?</DialogHeader>
       <DialogDescription>
         This deployment will become the default for all future runs. Tasks triggered but not
         included in this deploy will remain queued until you roll back to or create a new deployment
@@ -46,11 +47,53 @@ export function RollbackDeploymentDialog({
             name="redirectUrl"
             value={redirectPath}
             variant="primary/medium"
-            LeadingIcon={isLoading ? "spinner-white" : ArrowPathIcon}
+            LeadingIcon={isLoading ? SpinnerWhite : ArrowPathIcon}
             disabled={isLoading}
             shortcut={{ modifiers: ["mod"], key: "enter" }}
           >
-            {isLoading ? "Rolling back..." : "Roll back deployment"}
+            {isLoading ? "Rolling back..." : "Rollback deployment"}
+          </Button>
+        </Form>
+      </DialogFooter>
+    </DialogContent>
+  );
+}
+
+export function PromoteDeploymentDialog({
+  projectId,
+  deploymentShortCode,
+  redirectPath,
+}: RollbackDeploymentDialogProps) {
+  const navigation = useNavigation();
+
+  const formAction = `/resources/${projectId}/deployments/${deploymentShortCode}/promote`;
+  const isLoading = navigation.formAction === formAction;
+
+  return (
+    <DialogContent key="promote">
+      <DialogHeader>Promote this deployment?</DialogHeader>
+      <DialogDescription>
+        This deployment will become the default for all future runs not explicitly tied to a
+        specific deployment.
+      </DialogDescription>
+      <DialogFooter>
+        <DialogClose asChild>
+          <Button variant="tertiary/medium">Cancel</Button>
+        </DialogClose>
+        <Form
+          action={`/resources/${projectId}/deployments/${deploymentShortCode}/promote`}
+          method="post"
+        >
+          <Button
+            type="submit"
+            name="redirectUrl"
+            value={redirectPath}
+            variant="primary/medium"
+            LeadingIcon={isLoading ? SpinnerWhite : ArrowPathIcon}
+            disabled={isLoading}
+            shortcut={{ modifiers: ["mod"], key: "enter" }}
+          >
+            {isLoading ? "Promoting..." : "Promote deployment"}
           </Button>
         </Form>
       </DialogFooter>

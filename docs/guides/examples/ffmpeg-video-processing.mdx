@@ -29,12 +29,14 @@ export default defineConfig({
 ```
 
 <Note>
-  [Build extensions](/config/config-file#extensions) allow you to hook into the build system and
+  [Build extensions](/config/extensions/overview) allow you to hook into the build system and
   customize the build process or the resulting bundle and container image (in the case of
   deploying). You can use pre-built extensions or create your own.
 </Note>
 
 You'll also need to add `@trigger.dev/build` to your `package.json` file under `devDependencies` if you don't already have it there.
+
+If you are modifying this example and using popular FFmpeg libraries like `fluent-ffmpeg` you'll also need to add them to [`external`](/config/config-file#external) in your `trigger.config.ts` file.
 
 ## Compress a video using FFmpeg
 

@@ -1,0 +1,95 @@
+name: "⚒️ Publish Worker RE2"
+
+on:
+  workflow_call:
+    inputs:
+      image_tag:
+        description: The image tag to publish
+        type: string
+        required: false
+        default: ""
+  push:
+    tags:
+      - "re2-test-*"
+      - "re2-prod-*"
+
+permissions:
+  packages: write
+  contents: read
+
+jobs:
+  # check-branch:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Fail if re2-prod-* is pushed from a non-main branch
+  #       if: startsWith(github.ref_name, 're2-prod-') && github.base_ref != 'main'
+  #       run: |
+  #         echo "🚫 re2-prod-* tags can only be pushed from the main branch."
+  #         exit 1
+  build:
+    # needs: check-branch
+    strategy:
+      matrix:
+        package: [supervisor]
+    runs-on: ubuntu-latest
+    env:
+      DOCKER_BUILDKIT: "1"
+    steps:
+      - name: ⬇️ Checkout git repo
+        uses: actions/checkout@v4
+
+      - name: 📦 Get image repo
+        id: get_repository
+        run: |
+          if [[ "${{ matrix.package }}" == *-provider ]]; then
+            provider_type=$(echo "${{ matrix.package }}" | cut -d- -f1)
+            repo=provider/${provider_type}
+          else
+            repo="${{ matrix.package }}"
+          fi
+          echo "repo=${repo}" >> "$GITHUB_OUTPUT"
+
+      - id: get_tag
+        uses: ./.github/actions/get-image-tag
+        with:
+          tag: ${{ inputs.image_tag }}
+
+      - name: 🐋 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # ..to avoid rate limits when pulling images
+      - name: 🐳 Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: 🚢 Build Container Image
+        run: |
+          docker build -t infra_image -f ./apps/${{ matrix.package }}/Containerfile .
+
+      # ..to push image
+      - name: 🐙 Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🐙 Push to GitHub Container Registry
+        run: |
+          docker tag infra_image "$REGISTRY/$REPOSITORY:$IMAGE_TAG"
+          docker push "$REGISTRY/$REPOSITORY:$IMAGE_TAG"
+        env:
+          REGISTRY: ghcr.io/triggerdotdev
+          REPOSITORY: ${{ steps.get_repository.outputs.repo }}
+          IMAGE_TAG: ${{ steps.get_tag.outputs.tag }}
+
+      - name: 🐙 Push 'v3' tag to GitHub Container Registry
+        if: steps.get_tag.outputs.is_semver == 'true'
+        run: |
+          docker tag infra_image "$REGISTRY/$REPOSITORY:v3"
+          docker push "$REGISTRY/$REPOSITORY:v3"
+        env:
+          REGISTRY: ghcr.io/triggerdotdev
+          REPOSITORY: ${{ steps.get_repository.outputs.repo }}

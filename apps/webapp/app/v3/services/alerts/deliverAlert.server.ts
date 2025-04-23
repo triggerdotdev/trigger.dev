@@ -1,19 +1,27 @@
 import {
-  ChatPostMessageArguments,
+  type ChatPostMessageArguments,
   ErrorCode,
-  WebAPIHTTPError,
-  WebAPIPlatformError,
-  WebAPIRateLimitedError,
-  WebAPIRequestError,
+  type WebAPIHTTPError,
+  type WebAPIPlatformError,
+  type WebAPIRateLimitedError,
+  type WebAPIRequestError,
 } from "@slack/web-api";
-import { TaskRunError, createJsonErrorObject } from "@trigger.dev/core/v3";
+import {
+  Webhook,
+  TaskRunError,
+  createJsonErrorObject,
+  type RunFailedWebhook,
+  type DeploymentFailedWebhook,
+  type DeploymentSuccessWebhook,
+  isOOMRunError,
+} from "@trigger.dev/core/v3";
 import assertNever from "assert-never";
 import { subtle } from "crypto";
-import { Prisma, prisma, PrismaClientOrTransaction } from "~/db.server";
+import { type Prisma, type prisma, type PrismaClientOrTransaction } from "~/db.server";
 import { env } from "~/env.server";
 import {
   OrgIntegrationRepository,
-  OrganizationIntegrationForService,
+  type OrganizationIntegrationForService,
 } from "~/models/orgIntegration.server";
 import {
   ProjectAlertEmailProperties,
@@ -29,8 +37,10 @@ import { commonWorker } from "~/v3/commonWorker.server";
 import { FINAL_ATTEMPT_STATUSES } from "~/v3/taskStatus";
 import { BaseService } from "../baseService.server";
 import { generateFriendlyId } from "~/v3/friendlyIdentifiers";
-import { ProjectAlertType } from "@trigger.dev/database";
+import { type ProjectAlertChannelType, type ProjectAlertType } from "@trigger.dev/database";
 import { alertsRateLimiter } from "~/v3/alertsRateLimiter.server";
+import { v3RunPath } from "~/utils/pathBuilder";
+import { ApiRetrieveRunPresenter } from "~/presenters/v3/ApiRetrieveRunPresenter.server";
 
 type FoundAlert = Prisma.Result<
   typeof prisma.projectAlert,
@@ -193,43 +203,7 @@ export class DeliverAlertService extends BaseService {
 
     switch (alert.type) {
       case "TASK_RUN_ATTEMPT": {
-        if (alert.taskRunAttempt) {
-          const parseError = TaskRunError.safeParse(alert.taskRunAttempt.error);
-
-          let taskRunError: TaskRunError;
-
-          if (!parseError.success) {
-            logger.error("[DeliverAlert] Attempt: Failed to parse task run error", {
-              issues: parseError.error.issues,
-              taskAttemptError: alert.taskRunAttempt.error,
-            });
-
-            taskRunError = {
-              type: "STRING_ERROR" as const,
-              raw: "No error on task",
-            };
-          } else {
-            taskRunError = parseError.data;
-          }
-
-          await sendAlertEmail({
-            email: "alert-attempt",
-            to: emailProperties.data.email,
-            taskIdentifier: alert.taskRunAttempt.taskRun.taskIdentifier,
-            fileName: alert.taskRunAttempt.backgroundWorkerTask.filePath,
-            exportName: alert.taskRunAttempt.backgroundWorkerTask.exportName,
-            version: alert.taskRunAttempt.backgroundWorker.version,
-            environment: alert.environment.slug,
-            error: createJsonErrorObject(taskRunError),
-            attemptLink: `${env.APP_ORIGIN}/projects/v3/${alert.project.externalRef}/runs/${alert.taskRunAttempt.taskRun.friendlyId}`,
-            organization: alert.project.organization.title,
-          });
-        } else {
-          logger.error("[DeliverAlert] Task run attempt not found", {
-            alert,
-          });
-        }
-
+        logger.error("[DeliverAlert] Task run attempt alerts are deprecated, not sending anything");
         break;
       }
       case "TASK_RUN": {
@@ -332,102 +306,111 @@ export class DeliverAlertService extends BaseService {
 
     switch (alert.type) {
       case "TASK_RUN_ATTEMPT": {
-        if (alert.taskRunAttempt) {
-          const taskRunError = TaskRunError.safeParse(alert.taskRunAttempt.error);
-
-          if (!taskRunError.success) {
-            logger.error("[DeliverAlert] Attempt: Failed to parse task run error", {
-              issues: taskRunError.error.issues,
-              taskAttemptError: alert.taskRunAttempt.error,
-            });
-
-            return;
-          }
-
-          const error = createJsonErrorObject(taskRunError.data);
-
-          const payload = {
-            task: {
-              id: alert.taskRunAttempt.taskRun.taskIdentifier,
-              filePath: alert.taskRunAttempt.backgroundWorkerTask.filePath,
-              exportName: alert.taskRunAttempt.backgroundWorkerTask.exportName,
-            },
-            attempt: {
-              id: alert.taskRunAttempt.friendlyId,
-              number: alert.taskRunAttempt.number,
-              startedAt: alert.taskRunAttempt.startedAt,
-              status: alert.taskRunAttempt.status,
-            },
-            run: {
-              id: alert.taskRunAttempt.taskRun.friendlyId,
-              isTest: alert.taskRunAttempt.taskRun.isTest,
-              createdAt: alert.taskRunAttempt.taskRun.createdAt,
-              idempotencyKey: alert.taskRunAttempt.taskRun.idempotencyKey,
-            },
-            environment: {
-              id: alert.environment.id,
-              type: alert.environment.type,
-              slug: alert.environment.slug,
-            },
-            organization: {
-              id: alert.project.organizationId,
-              slug: alert.project.organization.slug,
-              name: alert.project.organization.title,
-            },
-            project: {
-              id: alert.project.id,
-              ref: alert.project.externalRef,
-              slug: alert.project.slug,
-              name: alert.project.name,
-            },
-            error,
-          };
-
-          await this.#deliverWebhook(payload, webhookProperties.data);
-        } else {
-          logger.error("[DeliverAlert] Task run attempt not found", {
-            alert,
-          });
-        }
-
+        logger.error("[DeliverAlert] Task run attempt alerts are deprecated, not sending anything");
         break;
       }
       case "TASK_RUN": {
         if (alert.taskRun) {
           const error = this.#getRunError(alert);
 
-          const payload = {
-            task: {
-              id: alert.taskRun.taskIdentifier,
-              fileName: alert.taskRun.lockedBy?.filePath ?? "Unknown",
-              exportName: alert.taskRun.lockedBy?.exportName ?? "Unknown",
-            },
-            run: {
-              id: alert.taskRun.friendlyId,
-              isTest: alert.taskRun.isTest,
-              createdAt: alert.taskRun.createdAt,
-              idempotencyKey: alert.taskRun.idempotencyKey,
-            },
-            environment: {
-              id: alert.environment.id,
-              type: alert.environment.type,
-              slug: alert.environment.slug,
-            },
-            organization: {
-              id: alert.project.organizationId,
-              slug: alert.project.organization.slug,
-              name: alert.project.organization.title,
-            },
-            project: {
-              id: alert.project.id,
-              ref: alert.project.externalRef,
-              slug: alert.project.slug,
-              name: alert.project.name,
-            },
-            error,
-          };
+          switch (webhookProperties.data.version) {
+            case "v1": {
+              const payload = {
+                task: {
+                  id: alert.taskRun.taskIdentifier,
+                  fileName: alert.taskRun.lockedBy?.filePath ?? "Unknown",
+                  exportName: alert.taskRun.lockedBy?.exportName ?? "Unknown",
+                },
+                run: {
+                  id: alert.taskRun.friendlyId,
+                  isTest: alert.taskRun.isTest,
+                  createdAt: alert.taskRun.createdAt,
+                  idempotencyKey: alert.taskRun.idempotencyKey,
+                },
+                environment: {
+                  id: alert.environment.id,
+                  type: alert.environment.type,
+                  slug: alert.environment.slug,
+                },
+                organization: {
+                  id: alert.project.organizationId,
+                  slug: alert.project.organization.slug,
+                  name: alert.project.organization.title,
+                },
+                project: {
+                  id: alert.project.id,
+                  ref: alert.project.externalRef,
+                  slug: alert.project.slug,
+                  name: alert.project.name,
+                },
+                error,
+              };
 
-          await this.#deliverWebhook(payload, webhookProperties.data);
+              await this.#deliverWebhook(payload, webhookProperties.data);
+              break;
+            }
+            case "v2": {
+              const payload: RunFailedWebhook = {
+                id: alert.id,
+                created: alert.createdAt,
+                webhookVersion: "v1",
+                type: "alert.run.failed",
+                object: {
+                  task: {
+                    id: alert.taskRun.taskIdentifier,
+                    filePath: alert.taskRun.lockedBy?.filePath ?? "Unknown",
+                    exportName: alert.taskRun.lockedBy?.exportName ?? "Unknown",
+                    version: alert.taskRun.taskVersion ?? "Unknown",
+                    sdkVersion: alert.taskRun.sdkVersion ?? "Unknown",
+                    cliVersion: alert.taskRun.cliVersion ?? "Unknown",
+                  },
+                  run: {
+                    id: alert.taskRun.friendlyId,
+                    number: alert.taskRun.number,
+                    status: ApiRetrieveRunPresenter.apiStatusFromRunStatus(alert.taskRun.status),
+                    createdAt: alert.taskRun.createdAt,
+                    startedAt: alert.taskRun.startedAt ?? undefined,
+                    completedAt: alert.taskRun.completedAt ?? undefined,
+                    isTest: alert.taskRun.isTest,
+                    idempotencyKey: alert.taskRun.idempotencyKey ?? undefined,
+                    tags: alert.taskRun.runTags,
+                    error,
+                    isOutOfMemoryError: isOOMRunError(error),
+                    machine: alert.taskRun.machinePreset ?? "Unknown",
+                    dashboardUrl: `${env.APP_ORIGIN}${v3RunPath(
+                      alert.project.organization,
+                      alert.project,
+                      alert.environment,
+                      alert.taskRun
+                    )}`,
+                  },
+                  environment: {
+                    id: alert.environment.id,
+                    type: alert.environment.type,
+                    slug: alert.environment.slug,
+                  },
+                  organization: {
+                    id: alert.project.organizationId,
+                    slug: alert.project.organization.slug,
+                    name: alert.project.organization.title,
+                  },
+                  project: {
+                    id: alert.project.id,
+                    ref: alert.project.externalRef,
+                    slug: alert.project.slug,
+                    name: alert.project.name,
+                  },
+                },
+              };
+
+              await this.#deliverWebhook(payload, webhookProperties.data);
+
+              break;
+            }
+            default: {
+              throw new Error(`Unknown webhook version: ${webhookProperties.data.version}`);
+            }
+          }
         } else {
           logger.error("[DeliverAlert] Task run not found", {
             alert,
@@ -450,34 +433,80 @@ export class DeliverAlertService extends BaseService {
             return;
           }
 
-          const payload = {
-            deployment: {
-              id: alert.workerDeployment.friendlyId,
-              status: alert.workerDeployment.status,
-              version: alert.workerDeployment.version,
-              shortCode: alert.workerDeployment.shortCode,
-              failedAt: alert.workerDeployment.failedAt ?? new Date(),
-            },
-            environment: {
-              id: alert.environment.id,
-              type: alert.environment.type,
-              slug: alert.environment.slug,
-            },
-            organization: {
-              id: alert.project.organizationId,
-              slug: alert.project.organization.slug,
-              name: alert.project.organization.title,
-            },
-            project: {
-              id: alert.project.id,
-              ref: alert.project.externalRef,
-              slug: alert.project.slug,
-              name: alert.project.name,
-            },
-            error: preparedError,
-          };
+          switch (webhookProperties.data.version) {
+            case "v1": {
+              const payload = {
+                deployment: {
+                  id: alert.workerDeployment.friendlyId,
+                  status: alert.workerDeployment.status,
+                  version: alert.workerDeployment.version,
+                  shortCode: alert.workerDeployment.shortCode,
+                  failedAt: alert.workerDeployment.failedAt ?? new Date(),
+                },
+                environment: {
+                  id: alert.environment.id,
+                  type: alert.environment.type,
+                  slug: alert.environment.slug,
+                },
+                organization: {
+                  id: alert.project.organizationId,
+                  slug: alert.project.organization.slug,
+                  name: alert.project.organization.title,
+                },
+                project: {
+                  id: alert.project.id,
+                  ref: alert.project.externalRef,
+                  slug: alert.project.slug,
+                  name: alert.project.name,
+                },
+                error: preparedError,
+              };
 
-          await this.#deliverWebhook(payload, webhookProperties.data);
+              await this.#deliverWebhook(payload, webhookProperties.data);
+              break;
+            }
+            case "v2": {
+              const payload: DeploymentFailedWebhook = {
+                id: alert.id,
+                created: alert.createdAt,
+                webhookVersion: "v1",
+                type: "alert.deployment.failed",
+                object: {
+                  deployment: {
+                    id: alert.workerDeployment.friendlyId,
+                    status: alert.workerDeployment.status,
+                    version: alert.workerDeployment.version,
+                    shortCode: alert.workerDeployment.shortCode,
+                    failedAt: alert.workerDeployment.failedAt ?? new Date(),
+                  },
+                  environment: {
+                    id: alert.environment.id,
+                    type: alert.environment.type,
+                    slug: alert.environment.slug,
+                  },
+                  organization: {
+                    id: alert.project.organizationId,
+                    slug: alert.project.organization.slug,
+                    name: alert.project.organization.title,
+                  },
+                  project: {
+                    id: alert.project.id,
+                    ref: alert.project.externalRef,
+                    slug: alert.project.slug,
+                    name: alert.project.name,
+                  },
+                  error: preparedError,
+                },
+              };
+
+              await this.#deliverWebhook(payload, webhookProperties.data);
+
+              break;
+            }
+            default: {
+              throw new Error(`Unknown webhook version: ${webhookProperties.data.version}`);
+            }
+          }
         } else {
           logger.error("[DeliverAlert] Worker deployment not found", {
             alert,
@@ -488,40 +517,92 @@ export class DeliverAlertService extends BaseService {
       }
       case "DEPLOYMENT_SUCCESS": {
         if (alert.workerDeployment) {
-          const payload = {
-            deployment: {
-              id: alert.workerDeployment.friendlyId,
-              status: alert.workerDeployment.status,
-              version: alert.workerDeployment.version,
-              shortCode: alert.workerDeployment.shortCode,
-              deployedAt: alert.workerDeployment.deployedAt ?? new Date(),
-            },
-            tasks:
-              alert.workerDeployment.worker?.tasks.map((task) => ({
-                id: task.slug,
-                filePath: task.filePath,
-                exportName: task.exportName,
-                triggerSource: task.triggerSource,
-              })) ?? [],
-            environment: {
-              id: alert.environment.id,
-              type: alert.environment.type,
-              slug: alert.environment.slug,
-            },
-            organization: {
-              id: alert.project.organizationId,
-              slug: alert.project.organization.slug,
-              name: alert.project.organization.title,
-            },
-            project: {
-              id: alert.project.id,
-              ref: alert.project.externalRef,
-              slug: alert.project.slug,
-              name: alert.project.name,
-            },
-          };
+          switch (webhookProperties.data.version) {
+            case "v1": {
+              const payload = {
+                deployment: {
+                  id: alert.workerDeployment.friendlyId,
+                  status: alert.workerDeployment.status,
+                  version: alert.workerDeployment.version,
+                  shortCode: alert.workerDeployment.shortCode,
+                  deployedAt: alert.workerDeployment.deployedAt ?? new Date(),
+                },
+                tasks:
+                  alert.workerDeployment.worker?.tasks.map((task) => ({
+                    id: task.slug,
+                    filePath: task.filePath,
+                    exportName: task.exportName,
+                    triggerSource: task.triggerSource,
+                  })) ?? [],
+                environment: {
+                  id: alert.environment.id,
+                  type: alert.environment.type,
+                  slug: alert.environment.slug,
+                },
+                organization: {
+                  id: alert.project.organizationId,
+                  slug: alert.project.organization.slug,
+                  name: alert.project.organization.title,
+                },
+                project: {
+                  id: alert.project.id,
+                  ref: alert.project.externalRef,
+                  slug: alert.project.slug,
+                  name: alert.project.name,
+                },
+              };
 
-          await this.#deliverWebhook(payload, webhookProperties.data);
+              await this.#deliverWebhook(payload, webhookProperties.data);
+              break;
+            }
+            case "v2": {
+              const payload: DeploymentSuccessWebhook = {
+                id: alert.id,
+                created: alert.createdAt,
+                webhookVersion: "v1",
+                type: "alert.deployment.success",
+                object: {
+                  deployment: {
+                    id: alert.workerDeployment.friendlyId,
+                    status: alert.workerDeployment.status,
+                    version: alert.workerDeployment.version,
+                    shortCode: alert.workerDeployment.shortCode,
+                    deployedAt: alert.workerDeployment.deployedAt! ?? new Date(),
+                  },
+                  tasks:
+                    alert.workerDeployment.worker?.tasks.map((task) => ({
+                      id: task.slug,
+                      filePath: task.filePath,
+                      exportName: task.exportName ?? "@deprecated",
+                      triggerSource: task.triggerSource,
+                    })) ?? [],
+                  environment: {
+                    id: alert.environment.id,
+                    type: alert.environment.type,
+                    slug: alert.environment.slug,
+                  },
+                  organization: {
+                    id: alert.project.organizationId,
+                    slug: alert.project.organization.slug,
+                    name: alert.project.organization.title,
+                  },
+                  project: {
+                    id: alert.project.id,
+                    ref: alert.project.externalRef,
+                    slug: alert.project.slug,
+                    name: alert.project.name,
+                  },
+                },
+              };
+
+              await this.#deliverWebhook(payload, webhookProperties.data);
+
+              break;
+            }
+            default: {
+              throw new Error(`Unknown webhook version: ${webhookProperties.data.version}`);
+            }
+          }
         } else {
           logger.error("[DeliverAlert] Worker deployment not found", {
             alert,
@@ -582,126 +663,7 @@ export class DeliverAlertService extends BaseService {
 
     switch (alert.type) {
       case "TASK_RUN_ATTEMPT": {
-        if (alert.taskRunAttempt) {
-          // Find existing storage by the run ID
-          const storage = await this._prisma.projectAlertStorage.findFirst({
-            where: {
-              alertChannelId: alert.channel.id,
-              alertType: alert.type,
-              storageId: alert.taskRunAttempt.taskRunId,
-            },
-          });
-
-          const storageData = storage
-            ? ProjectAlertSlackStorage.safeParse(storage.storageData)
-            : undefined;
-
-          const thread_ts =
-            storageData && storageData.success ? storageData.data.message_ts : undefined;
-
-          const taskRunError = TaskRunError.safeParse(alert.taskRunAttempt.error);
-
-          if (!taskRunError.success) {
-            logger.error("[DeliverAlert] Attempt: Failed to parse task run error", {
-              issues: taskRunError.error.issues,
-              taskAttemptError: alert.taskRunAttempt.error,
-            });
-
-            return;
-          }
-
-          const error = createJsonErrorObject(taskRunError.data);
-
-          const exportName = alert.taskRunAttempt.backgroundWorkerTask.exportName;
-          const version = alert.taskRunAttempt.backgroundWorker.version;
-          const environment = alert.environment.slug;
-          const taskIdentifier = alert.taskRunAttempt.backgroundWorkerTask.slug;
-          const timestamp = alert.taskRunAttempt.completedAt ?? new Date();
-          const runId = alert.taskRunAttempt.taskRun.friendlyId;
-          const attemptNumber = alert.taskRunAttempt.number;
-
-          const message = await this.#postSlackMessage(integration, {
-            thread_ts,
-            channel: slackProperties.data.channelId,
-            text: `Task error in ${alert.taskRunAttempt.backgroundWorkerTask.exportName} [${alert.taskRunAttempt.backgroundWorker.version}.${alert.environment.slug}]`,
-            blocks: [
-              {
-                type: "section",
-                text: {
-                  type: "mrkdwn",
-                  text: `:rotating_light: Error in *${exportName}* _<!date^${Math.round(
-                    timestamp.getTime() / 1000
-                  )}^at {date_num} {time_secs}|${timestamp.toLocaleString()}>_`,
-                },
-              },
-              {
-                type: "section",
-                text: {
-                  type: "mrkdwn",
-                  text: this.#wrapInCodeBlock(error.stackTrace ?? error.message),
-                },
-              },
-              {
-                type: "context",
-                elements: [
-                  {
-                    type: "mrkdwn",
-                    text: `${runId}.${attemptNumber} | ${taskIdentifier} | ${version}.${environment} | ${alert.project.name}`,
-                  },
-                ],
-              },
-              {
-                type: "divider",
-              },
-              {
-                type: "actions",
-                elements: [
-                  {
-                    type: "button",
-                    text: {
-                      type: "plain_text",
-                      text: "Investigate",
-                    },
-                    url: `${env.APP_ORIGIN}/projects/v3/${alert.project.externalRef}/runs/${alert.taskRunAttempt.taskRun.friendlyId}`,
-                  },
-                ],
-              },
-            ],
-          });
-
-          // Upsert the storage
-          if (message.ts) {
-            if (storage) {
-              await this._prisma.projectAlertStorage.update({
-                where: {
-                  id: storage.id,
-                },
-                data: {
-                  storageData: {
-                    message_ts: message.ts,
-                  },
-                },
-              });
-            } else {
-              await this._prisma.projectAlertStorage.create({
-                data: {
-                  alertChannelId: alert.channel.id,
-                  alertType: alert.type,
-                  storageId: alert.taskRunAttempt.taskRunId,
-                  storageData: {
-                    message_ts: message.ts,
-                  },
-                  projectId: alert.project.id,
-                },
-              });
-            }
-          }
-        } else {
-          logger.error("[DeliverAlert] Task run attempt not found", {
-            alert,
-          });
-        }
-
+        logger.error("[DeliverAlert] Task run attempt alerts are deprecated, not sending anything");
         break;
       }
       case "TASK_RUN": {
@@ -945,7 +907,7 @@ export class DeliverAlertService extends BaseService {
     }
   }
 
-  async #deliverWebhook(payload: any, webhook: ProjectAlertWebhookProperties) {
+  async #deliverWebhook<T>(payload: T, webhook: ProjectAlertWebhookProperties) {
     const rawPayload = JSON.stringify(payload);
     const hashPayload = Buffer.from(rawPayload, "utf-8");
 
@@ -1107,6 +1069,7 @@ export class DeliverAlertService extends BaseService {
   static async createAndSendAlert(
     {
       channelId,
+      channelType,
       projectId,
       environmentId,
       alertType,
@@ -1114,6 +1077,7 @@ export class DeliverAlertService extends BaseService {
       taskRunId,
     }: {
       channelId: string;
+      channelType: ProjectAlertChannelType;
       projectId: string;
       environmentId: string;
       alertType: ProjectAlertType;
@@ -1122,7 +1086,7 @@ export class DeliverAlertService extends BaseService {
     },
     db: PrismaClientOrTransaction
   ) {
-    if (taskRunId) {
+    if (taskRunId && channelType !== "WEBHOOK") {
       try {
         const result = await alertsRateLimiter.check(channelId);
 

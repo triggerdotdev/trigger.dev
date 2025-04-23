@@ -1,0 +1,36 @@
+---
+title: "Additional Packages"
+sidebarTitle: "additionalPackages"
+description: "Use the additionalPackages build extension to include additional packages in the build"
+---
+
+Import the `additionalPackages` build extension and use it in your `trigger.config.ts` file:
+
+```ts
+import { defineConfig } from "@trigger.dev/sdk/v3";
+import { additionalPackages } from "@trigger.dev/build/extensions/core";
+
+export default defineConfig({
+  project: "<project ref>",
+  // Your other config settings...
+  build: {
+    extensions: [additionalPackages({ packages: ["wrangler"] })],
+  },
+});
+```
+
+This allows you to include additional packages in the build that are not automatically included via imports. This is useful if you want to install a package that includes a CLI tool that you want to invoke in your tasks via `exec`. We will try to automatically resolve the version of the package but you can specify the version by using the `@` symbol:
+
+```ts
+import { defineConfig } from "@trigger.dev/sdk/v3";
+
+export default defineConfig({
+  project: "<project ref>",
+  // Your other config settings...
+  build: {
+    extensions: [additionalPackages({ packages: ["wrangler@1.19.0"] })],
+  },
+});
+```
+
+This extension does not do anything in `dev` mode, but it will install the packages in the build directory when you run `deploy`. The packages will be installed in the `node_modules` directory in the build directory.
