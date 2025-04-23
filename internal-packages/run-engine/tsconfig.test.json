@@ -16,5 +16,6 @@
     "preserveWatchOutput": true,
     "skipLibCheck": true,
     "strict": true
+    "customConditions": ["@triggerdotdev/source"]
   }
 }
