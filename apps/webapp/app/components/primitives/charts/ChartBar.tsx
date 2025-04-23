@@ -29,6 +29,7 @@ import { ChartLoading } from "./ChartLoading";
 //TODO: render a vertical line that follows the mouse - show this on all charts. Use a reference line
 //TODO: do a better job of showing extra data in the legend - like in a table
 //TODO: fix the first and last bars in a stack not having rounded corners
+//TODO: change the cursor to a crosshair when hovering over the chart
 
 type ReferenceLineProps = {
   value: number;
@@ -371,7 +372,13 @@ export function ChartBar({
               />
               <ChartTooltip
                 cursor={{ fill: "#212327" }}
-                content={<XAxisTooltip />}
+                content={
+                  <XAxisTooltip
+                    isSelecting={isSelecting}
+                    refAreaLeft={refAreaLeft}
+                    refAreaRight={refAreaRight}
+                  />
+                }
                 allowEscapeViewBox={{ x: false, y: true }}
               />
               {dataKeys.map((key, index, array) => {
@@ -574,8 +581,36 @@ export function BigNumber({
   );
 }
 
-const XAxisTooltip = ({ active, payload, label, viewBox, coordinate }: any) => {
-  if (!active || !payload?.length) return null;
+const XAxisTooltip = ({
+  active,
+  payload,
+  label,
+  viewBox,
+  coordinate,
+  isSelecting,
+  refAreaLeft,
+  refAreaRight,
+}: any) => {
+  if (!active) return null;
+
+  // Show zoom range when selecting
+  if (isSelecting && refAreaLeft && refAreaRight) {
+    return (
+      <div
+        className="absolute whitespace-nowrap rounded border border-blue-800 bg-[#1B2334] px-2 py-1 text-xxs tabular-nums text-blue-400"
+        style={{
+          left: coordinate?.x,
+          top: viewBox?.height + 14,
+          transform: "translateX(-50%)",
+        }}
+      >
+        Zoom: {refAreaLeft} to {refAreaRight}
+      </div>
+    );
+  }
+
+  // Default tooltip behavior (show label)
+  if (!payload?.length) return null;
 
   return (
     <div
