@@ -3,6 +3,7 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  Cell,
   Line,
   LineChart,
   ReferenceArea,
@@ -25,7 +26,6 @@ import { Paragraph } from "../Paragraph";
 import { Spinner } from "../Spinner";
 import { ChartLoading } from "./ChartLoading";
 
-//TODO: hover over a single bar in the stack and dim all other bars
 //TODO: render a vertical line that follows the mouse - show this on all charts. Use a reference line
 //TODO: do a better job of showing extra data in the legend - like in a table
 //TODO: fix the first and last bars in a stack not having rounded corners
@@ -50,9 +50,9 @@ export function ChartBar({
   maxLegendItems?: number;
   referenceLine?: ReferenceLineProps;
 }) {
-  const [opacity, setOpacity] = React.useState<Record<string, number>>({});
   const [activePayload, setActivePayload] = React.useState<any[] | null>(null);
   const [activeBarKey, setActiveBarKey] = React.useState<string | null>(null);
+  const [activeDataPointIndex, setActiveDataPointIndex] = React.useState<number | null>(null);
 
   // Zoom state
   const [refAreaLeft, setRefAreaLeft] = React.useState<string | null>(null);
@@ -101,17 +101,6 @@ export function ChartBar({
     }, {} as Record<string, number>);
   }, [data, dataKey]);
 
-  // Handle opacity
-  React.useEffect(() => {
-    const initialOpacity = Object.keys(config).reduce((acc, key) => {
-      if (key !== dataKey) {
-        acc[key] = 1;
-      }
-      return acc;
-    }, {} as Record<string, number>);
-    setOpacity(initialOpacity);
-  }, [config, dataKey]);
-
   // Get all data keys except the x-axis key
   const dataKeys = Object.keys(config).filter((k) => k !== dataKey);
 
@@ -134,12 +123,12 @@ export function ChartBar({
     };
   }, [activePayload, totals]);
 
-  const style = {
-    ...Object.entries(opacity).reduce((acc, [key, value]) => {
-      acc[`--opacity-${key}`] = value;
-      return acc;
-    }, {} as Record<string, string | number>),
-  } as React.CSSProperties;
+  // Reset all highlight states
+  const resetHighlightState = () => {
+    setActiveBarKey(null);
+    setActiveDataPointIndex(null);
+    setActivePayload(null);
+  };
 
   // Prepare legend payload with capped items
   const legendPayload = React.useMemo(() => {
@@ -327,11 +316,7 @@ export function ChartBar({
         style={{ touchAction: "none", userSelect: "none" }}
         onWheel={handleWheel}
       >
-        <ChartContainer
-          config={config}
-          className="h-full w-full [--transition-duration:300ms]"
-          style={style}
-        >
+        <ChartContainer config={config} className="h-full w-full">
           {loading ? (
             <ChartLoading />
           ) : (
@@ -354,14 +339,7 @@ export function ChartBar({
               onMouseUp={handleMouseUp}
               onMouseLeave={() => {
                 handleMouseUp();
-                setActiveBarKey(null);
-                setActivePayload(null);
-                setOpacity((op) =>
-                  Object.keys(op).reduce((acc, k) => {
-                    acc[k] = 1;
-                    return acc;
-                  }, {} as Record<string, number>)
-                );
+                resetHighlightState();
               }}
             >
               <CartesianGrid vertical={false} stroke="#272A2E" />
@@ -396,48 +374,67 @@ export function ChartBar({
                 content={<XAxisTooltip />}
                 allowEscapeViewBox={{ x: false, y: true }}
               />
-              {dataKeys.map((key, index, array) => (
-                <Bar
-                  key={key}
-                  dataKey={key}
-                  stackId="a"
-                  fill={`var(--color-${key})`}
-                  radius={
-                    [
-                      index === array.length - 1 ? 2 : 0,
-                      index === array.length - 1 ? 2 : 0,
-                      index === 0 ? 2 : 0,
-                      index === 0 ? 2 : 0,
-                    ] as [number, number, number, number]
-                  }
-                  activeBar={false}
-                  style={{ transition: "fill-opacity var(--transition-duration)" }}
-                  fillOpacity={opacity[key]}
-                  onMouseEnter={(data) => {
-                    if (data.tooltipPayload?.[0]) {
-                      const { dataKey: hoveredKey } = data.tooltipPayload[0];
-                      setActiveBarKey(hoveredKey);
-                      setOpacity((op) =>
-                        Object.keys(op).reduce((acc, k) => {
-                          acc[k] = k === hoveredKey ? 1 : dimmedOpacity;
-                          return acc;
-                        }, {} as Record<string, number>)
-                      );
+              {dataKeys.map((key, index, array) => {
+                // Create individual bars with custom opacity based on hover state
+                return (
+                  <Bar
+                    key={key}
+                    dataKey={key}
+                    stackId="a"
+                    fill={config[key].color}
+                    radius={
+                      [
+                        index === array.length - 1 ? 2 : 0,
+                        index === array.length - 1 ? 2 : 0,
+                        index === 0 ? 2 : 0,
+                        index === 0 ? 2 : 0,
+                      ] as [number, number, number, number]
                     }
-                  }}
-                  onMouseLeave={() => {
-                    setActiveBarKey(null);
-                    setActivePayload(null);
-                    setOpacity((op) =>
-                      Object.keys(op).reduce((acc, k) => {
-                        acc[k] = 1;
-                        return acc;
-                      }, {} as Record<string, number>)
-                    );
-                  }}
-                  isAnimationActive={false}
-                />
-              ))}
+                    activeBar={false}
+                    style={{ transition: `fill-opacity ${animationDuration}s` }}
+                    fillOpacity={1} // We'll use a custom Cell component to handle opacity
+                    onMouseEnter={(entry, index) => {
+                      if (entry.tooltipPayload?.[0]) {
+                        const { dataKey: hoveredKey } = entry.tooltipPayload[0];
+                        setActiveBarKey(hoveredKey);
+                        setActiveDataPointIndex(index);
+                      }
+                    }}
+                    onMouseLeave={resetHighlightState}
+                    isAnimationActive={false}
+                  >
+                    {/* Add cells to customize opacity for each individual bar */}
+                    {data.map((_, dataIndex) => {
+                      // Calculate opacity for this specific bar
+                      // If we have an active bar (either by hovering a bar or a legend item)
+                      let opacity = 1;
+
+                      // Case 1: Hovering a specific bar
+                      if (activeBarKey !== null && activeDataPointIndex !== null) {
+                        // Only show full opacity for the exact bar being hovered
+                        opacity =
+                          key === activeBarKey && dataIndex === activeDataPointIndex
+                            ? 1
+                            : dimmedOpacity;
+                      }
+                      // Case 2: Hovering a legend item
+                      else if (activeBarKey !== null && activeDataPointIndex === null) {
+                        // Show all bars of this type with full opacity
+                        opacity = key === activeBarKey ? 1 : dimmedOpacity;
+                      }
+                      // Otherwise, no active bar - all bars have full opacity
+
+                      return (
+                        <Cell
+                          key={`cell-${key}-${dataIndex}`}
+                          fill={config[key].color}
+                          fillOpacity={opacity}
+                        />
+                      );
+                    })}
+                  </Bar>
+                );
+              })}
               {referenceLine && (
                 <ReferenceLine
                   y={referenceLine.value}
@@ -464,23 +461,9 @@ export function ChartBar({
                     onMouseEnter={(data) => {
                       if (data.dataKey === "view-more") return;
                       setActiveBarKey(data.dataKey);
-                      setOpacity((op) =>
-                        Object.keys(op).reduce((acc, k) => {
-                          acc[k] = k === data.dataKey ? 1 : dimmedOpacity;
-                          return acc;
-                        }, {} as Record<string, number>)
-                      );
+                      setActiveDataPointIndex(null); // Reset this when hovering over legend
                     }}
-                    onMouseLeave={() => {
-                      setActiveBarKey(null);
-                      setActivePayload(null);
-                      setOpacity((op) =>
-                        Object.keys(op).reduce((acc, k) => {
-                          acc[k] = 1;
-                          return acc;
-                        }, {} as Record<string, number>)
-                      );
-                    }}
+                    onMouseLeave={resetHighlightState}
                     data={currentData}
                     animationDuration={animationDuration}
                     activeKey={activeBarKey}
