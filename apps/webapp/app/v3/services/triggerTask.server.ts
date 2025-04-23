@@ -88,6 +88,8 @@ export class TriggerTaskService extends WithRunEngine {
     body: TriggerTaskRequestBody,
     options: TriggerTaskServiceOptions = {}
   ): Promise<TriggerTaskServiceResult | undefined> {
+    const traceEventConcern = new DefaultTraceEventsConcern(eventRepository);
+
     const service = new RunEngineTriggerTaskService({
       prisma: this._prisma,
       engine: this._engine,
@@ -97,10 +99,10 @@ export class TriggerTaskService extends WithRunEngine {
       idempotencyKeyConcern: new IdempotencyKeyConcern(
         this._prisma,
         this._engine,
-        new DefaultTraceEventsConcern(eventRepository)
+        traceEventConcern
       ),
       runNumberIncrementer: new DefaultRunNumberIncrementer(),
-      traceEventConcern: new DefaultTraceEventsConcern(eventRepository),
+      traceEventConcern,
       runChainStateManager: new DefaultRunChainStateManager(
         this._prisma,
         env.RUN_ENGINE_RELEASE_CONCURRENCY_ENABLED === "1"

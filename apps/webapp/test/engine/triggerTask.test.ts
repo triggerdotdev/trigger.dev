@@ -1,11 +1,23 @@
+import { describe, expect, vi } from "vitest";
+
+// Mock the db prisma client
+vi.mock("~/db.server", () => ({
+  prisma: {},
+}));
+
+vi.mock("~/services/platform.v3.server", () => ({
+  getEntitlement: vi.fn(),
+}));
+
 import { RunEngine } from "@internal/run-engine";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "@internal/run-engine/tests";
 import { containerTest } from "@internal/testcontainers";
 import { trace } from "@opentelemetry/api";
 import { IOPacket } from "@trigger.dev/core/v3";
-import { describe, expect, vi } from "vitest";
+import { TaskRun } from "@trigger.dev/database";
 import { IdempotencyKeyConcern } from "~/runEngine/concerns/idempotencyKeys.server";
 import { DefaultQueueManager } from "~/runEngine/concerns/queues.server";
+import { DefaultRunChainStateManager } from "~/runEngine/concerns/runChainStates.server";
 import {
   EntitlementValidationParams,
   MaxAttemptsValidationParams,
@@ -20,8 +32,7 @@ import {
   ValidationResult,
 } from "~/runEngine/types";
 import { RunEngineTriggerTaskService } from "../../app/runEngine/services/triggerTask.server";
-import { TaskRun, TaskRunStatus } from "@trigger.dev/database";
-import { DefaultRunChainStateManager } from "~/runEngine/concerns/runChainStates.server";
+import { getEntitlement } from "~/services/platform.v3.server";
 
 vi.setConfig({ testTimeout: 30_000 }); // 30 seconds timeout
 

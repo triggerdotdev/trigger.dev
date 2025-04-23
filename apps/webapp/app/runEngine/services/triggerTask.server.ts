@@ -12,14 +12,14 @@ import {
   TriggerTaskRequestBody,
 } from "@trigger.dev/core/v3";
 import { RunId, stringifyDuration } from "@trigger.dev/core/v3/isomorphic";
-import { PrismaClientOrTransaction } from "@trigger.dev/database";
+import type { PrismaClientOrTransaction } from "@trigger.dev/database";
 import { createTags } from "~/models/taskRunTag.server";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { parseDelay } from "~/utils/delays";
 import { handleMetadataPacket } from "~/utils/packets";
 import { startSpan } from "~/v3/tracing.server";
-import {
+import type {
   TriggerTaskServiceOptions,
   TriggerTaskServiceResult,
 } from "../../v3/services/triggerTask.server";

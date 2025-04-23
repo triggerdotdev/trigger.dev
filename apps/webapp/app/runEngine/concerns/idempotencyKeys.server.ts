@@ -48,30 +48,29 @@ export class IdempotencyKeyConcern {
         });
 
         // Update the existing run to remove the idempotency key
-        await this.prisma.taskRun.update({
-          where: { id: existingRun.id },
-          data: { idempotencyKey: null },
+        await this.prisma.taskRun.updateMany({
+          where: { id: existingRun.id, idempotencyKey },
+          data: { idempotencyKey: null, idempotencyKeyExpiresAt: null },
         });
       } else {
+        const associatedWaitpoint = existingRun.associatedWaitpoint;
+        const parentRunId = request.body.options?.parentRunId;
+        const resumeParentOnCompletion = request.body.options?.resumeParentOnCompletion;
         //We're using `andWait` so we need to block the parent run with a waitpoint
-        if (
-          existingRun.associatedWaitpoint &&
-          request.body.options?.resumeParentOnCompletion &&
-          request.body.options?.parentRunId
-        ) {
+        if (associatedWaitpoint && resumeParentOnCompletion && parentRunId) {
           await this.traceEventConcern.traceIdempotentRun(
             request,
             {
               existingRun,
               idempotencyKey,
-              incomplete: existingRun.associatedWaitpoint.status === "PENDING",
-              isError: existingRun.associatedWaitpoint.outputIsError,
+              incomplete: associatedWaitpoint.status === "PENDING",
+              isError: associatedWaitpoint.outputIsError,
             },
             async (event) => {
               //block run with waitpoint
               await this.engine.blockRunWithWaitpoint({
-                runId: RunId.fromFriendlyId(request.body.options!.parentRunId!),
-                waitpoints: existingRun.associatedWaitpoint!.id,
+                runId: RunId.fromFriendlyId(parentRunId),
+                waitpoints: associatedWaitpoint.id,
                 spanIdToComplete: event.spanId,
                 batch: request.options?.batchId
                   ? {

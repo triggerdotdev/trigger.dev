@@ -143,7 +143,10 @@ export class DefaultRunChainStateManager implements RunChainStateManager {
 
     const environmentConcurrency = (runChainState.concurrency?.environment ?? 0) + 1;
 
-    if (environmentConcurrency > request.environment.maximumConcurrencyLimit) {
+    if (
+      request.environment.maximumConcurrencyLimit > 0 &&
+      environmentConcurrency > request.environment.maximumConcurrencyLimit
+    ) {
       const environmentDetails = `The environment has a concurrency limit of ${request.environment.maximumConcurrencyLimit}, and the chain would require ${environmentConcurrency}`;
       throw new EngineServiceValidationError(this.createDeadlockErrorMessage(environmentDetails));
     }
