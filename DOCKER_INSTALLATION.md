@@ -24,7 +24,7 @@ To install Docker Compose on Linux Ubuntu, you can follow these steps:
 2. Download the Docker Compose plugin:
 
    ```shell
-   curl -SL "https://github.com/docker/compose/releases/download/latest/docker-compose-$(uname -s)-$(uname -m)" -o $DOCKER_CONFIG/cli-plugins/docker-compose
+   curl -SL "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o $DOCKER_CONFIG/cli-plugins/docker-compose
    ```
 
    Note:
