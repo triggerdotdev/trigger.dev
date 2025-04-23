@@ -40,6 +40,13 @@ export class DefaultRunChainStateManager implements RunChainStateManager {
 
     const parentRunChainState = parsedParentRunChainState.data;
 
+    if (
+      typeof request.body.options?.resumeParentOnCompletion === "boolean" &&
+      !request.body.options.resumeParentOnCompletion
+    ) {
+      return parentRunChainState;
+    }
+
     // Now we need to check if the parent run will hold concurrency, or if it will release it
     // if it will hold concurrency, we need to account for the parent run's concurrency
     // Then, along with the new run's concurrency,
