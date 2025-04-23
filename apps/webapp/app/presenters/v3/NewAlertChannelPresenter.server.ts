@@ -37,7 +37,15 @@ export class NewAlertChannelPresenter extends BasePresenter {
         if (isSlackError(error) && error.data.error === "token_revoked") {
           return {
             slack: {
-              status: "ACCESS_REVOKED" as const,
+              status: "TOKEN_REVOKED" as const,
+            },
+          };
+        }
+
+        if (isSlackError(error) && error.data.error === "token_expired") {
+          return {
+            slack: {
+              status: "TOKEN_EXPIRED" as const,
             },
           };
         }

@@ -356,11 +356,11 @@ export default function Page() {
                       <SlackIcon className="size-5" /> Connect to Slack
                     </span>
                   </LinkButton>
-                ) : slack.status === "ACCESS_REVOKED" ? (
+                ) : slack.status === "TOKEN_REVOKED" || slack.status === "TOKEN_EXPIRED" ? (
                   <div className="flex flex-col gap-4">
                     <Callout variant="info">
-                      The Slack integration in your workspace has been revoked. Please re-connect
-                      your Slack workspace.
+                      The Slack integration in your workspace has been revoked or has expired.
+                      Please re-connect your Slack workspace.
                     </Callout>
                     <LinkButton
                       variant="tertiary/large"
