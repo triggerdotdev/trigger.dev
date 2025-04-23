@@ -33,6 +33,7 @@ import { type FeedbackType } from "~/routes/resources.feedback";
 import { cn } from "~/utils/cn";
 import {
   accountPath,
+  adminPath,
   logoutPath,
   newOrganizationPath,
   newProjectPath,
@@ -76,6 +77,7 @@ import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
 import { SideMenuSection } from "./SideMenuSection";
+import { useHasAdminAccess } from "~/hooks/useUser";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 export type SideMenuProject = Pick<
@@ -106,6 +108,7 @@ export function SideMenu({
   const currentPlan = useCurrentPlan();
   const { isConnected } = useDevPresence();
   const isFreeUser = currentPlan?.v3Subscription?.isPaying === false;
+  const isAdmin = useHasAdminAccess();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -130,7 +133,8 @@ export function SideMenu({
       <div
         className={cn(
           "flex items-center justify-between overflow-hidden border-b px-1 py-1 transition duration-300",
-          showHeaderDivider ? "border-grid-bright" : "border-transparent"
+          showHeaderDivider ? "border-grid-bright" : "border-transparent",
+          user.isImpersonating && "rounded-md border border-dashed border-amber-400"
         )}
       >
         <ProjectSelector
@@ -139,6 +143,23 @@ export function SideMenu({
           project={project}
           user={user}
         />
+        {isAdmin && (
+          <TooltipProvider disableHoverableContent={true}>
+            <Tooltip>
+              <TooltipTrigger>
+                <LinkButton
+                  variant="minimal/medium"
+                  to={adminPath()}
+                  TrailingIcon={Cog8ToothIcon}
+                />
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className={"text-xs"}>
+                Admin dashboard
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+        {user.isImpersonating && <ImpersonationBanner />}
       </div>
       <div
         className="overflow-hidden overflow-y-auto pt-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
@@ -319,10 +340,7 @@ function ProjectSelector({
       <PopoverArrowTrigger
         isOpen={isOrgMenuOpen}
         overflowHidden
-        className={cn(
-          "h-8 w-full justify-between py-1 pl-1.5",
-          user.isImpersonating && "border border-dashed border-amber-400"
-        )}
+        className="h-8 w-full justify-between py-1 pl-1.5"
       >
         <span className="flex items-center gap-1.5 overflow-hidden">
           <Avatar avatar={organization.avatar} size={1.25} orgName={organization.title} />
@@ -406,19 +424,24 @@ function ProjectSelector({
           <PopoverMenuItem to={newProjectPath(organization)} title="New project" icon={PlusIcon} />
         </div>
         <div className="border-t border-charcoal-700 p-1">
-          <SwitchOrganizations organizations={organizations} organization={organization} />
+          {organizations.length > 1 ? (
+            <SwitchOrganizations organizations={organizations} organization={organization} />
+          ) : (
+            <PopoverMenuItem
+              to={newOrganizationPath()}
+              title="New organization"
+              icon={PlusIcon}
+              leadingIconClassName="text-text-dimmed"
+            />
+          )}
         </div>
         <div className="border-t border-charcoal-700 p-1">
           <PopoverMenuItem
             to={accountPath()}
             title="Account"
             icon={UserProfilePhoto}
-            leadingIconClassName={cn(
-              "text-text-dimmed rounded-full border border-transparent",
-              user.isImpersonating && "rounded-full border-yellow-500"
-            )}
+            leadingIconClassName="text-text-dimmed rounded-full border border-transparent"
           />
-          {user.isImpersonating && <ImpersonationBanner />}
         </div>
         <div className="border-t border-charcoal-700 p-1">
           <PopoverMenuItem
@@ -513,7 +536,7 @@ function SwitchOrganizations({
           <div className="border-t border-charcoal-700 p-1">
             <PopoverMenuItem
               to={newOrganizationPath()}
-              title="New Organization"
+              title="New organization"
               icon={PlusIcon}
               leadingIconClassName="text-text-dimmed"
             />
