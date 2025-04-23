@@ -204,7 +204,10 @@ export class DefaultRunChainStateManager implements RunChainStateManager {
       parentQueue,
     });
 
-    if (typeof parentQueue?.concurrencyLimit === "undefined") {
+    if (
+      typeof parentQueue?.concurrencyLimit === "undefined" ||
+      parentQueue.concurrencyLimit === null
+    ) {
       return true;
     }
 

@@ -1,5 +1,10 @@
-import { RunDuplicateIdempotencyKeyError, RunEngine } from "@internal/run-engine";
+import {
+  RunDuplicateIdempotencyKeyError,
+  RunEngine,
+  RunOneTimeUseTokenError,
+} from "@internal/run-engine";
 import { Tracer } from "@opentelemetry/api";
+import { tryCatch } from "@trigger.dev/core/utils";
 import {
   TaskRunError,
   taskRunErrorEnhancer,
@@ -7,7 +12,7 @@ import {
   TriggerTaskRequestBody,
 } from "@trigger.dev/core/v3";
 import { RunId, stringifyDuration } from "@trigger.dev/core/v3/isomorphic";
-import { Prisma, PrismaClientOrTransaction } from "@trigger.dev/database";
+import { PrismaClientOrTransaction } from "@trigger.dev/database";
 import { createTags } from "~/models/taskRunTag.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
@@ -122,7 +127,11 @@ export class RunEngineTriggerTaskService {
         throw entitlementValidation.error;
       }
 
-      const delayUntil = await parseDelay(body.options?.delay);
+      const [parseDelayError, delayUntil] = await tryCatch(parseDelay(body.options?.delay));
+
+      if (parseDelayError) {
+        throw new EngineServiceValidationError(`Invalid delay ${body.options?.delay}`);
+      }
 
       const ttl =
         typeof body.options?.ttl === "number"
@@ -324,32 +333,10 @@ export class RunEngineTriggerTaskService {
           return await this.call({ taskId, environment, body, options, attempt: attempt + 1 });
         }
 
-        // Detect a prisma transaction Unique constraint violation
-        if (error instanceof Prisma.PrismaClientKnownRequestError) {
-          logger.debug("TriggerTask: Prisma transaction error", {
-            code: error.code,
-            message: error.message,
-            meta: error.meta,
-          });
-
-          if (error.code === "P2002") {
-            const target = error.meta?.target;
-
-            if (
-              Array.isArray(target) &&
-              target.length > 0 &&
-              typeof target[0] === "string" &&
-              target[0].includes("oneTimeUseToken")
-            ) {
-              throw new EngineServiceValidationError(
-                `Cannot trigger ${taskId} with a one-time use token as it has already been used.`
-              );
-            } else {
-              throw new EngineServiceValidationError(
-                `Cannot trigger ${taskId} as it has already been triggered with the same idempotency key.`
-              );
-            }
-          }
+        if (error instanceof RunOneTimeUseTokenError) {
+          throw new EngineServiceValidationError(
+            `Cannot trigger ${taskId} with a one-time use token as it has already been used.`
+          );
         }
 
         throw error;
