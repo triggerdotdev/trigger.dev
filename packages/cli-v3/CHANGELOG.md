@@ -1,5 +1,15 @@
 # trigger.dev
 
+## 4.0.0-v4-beta.7
+
+### Patch Changes
+
+- Fixes runLimiter check on #dequeueRuns ([#1953](https://github.com/triggerdotdev/trigger.dev/pull/1953))
+- Fix QUEUED status snapshot handler ([#1963](https://github.com/triggerdotdev/trigger.dev/pull/1963))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.7`
+  - `@trigger.dev/build@4.0.0-v4-beta.7`
+
 ## 4.0.0-v4-beta.6
 
 ### Patch Changes
