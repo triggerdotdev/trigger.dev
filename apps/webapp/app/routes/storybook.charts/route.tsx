@@ -2,7 +2,7 @@ import { Button } from "~/components/primitives/Buttons";
 import { BigNumber } from "~/components/primitives/charts/BigNumber";
 import { Card } from "~/components/primitives/charts/Card";
 import { type ChartConfig } from "~/components/primitives/charts/Chart";
-import { ChartBar } from "~/components/primitives/charts/ChartBar";
+import { ChartBar, type ChartState } from "~/components/primitives/charts/ChartBar";
 import { ChartLine } from "~/components/primitives/charts/ChartLine";
 import { DateRangeProvider, useDateRange } from "~/components/primitives/charts/DateRangeContext";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -11,22 +11,16 @@ import { useState } from "react";
 
 function ChartsDashboard() {
   const dateRange = useDateRange();
-  const [chartState, setChartState] = useState<string>("loaded");
+  const [chartState, setChartState] = useState<ChartState>("loaded");
 
   return (
     <div className="grid gap-4 p-3">
-      <div className="flex items-center gap-4">
-        <div className="flex w-fit items-center gap-4 rounded border border-charcoal-700 bg-background-bright p-3 pl-4">
-          <Paragraph variant="small/bright">{`Selected range: ${dateRange.startDate} - ${dateRange.endDate}`}</Paragraph>
-          <Button variant="secondary/small" onClick={dateRange.resetDateRange}>
-            Reset Zoom
-          </Button>
-        </div>
+      <div className="flex items-center justify-between gap-4">
         <div className="flex w-fit items-center gap-2 rounded border border-charcoal-700 bg-background-bright p-2">
           <RadioGroup
             name="chartState"
             value={chartState}
-            onValueChange={setChartState}
+            onValueChange={(value) => setChartState(value as ChartState)}
             className="flex items-center gap-3"
           >
             <RadioGroupItem id="loaded" label="Data loaded" value="loaded" variant="button/small" />
@@ -36,7 +30,7 @@ function ChartsDashboard() {
               value="loading"
               variant="button/small"
             />
-            <RadioGroupItem id="no-data" label="No data" value="no-data" variant="button/small" />
+            <RadioGroupItem id="noData" label="No data" value="noData" variant="button/small" />
             <RadioGroupItem
               id="invalid"
               label="Chart invalid"
@@ -44,6 +38,12 @@ function ChartsDashboard() {
               variant="button/small"
             />
           </RadioGroup>
+        </div>
+        <div className="flex w-fit items-center gap-4 rounded border border-charcoal-700 bg-background-bright p-3 pl-4">
+          <Paragraph variant="small/bright">{`Selected range: ${dateRange.startDate} - ${dateRange.endDate}`}</Paragraph>
+          <Button variant="secondary/small" onClick={dateRange.resetDateRange}>
+            Reset Zoom
+          </Button>
         </div>
       </div>
 
@@ -65,7 +65,7 @@ function ChartsDashboard() {
                 value: 30000,
                 label: "Max concurrency",
               }}
-              loading={chartState === "loading"}
+              state={chartState === "loaded" ? undefined : chartState}
             />
           </Card.Content>
         </Card>
@@ -81,7 +81,7 @@ function ChartsDashboard() {
                 value: 30000,
                 label: "Max concurrency",
               }}
-              loading={chartState === "loading"}
+              state={chartState === "loaded" ? undefined : chartState}
             />
           </Card.Content>
         </Card>
@@ -186,10 +186,10 @@ const API_DATA = {
     { day: "Nov 20", completed: 0, "in-progress": 7654, canceled: 0, failed: 3678 },
     { day: "Nov 21", completed: 4532, "in-progress": 3456, canceled: 1200, failed: 2876 },
     { day: "Nov 22", completed: 6789, "in-progress": 4567, canceled: 2345, failed: 3456 },
-    { day: "Nov 23", completed: 0, "in-progress": 5678, canceled: 0, failed: 4567 },
-    { day: "Nov 24", completed: 7654, "in-progress": 3456, canceled: 5678, failed: 2345 },
-    { day: "Nov 25", completed: 5432, "in-progress": 6789, canceled: 1234, failed: 3456 },
-    { day: "Nov 26", completed: 0, "in-progress": 4567, canceled: 3456, failed: 4567 },
+    { day: "Nov 23", completed: 0, "in-progress": 0, canceled: 0, failed: 0 },
+    { day: "Nov 24", completed: 0, "in-progress": 0, canceled: 0, failed: 0 },
+    { day: "Nov 25", completed: 0, "in-progress": 0, canceled: 0, failed: 0 },
+    { day: "Nov 26", completed: 0, "in-progress": 0, canceled: 0, failed: 0 },
     { day: "Nov 27", completed: 8765, "in-progress": 3456, canceled: 0, failed: 5678 },
     { day: "Nov 28", completed: 5432, "in-progress": 5678, canceled: 4567, failed: 2345 },
     { day: "Nov 29", completed: 0, "in-progress": 4567, canceled: 2345, failed: 3456 },
