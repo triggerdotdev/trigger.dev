@@ -31,6 +31,7 @@ import { ChartLoading } from "./ChartLoading";
 //TODO: fix the first and last bars in a stack not having rounded corners
 //TODO: change the cursor to a crosshair when hovering over the chart
 //TODO: make a nice loading state for the chart
+//TODO: make a nice no data state for the chart with 'clear filters' button
 
 type ReferenceLineProps = {
   value: number;
@@ -248,7 +249,7 @@ export function ChartBar({
 
       <div
         ref={containerRef}
-        className="mt-8 h-[400px] w-full"
+        className="mt-8 h-[400px] w-full cursor-crosshair"
         style={{ touchAction: "none", userSelect: "none" }}
       >
         <ChartContainer config={config} className="h-full w-full">
@@ -418,97 +419,6 @@ export function ChartBar({
           )}
         </ChartContainer>
       </div>
-    </div>
-  );
-}
-
-export function ChartLine({
-  config,
-  data,
-  dataKey,
-  loading = false,
-}: {
-  config: ChartConfig;
-  data: any[];
-  dataKey: string;
-  loading?: boolean;
-}) {
-  return (
-    <ChartContainer config={config} className="min-h-[200px] w-full">
-      {loading ? (
-        <ChartLoading />
-      ) : (
-        <LineChart
-          accessibilityLayer
-          data={data}
-          margin={{
-            left: 12,
-            right: 12,
-          }}
-        >
-          <CartesianGrid vertical={false} stroke="#272A2E" />
-          <XAxis dataKey={dataKey} tickLine={false} axisLine={false} tickMargin={8} />
-          <YAxis axisLine={false} tickLine={false} tickMargin={8} />
-          <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
-          <Line
-            dataKey="desktop"
-            type="step"
-            stroke="var(--color-desktop)"
-            strokeWidth={2}
-            dot={false}
-          />
-          <Line
-            dataKey="mobile"
-            type="step"
-            stroke="var(--color-mobile)"
-            strokeWidth={2}
-            dot={false}
-          />
-        </LineChart>
-      )}
-    </ChartContainer>
-  );
-}
-
-interface BigNumberProps {
-  animate?: boolean;
-  loading?: boolean;
-  value?: number;
-  valueClassName?: string;
-  defaultValue?: number;
-  suffix?: string;
-  suffixClassName?: string;
-}
-
-export function BigNumber({
-  value,
-  defaultValue,
-  valueClassName,
-  suffix,
-  suffixClassName,
-  animate = false,
-  loading = false,
-}: BigNumberProps) {
-  const v = value ?? defaultValue;
-  return (
-    <div
-      className={cn(
-        "h-full text-[3.75rem] font-normal tabular-nums leading-none text-text-bright",
-        valueClassName
-      )}
-    >
-      {loading ? (
-        <div className="grid h-full place-items-center">
-          <Spinner className="size-6" />
-        </div>
-      ) : v !== undefined ? (
-        <div className="flex items-baseline gap-1">
-          {animate ? <AnimatedNumber value={v} /> : v}
-          {suffix && <div className={cn("text-xs", suffixClassName)}>{suffix}</div>}
-        </div>
-      ) : (
-        "–"
-      )}
     </div>
   );
 }
