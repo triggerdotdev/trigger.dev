@@ -486,10 +486,32 @@ export class ManagedRunController {
     });
 
     socket.on("disconnect", (reason, description) => {
+      const parseDescription = ():
+        | {
+            description: string;
+            context?: string;
+          }
+        | undefined => {
+        if (!description) {
+          return undefined;
+        }
+
+        if (description instanceof Error) {
+          return {
+            description: description.toString(),
+          };
+        }
+
+        return {
+          description: description.description,
+          context: description.context ? String(description.context) : undefined,
+        };
+      };
+
       this.sendDebugLog({
         runId: this.runFriendlyId,
         message: "Socket disconnected from supervisor",
-        properties: { reason, description: description?.toString() },
+        properties: { reason, ...parseDescription() },
       });
     });
 
