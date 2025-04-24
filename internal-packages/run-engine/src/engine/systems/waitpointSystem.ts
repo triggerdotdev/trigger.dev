@@ -10,7 +10,7 @@ import {
 } from "@trigger.dev/database";
 import { nanoid } from "nanoid";
 import { sendNotificationToWorker } from "../eventBus.js";
-import { isExecuting } from "../statuses.js";
+import { isExecuting, isFinishedOrPendingFinished } from "../statuses.js";
 import { EnqueueSystem } from "./enqueueSystem.js";
 import { ExecutionSnapshotSystem, getLatestExecutionSnapshot } from "./executionSnapshotSystem.js";
 import { SystemResources } from "./systems.js";
@@ -512,6 +512,14 @@ export class WaitpointSystem {
     await this.$.runLock.lock([runId], 5000, async () => {
       const snapshot = await getLatestExecutionSnapshot(this.$.prisma, runId);
 
+      if (isFinishedOrPendingFinished(snapshot.executionStatus)) {
+        this.$.logger.debug(`#continueRunIfUnblocked: run is finished, skipping`, {
+          runId,
+          snapshot,
+        });
+        return;
+      }
+
       //run is still executing, send a message to the worker
       if (isExecuting(snapshot.executionStatus)) {
         const result = await this.$.runQueue.reacquireConcurrency(
@@ -573,6 +581,11 @@ export class WaitpointSystem {
       } else {
         if (snapshot.executionStatus !== "RUN_CREATED" && !snapshot.checkpointId) {
           // TODO: We're screwed, should probably fail the run immediately
+          this.$.logger.error(`#continueRunIfUnblocked: run has no checkpoint`, {
+            runId: run.id,
+            snapshot,
+            blockingWaitpoints,
+          });
           throw new Error(`#continueRunIfUnblocked: run has no checkpoint: ${run.id}`);
         }
 
