@@ -1119,6 +1119,122 @@ describe("FairDequeuingStrategy", () => {
       expect(env2Queues.length).toBe(2);
     }
   );
+
+  redisTest(
+    "should fairly distribute queues when using maximumQueuePerEnvCount over time",
+    async ({ redisOptions }) => {
+      const redis = createRedisClient(redisOptions);
+
+      const keyProducer = createKeyProducer("test");
+      const strategy = new FairDequeuingStrategy({
+        tracer,
+        redis,
+        keys: keyProducer,
+        defaultEnvConcurrency: 5,
+        parentQueueLimit: 100,
+        seed: "test-seed-fair-distribution",
+        maximumQueuePerEnvCount: 2, // Only take 2 queues at a time
+        biases: {
+          concurrencyLimitBias: 0,
+          availableCapacityBias: 0,
+          queueAgeRandomization: 0.3, // Add some randomization to allow newer queues a chance
+        },
+      });
+
+      const now = Date.now();
+
+      // Setup one environment with 5 queues of different ages
+      const queues = [
+        { age: 5000, id: "queue-0" }, // Oldest
+        { age: 4000, id: "queue-1" },
+        { age: 3000, id: "queue-2" },
+        { age: 2000, id: "queue-3" },
+        { age: 1000, id: "queue-4" }, // Newest
+      ];
+
+      // Setup the environment and its queues
+      await setupConcurrency({
+        redis,
+        keyProducer,
+        env: { id: "env-1", currentConcurrency: 0, limit: 5 },
+      });
+
+      for (const queue of queues) {
+        await setupQueue({
+          redis,
+          keyProducer,
+          parentQueue: "parent-queue",
+          score: now - queue.age,
+          queueId: queue.id,
+          orgId: "org-1",
+          envId: "env-1",
+        });
+      }
+
+      // Run multiple iterations and track which queues are selected
+      const iterations = 1000;
+      const queueSelectionCounts: Record<string, number> = {};
+      const queuePairings: Record<string, number> = {};
+
+      for (let i = 0; i < iterations; i++) {
+        const result = await strategy.distributeFairQueuesFromParentQueue(
+          "parent-queue",
+          `consumer-${i}`
+        );
+
+        // There should be exactly one environment
+        expect(result.length).toBe(1);
+        const selectedQueues = result[0].queues;
+
+        // Should always get exactly 2 queues due to maximumQueuePerEnvCount
+        expect(selectedQueues.length).toBe(2);
+
+        // Track individual queue selections
+        for (const queueId of selectedQueues) {
+          const baseQueueId = queueId.split(":").pop()!;
+          queueSelectionCounts[baseQueueId] = (queueSelectionCounts[baseQueueId] || 0) + 1;
+        }
+
+        // Track queue pairings to ensure variety
+        const [first, second] = selectedQueues.map((qId) => qId.split(":").pop()!).sort();
+        const pairingKey = `${first}-${second}`;
+        queuePairings[pairingKey] = (queuePairings[pairingKey] || 0) + 1;
+      }
+
+      console.log("\nQueue Selection Statistics:");
+      for (const [queueId, count] of Object.entries(queueSelectionCounts)) {
+        const percentage = (count / (iterations * 2)) * 100; // Times 2 because we select 2 queues each time
+        console.log(`${queueId}: ${percentage.toFixed(2)}% (${count} times)`);
+      }
+
+      console.log("\nQueue Pairing Statistics:");
+      for (const [pair, count] of Object.entries(queuePairings)) {
+        const percentage = (count / iterations) * 100;
+        console.log(`${pair}: ${percentage.toFixed(2)}% (${count} times)`);
+      }
+
+      // Verify that all queues were selected at least once
+      for (const queue of queues) {
+        expect(queueSelectionCounts[queue.id]).toBeGreaterThan(0);
+      }
+
+      // Calculate standard deviation of selection percentages
+      const selectionPercentages = Object.values(queueSelectionCounts).map(
+        (count) => (count / (iterations * 2)) * 100
+      );
+      const stdDev = calculateStandardDeviation(selectionPercentages);
+
+      // The standard deviation should be reasonable given our age bias
+      // Higher stdDev means more bias towards older queues
+      // We expect some bias due to queueAgeRandomization being 0.3
+      expect(stdDev).toBeLessThan(15); // Allow for age-based bias but not extreme
+
+      // Verify we get different pairings of queues
+      const uniquePairings = Object.keys(queuePairings).length;
+      // With 5 queues, we can have 10 possible unique pairs
+      expect(uniquePairings).toBeGreaterThan(5); // Should see at least half of possible combinations
+    }
+  );
 });
 
 // Helper function to flatten results for counting
