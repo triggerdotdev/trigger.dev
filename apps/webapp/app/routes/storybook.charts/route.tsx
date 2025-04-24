@@ -1,7 +1,8 @@
 import { Button } from "~/components/primitives/Buttons";
+import { BigNumber } from "~/components/primitives/charts/BigNumber";
 import { Card } from "~/components/primitives/charts/Card";
 import { type ChartConfig } from "~/components/primitives/charts/Chart";
-import { BigNumber, ChartBar } from "~/components/primitives/charts/ChartBar";
+import { ChartBar } from "~/components/primitives/charts/ChartBar";
 import { ChartLine } from "~/components/primitives/charts/ChartLine";
 
 export default function Story() {
