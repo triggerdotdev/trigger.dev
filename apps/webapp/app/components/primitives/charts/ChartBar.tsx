@@ -286,7 +286,7 @@ export function ChartBar({
                 domain={["auto", (dataMax: number) => dataMax * 1.2]}
               />
               <ChartTooltip
-                cursor={{ fill: "#212327" }}
+                cursor={{ fill: "#2C3034" }}
                 content={
                   <XAxisTooltip
                     isSelecting={isSelecting}
