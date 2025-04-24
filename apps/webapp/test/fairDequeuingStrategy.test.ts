@@ -1032,6 +1032,93 @@ describe("FairDequeuingStrategy", () => {
       expect(selectionPercentages["env-4"] || 0).toBeLessThan(20);
     }
   );
+
+  redisTest(
+    "should respect maximumQueuePerEnvCount when distributing queues",
+    async ({ redisOptions }) => {
+      const redis = createRedisClient(redisOptions);
+
+      const keyProducer = createKeyProducer("test");
+      const strategy = new FairDequeuingStrategy({
+        tracer,
+        redis,
+        keys: keyProducer,
+        defaultEnvConcurrency: 5,
+        parentQueueLimit: 100,
+        seed: "test-seed-max-queues",
+        maximumQueuePerEnvCount: 2, // Only take 2 queues per env
+      });
+
+      const now = Date.now();
+
+      // Setup two environments with different numbers of queues
+      const envSetups = [
+        {
+          envId: "env-1",
+          queues: [
+            { age: 5000 }, // Oldest
+            { age: 4000 },
+            { age: 3000 }, // This should be excluded due to maximumQueuePerEnvCount
+          ],
+        },
+        {
+          envId: "env-2",
+          queues: [
+            { age: 2000 },
+            { age: 1000 }, // Newest
+          ],
+        },
+      ];
+
+      // Setup queues and concurrency for each env
+      for (const setup of envSetups) {
+        await setupConcurrency({
+          redis,
+          keyProducer,
+          env: { id: setup.envId, currentConcurrency: 0, limit: 5 },
+        });
+
+        for (let i = 0; i < setup.queues.length; i++) {
+          await setupQueue({
+            redis,
+            keyProducer,
+            parentQueue: "parent-queue",
+            score: now - setup.queues[i].age,
+            queueId: `queue-${setup.envId}-${i}`,
+            orgId: `org-${setup.envId}`,
+            envId: setup.envId,
+          });
+        }
+      }
+
+      const result = await strategy.distributeFairQueuesFromParentQueue(
+        "parent-queue",
+        "consumer-1"
+      );
+
+      // Verify that each environment has at most 2 queues
+      for (const envQueues of result) {
+        expect(envQueues.queues.length).toBeLessThanOrEqual(2);
+      }
+
+      // Get queues for env-1 (which had 3 queues originally)
+      const env1Queues = result.find((eq) => eq.envId === "env-1")?.queues ?? [];
+
+      // Should have exactly 2 queues
+      expect(env1Queues.length).toBe(2);
+
+      // The queues should be the two oldest ones (queue-env-1-0 and queue-env-1-1)
+      expect(env1Queues).toContain(keyProducer.queueKey("org-env-1", "env-1", "queue-env-1-0"));
+      expect(env1Queues).toContain(keyProducer.queueKey("org-env-1", "env-1", "queue-env-1-1"));
+      expect(env1Queues).not.toContain(keyProducer.queueKey("org-env-1", "env-1", "queue-env-1-2"));
+
+      // Get queues for env-2 (which had 2 queues originally)
+      const env2Queues = result.find((eq) => eq.envId === "env-2")?.queues ?? [];
+
+      // Should still have both queues since it was within the limit
+      expect(env2Queues.length).toBe(2);
+    }
+  );
 });
 
 // Helper function to flatten results for counting
