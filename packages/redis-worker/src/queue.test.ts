@@ -210,6 +210,10 @@ describe("SimpleQueue", () => {
           timestamp: expect.any(Date),
         })
       );
+
+      // Acknowledge the item and verify it's removed
+      await queue.ack(second!.id);
+      expect(await queue.size({ includeFuture: true })).toBe(0);
     } finally {
       await queue.close();
     }
