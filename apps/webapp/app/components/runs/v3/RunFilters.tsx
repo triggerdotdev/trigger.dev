@@ -841,8 +841,8 @@ function BatchIdDropdown({
   if (batchId) {
     if (!batchId.startsWith("batch_")) {
       error = "Batch IDs start with 'batch_'";
-    } else if (batchId.length !== 27) {
-      error = "Batch IDs are 27 characters long";
+    } else if (batchId.length !== 27 && batchId.length !== 31) {
+      error = "Batch IDs are 27 or 31 characters long";
     }
   }
 

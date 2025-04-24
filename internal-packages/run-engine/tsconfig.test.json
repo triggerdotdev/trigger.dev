@@ -15,6 +15,7 @@
     "isolatedModules": true,
     "preserveWatchOutput": true,
     "skipLibCheck": true,
-    "strict": true
+    "strict": true,
+    "customConditions": ["@triggerdotdev/source"]
   }
 }

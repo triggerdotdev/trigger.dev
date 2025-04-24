@@ -6,20 +6,20 @@ export const workerCatalog = {
       waitpointId: z.string(),
       error: z.string().optional(),
     }),
-    visibilityTimeoutMs: 5000,
+    visibilityTimeoutMs: 30_000,
   },
   heartbeatSnapshot: {
     schema: z.object({
       runId: z.string(),
       snapshotId: z.string(),
     }),
-    visibilityTimeoutMs: 5000,
+    visibilityTimeoutMs: 30_000,
   },
   expireRun: {
     schema: z.object({
       runId: z.string(),
     }),
-    visibilityTimeoutMs: 5000,
+    visibilityTimeoutMs: 30_000,
   },
   cancelRun: {
     schema: z.object({
@@ -27,30 +27,30 @@ export const workerCatalog = {
       completedAt: z.coerce.date(),
       reason: z.string().optional(),
     }),
-    visibilityTimeoutMs: 5000,
+    visibilityTimeoutMs: 30_000,
   },
   queueRunsPendingVersion: {
     schema: z.object({
       backgroundWorkerId: z.string(),
     }),
-    visibilityTimeoutMs: 5000,
+    visibilityTimeoutMs: 60_000,
   },
   tryCompleteBatch: {
     schema: z.object({
       batchId: z.string(),
     }),
-    visibilityTimeoutMs: 10_000,
+    visibilityTimeoutMs: 30_000,
   },
   continueRunIfUnblocked: {
     schema: z.object({
       runId: z.string(),
     }),
-    visibilityTimeoutMs: 10_000,
+    visibilityTimeoutMs: 30_000,
   },
   enqueueDelayedRun: {
     schema: z.object({
       runId: z.string(),
     }),
-    visibilityTimeoutMs: 10_000,
+    visibilityTimeoutMs: 30_000,
   },
 };

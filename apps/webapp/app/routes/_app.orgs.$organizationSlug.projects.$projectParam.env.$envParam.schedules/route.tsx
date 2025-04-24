@@ -229,7 +229,7 @@ export default function Page() {
 
                   <div
                     className={cn(
-                      "grid h-fit max-h-full min-h-full overflow-x-auto",
+                      "grid max-h-full min-h-full overflow-x-auto",
                       totalPages > 1 ? "grid-rows-[1fr_auto]" : "grid-rows-[1fr]"
                     )}
                   >

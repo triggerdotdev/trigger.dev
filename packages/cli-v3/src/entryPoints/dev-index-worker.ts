@@ -128,6 +128,22 @@ if (typeof config.maxDuration === "number") {
   });
 }
 
+// If the config has a machine preset, we need to apply it to all tasks that don't have a machine preset
+if (typeof config.machine === "string") {
+  tasks = tasks.map((task) => {
+    if (typeof task.machine?.preset !== "string") {
+      return {
+        ...task,
+        machine: {
+          preset: config.machine,
+        },
+      } satisfies TaskManifest;
+    }
+
+    return task;
+  });
+}
+
 await sendMessageInCatalog(
   indexerToWorkerMessages,
   "INDEX_COMPLETE",
