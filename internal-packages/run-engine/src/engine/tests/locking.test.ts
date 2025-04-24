@@ -2,16 +2,23 @@ import { createRedisClient } from "@internal/redis";
 import { redisTest } from "@internal/testcontainers";
 import { expect } from "vitest";
 import { RunLocker } from "../locking.js";
+import { trace } from "@internal/tracing";
+import { Logger } from "@trigger.dev/core/logger";
 
 describe("RunLocker", () => {
   redisTest("Test acquiring a lock works", { timeout: 15_000 }, async ({ redisOptions }) => {
     const redis = createRedisClient(redisOptions);
     try {
-      const runLock = new RunLocker({ redis });
+      const logger = new Logger("RunLockTest", "debug");
+      const runLock = new RunLocker({
+        redis,
+        logger,
+        tracer: trace.getTracer("RunLockTest"),
+      });
 
       expect(runLock.isInsideLock()).toBe(false);
 
-      await runLock.lock(["test-1"], 5000, async (signal) => {
+      await runLock.lock("test-lock", ["test-1"], 5000, async (signal) => {
         expect(signal).toBeDefined();
         expect(runLock.isInsideLock()).toBe(true);
       });
@@ -25,16 +32,17 @@ describe("RunLocker", () => {
   redisTest("Test double locking works", { timeout: 15_000 }, async ({ redisOptions }) => {
     const redis = createRedisClient(redisOptions);
     try {
-      const runLock = new RunLocker({ redis });
+      const logger = new Logger("RunLockTest", "debug");
+      const runLock = new RunLocker({ redis, logger, tracer: trace.getTracer("RunLockTest") });
 
       expect(runLock.isInsideLock()).toBe(false);
 
-      await runLock.lock(["test-1"], 5000, async (signal) => {
+      await runLock.lock("test-lock", ["test-1"], 5000, async (signal) => {
         expect(signal).toBeDefined();
         expect(runLock.isInsideLock()).toBe(true);
 
         //should be able to "lock it again"
-        await runLock.lock(["test-1"], 5000, async (signal) => {
+        await runLock.lock("test-lock", ["test-1"], 5000, async (signal) => {
           expect(signal).toBeDefined();
           expect(runLock.isInsideLock()).toBe(true);
         });
@@ -52,12 +60,13 @@ describe("RunLocker", () => {
     async ({ redisOptions }) => {
       const redis = createRedisClient(redisOptions);
       try {
-        const runLock = new RunLocker({ redis });
+        const logger = new Logger("RunLockTest", "debug");
+        const runLock = new RunLocker({ redis, logger, tracer: trace.getTracer("RunLockTest") });
 
         expect(runLock.isInsideLock()).toBe(false);
 
         await expect(
-          runLock.lock(["test-1"], 5000, async () => {
+          runLock.lock("test-lock", ["test-1"], 5000, async () => {
             throw new Error("Test error");
           })
         ).rejects.toThrow("Test error");
@@ -76,16 +85,17 @@ describe("RunLocker", () => {
     async ({ redisOptions }) => {
       const redis = createRedisClient(redisOptions);
       try {
-        const runLock = new RunLocker({ redis });
+        const logger = new Logger("RunLockTest", "debug");
+        const runLock = new RunLocker({ redis, logger, tracer: trace.getTracer("RunLockTest") });
 
         expect(runLock.isInsideLock()).toBe(false);
 
         await expect(
-          runLock.lock(["test-1"], 5000, async () => {
+          runLock.lock("test-lock", ["test-1"], 5000, async () => {
             expect(runLock.isInsideLock()).toBe(true);
 
             // Nested lock with same resource
-            await runLock.lock(["test-1"], 5000, async () => {
+            await runLock.lock("test-lock", ["test-1"], 5000, async () => {
               expect(runLock.isInsideLock()).toBe(true);
               throw new Error("Inner lock error");
             });
@@ -103,11 +113,12 @@ describe("RunLocker", () => {
   redisTest("Test lock throws when it times out", { timeout: 15_000 }, async ({ redisOptions }) => {
     const redis = createRedisClient(redisOptions);
     try {
-      const runLock = new RunLocker({ redis });
+      const logger = new Logger("RunLockTest", "debug");
+      const runLock = new RunLocker({ redis, logger, tracer: trace.getTracer("RunLockTest") });
 
       // First, ensure we can acquire the lock normally
       let firstLockAcquired = false;
-      await runLock.lock(["test-1"], 5000, async () => {
+      await runLock.lock("test-lock", ["test-1"], 5000, async () => {
         firstLockAcquired = true;
       });
       //wait for 20ms
@@ -116,7 +127,7 @@ describe("RunLocker", () => {
       expect(firstLockAcquired).toBe(true);
 
       // Now create a long-running lock
-      const lockPromise1 = runLock.lock(["test-1"], 5000, async () => {
+      const lockPromise1 = runLock.lock("test-lock", ["test-1"], 5000, async () => {
         // Hold the lock longer than all possible retry attempts
         // (10 retries * (200ms delay + 200ms max jitter) = ~4000ms max)
         await new Promise((resolve) => setTimeout(resolve, 5000));
@@ -124,7 +135,7 @@ describe("RunLocker", () => {
 
       // Try to acquire same lock immediately
       await expect(
-        runLock.lock(["test-1"], 5000, async () => {
+        runLock.lock("test-lock", ["test-1"], 5000, async () => {
           // This should never execute
           expect(true).toBe(false);
         })
@@ -146,15 +157,16 @@ describe("RunLocker", () => {
     async ({ redisOptions }) => {
       const redis = createRedisClient(redisOptions);
       try {
-        const runLock = new RunLocker({ redis });
+        const logger = new Logger("RunLockTest", "debug");
+        const runLock = new RunLocker({ redis, logger, tracer: trace.getTracer("RunLockTest") });
 
-        await runLock.lock(["test-1"], 5000, async () => {
+        await runLock.lock("test-lock", ["test-1"], 5000, async () => {
           // First lock acquired
           expect(runLock.isInsideLock()).toBe(true);
 
           // Try to acquire the same resource with a very short timeout
           // This should work because we already hold the lock
-          await runLock.lock(["test-1"], 100, async () => {
+          await runLock.lock("test-lock", ["test-1"], 100, async () => {
             expect(runLock.isInsideLock()).toBe(true);
             // Wait longer than the timeout to prove it doesn't matter
             await new Promise((resolve) => setTimeout(resolve, 500));
@@ -175,11 +187,12 @@ describe("RunLocker", () => {
     async ({ redisOptions }) => {
       const redis = createRedisClient(redisOptions);
       try {
-        const runLock = new RunLocker({ redis });
+        const logger = new Logger("RunLockTest", "debug");
+        const runLock = new RunLocker({ redis, logger, tracer: trace.getTracer("RunLockTest") });
 
         // First verify we can acquire the lock normally
         let firstLockAcquired = false;
-        await runLock.lock(["test-1"], 5000, async () => {
+        await runLock.lock("test-lock", ["test-1"], 5000, async () => {
           firstLockAcquired = true;
         });
         expect(firstLockAcquired).toBe(true);
@@ -188,7 +201,7 @@ describe("RunLocker", () => {
         let outerLockExecuted = false;
         let innerLockExecuted = false;
 
-        await runLock.lock(["test-1"], 5000, async () => {
+        await runLock.lock("test-lock", ["test-1"], 5000, async () => {
           outerLockExecuted = true;
           expect(runLock.isInsideLock()).toBe(true);
           expect(runLock.getCurrentResources()).toBe("test-1");
@@ -196,7 +209,7 @@ describe("RunLocker", () => {
           // Try to acquire the same resource in a nested lock
           // This should work immediately without any retries
           // because we already hold the lock
-          await runLock.lock(["test-1"], 5000, async () => {
+          await runLock.lock("test-lock", ["test-1"], 5000, async () => {
             innerLockExecuted = true;
             expect(runLock.isInsideLock()).toBe(true);
             expect(runLock.getCurrentResources()).toBe("test-1");
