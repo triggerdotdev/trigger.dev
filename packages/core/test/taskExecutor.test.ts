@@ -1,21 +1,19 @@
 import { describe, expect, test } from "vitest";
+import { ApiError } from "../src/v3/apiClient/errors.js";
 import { ConsoleInterceptor } from "../src/v3/consoleInterceptor.js";
 import {
+  lifecycleHooks,
   RetryOptions,
   RunFnParams,
   ServerBackgroundWorker,
   TaskMetadataWithFunctions,
   TaskRunErrorCodes,
   TaskRunExecution,
-  TaskRunExecutionResult,
-  TaskRunExecutionRetry,
 } from "../src/v3/index.js";
+import { StandardLifecycleHooksManager } from "../src/v3/lifecycleHooks/manager.js";
 import { TracingSDK } from "../src/v3/otel/tracingSDK.js";
 import { TriggerTracer } from "../src/v3/tracer.js";
 import { TaskExecutor } from "../src/v3/workers/taskExecutor.js";
-import { StandardLifecycleHooksManager } from "../src/v3/lifecycleHooks/manager.js";
-import { lifecycleHooks } from "../src/v3/index.js";
-import { ApiError } from "../src/v3/apiClient/errors.js";
 
 describe("TaskExecutor", () => {
   beforeEach(() => {
@@ -1714,7 +1712,7 @@ describe("TaskExecutor", () => {
         id: "test-run-id",
         error: {
           type: "BUILT_IN_ERROR",
-          message: `${status} API Error`,
+          message: "API Error",
           name: "TriggerApiError",
           stackTrace: expect.any(String),
         },
