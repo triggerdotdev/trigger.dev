@@ -36,6 +36,11 @@ export function isFinishedOrPendingFinished(status: TaskRunExecutionStatus): boo
   return finishedStatuses.includes(status);
 }
 
+export function isInitialState(status: TaskRunExecutionStatus): boolean {
+  const startedStatuses: TaskRunExecutionStatus[] = ["RUN_CREATED"];
+  return startedStatuses.includes(status);
+}
+
 export function isFinalRunStatus(status: TaskRunStatus): boolean {
   const finalStatuses: TaskRunStatus[] = [
     "CANCELED",

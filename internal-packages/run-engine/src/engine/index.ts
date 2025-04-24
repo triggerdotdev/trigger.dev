@@ -303,6 +303,7 @@ export class RunEngine {
       executionSnapshotSystem: this.executionSnapshotSystem,
       batchSystem: this.batchSystem,
       waitpointSystem: this.waitpointSystem,
+      delayedRunSystem: this.delayedRunSystem,
       machines: this.options.machines,
     });
 
