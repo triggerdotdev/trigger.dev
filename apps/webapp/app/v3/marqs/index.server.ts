@@ -2189,6 +2189,7 @@ function getMarQSClient() {
       },
       reuseSnapshotCount: env.MARQS_REUSE_SNAPSHOT_COUNT,
       maximumEnvCount: env.MARQS_MAXIMUM_ENV_COUNT,
+      maximumQueuePerEnvCount: env.MARQS_MAXIMUM_QUEUE_PER_ENV_COUNT,
     }),
     envQueuePriorityStrategy: new FairDequeuingStrategy({
       tracer: tracer,

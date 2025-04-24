@@ -384,6 +384,7 @@ const EnvironmentSchema = z.object({
     .int()
     .default(60 * 1000 * 15),
   MARQS_SHARED_QUEUE_LIMIT: z.coerce.number().int().default(1000),
+  MARQS_MAXIMUM_QUEUE_PER_ENV_COUNT: z.coerce.number().int().default(50),
   MARQS_DEV_QUEUE_LIMIT: z.coerce.number().int().default(1000),
   MARQS_MAXIMUM_NACK_COUNT: z.coerce.number().int().default(64),
   MARQS_CONCURRENCY_LIMIT_BIAS: z.coerce.number().default(0.75),
