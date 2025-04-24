@@ -25,7 +25,8 @@ import { ChartLoading } from "./ChartLoading";
 //TODO: fix the first and last bars in a stack not having rounded corners
 //TODO: change the cursor to a crosshair when hovering over the chart
 //TODO: make a nice loading state for the chart
-//TODO: make a nice no data state for the chart with 'clear filters' button
+//TODO: make a nice "No data: There's no data available for your filters" for the chart with 'clear filters' button
+//TODO: make a nice "Chart invalid: The current filters are preventing this chart from being displayed." state for the chart with 'clear filters' button
 
 type ReferenceLineProps = {
   value: number;
