@@ -31,6 +31,11 @@ export function isCheckpointable(status: TaskRunExecutionStatus): boolean {
   return checkpointableStatuses.includes(status);
 }
 
+export function isFinishedOrPendingFinished(status: TaskRunExecutionStatus): boolean {
+  const finishedStatuses: TaskRunExecutionStatus[] = ["FINISHED", "PENDING_CANCEL"];
+  return finishedStatuses.includes(status);
+}
+
 export function isFinalRunStatus(status: TaskRunStatus): boolean {
   const finalStatuses: TaskRunStatus[] = [
     "CANCELED",

@@ -10,7 +10,7 @@ import {
 } from "@trigger.dev/database";
 import { nanoid } from "nanoid";
 import { sendNotificationToWorker } from "../eventBus.js";
-import { isExecuting } from "../statuses.js";
+import { isExecuting, isFinishedOrPendingFinished } from "../statuses.js";
 import { EnqueueSystem } from "./enqueueSystem.js";
 import { ExecutionSnapshotSystem, getLatestExecutionSnapshot } from "./executionSnapshotSystem.js";
 import { SystemResources } from "./systems.js";
@@ -511,6 +511,14 @@ export class WaitpointSystem {
     //4. Continue the run whether it's executing or not
     await this.$.runLock.lock([runId], 5000, async () => {
       const snapshot = await getLatestExecutionSnapshot(this.$.prisma, runId);
+
+      if (isFinishedOrPendingFinished(snapshot.executionStatus)) {
+        this.$.logger.debug(`#continueRunIfUnblocked: run is finished, skipping`, {
+          runId,
+          snapshot,
+        });
+        return;
+      }
 
       //run is still executing, send a message to the worker
       if (isExecuting(snapshot.executionStatus)) {
