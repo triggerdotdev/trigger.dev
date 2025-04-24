@@ -339,26 +339,28 @@ export function ChartBar({
                     onMouseLeave={resetHighlightState}
                     isAnimationActive={false}
                   >
-                    {/* Add cells to customize opacity for each individual bar */}
                     {data.map((_, dataIndex) => {
                       // Calculate opacity for this specific bar
                       // If we have an active bar (either by hovering a bar or a legend item)
                       let opacity = 1;
 
-                      // Case 1: Hovering a specific bar
-                      if (activeBarKey !== null && activeDataPointIndex !== null) {
-                        // Only show full opacity for the exact bar being hovered
-                        opacity =
-                          key === activeBarKey && dataIndex === activeDataPointIndex
-                            ? 1
-                            : dimmedOpacity;
+                      // Only apply dimming if we're not in zoom selection mode
+                      if (!isSelecting) {
+                        // Hovering a specific bar
+                        if (activeBarKey !== null && activeDataPointIndex !== null) {
+                          // Only show full opacity for the exact bar being hovered
+                          opacity =
+                            key === activeBarKey && dataIndex === activeDataPointIndex
+                              ? 1
+                              : dimmedOpacity;
+                        }
+                        // Hovering a legend item
+                        else if (activeBarKey !== null && activeDataPointIndex === null) {
+                          // Show all bars of this type with full opacity
+                          opacity = key === activeBarKey ? 1 : dimmedOpacity;
+                        }
+                        // Otherwise, no active bar - all bars have full opacity
                       }
-                      // Case 2: Hovering a legend item
-                      else if (activeBarKey !== null && activeDataPointIndex === null) {
-                        // Show all bars of this type with full opacity
-                        opacity = key === activeBarKey ? 1 : dimmedOpacity;
-                      }
-                      // Otherwise, no active bar - all bars have full opacity
 
                       return (
                         <Cell
