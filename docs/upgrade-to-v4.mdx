@@ -508,7 +508,7 @@ pnpm dlx trigger.dev@v4-beta dev
 
 During the beta we will be tracking issues and releasing regular fixes.
 
-There are no known issues at the moment.
+**ISSUE:** Runs not continuing after a child run(s) have completed.
 
 ## Deprecations
 
@@ -703,7 +703,8 @@ import { task } from "@trigger.dev/sdk";
 export const myTask = task({
   id: "my-task",
   onStart: ({ payload, ctx }) => {},
-  run: async ({ payload, ctx }) => {},
+  // The run function still uses separate parameters
+  run: async ( payload, { ctx }) => {},
 });
 ```
 
@@ -721,7 +722,7 @@ export const myTask = task({
   onResume: ({ payload, ctx, task, wait }) => {},
   onComplete: ({ payload, ctx, task, result }) => {},
   catchError: ({ payload, ctx, task, error, retry, retryAt, retryDelayInMs }) => {},
-  run: async ({ payload, ctx }) => {},
+  run: async (payload, { ctx }) => {},
 });
 ```
 
@@ -731,3 +732,32 @@ We've made a few small changes to the `ctx` object:
 
 - `ctx.attempt.id` and `ctx.attempt.status` have been removed. `ctx.attempt.number` is still available.
 - `ctx.task.exportName` has been removed (since we no longer require tasks to be exported to be triggered).
+
+### BatchTrigger changes
+
+The `batchTrigger` function no longer returns a `runs` list directly. In v3, you could access the runs directly from the batch handle:
+
+```ts
+// In v3
+const batchHandle = await tasks.batchTrigger([
+  [myTask, { foo: "bar" }],
+  [myOtherTask, { baz: "qux" }],
+]);
+
+// You could access runs directly
+console.log(batchHandle.runs);
+```
+
+In v4, you now need to use the `runs.list()` method to get the list of runs:
+
+```ts
+// In v4
+const batchHandle = await tasks.batchTrigger([
+  [myTask, { foo: "bar" }],
+  [myOtherTask, { baz: "qux" }],
+]);
+
+// Now you need to call runs.list()
+const runs = await batchHandle.runs.list();
+console.log(runs);
+```
