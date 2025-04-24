@@ -285,7 +285,7 @@ export default function Page() {
           {success ? (
             <div
               className={cn(
-                "grid h-fit max-h-full min-h-full grid-rows-[1fr] overflow-x-auto",
+                "grid max-h-full min-h-full grid-rows-[1fr] overflow-x-auto",
                 pagination.totalPages > 1 && "grid-rows-[1fr_auto]"
               )}
             >
