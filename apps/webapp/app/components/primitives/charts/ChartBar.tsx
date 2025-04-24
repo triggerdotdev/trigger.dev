@@ -59,9 +59,8 @@ export function ChartBar({
   const [endIndex, setEndIndex] = React.useState<number>(initialData.length - 1);
   const [originalData, setOriginalData] = React.useState<any[]>(initialData);
   const [isSelecting, setIsSelecting] = React.useState(false);
-  const [zoomMessage, setZoomMessage] = React.useState<string | null>(null);
+  const [invalidSelection, setInvalidSelection] = React.useState(false);
   const containerRef = React.useRef<HTMLDivElement>(null);
-  const zoomMessageTimeoutRef = React.useRef<number | null>(null);
 
   // Compute the visible data based on the current zoom indices
   const data = React.useMemo(() => {
@@ -74,15 +73,6 @@ export function ChartBar({
     setStartIndex(0);
     setEndIndex(initialData.length - 1);
   }, [initialData]);
-
-  // Clear zoom message timeout on unmount
-  React.useEffect(() => {
-    return () => {
-      if (zoomMessageTimeoutRef.current !== null) {
-        window.clearTimeout(zoomMessageTimeoutRef.current);
-      }
-    };
-  }, []);
 
   const dimmedOpacity = 0.2;
 
@@ -166,20 +156,6 @@ export function ChartBar({
     ];
   }, [config, dataKeys, maxLegendItems, activeBarKey]);
 
-  // Show zoom message with auto-dismiss
-  const showZoomMessage = (message: string) => {
-    setZoomMessage(message);
-
-    if (zoomMessageTimeoutRef.current !== null) {
-      window.clearTimeout(zoomMessageTimeoutRef.current);
-    }
-
-    zoomMessageTimeoutRef.current = window.setTimeout(() => {
-      setZoomMessage(null);
-      zoomMessageTimeoutRef.current = null;
-    }, 2000);
-  };
-
   // Handle mouse down for drag zooming
   const handleMouseDown = (e: any) => {
     if (e.activeLabel) {
@@ -193,6 +169,16 @@ export function ChartBar({
     // Handle both selection and active payload update
     if (isSelecting && e?.activeLabel) {
       setRefAreaRight(e.activeLabel);
+
+      // Check if selection is likely to be too small
+      if (refAreaLeft) {
+        const leftIndex = originalData.findIndex((item) => item[dataKey] === refAreaLeft);
+        const rightIndex = originalData.findIndex((item) => item[dataKey] === e.activeLabel);
+        const [start, end] = [leftIndex, rightIndex].sort((a, b) => a - b);
+
+        // Mark as invalid if the selection is too small
+        setInvalidSelection(end - start <= 1);
+      }
     }
 
     // Update active payload for legend
@@ -213,7 +199,7 @@ export function ChartBar({
 
       // Check if the selection is too small
       if (end - start <= 1) {
-        showZoomMessage("Selection too small to zoom");
+        // We don't need to show a message here anymore as it's shown in the tooltip
       } else {
         // Update the start and end indices
         if (start !== -1 && end !== -1) {
@@ -226,19 +212,18 @@ export function ChartBar({
     setRefAreaLeft(null);
     setRefAreaRight(null);
     setIsSelecting(false);
+    setInvalidSelection(false);
   };
 
   // Reset zoom
   const handleReset = () => {
     setStartIndex(0);
     setEndIndex(originalData.length - 1);
-    setZoomMessage(null);
   };
 
   return (
     <div className="relative flex w-full flex-col">
-      <div className="absolute left-0 right-0 top-0 z-10 mb-2 flex items-center justify-between">
-        {zoomMessage ? <div className="text-xs text-amber-500">{zoomMessage}</div> : <div></div>}
+      <div className="absolute left-0 right-0 top-0 z-10 mb-2 flex items-center justify-end">
         <Button
           variant="secondary/small"
           onClick={handleReset}
@@ -250,7 +235,7 @@ export function ChartBar({
 
       <div
         ref={containerRef}
-        className="mt-8 h-[400px] w-full cursor-crosshair"
+        className="mt-8 h-full w-full cursor-crosshair"
         style={{ touchAction: "none", userSelect: "none" }}
       >
         <ChartContainer
@@ -307,6 +292,7 @@ export function ChartBar({
                     isSelecting={isSelecting}
                     refAreaLeft={refAreaLeft}
                     refAreaRight={refAreaRight}
+                    invalidSelection={invalidSelection}
                   />
                 }
                 allowEscapeViewBox={{ x: false, y: true }}
@@ -432,21 +418,31 @@ const XAxisTooltip = ({
   isSelecting,
   refAreaLeft,
   refAreaRight,
+  invalidSelection,
 }: any) => {
   if (!active) return null;
 
   // Show zoom range when selecting
   if (isSelecting && refAreaLeft && refAreaRight) {
+    // Show warning message if selection is too small
+    const message = invalidSelection
+      ? "Zoom: Drag a wider range"
+      : `Zoom: ${refAreaLeft} to ${refAreaRight}`;
+
     return (
       <div
-        className="absolute whitespace-nowrap rounded border border-blue-800 bg-[#1B2334] px-2 py-1 text-xxs tabular-nums text-blue-400"
+        className={`absolute whitespace-nowrap rounded border px-2 py-1 text-xxs tabular-nums ${
+          invalidSelection
+            ? "border-amber-800 bg-amber-950 text-amber-400"
+            : "border-blue-800 bg-[#1B2334] text-blue-400"
+        }`}
         style={{
           left: coordinate?.x,
           top: viewBox?.height + 14,
           transform: "translateX(-50%)",
         }}
       >
-        Zoom: {refAreaLeft} to {refAreaRight}
+        {message}
       </div>
     );
   }
