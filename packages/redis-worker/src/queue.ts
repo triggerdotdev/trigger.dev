@@ -372,6 +372,9 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
 
             redis.call('ZADD', queue, invisibleUntil, id)
             table.insert(dequeued, {id, serializedItem, score})
+          else
+            -- Remove the orphaned queue entry if no corresponding item exists
+            redis.call('ZREM', queue, id)
           end
         end
 
