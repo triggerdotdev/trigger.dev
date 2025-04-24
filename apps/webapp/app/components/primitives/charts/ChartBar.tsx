@@ -19,8 +19,8 @@ import {
 import { Button } from "../Buttons";
 import { Paragraph } from "../Paragraph";
 import { ChartLoading } from "./ChartLoading";
+import { useDateRange } from "./DateRangeContext";
 
-//TODO: have the date range data work across all charts
 //TODO: render a vertical line that follows the mouse - show this on all charts. Use a reference line
 //TODO: do a better job of showing extra data in the legend - like in a table
 //TODO: fix the first and last bars in a stack not having rounded corners
@@ -40,6 +40,7 @@ export function ChartBar({
   loading = false,
   maxLegendItems = 5,
   referenceLine,
+  useGlobalDateRange = false,
 }: {
   config: ChartConfig;
   data: any[];
@@ -47,32 +48,79 @@ export function ChartBar({
   loading?: boolean;
   maxLegendItems?: number;
   referenceLine?: ReferenceLineProps;
+  useGlobalDateRange?: boolean;
 }) {
+  const globalDateRange = useDateRange();
   const [activePayload, setActivePayload] = React.useState<any[] | null>(null);
   const [activeBarKey, setActiveBarKey] = React.useState<string | null>(null);
   const [activeDataPointIndex, setActiveDataPointIndex] = React.useState<number | null>(null);
 
-  // Zoom state
+  // Zoom state (only used when not using global date range)
   const [refAreaLeft, setRefAreaLeft] = React.useState<string | null>(null);
   const [refAreaRight, setRefAreaRight] = React.useState<string | null>(null);
-  const [startIndex, setStartIndex] = React.useState<number>(0);
-  const [endIndex, setEndIndex] = React.useState<number>(initialData.length - 1);
-  const [originalData, setOriginalData] = React.useState<any[]>(initialData);
+  const [localStartIndex, setLocalStartIndex] = React.useState<number>(0);
+  const [localEndIndex, setLocalEndIndex] = React.useState<number>(initialData.length - 1);
+  const [localOriginalData, setLocalOriginalData] = React.useState<any[]>(initialData);
   const [isSelecting, setIsSelecting] = React.useState(false);
   const [invalidSelection, setInvalidSelection] = React.useState(false);
   const containerRef = React.useRef<HTMLDivElement>(null);
 
-  // Compute the visible data based on the current zoom indices
-  const data = React.useMemo(() => {
-    return originalData.slice(startIndex, endIndex + 1);
-  }, [originalData, startIndex, endIndex]);
-
-  // Initialize data
+  // Update local data when initialData changes and we're not using global
   React.useEffect(() => {
-    setOriginalData(initialData);
-    setStartIndex(0);
-    setEndIndex(initialData.length - 1);
-  }, [initialData]);
+    if (!useGlobalDateRange) {
+      setLocalOriginalData(initialData);
+      setLocalStartIndex(0);
+      setLocalEndIndex(initialData.length - 1);
+    }
+  }, [initialData, useGlobalDateRange]);
+
+  // Compute the visible data based on the zoom settings
+  const data = React.useMemo(() => {
+    if (useGlobalDateRange) {
+      // Filter data based on global date range
+      // Check if we have valid chart data
+      if (initialData.length === 0) return [];
+
+      // Get a sorted list of all available day values
+      const allDays = initialData
+        .map((item) => item[dataKey] as string)
+        .filter(Boolean)
+        .sort();
+
+      // Check if our date range is in the available dates
+      const startDateIndex = allDays.findIndex((day) => day === globalDateRange.startDate);
+      const endDateIndex = allDays.findIndex((day) => day === globalDateRange.endDate);
+
+      // If we can't find the exact dates, just return all data
+      if (startDateIndex === -1 || endDateIndex === -1) {
+        console.warn(
+          `Date range not found in data. Start: ${globalDateRange.startDate}, End: ${globalDateRange.endDate}`
+        );
+        console.log("Available dates:", allDays);
+        return initialData;
+      }
+
+      // Filter to only include items within the range
+      return initialData.filter((item) => {
+        const itemDate = item[dataKey] as string;
+        const itemIndex = allDays.indexOf(itemDate);
+        // Include if the day is within the range (inclusive)
+        return itemIndex >= startDateIndex && itemIndex <= endDateIndex;
+      });
+    } else {
+      // Use local date range for individual chart zoom
+      return localOriginalData.slice(localStartIndex, localEndIndex + 1);
+    }
+  }, [
+    initialData,
+    useGlobalDateRange,
+    globalDateRange.startDate,
+    globalDateRange.endDate,
+    localOriginalData,
+    localStartIndex,
+    localEndIndex,
+    dataKey,
+  ]);
 
   const dimmedOpacity = 0.2;
 
@@ -172,12 +220,21 @@ export function ChartBar({
 
       // Check if selection is likely to be too small
       if (refAreaLeft) {
-        const leftIndex = originalData.findIndex((item) => item[dataKey] === refAreaLeft);
-        const rightIndex = originalData.findIndex((item) => item[dataKey] === e.activeLabel);
-        const [start, end] = [leftIndex, rightIndex].sort((a, b) => a - b);
+        // Get indices from original data
+        const dataArray = useGlobalDateRange ? initialData : localOriginalData;
+        const allDays = dataArray.map((item) => item[dataKey] as string).filter(Boolean);
 
-        // Mark as invalid if the selection is too small
-        setInvalidSelection(end - start <= 1);
+        const leftIndex = allDays.indexOf(refAreaLeft);
+        const rightIndex = allDays.indexOf(e.activeLabel);
+
+        if (leftIndex !== -1 && rightIndex !== -1) {
+          const [start, end] = [leftIndex, rightIndex].sort((a, b) => a - b);
+
+          // Mark as invalid if the selection is too small (less than 3 data points)
+          setInvalidSelection(end - start < 2);
+        } else {
+          setInvalidSelection(true);
+        }
       }
     }
 
@@ -190,21 +247,44 @@ export function ChartBar({
   // Handle mouse up for drag zooming
   const handleMouseUp = () => {
     if (refAreaLeft && refAreaRight) {
-      // Get indices of the selected range
-      const leftIndex = originalData.findIndex((item) => item[dataKey] === refAreaLeft);
-      const rightIndex = originalData.findIndex((item) => item[dataKey] === refAreaRight);
+      // If global date range, update the context
+      if (useGlobalDateRange) {
+        // Get indices from original data
+        const allDays = initialData.map((item) => item[dataKey] as string).filter(Boolean);
 
-      // Ensure left is less than right
-      const [start, end] = [leftIndex, rightIndex].sort((a, b) => a - b);
+        const leftIndex = allDays.indexOf(refAreaLeft);
+        const rightIndex = allDays.indexOf(refAreaRight);
 
-      // Check if the selection is too small
-      if (end - start <= 1) {
-        // We don't need to show a message here anymore as it's shown in the tooltip
+        if (leftIndex !== -1 && rightIndex !== -1) {
+          const [start, end] = [leftIndex, rightIndex].sort((a, b) => a - b);
+
+          // Only update if selection is valid (at least 3 data points)
+          if (end - start >= 2) {
+            // Get the actual date values at these sorted indexes
+            const startDate = allDays[start];
+            const endDate = allDays[end];
+
+            // Set the global date range using these ordered dates
+            globalDateRange.setDateRange(startDate, endDate);
+          }
+        }
       } else {
-        // Update the start and end indices
-        if (start !== -1 && end !== -1) {
-          setStartIndex(start);
-          setEndIndex(end);
+        // Get indices of the selected range for local zoom
+        const leftIndex = localOriginalData.findIndex((item) => item[dataKey] === refAreaLeft);
+        const rightIndex = localOriginalData.findIndex((item) => item[dataKey] === refAreaRight);
+
+        // Ensure left is less than right
+        const [start, end] = [leftIndex, rightIndex].sort((a, b) => a - b);
+
+        // Check if the selection is too small (less than 3 data points)
+        if (end - start < 2) {
+          // Don't update the range if it's too small
+        } else {
+          // Update the start and end indices
+          if (start !== -1 && end !== -1) {
+            setLocalStartIndex(start);
+            setLocalEndIndex(end);
+          }
         }
       }
     }
@@ -217,21 +297,26 @@ export function ChartBar({
 
   // Reset zoom
   const handleReset = () => {
-    setStartIndex(0);
-    setEndIndex(originalData.length - 1);
+    if (useGlobalDateRange) {
+      globalDateRange.resetDateRange();
+    } else {
+      setLocalStartIndex(0);
+      setLocalEndIndex(localOriginalData.length - 1);
+    }
   };
+
+  // Determine if the reset button should be enabled for local zoom
+  const isLocalZoomed = localStartIndex !== 0 || localEndIndex !== localOriginalData.length - 1;
 
   return (
     <div className="relative flex w-full flex-col">
-      <div className="absolute left-0 right-0 top-0 z-10 mb-2 flex items-center justify-end">
-        <Button
-          variant="secondary/small"
-          onClick={handleReset}
-          disabled={startIndex === 0 && endIndex === originalData.length - 1}
-        >
-          Reset Zoom
-        </Button>
-      </div>
+      {!useGlobalDateRange && (
+        <div className="absolute left-0 right-0 top-0 z-10 mb-2 flex items-center justify-end">
+          <Button variant="secondary/small" onClick={handleReset} disabled={!isLocalZoomed}>
+            Reset Zoom
+          </Button>
+        </div>
+      )}
 
       <div
         ref={containerRef}
