@@ -308,7 +308,6 @@ const ChartLegendContentRows = React.forwardRef<
       onMouseEnter?: (e: any) => void;
       onMouseLeave?: (e: any) => void;
       data?: Record<string, number>;
-      animationDuration?: number;
       activeKey?: string | null;
       renderViewMore?: (remainingCount: number) => React.ReactNode;
     }
@@ -323,7 +322,6 @@ const ChartLegendContentRows = React.forwardRef<
       onMouseEnter,
       onMouseLeave,
       data,
-      animationDuration,
       activeKey,
       renderViewMore,
     },
@@ -406,7 +404,7 @@ const ChartLegendContentRows = React.forwardRef<
                       activeKey === item.dataKey ? "text-text-bright" : "text-text-dimmed"
                     )}
                   >
-                    <AnimatedNumber value={total} duration={animationDuration} />
+                    <AnimatedNumber value={total} duration={0.25} />
                   </span>
                 )}
               </div>
