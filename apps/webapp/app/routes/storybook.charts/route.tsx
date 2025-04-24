@@ -6,18 +6,45 @@ import { ChartBar } from "~/components/primitives/charts/ChartBar";
 import { ChartLine } from "~/components/primitives/charts/ChartLine";
 import { DateRangeProvider, useDateRange } from "~/components/primitives/charts/DateRangeContext";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { RadioGroup, RadioGroupItem } from "~/components/primitives/RadioButton";
+import { useState } from "react";
 
 function ChartsDashboard() {
   const dateRange = useDateRange();
-  const selectedRangeText = `Selected range: ${dateRange.startDate} - ${dateRange.endDate}`;
+  const [chartState, setChartState] = useState<string>("loaded");
 
   return (
     <div className="grid gap-4 p-3">
-      <div className="flex items-center justify-between rounded bg-background-bright p-3 shadow-sm">
-        <Paragraph className="text-text text-sm font-medium">{selectedRangeText}</Paragraph>
-        <Button variant="secondary/small" onClick={dateRange.resetDateRange}>
-          Reset Global Zoom
-        </Button>
+      <div className="flex items-center gap-4">
+        <div className="flex w-fit items-center gap-4 rounded border border-charcoal-700 bg-background-bright p-3 pl-4">
+          <Paragraph variant="small/bright">{`Selected range: ${dateRange.startDate} - ${dateRange.endDate}`}</Paragraph>
+          <Button variant="secondary/small" onClick={dateRange.resetDateRange}>
+            Reset Zoom
+          </Button>
+        </div>
+        <div className="flex w-fit items-center gap-2 rounded border border-charcoal-700 bg-background-bright p-2">
+          <RadioGroup
+            name="chartState"
+            value={chartState}
+            onValueChange={setChartState}
+            className="flex items-center gap-3"
+          >
+            <RadioGroupItem id="loaded" label="Data loaded" value="loaded" variant="button/small" />
+            <RadioGroupItem
+              id="loading"
+              label="Data loading"
+              value="loading"
+              variant="button/small"
+            />
+            <RadioGroupItem id="no-data" label="No data" value="no-data" variant="button/small" />
+            <RadioGroupItem
+              id="invalid"
+              label="Chart invalid"
+              value="invalid"
+              variant="button/small"
+            />
+          </RadioGroup>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
@@ -38,6 +65,7 @@ function ChartsDashboard() {
                 value: 30000,
                 label: "Max concurrency",
               }}
+              loading={chartState === "loading"}
             />
           </Card.Content>
         </Card>
@@ -53,6 +81,7 @@ function ChartsDashboard() {
                 value: 30000,
                 label: "Max concurrency",
               }}
+              loading={chartState === "loading"}
             />
           </Card.Content>
         </Card>
@@ -64,6 +93,7 @@ function ChartsDashboard() {
               data={API_DATA.lineChartData}
               dataKey="day"
               useGlobalDateRange={true}
+              loading={chartState === "loading"}
             />
           </Card.Content>
         </Card>
