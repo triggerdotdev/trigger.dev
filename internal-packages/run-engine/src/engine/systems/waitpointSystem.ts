@@ -573,6 +573,11 @@ export class WaitpointSystem {
       } else {
         if (snapshot.executionStatus !== "RUN_CREATED" && !snapshot.checkpointId) {
           // TODO: We're screwed, should probably fail the run immediately
+          this.$.logger.error(`#continueRunIfUnblocked: run has no checkpoint`, {
+            runId: run.id,
+            snapshot,
+            blockingWaitpoints,
+          });
           throw new Error(`#continueRunIfUnblocked: run has no checkpoint: ${run.id}`);
         }
 
