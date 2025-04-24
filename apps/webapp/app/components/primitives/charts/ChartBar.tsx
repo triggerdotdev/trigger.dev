@@ -298,6 +298,7 @@ export function ChartBar({
                   fontSize: 11,
                   style: { fontVariantNumeric: "tabular-nums" },
                 }}
+                domain={["auto", (dataMax: number) => dataMax * 1.2]}
               />
               <ChartTooltip
                 cursor={{ fill: "#212327" }}
@@ -373,10 +374,16 @@ export function ChartBar({
               {referenceLine && (
                 <ReferenceLine
                   y={referenceLine.value}
-                  label={referenceLine.label}
+                  label={{
+                    position: "top",
+                    value: referenceLine.label,
+                    fill: "#878C99",
+                    fontSize: 11,
+                  }}
                   isFront={true}
                   stroke="#3B3E45"
                   strokeDasharray="4 4"
+                  className="pointer-events-none"
                 />
               )}
 
