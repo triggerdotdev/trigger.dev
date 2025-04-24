@@ -22,7 +22,7 @@ import { ChartBarLoading, ChartNoData, ChartInvalid } from "./ChartLoading";
 import { useDateRange } from "./DateRangeContext";
 
 //TODO: render a vertical line that follows the mouse - show this on all charts. Use a reference line
-//TODO: click to
+//TODO: click to drop a reference line on all charts
 //TODO: do a better job of showing extra data in the legend - like in a table
 //TODO: fix the first and last bars in a stack not having rounded corners
 //TODO: make a nice loading state for the chart
