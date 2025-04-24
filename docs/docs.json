@@ -312,6 +312,7 @@
             "group": "Python guides",
             "pages": [
               "guides/python/python-image-processing",
+              "guides/python/python-doc-to-markdown",
               "guides/python/python-crawl4ai",
               "guides/python/python-pdf-form-extractor"
             ]

@@ -1,0 +1,274 @@
+---
+title: "Convert documents to markdown using Python and MarkItDown"
+sidebarTitle: "Python document to markdown"
+description: "Learn how to use Trigger.dev with Python to convert documents to markdown using MarkItDown."
+---
+
+import PythonLearnMore from "/snippets/python-learn-more.mdx";
+
+## Overview
+
+Convert documents to markdown using Microsoft's [MarkItDown](https://github.com/microsoft/markitdown) library. This can be especially useful for preparing documents in a structured format for AI applications.
+
+## Prerequisites
+
+- A project with [Trigger.dev initialized](/quick-start)
+- [Python](https://www.python.org/) installed on your local machine. _This example requires Python 3.10 or higher._
+
+## Features
+
+- A Trigger.dev task which downloads a document from a URL and runs the Python script which converts it to markdown
+- A Python script to convert documents to markdown using Microsoft's [MarkItDown](https://github.com/microsoft/markitdown) library
+- Uses our [Python build extension](/config/extensions/pythonExtension) to install dependencies and run Python scripts
+
+## GitHub repo
+
+<Card
+  title="View the project on GitHub"
+  icon="GitHub"
+  href="https://github.com/triggerdotdev/examples/tree/main/python-doc-to-markdown-converter"
+>
+  Click here to view the full code for this project in our examples repository on GitHub. You can
+  fork it and use it as a starting point for your own project.
+</Card>
+
+## The code
+
+### Build configuration
+
+After you've initialized your project with Trigger.dev, add these build settings to your `trigger.config.ts` file:
+
+```ts trigger.config.ts
+import { pythonExtension } from "@trigger.dev/python/extension";
+import { defineConfig } from "@trigger.dev/sdk/v3";
+
+export default defineConfig({
+  runtime: "node",
+  project: "<your-project-ref>",
+  // Your other config settings...
+  build: {
+    extensions: [
+      pythonExtension({
+        // The path to your requirements.txt file
+        requirementsFile: "./requirements.txt",
+        // The path to your Python binary
+        devPythonBinaryPath: `venv/bin/python`,
+        // The paths to your Python scripts to run
+        scripts: ["src/python/**/*.py"],
+      }),
+    ],
+  },
+});
+```
+
+<Info>
+  Learn more about executing scripts in your Trigger.dev project using our Python build extension
+  [here](/config/extensions/pythonExtension).
+</Info>
+
+### Task code
+
+This task uses the `python.runScript` method to run the `markdown-converter.py` script with the given document URL as an argument.
+
+```ts src/trigger/convertToMarkdown.ts
+import { task } from "@trigger.dev/sdk/v3";
+import { python } from "@trigger.dev/python";
+import { z } from "zod";
+import * as fs from "fs";
+import * as path from "path";
+import * as os from "os";
+import * as https from "https";
+import * as http from "http";
+
+export const convertToMarkdown = task({
+  id: "convert-to-markdown",
+  run: async (payload: { url: string }) => {
+    try {
+      const { url } = payload;
+
+      // STEP 1: Create temporary file with unique name
+      const tempDir = os.tmpdir();
+      const fileName = `doc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      const urlPath = new URL(url).pathname;
+      // Detect file extension from URL or default to .docx
+      const extension = path.extname(urlPath) || ".docx";
+      const tempFilePath = path.join(tempDir, `${fileName}${extension}`);
+
+      // STEP 2: Download file from URL
+      await new Promise<void>((resolve, reject) => {
+        const protocol = url.startsWith("https") ? https : http;
+        const file = fs.createWriteStream(tempFilePath);
+
+        protocol
+          .get(url, (response) => {
+            if (response.statusCode !== 200) {
+              reject(new Error(`Download failed with status ${response.statusCode}`));
+              return;
+            }
+
+            response.pipe(file);
+            file.on("finish", () => {
+              file.close();
+              resolve();
+            });
+          })
+          .on("error", (err) => {
+            // Clean up on error
+            fs.unlink(tempFilePath, () => {});
+            reject(err);
+          });
+      });
+
+      // STEP 3: Run Python script to convert document to markdown
+      const pythonResult = await python.runScript("./src/python/markdown-converter.py", [
+        JSON.stringify({ file_path: tempFilePath }),
+      ]);
+
+      // STEP 4: Clean up temporary file
+      fs.unlink(tempFilePath, () => {});
+
+      // STEP 5: Process result - handle possible warnings
+      // Only treat stderr as error if we don't have stdout data
+      // This handles cases where non-critical warnings appear in stderr
+      if (
+        pythonResult.stderr &&
+        !pythonResult.stderr.includes("Couldn't find ffmpeg") &&
+        !pythonResult.stdout
+      ) {
+        throw new Error(`Python error: ${pythonResult.stderr}`);
+      }
+
+      // If we got valid stdout data, parse and use it regardless of stderr warnings
+      // This ensures harmless warnings don't break the conversion
+      if (pythonResult.stdout) {
+        const result = JSON.parse(pythonResult.stdout);
+
+        return {
+          url,
+          markdown: result.status === "success" ? result.markdown : null,
+          error: result.status === "error" ? result.error : null,
+          success: result.status === "success",
+        };
+      }
+
+      return {
+        url,
+        markdown: null,
+        error: "No output from Python script",
+        success: false,
+      };
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return {
+          url: payload.url,
+          markdown: null,
+          error: "Invalid URL format: " + error.errors[0].message,
+          success: false,
+        };
+      }
+
+      return {
+        url: payload.url,
+        markdown: null,
+        error: error instanceof Error ? error.message : String(error),
+        success: false,
+      };
+    }
+  },
+});
+```
+
+### Add a requirements.txt file
+
+Add the following to your `requirements.txt` file. This is required in Python projects to install the dependencies.
+
+```txt requirements.txt
+markitdown[all]
+```
+
+### The Python script
+
+The Python script uses MarkItDown to convert documents to Markdown format.
+
+```python src/python/markdown-converter.py
+import json
+import sys
+import os
+from markitdown import MarkItDown
+
+def convert_to_markdown(file_path):
+    """Convert a file to markdown format using MarkItDown"""
+    # Check if file exists
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"File not found: {file_path}")
+
+    # Initialize MarkItDown
+    md = MarkItDown()
+
+    # Convert the file
+    try:
+        result = md.convert(file_path)
+        return result.text_content
+    except Exception as e:
+        raise Exception(f"Error converting file: {str(e)}")
+
+def process_trigger_task(file_path):
+    """Process a file and convert to markdown"""
+    try:
+        markdown_result = convert_to_markdown(file_path)
+        return {
+            "status": "success",
+            "markdown": markdown_result
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "error": str(e)
+        }
+
+if __name__ == "__main__":
+    # Get the file path from command line arguments
+    if len(sys.argv) < 2:
+        print(json.dumps({"status": "error", "error": "No file path provided"}))
+        sys.exit(1)
+
+    try:
+        config = json.loads(sys.argv[1])
+        file_path = config.get("file_path")
+
+        if not file_path:
+            print(json.dumps({"status": "error", "error": "No file path specified in config"}))
+            sys.exit(1)
+
+        result = process_trigger_task(file_path)
+        print(json.dumps(result))
+    except Exception as e:
+        print(json.dumps({"status": "error", "error": str(e)}))
+        sys.exit(1)
+```
+
+## Testing your task
+
+1. Create a virtual environment `python -m venv venv`
+2. Activate the virtual environment, depending on your OS: On Mac/Linux: `source venv/bin/activate`, on Windows: `venv\Scripts\activate`
+3. Install the Python dependencies `pip install -r requirements.txt`. _Make sure you have Python 3.10 or higher installed._
+4. Copy the project ref from your [Trigger.dev dashboard](https://cloud.trigger.dev) and add it to the `trigger.config.ts` file.
+5. Run the Trigger.dev CLI `dev` command (it may ask you to authorize the CLI if you haven't already).
+6. Test the task in the dashboard by providing a valid document URL.
+7. Deploy the task to production using the Trigger.dev CLI `deploy` command.
+
+## MarkItDown Conversion Capabilities
+
+- Convert various file formats to Markdown:
+  - Office formats (Word, PowerPoint, Excel)
+  - PDFs
+  - Images (with optional LLM-generated descriptions)
+  - HTML, CSV, JSON, XML
+  - Audio files (with optional transcription)
+  - ZIP archives
+  - And more
+- Preserve document structure (headings, lists, tables, etc.)
+- Handle multiple input methods (file paths, URLs, base64 data)
+- Optional Azure Document Intelligence integration for better PDF and image conversion
+
+<PythonLearnMore />
