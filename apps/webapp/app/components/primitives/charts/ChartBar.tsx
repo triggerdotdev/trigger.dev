@@ -4,8 +4,6 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
-  Line,
-  LineChart,
   ReferenceArea,
   ReferenceLine,
   XAxis,
@@ -17,13 +15,9 @@ import {
   ChartLegend,
   ChartLegendContentRows,
   ChartTooltip,
-  ChartTooltipContent,
 } from "~/components/primitives/charts/Chart";
-import { cn } from "~/utils/cn";
-import { AnimatedNumber } from "../AnimatedNumber";
 import { Button } from "../Buttons";
 import { Paragraph } from "../Paragraph";
-import { Spinner } from "../Spinner";
 import { ChartLoading } from "./ChartLoading";
 
 //TODO: render a vertical line that follows the mouse - show this on all charts. Use a reference line
