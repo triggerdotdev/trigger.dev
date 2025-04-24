@@ -22,7 +22,7 @@ import { runStatusFromError, ServiceValidationError } from "../errors.js";
 import { sendNotificationToWorker } from "../eventBus.js";
 import { getMachinePreset } from "../machinePresets.js";
 import { retryOutcomeFromCompletion } from "../retrying.js";
-import { isExecuting } from "../statuses.js";
+import { isExecuting, isInitialState } from "../statuses.js";
 import { RunEngineOptions } from "../types.js";
 import { BatchSystem } from "./batchSystem.js";
 import {
@@ -32,12 +32,14 @@ import {
 } from "./executionSnapshotSystem.js";
 import { SystemResources } from "./systems.js";
 import { WaitpointSystem } from "./waitpointSystem.js";
+import { DelayedRunSystem } from "./delayedRunSystem.js";
 
 export type RunAttemptSystemOptions = {
   resources: SystemResources;
   executionSnapshotSystem: ExecutionSnapshotSystem;
   batchSystem: BatchSystem;
   waitpointSystem: WaitpointSystem;
+  delayedRunSystem: DelayedRunSystem;
   retryWarmStartThresholdMs?: number;
   machines: RunEngineOptions["machines"];
 };
@@ -47,12 +49,14 @@ export class RunAttemptSystem {
   private readonly executionSnapshotSystem: ExecutionSnapshotSystem;
   private readonly batchSystem: BatchSystem;
   private readonly waitpointSystem: WaitpointSystem;
+  private readonly delayedRunSystem: DelayedRunSystem;
 
   constructor(private readonly options: RunAttemptSystemOptions) {
     this.$ = options.resources;
     this.executionSnapshotSystem = options.executionSnapshotSystem;
     this.batchSystem = options.batchSystem;
     this.waitpointSystem = options.waitpointSystem;
+    this.delayedRunSystem = options.delayedRunSystem;
   }
 
   public async startRunAttempt({
@@ -968,6 +972,7 @@ export class RunAttemptSystem {
             completedAt: true,
             taskEventStore: true,
             parentTaskRunId: true,
+            delayUntil: true,
             runtimeEnvironment: {
               select: {
                 organizationId: true,
@@ -985,6 +990,11 @@ export class RunAttemptSystem {
             },
           },
         });
+
+        //if the run is delayed and hasn't started yet, we need to prevent it being added to the queue in future
+        if (isInitialState(latestSnapshot.executionStatus) && run.delayUntil) {
+          await this.delayedRunSystem.preventDelayedRunFromBeingEnqueued({ runId });
+        }
 
         //remove it from the queue and release concurrency
         await this.$.runQueue.acknowledgeMessage(run.runtimeEnvironment.organizationId, runId);

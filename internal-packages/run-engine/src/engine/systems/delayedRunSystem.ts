@@ -131,4 +131,8 @@ export class DelayedRunSystem {
       availableAt: delayUntil,
     });
   }
+
+  async preventDelayedRunFromBeingEnqueued({ runId }: { runId: string }) {
+    await this.$.worker.ack(`enqueueDelayedRun:${runId}`);
+  }
 }
