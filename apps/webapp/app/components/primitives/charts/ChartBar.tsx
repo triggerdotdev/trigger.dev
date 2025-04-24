@@ -18,10 +18,11 @@ import {
 } from "~/components/primitives/charts/Chart";
 import { Button } from "../Buttons";
 import { Paragraph } from "../Paragraph";
-import { ChartLoading } from "./ChartLoading";
+import { ChartBarLoading, ChartNoData, ChartInvalid } from "./ChartLoading";
 import { useDateRange } from "./DateRangeContext";
 
 //TODO: render a vertical line that follows the mouse - show this on all charts. Use a reference line
+//TODO: click to
 //TODO: do a better job of showing extra data in the legend - like in a table
 //TODO: fix the first and last bars in a stack not having rounded corners
 //TODO: make a nice loading state for the chart
@@ -33,11 +34,14 @@ type ReferenceLineProps = {
   label: string;
 };
 
+export type ChartState = "loading" | "noData" | "invalid" | "loaded" | undefined;
+
 export function ChartBar({
   config,
   data: initialData,
   dataKey,
-  loading = false,
+  state,
+  loading,
   maxLegendItems = 5,
   referenceLine,
   useGlobalDateRange = false,
@@ -45,7 +49,8 @@ export function ChartBar({
   config: ChartConfig;
   data: any[];
   dataKey: string;
-  loading?: boolean;
+  state?: ChartState;
+  loading?: boolean; // deprecated, use state instead
   maxLegendItems?: number;
   referenceLine?: ReferenceLineProps;
   useGlobalDateRange?: boolean;
@@ -64,6 +69,9 @@ export function ChartBar({
   const [isSelecting, setIsSelecting] = React.useState(false);
   const [invalidSelection, setInvalidSelection] = React.useState(false);
   const containerRef = React.useRef<HTMLDivElement>(null);
+
+  // For backward compatibility, if loading is provided but state is not
+  const displayState = state || (loading ? "loading" : undefined);
 
   // Update local data when initialData changes and we're not using global
   React.useEffect(() => {
@@ -121,6 +129,22 @@ export function ChartBar({
     localEndIndex,
     dataKey,
   ]);
+
+  // Check if all values in current visible range are zero or null
+  const hasNoData = React.useMemo(() => {
+    if (data.length === 0) return true;
+
+    // Get all data keys except the x-axis key
+    const valueKeys = Object.keys(config).filter((k) => k !== dataKey);
+
+    // Check if all data points have zero or null values for all valueKeys
+    return data.every((item) => {
+      return valueKeys.every((key) => {
+        const value = item[key];
+        return value === 0 || value === null || value === undefined;
+      });
+    });
+  }, [data, config, dataKey]);
 
   const dimmedOpacity = 0.2;
 
@@ -295,29 +319,177 @@ export function ChartBar({
     setInvalidSelection(false);
   };
 
-  // Reset zoom
-  const handleReset = () => {
-    if (useGlobalDateRange) {
-      globalDateRange.resetDateRange();
-    } else {
-      setLocalStartIndex(0);
-      setLocalEndIndex(localOriginalData.length - 1);
+  // Render appropriate content based on displayState
+  const renderChartContent = () => {
+    if (displayState === "loading") {
+      return <ChartBarLoading />;
+    } else if (displayState === "noData" || hasNoData) {
+      return <ChartNoData />;
+    } else if (displayState === "invalid") {
+      return <ChartInvalid />;
     }
-  };
 
-  // Determine if the reset button should be enabled for local zoom
-  const isLocalZoomed = localStartIndex !== 0 || localEndIndex !== localOriginalData.length - 1;
+    return (
+      <BarChart
+        data={data}
+        barCategoryGap={1}
+        className="pr-2"
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={() => {
+          handleMouseUp();
+          resetHighlightState();
+        }}
+      >
+        <CartesianGrid vertical={false} stroke="#272A2E" />
+        <XAxis
+          dataKey={dataKey}
+          tickLine={false}
+          tickMargin={10}
+          axisLine={false}
+          ticks={
+            data.length > 10 ? [data[0]?.[dataKey], data[data.length - 1]?.[dataKey]] : undefined
+          }
+          tick={{
+            fill: "#878C99",
+            fontSize: 11,
+            style: { fontVariantNumeric: "tabular-nums" },
+          }}
+        />
+        <YAxis
+          axisLine={false}
+          tickLine={false}
+          tickMargin={8}
+          tick={{
+            fill: "#878C99",
+            fontSize: 11,
+            style: { fontVariantNumeric: "tabular-nums" },
+          }}
+          domain={["auto", (dataMax: number) => dataMax * 1.2]}
+        />
+        <ChartTooltip
+          cursor={{ fill: "#2C3034" }}
+          content={
+            <XAxisTooltip
+              isSelecting={isSelecting}
+              refAreaLeft={refAreaLeft}
+              refAreaRight={refAreaRight}
+              invalidSelection={invalidSelection}
+            />
+          }
+          allowEscapeViewBox={{ x: false, y: true }}
+        />
+        {dataKeys.map((key, index, array) => {
+          // Create individual bars with custom opacity based on hover state
+          return (
+            <Bar
+              key={key}
+              dataKey={key}
+              stackId="a"
+              fill={config[key].color}
+              radius={
+                [
+                  index === array.length - 1 ? 2 : 0,
+                  index === array.length - 1 ? 2 : 0,
+                  index === 0 ? 2 : 0,
+                  index === 0 ? 2 : 0,
+                ] as [number, number, number, number]
+              }
+              activeBar={false}
+              fillOpacity={1}
+              onMouseEnter={(entry, index) => {
+                if (entry.tooltipPayload?.[0]) {
+                  const { dataKey: hoveredKey } = entry.tooltipPayload[0];
+                  setActiveBarKey(hoveredKey);
+                  setActiveDataPointIndex(index);
+                }
+              }}
+              onMouseLeave={resetHighlightState}
+              isAnimationActive={false}
+            >
+              {data.map((_, dataIndex) => {
+                let opacity = 1;
+
+                // Only apply dimming if we're not in zoom selection mode
+                if (!isSelecting) {
+                  // Hovering a specific bar
+                  if (activeBarKey !== null && activeDataPointIndex !== null) {
+                    // Only show full opacity for the exact bar being hovered
+                    opacity =
+                      key === activeBarKey && dataIndex === activeDataPointIndex
+                        ? 1
+                        : dimmedOpacity;
+                  }
+                  // Hovering a legend item
+                  else if (activeBarKey !== null && activeDataPointIndex === null) {
+                    // Show all bars of this type with full opacity
+                    opacity = key === activeBarKey ? 1 : dimmedOpacity;
+                  }
+                }
+
+                return (
+                  <Cell
+                    key={`cell-${key}-${dataIndex}`}
+                    fill={config[key].color}
+                    fillOpacity={opacity}
+                  />
+                );
+              })}
+            </Bar>
+          );
+        })}
+        {referenceLine && (
+          <ReferenceLine
+            y={referenceLine.value}
+            label={{
+              position: "top",
+              value: referenceLine.label,
+              fill: "#878C99",
+              fontSize: 11,
+            }}
+            isFront={true}
+            stroke="#3B3E45"
+            strokeDasharray="4 4"
+            className="pointer-events-none"
+          />
+        )}
+
+        {refAreaLeft && refAreaRight && (
+          <ReferenceArea
+            x1={refAreaLeft}
+            x2={refAreaRight}
+            strokeOpacity={0.4}
+            fill="#3B82F6"
+            fillOpacity={0.2}
+          />
+        )}
+
+        <ChartLegend
+          content={
+            <ChartLegendContentRows
+              onMouseEnter={(data) => {
+                if (data.dataKey === "view-more") return;
+                setActiveBarKey(data.dataKey);
+                setActiveDataPointIndex(null); // Reset this when hovering over legend
+              }}
+              onMouseLeave={resetHighlightState}
+              data={currentData}
+              activeKey={activeBarKey}
+              payload={legendPayload}
+              renderViewMore={(remainingCount: number) => (
+                <ViewAllDataRow key="view-more" remainingCount={remainingCount} />
+              )}
+            />
+          }
+          payload={legendPayload}
+        />
+      </BarChart>
+    );
+  };
 
   return (
     <div className="relative flex w-full flex-col">
-      {!useGlobalDateRange && (
-        <div className="absolute left-0 right-0 top-0 z-10 mb-2 flex items-center justify-end">
-          <Button variant="secondary/small" onClick={handleReset} disabled={!isLocalZoomed}>
-            Reset Zoom
-          </Button>
-        </div>
-      )}
-
       <div
         ref={containerRef}
         className="mt-8 h-full w-full cursor-crosshair"
@@ -327,167 +499,7 @@ export function ChartBar({
           config={config}
           className="h-full w-full [&_.recharts-surface]:cursor-crosshair [&_.recharts-wrapper]:cursor-crosshair"
         >
-          {loading ? (
-            <ChartLoading />
-          ) : (
-            <BarChart
-              data={data}
-              barCategoryGap={1}
-              className="pr-2"
-              onMouseDown={handleMouseDown}
-              onMouseMove={handleMouseMove}
-              onMouseUp={handleMouseUp}
-              onMouseLeave={() => {
-                handleMouseUp();
-                resetHighlightState();
-              }}
-            >
-              <CartesianGrid vertical={false} stroke="#272A2E" />
-              <XAxis
-                dataKey={dataKey}
-                tickLine={false}
-                tickMargin={10}
-                axisLine={false}
-                ticks={
-                  data.length > 10
-                    ? [data[0]?.[dataKey], data[data.length - 1]?.[dataKey]]
-                    : undefined
-                }
-                tick={{
-                  fill: "#878C99",
-                  fontSize: 11,
-                  style: { fontVariantNumeric: "tabular-nums" },
-                }}
-              />
-              <YAxis
-                axisLine={false}
-                tickLine={false}
-                tickMargin={8}
-                tick={{
-                  fill: "#878C99",
-                  fontSize: 11,
-                  style: { fontVariantNumeric: "tabular-nums" },
-                }}
-                domain={["auto", (dataMax: number) => dataMax * 1.2]}
-              />
-              <ChartTooltip
-                cursor={{ fill: "#2C3034" }}
-                content={
-                  <XAxisTooltip
-                    isSelecting={isSelecting}
-                    refAreaLeft={refAreaLeft}
-                    refAreaRight={refAreaRight}
-                    invalidSelection={invalidSelection}
-                  />
-                }
-                allowEscapeViewBox={{ x: false, y: true }}
-              />
-              {dataKeys.map((key, index, array) => {
-                // Create individual bars with custom opacity based on hover state
-                return (
-                  <Bar
-                    key={key}
-                    dataKey={key}
-                    stackId="a"
-                    fill={config[key].color}
-                    radius={
-                      [
-                        index === array.length - 1 ? 2 : 0,
-                        index === array.length - 1 ? 2 : 0,
-                        index === 0 ? 2 : 0,
-                        index === 0 ? 2 : 0,
-                      ] as [number, number, number, number]
-                    }
-                    activeBar={false}
-                    fillOpacity={1}
-                    onMouseEnter={(entry, index) => {
-                      if (entry.tooltipPayload?.[0]) {
-                        const { dataKey: hoveredKey } = entry.tooltipPayload[0];
-                        setActiveBarKey(hoveredKey);
-                        setActiveDataPointIndex(index);
-                      }
-                    }}
-                    onMouseLeave={resetHighlightState}
-                    isAnimationActive={false}
-                  >
-                    {data.map((_, dataIndex) => {
-                      let opacity = 1;
-
-                      // Only apply dimming if we're not in zoom selection mode
-                      if (!isSelecting) {
-                        // Hovering a specific bar
-                        if (activeBarKey !== null && activeDataPointIndex !== null) {
-                          // Only show full opacity for the exact bar being hovered
-                          opacity =
-                            key === activeBarKey && dataIndex === activeDataPointIndex
-                              ? 1
-                              : dimmedOpacity;
-                        }
-                        // Hovering a legend item
-                        else if (activeBarKey !== null && activeDataPointIndex === null) {
-                          // Show all bars of this type with full opacity
-                          opacity = key === activeBarKey ? 1 : dimmedOpacity;
-                        }
-                      }
-
-                      return (
-                        <Cell
-                          key={`cell-${key}-${dataIndex}`}
-                          fill={config[key].color}
-                          fillOpacity={opacity}
-                        />
-                      );
-                    })}
-                  </Bar>
-                );
-              })}
-              {referenceLine && (
-                <ReferenceLine
-                  y={referenceLine.value}
-                  label={{
-                    position: "top",
-                    value: referenceLine.label,
-                    fill: "#878C99",
-                    fontSize: 11,
-                  }}
-                  isFront={true}
-                  stroke="#3B3E45"
-                  strokeDasharray="4 4"
-                  className="pointer-events-none"
-                />
-              )}
-
-              {refAreaLeft && refAreaRight && (
-                <ReferenceArea
-                  x1={refAreaLeft}
-                  x2={refAreaRight}
-                  strokeOpacity={0.4}
-                  fill="#3B82F6"
-                  fillOpacity={0.2}
-                />
-              )}
-
-              <ChartLegend
-                content={
-                  <ChartLegendContentRows
-                    onMouseEnter={(data) => {
-                      if (data.dataKey === "view-more") return;
-                      setActiveBarKey(data.dataKey);
-                      setActiveDataPointIndex(null); // Reset this when hovering over legend
-                    }}
-                    onMouseLeave={resetHighlightState}
-                    data={currentData}
-                    activeKey={activeBarKey}
-                    payload={legendPayload}
-                    renderViewMore={(remainingCount: number) => (
-                      <ViewAllDataRow key="view-more" remainingCount={remainingCount} />
-                    )}
-                  />
-                }
-                payload={legendPayload}
-              />
-            </BarChart>
-          )}
+          {renderChartContent()}
         </ChartContainer>
       </div>
     </div>

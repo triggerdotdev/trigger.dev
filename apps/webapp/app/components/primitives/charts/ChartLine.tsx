@@ -6,7 +6,7 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "~/components/primitives/charts/Chart";
-import { ChartLoading } from "./ChartLoading";
+import { ChartLineLoading } from "./ChartLoading";
 import { useDateRange } from "./DateRangeContext";
 
 export function ChartLine({
@@ -70,7 +70,7 @@ export function ChartLine({
   return (
     <ChartContainer config={config} className="min-h-[200px] w-full">
       {loading ? (
-        <ChartLoading />
+        <ChartLineLoading />
       ) : (
         <LineChart
           accessibilityLayer
