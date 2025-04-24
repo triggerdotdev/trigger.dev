@@ -189,8 +189,14 @@ export function ChartBar({
 
   // Handle mouse move for drag zooming
   const handleMouseMove = (e: any) => {
-    if (isSelecting && e.activeLabel) {
+    // Handle both selection and active payload update
+    if (isSelecting && e?.activeLabel) {
       setRefAreaRight(e.activeLabel);
+    }
+
+    // Update active payload for legend
+    if (e?.activePayload?.length) {
+      setActivePayload(e.activePayload);
     }
   };
 
@@ -246,7 +252,10 @@ export function ChartBar({
         className="mt-8 h-[400px] w-full cursor-crosshair"
         style={{ touchAction: "none", userSelect: "none" }}
       >
-        <ChartContainer config={config} className="h-full w-full">
+        <ChartContainer
+          config={config}
+          className="h-full w-full [&_.recharts-surface]:cursor-crosshair [&_.recharts-wrapper]:cursor-crosshair"
+        >
           {loading ? (
             <ChartLoading />
           ) : (
@@ -255,17 +264,7 @@ export function ChartBar({
               barCategoryGap={1}
               className="pr-2"
               onMouseDown={handleMouseDown}
-              onMouseMove={(state: any) => {
-                // Handle both selection and active payload update
-                if (isSelecting && state?.activeLabel) {
-                  setRefAreaRight(state.activeLabel);
-                }
-
-                // Update active payload for legend
-                if (state?.activePayload?.length) {
-                  setActivePayload(state.activePayload);
-                }
-              }}
+              onMouseMove={handleMouseMove}
               onMouseUp={handleMouseUp}
               onMouseLeave={() => {
                 handleMouseUp();
@@ -328,7 +327,7 @@ export function ChartBar({
                       ] as [number, number, number, number]
                     }
                     activeBar={false}
-                    fillOpacity={1} // We'll use a custom Cell component to handle opacity
+                    fillOpacity={1}
                     onMouseEnter={(entry, index) => {
                       if (entry.tooltipPayload?.[0]) {
                         const { dataKey: hoveredKey } = entry.tooltipPayload[0];
@@ -340,8 +339,6 @@ export function ChartBar({
                     isAnimationActive={false}
                   >
                     {data.map((_, dataIndex) => {
-                      // Calculate opacity for this specific bar
-                      // If we have an active bar (either by hovering a bar or a legend item)
                       let opacity = 1;
 
                       // Only apply dimming if we're not in zoom selection mode
@@ -359,7 +356,6 @@ export function ChartBar({
                           // Show all bars of this type with full opacity
                           opacity = key === activeBarKey ? 1 : dimmedOpacity;
                         }
-                        // Otherwise, no active bar - all bars have full opacity
                       }
 
                       return (
