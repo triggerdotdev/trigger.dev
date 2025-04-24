@@ -130,6 +130,7 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
       throw e;
     }
   }
+
   async dequeue(count: number = 1): Promise<Array<QueueItem<TMessageCatalog>>> {
     const now = Date.now();
 
@@ -179,9 +180,6 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
         }
 
         const visibilityTimeoutMs = parsedItem.visibilityTimeoutMs as number;
-        const invisibleUntil = now + visibilityTimeoutMs;
-
-        await this.redis.zadd(`queue`, invisibleUntil, id);
 
         dequeuedItems.push({
           id,
@@ -374,6 +372,9 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
 
             redis.call('ZADD', queue, invisibleUntil, id)
             table.insert(dequeued, {id, serializedItem, score})
+          else
+            -- Remove the orphaned queue entry if no corresponding item exists
+            redis.call('ZREM', queue, id)
           end
         end
 
