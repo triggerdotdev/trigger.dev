@@ -1235,6 +1235,228 @@ describe("FairDequeuingStrategy", () => {
       expect(uniquePairings).toBeGreaterThan(5); // Should see at least half of possible combinations
     }
   );
+
+  redisTest(
+    "should handle maximumQueuePerEnvCount larger than available queues",
+    async ({ redisOptions }) => {
+      const redis = createRedisClient(redisOptions);
+
+      const keyProducer = createKeyProducer("test");
+      const strategy = new FairDequeuingStrategy({
+        tracer,
+        redis,
+        keys: keyProducer,
+        defaultEnvConcurrency: 5,
+        parentQueueLimit: 100,
+        seed: "test-seed-max-larger",
+        maximumQueuePerEnvCount: 5, // Larger than the number of queues we'll create
+      });
+
+      const now = Date.now();
+
+      // Setup two environments with different numbers of queues
+      const envSetups = [
+        {
+          envId: "env-1",
+          queues: [{ age: 5000 }, { age: 4000 }],
+        },
+        {
+          envId: "env-2",
+          queues: [{ age: 3000 }],
+        },
+      ];
+
+      // Setup queues and concurrency for each env
+      for (const setup of envSetups) {
+        await setupConcurrency({
+          redis,
+          keyProducer,
+          env: { id: setup.envId, currentConcurrency: 0, limit: 5 },
+        });
+
+        for (let i = 0; i < setup.queues.length; i++) {
+          await setupQueue({
+            redis,
+            keyProducer,
+            parentQueue: "parent-queue",
+            score: now - setup.queues[i].age,
+            queueId: `queue-${setup.envId}-${i}`,
+            orgId: `org-${setup.envId}`,
+            envId: setup.envId,
+          });
+        }
+      }
+
+      const result = await strategy.distributeFairQueuesFromParentQueue(
+        "parent-queue",
+        "consumer-1"
+      );
+
+      // Should get all queues from both environments
+      const env1Queues = result.find((eq) => eq.envId === "env-1")?.queues ?? [];
+      const env2Queues = result.find((eq) => eq.envId === "env-2")?.queues ?? [];
+
+      // env-1 should have both its queues
+      expect(env1Queues.length).toBe(2);
+      // env-2 should have its single queue
+      expect(env2Queues.length).toBe(1);
+    }
+  );
+
+  redisTest(
+    "should handle empty environments with maximumQueuePerEnvCount",
+    async ({ redisOptions }) => {
+      const redis = createRedisClient(redisOptions);
+
+      const keyProducer = createKeyProducer("test");
+      const strategy = new FairDequeuingStrategy({
+        tracer,
+        redis,
+        keys: keyProducer,
+        defaultEnvConcurrency: 5,
+        parentQueueLimit: 100,
+        seed: "test-seed-empty-env",
+        maximumQueuePerEnvCount: 2,
+      });
+
+      const now = Date.now();
+
+      // Setup two environments, one with queues, one without
+      await setupConcurrency({
+        redis,
+        keyProducer,
+        env: { id: "env-1", currentConcurrency: 0, limit: 5 },
+      });
+
+      await setupConcurrency({
+        redis,
+        keyProducer,
+        env: { id: "env-2", currentConcurrency: 0, limit: 5 },
+      });
+
+      // Only add queues to env-1
+      await setupQueue({
+        redis,
+        keyProducer,
+        parentQueue: "parent-queue",
+        score: now - 5000,
+        queueId: "queue-1",
+        orgId: "org-1",
+        envId: "env-1",
+      });
+
+      await setupQueue({
+        redis,
+        keyProducer,
+        parentQueue: "parent-queue",
+        score: now - 4000,
+        queueId: "queue-2",
+        orgId: "org-1",
+        envId: "env-1",
+      });
+
+      const result = await strategy.distributeFairQueuesFromParentQueue(
+        "parent-queue",
+        "consumer-1"
+      );
+
+      // Should only get one environment in the result
+      expect(result.length).toBe(1);
+      expect(result[0].envId).toBe("env-1");
+      expect(result[0].queues.length).toBe(2);
+    }
+  );
+
+  redisTest(
+    "should respect maximumQueuePerEnvCount with priority offset queues",
+    async ({ redisOptions }) => {
+      const redis = createRedisClient(redisOptions);
+
+      const keyProducer = createKeyProducer("test");
+      const strategy = new FairDequeuingStrategy({
+        tracer,
+        redis,
+        keys: keyProducer,
+        defaultEnvConcurrency: 5,
+        parentQueueLimit: 100,
+        seed: "test-seed-priority",
+        maximumQueuePerEnvCount: 2,
+        biases: {
+          concurrencyLimitBias: 0,
+          availableCapacityBias: 0,
+          queueAgeRandomization: 0.3,
+        },
+      });
+
+      const now = Date.now();
+
+      // Setup queues with a mix of normal and priority offset ages
+      const queues = [
+        { age: 5000, id: "queue-0" }, // Normal age
+        { age: 4000 + MARQS_RESUME_PRIORITY_TIMESTAMP_OFFSET, id: "queue-1" }, // Priority
+        { age: 3000, id: "queue-2" }, // Normal age
+        { age: 2000 + MARQS_RESUME_PRIORITY_TIMESTAMP_OFFSET, id: "queue-3" }, // Priority
+        { age: 1000, id: "queue-4" }, // Normal age
+      ];
+
+      await setupConcurrency({
+        redis,
+        keyProducer,
+        env: { id: "env-1", currentConcurrency: 0, limit: 5 },
+      });
+
+      for (const queue of queues) {
+        await setupQueue({
+          redis,
+          keyProducer,
+          parentQueue: "parent-queue",
+          score: now - queue.age,
+          queueId: queue.id,
+          orgId: "org-1",
+          envId: "env-1",
+        });
+      }
+
+      // Run multiple iterations to check distribution
+      const iterations = 1000;
+      const queueSelectionCounts: Record<string, number> = {};
+
+      for (let i = 0; i < iterations; i++) {
+        const result = await strategy.distributeFairQueuesFromParentQueue(
+          "parent-queue",
+          `consumer-${i}`
+        );
+
+        const selectedQueues = result[0].queues;
+        for (const queueId of selectedQueues) {
+          const baseQueueId = queueId.split(":").pop()!;
+          queueSelectionCounts[baseQueueId] = (queueSelectionCounts[baseQueueId] || 0) + 1;
+        }
+      }
+
+      console.log("\nPriority Queue Selection Statistics:");
+      for (const [queueId, count] of Object.entries(queueSelectionCounts)) {
+        const percentage = (count / (iterations * 2)) * 100;
+        const isPriority =
+          queues.find((q) => q.id === queueId)?.age! > MARQS_RESUME_PRIORITY_TIMESTAMP_OFFSET;
+        console.log(
+          `${queueId}${isPriority ? " (priority)" : ""}: ${percentage.toFixed(2)}% (${count} times)`
+        );
+      }
+
+      // Verify all queues get selected
+      for (const queue of queues) {
+        expect(queueSelectionCounts[queue.id]).toBeGreaterThan(0);
+      }
+
+      // Even with priority queues, we should still see a reasonable distribution
+      const selectionPercentages = Object.values(queueSelectionCounts).map(
+        (count) => (count / (iterations * 2)) * 100
+      );
+      const stdDev = calculateStandardDeviation(selectionPercentages);
+      expect(stdDev).toBeLessThan(20); // Allow for slightly more variance due to priority queues
+    }
+  );
 });
 
 // Helper function to flatten results for counting
