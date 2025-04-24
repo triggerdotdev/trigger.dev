@@ -197,38 +197,66 @@ export class ReleaseConcurrencySystem {
     // - Get latest snapshot
     // - If the run is non suspended or going to be, then bail
     // - If the run is suspended or going to be, then release the concurrency
-    return await this.$.runLock.lock([snapshot.runId], 5_000, async () => {
-      const latestSnapshot = await getLatestExecutionSnapshot(this.$.prisma, snapshot.runId);
+    return await this.$.runLock.lock(
+      "executeReleaseConcurrencyForSnapshot",
+      [snapshot.runId],
+      5_000,
+      async () => {
+        const latestSnapshot = await getLatestExecutionSnapshot(this.$.prisma, snapshot.runId);
 
-      const isValidSnapshot =
-        latestSnapshot.id === snapshot.id ||
-        // Case 2: The provided snapshotId matches the previous snapshot
-        // AND we're in SUSPENDED state (which is valid)
-        (latestSnapshot.previousSnapshotId === snapshot.id &&
-          latestSnapshot.executionStatus === "SUSPENDED");
+        const isValidSnapshot =
+          latestSnapshot.id === snapshot.id ||
+          // Case 2: The provided snapshotId matches the previous snapshot
+          // AND we're in SUSPENDED state (which is valid)
+          (latestSnapshot.previousSnapshotId === snapshot.id &&
+            latestSnapshot.executionStatus === "SUSPENDED");
 
-      if (!isValidSnapshot) {
-        this.$.logger.error("Tried to release concurrency on an invalid snapshot", {
-          latestSnapshot,
-          snapshot,
-        });
+        if (!isValidSnapshot) {
+          this.$.logger.error("Tried to release concurrency on an invalid snapshot", {
+            latestSnapshot,
+            snapshot,
+          });
 
-        return false;
-      }
+          return false;
+        }
 
-      if (!canReleaseConcurrency(latestSnapshot.executionStatus)) {
-        this.$.logger.debug("Run is not in a state to release concurrency", {
-          runId: snapshot.runId,
-          snapshot: latestSnapshot,
-        });
+        if (!canReleaseConcurrency(latestSnapshot.executionStatus)) {
+          this.$.logger.debug("Run is not in a state to release concurrency", {
+            runId: snapshot.runId,
+            snapshot: latestSnapshot,
+          });
 
-        return false;
-      }
+          return false;
+        }
 
-      const metadata = this.#parseMetadata(snapshot.metadata);
+        const metadata = this.#parseMetadata(snapshot.metadata);
 
-      if (typeof metadata.releaseConcurrency === "boolean") {
-        if (metadata.releaseConcurrency) {
+        if (typeof metadata.releaseConcurrency === "boolean") {
+          if (metadata.releaseConcurrency) {
+            await this.$.runQueue.releaseAllConcurrency(snapshot.organizationId, snapshot.runId);
+
+            return true;
+          }
+
+          await this.$.runQueue.releaseEnvConcurrency(snapshot.organizationId, snapshot.runId);
+
+          return true;
+        }
+
+        // Get the locked queue
+        const taskQueue = snapshot.run.lockedQueueId
+          ? await this.$.prisma.taskQueue.findFirst({
+              where: {
+                id: snapshot.run.lockedQueueId,
+              },
+            })
+          : undefined;
+
+        if (
+          taskQueue &&
+          (typeof taskQueue.concurrencyLimit === "undefined" ||
+            taskQueue.releaseConcurrencyOnWaitpoint)
+        ) {
           await this.$.runQueue.releaseAllConcurrency(snapshot.organizationId, snapshot.runId);
 
           return true;
@@ -238,30 +266,7 @@ export class ReleaseConcurrencySystem {
 
         return true;
       }
-
-      // Get the locked queue
-      const taskQueue = snapshot.run.lockedQueueId
-        ? await this.$.prisma.taskQueue.findFirst({
-            where: {
-              id: snapshot.run.lockedQueueId,
-            },
-          })
-        : undefined;
-
-      if (
-        taskQueue &&
-        (typeof taskQueue.concurrencyLimit === "undefined" ||
-          taskQueue.releaseConcurrencyOnWaitpoint)
-      ) {
-        await this.$.runQueue.releaseAllConcurrency(snapshot.organizationId, snapshot.runId);
-
-        return true;
-      }
-
-      await this.$.runQueue.releaseEnvConcurrency(snapshot.organizationId, snapshot.runId);
-
-      return true;
-    });
+    );
   }
 
   #parseMetadata(metadata?: unknown): ReleaseConcurrencyMetadata {

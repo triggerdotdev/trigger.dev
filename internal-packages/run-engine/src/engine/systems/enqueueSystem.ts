@@ -54,7 +54,7 @@ export class EnqueueSystem {
   }) {
     const prisma = tx ?? this.$.prisma;
 
-    return await this.$.runLock.lock([run.id], 5000, async () => {
+    return await this.$.runLock.lock("enqueueRun", [run.id], 5000, async () => {
       const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(prisma, {
         run: run,
         snapshot: {
