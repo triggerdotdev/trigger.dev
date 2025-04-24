@@ -549,10 +549,10 @@ const XAxisTooltip = ({
 
   return (
     <div
-      className="absolute whitespace-nowrap rounded border border-grid-bright bg-background-dimmed px-2 py-1 text-xxs tabular-nums text-text-dimmed"
+      className="absolute whitespace-nowrap rounded border border-charcoal-600 bg-charcoal-700 px-2 py-1 text-xxs tabular-nums text-text-bright"
       style={{
         left: coordinate?.x,
-        top: viewBox?.height + 14,
+        top: viewBox?.height + 13,
         transform: "translateX(-50%)",
       }}
     >
