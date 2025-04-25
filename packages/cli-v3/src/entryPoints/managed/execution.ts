@@ -240,11 +240,10 @@ export class RunExecution {
     }
 
     if (snapshot.friendlyId === this.currentSnapshotId) {
-      this.sendDebugLog("handleSnapshotChange: snapshot not changed", snapshotMetadata);
-      return;
+            return;
     }
 
-    this.sendDebugLog(`snapshot change: ${snapshot.executionStatus}`, snapshotMetadata);
+    this.sendDebugLog(`snapshot has changed to: ${snapshot.executionStatus}`, snapshotMetadata);
 
     // Reset the snapshot poll interval so we don't do unnecessary work
     this.snapshotPoller?.resetCurrentInterval();
@@ -897,7 +896,7 @@ export class RunExecution {
     this.lastHeartbeat = new Date();
   }
 
-  sendDebugLog(
+  private sendDebugLog(
     message: string,
     properties?: SendDebugLogOptions["properties"],
     runIdOverride?: string

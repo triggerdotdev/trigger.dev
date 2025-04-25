@@ -61,6 +61,10 @@ export class IntervalService {
     this.resetCurrentInterval();
   }
 
+  get intervalMs() {
+    return this._intervalMs;
+  }
+
   #doInterval = async () => {
     this.#clearNextInterval();
 
