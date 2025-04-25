@@ -79,3 +79,10 @@ export class RunDuplicateIdempotencyKeyError extends Error {
     this.name = "RunDuplicateIdempotencyKeyError";
   }
 }
+
+export class RunOneTimeUseTokenError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RunOneTimeUseTokenError";
+  }
+}

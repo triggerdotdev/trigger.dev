@@ -161,7 +161,9 @@ export async function getRunWithBackgroundWorkerTasks(
     }
   }
 
-  const queue = workerWithTasks.queues.find((queue) => queue.name === run.queue);
+  const queue = workerWithTasks.queues.find((queue) =>
+    run.lockedQueueId ? queue.id === run.lockedQueueId : queue.name === run.queue
+  );
 
   if (!queue) {
     return {

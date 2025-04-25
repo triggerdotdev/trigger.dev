@@ -83,7 +83,13 @@ export function SpanEventError({
         time={spanEvent.time}
         titleClassName="text-rose-500"
       />
-      {enhancedException.message && <Callout variant="error">{enhancedException.message}</Callout>}
+      {enhancedException.message && (
+        <Callout variant="error">
+          <pre className="text-wrap font-sans text-sm font-normal text-rose-200">
+            {enhancedException.message}
+          </pre>
+        </Callout>
+      )}
       {enhancedException.link &&
         (enhancedException.link.magic === "CONTACT_FORM" ? (
           <Feedback

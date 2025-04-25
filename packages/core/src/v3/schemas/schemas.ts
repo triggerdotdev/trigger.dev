@@ -297,3 +297,14 @@ export const ManualCheckpointMetadata = z.object({
 });
 
 export type ManualCheckpointMetadata = z.infer<typeof ManualCheckpointMetadata>;
+
+export const RunChainState = z.object({
+  concurrency: z
+    .object({
+      queues: z.array(z.object({ id: z.string(), name: z.string(), holding: z.number() })),
+      environment: z.number().optional(),
+    })
+    .optional(),
+});
+
+export type RunChainState = z.infer<typeof RunChainState>;

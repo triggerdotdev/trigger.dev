@@ -1022,6 +1022,19 @@ export class TaskExecutor {
       return { status: "skipped" };
     }
 
+    // Check for unretryable API errors (client errors except 408 and 429)
+    if (
+      error instanceof Error &&
+      error.name === "TriggerApiError" &&
+      "status" in error &&
+      typeof error.status === "number"
+    ) {
+      const status = error.status;
+      if (status && status >= 400 && status < 500 && status !== 408 && status !== 429) {
+        return { status: "skipped", error };
+      }
+    }
+
     // Calculate default retry delay if retry config exists
     let defaultDelay: number | undefined;
     if (retry) {
@@ -1039,7 +1052,10 @@ export class TaskExecutor {
         (error as ApiError).status === 429
       ) {
         const rateLimitError = error as RateLimitError;
-        defaultDelay = rateLimitError.millisecondsUntilReset;
+        const rateLimitDelay = rateLimitError.millisecondsUntilReset;
+        if (rateLimitDelay) {
+          defaultDelay = rateLimitDelay;
+        }
       }
     }
 

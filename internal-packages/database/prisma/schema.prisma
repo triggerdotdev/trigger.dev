@@ -1853,6 +1853,9 @@ model TaskRun {
   /// The span ID of the "trigger" span in the parent task run
   parentSpanId String?
 
+  /// Holds the state of the run chain for deadlock detection
+  runChainState Json?
+
   /// seed run metadata
   seedMetadata     String?
   seedMetadataType String  @default("application/json")
