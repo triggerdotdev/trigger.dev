@@ -22,7 +22,6 @@ import { ChartBarLoading, ChartNoData, ChartInvalid } from "./ChartLoading";
 import { useDateRange } from "./DateRangeContext";
 import { cn } from "~/utils/cn";
 
-//TODO: show more x axis labels - figure out the best logic for this so it's nice at different zoom levels
 //TODO: click to drop a reference line - just in the middle of the chart
 //TODO: fix the first and last bars in a stack not having rounded corners
 
@@ -43,6 +42,7 @@ export function ChartBar({
   referenceLine,
   useGlobalDateRange = false,
   minHeight,
+  stackId,
 }: {
   config: ChartConfig;
   data: any[];
@@ -53,6 +53,7 @@ export function ChartBar({
   referenceLine?: ReferenceLineProps;
   useGlobalDateRange?: boolean;
   minHeight?: string;
+  stackId?: string;
 }) {
   const globalDateRange = useDateRange();
   const [activePayload, setActivePayload] = React.useState<any[] | null>(null);
@@ -389,12 +390,11 @@ export function ChartBar({
           allowEscapeViewBox={{ x: false, y: true }}
         />
         {dataKeys.map((key, index, array) => {
-          // Create individual bars with custom opacity based on hover state
           return (
             <Bar
               key={key}
               dataKey={key}
-              stackId="a"
+              stackId={stackId}
               fill={config[key].color}
               radius={
                 [

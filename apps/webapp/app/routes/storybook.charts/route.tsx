@@ -70,6 +70,7 @@ function ChartsDashboard() {
               config={barChartBigDatasetConfig}
               data={API_DATA.barChartBigDatasetData}
               dataKey="day"
+              stackId="a"
               useGlobalDateRange={true}
               referenceLine={{
                 value: 45000,
@@ -92,6 +93,7 @@ function ChartsDashboard() {
               config={barChartConfig}
               data={API_DATA.barChartData}
               dataKey="day"
+              stackId="a"
               useGlobalDateRange={true}
               referenceLine={{
                 value: 30000,
