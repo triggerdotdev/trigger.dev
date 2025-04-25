@@ -5,8 +5,8 @@ import { ArrowTopRightBottomLeftIcon } from "~/assets/icons/ArrowTopRightBottomL
 import { Button } from "~/components/primitives/Buttons";
 import { BigNumber } from "~/components/primitives/charts/BigNumber";
 import { Card } from "~/components/primitives/charts/Card";
-import { type ChartConfig } from "~/components/primitives/charts/Chart";
-import { ChartBar, type ChartState } from "~/components/primitives/charts/ChartBar";
+import { type ChartState, type ChartConfig } from "~/components/primitives/charts/Chart";
+import { ChartBar } from "~/components/primitives/charts/ChartBar";
 import { ChartLine } from "~/components/primitives/charts/ChartLine";
 import { DateRangeProvider, useDateRange } from "~/components/primitives/charts/DateRangeContext";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -112,7 +112,7 @@ function ChartsDashboard() {
               data={API_DATA.lineChartData}
               dataKey="day"
               useGlobalDateRange={true}
-              loading={chartState === "loading"}
+              state={chartState === "loaded" ? undefined : chartState}
             />
           </Card.Content>
         </Card>

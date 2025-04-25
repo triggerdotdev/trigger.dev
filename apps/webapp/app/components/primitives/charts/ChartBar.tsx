@@ -15,6 +15,7 @@ import {
   ChartLegend,
   ChartLegendContentRows,
   ChartTooltip,
+  type ChartState,
 } from "~/components/primitives/charts/Chart";
 import { Button } from "../Buttons";
 import { Paragraph } from "../Paragraph";
@@ -22,7 +23,6 @@ import { ChartBarLoading, ChartNoData, ChartInvalid } from "./ChartLoading";
 import { useDateRange } from "./DateRangeContext";
 import { cn } from "~/utils/cn";
 
-//TODO: click to drop a reference line - just in the middle of the chart
 //TODO: fix the first and last bars in a stack not having rounded corners
 
 type ReferenceLineProps = {
@@ -30,14 +30,11 @@ type ReferenceLineProps = {
   label: string;
 };
 
-export type ChartState = "loading" | "noData" | "invalid" | "loaded" | undefined;
-
 export function ChartBar({
   config,
   data: initialData,
   dataKey,
   state,
-  loading,
   maxLegendItems = 5,
   referenceLine,
   useGlobalDateRange = false,
@@ -48,7 +45,6 @@ export function ChartBar({
   data: any[];
   dataKey: string;
   state?: ChartState;
-  loading?: boolean; // deprecated, use state instead
   maxLegendItems?: number;
   referenceLine?: ReferenceLineProps;
   useGlobalDateRange?: boolean;
@@ -61,6 +57,9 @@ export function ChartBar({
   const [activeDataPointIndex, setActiveDataPointIndex] = React.useState<number | null>(null);
   const [tooltipActive, setTooltipActive] = React.useState(false);
 
+  // New state for the inspection line
+  const [inspectionLine, setInspectionLine] = React.useState<string | null>(null);
+
   // Zoom state (only used when not using global date range)
   const [refAreaLeft, setRefAreaLeft] = React.useState<string | null>(null);
   const [refAreaRight, setRefAreaRight] = React.useState<string | null>(null);
@@ -71,8 +70,7 @@ export function ChartBar({
   const [invalidSelection, setInvalidSelection] = React.useState(false);
   const containerRef = React.useRef<HTMLDivElement>(null);
 
-  // For backward compatibility, if loading is provided but state is not
-  const displayState = state || (loading ? "loading" : undefined);
+  const displayState = state;
 
   // Update local data when initialData changes and we're not using global
   React.useEffect(() => {
@@ -237,6 +235,19 @@ export function ChartBar({
     }
   };
 
+  // Handle click on the chart area
+  const handleChartClick = (e: any) => {
+    // Only process if we're not in selection mode and have a valid click position
+    if (!isSelecting && e?.activeLabel) {
+      // Toggle the inspection line - if clicking the same point, remove it; otherwise, set a new one
+      if (inspectionLine === e.activeLabel) {
+        setInspectionLine(null);
+      } else {
+        setInspectionLine(e.activeLabel);
+      }
+    }
+  };
+
   // Handle mouse move for drag zooming
   const handleMouseMove = (e: any) => {
     // Handle both selection and active payload update
@@ -323,6 +334,22 @@ export function ChartBar({
     setInvalidSelection(false);
   };
 
+  // Handle bar stack click for inspection line
+  const handleBarClick = (barData: any, e: React.MouseEvent) => {
+    // Prevent the event from propagating to the chart's onClick handler
+    e.stopPropagation();
+
+    // Only process clicks if we're not in selection mode
+    if (!isSelecting) {
+      // Toggle the inspection line - if clicking the same point, remove it; otherwise, set a new one
+      if (inspectionLine === barData[dataKey]) {
+        setInspectionLine(null);
+      } else {
+        setInspectionLine(barData[dataKey]);
+      }
+    }
+  };
+
   // Render appropriate content based on displayState
   const renderChartContent = () => {
     if (displayState === "loading") {
@@ -346,6 +373,7 @@ export function ChartBar({
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
+        onClick={handleChartClick}
         onMouseLeave={() => {
           handleMouseUp();
           resetHighlightState();
@@ -406,6 +434,7 @@ export function ChartBar({
               }
               activeBar={false}
               fillOpacity={1}
+              onClick={(data, index, e) => handleBarClick(data, e)}
               onMouseEnter={(entry, index) => {
                 if (entry.tooltipPayload?.[0]) {
                   const { dataKey: hoveredKey } = entry.tooltipPayload[0];
@@ -460,6 +489,19 @@ export function ChartBar({
             stroke="#3B3E45"
             strokeDasharray="4 4"
             className="pointer-events-none"
+          />
+        )}
+
+        {inspectionLine && (
+          <ReferenceLine
+            x={inspectionLine}
+            stroke="#D7D9DD"
+            strokeWidth={2}
+            isFront={true}
+            onClick={(e) => {
+              e.stopPropagation();
+              setInspectionLine(null);
+            }}
           />
         )}
 
