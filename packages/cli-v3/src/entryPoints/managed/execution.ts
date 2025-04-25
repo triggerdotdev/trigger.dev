@@ -51,6 +51,7 @@ export class RunExecution {
 
   private _runFriendlyId?: string;
   private currentSnapshotId?: string;
+  private currentAttemptNumber?: number;
   private currentTaskRunEnv?: Record<string, string>;
 
   private dequeuedAt?: Date;
@@ -238,6 +239,12 @@ export class RunExecution {
     }
 
     if (snapshot.friendlyId === this.currentSnapshotId) {
+      return;
+    }
+
+    if (this.currentAttemptNumber && this.currentAttemptNumber !== run.attemptNumber) {
+      this.sendDebugLog("ERROR: attempt number mismatch", snapshotMetadata);
+      await this.taskRunProcess?.suspend();
       return;
     }
 
@@ -452,6 +459,14 @@ export class RunExecution {
 
     // A snapshot was just created, so update the snapshot ID
     this.currentSnapshotId = start.data.snapshot.friendlyId;
+
+    // Also set or update the attempt number - we do this to detect illegal attempt number changes, e.g. from stalled runners coming back online
+    const attemptNumber = start.data.run.attemptNumber;
+    if (attemptNumber) {
+      this.currentAttemptNumber = attemptNumber;
+    } else {
+      this.sendDebugLog("ERROR: no attempt number returned from start attempt");
+    }
 
     const metrics = this.measureExecutionMetrics({
       attemptCreatedAt: attemptStartedAt,
