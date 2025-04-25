@@ -66,6 +66,7 @@ export class RunExecution {
   private snapshotPoller?: RunExecutionSnapshotPoller;
 
   private lastHeartbeat?: Date;
+  private isShuttingDown = false;
 
   constructor(opts: RunExecutionOptions) {
     this.id = randomBytes(4).toString("hex");
@@ -163,6 +164,11 @@ export class RunExecution {
    * or when the snapshot poller detects a change
    */
   public async handleSnapshotChange(runData: RunExecutionData): Promise<void> {
+    if (this.isShuttingDown) {
+      this.sendDebugLog("handleSnapshotChange: shutting down, skipping");
+      return;
+    }
+
     const { run, snapshot, completedWaitpoints } = runData;
 
     const snapshotMetadata = {
@@ -985,6 +991,11 @@ export class RunExecution {
   }
 
   private stopServices() {
+    if (this.isShuttingDown) {
+      return;
+    }
+
+    this.isShuttingDown = true;
     this.snapshotPoller?.stop();
     this.taskRunProcess?.onTaskRunHeartbeat.detach();
   }
