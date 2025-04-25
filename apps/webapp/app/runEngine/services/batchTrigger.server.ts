@@ -16,9 +16,9 @@ import { logger } from "~/services/logger.server";
 import { getEntitlement } from "~/services/platform.v3.server";
 import { workerQueue } from "~/services/worker.server";
 import { downloadPacketFromObjectStore, uploadPacketToObjectStore } from "../../v3/r2.server";
-import { startActiveSpan } from "../../v3/tracer.server";
 import { ServiceValidationError, WithRunEngine } from "../../v3/services/baseService.server";
 import { OutOfEntitlementError, TriggerTaskService } from "../../v3/services/triggerTask.server";
+import { startActiveSpan } from "../../v3/tracer.server";
 
 const PROCESSING_BATCH_SIZE = 50;
 const ASYNC_BATCH_PROCESS_SIZE_THRESHOLD = 20;
@@ -112,7 +112,7 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
     } catch (error) {
       // Detect a prisma transaction Unique constraint violation
       if (error instanceof Prisma.PrismaClientKnownRequestError) {
-        logger.debug("BatchTriggerV3: Prisma transaction error", {
+        logger.debug("RunEngineBatchTrigger: Prisma transaction error", {
           code: error.code,
           message: error.message,
           meta: error.meta,
@@ -188,7 +188,7 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
 
       switch (result.status) {
         case "COMPLETE": {
-          logger.debug("[BatchTriggerV3][call] Batch inline processing complete", {
+          logger.debug("[RunEngineBatchTrigger][call] Batch inline processing complete", {
             batchId: batch.friendlyId,
             currentIndex: 0,
           });
@@ -196,7 +196,7 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
           return batch;
         }
         case "INCOMPLETE": {
-          logger.debug("[BatchTriggerV3][call] Batch inline processing incomplete", {
+          logger.debug("[RunEngineBatchTrigger][call] Batch inline processing incomplete", {
             batchId: batch.friendlyId,
             currentIndex: result.workingIndex,
           });
@@ -218,7 +218,7 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
           return batch;
         }
         case "ERROR": {
-          logger.error("[BatchTriggerV3][call] Batch inline processing error", {
+          logger.error("[RunEngineBatchTrigger][call] Batch inline processing error", {
             batchId: batch.friendlyId,
             currentIndex: result.workingIndex,
             error: result.error,
@@ -317,7 +317,7 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
   }
 
   async processBatchTaskRun(options: BatchProcessingOptions) {
-    logger.debug("[BatchTriggerV3][processBatchTaskRun] Processing batch", {
+    logger.debug("[RunEngineBatchTrigger][processBatchTaskRun] Processing batch", {
       options,
     });
 
@@ -325,7 +325,7 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
 
     // Add early return if max attempts reached
     if ($attemptCount > MAX_ATTEMPTS) {
-      logger.error("[BatchTriggerV3][processBatchTaskRun] Max attempts reached", {
+      logger.error("[RunEngineBatchTrigger][processBatchTaskRun] Max attempts reached", {
         options,
         attemptCount: $attemptCount,
       });
@@ -351,12 +351,15 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
 
     // Check to make sure the currentIndex is not greater than the runCount
     if (options.range.start >= batch.runCount) {
-      logger.debug("[BatchTriggerV3][processBatchTaskRun] currentIndex is greater than runCount", {
-        options,
-        batchId: batch.friendlyId,
-        runCount: batch.runCount,
-        attemptCount: $attemptCount,
-      });
+      logger.debug(
+        "[RunEngineBatchTrigger][processBatchTaskRun] currentIndex is greater than runCount",
+        {
+          options,
+          batchId: batch.friendlyId,
+          runCount: batch.runCount,
+          attemptCount: $attemptCount,
+        }
+      );
 
       return;
     }
@@ -373,7 +376,7 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
     const payload = await parsePacket(payloadPacket);
 
     if (!payload) {
-      logger.debug("[BatchTriggerV3][processBatchTaskRun] Failed to parse payload", {
+      logger.debug("[RunEngineBatchTrigger][processBatchTaskRun] Failed to parse payload", {
         options,
         batchId: batch.friendlyId,
         attemptCount: $attemptCount,
@@ -399,7 +402,7 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
 
     switch (result.status) {
       case "COMPLETE": {
-        logger.debug("[BatchTriggerV3][processBatchTaskRun] Batch processing complete", {
+        logger.debug("[RunEngineBatchTrigger][processBatchTaskRun] Batch processing complete", {
           options,
           batchId: batch.friendlyId,
           attemptCount: $attemptCount,
@@ -408,7 +411,7 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
         return;
       }
       case "INCOMPLETE": {
-        logger.debug("[BatchTriggerV3][processBatchTaskRun] Batch processing incomplete", {
+        logger.debug("[RunEngineBatchTrigger][processBatchTaskRun] Batch processing incomplete", {
           batchId: batch.friendlyId,
           currentIndex: result.workingIndex,
           attemptCount: $attemptCount,
@@ -434,7 +437,7 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
         return;
       }
       case "ERROR": {
-        logger.error("[BatchTriggerV3][processBatchTaskRun] Batch processing error", {
+        logger.error("[RunEngineBatchTrigger][processBatchTaskRun] Batch processing error", {
           batchId: batch.friendlyId,
           currentIndex: result.workingIndex,
           error: result.error,
@@ -505,7 +508,7 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
     // Grab the next PROCESSING_BATCH_SIZE items
     const itemsToProcess = items.slice(currentIndex, currentIndex + batchSize);
 
-    logger.debug("[BatchTriggerV3][processBatchTaskRun] Processing batch items", {
+    logger.debug("[RunEngineBatchTrigger][processBatchTaskRun] Processing batch items", {
       batchId: batch.friendlyId,
       currentIndex,
       runCount: batch.runCount,
@@ -528,19 +531,19 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
         });
 
         if (!run) {
-          logger.error("[BatchTriggerV3][processBatchTaskRun] Failed to process item", {
+          logger.error("[RunEngineBatchTrigger][processBatchTaskRun] Failed to process item", {
             batchId: batch.friendlyId,
             currentIndex: workingIndex,
           });
 
-          throw new Error("[BatchTriggerV3][processBatchTaskRun] Failed to process item");
+          throw new Error("[RunEngineBatchTrigger][processBatchTaskRun] Failed to process item");
         }
 
         runIds.push(run.friendlyId);
 
         workingIndex++;
       } catch (error) {
-        logger.error("[BatchTriggerV3][processBatchTaskRun] Failed to process item", {
+        logger.error("[RunEngineBatchTrigger][processBatchTaskRun] Failed to process item", {
           batchId: batch.friendlyId,
           currentIndex: workingIndex,
           error,
@@ -595,7 +598,7 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
     parentRunId: string | undefined;
     resumeParentOnCompletion: boolean | undefined;
   }) {
-    logger.debug("[BatchTriggerV3][processBatchTaskRunItem] Processing item", {
+    logger.debug("[RunEngineBatchTrigger][processBatchTaskRunItem] Processing item", {
       batchId: batch.friendlyId,
       currentIndex,
     });
@@ -634,7 +637,7 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
   async #enqueueBatchTaskRun(options: BatchProcessingOptions, tx?: PrismaClientOrTransaction) {
     await workerQueue.enqueue("runengine.processBatchTaskRun", options, {
       tx,
-      jobKey: `BatchTriggerV3Service.process:${options.batchId}:${options.processingId}`,
+      jobKey: `RunEngineBatchTriggerService.process:${options.batchId}:${options.processingId}`,
     });
   }
 

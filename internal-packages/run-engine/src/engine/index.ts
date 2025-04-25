@@ -341,6 +341,7 @@ export class RunEngine {
       concurrencyKey,
       masterQueue,
       queue,
+      lockedQueueId,
       isTest,
       delayUntil,
       queuedAt,
@@ -365,6 +366,7 @@ export class RunEngine {
       workerId,
       runnerId,
       releaseConcurrency,
+      runChainState,
     }: TriggerParams,
     tx?: PrismaClientOrTransaction
   ): Promise<TaskRun> {
@@ -420,6 +422,7 @@ export class RunEngine {
               cliVersion,
               concurrencyKey,
               queue,
+              lockedQueueId,
               masterQueue,
               secondaryMasterQueue,
               isTest,
@@ -449,6 +452,7 @@ export class RunEngine {
               seedMetadataType,
               maxDurationInSeconds,
               machinePreset: machine,
+              runChainState,
               executionSnapshots: {
                 create: {
                   engine: "V2",
