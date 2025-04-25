@@ -38,6 +38,7 @@ export class DefaultQueueManager implements QueueManager {
           // Validate it exists for the locked worker
           where: {
             name: specifiedQueueName,
+            runtimeEnvironmentId: request.environment.id,
             workers: { some: { id: lockedBackgroundWorker.id } }, // Ensure the queue is associated with any task of the locked worker
           },
         });
@@ -57,6 +58,7 @@ export class DefaultQueueManager implements QueueManager {
         const lockedTask = await this.prisma.backgroundWorkerTask.findFirst({
           where: {
             workerId: lockedBackgroundWorker.id,
+            runtimeEnvironmentId: request.environment.id,
             slug: request.taskId,
           },
           include: {
@@ -144,6 +146,7 @@ export class DefaultQueueManager implements QueueManager {
     const task = await this.prisma.backgroundWorkerTask.findFirst({
       where: {
         workerId: worker.id,
+        runtimeEnvironmentId: environment.id,
         slug: taskId,
       },
       include: {
