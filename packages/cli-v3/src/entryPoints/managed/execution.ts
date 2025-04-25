@@ -191,8 +191,6 @@ export class RunExecution {
       return;
     }
 
-    this.sendDebugLog(`enqueued snapshot change: ${snapshot.executionStatus}`, snapshotMetadata);
-
     this.snapshotChangeQueue.push(runData);
     await this.processSnapshotChangeQueue();
   }
@@ -240,7 +238,7 @@ export class RunExecution {
     }
 
     if (snapshot.friendlyId === this.currentSnapshotId) {
-            return;
+      return;
     }
 
     this.sendDebugLog(`snapshot has changed to: ${snapshot.executionStatus}`, snapshotMetadata);
