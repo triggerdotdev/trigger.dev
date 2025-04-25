@@ -5,6 +5,7 @@ import { RedisOptions } from "ioredis";
 import { Network, type StartedNetwork } from "testcontainers";
 import { TaskContext, test } from "vitest";
 import {
+  createClickHouseContainer,
   createElectricContainer,
   createPostgresContainer,
   createRedisContainer,
@@ -12,6 +13,8 @@ import {
   withContainerSetup,
 } from "./utils";
 import { getTaskMetadata, logCleanup, logSetup } from "./logs";
+import { StartedClickHouseContainer } from "./clickhouse";
+import { ClickHouseClient, createClient } from "@clickhouse/client";
 
 export { assertNonNullable } from "./utils";
 export { StartedRedisContainer };
@@ -169,6 +172,39 @@ const electricOrigin = async (
 
   await useContainer("electricContainer", { container, task, use: () => use(origin) });
 };
+
+const clickhouseContainer = async (
+  { network }: { network: StartedNetwork },
+  use: Use<StartedClickHouseContainer>
+) => {
+  const { container } = await createClickHouseContainer(network);
+
+  try {
+    await use(container);
+  } finally {
+    await container.stop();
+  }
+};
+
+const clickhouseClient = async (
+  { clickhouseContainer }: { clickhouseContainer: StartedClickHouseContainer },
+  use: Use<ClickHouseClient>
+) => {
+  const client = createClient({ url: clickhouseContainer.getConnectionUrl() });
+  await use(client);
+};
+
+type ClickhouseContext = {
+  network: StartedNetwork;
+  clickhouseContainer: StartedClickHouseContainer;
+  clickhouseClient: ClickHouseClient;
+};
+
+export const clickhouseTest = test.extend<ClickhouseContext>({
+  network,
+  clickhouseContainer,
+  clickhouseClient,
+});
 
 export const containerTest = test.extend<ContainerContext>({
   network,
