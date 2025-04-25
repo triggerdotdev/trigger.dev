@@ -58,6 +58,7 @@ export function ChartBar({
   const [activePayload, setActivePayload] = React.useState<any[] | null>(null);
   const [activeBarKey, setActiveBarKey] = React.useState<string | null>(null);
   const [activeDataPointIndex, setActiveDataPointIndex] = React.useState<number | null>(null);
+  const [tooltipActive, setTooltipActive] = React.useState(false);
 
   // Zoom state (only used when not using global date range)
   const [refAreaLeft, setRefAreaLeft] = React.useState<string | null>(null);
@@ -264,6 +265,9 @@ export function ChartBar({
     // Update active payload for legend
     if (e?.activePayload?.length) {
       setActivePayload(e.activePayload);
+      setTooltipActive(true);
+    } else {
+      setTooltipActive(false);
     }
   };
 
@@ -328,17 +332,23 @@ export function ChartBar({
       return <ChartInvalid />;
     }
 
+    // Get the x-axis ticks based on tooltip state
+    const xAxisTicks =
+      tooltipActive && data.length > 2
+        ? [data[0]?.[dataKey], data[data.length - 1]?.[dataKey]]
+        : undefined;
+
     return (
       <BarChart
         data={data}
         barCategoryGap={1}
-        className="pr-2"
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={() => {
           handleMouseUp();
           resetHighlightState();
+          setTooltipActive(false);
         }}
       >
         <CartesianGrid vertical={false} stroke="#272A2E" />
@@ -347,9 +357,8 @@ export function ChartBar({
           tickLine={false}
           tickMargin={10}
           axisLine={false}
-          ticks={
-            data.length > 10 ? [data[0]?.[dataKey], data[data.length - 1]?.[dataKey]] : undefined
-          }
+          ticks={xAxisTicks}
+          interval="preserveStartEnd"
           tick={{
             fill: "#878C99",
             fontSize: 11,
@@ -530,11 +539,12 @@ const XAxisTooltip = ({
 
     return (
       <div
-        className={`absolute whitespace-nowrap rounded border px-2 py-1 text-xxs tabular-nums ${
+        className={cn(
+          "absolute whitespace-nowrap rounded border px-2 py-1 text-xxs tabular-nums",
           invalidSelection
             ? "border-amber-800 bg-amber-950 text-amber-400"
             : "border-blue-800 bg-[#1B2334] text-blue-400"
-        }`}
+        )}
         style={{
           left: coordinate?.x,
           top: viewBox?.height + 14,
@@ -542,6 +552,14 @@ const XAxisTooltip = ({
         }}
       >
         {message}
+        <div
+          className={cn(
+            "absolute -top-[5px] left-1/2 h-2 w-2 -translate-x-1/2 rotate-45",
+            invalidSelection
+              ? "border-l border-t border-amber-800 bg-amber-950"
+              : "border-l border-t border-blue-800 bg-[#1B2334]"
+          )}
+        />
       </div>
     );
   }
@@ -559,6 +577,7 @@ const XAxisTooltip = ({
       }}
     >
       {label}
+      <div className="absolute -top-[5px] left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 border-l border-t border-charcoal-600 bg-charcoal-700" />
     </div>
   );
 };
