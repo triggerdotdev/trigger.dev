@@ -6,7 +6,7 @@ import { useDateRange } from "./DateRangeContext";
 
 export function ChartBarLoading() {
   return (
-    <div className="relative grid h-full place-items-center p-4">
+    <div className="relative grid h-full place-items-center p-2 pt-0">
       <ChartBarLoadingBackground />
       <div className="absolute z-10 flex items-center gap-2">
         <Spinner className="size-6" />
@@ -20,7 +20,7 @@ export function ChartNoData() {
   const dateRange = useDateRange();
 
   return (
-    <div className="relative grid h-full place-items-center p-4">
+    <div className="relative grid h-full place-items-center p-2 pt-0">
       <ChartBarLoadingBackground />
       <div className="absolute z-10 flex flex-col items-center gap-2">
         <Paragraph variant="small/bright">No data</Paragraph>
@@ -39,7 +39,7 @@ export function ChartInvalid() {
   const dateRange = useDateRange();
 
   return (
-    <div className="relative grid h-full place-items-center p-4">
+    <div className="relative grid h-full place-items-center p-2 pt-0">
       <ChartBarLoadingBackground />
       <div className="absolute z-10 flex flex-col items-center gap-2">
         <Paragraph variant="small/bright">Chart not applicable</Paragraph>
@@ -86,9 +86,11 @@ function ChartBarLoadingBackground() {
               initial={{ height: 0, opacity: 0 }}
               animate={{ height: `${height}%`, opacity: 1 }}
               transition={{
-                duration: 0.2,
-                delay: 0.2 + i * 0.03,
-                ease: "easeOut",
+                type: "spring",
+                stiffness: 120,
+                damping: 14,
+                mass: 1,
+                delay: 0.1 + i * 0.02,
               }}
             />
           );
@@ -98,7 +100,12 @@ function ChartBarLoadingBackground() {
         className="mt-2 flex flex-col justify-center gap-1"
         initial={{ y: 10, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        transition={{ duration: 0.5, delay: 0.3 }}
+        transition={{
+          type: "spring",
+          stiffness: 100,
+          damping: 15,
+          delay: 0.2,
+        }}
       >
         {Array.from({ length: 5 }).map((_, i) => (
           <motion.div
@@ -107,12 +114,13 @@ function ChartBarLoadingBackground() {
             initial={{ x: -10, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             transition={{
-              duration: 0.4,
-              delay: 0.4 + i * 0.1,
-              ease: "easeOut",
+              type: "spring",
+              stiffness: 100,
+              damping: 12,
+              delay: 0.3 + i * 0.08,
             }}
           >
-            <div className="h-5 w-4 rounded-sm bg-charcoal-750/50" />
+            <div className="h-5 w-2 rounded-sm bg-charcoal-750/50" />
             <div className="h-5 w-full rounded-sm bg-charcoal-750/50" />
           </motion.div>
         ))}
