@@ -1,3 +1,7 @@
+import { ArrowTrendingUpIcon } from "@heroicons/react/20/solid";
+import { useState } from "react";
+import { AbacusIcon } from "~/assets/icons/AbacusIcon";
+import { ArrowTopRightBottomLeftIcon } from "~/assets/icons/ArrowTopRightBottomLeftIcon";
 import { Button } from "~/components/primitives/Buttons";
 import { BigNumber } from "~/components/primitives/charts/BigNumber";
 import { Card } from "~/components/primitives/charts/Card";
@@ -7,39 +11,38 @@ import { ChartLine } from "~/components/primitives/charts/ChartLine";
 import { DateRangeProvider, useDateRange } from "~/components/primitives/charts/DateRangeContext";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { RadioGroup, RadioGroupItem } from "~/components/primitives/RadioButton";
-import { useState } from "react";
 
 function ChartsDashboard() {
   const dateRange = useDateRange();
   const [chartState, setChartState] = useState<ChartState>("loaded");
 
   return (
-    <div className="grid gap-4 p-3">
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex w-fit items-center gap-2 rounded border border-charcoal-700 bg-background-bright p-2">
+    <div className="grid">
+      <div className="flex items-center justify-between gap-4 border-b border-charcoal-700 bg-background-bright p-2 pl-3">
+        <div className="flex w-fit items-center">
           <RadioGroup
             name="chartState"
             value={chartState}
             onValueChange={(value) => setChartState(value as ChartState)}
-            className="flex items-center gap-3"
+            className="flex items-center"
           >
-            <RadioGroupItem id="loaded" label="Data loaded" value="loaded" variant="button/small" />
+            <RadioGroupItem id="loaded" label="Data loaded" value="loaded" variant="simple/small" />
             <RadioGroupItem
               id="loading"
               label="Data loading"
               value="loading"
-              variant="button/small"
+              variant="simple/small"
             />
-            <RadioGroupItem id="noData" label="No data" value="noData" variant="button/small" />
+            <RadioGroupItem id="noData" label="No data" value="noData" variant="simple/small" />
             <RadioGroupItem
               id="invalid"
               label="Chart invalid"
               value="invalid"
-              variant="button/small"
+              variant="simple/small"
             />
           </RadioGroup>
         </div>
-        <div className="flex w-fit items-center gap-4 rounded border border-charcoal-700 bg-background-bright p-3 pl-4">
+        <div className="flex w-fit items-center gap-4">
           <Paragraph variant="small/bright">{`Selected range: ${dateRange.startDate} - ${dateRange.endDate}`}</Paragraph>
           <Button variant="secondary/small" onClick={dateRange.resetDateRange}>
             Reset Zoom
@@ -47,12 +50,19 @@ function ChartsDashboard() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-2 gap-3 p-3">
         <Card>
           <Card.Header>
-            Bar Chart 1
+            <div className="flex items-center gap-1.5">
+              <ArrowTrendingUpIcon className="size-5 text-indigo-500" />
+              Runs total
+            </div>
             <Card.Accessory>
-              <Button variant="secondary/small">Example button</Button>
+              <Button
+                variant="secondary/small"
+                TrailingIcon={<ArrowTopRightBottomLeftIcon className="size-4" />}
+                className="px-1"
+              />
             </Card.Accessory>
           </Card.Header>
           <Card.Content>
@@ -62,15 +72,21 @@ function ChartsDashboard() {
               dataKey="day"
               useGlobalDateRange={true}
               referenceLine={{
-                value: 30000,
+                value: 45000,
                 label: "Max concurrency",
               }}
               state={chartState === "loaded" ? undefined : chartState}
+              minHeight="400px"
             />
           </Card.Content>
         </Card>
         <Card>
-          <Card.Header>Bar Chart 2</Card.Header>
+          <Card.Header>
+            <div className="flex items-center gap-1.5">
+              <AbacusIcon className="size-5 text-indigo-500" />
+              Run count <span className="font-normal text-text-dimmed">by status</span>
+            </div>
+          </Card.Header>
           <Card.Content>
             <ChartBar
               config={barChartConfig}
@@ -82,6 +98,7 @@ function ChartsDashboard() {
                 label: "Max concurrency",
               }}
               state={chartState === "loaded" ? undefined : chartState}
+              minHeight="400px"
             />
           </Card.Content>
         </Card>

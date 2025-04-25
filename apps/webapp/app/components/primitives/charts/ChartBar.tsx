@@ -22,9 +22,8 @@ import { ChartBarLoading, ChartNoData, ChartInvalid } from "./ChartLoading";
 import { useDateRange } from "./DateRangeContext";
 import { cn } from "~/utils/cn";
 
-//TODO: render a vertical line that follows the mouse - show this on all charts. Use a reference line
-//TODO: click to drop a reference line on all charts
-//TODO: do a better job of showing extra data in the legend - like in a table
+//TODO: show more x axis labels - figure out the best logic for this so it's nice at different zoom levels
+//TODO: click to drop a reference line - just in the middle of the chart
 //TODO: fix the first and last bars in a stack not having rounded corners
 
 type ReferenceLineProps = {
@@ -44,7 +43,6 @@ export function ChartBar({
   referenceLine,
   useGlobalDateRange = false,
   minHeight,
-  maxHeight,
 }: {
   config: ChartConfig;
   data: any[];
@@ -55,7 +53,6 @@ export function ChartBar({
   referenceLine?: ReferenceLineProps;
   useGlobalDateRange?: boolean;
   minHeight?: string;
-  maxHeight?: string;
 }) {
   const globalDateRange = useDateRange();
   const [activePayload, setActivePayload] = React.useState<any[] | null>(null);
@@ -502,7 +499,7 @@ export function ChartBar({
           className={cn(
             "h-full w-full [&_.recharts-surface]:cursor-crosshair [&_.recharts-wrapper]:cursor-crosshair"
           )}
-          style={maxHeight ? { maxHeight } : undefined}
+          style={minHeight ? { minHeight } : undefined}
         >
           {renderChartContent()}
         </ChartContainer>
