@@ -14,7 +14,8 @@ type SupervisorSessionOptions = SupervisorClientCommonOptions & {
   queueConsumerEnabled?: boolean;
   runNotificationsEnabled?: boolean;
   heartbeatIntervalSeconds?: number;
-  dequeueIntervalMs?: number;
+  dequeueIntervalMs: number;
+  dequeueIdleIntervalMs: number;
   preDequeue?: PreDequeueFn;
   preSkip?: PreSkipFn;
   maxRunCount?: number;
@@ -47,11 +48,11 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
         preSkip: opts.preSkip,
         onDequeue: this.onDequeue.bind(this),
         intervalMs: opts.dequeueIntervalMs,
+        idleIntervalMs: opts.dequeueIdleIntervalMs,
         maxRunCount: opts.maxRunCount,
       });
     });
 
-    // TODO: This should be dynamic and set by (or at least overridden by) the platform
     this.heartbeatIntervalSeconds = opts.heartbeatIntervalSeconds || 30;
     this.heartbeat = new IntervalService({
       onInterval: async () => {

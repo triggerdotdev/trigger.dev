@@ -116,6 +116,7 @@ class ManagedSupervisor {
       instanceName: env.TRIGGER_WORKER_INSTANCE_NAME,
       managedWorkerSecret: env.MANAGED_WORKER_SECRET,
       dequeueIntervalMs: env.TRIGGER_DEQUEUE_INTERVAL_MS,
+      dequeueIdleIntervalMs: env.TRIGGER_DEQUEUE_IDLE_INTERVAL_MS,
       queueConsumerEnabled: env.TRIGGER_DEQUEUE_ENABLED,
       maxRunCount: env.TRIGGER_DEQUEUE_MAX_RUN_COUNT,
       maxConsumerCount: env.TRIGGER_DEQUEUE_MAX_CONSUMER_COUNT,
