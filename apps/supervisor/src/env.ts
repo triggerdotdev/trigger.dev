@@ -6,6 +6,7 @@ import { AdditionalEnvVars, BoolEnv } from "./envUtil.js";
 const Env = z.object({
   // This will come from `spec.nodeName` in k8s
   TRIGGER_WORKER_INSTANCE_NAME: z.string().default(randomUUID()),
+  TRIGGER_WORKER_HEARTBEAT_INTERVAL_SECONDS: z.coerce.number().default(30),
 
   // Required settings
   TRIGGER_API_URL: z.string().url(),

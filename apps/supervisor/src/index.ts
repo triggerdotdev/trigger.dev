@@ -121,6 +121,7 @@ class ManagedSupervisor {
       maxRunCount: env.TRIGGER_DEQUEUE_MAX_RUN_COUNT,
       maxConsumerCount: env.TRIGGER_DEQUEUE_MAX_CONSUMER_COUNT,
       runNotificationsEnabled: env.TRIGGER_WORKLOAD_API_ENABLED,
+      heartbeatIntervalSeconds: env.TRIGGER_WORKER_HEARTBEAT_INTERVAL_SECONDS,
       preDequeue: async () => {
         if (this.isKubernetes) {
           // Not used in k8s for now
