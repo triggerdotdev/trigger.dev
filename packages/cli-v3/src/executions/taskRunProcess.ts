@@ -89,13 +89,19 @@ export class TaskRunProcess {
   public onWait: Evt<OnWaitMessage> = new Evt();
 
   private _isPreparedForNextRun: boolean = false;
+  private _isPreparedForNextAttempt: boolean = false;
 
   constructor(public readonly options: TaskRunProcessOptions) {
     this._isPreparedForNextRun = true;
+    this._isPreparedForNextAttempt = true;
   }
 
   get isPreparedForNextRun() {
     return this._isPreparedForNextRun;
+  }
+
+  get isPreparedForNextAttempt() {
+    return this._isPreparedForNextAttempt;
   }
 
   async cancel() {
@@ -223,6 +229,7 @@ export class TaskRunProcess {
     isWarmStart?: boolean
   ): Promise<TaskRunExecutionResult> {
     this._isPreparedForNextRun = false;
+    this._isPreparedForNextAttempt = false;
 
     let resolver: (value: TaskRunExecutionResult) => void;
     let rejecter: (err?: any) => void;
@@ -266,6 +273,7 @@ export class TaskRunProcess {
     const result = await promise;
 
     this._currentExecution = undefined;
+    this._isPreparedForNextAttempt = true;
 
     return result;
   }

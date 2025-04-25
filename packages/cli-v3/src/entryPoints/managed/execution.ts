@@ -87,10 +87,6 @@ export class RunExecution {
       throw new Error("prepareForExecution called after process was already created");
     }
 
-    if (this.isPreparedForNextRun) {
-      throw new Error("prepareForExecution called after execution was already prepared");
-    }
-
     this.taskRunProcess = this.createTaskRunProcess({
       envVars: opts.taskRunEnv,
       isWarmStart: true,
@@ -151,9 +147,14 @@ export class RunExecution {
   }
 
   /**
-   * Returns true if the execution has been prepared with task run env.
+   * Returns true if no run has been started yet and the process is prepared for the next run.
    */
-  get isPreparedForNextRun(): boolean {
+  get canExecute(): boolean {
+    // If we've ever had a run ID, this execution can't be reused
+    if (this._runFriendlyId) {
+      return false;
+    }
+
     return !!this.taskRunProcess?.isPreparedForNextRun;
   }
 
@@ -609,8 +610,18 @@ export class RunExecution {
     metrics: TaskRunExecutionMetrics;
     isWarmStart?: boolean;
   }) {
+    // For immediate retries, we need to ensure the task run process is prepared for the next attempt
+    if (
+      this.runFriendlyId &&
+      this.taskRunProcess &&
+      !this.taskRunProcess.isPreparedForNextAttempt
+    ) {
+      this.sendDebugLog("killing existing task run process before executing next attempt");
+      await this.kill().catch(() => {});
+    }
+
     // To skip this step and eagerly create the task run process, run prepareForExecution first
-    if (!this.taskRunProcess || !this.isPreparedForNextRun) {
+    if (!this.taskRunProcess || !this.taskRunProcess.isPreparedForNextRun) {
       this.taskRunProcess = this.createTaskRunProcess({ envVars, isWarmStart });
     }
 
@@ -667,9 +678,13 @@ export class RunExecution {
   }
 
   public exit() {
-    if (this.isPreparedForNextRun) {
+    if (this.taskRunProcess?.isPreparedForNextRun) {
       this.taskRunProcess?.forceExit();
     }
+  }
+
+  public async kill() {
+    await this.taskRunProcess?.kill("SIGKILL");
   }
 
   private async complete({ completion }: { completion: TaskRunExecutionResult }): Promise<void> {

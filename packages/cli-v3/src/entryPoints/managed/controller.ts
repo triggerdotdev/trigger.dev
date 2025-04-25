@@ -178,7 +178,17 @@ export class ManagedRunController {
     }
 
     const execution = async () => {
-      if (!this.currentExecution || !this.currentExecution.isPreparedForNextRun) {
+      // If we have an existing execution that isn't prepared for the next run, kill it
+      if (this.currentExecution && !this.currentExecution.canExecute) {
+        this.sendDebugLog({
+          runId: runFriendlyId,
+          message: "killing existing execution before starting new run",
+        });
+        await this.currentExecution.kill().catch(() => {});
+        this.currentExecution = null;
+      }
+
+      if (!this.currentExecution || !this.currentExecution.canExecute) {
         this.currentExecution = new RunExecution({
           workerManifest: this.workerManifest,
           env: this.env,
@@ -267,11 +277,12 @@ export class ManagedRunController {
       if (this.currentExecution?.taskRunEnv) {
         this.sendDebugLog({
           runId: this.runFriendlyId,
-          message: "waitForNextRun: eagerly recreating task run process",
+          message: "waitForNextRun: eagerly creating fresh execution for next run",
         });
 
         const previousTaskRunEnv = this.currentExecution.taskRunEnv;
 
+        // Create a fresh execution for the next run
         this.currentExecution = new RunExecution({
           workerManifest: this.workerManifest,
           env: this.env,
