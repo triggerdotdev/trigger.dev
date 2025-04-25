@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useCallback, useMemo } from "react";
 import {
   Bar,
   BarChart,
@@ -30,6 +30,36 @@ type ReferenceLineProps = {
   label: string;
 };
 
+type ChartBarProps = {
+  config: ChartConfig;
+  data: any[];
+  dataKey: string;
+  state?: ChartState;
+  maxLegendItems?: number;
+  referenceLine?: ReferenceLineProps;
+  useGlobalDateRange?: boolean;
+  minHeight?: string;
+  stackId?: string;
+};
+
+type TooltipProps = {
+  active?: boolean;
+  payload?: any[];
+  label?: string;
+  viewBox?: {
+    height: number;
+    width: number;
+  };
+  coordinate?: {
+    x: number;
+    y: number;
+  };
+  isSelecting: boolean;
+  refAreaLeft: string | null;
+  refAreaRight: string | null;
+  invalidSelection: boolean;
+};
+
 export function ChartBar({
   config,
   data: initialData,
@@ -40,17 +70,7 @@ export function ChartBar({
   useGlobalDateRange = false,
   minHeight,
   stackId,
-}: {
-  config: ChartConfig;
-  data: any[];
-  dataKey: string;
-  state?: ChartState;
-  maxLegendItems?: number;
-  referenceLine?: ReferenceLineProps;
-  useGlobalDateRange?: boolean;
-  minHeight?: string;
-  stackId?: string;
-}) {
+}: ChartBarProps) {
   const globalDateRange = useDateRange();
   const [activePayload, setActivePayload] = React.useState<any[] | null>(null);
   const [activeBarKey, setActiveBarKey] = React.useState<string | null>(null);
@@ -82,7 +102,7 @@ export function ChartBar({
   }, [initialData, useGlobalDateRange]);
 
   // Compute the visible data based on the zoom settings
-  const data = React.useMemo(() => {
+  const data = useMemo(() => {
     if (useGlobalDateRange) {
       // Filter data based on global date range
       // Check if we have valid chart data
@@ -130,7 +150,7 @@ export function ChartBar({
   ]);
 
   // Check if all values in current visible range are zero or null
-  const hasNoData = React.useMemo(() => {
+  const hasNoData = useMemo(() => {
     if (data.length === 0) return true;
 
     // Get all data keys except the x-axis key
@@ -148,11 +168,11 @@ export function ChartBar({
   const dimmedOpacity = 0.2;
 
   // Calculate totals for each category
-  const totals = React.useMemo(() => {
+  const totals = useMemo(() => {
     return data.reduce((acc, item) => {
       Object.entries(item).forEach(([key, value]) => {
         if (key !== dataKey) {
-          acc[key] = (acc[key] || 0) + (value as number);
+          acc[key] = (acc[key] || 0) + (Number(value) || 0);
         }
       });
       return acc;
@@ -160,10 +180,13 @@ export function ChartBar({
   }, [data, dataKey]);
 
   // Get all data keys except the x-axis key
-  const dataKeys = Object.keys(config).filter((k) => k !== dataKey);
+  const dataKeys = useMemo(
+    () => Object.keys(config).filter((k) => k !== dataKey),
+    [config, dataKey]
+  );
 
   // Get current data for the legend based on hover state
-  const currentData = React.useMemo(() => {
+  const currentData = useMemo(() => {
     if (!activePayload?.length) return totals;
 
     // If we have activePayload data from hovering over a bar
@@ -182,14 +205,14 @@ export function ChartBar({
   }, [activePayload, totals]);
 
   // Reset all highlight states
-  const resetHighlightState = () => {
+  const resetHighlightState = useCallback(() => {
     setActiveBarKey(null);
     setActiveDataPointIndex(null);
     setActivePayload(null);
-  };
+  }, []);
 
   // Prepare legend payload with capped items
-  const legendPayload = React.useMemo(() => {
+  const legendPayload = useMemo(() => {
     const allPayload = dataKeys.map((key) => ({
       dataKey: key,
       type: "rect" as const,
@@ -228,63 +251,69 @@ export function ChartBar({
   }, [config, dataKeys, maxLegendItems, activeBarKey]);
 
   // Handle mouse down for drag zooming
-  const handleMouseDown = (e: any) => {
+  const handleMouseDown = useCallback((e: any) => {
     if (e.activeLabel) {
       setRefAreaLeft(e.activeLabel);
       setIsSelecting(true);
     }
-  };
+  }, []);
 
   // Handle click on the chart area
-  const handleChartClick = (e: any) => {
-    // Only process if we're not in selection mode and have a valid click position
-    if (!isSelecting && e?.activeLabel) {
-      // Toggle the inspection line - if clicking the same point, remove it; otherwise, set a new one
-      if (inspectionLine === e.activeLabel) {
-        setInspectionLine(null);
-      } else {
-        setInspectionLine(e.activeLabel);
-      }
-    }
-  };
-
-  // Handle mouse move for drag zooming
-  const handleMouseMove = (e: any) => {
-    // Handle both selection and active payload update
-    if (isSelecting && e?.activeLabel) {
-      setRefAreaRight(e.activeLabel);
-
-      // Check if selection is likely to be too small
-      if (refAreaLeft) {
-        // Get indices from original data
-        const dataArray = useGlobalDateRange ? initialData : localOriginalData;
-        const allDays = dataArray.map((item) => item[dataKey] as string).filter(Boolean);
-
-        const leftIndex = allDays.indexOf(refAreaLeft);
-        const rightIndex = allDays.indexOf(e.activeLabel);
-
-        if (leftIndex !== -1 && rightIndex !== -1) {
-          const [start, end] = [leftIndex, rightIndex].sort((a, b) => a - b);
-
-          // Mark as invalid if the selection is too small (less than 3 data points)
-          setInvalidSelection(end - start < 2);
+  const handleChartClick = useCallback(
+    (e: any) => {
+      // Only process if we're not in selection mode and have a valid click position
+      if (!isSelecting && e?.activeLabel) {
+        // Toggle the inspection line - if clicking the same point, remove it; otherwise, set a new one
+        if (inspectionLine === e.activeLabel) {
+          setInspectionLine(null);
         } else {
-          setInvalidSelection(true);
+          setInspectionLine(e.activeLabel);
         }
       }
-    }
+    },
+    [isSelecting, inspectionLine]
+  );
 
-    // Update active payload for legend
-    if (e?.activePayload?.length) {
-      setActivePayload(e.activePayload);
-      setTooltipActive(true);
-    } else {
-      setTooltipActive(false);
-    }
-  };
+  // Handle mouse move for drag zooming
+  const handleMouseMove = useCallback(
+    (e: any) => {
+      // Handle both selection and active payload update
+      if (isSelecting && e?.activeLabel) {
+        setRefAreaRight(e.activeLabel);
+
+        // Check if selection is likely to be too small
+        if (refAreaLeft) {
+          // Get indices from original data
+          const dataArray = useGlobalDateRange ? initialData : localOriginalData;
+          const allDays = dataArray.map((item) => item[dataKey] as string).filter(Boolean);
+
+          const leftIndex = allDays.indexOf(refAreaLeft);
+          const rightIndex = allDays.indexOf(e.activeLabel);
+
+          if (leftIndex !== -1 && rightIndex !== -1) {
+            const [start, end] = [leftIndex, rightIndex].sort((a, b) => a - b);
+
+            // Mark as invalid if the selection is too small (less than 3 data points)
+            setInvalidSelection(end - start < 2);
+          } else {
+            setInvalidSelection(true);
+          }
+        }
+      }
+
+      // Update active payload for legend
+      if (e?.activePayload?.length) {
+        setActivePayload(e.activePayload);
+        setTooltipActive(true);
+      } else {
+        setTooltipActive(false);
+      }
+    },
+    [isSelecting, refAreaLeft, useGlobalDateRange, initialData, localOriginalData, dataKey]
+  );
 
   // Handle mouse up for drag zooming
-  const handleMouseUp = () => {
+  const handleMouseUp = useCallback(() => {
     if (refAreaLeft && refAreaRight) {
       // If global date range, update the context
       if (useGlobalDateRange) {
@@ -332,26 +361,37 @@ export function ChartBar({
     setRefAreaRight(null);
     setIsSelecting(false);
     setInvalidSelection(false);
-  };
+  }, [
+    refAreaLeft,
+    refAreaRight,
+    useGlobalDateRange,
+    initialData,
+    localOriginalData,
+    dataKey,
+    globalDateRange,
+  ]);
 
   // Handle bar stack click for inspection line
-  const handleBarClick = (barData: any, e: React.MouseEvent) => {
-    // Prevent the event from propagating to the chart's onClick handler
-    e.stopPropagation();
+  const handleBarClick = useCallback(
+    (barData: any, e: React.MouseEvent) => {
+      // Prevent the event from propagating to the chart's onClick handler
+      e.stopPropagation();
 
-    // Only process clicks if we're not in selection mode
-    if (!isSelecting) {
-      // Toggle the inspection line - if clicking the same point, remove it; otherwise, set a new one
-      if (inspectionLine === barData[dataKey]) {
-        setInspectionLine(null);
-      } else {
-        setInspectionLine(barData[dataKey]);
+      // Only process clicks if we're not in selection mode
+      if (!isSelecting) {
+        // Toggle the inspection line - if clicking the same point, remove it; otherwise, set a new one
+        if (inspectionLine === barData[dataKey]) {
+          setInspectionLine(null);
+        } else {
+          setInspectionLine(barData[dataKey]);
+        }
       }
-    }
-  };
+    },
+    [isSelecting, inspectionLine, dataKey]
+  );
 
   // Render appropriate content based on displayState
-  const renderChartContent = () => {
+  const renderChartContent = useCallback(() => {
     if (displayState === "loading") {
       return <ChartBarLoading />;
     } else if (displayState === "noData" || hasNoData) {
@@ -536,7 +576,32 @@ export function ChartBar({
         />
       </BarChart>
     );
-  };
+  }, [
+    displayState,
+    hasNoData,
+    tooltipActive,
+    data,
+    dataKey,
+    handleMouseDown,
+    handleMouseMove,
+    handleMouseUp,
+    handleChartClick,
+    resetHighlightState,
+    dataKeys,
+    config,
+    stackId,
+    handleBarClick,
+    activeBarKey,
+    activeDataPointIndex,
+    isSelecting,
+    dimmedOpacity,
+    referenceLine,
+    inspectionLine,
+    refAreaLeft,
+    refAreaRight,
+    legendPayload,
+    currentData,
+  ]);
 
   return (
     <div className="relative flex w-full flex-col">
@@ -569,7 +634,7 @@ const XAxisTooltip = ({
   refAreaLeft,
   refAreaRight,
   invalidSelection,
-}: any) => {
+}: TooltipProps) => {
   if (!active) return null;
 
   // Show zoom range when selecting
@@ -589,7 +654,7 @@ const XAxisTooltip = ({
         )}
         style={{
           left: coordinate?.x,
-          top: viewBox?.height + 14,
+          top: viewBox?.height ? viewBox.height + 14 : 0,
           transform: "translateX(-50%)",
         }}
       >
@@ -614,7 +679,7 @@ const XAxisTooltip = ({
       className="absolute whitespace-nowrap rounded border border-charcoal-600 bg-charcoal-700 px-2 py-1 text-xxs tabular-nums text-text-bright"
       style={{
         left: coordinate?.x,
-        top: viewBox?.height + 13,
+        top: viewBox?.height ? viewBox.height + 13 : 0,
         transform: "translateX(-50%)",
       }}
     >
@@ -624,7 +689,11 @@ const XAxisTooltip = ({
   );
 };
 
-function ViewAllDataRow({ remainingCount }: { remainingCount: number }) {
+type ViewAllDataRowProps = {
+  remainingCount: number;
+};
+
+function ViewAllDataRow({ remainingCount }: ViewAllDataRowProps) {
   return (
     <Button variant="minimal/small" fullWidth iconSpacing="justify-between" className="px-2 py-1">
       <div className="flex items-center gap-1.5 text-text-dimmed">
