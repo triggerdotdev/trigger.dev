@@ -20,14 +20,12 @@ import { Button } from "../Buttons";
 import { Paragraph } from "../Paragraph";
 import { ChartBarLoading, ChartNoData, ChartInvalid } from "./ChartLoading";
 import { useDateRange } from "./DateRangeContext";
+import { cn } from "~/utils/cn";
 
 //TODO: render a vertical line that follows the mouse - show this on all charts. Use a reference line
 //TODO: click to drop a reference line on all charts
 //TODO: do a better job of showing extra data in the legend - like in a table
 //TODO: fix the first and last bars in a stack not having rounded corners
-//TODO: make a nice loading state for the chart
-//TODO: make a nice "No data: There's no data available for your filters" for the chart with 'clear filters' button
-//TODO: make a nice "Chart invalid: The current filters are preventing this chart from being displayed." state for the chart with 'clear filters' button
 
 type ReferenceLineProps = {
   value: number;
@@ -45,6 +43,8 @@ export function ChartBar({
   maxLegendItems = 5,
   referenceLine,
   useGlobalDateRange = false,
+  minHeight,
+  maxHeight,
 }: {
   config: ChartConfig;
   data: any[];
@@ -54,6 +54,8 @@ export function ChartBar({
   maxLegendItems?: number;
   referenceLine?: ReferenceLineProps;
   useGlobalDateRange?: boolean;
+  minHeight?: string;
+  maxHeight?: string;
 }) {
   const globalDateRange = useDateRange();
   const [activePayload, setActivePayload] = React.useState<any[] | null>(null);
@@ -366,7 +368,7 @@ export function ChartBar({
             fontSize: 11,
             style: { fontVariantNumeric: "tabular-nums" },
           }}
-          domain={["auto", (dataMax: number) => dataMax * 1.2]}
+          domain={["auto", (dataMax: number) => dataMax * 1.15]}
         />
         <ChartTooltip
           cursor={{ fill: "#2C3034" }}
@@ -497,7 +499,10 @@ export function ChartBar({
       >
         <ChartContainer
           config={config}
-          className="h-full w-full [&_.recharts-surface]:cursor-crosshair [&_.recharts-wrapper]:cursor-crosshair"
+          className={cn(
+            "h-full w-full [&_.recharts-surface]:cursor-crosshair [&_.recharts-wrapper]:cursor-crosshair"
+          )}
+          style={maxHeight ? { maxHeight } : undefined}
         >
           {renderChartContent()}
         </ChartContainer>
