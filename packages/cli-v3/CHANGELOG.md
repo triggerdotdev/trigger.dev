@@ -1,5 +1,14 @@
 # trigger.dev
 
+## 4.0.0-v4-beta.9
+
+### Patch Changes
+
+- fix: default machine config indexing now works ([#1979](https://github.com/triggerdotdev/trigger.dev/pull/1979))
+- Updated dependencies:
+  - `@trigger.dev/build@4.0.0-v4-beta.9`
+  - `@trigger.dev/core@4.0.0-v4-beta.9`
+
 ## 4.0.0-v4-beta.8
 
 ### Patch Changes
