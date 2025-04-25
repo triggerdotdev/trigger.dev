@@ -5,6 +5,7 @@ import {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
+  type ChartState,
 } from "~/components/primitives/charts/Chart";
 import { ChartLineLoading } from "./ChartLoading";
 import { useDateRange } from "./DateRangeContext";
@@ -13,13 +14,13 @@ export function ChartLine({
   config,
   data: initialData,
   dataKey,
-  loading = false,
+  state,
   useGlobalDateRange = false,
 }: {
   config: ChartConfig;
   data: any[];
   dataKey: string;
-  loading?: boolean;
+  state?: ChartState;
   useGlobalDateRange?: boolean;
 }) {
   const globalDateRange = useDateRange();
@@ -69,7 +70,7 @@ export function ChartLine({
 
   return (
     <ChartContainer config={config} className="min-h-[200px] w-full">
-      {loading ? (
+      {state === "loading" ? (
         <ChartLineLoading />
       ) : (
         <LineChart

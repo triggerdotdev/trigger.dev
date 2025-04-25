@@ -6,6 +6,8 @@ import { AnimatedNumber } from "../AnimatedNumber";
 // Format: { THEME_NAME: CSS_SELECTOR }
 const THEMES = { light: "", dark: ".dark" } as const;
 
+export type ChartState = "loading" | "noData" | "invalid" | "loaded" | undefined;
+
 export type ChartConfig = {
   [k in string]: {
     label?: React.ReactNode;
