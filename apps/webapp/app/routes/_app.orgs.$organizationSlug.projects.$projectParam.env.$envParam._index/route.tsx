@@ -67,9 +67,9 @@ import {
 } from "~/components/runs/v3/TaskTriggerSource";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useEventSource } from "~/hooks/useEventSource";
+import { useFuzzyFilter } from "~/hooks/useFuzzyFilter";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { useTextFilter } from "~/hooks/useTextFilter";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
@@ -169,23 +169,9 @@ export default function Page() {
   const environment = useEnvironment();
   const { tasks, activity, runningStats, durations, usefulLinksPreference } =
     useTypedLoaderData<typeof loader>();
-  const { filterText, setFilterText, filteredItems } = useTextFilter<TaskListItem>({
+  const { filterText, setFilterText, filteredItems } = useFuzzyFilter<TaskListItem>({
     items: tasks,
-    filter: (task, text) => {
-      if (task.slug.toLowerCase().includes(text.toLowerCase())) {
-        return true;
-      }
-
-      if (task.filePath.toLowerCase().includes(text.toLowerCase())) {
-        return true;
-      }
-
-      if (task.triggerSource === "SCHEDULED" && "scheduled".includes(text.toLowerCase())) {
-        return true;
-      }
-
-      return false;
-    },
+    keys: ["slug", "filePath", "triggerSource"],
   });
 
   const hasTasks = tasks.length > 0;

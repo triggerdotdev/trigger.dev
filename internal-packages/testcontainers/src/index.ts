@@ -61,10 +61,14 @@ const prisma = async (
   { postgresContainer }: { postgresContainer: StartedPostgreSqlContainer },
   use: Use<PrismaClient>
 ) => {
+  const url = postgresContainer.getConnectionUri();
+
+  console.log("Initializing Prisma with URL:", url);
+
   const prisma = new PrismaClient({
     datasources: {
       db: {
-        url: postgresContainer.getConnectionUri(),
+        url,
       },
     },
   });

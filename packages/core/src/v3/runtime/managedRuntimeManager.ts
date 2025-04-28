@@ -27,12 +27,10 @@ export class ManagedRuntimeManager implements RuntimeManager {
     private ipc: ExecutorToWorkerProcessConnection,
     private showLogs: boolean
   ) {
-    setTimeout(() => {
-      this.log("Runtime status", {
-        resolversbyWaitId: this.resolversByWaitId.keys(),
-        resolversByWaitpoint: this.resolversByWaitpoint.keys(),
-      });
-    }, 1000);
+    // Log out the runtime status on a long interval to help debug stuck executions
+    setInterval(() => {
+      this.log("[DEBUG] ManagedRuntimeManager status", this.status);
+    }, 300_000);
   }
 
   disable(): void {
@@ -178,14 +176,14 @@ export class ManagedRuntimeManager implements RuntimeManager {
     }
 
     if (!waitId) {
-      this.log("No waitId found for waitpoint", waitpoint);
+      this.log("No waitId found for waitpoint", { ...this.status, ...waitpoint });
       return;
     }
 
     const resolve = this.resolversByWaitId.get(waitId);
 
     if (!resolve) {
-      this.log("No resolver found for waitId", waitId);
+      this.log("No resolver found for waitId", { ...this.status, waitId });
       return;
     }
 
@@ -226,5 +224,12 @@ export class ManagedRuntimeManager implements RuntimeManager {
   private log(message: string, ...args: any[]) {
     if (!this.showLogs) return;
     console.log(`[${new Date().toISOString()}] ${message}`, args);
+  }
+
+  private get status() {
+    return {
+      resolversbyWaitId: Array.from(this.resolversByWaitId.keys()),
+      resolversByWaitpoint: Array.from(this.resolversByWaitpoint.keys()),
+    };
   }
 }

@@ -51,6 +51,7 @@ export class RunExecution {
 
   private _runFriendlyId?: string;
   private currentSnapshotId?: string;
+  private currentAttemptNumber?: number;
   private currentTaskRunEnv?: Record<string, string>;
 
   private dequeuedAt?: Date;
@@ -65,6 +66,7 @@ export class RunExecution {
   private snapshotPoller?: RunExecutionSnapshotPoller;
 
   private lastHeartbeat?: Date;
+  private isShuttingDown = false;
 
   constructor(opts: RunExecutionOptions) {
     this.id = randomBytes(4).toString("hex");
@@ -84,10 +86,6 @@ export class RunExecution {
   public prepareForExecution(opts: RunExecutionPrepareOptions): this {
     if (this.taskRunProcess) {
       throw new Error("prepareForExecution called after process was already created");
-    }
-
-    if (this.isPreparedForNextRun) {
-      throw new Error("prepareForExecution called after execution was already prepared");
     }
 
     this.taskRunProcess = this.createTaskRunProcess({
@@ -150,9 +148,14 @@ export class RunExecution {
   }
 
   /**
-   * Returns true if the execution has been prepared with task run env.
+   * Returns true if no run has been started yet and the process is prepared for the next run.
    */
-  get isPreparedForNextRun(): boolean {
+  get canExecute(): boolean {
+    // If we've ever had a run ID, this execution can't be reused
+    if (this._runFriendlyId) {
+      return false;
+    }
+
     return !!this.taskRunProcess?.isPreparedForNextRun;
   }
 
@@ -161,6 +164,11 @@ export class RunExecution {
    * or when the snapshot poller detects a change
    */
   public async handleSnapshotChange(runData: RunExecutionData): Promise<void> {
+    if (this.isShuttingDown) {
+      this.sendDebugLog("handleSnapshotChange: shutting down, skipping");
+      return;
+    }
+
     const { run, snapshot, completedWaitpoints } = runData;
 
     const snapshotMetadata = {
@@ -190,8 +198,6 @@ export class RunExecution {
       );
       return;
     }
-
-    this.sendDebugLog(`enqueued snapshot change: ${snapshot.executionStatus}`, snapshotMetadata);
 
     this.snapshotChangeQueue.push(runData);
     await this.processSnapshotChangeQueue();
@@ -240,11 +246,16 @@ export class RunExecution {
     }
 
     if (snapshot.friendlyId === this.currentSnapshotId) {
-      this.sendDebugLog("handleSnapshotChange: snapshot not changed", snapshotMetadata);
       return;
     }
 
-    this.sendDebugLog(`snapshot change: ${snapshot.executionStatus}`, snapshotMetadata);
+    if (this.currentAttemptNumber && this.currentAttemptNumber !== run.attemptNumber) {
+      this.sendDebugLog("ERROR: attempt number mismatch", snapshotMetadata);
+      await this.taskRunProcess?.suspend();
+      return;
+    }
+
+    this.sendDebugLog(`snapshot has changed to: ${snapshot.executionStatus}`, snapshotMetadata);
 
     // Reset the snapshot poll interval so we don't do unnecessary work
     this.snapshotPoller?.resetCurrentInterval();
@@ -267,6 +278,13 @@ export class RunExecution {
         }
 
         this.abortExecution();
+        return;
+      }
+      case "QUEUED": {
+        this.sendDebugLog("Run was re-queued", snapshotMetadata);
+
+        // Pretend we've just suspended the run. This will kill the process without failing the run.
+        await this.taskRunProcess?.suspend();
         return;
       }
       case "FINISHED": {
@@ -402,8 +420,7 @@ export class RunExecution {
 
         return;
       }
-      case "RUN_CREATED":
-      case "QUEUED": {
+      case "RUN_CREATED": {
         this.sendDebugLog("Invalid status change", snapshotMetadata);
 
         this.abortExecution();
@@ -449,6 +466,16 @@ export class RunExecution {
 
     // A snapshot was just created, so update the snapshot ID
     this.currentSnapshotId = start.data.snapshot.friendlyId;
+
+    // Also set or update the attempt number - we do this to detect illegal attempt number changes, e.g. from stalled runners coming back online
+    const attemptNumber = start.data.run.attemptNumber;
+    if (attemptNumber && attemptNumber > 0) {
+      this.currentAttemptNumber = attemptNumber;
+    } else {
+      this.sendDebugLog("ERROR: invalid attempt number returned from start attempt", {
+        attemptNumber: String(attemptNumber),
+      });
+    }
 
     const metrics = this.measureExecutionMetrics({
       attemptCreatedAt: attemptStartedAt,
@@ -591,8 +618,18 @@ export class RunExecution {
     metrics: TaskRunExecutionMetrics;
     isWarmStart?: boolean;
   }) {
+    // For immediate retries, we need to ensure the task run process is prepared for the next attempt
+    if (
+      this.runFriendlyId &&
+      this.taskRunProcess &&
+      !this.taskRunProcess.isPreparedForNextAttempt
+    ) {
+      this.sendDebugLog("killing existing task run process before executing next attempt");
+      await this.kill().catch(() => {});
+    }
+
     // To skip this step and eagerly create the task run process, run prepareForExecution first
-    if (!this.taskRunProcess || !this.isPreparedForNextRun) {
+    if (!this.taskRunProcess || !this.taskRunProcess.isPreparedForNextRun) {
       this.taskRunProcess = this.createTaskRunProcess({ envVars, isWarmStart });
     }
 
@@ -649,9 +686,13 @@ export class RunExecution {
   }
 
   public exit() {
-    if (this.isPreparedForNextRun) {
+    if (this.taskRunProcess?.isPreparedForNextRun) {
       this.taskRunProcess?.forceExit();
     }
+  }
+
+  public async kill() {
+    await this.taskRunProcess?.kill("SIGKILL");
   }
 
   private async complete({ completion }: { completion: TaskRunExecutionResult }): Promise<void> {
@@ -891,7 +932,7 @@ export class RunExecution {
     this.lastHeartbeat = new Date();
   }
 
-  sendDebugLog(
+  private sendDebugLog(
     message: string,
     properties?: SendDebugLogOptions["properties"],
     runIdOverride?: string
@@ -952,6 +993,11 @@ export class RunExecution {
   }
 
   private stopServices() {
+    if (this.isShuttingDown) {
+      return;
+    }
+
+    this.isShuttingDown = true;
     this.snapshotPoller?.stop();
     this.taskRunProcess?.onTaskRunHeartbeat.detach();
   }

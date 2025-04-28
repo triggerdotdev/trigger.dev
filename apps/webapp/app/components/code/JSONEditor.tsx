@@ -1,5 +1,5 @@
-import { json as jsonLang } from "@codemirror/lang-json";
-import type { ViewUpdate } from "@codemirror/view";
+import { json as jsonLang, jsonParseLinter } from "@codemirror/lang-json";
+import type { EditorView, ViewUpdate } from "@codemirror/view";
 import { CheckIcon, ClipboardIcon, TrashIcon } from "@heroicons/react/20/solid";
 import type { ReactCodeMirrorProps, UseCodeMirror } from "@uiw/react-codemirror";
 import { useCodeMirror } from "@uiw/react-codemirror";
@@ -8,6 +8,7 @@ import { cn } from "~/utils/cn";
 import { Button } from "../primitives/Buttons";
 import { getEditorSetup } from "./codeMirrorSetup";
 import { darkTheme } from "./codeMirrorTheme";
+import { linter, lintGutter, type Diagnostic } from "@codemirror/lint";
 
 export interface JSONEditorProps extends Omit<ReactCodeMirrorProps, "onBlur"> {
   defaultValue?: string;
@@ -18,11 +19,26 @@ export interface JSONEditorProps extends Omit<ReactCodeMirrorProps, "onBlur"> {
   onBlur?: (code: string) => void;
   showCopyButton?: boolean;
   showClearButton?: boolean;
+  linterEnabled?: boolean;
+  allowEmpty?: boolean;
 }
 
 const languages = {
   json: jsonLang,
 };
+
+function emptyAwareJsonLinter() {
+  return (view: EditorView): Diagnostic[] => {
+    const content = view.state.doc.toString().trim();
+
+    // return no errors if content is empty
+    if (!content) {
+      return [];
+    }
+
+    return jsonParseLinter()(view);
+  };
+}
 
 type JSONEditorDefaultProps = Partial<JSONEditorProps>;
 
@@ -30,6 +46,8 @@ const defaultProps: JSONEditorDefaultProps = {
   language: "json",
   readOnly: true,
   basicSetup: false,
+  linterEnabled: true,
+  allowEmpty: true,
 };
 
 export function JSONEditor(opts: JSONEditorProps) {
@@ -44,6 +62,8 @@ export function JSONEditor(opts: JSONEditorProps) {
     autoFocus,
     showCopyButton = true,
     showClearButton = true,
+    linterEnabled,
+    allowEmpty,
   } = {
     ...defaultProps,
     ...opts,
@@ -55,6 +75,19 @@ export function JSONEditor(opts: JSONEditorProps) {
   const languageExtension = languages[language];
 
   extensions.push(languageExtension());
+
+  if (linterEnabled) {
+    extensions.push(lintGutter());
+
+    switch (language) {
+      case "json": {
+        extensions.push(allowEmpty ? linter(emptyAwareJsonLinter()) : linter(jsonParseLinter()));
+        break;
+      }
+      default:
+        language satisfies never;
+    }
+  }
 
   const editor = useRef<HTMLDivElement>(null);
   const settings: Omit<UseCodeMirror, "onBlur"> = {

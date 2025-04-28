@@ -1,5 +1,34 @@
 # internal-platform
 
+## 4.0.0-v4-beta.10
+
+### Patch Changes
+
+- - Fix polling interval reset bug that could create duplicate intervals ([#1987](https://github.com/triggerdotdev/trigger.dev/pull/1987))
+  - Protect against unexpected attempt number changes
+  - Prevent run execution zombies after warm starts
+
+## 4.0.0-v4-beta.9
+
+## 4.0.0-v4-beta.8
+
+### Patch Changes
+
+- Prevent large outputs from overwriting each other ([#1971](https://github.com/triggerdotdev/trigger.dev/pull/1971))
+
+## 4.0.0-v4-beta.7
+
+### Patch Changes
+
+- Fix QUEUED status snapshot handler ([#1963](https://github.com/triggerdotdev/trigger.dev/pull/1963))
+
+## 4.0.0-v4-beta.6
+
+### Patch Changes
+
+- The dev command will now use the platform-provided engine URL ([#1949](https://github.com/triggerdotdev/trigger.dev/pull/1949))
+- Configurable queue consumer count in supervisor session ([#1949](https://github.com/triggerdotdev/trigger.dev/pull/1949))
+
 ## 4.0.0-v4-beta.5
 
 ## 4.0.0-v4-beta.4

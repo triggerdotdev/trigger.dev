@@ -1,5 +1,54 @@
 # trigger.dev
 
+## 4.0.0-v4-beta.10
+
+### Patch Changes
+
+- TriggerApiError 4xx errors will no longer cause tasks to be retried ([#1970](https://github.com/triggerdotdev/trigger.dev/pull/1970))
+- - Fix polling interval reset bug that could create duplicate intervals ([#1987](https://github.com/triggerdotdev/trigger.dev/pull/1987))
+  - Protect against unexpected attempt number changes
+  - Prevent run execution zombies after warm starts
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.10`
+  - `@trigger.dev/build@4.0.0-v4-beta.10`
+
+## 4.0.0-v4-beta.9
+
+### Patch Changes
+
+- fix: default machine config indexing now works ([#1979](https://github.com/triggerdotdev/trigger.dev/pull/1979))
+- Updated dependencies:
+  - `@trigger.dev/build@4.0.0-v4-beta.9`
+  - `@trigger.dev/core@4.0.0-v4-beta.9`
+
+## 4.0.0-v4-beta.8
+
+### Patch Changes
+
+- Prevent large outputs from overwriting each other ([#1971](https://github.com/triggerdotdev/trigger.dev/pull/1971))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.8`
+  - `@trigger.dev/build@4.0.0-v4-beta.8`
+
+## 4.0.0-v4-beta.7
+
+### Patch Changes
+
+- Fixes runLimiter check on #dequeueRuns ([#1953](https://github.com/triggerdotdev/trigger.dev/pull/1953))
+- Fix QUEUED status snapshot handler ([#1963](https://github.com/triggerdotdev/trigger.dev/pull/1963))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.7`
+  - `@trigger.dev/build@4.0.0-v4-beta.7`
+
+## 4.0.0-v4-beta.6
+
+### Patch Changes
+
+- The dev command will now use the platform-provided engine URL ([#1949](https://github.com/triggerdotdev/trigger.dev/pull/1949))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.6`
+  - `@trigger.dev/build@4.0.0-v4-beta.6`
+
 ## 4.0.0-v4-beta.5
 
 ### Patch Changes

@@ -1,4 +1,5 @@
 import {
+  attemptKey,
   CompletedWaitpoint,
   ExecutorToWorkerMessageCatalog,
   MachinePresetResources,
@@ -88,13 +89,19 @@ export class TaskRunProcess {
   public onWait: Evt<OnWaitMessage> = new Evt();
 
   private _isPreparedForNextRun: boolean = false;
+  private _isPreparedForNextAttempt: boolean = false;
 
   constructor(public readonly options: TaskRunProcessOptions) {
     this._isPreparedForNextRun = true;
+    this._isPreparedForNextAttempt = true;
   }
 
   get isPreparedForNextRun() {
     return this._isPreparedForNextRun;
+  }
+
+  get isPreparedForNextAttempt() {
+    return this._isPreparedForNextAttempt;
   }
 
   async cancel() {
@@ -164,15 +171,17 @@ export class TaskRunProcess {
         TASK_RUN_COMPLETED: async (message) => {
           const { result, execution } = message;
 
-          const promiseStatus = this._attemptStatuses.get(execution.attempt.id);
+          const key = attemptKey(execution);
+
+          const promiseStatus = this._attemptStatuses.get(key);
 
           if (promiseStatus !== "PENDING") {
             return;
           }
 
-          this._attemptStatuses.set(execution.attempt.id, "RESOLVED");
+          this._attemptStatuses.set(key, "RESOLVED");
 
-          const attemptPromise = this._attemptPromises.get(execution.attempt.id);
+          const attemptPromise = this._attemptPromises.get(key);
 
           if (!attemptPromise) {
             return;
@@ -220,6 +229,7 @@ export class TaskRunProcess {
     isWarmStart?: boolean
   ): Promise<TaskRunExecutionResult> {
     this._isPreparedForNextRun = false;
+    this._isPreparedForNextAttempt = false;
 
     let resolver: (value: TaskRunExecutionResult) => void;
     let rejecter: (err?: any) => void;
@@ -229,10 +239,12 @@ export class TaskRunProcess {
       rejecter = reject;
     });
 
-    this._attemptStatuses.set(params.payload.execution.attempt.id, "PENDING");
+    const key = attemptKey(params.payload.execution);
+
+    this._attemptStatuses.set(key, "PENDING");
 
     // @ts-expect-error - We know that the resolver and rejecter are defined
-    this._attemptPromises.set(params.payload.execution.attempt.id, { resolver, rejecter });
+    this._attemptPromises.set(key, { resolver, rejecter });
 
     const { execution, traceContext, metrics } = params.payload;
 
@@ -261,6 +273,7 @@ export class TaskRunProcess {
     const result = await promise;
 
     this._currentExecution = undefined;
+    this._isPreparedForNextAttempt = true;
 
     return result;
   }

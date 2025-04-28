@@ -26,7 +26,7 @@ import {
 } from "~/components/primitives/Table";
 import { TaskTriggerSourceIcon } from "~/components/runs/v3/TaskTriggerSource";
 import { useEnvironment } from "~/hooks/useEnvironment";
-import { useFilterTasks } from "~/hooks/useFilterTasks";
+import { useFuzzyFilter } from "~/hooks/useFuzzyFilter";
 import { useLinkStatus } from "~/hooks/useLinkStatus";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -120,7 +120,10 @@ function TaskSelector({
   tasks: TaskListItem[];
   activeTaskIdentifier?: string;
 }) {
-  const { filterText, setFilterText, filteredItems } = useFilterTasks<TaskListItem>({ tasks });
+  const { filterText, setFilterText, filteredItems } = useFuzzyFilter<TaskListItem>({
+    items: tasks,
+    keys: ["taskIdentifier", "friendlyId", "id", "filePath", "triggerSource"],
+  });
   const hasTaskInEnvironment = activeTaskIdentifier
     ? tasks.some((t) => t.taskIdentifier === activeTaskIdentifier)
     : undefined;

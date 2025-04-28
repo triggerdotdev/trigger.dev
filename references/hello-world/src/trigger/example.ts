@@ -1,5 +1,6 @@
 import { batch, logger, task, timeout, wait } from "@trigger.dev/sdk";
 import { setTimeout } from "timers/promises";
+import { ResourceMonitor } from "../resourceMonitor.js";
 
 export const helloWorldTask = task({
   id: "hello-world",
@@ -36,6 +37,7 @@ export const helloWorldTask = task({
 
 export const parentTask = task({
   id: "parent",
+  machine: "medium-1x",
   run: async (payload: any, { ctx }) => {
     logger.log("Hello, world from the parent", { payload });
     await childTask.triggerAndWait(
@@ -204,5 +206,32 @@ export const hooksTask = task({
   },
   cleanup: async ({ ctx, payload }) => {
     logger.info("Hello, world from the cleanup hook", { payload });
+  },
+});
+
+export const resourceMonitorTest = task({
+  id: "resource-monitor-test",
+  run: async (payload: { dirName?: string; processName?: string }, { ctx }) => {
+    logger.info("Hello, resources!", { payload });
+
+    const resMon = new ResourceMonitor({
+      ctx,
+      dirName: payload.dirName ?? "/tmp",
+      processName: payload.processName ?? "node",
+    });
+
+    resMon.startMonitoring(1_000);
+
+    await resMon.logResourceSnapshot();
+
+    await wait.for({ seconds: 5 });
+
+    await resMon.logResourceSnapshot();
+
+    resMon.stopMonitoring();
+
+    return {
+      message: "Hello, resources!",
+    };
   },
 });

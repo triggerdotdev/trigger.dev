@@ -25,8 +25,8 @@
     {
       "type": "node-terminal",
       "request": "launch",
-      "name": "Debug fairDequeuingStrategy.test.ts",
-      "command": "pnpm run test -t FairDequeuingStrategy",
+      "name": "Debug triggerTask.test.ts",
+      "command": "pnpm run test --run ./test/engine/triggerTask.test.ts",
       "envFile": "${workspaceFolder}/.env",
       "cwd": "${workspaceFolder}/apps/webapp",
       "sourceMaps": true

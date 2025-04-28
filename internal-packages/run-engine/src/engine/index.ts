@@ -92,7 +92,11 @@ export class RunEngine {
         },
       }
     );
-    this.runLock = new RunLocker({ redis: this.runLockRedis });
+    this.runLock = new RunLocker({
+      redis: this.runLockRedis,
+      logger: this.logger,
+      tracer: trace.getTracer("RunLocker"),
+    });
 
     const keys = new RunQueueFullKeyProducer();
 
@@ -290,6 +294,7 @@ export class RunEngine {
 
     this.batchSystem = new BatchSystem({
       resources,
+      waitpointSystem: this.waitpointSystem,
     });
 
     this.runAttemptSystem = new RunAttemptSystem({
@@ -297,6 +302,7 @@ export class RunEngine {
       executionSnapshotSystem: this.executionSnapshotSystem,
       batchSystem: this.batchSystem,
       waitpointSystem: this.waitpointSystem,
+      delayedRunSystem: this.delayedRunSystem,
       machines: this.options.machines,
     });
 
@@ -334,6 +340,7 @@ export class RunEngine {
       concurrencyKey,
       masterQueue,
       queue,
+      lockedQueueId,
       isTest,
       delayUntil,
       queuedAt,
@@ -358,6 +365,7 @@ export class RunEngine {
       workerId,
       runnerId,
       releaseConcurrency,
+      runChainState,
     }: TriggerParams,
     tx?: PrismaClientOrTransaction
   ): Promise<TaskRun> {
@@ -413,6 +421,7 @@ export class RunEngine {
               cliVersion,
               concurrencyKey,
               queue,
+              lockedQueueId,
               masterQueue,
               secondaryMasterQueue,
               isTest,
@@ -442,6 +451,7 @@ export class RunEngine {
               seedMetadataType,
               maxDurationInSeconds,
               machinePreset: machine,
+              runChainState,
               executionSnapshots: {
                 create: {
                   engine: "V2",
@@ -489,7 +499,7 @@ export class RunEngine {
 
         span.setAttribute("runId", taskRun.id);
 
-        await this.runLock.lock([taskRun.id], 5000, async (signal) => {
+        await this.runLock.lock("trigger", [taskRun.id], 5000, async (signal) => {
           //create associated waitpoint (this completes when the run completes)
           const associatedWaitpoint = await this.waitpointSystem.createRunAssociatedWaitpoint(
             prisma,
@@ -905,43 +915,6 @@ export class RunEngine {
     }
   }
 
-  /**
-   * This is called when all the runs for a batch have been created.
-   * This does NOT mean that all the runs for the batch are completed.
-   */
-  async unblockRunForCreatedBatch({
-    runId,
-    batchId,
-    tx,
-  }: {
-    runId: string;
-    batchId: string;
-    environmentId: string;
-    projectId: string;
-    tx?: PrismaClientOrTransaction;
-  }): Promise<void> {
-    const prisma = tx ?? this.prisma;
-
-    const waitpoint = await prisma.waitpoint.findFirst({
-      where: {
-        completedByBatchId: batchId,
-      },
-    });
-
-    if (!waitpoint) {
-      this.logger.error("RunEngine.unblockRunForBatch(): Waitpoint not found", {
-        runId,
-        batchId,
-      });
-      throw new ServiceValidationError("Waitpoint not found for batch", 404);
-    }
-
-    await this.completeWaitpoint({
-      id: waitpoint.id,
-      output: { value: "Batch waitpoint completed", isError: false },
-    });
-  }
-
   async tryCompleteBatch({ batchId }: { batchId: string }): Promise<void> {
     return this.batchSystem.scheduleCompleteBatch({ batchId });
   }
@@ -1197,7 +1170,7 @@ export class RunEngine {
     tx?: PrismaClientOrTransaction;
   }) {
     const prisma = tx ?? this.prisma;
-    return await this.runLock.lock([runId], 5_000, async () => {
+    return await this.runLock.lock("handleStalledSnapshot", [runId], 5_000, async () => {
       const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId);
       if (latestSnapshot.id !== snapshotId) {
         this.logger.log(

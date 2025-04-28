@@ -384,6 +384,7 @@ const EnvironmentSchema = z.object({
     .int()
     .default(60 * 1000 * 15),
   MARQS_SHARED_QUEUE_LIMIT: z.coerce.number().int().default(1000),
+  MARQS_MAXIMUM_QUEUE_PER_ENV_COUNT: z.coerce.number().int().default(50),
   MARQS_DEV_QUEUE_LIMIT: z.coerce.number().int().default(1000),
   MARQS_MAXIMUM_NACK_COUNT: z.coerce.number().int().default(64),
   MARQS_CONCURRENCY_LIMIT_BIAS: z.coerce.number().default(0.75),
@@ -623,6 +624,9 @@ const EnvironmentSchema = z.object({
 
   /** The maximum concurrent local run processes executing at once in dev */
   DEV_MAX_CONCURRENT_RUNS: z.coerce.number().int().default(25),
+
+  /** The CLI should connect to this for dev runs */
+  DEV_ENGINE_URL: z.string().default(process.env.APP_ORIGIN ?? "http://localhost:3030"),
 
   LEGACY_RUN_ENGINE_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
   LEGACY_RUN_ENGINE_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(2),

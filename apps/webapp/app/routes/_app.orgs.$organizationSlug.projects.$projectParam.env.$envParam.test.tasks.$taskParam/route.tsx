@@ -291,7 +291,6 @@ function StandardTaskForm({ task, runs }: { task: TestTask["task"]; runs: Standa
                 }}
                 height="100%"
                 autoFocus={!tab || tab === "payload"}
-                placeholder="{ }"
                 className={cn("h-full overflow-auto", tab === "metadata" && "hidden")}
               />
               <JSONEditor

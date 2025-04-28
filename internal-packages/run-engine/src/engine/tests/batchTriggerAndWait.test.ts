@@ -191,13 +191,6 @@ describe("RunEngine batchTriggerAndWait", () => {
       expect(batchWaitpoint?.waitpoint.type).toBe("BATCH");
       expect(batchWaitpoint?.waitpoint.completedByBatchId).toBe(batch.id);
 
-      await engine.unblockRunForCreatedBatch({
-        runId: parentRun.id,
-        batchId: batch.id,
-        environmentId: authenticatedEnvironment.id,
-        projectId: authenticatedEnvironment.projectId,
-      });
-
       //dequeue and start the 1st child
       const dequeuedChild = await engine.dequeueFromMasterQueue({
         consumerId: "test_12345",
@@ -303,7 +296,7 @@ describe("RunEngine batchTriggerAndWait", () => {
       expect(child2WaitpointAfter?.status).toBe("COMPLETED");
       expect(child2WaitpointAfter?.output).toBe('{"baz":"qux"}');
 
-      await setTimeout(500);
+      await setTimeout(1_000);
 
       const runWaitpointsAfterSecondChild = await prisma.taskRunWaitpoint.findMany({
         where: {
@@ -496,13 +489,6 @@ describe("RunEngine batchTriggerAndWait", () => {
         assertNonNullable(parentAfterBatchChild);
         expect(parentAfterBatchChild.snapshot.executionStatus).toBe("EXECUTING_WITH_WAITPOINTS");
         expect(parentAfterBatchChild.batch?.id).toBe(batch.id);
-
-        await engine.unblockRunForCreatedBatch({
-          runId: parentRun.id,
-          batchId: batch.id,
-          environmentId: authenticatedEnvironment.id,
-          projectId: authenticatedEnvironment.projectId,
-        });
 
         //dequeue and start the batch child
         const dequeuedBatchChild = await engine.dequeueFromMasterQueue({

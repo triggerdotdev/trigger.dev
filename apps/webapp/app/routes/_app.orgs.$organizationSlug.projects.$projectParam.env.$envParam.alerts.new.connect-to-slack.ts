@@ -1,13 +1,11 @@
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { prisma } from "~/db.server";
-import { env } from "~/env.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { OrgIntegrationRepository } from "~/models/orgIntegration.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { requireUserId } from "~/services/session.server";
 import {
   EnvironmentParamSchema,
-  ProjectParamSchema,
   v3NewProjectAlertPath,
   v3NewProjectAlertPathConnectToSlackPath,
 } from "~/utils/pathBuilder";
@@ -15,6 +13,9 @@ import {
 export async function loader({ request, params }: LoaderFunctionArgs) {
   const userId = await requireUserId(request);
   const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
+
+  const url = new URL(request.url);
+  const shouldReinstall = url.searchParams.get("reinstall") === "true";
 
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
 
@@ -30,7 +31,8 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     },
   });
 
-  if (integration) {
+  // If integration exists and we're not reinstalling, redirect back to alerts
+  if (integration && !shouldReinstall) {
     return redirectWithSuccessMessage(
       `${v3NewProjectAlertPath({ slug: organizationSlug }, project, {
         slug: envParam,
@@ -38,15 +40,15 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       request,
       "Successfully connected your Slack workspace"
     );
-  } else {
-    // Redirect to Slack
-    return await OrgIntegrationRepository.redirectToAuthService(
-      "SLACK",
-      project.organizationId,
-      request,
-      v3NewProjectAlertPathConnectToSlackPath({ slug: organizationSlug }, project, {
-        slug: envParam,
-      })
-    );
   }
+
+  // Redirect to Slack for new installation or reinstallation
+  return await OrgIntegrationRepository.redirectToAuthService(
+    "SLACK",
+    project.organizationId,
+    request,
+    v3NewProjectAlertPathConnectToSlackPath({ slug: organizationSlug }, project, {
+      slug: envParam,
+    })
+  );
 }

@@ -30,6 +30,7 @@ import {
   type Result,
 } from "@internal/redis";
 import { MessageNotFoundError } from "./errors.js";
+import { tryCatch } from "@trigger.dev/core";
 
 const SemanticAttributes = {
   QUEUE: "runqueue.queue",
@@ -49,7 +50,7 @@ export type RunQueueOptions = {
   keys: RunQueueKeyProducer;
   queueSelectionStrategy: RunQueueSelectionStrategy;
   verbose?: boolean;
-  logger: Logger;
+  logger?: Logger;
   retryOptions?: RetryOptions;
 };
 
@@ -88,7 +89,7 @@ export class RunQueue {
         });
       },
     });
-    this.logger = options.logger;
+    this.logger = options.logger ?? new Logger("RunQueue", "warn");
 
     this.keys = options.keys;
     this.queueSelectionStrategy = options.queueSelectionStrategy;
@@ -396,47 +397,41 @@ export class RunQueue {
 
         const messages: DequeuedMessage[] = [];
 
-        // Each env starts with its list of candidate queues
-        const tenantQueues: Record<string, string[]> = {};
-
-        // Initialize tenantQueues with the queues for each env
         for (const env of envQueues) {
-          tenantQueues[env.envId] = [...env.queues]; // Create a copy of the queues array
-        }
+          attemptedEnvs++;
 
-        // Continue until we've hit max count or all tenants have empty queue lists
-        while (
-          messages.length < maxCount &&
-          Object.values(tenantQueues).some((queues) => queues.length > 0)
-        ) {
-          for (const env of envQueues) {
-            attemptedEnvs++;
-
-            // Skip if this tenant has no more queues
-            if (tenantQueues[env.envId].length === 0) {
-              continue;
-            }
-
-            // Pop the next queue (using round-robin order)
-            const queue = tenantQueues[env.envId].shift()!;
+          for (const queue of env.queues) {
             attemptedQueues++;
 
             // Attempt to dequeue from this queue
-            const message = await this.#callDequeueMessage({
-              messageQueue: queue,
-            });
+            const [error, message] = await tryCatch(
+              this.#callDequeueMessage({
+                messageQueue: queue,
+              })
+            );
+
+            if (error) {
+              this.logger.error(
+                `[dequeueMessageInSharedQueue][${this.name}] Failed to dequeue from queue ${queue}`,
+                {
+                  error,
+                }
+              );
+            }
 
             if (message) {
               messages.push(message);
-              // Re-add this queue at the end, since it might have more messages
-              tenantQueues[env.envId].push(queue);
             }
-            // If message is null, do not re-add the queue in this cycle
 
-            // If we've reached maxCount, break out of the loop
+            // If we've reached maxCount, we don't want to look at this env anymore
             if (messages.length >= maxCount) {
               break;
             }
+          }
+
+          // If we've reached maxCount, we're completely done
+          if (messages.length >= maxCount) {
+            break;
           }
         }
 
