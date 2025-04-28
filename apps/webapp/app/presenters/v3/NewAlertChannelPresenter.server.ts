@@ -100,28 +100,47 @@ async function getSlackChannelsForToken(integration: AuthenticatableIntegration)
 
 type Channels = Awaited<ReturnType<WebClient["conversations"]["list"]>>["channels"];
 
-async function getSlackConversationsPage(client: WebClient, nextCursor?: string) {
-  return client.conversations.list({
-    types: "public_channel,private_channel",
-    exclude_archived: true,
-    cursor: nextCursor,
-  });
-}
-
 async function getAllSlackConversations(client: WebClient) {
   let nextCursor: string | undefined = undefined;
   let channels: Channels = [];
 
-  do {
-    const response = await getSlackConversationsPage(client, nextCursor);
+  try {
+    do {
+      // The `tryCatch` util runs into a type error due to self referencing.
+      // So we fall back to a good old try/catch block here.
+      const response = await client.conversations.list({
+        types: "public_channel,private_channel",
+        exclude_archived: true,
+        cursor: nextCursor,
+        limit: 999,
+      });
 
-    if (!response.ok) {
-      throw new Error(`Failed to get channels: ${response.error}`);
+      channels = channels.concat(response.channels ?? []);
+      nextCursor = response.response_metadata?.next_cursor;
+    } while (nextCursor);
+  } catch (error) {
+    if (error && isSlackError(error) && error.data.error === "ratelimited") {
+      logger.warn("Rate limiting issue occurred while fetching Slack channels", {
+        error,
+      });
+
+      // This is a workaround to the current way we handle Slack channels for creating alerts.
+      // For workspaces with a lot of channels (>10000) we might hit the rate limit for this slack endpoint,
+      // as multiple requests are needed to fetch all channels.
+      // We use the largest allowed page size of 999 to reduce the chance of hitting the rate limit.
+
+      // This is mainly due to workspaces with a large number of archived channels,
+      // which this slack endpoint unfortunately filters out only after fetching the page of channels without applying any filters first.
+      // https://api.slack.com/methods/conversations.list#markdown
+
+      // We expect most workspaces not to run into this issue, but if they do, we at least return some channels.
+      // In the future, we might revisit the way we handle Slack channels and cache them on our side to support
+      // proper searching. Until then, we track occurrences of this issue using a metric.
+      return channels;
     }
 
-    channels = channels.concat(response.channels ?? []);
-    nextCursor = response.response_metadata?.next_cursor;
-  } while (nextCursor);
+    throw error;
+  }
 
   return channels;
 }
