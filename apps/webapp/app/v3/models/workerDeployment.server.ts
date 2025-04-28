@@ -1,5 +1,10 @@
 import type { Prettify } from "@trigger.dev/core";
-import { BackgroundWorker, RunEngineVersion, WorkerDeploymentType } from "@trigger.dev/database";
+import {
+  BackgroundWorker,
+  PrismaClientOrTransaction,
+  RunEngineVersion,
+  WorkerDeploymentType,
+} from "@trigger.dev/database";
 import {
   CURRENT_DEPLOYMENT_LABEL,
   CURRENT_UNMANAGED_DEPLOYMENT_LABEL,
@@ -68,12 +73,16 @@ export async function findCurrentWorkerDeployment({
   environmentId,
   label = CURRENT_DEPLOYMENT_LABEL,
   type,
+  prismaClient,
 }: {
   environmentId: string;
   label?: string;
   type?: WorkerDeploymentType;
+  prismaClient?: PrismaClientOrTransaction;
 }): Promise<WorkerDeploymentWithWorkerTasks | undefined> {
-  const promotion = await prisma.workerDeploymentPromotion.findFirst({
+  const $prisma = prismaClient ?? prisma;
+
+  const promotion = await $prisma.workerDeploymentPromotion.findFirst({
     where: {
       environmentId,
       label,
@@ -187,13 +196,14 @@ export async function findCurrentUnmanagedWorkerDeployment(
 
 export async function findCurrentWorkerFromEnvironment(
   environment: Pick<AuthenticatedEnvironment, "id" | "type">,
+  prismaClient: PrismaClientOrTransaction = prisma,
   label = CURRENT_DEPLOYMENT_LABEL
 ): Promise<Pick<
   BackgroundWorker,
   "id" | "friendlyId" | "version" | "sdkVersion" | "cliVersion" | "supportsLazyAttempts" | "engine"
 > | null> {
   if (environment.type === "DEVELOPMENT") {
-    const latestDevWorker = await prisma.backgroundWorker.findFirst({
+    const latestDevWorker = await prismaClient.backgroundWorker.findFirst({
       where: {
         runtimeEnvironmentId: environment.id,
       },
@@ -206,13 +216,15 @@ export async function findCurrentWorkerFromEnvironment(
     const deployment = await findCurrentWorkerDeployment({
       environmentId: environment.id,
       label,
+      prismaClient,
     });
     return deployment?.worker ?? null;
   }
 }
 
 export async function findCurrentUnmanagedWorkerFromEnvironment(
-  environment: Pick<AuthenticatedEnvironment, "id" | "type">
+  environment: Pick<AuthenticatedEnvironment, "id" | "type">,
+  prismaClient: PrismaClientOrTransaction = prisma
 ): Promise<Pick<
   BackgroundWorker,
   "id" | "friendlyId" | "version" | "sdkVersion" | "cliVersion" | "supportsLazyAttempts"
@@ -221,7 +233,11 @@ export async function findCurrentUnmanagedWorkerFromEnvironment(
     return null;
   }
 
-  return await findCurrentWorkerFromEnvironment(environment, CURRENT_UNMANAGED_DEPLOYMENT_LABEL);
+  return await findCurrentWorkerFromEnvironment(
+    environment,
+    prismaClient,
+    CURRENT_UNMANAGED_DEPLOYMENT_LABEL
+  );
 }
 
 export async function getWorkerDeploymentFromWorker(

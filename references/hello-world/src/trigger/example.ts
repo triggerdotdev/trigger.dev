@@ -37,6 +37,7 @@ export const helloWorldTask = task({
 
 export const parentTask = task({
   id: "parent",
+  machine: "medium-1x",
   run: async (payload: any, { ctx }) => {
     logger.log("Hello, world from the parent", { payload });
     await childTask.triggerAndWait(

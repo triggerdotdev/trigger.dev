@@ -37,7 +37,7 @@ export class DelayedRunSystem {
       this.$.tracer,
       "rescheduleDelayedRun",
       async () => {
-        return await this.$.runLock.lock([runId], 5_000, async () => {
+        return await this.$.runLock.lock("rescheduleDelayedRun", [runId], 5_000, async () => {
           const snapshot = await getLatestExecutionSnapshot(prisma, runId);
 
           //if the run isn't just created then we can't reschedule it
@@ -130,5 +130,9 @@ export class DelayedRunSystem {
       payload: { runId },
       availableAt: delayUntil,
     });
+  }
+
+  async preventDelayedRunFromBeingEnqueued({ runId }: { runId: string }) {
+    await this.$.worker.ack(`enqueueDelayedRun:${runId}`);
   }
 }

@@ -11,7 +11,7 @@ import {
   RunEngineVersion,
   RuntimeEnvironmentType,
 } from "@trigger.dev/database";
-import { RunEngine } from "../index.js";
+import type { RunEngine } from "../index.js";
 
 export type AuthenticatedEnvironment = Prisma.RuntimeEnvironmentGetPayload<{
   include: { project: true; organization: true; orgMember: true };
@@ -30,6 +30,19 @@ export async function setupAuthenticatedEnvironment(
     },
   });
 
+  const workerGroup = await prisma.workerInstanceGroup.create({
+    data: {
+      name: "default",
+      masterQueue: "default",
+      type: "MANAGED",
+      token: {
+        create: {
+          tokenHash: "token_hash",
+        },
+      },
+    },
+  });
+
   const project = await prisma.project.create({
     data: {
       name: "Test Project",
@@ -37,6 +50,7 @@ export async function setupAuthenticatedEnvironment(
       externalRef: "proj_1234",
       organizationId: org.id,
       engine,
+      defaultWorkerGroupId: workerGroup.id,
     },
   });
 
@@ -156,6 +170,11 @@ export async function setupBackgroundWorker(
           typeof queueOptions?.releaseConcurrencyOnWaitpoint === "boolean"
             ? queueOptions.releaseConcurrencyOnWaitpoint
             : undefined,
+        tasks: {
+          connect: {
+            id: task.id,
+          },
+        },
       },
       update: {
         concurrencyLimit:
@@ -165,6 +184,11 @@ export async function setupBackgroundWorker(
         workers: {
           connect: {
             id: worker.id,
+          },
+        },
+        tasks: {
+          connect: {
+            id: task.id,
           },
         },
       },

@@ -384,6 +384,7 @@ const EnvironmentSchema = z.object({
     .int()
     .default(60 * 1000 * 15),
   MARQS_SHARED_QUEUE_LIMIT: z.coerce.number().int().default(1000),
+  MARQS_MAXIMUM_QUEUE_PER_ENV_COUNT: z.coerce.number().int().default(50),
   MARQS_DEV_QUEUE_LIMIT: z.coerce.number().int().default(1000),
   MARQS_MAXIMUM_NACK_COUNT: z.coerce.number().int().default(64),
   MARQS_CONCURRENCY_LIMIT_BIAS: z.coerce.number().default(0.75),
@@ -459,7 +460,6 @@ const EnvironmentSchema = z.object({
   RUN_ENGINE_REUSE_SNAPSHOT_COUNT: z.coerce.number().int().default(0),
   RUN_ENGINE_MAXIMUM_ENV_COUNT: z.coerce.number().int().optional(),
   RUN_ENGINE_WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().default(60_000),
-  RUN_ENGINE_MAX_DEQUEUE_LOOP_ATTEMPTS: z.coerce.number().int().default(10),
 
   RUN_ENGINE_WORKER_REDIS_HOST: z
     .string()

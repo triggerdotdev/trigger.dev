@@ -1,4 +1,4 @@
-import { batch, logger, queue, queues, task } from "@trigger.dev/sdk/v3";
+import { batch, logger, queue, queues, task, tasks } from "@trigger.dev/sdk/v3";
 
 export const queuesTester = task({
   id: "queues-tester",
@@ -233,5 +233,32 @@ export const sharedQueueTestTask = task({
       task1Count: task1Runs,
       task2Count: task2Runs,
     };
+  },
+});
+
+export const lockedQueueTask = task({
+  id: "locked-queue-task",
+  run: async (payload: any) => {
+    logger.log("Locked queue task", { payload });
+
+    await lockedQueueChildTask.trigger({}, { queue: "queue_does_not_exist" });
+    await lockedQueueChildTask.triggerAndWait({}, { queue: "queue_does_not_exist" });
+  },
+});
+
+export const lockedQueueChildTask = task({
+  id: "locked-queue-child-task",
+  run: async (payload: any) => {
+    logger.log("Locked queue child task", { payload });
+  },
+});
+
+export const lockedTaskIdentifierTask = task({
+  id: "locked-task-identifier-task",
+  run: async (payload: any) => {
+    logger.log("Locked task identifier task", { payload });
+
+    await tasks.trigger("task_does_not_exist", {});
+    await tasks.triggerAndWait("task_does_not_exist", {});
   },
 });
