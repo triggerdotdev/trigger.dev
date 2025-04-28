@@ -5,6 +5,7 @@ import { expect } from "vitest";
 import { RunEngine } from "../index.js";
 import { setTimeout } from "node:timers/promises";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
+import { DequeuedMessage } from "@trigger.dev/core/v3";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -115,12 +116,17 @@ describe("RunEngine batchTrigger", () => {
       expect(queueLength).toBe(2);
 
       //dequeue
-      const [d1, d2] = await engine.dequeueFromMasterQueue({
-        consumerId: "test_12345",
-        masterQueue: run1.masterQueue,
-        maxRunCount: 10,
-      });
-
+      const dequeued: DequeuedMessage[] = [];
+      for (let i = 0; i < 2; i++) {
+        dequeued.push(
+          ...(await engine.dequeueFromMasterQueue({
+            consumerId: "test_12345",
+            masterQueue: "main",
+            maxRunCount: 1,
+          }))
+        );
+      }
+      const [d1, d2] = dequeued;
       //attempts
       const attempt1 = await engine.startRunAttempt({
         runId: d1.run.id,
