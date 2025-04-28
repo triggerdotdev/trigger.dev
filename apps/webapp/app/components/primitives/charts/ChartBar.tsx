@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from "react";
+import React, { useCallback, useEffect, useMemo } from "react";
 import {
   Bar,
   BarChart,
@@ -10,18 +10,18 @@ import {
   YAxis,
 } from "recharts";
 import {
-  type ChartConfig,
   ChartContainer,
   ChartLegend,
   ChartLegendContentRows,
   ChartTooltip,
+  type ChartConfig,
   type ChartState,
 } from "~/components/primitives/charts/Chart";
+import { cn } from "~/utils/cn";
 import { Button } from "../Buttons";
 import { Paragraph } from "../Paragraph";
-import { ChartBarLoading, ChartNoData, ChartInvalid } from "./ChartLoading";
+import { ChartBarLoading, ChartInvalid, ChartNoData } from "./ChartLoading";
 import { useDateRange } from "./DateRangeContext";
-import { cn } from "~/utils/cn";
 
 //TODO: fix the first and last bars in a stack not having rounded corners
 
@@ -76,11 +76,7 @@ export function ChartBar({
   const [activeBarKey, setActiveBarKey] = React.useState<string | null>(null);
   const [activeDataPointIndex, setActiveDataPointIndex] = React.useState<number | null>(null);
   const [tooltipActive, setTooltipActive] = React.useState(false);
-
-  // New state for the inspection line
   const [inspectionLine, setInspectionLine] = React.useState<string | null>(null);
-
-  // Zoom state (only used when not using global date range)
   const [refAreaLeft, setRefAreaLeft] = React.useState<string | null>(null);
   const [refAreaRight, setRefAreaRight] = React.useState<string | null>(null);
   const [localStartIndex, setLocalStartIndex] = React.useState<number>(0);
@@ -93,7 +89,7 @@ export function ChartBar({
   const displayState = state;
 
   // Update local data when initialData changes and we're not using global
-  React.useEffect(() => {
+  useEffect(() => {
     if (!useGlobalDateRange) {
       setLocalOriginalData(initialData);
       setLocalStartIndex(0);
