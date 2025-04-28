@@ -356,6 +356,11 @@ export class DequeueSystem {
                   },
                 });
 
+                this.$.eventBus.emit("runStatusChanged", {
+                  time: new Date(),
+                  runId,
+                });
+
                 if (!lockedTaskRun) {
                   this.$.logger.error(
                     "RunEngine.dequeueFromMasterQueue(): Failed to lock task run",
@@ -573,6 +578,11 @@ export class DequeueSystem {
 
           //we ack because when it's deployed it will be requeued
           await this.$.runQueue.acknowledgeMessage(orgId, runId);
+
+          this.$.eventBus.emit("runStatusChanged", {
+            time: new Date(),
+            runId,
+          });
         });
       },
       {

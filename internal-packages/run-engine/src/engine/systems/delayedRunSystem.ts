@@ -68,6 +68,11 @@ export class DelayedRunSystem {
 
           await this.$.worker.reschedule(`enqueueDelayedRun:${updatedRun.id}`, delayUntil);
 
+          this.$.eventBus.emit("runStatusChanged", {
+            time: new Date(),
+            runId: updatedRun.id,
+          });
+
           return updatedRun;
         });
       },
@@ -107,6 +112,11 @@ export class DelayedRunSystem {
         status: "PENDING",
         queuedAt: new Date(),
       },
+    });
+
+    this.$.eventBus.emit("runStatusChanged", {
+      time: new Date(),
+      runId,
     });
 
     if (run.ttl) {

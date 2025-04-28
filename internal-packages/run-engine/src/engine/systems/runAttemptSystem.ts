@@ -248,6 +248,11 @@ export class RunAttemptSystem {
             }
           );
 
+          this.$.eventBus.emit("runStatusChanged", {
+            time: new Date(),
+            runId: taskRun.id,
+          });
+
           if (!result) {
             this.$.logger.error("RunEngine.createRunAttempt(): failed to create task run attempt", {
               runId: taskRun.id,
@@ -474,6 +479,11 @@ export class RunAttemptSystem {
           });
           const newSnapshot = await getLatestExecutionSnapshot(prisma, runId);
 
+          this.$.eventBus.emit("runStatusChanged", {
+            time: new Date(),
+            runId,
+          });
+
           await this.$.runQueue.acknowledgeMessage(run.project.organizationId, runId);
 
           // We need to manually emit this as we created the final snapshot as part of the task run update
@@ -662,6 +672,11 @@ export class RunAttemptSystem {
                     },
                   },
                 },
+              });
+
+              this.$.eventBus.emit("runStatusChanged", {
+                time: new Date(),
+                runId,
               });
 
               const nextAttemptNumber =
@@ -992,6 +1007,11 @@ export class RunAttemptSystem {
           },
         });
 
+        this.$.eventBus.emit("runStatusChanged", {
+          time: new Date(),
+          runId,
+        });
+
         //if the run is delayed and hasn't started yet, we need to prevent it being added to the queue in future
         if (isInitialState(latestSnapshot.executionStatus) && run.delayUntil) {
           await this.delayedRunSystem.preventDelayedRunFromBeingEnqueued({ runId });
@@ -1143,6 +1163,11 @@ export class RunAttemptSystem {
           createdAt: true,
           completedAt: true,
         },
+      });
+
+      this.$.eventBus.emit("runStatusChanged", {
+        time: new Date(),
+        runId,
       });
 
       const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(prisma, {

@@ -403,6 +403,8 @@ export class RunEngine {
               number,
               friendlyId,
               runtimeEnvironmentId: environment.id,
+              environmentType: environment.type,
+              organizationId: environment.organization.id,
               projectId: environment.project.id,
               idempotencyKey,
               idempotencyKeyExpiresAt,
@@ -550,8 +552,7 @@ export class RunEngine {
 
         this.eventBus.emit("runStatusChanged", {
           time: new Date(),
-          run: taskRun,
-          environment,
+          runId: taskRun.id,
         });
 
         return taskRun;

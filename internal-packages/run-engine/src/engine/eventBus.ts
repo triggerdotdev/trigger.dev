@@ -7,8 +7,7 @@ export type EventBusEvents = {
   runStatusChanged: [
     {
       time: Date;
-      run: TaskRun;
-      environment: MinimalAuthenticatedEnvironment;
+      runId: string;
     },
   ];
   runAttemptStarted: [

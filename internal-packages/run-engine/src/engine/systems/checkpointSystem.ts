@@ -143,6 +143,11 @@ export class CheckpointSystem {
         throw new ServiceValidationError("Run not found", 404);
       }
 
+      this.$.eventBus.emit("runStatusChanged", {
+        time: new Date(),
+        runId,
+      });
+
       // Create the checkpoint
       const taskRunCheckpoint = await prisma.taskRunCheckpoint.create({
         data: {
@@ -271,6 +276,11 @@ export class CheckpointSystem {
 
         throw new ServiceValidationError("Run not found", 404);
       }
+
+      this.$.eventBus.emit("runStatusChanged", {
+        time: new Date(),
+        runId,
+      });
 
       const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(prisma, {
         run,

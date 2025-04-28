@@ -376,6 +376,8 @@ export class TriggerTaskServiceV1 extends BaseService {
                     number: num,
                     friendlyId: runFriendlyId,
                     runtimeEnvironmentId: environment.id,
+                    environmentType: environment.type,
+                    organizationId: environment.organizationId,
                     projectId: environment.projectId,
                     idempotencyKey,
                     idempotencyKeyExpiresAt: idempotencyKey ? idempotencyKeyExpiresAt : undefined,

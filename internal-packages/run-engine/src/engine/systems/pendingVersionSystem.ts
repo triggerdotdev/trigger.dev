@@ -100,6 +100,11 @@ export class PendingVersionSystem {
           tx,
         });
       });
+
+      this.$.eventBus.emit("runStatusChanged", {
+        time: new Date(),
+        runId: run.id,
+      });
     }
 
     //enqueue more if needed

@@ -13,6 +13,7 @@ export class RunsDashboardService {
   });
 
   async upsertRun(
+    eventTime: Date,
     taskRun: TaskRun,
     environmentType: RuntimeEnvironmentType,
     organizationId: string
@@ -36,7 +37,7 @@ export class RunsDashboardService {
       queue: taskRun.queue,
       schedule_id: taskRun.scheduleId ?? undefined,
       batch_id: taskRun.batchId ?? undefined,
-      event_time: Date.now(),
+      event_time: eventTime.getTime(),
       created_at: taskRun.createdAt.getTime(),
       updated_at: taskRun.updatedAt.getTime(),
       completed_at: taskRun.completedAt ? taskRun.completedAt.getTime() : undefined,
@@ -120,13 +121,8 @@ export class RunsDashboardService {
 export type RunDashboardEvents = {
   runStatusUpdate: [
     {
-      run: TaskRun;
-      organization: {
-        id: string;
-      };
-      environment: {
-        type: RuntimeEnvironmentType;
-      };
+      time: Date;
+      runId: string;
     }
   ];
 };

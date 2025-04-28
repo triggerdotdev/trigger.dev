@@ -1,27 +1,21 @@
-import { singleton } from "~/utils/singleton";
 import { ClickHouse } from "@internal/clickhouse";
+import { EventEmitter } from "node:events";
+import { prisma } from "~/db.server";
+import { singleton } from "~/utils/singleton";
+import { engine } from "~/v3/runEngine.server";
+import { logger } from "./logger.server";
 import {
   RunDashboardEventBus,
   RunDashboardEvents,
   RunsDashboardService,
 } from "./runsDashboardService.server";
-import { EventEmitter } from "node:events";
-import { RuntimeEnvironmentType, TaskRun } from "@trigger.dev/database";
-import { engine } from "~/v3/runEngine.server";
-import { logger } from "./logger.server";
 
 const runDashboardEventBus: RunDashboardEventBus = new EventEmitter<RunDashboardEvents>();
 
-export type TaskRunStatusUpdateEnvironment = {
-  type: RuntimeEnvironmentType;
-  organizationId: string;
-};
-
-export function emitRunStatusUpdate(run: TaskRun, environment: TaskRunStatusUpdateEnvironment) {
+export function emitRunStatusUpdate(runId: string) {
   runDashboardEventBus.emit("runStatusUpdate", {
-    run,
-    environment,
-    organization: { id: environment.organizationId },
+    time: new Date(),
+    runId,
   });
 }
 
@@ -31,16 +25,46 @@ export const runsDashboard = singleton("runsDashboard", () => {
   const service = new RunsDashboardService(clickhouse);
 
   runDashboardEventBus.on("runStatusUpdate", async (event) => {
-    await service.upsertRun(event.run, event.environment.type, event.organization.id);
+    await upsertRun(event.time, event.runId, service);
   });
 
   engine.eventBus.on("runStatusChanged", async (event) => {
-    logger.debug("RunDashboard: runStatusChanged", {
-      event,
-    });
-
-    await service.upsertRun(event.run, event.environment.type, event.environment.organization.id);
+    await upsertRun(event.time, event.runId, service);
   });
 
   return service;
 });
+
+async function upsertRun(time: Date, runId: string, service: RunsDashboardService) {
+  const run = await prisma.taskRun.findFirst({
+    where: {
+      id: runId,
+    },
+  });
+
+  if (!run) {
+    logger.error("RunDashboard: upsertRun: run not found", {
+      runId,
+    });
+
+    return;
+  }
+
+  if (!run.environmentType) {
+    logger.error("RunDashboard: upsertRun: run environment type not found", {
+      runId,
+    });
+
+    return;
+  }
+
+  if (!run.organizationId) {
+    logger.error("RunDashboard: upsertRun: run organization id not found", {
+      runId,
+    });
+
+    return;
+  }
+
+  await service.upsertRun(time, run, run.environmentType, run.organizationId);
+}
