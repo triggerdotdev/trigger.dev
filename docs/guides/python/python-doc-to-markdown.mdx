@@ -1,10 +1,15 @@
 ---
 title: "Convert documents to markdown using Python and MarkItDown"
-sidebarTitle: "Python document to markdown"
+sidebarTitle: "Convert docs to markdown"
 description: "Learn how to use Trigger.dev with Python to convert documents to markdown using MarkItDown."
 ---
 
 import PythonLearnMore from "/snippets/python-learn-more.mdx";
+
+<Note>
+  This project uses Trigger.dev v4 (which is currently in beta as of 28 April 2025). If you want to
+  run this project you will need to [upgrade to v4](/docs/upgrade-to-v4).
+</Note>
 
 ## Overview
 
@@ -71,13 +76,11 @@ export default defineConfig({
 This task uses the `python.runScript` method to run the `markdown-converter.py` script with the given document URL as an argument.
 
 ```ts src/trigger/convertToMarkdown.ts
-import { task } from "@trigger.dev/sdk";
+import { task } from "@trigger.dev/sdk/v3";
 import { python } from "@trigger.dev/python";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
-import * as https from "https";
-import * as http from "http";
 
 export const convertToMarkdown = task({
   id: "convert-to-markdown",
@@ -92,18 +95,9 @@ export const convertToMarkdown = task({
     const tempFilePath = path.join(tempDir, `${fileName}${extension}`);
 
     // STEP 2: Download file from URL
-    await new Promise<void>((resolve, reject) => {
-      const protocol = url.startsWith("https") ? https : http;
-      const file = fs.createWriteStream(tempFilePath);
-
-      protocol.get(url, (response) => {
-        response.pipe(file);
-        file.on("finish", () => {
-          file.close();
-          resolve();
-        });
-      });
-    });
+    const response = await fetch(url);
+    const buffer = await response.arrayBuffer();
+    await fs.promises.writeFile(tempFilePath, Buffer.from(buffer));
 
     // STEP 3: Run Python script to convert document to markdown
     const pythonResult = await python.runScript("./src/python/markdown-converter.py", [
