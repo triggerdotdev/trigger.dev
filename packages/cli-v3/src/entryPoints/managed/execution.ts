@@ -469,10 +469,12 @@ export class RunExecution {
 
     // Also set or update the attempt number - we do this to detect illegal attempt number changes, e.g. from stalled runners coming back online
     const attemptNumber = start.data.run.attemptNumber;
-    if (attemptNumber) {
+    if (attemptNumber && attemptNumber > 0) {
       this.currentAttemptNumber = attemptNumber;
     } else {
-      this.sendDebugLog("ERROR: no attempt number returned from start attempt");
+      this.sendDebugLog("ERROR: invalid attempt number returned from start attempt", {
+        attemptNumber: String(attemptNumber),
+      });
     }
 
     const metrics = this.measureExecutionMetrics({
