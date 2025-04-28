@@ -2,18 +2,65 @@ import { RadioGroup } from "@headlessui/react";
 import { motion } from "framer-motion";
 import { cn } from "~/utils/cn";
 
-const variants = {
-  primary: {
-    base: "bg-charcoal-700",
-    active: "text-text-bright hover:bg-charcoal-750/50",
+const sizes = {
+  small: {
+    control: "h-6",
+    option: "px-2 text-xs",
+    container: "gap-x-0.5",
   },
-  secondary: {
-    base: "bg-charcoal-700/50",
-    active: "text-text-bright bg-charcoal-700 rounded-[2px] border border-charcoal-600/50",
+  medium: {
+    control: "h-10",
+    option: "px-3 py-[0.13rem] text-sm",
+    container: "p-1 gap-x-0.5",
   },
 };
 
-type Variants = keyof typeof variants;
+const theme = {
+  primary: {
+    base: "bg-charcoal-700",
+    active: "text-text-bright hover:bg-charcoal-750/50",
+    inactive: "text-text-dimmed transition hover:text-text-bright",
+    selected: "absolute inset-0 rounded-[2px] outline outline-3 outline-primary",
+  },
+  secondary: {
+    base: "bg-charcoal-700/50",
+    active: "text-text-bright",
+    inactive: "text-text-dimmed transition hover:text-text-bright",
+    selected: "absolute inset-0 rounded bg-charcoal-700 border border-charcoal-600",
+  },
+};
+
+type Size = keyof typeof sizes;
+type Theme = keyof typeof theme;
+
+type VariantStyle = {
+  base: string;
+  active: string;
+  inactive: string;
+  option: string;
+  container: string;
+  selected: string;
+};
+
+function createVariant(sizeName: Size, themeName: Theme): VariantStyle {
+  return {
+    base: cn(sizes[sizeName].control, theme[themeName].base),
+    active: theme[themeName].active,
+    inactive: theme[themeName].inactive,
+    option: sizes[sizeName].option,
+    container: sizes[sizeName].container,
+    selected: theme[themeName].selected,
+  };
+}
+
+const variants = {
+  "primary/small": createVariant("small", "primary"),
+  "primary/medium": createVariant("medium", "primary"),
+  "secondary/small": createVariant("small", "secondary"),
+  "secondary/medium": createVariant("medium", "secondary"),
+} as const;
+
+type VariantType = keyof typeof variants;
 
 type Options = {
   label: string;
@@ -25,7 +72,7 @@ type SegmentedControlProps = {
   value?: string;
   defaultValue?: string;
   options: Options[];
-  variant?: Variants;
+  variant?: VariantType;
   fullWidth?: boolean;
   onChange?: (value: string) => void;
 };
@@ -35,15 +82,18 @@ export default function SegmentedControl({
   value,
   defaultValue,
   options,
-  variant = "secondary",
+  variant = "secondary/medium",
   fullWidth,
   onChange,
 }: SegmentedControlProps) {
+  const variantStyle = variants[variant];
+  const isPrimary = variant.startsWith("primary");
+
   return (
     <div
       className={cn(
-        "flex h-10 rounded text-text-bright",
-        variants[variant].base,
+        "flex rounded text-text-bright",
+        variantStyle.base,
         fullWidth ? "w-full" : "w-fit"
       )}
     >
@@ -58,31 +108,36 @@ export default function SegmentedControl({
         }}
         className="w-full"
       >
-        <div className="flex h-full w-full items-center justify-between gap-x-1 p-1">
+        <div
+          className={cn("flex h-full w-full items-center justify-between", variantStyle.container)}
+        >
           {options.map((option) => (
             <RadioGroup.Option
               key={option.value}
               value={option.value}
-              className={({ active, checked }) =>
+              className={({ checked }) =>
                 cn(
                   "relative flex h-full grow cursor-pointer text-center font-normal focus-custom",
-                  checked
-                    ? variants[variant].active
-                    : "text-text-dimmed transition hover:text-text-bright"
+                  checked ? variantStyle.active : variantStyle.inactive
                 )
               }
             >
               {({ checked }) => (
                 <>
-                  <div className="relative flex h-full w-full items-center justify-between px-3 py-[0.13rem]">
-                    <div className="z-10 flex h-full w-full items-center justify-center text-sm">
+                  <div
+                    className={cn(
+                      "relative flex h-full w-full items-center justify-between",
+                      variantStyle.option
+                    )}
+                  >
+                    <div className="z-10 flex h-full w-full items-center justify-center">
                       <RadioGroup.Label as="p">{option.label}</RadioGroup.Label>
                     </div>
-                    {checked && variant === "primary" && (
+                    {checked && (
                       <motion.div
                         layoutId={`segmented-control-${name}`}
                         transition={{ duration: 0.4, type: "spring" }}
-                        className="absolute inset-0 rounded-[2px] shadow-md outline outline-3 outline-primary"
+                        className={variantStyle.selected}
                       />
                     )}
                   </div>
