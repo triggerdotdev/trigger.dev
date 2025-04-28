@@ -149,8 +149,6 @@ export async function runClickhouseMigrations(client: ClickHouseClient, migratio
   const queries = await getAllClickhouseMigrationQueries(migrationsPath);
 
   for (const query of queries) {
-    console.log(`Running migration: ${query}`);
-
     await client.command({
       query,
     });
@@ -164,12 +162,6 @@ async function getAllClickhouseMigrationQueries(migrationsPath: string) {
 
   for (const migration of migrations) {
     const migrationPath = resolve(migrationsPath, migration);
-
-    console.log(`Reading migration: ${migrationPath}`, {
-      migrationPath,
-      migration,
-      migrationsPath,
-    });
 
     const migrationContent = await readFile(migrationPath, "utf-8");
 
@@ -188,10 +180,6 @@ async function getAllClickhouseMigrationQueries(migrationsPath: string) {
       );
     }
   }
-
-  console.log(`Found queries`, {
-    queries,
-  });
 
   return queries;
 }

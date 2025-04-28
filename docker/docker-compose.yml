@@ -105,6 +105,18 @@ services:
       - app_network
     command: ["goose", "${GOOSE_COMMAND:-up}"]
 
+  ch-ui:
+    image: ghcr.io/caioricciuti/ch-ui:latest
+    restart: always
+    ports:
+      - "5521:5521"
+    environment:
+      VITE_CLICKHOUSE_URL: "http://clickhouse:8123"
+      VITE_CLICKHOUSE_USER: "default"
+      VITE_CLICKHOUSE_PASS: "password"
+    networks:
+      - app_network
+
   # otel-collector:
   #   container_name: otel-collector
   #   image: otel/opentelemetry-collector-contrib:latest
