@@ -564,18 +564,25 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
         runIds: {
           push: runIds,
         },
+        processingJobsCount: {
+          increment: runIds.length,
+        },
+      },
+      select: {
+        processingJobsCount: true,
+        runCount: true,
       },
     });
+
+    //triggered all the runs
+    if (updatedBatch.processingJobsCount >= updatedBatch.runCount) {
+      //if all the runs were idempotent, it's possible the batch is already completed
+      await this._engine.tryCompleteBatch({ batchId: batch.id });
+    }
 
     // if there are more items to process, requeue the batch
     if (workingIndex < batch.runCount) {
       return { status: "INCOMPLETE", workingIndex };
-    }
-
-    //triggered all the runs
-    if (updatedBatch.runIds.length === updatedBatch.runCount) {
-      //if all the runs were idempotent, it's possible the batch is already completed
-      await this._engine.tryCompleteBatch({ batchId: batch.id });
     }
 
     return { status: "COMPLETE" };
