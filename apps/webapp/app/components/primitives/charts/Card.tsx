@@ -26,7 +26,7 @@ const CardContent = ({ children }: { children: ReactNode }) => {
 };
 
 const CardAccessory = ({ children }: { children: ReactNode }) => {
-  return <div className="flex-shrink-0">{children}</div>;
+  return <div className="flex items-center gap-2">{children}</div>;
 };
 
 Card.Header = CardHeader;
