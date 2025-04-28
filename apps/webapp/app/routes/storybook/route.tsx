@@ -69,10 +69,6 @@ const stories: Story[] = [
     slug: "loading-bar-divider",
   },
   {
-    name: "NamedIcon",
-    slug: "named-icon",
-  },
-  {
     name: "Page header",
     slug: "page-header",
   },
