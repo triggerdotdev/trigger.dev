@@ -18,6 +18,7 @@ describe("Run Events", () => {
       {
         environment_id: "env_1234",
         run_id: "run_1234",
+        friendly_id: "friendly_1234",
         attempt: 1,
         engine: "V2",
         status: "PENDING",
@@ -49,6 +50,14 @@ describe("Run Events", () => {
         sdk_version: "1.0.0",
         cli_version: "1.0.0",
         machine_preset: "small-1x",
+        is_test: true,
+        span_id: "span_1234",
+        trace_id: "trace_1234",
+        idempotency_key: "idempotency_key_1234",
+        expiration_ttl: "1h",
+        root_run_id: "root_run_1234",
+        parent_run_id: "parent_run_1234",
+        depth: 1,
       },
     ]);
 

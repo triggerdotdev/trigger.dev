@@ -18,6 +18,7 @@ CREATE TABLE trigger_dev.raw_run_events_v1
   /*  ─── ids & hierarchy ─────────────────────────────────────── */
   environment_id            String,
   run_id                    String,
+  friendly_id               String,
   attempt                   UInt8     DEFAULT 1,
 
   /*  ─── enums / status ──────────────────────────────────────── */
@@ -38,6 +39,16 @@ CREATE TABLE trigger_dev.raw_run_events_v1
   schedule_id               Nullable(String),
   batch_id                  Nullable(String),
 
+  /*  ─── related runs ─────────────────────────────────────────────── */
+  root_run_id               Nullable(String),
+  parent_run_id             Nullable(String),
+  depth                     UInt8 DEFAULT 0,
+
+  /*  ─── telemetry ─────────────────────────────────────────────── */
+  span_id                   Nullable(String),
+  trace_id                  Nullable(String),
+  idempotency_key           Nullable(String),
+
   /*  ─── timing ─────────────────────────────────────────────── */
   event_time         DateTime64(3),          -- when this row created
   created_at         DateTime64(3),
@@ -50,6 +61,7 @@ CREATE TABLE trigger_dev.raw_run_events_v1
   queued_at          Nullable(DateTime64(3)),
   expired_at         Nullable(DateTime64(3)),
   duration_ms        Nullable(UInt32),
+  expiration_ttl     Nullable(String),
 
   /*  ─── cost / usage ───────────────────────────────────────── */
   usage_duration_ms  UInt32  DEFAULT 0,
@@ -66,6 +78,8 @@ CREATE TABLE trigger_dev.raw_run_events_v1
   sdk_version        Nullable(String) CODEC(LZ4),
   cli_version        Nullable(String) CODEC(LZ4),
   machine_preset     LowCardinality(Nullable(String)) CODEC(LZ4),
+
+  is_test            Nullable(UInt8) DEFAULT 0,
 )
 ENGINE = MergeTree
 PARTITION BY toYYYYMM(event_time)
