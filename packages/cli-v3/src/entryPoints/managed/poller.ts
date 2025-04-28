@@ -34,6 +34,11 @@ export class RunExecutionSnapshotPoller {
 
     this.poller = new IntervalService({
       onInterval: async () => {
+        if (!this.enabled) {
+          this.sendDebugLog("poller disabled, skipping snapshot change handler (pre)");
+          return;
+        }
+
         this.sendDebugLog("polling for latest snapshot");
 
         const response = await this.httpClient.getRunExecutionData(this.runFriendlyId);
@@ -44,7 +49,7 @@ export class RunExecutionSnapshotPoller {
         }
 
         if (!this.enabled) {
-          this.sendDebugLog("poller disabled, skipping snapshot change handler");
+          this.sendDebugLog("poller disabled, skipping snapshot change handler (post)");
           return;
         }
 
