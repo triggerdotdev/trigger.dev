@@ -17,6 +17,9 @@ CREATE TABLE trigger_dev.raw_run_events_v1
 (
   /*  ─── ids & hierarchy ─────────────────────────────────────── */
   environment_id            String,
+  environment_type          LowCardinality(String),
+  organization_id           String,
+  project_id                String,
   run_id                    String,
   friendly_id               String,
   attempt                   UInt8     DEFAULT 1,
@@ -25,12 +28,22 @@ CREATE TABLE trigger_dev.raw_run_events_v1
   engine Enum8('V1'=1,'V2'=2)
                   CODEC(T64, LZ4),
   status Enum8(           -- TaskRunStatus
-           'DELAYED'=1,'PENDING'=2,'PENDING_VERSION'=3,
-           'WAITING_FOR_DEPLOY'=4,'WAITING_FOR_EVENT'=5,
-           'RUNNING'=6,'WAITING'=7,'PAUSED'=8,
-           /* final */ 'COMPLETED_SUCCESSFULLY'=20,'FAILED'=21,
-           'CANCELED'=22,'INTERRUPTED'=23,'CRASHED'=24,
-           'EXPIRED'=25,'TIMED_OUT'=26),
+           'DELAYED'=1,
+           'PENDING'=2,
+           'PENDING_VERSION'=3,
+           'WAITING_FOR_DEPLOY'=4,
+           'EXECUTING'=5,
+           'WAITING_TO_RESUME'=6,
+           'RETRYING_AFTER_FAILURE'=7,
+           'PAUSED'=8,
+           'CANCELED'=9,
+           'INTERRUPTED'=10,
+           'COMPLETED_SUCCESSFULLY'=11,
+           'COMPLETED_WITH_ERRORS'=12,
+           'SYSTEM_FAILURE'=13,
+           'CRASHED'=14,
+           'EXPIRED'=15,
+           'TIMED_OUT'=16),
 
   /*  ─── queue / concurrency / schedule ─────────────────────── */
   task_identifier           String,
@@ -66,6 +79,7 @@ CREATE TABLE trigger_dev.raw_run_events_v1
   /*  ─── cost / usage ───────────────────────────────────────── */
   usage_duration_ms  UInt32  DEFAULT 0,
   cost_in_cents      Float64 DEFAULT 0,
+  base_cost_in_cents Float64 DEFAULT 0,
 
   /*  ─── payload & context ──────────────────────────────────── */
   payload            Nullable(JSON(max_dynamic_paths = 2048)),
@@ -82,8 +96,8 @@ CREATE TABLE trigger_dev.raw_run_events_v1
   is_test            Nullable(UInt8) DEFAULT 0,
 )
 ENGINE = MergeTree
-PARTITION BY toYYYYMM(event_time)
-ORDER BY (environment_id, event_time, run_id)
+PARTITION BY toYYYYMMDD(event_time)
+ORDER BY (organization_id, project_id, environment_id, event_time, run_id)
 SETTINGS
     index_granularity = 8192,
     vertical_merge_algorithm_min_rows_to_activate = 100000;

@@ -670,6 +670,9 @@ importers:
         specifier: ^1.5.0
         version: 1.5.0(zod@3.23.8)
     devDependencies:
+      '@internal/clickhouse':
+        specifier: workspace:*
+        version: link:../../internal-packages/clickhouse
       '@internal/testcontainers':
         specifier: workspace:*
         version: link:../../internal-packages/testcontainers

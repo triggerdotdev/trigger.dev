@@ -28,11 +28,7 @@ import { FairQueueSelectionStrategy } from "../run-queue/fairQueueSelectionStrat
 import { RunQueue } from "../run-queue/index.js";
 import { RunQueueFullKeyProducer } from "../run-queue/keyProducer.js";
 import { MinimalAuthenticatedEnvironment } from "../shared/index.js";
-import {
-  NotImplementedError,
-  RunDuplicateIdempotencyKeyError,
-  ServiceValidationError,
-} from "./errors.js";
+import { NotImplementedError, RunDuplicateIdempotencyKeyError } from "./errors.js";
 import { EventBus, EventBusEvents } from "./eventBus.js";
 import { RunLocker } from "./locking.js";
 import { BatchSystem } from "./systems/batchSystem.js";

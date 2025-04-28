@@ -17,6 +17,9 @@ describe("Run Events", () => {
     const [insertError, insertResult] = await insert([
       {
         environment_id: "env_1234",
+        environment_type: "DEVELOPMENT",
+        organization_id: "org_1234",
+        project_id: "project_1234",
         run_id: "run_1234",
         friendly_id: "friendly_1234",
         attempt: 1,
@@ -43,7 +46,6 @@ describe("Run Events", () => {
           message: "error",
           stackTrace: "stack trace",
         },
-        duration_ms: 1000,
         usage_duration_ms: 1000,
         cost_in_cents: 100,
         task_version: "1.0.0",

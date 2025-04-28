@@ -15,21 +15,25 @@ import type {
   ClickhouseWriter,
 } from "./types.js";
 import { generateErrorMessage } from "zod-error";
+import { Logger } from "@trigger.dev/core/logger";
 
 export type ClickhouseConfig = {
   name: string;
   url: string;
   tracer?: Tracer;
   clickhouseSettings?: ClickHouseSettings;
+  logger?: Logger;
 };
 
 export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
   private readonly client: ClickHouseClient;
   private readonly tracer: Tracer;
   private readonly name: string;
+  private readonly logger: Logger;
 
   constructor(config: ClickhouseConfig) {
     this.name = config.name;
+    this.logger = config.logger ?? new Logger("ClickhouseClient", "debug");
 
     this.client = createClient({
       url: config.url,
@@ -86,6 +90,13 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
         if (validParams?.error) {
           recordSpanError(span, validParams.error);
 
+          this.logger.error("Error parsing query params", {
+            name: req.name,
+            error: validParams.error,
+            query: req.query,
+            params,
+          });
+
           return [
             new QueryError(`Bad params: ${generateErrorMessage(validParams.error.issues)}`, {
               query: req.query,
@@ -110,6 +121,13 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
         );
 
         if (clickhouseError) {
+          this.logger.error("Error querying clickhouse", {
+            name: req.name,
+            error: clickhouseError,
+            query: req.query,
+            params,
+          });
+
           recordClickhouseError(span, clickhouseError);
 
           return [
@@ -138,6 +156,13 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
         const parsed = z.array(req.schema).safeParse(unparsedRows);
 
         if (parsed.error) {
+          this.logger.error("Error parsing clickhouse query result", {
+            name: req.name,
+            error: parsed.error,
+            query: req.query,
+            params,
+          });
+
           const queryError = new QueryError(generateErrorMessage(parsed.error.issues), {
             query: req.query,
           });
@@ -179,6 +204,12 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
           : req.schema.safeParse(events);
 
         if (!v.success) {
+          this.logger.error("Error validating insert events", {
+            name: req.name,
+            table: req.table,
+            error: v.error,
+          });
+
           const error = new InsertError(generateErrorMessage(v.error.issues));
 
           recordSpanError(span, error);
@@ -202,6 +233,12 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
         );
 
         if (clickhouseError) {
+          this.logger.error("Error inserting into clickhouse", {
+            name: req.name,
+            error: clickhouseError,
+            table: req.table,
+          });
+
           recordClickhouseError(span, clickhouseError);
 
           return [new InsertError(clickhouseError.message), null];

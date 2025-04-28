@@ -3,6 +3,7 @@ import { ClickhouseClient } from "./client/client.js";
 import { ClickhouseReader, ClickhouseWriter } from "./client/types.js";
 import { NoopClient } from "./client/noop.js";
 import { insertRunEvents } from "./runEvents.js";
+import { Logger } from "@trigger.dev/core/logger";
 
 export type ClickHouseConfig =
   | {
@@ -11,6 +12,7 @@ export type ClickHouseConfig =
       writerUrl?: never;
       readerUrl?: never;
       clickhouseSettings?: ClickHouseSettings;
+      logger?: Logger;
     }
   | {
       name?: never;
@@ -20,18 +22,28 @@ export type ClickHouseConfig =
       readerName?: string;
       readerUrl: string;
       clickhouseSettings?: ClickHouseSettings;
+      logger?: Logger;
     };
 
 export class ClickHouse {
   public readonly reader: ClickhouseReader;
   public readonly writer: ClickhouseWriter;
+  private readonly logger: Logger;
 
   constructor(config: ClickHouseConfig) {
+    this.logger = config.logger ?? new Logger("ClickHouse", "debug");
+
     if (config.url) {
+      const url = new URL(config.url);
+      url.password = "redacted";
+
+      this.logger.info("🏠 Initializing ClickHouse client with url", { url: url.toString() });
+
       const client = new ClickhouseClient({
         name: config.name ?? "clickhouse",
         url: config.url,
         clickhouseSettings: config.clickhouseSettings,
+        logger: this.logger,
       });
       this.reader = client;
       this.writer = client;
@@ -40,11 +52,13 @@ export class ClickHouse {
         name: config.readerName ?? "clickhouse-reader",
         url: config.readerUrl,
         clickhouseSettings: config.clickhouseSettings,
+        logger: this.logger,
       });
       this.writer = new ClickhouseClient({
         name: config.writerName ?? "clickhouse-writer",
         url: config.writerUrl,
         clickhouseSettings: config.clickhouseSettings,
+        logger: this.logger,
       });
     } else {
       this.reader = new NoopClient();
