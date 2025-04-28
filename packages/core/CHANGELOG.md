@@ -1,5 +1,13 @@
 # internal-platform
 
+## 4.0.0-v4-beta.10
+
+### Patch Changes
+
+- - Fix polling interval reset bug that could create duplicate intervals ([#1987](https://github.com/triggerdotdev/trigger.dev/pull/1987))
+  - Protect against unexpected attempt number changes
+  - Prevent run execution zombies after warm starts
+
 ## 4.0.0-v4-beta.9
 
 ## 4.0.0-v4-beta.8
