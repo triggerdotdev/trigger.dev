@@ -32,7 +32,6 @@ import {
   ValidationResult,
 } from "~/runEngine/types";
 import { RunEngineTriggerTaskService } from "../../app/runEngine/services/triggerTask.server";
-import { DefaultRunsDashboardManager } from "~/runEngine/concerns/runsDashboard.server";
 import { ClickHouse } from "@internal/clickhouse";
 import { RunsDashboardService } from "~/services/runsDashboardService.server";
 
@@ -108,242 +107,216 @@ class MockTraceEventConcern implements TraceEventConcern {
 }
 
 describe("RunEngineTriggerTaskService", () => {
-  containerTest(
-    "should trigger a task with minimal options",
-    async ({ prisma, redisOptions, clickhouseContainer }) => {
-      const engine = new RunEngine({
-        prisma,
-        worker: {
-          redis: redisOptions,
-          workers: 1,
-          tasksPerWorker: 10,
-          pollIntervalMs: 100,
-        },
-        queue: {
-          redis: redisOptions,
-        },
-        runLock: {
-          redis: redisOptions,
-        },
+  containerTest("should trigger a task with minimal options", async ({ prisma, redisOptions }) => {
+    const engine = new RunEngine({
+      prisma,
+      worker: {
+        redis: redisOptions,
+        workers: 1,
+        tasksPerWorker: 10,
+        pollIntervalMs: 100,
+      },
+      queue: {
+        redis: redisOptions,
+      },
+      runLock: {
+        redis: redisOptions,
+      },
+      machines: {
+        defaultMachine: "small-1x",
         machines: {
-          defaultMachine: "small-1x",
-          machines: {
-            "small-1x": {
-              name: "small-1x" as const,
-              cpu: 0.5,
-              memory: 0.5,
-              centsPerMs: 0.0001,
-            },
+          "small-1x": {
+            name: "small-1x" as const,
+            cpu: 0.5,
+            memory: 0.5,
+            centsPerMs: 0.0001,
           },
-          baseCostInCents: 0.0005,
         },
-        tracer: trace.getTracer("test", "0.0.0"),
-      });
+        baseCostInCents: 0.0005,
+      },
+      tracer: trace.getTracer("test", "0.0.0"),
+    });
 
-      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+    const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
-      const taskIdentifier = "test-task";
+    const taskIdentifier = "test-task";
 
-      //create background worker
-      await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+    //create background worker
+    await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
 
-      const queuesManager = new DefaultQueueManager(prisma, engine);
+    const queuesManager = new DefaultQueueManager(prisma, engine);
 
-      const idempotencyKeyConcern = new IdempotencyKeyConcern(
-        prisma,
-        engine,
-        new MockTraceEventConcern()
-      );
+    const idempotencyKeyConcern = new IdempotencyKeyConcern(
+      prisma,
+      engine,
+      new MockTraceEventConcern()
+    );
 
-      const runChainStateManager = new DefaultRunChainStateManager(prisma, true);
+    const runChainStateManager = new DefaultRunChainStateManager(prisma, true);
 
-      const runsDashboardManager = new DefaultRunsDashboardManager(
-        new RunsDashboardService(
-          new ClickHouse({
-            name: "Test",
-            url: clickhouseContainer.getConnectionUrl(),
-          })
-        )
-      );
+    const triggerTaskService = new RunEngineTriggerTaskService({
+      engine,
+      prisma,
+      runNumberIncrementer: new MockRunNumberIncrementer(),
+      payloadProcessor: new MockPayloadProcessor(),
+      queueConcern: queuesManager,
+      idempotencyKeyConcern,
+      validator: new MockTriggerTaskValidator(),
+      traceEventConcern: new MockTraceEventConcern(),
+      runChainStateManager,
+      tracer: trace.getTracer("test", "0.0.0"),
+    });
 
-      const triggerTaskService = new RunEngineTriggerTaskService({
-        engine,
-        prisma,
-        runNumberIncrementer: new MockRunNumberIncrementer(),
-        payloadProcessor: new MockPayloadProcessor(),
-        queueConcern: queuesManager,
-        idempotencyKeyConcern,
-        validator: new MockTriggerTaskValidator(),
-        traceEventConcern: new MockTraceEventConcern(),
-        runChainStateManager,
-        runsDashboardManager,
-        tracer: trace.getTracer("test", "0.0.0"),
-      });
+    const result = await triggerTaskService.call({
+      taskId: taskIdentifier,
+      environment: authenticatedEnvironment,
+      body: { payload: { test: "test" } },
+    });
 
-      const result = await triggerTaskService.call({
-        taskId: taskIdentifier,
-        environment: authenticatedEnvironment,
-        body: { payload: { test: "test" } },
-      });
+    expect(result).toBeDefined();
+    expect(result?.run.friendlyId).toBeDefined();
+    expect(result?.run.status).toBe("PENDING");
+    expect(result?.isCached).toBe(false);
 
-      expect(result).toBeDefined();
-      expect(result?.run.friendlyId).toBeDefined();
-      expect(result?.run.status).toBe("PENDING");
-      expect(result?.isCached).toBe(false);
+    const run = await prisma.taskRun.findUnique({
+      where: {
+        id: result?.run.id,
+      },
+    });
 
-      const run = await prisma.taskRun.findUnique({
-        where: {
-          id: result?.run.id,
-        },
-      });
+    expect(run).toBeDefined();
+    expect(run?.friendlyId).toBe(result?.run.friendlyId);
+    expect(run?.engine).toBe("V2");
+    expect(run?.queuedAt).toBeDefined();
+    expect(run?.queue).toBe(`task/${taskIdentifier}`);
 
-      expect(run).toBeDefined();
-      expect(run?.friendlyId).toBe(result?.run.friendlyId);
-      expect(run?.engine).toBe("V2");
-      expect(run?.queuedAt).toBeDefined();
-      expect(run?.queue).toBe(`task/${taskIdentifier}`);
+    // Lets make sure the task is in the queue
+    const queueLength = await engine.runQueue.lengthOfQueue(
+      authenticatedEnvironment,
+      `task/${taskIdentifier}`
+    );
+    expect(queueLength).toBe(1);
 
-      // Lets make sure the task is in the queue
-      const queueLength = await engine.runQueue.lengthOfQueue(
-        authenticatedEnvironment,
-        `task/${taskIdentifier}`
-      );
-      expect(queueLength).toBe(1);
+    await engine.quit();
+  });
 
-      await engine.quit();
-    }
-  );
-
-  containerTest(
-    "should handle idempotency keys correctly",
-    async ({ prisma, redisOptions, clickhouseContainer }) => {
-      const engine = new RunEngine({
-        prisma,
-        worker: {
-          redis: redisOptions,
-          workers: 1,
-          tasksPerWorker: 10,
-          pollIntervalMs: 100,
-        },
-        queue: {
-          redis: redisOptions,
-        },
-        runLock: {
-          redis: redisOptions,
-        },
+  containerTest("should handle idempotency keys correctly", async ({ prisma, redisOptions }) => {
+    const engine = new RunEngine({
+      prisma,
+      worker: {
+        redis: redisOptions,
+        workers: 1,
+        tasksPerWorker: 10,
+        pollIntervalMs: 100,
+      },
+      queue: {
+        redis: redisOptions,
+      },
+      runLock: {
+        redis: redisOptions,
+      },
+      machines: {
+        defaultMachine: "small-1x",
         machines: {
-          defaultMachine: "small-1x",
-          machines: {
-            "small-1x": {
-              name: "small-1x" as const,
-              cpu: 0.5,
-              memory: 0.5,
-              centsPerMs: 0.0001,
-            },
-          },
-          baseCostInCents: 0.0005,
-        },
-        tracer: trace.getTracer("test", "0.0.0"),
-      });
-
-      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
-
-      const taskIdentifier = "test-task";
-
-      //create background worker
-      await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
-
-      const queuesManager = new DefaultQueueManager(prisma, engine);
-
-      const idempotencyKeyConcern = new IdempotencyKeyConcern(
-        prisma,
-        engine,
-        new MockTraceEventConcern()
-      );
-
-      const runChainStateManager = new DefaultRunChainStateManager(prisma, true);
-
-      const runsDashboardManager = new DefaultRunsDashboardManager(
-        new RunsDashboardService(
-          new ClickHouse({
-            name: "Test",
-            url: clickhouseContainer.getConnectionUrl(),
-          })
-        )
-      );
-
-      const triggerTaskService = new RunEngineTriggerTaskService({
-        engine,
-        prisma,
-        runNumberIncrementer: new MockRunNumberIncrementer(),
-        payloadProcessor: new MockPayloadProcessor(),
-        queueConcern: queuesManager,
-        idempotencyKeyConcern,
-        validator: new MockTriggerTaskValidator(),
-        traceEventConcern: new MockTraceEventConcern(),
-        runChainStateManager,
-        runsDashboardManager,
-        tracer: trace.getTracer("test", "0.0.0"),
-      });
-
-      const result = await triggerTaskService.call({
-        taskId: taskIdentifier,
-        environment: authenticatedEnvironment,
-        body: {
-          payload: { test: "test" },
-          options: {
-            idempotencyKey: "test-idempotency-key",
+          "small-1x": {
+            name: "small-1x" as const,
+            cpu: 0.5,
+            memory: 0.5,
+            centsPerMs: 0.0001,
           },
         },
-      });
+        baseCostInCents: 0.0005,
+      },
+      tracer: trace.getTracer("test", "0.0.0"),
+    });
 
-      expect(result).toBeDefined();
-      expect(result?.run.friendlyId).toBeDefined();
-      expect(result?.run.status).toBe("PENDING");
-      expect(result?.isCached).toBe(false);
+    const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
-      const run = await prisma.taskRun.findUnique({
-        where: {
-          id: result?.run.id,
+    const taskIdentifier = "test-task";
+
+    //create background worker
+    await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+    const queuesManager = new DefaultQueueManager(prisma, engine);
+
+    const idempotencyKeyConcern = new IdempotencyKeyConcern(
+      prisma,
+      engine,
+      new MockTraceEventConcern()
+    );
+
+    const runChainStateManager = new DefaultRunChainStateManager(prisma, true);
+
+    const triggerTaskService = new RunEngineTriggerTaskService({
+      engine,
+      prisma,
+      runNumberIncrementer: new MockRunNumberIncrementer(),
+      payloadProcessor: new MockPayloadProcessor(),
+      queueConcern: queuesManager,
+      idempotencyKeyConcern,
+      validator: new MockTriggerTaskValidator(),
+      traceEventConcern: new MockTraceEventConcern(),
+      runChainStateManager,
+      tracer: trace.getTracer("test", "0.0.0"),
+    });
+
+    const result = await triggerTaskService.call({
+      taskId: taskIdentifier,
+      environment: authenticatedEnvironment,
+      body: {
+        payload: { test: "test" },
+        options: {
+          idempotencyKey: "test-idempotency-key",
         },
-      });
+      },
+    });
 
-      expect(run).toBeDefined();
-      expect(run?.friendlyId).toBe(result?.run.friendlyId);
-      expect(run?.engine).toBe("V2");
-      expect(run?.queuedAt).toBeDefined();
-      expect(run?.queue).toBe(`task/${taskIdentifier}`);
+    expect(result).toBeDefined();
+    expect(result?.run.friendlyId).toBeDefined();
+    expect(result?.run.status).toBe("PENDING");
+    expect(result?.isCached).toBe(false);
 
-      // Lets make sure the task is in the queue
-      const queueLength = await engine.runQueue.lengthOfQueue(
-        authenticatedEnvironment,
-        `task/${taskIdentifier}`
-      );
-      expect(queueLength).toBe(1);
+    const run = await prisma.taskRun.findUnique({
+      where: {
+        id: result?.run.id,
+      },
+    });
 
-      // Now lets try to trigger the same task with the same idempotency key
-      const cachedResult = await triggerTaskService.call({
-        taskId: taskIdentifier,
-        environment: authenticatedEnvironment,
-        body: {
-          payload: { test: "test" },
-          options: {
-            idempotencyKey: "test-idempotency-key",
-          },
+    expect(run).toBeDefined();
+    expect(run?.friendlyId).toBe(result?.run.friendlyId);
+    expect(run?.engine).toBe("V2");
+    expect(run?.queuedAt).toBeDefined();
+    expect(run?.queue).toBe(`task/${taskIdentifier}`);
+
+    // Lets make sure the task is in the queue
+    const queueLength = await engine.runQueue.lengthOfQueue(
+      authenticatedEnvironment,
+      `task/${taskIdentifier}`
+    );
+    expect(queueLength).toBe(1);
+
+    // Now lets try to trigger the same task with the same idempotency key
+    const cachedResult = await triggerTaskService.call({
+      taskId: taskIdentifier,
+      environment: authenticatedEnvironment,
+      body: {
+        payload: { test: "test" },
+        options: {
+          idempotencyKey: "test-idempotency-key",
         },
-      });
+      },
+    });
 
-      expect(cachedResult).toBeDefined();
-      expect(cachedResult?.run.friendlyId).toBe(result?.run.friendlyId);
-      expect(cachedResult?.isCached).toBe(true);
+    expect(cachedResult).toBeDefined();
+    expect(cachedResult?.run.friendlyId).toBe(result?.run.friendlyId);
+    expect(cachedResult?.isCached).toBe(true);
 
-      await engine.quit();
-    }
-  );
+    await engine.quit();
+  });
 
   containerTest(
     "should resolve queue names correctly when locked to version",
-    async ({ prisma, redisOptions, clickhouseContainer }) => {
+    async ({ prisma, redisOptions }) => {
       const engine = new RunEngine({
         prisma,
         worker: {
@@ -418,15 +391,6 @@ describe("RunEngineTriggerTaskService", () => {
 
       const runChainStateManager = new DefaultRunChainStateManager(prisma, true);
 
-      const runsDashboardManager = new DefaultRunsDashboardManager(
-        new RunsDashboardService(
-          new ClickHouse({
-            name: "Test",
-            url: clickhouseContainer.getConnectionUrl(),
-          })
-        )
-      );
-
       const triggerTaskService = new RunEngineTriggerTaskService({
         engine,
         prisma,
@@ -437,7 +401,6 @@ describe("RunEngineTriggerTaskService", () => {
         validator: new MockTriggerTaskValidator(),
         traceEventConcern: new MockTraceEventConcern(),
         runChainStateManager,
-        runsDashboardManager,
         tracer: trace.getTracer("test", "0.0.0"),
       });
 
@@ -518,7 +481,7 @@ describe("RunEngineTriggerTaskService", () => {
 
   containerTest(
     "should handle run chains correctly when release concurrency is enabled",
-    async ({ prisma, redisOptions, clickhouseContainer }) => {
+    async ({ prisma, redisOptions }) => {
       const engine = new RunEngine({
         prisma,
         worker: {
@@ -575,15 +538,6 @@ describe("RunEngineTriggerTaskService", () => {
 
       const runChainStateManager = new DefaultRunChainStateManager(prisma, true);
 
-      const runsDashboardManager = new DefaultRunsDashboardManager(
-        new RunsDashboardService(
-          new ClickHouse({
-            name: "Test",
-            url: clickhouseContainer.getConnectionUrl(),
-          })
-        )
-      );
-
       const triggerTaskService = new RunEngineTriggerTaskService({
         engine,
         prisma,
@@ -594,7 +548,6 @@ describe("RunEngineTriggerTaskService", () => {
         validator: new MockTriggerTaskValidator(),
         traceEventConcern: new MockTraceEventConcern(),
         runChainStateManager,
-        runsDashboardManager,
         tracer: trace.getTracer("test", "0.0.0"),
       });
 
@@ -687,7 +640,7 @@ describe("RunEngineTriggerTaskService", () => {
 
   containerTest(
     "should handle run chains with multiple queues correctly",
-    async ({ prisma, redisOptions, clickhouseContainer }) => {
+    async ({ prisma, redisOptions }) => {
       const engine = new RunEngine({
         prisma,
         worker: {
@@ -742,15 +695,6 @@ describe("RunEngineTriggerTaskService", () => {
       );
       const runChainStateManager = new DefaultRunChainStateManager(prisma, true);
 
-      const runsDashboardManager = new DefaultRunsDashboardManager(
-        new RunsDashboardService(
-          new ClickHouse({
-            name: "Test",
-            url: clickhouseContainer.getConnectionUrl(),
-          })
-        )
-      );
-
       const triggerTaskService = new RunEngineTriggerTaskService({
         engine,
         prisma,
@@ -761,7 +705,6 @@ describe("RunEngineTriggerTaskService", () => {
         validator: new MockTriggerTaskValidator(),
         traceEventConcern: new MockTraceEventConcern(),
         runChainStateManager,
-        runsDashboardManager,
         tracer: trace.getTracer("test", "0.0.0"),
       });
 
@@ -898,7 +841,7 @@ describe("RunEngineTriggerTaskService", () => {
 
   containerTest(
     "should handle run chains with explicit releaseConcurrency option",
-    async ({ prisma, redisOptions, clickhouseContainer }) => {
+    async ({ prisma, redisOptions }) => {
       const engine = new RunEngine({
         prisma,
         worker: {
@@ -953,15 +896,6 @@ describe("RunEngineTriggerTaskService", () => {
       );
       const runChainStateManager = new DefaultRunChainStateManager(prisma, true);
 
-      const runsDashboardManager = new DefaultRunsDashboardManager(
-        new RunsDashboardService(
-          new ClickHouse({
-            name: "Test",
-            url: clickhouseContainer.getConnectionUrl(),
-          })
-        )
-      );
-
       const triggerTaskService = new RunEngineTriggerTaskService({
         engine,
         prisma,
@@ -972,7 +906,6 @@ describe("RunEngineTriggerTaskService", () => {
         validator: new MockTriggerTaskValidator(),
         traceEventConcern: new MockTraceEventConcern(),
         runChainStateManager,
-        runsDashboardManager,
         tracer: trace.getTracer("test", "0.0.0"),
       });
 
@@ -1038,7 +971,7 @@ describe("RunEngineTriggerTaskService", () => {
 
   containerTest(
     "should handle run chains when release concurrency is disabled",
-    async ({ prisma, redisOptions, clickhouseContainer }) => {
+    async ({ prisma, redisOptions }) => {
       const engine = new RunEngine({
         prisma,
         worker: {
@@ -1093,15 +1026,6 @@ describe("RunEngineTriggerTaskService", () => {
       );
       const runChainStateManager = new DefaultRunChainStateManager(prisma, false);
 
-      const runsDashboardManager = new DefaultRunsDashboardManager(
-        new RunsDashboardService(
-          new ClickHouse({
-            name: "Test",
-            url: clickhouseContainer.getConnectionUrl(),
-          })
-        )
-      );
-
       const triggerTaskService = new RunEngineTriggerTaskService({
         engine,
         prisma,
@@ -1112,7 +1036,6 @@ describe("RunEngineTriggerTaskService", () => {
         validator: new MockTriggerTaskValidator(),
         traceEventConcern: new MockTraceEventConcern(),
         runChainStateManager,
-        runsDashboardManager,
         tracer: trace.getTracer("test", "0.0.0"),
       });
 
@@ -1177,7 +1100,7 @@ describe("RunEngineTriggerTaskService", () => {
 
   containerTest(
     "should handle run chains correctly when the parent run queue doesn't have a concurrency limit",
-    async ({ prisma, redisOptions, clickhouseContainer }) => {
+    async ({ prisma, redisOptions }) => {
       const engine = new RunEngine({
         prisma,
         worker: {
@@ -1234,15 +1157,6 @@ describe("RunEngineTriggerTaskService", () => {
 
       const runChainStateManager = new DefaultRunChainStateManager(prisma, true);
 
-      const runsDashboardManager = new DefaultRunsDashboardManager(
-        new RunsDashboardService(
-          new ClickHouse({
-            name: "Test",
-            url: clickhouseContainer.getConnectionUrl(),
-          })
-        )
-      );
-
       const triggerTaskService = new RunEngineTriggerTaskService({
         engine,
         prisma,
@@ -1253,7 +1167,6 @@ describe("RunEngineTriggerTaskService", () => {
         validator: new MockTriggerTaskValidator(),
         traceEventConcern: new MockTraceEventConcern(),
         runChainStateManager,
-        runsDashboardManager,
         tracer: trace.getTracer("test", "0.0.0"),
       });
 

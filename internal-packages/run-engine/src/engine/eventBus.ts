@@ -1,9 +1,16 @@
-import { TaskRunExecutionStatus, TaskRunStatus } from "@trigger.dev/database";
-import { AuthenticatedEnvironment } from "../shared/index.js";
+import { TaskRun, TaskRunExecutionStatus, TaskRunStatus } from "@trigger.dev/database";
+import { AuthenticatedEnvironment, MinimalAuthenticatedEnvironment } from "../shared/index.js";
 import { FlushedRunMetadata, TaskRunError } from "@trigger.dev/core/v3";
 import { EventEmitter } from "events";
 
 export type EventBusEvents = {
+  runStatusChanged: [
+    {
+      time: Date;
+      run: TaskRun;
+      environment: MinimalAuthenticatedEnvironment;
+    },
+  ];
   runAttemptStarted: [
     {
       time: Date;

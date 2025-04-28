@@ -548,6 +548,12 @@ export class RunEngine {
           }
         });
 
+        this.eventBus.emit("runStatusChanged", {
+          time: new Date(),
+          run: taskRun,
+          environment,
+        });
+
         return taskRun;
       },
       {
