@@ -11,6 +11,7 @@ import { ChartLine } from "~/components/primitives/charts/ChartLine";
 import { DateRangeProvider, useDateRange } from "~/components/primitives/charts/DateRangeContext";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { RadioGroup, RadioGroupItem } from "~/components/primitives/RadioButton";
+import SegmentedControl from "~/components/primitives/SegmentedControl";
 
 function ChartsDashboard() {
   const dateRange = useDateRange();
@@ -58,6 +59,15 @@ function ChartsDashboard() {
               Runs total
             </div>
             <Card.Accessory>
+              <SegmentedControl
+                name="runsByStatus"
+                options={[
+                  { label: "By status", value: "status" },
+                  { label: "By task", value: "task" },
+                ]}
+                defaultValue="status"
+                variant="secondary/small"
+              />
               <Button
                 variant="secondary/small"
                 TrailingIcon={<ArrowTopRightBottomLeftIcon className="size-4" />}
@@ -87,6 +97,22 @@ function ChartsDashboard() {
               <AbacusIcon className="size-5 text-indigo-500" />
               Run count <span className="font-normal text-text-dimmed">by status</span>
             </div>
+            <Card.Accessory>
+              <SegmentedControl
+                name="runCountByStatus"
+                options={[
+                  { label: "By status", value: "status" },
+                  { label: "By task", value: "task" },
+                ]}
+                defaultValue="status"
+                variant="secondary/small"
+              />
+              <Button
+                variant="secondary/small"
+                TrailingIcon={<ArrowTopRightBottomLeftIcon className="size-4" />}
+                className="px-1"
+              />
+            </Card.Accessory>
           </Card.Header>
           <Card.Content>
             <ChartBar
@@ -205,10 +231,10 @@ const API_DATA = {
     { day: "Nov 20", completed: 0, "in-progress": 7654, canceled: 0, failed: 3678 },
     { day: "Nov 21", completed: 4532, "in-progress": 3456, canceled: 1200, failed: 2876 },
     { day: "Nov 22", completed: 6789, "in-progress": 4567, canceled: 2345, failed: 3456 },
-    { day: "Nov 23", completed: 0, "in-progress": 0, canceled: 0, failed: 0 },
-    { day: "Nov 24", completed: 0, "in-progress": 0, canceled: 0, failed: 0 },
-    { day: "Nov 25", completed: 0, "in-progress": 0, canceled: 0, failed: 0 },
-    { day: "Nov 26", completed: 0, "in-progress": 0, canceled: 0, failed: 0 },
+    { day: "Nov 23", completed: 5432, "in-progress": 6543, canceled: 0, failed: 2109 },
+    { day: "Nov 24", completed: 6543, "in-progress": 0, canceled: 2345, failed: 0 },
+    { day: "Nov 25", completed: 5432, "in-progress": 0, canceled: 0, failed: 2345 },
+    { day: "Nov 26", completed: 6543, "in-progress": 6543, canceled: 0, failed: 0 },
     { day: "Nov 27", completed: 8765, "in-progress": 3456, canceled: 0, failed: 5678 },
     { day: "Nov 28", completed: 5432, "in-progress": 5678, canceled: 4567, failed: 2345 },
     { day: "Nov 29", completed: 0, "in-progress": 4567, canceled: 2345, failed: 3456 },
