@@ -1,5 +1,5 @@
 import { WorkloadHttpClient } from "@trigger.dev/core/v3/runEngineWorker";
-import { RunLogger } from "./logger.js";
+import { RunLogger, SendDebugLogOptions } from "./logger.js";
 import { IntervalService, RunExecutionData } from "@trigger.dev/core/v3";
 
 export type RunExecutionSnapshotPollerOptions = {
@@ -14,87 +14,68 @@ export type RunExecutionSnapshotPollerOptions = {
 export class RunExecutionSnapshotPoller {
   private runFriendlyId: string;
   private snapshotFriendlyId: string;
+  private enabled: boolean;
 
   private readonly httpClient: WorkloadHttpClient;
   private readonly logger: RunLogger;
-  private readonly snapshotPollIntervalMs: number;
   private readonly handleSnapshotChange: (runData: RunExecutionData) => Promise<void>;
   private readonly poller: IntervalService;
 
   constructor(opts: RunExecutionSnapshotPollerOptions) {
+    this.enabled = false;
+
     this.runFriendlyId = opts.runFriendlyId;
     this.snapshotFriendlyId = opts.snapshotFriendlyId;
     this.httpClient = opts.httpClient;
     this.logger = opts.logger;
-    this.snapshotPollIntervalMs = opts.snapshotPollIntervalSeconds * 1000;
     this.handleSnapshotChange = opts.handleSnapshotChange;
 
-    this.logger.sendDebugLog({
-      runId: this.runFriendlyId,
-      message: "RunExecutionSnapshotPoller",
-      properties: {
-        runFriendlyId: this.runFriendlyId,
-        snapshotFriendlyId: this.snapshotFriendlyId,
-        snapshotPollIntervalSeconds: opts.snapshotPollIntervalSeconds,
-      },
-    });
+    const intervalMs = opts.snapshotPollIntervalSeconds * 1000;
 
     this.poller = new IntervalService({
       onInterval: async () => {
-        if (!this.runFriendlyId) {
-          this.logger.sendDebugLog({
-            runId: this.runFriendlyId,
-            message: "Skipping snapshot poll, no run ID",
-          });
+        if (!this.enabled) {
+          this.sendDebugLog("poller disabled, skipping snapshot change handler (pre)");
           return;
         }
 
-        this.logger.sendDebugLog({
-          runId: this.runFriendlyId,
-          message: "Polling for latest snapshot",
-        });
-
-        this.logger.sendDebugLog({
-          runId: this.runFriendlyId,
-          message: `snapshot poll: started`,
-          properties: {
-            snapshotId: this.snapshotFriendlyId,
-          },
-        });
+        this.sendDebugLog("polling for latest snapshot");
 
         const response = await this.httpClient.getRunExecutionData(this.runFriendlyId);
 
         if (!response.success) {
-          this.logger.sendDebugLog({
-            runId: this.runFriendlyId,
-            message: "Snapshot poll failed",
-            properties: {
-              error: response.error,
-            },
-          });
+          this.sendDebugLog("failed to get run execution data", { error: response.error });
+          return;
+        }
 
-          this.logger.sendDebugLog({
-            runId: this.runFriendlyId,
-            message: `snapshot poll: failed`,
-            properties: {
-              snapshotId: this.snapshotFriendlyId,
-              error: response.error,
-            },
-          });
-
+        if (!this.enabled) {
+          this.sendDebugLog("poller disabled, skipping snapshot change handler (post)");
           return;
         }
 
         await this.handleSnapshotChange(response.data.execution);
       },
-      intervalMs: this.snapshotPollIntervalMs,
+      intervalMs,
       leadingEdge: false,
       onError: async (error) => {
-        this.logger.sendDebugLog({
-          runId: this.runFriendlyId,
-          message: "Failed to poll for snapshot",
-          properties: { error: error instanceof Error ? error.message : String(error) },
+        this.sendDebugLog("failed to poll for snapshot", {
+          error: error instanceof Error ? error.message : String(error),
         });
+      },
+    });
+
+    this.sendDebugLog("created");
+  }
+
+  private sendDebugLog(message: string, properties?: SendDebugLogOptions["properties"]) {
+    this.logger.sendDebugLog({
+      runId: this.runFriendlyId,
+      message: `[poller] ${message}`,
+      properties: {
+        ...properties,
+        runId: this.runFriendlyId,
+        snapshotId: this.snapshotFriendlyId,
+        pollIntervalMs: this.poller.intervalMs,
       },
     });
   }
@@ -112,10 +93,22 @@ export class RunExecutionSnapshotPoller {
   }
 
   start() {
+    if (this.enabled) {
+      this.sendDebugLog("already started");
+      return;
+    }
+
+    this.enabled = true;
     this.poller.start();
   }
 
   stop() {
+    if (!this.enabled) {
+      this.sendDebugLog("already stopped");
+      return;
+    }
+
+    this.enabled = false;
     this.poller.stop();
   }
 }
