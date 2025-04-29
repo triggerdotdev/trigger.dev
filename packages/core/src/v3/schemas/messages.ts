@@ -13,7 +13,6 @@ import {
   ProdTaskRunExecution,
   ProdTaskRunExecutionPayload,
   RunEngineVersionSchema,
-  RuntimeWait,
   TaskRunExecutionLazyAttemptPayload,
   TaskRunExecutionMetrics,
   WaitReason,
@@ -172,38 +171,8 @@ export const ExecutorToWorkerMessageCatalog = {
       id: z.string(),
     }),
   },
-  READY_TO_DISPOSE: {
-    message: z.undefined(),
-  },
-  WAIT_FOR_DURATION: {
-    message: z.object({
-      version: z.literal("v1").default("v1"),
-      ms: z.number(),
-      now: z.number(),
-      waitThresholdInMs: z.number(),
-    }),
-  },
-  WAIT_FOR_TASK: {
-    message: z.object({
-      version: z.literal("v1").default("v1"),
-      friendlyId: z.string(),
-    }),
-  },
-  WAIT_FOR_BATCH: {
-    message: z.object({
-      version: z.literal("v1").default("v1"),
-      batchFriendlyId: z.string(),
-      runFriendlyIds: z.string().array(),
-    }),
-  },
   UNCAUGHT_EXCEPTION: {
     message: UncaughtExceptionMessage,
-  },
-  WAIT: {
-    message: z.object({
-      version: z.literal("v1").default("v1"),
-      wait: RuntimeWait,
-    }),
   },
 };
 

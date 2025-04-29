@@ -275,20 +275,6 @@ export const TaskRunExecutionLazyAttemptPayload = z.object({
 
 export type TaskRunExecutionLazyAttemptPayload = z.infer<typeof TaskRunExecutionLazyAttemptPayload>;
 
-export const RuntimeWait = z.discriminatedUnion("type", [
-  z.object({
-    type: z.literal("DATETIME"),
-    id: z.string(),
-    date: z.coerce.date(),
-  }),
-  z.object({
-    type: z.literal("MANUAL"),
-    id: z.string(),
-  }),
-]);
-
-export type RuntimeWait = z.infer<typeof RuntimeWait>;
-
 export const ManualCheckpointMetadata = z.object({
   /** NOT a friendly ID */
   attemptId: z.string(),

@@ -33,20 +33,6 @@ import {
   SuspendedProcessError,
 } from "@trigger.dev/core/v3/errors";
 
-export type OnWaitForDurationMessage = InferSocketMessageSchema<
-  typeof ExecutorToWorkerMessageCatalog,
-  "WAIT_FOR_DURATION"
->;
-export type OnWaitForTaskMessage = InferSocketMessageSchema<
-  typeof ExecutorToWorkerMessageCatalog,
-  "WAIT_FOR_TASK"
->;
-export type OnWaitForBatchMessage = InferSocketMessageSchema<
-  typeof ExecutorToWorkerMessageCatalog,
-  "WAIT_FOR_BATCH"
->;
-export type OnWaitMessage = InferSocketMessageSchema<typeof ExecutorToWorkerMessageCatalog, "WAIT">;
-
 export type TaskRunProcessOptions = {
   workerManifest: WorkerManifest;
   serverWorker: ServerBackgroundWorker;
@@ -82,11 +68,6 @@ export class TaskRunProcess {
   public onExit: Evt<{ code: number | null; signal: NodeJS.Signals | null; pid?: number }> =
     new Evt();
   public onIsBeingKilled: Evt<TaskRunProcess> = new Evt();
-  public onReadyToDispose: Evt<TaskRunProcess> = new Evt();
-
-  public onWaitForTask: Evt<OnWaitForTaskMessage> = new Evt();
-  public onWaitForBatch: Evt<OnWaitForBatchMessage> = new Evt();
-  public onWait: Evt<OnWaitMessage> = new Evt();
 
   private _isPreparedForNextRun: boolean = false;
   private _isPreparedForNextAttempt: boolean = false;
@@ -191,19 +172,8 @@ export class TaskRunProcess {
 
           resolver(result);
         },
-        READY_TO_DISPOSE: async () => {
-          logger.debug(`task run process is ready to dispose`);
-
-          this.onReadyToDispose.post(this);
-        },
         TASK_HEARTBEAT: async (message) => {
           this.onTaskRunHeartbeat.post(message.id);
-        },
-        WAIT_FOR_TASK: async (message) => {
-          this.onWaitForTask.post(message);
-        },
-        WAIT_FOR_BATCH: async (message) => {
-          this.onWaitForBatch.post(message);
         },
         UNCAUGHT_EXCEPTION: async (message) => {
           logger.debug("uncaught exception in task run process", { ...message });
