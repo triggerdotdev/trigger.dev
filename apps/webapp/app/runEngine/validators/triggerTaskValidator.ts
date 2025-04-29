@@ -46,7 +46,7 @@ export class DefaultTriggerTaskValidator implements TriggerTaskValidator {
 
     const result = await getEntitlement(environment.organizationId);
 
-    if (!result || result.hasAccess === false) {
+    if (result && result.hasAccess === false) {
       return {
         ok: false,
         error: new OutOfEntitlementError(),
