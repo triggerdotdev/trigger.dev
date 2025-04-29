@@ -146,12 +146,12 @@ export class SharedRuntimeManager implements RuntimeManager {
     });
   }
 
-  async completeWaitpoints(waitpoints: CompletedWaitpoint[]): Promise<void> {
-    await Promise.all(waitpoints.map((waitpoint) => this.completeWaitpoint(waitpoint)));
+  async resolveWaitpoints(waitpoints: CompletedWaitpoint[]): Promise<void> {
+    await Promise.all(waitpoints.map((waitpoint) => this.resolveWaitpoint(waitpoint)));
   }
 
-  private completeWaitpoint(waitpoint: CompletedWaitpoint): void {
-    this.log("completeWaitpoint", waitpoint);
+  private resolveWaitpoint(waitpoint: CompletedWaitpoint): void {
+    this.log("resolveWaitpoint", waitpoint);
 
     let waitId: string | undefined;
 

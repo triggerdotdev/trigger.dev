@@ -448,8 +448,8 @@ const zodIpc = new ZodIpcConnection({
     FLUSH: async ({ timeoutInMs }, sender) => {
       await flushAll(timeoutInMs);
     },
-    WAITPOINT_COMPLETED: async ({ waitpoint }) => {
-      sharedWorkerRuntime.completeWaitpoints([waitpoint]);
+    RESOLVE_WAITPOINT: async ({ waitpoint }) => {
+      sharedWorkerRuntime.resolveWaitpoints([waitpoint]);
     },
   },
 });
