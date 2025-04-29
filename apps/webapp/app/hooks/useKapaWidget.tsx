@@ -90,6 +90,7 @@ export function useKapaWidget() {
 
     window.Kapa("render", {
       onRender: () => {
+        //this auto-opens the Kapa widget on page load if the query contains ?aiHelp=
         const aiHelp = searchParams.get("aiHelp");
         if (aiHelp) {
           setSearchParams((prev) => {
@@ -99,6 +100,7 @@ export function useKapaWidget() {
 
           //we need to decode the aiHelp string because it's urlencoded
           const decodedAiHelp = decodeURIComponent(aiHelp);
+          //sadly this delay is required, otherwise it fails the Kapa browser verification…
           setTimeout(() => {
             openKapa(decodedAiHelp);
           }, 500);
