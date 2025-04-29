@@ -71,18 +71,19 @@ export class MetadataStream<T> {
       });
 
       req.on("error", (error) => {
-        reader.releaseLock();
+        safeReleaseLock(reader);
         reject(error);
       });
 
       req.on("timeout", () => {
-        reader.releaseLock();
+        safeReleaseLock(reader);
+
         req.destroy(new Error("Request timed out"));
       });
 
       req.on("response", (res) => {
         if (res.statusCode === 408) {
-          reader.releaseLock();
+          safeReleaseLock(reader);
 
           if (this.retryCount < this.maxRetries) {
             this.retryCount++;
@@ -173,6 +174,12 @@ async function* streamToAsyncIterator<T>(stream: ReadableStream<T>): AsyncIterab
       yield value;
     }
   } finally {
-    reader.releaseLock();
+    safeReleaseLock(reader);
   }
+}
+
+function safeReleaseLock(reader: ReadableStreamDefaultReader<any>) {
+  try {
+    reader.releaseLock();
+  } catch (error) {}
 }
