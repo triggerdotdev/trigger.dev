@@ -546,20 +546,7 @@ function SelectorDivider() {
 }
 
 function HelpAndAI() {
-  const { isKapaEnabled, openKapa, isKapaOpen } = useKapaWidget();
-  const location = useLocation();
-
-  // If the location searchParams contains `aiHelp="A question to ask AI"` we should get the value, clear it from the searchParams and open Kapa with the question
-  const searchParams = new URLSearchParams(location.search);
-
-  useEffect(() => {
-    const aiHelp = searchParams.get("aiHelp");
-    if (aiHelp) {
-      searchParams.delete("aiHelp");
-      console.log("aiHelp", aiHelp);
-      openKapa(aiHelp);
-    }
-  }, [location.search]);
+  const { isKapaEnabled, isKapaOpen, openKapa } = useKapaWidget();
 
   return (
     <>
