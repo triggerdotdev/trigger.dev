@@ -14,14 +14,18 @@ import { ExecutorToWorkerProcessConnection } from "../zodIpc.js";
 import { RuntimeManager } from "./manager.js";
 import { preventMultipleWaits } from "./preventMultipleWaits.js";
 
+/** A function that resolves a waitpoint */
 type Resolver = (value: CompletedWaitpoint) => void;
+
+/** Branded type for resolver IDs to keep us from doing anything stupid */
+type ResolverId = string & { readonly __brand: unique symbol };
 
 export class SharedRuntimeManager implements RuntimeManager {
   /** Maps a resolver ID to a resolver function */
-  private readonly resolversById = new Map<string, Resolver>();
+  private readonly resolversById = new Map<ResolverId, Resolver>();
 
   /** Stores waitpoints that arrive before their resolvers have been created */
-  private readonly waitpointsByResolverId = new Map<string, CompletedWaitpoint>();
+  private readonly waitpointsByResolverId = new Map<ResolverId, CompletedWaitpoint>();
 
   private _preventMultipleWaits = preventMultipleWaits();
 
@@ -42,7 +46,7 @@ export class SharedRuntimeManager implements RuntimeManager {
   async waitForTask(params: { id: string; ctx: TaskRunContext }): Promise<TaskRunExecutionResult> {
     return this._preventMultipleWaits(async () => {
       const promise = new Promise<CompletedWaitpoint>((resolve) => {
-        this.resolversById.set(params.id, resolve);
+        this.resolversById.set(params.id as ResolverId, resolve);
       });
 
       // Resolve any waitpoints we received before the resolver was created
@@ -76,7 +80,7 @@ export class SharedRuntimeManager implements RuntimeManager {
       }
 
       const promises = Array.from({ length: params.runCount }, (_, index) => {
-        const resolverId = `${params.id}_${index}`;
+        const resolverId = `${params.id}_${index}` as ResolverId;
 
         return new Promise<CompletedWaitpoint>((resolve, reject) => {
           this.resolversById.set(resolverId, resolve);
@@ -116,7 +120,7 @@ export class SharedRuntimeManager implements RuntimeManager {
   }): Promise<WaitpointTokenResult> {
     return this._preventMultipleWaits(async () => {
       const promise = new Promise<CompletedWaitpoint>((resolve) => {
-        this.resolversById.set(waitpointFriendlyId, resolve);
+        this.resolversById.set(waitpointFriendlyId as ResolverId, resolve);
       });
 
       // Resolve any waitpoints we received before the resolver was created
@@ -160,7 +164,9 @@ export class SharedRuntimeManager implements RuntimeManager {
     await Promise.all(waitpoints.map((waitpoint) => this.resolveWaitpoint(waitpoint)));
   }
 
-  private resolverIdFromWaitpoint(waitpoint: CompletedWaitpoint): string | null {
+  private resolverIdFromWaitpoint(waitpoint: CompletedWaitpoint): ResolverId | null {
+    let id: string;
+
     switch (waitpoint.type) {
       case "RUN": {
         if (!waitpoint.completedByTaskRun) {
@@ -170,11 +176,13 @@ export class SharedRuntimeManager implements RuntimeManager {
 
         if (waitpoint.completedByTaskRun.batch) {
           // This run is part of a batch
-          return `${waitpoint.completedByTaskRun.batch.friendlyId}_${waitpoint.index}`;
+          id = `${waitpoint.completedByTaskRun.batch.friendlyId}_${waitpoint.index}`;
         } else {
           // This run is NOT part of a batch
-          return waitpoint.completedByTaskRun.friendlyId;
+          id = waitpoint.completedByTaskRun.friendlyId;
         }
+
+        break;
       }
       case "BATCH": {
         if (!waitpoint.completedByBatch) {
@@ -182,19 +190,23 @@ export class SharedRuntimeManager implements RuntimeManager {
           return null;
         }
 
-        return waitpoint.completedByBatch.friendlyId;
+        id = waitpoint.completedByBatch.friendlyId;
+        break;
       }
       case "MANUAL":
       case "DATETIME": {
-        return waitpoint.friendlyId;
+        id = waitpoint.friendlyId;
+        break;
       }
       default: {
         assertExhaustive(waitpoint.type);
       }
     }
+
+    return id as ResolverId;
   }
 
-  private resolveWaitpoint(waitpoint: CompletedWaitpoint, resolverId?: string | null): void {
+  private resolveWaitpoint(waitpoint: CompletedWaitpoint, resolverId?: ResolverId | null): void {
     this.log("resolveWaitpoint", waitpoint);
 
     if (waitpoint.type === "BATCH") {
