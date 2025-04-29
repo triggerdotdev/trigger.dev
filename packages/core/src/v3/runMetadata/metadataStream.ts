@@ -22,14 +22,12 @@ export class MetadataStream<T> {
   private retryCount = 0;
   private readonly maxRetries: number;
   private currentChunkIndex = 0;
-  private reader: ReadableStreamDefaultReader<T>;
 
   constructor(private options: MetadataOptions<T>) {
     const [serverStream, consumerStream] = this.createTeeStreams();
     this.serverStream = serverStream;
     this.consumerStream = consumerStream;
     this.maxRetries = options.maxRetries ?? 10;
-    this.reader = this.serverStream.getReader();
 
     this.streamPromise = this.initializeServerStream();
   }
@@ -52,6 +50,8 @@ export class MetadataStream<T> {
   }
 
   private async makeRequest(startFromChunk: number = 0): Promise<void> {
+    const reader = this.serverStream.getReader();
+
     return new Promise((resolve, reject) => {
       const url = new URL(this.buildUrl());
       const timeout = 15 * 60 * 1000; // 15 minutes
@@ -71,15 +71,19 @@ export class MetadataStream<T> {
       });
 
       req.on("error", (error) => {
+        reader.releaseLock();
         reject(error);
       });
 
       req.on("timeout", () => {
+        reader.releaseLock();
         req.destroy(new Error("Request timed out"));
       });
 
       req.on("response", (res) => {
         if (res.statusCode === 408) {
+          reader.releaseLock();
+
           if (this.retryCount < this.maxRetries) {
             this.retryCount++;
 
@@ -112,7 +116,7 @@ export class MetadataStream<T> {
       const processStream = async () => {
         try {
           while (true) {
-            const { done, value } = await this.reader.read();
+            const { done, value } = await reader.read();
 
             if (done) {
               req.end();
@@ -124,7 +128,7 @@ export class MetadataStream<T> {
             this.currentChunkIndex++;
           }
         } catch (error) {
-          req.destroy(error as Error);
+          reject(error);
         }
       };
 
@@ -135,12 +139,7 @@ export class MetadataStream<T> {
   }
 
   private async initializeServerStream(): Promise<void> {
-    try {
-      await this.makeRequest(0);
-    } catch (error) {
-      this.reader.releaseLock();
-      throw error;
-    }
+    await this.makeRequest(0);
   }
 
   public async wait(): Promise<void> {

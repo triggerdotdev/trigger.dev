@@ -50,15 +50,19 @@ export class RedisRealtimeStreams implements StreamIngestor, StreamResponder {
               if (messages && messages.length > 0) {
                 const [_key, entries] = messages[0];
 
-                for (const [id, fields] of entries) {
+                for (let i = 0; i < entries.length; i++) {
+                  const [id, fields] = entries[i];
                   lastId = id;
 
                   if (fields && fields.length >= 2) {
-                    if (fields[1] === END_SENTINEL) {
+                    if (fields[1] === END_SENTINEL && i === entries.length - 1) {
                       controller.close();
                       return;
                     }
-                    controller.enqueue(fields[1]);
+
+                    if (fields[1] !== END_SENTINEL) {
+                      controller.enqueue(fields[1]);
+                    }
 
                     if (signal.aborted) {
                       controller.close();
