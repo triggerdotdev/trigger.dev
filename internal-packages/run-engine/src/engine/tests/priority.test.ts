@@ -6,6 +6,7 @@ import { PrismaClientOrTransaction } from "@trigger.dev/database";
 import { MinimalAuthenticatedEnvironment } from "../../shared/index.js";
 import { setTimeout } from "timers/promises";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
+import { DequeuedMessage } from "@trigger.dev/core/v3";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -76,12 +77,16 @@ describe("RunEngine priority", () => {
         const queueLength = await engine.runQueue.lengthOfEnvQueue(authenticatedEnvironment);
         expect(queueLength).toBe(priorities.length);
 
-        //dequeue (expect 4 items because of the negative priority)
-        const dequeue = await engine.dequeueFromMasterQueue({
-          consumerId: "test_12345",
-          masterQueue: "main",
-          maxRunCount: 20,
-        });
+        //dequeue 4 times, in order
+        const dequeue: DequeuedMessage[] = [];
+        for (let i = 0; i < 4; i++) {
+          const items = await engine.dequeueFromMasterQueue({
+            consumerId: "test_12345",
+            masterQueue: "main",
+            maxRunCount: 1,
+          });
+          dequeue.push(...items);
+        }
         expect(dequeue.length).toBe(4);
         expect(dequeue[0].run.friendlyId).toBe(runs[4].friendlyId);
         expect(dequeue[1].run.friendlyId).toBe(runs[3].friendlyId);
@@ -175,11 +180,16 @@ describe("RunEngine priority", () => {
         expect(queueLength).toBe(queueTimestamps.length);
 
         //dequeue (expect 4 items because of the negative priority)
-        const dequeue = await engine.dequeueFromMasterQueue({
-          consumerId: "test_12345",
-          masterQueue: "main",
-          maxRunCount: 20,
-        });
+        const dequeue: DequeuedMessage[] = [];
+        for (let i = 0; i < 5; i++) {
+          dequeue.push(
+            ...(await engine.dequeueFromMasterQueue({
+              consumerId: "test_12345",
+              masterQueue: "main",
+              maxRunCount: 1,
+            }))
+          );
+        }
         expect(dequeue.length).toBe(queueTimestamps.length);
         expect(dequeue[0].run.friendlyId).toBe(runs[2].friendlyId);
         expect(dequeue[1].run.friendlyId).toBe(runs[3].friendlyId);
