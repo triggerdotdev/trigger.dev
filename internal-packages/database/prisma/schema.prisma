@@ -1627,6 +1627,8 @@ model BackgroundWorker {
 
   @@unique([projectId, runtimeEnvironmentId, version])
   @@index([runtimeEnvironmentId])
+  // Get the latest worker for a given environment
+  @@index([runtimeEnvironmentId, createdAt(sort: Desc)])
 }
 
 model BackgroundWorkerFile {

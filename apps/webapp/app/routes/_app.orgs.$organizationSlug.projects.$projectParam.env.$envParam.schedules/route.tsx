@@ -93,12 +93,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
   const s = Object.fromEntries(url.searchParams.entries());
   const filters = ScheduleListFilters.parse(s);
-  filters.environments = [environment.id];
 
   const presenter = new ScheduleListPresenter();
   const list = await presenter.call({
     userId,
     projectId: project.id,
+    environmentId: environment.id,
     ...filters,
   });
 
@@ -106,15 +106,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 export default function Page() {
-  const {
-    schedules,
-    possibleTasks,
-    possibleEnvironments,
-    hasFilters,
-    limits,
-    currentPage,
-    totalPages,
-  } = useTypedLoaderData<typeof loader>();
+  const { schedules, possibleTasks, hasFilters, limits, currentPage, totalPages } =
+    useTypedLoaderData<typeof loader>();
   const location = useLocation();
   const organization = useOrganization();
   const project = useProject();
