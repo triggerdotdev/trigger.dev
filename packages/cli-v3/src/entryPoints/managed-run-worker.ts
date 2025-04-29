@@ -34,7 +34,7 @@ import {
   getEnvVar,
   getNumberEnvVar,
   logLevels,
-  ManagedRuntimeManager,
+  SharedRuntimeManager,
   OtelTaskLogger,
   populateEnv,
   ProdUsageManager,
@@ -449,7 +449,7 @@ const zodIpc = new ZodIpcConnection({
       await flushAll(timeoutInMs);
     },
     WAITPOINT_COMPLETED: async ({ waitpoint }) => {
-      managedWorkerRuntime.completeWaitpoints([waitpoint]);
+      sharedWorkerRuntime.completeWaitpoints([waitpoint]);
     },
   },
 });
@@ -556,9 +556,9 @@ function initializeUsageManager({
   timeout.setGlobalManager(new UsageTimeoutManager(devUsageManager));
 }
 
-const managedWorkerRuntime = new ManagedRuntimeManager(zodIpc, true);
+const sharedWorkerRuntime = new SharedRuntimeManager(zodIpc, true);
 
-runtime.setGlobalRuntimeManager(managedWorkerRuntime);
+runtime.setGlobalRuntimeManager(sharedWorkerRuntime);
 
 process.title = "trigger-managed-worker";
 

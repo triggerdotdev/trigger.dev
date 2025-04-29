@@ -35,7 +35,7 @@ import {
   getEnvVar,
   getNumberEnvVar,
   logLevels,
-  ManagedRuntimeManager,
+  SharedRuntimeManager,
   OtelTaskLogger,
   populateEnv,
   StandardLifecycleHooksManager,
@@ -456,7 +456,7 @@ const zodIpc = new ZodIpcConnection({
       await flushAll(timeoutInMs);
     },
     WAITPOINT_COMPLETED: async ({ waitpoint }) => {
-      managedWorkerRuntime.completeWaitpoints([waitpoint]);
+      sharedWorkerRuntime.completeWaitpoints([waitpoint]);
     },
   },
 });
@@ -528,8 +528,8 @@ async function flushMetadata(timeoutInMs: number = 10_000) {
   };
 }
 
-const managedWorkerRuntime = new ManagedRuntimeManager(zodIpc, showInternalLogs);
-runtime.setGlobalRuntimeManager(managedWorkerRuntime);
+const sharedWorkerRuntime = new SharedRuntimeManager(zodIpc, showInternalLogs);
+runtime.setGlobalRuntimeManager(sharedWorkerRuntime);
 
 process.title = "trigger-managed-worker";
 

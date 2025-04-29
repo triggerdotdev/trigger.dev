@@ -15,7 +15,7 @@ import { preventMultipleWaits } from "./preventMultipleWaits.js";
 
 type Resolver = (value: CompletedWaitpoint) => void;
 
-export class ManagedRuntimeManager implements RuntimeManager {
+export class SharedRuntimeManager implements RuntimeManager {
   // Maps a resolver ID to a resolver function
   private readonly resolversByWaitId: Map<string, Resolver> = new Map();
   // Maps a waitpoint ID to a wait ID
@@ -29,7 +29,7 @@ export class ManagedRuntimeManager implements RuntimeManager {
   ) {
     // Log out the runtime status on a long interval to help debug stuck executions
     setInterval(() => {
-      this.log("[DEBUG] ManagedRuntimeManager status", this.status);
+      this.log("[DEBUG] SharedRuntimeManager status", this.status);
     }, 300_000);
   }
 
