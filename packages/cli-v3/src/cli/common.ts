@@ -88,7 +88,7 @@ export async function wrapCommandAction<T extends z.AnyZodObject, TResult>(
       } else if (e instanceof SkipCommandError) {
         // do nothing
       } else if (e instanceof BundleError) {
-        process.exit();
+        process.exit(1);
       } else {
         recordSpanException(span, e);
 
