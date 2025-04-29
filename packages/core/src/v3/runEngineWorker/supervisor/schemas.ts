@@ -126,7 +126,7 @@ export type WorkerApiDequeueFromVersionResponseBody = z.infer<
   typeof WorkerApiDequeueFromVersionResponseBody
 >;
 
-const AttributeValue = z.union([
+export const DebugLogPropertiesValue = z.union([
   z.string(),
   z.number(),
   z.boolean(),
@@ -135,12 +135,13 @@ const AttributeValue = z.union([
   z.array(z.boolean().nullable()),
 ]);
 
-const Attributes = z.record(z.string(), AttributeValue.optional());
+export const DebugLogProperties = z.record(z.string(), DebugLogPropertiesValue.optional());
+export type DebugLogProperties = z.infer<typeof DebugLogProperties>;
 
 export const WorkerApiDebugLogBody = z.object({
   time: z.coerce.date(),
   message: z.string(),
-  properties: Attributes.optional(),
+  properties: DebugLogProperties.optional(),
 });
 export type WorkerApiDebugLogBody = z.infer<typeof WorkerApiDebugLogBody>;
 

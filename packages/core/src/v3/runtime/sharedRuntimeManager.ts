@@ -1,6 +1,7 @@
 import { assertExhaustive } from "../../utils.js";
 import { clock } from "../clock-api.js";
 import { lifecycleHooks } from "../lifecycle-hooks-api.js";
+import { DebugLogProperties } from "../runEngineWorker/index.js";
 import {
   BatchTaskRunExecutionResult,
   CompletedWaitpoint,
@@ -176,7 +177,10 @@ export class SharedRuntimeManager implements RuntimeManager {
     switch (waitpoint.type) {
       case "RUN": {
         if (!waitpoint.completedByTaskRun) {
-          this.log("No completedByTaskRun for RUN waitpoint", waitpoint);
+          this.debugLog(
+            "No completedByTaskRun for RUN waitpoint",
+            this.waitpointForDebugLog(waitpoint)
+          );
           return null;
         }
 
@@ -192,7 +196,10 @@ export class SharedRuntimeManager implements RuntimeManager {
       }
       case "BATCH": {
         if (!waitpoint.completedByBatch) {
-          this.log("No completedByBatch for BATCH waitpoint", waitpoint);
+          this.debugLog(
+            "No completedByBatch for BATCH waitpoint",
+            this.waitpointForDebugLog(waitpoint)
+          );
           return null;
         }
 
@@ -213,18 +220,19 @@ export class SharedRuntimeManager implements RuntimeManager {
   }
 
   private resolveWaitpoint(waitpoint: CompletedWaitpoint, resolverId?: ResolverId | null): void {
+    // This is spammy, don't make this a debug log
     this.log("resolveWaitpoint", waitpoint);
 
     if (waitpoint.type === "BATCH") {
       // We currently ignore these, they're not required to resume after a batch completes
-      this.log("Ignoring BATCH waitpoint", waitpoint);
+      this.debugLog("Ignoring BATCH waitpoint", this.waitpointForDebugLog(waitpoint));
       return;
     }
 
     resolverId = resolverId ?? this.resolverIdFromWaitpoint(waitpoint);
 
     if (!resolverId) {
-      this.log("No resolverId for waitpoint", { ...this.status, ...waitpoint });
+      this.debugLog("No resolverId for waitpoint", this.waitpointForDebugLog(waitpoint));
 
       // No need to store the waitpoint, we'll never be able to resolve it
       return;
@@ -233,7 +241,7 @@ export class SharedRuntimeManager implements RuntimeManager {
     const resolve = this.resolversById.get(resolverId);
 
     if (!resolve) {
-      this.log("No resolver found for resolverId", { ...this.status, resolverId });
+      this.debugLog("No resolver found for resolverId", { ...this.status, resolverId });
 
       // Store the waitpoint for later if we can't find a resolver
       this.waitpointsByResolverId.set(resolverId, waitpoint);
@@ -278,6 +286,42 @@ export class SharedRuntimeManager implements RuntimeManager {
         outputType: waitpoint.outputType ?? "application/json",
       } satisfies TaskRunSuccessfulExecutionResult;
     }
+  }
+
+  private waitpointForDebugLog(waitpoint: CompletedWaitpoint): DebugLogProperties {
+    const {
+      completedByTaskRun,
+      completedByBatch,
+      completedAfter,
+      completedAt,
+      output,
+      id,
+      ...rest
+    } = waitpoint;
+
+    return {
+      ...rest,
+      waitpointId: id,
+      output: output?.slice(0, 100),
+      completedByTaskRunId: completedByTaskRun?.id,
+      completedByTaskRunBatchId: completedByTaskRun?.batch?.id,
+      completedByBatchId: completedByBatch?.id,
+      completedAfter: completedAfter?.toISOString(),
+      completedAt: completedAt?.toISOString(),
+    };
+  }
+
+  private debugLog(message: string, properties?: DebugLogProperties) {
+    const status = this.status;
+
+    if (this.showLogs) {
+      console.log(`[${new Date().toISOString()}] ${message}`, { ...status, ...properties });
+    }
+
+    this.ipc.send("SEND_DEBUG_LOG", {
+      message,
+      properties: { ...status, ...properties },
+    });
   }
 
   private log(message: string, ...args: any[]) {

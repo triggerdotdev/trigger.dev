@@ -33,6 +33,11 @@ import {
   SuspendedProcessError,
 } from "@trigger.dev/core/v3/errors";
 
+export type OnSendDebugLogMessage = InferSocketMessageSchema<
+  typeof ExecutorToWorkerMessageCatalog,
+  "SEND_DEBUG_LOG"
+>;
+
 export type TaskRunProcessOptions = {
   workerManifest: WorkerManifest;
   serverWorker: ServerBackgroundWorker;
@@ -68,6 +73,7 @@ export class TaskRunProcess {
   public onExit: Evt<{ code: number | null; signal: NodeJS.Signals | null; pid?: number }> =
     new Evt();
   public onIsBeingKilled: Evt<TaskRunProcess> = new Evt();
+  public onSendDebugLog: Evt<OnSendDebugLogMessage> = new Evt();
 
   private _isPreparedForNextRun: boolean = false;
   private _isPreparedForNextAttempt: boolean = false;
@@ -177,6 +183,9 @@ export class TaskRunProcess {
         },
         UNCAUGHT_EXCEPTION: async (message) => {
           logger.debug("uncaught exception in task run process", { ...message });
+        },
+        SEND_DEBUG_LOG: async (message) => {
+          this.onSendDebugLog.post(message);
         },
       },
     });

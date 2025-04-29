@@ -144,6 +144,10 @@ export class RunExecution {
       }
     });
 
+    taskRunProcess.onSendDebugLog.attach(async (debugLog) => {
+      this.sendRuntimeDebugLog(debugLog.message, debugLog.properties);
+    });
+
     return taskRunProcess;
   }
 
@@ -940,6 +944,26 @@ export class RunExecution {
     this.logger.sendDebugLog({
       runId: runIdOverride ?? this.runFriendlyId,
       message: `[execution] ${message}`,
+      properties: {
+        ...properties,
+        runId: this.runFriendlyId,
+        snapshotId: this.currentSnapshotId,
+        executionId: this.id,
+        executionRestoreCount: this.restoreCount,
+        lastHeartbeat: this.lastHeartbeat?.toISOString(),
+      },
+    });
+  }
+
+  private sendRuntimeDebugLog(
+    message: string,
+    properties?: SendDebugLogOptions["properties"],
+    runIdOverride?: string
+  ) {
+    this.logger.sendDebugLog({
+      runId: runIdOverride ?? this.runFriendlyId,
+      message: `[runtime] ${message}`,
+      print: false,
       properties: {
         ...properties,
         runId: this.runFriendlyId,

@@ -9,6 +9,7 @@ export type SendDebugLogOptions = {
   message: string;
   date?: Date;
   properties?: WorkloadDebugLogRequestBody["properties"];
+  print?: boolean;
 };
 
 export type RunLoggerOptions = {
@@ -25,7 +26,7 @@ export class RunLogger {
     this.env = opts.env;
   }
 
-  sendDebugLog({ runId, message, date, properties }: SendDebugLogOptions) {
+  sendDebugLog({ runId, message, date, properties, print = true }: SendDebugLogOptions) {
     if (!runId) {
       runId = this.env.TRIGGER_RUN_ID;
     }
@@ -41,7 +42,9 @@ export class RunLogger {
       workerName: this.env.TRIGGER_WORKER_INSTANCE_NAME,
     };
 
-    console.log(message, mergedProperties);
+    if (print) {
+      console.log(message, mergedProperties);
+    }
 
     this.httpClient.sendDebugLog(runId, {
       message,
