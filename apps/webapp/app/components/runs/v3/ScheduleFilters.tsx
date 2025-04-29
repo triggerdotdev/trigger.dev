@@ -24,10 +24,6 @@ export const ScheduleListFilters = z.object({
     .string()
     .optional()
     .transform((value) => (value ? value.split(",") : undefined)),
-  environments: z
-    .string()
-    .optional()
-    .transform((value) => (value ? value.split(",") : undefined)),
   type: z.union([z.literal("declarative"), z.literal("imperative")]).optional(),
   search: z.string().optional(),
 });
@@ -44,7 +40,7 @@ export function ScheduleFilters({ possibleTasks }: ScheduleFiltersProps) {
   const navigate = useNavigate();
   const location = useOptimisticLocation();
   const searchParams = new URLSearchParams(location.search);
-  const { environments, tasks, page, search, type } = ScheduleListFilters.parse(
+  const { tasks, page, search, type } = ScheduleListFilters.parse(
     Object.fromEntries(searchParams.entries())
   );
 
