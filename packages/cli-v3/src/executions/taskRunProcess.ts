@@ -278,56 +278,6 @@ export class TaskRunProcess {
     return result;
   }
 
-  taskRunCompletedNotification(completion: TaskRunExecutionResult) {
-    if (!completion.ok && typeof completion.retry !== "undefined") {
-      logger.debug(
-        "Task run completed with error and wants to retry, won't send task run completed notification"
-      );
-      return;
-    }
-
-    if (!this._child?.connected || this._isBeingKilled || this._child.killed) {
-      logger.debug(
-        "Child process not connected or being killed, can't send task run completed notification"
-      );
-      return;
-    }
-
-    this._ipc?.send("TASK_RUN_COMPLETED_NOTIFICATION", {
-      version: "v2",
-      completion,
-    });
-  }
-
-  waitCompletedNotification() {
-    if (!this._child?.connected || this._isBeingKilled || this._child.killed) {
-      console.error(
-        "Child process not connected or being killed, can't send wait completed notification"
-      );
-      return;
-    }
-
-    this._ipc?.send("WAIT_COMPLETED_NOTIFICATION", {});
-  }
-
-  waitpointCreated(waitId: string, waitpointId: string) {
-    if (!this._child?.connected || this._isBeingKilled || this._child.killed) {
-      console.error(
-        "Child process not connected or being killed, can't send waitpoint created notification"
-      );
-      return;
-    }
-
-    this._ipc?.send("WAITPOINT_CREATED", {
-      wait: {
-        id: waitId,
-      },
-      waitpoint: {
-        id: waitpointId,
-      },
-    });
-  }
-
   waitpointCompleted(waitpoint: CompletedWaitpoint) {
     if (!this._child?.connected || this._isBeingKilled || this._child.killed) {
       console.error(

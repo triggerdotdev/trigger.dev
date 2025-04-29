@@ -219,40 +219,11 @@ export const WorkerToExecutorMessageCatalog = {
       isWarmStart: z.boolean().optional(),
     }),
   },
-  TASK_RUN_COMPLETED_NOTIFICATION: {
-    message: z.discriminatedUnion("version", [
-      z.object({
-        version: z.literal("v1"),
-        completion: TaskRunExecutionResult,
-        execution: TaskRunExecution,
-      }),
-      z.object({
-        version: z.literal("v2"),
-        completion: TaskRunExecutionResult,
-      }),
-    ]),
-  },
-  WAIT_COMPLETED_NOTIFICATION: {
-    message: z.object({
-      version: z.literal("v1").default("v1"),
-    }),
-  },
   FLUSH: {
     message: z.object({
       timeoutInMs: z.number(),
     }),
     callback: z.void(),
-  },
-  WAITPOINT_CREATED: {
-    message: z.object({
-      version: z.literal("v1").default("v1"),
-      wait: z.object({
-        id: z.string(),
-      }),
-      waitpoint: z.object({
-        id: z.string(),
-      }),
-    }),
   },
   WAITPOINT_COMPLETED: {
     message: z.object({

@@ -445,17 +445,8 @@ const zodIpc = new ZodIpcConnection({
         });
       }
     },
-    TASK_RUN_COMPLETED_NOTIFICATION: async () => {
-      await managedWorkerRuntime.completeWaitpoints([]);
-    },
-    WAIT_COMPLETED_NOTIFICATION: async () => {
-      await managedWorkerRuntime.completeWaitpoints([]);
-    },
     FLUSH: async ({ timeoutInMs }, sender) => {
       await flushAll(timeoutInMs);
-    },
-    WAITPOINT_CREATED: async ({ wait, waitpoint }) => {
-      managedWorkerRuntime.associateWaitWithWaitpoint(wait.id, waitpoint.id);
     },
     WAITPOINT_COMPLETED: async ({ waitpoint }) => {
       managedWorkerRuntime.completeWaitpoints([waitpoint]);

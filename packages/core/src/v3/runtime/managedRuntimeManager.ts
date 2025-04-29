@@ -146,10 +146,6 @@ export class ManagedRuntimeManager implements RuntimeManager {
     });
   }
 
-  associateWaitWithWaitpoint(waitId: string, waitpointId: string) {
-    this.resolversByWaitpoint.set(waitpointId, waitId);
-  }
-
   async completeWaitpoints(waitpoints: CompletedWaitpoint[]): Promise<void> {
     await Promise.all(waitpoints.map((waitpoint) => this.completeWaitpoint(waitpoint)));
   }
