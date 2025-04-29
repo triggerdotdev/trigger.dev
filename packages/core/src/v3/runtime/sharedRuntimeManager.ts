@@ -57,6 +57,8 @@ export class SharedRuntimeManager implements RuntimeManager {
         runId: params.id,
       });
 
+      // FIXME: We need to send a "ready to checkpoint" signal here
+
       const waitpoint = await promise;
       const result = this.waitpointToTaskRunExecutionResult(waitpoint);
 
@@ -95,6 +97,8 @@ export class SharedRuntimeManager implements RuntimeManager {
         batchId: params.id,
         runCount: params.runCount,
       });
+
+      // FIXME: We need to send a "ready to checkpoint" signal here
 
       const waitpoints = await Promise.all(promises);
 
@@ -137,6 +141,8 @@ export class SharedRuntimeManager implements RuntimeManager {
           token: waitpointFriendlyId,
         });
       }
+
+      // FIXME: We need to send a "ready to checkpoint" signal here
 
       const waitpoint = await promise;
 
