@@ -17,8 +17,11 @@ import { preventMultipleWaits } from "./preventMultipleWaits.js";
 type Resolver = (value: CompletedWaitpoint) => void;
 
 export class SharedRuntimeManager implements RuntimeManager {
-  // Maps a resolver ID to a resolver function
-  private readonly resolversById: Map<string, Resolver> = new Map();
+  /** Maps a resolver ID to a resolver function */
+  private readonly resolversById = new Map<string, Resolver>();
+
+  /** Stores waitpoints that arrive before their resolvers have been created */
+  private readonly waitpointsByResolverId = new Map<string, CompletedWaitpoint>();
 
   private _preventMultipleWaits = preventMultipleWaits();
 
@@ -41,6 +44,9 @@ export class SharedRuntimeManager implements RuntimeManager {
       const promise = new Promise<CompletedWaitpoint>((resolve) => {
         this.resolversById.set(params.id, resolve);
       });
+
+      // Resolve any waitpoints we received before the resolver was created
+      this.resolvePendingWaitpoints();
 
       await lifecycleHooks.callOnWaitHookListeners({
         type: "task",
@@ -77,6 +83,9 @@ export class SharedRuntimeManager implements RuntimeManager {
         });
       });
 
+      // Resolve any waitpoints we received before the resolvers were created
+      this.resolvePendingWaitpoints();
+
       await lifecycleHooks.callOnWaitHookListeners({
         type: "batch",
         batchId: params.id,
@@ -109,6 +118,9 @@ export class SharedRuntimeManager implements RuntimeManager {
       const promise = new Promise<CompletedWaitpoint>((resolve) => {
         this.resolversById.set(waitpointFriendlyId, resolve);
       });
+
+      // Resolve any waitpoints we received before the resolver was created
+      this.resolvePendingWaitpoints();
 
       if (finishDate) {
         await lifecycleHooks.callOnWaitHookListeners({
@@ -182,7 +194,7 @@ export class SharedRuntimeManager implements RuntimeManager {
     }
   }
 
-  private resolveWaitpoint(waitpoint: CompletedWaitpoint): void {
+  private resolveWaitpoint(waitpoint: CompletedWaitpoint, resolverId?: string | null): void {
     this.log("resolveWaitpoint", waitpoint);
 
     if (waitpoint.type === "BATCH") {
@@ -191,10 +203,12 @@ export class SharedRuntimeManager implements RuntimeManager {
       return;
     }
 
-    const resolverId = this.resolverIdFromWaitpoint(waitpoint);
+    resolverId = resolverId ?? this.resolverIdFromWaitpoint(waitpoint);
 
     if (!resolverId) {
-      this.log("No resolverId found for waitpoint", { ...this.status, ...waitpoint });
+      this.log("No resolverId for waitpoint", { ...this.status, ...waitpoint });
+
+      // No need to store the waitpoint, we'll never be able to resolve it
       return;
     }
 
@@ -202,10 +216,12 @@ export class SharedRuntimeManager implements RuntimeManager {
 
     if (!resolve) {
       this.log("No resolver found for resolverId", { ...this.status, resolverId });
+
+      // Store the waitpoint for later if we can't find a resolver
+      this.waitpointsByResolverId.set(resolverId, waitpoint);
+
       return;
     }
-
-    this.log("Resolving waitpoint", waitpoint);
 
     // Ensure current time is accurate before resolving the waitpoint
     clock.reset();
@@ -213,6 +229,13 @@ export class SharedRuntimeManager implements RuntimeManager {
     resolve(waitpoint);
 
     this.resolversById.delete(resolverId);
+    this.waitpointsByResolverId.delete(resolverId);
+  }
+
+  private resolvePendingWaitpoints(): void {
+    for (const [resolverId, waitpoint] of this.waitpointsByResolverId.entries()) {
+      this.resolveWaitpoint(waitpoint, resolverId);
+    }
   }
 
   private waitpointToTaskRunExecutionResult(waitpoint: CompletedWaitpoint): TaskRunExecutionResult {
@@ -247,6 +270,7 @@ export class SharedRuntimeManager implements RuntimeManager {
   private get status() {
     return {
       resolversById: Array.from(this.resolversById.keys()),
+      waitpointsByResolverId: Array.from(this.waitpointsByResolverId.keys()),
     };
   }
 }
