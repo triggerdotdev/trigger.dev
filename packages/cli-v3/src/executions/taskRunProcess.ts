@@ -286,9 +286,7 @@ export class TaskRunProcess {
       return;
     }
 
-    this._ipc?.send("WAITPOINT_COMPLETED", {
-      waitpoint,
-    });
+    this._ipc?.send("RESOLVE_WAITPOINT", { waitpoint });
   }
 
   async #handleExit(code: number | null, signal: NodeJS.Signals | null) {
