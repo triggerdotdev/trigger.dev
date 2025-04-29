@@ -23,6 +23,7 @@ import { getMaxDuration } from "@trigger.dev/core/v3/isomorphic";
 import { DevSubscriber, devPubSub } from "./devPubSub.server";
 import { findQueueInEnvironment, sanitizeQueueName } from "~/models/taskQueue.server";
 import { createRedisClient, RedisClient } from "~/redis.server";
+import { emitRunStatusUpdate } from "~/services/runsDashboardInstance.server";
 
 const MessageBody = z.discriminatedUnion("type", [
   z.object({
@@ -538,6 +539,8 @@ export class DevQueueConsumer {
         logger.debug("Executing the run", {
           messageId: message.messageId,
         });
+
+        emitRunStatusUpdate(lockedTaskRun.id);
 
         this._inProgressRuns.set(lockedTaskRun.friendlyId, message.messageId);
       } catch (e) {

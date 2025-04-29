@@ -437,6 +437,8 @@ export class TriggerTaskServiceV1 extends BaseService {
                     runTags: bodyTags,
                     oneTimeUseToken: options.oneTimeUseToken,
                     machinePreset: body.options?.machine,
+                    scheduleId: options.scheduleId,
+                    scheduleInstanceId: options.scheduleInstanceId,
                   },
                 });
 
@@ -604,7 +606,7 @@ export class TriggerTaskServiceV1 extends BaseService {
           return;
         }
 
-        emitRunStatusUpdate(run, environment);
+        emitRunStatusUpdate(run.id);
 
         return {
           run,

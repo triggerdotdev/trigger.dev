@@ -7,6 +7,7 @@ import { ExpireEnqueuedRunService } from "./expireEnqueuedRun.server";
 import { commonWorker } from "../commonWorker.server";
 import { workerQueue } from "~/services/worker.server";
 import { enqueueRun } from "./enqueueRun.server";
+import { emitRunStatusUpdate } from "~/services/runsDashboardInstance.server";
 
 export class EnqueueDelayedRunService extends BaseService {
   public static async enqueue(runId: string, runAt?: Date) {
@@ -101,6 +102,8 @@ export class EnqueueDelayedRunService extends BaseService {
         }
       }
     });
+
+    emitRunStatusUpdate(run.id);
 
     await enqueueRun({
       env: run.runtimeEnvironment,

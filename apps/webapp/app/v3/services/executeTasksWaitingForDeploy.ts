@@ -4,6 +4,7 @@ import { marqs } from "~/v3/marqs/index.server";
 import { BaseService } from "./baseService.server";
 import { logger } from "~/services/logger.server";
 import { env } from "~/env.server";
+import { emitRunStatusUpdate } from "~/services/runsDashboardInstance.server";
 
 export class ExecuteTasksWaitingForDeployService extends BaseService {
   public async call(backgroundWorkerId: string) {
@@ -76,6 +77,10 @@ export class ExecuteTasksWaitingForDeployService extends BaseService {
         tasks: runsWaitingForDeploy.map((run) => run.id),
         total: pendingRuns.count,
       });
+    }
+
+    for (const run of runsWaitingForDeploy) {
+      emitRunStatusUpdate(run.id);
     }
 
     for (const run of runsWaitingForDeploy) {

@@ -9,6 +9,7 @@ import {
   RunDashboardEvents,
   RunsDashboardService,
 } from "./runsDashboardService.server";
+import { tryCatch } from "@trigger.dev/core/utils";
 
 const runDashboardEventBus: RunDashboardEventBus = new EventEmitter<RunDashboardEvents>();
 
@@ -25,11 +26,25 @@ export const runsDashboard = singleton("runsDashboard", () => {
   const service = new RunsDashboardService(clickhouse);
 
   runDashboardEventBus.on("runStatusUpdate", async (event) => {
-    await upsertRun(event.time, event.runId, service);
+    const [upsertError] = await tryCatch(upsertRun(event.time, event.runId, service));
+
+    if (upsertError) {
+      logger.error("RunDashboard: runStatusUpdate: upsertRun error", {
+        runId: event.runId,
+        error: upsertError,
+      });
+    }
   });
 
   engine.eventBus.on("runStatusChanged", async (event) => {
-    await upsertRun(event.time, event.runId, service);
+    const [upsertError] = await tryCatch(upsertRun(event.time, event.runId, service));
+
+    if (upsertError) {
+      logger.error("RunDashboard: runStatusChanged: upsertRun error", {
+        runId: event.runId,
+        error: upsertError,
+      });
+    }
   });
 
   return service;

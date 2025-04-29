@@ -12,6 +12,7 @@ import { CrashTaskRunService } from "./crashTaskRun.server";
 import { ExpireEnqueuedRunService } from "./expireEnqueuedRun.server";
 import { findQueueInEnvironment } from "~/models/taskQueue.server";
 import { FINAL_RUN_STATUSES } from "../taskStatus";
+import { emitRunStatusUpdate } from "~/services/runsDashboardInstance.server";
 
 export class CreateTaskRunAttemptService extends BaseService {
   public async call({
@@ -179,6 +180,8 @@ export class CreateTaskRunAttemptService extends BaseService {
           runId: taskRun.id,
         });
       }
+
+      emitRunStatusUpdate(taskRun.id);
 
       const machinePreset =
         machinePresetFromRun(taskRun) ?? machinePresetFromConfig(lockedBy.machineConfig ?? {});

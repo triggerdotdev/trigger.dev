@@ -8,6 +8,7 @@ import { nextScheduledTimestamps } from "../utils/calculateNextSchedule.server";
 import { BaseService } from "./baseService.server";
 import { RegisterNextTaskScheduleInstanceService } from "./registerNextTaskScheduleInstance.server";
 import { TriggerTaskService } from "./triggerTask.server";
+import { emitRunStatusUpdate } from "~/services/runsDashboardInstance.server";
 
 export class TriggerScheduledTaskService extends BaseService {
   public async call(instanceId: string, finalAttempt: boolean) {
@@ -147,7 +148,11 @@ export class TriggerScheduledTaskService extends BaseService {
           instance.taskSchedule.taskIdentifier,
           instance.environment,
           { payload: payloadPacket.data, options: { payloadType: payloadPacket.dataType } },
-          { customIcon: "scheduled" }
+          {
+            customIcon: "scheduled",
+            scheduleId: instance.taskSchedule.id,
+            scheduleInstanceId: instance.id,
+          }
         );
 
         if (!result) {
@@ -157,16 +162,6 @@ export class TriggerScheduledTaskService extends BaseService {
             payloadPacket,
           });
         } else {
-          await this._prisma.taskRun.update({
-            where: {
-              id: result.run.id,
-            },
-            data: {
-              scheduleId: instance.taskSchedule.id,
-              scheduleInstanceId: instance.id,
-            },
-          });
-
           await this._prisma.taskSchedule.update({
             where: {
               id: instance.taskSchedule.id,

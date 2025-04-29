@@ -3,6 +3,7 @@ import { TaskRun } from "@trigger.dev/database";
 import { parseDelay } from "~/utils/delays";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { EnqueueDelayedRunService } from "./enqueueDelayedRun.server";
+import { emitRunStatusUpdate } from "~/services/runsDashboardInstance.server";
 
 export class RescheduleTaskRunService extends BaseService {
   public async call(taskRun: TaskRun, body: RescheduleRunRequestBody) {
@@ -24,6 +25,8 @@ export class RescheduleTaskRunService extends BaseService {
         delayUntil: delay,
       },
     });
+
+    emitRunStatusUpdate(taskRun.id);
 
     await EnqueueDelayedRunService.reschedule(taskRun.id, delay);
 

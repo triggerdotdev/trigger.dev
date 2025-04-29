@@ -66,6 +66,7 @@ import {
 import { tracer } from "../tracer.server";
 import { getMaxDuration } from "../utils/maxDuration";
 import { MessagePayload } from "./types";
+import { emitRunStatusUpdate } from "~/services/runsDashboardInstance.server";
 
 const WithTraceContext = z.object({
   traceparent: z.string().optional(),
@@ -841,6 +842,8 @@ export class SharedQueueConsumer {
           };
         }
 
+        emitRunStatusUpdate(lockedTaskRun.id);
+
         return {
           action: "noop",
           reason: "restored_checkpoint",
@@ -921,6 +924,8 @@ export class SharedQueueConsumer {
               dequeuedAt: dequeuedAt.getTime(),
             },
           });
+
+          emitRunStatusUpdate(lockedTaskRun.id);
 
           return {
             action: "noop",
@@ -1430,7 +1435,7 @@ export class SharedQueueConsumer {
   async #markRunAsWaitingForDeploy(runId: string) {
     logger.debug("Marking run as waiting for deploy", { runId });
 
-    return await prisma.taskRun.update({
+    await prisma.taskRun.update({
       where: {
         id: runId,
       },
@@ -1438,6 +1443,8 @@ export class SharedQueueConsumer {
         status: "WAITING_FOR_DEPLOY",
       },
     });
+
+    emitRunStatusUpdate(runId);
   }
 
   async #resolveCompletedAttemptsForResumeMessage(

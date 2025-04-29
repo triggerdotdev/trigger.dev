@@ -365,6 +365,8 @@ export class RunEngine {
       runnerId,
       releaseConcurrency,
       runChainState,
+      scheduleId,
+      scheduleInstanceId,
     }: TriggerParams,
     tx?: PrismaClientOrTransaction
   ): Promise<TaskRun> {
@@ -453,6 +455,8 @@ export class RunEngine {
               maxDurationInSeconds,
               machinePreset: machine,
               runChainState,
+              scheduleId,
+              scheduleInstanceId,
               executionSnapshots: {
                 create: {
                   engine: "V2",

@@ -34,6 +34,7 @@ import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
 import { RetryAttemptService } from "./retryAttempt.server";
 import { getTaskEventStoreTableForRun } from "../taskEventStore.server";
 import { socketIo } from "../handleSocketIo.server";
+import { emitRunStatusUpdate } from "~/services/runsDashboardInstance.server";
 
 type FoundAttempt = Awaited<ReturnType<typeof findAttempt>>;
 
@@ -613,6 +614,8 @@ export class CompleteAttemptService extends BaseService {
         status: "RETRYING_AFTER_FAILURE",
       },
     });
+
+    emitRunStatusUpdate(taskRunAttempt.taskRunId);
 
     if (environment.type === "DEVELOPMENT") {
       await marqs.requeueMessage(taskRunAttempt.taskRunId, {}, executionRetry.timestamp, "retry");

@@ -19,6 +19,7 @@ import { completeBatchTaskRunItemV3 } from "./batchTriggerV3.server";
 import { ExpireEnqueuedRunService } from "./expireEnqueuedRun.server";
 import { ResumeBatchRunService } from "./resumeBatchRun.server";
 import { ResumeDependentParentsService } from "./resumeDependentParents.server";
+import { emitRunStatusUpdate } from "~/services/runsDashboardInstance.server";
 
 type BaseInput = {
   id: string;
@@ -99,6 +100,8 @@ export class FinalizeTaskRunService extends BaseService {
       data: { status, expiredAt, completedAt, error: error ? sanitizeError(error) : undefined },
       ...(include ? { include } : {}),
     });
+
+    emitRunStatusUpdate(run.id);
 
     if (run.ttl) {
       await ExpireEnqueuedRunService.ack(run.id);
