@@ -160,6 +160,7 @@ export class CreateTaskRunAttemptService extends BaseService {
           data: {
             status: setToExecuting ? "EXECUTING" : undefined,
             executedAt: taskRun.executedAt ?? new Date(),
+            attemptNumber: nextAttemptNumber,
           },
         });
 
