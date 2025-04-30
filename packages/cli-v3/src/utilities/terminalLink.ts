@@ -34,6 +34,8 @@ export type TerminalLinkOptions = {
     const link = terminalLink('My Website', 'https://sindresorhus.com');
     console.log(link);
     ```
+
+    @deprecated The default fallback is broken in some terminals. Please use `cliLink` instead.
 */
 function terminalLink(
   text: string,
