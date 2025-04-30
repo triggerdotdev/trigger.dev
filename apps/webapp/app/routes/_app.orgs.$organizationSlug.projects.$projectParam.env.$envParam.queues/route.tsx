@@ -422,8 +422,8 @@ export default function Page() {
                         <div className="grid place-items-center py-6 text-text-dimmed">
                           <Paragraph>
                             {hasFilters
-                              ? "No queues found"
-                              : "No queues found matching your filters"}
+                              ? "No queues found matching your filters"
+                              : "No queues found"}
                           </Paragraph>
                         </div>
                       </TableCell>
