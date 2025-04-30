@@ -84,6 +84,7 @@ export class RunExecutionSnapshotPoller {
     this.poller.resetCurrentInterval();
   }
 
+  // The snapshot ID is only used as an indicator of when a poller got stuck
   updateSnapshotId(snapshotFriendlyId: string) {
     this.snapshotFriendlyId = snapshotFriendlyId;
   }

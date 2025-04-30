@@ -401,46 +401,64 @@ export class ManagedRunController {
     }) satisfies SupervisorSocket;
 
     socket.on("run:notify", async ({ version, run }) => {
+      // Generate a unique ID for the notification
+      const notificationId = Math.random().toString(36).substring(2, 15);
+
+      // Use this to track the notification incl. any processing
+      const notification = {
+        id: notificationId,
+        runId: run.friendlyId,
+        version,
+      };
+
+      // Lock this to the current run and snapshot IDs
+      const controller = {
+        runFriendlyId: this.runFriendlyId,
+        snapshotFriendlyId: this.snapshotFriendlyId,
+      };
+
       this.sendDebugLog({
         runId: run.friendlyId,
         message: "run:notify received by runner",
-        properties: { version, runId: run.friendlyId },
+        properties: {
+          notification,
+          controller,
+        },
       });
 
-      if (!this.runFriendlyId) {
+      if (!controller.runFriendlyId) {
         this.sendDebugLog({
           runId: run.friendlyId,
           message: "run:notify: ignoring notification, no local run ID",
           properties: {
-            currentRunId: this.runFriendlyId,
-            currentSnapshotId: this.snapshotFriendlyId,
+            notification,
+            controller,
           },
         });
         return;
       }
 
-      if (run.friendlyId !== this.runFriendlyId) {
+      if (run.friendlyId !== controller.runFriendlyId) {
         this.sendDebugLog({
           runId: run.friendlyId,
           message: "run:notify: ignoring notification for different run",
           properties: {
-            currentRunId: this.runFriendlyId,
-            currentSnapshotId: this.snapshotFriendlyId,
-            notificationRunId: run.friendlyId,
+            notification,
+            controller,
           },
         });
         return;
       }
 
-      const latestSnapshot = await this.httpClient.getRunExecutionData(this.runFriendlyId);
+      const latestSnapshot = await this.httpClient.getRunExecutionData(controller.runFriendlyId);
 
       if (!latestSnapshot.success) {
         this.sendDebugLog({
-          runId: this.runFriendlyId,
+          runId: run.friendlyId,
           message: "run:notify: failed to get latest snapshot data",
           properties: {
-            currentRunId: this.runFriendlyId,
-            currentSnapshotId: this.snapshotFriendlyId,
+            notification,
+            controller,
             error: latestSnapshot.error,
           },
         });
@@ -451,19 +469,29 @@ export class ManagedRunController {
 
       if (!this.currentExecution) {
         this.sendDebugLog({
-          runId: runExecutionData.run.friendlyId,
-          message: "handleSnapshotChange: no current execution",
+          runId: run.friendlyId,
+          message: "run:notify: no current execution",
+          properties: {
+            notification,
+            controller,
+          },
         });
         return;
       }
 
-      const [error] = await tryCatch(this.currentExecution.handleSnapshotChange(runExecutionData));
+      const [error] = await tryCatch(
+        this.currentExecution.enqueueSnapshotChangeAndWait(runExecutionData)
+      );
 
       if (error) {
         this.sendDebugLog({
-          runId: runExecutionData.run.friendlyId,
-          message: "handleSnapshotChange: unexpected error",
-          properties: { error: error.message },
+          runId: run.friendlyId,
+          message: "run:notify: unexpected error",
+          properties: {
+            notification,
+            controller,
+            error: error.message,
+          },
         });
       }
     });

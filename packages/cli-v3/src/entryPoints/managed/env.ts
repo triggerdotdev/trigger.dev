@@ -32,7 +32,6 @@ const Env = z.object({
   TRIGGER_MACHINE_MEMORY: z.string().default("0"),
   TRIGGER_RUNNER_ID: z.string(),
   TRIGGER_METADATA_URL: z.string().optional(),
-  TRIGGER_PRE_SUSPEND_WAIT_MS: z.coerce.number().default(200),
 
   // Timeline metrics
   TRIGGER_POD_SCHEDULED_AT_MS: DateEnv,
@@ -118,9 +117,6 @@ export class RunnerEnv {
   }
   get TRIGGER_METADATA_URL() {
     return this.env.TRIGGER_METADATA_URL;
-  }
-  get TRIGGER_PRE_SUSPEND_WAIT_MS() {
-    return this.env.TRIGGER_PRE_SUSPEND_WAIT_MS;
   }
   get TRIGGER_POD_SCHEDULED_AT_MS() {
     return this.env.TRIGGER_POD_SCHEDULED_AT_MS;

@@ -1,0 +1,280 @@
+import { tryCatch } from "@trigger.dev/core/utils";
+import { RunLogger, SendDebugLogOptions } from "./logger.js";
+import { TaskRunExecutionStatus, type RunExecutionData } from "@trigger.dev/core/v3";
+import { assertExhaustive } from "@trigger.dev/core/utils";
+
+export type SnapshotState = {
+  id: string;
+  status: TaskRunExecutionStatus;
+};
+
+type SnapshotHandler = (runData: RunExecutionData) => Promise<void>;
+type SuspendableHandler = (suspendableSnapshot: SnapshotState) => Promise<void>;
+
+type SnapshotManagerOptions = {
+  runFriendlyId: string;
+  initialSnapshotId: string;
+  initialStatus: TaskRunExecutionStatus;
+  logger: RunLogger;
+  onSnapshotChange: SnapshotHandler;
+  onSuspendable: SuspendableHandler;
+};
+
+type QueuedChange =
+  | { type: "snapshot"; data: RunExecutionData }
+  | { type: "suspendable"; value: boolean };
+
+type QueuedChangeItem = {
+  change: QueuedChange;
+  resolve: () => void;
+  reject: (error: Error) => void;
+};
+
+export class SnapshotManager {
+  private state: SnapshotState;
+  private runFriendlyId: string;
+  private logger: RunLogger;
+  private isSuspendable: boolean = false;
+  private readonly onSnapshotChange: SnapshotHandler;
+  private readonly onSuspendable: SuspendableHandler;
+
+  private changeQueue: QueuedChangeItem[] = [];
+  private isProcessingQueue = false;
+
+  constructor(opts: SnapshotManagerOptions) {
+    this.runFriendlyId = opts.runFriendlyId;
+    this.logger = opts.logger;
+    this.state = {
+      id: opts.initialSnapshotId,
+      status: opts.initialStatus,
+    };
+    this.onSnapshotChange = opts.onSnapshotChange;
+    this.onSuspendable = opts.onSuspendable;
+  }
+
+  public get snapshotId(): string {
+    return this.state.id;
+  }
+
+  public get status(): TaskRunExecutionStatus {
+    return this.state.status;
+  }
+
+  public get suspendable(): boolean {
+    return this.isSuspendable;
+  }
+
+  public async setSuspendable(suspendable: boolean): Promise<void> {
+    if (this.isSuspendable === suspendable) {
+      this.sendDebugLog(`skipping suspendable update, already ${suspendable}`);
+      return;
+    }
+
+    this.sendDebugLog(`setting suspendable to ${suspendable}`);
+
+    return this.enqueueSnapshotChange({ type: "suspendable", value: suspendable });
+  }
+
+  public updateSnapshot(snapshotId: string, status: TaskRunExecutionStatus) {
+    // Check if this is an old snapshot
+    if (snapshotId < this.state.id) {
+      this.sendDebugLog("skipping update for old snapshot", {
+        incomingId: snapshotId,
+        currentId: this.state.id,
+      });
+      return;
+    }
+
+    this.state = { id: snapshotId, status };
+  }
+
+  public async handleSnapshotChange(runData: RunExecutionData): Promise<void> {
+    if (!this.statusCheck(runData)) {
+      return;
+    }
+
+    return this.enqueueSnapshotChange({ type: "snapshot", data: runData });
+  }
+
+  private statusCheck(runData: RunExecutionData): boolean {
+    const { run, snapshot } = runData;
+
+    const statusCheckData = {
+      incomingId: snapshot.friendlyId,
+      incomingStatus: snapshot.executionStatus,
+      currentId: this.state.id,
+      currentStatus: this.state.status,
+    };
+
+    // Ensure run ID matches
+    if (run.friendlyId !== this.runFriendlyId) {
+      this.sendDebugLog("skipping update for mismatched run ID", {
+        statusCheckData,
+      });
+
+      return false;
+    }
+
+    // Skip if this is an old snapshot
+    if (snapshot.friendlyId < this.state.id) {
+      this.sendDebugLog("skipping update for old snapshot", {
+        statusCheckData,
+      });
+
+      return false;
+    }
+
+    // Skip if this is the current snapshot
+    if (snapshot.friendlyId === this.state.id) {
+      this.sendDebugLog("skipping update for duplicate snapshot", {
+        statusCheckData,
+      });
+
+      return false;
+    }
+
+    return true;
+  }
+
+  private async enqueueSnapshotChange(change: QueuedChange): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      // For suspendable changes, resolve and remove any pending suspendable changes
+      // since only the last one matters
+      if (change.type === "suspendable") {
+        const pendingSuspendable = this.changeQueue.filter(
+          (item) => item.change.type === "suspendable"
+        );
+
+        // Resolve any pending suspendable changes - they're effectively done since we're superseding them
+        pendingSuspendable.forEach((item) => item.resolve());
+
+        // Remove them from the queue
+        this.changeQueue = this.changeQueue.filter((item) => item.change.type !== "suspendable");
+      }
+
+      this.changeQueue.push({ change, resolve, reject });
+
+      // Sort queue:
+      // 1. Suspendable changes always go to the back
+      // 2. Snapshot changes are ordered by ID
+      this.changeQueue.sort((a, b) => {
+        if (a.change.type === "suspendable" && b.change.type === "snapshot") {
+          return 1; // a goes after b
+        }
+        if (a.change.type === "snapshot" && b.change.type === "suspendable") {
+          return -1; // a goes before b
+        }
+        if (a.change.type === "snapshot" && b.change.type === "snapshot") {
+          // sort snapshot changes by creation time, CUIDs are sortable
+          return a.change.data.snapshot.friendlyId.localeCompare(b.change.data.snapshot.friendlyId);
+        }
+        return 0; // both suspendable, maintain insertion order
+      });
+
+      // Start processing if not already running
+      this.processQueue().catch((error) => {
+        this.sendDebugLog("error processing queue", { error: error.message });
+      });
+    });
+  }
+
+  private async processQueue() {
+    if (this.isProcessingQueue) {
+      return;
+    }
+
+    this.isProcessingQueue = true;
+
+    try {
+      while (this.changeQueue.length > 0) {
+        const item = this.changeQueue[0];
+        if (!item) {
+          break;
+        }
+
+        const [error] = await tryCatch(this.applyChange(item.change));
+
+        // Remove from queue and resolve/reject promise
+        this.changeQueue.shift();
+        if (error) {
+          item.reject(error);
+        } else {
+          item.resolve();
+        }
+      }
+    } finally {
+      this.isProcessingQueue = false;
+    }
+  }
+
+  private async applyChange(change: QueuedChange): Promise<void> {
+    switch (change.type) {
+      case "snapshot": {
+        // Double check we should process this snapshot
+        if (!this.statusCheck(change.data)) {
+          return;
+        }
+        const { snapshot } = change.data;
+
+        this.updateSnapshot(snapshot.friendlyId, snapshot.executionStatus);
+
+        const oldState = { ...this.state };
+
+        this.sendDebugLog(`status changed to ${snapshot.executionStatus}`, {
+          oldId: oldState.id,
+          newId: snapshot.friendlyId,
+          oldStatus: oldState.status,
+          newStatus: snapshot.executionStatus,
+        });
+
+        // Execute handler
+        await this.onSnapshotChange(change.data);
+
+        // Check suspendable state after snapshot change
+        await this.checkSuspendableState();
+        break;
+      }
+      case "suspendable": {
+        this.isSuspendable = change.value;
+
+        // Check suspendable state after suspendable change
+        await this.checkSuspendableState();
+        break;
+      }
+      default: {
+        assertExhaustive(change);
+      }
+    }
+  }
+
+  private async checkSuspendableState() {
+    if (
+      this.isSuspendable &&
+      (this.state.status === "EXECUTING_WITH_WAITPOINTS" ||
+        this.state.status === "QUEUED_EXECUTING")
+    ) {
+      this.sendDebugLog("run is now suspendable, executing handler");
+      await this.onSuspendable(this.state);
+    }
+  }
+
+  public cleanup() {
+    // Clear any pending changes
+    this.changeQueue = [];
+  }
+
+  protected sendDebugLog(message: string, properties?: SendDebugLogOptions["properties"]) {
+    this.logger.sendDebugLog({
+      runId: this.runFriendlyId,
+      message: `[snapshot] ${message}`,
+      properties: {
+        ...properties,
+        snapshotId: this.state.id,
+        status: this.state.status,
+        suspendable: this.isSuspendable,
+        queueLength: this.changeQueue.length,
+        isProcessingQueue: this.isProcessingQueue,
+      },
+    });
+  }
+}
