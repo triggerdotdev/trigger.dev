@@ -365,6 +365,11 @@ export default function Page() {
                                 Paused
                               </Badge>
                             ) : null}
+                            {queue.running === queue.concurrencyLimit ? (
+                              <Badge variant="extra-small" className="text-warning">
+                                At concurrency limit
+                              </Badge>
+                            ) : null}
                           </span>
                         </TableCell>
                         <TableCell
@@ -489,8 +494,8 @@ function EnvironmentPauseResumeButton({
             </TooltipTrigger>
             <TooltipContent className={"text-xs"}>
               {env.paused
-                ? `Resume processing runs in ${environmentFullTitle(env)}.`
-                : `Pause processing runs in ${environmentFullTitle(env)}.`}
+                ? `Resume processing runs in ${environmentFullTitle(env)}`
+                : `Pause processing runs in ${environmentFullTitle(env)}`}
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
