@@ -1,6 +1,6 @@
 import { log } from "@clack/prompts";
 import chalk from "chalk";
-import terminalLink, { Options as TerminalLinkOptions } from "terminal-link";
+import { terminalLink, TerminalLinkOptions } from "./terminalLink.js";
 import { hasTTY } from "std-env";
 
 export const isInteractive = hasTTY;
