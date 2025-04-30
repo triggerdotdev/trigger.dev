@@ -8,7 +8,7 @@ import {
 } from "@trigger.dev/core/v3/workers";
 import { io, type Socket } from "socket.io-client";
 import { RunnerEnv } from "./env.js";
-import { RunLogger, SendDebugLogOptions } from "./logger.js";
+import { ManagedRunLogger, RunLogger, SendDebugLogOptions } from "./logger.js";
 import { EnvObject } from "std-env";
 import { RunExecution } from "./execution.js";
 import { tryCatch } from "@trigger.dev/core/utils";
@@ -47,7 +47,7 @@ export class ManagedRunController {
       projectRef: env.TRIGGER_PROJECT_REF,
     });
 
-    this.logger = new RunLogger({
+    this.logger = new ManagedRunLogger({
       httpClient: this.httpClient,
       env,
     });

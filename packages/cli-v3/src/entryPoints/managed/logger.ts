@@ -14,16 +14,20 @@ export type SendDebugLogOptions = {
   print?: boolean;
 };
 
+export interface RunLogger {
+  sendDebugLog(options: SendDebugLogOptions): void;
+}
+
 export type RunLoggerOptions = {
   httpClient: WorkloadHttpClient;
   env: RunnerEnv;
 };
 
-export class RunLogger {
+export class ManagedRunLogger implements RunLogger {
   private readonly httpClient: WorkloadHttpClient;
   private readonly env: RunnerEnv;
 
-  constructor(private readonly opts: RunLoggerOptions) {
+  constructor(opts: RunLoggerOptions) {
     this.httpClient = opts.httpClient;
     this.env = opts.env;
   }
@@ -57,5 +61,19 @@ export class RunLogger {
       time: date ?? new Date(),
       properties: flattenedProperties,
     });
+  }
+}
+
+export class ConsoleRunLogger implements RunLogger {
+  private readonly print: boolean;
+
+  constructor(opts: { print?: boolean } = {}) {
+    this.print = opts.print ?? true;
+  }
+
+  sendDebugLog({ message, properties }: SendDebugLogOptions): void {
+    if (this.print) {
+      console.log("[ConsoleLogger]", message, properties);
+    }
   }
 }

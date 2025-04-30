@@ -75,6 +75,12 @@ export class SnapshotManager {
     return this.enqueueSnapshotChange({ type: "suspendable", value: suspendable });
   }
 
+  /**
+   * Update the snapshot ID and status without invoking any handlers
+   *
+   * @param snapshotId - The ID of the snapshot to update to
+   * @param status - The status to update to
+   */
   public updateSnapshot(snapshotId: string, status: TaskRunExecutionStatus) {
     // Check if this is an old snapshot
     if (snapshotId < this.state.id) {
