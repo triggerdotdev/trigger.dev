@@ -4,6 +4,7 @@ import { Fragment, type ReactNode, useEffect, useState } from "react";
 import { useLocales } from "./LocaleProvider";
 import { Paragraph } from "./Paragraph";
 import { SimpleTooltip } from "./Tooltip";
+import { CopyButton } from "./CopyButton";
 
 type DateTimeProps = {
   date: Date | string;
@@ -38,11 +39,13 @@ export const DateTime = ({
           <DateTimeTooltipContent
             title="UTC"
             dateTime={formatDateTime(realDate, "UTC", locales, true, true)}
+            isoDateTime={formatDateTimeISO(realDate, "UTC")}
             icon={<GlobeAltIcon className="size-4 text-blue-500" />}
           />
           <DateTimeTooltipContent
             title="Local"
             dateTime={formatDateTime(realDate, localTimeZone, locales, true, true)}
+            isoDateTime={formatDateTimeISO(realDate, localTimeZone)}
             icon={<Laptop className="size-4 text-green-500" />}
           />
         </div>
@@ -51,16 +54,19 @@ export const DateTime = ({
           <DateTimeTooltipContent
             title={timeZone}
             dateTime={formatDateTime(realDate, timeZone, locales, true, true)}
+            isoDateTime={formatDateTimeISO(realDate, timeZone)}
             icon={<GlobeAmericasIcon className="size-4 text-purple-500" />}
           />
           <DateTimeTooltipContent
             title="UTC"
             dateTime={formatDateTime(realDate, "UTC", locales, true, true)}
+            isoDateTime={formatDateTimeISO(realDate, "UTC")}
             icon={<GlobeAltIcon className="size-4 text-blue-500" />}
           />
           <DateTimeTooltipContent
             title="Local"
             dateTime={formatDateTime(realDate, localTimeZone, locales, true, true)}
+            isoDateTime={formatDateTimeISO(realDate, localTimeZone)}
             icon={<Laptop className="size-4 text-green-500" />}
           />
         </div>
@@ -84,7 +90,6 @@ export const DateTime = ({
       }
       content={tooltipContent}
       side="right"
-      // disableHoverableContent
     />
   );
 };
@@ -105,6 +110,10 @@ export function formatDateTime(
     second: includeTime && includeSeconds ? "numeric" : undefined,
     timeZone,
   }).format(date);
+}
+
+export function formatDateTimeISO(date: Date, timeZone: string): string {
+  return new Date(date.toLocaleString("en-US", { timeZone })).toISOString();
 }
 
 // New component that only shows date when it changes
@@ -266,19 +275,28 @@ function formatDateTimeShort(date: Date, timeZone: string, locales: string[]): s
 type DateTimeTooltipContentProps = {
   title: string;
   dateTime: string;
+  isoDateTime: string;
   icon: ReactNode;
 };
 
-function DateTimeTooltipContent({ title, dateTime, icon }: DateTimeTooltipContentProps) {
+function DateTimeTooltipContent({
+  title,
+  dateTime,
+  isoDateTime,
+  icon,
+}: DateTimeTooltipContentProps) {
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-center gap-1 text-sm">
         {icon}
         <span className="font-medium">{title}</span>
       </div>
-      <Paragraph variant="extra-small" className="text-text-dimmed">
-        {dateTime}
-      </Paragraph>
+      <div className="flex items-center gap-2">
+        <Paragraph variant="extra-small" className="text-text-dimmed">
+          {dateTime}
+        </Paragraph>
+        <CopyButton value={isoDateTime} variant="icon" size="small" showTooltip={false} />
+      </div>
     </div>
   );
 }
