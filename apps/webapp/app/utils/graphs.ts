@@ -8,7 +8,7 @@ type Options<R> = {
 export function createTimeSeriesData<R>({ startDate, endDate, window = "DAY", data }: Options<R>) {
   const outputData: Array<{ date: Date; value?: R }> = [];
   const periodLength = periodLengthMs(window);
-  const periodCount = Math.floor((endDate.getTime() - startDate.getTime()) / periodLength);
+  const periodCount = Math.round((endDate.getTime() - startDate.getTime()) / periodLength);
 
   for (let i = 0; i < periodCount; i++) {
     const periodStart = new Date(startDate);
