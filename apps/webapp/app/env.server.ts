@@ -717,6 +717,9 @@ const EnvironmentSchema = z.object({
 
   SLACK_BOT_TOKEN: z.string().optional(),
   SLACK_SIGNUP_REASON_CHANNEL_ID: z.string().optional(),
+  
+  // kapa.ai
+  KAPA_AI_WEBSITE_ID: z.string().optional(),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

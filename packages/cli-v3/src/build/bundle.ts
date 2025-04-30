@@ -51,6 +51,15 @@ export type BundleResult = {
   stop: (() => Promise<void>) | undefined;
 };
 
+export class BundleError extends Error {
+  constructor(
+    message: string,
+    public readonly issues?: esbuild.Message[]
+  ) {
+    super(message);
+  }
+}
+
 export async function bundleWorker(options: BundleOptions): Promise<BundleResult> {
   const { resolvedConfig } = options;
 
@@ -129,7 +138,7 @@ export async function bundleWorker(options: BundleOptions): Promise<BundleResult
     await currentContext.watch();
     result = await initialBuildResultPromise;
     if (result.errors.length > 0) {
-      throw new Error("Failed to build");
+      throw new BundleError("Failed to build", result.errors);
     }
 
     stop = async function () {
