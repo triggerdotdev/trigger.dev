@@ -182,6 +182,12 @@ export const ExecutorToWorkerMessageCatalog = {
       properties: DebugLogPropertiesInput.optional(),
     }),
   },
+  SET_SUSPENDABLE: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      suspendable: z.boolean(),
+    }),
+  },
 };
 
 export const WorkerToExecutorMessageCatalog = {

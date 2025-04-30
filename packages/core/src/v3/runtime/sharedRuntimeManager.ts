@@ -1,7 +1,7 @@
 import { assertExhaustive } from "../../utils.js";
 import { clock } from "../clock-api.js";
 import { lifecycleHooks } from "../lifecycle-hooks-api.js";
-import { DebugLogProperties } from "../runEngineWorker/index.js";
+import { DebugLogPropertiesInput } from "../runEngineWorker/index.js";
 import {
   BatchTaskRunExecutionResult,
   CompletedWaitpoint,
@@ -11,6 +11,7 @@ import {
   TaskRunSuccessfulExecutionResult,
   WaitpointTokenResult,
 } from "../schemas/index.js";
+import { tryCatch } from "../tryCatch.js";
 import { ExecutorToWorkerProcessConnection } from "../zodIpc.js";
 import { RuntimeManager } from "./manager.js";
 import { preventMultipleWaits } from "./preventMultipleWaits.js";
@@ -58,9 +59,7 @@ export class SharedRuntimeManager implements RuntimeManager {
         runId: params.id,
       });
 
-      // FIXME: We need to send a "ready to checkpoint" signal here
-
-      const waitpoint = await promise;
+      const waitpoint = await this.suspendable(promise);
       const result = this.waitpointToTaskRunExecutionResult(waitpoint);
 
       await lifecycleHooks.callOnResumeHookListeners({
@@ -99,9 +98,7 @@ export class SharedRuntimeManager implements RuntimeManager {
         runCount: params.runCount,
       });
 
-      // FIXME: We need to send a "ready to checkpoint" signal here
-
-      const waitpoints = await Promise.all(promises);
+      const waitpoints = await this.suspendable(Promise.all(promises));
 
       await lifecycleHooks.callOnResumeHookListeners({
         type: "batch",
@@ -143,9 +140,7 @@ export class SharedRuntimeManager implements RuntimeManager {
         });
       }
 
-      // FIXME: We need to send a "ready to checkpoint" signal here
-
-      const waitpoint = await promise;
+      const waitpoint = await this.suspendable(promise);
 
       if (finishDate) {
         await lifecycleHooks.callOnResumeHookListeners({
@@ -177,10 +172,9 @@ export class SharedRuntimeManager implements RuntimeManager {
     switch (waitpoint.type) {
       case "RUN": {
         if (!waitpoint.completedByTaskRun) {
-          this.debugLog(
-            "No completedByTaskRun for RUN waitpoint",
-            this.waitpointForDebugLog(waitpoint)
-          );
+          this.debugLog("no completedByTaskRun for RUN waitpoint", {
+            waitpoint: this.waitpointForDebugLog(waitpoint),
+          });
           return null;
         }
 
@@ -196,10 +190,9 @@ export class SharedRuntimeManager implements RuntimeManager {
       }
       case "BATCH": {
         if (!waitpoint.completedByBatch) {
-          this.debugLog(
-            "No completedByBatch for BATCH waitpoint",
-            this.waitpointForDebugLog(waitpoint)
-          );
+          this.debugLog("no completedByBatch for BATCH waitpoint", {
+            waitpoint: this.waitpointForDebugLog(waitpoint),
+          });
           return null;
         }
 
@@ -225,14 +218,18 @@ export class SharedRuntimeManager implements RuntimeManager {
 
     if (waitpoint.type === "BATCH") {
       // We currently ignore these, they're not required to resume after a batch completes
-      this.debugLog("Ignoring BATCH waitpoint", this.waitpointForDebugLog(waitpoint));
+      this.debugLog("ignoring BATCH waitpoint", {
+        waitpoint: this.waitpointForDebugLog(waitpoint),
+      });
       return;
     }
 
     resolverId = resolverId ?? this.resolverIdFromWaitpoint(waitpoint);
 
     if (!resolverId) {
-      this.debugLog("No resolverId for waitpoint", this.waitpointForDebugLog(waitpoint));
+      this.debugLog("no resolverId for waitpoint", {
+        waitpoint: this.waitpointForDebugLog(waitpoint),
+      });
 
       // No need to store the waitpoint, we'll never be able to resolve it
       return;
@@ -241,7 +238,10 @@ export class SharedRuntimeManager implements RuntimeManager {
     const resolve = this.resolversById.get(resolverId);
 
     if (!resolve) {
-      this.debugLog("No resolver found for resolverId", { ...this.status, resolverId });
+      this.debugLog("no resolver found for resolverId", {
+        resolverId,
+        waitpoint: this.waitpointForDebugLog(waitpoint),
+      });
 
       // Store the waitpoint for later if we can't find a resolver
       this.waitpointsByResolverId.set(resolverId, waitpoint);
@@ -262,6 +262,23 @@ export class SharedRuntimeManager implements RuntimeManager {
     for (const [resolverId, waitpoint] of this.waitpointsByResolverId.entries()) {
       this.resolveWaitpoint(waitpoint, resolverId);
     }
+  }
+
+  private setSuspendable(suspendable: boolean): void {
+    this.ipc.send("SET_SUSPENDABLE", { suspendable });
+  }
+
+  private async suspendable<T>(promise: Promise<T>): Promise<T> {
+    this.setSuspendable(true);
+    const [error, result] = await tryCatch(promise);
+    this.setSuspendable(false);
+
+    if (error) {
+      this.debugLog("error in suspendable wrapper", { error: String(error) });
+      throw error;
+    }
+
+    return result;
   }
 
   private waitpointToTaskRunExecutionResult(waitpoint: CompletedWaitpoint): TaskRunExecutionResult {
@@ -288,39 +305,33 @@ export class SharedRuntimeManager implements RuntimeManager {
     }
   }
 
-  private waitpointForDebugLog(waitpoint: CompletedWaitpoint): DebugLogProperties {
-    const {
-      completedByTaskRun,
-      completedByBatch,
-      completedAfter,
-      completedAt,
-      output,
-      id,
-      ...rest
-    } = waitpoint;
+  private waitpointForDebugLog(waitpoint: CompletedWaitpoint): DebugLogPropertiesInput {
+    const { completedAfter, completedAt, output, ...rest } = waitpoint;
 
     return {
       ...rest,
-      waitpointId: id,
       output: output?.slice(0, 100),
-      completedByTaskRunId: completedByTaskRun?.id,
-      completedByTaskRunBatchId: completedByTaskRun?.batch?.id,
-      completedByBatchId: completedByBatch?.id,
       completedAfter: completedAfter?.toISOString(),
       completedAt: completedAt?.toISOString(),
+      completedAfterDate: completedAfter,
+      completedAtDate: completedAt,
     };
   }
 
-  private debugLog(message: string, properties?: DebugLogProperties) {
-    const status = this.status;
-
+  private debugLog(message: string, properties?: DebugLogPropertiesInput) {
     if (this.showLogs) {
-      console.log(`[${new Date().toISOString()}] ${message}`, { ...status, ...properties });
+      console.log(`[${new Date().toISOString()}] ${message}`, {
+        runtimeStatus: this.status,
+        ...properties,
+      });
     }
 
     this.ipc.send("SEND_DEBUG_LOG", {
       message,
-      properties: { ...status, ...properties },
+      properties: {
+        runtimeStatus: this.status,
+        ...properties,
+      },
     });
   }
 

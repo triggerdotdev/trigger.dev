@@ -38,6 +38,11 @@ export type OnSendDebugLogMessage = InferSocketMessageSchema<
   "SEND_DEBUG_LOG"
 >;
 
+export type OnSetSuspendableMessage = InferSocketMessageSchema<
+  typeof ExecutorToWorkerMessageCatalog,
+  "SET_SUSPENDABLE"
+>;
+
 export type TaskRunProcessOptions = {
   workerManifest: WorkerManifest;
   serverWorker: ServerBackgroundWorker;
@@ -74,6 +79,7 @@ export class TaskRunProcess {
     new Evt();
   public onIsBeingKilled: Evt<TaskRunProcess> = new Evt();
   public onSendDebugLog: Evt<OnSendDebugLogMessage> = new Evt();
+  public onSetSuspendable: Evt<OnSetSuspendableMessage> = new Evt();
 
   private _isPreparedForNextRun: boolean = false;
   private _isPreparedForNextAttempt: boolean = false;
@@ -186,6 +192,9 @@ export class TaskRunProcess {
         },
         SEND_DEBUG_LOG: async (message) => {
           this.onSendDebugLog.post(message);
+        },
+        SET_SUSPENDABLE: async (message) => {
+          this.onSetSuspendable.post(message);
         },
       },
     });
