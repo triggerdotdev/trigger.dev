@@ -245,13 +245,28 @@ export default function Page() {
               suffix={env.paused && environment.queued > 0 ? "paused" : undefined}
               animate
               accessory={<EnvironmentPauseResumeButton env={env} />}
-              valueClassName={env.paused ? "text-amber-500" : undefined}
+              valueClassName={env.paused ? "text-warning" : undefined}
             />
-            <BigNumber title="Running" value={environment.running} animate />
+            <BigNumber
+              title="Running"
+              value={environment.running}
+              animate
+              valueClassName={
+                environment.running === environment.concurrencyLimit ? "text-warning" : undefined
+              }
+              suffix={
+                environment.running === environment.concurrencyLimit
+                  ? "At concurrency limit"
+                  : undefined
+              }
+            />
             <BigNumber
               title="Concurrency limit"
               value={environment.concurrencyLimit}
               animate
+              valueClassName={
+                environment.running === environment.concurrencyLimit ? "text-warning" : undefined
+              }
               accessory={
                 plan ? (
                   plan?.v3Subscription?.plan?.limits.concurrentRuns.canExceed ? (
@@ -382,7 +397,7 @@ export default function Page() {
                           alignment="right"
                           className={cn(
                             queue.paused ? "opacity-50" : undefined,
-                            queue.running === queue.concurrencyLimit && "text-amber-500"
+                            queue.running === queue.concurrencyLimit && "text-warning"
                           )}
                         >
                           {queue.running}/
@@ -390,7 +405,7 @@ export default function Page() {
                             <span
                               className={cn(
                                 "text-text-dimmed",
-                                queue.running === queue.concurrencyLimit && "text-amber-500"
+                                queue.running === queue.concurrencyLimit && "text-warning"
                               )}
                             >
                               {environment.concurrencyLimit} (Max)
@@ -493,7 +508,7 @@ function EnvironmentPauseResumeButton({
                     type="button"
                     variant="secondary/small"
                     LeadingIcon={env.paused ? PlayIcon : PauseIcon}
-                    leadingIconClassName={env.paused ? "text-success" : "text-amber-500"}
+                    leadingIconClassName={env.paused ? "text-success" : "text-warning"}
                   >
                     {env.paused ? "Resume..." : "Pause environment..."}
                   </Button>
@@ -572,7 +587,7 @@ function QueuePauseResumeButton({
                     type="button"
                     variant="tertiary/small"
                     LeadingIcon={queue.paused ? PlayIcon : PauseIcon}
-                    leadingIconClassName={queue.paused ? "text-success" : "text-amber-500"}
+                    leadingIconClassName={queue.paused ? "text-success" : "text-warning"}
                   >
                     {queue.paused ? "Resume..." : "Pause..."}
                   </Button>
