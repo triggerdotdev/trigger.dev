@@ -29,6 +29,7 @@ function parseVersion(versionString = ""): { major: number; minor: number; patch
 export function createSupportsHyperlinks(stream: NodeJS.WriteStream): boolean {
   const {
     CI,
+    CURSOR_TRACE_ID,
     FORCE_HYPERLINK,
     NETLIFY,
     TEAMCITY_VERSION,
@@ -84,6 +85,10 @@ export function createSupportsHyperlinks(stream: NodeJS.WriteStream): boolean {
 
   if (TEAMCITY_VERSION) {
     return false;
+  }
+
+  if (CURSOR_TRACE_ID) {
+    return true;
   }
 
   if (TERM_PROGRAM) {
