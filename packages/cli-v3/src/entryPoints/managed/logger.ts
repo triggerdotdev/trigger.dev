@@ -1,14 +1,16 @@
 import {
+  DebugLogPropertiesInput,
   WorkloadDebugLogRequestBody,
   WorkloadHttpClient,
 } from "@trigger.dev/core/v3/runEngineWorker";
 import { RunnerEnv } from "./env.js";
+import { flattenAttributes } from "@trigger.dev/core/v3";
 
 export type SendDebugLogOptions = {
   runId?: string;
   message: string;
   date?: Date;
-  properties?: WorkloadDebugLogRequestBody["properties"];
+  properties?: DebugLogPropertiesInput;
   print?: boolean;
 };
 
@@ -46,10 +48,14 @@ export class RunLogger {
       console.log(message, mergedProperties);
     }
 
+    const flattenedProperties = flattenAttributes(
+      mergedProperties
+    ) satisfies WorkloadDebugLogRequestBody["properties"];
+
     this.httpClient.sendDebugLog(runId, {
       message,
       time: date ?? new Date(),
-      properties: mergedProperties,
+      properties: flattenedProperties,
     });
   }
 }
