@@ -294,7 +294,7 @@ export default function Page() {
                   <TableRow>
                     <TableHeaderCell>Name</TableHeaderCell>
                     <TableHeaderCell alignment="right">Queued</TableHeaderCell>
-                    <TableHeaderCell alignment="right">Running</TableHeaderCell>
+                    <TableHeaderCell alignment="right">Running/limit</TableHeaderCell>
                     <TableHeaderCell
                       alignment="right"
                       tooltip={
@@ -321,7 +321,6 @@ export default function Page() {
                     >
                       Release on waitpoint
                     </TableHeaderCell>
-                    <TableHeaderCell alignment="right">Concurrency limit</TableHeaderCell>
                     <TableHeaderCell className="w-[1%] pl-24">
                       <span className="sr-only">Pause/resume</span>
                     </TableHeaderCell>
@@ -378,23 +377,18 @@ export default function Page() {
                           alignment="right"
                           className={queue.paused ? "opacity-50" : undefined}
                         >
-                          {queue.running}
+                          {queue.running}/
+                          {queue.concurrencyLimit ?? (
+                            <span className="text-text-dimmed">
+                              {environment.concurrencyLimit} (Max)
+                            </span>
+                          )}
                         </TableCell>
                         <TableCell
                           alignment="right"
                           className={queue.paused ? "opacity-50" : undefined}
                         >
                           {queue.releaseConcurrencyOnWaitpoint ? "Yes" : "No"}
-                        </TableCell>
-                        <TableCell
-                          alignment="right"
-                          className={queue.paused ? "opacity-50" : undefined}
-                        >
-                          {queue.concurrencyLimit ?? (
-                            <span className="text-text-dimmed">
-                              Max ({environment.concurrencyLimit})
-                            </span>
-                          )}
                         </TableCell>
                         <TableCellMenu
                           isSticky
