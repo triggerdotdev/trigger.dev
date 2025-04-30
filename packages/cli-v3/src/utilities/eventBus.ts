@@ -11,6 +11,7 @@ import { Socket } from "socket.io-client";
 export type EventBusEvents = {
   rebuildStarted: [BuildTarget];
   buildStarted: [BuildTarget];
+  buildFailed: [BuildTarget, Error];
   workerSkipped: [];
   backgroundWorkerInitialized: [BackgroundWorker];
   backgroundWorkerIndexingError: [BuildManifest, Error];
