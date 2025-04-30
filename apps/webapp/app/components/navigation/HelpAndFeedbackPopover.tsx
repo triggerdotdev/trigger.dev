@@ -2,9 +2,9 @@ import {
   ArrowUpRightIcon,
   BookOpenIcon,
   CalendarDaysIcon,
-  ChatBubbleLeftEllipsisIcon,
   EnvelopeIcon,
   LightBulbIcon,
+  QuestionMarkCircleIcon,
   SignalIcon,
   StarIcon,
 } from "@heroicons/react/20/solid";
@@ -12,6 +12,7 @@ import { DiscordIcon, SlackIcon } from "@trigger.dev/companyicons";
 import { Fragment, useState } from "react";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 import { Feedback } from "../Feedback";
+import { Shortcuts } from "../Shortcuts";
 import { StepContentContainer } from "../StepContentContainer";
 import { Button } from "../primitives/Buttons";
 import { ClipboardField } from "../primitives/ClipboardField";
@@ -21,16 +22,21 @@ import { Paragraph } from "../primitives/Paragraph";
 import { Popover, PopoverContent, PopoverSideMenuTrigger } from "../primitives/Popover";
 import { StepNumber } from "../primitives/StepNumber";
 import { MenuCount, SideMenuItem } from "./SideMenuItem";
-import { Shortcuts } from "../Shortcuts";
-export function HelpAndFeedback() {
+
+export function HelpAndFeedback({ disableShortcut = false }: { disableShortcut?: boolean }) {
   const [isHelpMenuOpen, setHelpMenuOpen] = useState(false);
   const currentPlan = useCurrentPlan();
 
   return (
     <Popover onOpenChange={(open) => setHelpMenuOpen(open)}>
-      <PopoverSideMenuTrigger isOpen={isHelpMenuOpen} shortcut={{ key: "h" }}>
+      <PopoverSideMenuTrigger
+        isOpen={isHelpMenuOpen}
+        shortcut={{ key: "h", enabledOnInputElements: false }}
+        className="grow pr-2"
+        disabled={disableShortcut}
+      >
         <div className="flex items-center gap-1.5">
-          <ChatBubbleLeftEllipsisIcon className="size-4 text-success" />
+          <QuestionMarkCircleIcon className="size-4 text-success" />
           Help & Feedback
         </div>
       </PopoverSideMenuTrigger>
