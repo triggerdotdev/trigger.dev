@@ -1,5 +1,9 @@
-import { Fragment, useEffect, useState } from "react";
+import { GlobeAltIcon, GlobeAmericasIcon } from "@heroicons/react/20/solid";
+import { Laptop } from "lucide-react";
+import { Fragment, type ReactNode, useEffect, useState } from "react";
 import { useLocales } from "./LocaleProvider";
+import { Paragraph } from "./Paragraph";
+import { SimpleTooltip } from "./Tooltip";
 
 type DateTimeProps = {
   date: Date | string;
@@ -18,8 +22,9 @@ export const DateTime = ({
   showTimezone = false,
 }: DateTimeProps) => {
   const locales = useLocales();
-
   const realDate = typeof date === "string" ? new Date(date) : date;
+  const resolvedOptions = Intl.DateTimeFormat().resolvedOptions();
+  const localTimeZone = resolvedOptions.timeZone;
 
   const initialFormattedDateTime = formatDateTime(
     realDate,
@@ -32,8 +37,6 @@ export const DateTime = ({
   const [formattedDateTime, setFormattedDateTime] = useState<string>(initialFormattedDateTime);
 
   useEffect(() => {
-    const resolvedOptions = Intl.DateTimeFormat().resolvedOptions();
-
     setFormattedDateTime(
       formatDateTime(
         realDate,
@@ -45,11 +48,55 @@ export const DateTime = ({
     );
   }, [locales, includeSeconds, realDate]);
 
+  const tooltipContent = (
+    <div className="flex flex-col gap-1">
+      {!timeZone || timeZone === "UTC" ? (
+        <div className="flex flex-col gap-3">
+          <DateTimeTooltipContent
+            title="UTC"
+            dateTime={formatDateTime(realDate, "UTC", locales, true, true)}
+            icon={<GlobeAltIcon className="size-4 text-blue-500" />}
+          />
+          <DateTimeTooltipContent
+            title="Local"
+            dateTime={formatDateTime(realDate, localTimeZone, locales, true, true)}
+            icon={<Laptop className="size-4 text-green-500" />}
+          />
+        </div>
+      ) : (
+        <div className="flex flex-col gap-3">
+          <DateTimeTooltipContent
+            title={timeZone}
+            dateTime={formatDateTime(realDate, timeZone, locales, true, true)}
+            icon={<GlobeAmericasIcon className="size-4 text-purple-500" />}
+          />
+          <DateTimeTooltipContent
+            title="UTC"
+            dateTime={formatDateTime(realDate, "UTC", locales, true, true)}
+            icon={<GlobeAltIcon className="size-4 text-blue-500" />}
+          />
+          <DateTimeTooltipContent
+            title="Local"
+            dateTime={formatDateTime(realDate, localTimeZone, locales, true, true)}
+            icon={<Laptop className="size-4 text-green-500" />}
+          />
+        </div>
+      )}
+    </div>
+  );
+
   return (
-    <Fragment>
-      {formattedDateTime.replace(/\s/g, String.fromCharCode(32))}
-      {showTimezone ? ` (${timeZone ?? "UTC"})` : null}
-    </Fragment>
+    <SimpleTooltip
+      button={
+        <Fragment>
+          {formattedDateTime.replace(/\s/g, String.fromCharCode(32))}
+          {showTimezone ? ` (${timeZone ?? "UTC"})` : null}
+        </Fragment>
+      }
+      content={tooltipContent}
+      side="right"
+      // disableHoverableContent
+    />
   );
 };
 
@@ -225,4 +272,24 @@ function formatDateTimeShort(date: Date, timeZone: string, locales: string[]): s
   }).format(date);
 
   return formattedDateTime;
+}
+
+type DateTimeTooltipContentProps = {
+  title: string;
+  dateTime: string;
+  icon: ReactNode;
+};
+
+function DateTimeTooltipContent({ title, dateTime, icon }: DateTimeTooltipContentProps) {
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-1 text-sm">
+        {icon}
+        <span className="font-medium">{title}</span>
+      </div>
+      <Paragraph variant="extra-small" className="text-text-dimmed">
+        {dateTime}
+      </Paragraph>
+    </div>
+  );
 }
