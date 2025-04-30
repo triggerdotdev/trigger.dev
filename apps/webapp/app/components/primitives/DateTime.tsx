@@ -22,31 +22,14 @@ export const DateTime = ({
   showTimezone = false,
 }: DateTimeProps) => {
   const locales = useLocales();
+  const [localTimeZone, setLocalTimeZone] = useState<string>("UTC");
+
   const realDate = typeof date === "string" ? new Date(date) : date;
-  const resolvedOptions = Intl.DateTimeFormat().resolvedOptions();
-  const localTimeZone = resolvedOptions.timeZone;
-
-  const initialFormattedDateTime = formatDateTime(
-    realDate,
-    timeZone ?? "UTC",
-    locales,
-    includeSeconds,
-    includeTime
-  );
-
-  const [formattedDateTime, setFormattedDateTime] = useState<string>(initialFormattedDateTime);
 
   useEffect(() => {
-    setFormattedDateTime(
-      formatDateTime(
-        realDate,
-        timeZone ?? resolvedOptions.timeZone,
-        locales,
-        includeSeconds,
-        includeTime
-      )
-    );
-  }, [locales, includeSeconds, realDate]);
+    const resolvedOptions = Intl.DateTimeFormat().resolvedOptions();
+    setLocalTimeZone(resolvedOptions.timeZone);
+  }, []);
 
   const tooltipContent = (
     <div className="flex flex-col gap-1">
@@ -89,7 +72,13 @@ export const DateTime = ({
     <SimpleTooltip
       button={
         <Fragment>
-          {formattedDateTime.replace(/\s/g, String.fromCharCode(32))}
+          {formatDateTime(
+            realDate,
+            timeZone ?? localTimeZone,
+            locales,
+            includeSeconds,
+            includeTime
+          ).replace(/\s/g, String.fromCharCode(32))}
           {showTimezone ? ` (${timeZone ?? "UTC"})` : null}
         </Fragment>
       }
