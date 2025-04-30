@@ -16,6 +16,7 @@ import {
   RectangleStackIcon,
   ServerStackIcon,
   Squares2X2Icon,
+  UsersIcon,
 } from "@heroicons/react/20/solid";
 import { useNavigation } from "@remix-run/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -27,6 +28,7 @@ import { Avatar } from "~/components/primitives/Avatar";
 import { type MatchedEnvironment } from "~/hooks/useEnvironment";
 import { type MatchedOrganization } from "~/hooks/useOrganizations";
 import { type MatchedProject } from "~/hooks/useProject";
+import { useHasAdminAccess } from "~/hooks/useUser";
 import { type User } from "~/models/user.server";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 import { type FeedbackType } from "~/routes/resources.feedback";
@@ -77,7 +79,6 @@ import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
 import { SideMenuSection } from "./SideMenuSection";
-import { useHasAdminAccess } from "~/hooks/useUser";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 export type SideMenuProject = Pick<
@@ -133,8 +134,7 @@ export function SideMenu({
       <div
         className={cn(
           "flex items-center justify-between overflow-hidden border-b px-1 py-1 transition duration-300",
-          showHeaderDivider ? "border-grid-bright" : "border-transparent",
-          user.isImpersonating && "rounded-md border border-dashed border-amber-400"
+          showHeaderDivider ? "border-grid-bright" : "border-transparent"
         )}
       >
         <ProjectSelector
@@ -143,23 +143,20 @@ export function SideMenu({
           project={project}
           user={user}
         />
-        {isAdmin && (
+        {isAdmin && !user.isImpersonating ? (
           <TooltipProvider disableHoverableContent={true}>
             <Tooltip>
               <TooltipTrigger>
-                <LinkButton
-                  variant="minimal/medium"
-                  to={adminPath()}
-                  TrailingIcon={Cog8ToothIcon}
-                />
+                <LinkButton variant="minimal/medium" to={adminPath()} TrailingIcon={UsersIcon} />
               </TooltipTrigger>
               <TooltipContent side="bottom" className={"text-xs"}>
                 Admin dashboard
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
-        )}
-        {user.isImpersonating && <ImpersonationBanner />}
+        ) : isAdmin && user.isImpersonating ? (
+          <ImpersonationBanner />
+        ) : null}
       </div>
       <div
         className="overflow-hidden overflow-y-auto pt-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"

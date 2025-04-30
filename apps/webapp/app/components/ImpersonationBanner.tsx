@@ -16,7 +16,7 @@ export function ImpersonationBanner() {
                 LeadingIcon={UserMinusIcon}
                 fullWidth
                 textAlignLeft
-                className="bg-amber-400 text-background-bright group-hover/button:bg-amber-300"
+                className="text-amber-400"
               />
             </TooltipTrigger>
             <TooltipContent side="bottom" className={"text-xs"}>
