@@ -715,6 +715,9 @@ const EnvironmentSchema = z.object({
   QUEUE_SSE_AUTORELOAD_INTERVAL_MS: z.coerce.number().int().default(5_000),
   QUEUE_SSE_AUTORELOAD_TIMEOUT_MS: z.coerce.number().int().default(60_000),
 
+  SLACK_BOT_TOKEN: z.string().optional(),
+  SLACK_SIGNUP_REASON_CHANNEL_ID: z.string().optional(),
+  
   // kapa.ai
   KAPA_AI_WEBSITE_ID: z.string().optional(),
 });
