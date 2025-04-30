@@ -19,7 +19,7 @@ import { RunExecutionSnapshotPoller } from "./poller.js";
 import { assertExhaustive, tryCatch } from "@trigger.dev/core/utils";
 import { MetadataClient } from "./overrides.js";
 import { randomBytes } from "node:crypto";
-import { SnapshotManager, SnapshotState } from "./snapshotManager.js";
+import { SnapshotManager, SnapshotState } from "./snapshot.js";
 
 class ExecutionAbortError extends Error {
   constructor(message: string) {
