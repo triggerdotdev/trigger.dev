@@ -380,11 +380,19 @@ export default function Page() {
                         </TableCell>
                         <TableCell
                           alignment="right"
-                          className={queue.paused ? "opacity-50" : undefined}
+                          className={cn(
+                            queue.paused ? "opacity-50" : undefined,
+                            queue.running === queue.concurrencyLimit && "text-amber-500"
+                          )}
                         >
                           {queue.running}/
                           {queue.concurrencyLimit ?? (
-                            <span className="text-text-dimmed">
+                            <span
+                              className={cn(
+                                "text-text-dimmed",
+                                queue.running === queue.concurrencyLimit && "text-amber-500"
+                              )}
+                            >
                               {environment.concurrencyLimit} (Max)
                             </span>
                           )}
