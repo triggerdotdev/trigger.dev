@@ -21,8 +21,8 @@ type SnapshotManagerOptions = {
 };
 
 type QueuedChange =
-  | { type: "snapshot"; data: RunExecutionData }
-  | { type: "suspendable"; value: boolean };
+  | { id: string; type: "snapshot"; data: RunExecutionData }
+  | { id: string; type: "suspendable"; value: boolean };
 
 type QueuedChangeItem = {
   change: QueuedChange;
@@ -72,7 +72,11 @@ export class SnapshotManager {
 
     this.sendDebugLog(`setting suspendable to ${suspendable}`);
 
-    return this.enqueueSnapshotChange({ type: "suspendable", value: suspendable });
+    return this.enqueueSnapshotChange({
+      id: crypto.randomUUID(),
+      type: "suspendable",
+      value: suspendable,
+    });
   }
 
   /**
@@ -99,7 +103,15 @@ export class SnapshotManager {
       return;
     }
 
-    return this.enqueueSnapshotChange({ type: "snapshot", data: runData });
+    return this.enqueueSnapshotChange({
+      id: crypto.randomUUID(),
+      type: "snapshot",
+      data: runData,
+    });
+  }
+
+  public get queueLength(): number {
+    return this.changeQueue.length;
   }
 
   private statusCheck(runData: RunExecutionData): boolean {
@@ -144,18 +156,20 @@ export class SnapshotManager {
 
   private async enqueueSnapshotChange(change: QueuedChange): Promise<void> {
     return new Promise<void>((resolve, reject) => {
-      // For suspendable changes, resolve and remove any pending suspendable changes
-      // since only the last one matters
+      // For suspendable changes, resolve and remove any pending suspendable changes since only the last one matters
       if (change.type === "suspendable") {
         const pendingSuspendable = this.changeQueue.filter(
           (item) => item.change.type === "suspendable"
         );
 
         // Resolve any pending suspendable changes - they're effectively done since we're superseding them
-        pendingSuspendable.forEach((item) => item.resolve());
+        for (const item of pendingSuspendable) {
+          item.resolve();
+        }
 
-        // Remove them from the queue
-        this.changeQueue = this.changeQueue.filter((item) => item.change.type !== "suspendable");
+        // Remove the exact items we just resolved
+        const resolvedIds = new Set(pendingSuspendable.map((item) => item.change.id));
+        this.changeQueue = this.changeQueue.filter((item) => !resolvedIds.has(item.change.id));
       }
 
       this.changeQueue.push({ change, resolve, reject });
@@ -192,16 +206,16 @@ export class SnapshotManager {
     this.isProcessingQueue = true;
 
     try {
-      while (this.changeQueue.length > 0) {
-        const item = this.changeQueue[0];
+      while (this.queueLength > 0) {
+        // Remove first item from queue
+        const item = this.changeQueue.shift();
         if (!item) {
           break;
         }
 
         const [error] = await tryCatch(this.applyChange(item.change));
 
-        // Remove from queue and resolve/reject promise
-        this.changeQueue.shift();
+        // Resolve/reject promise
         if (error) {
           item.reject(error);
         } else {
@@ -209,7 +223,14 @@ export class SnapshotManager {
         }
       }
     } finally {
+      const hasMoreItems = this.queueLength > 0;
       this.isProcessingQueue = false;
+
+      if (hasMoreItems) {
+        this.processQueue().catch((error) => {
+          this.sendDebugLog("error processing queue (finally)", { error: error.message });
+        });
+      }
     }
   }
 
@@ -221,10 +242,9 @@ export class SnapshotManager {
           return;
         }
         const { snapshot } = change.data;
+        const oldState = { ...this.state };
 
         this.updateSnapshot(snapshot.friendlyId, snapshot.executionStatus);
-
-        const oldState = { ...this.state };
 
         this.sendDebugLog(`status changed to ${snapshot.executionStatus}`, {
           oldId: oldState.id,
@@ -266,6 +286,9 @@ export class SnapshotManager {
 
   public cleanup() {
     // Clear any pending changes
+    for (const item of this.changeQueue) {
+      item.reject(new Error("SnapshotManager cleanup"));
+    }
     this.changeQueue = [];
   }
 
@@ -278,7 +301,7 @@ export class SnapshotManager {
         snapshotId: this.state.id,
         status: this.state.status,
         suspendable: this.isSuspendable,
-        queueLength: this.changeQueue.length,
+        queueLength: this.queueLength,
         isProcessingQueue: this.isProcessingQueue,
       },
     });

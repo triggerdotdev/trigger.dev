@@ -70,6 +70,7 @@
     "typecheck": "tsc -p tsconfig.src.json --noEmit",
     "build": "tshy && pnpm run update-version",
     "dev": "tshy --watch",
+    "test": "vitest",
     "test:e2e": "vitest --run -c ./e2e/vitest.config.ts",
     "update-version": "tsx ../../scripts/updateVersion.ts"
   },

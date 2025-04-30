@@ -892,7 +892,9 @@ export class RunExecution {
   }
 
   private set suspendable(suspendable: boolean) {
-    this.snapshotManager?.setSuspendable(suspendable);
+    this.snapshotManager?.setSuspendable(suspendable).catch((error) => {
+      this.sendDebugLog("failed to set suspendable", { error: error.message });
+    });
   }
 
   // Ensure we can only set this once
