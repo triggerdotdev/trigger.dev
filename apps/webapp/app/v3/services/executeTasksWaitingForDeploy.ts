@@ -1,10 +1,10 @@
 import { PrismaClientOrTransaction } from "~/db.server";
+import { env } from "~/env.server";
+import { logger } from "~/services/logger.server";
+import { emitRunStatusChanged } from "~/services/runsDashboardInstance.server";
 import { workerQueue } from "~/services/worker.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { BaseService } from "./baseService.server";
-import { logger } from "~/services/logger.server";
-import { env } from "~/env.server";
-import { emitRunStatusUpdate } from "~/services/runsDashboardInstance.server";
 
 export class ExecuteTasksWaitingForDeployService extends BaseService {
   public async call(backgroundWorkerId: string) {
@@ -80,7 +80,23 @@ export class ExecuteTasksWaitingForDeployService extends BaseService {
     }
 
     for (const run of runsWaitingForDeploy) {
-      emitRunStatusUpdate(run.id);
+      emitRunStatusChanged({
+        time: new Date(),
+        run: {
+          id: run.id,
+          status: run.status,
+          updatedAt: new Date(),
+        },
+        organization: {
+          id: backgroundWorker.runtimeEnvironment.organizationId,
+        },
+        project: {
+          id: backgroundWorker.runtimeEnvironment.projectId,
+        },
+        environment: {
+          id: backgroundWorker.runtimeEnvironment.id,
+        },
+      });
     }
 
     for (const run of runsWaitingForDeploy) {

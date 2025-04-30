@@ -2,17 +2,17 @@ import { parsePacket, TaskRunExecution } from "@trigger.dev/core/v3";
 import { TaskRun, TaskRunAttempt } from "@trigger.dev/database";
 import { MAX_TASK_RUN_ATTEMPTS } from "~/consts";
 import { $transaction, prisma, PrismaClientOrTransaction } from "~/db.server";
+import { findQueueInEnvironment } from "~/models/taskQueue.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { reportInvocationUsage } from "~/services/platform.v3.server";
+import { emitRunAttemptStarted } from "~/services/runsDashboardInstance.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { machinePresetFromConfig, machinePresetFromRun } from "../machinePresets.server";
+import { FINAL_RUN_STATUSES } from "../taskStatus";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { CrashTaskRunService } from "./crashTaskRun.server";
 import { ExpireEnqueuedRunService } from "./expireEnqueuedRun.server";
-import { findQueueInEnvironment } from "~/models/taskQueue.server";
-import { FINAL_RUN_STATUSES } from "../taskStatus";
-import { emitRunStatusUpdate } from "~/services/runsDashboardInstance.server";
 
 export class CreateTaskRunAttemptService extends BaseService {
   public async call({
@@ -182,7 +182,27 @@ export class CreateTaskRunAttemptService extends BaseService {
         });
       }
 
-      emitRunStatusUpdate(taskRun.id);
+      emitRunAttemptStarted({
+        time: new Date(),
+        run: {
+          id: taskRun.id,
+          status: taskRun.status,
+          createdAt: taskRun.createdAt,
+          updatedAt: taskRun.updatedAt,
+          attemptNumber: taskRunAttempt.number,
+          baseCostInCents: taskRun.baseCostInCents,
+          executedAt: taskRun.executedAt ?? undefined,
+        },
+        organization: {
+          id: environment.organizationId,
+        },
+        project: {
+          id: environment.projectId,
+        },
+        environment: {
+          id: environment.id,
+        },
+      });
 
       const machinePreset =
         machinePresetFromRun(taskRun) ?? machinePresetFromConfig(lockedBy.machineConfig ?? {});

@@ -5,13 +5,12 @@ import { TaskRunError } from "@trigger.dev/core/v3/schemas";
 
 export const RawRunEventV1 = z.object({
   environment_id: z.string(),
-  environment_type: z.string(),
   organization_id: z.string(),
   project_id: z.string(),
   run_id: z.string(),
-  friendly_id: z.string(),
-  attempt: z.number().int().default(1),
-  engine: z.enum(["V1", "V2"]),
+  updated_at: z.number().int(),
+  event_time: z.number().int(),
+  event_name: z.string(),
   status: z.enum([
     "DELAYED",
     "PENDING",
@@ -30,13 +29,16 @@ export const RawRunEventV1 = z.object({
     "EXPIRED",
     "TIMED_OUT",
   ]),
-  task_identifier: z.string(),
-  queue: z.string(),
+  /* ─── optional fields ─────────────────────────────────────────────── */
+  created_at: z.number().int().optional(),
+  environment_type: z.string().optional(),
+  friendly_id: z.string().optional(),
+  attempt: z.number().int().default(1),
+  engine: z.enum(["V1", "V2"]).optional(),
+  task_identifier: z.string().optional(),
+  queue: z.string().optional(),
   schedule_id: z.string().optional(),
   batch_id: z.string().optional(),
-  event_time: z.number().int(),
-  created_at: z.number().int(),
-  updated_at: z.number().int(),
   completed_at: z.number().int().optional(),
   started_at: z.number().int().optional(),
   executed_at: z.number().int().optional(),
@@ -49,7 +51,10 @@ export const RawRunEventV1 = z.object({
   payload: z.unknown().optional(),
   output: z.unknown().optional(),
   error: TaskRunError.optional(),
-  tags: z.array(z.string()).transform((arr) => arr.sort()),
+  tags: z
+    .array(z.string())
+    .transform((arr) => arr.sort())
+    .optional(),
   task_version: z.string().optional(),
   sdk_version: z.string().optional(),
   cli_version: z.string().optional(),

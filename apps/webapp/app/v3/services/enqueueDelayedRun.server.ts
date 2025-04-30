@@ -1,13 +1,11 @@
 import { parseNaturalLanguageDuration } from "@trigger.dev/core/v3/isomorphic";
-import { $transaction } from "~/db.server";
 import { logger } from "~/services/logger.server";
-import { marqs } from "~/v3/marqs/index.server";
-import { BaseService } from "./baseService.server";
-import { ExpireEnqueuedRunService } from "./expireEnqueuedRun.server";
-import { commonWorker } from "../commonWorker.server";
+import { emitRunEnqueuedAfterDelay } from "~/services/runsDashboardInstance.server";
 import { workerQueue } from "~/services/worker.server";
+import { commonWorker } from "../commonWorker.server";
+import { BaseService } from "./baseService.server";
 import { enqueueRun } from "./enqueueRun.server";
-import { emitRunStatusUpdate } from "~/services/runsDashboardInstance.server";
+import { ExpireEnqueuedRunService } from "./expireEnqueuedRun.server";
 
 export class EnqueueDelayedRunService extends BaseService {
   public static async enqueue(runId: string, runAt?: Date) {
@@ -83,27 +81,44 @@ export class EnqueueDelayedRunService extends BaseService {
       return;
     }
 
-    await $transaction(this._prisma, "delayed run enqueue", async (tx) => {
-      await tx.taskRun.update({
-        where: {
-          id: run.id,
-        },
-        data: {
-          status: "PENDING",
-          queuedAt: new Date(),
-        },
-      });
-
-      if (run.ttl) {
-        const expireAt = parseNaturalLanguageDuration(run.ttl);
-
-        if (expireAt) {
-          await ExpireEnqueuedRunService.enqueue(run.id, expireAt);
-        }
-      }
+    await this._prisma.taskRun.update({
+      where: {
+        id: run.id,
+      },
+      data: {
+        status: "PENDING",
+        queuedAt: new Date(),
+      },
     });
 
-    emitRunStatusUpdate(run.id);
+    if (run.ttl) {
+      const expireAt = parseNaturalLanguageDuration(run.ttl);
+
+      if (expireAt) {
+        await ExpireEnqueuedRunService.enqueue(run.id, expireAt);
+      }
+    }
+
+    if (run.organizationId) {
+      emitRunEnqueuedAfterDelay({
+        time: new Date(),
+        run: {
+          id: run.id,
+          status: run.status,
+          queuedAt: run.queuedAt ?? new Date(),
+          updatedAt: run.updatedAt,
+        },
+        organization: {
+          id: run.organizationId,
+        },
+        project: {
+          id: run.projectId,
+        },
+        environment: {
+          id: run.runtimeEnvironmentId,
+        },
+      });
+    }
 
     await enqueueRun({
       env: run.runtimeEnvironment,

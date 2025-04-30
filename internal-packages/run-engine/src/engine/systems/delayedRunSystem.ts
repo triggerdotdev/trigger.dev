@@ -68,9 +68,23 @@ export class DelayedRunSystem {
 
           await this.$.worker.reschedule(`enqueueDelayedRun:${updatedRun.id}`, delayUntil);
 
-          this.$.eventBus.emit("runStatusChanged", {
+          this.$.eventBus.emit("runDelayRescheduled", {
             time: new Date(),
-            runId: updatedRun.id,
+            run: {
+              id: updatedRun.id,
+              status: updatedRun.status,
+              delayUntil: delayUntil,
+              updatedAt: updatedRun.updatedAt,
+            },
+            organization: {
+              id: snapshot.organizationId,
+            },
+            project: {
+              id: updatedRun.projectId,
+            },
+            environment: {
+              id: updatedRun.runtimeEnvironmentId,
+            },
           });
 
           return updatedRun;
@@ -114,9 +128,23 @@ export class DelayedRunSystem {
       },
     });
 
-    this.$.eventBus.emit("runStatusChanged", {
+    this.$.eventBus.emit("runEnqueuedAfterDelay", {
       time: new Date(),
-      runId,
+      run: {
+        id: runId,
+        status: "PENDING",
+        queuedAt: new Date(),
+        updatedAt: new Date(),
+      },
+      organization: {
+        id: run.runtimeEnvironment.organizationId,
+      },
+      project: {
+        id: run.runtimeEnvironment.projectId,
+      },
+      environment: {
+        id: run.runtimeEnvironmentId,
+      },
     });
 
     if (run.ttl) {

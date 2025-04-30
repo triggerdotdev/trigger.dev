@@ -10,7 +10,6 @@ import {
   TaskRunFailedExecutionResult,
   TaskRunSuccessfulExecutionResult,
   flattenAttributes,
-  isManualOutOfMemoryError,
   isOOMRunError,
   sanitizeError,
   shouldRetryError,
@@ -22,19 +21,19 @@ import { PrismaClientOrTransaction } from "~/db.server";
 import { env } from "~/env.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
+import { emitRunRetryScheduled } from "~/services/runsDashboardInstance.server";
 import { safeJsonParse } from "~/utils/json";
 import { marqs } from "~/v3/marqs/index.server";
 import { createExceptionPropertiesFromError, eventRepository } from "../eventRepository.server";
 import { FailedTaskRunRetryHelper } from "../failedTaskRun.server";
+import { socketIo } from "../handleSocketIo.server";
+import { getTaskEventStoreTableForRun } from "../taskEventStore.server";
 import { FAILED_RUN_STATUSES, isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
 import { BaseService } from "./baseService.server";
 import { CancelAttemptService } from "./cancelAttempt.server";
 import { CreateCheckpointService } from "./createCheckpoint.server";
 import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
 import { RetryAttemptService } from "./retryAttempt.server";
-import { getTaskEventStoreTableForRun } from "../taskEventStore.server";
-import { socketIo } from "../handleSocketIo.server";
-import { emitRunStatusUpdate } from "~/services/runsDashboardInstance.server";
 
 type FoundAttempt = Awaited<ReturnType<typeof findAttempt>>;
 
@@ -314,6 +313,7 @@ export class CompleteAttemptService extends BaseService {
         checkpoint,
         forceRequeue: isOOMRetry,
         oomMachine,
+        error: sanitizedError,
       });
     }
 
@@ -560,6 +560,7 @@ export class CompleteAttemptService extends BaseService {
     checkpoint,
     forceRequeue = false,
     oomMachine,
+    error,
   }: {
     execution: TaskRunExecution;
     executionRetry: TaskRunExecutionRetry;
@@ -570,6 +571,7 @@ export class CompleteAttemptService extends BaseService {
     forceRequeue?: boolean;
     /** Setting this will also alter the retry span message */
     oomMachine?: MachinePresetName;
+    error: TaskRunError;
   }) {
     const retryAt = new Date(executionRetry.timestamp);
 
@@ -615,7 +617,30 @@ export class CompleteAttemptService extends BaseService {
       },
     });
 
-    emitRunStatusUpdate(taskRunAttempt.taskRunId);
+    emitRunRetryScheduled({
+      time: new Date(),
+      run: {
+        id: taskRunAttempt.taskRunId,
+        status: "RETRYING_AFTER_FAILURE",
+        friendlyId: taskRunAttempt.taskRun.friendlyId,
+        spanId: taskRunAttempt.taskRun.spanId,
+        attemptNumber: execution.attempt.number,
+        queue: taskRunAttempt.taskRun.queue,
+        traceContext: taskRunAttempt.taskRun.traceContext as Record<string, string | undefined>,
+        taskIdentifier: taskRunAttempt.taskRun.taskIdentifier,
+        baseCostInCents: taskRunAttempt.taskRun.baseCostInCents,
+        updatedAt: taskRunAttempt.taskRun.updatedAt,
+        error,
+      },
+      organization: {
+        id: environment.organizationId,
+      },
+      environment: {
+        ...environment,
+        orgMember: environment.orgMember ?? null,
+      },
+      retryAt,
+    });
 
     if (environment.type === "DEVELOPMENT") {
       await marqs.requeueMessage(taskRunAttempt.taskRunId, {}, executionRetry.timestamp, "retry");

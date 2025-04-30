@@ -4,8 +4,7 @@ import { z } from "zod";
 import { prisma } from "~/db.server";
 import { createTag, getTagsForRunId, MAX_TAGS_PER_RUN } from "~/models/taskRunTag.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
-import { emitRunStatusUpdate } from "~/services/runsDashboardInstance.server";
-import { generateFriendlyId } from "~/v3/friendlyIdentifiers";
+import { emitRunTagsUpdated } from "~/services/runsDashboardInstance.server";
 
 const ParamsSchema = z.object({
   runId: z.string(),
@@ -96,7 +95,24 @@ export async function action({ request, params }: ActionFunctionArgs) {
       },
     });
 
-    emitRunStatusUpdate(taskRun.id);
+    emitRunTagsUpdated({
+      time: new Date(),
+      run: {
+        id: taskRun.id,
+        tags: taskRun.runTags,
+        status: taskRun.status,
+        updatedAt: taskRun.updatedAt,
+      },
+      organization: {
+        id: authenticationResult.environment.organizationId,
+      },
+      project: {
+        id: authenticationResult.environment.projectId,
+      },
+      environment: {
+        id: authenticationResult.environment.id,
+      },
+    });
 
     return json({ message: `Successfully set ${newTags.length} new tags.` }, { status: 200 });
   } catch (error) {

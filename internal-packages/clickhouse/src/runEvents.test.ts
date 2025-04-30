@@ -17,6 +17,7 @@ describe("Run Events", () => {
     const [insertError, insertResult] = await insert([
       {
         environment_id: "env_1234",
+        event_name: "RUN_STATUS_CHANGED",
         environment_type: "DEVELOPMENT",
         organization_id: "org_1234",
         project_id: "project_1234",

@@ -17,15 +17,17 @@ CREATE TABLE trigger_dev.raw_run_events_v1
 (
   /*  ─── ids & hierarchy ─────────────────────────────────────── */
   environment_id            String,
-  environment_type          LowCardinality(String),
   organization_id           String,
   project_id                String,
   run_id                    String,
-  friendly_id               String,
+  event_name                LowCardinality(String),
+  
+  environment_type          LowCardinality(Nullable(String)),
+  friendly_id               Nullable(String),
   attempt                   UInt8     DEFAULT 1,
 
   /*  ─── enums / status ──────────────────────────────────────── */
-  engine Enum8('V1'=1,'V2'=2)
+  engine Nullable(Enum8('V1'=1,'V2'=2))
                   CODEC(T64, LZ4),
   status Enum8(           -- TaskRunStatus
            'DELAYED'=1,
@@ -46,8 +48,8 @@ CREATE TABLE trigger_dev.raw_run_events_v1
            'TIMED_OUT'=16),
 
   /*  ─── queue / concurrency / schedule ─────────────────────── */
-  task_identifier           String,
-  queue                     String,
+  task_identifier           Nullable(String),
+  queue                     Nullable(String),
 
   schedule_id               Nullable(String),
   batch_id                  Nullable(String),
@@ -64,7 +66,7 @@ CREATE TABLE trigger_dev.raw_run_events_v1
 
   /*  ─── timing ─────────────────────────────────────────────── */
   event_time         DateTime64(3),          -- when this row created
-  created_at         DateTime64(3),
+  created_at         Nullable(DateTime64(3)),
   updated_at         DateTime64(3),
   started_at         Nullable(DateTime64(3)),
   executed_at        Nullable(DateTime64(3)),
@@ -93,7 +95,7 @@ CREATE TABLE trigger_dev.raw_run_events_v1
   cli_version        Nullable(String) CODEC(LZ4),
   machine_preset     LowCardinality(Nullable(String)) CODEC(LZ4),
 
-  is_test            Nullable(UInt8) DEFAULT 0,
+  is_test            UInt8 DEFAULT 0,
 )
 ENGINE = MergeTree
 PARTITION BY toYYYYMMDD(event_time)

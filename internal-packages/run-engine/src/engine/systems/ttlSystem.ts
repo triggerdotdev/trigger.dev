@@ -84,6 +84,7 @@ export class TtlSystem {
           id: true,
           spanId: true,
           ttl: true,
+          updatedAt: true,
           associatedWaitpoint: {
             select: {
               id: true,
@@ -92,18 +93,17 @@ export class TtlSystem {
           runtimeEnvironment: {
             select: {
               organizationId: true,
+              projectId: true,
+              id: true,
             },
           },
           createdAt: true,
           completedAt: true,
           taskEventStore: true,
           parentTaskRunId: true,
+          expiredAt: true,
+          status: true,
         },
-      });
-
-      this.$.eventBus.emit("runStatusChanged", {
-        time: new Date(),
-        runId,
       });
 
       await this.$.runQueue.acknowledgeMessage(updatedRun.runtimeEnvironment.organizationId, runId);
@@ -117,7 +117,13 @@ export class TtlSystem {
         output: { value: JSON.stringify(error), isError: true },
       });
 
-      this.$.eventBus.emit("runExpired", { run: updatedRun, time: new Date() });
+      this.$.eventBus.emit("runExpired", {
+        run: updatedRun,
+        time: new Date(),
+        organization: { id: updatedRun.runtimeEnvironment.organizationId },
+        project: { id: updatedRun.runtimeEnvironment.projectId },
+        environment: { id: updatedRun.runtimeEnvironment.id },
+      });
     });
   }
 

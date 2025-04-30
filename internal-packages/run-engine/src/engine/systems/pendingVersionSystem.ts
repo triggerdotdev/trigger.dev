@@ -103,7 +103,20 @@ export class PendingVersionSystem {
 
       this.$.eventBus.emit("runStatusChanged", {
         time: new Date(),
-        runId: run.id,
+        run: {
+          id: run.id,
+          status: "PENDING",
+          updatedAt: run.updatedAt,
+        },
+        organization: {
+          id: backgroundWorker.runtimeEnvironment.organizationId,
+        },
+        project: {
+          id: backgroundWorker.runtimeEnvironment.projectId,
+        },
+        environment: {
+          id: backgroundWorker.runtimeEnvironmentId,
+        },
       });
     }
 

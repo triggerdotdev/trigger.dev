@@ -145,7 +145,20 @@ export class CheckpointSystem {
 
       this.$.eventBus.emit("runStatusChanged", {
         time: new Date(),
-        runId,
+        run: {
+          id: runId,
+          status: run.status,
+          updatedAt: run.updatedAt,
+        },
+        organization: {
+          id: run.runtimeEnvironment.organizationId,
+        },
+        project: {
+          id: run.runtimeEnvironment.projectId,
+        },
+        environment: {
+          id: run.runtimeEnvironment.id,
+        },
       });
 
       // Create the checkpoint
@@ -266,6 +279,10 @@ export class CheckpointSystem {
           id: true,
           status: true,
           attemptNumber: true,
+          organizationId: true,
+          runtimeEnvironmentId: true,
+          projectId: true,
+          updatedAt: true,
         },
       });
 
@@ -279,7 +296,20 @@ export class CheckpointSystem {
 
       this.$.eventBus.emit("runStatusChanged", {
         time: new Date(),
-        runId,
+        run: {
+          id: runId,
+          status: run.status,
+          updatedAt: run.updatedAt,
+        },
+        organization: {
+          id: run.organizationId ?? undefined,
+        },
+        project: {
+          id: run.projectId,
+        },
+        environment: {
+          id: run.runtimeEnvironmentId,
+        },
       });
 
       const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(prisma, {

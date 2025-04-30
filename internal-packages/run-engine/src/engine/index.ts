@@ -554,7 +554,7 @@ export class RunEngine {
           }
         });
 
-        this.eventBus.emit("runStatusChanged", {
+        this.eventBus.emit("runCreated", {
           time: new Date(),
           runId: taskRun.id,
         });

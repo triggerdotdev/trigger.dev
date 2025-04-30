@@ -8,7 +8,6 @@ import { nextScheduledTimestamps } from "../utils/calculateNextSchedule.server";
 import { BaseService } from "./baseService.server";
 import { RegisterNextTaskScheduleInstanceService } from "./registerNextTaskScheduleInstance.server";
 import { TriggerTaskService } from "./triggerTask.server";
-import { emitRunStatusUpdate } from "~/services/runsDashboardInstance.server";
 
 export class TriggerScheduledTaskService extends BaseService {
   public async call(instanceId: string, finalAttempt: boolean) {

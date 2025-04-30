@@ -37,6 +37,7 @@ import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
 import { findQueueInEnvironment, sanitizeQueueName } from "~/models/taskQueue.server";
 import { generateJWTTokenForEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
+import { emitRunLocked, emitRunStatusChanged } from "~/services/runsDashboardInstance.server";
 import { singleton } from "~/utils/singleton";
 import { marqs } from "~/v3/marqs/index.server";
 import {
@@ -66,7 +67,6 @@ import {
 import { tracer } from "../tracer.server";
 import { getMaxDuration } from "../utils/maxDuration";
 import { MessagePayload } from "./types";
-import { emitRunStatusUpdate } from "~/services/runsDashboardInstance.server";
 
 const WithTraceContext = z.object({
   traceparent: z.string().optional(),
@@ -708,26 +708,32 @@ export class SharedQueueConsumer {
       };
     }
 
+    const lockedAt = new Date();
+    const machinePreset =
+      existingTaskRun.machinePreset ??
+      machinePresetFromConfig(backgroundTask.machineConfig ?? {}).name;
+    const maxDurationInSeconds = getMaxDuration(
+      existingTaskRun.maxDurationInSeconds,
+      backgroundTask.maxDurationInSeconds
+    );
+    const startedAt = existingTaskRun.startedAt ?? dequeuedAt;
+    const baseCostInCents = env.CENTS_PER_RUN;
+
     const lockedTaskRun = await prisma.taskRun.update({
       where: {
         id: message.messageId,
       },
       data: {
-        lockedAt: new Date(),
+        lockedAt,
         lockedById: backgroundTask.id,
         lockedToVersionId: worker.id,
         taskVersion: worker.version,
         sdkVersion: worker.sdkVersion,
         cliVersion: worker.cliVersion,
-        startedAt: existingTaskRun.startedAt ?? dequeuedAt,
-        baseCostInCents: env.CENTS_PER_RUN,
-        machinePreset:
-          existingTaskRun.machinePreset ??
-          machinePresetFromConfig(backgroundTask.machineConfig ?? {}).name,
-        maxDurationInSeconds: getMaxDuration(
-          existingTaskRun.maxDurationInSeconds,
-          backgroundTask.maxDurationInSeconds
-        ),
+        startedAt: startedAt,
+        baseCostInCents: baseCostInCents,
+        machinePreset: machinePreset,
+        maxDurationInSeconds,
       },
       include: {
         runtimeEnvironment: true,
@@ -842,8 +848,6 @@ export class SharedQueueConsumer {
           };
         }
 
-        emitRunStatusUpdate(lockedTaskRun.id);
-
         return {
           action: "noop",
           reason: "restored_checkpoint",
@@ -925,7 +929,36 @@ export class SharedQueueConsumer {
             },
           });
 
-          emitRunStatusUpdate(lockedTaskRun.id);
+          if (lockedTaskRun.organizationId) {
+            emitRunLocked({
+              time: new Date(),
+              run: {
+                id: lockedTaskRun.id,
+                status: lockedTaskRun.status,
+                updatedAt: lockedTaskRun.updatedAt,
+                lockedAt,
+                lockedById: backgroundTask.id,
+                lockedToVersionId: worker.id,
+                lockedQueueId: queue.id,
+                startedAt,
+                baseCostInCents,
+                machinePreset,
+                maxDurationInSeconds,
+                taskVersion: worker.version,
+                sdkVersion: worker.sdkVersion,
+                cliVersion: worker.cliVersion,
+              },
+              organization: {
+                id: lockedTaskRun.organizationId,
+              },
+              project: {
+                id: lockedTaskRun.projectId,
+              },
+              environment: {
+                id: lockedTaskRun.runtimeEnvironmentId,
+              },
+            });
+          }
 
           return {
             action: "noop",
@@ -1435,7 +1468,7 @@ export class SharedQueueConsumer {
   async #markRunAsWaitingForDeploy(runId: string) {
     logger.debug("Marking run as waiting for deploy", { runId });
 
-    await prisma.taskRun.update({
+    const run = await prisma.taskRun.update({
       where: {
         id: runId,
       },
@@ -1444,7 +1477,25 @@ export class SharedQueueConsumer {
       },
     });
 
-    emitRunStatusUpdate(runId);
+    if (run.organizationId) {
+      emitRunStatusChanged({
+        time: new Date(),
+        run: {
+          id: runId,
+          status: "WAITING_FOR_DEPLOY",
+          updatedAt: run.updatedAt,
+        },
+        organization: {
+          id: run.organizationId,
+        },
+        project: {
+          id: run.projectId,
+        },
+        environment: {
+          id: run.runtimeEnvironmentId,
+        },
+      });
+    }
   }
 
   async #resolveCompletedAttemptsForResumeMessage(

@@ -1,9 +1,9 @@
 import { RescheduleRunRequestBody } from "@trigger.dev/core/v3";
 import { TaskRun } from "@trigger.dev/database";
+import { emitRunDelayRescheduled } from "~/services/runsDashboardInstance.server";
 import { parseDelay } from "~/utils/delays";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { EnqueueDelayedRunService } from "./enqueueDelayedRun.server";
-import { emitRunStatusUpdate } from "~/services/runsDashboardInstance.server";
 
 export class RescheduleTaskRunService extends BaseService {
   public async call(taskRun: TaskRun, body: RescheduleRunRequestBody) {
@@ -26,7 +26,26 @@ export class RescheduleTaskRunService extends BaseService {
       },
     });
 
-    emitRunStatusUpdate(taskRun.id);
+    if (taskRun.organizationId) {
+      emitRunDelayRescheduled({
+        time: new Date(),
+        run: {
+          id: taskRun.id,
+          status: taskRun.status,
+          delayUntil: delay,
+          updatedAt: updatedRun.updatedAt,
+        },
+        organization: {
+          id: taskRun.organizationId,
+        },
+        project: {
+          id: taskRun.projectId,
+        },
+        environment: {
+          id: taskRun.runtimeEnvironmentId,
+        },
+      });
+    }
 
     await EnqueueDelayedRunService.reschedule(taskRun.id, delay);
 

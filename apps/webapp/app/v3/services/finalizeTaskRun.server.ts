@@ -4,6 +4,7 @@ import { findQueueInEnvironment } from "~/models/taskQueue.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { updateMetadataService } from "~/services/metadata/updateMetadata.server";
+import { emitRunFailed, emitRunSucceeded } from "~/services/runsDashboardInstance.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { socketIo } from "../handleSocketIo.server";
@@ -19,7 +20,6 @@ import { completeBatchTaskRunItemV3 } from "./batchTriggerV3.server";
 import { ExpireEnqueuedRunService } from "./expireEnqueuedRun.server";
 import { ResumeBatchRunService } from "./resumeBatchRun.server";
 import { ResumeDependentParentsService } from "./resumeDependentParents.server";
-import { emitRunStatusUpdate } from "~/services/runsDashboardInstance.server";
 
 type BaseInput = {
   id: string;
@@ -95,13 +95,70 @@ export class FinalizeTaskRunService extends BaseService {
     // - A single update is more efficient than two
     // - If the status updates to a final status, realtime will receive that status and then shut down the stream
     //   before the error is updated, which would cause the error to be lost
+    const taskRunError = error ? sanitizeError(error) : undefined;
+
     const run = await this._prisma.taskRun.update({
       where: { id },
-      data: { status, expiredAt, completedAt, error: error ? sanitizeError(error) : undefined },
+      data: { status, expiredAt, completedAt, error: taskRunError },
       ...(include ? { include } : {}),
     });
 
-    emitRunStatusUpdate(run.id);
+    if (run.organizationId) {
+      if (status === "COMPLETED_SUCCESSFULLY") {
+        emitRunSucceeded({
+          time: new Date(),
+          run: {
+            id: run.id,
+            status: run.status,
+            spanId: run.spanId,
+            output: run.output ?? undefined,
+            outputType: run.outputType,
+            taskEventStore: run.taskEventStore,
+            createdAt: run.createdAt,
+            completedAt: run.completedAt,
+            updatedAt: run.updatedAt,
+            attemptNumber: run.attemptNumber ?? 1,
+            usageDurationMs: run.usageDurationMs,
+            costInCents: run.costInCents,
+          },
+          organization: {
+            id: run.organizationId,
+          },
+          project: {
+            id: run.projectId,
+          },
+          environment: {
+            id: run.runtimeEnvironmentId,
+          },
+        });
+      } else if (taskRunError) {
+        emitRunFailed({
+          time: new Date(),
+          run: {
+            id: run.id,
+            status: run.status,
+            spanId: run.spanId,
+            error: taskRunError,
+            taskEventStore: run.taskEventStore,
+            createdAt: run.createdAt,
+            completedAt: run.completedAt,
+            updatedAt: run.updatedAt,
+            attemptNumber: run.attemptNumber ?? 1,
+            usageDurationMs: run.usageDurationMs,
+            costInCents: run.costInCents,
+          },
+          organization: {
+            id: run.organizationId,
+          },
+          project: {
+            id: run.projectId,
+          },
+          environment: {
+            id: run.runtimeEnvironmentId,
+          },
+        });
+      }
+    }
 
     if (run.ttl) {
       await ExpireEnqueuedRunService.ack(run.id);
