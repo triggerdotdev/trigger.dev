@@ -11,6 +11,9 @@ type SendNewOrgMessageParams = {
 };
 
 export async function sendNewOrgMessage({ orgName, whyUseUs, userEmail }: SendNewOrgMessageParams) {
+  if (!env.SLACK_BOT_TOKEN || !env.SLACK_SIGNUP_REASON_CHANNEL_ID) {
+    return;
+  }
   try {
     await slack.chat.postMessage({
       channel: env.SLACK_SIGNUP_REASON_CHANNEL_ID,
