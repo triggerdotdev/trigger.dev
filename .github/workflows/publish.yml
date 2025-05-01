@@ -68,3 +68,10 @@ jobs:
     secrets: inherit
     with:
       image_tag: ${{ inputs.image_tag }}
+
+  publish-worker-v4:
+    needs: [typecheck, units]
+    uses: ./.github/workflows/publish-worker-v4.yml
+    secrets: inherit
+    with:
+      image_tag: ${{ inputs.image_tag }}
