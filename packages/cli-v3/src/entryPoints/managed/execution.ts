@@ -208,13 +208,16 @@ export class RunExecution {
       return;
     }
 
-    this.sendDebugLog(`snapshot has changed to: ${snapshot.executionStatus}`, snapshotMetadata);
+    // DO NOT REMOVE (very noisy, but helpful for debugging)
+    // this.sendDebugLog(`processing snapshot change: ${snapshot.executionStatus}`, snapshotMetadata);
 
     // Reset the snapshot poll interval so we don't do unnecessary work
     this.snapshotPoller?.resetCurrentInterval();
 
     switch (snapshot.executionStatus) {
       case "PENDING_CANCEL": {
+        this.sendDebugLog("run was cancelled", snapshotMetadata);
+
         const [error] = await tryCatch(this.cancel());
 
         if (error) {
@@ -279,13 +282,12 @@ export class RunExecution {
         return;
       }
       case "EXECUTING": {
-        this.sendDebugLog("run is now executing", snapshotMetadata);
-
         if (completedWaitpoints.length === 0) {
+          this.sendDebugLog("run is executing without completed waitpoints", snapshotMetadata);
           return;
         }
 
-        this.sendDebugLog("processing completed waitpoints", snapshotMetadata);
+        this.sendDebugLog("run is executing with completed waitpoints", snapshotMetadata);
 
         if (!this.taskRunProcess) {
           this.sendDebugLog("no task run process, ignoring completed waitpoints", snapshotMetadata);
@@ -301,7 +303,10 @@ export class RunExecution {
         return;
       }
       case "RUN_CREATED": {
-        this.sendDebugLog("invalid status change", snapshotMetadata);
+        this.sendDebugLog(
+          "aborting execution: invalid status change: RUN_CREATED",
+          snapshotMetadata
+        );
 
         this.abortExecution();
         return;
@@ -627,7 +632,7 @@ export class RunExecution {
     const snapshotStatus = this.convertAttemptStatusToSnapshotStatus(result.attemptStatus);
 
     // Update our snapshot ID to match the completion result to ensure any subsequent API calls use the correct snapshot
-    this.updateSnapshot(result.snapshot.friendlyId, snapshotStatus);
+    this.updateSnapshotAfterCompletion(result.snapshot.friendlyId, snapshotStatus);
 
     const { attemptStatus } = result;
 
@@ -664,7 +669,7 @@ export class RunExecution {
     assertExhaustive(attemptStatus);
   }
 
-  private updateSnapshot(snapshotId: string, status: TaskRunExecutionStatus) {
+  private updateSnapshotAfterCompletion(snapshotId: string, status: TaskRunExecutionStatus) {
     this.snapshotManager?.updateSnapshot(snapshotId, status);
     this.snapshotPoller?.updateSnapshotId(snapshotId);
   }
@@ -1000,7 +1005,7 @@ export class RunExecution {
     );
 
     if (!suspendResult.success) {
-      this.sendDebugLog("failed to suspend run, staying alive 🎶", {
+      this.sendDebugLog("suspension request failed, staying alive 🎶", {
         suspendableSnapshot,
         error: suspendResult.error,
       });
@@ -1010,7 +1015,7 @@ export class RunExecution {
     }
 
     if (!suspendResult.data.ok) {
-      this.sendDebugLog("checkpoint: failed to suspend run", {
+      this.sendDebugLog("suspension request returned error, staying alive 🎶", {
         suspendableSnapshot,
         error: suspendResult.data.error,
       });

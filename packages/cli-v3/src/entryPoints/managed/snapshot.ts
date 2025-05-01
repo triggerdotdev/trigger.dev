@@ -144,9 +144,10 @@ export class SnapshotManager {
 
     // Skip if this is the current snapshot
     if (snapshot.friendlyId === this.state.id) {
-      this.sendDebugLog("skipping update for duplicate snapshot", {
-        statusCheckData,
-      });
+      // DO NOT REMOVE (very noisy, but helpful for debugging)
+      // this.sendDebugLog("skipping update for duplicate snapshot", {
+      //   statusCheckData,
+      // });
 
       return false;
     }
@@ -279,7 +280,8 @@ export class SnapshotManager {
       (this.state.status === "EXECUTING_WITH_WAITPOINTS" ||
         this.state.status === "QUEUED_EXECUTING")
     ) {
-      this.sendDebugLog("run is now suspendable, executing handler");
+      // DO NOT REMOVE (very noisy, but helpful for debugging)
+      // this.sendDebugLog("run is now suspendable, executing handler");
       await this.onSuspendable(this.state);
     }
   }
