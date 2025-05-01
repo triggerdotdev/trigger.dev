@@ -3,9 +3,10 @@ import { KeyboardLeftIcon } from "~/assets/icons/KeyboardLeftIcon";
 import { KeyboardRightIcon } from "~/assets/icons/KeyboardRightIcon";
 import { KeyboardUpIcon } from "~/assets/icons/KeyboardUpIcon";
 import { KeyboardWindowsIcon } from "~/assets/icons/KeyboardWindowsIcon";
-import { Modifier, Shortcut } from "~/hooks/useShortcutKeys";
+import { type Modifier, type Shortcut } from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
 import { useOperatingSystem } from "./OperatingSystemProvider";
+import { KeyboardEnterIcon } from "~/assets/icons/KeyboardEnterIcon";
 
 const medium =
   "text-[0.75rem] font-medium min-w-[17px] rounded-[2px] tabular-nums px-1 ml-1 -mr-0.5 flex items-center gap-x-1.5 border border-dimmed/40 text-text-dimmed group-hover:text-text-bright/80 group-hover:border-dimmed/60 transition uppercase";
@@ -60,7 +61,11 @@ function keyString(key: string, isMac: boolean, variant: "small" | "medium" | "m
 
   switch (key) {
     case "enter":
-      return isMac ? "↵" : <span className="capitalize">Enter</span>;
+      return isMac ? (
+        <KeyboardEnterIcon className={className} />
+      ) : (
+        <span className="capitalize">Enter</span>
+      );
     case "esc":
       return <span className="capitalize">Esc</span>;
     case "del":

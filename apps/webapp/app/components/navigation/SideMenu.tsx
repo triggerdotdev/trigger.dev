@@ -17,9 +17,10 @@ import {
   ServerStackIcon,
   Squares2X2Icon,
 } from "@heroicons/react/20/solid";
-import { useNavigation } from "@remix-run/react";
+import { useLocation, useNavigation } from "@remix-run/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import simplur from "simplur";
+import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
 import { RunsIconExtraSmall } from "~/assets/icons/RunsIcon";
 import { TaskIconSmall } from "~/assets/icons/TaskIcon";
 import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
@@ -55,6 +56,7 @@ import {
   v3UsagePath,
   v3WaitpointTokensPath,
 } from "~/utils/pathBuilder";
+import { useKapaWidget } from "../../hooks/useKapaWidget";
 import { FreePlanUsage } from "../billing/FreePlanUsage";
 import { ConnectionIcon, DevPresencePanel, useDevPresence } from "../DevPresence";
 import { ImpersonationBanner } from "../ImpersonationBanner";
@@ -68,8 +70,10 @@ import {
   PopoverMenuItem,
   PopoverTrigger,
 } from "../primitives/Popover";
+import { ShortcutKey } from "../primitives/ShortcutKey";
 import { TextLink } from "../primitives/TextLink";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
+import { ShortcutsAutoOpen } from "../Shortcuts";
 import { UserProfilePhoto } from "../UserProfilePhoto";
 import { EnvironmentSelector } from "./EnvironmentSelector";
 import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
@@ -276,7 +280,9 @@ export function SideMenu({
         </div>
       </div>
       <div className="flex flex-col gap-1 border-t border-grid-bright p-1">
-        <HelpAndFeedback />
+        <div className="flex w-full items-center justify-between">
+          <HelpAndAI />
+        </div>
         {isFreeUser && (
           <FreePlanUsage
             to={v3BillingPath(organization)}
@@ -536,5 +542,45 @@ function SelectorDivider() {
         strokeLinecap="round"
       />
     </svg>
+  );
+}
+
+function HelpAndAI() {
+  const { isKapaEnabled, isKapaOpen, openKapa } = useKapaWidget();
+
+  return (
+    <>
+      <ShortcutsAutoOpen />
+      <HelpAndFeedback disableShortcut={isKapaOpen} />
+      {isKapaEnabled && (
+        <TooltipProvider disableHoverableContent>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="inline-flex">
+                <Button
+                  variant="small-menu-item"
+                  data-action="ask-ai"
+                  shortcut={{ modifiers: ["mod"], key: "/", enabledOnInputElements: true }}
+                  hideShortcutKey
+                  data-modal-override-open-class-ask-ai="true"
+                  onClick={() => {
+                    openKapa();
+                  }}
+                >
+                  <AISparkleIcon className="size-5" />
+                </Button>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent
+              side="top"
+              className="flex items-center gap-1 py-1.5 pl-2.5 pr-2 text-xs"
+            >
+              Ask AI
+              <ShortcutKey shortcut={{ modifiers: ["mod"], key: "/" }} variant="medium/bright" />
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      )}
+    </>
   );
 }

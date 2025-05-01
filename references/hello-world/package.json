@@ -3,10 +3,10 @@
   "private": true,
   "type": "module",
   "devDependencies": {
-    "trigger.dev": "4.0.0-v4-beta.7"
+    "trigger.dev": "workspace:*"
   },
   "dependencies": {
-    "@trigger.dev/sdk": "4.0.0-v4-beta.7"
+    "@trigger.dev/sdk": "workspace:*"
   },
   "scripts": {
     "dev": "trigger dev"

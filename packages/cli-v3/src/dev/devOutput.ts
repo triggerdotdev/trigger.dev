@@ -8,6 +8,7 @@ import {
 import { TaskRunError, TaskRunErrorCodes } from "@trigger.dev/core/v3/schemas";
 import { DevCommandOptions } from "../commands/dev.js";
 import {
+  aiHelpLink,
   chalkError,
   chalkGrey,
   chalkLink,
@@ -24,6 +25,7 @@ import {
 import { eventBus, EventBusEventArgs } from "../utilities/eventBus.js";
 import { logger } from "../utilities/logger.js";
 import { Socket } from "socket.io-client";
+import { BundleError } from "../build/bundle.js";
 
 export type DevOutputOptions = {
   name: string | undefined;
@@ -43,6 +45,23 @@ export function startDevOutput(options: DevOutputOptions) {
 
   const buildStarted = (...[target]: EventBusEventArgs<"buildStarted">) => {
     logger.log(chalkGrey("○ Building background worker…"));
+  };
+
+  const buildFailed = (...[target, error]: EventBusEventArgs<"buildFailed">) => {
+    const errorText = error instanceof Error ? error.message : "Unknown error";
+    const stack = error instanceof Error ? error.stack : undefined;
+
+    let issues: string[] = [];
+
+    if (error instanceof BundleError) {
+      issues = error.issues?.map((issue) => `${issue.text} (${issue.location?.file})`) ?? [];
+    }
+
+    aiHelpLink({
+      dashboardUrl,
+      project: config.project,
+      query: `Build failed:\n ${errorText}\n${issues.join("\n")}\n${stack}`,
+    });
   };
 
   const workerSkipped = () => {
@@ -83,12 +102,18 @@ export function startDevOutput(options: DevOutputOptions) {
     ...[buildManifest, error]: EventBusEventArgs<"backgroundWorkerIndexingError">
   ) => {
     if (error instanceof TaskIndexingImportError) {
+      let errorText = "";
       for (const importError of error.importErrors) {
         prettyError(
           `Could not import ${importError.file}`,
           importError.stack ?? importError.message
         );
+        errorText += `Could not import ${importError.file}:\n ${
+          importError.stack ?? importError.message
+        }\n`;
       }
+
+      aiHelpLink({ dashboardUrl, project: config.project, query: errorText });
     } else if (error instanceof TaskMetadataParseError) {
       const errorStack = createTaskMetadataFailedErrorStack({
         version: "v1",
@@ -97,11 +122,21 @@ export function startDevOutput(options: DevOutputOptions) {
       });
 
       prettyError(`Could not parse task metadata`, errorStack);
+      aiHelpLink({
+        dashboardUrl,
+        project: config.project,
+        query: `Could not parse task metadata:\n ${errorStack}`,
+      });
     } else {
       const errorText = error instanceof Error ? error.message : "Unknown error";
       const stack = error instanceof Error ? error.stack : undefined;
 
       prettyError(`Build failed: ${errorText}`, stack);
+      aiHelpLink({
+        dashboardUrl,
+        project: config.project,
+        query: `Build failed:\n ${errorText}\n${stack}`,
+      });
     }
   };
 
@@ -184,6 +219,7 @@ export function startDevOutput(options: DevOutputOptions) {
 
   eventBus.on("rebuildStarted", rebuildStarted);
   eventBus.on("buildStarted", buildStarted);
+  eventBus.on("buildFailed", buildFailed);
   eventBus.on("workerSkipped", workerSkipped);
   eventBus.on("backgroundWorkerInitialized", backgroundWorkerInitialized);
   eventBus.on("runStarted", runStarted);
@@ -195,6 +231,7 @@ export function startDevOutput(options: DevOutputOptions) {
   return () => {
     eventBus.off("rebuildStarted", rebuildStarted);
     eventBus.off("buildStarted", buildStarted);
+    eventBus.off("buildFailed", buildFailed);
     eventBus.off("workerSkipped", workerSkipped);
     eventBus.off("backgroundWorkerInitialized", backgroundWorkerInitialized);
     eventBus.off("runStarted", runStarted);

@@ -1,7 +1,7 @@
-import * as React from "react";
-import * as TooltipPrimitive from "@radix-ui/react-tooltip";
-import { cn } from "~/utils/cn";
 import { InformationCircleIcon } from "@heroicons/react/20/solid";
+import * as TooltipPrimitive from "@radix-ui/react-tooltip";
+import * as React from "react";
+import { cn } from "~/utils/cn";
 
 const variantClasses = {
   basic:
@@ -115,4 +115,4 @@ export function InfoIconTooltip({
   );
 }
 
-export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider, TooltipArrow, SimpleTooltip };
+export { SimpleTooltip, Tooltip, TooltipArrow, TooltipContent, TooltipProvider, TooltipTrigger };
