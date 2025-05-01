@@ -566,16 +566,18 @@ function RecentPayloads({
   onSelected: (id: string) => void;
 }) {
   return (
-    <div className="flex flex-col gap-2 px-3">
-      <div className="flex h-10 items-center border-b border-grid-dimmed">
+    <div className="flex flex-col">
+      <div className="flex h-10 items-center border-b border-grid-dimmed pl-3">
         <Header2>Recent payloads</Header2>
       </div>
       {runs.length === 0 ? (
-        <Callout variant="info">
-          Recent payloads will show here once you've completed a Run.
-        </Callout>
+        <div className="p-3">
+          <Callout variant="info">
+            Recent payloads will show here once you've completed a Run.
+          </Callout>
+        </div>
       ) : (
-        <div className="flex flex-col divide-y divide-charcoal-850">
+        <div className="flex flex-col divide-y divide-charcoal-750">
           {runs.map((run) => (
             <button
               key={run.id}
@@ -583,7 +585,7 @@ function RecentPayloads({
               onClick={(e) => {
                 onSelected(run.id);
               }}
-              className="flex items-center gap-2 px-2 py-2"
+              className="flex items-center gap-2 px-2 py-2 transition hover:bg-charcoal-800"
             >
               <RadioButtonCircle checked={run.id === selectedId} />
               <div className="flex flex-col items-start">
