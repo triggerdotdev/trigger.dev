@@ -53,7 +53,9 @@ const postgresContainer = async (
   try {
     await use(container);
   } finally {
-    await container.stop();
+    // WARNING: Testcontainers by default will not wait until the container has stopped. It will simply issue the stop command and return immediately.
+    // If you need to wait for the container to be stopped, you can provide a timeout. The unit of timeout option here is second
+    await container.stop({ timeout: 10 });
   }
 };
 
@@ -92,7 +94,9 @@ const redisContainer = async (
   try {
     await use(container);
   } finally {
-    await container.stop();
+    // WARNING: Testcontainers by default will not wait until the container has stopped. It will simply issue the stop command and return immediately.
+    // If you need to wait for the container to be stopped, you can provide a timeout. The unit of timeout option here is second
+    await container.stop({ timeout: 10 });
   }
 };
 
@@ -142,7 +146,10 @@ const electricOrigin = async (
   try {
     await use(origin);
   } finally {
-    await container.stop();
+    // WARNING: Testcontainers by default will not wait until the container has stopped. It will simply issue the stop command and return immediately.
+    // If you need to wait for the container to be stopped, you can provide a timeout. The unit of timeout option here is second
+
+    await container.stop({ timeout: 10 });
   }
 };
 
