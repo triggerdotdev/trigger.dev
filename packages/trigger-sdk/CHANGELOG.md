@@ -1,5 +1,20 @@
 # @trigger.dev/sdk
 
+## 4.0.0-v4-beta.11
+
+### Patch Changes
+
+- Fixed an issue with realtime streams that timeout and resume streaming dropping chunks ([#1993](https://github.com/triggerdotdev/trigger.dev/pull/1993))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.11`
+
+## 4.0.0-v4-beta.10
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.10`
+
 ## 4.0.0-v4-beta.9
 
 ### Patch Changes

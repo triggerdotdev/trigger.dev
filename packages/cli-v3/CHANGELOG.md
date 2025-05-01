@@ -1,5 +1,25 @@
 # trigger.dev
 
+## 4.0.0-v4-beta.11
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/build@4.0.0-v4-beta.11`
+  - `@trigger.dev/core@4.0.0-v4-beta.11`
+
+## 4.0.0-v4-beta.10
+
+### Patch Changes
+
+- TriggerApiError 4xx errors will no longer cause tasks to be retried ([#1970](https://github.com/triggerdotdev/trigger.dev/pull/1970))
+- - Fix polling interval reset bug that could create duplicate intervals ([#1987](https://github.com/triggerdotdev/trigger.dev/pull/1987))
+  - Protect against unexpected attempt number changes
+  - Prevent run execution zombies after warm starts
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.10`
+  - `@trigger.dev/build@4.0.0-v4-beta.10`
+
 ## 4.0.0-v4-beta.9
 
 ### Patch Changes

@@ -15,6 +15,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const result = await presenter.call({
     userId,
     projectSlug: projectParam,
+    environmentSlug: envParam,
     friendlyId: scheduleParam,
   });
 

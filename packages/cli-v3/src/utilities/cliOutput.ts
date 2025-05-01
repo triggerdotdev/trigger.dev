@@ -1,6 +1,6 @@
 import { log } from "@clack/prompts";
 import chalk from "chalk";
-import terminalLink, { Options as TerminalLinkOptions } from "terminal-link";
+import { terminalLink, TerminalLinkOptions } from "./terminalLink.js";
 import { hasTTY } from "std-env";
 
 export const isInteractive = hasTTY;
@@ -114,6 +114,27 @@ export function prettyWarning(header: string, body?: string, footer?: string) {
       prettyFooter ? `${spacing}${prettyFooter}` : ""
     }`
   );
+}
+
+export function aiHelpLink({
+  dashboardUrl,
+  project,
+  query,
+}: {
+  dashboardUrl: string;
+  project: string;
+  query: string;
+}) {
+  const searchParams = new URLSearchParams();
+
+  //the max length for a URL is 1950 characters
+  const clippedQuery = query.slice(0, 1950);
+
+  searchParams.set("q", clippedQuery);
+  const url = new URL(`/projects/${project}/ai-help`, dashboardUrl);
+  url.search = searchParams.toString();
+
+  log.message(chalkLink(cliLink("💡 Get a fix for this error using AI", url.toString())));
 }
 
 export function cliLink(text: string, url: string, options?: TerminalLinkOptions) {

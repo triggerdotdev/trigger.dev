@@ -356,6 +356,10 @@
             ]
           },
           {
+            "group": "Migration guides",
+            "pages": ["migration-mergent"]
+          },
+          {
             "group": "Community packages",
             "pages": [
               "guides/community/dotenvx",

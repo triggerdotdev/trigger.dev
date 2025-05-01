@@ -14,22 +14,9 @@ export const deadlockReleasingQueue = queue({
 export const deadlockTester = task({
   id: "deadlock-tester",
   run: async (payload: any, { ctx }) => {
-    // await deadlockNestedTask.triggerAndWait({
-    //   message: "Hello, world!",
-    // });
-
-    await deadlockNestedTask.batchTriggerAndWait([
-      {
-        payload: {
-          message: "Hello, world!",
-        },
-      },
-      {
-        payload: {
-          message: "Hello, world!",
-        },
-      },
-    ]);
+    await deadlockNestedTask.triggerAndWait({
+      message: "Hello, world!",
+    });
   },
 });
 
@@ -37,22 +24,9 @@ export const deadlockNestedTask = task({
   id: "deadlock-nested-task",
   queue: deadlockQueue,
   run: async (payload: any, { ctx }) => {
-    // await deadlockTester.triggerAndWait({
-    //   message: "Hello, world!",
-    // });
-
-    await deadlockTester.batchTriggerAndWait([
-      {
-        payload: {
-          message: "Hello, world!",
-        },
-      },
-      {
-        payload: {
-          message: "Hello, world!",
-        },
-      },
-    ]);
+    await deadlockTester.triggerAndWait({
+      message: "Hello, world!",
+    });
 
     return {
       message: "Hello, world!",

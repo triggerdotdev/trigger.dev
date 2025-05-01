@@ -460,7 +460,6 @@ const EnvironmentSchema = z.object({
   RUN_ENGINE_REUSE_SNAPSHOT_COUNT: z.coerce.number().int().default(0),
   RUN_ENGINE_MAXIMUM_ENV_COUNT: z.coerce.number().int().optional(),
   RUN_ENGINE_WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().default(60_000),
-  RUN_ENGINE_MAX_DEQUEUE_LOOP_ATTEMPTS: z.coerce.number().int().default(10),
 
   RUN_ENGINE_WORKER_REDIS_HOST: z
     .string()
@@ -715,6 +714,12 @@ const EnvironmentSchema = z.object({
 
   QUEUE_SSE_AUTORELOAD_INTERVAL_MS: z.coerce.number().int().default(5_000),
   QUEUE_SSE_AUTORELOAD_TIMEOUT_MS: z.coerce.number().int().default(60_000),
+
+  SLACK_BOT_TOKEN: z.string().optional(),
+  SLACK_SIGNUP_REASON_CHANNEL_ID: z.string().optional(),
+  
+  // kapa.ai
+  KAPA_AI_WEBSITE_ID: z.string().optional(),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;
