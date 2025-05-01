@@ -188,7 +188,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
   (
     {
       showCopyButton = true,
-      showTextWrapping = true,
+      showTextWrapping = false,
       showLineNumbers = true,
       showOpenInModal = true,
       highlightedRanges,
