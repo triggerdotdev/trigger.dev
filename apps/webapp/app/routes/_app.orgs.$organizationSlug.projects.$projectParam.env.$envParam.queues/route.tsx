@@ -773,7 +773,7 @@ export function QueueFilters() {
   const search = searchParams.get("query") ?? "";
 
   return (
-    <div className="flex w-full px-3 pb-3">
+    <div className="flex w-full border-t border-grid-dimmed px-1.5 py-1.5">
       <Input
         name="search"
         placeholder="Search queue name"
