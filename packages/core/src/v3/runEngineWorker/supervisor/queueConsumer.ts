@@ -4,7 +4,8 @@ import { PreDequeueFn, PreSkipFn } from "./types.js";
 
 type RunQueueConsumerOptions = {
   client: SupervisorHttpClient;
-  intervalMs?: number;
+  intervalMs: number;
+  idleIntervalMs: number;
   preDequeue?: PreDequeueFn;
   preSkip?: PreSkipFn;
   maxRunCount?: number;
@@ -19,11 +20,13 @@ export class RunQueueConsumer {
   private readonly onDequeue: (messages: WorkerApiDequeueResponseBody) => Promise<void>;
 
   private intervalMs: number;
+  private idleIntervalMs: number;
   private isEnabled: boolean;
 
   constructor(opts: RunQueueConsumerOptions) {
     this.isEnabled = false;
-    this.intervalMs = opts.intervalMs ?? 5_000;
+    this.intervalMs = opts.intervalMs;
+    this.idleIntervalMs = opts.idleIntervalMs;
     this.preDequeue = opts.preDequeue;
     this.preSkip = opts.preSkip;
     this.maxRunCount = opts.maxRunCount;
@@ -84,8 +87,10 @@ export class RunQueueConsumer {
         }
       }
 
-      return this.scheduleNextDequeue();
+      return this.scheduleNextDequeue(this.idleIntervalMs);
     }
+
+    let nextIntervalMs = this.idleIntervalMs;
 
     try {
       const response = await this.client.dequeue({
@@ -98,6 +103,10 @@ export class RunQueueConsumer {
       } else {
         try {
           await this.onDequeue(response.data);
+
+          if (response.data.length > 0) {
+            nextIntervalMs = this.intervalMs;
+          }
         } catch (handlerError) {
           console.error("[RunQueueConsumer] onDequeue error", { error: handlerError });
         }
@@ -106,10 +115,10 @@ export class RunQueueConsumer {
       console.error("[RunQueueConsumer] client.dequeue error", { error: clientError });
     }
 
-    this.scheduleNextDequeue();
+    this.scheduleNextDequeue(nextIntervalMs);
   }
 
-  scheduleNextDequeue(delay: number = this.intervalMs) {
-    setTimeout(this.dequeue.bind(this), delay);
+  scheduleNextDequeue(delayMs: number) {
+    setTimeout(this.dequeue.bind(this), delayMs);
   }
 }

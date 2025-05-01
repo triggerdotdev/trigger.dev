@@ -78,7 +78,6 @@
       "engine.io-parser@5.2.2": "patches/engine.io-parser@5.2.2.patch",
       "graphile-worker@0.16.6": "patches/graphile-worker@0.16.6.patch",
       "redlock@5.0.0-beta.2": "patches/redlock@5.0.0-beta.2.patch",
-      "supports-hyperlinks@2.3.0": "patches/supports-hyperlinks@2.3.0.patch",
       "@kubernetes/client-node@1.0.0": "patches/@kubernetes__client-node@1.0.0.patch"
     }
   }

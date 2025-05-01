@@ -2,12 +2,20 @@ import {
   ArrowUpCircleIcon,
   BookOpenIcon,
   ChatBubbleLeftEllipsisIcon,
+  MagnifyingGlassIcon,
   PauseIcon,
   PlayIcon,
   RectangleStackIcon,
 } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
-import { Form, useNavigation, useRevalidator, type MetaFunction } from "@remix-run/react";
+import {
+  Form,
+  useNavigate,
+  useNavigation,
+  useRevalidator,
+  useSearchParams,
+  type MetaFunction,
+} from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { type RuntimeEnvironmentType } from "@trigger.dev/database";
 import { useEffect, useState } from "react";
@@ -62,8 +70,11 @@ import { PauseEnvironmentService } from "~/v3/services/pauseEnvironment.server";
 import { PauseQueueService } from "~/v3/services/pauseQueue.server";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { Header3 } from "~/components/primitives/Headers";
+import { Input } from "~/components/primitives/Input";
+import { useThrottle } from "~/hooks/useThrottle";
 
 const SearchParamsSchema = z.object({
+  query: z.string().optional(),
   page: z.coerce.number().min(1).default(1),
 });
 
@@ -80,7 +91,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
 
   const url = new URL(request.url);
-  const { page } = SearchParamsSchema.parse(Object.fromEntries(url.searchParams));
+  const { page, query } = SearchParamsSchema.parse(Object.fromEntries(url.searchParams));
 
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
   if (!project) {
@@ -102,6 +113,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     const queueListPresenter = new QueueListPresenter();
     const queues = await queueListPresenter.call({
       environment,
+      query,
       page,
     });
 
@@ -199,7 +211,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 };
 
 export default function Page() {
-  const { environment, queues, success, pagination, code, totalQueues } =
+  const { environment, queues, success, pagination, code, totalQueues, hasFilters } =
     useTypedLoaderData<typeof loader>();
 
   const organization = useOrganization();
@@ -303,10 +315,11 @@ export default function Page() {
           {success ? (
             <div
               className={cn(
-                "grid max-h-full min-h-full grid-rows-[1fr] overflow-x-auto",
-                pagination.totalPages > 1 && "grid-rows-[1fr_auto]"
+                "grid max-h-full min-h-full grid-rows-[auto_1fr] overflow-x-auto",
+                pagination.totalPages > 1 && "grid-rows-[auto_1fr_auto]"
               )}
             >
+              <QueueFilters />
               <Table containerClassName="border-t">
                 <TableHeader>
                   <TableRow>
@@ -477,7 +490,11 @@ export default function Page() {
                     <TableRow>
                       <TableCell colSpan={6}>
                         <div className="grid place-items-center py-6 text-text-dimmed">
-                          <Paragraph>No queues found</Paragraph>
+                          <Paragraph>
+                            {hasFilters
+                              ? "No queues found matching your filters"
+                              : "No queues found"}
+                          </Paragraph>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -731,5 +748,41 @@ export function isEnvironmentPauseResumeFormSubmission(
     formMethod.toLowerCase() === "post" &&
     (formData.get("action") === "environment-pause" ||
       formData.get("action") === "environment-resume")
+  );
+}
+
+export function QueueFilters() {
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const handleSearchChange = useThrottle((value: string) => {
+    if (value) {
+      setSearchParams((prev) => {
+        prev.set("query", value);
+        prev.delete("page");
+        return prev;
+      });
+    } else {
+      setSearchParams((prev) => {
+        prev.delete("query");
+        prev.delete("page");
+        return prev;
+      });
+    }
+  }, 300);
+
+  const search = searchParams.get("query") ?? "";
+
+  return (
+    <div className="flex w-full px-3 pb-3">
+      <Input
+        name="search"
+        placeholder="Search queue name"
+        icon={MagnifyingGlassIcon}
+        variant="tertiary"
+        className="grow"
+        defaultValue={search}
+        onChange={(e) => handleSearchChange(e.target.value)}
+      />
+    </div>
   );
 }

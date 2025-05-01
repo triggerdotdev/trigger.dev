@@ -3,6 +3,7 @@ import { type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
+import { InlineCode } from "~/components/code/InlineCode";
 import { EnvironmentCombo, environmentFullTitle } from "~/components/environments/EnvironmentLabel";
 import { RegenerateApiKeyModal } from "~/components/environments/RegenerateApiKeyModal";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
@@ -159,9 +160,9 @@ export default function Page() {
           <div className="flex flex-wrap justify-between">
             <InfoPanel icon={InformationCircleIcon} variant="minimal" panelClassName="max-w-fit">
               <Paragraph variant="small">
-                Secret keys should be used on your server. They give full API access and allow you
-                to <TextLink to={docsPath("v3/triggering")}>trigger tasks</TextLink> from your
-                backend.
+                Set your <TextLink to={docsPath("apikeys")}>Secret keys</TextLink> in your backend
+                by adding <InlineCode>TRIGGER_SECRET_KEY</InlineCode> env var in order to{" "}
+                <TextLink to={docsPath("v3/triggering")}>trigger tasks</TextLink>.
               </Paragraph>
             </InfoPanel>
           </div>
