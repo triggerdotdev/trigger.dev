@@ -678,7 +678,7 @@ export function TierPro({
                   <Button
                     variant="primary/medium"
                     disabled={isLoading}
-                    LeadingIcon={isLoading ? () => <Spinner color="dark" /> : undefined}
+                    LeadingIcon={isLoading ? () => <Spinner color="white" /> : undefined}
                     form="subscribe-pro"
                   >
                     {`Upgrade to ${plan.title}`}
