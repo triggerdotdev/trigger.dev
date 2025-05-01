@@ -6,6 +6,7 @@ import { AdditionalEnvVars, BoolEnv } from "./envUtil.js";
 const Env = z.object({
   // This will come from `spec.nodeName` in k8s
   TRIGGER_WORKER_INSTANCE_NAME: z.string().default(randomUUID()),
+  TRIGGER_WORKER_HEARTBEAT_INTERVAL_SECONDS: z.coerce.number().default(30),
 
   // Required settings
   TRIGGER_API_URL: z.string().url(),
@@ -31,7 +32,8 @@ const Env = z.object({
 
   // Dequeue settings (provider mode)
   TRIGGER_DEQUEUE_ENABLED: BoolEnv.default("true"),
-  TRIGGER_DEQUEUE_INTERVAL_MS: z.coerce.number().int().default(1000),
+  TRIGGER_DEQUEUE_INTERVAL_MS: z.coerce.number().int().default(250),
+  TRIGGER_DEQUEUE_IDLE_INTERVAL_MS: z.coerce.number().int().default(1000),
   TRIGGER_DEQUEUE_MAX_RUN_COUNT: z.coerce.number().int().default(10),
   TRIGGER_DEQUEUE_MAX_CONSUMER_COUNT: z.coerce.number().int().default(1),
 
