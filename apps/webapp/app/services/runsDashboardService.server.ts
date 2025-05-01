@@ -23,6 +23,7 @@ export class RunsDashboardService {
       attempt: event.run.attemptNumber ?? 1,
       event_time: event.time.getTime(),
       updated_at: event.run.updatedAt.getTime(),
+      created_at: event.run.createdAt.getTime(),
       base_cost_in_cents: event.run.baseCostInCents,
       executed_at: event.run.executedAt ? event.run.executedAt.getTime() : undefined,
       event_name: "attempt_started",
@@ -47,6 +48,7 @@ export class RunsDashboardService {
       status: event.run.status,
       event_time: event.time.getTime(),
       updated_at: event.run.updatedAt.getTime(),
+      created_at: event.run.createdAt.getTime(),
       event_name: "enqueued_after_delay",
     });
 
@@ -69,6 +71,7 @@ export class RunsDashboardService {
       status: event.run.status,
       event_time: event.time.getTime(),
       updated_at: event.run.updatedAt.getTime(),
+      created_at: event.run.createdAt.getTime(),
       delay_until: event.run.delayUntil ? event.run.delayUntil.getTime() : undefined,
       event_name: "delay_rescheduled",
     });
@@ -92,6 +95,7 @@ export class RunsDashboardService {
       status: event.run.status,
       event_time: event.time.getTime(),
       updated_at: event.run.updatedAt.getTime(),
+      created_at: event.run.createdAt.getTime(),
       base_cost_in_cents: event.run.baseCostInCents,
       task_version: event.run.taskVersion ?? undefined,
       sdk_version: event.run.sdkVersion ?? undefined,
@@ -124,6 +128,7 @@ export class RunsDashboardService {
       status: event.run.status,
       event_time: event.time.getTime(),
       updated_at: event.run.updatedAt.getTime(),
+      created_at: event.run.createdAt.getTime(),
       event_name: "status_changed",
     });
 
@@ -146,6 +151,7 @@ export class RunsDashboardService {
       status: event.run.status,
       event_time: event.time.getTime(),
       updated_at: event.run.updatedAt.getTime(),
+      created_at: event.run.createdAt.getTime(),
       expired_at: event.run.expiredAt ? event.run.expiredAt.getTime() : undefined,
       event_name: "run_expired",
     });
@@ -171,6 +177,7 @@ export class RunsDashboardService {
       status: event.run.status,
       event_time: event.time.getTime(),
       updated_at: event.run.updatedAt.getTime(),
+      created_at: event.run.createdAt.getTime(),
       completed_at: event.run.completedAt ? event.run.completedAt.getTime() : undefined,
       usage_duration_ms: event.run.usageDurationMs,
       cost_in_cents: event.run.costInCents,
@@ -198,6 +205,7 @@ export class RunsDashboardService {
       status: event.run.status,
       event_time: event.time.getTime(),
       updated_at: event.run.updatedAt.getTime(),
+      created_at: event.run.createdAt.getTime(),
       completed_at: event.run.completedAt ? event.run.completedAt.getTime() : undefined,
       error: event.run.error,
       attempt: event.run.attemptNumber,
@@ -225,6 +233,7 @@ export class RunsDashboardService {
       status: event.run.status,
       event_time: event.time.getTime(),
       updated_at: event.run.updatedAt.getTime(),
+      created_at: event.run.createdAt.getTime(),
       machine_preset: event.run.nextMachineAfterOOM ?? undefined,
       attempt: event.run.attemptNumber,
       error: event.run.error,
@@ -250,6 +259,7 @@ export class RunsDashboardService {
       status: event.run.status,
       event_time: event.time.getTime(),
       updated_at: event.run.updatedAt.getTime(),
+      created_at: event.run.createdAt.getTime(),
       completed_at: event.run.completedAt ? event.run.completedAt.getTime() : undefined,
       error: event.run.error ? (event.run.error as TaskRunError) : undefined,
       attempt: event.run.attemptNumber,
@@ -275,6 +285,7 @@ export class RunsDashboardService {
       status: event.run.status,
       event_time: event.time.getTime(),
       updated_at: event.run.updatedAt.getTime(),
+      created_at: event.run.createdAt.getTime(),
       tags: event.run.tags,
       event_name: "tags_updated",
     });
@@ -439,6 +450,7 @@ export type RunDashboardEvents = {
         tags: string[];
         status: TaskRunStatus;
         updatedAt: Date;
+        createdAt: Date;
       };
       organization: {
         id: string;

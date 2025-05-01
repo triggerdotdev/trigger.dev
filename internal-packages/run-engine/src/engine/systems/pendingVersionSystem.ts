@@ -107,6 +107,7 @@ export class PendingVersionSystem {
           id: run.id,
           status: "PENDING",
           updatedAt: run.updatedAt,
+          createdAt: run.createdAt,
         },
         organization: {
           id: backgroundWorker.runtimeEnvironment.organizationId,

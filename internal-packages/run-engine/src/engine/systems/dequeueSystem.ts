@@ -378,6 +378,7 @@ export class DequeueSystem {
                     maxDurationInSeconds: lockedTaskRun.maxDurationInSeconds ?? undefined,
                     maxAttempts: lockedTaskRun.maxAttempts ?? undefined,
                     updatedAt: lockedTaskRun.updatedAt,
+                    createdAt: lockedTaskRun.createdAt,
                   },
                   organization: {
                     id: orgId,
@@ -574,6 +575,7 @@ export class DequeueSystem {
               status: true,
               attemptNumber: true,
               updatedAt: true,
+              createdAt: true,
               runtimeEnvironment: {
                 select: {
                   id: true,
@@ -615,6 +617,7 @@ export class DequeueSystem {
               id: runId,
               status: run.status,
               updatedAt: run.updatedAt,
+              createdAt: run.createdAt,
             },
             organization: {
               id: run.runtimeEnvironment.project.organizationId,

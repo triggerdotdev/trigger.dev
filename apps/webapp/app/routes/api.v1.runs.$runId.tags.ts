@@ -4,7 +4,7 @@ import { z } from "zod";
 import { prisma } from "~/db.server";
 import { createTag, getTagsForRunId, MAX_TAGS_PER_RUN } from "~/models/taskRunTag.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
-import { emitRunTagsUpdated } from "~/services/runsDashboardInstance.server";
+import { runsDashboard } from "~/services/runsDashboardInstance.server";
 
 const ParamsSchema = z.object({
   runId: z.string(),
@@ -95,13 +95,14 @@ export async function action({ request, params }: ActionFunctionArgs) {
       },
     });
 
-    emitRunTagsUpdated({
+    runsDashboard.emit.runTagsUpdated({
       time: new Date(),
       run: {
         id: taskRun.id,
         tags: taskRun.runTags,
         status: taskRun.status,
         updatedAt: taskRun.updatedAt,
+        createdAt: taskRun.createdAt,
       },
       organization: {
         id: authenticationResult.environment.organizationId,

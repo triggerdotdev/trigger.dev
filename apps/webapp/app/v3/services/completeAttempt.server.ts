@@ -21,7 +21,7 @@ import { PrismaClientOrTransaction } from "~/db.server";
 import { env } from "~/env.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
-import { emitRunRetryScheduled } from "~/services/runsDashboardInstance.server";
+import { runsDashboard } from "~/services/runsDashboardInstance.server";
 import { safeJsonParse } from "~/utils/json";
 import { marqs } from "~/v3/marqs/index.server";
 import { createExceptionPropertiesFromError, eventRepository } from "../eventRepository.server";
@@ -617,7 +617,7 @@ export class CompleteAttemptService extends BaseService {
       },
     });
 
-    emitRunRetryScheduled({
+    runsDashboard.emit.runRetryScheduled({
       time: new Date(),
       run: {
         id: taskRunAttempt.taskRunId,
@@ -630,6 +630,7 @@ export class CompleteAttemptService extends BaseService {
         taskIdentifier: taskRunAttempt.taskRun.taskIdentifier,
         baseCostInCents: taskRunAttempt.taskRun.baseCostInCents,
         updatedAt: taskRunAttempt.taskRun.updatedAt,
+        createdAt: taskRunAttempt.taskRun.createdAt,
         error,
       },
       organization: {

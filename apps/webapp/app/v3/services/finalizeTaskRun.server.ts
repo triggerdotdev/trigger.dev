@@ -4,7 +4,7 @@ import { findQueueInEnvironment } from "~/models/taskQueue.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { updateMetadataService } from "~/services/metadata/updateMetadata.server";
-import { emitRunFailed, emitRunSucceeded } from "~/services/runsDashboardInstance.server";
+import { runsDashboard } from "~/services/runsDashboardInstance.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { socketIo } from "../handleSocketIo.server";
@@ -105,7 +105,7 @@ export class FinalizeTaskRunService extends BaseService {
 
     if (run.organizationId) {
       if (status === "COMPLETED_SUCCESSFULLY") {
-        emitRunSucceeded({
+        runsDashboard.emit.runSucceeded({
           time: new Date(),
           run: {
             id: run.id,
@@ -132,7 +132,7 @@ export class FinalizeTaskRunService extends BaseService {
           },
         });
       } else if (taskRunError) {
-        emitRunFailed({
+        runsDashboard.emit.runFailed({
           time: new Date(),
           run: {
             id: run.id,

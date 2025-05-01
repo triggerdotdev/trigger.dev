@@ -22,6 +22,7 @@ export type EventBusEvents = {
         status: TaskRunStatus;
         queuedAt: Date;
         updatedAt: Date;
+        createdAt: Date;
       };
       organization: {
         id: string;
@@ -42,6 +43,7 @@ export type EventBusEvents = {
         status: TaskRunStatus;
         delayUntil: Date;
         updatedAt: Date;
+        createdAt: Date;
       };
       organization: {
         id: string;
@@ -73,6 +75,7 @@ export type EventBusEvents = {
         cliVersion: string;
         maxDurationInSeconds?: number;
         maxAttempts?: number;
+        createdAt: Date;
       };
       organization: {
         id: string;
@@ -92,6 +95,7 @@ export type EventBusEvents = {
         id: string;
         status: TaskRunStatus;
         updatedAt: Date;
+        createdAt: Date;
       };
       organization: {
         id?: string;
@@ -238,6 +242,7 @@ export type EventBusEvents = {
         baseCostInCents: number;
         nextMachineAfterOOM?: string;
         updatedAt: Date;
+        createdAt: Date;
         error: TaskRunError;
       };
       organization: {

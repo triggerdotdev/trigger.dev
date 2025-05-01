@@ -16,7 +16,7 @@ import { findQueueInEnvironment, sanitizeQueueName } from "~/models/taskQueue.se
 import { RedisClient, createRedisClient } from "~/redis.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
-import { emitRunLocked } from "~/services/runsDashboardInstance.server";
+import { runsDashboard } from "~/services/runsDashboardInstance.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { resolveVariablesForEnvironment } from "../environmentVariables/environmentVariablesRepository.server";
 import { FailedTaskRunService } from "../failedTaskRun.server";
@@ -543,11 +543,12 @@ export class DevQueueConsumer {
           messageId: message.messageId,
         });
 
-        emitRunLocked({
+        runsDashboard.emit.runLocked({
           time: new Date(),
           run: {
             id: lockedTaskRun.id,
             updatedAt: lockedTaskRun.updatedAt,
+            createdAt: lockedTaskRun.createdAt,
             status: lockedTaskRun.status,
             lockedAt,
             lockedById: backgroundTask.id,

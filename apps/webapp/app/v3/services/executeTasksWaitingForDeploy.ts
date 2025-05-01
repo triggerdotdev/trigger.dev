@@ -1,7 +1,7 @@
 import { PrismaClientOrTransaction } from "~/db.server";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
-import { emitRunStatusChanged } from "~/services/runsDashboardInstance.server";
+import { runsDashboard } from "~/services/runsDashboardInstance.server";
 import { workerQueue } from "~/services/worker.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { BaseService } from "./baseService.server";
@@ -52,6 +52,8 @@ export class ExecuteTasksWaitingForDeployService extends BaseService {
         taskIdentifier: true,
         concurrencyKey: true,
         queue: true,
+        updatedAt: true,
+        createdAt: true,
       },
       take: maxCount + 1,
     });
@@ -80,12 +82,13 @@ export class ExecuteTasksWaitingForDeployService extends BaseService {
     }
 
     for (const run of runsWaitingForDeploy) {
-      emitRunStatusChanged({
+      runsDashboard.emit.runStatusChanged({
         time: new Date(),
         run: {
           id: run.id,
           status: run.status,
-          updatedAt: new Date(),
+          updatedAt: run.updatedAt,
+          createdAt: run.createdAt,
         },
         organization: {
           id: backgroundWorker.runtimeEnvironment.organizationId,

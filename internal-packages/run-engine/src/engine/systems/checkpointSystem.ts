@@ -149,6 +149,7 @@ export class CheckpointSystem {
           id: runId,
           status: run.status,
           updatedAt: run.updatedAt,
+          createdAt: run.createdAt,
         },
         organization: {
           id: run.runtimeEnvironment.organizationId,
@@ -283,6 +284,7 @@ export class CheckpointSystem {
           runtimeEnvironmentId: true,
           projectId: true,
           updatedAt: true,
+          createdAt: true,
         },
       });
 
@@ -300,6 +302,7 @@ export class CheckpointSystem {
           id: runId,
           status: run.status,
           updatedAt: run.updatedAt,
+          createdAt: run.createdAt,
         },
         organization: {
           id: run.organizationId ?? undefined,

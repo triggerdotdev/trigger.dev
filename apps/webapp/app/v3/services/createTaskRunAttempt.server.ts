@@ -6,7 +6,7 @@ import { findQueueInEnvironment } from "~/models/taskQueue.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { reportInvocationUsage } from "~/services/platform.v3.server";
-import { emitRunAttemptStarted } from "~/services/runsDashboardInstance.server";
+import { runsDashboard } from "~/services/runsDashboardInstance.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { machinePresetFromConfig, machinePresetFromRun } from "../machinePresets.server";
 import { FINAL_RUN_STATUSES } from "../taskStatus";
@@ -182,7 +182,7 @@ export class CreateTaskRunAttemptService extends BaseService {
         });
       }
 
-      emitRunAttemptStarted({
+      runsDashboard.emit.runAttemptStarted({
         time: new Date(),
         run: {
           id: taskRun.id,

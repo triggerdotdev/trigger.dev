@@ -75,6 +75,7 @@ export class DelayedRunSystem {
               status: updatedRun.status,
               delayUntil: delayUntil,
               updatedAt: updatedRun.updatedAt,
+              createdAt: updatedRun.createdAt,
             },
             organization: {
               id: snapshot.organizationId,
@@ -120,11 +121,13 @@ export class DelayedRunSystem {
       batchId: run.batchId ?? undefined,
     });
 
-    await this.$.prisma.taskRun.update({
+    const queuedAt = new Date();
+
+    const updatedRun = await this.$.prisma.taskRun.update({
       where: { id: runId },
       data: {
         status: "PENDING",
-        queuedAt: new Date(),
+        queuedAt,
       },
     });
 
@@ -133,8 +136,9 @@ export class DelayedRunSystem {
       run: {
         id: runId,
         status: "PENDING",
-        queuedAt: new Date(),
-        updatedAt: new Date(),
+        queuedAt,
+        updatedAt: updatedRun.updatedAt,
+        createdAt: updatedRun.createdAt,
       },
       organization: {
         id: run.runtimeEnvironment.organizationId,

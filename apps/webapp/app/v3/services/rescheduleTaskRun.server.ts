@@ -1,6 +1,6 @@
 import { RescheduleRunRequestBody } from "@trigger.dev/core/v3";
 import { TaskRun } from "@trigger.dev/database";
-import { emitRunDelayRescheduled } from "~/services/runsDashboardInstance.server";
+import { runsDashboard } from "~/services/runsDashboardInstance.server";
 import { parseDelay } from "~/utils/delays";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { EnqueueDelayedRunService } from "./enqueueDelayedRun.server";
@@ -27,13 +27,14 @@ export class RescheduleTaskRunService extends BaseService {
     });
 
     if (taskRun.organizationId) {
-      emitRunDelayRescheduled({
+      runsDashboard.emit.runDelayRescheduled({
         time: new Date(),
         run: {
           id: taskRun.id,
           status: taskRun.status,
           delayUntil: delay,
           updatedAt: updatedRun.updatedAt,
+          createdAt: updatedRun.createdAt,
         },
         organization: {
           id: taskRun.organizationId,

@@ -26,7 +26,7 @@ export type ClickhouseConfig = {
 };
 
 export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
-  private readonly client: ClickHouseClient;
+  public readonly client: ClickHouseClient;
   private readonly tracer: Tracer;
   private readonly name: string;
   private readonly logger: Logger;

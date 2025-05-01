@@ -24,54 +24,54 @@ import { tryCatch } from "@trigger.dev/core/utils";
 
 const runDashboardEventBus: RunDashboardEventBus = new EventEmitter<RunDashboardEvents>();
 
-export function emitRunStatusChanged(event: RunDashboardEventRunStatusChanged) {
+function emitRunStatusChanged(event: RunDashboardEventRunStatusChanged) {
   runDashboardEventBus.emit("runStatusChanged", event);
 }
 
-export function emitRunCreated(time: Date, runId: string) {
+function emitRunCreated(time: Date, runId: string) {
   runDashboardEventBus.emit("runCreated", {
     time,
     runId,
   });
 }
 
-export function emitRunAttemptStarted(event: RunDashboardEventRunAttemptStarted) {
+function emitRunAttemptStarted(event: RunDashboardEventRunAttemptStarted) {
   runDashboardEventBus.emit("runAttemptStarted", event);
 }
 
-export function emitRunFailed(event: RunDashboardEventRunFailed) {
+function emitRunFailed(event: RunDashboardEventRunFailed) {
   runDashboardEventBus.emit("runFailed", event);
 }
 
-export function emitRunSucceeded(event: RunDashboardEventRunSucceeded) {
+function emitRunSucceeded(event: RunDashboardEventRunSucceeded) {
   runDashboardEventBus.emit("runSucceeded", event);
 }
 
-export function emitRunCancelled(event: RunDashboardEventRunCancelled) {
+function emitRunCancelled(event: RunDashboardEventRunCancelled) {
   runDashboardEventBus.emit("runCancelled", event);
 }
 
-export function emitRunRetryScheduled(event: RunDashboardEventRunRetryScheduled) {
+function emitRunRetryScheduled(event: RunDashboardEventRunRetryScheduled) {
   runDashboardEventBus.emit("runRetryScheduled", event);
 }
 
-export function emitRunDelayRescheduled(event: RunDashboardEventRunDelayRescheduled) {
+function emitRunDelayRescheduled(event: RunDashboardEventRunDelayRescheduled) {
   runDashboardEventBus.emit("runDelayRescheduled", event);
 }
 
-export function emitRunLocked(event: RunDashboardEventRunLocked) {
+function emitRunLocked(event: RunDashboardEventRunLocked) {
   runDashboardEventBus.emit("runLocked", event);
 }
 
-export function emitRunExpired(event: RunDashboardEventRunExpired) {
+function emitRunExpired(event: RunDashboardEventRunExpired) {
   runDashboardEventBus.emit("runExpired", event);
 }
 
-export function emitRunTagsUpdated(event: RunDashboardEventRunTagsUpdated) {
+function emitRunTagsUpdated(event: RunDashboardEventRunTagsUpdated) {
   runDashboardEventBus.emit("runTagsUpdated", event);
 }
 
-export function emitRunEnqueuedAfterDelay(event: RunDashboardEventRunEnqueuedAfterDelay) {
+function emitRunEnqueuedAfterDelay(event: RunDashboardEventRunEnqueuedAfterDelay) {
   runDashboardEventBus.emit("runEnqueuedAfterDelay", event);
 }
 
@@ -230,7 +230,23 @@ export const runsDashboard = singleton("runsDashboard", () => {
     runDashboardEventBus.emit("runExpired", event);
   });
 
-  return service;
+  return {
+    service,
+    emit: {
+      runStatusChanged: emitRunStatusChanged,
+      runCreated: emitRunCreated,
+      runAttemptStarted: emitRunAttemptStarted,
+      runFailed: emitRunFailed,
+      runSucceeded: emitRunSucceeded,
+      runCancelled: emitRunCancelled,
+      runRetryScheduled: emitRunRetryScheduled,
+      runDelayRescheduled: emitRunDelayRescheduled,
+      runLocked: emitRunLocked,
+      runExpired: emitRunExpired,
+      runTagsUpdated: emitRunTagsUpdated,
+      runEnqueuedAfterDelay: emitRunEnqueuedAfterDelay,
+    },
+  };
 });
 
 async function runCreated(time: Date, runId: string, service: RunsDashboardService) {

@@ -66,16 +66,14 @@ CREATE TABLE trigger_dev.raw_run_events_v1
 
   /*  ─── timing ─────────────────────────────────────────────── */
   event_time         DateTime64(3),          -- when this row created
-  created_at         Nullable(DateTime64(3)),
+  created_at         DateTime64(3),
   updated_at         DateTime64(3),
   started_at         Nullable(DateTime64(3)),
   executed_at        Nullable(DateTime64(3)),
   completed_at       Nullable(DateTime64(3)),
-  finished_at        Nullable(DateTime64(3)),   -- end of *this* status
   delay_until        Nullable(DateTime64(3)),
   queued_at          Nullable(DateTime64(3)),
   expired_at         Nullable(DateTime64(3)),
-  duration_ms        Nullable(UInt32),
   expiration_ttl     Nullable(String),
 
   /*  ─── cost / usage ───────────────────────────────────────── */

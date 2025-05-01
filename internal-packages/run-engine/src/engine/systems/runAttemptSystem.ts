@@ -730,6 +730,7 @@ export class RunAttemptSystem {
                   nextMachineAfterOOM: retryResult.machine,
                   updatedAt: run.updatedAt,
                   error: completion.error,
+                  createdAt: run.createdAt,
                 },
                 organization: {
                   id: run.runtimeEnvironment.organizationId,

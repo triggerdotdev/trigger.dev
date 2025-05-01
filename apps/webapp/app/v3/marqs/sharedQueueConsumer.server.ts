@@ -37,7 +37,7 @@ import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
 import { findQueueInEnvironment, sanitizeQueueName } from "~/models/taskQueue.server";
 import { generateJWTTokenForEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
-import { emitRunLocked, emitRunStatusChanged } from "~/services/runsDashboardInstance.server";
+import { runsDashboard } from "~/services/runsDashboardInstance.server";
 import { singleton } from "~/utils/singleton";
 import { marqs } from "~/v3/marqs/index.server";
 import {
@@ -930,12 +930,13 @@ export class SharedQueueConsumer {
           });
 
           if (lockedTaskRun.organizationId) {
-            emitRunLocked({
+            runsDashboard.emit.runLocked({
               time: new Date(),
               run: {
                 id: lockedTaskRun.id,
                 status: lockedTaskRun.status,
                 updatedAt: lockedTaskRun.updatedAt,
+                createdAt: lockedTaskRun.createdAt,
                 lockedAt,
                 lockedById: backgroundTask.id,
                 lockedToVersionId: worker.id,
@@ -1478,12 +1479,13 @@ export class SharedQueueConsumer {
     });
 
     if (run.organizationId) {
-      emitRunStatusChanged({
+      runsDashboard.emit.runStatusChanged({
         time: new Date(),
         run: {
           id: runId,
           status: "WAITING_FOR_DEPLOY",
           updatedAt: run.updatedAt,
+          createdAt: run.createdAt,
         },
         organization: {
           id: run.organizationId,
