@@ -61,6 +61,7 @@ import { docsPath, EnvironmentParamSchema, v3BillingPath } from "~/utils/pathBui
 import { PauseEnvironmentService } from "~/v3/services/pauseEnvironment.server";
 import { PauseQueueService } from "~/v3/services/pauseQueue.server";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
+import { Header3 } from "~/components/primitives/Headers";
 
 const SearchParamsSchema = z.object({
   page: z.coerce.number().min(1).default(1),
@@ -313,6 +314,36 @@ export default function Page() {
                     <TableHeaderCell
                       alignment="right"
                       tooltip={
+                        <div className="max-w-xs space-y-2 p-1 text-left">
+                          <div className="space-y-0.5">
+                            <Header3>Environment</Header3>
+                            <Paragraph
+                              variant="small"
+                              className="!text-wrap text-text-dimmed"
+                              spacing
+                            >
+                              This queue is limited by your environment's concurrency limit of{" "}
+                              {environment.concurrencyLimit}.
+                            </Paragraph>
+                          </div>
+                          <div className="space-y-0.5">
+                            <Header3>User</Header3>
+                            <Paragraph
+                              variant="small"
+                              className="!text-wrap text-text-dimmed"
+                              spacing
+                            >
+                              This queue is limited by a concurrency limit set in your code.
+                            </Paragraph>
+                          </div>
+                        </div>
+                      }
+                    >
+                      Limited by
+                    </TableHeaderCell>
+                    <TableHeaderCell
+                      alignment="right"
+                      tooltip={
                         <div className="max-w-xs p-1 text-left">
                           <Paragraph
                             variant="small"
@@ -343,88 +374,103 @@ export default function Page() {
                 </TableHeader>
                 <TableBody>
                   {queues.length > 0 ? (
-                    queues.map((queue) => (
-                      <TableRow key={queue.name}>
-                        <TableCell>
-                          <span className="flex items-center gap-2">
-                            {queue.type === "task" ? (
-                              <SimpleTooltip
-                                button={
-                                  <TaskIconSmall
-                                    className={cn(
-                                      "size-[1.125rem] text-blue-500",
-                                      queue.paused && "opacity-50"
-                                    )}
-                                  />
-                                }
-                                content={`This queue was automatically created from your "${queue.name}" task`}
-                              />
-                            ) : (
-                              <SimpleTooltip
-                                button={
-                                  <RectangleStackIcon
-                                    className={cn(
-                                      "size-[1.125rem] text-purple-500",
-                                      queue.paused && "opacity-50"
-                                    )}
-                                  />
-                                }
-                                content={`This is a custom queue you added in your code.`}
-                              />
-                            )}
-                            <span className={queue.paused ? "opacity-50" : undefined}>
-                              {queue.name}
+                    queues.map((queue) => {
+                      const limit = queue.concurrencyLimit ?? environment.concurrencyLimit;
+                      const isAtLimit = queue.running === limit;
+                      return (
+                        <TableRow key={queue.name}>
+                          <TableCell>
+                            <span className="flex items-center gap-2">
+                              {queue.type === "task" ? (
+                                <SimpleTooltip
+                                  button={
+                                    <TaskIconSmall
+                                      className={cn(
+                                        "size-[1.125rem] text-blue-500",
+                                        queue.paused && "opacity-50"
+                                      )}
+                                    />
+                                  }
+                                  content={`This queue was automatically created from your "${queue.name}" task`}
+                                />
+                              ) : (
+                                <SimpleTooltip
+                                  button={
+                                    <RectangleStackIcon
+                                      className={cn(
+                                        "size-[1.125rem] text-purple-500",
+                                        queue.paused && "opacity-50"
+                                      )}
+                                    />
+                                  }
+                                  content={`This is a custom queue you added in your code.`}
+                                />
+                              )}
+                              <span className={queue.paused ? "opacity-50" : undefined}>
+                                {queue.name}
+                              </span>
+                              {queue.paused ? (
+                                <Badge variant="extra-small" className="text-warning">
+                                  Paused
+                                </Badge>
+                              ) : null}
+                              {isAtLimit ? (
+                                <Badge variant="extra-small" className="text-warning">
+                                  At concurrency limit
+                                </Badge>
+                              ) : null}
                             </span>
-                            {queue.paused ? (
-                              <Badge variant="extra-small" className="text-warning">
-                                Paused
-                              </Badge>
-                            ) : null}
-                            {queue.running === queue.concurrencyLimit ? (
-                              <Badge variant="extra-small" className="text-warning">
-                                At concurrency limit
-                              </Badge>
-                            ) : null}
-                          </span>
-                        </TableCell>
-                        <TableCell
-                          alignment="right"
-                          className={queue.paused ? "opacity-50" : undefined}
-                        >
-                          {queue.queued}
-                        </TableCell>
-                        <TableCell
-                          alignment="right"
-                          className={cn(
-                            queue.paused ? "opacity-50" : undefined,
-                            queue.running === queue.concurrencyLimit && "text-warning"
-                          )}
-                        >
-                          {queue.running}/
-                          {queue.concurrencyLimit ?? (
+                          </TableCell>
+                          <TableCell
+                            alignment="right"
+                            className={queue.paused ? "opacity-50" : undefined}
+                          >
+                            {queue.queued}
+                          </TableCell>
+                          <TableCell
+                            alignment="right"
+                            className={cn(
+                              queue.paused ? "tabular-nums opacity-50" : undefined,
+                              isAtLimit && "text-warning"
+                            )}
+                          >
+                            {queue.running}/
                             <span
                               className={cn(
-                                "text-text-dimmed",
-                                queue.running === queue.concurrencyLimit && "text-warning"
+                                "tabular-nums text-text-dimmed",
+                                isAtLimit && "text-warning"
                               )}
                             >
-                              {environment.concurrencyLimit} (Max)
+                              {limit}
                             </span>
-                          )}
-                        </TableCell>
-                        <TableCell
-                          alignment="right"
-                          className={queue.paused ? "opacity-50" : undefined}
-                        >
-                          {queue.releaseConcurrencyOnWaitpoint ? "Yes" : "No"}
-                        </TableCell>
-                        <TableCellMenu
-                          isSticky
-                          visibleButtons={queue.paused && <QueuePauseResumeButton queue={queue} />}
-                          hiddenButtons={!queue.paused && <QueuePauseResumeButton queue={queue} />}
-                        />
-                      </TableRow>
-                    ))
+                          </TableCell>
+                          <TableCell
+                            alignment="right"
+                            className={cn(
+                              queue.paused ? "opacity-50" : undefined,
+                              isAtLimit && "text-warning"
+                            )}
+                          >
+                            {queue.concurrencyLimit ? "User" : "Environment"}
+                          </TableCell>
+                          <TableCell
+                            alignment="right"
+                            className={queue.paused ? "opacity-50" : undefined}
+                          >
+                            {queue.releaseConcurrencyOnWaitpoint ? "Yes" : "No"}
+                          </TableCell>
+                          <TableCellMenu
+                            isSticky
+                            visibleButtons={
+                              queue.paused && <QueuePauseResumeButton queue={queue} />
+                            }
+                            hiddenButtons={
+                              !queue.paused && <QueuePauseResumeButton queue={queue} />
+                            }
+                          />
+                        </TableRow>
+                      );
+                    })
                   ) : (
                     <TableRow>
                       <TableCell colSpan={6}>
