@@ -284,7 +284,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
                     )}
                   </TooltipTrigger>
                   <TooltipContent side="left" className="text-xs">
-                    {isWrapped ? "Inline text" : "Wrap text"}
+                    {isWrapped ? "Unwrap" : "Wrap"}
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
