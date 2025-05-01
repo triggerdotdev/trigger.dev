@@ -295,7 +295,7 @@ function DateTimeTooltipContent({
         <Paragraph variant="extra-small" className="text-text-dimmed">
           {dateTime}
         </Paragraph>
-        <CopyButton value={isoDateTime} variant="icon" size="small" showTooltip={false} />
+        <CopyButton value={isoDateTime} variant="icon" size="extra-small" showTooltip={false} />
       </div>
     </div>
   );

@@ -4,10 +4,25 @@ import { useCopy } from "~/hooks/useCopy";
 import { Button } from "./Buttons";
 import { SimpleTooltip } from "./Tooltip";
 
+const sizes = {
+  "extra-small": {
+    icon: "size-3",
+    button: "h-5 px-1",
+  },
+  small: {
+    icon: "size-3.5",
+    button: "h-6 px-1",
+  },
+  medium: {
+    icon: "size-4",
+    button: "h-8 px-1.5",
+  },
+};
+
 type CopyButtonProps = {
   value: string;
   variant?: "icon" | "button";
-  size?: "small" | "medium";
+  size?: keyof typeof sizes;
   className?: string;
   buttonClassName?: string;
   showTooltip?: boolean;
@@ -25,8 +40,7 @@ export function CopyButton({
 }: CopyButtonProps) {
   const { copy, copied } = useCopy(value);
 
-  const iconSize = size === "small" ? "size-3.5" : "size-4";
-  const buttonSize = size === "small" ? "h-6" : "h-8";
+  const { icon: iconSize, button: buttonSize } = sizes[size];
 
   const button =
     variant === "icon" ? (
@@ -34,7 +48,7 @@ export function CopyButton({
         onClick={copy}
         className={cn(
           buttonSize,
-          "flex items-center justify-center rounded border border-charcoal-650 bg-charcoal-750 px-1.5",
+          "flex items-center justify-center rounded border border-charcoal-650 bg-charcoal-750",
           copied
             ? "text-green-500"
             : "text-text-dimmed hover:border-charcoal-600 hover:bg-charcoal-700 hover:text-text-bright",
@@ -49,7 +63,7 @@ export function CopyButton({
       </span>
     ) : (
       <Button
-        variant={`${buttonVariant}/${size}`}
+        variant={`${buttonVariant}/${size === "extra-small" ? "small" : size}`}
         onClick={copy}
         className={cn("shrink-0", buttonClassName)}
       >
