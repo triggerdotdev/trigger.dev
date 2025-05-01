@@ -524,7 +524,7 @@ export class ManagedRunController {
       });
     });
 
-    socket.on("disconnect", (reason, description) => {
+    socket.on("disconnect", async (reason, description) => {
       const parseDescription = ():
         | {
             description: string;
@@ -546,6 +546,30 @@ export class ManagedRunController {
           context: description.context ? String(description.context) : undefined,
         };
       };
+
+      if (this.currentExecution) {
+        const currentEnv = {
+          workerInstanceName: this.env.TRIGGER_WORKER_INSTANCE_NAME,
+          runnerId: this.env.TRIGGER_RUNNER_ID,
+          supervisorApiUrl: this.env.TRIGGER_SUPERVISOR_API_URL,
+        };
+
+        await this.currentExecution.processEnvOverrides("socket disconnected");
+
+        const newEnv = {
+          workerInstanceName: this.env.TRIGGER_WORKER_INSTANCE_NAME,
+          runnerId: this.env.TRIGGER_RUNNER_ID,
+          supervisorApiUrl: this.env.TRIGGER_SUPERVISOR_API_URL,
+        };
+
+        this.sendDebugLog({
+          runId: this.runFriendlyId,
+          message: "Socket disconnected from supervisor - processed env overrides",
+          properties: { reason, ...parseDescription(), currentEnv, newEnv },
+        });
+
+        return;
+      }
 
       this.sendDebugLog({
         runId: this.runFriendlyId,

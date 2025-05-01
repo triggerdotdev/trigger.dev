@@ -215,6 +215,8 @@ export class RunExecution {
     this.snapshotPoller?.updateSnapshotId(snapshot.friendlyId);
     this.snapshotPoller?.resetCurrentInterval();
 
+    await this.processEnvOverrides("snapshot change");
+
     switch (snapshot.executionStatus) {
       case "PENDING_CANCEL": {
         this.sendDebugLog("run was cancelled", snapshotMetadata);
@@ -780,7 +782,7 @@ export class RunExecution {
     await sleep(100);
 
     // Process any env overrides
-    await this.processEnvOverrides();
+    await this.processEnvOverrides("restore");
 
     const continuationResult = await this.httpClient.continueRunExecution(
       this.runFriendlyId,
@@ -798,9 +800,9 @@ export class RunExecution {
   /**
    * Processes env overrides from the metadata service. Generally called when we're resuming from a suspended state.
    */
-  private async processEnvOverrides() {
+  async processEnvOverrides(reason?: string) {
     if (!this.env.TRIGGER_METADATA_URL) {
-      this.sendDebugLog("no metadata url, skipping env overrides");
+      this.sendDebugLog("no metadata url, skipping env overrides", { reason });
       return;
     }
 
@@ -808,11 +810,21 @@ export class RunExecution {
     const overrides = await metadataClient.getEnvOverrides();
 
     if (!overrides) {
-      this.sendDebugLog("no env overrides, skipping");
+      this.sendDebugLog("no env overrides, skipping", { reason });
       return;
     }
 
-    this.sendDebugLog("processing env overrides", overrides);
+    this.sendDebugLog(`processing env overrides: ${reason}`, {
+      overrides,
+      currentEnv: this.env.raw,
+    });
+
+    if (this.env.TRIGGER_RUNNER_ID !== overrides.TRIGGER_RUNNER_ID) {
+      this.sendDebugLog("runner ID changed -> run was restored from a checkpoint", {
+        currentRunnerId: this.env.TRIGGER_RUNNER_ID,
+        newRunnerId: overrides.TRIGGER_RUNNER_ID,
+      });
+    }
 
     // Override the env with the new values
     this.env.override(overrides);
