@@ -259,7 +259,14 @@ export class SharedRuntimeManager implements RuntimeManager {
   }
 
   private resolvePendingWaitpoints(): void {
-    for (const [resolverId, waitpoint] of this.waitpointsByResolverId.entries()) {
+    // Clone keys first to avoid mutation-during-iteration hazards
+    for (const resolverId of Array.from(this.waitpointsByResolverId.keys())) {
+      const waitpoint = this.waitpointsByResolverId.get(resolverId);
+
+      if (!waitpoint) {
+        continue;
+      }
+
       this.resolveWaitpoint(waitpoint, resolverId);
     }
   }
