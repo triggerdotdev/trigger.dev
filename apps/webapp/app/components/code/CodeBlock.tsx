@@ -3,11 +3,13 @@ import { Clipboard, ClipboardCheck } from "lucide-react";
 import type { Language, PrismTheme } from "prism-react-renderer";
 import { Highlight, Prism } from "prism-react-renderer";
 import { forwardRef, ReactNode, useCallback, useEffect, useState } from "react";
+import { TextWrapIcon } from "~/assets/icons/TextWrapIcon";
 import { cn } from "~/utils/cn";
 import { Button } from "../primitives/Buttons";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../primitives/Dialog";
 import { Paragraph } from "../primitives/Paragraph";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
+import { TextInlineIcon } from "~/assets/icons/TextInlineIcon";
 
 //This is a fork of https://github.com/mantinedev/mantine/blob/master/src/mantine-prism/src/Prism/Prism.tsx
 //it didn't support highlighting lines by dimming the rest of the code, or animations on the highlighting
@@ -30,6 +32,9 @@ type CodeBlockProps = {
 
   /** Show copy to clipboard button */
   showCopyButton?: boolean;
+
+  /** Show text wrapping button */
+  showTextWrapping?: boolean;
 
   /** Display line numbers */
   showLineNumbers?: boolean;
@@ -183,6 +188,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
   (
     {
       showCopyButton = true,
+      showTextWrapping = true,
       showLineNumbers = true,
       showOpenInModal = true,
       highlightedRanges,
@@ -202,6 +208,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
     const [copied, setCopied] = useState(false);
     const [modalCopied, setModalCopied] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isWrapped, setIsWrapped] = useState(false);
 
     const onCopied = useCallback(
       (event: React.MouseEvent<HTMLButtonElement>) => {
@@ -263,6 +270,25 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
               showChrome ? "right-1.5 top-1.5" : "top-2.5"
             )}
           >
+            {showTextWrapping && (
+              <TooltipProvider>
+                <Tooltip disableHoverableContent>
+                  <TooltipTrigger
+                    onClick={() => setIsWrapped(!isWrapped)}
+                    className="transition-colors focus-custom hover:cursor-pointer hover:text-text-bright"
+                  >
+                    {isWrapped ? (
+                      <TextInlineIcon className="size-4" />
+                    ) : (
+                      <TextWrapIcon className="size-4" />
+                    )}
+                  </TooltipTrigger>
+                  <TooltipContent side="left" className="text-xs">
+                    {isWrapped ? "Inline text" : "Wrap text"}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
             {showCopyButton && (
               <TooltipProvider>
                 <Tooltip open={copied || mouseOver} disableHoverableContent>
@@ -311,16 +337,27 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
               maxLineWidth={maxLineWidth}
               className="px-2 py-3"
               preClassName="text-xs"
+              isWrapped={isWrapped}
             />
           ) : (
             <div
               dir="ltr"
-              className="overflow-auto px-2 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+              className={cn(
+                "px-2 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
+                !isWrapped && "overflow-x-auto",
+                isWrapped && "overflow-y-auto"
+              )}
               style={{
                 maxHeight,
               }}
             >
-              <pre className="relative mr-2 p-2 font-mono text-xs leading-relaxed" dir="ltr">
+              <pre
+                className={cn(
+                  "relative mr-2 p-2 font-mono text-xs leading-relaxed",
+                  isWrapped && "[&_span]:whitespace-pre-wrap [&_span]:break-all"
+                )}
+                dir="ltr"
+              >
                 {code}
               </pre>
             </div>
@@ -355,6 +392,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
                 maxLineWidth={maxLineWidth}
                 className="min-h-full"
                 preClassName="text-sm"
+                isWrapped={isWrapped}
               />
             ) : (
               <div
@@ -410,6 +448,7 @@ type HighlightCodeProps = {
   maxLineWidth?: number;
   className?: string;
   preClassName?: string;
+  isWrapped: boolean;
 };
 
 function HighlightCode({
@@ -421,11 +460,11 @@ function HighlightCode({
   maxLineWidth,
   className,
   preClassName,
+  isWrapped,
 }: HighlightCodeProps) {
   const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
-    // This ensures the language definitions are loaded
     Promise.all([
       //@ts-ignore
       import("prismjs/components/prism-json"),
@@ -434,16 +473,23 @@ function HighlightCode({
     ]).then(() => setIsLoaded(true));
   }, []);
 
+  const containerClasses = cn(
+    "px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
+    !isWrapped && "overflow-x-auto",
+    isWrapped && "overflow-y-auto",
+    className
+  );
+
+  const preClasses = cn(
+    "relative mr-2 font-mono leading-relaxed",
+    preClassName,
+    isWrapped && "[&_span]:whitespace-pre-wrap [&_span]:break-all"
+  );
+
   if (!isLoaded) {
     return (
-      <div
-        dir="ltr"
-        className={cn(
-          "overflow-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
-          className
-        )}
-      >
-        <pre className={cn("relative mr-2 font-mono leading-relaxed", preClassName)}>{code}</pre>
+      <div dir="ltr" className={containerClasses}>
+        <pre className={preClasses}>{code}</pre>
       </div>
     );
   }
@@ -457,22 +503,8 @@ function HighlightCode({
         getLineProps,
         getTokenProps,
       }) => (
-        <div
-          dir="ltr"
-          className={cn(
-            "overflow-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
-            className
-          )}
-        >
-          <pre
-            className={cn(
-              "relative mr-2 font-mono leading-relaxed",
-              inheritedClassName,
-              preClassName
-            )}
-            style={inheritedStyle}
-            dir="ltr"
-          >
+        <div dir="ltr" className={containerClasses}>
+          <pre className={cn(preClasses, inheritedClassName)} style={inheritedStyle} dir="ltr">
             {tokens
               .map((line, index) => {
                 if (index === tokens.length - 1 && line.length === 1 && line[0].content === "\n") {
@@ -495,7 +527,8 @@ function HighlightCode({
                     {...lineProps}
                     className={cn(
                       "flex w-full justify-start transition-opacity duration-500",
-                      lineProps.className
+                      lineProps.className,
+                      isWrapped && "flex-wrap"
                     )}
                     style={{
                       opacity: shouldDim ? dimAmount : undefined,
@@ -504,9 +537,10 @@ function HighlightCode({
                   >
                     {showLineNumbers && (
                       <div
-                        className={
-                          "mr-2 flex-none select-none text-right text-charcoal-500 transition-opacity duration-500"
-                        }
+                        className={cn(
+                          "mr-2 flex-none select-none text-right text-charcoal-500 transition-opacity duration-500",
+                          isWrapped && "sticky left-0"
+                        )}
                         style={{
                           width: `calc(8 * ${(maxLineWidth as number) / 16}rem)`,
                         }}
