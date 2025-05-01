@@ -36,43 +36,28 @@ export const DateTime = ({
 
   const tooltipContent = (
     <div className="flex flex-col gap-1">
-      {!timeZone || timeZone === "UTC" ? (
-        <div className="flex flex-col gap-3 pb-1">
-          <DateTimeTooltipContent
-            title="UTC"
-            dateTime={formatDateTime(realDate, "UTC", locales, true, true)}
-            isoDateTime={formatDateTimeISO(realDate, "UTC")}
-            icon={<GlobeAltIcon className="size-4 text-blue-500" />}
-          />
-          <DateTimeTooltipContent
-            title="Local"
-            dateTime={formatDateTime(realDate, localTimeZone, locales, true, true)}
-            isoDateTime={formatDateTimeISO(realDate, localTimeZone)}
-            icon={<Laptop className="size-4 text-green-500" />}
-          />
-        </div>
-      ) : (
-        <div className="flex flex-col gap-3 pb-1">
+      <div className="flex flex-col gap-2.5 pb-1">
+        {timeZone && timeZone !== "UTC" && (
           <DateTimeTooltipContent
             title={timeZone}
             dateTime={formatDateTime(realDate, timeZone, locales, true, true)}
             isoDateTime={formatDateTimeISO(realDate, timeZone)}
             icon={<GlobeAmericasIcon className="size-4 text-purple-500" />}
           />
-          <DateTimeTooltipContent
-            title="UTC"
-            dateTime={formatDateTime(realDate, "UTC", locales, true, true)}
-            isoDateTime={formatDateTimeISO(realDate, "UTC")}
-            icon={<GlobeAltIcon className="size-4 text-blue-500" />}
-          />
-          <DateTimeTooltipContent
-            title="Local"
-            dateTime={formatDateTime(realDate, localTimeZone, locales, true, true)}
-            isoDateTime={formatDateTimeISO(realDate, localTimeZone)}
-            icon={<Laptop className="size-4 text-green-500" />}
-          />
-        </div>
-      )}
+        )}
+        <DateTimeTooltipContent
+          title="UTC"
+          dateTime={formatDateTime(realDate, "UTC", locales, true, true)}
+          isoDateTime={formatDateTimeISO(realDate, "UTC")}
+          icon={<GlobeAltIcon className="size-4 text-blue-500" />}
+        />
+        <DateTimeTooltipContent
+          title="Local"
+          dateTime={formatDateTime(realDate, localTimeZone, locales, true, true)}
+          isoDateTime={formatDateTimeISO(realDate, localTimeZone)}
+          icon={<Laptop className="size-4 text-green-500" />}
+        />
+      </div>
     </div>
   );
 
