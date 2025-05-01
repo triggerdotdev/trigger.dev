@@ -13,8 +13,9 @@ import { IntervalService } from "../../utils/interval.js";
 type SupervisorSessionOptions = SupervisorClientCommonOptions & {
   queueConsumerEnabled?: boolean;
   runNotificationsEnabled?: boolean;
-  heartbeatIntervalSeconds?: number;
-  dequeueIntervalMs?: number;
+  heartbeatIntervalSeconds: number;
+  dequeueIntervalMs: number;
+  dequeueIdleIntervalMs: number;
   preDequeue?: PreDequeueFn;
   preSkip?: PreSkipFn;
   maxRunCount?: number;
@@ -31,7 +32,6 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
   private readonly queueConsumers: RunQueueConsumer[];
 
   private readonly heartbeat: IntervalService;
-  private readonly heartbeatIntervalSeconds: number;
 
   constructor(private opts: SupervisorSessionOptions) {
     super();
@@ -47,12 +47,11 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
         preSkip: opts.preSkip,
         onDequeue: this.onDequeue.bind(this),
         intervalMs: opts.dequeueIntervalMs,
+        idleIntervalMs: opts.dequeueIdleIntervalMs,
         maxRunCount: opts.maxRunCount,
       });
     });
 
-    // TODO: This should be dynamic and set by (or at least overridden by) the platform
-    this.heartbeatIntervalSeconds = opts.heartbeatIntervalSeconds || 30;
     this.heartbeat = new IntervalService({
       onInterval: async () => {
         console.debug("[SupervisorSession] Sending heartbeat");
@@ -64,7 +63,7 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
           console.error("[SupervisorSession] Heartbeat failed", { error: response.error });
         }
       },
-      intervalMs: this.heartbeatIntervalSeconds * 1000,
+      intervalMs: opts.heartbeatIntervalSeconds * 1000,
       leadingEdge: false,
       onError: async (error) => {
         console.error("[SupervisorSession] Failed to send heartbeat", { error });

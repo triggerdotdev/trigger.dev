@@ -38,7 +38,7 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
-import { SimpleTooltip } from "~/components/primitives/Tooltip";
+import { InfoIconTooltip, SimpleTooltip } from "~/components/primitives/Tooltip";
 import { EnabledStatus } from "~/components/runs/v3/EnabledStatus";
 import { ScheduleFilters, ScheduleListFilters } from "~/components/runs/v3/ScheduleFilters";
 import {
@@ -274,9 +274,12 @@ export default function Page() {
                             plan to enable more.
                           </Header3>
                         ) : (
-                          <Header3>
-                            You've used {limits.used}/{limits.limit} of your schedules.
-                          </Header3>
+                          <div className="flex items-center gap-1">
+                            <Header3>
+                              You've used {limits.used}/{limits.limit} of your schedules
+                            </Header3>
+                            <InfoIconTooltip content="Schedules created in Dev don't count towards your limit." />
+                          </div>
                         )}
 
                         {canUpgrade ? (
@@ -284,6 +287,7 @@ export default function Page() {
                             to={v3BillingPath(organization)}
                             variant="secondary/small"
                             LeadingIcon={ArrowUpCircleIcon}
+                            leadingIconClassName="text-indigo-500"
                           >
                             Upgrade
                           </LinkButton>

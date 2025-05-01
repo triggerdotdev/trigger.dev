@@ -1,5 +1,10 @@
-import { Fragment, useEffect, useState } from "react";
+import { GlobeAltIcon, GlobeAmericasIcon } from "@heroicons/react/20/solid";
+import { Laptop } from "lucide-react";
+import { Fragment, type ReactNode, useEffect, useState } from "react";
+import { CopyButton } from "./CopyButton";
 import { useLocales } from "./LocaleProvider";
+import { Paragraph } from "./Paragraph";
+import { SimpleTooltip } from "./Tooltip";
 
 type DateTimeProps = {
   date: Date | string;
@@ -7,6 +12,7 @@ type DateTimeProps = {
   includeSeconds?: boolean;
   includeTime?: boolean;
   showTimezone?: boolean;
+  showTooltip?: boolean;
   previousDate?: Date | string | null; // Add optional previous date for comparison
 };
 
@@ -16,41 +22,61 @@ export const DateTime = ({
   includeSeconds = true,
   includeTime = true,
   showTimezone = false,
+  showTooltip = true,
 }: DateTimeProps) => {
   const locales = useLocales();
+  const [localTimeZone, setLocalTimeZone] = useState<string>("UTC");
 
   const realDate = typeof date === "string" ? new Date(date) : date;
 
-  const initialFormattedDateTime = formatDateTime(
-    realDate,
-    timeZone ?? "UTC",
-    locales,
-    includeSeconds,
-    includeTime
-  );
-
-  const [formattedDateTime, setFormattedDateTime] = useState<string>(initialFormattedDateTime);
-
   useEffect(() => {
     const resolvedOptions = Intl.DateTimeFormat().resolvedOptions();
+    setLocalTimeZone(resolvedOptions.timeZone);
+  }, []);
 
-    setFormattedDateTime(
-      formatDateTime(
+  const tooltipContent = (
+    <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-2.5 pb-1">
+        {timeZone && timeZone !== "UTC" && (
+          <DateTimeTooltipContent
+            title={timeZone}
+            dateTime={formatDateTime(realDate, timeZone, locales, true, true)}
+            isoDateTime={formatDateTimeISO(realDate, timeZone)}
+            icon={<GlobeAmericasIcon className="size-4 text-purple-500" />}
+          />
+        )}
+        <DateTimeTooltipContent
+          title="UTC"
+          dateTime={formatDateTime(realDate, "UTC", locales, true, true)}
+          isoDateTime={formatDateTimeISO(realDate, "UTC")}
+          icon={<GlobeAltIcon className="size-4 text-blue-500" />}
+        />
+        <DateTimeTooltipContent
+          title="Local"
+          dateTime={formatDateTime(realDate, localTimeZone, locales, true, true)}
+          isoDateTime={formatDateTimeISO(realDate, localTimeZone)}
+          icon={<Laptop className="size-4 text-green-500" />}
+        />
+      </div>
+    </div>
+  );
+
+  const formattedDateTime = (
+    <Fragment>
+      {formatDateTime(
         realDate,
-        timeZone ?? resolvedOptions.timeZone,
+        timeZone ?? localTimeZone,
         locales,
         includeSeconds,
         includeTime
-      )
-    );
-  }, [locales, includeSeconds, realDate]);
-
-  return (
-    <Fragment>
-      {formattedDateTime.replace(/\s/g, String.fromCharCode(32))}
+      ).replace(/\s/g, String.fromCharCode(32))}
       {showTimezone ? ` (${timeZone ?? "UTC"})` : null}
     </Fragment>
   );
+
+  if (!showTooltip) return formattedDateTime;
+
+  return <SimpleTooltip button={formattedDateTime} content={tooltipContent} side="right" />;
 };
 
 export function formatDateTime(
@@ -69,6 +95,10 @@ export function formatDateTime(
     second: includeTime && includeSeconds ? "numeric" : undefined,
     timeZone,
   }).format(date);
+}
+
+export function formatDateTimeISO(date: Date, timeZone: string): string {
+  return new Date(date.toLocaleString("en-US", { timeZone })).toISOString();
 }
 
 // New component that only shows date when it changes
@@ -225,4 +255,43 @@ function formatDateTimeShort(date: Date, timeZone: string, locales: string[]): s
   }).format(date);
 
   return formattedDateTime;
+}
+
+type DateTimeTooltipContentProps = {
+  title: string;
+  dateTime: string;
+  isoDateTime: string;
+  icon: ReactNode;
+};
+
+function DateTimeTooltipContent({
+  title,
+  dateTime,
+  isoDateTime,
+  icon,
+}: DateTimeTooltipContentProps) {
+  const getUtcOffset = () => {
+    if (title !== "Local") return "";
+    const offset = -new Date().getTimezoneOffset();
+    const sign = offset >= 0 ? "+" : "-";
+    const hours = Math.abs(Math.floor(offset / 60));
+    const minutes = Math.abs(offset % 60);
+    return `(UTC ${sign}${hours}${minutes ? `:${minutes.toString().padStart(2, "0")}` : ""})`;
+  };
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-1 text-sm">
+        {icon}
+        <span className="font-medium">{title}</span>
+        <span className="font-normal text-text-dimmed">{getUtcOffset()}</span>
+      </div>
+      <div className="flex items-center justify-between gap-2">
+        <Paragraph variant="extra-small" className="text-text-dimmed">
+          {dateTime}
+        </Paragraph>
+        <CopyButton value={isoDateTime} variant="icon" size="extra-small" showTooltip={false} />
+      </div>
+    </div>
+  );
 }
