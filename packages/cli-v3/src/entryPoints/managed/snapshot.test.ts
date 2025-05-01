@@ -1,10 +1,11 @@
 import { SnapshotManager } from "./snapshot.js";
 import { ConsoleRunLogger } from "./logger.js";
-import { RunExecutionData, TaskRunExecutionStatus, TaskRunStatus } from "@trigger.dev/core/v3";
+import { RunExecutionData, TaskRunExecutionStatus } from "@trigger.dev/core/v3";
 import { setTimeout } from "timers/promises";
+import { isCI } from "std-env";
 
 describe("SnapshotManager", () => {
-  const mockLogger = new ConsoleRunLogger();
+  const mockLogger = new ConsoleRunLogger({ print: !isCI });
   const mockSnapshotHandler = vi.fn();
   const mockSuspendableHandler = vi.fn();
 
@@ -94,22 +95,13 @@ describe("SnapshotManager", () => {
     // Reset mocks
     vi.clearAllMocks();
 
-    // This should also work with QUEUED_EXECUTING
-    await manager.setSuspendable(false);
-    expect(manager.suspendable).toBe(false);
-
-    // Update the snapshot to QUEUED_EXECUTING
+    // Transitioning to QUEUED_EXECUTING should call the handler again
     await manager.handleSnapshotChange(
       createRunExecutionData({
         snapshotId: "snapshot-3",
         executionStatus: "QUEUED_EXECUTING",
       })
     );
-    expect(mockSuspendableHandler).not.toHaveBeenCalled();
-
-    // Set suspendable to true and check that the handler is called
-    await manager.setSuspendable(true);
-    expect(manager.suspendable).toBe(true);
     expect(mockSuspendableHandler).toHaveBeenCalledWith({
       id: "snapshot-3",
       status: "QUEUED_EXECUTING",
@@ -443,8 +435,6 @@ describe("SnapshotManager", () => {
         );
       }
     }
-
-    console.log(manager.queueLength);
 
     await Promise.all(promises);
 
