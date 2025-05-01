@@ -1,24 +1,12 @@
-import { useCallback, useState } from "react";
-import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { ClipboardCheckIcon, ClipboardIcon } from "lucide-react";
+import { useState } from "react";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
+import { useCopy } from "~/hooks/useCopy";
 import { cn } from "~/utils/cn";
 
 export function CopyableText({ value, className }: { value: string; className?: string }) {
   const [isHovered, setIsHovered] = useState(false);
-  const [copied, setCopied] = useState(false);
-
-  const copy = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      navigator.clipboard.writeText(value);
-      setCopied(true);
-      setTimeout(() => {
-        setCopied(false);
-      }, 1500);
-    },
-    [value]
-  );
+  const { copy, copied } = useCopy(value);
 
   return (
     <span
