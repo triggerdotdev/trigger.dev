@@ -35,7 +35,7 @@ export const DateTime = ({
   const tooltipContent = (
     <div className="flex flex-col gap-1">
       {!timeZone || timeZone === "UTC" ? (
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3 pb-1">
           <DateTimeTooltipContent
             title="UTC"
             dateTime={formatDateTime(realDate, "UTC", locales, true, true)}
@@ -50,7 +50,7 @@ export const DateTime = ({
           />
         </div>
       ) : (
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3 pb-1">
           <DateTimeTooltipContent
             title={timeZone}
             dateTime={formatDateTime(realDate, timeZone, locales, true, true)}
@@ -285,13 +285,22 @@ function DateTimeTooltipContent({
   isoDateTime,
   icon,
 }: DateTimeTooltipContentProps) {
+  const getUtcOffset = () => {
+    if (title !== "Local") return "";
+    const offset = -new Date().getTimezoneOffset();
+    const sign = offset >= 0 ? "+" : "-";
+    const hours = Math.abs(Math.floor(offset / 60));
+    return `(UTC ${sign}${hours})`;
+  };
+
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-center gap-1 text-sm">
         {icon}
         <span className="font-medium">{title}</span>
+        <span className="font-normal text-text-dimmed">{getUtcOffset()}</span>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between gap-2">
         <Paragraph variant="extra-small" className="text-text-dimmed">
           {dateTime}
         </Paragraph>
