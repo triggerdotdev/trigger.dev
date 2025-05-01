@@ -98,7 +98,52 @@ export function formatDateTime(
 }
 
 export function formatDateTimeISO(date: Date, timeZone: string): string {
-  return new Date(date.toLocaleString("en-US", { timeZone })).toISOString();
+  // Special handling for UTC
+  if (timeZone === "UTC") {
+    return date.toISOString();
+  }
+
+  // Get the offset in minutes for the specified timezone
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    timeZoneName: "shortOffset",
+  });
+  const tzOffset =
+    formatter
+      .formatToParts(date)
+      .find((p) => p.type === "timeZoneName")
+      ?.value.replace("GMT", "") ?? "";
+
+  // Format the offset properly as ±HH:mm
+  const offsetNum = parseInt(tzOffset);
+  const offsetHours = Math.abs(Math.floor(offsetNum)).toString().padStart(2, "0");
+  const sign = offsetNum >= 0 ? "+" : "-";
+  const formattedOffset = `${sign}${offsetHours}:00`;
+
+  // Format the date parts
+  const dateFormatter = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+
+  const parts = dateFormatter.formatToParts(date);
+  const dateParts: Record<string, string> = {};
+  parts.forEach((part) => {
+    dateParts[part.type] = part.value;
+  });
+
+  // Format: YYYY-MM-DDThh:mm:ss.sss±hh:mm
+  const isoString =
+    `${dateParts.year}-${dateParts.month}-${dateParts.day}T` +
+    `${dateParts.hour}:${dateParts.minute}:${dateParts.second}.000${formattedOffset}`;
+
+  return isoString;
 }
 
 // New component that only shows date when it changes
