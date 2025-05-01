@@ -1,10 +1,10 @@
 import { GlobeAltIcon, GlobeAmericasIcon } from "@heroicons/react/20/solid";
 import { Laptop } from "lucide-react";
 import { Fragment, type ReactNode, useEffect, useState } from "react";
+import { CopyButton } from "./CopyButton";
 import { useLocales } from "./LocaleProvider";
 import { Paragraph } from "./Paragraph";
 import { SimpleTooltip } from "./Tooltip";
-import { CopyButton } from "./CopyButton";
 
 type DateTimeProps = {
   date: Date | string;

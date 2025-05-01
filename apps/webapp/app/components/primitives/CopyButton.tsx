@@ -1,6 +1,6 @@
 import { ClipboardCheckIcon, ClipboardIcon } from "lucide-react";
-import { cn } from "~/utils/cn";
 import { useCopy } from "~/hooks/useCopy";
+import { cn } from "~/utils/cn";
 import { Button } from "./Buttons";
 import { SimpleTooltip } from "./Tooltip";
 

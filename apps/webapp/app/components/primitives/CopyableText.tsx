@@ -1,8 +1,8 @@
+import { ClipboardCheckIcon, ClipboardIcon } from "lucide-react";
 import { useState } from "react";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
-import { ClipboardCheckIcon, ClipboardIcon } from "lucide-react";
-import { cn } from "~/utils/cn";
 import { useCopy } from "~/hooks/useCopy";
+import { cn } from "~/utils/cn";
 
 export function CopyableText({ value, className }: { value: string; className?: string }) {
   const [isHovered, setIsHovered] = useState(false);
