@@ -110,6 +110,11 @@ export class RunExecutionSnapshotPoller {
     }
 
     this.enabled = false;
-    this.poller.stop();
+
+    const { isExecuting } = this.poller.stop();
+
+    if (isExecuting) {
+      this.sendDebugLog("stopped poller but it's still executing");
+    }
   }
 }

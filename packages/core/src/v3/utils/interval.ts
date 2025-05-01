@@ -40,13 +40,19 @@ export class IntervalService {
     }
   }
 
-  stop() {
+  stop(): { isExecuting: boolean } {
+    const returnValue = {
+      isExecuting: this._isExecuting,
+    };
+
     if (!this._isEnabled) {
-      return;
+      return returnValue;
     }
 
     this._isEnabled = false;
     this.#clearNextInterval();
+
+    return returnValue;
   }
 
   resetCurrentInterval() {
