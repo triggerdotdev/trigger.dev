@@ -950,9 +950,11 @@ export class RunExecution {
     }
 
     this.isShuttingDown = true;
+
     this.snapshotPoller?.stop();
-    this.taskRunProcess?.onTaskRunHeartbeat.detach();
     this.snapshotManager?.cleanup();
+
+    this.taskRunProcess?.unsafeDetachEvtHandlers();
   }
 
   private async handleSuspendable(suspendableSnapshot: SnapshotState) {

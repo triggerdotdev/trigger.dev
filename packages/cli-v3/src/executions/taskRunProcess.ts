@@ -97,6 +97,13 @@ export class TaskRunProcess {
     return this._isPreparedForNextAttempt;
   }
 
+  unsafeDetachEvtHandlers() {
+    this.onExit.detach();
+    this.onIsBeingKilled.detach();
+    this.onSendDebugLog.detach();
+    this.onSetSuspendable.detach();
+  }
+
   async cancel() {
     this._isPreparedForNextRun = false;
     this._isBeingCancelled = true;
