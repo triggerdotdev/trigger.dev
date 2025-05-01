@@ -275,7 +275,8 @@ function DateTimeTooltipContent({
     const offset = -new Date().getTimezoneOffset();
     const sign = offset >= 0 ? "+" : "-";
     const hours = Math.abs(Math.floor(offset / 60));
-    return `(UTC ${sign}${hours})`;
+    const minutes = Math.abs(offset % 60);
+    return `(UTC ${sign}${hours}${minutes ? `:${minutes.toString().padStart(2, "0")}` : ""})`;
   };
 
   return (
