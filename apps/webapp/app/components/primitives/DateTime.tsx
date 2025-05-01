@@ -133,7 +133,9 @@ export function formatDateTimeISO(date: Date, timeZone: string): string {
   // Format: YYYY-MM-DDThh:mm:ss.sss±hh:mm
   return (
     `${dateParts.year}-${dateParts.month}-${dateParts.day}T` +
-    `${dateParts.hour}:${dateParts.minute}:${dateParts.second}.000${offset}`
+    `${dateParts.hour}:${dateParts.minute}:${dateParts.second}.${String(
+      date.getMilliseconds()
+    ).padStart(3, "0")}${offset}`
   );
 }
 

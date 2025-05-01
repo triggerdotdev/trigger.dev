@@ -45,4 +45,10 @@ describe("formatDateTimeISO", () => {
     const result = formatDateTimeISO(date, "UTC");
     expect(result).toBe("2025-04-29T14:01:19.123Z");
   });
+
+  it("should preserve milliseconds, not UTC", () => {
+    const date = new Date("2025-04-29T14:01:19.123Z");
+    const result = formatDateTimeISO(date, "Europe/London");
+    expect(result).toBe("2025-04-29T15:01:19.123+01:00");
+  });
 });
