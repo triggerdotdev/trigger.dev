@@ -12,6 +12,7 @@ type DateTimeProps = {
   includeSeconds?: boolean;
   includeTime?: boolean;
   showTimezone?: boolean;
+  showTooltip?: boolean;
   previousDate?: Date | string | null; // Add optional previous date for comparison
 };
 
@@ -21,6 +22,7 @@ export const DateTime = ({
   includeSeconds = true,
   includeTime = true,
   showTimezone = false,
+  showTooltip = true,
 }: DateTimeProps) => {
   const locales = useLocales();
   const [localTimeZone, setLocalTimeZone] = useState<string>("UTC");
@@ -74,24 +76,22 @@ export const DateTime = ({
     </div>
   );
 
-  return (
-    <SimpleTooltip
-      button={
-        <Fragment>
-          {formatDateTime(
-            realDate,
-            timeZone ?? localTimeZone,
-            locales,
-            includeSeconds,
-            includeTime
-          ).replace(/\s/g, String.fromCharCode(32))}
-          {showTimezone ? ` (${timeZone ?? "UTC"})` : null}
-        </Fragment>
-      }
-      content={tooltipContent}
-      side="right"
-    />
+  const formattedDateTime = (
+    <Fragment>
+      {formatDateTime(
+        realDate,
+        timeZone ?? localTimeZone,
+        locales,
+        includeSeconds,
+        includeTime
+      ).replace(/\s/g, String.fromCharCode(32))}
+      {showTimezone ? ` (${timeZone ?? "UTC"})` : null}
+    </Fragment>
   );
+
+  if (!showTooltip) return formattedDateTime;
+
+  return <SimpleTooltip button={formattedDateTime} content={tooltipContent} side="right" />;
 };
 
 export function formatDateTime(
