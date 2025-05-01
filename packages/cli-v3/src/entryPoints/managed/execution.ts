@@ -212,6 +212,7 @@ export class RunExecution {
     // this.sendDebugLog(`processing snapshot change: ${snapshot.executionStatus}`, snapshotMetadata);
 
     // Reset the snapshot poll interval so we don't do unnecessary work
+    this.snapshotPoller?.updateSnapshotId(snapshot.friendlyId);
     this.snapshotPoller?.resetCurrentInterval();
 
     switch (snapshot.executionStatus) {
