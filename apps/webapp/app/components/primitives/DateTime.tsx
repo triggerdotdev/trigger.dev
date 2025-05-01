@@ -103,24 +103,7 @@ export function formatDateTimeISO(date: Date, timeZone: string): string {
     return date.toISOString();
   }
 
-  // Get the offset in minutes for the specified timezone
-  const formatter = new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    timeZoneName: "shortOffset",
-  });
-  const tzOffset =
-    formatter
-      .formatToParts(date)
-      .find((p) => p.type === "timeZoneName")
-      ?.value.replace("GMT", "") ?? "";
-
-  // Format the offset properly as ±HH:mm
-  const offsetNum = parseInt(tzOffset);
-  const offsetHours = Math.abs(Math.floor(offsetNum)).toString().padStart(2, "0");
-  const sign = offsetNum >= 0 ? "+" : "-";
-  const formattedOffset = `${sign}${offsetHours}:00`;
-
-  // Format the date parts
+  // Get the date parts in the target timezone
   const dateFormatter = new Intl.DateTimeFormat("en-US", {
     timeZone,
     year: "numeric",
@@ -132,18 +115,26 @@ export function formatDateTimeISO(date: Date, timeZone: string): string {
     hour12: false,
   });
 
-  const parts = dateFormatter.formatToParts(date);
-  const dateParts: Record<string, string> = {};
-  parts.forEach((part) => {
-    dateParts[part.type] = part.value;
+  // Get the timezone offset for this specific date
+  const timeZoneFormatter = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    timeZoneName: "longOffset",
   });
 
-  // Format: YYYY-MM-DDThh:mm:ss.sss±hh:mm
-  const isoString =
-    `${dateParts.year}-${dateParts.month}-${dateParts.day}T` +
-    `${dateParts.hour}:${dateParts.minute}:${dateParts.second}.000${formattedOffset}`;
+  const dateParts = Object.fromEntries(
+    dateFormatter.formatToParts(date).map(({ type, value }) => [type, value])
+  );
 
-  return isoString;
+  const timeZoneParts = timeZoneFormatter.formatToParts(date);
+  const offset =
+    timeZoneParts.find((part) => part.type === "timeZoneName")?.value.replace("GMT", "") ||
+    "+00:00";
+
+  // Format: YYYY-MM-DDThh:mm:ss.sss±hh:mm
+  return (
+    `${dateParts.year}-${dateParts.month}-${dateParts.day}T` +
+    `${dateParts.hour}:${dateParts.minute}:${dateParts.second}.000${offset}`
+  );
 }
 
 // New component that only shows date when it changes
