@@ -354,7 +354,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
               <pre
                 className={cn(
                   "relative mr-2 p-2 font-mono text-xs leading-relaxed",
-                  isWrapped && "[&_span]:whitespace-pre-wrap [&_span]:break-all"
+                  isWrapped && "[&_span]:whitespace-pre-wrap [&_span]:break-words"
                 )}
                 dir="ltr"
               >
@@ -483,7 +483,7 @@ function HighlightCode({
   const preClasses = cn(
     "relative mr-2 font-mono leading-relaxed",
     preClassName,
-    isWrapped && "[&_span]:whitespace-pre-wrap [&_span]:break-all"
+    isWrapped && "[&_span]:whitespace-pre-wrap [&_span]:break-words"
   );
 
   if (!isLoaded) {
