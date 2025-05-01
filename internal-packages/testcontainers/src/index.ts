@@ -36,6 +36,7 @@ type ElectricContext = {
 };
 
 type ContainerContext = NetworkContext & PostgresContext & RedisContext & ClickhouseContext;
+type PostgresAndRedisContext = NetworkContext & PostgresContext & RedisContext;
 type ContainerWithElectricAndRedisContext = ContainerContext & ElectricContext;
 type ContainerWithElectricContext = NetworkContext & PostgresContext & ElectricContext;
 
@@ -204,6 +205,14 @@ export const clickhouseTest = test.extend<ClickhouseContext>({
   network,
   clickhouseContainer,
   clickhouseClient,
+});
+
+export const postgresAndRedisTest = test.extend<PostgresAndRedisContext>({
+  network,
+  postgresContainer,
+  prisma,
+  redisContainer,
+  redisOptions,
 });
 
 export const containerTest = test.extend<ContainerContext>({

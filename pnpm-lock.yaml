@@ -977,6 +977,9 @@ importers:
 
   internal-packages/replication:
     dependencies:
+      '@internal/redis':
+        specifier: workspace:*
+        version: link:../redis
       '@internal/tracing':
         specifier: workspace:*
         version: link:../tracing
@@ -986,6 +989,9 @@ importers:
       pg:
         specifier: 8.15.6
         version: 8.15.6
+      redlock:
+        specifier: 5.0.0-beta.2
+        version: 5.0.0-beta.2(patch_hash=rwyegdki7iserrd7fgjwxkhnlu)
     devDependencies:
       '@internal/testcontainers':
         specifier: workspace:*

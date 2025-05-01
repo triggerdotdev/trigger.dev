@@ -6,9 +6,11 @@
   "types": "./dist/src/index.d.ts",
   "type": "module",
   "dependencies": {
+    "@internal/redis": "workspace:*",
     "@internal/tracing": "workspace:*",
     "@trigger.dev/core": "workspace:*",
-    "pg": "8.15.6"
+    "pg": "8.15.6",
+    "redlock": "5.0.0-beta.2"
   },
   "devDependencies": {
     "@internal/testcontainers": "workspace:*",
