@@ -1,10 +1,13 @@
+import { CheckIcon } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { Form, useNavigation, useSubmit } from "@remix-run/react";
-import { useCallback, useEffect, useRef } from "react";
+import { type TaskRunStatus } from "@trigger.dev/database";
+import { useCallback, useEffect, useState } from "react";
 import { type UseDataFunctionReturn, useTypedFetcher } from "remix-typedjson";
 import { JSONEditor } from "~/components/code/JSONEditor";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { Button } from "~/components/primitives/Buttons";
+import { DateTime } from "~/components/primitives/DateTime";
 import { DialogContent, DialogHeader } from "~/components/primitives/Dialog";
 import { Header3 } from "~/components/primitives/Headers";
 import { InputGroup } from "~/components/primitives/InputGroup";
@@ -12,6 +15,7 @@ import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Select, SelectItem } from "~/components/primitives/Select";
 import { Spinner, SpinnerWhite } from "~/components/primitives/Spinner";
+import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
 import { type loader } from "~/routes/resources.taskruns.$runParam.replay";
 
 type ReplayRunDialogProps = {
@@ -19,9 +23,17 @@ type ReplayRunDialogProps = {
   failedRedirect: string;
 };
 
+type Run = {
+  id: string;
+  createdAt: Date;
+  number: number;
+  status: TaskRunStatus;
+  payload: string;
+};
+
 export function ReplayRunDialog({ runFriendlyId, failedRedirect }: ReplayRunDialogProps) {
   return (
-    <DialogContent key={`replay`} className="md:max-w-xl">
+    <DialogContent key="replay" className="md:max-w-xl">
       <ReplayContent runFriendlyId={runFriendlyId} failedRedirect={failedRedirect} />
     </DialogContent>
   );
@@ -60,14 +72,20 @@ function ReplayForm({
   payloadType,
   environment,
   environments,
+  runs,
   failedRedirect,
   runFriendlyId,
 }: UseDataFunctionReturn<typeof loader> & { failedRedirect: string; runFriendlyId: string }) {
   const navigation = useNavigation();
   const submit = useSubmit();
-  const currentJson = useRef<string>(payload);
   const formAction = `/resources/taskruns/${runFriendlyId}/replay`;
   const isSubmitting = navigation.formAction === formAction;
+
+  // State for managing the payload and selection
+  const [currentPayload, setCurrentPayload] = useState(payload);
+  const [selectedRunId, setSelectedRunId] = useState<string | undefined>(undefined);
+  const [isPayloadModified, setIsPayloadModified] = useState(false);
+  const [isSelectOpen, setIsSelectOpen] = useState(false);
 
   const editablePayload =
     payloadType === "application/json" || payloadType === "application/super+json";
@@ -81,7 +99,7 @@ function ReplayForm({
       };
 
       if (editablePayload) {
-        data.payload = currentJson.current;
+        data.payload = currentPayload;
       }
 
       submit(data, {
@@ -90,7 +108,40 @@ function ReplayForm({
       });
       e.preventDefault();
     },
-    [currentJson]
+    [currentPayload, editablePayload, formAction, submit]
+  );
+
+  const selectedRun = runs.find((r) => r.id === selectedRunId);
+
+  const handlePayloadChange = useCallback(
+    (newPayload: string) => {
+      setCurrentPayload(newPayload);
+
+      // Check if the new payload matches any of the runs
+      const matchingRun = runs.find((r) => r.payload === newPayload);
+      if (matchingRun) {
+        setSelectedRunId(matchingRun.id);
+        setIsPayloadModified(false);
+      } else {
+        setSelectedRunId(undefined);
+        setIsPayloadModified(true);
+      }
+    },
+    [runs]
+  );
+
+  const handleRunSelect = useCallback(
+    (value: string | string[]) => {
+      if (Array.isArray(value)) return;
+
+      const run = runs.find((r: Run) => r.id === value);
+      if (run) {
+        setSelectedRunId(value);
+        setCurrentPayload(run.payload);
+        setIsPayloadModified(false);
+      }
+    },
+    [runs]
   );
 
   return (
@@ -101,16 +152,69 @@ function ReplayForm({
             Replaying will create a new run using the same or modified payload, executing against
             the latest version in your selected environment.
           </Paragraph>
-          <Header3 spacing>Payload</Header3>
+          <div className="mb-1 flex items-center justify-between">
+            <Header3>Payload</Header3>
+            <Select
+              key={`${runs.length}-${isSelectOpen}`} // Force re-render when runs change or open state changes
+              variant="minimal/small"
+              placeholder="Recent payloads"
+              text={
+                selectedRun && !isPayloadModified
+                  ? () => (
+                      <span className="whitespace-nowrap tabular-nums">
+                        Payload from <DateTime date={selectedRun.createdAt} />
+                      </span>
+                    )
+                  : "Recent payloads"
+              }
+              items={runs}
+              value={selectedRun && !isPayloadModified ? selectedRunId : ""}
+              defaultValue=""
+              setValue={handleRunSelect}
+              open={isSelectOpen}
+              setOpen={setIsSelectOpen}
+              dropdownIcon
+            >
+              {(items: Run[]) =>
+                items.length === 0 ? (
+                  <SelectItem value="" disabled>
+                    No recent payloads available
+                  </SelectItem>
+                ) : (
+                  items.map((run) => (
+                    <SelectItem key={run.id} value={run.id} checkIcon={null}>
+                      <div className="flex w-full items-center justify-between gap-2">
+                        <div className="flex w-full items-center justify-between gap-2 tabular-nums">
+                          <div className="flex items-center gap-2">
+                            <Paragraph variant="small">Run {run.number}</Paragraph>
+                            <Paragraph variant="small/bright">
+                              <DateTime date={run.createdAt} />
+                            </Paragraph>
+                          </div>
+                          <div className="flex items-center gap-1 text-xs text-text-dimmed">
+                            <TaskRunStatusCombo status={run.status} />
+                          </div>
+                        </div>
+                        {selectedRun?.id === run.id && !isPayloadModified && (
+                          <CheckIcon className="size-4 flex-none text-success" />
+                        )}
+                        {!(selectedRun?.id === run.id && !isPayloadModified) && (
+                          <div className="size-4 flex-none" />
+                        )}
+                      </div>
+                    </SelectItem>
+                  ))
+                )
+              }
+            </Select>
+          </div>
           <div className="mb-3 max-h-[70vh] min-h-40 overflow-y-auto rounded-sm border border-grid-dimmed bg-charcoal-900 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
             <JSONEditor
               autoFocus
-              defaultValue={currentJson.current}
+              defaultValue={currentPayload}
               readOnly={false}
               basicSetup
-              onChange={(v) => {
-                currentJson.current = v;
-              }}
+              onChange={handlePayloadChange}
               showClearButton={false}
               showCopyButton={false}
               height="100%"

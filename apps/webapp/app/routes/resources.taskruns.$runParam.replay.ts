@@ -22,6 +22,8 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
   const run = await $replica.taskRun.findFirst({
     select: {
+      id: true,
+      taskIdentifier: true,
       payload: true,
       payloadType: true,
       runtimeEnvironmentId: true,
@@ -69,6 +71,25 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     throw new Response("Environment not found", { status: 404 });
   }
 
+  // Get recent runs for the same task
+  const recentRuns = await $replica.taskRun.findMany({
+    where: {
+      taskIdentifier: run.taskIdentifier,
+      runtimeEnvironmentId: run.runtimeEnvironmentId,
+    },
+    select: {
+      id: true,
+      createdAt: true,
+      number: true,
+      status: true,
+      payload: true,
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+    take: 20,
+  });
+
   return typedjson({
     payload: await prettyPrintPacket(run.payload, run.payloadType),
     payloadType: run.payloadType,
@@ -76,6 +97,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     environments: sortEnvironments(
       run.project.environments.map((environment) => displayableEnvironment(environment, userId))
     ),
+    runs: recentRuns,
   });
 }
 
