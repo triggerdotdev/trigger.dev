@@ -39,6 +39,9 @@
       "esm"
     ],
     "project": "./tsconfig.src.json",
+    "exclude": [
+      "**/*.test.ts"
+    ],
     "exports": {
       "./package.json": "./package.json",
       ".": "./src/index.ts"
