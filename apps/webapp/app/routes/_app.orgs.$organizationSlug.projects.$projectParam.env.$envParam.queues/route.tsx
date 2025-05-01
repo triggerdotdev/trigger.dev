@@ -247,6 +247,7 @@ export default function Page() {
               animate
               accessory={<EnvironmentPauseResumeButton env={env} />}
               valueClassName={env.paused ? "text-warning" : undefined}
+              compactThreshold={1000000}
             />
             <BigNumber
               title="Running"
@@ -260,6 +261,7 @@ export default function Page() {
                   ? "At concurrency limit"
                   : undefined
               }
+              compactThreshold={1000000}
             />
             <BigNumber
               title="Concurrency limit"

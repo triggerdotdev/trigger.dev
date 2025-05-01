@@ -1,10 +1,10 @@
 import { type ReactNode } from "react";
-import { AnimatedNumber } from "../primitives/AnimatedNumber";
-import { Spinner } from "../primitives/Spinner";
-import { SimpleTooltip } from "../primitives/Tooltip";
 import { cn } from "~/utils/cn";
 import { formatNumber, formatNumberCompact } from "~/utils/numberFormatter";
 import { Header3 } from "../primitives/Headers";
+import { Spinner } from "../primitives/Spinner";
+import { SimpleTooltip } from "../primitives/Tooltip";
+import { AnimatedNumber } from "../primitives/AnimatedNumber";
 
 interface BigNumberProps {
   title: ReactNode;
@@ -29,15 +29,12 @@ export function BigNumber({
   accessory,
   animate = false,
   loading = false,
-  compactThreshold = 100000,
+  compactThreshold,
 }: BigNumberProps) {
   const v = value ?? defaultValue;
 
-  const formatValue = (num: number) => {
-    return num >= compactThreshold ? formatNumberCompact(num) : formatNumber(num);
-  };
-
-  const shouldCompact = v !== undefined && v >= compactThreshold;
+  const shouldCompact =
+    typeof compactThreshold === "number" && v !== undefined && v >= compactThreshold;
 
   return (
     <div className="flex flex-col justify-between gap-4 rounded-sm border border-grid-dimmed bg-background-bright p-4">
@@ -57,13 +54,13 @@ export function BigNumber({
           <div className="flex flex-wrap items-baseline gap-2">
             {shouldCompact ? (
               <SimpleTooltip
-                button={animate ? <AnimatedNumber value={v} /> : formatValue(v)}
+                button={animate ? <AnimatedNumber value={v} /> : formatNumberCompact(v)}
                 content={formatNumber(v)}
               />
             ) : animate ? (
               <AnimatedNumber value={v} />
             ) : (
-              formatValue(v)
+              formatNumber(v)
             )}
             {suffix && <div className={cn("text-xs", suffixClassName)}>{suffix}</div>}
           </div>
