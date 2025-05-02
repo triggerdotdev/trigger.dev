@@ -249,88 +249,39 @@ function StandardTaskForm({ task, runs }: { task: TestTask["task"]; runs: Standa
       onSubmit={(e) => submitForm(e)}
     >
       <input type="hidden" name="triggerSource" value={"STANDARD"} />
-      <ResizablePanelGroup orientation="horizontal">
-        <ResizablePanel id="test-task-main" min="100px" default="60%">
-          <div className="flex h-full flex-col overflow-hidden bg-charcoal-900">
-            <TabContainer className="px-3 pt-2">
-              <TabButton
-                isActive={!tab || tab === "payload"}
-                layoutId="test-editor"
-                onClick={() => {
-                  replace({ tab: "payload" });
-                }}
-              >
-                Payload
-              </TabButton>
-
-              <TabButton
-                isActive={tab === "metadata"}
-                layoutId="test-editor"
-                onClick={() => {
-                  replace({ tab: "metadata" });
-                }}
-              >
-                Metadata
-              </TabButton>
-            </TabContainer>
-            <div className="flex-1 overflow-hidden">
-              <JSONEditor
-                defaultValue={defaultPayloadJson}
-                readOnly={false}
-                basicSetup
-                onChange={(v) => {
-                  currentPayloadJson.current = v;
-
-                  //deselect the example if it's been edited
-                  if (selectedCodeSampleId) {
-                    if (v !== selectedCodeSamplePayload) {
-                      setDefaultPayloadJson(v);
-                      setSelectedCodeSampleId(undefined);
-                    }
-                  }
-                }}
-                height="100%"
-                autoFocus={!tab || tab === "payload"}
-                className={cn("h-full overflow-auto", tab === "metadata" && "hidden")}
-              />
-              <JSONEditor
-                defaultValue={defaultMetadataJson}
-                readOnly={false}
-                basicSetup
-                onChange={(v) => {
-                  currentMetadataJson.current = v;
-
-                  //deselect the example if it's been edited
-                  if (selectedCodeSampleId) {
-                    if (v !== selectedCodeSampleMetadata) {
-                      setDefaultMetadataJson(v);
-                      setSelectedCodeSampleId(undefined);
-                    }
-                  }
-                }}
-                height="100%"
-                autoFocus={tab === "metadata"}
-                placeholder=""
-                className={cn("h-full overflow-auto", tab !== "metadata" && "hidden")}
-              />
-            </div>
-          </div>
-        </ResizablePanel>
-        <ResizableHandle id="test-task-handle" />
-        <ResizablePanel id="test-task-inspector" min="100px">
-          <RecentPayloads
-            runs={runs}
-            selectedId={selectedCodeSampleId}
-            onSelected={(id) => {
-              const run = runs.find((r) => r.id === id);
-              if (!run) return;
-              setPayload(run.payload);
-              setMetadata(run.seedMetadata ?? "{}");
-              setSelectedCodeSampleId(id);
-            }}
-          />
-        </ResizablePanel>
-      </ResizablePanelGroup>
+      <TestTaskEditorPanel
+        tab={tab}
+        onTabChange={(tab) => replace({ tab })}
+        payloadJson={defaultPayloadJson}
+        onPayloadChange={(v) => {
+          currentPayloadJson.current = v;
+          if (selectedCodeSampleId) {
+            if (v !== selectedCodeSamplePayload) {
+              setDefaultPayloadJson(v);
+              setSelectedCodeSampleId(undefined);
+            }
+          }
+        }}
+        metadataJson={defaultMetadataJson}
+        onMetadataChange={(v) => {
+          currentMetadataJson.current = v;
+          if (selectedCodeSampleId) {
+            if (v !== selectedCodeSampleMetadata) {
+              setDefaultMetadataJson(v);
+              setSelectedCodeSampleId(undefined);
+            }
+          }
+        }}
+        selectedCodeSampleId={selectedCodeSampleId}
+        runs={runs}
+        onRecentPayloadSelect={(id) => {
+          const run = runs.find((r) => r.id === id);
+          if (!run) return;
+          setPayload(run.payload);
+          setMetadata(run.seedMetadata ?? "{}");
+          setSelectedCodeSampleId(id);
+        }}
+      />
       <div className="flex items-center justify-end gap-3 border-t border-grid-bright bg-background-dimmed p-2">
         <div className="flex items-center gap-1">
           <Paragraph variant="small" className="whitespace-nowrap">
@@ -602,5 +553,88 @@ export function RecentPayloads({
         </div>
       )}
     </div>
+  );
+}
+
+export function TestTaskEditorPanel({
+  tab,
+  onTabChange,
+  payloadJson,
+  onPayloadChange,
+  metadataJson,
+  onMetadataChange,
+  selectedCodeSampleId,
+  runs,
+  onRecentPayloadSelect,
+}: {
+  tab: string | null | undefined;
+  onTabChange: (tab: string) => void;
+  payloadJson: string;
+  onPayloadChange: (v: string) => void;
+  metadataJson: string;
+  onMetadataChange: (v: string) => void;
+  selectedCodeSampleId?: string;
+  runs: {
+    id: string;
+    payload: string;
+    seedMetadata?: string;
+    createdAt: Date;
+    number: number;
+    status: any;
+  }[];
+  onRecentPayloadSelect: (id: string) => void;
+}) {
+  return (
+    <ResizablePanelGroup orientation="horizontal">
+      <ResizablePanel id="test-task-main" min="100px" default="60%">
+        <div className="flex h-full flex-col overflow-hidden bg-charcoal-900">
+          <TabContainer className="px-3 pt-2">
+            <TabButton
+              isActive={!tab || tab === "payload"}
+              layoutId="test-editor"
+              onClick={() => onTabChange("payload")}
+            >
+              Payload
+            </TabButton>
+            <TabButton
+              isActive={tab === "metadata"}
+              layoutId="test-editor"
+              onClick={() => onTabChange("metadata")}
+            >
+              Metadata
+            </TabButton>
+          </TabContainer>
+          <div className="flex-1 overflow-hidden">
+            <JSONEditor
+              defaultValue={payloadJson}
+              readOnly={false}
+              basicSetup
+              onChange={onPayloadChange}
+              height="100%"
+              autoFocus={!tab || tab === "payload"}
+              className={cn("h-full overflow-auto", tab === "metadata" && "hidden")}
+            />
+            <JSONEditor
+              defaultValue={metadataJson}
+              readOnly={false}
+              basicSetup
+              onChange={onMetadataChange}
+              height="100%"
+              autoFocus={tab === "metadata"}
+              placeholder=""
+              className={cn("h-full overflow-auto", tab !== "metadata" && "hidden")}
+            />
+          </div>
+        </div>
+      </ResizablePanel>
+      <ResizableHandle id="test-task-handle" />
+      <ResizablePanel id="test-task-inspector" min="100px">
+        <RecentPayloads
+          runs={runs}
+          selectedId={selectedCodeSampleId}
+          onSelected={onRecentPayloadSelect}
+        />
+      </ResizablePanel>
+    </ResizablePanelGroup>
   );
 }
