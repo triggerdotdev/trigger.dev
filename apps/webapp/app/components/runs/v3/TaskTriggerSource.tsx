@@ -12,10 +12,12 @@ export function TaskTriggerSourceIcon({
 }) {
   switch (source) {
     case "STANDARD": {
-      return <TaskIconSmall className="size-[1.125rem] text-tasks" />;
+      return <TaskIconSmall className="size-[1.125rem] min-w-[1.125rem] text-tasks" />;
     }
     case "SCHEDULED": {
-      return <ClockIcon className={cn("size-[1.125rem] text-schedules", className)} />;
+      return (
+        <ClockIcon className={cn("size-[1.125rem] min-w-[1.125rem] text-schedules", className)} />
+      );
     }
   }
 }
