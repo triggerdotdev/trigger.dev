@@ -34,6 +34,7 @@ import { spinner } from "../utilities/windows.js";
 import { login } from "./login.js";
 import { updateTriggerPackages } from "./update.js";
 import { setGithubActionsOutputAndEnvVars } from "../utilities/githubActions.js";
+import { isDirectory } from "../utilities/fileSystem.js";
 
 const DeployCommandOptions = CommonCommandOptions.extend({
   dryRun: z.boolean().default(false),
@@ -168,7 +169,24 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     await updateTriggerPackages(dir, { ...options }, true, true);
   }
 
-  const projectPath = resolve(process.cwd(), dir);
+  const cwd = process.cwd();
+  const projectPath = resolve(cwd, dir);
+
+  if (dir !== "." && !isDirectory(projectPath)) {
+    if (dir === "staging" || dir === "prod") {
+      throw new Error(`To deploy to ${dir}, you need to pass "--env ${dir}", not just "${dir}".`);
+    }
+
+    if (dir === "production") {
+      throw new Error(`To deploy to production, you need to pass "--env prod", not "production".`);
+    }
+
+    if (dir === "stg") {
+      throw new Error(`To deploy to staging, you need to pass "--env staging", not "stg".`);
+    }
+
+    throw new Error(`Directory "${dir}" not found at ${projectPath}`);
+  }
 
   const authorization = await login({
     embedded: true,
