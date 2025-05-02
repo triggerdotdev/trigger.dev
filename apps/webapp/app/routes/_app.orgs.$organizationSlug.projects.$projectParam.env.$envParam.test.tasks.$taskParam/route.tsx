@@ -325,7 +325,7 @@ function StandardTaskForm({ task, runs }: { task: TestTask["task"]; runs: Standa
               const run = runs.find((r) => r.id === id);
               if (!run) return;
               setPayload(run.payload);
-              run.seedMetadata && setMetadata(run.seedMetadata);
+              setMetadata(run.seedMetadata ?? "{}");
               setSelectedCodeSampleId(id);
             }}
           />
