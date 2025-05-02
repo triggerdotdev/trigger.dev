@@ -31,17 +31,54 @@ type ContainerWithElectricContext = NetworkContext & PostgresContext & ElectricC
 
 type Use<T> = (value: T) => Promise<void>;
 
+let cleanupOrder = 0;
+let activeCleanups = 0;
+
+/**
+ * Logs the cleanup of a resource.
+ * @param resource - The resource that is being cleaned up.
+ * @param fn - The cleanup function.
+ */
+async function logCleanup(resource: string, fn: () => Promise<void>) {
+  const start = new Date();
+  const order = cleanupOrder++;
+  const activeAtStart = ++activeCleanups;
+
+  let error: unknown = null;
+  try {
+    await fn();
+  } catch (err) {
+    error = err instanceof Error ? err.message : String(err);
+  }
+
+  const end = new Date();
+  const activeAtEnd = --activeCleanups;
+  const parallel = activeAtStart > 1 || activeAtEnd > 0;
+
+  console.log(
+    JSON.stringify({
+      order,
+      start: start.toISOString(),
+      end: end.toISOString(),
+      parallel,
+      resource,
+      durationMs: end.getTime() - start.getTime(),
+      error,
+      activeAtStart,
+      activeAtEnd,
+    })
+  );
+}
+
 const network = async ({}, use: Use<StartedNetwork>) => {
   const network = await new Network().start();
   try {
     await use(network);
   } finally {
-    try {
-      await network.stop();
-    } catch (error) {
-      console.warn("Network stop error (ignored):", error);
-    }
     // Make sure to stop the network after use
+    await logCleanup("network", async () => {
+      await network.stop();
+    });
   }
 };
 
@@ -55,7 +92,9 @@ const postgresContainer = async (
   } finally {
     // WARNING: Testcontainers by default will not wait until the container has stopped. It will simply issue the stop command and return immediately.
     // If you need to wait for the container to be stopped, you can provide a timeout. The unit of timeout option here is second
-    await container.stop({ timeout: 10 });
+    await logCleanup("postgresContainer", async () => {
+      await container.stop({ timeout: 30 });
+    });
   }
 };
 
@@ -77,7 +116,9 @@ const prisma = async (
   try {
     await use(prisma);
   } finally {
-    await prisma.$disconnect();
+    await logCleanup("prisma", async () => {
+      await prisma.$disconnect();
+    });
   }
 };
 
@@ -96,7 +137,9 @@ const redisContainer = async (
   } finally {
     // WARNING: Testcontainers by default will not wait until the container has stopped. It will simply issue the stop command and return immediately.
     // If you need to wait for the container to be stopped, you can provide a timeout. The unit of timeout option here is second
-    await container.stop({ timeout: 10 });
+    await logCleanup("redisContainer", async () => {
+      await container.stop({ timeout: 30 });
+    });
   }
 };
 
@@ -148,7 +191,9 @@ const electricOrigin = async (
   } finally {
     // WARNING: Testcontainers by default will not wait until the container has stopped. It will simply issue the stop command and return immediately.
     // If you need to wait for the container to be stopped, you can provide a timeout. The unit of timeout option here is second
-    await container.stop({ timeout: 10 });
+    await logCleanup("electricContainer", async () => {
+      await container.stop({ timeout: 30 });
+    });
   }
 };
 
