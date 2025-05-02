@@ -577,7 +577,7 @@ export function RecentPayloads({
           </Callout>
         </div>
       ) : (
-        <div className="flex flex-col divide-y divide-charcoal-750 overflow-y-auto">
+        <div className="flex flex-col divide-y divide-charcoal-750 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
           {runs.map((run) => (
             <button
               key={run.id}
