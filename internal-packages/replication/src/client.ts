@@ -6,7 +6,7 @@ import Redlock, { Lock } from "redlock";
 import { createRedisClient } from "@internal/redis";
 import { Logger } from "@trigger.dev/core/logger";
 import { LogicalReplicationClientError } from "./errors.js";
-import { PgoutputParser, getPgoutputStartReplicationSQL } from "./pgoutput.js";
+import { PgoutputMessage, PgoutputParser, getPgoutputStartReplicationSQL } from "./pgoutput.js";
 
 export interface LogicalReplicationClientOptions {
   /**
@@ -64,7 +64,7 @@ export interface LogicalReplicationClientOptions {
 export type LogicalReplicationClientEvents = {
   leaderElection: [boolean];
   error: [Error];
-  data: [{ lsn: string; log: unknown }];
+  data: [{ lsn: string; log: PgoutputMessage }];
   start: [];
   acknowledge: [{ lsn: string }];
   heartbeat: [{ lsn: string; timestamp: number; shouldRespond: boolean }];
