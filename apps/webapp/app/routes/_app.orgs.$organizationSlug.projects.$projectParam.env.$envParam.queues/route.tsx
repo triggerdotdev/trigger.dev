@@ -610,7 +610,9 @@ function EnvironmentPauseResumeButton({
                   type="submit"
                   disabled={isLoading}
                   variant={env.paused ? "primary/medium" : "danger/medium"}
-                  LeadingIcon={isLoading ? <Spinner /> : env.paused ? PlayIcon : PauseIcon}
+                  LeadingIcon={
+                    isLoading ? <Spinner color="white" /> : env.paused ? PlayIcon : PauseIcon
+                  }
                   shortcut={{ modifiers: ["mod"], key: "enter" }}
                 >
                   {env.paused ? "Resume environment" : "Pause environment"}
