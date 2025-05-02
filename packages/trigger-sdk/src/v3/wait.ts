@@ -309,6 +309,34 @@ async function completeToken<T>(
   return apiClient.completeWaitpointToken(tokenId, { data }, $requestOptions);
 }
 
+async function forHttpCallback<TResult>(
+  callback: (successUrl: string, failureUrl: string) => Promise<TResult>
+) {
+  //TODO:
+  // Support a schema passed in, infer the type, or a generic supplied type
+  // 1. Create a span for the main call
+  // 2. Make an API call to api.trigger.dev/v1/http-callback/create
+  // 3. Return the successUrl and failureUrl and a waitpoint id (but don't block the run yet)
+  // 4. Set the successUrl, failureUrl and waitpoint entity type and id as attributes on the parent span
+  // 5. Create a span around the callback
+  // 6. Deal with errors thrown in the callback use `tryCatch()`
+  // 7. If that callback is successfully called, wait for the waitpoint with an API call to api.trigger.dev/v1/http-callback/wait
+  // 8. Wait for the waitpoint in the runtime
+  // 9. On the backend when the success/fail API is hit, complete the waitpoint with the result
+  // 10. Receive the result here and import the packet, then get the result in the right format
+  // 11. Make unwrap work
+
+  const successUrl = "https://trigger.dev/wait/success";
+  const failureUrl = "https://trigger.dev/wait/failure";
+
+  const result = await callback(successUrl, failureUrl);
+
+  return {
+    ok: true,
+    output: result,
+  };
+}
+
 export type CommonWaitOptions = {
   /**
    * An optional idempotency key for the waitpoint.
