@@ -214,4 +214,65 @@ describe("RunQueue.nackMessage", () => {
       }
     }
   );
+
+  redisTest(
+    "nacking a message with retryAt sets the correct requeue time",
+    async ({ redisContainer }) => {
+      const queue = new RunQueue({
+        ...testOptions,
+        queueSelectionStrategy: new FairQueueSelectionStrategy({
+          redis: {
+            keyPrefix: "runqueue:test:",
+            host: redisContainer.getHost(),
+            port: redisContainer.getPort(),
+          },
+          keys: testOptions.keys,
+        }),
+        redis: {
+          keyPrefix: "runqueue:test:",
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+        },
+      });
+
+      try {
+        const envMasterQueue = `env:${authenticatedEnvDev.id}`;
+
+        // Enqueue message
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: messageDev,
+          masterQueues: ["main", envMasterQueue],
+        });
+
+        // Dequeue message
+        const dequeued = await queue.dequeueMessageFromMasterQueue(
+          "test_12345",
+          envMasterQueue,
+          10
+        );
+        expect(dequeued.length).toBe(1);
+
+        // Set retryAt to 5 seconds in the future
+        const retryAt = Date.now() + 5000;
+        await queue.nackMessage({
+          orgId: messageDev.orgId,
+          messageId: messageDev.runId,
+          retryAt,
+        });
+
+        // Check the score of the message in the queue
+        const queueKey = queue.keys.queueKey(authenticatedEnvDev, messageDev.queue);
+        const score = await queue.oldestMessageInQueue(authenticatedEnvDev, messageDev.queue);
+        expect(typeof score).toBe("number");
+        if (typeof score !== "number") {
+          throw new Error("Expected score to be a number, but got undefined");
+        }
+        // Should be within 100ms of retryAt
+        expect(Math.abs(score - retryAt)).toBeLessThanOrEqual(100);
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
 });
