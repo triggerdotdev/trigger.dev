@@ -443,9 +443,7 @@ export class RunExecution {
       logger: this.logger,
       snapshotPollIntervalSeconds: this.env.TRIGGER_SNAPSHOT_POLL_INTERVAL_SECONDS,
       handleSnapshotChange: this.enqueueSnapshotChangeAndWait.bind(this),
-    });
-
-    this.snapshotPoller.start();
+    }).start();
 
     const [startError, start] = await tryCatch(
       this.startAttempt({ isWarmStart: runOpts.isWarmStart })
@@ -500,7 +498,7 @@ export class RunExecution {
     }
 
     if (executeError instanceof SuspendedProcessError) {
-      this.sendDebugLog("run was suspended", {
+      this.sendDebugLog("execution was suspended", {
         run: run.friendlyId,
         snapshot: snapshot.friendlyId,
         error: executeError.message,
@@ -510,7 +508,7 @@ export class RunExecution {
     }
 
     if (executeError instanceof ExecutionAbortError) {
-      this.sendDebugLog("run was interrupted", {
+      this.sendDebugLog("execution was aborted", {
         run: run.friendlyId,
         snapshot: snapshot.friendlyId,
         error: executeError.message,
@@ -981,7 +979,7 @@ export class RunExecution {
     this.shutdownReason = reason;
 
     this.snapshotPoller?.stop();
-    this.snapshotManager?.cleanup();
+    this.snapshotManager?.dispose();
 
     this.taskRunProcess?.unsafeDetachEvtHandlers();
   }

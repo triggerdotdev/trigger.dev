@@ -306,8 +306,8 @@ describe("SnapshotManager", () => {
 
     expect(manager.queueLength).not.toBe(0);
 
-    // Call cleanup before they complete
-    manager.cleanup();
+    // Dispose manager before any promises complete
+    manager.dispose();
 
     expect(manager.queueLength).toBe(0);
 

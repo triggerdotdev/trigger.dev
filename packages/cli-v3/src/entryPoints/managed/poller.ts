@@ -63,8 +63,6 @@ export class RunExecutionSnapshotPoller {
         });
       },
     });
-
-    this.sendDebugLog("created");
   }
 
   private sendDebugLog(message: string, properties?: SendDebugLogOptions["properties"]) {
@@ -93,14 +91,18 @@ export class RunExecutionSnapshotPoller {
     this.poller.updateInterval(intervalMs);
   }
 
-  start() {
+  start(): RunExecutionSnapshotPoller {
     if (this.enabled) {
       this.sendDebugLog("already started");
-      return;
+      return this;
     }
+
+    this.sendDebugLog("start");
 
     this.enabled = true;
     this.poller.start();
+
+    return this;
   }
 
   stop() {
@@ -109,12 +111,14 @@ export class RunExecutionSnapshotPoller {
       return;
     }
 
+    this.sendDebugLog("stop");
+
     this.enabled = false;
 
     const { isExecuting } = this.poller.stop();
 
     if (isExecuting) {
-      this.sendDebugLog("stopped poller but it's still executing");
+      this.sendDebugLog("stopped while executing");
     }
   }
 }

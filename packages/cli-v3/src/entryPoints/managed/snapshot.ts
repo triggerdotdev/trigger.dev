@@ -286,10 +286,12 @@ export class SnapshotManager {
     }
   }
 
-  public cleanup() {
+  public dispose() {
+    this.sendDebugLog("dispose");
+
     // Clear any pending changes
     for (const item of this.changeQueue) {
-      item.reject(new Error("SnapshotManager cleanup"));
+      item.reject(new Error("SnapshotManager disposed"));
     }
     this.changeQueue = [];
   }
