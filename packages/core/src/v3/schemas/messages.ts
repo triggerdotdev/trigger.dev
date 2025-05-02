@@ -243,6 +243,12 @@ export const WorkerToExecutorMessageCatalog = {
     }),
     callback: z.void(),
   },
+  CANCEL: {
+    message: z.object({
+      timeoutInMs: z.number(),
+    }),
+    callback: z.void(),
+  },
   WAITPOINT_CREATED: {
     message: z.object({
       version: z.literal("v1").default("v1"),

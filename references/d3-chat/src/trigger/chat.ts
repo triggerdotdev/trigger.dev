@@ -110,7 +110,7 @@ export const todoChat = schemaTask({
       ),
     userId: z.string(),
   }),
-  run: async ({ input, userId }) => {
+  run: async ({ input, userId }, { signal }) => {
     metadata.set("user_id", userId);
 
     const system = `
@@ -157,6 +157,12 @@ export const todoChat = schemaTask({
 
     const prompt = input;
 
+    const chunks: TextStreamPart<TOOLS>[] = [];
+
+    tasks.onCancel(async () => {
+      logger.info("todo-chat: task cancelled with chunks", { chunks });
+    });
+
     const result = streamText({
       model: getModel(),
       system,
@@ -173,6 +179,10 @@ export const todoChat = schemaTask({
       },
       experimental_telemetry: {
         isEnabled: true,
+      },
+      abortSignal: signal,
+      onChunk: ({ chunk }) => {
+        chunks.push(chunk);
       },
     });
 

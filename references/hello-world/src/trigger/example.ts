@@ -1,4 +1,4 @@
-import { batch, logger, task, timeout, wait } from "@trigger.dev/sdk";
+import { batch, logger, task, tasks, timeout, wait } from "@trigger.dev/sdk";
 import { setTimeout } from "timers/promises";
 import { ResourceMonitor } from "../resourceMonitor.js";
 
@@ -206,6 +206,43 @@ export const hooksTask = task({
   },
   cleanup: async ({ ctx, payload }) => {
     logger.info("Hello, world from the cleanup hook", { payload });
+  },
+  onCancel: async ({ payload }) => {
+    logger.info("Hello, world from the onCancel hook", { payload });
+  },
+});
+
+export const cancelTask = task({
+  id: "cancel",
+  run: async (payload: { message: string }, { ctx, signal }) => {
+    logger.info("Hello, world from the cancel task", { message: payload.message });
+
+    tasks.onCancel(async () => {
+      logger.info("global task onCancel hook but inside of the run function baby!");
+    });
+
+    await logger.trace("10s timeout", async (span) => {
+      try {
+        await setTimeout(10_000, undefined, { signal });
+      } catch (error) {
+        logger.error("Timeout error", { error });
+      }
+    });
+
+    logger.info("Hello, world from the cancel task after the timeout", {
+      message: payload.message,
+    });
+
+    return {
+      message: "Hello, world!",
+    };
+  },
+  onCancel: async ({ payload, runPromise }) => {
+    logger.info("Hello, world from the onCancel hook", { payload });
+    const output = await runPromise;
+    logger.info("Hello, world from the onCancel hook after the run", { payload, output });
+    await setTimeout(10_000);
+    logger.info("Hello, world from the onCancel hook after the timeout", { payload });
   },
 });
 
