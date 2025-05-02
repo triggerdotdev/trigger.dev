@@ -384,7 +384,7 @@ export class ManagedRunController {
       properties: { code },
     });
 
-    this.currentExecution?.exit();
+    this.currentExecution?.kill().catch(() => {});
 
     process.exit(code);
   }
@@ -581,16 +581,6 @@ export class ManagedRunController {
     return socket;
   }
 
-  async cancelAttempt(runId: string) {
-    this.sendDebugLog({
-      runId,
-      message: "cancelling attempt",
-      properties: { runId },
-    });
-
-    await this.currentExecution?.cancel();
-  }
-
   start() {
     this.sendDebugLog({
       runId: this.runFriendlyId,
@@ -619,7 +609,18 @@ export class ManagedRunController {
       message: "Shutting down",
     });
 
-    await this.currentExecution?.cancel();
+    // Cancel the current execution
+    const [error] = await tryCatch(this.currentExecution?.cancel());
+
+    if (error) {
+      this.sendDebugLog({
+        runId: this.runFriendlyId,
+        message: "Error during shutdown",
+        properties: { error: String(error) },
+      });
+    }
+
+    // Close the socket
     this.socket.close();
   }
 

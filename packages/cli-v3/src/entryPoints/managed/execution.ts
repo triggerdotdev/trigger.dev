@@ -69,6 +69,7 @@ export class RunExecution {
 
   private lastHeartbeat?: Date;
   private isShuttingDown = false;
+  private shutdownReason?: string;
 
   constructor(opts: RunExecutionOptions) {
     this.id = randomBytes(4).toString("hex");
@@ -82,10 +83,38 @@ export class RunExecution {
   }
 
   /**
+   * Cancels the current execution.
+   */
+  public async cancel(): Promise<void> {
+    if (this.isShuttingDown) {
+      throw new Error("cancel called after execution shut down");
+    }
+
+    this.sendDebugLog("cancelling attempt", { runId: this.runFriendlyId });
+
+    await this.taskRunProcess?.cancel();
+  }
+
+  /**
+   * Kills the current execution.
+   */
+  public async kill({ exitExecution = true }: { exitExecution?: boolean } = {}) {
+    await this.taskRunProcess?.kill("SIGKILL");
+
+    if (exitExecution) {
+      this.shutdown("kill");
+    }
+  }
+
+  /**
    * Prepares the execution with task run environment variables.
    * This should be called before executing, typically after a successful run to prepare for the next one.
    */
   public prepareForExecution(opts: RunExecutionPrepareOptions): this {
+    if (this.isShuttingDown) {
+      throw new Error("prepareForExecution called after execution shut down");
+    }
+
     if (this.taskRunProcess) {
       throw new Error("prepareForExecution called after process was already created");
     }
@@ -204,7 +233,8 @@ export class RunExecution {
 
     if (this.currentAttemptNumber && this.currentAttemptNumber !== run.attemptNumber) {
       this.sendDebugLog("error: attempt number mismatch", snapshotMetadata);
-      await this.taskRunProcess?.suspend();
+      // This is a rogue execution, a new one will already have been created elsewhere
+      await this.exitTaskRunProcessWithoutFailingRun({ flush: false });
       return;
     }
 
@@ -237,14 +267,14 @@ export class RunExecution {
         this.sendDebugLog("run was re-queued", snapshotMetadata);
 
         // Pretend we've just suspended the run. This will kill the process without failing the run.
-        await this.taskRunProcess?.suspend();
+        await this.exitTaskRunProcessWithoutFailingRun({ flush: true });
         return;
       }
       case "FINISHED": {
         this.sendDebugLog("run is finished", snapshotMetadata);
 
         // Pretend we've just suspended the run. This will kill the process without failing the run.
-        await this.taskRunProcess?.suspend();
+        await this.exitTaskRunProcessWithoutFailingRun({ flush: true });
         return;
       }
       case "QUEUED_EXECUTING":
@@ -255,11 +285,11 @@ export class RunExecution {
         return;
       }
       case "SUSPENDED": {
-        this.sendDebugLog("run was suspended, kill the process", snapshotMetadata);
+        this.sendDebugLog("run was suspended", snapshotMetadata);
 
         // This will kill the process and fail the execution with a SuspendedProcessError
-        await this.taskRunProcess?.suspend();
-
+        // We don't flush because we already did before suspending
+        await this.exitTaskRunProcessWithoutFailingRun({ flush: false });
         return;
       }
       case "PENDING_EXECUTING": {
@@ -384,6 +414,10 @@ export class RunExecution {
    * When this returns, the child process will have been cleaned up.
    */
   public async execute(runOpts: RunExecutionRunOptions): Promise<void> {
+    if (this.isShuttingDown) {
+      throw new Error("execute called after execution shut down");
+    }
+
     // Setup initial state
     this.runFriendlyId = runOpts.runFriendlyId;
 
@@ -420,7 +454,7 @@ export class RunExecution {
     if (startError) {
       this.sendDebugLog("failed to start attempt", { error: startError.message });
 
-      this.stopServices();
+      this.shutdown("failed to start attempt");
       return;
     }
 
@@ -429,11 +463,12 @@ export class RunExecution {
     if (executeError) {
       this.sendDebugLog("failed to execute run", { error: executeError.message });
 
-      this.stopServices();
+      this.shutdown("failed to execute run");
       return;
     }
 
-    this.stopServices();
+    // This is here for safety, but it
+    this.shutdown("execute call finished");
   }
 
   private async executeRunWrapper({
@@ -460,10 +495,7 @@ export class RunExecution {
       })
     );
 
-    this.sendDebugLog("run execution completed", { error: executeError?.message });
-
     if (!executeError) {
-      this.stopServices();
       return;
     }
 
@@ -505,8 +537,6 @@ export class RunExecution {
     if (completeError) {
       this.sendDebugLog("failed to complete run", { error: completeError.message });
     }
-
-    this.stopServices();
   }
 
   private async executeRun({
@@ -527,7 +557,7 @@ export class RunExecution {
       !this.taskRunProcess.isPreparedForNextAttempt
     ) {
       this.sendDebugLog("killing existing task run process before executing next attempt");
-      await this.kill().catch(() => {});
+      await this.kill({ exitExecution: false }).catch(() => {});
     }
 
     // To skip this step and eagerly create the task run process, run prepareForExecution first
@@ -578,25 +608,6 @@ export class RunExecution {
     }
   }
 
-  /**
-   * Cancels the current execution.
-   */
-  public async cancel(): Promise<void> {
-    this.sendDebugLog("cancelling attempt", { runId: this.runFriendlyId });
-
-    await this.taskRunProcess?.cancel();
-  }
-
-  public exit() {
-    if (this.taskRunProcess?.isPreparedForNextRun) {
-      this.taskRunProcess?.forceExit();
-    }
-  }
-
-  public async kill() {
-    await this.taskRunProcess?.kill("SIGKILL");
-  }
-
   private async complete({ completion }: { completion: TaskRunExecutionResult }): Promise<void> {
     if (!this.runFriendlyId || !this.snapshotManager) {
       throw new Error("cannot complete run: missing run or snapshot manager");
@@ -639,37 +650,32 @@ export class RunExecution {
 
     const { attemptStatus } = result;
 
-    if (attemptStatus === "RUN_FINISHED") {
-      this.sendDebugLog("run finished");
-
-      return;
-    }
-
-    if (attemptStatus === "RUN_PENDING_CANCEL") {
-      this.sendDebugLog("run pending cancel");
-      return;
-    }
-
-    if (attemptStatus === "RETRY_QUEUED") {
-      this.sendDebugLog("retry queued");
-
-      return;
-    }
-
-    if (attemptStatus === "RETRY_IMMEDIATELY") {
-      if (completion.ok) {
-        throw new Error("Should retry but completion OK.");
+    switch (attemptStatus) {
+      case "RUN_FINISHED":
+      case "RUN_PENDING_CANCEL":
+      case "RETRY_QUEUED": {
+        return;
       }
+      case "RETRY_IMMEDIATELY": {
+        if (attemptStatus !== "RETRY_IMMEDIATELY") {
+          return;
+        }
 
-      if (!completion.retry) {
-        throw new Error("Should retry but missing retry params.");
+        if (completion.ok) {
+          throw new Error("Should retry but completion OK.");
+        }
+
+        if (!completion.retry) {
+          throw new Error("Should retry but missing retry params.");
+        }
+
+        await this.retryImmediately({ retryOpts: completion.retry });
+        return;
       }
-
-      await this.retryImmediately({ retryOpts: completion.retry });
-      return;
+      default: {
+        assertExhaustive(attemptStatus);
+      }
     }
-
-    assertExhaustive(attemptStatus);
   }
 
   private updateSnapshotAfterCompletion(snapshotId: string, status: TaskRunExecutionStatus) {
@@ -752,7 +758,7 @@ export class RunExecution {
     if (startError) {
       this.sendDebugLog("failed to start attempt for retry", { error: startError.message });
 
-      this.stopServices();
+      this.shutdown("retryImmediately: failed to start attempt");
       return;
     }
 
@@ -761,11 +767,9 @@ export class RunExecution {
     if (executeError) {
       this.sendDebugLog("failed to execute run for retry", { error: executeError.message });
 
-      this.stopServices();
+      this.shutdown("retryImmediately: failed to execute run");
       return;
     }
-
-    this.stopServices();
   }
 
   /**
@@ -797,10 +801,17 @@ export class RunExecution {
     this.restoreCount++;
   }
 
+  private async exitTaskRunProcessWithoutFailingRun({ flush }: { flush: boolean }) {
+    await this.taskRunProcess?.suspend({ flush });
+
+    // No services should be left running after this line - let's make sure of it
+    this.shutdown("exitTaskRunProcessWithoutFailingRun");
+  }
+
   /**
    * Processes env overrides from the metadata service. Generally called when we're resuming from a suspended state.
    */
-  async processEnvOverrides(reason?: string) {
+  public async processEnvOverrides(reason?: string) {
     if (!this.env.TRIGGER_METADATA_URL) {
       this.sendDebugLog("no metadata url, skipping env overrides", { reason });
       return;
@@ -953,15 +964,21 @@ export class RunExecution {
     }
 
     this.executionAbortController.abort();
-    this.stopServices();
+    this.shutdown("abortExecution");
   }
 
-  private stopServices() {
+  private shutdown(reason: string) {
     if (this.isShuttingDown) {
+      this.sendDebugLog(`[shutdown] ${reason} (already shutting down)`, {
+        firstShutdownReason: this.shutdownReason,
+      });
       return;
     }
 
+    this.sendDebugLog(`[shutdown] ${reason}`);
+
     this.isShuttingDown = true;
+    this.shutdownReason = reason;
 
     this.snapshotPoller?.stop();
     this.snapshotManager?.cleanup();

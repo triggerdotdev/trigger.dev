@@ -9,6 +9,7 @@ import {
   TaskRunExecutionPayload,
   TaskRunExecutionResult,
   type TaskRunInternalError,
+  tryCatch,
   WorkerManifest,
   WorkerToExecutorMessageCatalog,
 } from "@trigger.dev/core/v3";
@@ -102,6 +103,7 @@ export class TaskRunProcess {
     this.onIsBeingKilled.detach();
     this.onSendDebugLog.detach();
     this.onSetSuspendable.detach();
+    this.onTaskRunHeartbeat.detach();
   }
 
   async cancel() {
@@ -373,6 +375,7 @@ export class TaskRunProcess {
     this._stderr.push(errorLine);
   }
 
+  /** This will never throw. */
   async kill(signal?: number | NodeJS.Signals, timeoutInMs?: number) {
     logger.debug(`killing task run process`, {
       signal,
@@ -386,26 +389,35 @@ export class TaskRunProcess {
 
     this.onIsBeingKilled.post(this);
 
-    this._child?.kill(signal);
-
-    if (timeoutInMs) {
-      await killTimeout;
-    }
-  }
-
-  async suspend() {
-    this._isBeingSuspended = true;
-    await this.kill("SIGKILL");
-  }
-
-  forceExit() {
     try {
-      this._isBeingKilled = true;
-
-      this._child?.kill("SIGKILL");
+      this._child?.kill(signal);
     } catch (error) {
-      logger.debug("forceExit: failed to kill child process", { error });
+      logger.debug("kill: failed to kill child process", { error });
     }
+
+    if (!timeoutInMs) {
+      return;
+    }
+
+    const [error] = await tryCatch(killTimeout);
+
+    if (error) {
+      logger.debug("kill: failed to wait for child process to exit", { error });
+    }
+  }
+
+  async suspend({ flush }: { flush: boolean }) {
+    this._isBeingSuspended = true;
+
+    if (flush) {
+      const [error] = await tryCatch(this.#flush());
+
+      if (error) {
+        console.error("Error flushing task run process", { error });
+      }
+    }
+
+    await this.kill("SIGKILL");
   }
 
   get isBeingKilled() {
