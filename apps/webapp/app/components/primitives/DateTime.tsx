@@ -35,30 +35,12 @@ export const DateTime = ({
   }, []);
 
   const tooltipContent = (
-    <div className="flex flex-col gap-1">
-      <div className="flex flex-col gap-2.5 pb-1">
-        {timeZone && timeZone !== "UTC" && (
-          <DateTimeTooltipContent
-            title={timeZone}
-            dateTime={formatDateTime(realDate, timeZone, locales, true, true)}
-            isoDateTime={formatDateTimeISO(realDate, timeZone)}
-            icon={<GlobeAmericasIcon className="size-4 text-purple-500" />}
-          />
-        )}
-        <DateTimeTooltipContent
-          title="UTC"
-          dateTime={formatDateTime(realDate, "UTC", locales, true, true)}
-          isoDateTime={formatDateTimeISO(realDate, "UTC")}
-          icon={<GlobeAltIcon className="size-4 text-blue-500" />}
-        />
-        <DateTimeTooltipContent
-          title="Local"
-          dateTime={formatDateTime(realDate, localTimeZone, locales, true, true)}
-          isoDateTime={formatDateTimeISO(realDate, localTimeZone)}
-          icon={<Laptop className="size-4 text-green-500" />}
-        />
-      </div>
-    </div>
+    <TooltipContent
+      realDate={realDate}
+      timeZone={timeZone}
+      localTimeZone={localTimeZone}
+      locales={locales}
+    />
   );
 
   const formattedDateTime = (
@@ -215,8 +197,10 @@ export const DateTimeAccurate = ({
   date,
   timeZone = "UTC",
   previousDate = null,
+  showTooltip = true,
 }: DateTimeProps) => {
   const locales = useLocales();
+  const [localTimeZone, setLocalTimeZone] = useState<string>("UTC");
   const realDate = typeof date === "string" ? new Date(date) : date;
   const realPrevDate = previousDate
     ? typeof previousDate === "string"
@@ -224,33 +208,37 @@ export const DateTimeAccurate = ({
       : previousDate
     : null;
 
-  // Use the new Smart formatting if previousDate is provided
-  const initialFormattedDateTime = realPrevDate
-    ? isSameDay(realDate, realPrevDate)
-      ? formatTimeOnly(realDate, timeZone, locales)
-      : formatDateTimeAccurate(realDate, timeZone, locales)
-    : formatDateTimeAccurate(realDate, timeZone, locales);
-
-  const [formattedDateTime, setFormattedDateTime] = useState<string>(initialFormattedDateTime);
-
   useEffect(() => {
     const resolvedOptions = Intl.DateTimeFormat().resolvedOptions();
-    const userTimeZone = resolvedOptions.timeZone;
+    setLocalTimeZone(resolvedOptions.timeZone);
+  }, []);
 
-    if (realPrevDate) {
-      // Smart formatting based on whether date changed
-      setFormattedDateTime(
-        isSameDay(realDate, realPrevDate)
-          ? formatTimeOnly(realDate, userTimeZone, locales)
-          : formatDateTimeAccurate(realDate, userTimeZone, locales)
-      );
-    } else {
-      // Default behavior when no previous date
-      setFormattedDateTime(formatDateTimeAccurate(realDate, userTimeZone, locales));
-    }
-  }, [locales, realDate, realPrevDate]);
+  // Smart formatting based on whether date changed
+  const formattedDateTime = realPrevDate
+    ? isSameDay(realDate, realPrevDate)
+      ? formatTimeOnly(realDate, localTimeZone, locales)
+      : formatDateTimeAccurate(realDate, localTimeZone, locales)
+    : formatDateTimeAccurate(realDate, localTimeZone, locales);
 
-  return <Fragment>{formattedDateTime.replace(/\s/g, String.fromCharCode(32))}</Fragment>;
+  if (!showTooltip)
+    return <Fragment>{formattedDateTime.replace(/\s/g, String.fromCharCode(32))}</Fragment>;
+
+  const tooltipContent = (
+    <TooltipContent
+      realDate={realDate}
+      timeZone={timeZone}
+      localTimeZone={localTimeZone}
+      locales={locales}
+    />
+  );
+
+  return (
+    <SimpleTooltip
+      button={<Fragment>{formattedDateTime.replace(/\s/g, String.fromCharCode(32))}</Fragment>}
+      content={tooltipContent}
+      side="right"
+    />
+  );
 };
 
 function formatDateTimeAccurate(date: Date, timeZone: string, locales: string[]): string {
@@ -329,6 +317,45 @@ function DateTimeTooltipContent({
           {dateTime}
         </Paragraph>
         <CopyButton value={isoDateTime} variant="icon" size="extra-small" showTooltip={false} />
+      </div>
+    </div>
+  );
+}
+
+function TooltipContent({
+  realDate,
+  timeZone,
+  localTimeZone,
+  locales,
+}: {
+  realDate: Date;
+  timeZone?: string;
+  localTimeZone: string;
+  locales: string[];
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-2.5 pb-1">
+        {timeZone && timeZone !== "UTC" && (
+          <DateTimeTooltipContent
+            title={timeZone}
+            dateTime={formatDateTime(realDate, timeZone, locales, true, true)}
+            isoDateTime={formatDateTimeISO(realDate, timeZone)}
+            icon={<GlobeAmericasIcon className="size-4 text-purple-500" />}
+          />
+        )}
+        <DateTimeTooltipContent
+          title="UTC"
+          dateTime={formatDateTime(realDate, "UTC", locales, true, true)}
+          isoDateTime={formatDateTimeISO(realDate, "UTC")}
+          icon={<GlobeAltIcon className="size-4 text-blue-500" />}
+        />
+        <DateTimeTooltipContent
+          title="Local"
+          dateTime={formatDateTime(realDate, localTimeZone, locales, true, true)}
+          isoDateTime={formatDateTimeISO(realDate, localTimeZone)}
+          icon={<Laptop className="size-4 text-green-500" />}
+        />
       </div>
     </div>
   );
