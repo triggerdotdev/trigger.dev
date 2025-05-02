@@ -1,7 +1,7 @@
 import { anthropic } from "@ai-sdk/anthropic";
 import { openai } from "@ai-sdk/openai";
 import { ai } from "@trigger.dev/sdk/ai";
-import { logger, metadata, schemaTask, wait } from "@trigger.dev/sdk/v3";
+import { logger, metadata, schemaTask, tasks, wait } from "@trigger.dev/sdk/v3";
 import { sql } from "@vercel/postgres";
 import { streamText, TextStreamPart, tool } from "ai";
 import { nanoid } from "nanoid";
@@ -159,10 +159,6 @@ export const todoChat = schemaTask({
 
     const chunks: TextStreamPart<TOOLS>[] = [];
 
-    tasks.onCancel(async () => {
-      logger.info("todo-chat: task cancelled with chunks", { chunks });
-    });
-
     const result = streamText({
       model: getModel(),
       system,
@@ -223,3 +219,64 @@ function getModel() {
     return anthropic("claude-3-5-sonnet-latest");
   }
 }
+
+export const interruptibleChat = schemaTask({
+  id: "interruptible-chat",
+  description: "Chat with the AI",
+  schema: z.object({
+    prompt: z.string().describe("The prompt to chat with the AI"),
+  }),
+  run: async ({ prompt }, { signal }) => {
+    const chunks: TextStreamPart<{}>[] = [];
+
+    // 👇 This is a global onCancel hook, but it's inside of the run function
+    tasks.onCancel(async () => {
+      logger.info("interruptible-chat: task cancelled with chunks", { chunks });
+    });
+
+    try {
+      const result = streamText({
+        model: getModel(),
+        prompt,
+        experimental_telemetry: {
+          isEnabled: true,
+        },
+        tools: {},
+        abortSignal: signal,
+        onChunk: ({ chunk }) => {
+          chunks.push(chunk);
+        },
+        onError: ({ error }) => {
+          if (error instanceof Error && error.name === "AbortError") {
+            logger.info("interruptible-chat: streamText aborted", { error });
+          } else {
+            logger.error("interruptible-chat: streamText error", { error });
+          }
+        },
+        onFinish: ({ finishReason }) => {
+          logger.info("interruptible-chat: streamText finished", { finishReason });
+        },
+      });
+
+      const textParts = [];
+
+      for await (const part of result.textStream) {
+        textParts.push(part);
+      }
+
+      return textParts.join("");
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        logger.info("interruptible-chat: streamText aborted (inside catch)", { error });
+      } else {
+        logger.error("interruptible-chat: streamText error (inside catch)", { error });
+      }
+    }
+  },
+  onCancel: async ({ runPromise }) => {
+    //   👇 output is typed as `string` because that's the return type of the run function
+    const output = await runPromise;
+
+    logger.info("interruptible-chat: task cancelled with output", { output });
+  },
+});
