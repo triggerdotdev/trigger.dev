@@ -37,16 +37,16 @@ let activeCleanups = 0;
 /**
  * Logs the cleanup of a resource.
  * @param resource - The resource that is being cleaned up.
- * @param fn - The cleanup function.
+ * @param promise - The cleanup promise to await..
  */
-async function logCleanup(resource: string, fn: () => Promise<void>) {
+async function logCleanup(resource: string, promise: Promise<unknown>) {
   const start = new Date();
   const order = cleanupOrder++;
   const activeAtStart = ++activeCleanups;
 
   let error: unknown = null;
   try {
-    await fn();
+    await promise;
   } catch (err) {
     error = err instanceof Error ? err.message : String(err);
   }
@@ -58,11 +58,11 @@ async function logCleanup(resource: string, fn: () => Promise<void>) {
   console.log(
     JSON.stringify({
       order,
+      resource,
+      durationMs: end.getTime() - start.getTime(),
       start: start.toISOString(),
       end: end.toISOString(),
       parallel,
-      resource,
-      durationMs: end.getTime() - start.getTime(),
       error,
       activeAtStart,
       activeAtEnd,
@@ -76,9 +76,7 @@ const network = async ({}, use: Use<StartedNetwork>) => {
     await use(network);
   } finally {
     // Make sure to stop the network after use
-    await logCleanup("network", async () => {
-      await network.stop();
-    });
+    await logCleanup("network", network.stop());
   }
 };
 
@@ -92,9 +90,7 @@ const postgresContainer = async (
   } finally {
     // WARNING: Testcontainers by default will not wait until the container has stopped. It will simply issue the stop command and return immediately.
     // If you need to wait for the container to be stopped, you can provide a timeout. The unit of timeout option here is second
-    await logCleanup("postgresContainer", async () => {
-      await container.stop({ timeout: 30 });
-    });
+    await logCleanup("postgresContainer", container.stop({ timeout: 30 }));
   }
 };
 
@@ -116,9 +112,7 @@ const prisma = async (
   try {
     await use(prisma);
   } finally {
-    await logCleanup("prisma", async () => {
-      await prisma.$disconnect();
-    });
+    await logCleanup("prisma", prisma.$disconnect());
   }
 };
 
@@ -137,9 +131,7 @@ const redisContainer = async (
   } finally {
     // WARNING: Testcontainers by default will not wait until the container has stopped. It will simply issue the stop command and return immediately.
     // If you need to wait for the container to be stopped, you can provide a timeout. The unit of timeout option here is second
-    await logCleanup("redisContainer", async () => {
-      await container.stop({ timeout: 30 });
-    });
+    await logCleanup("redisContainer", container.stop({ timeout: 30 }));
   }
 };
 
@@ -191,9 +183,7 @@ const electricOrigin = async (
   } finally {
     // WARNING: Testcontainers by default will not wait until the container has stopped. It will simply issue the stop command and return immediately.
     // If you need to wait for the container to be stopped, you can provide a timeout. The unit of timeout option here is second
-    await logCleanup("electricContainer", async () => {
-      await container.stop({ timeout: 30 });
-    });
+    await logCleanup("electricContainer", container.stop({ timeout: 30 }));
   }
 };
 
