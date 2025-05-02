@@ -551,7 +551,7 @@ function ScheduledTaskForm({
   );
 }
 
-function RecentPayloads({
+export function RecentPayloads({
   runs,
   selectedId,
   onSelected,
@@ -566,8 +566,8 @@ function RecentPayloads({
   onSelected: (id: string) => void;
 }) {
   return (
-    <div className="flex flex-col">
-      <div className="flex h-10 items-center border-b border-grid-dimmed pl-3">
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex h-11 items-center border-b border-grid-dimmed pl-3">
         <Header2>Recent payloads</Header2>
       </div>
       {runs.length === 0 ? (
@@ -577,7 +577,7 @@ function RecentPayloads({
           </Callout>
         </div>
       ) : (
-        <div className="flex flex-col divide-y divide-charcoal-750">
+        <div className="flex flex-col divide-y divide-charcoal-750 overflow-y-auto">
           {runs.map((run) => (
             <button
               key={run.id}
