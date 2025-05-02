@@ -18,6 +18,8 @@ export function AnimationDivider({ isLoading }: LoadingBarDividerProps) {
   const [isPresent, safeToRemove] = usePresence();
 
   useEffect(() => {
+    if (!scope.current) return;
+
     if (isPresent) {
       const enterAnimation = async () => {
         await animate(
