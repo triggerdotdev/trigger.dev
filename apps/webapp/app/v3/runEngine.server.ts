@@ -95,6 +95,7 @@ function createRunEngine() {
         ...(env.RUN_ENGINE_RUN_QUEUE_REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
       },
     },
+    retryWarmStartThresholdMs: env.RUN_ENGINE_RETRY_WARM_START_THRESHOLD_MS,
   });
 
   return engine;

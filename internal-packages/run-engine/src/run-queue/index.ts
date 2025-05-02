@@ -541,7 +541,7 @@ export class RunQueue {
           }
         }
 
-        await this.#callNackMessage({ message });
+        await this.#callNackMessage({ message, retryAt });
 
         return true;
       },
