@@ -567,7 +567,7 @@ export function RecentPayloads({
 }) {
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex h-11 items-center border-b border-grid-dimmed pl-3">
+      <div className="flex items-center border-b border-grid-dimmed py-2 pl-3">
         <Header2>Recent payloads</Header2>
       </div>
       {runs.length === 0 ? (
@@ -585,7 +585,7 @@ export function RecentPayloads({
               onClick={(e) => {
                 onSelected(run.id);
               }}
-              className="flex items-center gap-2 px-2 py-2 transition hover:bg-charcoal-800"
+              className="flex items-center gap-4 py-2 pl-4 pr-6 transition hover:bg-charcoal-800"
             >
               <RadioButtonCircle checked={run.id === selectedId} />
               <div className="flex flex-col items-start">
