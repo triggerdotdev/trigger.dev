@@ -20,6 +20,9 @@ import {
   WaitpointTokenStatus,
   WaitpointRetrieveTokenResponse,
   CreateWaitpointTokenResponse,
+  HttpCallbackSchema,
+  HttpCallbackResultTypeFromSchema,
+  HttpCallbackResult,
 } from "@trigger.dev/core/v3";
 import { tracer } from "./tracer.js";
 import { conditionallyImportAndParsePacket } from "@trigger.dev/core/v3/utils/ioSerialization";
@@ -310,31 +313,44 @@ async function completeToken<T>(
 }
 
 async function forHttpCallback<TResult>(
-  callback: (successUrl: string, failureUrl: string) => Promise<TResult>
-) {
+  callback: (url: string) => Promise<void>,
+  options?: {
+    timeout?: string | Date | undefined;
+  }
+): Promise<HttpCallbackResult<TResult>> {
   //TODO:
   // Support a schema passed in, infer the type, or a generic supplied type
-  // 1. Create a span for the main call
-  // 2. Make an API call to api.trigger.dev/v1/http-callback/create
-  // 3. Return the successUrl and failureUrl and a waitpoint id (but don't block the run yet)
-  // 4. Set the successUrl, failureUrl and waitpoint entity type and id as attributes on the parent span
+  // Support a timeout passed in
+  // 1. Make an API call to engine.trigger.dev/v1/waitpoints/http-callback/create. New Waitpoint type "HTTPCallback"
+  // 2. Return the url and a waitpoint id (but don't block the run yet)
+  // 3. Create a span for the main call
+  // 4. Set the url and waitpoint entity type and id as attributes on the parent span
   // 5. Create a span around the callback
   // 6. Deal with errors thrown in the callback use `tryCatch()`
-  // 7. If that callback is successfully called, wait for the waitpoint with an API call to api.trigger.dev/v1/http-callback/wait
+  // 7. If that callback is successfully called, wait for the waitpoint with an API call to engine.trigger.dev/v1/waitpoints/http-callback/{waitpointId}/block
   // 8. Wait for the waitpoint in the runtime
-  // 9. On the backend when the success/fail API is hit, complete the waitpoint with the result
+  // 9. On the backend when the API is hit, complete the waitpoint with the result api.trigger.dev/v1/waitpoints/http-callback/{waitpointId}/callback
   // 10. Receive the result here and import the packet, then get the result in the right format
   // 11. Make unwrap work
 
-  const successUrl = "https://trigger.dev/wait/success";
-  const failureUrl = "https://trigger.dev/wait/failure";
+  const url = "https://trigger.dev/wait/success";
 
-  const result = await callback(successUrl, failureUrl);
+  const result = await callback(url);
 
   return {
     ok: true,
     output: result,
-  };
+  } as any;
+}
+
+async function forHttpCallbackWithSchema<TSchema extends HttpCallbackSchema>(
+  schema: TSchema,
+  callback: (successUrl: string, failureUrl: string) => Promise<void>,
+  options?: {
+    timeout?: string | Date | undefined;
+  }
+): Promise<HttpCallbackResult<HttpCallbackResultTypeFromSchema<TSchema>>> {
+  return {} as any;
 }
 
 export type CommonWaitOptions = {
