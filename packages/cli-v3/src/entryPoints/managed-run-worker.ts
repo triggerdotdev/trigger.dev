@@ -404,27 +404,11 @@ const zodIpc = new ZodIpcConnection({
 
           _executionMeasurement = usage.start();
 
-          // This lives outside of the executor because this will eventually be moved to the controller level
           const timeoutController = timeout.abortAfterTimeout(execution.run.maxDuration);
 
-          timeoutController.signal.addEventListener("abort", () => {
-            if (_isCancelled) {
-              return;
-            }
+          const signal = AbortSignal.any([cancelController.signal, timeoutController.signal]);
 
-            if (cancelController.signal.aborted) {
-              return;
-            }
-
-            cancelController.abort(timeoutController.signal.reason);
-          });
-
-          const { result } = await executor.execute(
-            execution,
-            metadata,
-            traceContext,
-            cancelController.signal
-          );
+          const { result } = await executor.execute(execution, metadata, traceContext, signal);
 
           if (_isRunning && !_isCancelled) {
             const usageSample = usage.stop(_executionMeasurement);

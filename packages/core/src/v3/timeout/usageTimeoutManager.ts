@@ -21,6 +21,10 @@ export class UsageTimeoutManager implements TimeoutManager {
       return this._abortController;
     }
 
+    if (this._intervalId) {
+      clearInterval(this._intervalId);
+    }
+
     // Now we need to start an interval that will measure usage and abort the signal if the usage is too high
     this._intervalId = setInterval(() => {
       const sample = this.usageManager.sample();

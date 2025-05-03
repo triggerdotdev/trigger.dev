@@ -117,6 +117,7 @@ export type CancelFnParams = Prettify<{
   ctx: Context;
   /** Abort signal that is aborted when a task run exceeds it's maxDuration or if the task run is cancelled. Can be used to automatically cancel downstream requests */
   signal: AbortSignal;
+  runPromise: Promise<unknown>;
   init?: InitOutput;
 }>;
 

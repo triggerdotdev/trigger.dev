@@ -231,6 +231,7 @@ export const interruptibleChat = schemaTask({
 
     // 👇 This is a global onCancel hook, but it's inside of the run function
     tasks.onCancel(async () => {
+      // We have access to the chunks here
       logger.info("interruptible-chat: task cancelled with chunks", { chunks });
     });
 
@@ -246,16 +247,6 @@ export const interruptibleChat = schemaTask({
         onChunk: ({ chunk }) => {
           chunks.push(chunk);
         },
-        onError: ({ error }) => {
-          if (error instanceof Error && error.name === "AbortError") {
-            logger.info("interruptible-chat: streamText aborted", { error });
-          } else {
-            logger.error("interruptible-chat: streamText error", { error });
-          }
-        },
-        onFinish: ({ finishReason }) => {
-          logger.info("interruptible-chat: streamText finished", { finishReason });
-        },
       });
 
       const textParts = [];
@@ -267,16 +258,10 @@ export const interruptibleChat = schemaTask({
       return textParts.join("");
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") {
-        logger.info("interruptible-chat: streamText aborted (inside catch)", { error });
+        // streamText will throw an AbortError if the signal is aborted, so we can handle it here
       } else {
-        logger.error("interruptible-chat: streamText error (inside catch)", { error });
+        throw error;
       }
     }
-  },
-  onCancel: async ({ runPromise }) => {
-    //   👇 output is typed as `string` because that's the return type of the run function
-    const output = await runPromise;
-
-    logger.info("interruptible-chat: task cancelled with output", { output });
   },
 });
