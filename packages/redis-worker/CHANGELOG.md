@@ -1,5 +1,12 @@
 # @trigger.dev/redis-worker
 
+## 4.0.0-v4-beta.12
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.12`
+
 ## 4.0.0-v4-beta.11
 
 ### Patch Changes
