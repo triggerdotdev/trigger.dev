@@ -13,6 +13,7 @@
     "@testcontainers/postgresql": "^10.25.0",
     "@testcontainers/redis": "^10.25.0",
     "@trigger.dev/core": "workspace:*",
+    "std-env": "^3.9.0",
     "testcontainers": "^10.25.0",
     "tinyexec": "^0.3.0",
     "vitest": "^1.4.0"

@@ -5,6 +5,8 @@ import { RedisOptions } from "ioredis";
 import { Network, type StartedNetwork } from "testcontainers";
 import { test } from "vitest";
 import { createElectricContainer, createPostgresContainer, createRedisContainer } from "./utils";
+import { x } from "tinyexec";
+import { isCI } from "std-env";
 
 export { assertNonNullable } from "./utils";
 export { StartedRedisContainer };
@@ -45,6 +47,7 @@ async function logCleanup(resource: string, promise: Promise<unknown>) {
   const activeAtStart = ++activeCleanups;
 
   let error: unknown = null;
+
   try {
     await promise;
   } catch (err) {
@@ -52,22 +55,167 @@ async function logCleanup(resource: string, promise: Promise<unknown>) {
   }
 
   const end = new Date();
+  const durationMs = end.getTime() - start.getTime();
   const activeAtEnd = --activeCleanups;
   const parallel = activeAtStart > 1 || activeAtEnd > 0;
+
+  if (!isCI) {
+    return;
+  }
+
+  let dockerDiagnostics: DockerDiagnostics = {};
+
+  // Only run docker diagnostics if there was an error or cleanup took longer than 5s
+  if (error || durationMs > 5000) {
+    try {
+      dockerDiagnostics = await getDockerDiagnostics();
+    } catch (diagnosticErr) {
+      console.error("Failed to get docker diagnostics:", diagnosticErr);
+    }
+  }
 
   console.log(
     JSON.stringify({
       order,
       resource,
-      durationMs: end.getTime() - start.getTime(),
+      durationMs,
       start: start.toISOString(),
       end: end.toISOString(),
       parallel,
       error,
       activeAtStart,
       activeAtEnd,
+      ...dockerDiagnostics,
     })
   );
+}
+
+function stringToLines(str: string): string[] {
+  return str.split("\n").filter(Boolean);
+}
+
+async function getDockerNetworks(): Promise<string[]> {
+  try {
+    const result = await x("docker", ["network", "ls" /* , "--no-trunc" */]);
+    return stringToLines(result.stdout);
+  } catch (error) {
+    console.error(error);
+    return ["error: check additional logs for more details"];
+  }
+}
+
+async function getDockerContainers(): Promise<string[]> {
+  try {
+    const result = await x("docker", ["ps", "-a" /* , "--no-trunc" */]);
+    return stringToLines(result.stdout);
+  } catch (error) {
+    console.error(error);
+    return ["error: check additional logs for more details"];
+  }
+}
+
+type DockerNetworkAttachment = {
+  networkId: string;
+  networkName: string;
+  containers: string[];
+};
+
+export async function getDockerNetworkAttachments(): Promise<DockerNetworkAttachment[]> {
+  let attachments: DockerNetworkAttachment[] = [];
+  let networkIds: string[] = [];
+
+  try {
+    const result = await x("docker", ["network", "ls", "-q"]);
+    networkIds = stringToLines(result.stdout);
+  } catch (err) {
+    console.error("Failed to list docker networks:", err);
+  }
+
+  for (const networkId of networkIds) {
+    try {
+      const inspectResult = await x("docker", [
+        "network",
+        "inspect",
+        "--format",
+        '{{ .Name }}{{ range $k, $v := .Containers }} {{ printf "%.12s %s" $k .Name }}{{ end }}',
+        networkId,
+      ]);
+
+      const [networkName, ...containers] = inspectResult.stdout.trim().split(/\s+/);
+      attachments.push({ networkId, networkName, containers });
+    } catch (err) {
+      console.error(`Failed to inspect network ${networkId}:`, err);
+      attachments.push({ networkId, networkName: String(err), containers: [] });
+    }
+  }
+
+  return attachments;
+}
+
+type DockerContainerNetwork = {
+  containerId: string;
+  containerName: string;
+  networks: string[];
+};
+
+export async function getDockerContainerNetworks(): Promise<DockerContainerNetwork[]> {
+  let results: DockerContainerNetwork[] = [];
+  let containers: string[] = [];
+
+  try {
+    const result = await x("docker", [
+      "ps",
+      "-a",
+      "--format",
+      '{{.ID | printf "%.12s"}} {{.Names}}',
+    ]);
+    containers = stringToLines(result.stdout);
+  } catch (err) {
+    console.error("Failed to list docker containers:", err);
+  }
+
+  for (const [containerId, containerName] of containers.map((c) => c.trim().split(/\s+/))) {
+    try {
+      const inspectResult = await x("docker", [
+        "inspect",
+        "--format",
+        "{{ range $k, $v := .NetworkSettings.Networks }}{{ $k }}{{ end }}",
+        containerId,
+      ]);
+
+      const networks = inspectResult.stdout.trim().split(/\s+/);
+
+      results.push({ containerId, containerName, networks });
+    } catch (err) {
+      console.error(`Failed to inspect container ${containerId}:`, err);
+      results.push({ containerId, containerName: String(err), networks: [] });
+    }
+  }
+
+  return results;
+}
+
+type DockerDiagnostics = {
+  containers?: string[];
+  networks?: string[];
+  containerNetworks?: DockerContainerNetwork[];
+  networkAttachments?: DockerNetworkAttachment[];
+};
+
+async function getDockerDiagnostics(): Promise<DockerDiagnostics> {
+  const [containers, networks, networkAttachments, containerNetworks] = await Promise.all([
+    getDockerContainers(),
+    getDockerNetworks(),
+    getDockerNetworkAttachments(),
+    getDockerContainerNetworks(),
+  ]);
+
+  return {
+    containers,
+    networks,
+    containerNetworks,
+    networkAttachments,
+  };
 }
 
 const network = async ({}, use: Use<StartedNetwork>) => {
