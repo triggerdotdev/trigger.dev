@@ -13,6 +13,7 @@ import {
   AnyOnStartHookFunction,
   AnyOnSuccessHookFunction,
   AnyOnWaitHookFunction,
+  AnyOnCancelHookFunction,
   RegisteredHookFunction,
   RegisterHookFunctionParams,
   TaskWait,
@@ -258,6 +259,33 @@ export class LifecycleHooksAPI {
 
   public registerOnResumeHookListener(listener: (wait: TaskWait) => Promise<void>): void {
     this.#getManager().registerOnResumeHookListener(listener);
+  }
+
+  public registerGlobalCancelHook(hook: RegisterHookFunctionParams<AnyOnCancelHookFunction>): void {
+    this.#getManager().registerGlobalCancelHook(hook);
+  }
+
+  public registerTaskCancelHook(
+    taskId: string,
+    hook: RegisterHookFunctionParams<AnyOnCancelHookFunction>
+  ): void {
+    this.#getManager().registerTaskCancelHook(taskId, hook);
+  }
+
+  public getTaskCancelHook(taskId: string): AnyOnCancelHookFunction | undefined {
+    return this.#getManager().getTaskCancelHook(taskId);
+  }
+
+  public getGlobalCancelHooks(): RegisteredHookFunction<AnyOnCancelHookFunction>[] {
+    return this.#getManager().getGlobalCancelHooks();
+  }
+
+  public callOnCancelHookListeners(): Promise<void> {
+    return this.#getManager().callOnCancelHookListeners();
+  }
+
+  public registerOnCancelHookListener(listener: () => Promise<void>): void {
+    this.#getManager().registerOnCancelHookListener(listener);
   }
 
   #getManager(): LifecycleHooksManager {

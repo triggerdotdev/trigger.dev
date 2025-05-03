@@ -7,7 +7,7 @@ export type TaskInitHookParams<TPayload = unknown> = {
   ctx: TaskRunContext;
   payload: TPayload;
   task: string;
-  signal?: AbortSignal;
+  signal: AbortSignal;
 };
 
 export type OnInitHookFunction<TPayload, TInitOutput extends TaskInitOutput> = (
@@ -23,7 +23,7 @@ export type TaskStartHookParams<
   ctx: TaskRunContext;
   payload: TPayload;
   task: string;
-  signal?: AbortSignal;
+  signal: AbortSignal;
   init?: TInitOutput;
 };
 
@@ -60,7 +60,7 @@ export type TaskWaitHookParams<
   ctx: TaskRunContext;
   payload: TPayload;
   task: string;
-  signal?: AbortSignal;
+  signal: AbortSignal;
   init?: TInitOutput;
 };
 
@@ -78,7 +78,7 @@ export type TaskResumeHookParams<
   wait: TaskWait;
   payload: TPayload;
   task: string;
-  signal?: AbortSignal;
+  signal: AbortSignal;
   init?: TInitOutput;
 };
 
@@ -96,7 +96,7 @@ export type TaskFailureHookParams<
   payload: TPayload;
   task: string;
   error: unknown;
-  signal?: AbortSignal;
+  signal: AbortSignal;
   init?: TInitOutput;
 };
 
@@ -115,7 +115,7 @@ export type TaskSuccessHookParams<
   payload: TPayload;
   task: string;
   output: TOutput;
-  signal?: AbortSignal;
+  signal: AbortSignal;
   init?: TInitOutput;
 };
 
@@ -152,7 +152,7 @@ export type TaskCompleteHookParams<
   payload: TPayload;
   task: string;
   result: TaskCompleteResult<TOutput>;
-  signal?: AbortSignal;
+  signal: AbortSignal;
   init?: TInitOutput;
 };
 
@@ -188,7 +188,7 @@ export type TaskCatchErrorHookParams<
   retry?: RetryOptions;
   retryAt?: Date;
   retryDelayInMs?: number;
-  signal?: AbortSignal;
+  signal: AbortSignal;
   init?: TInitOutput;
 };
 
@@ -203,7 +203,7 @@ export type TaskMiddlewareHookParams<TPayload = unknown> = {
   ctx: TaskRunContext;
   payload: TPayload;
   task: string;
-  signal?: AbortSignal;
+  signal: AbortSignal;
   next: () => Promise<void>;
 };
 
@@ -220,7 +220,7 @@ export type TaskCleanupHookParams<
   ctx: TaskRunContext;
   payload: TPayload;
   task: string;
-  signal?: AbortSignal;
+  signal: AbortSignal;
   init?: TInitOutput;
 };
 
@@ -229,6 +229,29 @@ export type OnCleanupHookFunction<TPayload, TInitOutput extends TaskInitOutput =
 ) => undefined | void | Promise<undefined | void>;
 
 export type AnyOnCleanupHookFunction = OnCleanupHookFunction<unknown, TaskInitOutput>;
+
+export type TaskCancelHookParams<
+  TPayload = unknown,
+  TRunOutput = any,
+  TInitOutput extends TaskInitOutput = TaskInitOutput,
+> = {
+  ctx: TaskRunContext;
+  payload: TPayload;
+  task: string;
+  runPromise: Promise<TRunOutput>;
+  init?: TInitOutput;
+  signal: AbortSignal;
+};
+
+export type OnCancelHookFunction<
+  TPayload,
+  TRunOutput = any,
+  TInitOutput extends TaskInitOutput = TaskInitOutput,
+> = (
+  params: TaskCancelHookParams<TPayload, TRunOutput, TInitOutput>
+) => undefined | void | Promise<undefined | void>;
+
+export type AnyOnCancelHookFunction = OnCancelHookFunction<unknown, unknown, TaskInitOutput>;
 
 export interface LifecycleHooksManager {
   registerGlobalInitHook(hook: RegisterHookFunctionParams<AnyOnInitHookFunction>): void;
@@ -307,4 +330,15 @@ export interface LifecycleHooksManager {
 
   callOnResumeHookListeners(wait: TaskWait): Promise<void>;
   registerOnResumeHookListener(listener: (wait: TaskWait) => Promise<void>): void;
+
+  registerGlobalCancelHook(hook: RegisterHookFunctionParams<AnyOnCancelHookFunction>): void;
+  registerTaskCancelHook(
+    taskId: string,
+    hook: RegisterHookFunctionParams<AnyOnCancelHookFunction>
+  ): void;
+  getGlobalCancelHooks(): RegisteredHookFunction<AnyOnCancelHookFunction>[];
+  getTaskCancelHook(taskId: string): AnyOnCancelHookFunction | undefined;
+
+  registerOnCancelHookListener(listener: () => Promise<void>): void;
+  callOnCancelHookListeners(): Promise<void>;
 }

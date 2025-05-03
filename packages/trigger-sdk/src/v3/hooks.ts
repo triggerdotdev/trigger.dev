@@ -11,6 +11,7 @@ import {
   type AnyOnResumeHookFunction,
   type AnyOnCatchErrorHookFunction,
   type AnyOnMiddlewareHookFunction,
+  type AnyOnCancelHookFunction,
 } from "@trigger.dev/core/v3";
 
 export type {
@@ -25,6 +26,7 @@ export type {
   AnyOnResumeHookFunction,
   AnyOnCatchErrorHookFunction,
   AnyOnMiddlewareHookFunction,
+  AnyOnCancelHookFunction,
 };
 
 export function onStart(name: string, fn: AnyOnStartHookFunction): void;
@@ -127,6 +129,18 @@ export function middleware(
   fn?: AnyOnMiddlewareHookFunction
 ): void {
   lifecycleHooks.registerGlobalMiddlewareHook({
+    id: typeof fnOrName === "string" ? fnOrName : fnOrName.name ? fnOrName.name : undefined,
+    fn: typeof fnOrName === "function" ? fnOrName : fn!,
+  });
+}
+
+export function onCancel(name: string, fn: AnyOnCancelHookFunction): void;
+export function onCancel(fn: AnyOnCancelHookFunction): void;
+export function onCancel(
+  fnOrName: string | AnyOnCancelHookFunction,
+  fn?: AnyOnCancelHookFunction
+): void {
+  lifecycleHooks.registerGlobalCancelHook({
     id: typeof fnOrName === "string" ? fnOrName : fnOrName.name ? fnOrName.name : undefined,
     fn: typeof fnOrName === "function" ? fnOrName : fn!,
   });
