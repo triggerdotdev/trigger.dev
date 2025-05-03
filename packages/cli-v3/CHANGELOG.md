@@ -1,5 +1,16 @@
 # trigger.dev
 
+## 4.0.0-v4-beta.12
+
+### Patch Changes
+
+- Display clickable links in Cursor terminal ([#1998](https://github.com/triggerdotdev/trigger.dev/pull/1998))
+- Added AI assistance link when you have build errors ([#1925](https://github.com/triggerdotdev/trigger.dev/pull/1925))
+- If you pass a directory when calling deploy we validate it exists and give helpful hints ([#2013](https://github.com/triggerdotdev/trigger.dev/pull/2013))
+- Updated dependencies:
+  - `@trigger.dev/build@4.0.0-v4-beta.12`
+  - `@trigger.dev/core@4.0.0-v4-beta.12`
+
 ## 4.0.0-v4-beta.11
 
 ### Patch Changes

@@ -1,5 +1,14 @@
 # @trigger.dev/sdk
 
+## 4.0.0-v4-beta.12
+
+### Patch Changes
+
+- Display clickable links in Cursor terminal ([#1998](https://github.com/triggerdotdev/trigger.dev/pull/1998))
+- Add onCancel lifecycle hook ([#2022](https://github.com/triggerdotdev/trigger.dev/pull/2022))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.12`
+
 ## 4.0.0-v4-beta.11
 
 ### Patch Changes
