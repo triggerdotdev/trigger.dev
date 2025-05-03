@@ -8,7 +8,7 @@ jobs:
     name: "🧪 Unit Tests"
     runs-on: ubuntu-latest
     steps:
-      - name: 🔧 Configure docker address pool
+      - name: 🔧 Configure docker
         run: |
           CONFIG='{
             "default-address-pools" : [
