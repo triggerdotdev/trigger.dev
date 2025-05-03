@@ -77,7 +77,7 @@ describe("RunEngine dequeuing", () => {
 
       expect(dequeued.length).toBe(5);
     } finally {
-      engine.quit();
+      await engine.quit();
     }
   });
 
@@ -169,7 +169,7 @@ describe("RunEngine dequeuing", () => {
         const queueLength3 = await engine.runQueue.lengthOfEnvQueue(authenticatedEnvironment);
         expect(queueLength3).toBe(12);
       } finally {
-        engine.quit();
+        await engine.quit();
       }
     }
   );
