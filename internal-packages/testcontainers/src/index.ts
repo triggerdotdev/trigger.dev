@@ -94,6 +94,10 @@ function stringToLines(str: string): string[] {
   return str.split("\n").filter(Boolean);
 }
 
+function lineToWords(line: string): string[] {
+  return line.trim().split(/\s+/);
+}
+
 async function getDockerNetworks(): Promise<string[]> {
   try {
     const result = await x("docker", ["network", "ls" /* , "--no-trunc" */]);
@@ -114,53 +118,68 @@ async function getDockerContainers(): Promise<string[]> {
   }
 }
 
-type DockerNetworkAttachment = {
-  networkId: string;
-  networkName: string;
-  containers: string[];
+type DockerResource = { id: string; name: string };
+
+type DockerNetworkAttachment = DockerResource & {
+  containers: DockerResource[];
 };
 
 export async function getDockerNetworkAttachments(): Promise<DockerNetworkAttachment[]> {
   let attachments: DockerNetworkAttachment[] = [];
-  let networkIds: string[] = [];
+  let networks: DockerResource[] = [];
 
   try {
-    const result = await x("docker", ["network", "ls", "-q"]);
-    networkIds = stringToLines(result.stdout);
+    const result = await x("docker", [
+      "network",
+      "ls",
+      "--format",
+      '{{.ID | printf "%.12s"}} {{.Name}}',
+    ]);
+
+    const lines = stringToLines(result.stdout);
+
+    networks = lines.map((line) => {
+      const [id, name] = lineToWords(line);
+      return { id, name };
+    });
   } catch (err) {
     console.error("Failed to list docker networks:", err);
   }
 
-  for (const networkId of networkIds) {
+  for (const { id, name } of networks) {
     try {
-      const inspectResult = await x("docker", [
+      // Get containers, one per line: id name\n
+      const containersResult = await x("docker", [
         "network",
         "inspect",
         "--format",
-        '{{ .Name }}{{ range $k, $v := .Containers }} {{ printf "%.12s %s" $k .Name }}{{ end }}',
-        networkId,
+        "{{range $k, $v := .Containers}}{{$k}} {{$v.Name}}\n{{end}}",
+        id,
       ]);
+      const lines = stringToLines(containersResult.stdout);
 
-      const [networkName, ...containers] = inspectResult.stdout.trim().split(/\s+/);
-      attachments.push({ networkId, networkName, containers });
+      const containers: DockerResource[] = lines.map((line) => {
+        const [id, name] = lineToWords(line);
+        return { id, name };
+      });
+
+      attachments.push({ id, name, containers });
     } catch (err) {
-      console.error(`Failed to inspect network ${networkId}:`, err);
-      attachments.push({ networkId, networkName: String(err), containers: [] });
+      console.error(`Failed to inspect network ${id}:`, err);
+      attachments.push({ id, name, containers: [] });
     }
   }
 
   return attachments;
 }
 
-type DockerContainerNetwork = {
-  containerId: string;
-  containerName: string;
+type DockerContainerNetwork = DockerResource & {
   networks: string[];
 };
 
 export async function getDockerContainerNetworks(): Promise<DockerContainerNetwork[]> {
   let results: DockerContainerNetwork[] = [];
-  let containers: string[] = [];
+  let containers: DockerResource[] = [];
 
   try {
     const result = await x("docker", [
@@ -169,26 +188,32 @@ export async function getDockerContainerNetworks(): Promise<DockerContainerNetwo
       "--format",
       '{{.ID | printf "%.12s"}} {{.Names}}',
     ]);
-    containers = stringToLines(result.stdout);
+
+    const lines = stringToLines(result.stdout);
+
+    containers = lines.map((line) => {
+      const [id, name] = lineToWords(line);
+      return { id, name };
+    });
   } catch (err) {
     console.error("Failed to list docker containers:", err);
   }
 
-  for (const [containerId, containerName] of containers.map((c) => c.trim().split(/\s+/))) {
+  for (const { id, name } of containers) {
     try {
       const inspectResult = await x("docker", [
         "inspect",
         "--format",
         "{{ range $k, $v := .NetworkSettings.Networks }}{{ $k }}{{ end }}",
-        containerId,
+        id,
       ]);
 
       const networks = inspectResult.stdout.trim().split(/\s+/);
 
-      results.push({ containerId, containerName, networks });
+      results.push({ id, name, networks });
     } catch (err) {
-      console.error(`Failed to inspect container ${containerId}:`, err);
-      results.push({ containerId, containerName: String(err), networks: [] });
+      console.error(`Failed to inspect container ${id}:`, err);
+      results.push({ id, name: String(err), networks: [] });
     }
   }
 
