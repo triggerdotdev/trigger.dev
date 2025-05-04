@@ -80,6 +80,7 @@ async function logCleanup(
 
   console.log(
     JSON.stringify({
+      type: "cleanup",
       order,
       resource,
       durationMs,
