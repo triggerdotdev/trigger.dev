@@ -3,10 +3,10 @@ import { StartedRedisContainer } from "@testcontainers/redis";
 import { PrismaClient } from "@trigger.dev/database";
 import { RedisOptions } from "ioredis";
 import { Network, type StartedNetwork } from "testcontainers";
-import { test } from "vitest";
+import { TaskContext, test } from "vitest";
 import { createElectricContainer, createPostgresContainer, createRedisContainer } from "./utils";
 import { x } from "tinyexec";
-import { isCI } from "std-env";
+import { isCI, env } from "std-env";
 
 export { assertNonNullable } from "./utils";
 export { StartedRedisContainer };
@@ -41,7 +41,11 @@ let activeCleanups = 0;
  * @param resource - The resource that is being cleaned up.
  * @param promise - The cleanup promise to await..
  */
-async function logCleanup(resource: string, promise: Promise<unknown>) {
+async function logCleanup(
+  resource: string,
+  promise: Promise<unknown>,
+  metadata: Record<string, unknown> = {}
+) {
   const start = new Date();
   const order = cleanupOrder++;
   const activeAtStart = ++activeCleanups;
@@ -66,7 +70,7 @@ async function logCleanup(resource: string, promise: Promise<unknown>) {
   let dockerDiagnostics: DockerDiagnostics = {};
 
   // Only run docker diagnostics if there was an error or cleanup took longer than 5s
-  if (error || durationMs > 5000) {
+  if (error || durationMs > 5000 || env.DOCKER_DIAGNOSTICS) {
     try {
       dockerDiagnostics = await getDockerDiagnostics();
     } catch (diagnosticErr) {
@@ -85,6 +89,7 @@ async function logCleanup(resource: string, promise: Promise<unknown>) {
       error,
       activeAtStart,
       activeAtEnd,
+      ...metadata,
       ...dockerDiagnostics,
     })
   );
@@ -121,7 +126,7 @@ async function getDockerContainers(): Promise<string[]> {
 type DockerResource = { id: string; name: string };
 
 type DockerNetworkAttachment = DockerResource & {
-  containers: DockerResource[];
+  containers: string[];
 };
 
 export async function getDockerNetworkAttachments(): Promise<DockerNetworkAttachment[]> {
@@ -153,15 +158,11 @@ export async function getDockerNetworkAttachments(): Promise<DockerNetworkAttach
         "network",
         "inspect",
         "--format",
-        "{{range $k, $v := .Containers}}{{$k}} {{$v.Name}}\n{{end}}",
+        '{{range $k, $v := .Containers}}{{$k | printf "%.12s"}} {{$v.Name}}\n{{end}}',
         id,
       ]);
-      const lines = stringToLines(containersResult.stdout);
 
-      const containers: DockerResource[] = lines.map((line) => {
-        const [id, name] = lineToWords(line);
-        return { id, name };
-      });
+      const containers = stringToLines(containersResult.stdout);
 
       attachments.push({ id, name, containers });
     } catch (err) {
@@ -204,11 +205,11 @@ export async function getDockerContainerNetworks(): Promise<DockerContainerNetwo
       const inspectResult = await x("docker", [
         "inspect",
         "--format",
-        "{{ range $k, $v := .NetworkSettings.Networks }}{{ $k }}{{ end }}",
+        '{{ range $k, $v := .NetworkSettings.Networks }}{{ $k | printf "%.12s" }} {{ $v.Name }}\n{{ end }}',
         id,
       ]);
 
-      const networks = inspectResult.stdout.trim().split(/\s+/);
+      const networks = stringToLines(inspectResult.stdout);
 
       results.push({ id, name, networks });
     } catch (err) {
@@ -243,34 +244,68 @@ async function getDockerDiagnostics(): Promise<DockerDiagnostics> {
   };
 }
 
-const network = async ({}, use: Use<StartedNetwork>) => {
+const network = async ({ task }: TaskContext, use: Use<StartedNetwork>) => {
+  const testName = task.name;
+
+  logSetup("network: starting", { testName });
+
+  const start = Date.now();
   const network = await new Network().start();
+  const startDurationMs = Date.now() - start;
+
+  const metadata = {
+    testName,
+    networkId: network.getId().slice(0, 12),
+    networkName: network.getName(),
+    startDurationMs,
+  };
+
+  logSetup("network: started", metadata);
+
   try {
     await use(network);
   } finally {
     // Make sure to stop the network after use
-    await logCleanup("network", network.stop());
+    await logCleanup("network", network.stop(), metadata);
   }
 };
 
 const postgresContainer = async (
-  { network }: { network: StartedNetwork },
+  { network, task }: { network: StartedNetwork } & TaskContext,
   use: Use<StartedPostgreSqlContainer>
 ) => {
+  const testName = task.name;
+
+  logSetup("postgresContainer: starting", { testName });
+
+  const start = Date.now();
   const { container } = await createPostgresContainer(network);
+  const startDurationMs = Date.now() - start;
+
+  const metadata = {
+    testName,
+    containerId: container.getId().slice(0, 12),
+    containerName: container.getName(),
+    containerNetworkNames: container.getNetworkNames(),
+    startDurationMs,
+  };
+
+  logSetup("postgresContainer: started", metadata);
+
   try {
     await use(container);
   } finally {
     // WARNING: Testcontainers by default will not wait until the container has stopped. It will simply issue the stop command and return immediately.
     // If you need to wait for the container to be stopped, you can provide a timeout. The unit of timeout option here is second
-    await logCleanup("postgresContainer", container.stop({ timeout: 30 }));
+    await logCleanup("postgresContainer", container.stop({ timeout: 30 }), metadata);
   }
 };
 
 const prisma = async (
-  { postgresContainer }: { postgresContainer: StartedPostgreSqlContainer },
+  { postgresContainer, task }: { postgresContainer: StartedPostgreSqlContainer } & TaskContext,
   use: Use<PrismaClient>
 ) => {
+  const testName = task.name;
   const url = postgresContainer.getConnectionUri();
 
   console.log("Initializing Prisma with URL:", url);
@@ -285,26 +320,65 @@ const prisma = async (
   try {
     await use(prisma);
   } finally {
-    await logCleanup("prisma", prisma.$disconnect());
+    await logCleanup("prisma", prisma.$disconnect(), { testName });
   }
 };
 
 export const postgresTest = test.extend<PostgresContext>({ network, postgresContainer, prisma });
 
+let setupOrder = 0;
+
+function logSetup(resource: string, metadata: Record<string, unknown>) {
+  const order = setupOrder++;
+
+  if (!isCI) {
+    return;
+  }
+
+  console.log(
+    JSON.stringify({
+      type: "setup",
+      order,
+      resource,
+      timestamp: new Date().toISOString(),
+      ...metadata,
+    })
+  );
+}
+
 const redisContainer = async (
-  { network }: { network: StartedNetwork },
+  { network, task }: { network: StartedNetwork } & TaskContext,
   use: Use<StartedRedisContainer>
 ) => {
+  const testName = task.name;
+
+  logSetup("redisContainer: starting", { testName });
+
+  const start = Date.now();
+
   const { container } = await createRedisContainer({
     port: 6379,
     network,
   });
+
+  const startDurationMs = Date.now() - start;
+
+  const metadata = {
+    containerName: container.getName(),
+    containerId: container.getId().slice(0, 12),
+    containerNetworkNames: container.getNetworkNames(),
+    startDurationMs,
+    testName,
+  };
+
+  logSetup("redisContainer: started", metadata);
+
   try {
     await use(container);
   } finally {
     // WARNING: Testcontainers by default will not wait until the container has stopped. It will simply issue the stop command and return immediately.
     // If you need to wait for the container to be stopped, you can provide a timeout. The unit of timeout option here is second
-    await logCleanup("redisContainer", container.stop({ timeout: 30 }));
+    await logCleanup("redisContainer", container.stop({ timeout: 30 }), metadata);
   }
 };
 
@@ -347,16 +421,33 @@ const electricOrigin = async (
   {
     postgresContainer,
     network,
-  }: { postgresContainer: StartedPostgreSqlContainer; network: StartedNetwork },
+    task,
+  }: { postgresContainer: StartedPostgreSqlContainer; network: StartedNetwork } & TaskContext,
   use: Use<string>
 ) => {
+  const testName = task.name;
+
+  logSetup("electricOrigin: starting", { testName });
+
+  const start = Date.now();
   const { origin, container } = await createElectricContainer(postgresContainer, network);
+  const startDurationMs = Date.now() - start;
+
+  const metadata = {
+    testName,
+    containerId: container.getId().slice(0, 12),
+    containerName: container.getName(),
+    startDurationMs,
+  };
+
+  logSetup("electricOrigin: started", metadata);
+
   try {
     await use(origin);
   } finally {
     // WARNING: Testcontainers by default will not wait until the container has stopped. It will simply issue the stop command and return immediately.
     // If you need to wait for the container to be stopped, you can provide a timeout. The unit of timeout option here is second
-    await logCleanup("electricContainer", container.stop({ timeout: 30 }));
+    await logCleanup("electricContainer", container.stop({ timeout: 30 }), metadata);
   }
 };
 
