@@ -87,8 +87,14 @@ async function verifyRedisConnection(container: StartedRedisContainer) {
     },
   });
 
+  const containerMetadata = {
+    containerId: container.getId().slice(0, 12),
+    containerName: container.getName(),
+    containerNetworkNames: container.getNetworkNames(),
+  };
+
   redis.on("error", (error) => {
-    // swallow the error
+    console.log("verifyRedisConnection error", error, containerMetadata);
   });
 
   try {
