@@ -196,7 +196,7 @@ export function StandardTaskForm({ task, runs, footer, className }: StandardTask
   const lastSubmission = useActionData();
 
   //recent runs
-  const [selectedCodeSampleId, setSelectedCodeSampleId] = useState(runs.at(0)?.id);
+  const [selectedCodeSampleId, setSelectedCodeSampleId] = useState<string | undefined>(undefined);
   const selectedCodeSample = runs.find((r) => r.id === selectedCodeSampleId);
   const selectedCodeSamplePayload = selectedCodeSample?.payload;
   const selectedCodeSampleMetadata = selectedCodeSample?.seedMetadata;
@@ -373,7 +373,7 @@ export function ScheduledTaskForm({
 }) {
   const environment = useEnvironment();
   const lastSubmission = useActionData();
-  const [selectedCodeSampleId, setSelectedCodeSampleId] = useState(runs.at(0)?.id);
+  const [selectedCodeSampleId, setSelectedCodeSampleId] = useState<string | undefined>(undefined);
   const [timestampValue, setTimestampValue] = useState<Date | undefined>();
   const [lastTimestampValue, setLastTimestampValue] = useState<Date | undefined>();
   const [externalIdValue, setExternalIdValue] = useState<string | undefined>();
@@ -602,7 +602,7 @@ function RecentPayloads({
             >
               <RadioButtonCircle checked={run.id === selectedId} />
               <div className="flex flex-col items-start">
-                <Paragraph variant="small">
+                <Paragraph variant="small/bright">
                   <DateTime date={run.createdAt} />
                 </Paragraph>
                 <div className="flex items-center gap-1 text-xs text-text-dimmed">
