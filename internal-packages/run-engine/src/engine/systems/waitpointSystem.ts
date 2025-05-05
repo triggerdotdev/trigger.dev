@@ -229,6 +229,7 @@ export class WaitpointSystem {
     idempotencyKey,
     idempotencyKeyExpiresAt,
     timeout,
+    resolver,
     tags,
   }: {
     environmentId: string;
@@ -236,6 +237,7 @@ export class WaitpointSystem {
     idempotencyKey?: string;
     idempotencyKeyExpiresAt?: Date;
     timeout?: Date;
+    resolver: "TOKEN" | "HTTP_CALLBACK";
     tags?: string[];
   }): Promise<{ waitpoint: Waitpoint; isCached: boolean }> {
     const existingWaitpoint = idempotencyKey
@@ -285,6 +287,7 @@ export class WaitpointSystem {
           create: {
             ...WaitpointId.generate(),
             type: "MANUAL",
+            resolver,
             idempotencyKey: idempotencyKey ?? nanoid(24),
             idempotencyKeyExpiresAt,
             userProvidedIdempotencyKey: !!idempotencyKey,

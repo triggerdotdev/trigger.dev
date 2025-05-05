@@ -75,6 +75,7 @@ const { action } = createActionApiRoute(
         idempotencyKey: body.idempotencyKey,
         idempotencyKeyExpiresAt,
         timeout,
+        resolver: "TOKEN",
         tags: bodyTags,
       });
 
