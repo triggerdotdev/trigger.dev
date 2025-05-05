@@ -2,7 +2,7 @@ import { isWaitpointOutputTimeout, prettyPrintPacket } from "@trigger.dev/core/v
 import { logger } from "~/services/logger.server";
 import { BasePresenter } from "./basePresenter.server";
 import { type RunListItem, RunListPresenter } from "./RunListPresenter.server";
-import { waitpointStatusToApiStatus } from "./WaitpointTokenListPresenter.server";
+import { waitpointStatusToApiStatus } from "./WaitpointListPresenter.server";
 
 export type WaitpointDetail = NonNullable<Awaited<ReturnType<WaitpointPresenter["call"]>>>;
 

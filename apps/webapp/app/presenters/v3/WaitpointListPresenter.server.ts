@@ -1,6 +1,7 @@
 import parse from "parse-duration";
 import {
   Prisma,
+  type WaitpointResolver,
   type RunEngineVersion,
   type RuntimeEnvironmentType,
   type WaitpointStatus,
@@ -14,7 +15,7 @@ import { type WaitpointTokenStatus, type WaitpointTokenItem } from "@trigger.dev
 
 const DEFAULT_PAGE_SIZE = 25;
 
-export type WaitpointTokenListOptions = {
+export type WaitpointListOptions = {
   environment: {
     id: string;
     type: RuntimeEnvironmentType;
@@ -23,6 +24,7 @@ export type WaitpointTokenListOptions = {
       engine: RunEngineVersion;
     };
   };
+  resolver: WaitpointResolver;
   // filters
   id?: string;
   statuses?: WaitpointTokenStatus[];
@@ -63,9 +65,10 @@ type Result =
       filters: undefined;
     };
 
-export class WaitpointTokenListPresenter extends BasePresenter {
+export class WaitpointListPresenter extends BasePresenter {
   public async call({
     environment,
+    resolver,
     id,
     statuses,
     idempotencyKey,
@@ -76,7 +79,7 @@ export class WaitpointTokenListPresenter extends BasePresenter {
     direction = "forward",
     cursor,
     pageSize = DEFAULT_PAGE_SIZE,
-  }: WaitpointTokenListOptions): Promise<Result> {
+  }: WaitpointListOptions): Promise<Result> {
     const engineVersion = await determineEngineVersion({ environment });
     if (engineVersion === "V1") {
       return {
@@ -165,7 +168,7 @@ export class WaitpointTokenListPresenter extends BasePresenter {
       ${sqlDatabaseSchema}."Waitpoint" w
     WHERE
       w."environmentId" = ${environment.id}
-      AND w.resolver = 'TOKEN'
+      AND w.resolver = ${resolver}::"WaitpointResolver"
       -- cursor
       ${
         cursor
@@ -250,7 +253,7 @@ export class WaitpointTokenListPresenter extends BasePresenter {
       const firstToken = await this._replica.waitpoint.findFirst({
         where: {
           environmentId: environment.id,
-          resolver: "TOKEN",
+          resolver,
         },
       });
 

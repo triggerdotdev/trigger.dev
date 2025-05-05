@@ -3,7 +3,7 @@ import { type RunEngineVersion } from "@trigger.dev/database";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { BasePresenter } from "./basePresenter.server";
 import { WaitpointPresenter } from "./WaitpointPresenter.server";
-import { waitpointStatusToApiStatus } from "./WaitpointTokenListPresenter.server";
+import { waitpointStatusToApiStatus } from "./WaitpointListPresenter.server";
 
 export class ApiWaitpointPresenter extends BasePresenter {
   public async call(

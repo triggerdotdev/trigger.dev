@@ -36,7 +36,7 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
-import { WaitpointTokenListPresenter } from "~/presenters/v3/WaitpointTokenListPresenter.server";
+import { WaitpointListPresenter } from "~/presenters/v3/WaitpointListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { docsPath, EnvironmentParamSchema, v3WaitpointTokenPath } from "~/utils/pathBuilder";
 
@@ -84,9 +84,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 
   try {
-    const presenter = new WaitpointTokenListPresenter();
+    const presenter = new WaitpointListPresenter();
     const result = await presenter.call({
       environment,
+      resolver: "TOKEN",
       ...searchParams,
     });
 
