@@ -23,6 +23,7 @@ import {
   HttpCallbackSchema,
   HttpCallbackResultTypeFromSchema,
   HttpCallbackResult,
+  tryCatch,
 } from "@trigger.dev/core/v3";
 import { tracer } from "./tracer.js";
 import { conditionallyImportAndParsePacket } from "@trigger.dev/core/v3/utils/ioSerialization";
@@ -310,47 +311,6 @@ async function completeToken<T>(
   );
 
   return apiClient.completeWaitpointToken(tokenId, { data }, $requestOptions);
-}
-
-async function forHttpCallback<TResult>(
-  callback: (url: string) => Promise<void>,
-  options?: {
-    timeout?: string | Date | undefined;
-  }
-): Promise<HttpCallbackResult<TResult>> {
-  //TODO:
-  // Support a schema passed in, infer the type, or a generic supplied type
-  // Support a timeout passed in
-  // 1. Make an API call to engine.trigger.dev/v1/waitpoints/http-callback/create. New Waitpoint type "HTTPCallback"
-  // 2. Return the url and a waitpoint id (but don't block the run yet)
-  // 3. Create a span for the main call
-  // 4. Set the url and waitpoint entity type and id as attributes on the parent span
-  // 5. Create a span around the callback
-  // 6. Deal with errors thrown in the callback use `tryCatch()`
-  // 7. If that callback is successfully called, wait for the waitpoint with an API call to engine.trigger.dev/v1/waitpoints/http-callback/{waitpointId}/block
-  // 8. Wait for the waitpoint in the runtime
-  // 9. On the backend when the API is hit, complete the waitpoint with the result api.trigger.dev/v1/waitpoints/http-callback/{waitpointId}/callback
-  // 10. Receive the result here and import the packet, then get the result in the right format
-  // 11. Make unwrap work
-
-  const url = "https://trigger.dev/wait/success";
-
-  const result = await callback(url);
-
-  return {
-    ok: true,
-    output: result,
-  } as any;
-}
-
-async function forHttpCallbackWithSchema<TSchema extends HttpCallbackSchema>(
-  schema: TSchema,
-  callback: (successUrl: string, failureUrl: string) => Promise<void>,
-  options?: {
-    timeout?: string | Date | undefined;
-  }
-): Promise<HttpCallbackResult<HttpCallbackResultTypeFromSchema<TSchema>>> {
-  return {} as any;
 }
 
 export type CommonWaitOptions = {
@@ -689,6 +649,116 @@ export const wait = {
         },
       }
     );
+  },
+  async forHttpCallback<TResult>(
+    callback: (url: string) => Promise<void>,
+    options?: CreateWaitpointTokenRequestBody & {
+      releaseConcurrency?: boolean;
+    },
+    requestOptions?: ApiRequestOptions
+  ): Promise<HttpCallbackResult<TResult>> {
+    const ctx = taskContext.ctx;
+
+    if (!ctx) {
+      throw new Error("wait.forHttpCallback can only be used from inside a task.run()");
+    }
+
+    const apiClient = apiClientManager.clientOrThrow();
+
+    const waitpoint = await apiClient.createWaitpointHttpCallback(options ?? {}, requestOptions);
+
+    return tracer.startActiveSpan(
+      `wait.forHttpCallback()`,
+      async (span) => {
+        const [error] = await tryCatch(callback(waitpoint.url));
+
+        if (error) {
+          throw new Error(`You threw an error in your callback: ${error.message}`, {
+            cause: error,
+          });
+        }
+
+        const response = await apiClient.waitForWaitpointToken({
+          runFriendlyId: ctx.run.id,
+          waitpointFriendlyId: waitpoint.id,
+          releaseConcurrency: options?.releaseConcurrency,
+        });
+
+        if (!response.success) {
+          throw new Error(`Failed to wait for wait for HTTP callback ${waitpoint.id}`);
+        }
+
+        const result = await runtime.waitUntil(waitpoint.id);
+
+        const data = result.output
+          ? await conditionallyImportAndParsePacket(
+              { data: result.output, dataType: result.outputType ?? "application/json" },
+              apiClient
+            )
+          : undefined;
+
+        if (result.ok) {
+          return {
+            ok: result.ok,
+            output: data,
+          };
+        } else {
+          const error = new WaitpointTimeoutError(data.message);
+
+          span.recordException(error);
+          span.setStatus({
+            code: SpanStatusCode.ERROR,
+          });
+
+          return {
+            ok: result.ok,
+            error,
+          };
+        }
+      },
+      {
+        attributes: {
+          [SemanticInternalAttributes.STYLE_ICON]: "wait-http-callback",
+          [SemanticInternalAttributes.ENTITY_TYPE]: "waitpoint",
+          [SemanticInternalAttributes.ENTITY_ID]: waitpoint.id,
+          ...accessoryAttributes({
+            items: [
+              {
+                text: waitpoint.id,
+                variant: "normal",
+              },
+            ],
+            style: "codepath",
+          }),
+          id: waitpoint.id,
+          isCached: waitpoint.isCached,
+          idempotencyKey: options?.idempotencyKey,
+          idempotencyKeyTTL: options?.idempotencyKeyTTL,
+          timeout: options?.timeout
+            ? typeof options.timeout === "string"
+              ? options.timeout
+              : options.timeout.toISOString()
+            : undefined,
+          tags: options?.tags,
+          url: waitpoint.url,
+        },
+      }
+    );
+
+    //TODO:
+    // Support a schema passed in, infer the type, or a generic supplied type
+    // Support a timeout passed in
+    // 1. Make an API call to engine.trigger.dev/v1/waitpoints/http-callback/create. New Waitpoint type "HTTPCallback"
+    // 2. Return the url and a waitpoint id (but don't block the run yet)
+    // 3. Create a span for the main call
+    // 4. Set the url and waitpoint entity type and id as attributes on the parent span
+    // 5. Create a span around the callback
+    // 6. Deal with errors thrown in the callback use `tryCatch()`
+    // 7. If that callback is successfully called, wait for the waitpoint with an API call to engine.trigger.dev/v1/waitpoints/http-callback/{waitpointId}/block
+    // 8. Wait for the waitpoint in the runtime
+    // 9. On the backend when the API is hit, complete the waitpoint with the result api.trigger.dev/v1/waitpoints/http-callback/{waitpointId}/callback
+    // 10. Receive the result here and import the packet, then get the result in the right format
+    // 11. Make unwrap work
   },
 };
 

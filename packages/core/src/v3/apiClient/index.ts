@@ -12,6 +12,7 @@ import {
   CreateEnvironmentVariableRequestBody,
   CreateScheduleOptions,
   CreateUploadPayloadUrlResponseBody,
+  CreateWaitpointHttpCallbackResponseBody,
   CreateWaitpointTokenRequestBody,
   CreateWaitpointTokenResponseBody,
   DeletedScheduleObject,
@@ -788,6 +789,24 @@ export class ApiClient {
       },
       mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );
+  }
+
+  createWaitpointHttpCallback(
+    options: CreateWaitpointTokenRequestBody,
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      CreateWaitpointHttpCallbackResponseBody,
+      `${this.baseUrl}/engine/v1/waitpoints/http-callback`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(options),
+      },
+      {
+        ...mergeRequestOptions(this.defaultRequestOptions, requestOptions),
+      }
+    ) as ApiPromise<CreateWaitpointHttpCallbackResponseBody>;
   }
 
   async waitForDuration(

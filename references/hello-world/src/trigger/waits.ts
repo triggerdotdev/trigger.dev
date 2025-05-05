@@ -140,3 +140,19 @@ export const waitForDuration = task({
     );
   },
 });
+
+export const waitHttpCallback = task({
+  id: "wait-http-callback",
+  run: async () => {
+    const result = await wait.forHttpCallback<{ foo: string }>(
+      async (url) => {
+        logger.log(`Wait for HTTP callback ${url}`);
+      },
+      {
+        timeout: "60s",
+      }
+    );
+
+    logger.log("Wait for HTTP callback completed", result);
+  },
+});

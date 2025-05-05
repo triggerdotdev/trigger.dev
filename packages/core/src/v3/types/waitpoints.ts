@@ -6,7 +6,7 @@ export type HttpCallbackResultTypeFromSchema<TSchema extends HttpCallbackSchema>
 export type HttpCallbackResult<TResult> =
   | {
       ok: true;
-      result: TResult;
+      output: TResult;
     }
   | {
       ok: false;
