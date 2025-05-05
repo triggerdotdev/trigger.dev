@@ -8,7 +8,13 @@ jobs:
     name: "🧪 Unit Tests"
     runs-on: ubuntu-latest
     steps:
-      - name: 🔧 Configure docker
+      - name: 🔧 Disable IPv6
+        run: |
+          sudo sysctl -w net.ipv6.conf.all.disable_ipv6=1
+          sudo sysctl -w net.ipv6.conf.default.disable_ipv6=1
+          sudo sysctl -w net.ipv6.conf.lo.disable_ipv6=1
+
+      - name: 🔧 Configure docker address pool
         run: |
           CONFIG='{
             "default-address-pools" : [
@@ -24,7 +30,9 @@ jobs:
           }'
           mkdir -p /etc/docker
           echo "$CONFIG" | sudo tee /etc/docker/daemon.json
-          sudo systemctl restart docker
+
+      - name: 🔧 Restart docker daemon
+        run: sudo systemctl restart docker
 
       - name: ⬇️ Checkout repo
         uses: actions/checkout@v4
