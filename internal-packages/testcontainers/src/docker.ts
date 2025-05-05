@@ -48,10 +48,15 @@ export async function getDockerNetworkAttachments(): Promise<DockerNetworkAttach
 
     const lines = stringToLines(result.stdout);
 
-    networks = lines.map((line) => {
+    for (const line of lines) {
       const [id, name] = lineToWords(line);
-      return { id, name };
-    });
+
+      if (!id || !name) {
+        continue;
+      }
+
+      networks.push({ id, name });
+    }
   } catch (err) {
     console.error("Failed to list docker networks:", err);
   }
@@ -97,10 +102,15 @@ export async function getDockerContainerNetworks(): Promise<DockerContainerNetwo
 
     const lines = stringToLines(result.stdout);
 
-    containers = lines.map((line) => {
+    for (const line of lines) {
       const [id, name] = lineToWords(line);
-      return { id, name };
-    });
+
+      if (!id || !name) {
+        continue;
+      }
+
+      containers.push({ id, name });
+    }
   } catch (err) {
     console.error("Failed to list docker containers:", err);
   }
