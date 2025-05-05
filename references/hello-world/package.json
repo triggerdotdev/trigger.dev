@@ -6,7 +6,8 @@
     "trigger.dev": "workspace:*"
   },
   "dependencies": {
-    "@trigger.dev/sdk": "workspace:*"
+    "@trigger.dev/sdk": "workspace:*",
+    "zod": "3.23.8"
   },
   "scripts": {
     "dev": "trigger dev"

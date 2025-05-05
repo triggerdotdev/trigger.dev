@@ -1927,6 +1927,9 @@ importers:
       '@trigger.dev/sdk':
         specifier: workspace:*
         version: link:../../packages/trigger-sdk
+      zod:
+        specifier: 3.23.8
+        version: 3.23.8
     devDependencies:
       trigger.dev:
         specifier: workspace:*

@@ -1,5 +1,5 @@
 import { logger, wait, task, retry, idempotencyKeys, auth } from "@trigger.dev/sdk/v3";
-
+import { z } from "zod";
 type Token = {
   status: "approved" | "pending" | "rejected";
 };
@@ -153,6 +153,23 @@ export const waitHttpCallback = task({
       }
     );
 
-    logger.log("Wait for HTTP callback completed", result);
+    if (!result.ok) {
+      logger.log("Wait for HTTP callback failed", { error: result.error });
+    } else {
+      logger.log("Wait for HTTP callback completed", result);
+    }
+
+    const result2 = await wait.forHttpCallbackWithSchema(
+      z.object({ bar: z.string() }),
+      async (url) => {
+        logger.log(`Wait for HTTP callback ${url}`);
+      }
+    );
+
+    if (!result2.ok) {
+      logger.log("Wait for HTTP callback failed", { error: result2.error });
+    } else {
+      logger.log("Wait for HTTP callback completed", result2);
+    }
   },
 });
