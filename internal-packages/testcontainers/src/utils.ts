@@ -1,7 +1,9 @@
 import { PostgreSqlContainer, StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { RedisContainer, StartedRedisContainer } from "@testcontainers/redis";
+import { tryCatch } from "@trigger.dev/core";
 import Redis from "ioredis";
 import path from "path";
+import { isDebug } from "std-env";
 import { GenericContainer, StartedNetwork, Wait } from "testcontainers";
 import { x } from "tinyexec";
 import { expect } from "vitest";
@@ -67,7 +69,12 @@ export async function createRedisContainer({
     .start();
 
   // Add a verification step
-  await verifyRedisConnection(startedContainer);
+  const [error] = await tryCatch(verifyRedisConnection(startedContainer));
+
+  if (error) {
+    await startedContainer.stop({ timeout: 30 });
+    throw new Error("verifyRedisConnection error", { cause: error });
+  }
 
   return {
     container: startedContainer,
@@ -94,11 +101,21 @@ async function verifyRedisConnection(container: StartedRedisContainer) {
   };
 
   redis.on("error", (error) => {
-    console.log("verifyRedisConnection error", error, containerMetadata);
+    if (isDebug) {
+      console.log("verifyRedisConnection: client error", error, containerMetadata);
+    }
+
+    // Don't throw here, we'll do that below if the ping fails
   });
 
   try {
     await redis.ping();
+  } catch (error) {
+    if (isDebug) {
+      console.log("verifyRedisConnection: ping error", error, containerMetadata);
+    }
+
+    throw new Error("verifyRedisConnection: ping error", { cause: error });
   } finally {
     await redis.quit();
   }
