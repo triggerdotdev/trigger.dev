@@ -6,6 +6,10 @@ tasks.middleware("db", ({ ctx, payload, next }) => {
   return next();
 });
 
+tasks.onCancel(async ({ ctx, payload }) => {
+  logger.info("Hello, world from the global cancel", { ctx, payload });
+});
+
 // tasks.onSuccess(({ ctx, payload, output }) => {
 //   logger.info("Hello, world from the success", { ctx, payload });
 // });

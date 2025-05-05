@@ -97,6 +97,7 @@ export function RunIcon({ name, className, spanName }: TaskIconProps) {
     case "task-hook-onResume":
     case "task-hook-onComplete":
     case "task-hook-cleanup":
+    case "task-hook-onCancel":
       return <FunctionIcon className={cn(className, "text-text-dimmed")} />;
     case "task-hook-onFailure":
     case "task-hook-catchError":

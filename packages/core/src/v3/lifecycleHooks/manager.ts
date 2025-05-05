@@ -13,6 +13,7 @@ import {
   AnyOnMiddlewareHookFunction,
   AnyOnCleanupHookFunction,
   TaskWait,
+  AnyOnCancelHookFunction,
 } from "./types.js";
 
 export class StandardLifecycleHooksManager implements LifecycleHooksManager {
@@ -37,9 +38,6 @@ export class StandardLifecycleHooksManager implements LifecycleHooksManager {
   private taskCompleteHooks: Map<string, RegisteredHookFunction<AnyOnCompleteHookFunction>> =
     new Map();
 
-  private globalWaitHooks: Map<string, RegisteredHookFunction<AnyOnWaitHookFunction>> = new Map();
-  private taskWaitHooks: Map<string, RegisteredHookFunction<AnyOnWaitHookFunction>> = new Map();
-
   private globalResumeHooks: Map<string, RegisteredHookFunction<AnyOnResumeHookFunction>> =
     new Map();
   private taskResumeHooks: Map<string, RegisteredHookFunction<AnyOnResumeHookFunction>> = new Map();
@@ -59,8 +57,24 @@ export class StandardLifecycleHooksManager implements LifecycleHooksManager {
   private taskCleanupHooks: Map<string, RegisteredHookFunction<AnyOnCleanupHookFunction>> =
     new Map();
 
+  private globalWaitHooks: Map<string, RegisteredHookFunction<AnyOnWaitHookFunction>> = new Map();
+  private taskWaitHooks: Map<string, RegisteredHookFunction<AnyOnWaitHookFunction>> = new Map();
   private onWaitHookListeners: ((wait: TaskWait) => Promise<void>)[] = [];
+
   private onResumeHookListeners: ((wait: TaskWait) => Promise<void>)[] = [];
+
+  private globalCancelHooks: Map<string, RegisteredHookFunction<AnyOnCancelHookFunction>> =
+    new Map();
+  private taskCancelHooks: Map<string, RegisteredHookFunction<AnyOnCancelHookFunction>> = new Map();
+  private onCancelHookListeners: (() => Promise<void>)[] = [];
+
+  registerOnCancelHookListener(listener: () => Promise<void>): void {
+    this.onCancelHookListeners.push(listener);
+  }
+
+  async callOnCancelHookListeners(): Promise<void> {
+    await Promise.allSettled(this.onCancelHookListeners.map((listener) => listener()));
+  }
 
   registerOnWaitHookListener(listener: (wait: TaskWait) => Promise<void>): void {
     this.onWaitHookListeners.push(listener);
@@ -394,9 +408,65 @@ export class StandardLifecycleHooksManager implements LifecycleHooksManager {
   getGlobalCleanupHooks(): RegisteredHookFunction<AnyOnCleanupHookFunction>[] {
     return Array.from(this.globalCleanupHooks.values());
   }
+
+  registerGlobalCancelHook(hook: RegisterHookFunctionParams<AnyOnCancelHookFunction>): void {
+    const id = generateHookId(hook);
+
+    this.globalCancelHooks.set(id, {
+      id,
+      name: hook.id,
+      fn: hook.fn,
+    });
+  }
+
+  registerTaskCancelHook(
+    taskId: string,
+    hook: RegisterHookFunctionParams<AnyOnCancelHookFunction>
+  ): void {
+    const id = generateHookId(hook);
+
+    this.taskCancelHooks.set(taskId, {
+      id,
+      name: hook.id,
+      fn: hook.fn,
+    });
+  }
+
+  getGlobalCancelHooks(): RegisteredHookFunction<AnyOnCancelHookFunction>[] {
+    return Array.from(this.globalCancelHooks.values());
+  }
+
+  getTaskCancelHook(taskId: string): AnyOnCancelHookFunction | undefined {
+    return this.taskCancelHooks.get(taskId)?.fn;
+  }
 }
 
 export class NoopLifecycleHooksManager implements LifecycleHooksManager {
+  registerOnCancelHookListener(listener: () => Promise<void>): void {
+    // Noop
+  }
+
+  async callOnCancelHookListeners(): Promise<void> {
+    // Noop
+  }
+
+  registerGlobalCancelHook(hook: RegisterHookFunctionParams<AnyOnCancelHookFunction>): void {}
+
+  registerTaskCancelHook(
+    taskId: string,
+    hook: RegisterHookFunctionParams<AnyOnCancelHookFunction>
+  ): void {
+    // Noop
+  }
+
+  getTaskCancelHook(taskId: string): AnyOnCancelHookFunction | undefined {
+    return undefined;
+  }
+
+  getGlobalCancelHooks(): RegisteredHookFunction<AnyOnCancelHookFunction>[] {
+    return [];
+  }
+
   registerOnWaitHookListener(listener: (wait: TaskWait) => Promise<void>): void {
     // Noop
   }
