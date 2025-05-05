@@ -790,21 +790,6 @@ export const wait = {
         },
       }
     );
-
-    //TODO:
-    // Support a schema passed in, infer the type, or a generic supplied type
-    // Support a timeout passed in
-    // 1. Make an API call to engine.trigger.dev/v1/waitpoints/http-callback/create. New Waitpoint type "HTTPCallback"
-    // 2. Return the url and a waitpoint id (but don't block the run yet)
-    // 3. Create a span for the main call
-    // 4. Set the url and waitpoint entity type and id as attributes on the parent span
-    // 5. Create a span around the callback
-    // 6. Deal with errors thrown in the callback use `tryCatch()`
-    // 7. If that callback is successfully called, wait for the waitpoint with an API call to engine.trigger.dev/v1/waitpoints/http-callback/{waitpointId}/block
-    // 8. Wait for the waitpoint in the runtime
-    // 9. On the backend when the API is hit, complete the waitpoint with the result api.trigger.dev/v1/waitpoints/http-callback/{waitpointId}/callback
-    // 10. Receive the result here and import the packet, then get the result in the right format
-    // 11. Make unwrap work
   },
 };
 
