@@ -3,6 +3,8 @@ import { logger } from "~/services/logger.server";
 import { BasePresenter } from "./basePresenter.server";
 import { type RunListItem, RunListPresenter } from "./RunListPresenter.server";
 import { waitpointStatusToApiStatus } from "./WaitpointListPresenter.server";
+import { WaitpointId } from "@trigger.dev/core/v3/isomorphic";
+import { env } from "~/env.server";
 
 export type WaitpointDetail = NonNullable<Awaited<ReturnType<WaitpointPresenter["call"]>>>;
 
@@ -35,6 +37,7 @@ export class WaitpointPresenter extends BasePresenter {
         completedAfter: true,
         completedAt: true,
         createdAt: true,
+        resolver: true,
         connectedRuns: {
           select: {
             friendlyId: true,
@@ -83,6 +86,11 @@ export class WaitpointPresenter extends BasePresenter {
     return {
       id: waitpoint.friendlyId,
       type: waitpoint.type,
+      resolver: waitpoint.resolver,
+      callbackUrl:
+        waitpoint.resolver === "HTTP_CALLBACK"
+          ? generateWaitpointCallbackUrl(waitpoint.friendlyId)
+          : undefined,
       status: waitpointStatusToApiStatus(waitpoint.status, waitpoint.outputIsError),
       idempotencyKey: waitpoint.idempotencyKey,
       userProvidedIdempotencyKey: waitpoint.userProvidedIdempotencyKey,
@@ -99,4 +107,10 @@ export class WaitpointPresenter extends BasePresenter {
       connectedRuns,
     };
   }
+}
+
+export function generateWaitpointCallbackUrl(waitpointId: string) {
+  return `${
+    env.API_ORIGIN ?? env.APP_ORIGIN
+  }/api/v1/waitpoints/http-callback/${WaitpointId.toFriendlyId(waitpointId)}/callback`;
 }

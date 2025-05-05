@@ -11,6 +11,8 @@ import { v3WaitpointTokenPath, v3WaitpointTokensPath } from "~/utils/pathBuilder
 import { PacketDisplay } from "./PacketDisplay";
 import { WaitpointStatusCombo } from "./WaitpointStatus";
 import { RunTag } from "./RunTag";
+import { CopyableText } from "~/components/primitives/CopyableText";
+import { ClipboardField } from "~/components/primitives/ClipboardField";
 
 export function WaitpointDetailTable({
   waitpoint,
@@ -50,6 +52,14 @@ export function WaitpointDetailTable({
           )}
         </Property.Value>
       </Property.Item>
+      {waitpoint.callbackUrl && (
+        <Property.Item>
+          <Property.Label>Callback URL</Property.Label>
+          <Property.Value className="my-1">
+            <ClipboardField value={waitpoint.callbackUrl} variant={"secondary/small"} />
+          </Property.Value>
+        </Property.Item>
+      )}
       <Property.Item>
         <Property.Label>Idempotency key</Property.Label>
         <Property.Value>
