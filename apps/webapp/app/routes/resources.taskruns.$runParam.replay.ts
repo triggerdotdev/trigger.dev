@@ -6,10 +6,12 @@ import { z } from "zod";
 import { $replica, prisma } from "~/db.server";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
+import { ScheduledRun, StandardRun } from "~/presenters/v3/TestTaskPresenter.server";
 import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
 import { sortEnvironments } from "~/utils/environmentSort";
 import { v3RunSpanPath } from "~/utils/pathBuilder";
+import { getTimezones } from "~/utils/timezones.server";
 import { ReplayTaskRunService } from "~/v3/services/replayTaskRun.server";
 
 const ParamSchema = z.object({
@@ -27,8 +29,15 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       payload: true,
       payloadType: true,
       runtimeEnvironmentId: true,
+      seedMetadata: true,
+      seedMetadataType: true,
+      friendlyId: true,
+      status: true,
+      number: true,
+      createdAt: true,
       project: {
         select: {
+          id: true,
           environments: {
             select: {
               id: true,
@@ -71,34 +80,79 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     throw new Response("Environment not found", { status: 404 });
   }
 
-  // Get recent runs for the same task
-  const recentRuns = await $replica.taskRun.findMany({
+  const task = await prisma.backgroundWorkerTask.findFirst({
     where: {
-      taskIdentifier: run.taskIdentifier,
+      slug: run.taskIdentifier,
       runtimeEnvironmentId: run.runtimeEnvironmentId,
     },
     select: {
       id: true,
-      createdAt: true,
-      number: true,
-      status: true,
-      payload: true,
+      slug: true,
+      filePath: true,
+      friendlyId: true,
+      triggerSource: true,
     },
-    orderBy: {
-      createdAt: "desc",
-    },
-    take: 20,
   });
 
-  return typedjson({
-    payload: await prettyPrintPacket(run.payload, run.payloadType),
-    payloadType: run.payloadType,
-    environment: displayableEnvironment(environment, userId),
-    environments: sortEnvironments(
-      run.project.environments.map((environment) => displayableEnvironment(environment, userId))
-    ),
-    runs: recentRuns,
-  });
+  if (!task) throw new Response("Task not found", { status: 404 });
+
+  const shapedTask = {
+    ...task,
+    taskIdentifier: task.slug,
+  };
+
+  const { project, ...runFields } = run;
+
+  if (task.triggerSource === "SCHEDULED") {
+    const obj = JSON.parse(run.payload) as {
+      timestamp: string;
+      lastTimestamp?: string;
+      externalId?: string;
+      timezone: string;
+    };
+    const shapedRun: ScheduledRun = {
+      ...runFields,
+      payload: {
+        ...obj,
+        timestamp: new Date(obj.timestamp),
+        lastTimestamp: obj.lastTimestamp ? new Date(obj.lastTimestamp) : undefined,
+      },
+      seedMetadata: run.seedMetadata
+        ? await prettyPrintPacket(run.seedMetadata, run.seedMetadataType)
+        : undefined,
+    };
+    return typedjson({
+      payload: await prettyPrintPacket(run.payload, run.payloadType),
+      payloadType: run.payloadType,
+      environment: displayableEnvironment(environment, userId),
+      environments: sortEnvironments(
+        run.project.environments.map((environment) => displayableEnvironment(environment, userId))
+      ),
+      taskType: "SCHEDULED",
+      task: shapedTask,
+      runs: [shapedRun],
+      possibleTimezones: getTimezones(),
+    });
+  } else {
+    const shapedRun: StandardRun = {
+      ...runFields,
+      payload: String(await prettyPrintPacket(run.payload, run.payloadType)),
+      seedMetadata: run.seedMetadata
+        ? await prettyPrintPacket(run.seedMetadata, run.seedMetadataType)
+        : undefined,
+    };
+    return typedjson({
+      payload: await prettyPrintPacket(run.payload, run.payloadType),
+      payloadType: run.payloadType,
+      environment: displayableEnvironment(environment, userId),
+      environments: sortEnvironments(
+        run.project.environments.map((environment) => displayableEnvironment(environment, userId))
+      ),
+      taskType: "STANDARD",
+      task: shapedTask,
+      runs: [shapedRun],
+    });
+  }
 }
 
 const FormSchema = z.object({

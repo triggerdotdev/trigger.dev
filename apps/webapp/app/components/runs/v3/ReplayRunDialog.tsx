@@ -2,7 +2,6 @@ import { DialogClose } from "@radix-ui/react-dialog";
 import { Form, useNavigation, useSubmit } from "@remix-run/react";
 import { useCallback, useEffect, useState } from "react";
 import { type UseDataFunctionReturn, useTypedFetcher } from "remix-typedjson";
-import { JSONEditor } from "~/components/code/JSONEditor";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { Button } from "~/components/primitives/Buttons";
 import { DialogContent, DialogHeader } from "~/components/primitives/Dialog";
@@ -11,8 +10,13 @@ import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Select, SelectItem } from "~/components/primitives/Select";
 import { Spinner, SpinnerWhite } from "~/components/primitives/Spinner";
-import { RecentPayloads } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.test.tasks.$taskParam/route";
+import { type ScheduledRun, type StandardRun } from "~/presenters/v3/TestTaskPresenter.server";
+import {
+  ScheduledTaskForm,
+  StandardTaskForm,
+} from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.test.tasks.$taskParam/route";
 import { type loader } from "~/routes/resources.taskruns.$runParam.replay";
+import type { RuntimeEnvironment } from "~/models/runtimeEnvironment.server";
 
 type ReplayRunDialogProps = {
   runFriendlyId: string;
@@ -57,27 +61,20 @@ function ReplayContent({ runFriendlyId, failedRedirect }: ReplayRunDialogProps) 
   );
 }
 
-function ReplayForm({
-  payload,
-  payloadType,
-  environment,
-  environments,
-  runs,
-  failedRedirect,
-  runFriendlyId,
-}: UseDataFunctionReturn<typeof loader> & { failedRedirect: string; runFriendlyId: string }) {
+function ReplayForm(
+  props: UseDataFunctionReturn<typeof loader> & { failedRedirect: string; runFriendlyId: string }
+) {
   const navigation = useNavigation();
   const submit = useSubmit();
-  const formAction = `/resources/taskruns/${runFriendlyId}/replay`;
-  const isSubmitting = navigation.formAction === formAction;
+  const formAction = `/resources/taskruns/${props.runFriendlyId}/replay`;
 
   // State for managing the payload and selection
-  const [currentPayload, setCurrentPayload] = useState(payload);
-  const [selectedRunId, setSelectedRunId] = useState<string | undefined>(undefined);
-  const [isPayloadModified, setIsPayloadModified] = useState(false);
+  const [currentPayload, setCurrentPayload] = useState(props.payload);
 
   const editablePayload =
-    payloadType === "application/json" || payloadType === "application/super+json";
+    props.payloadType === "application/json" || props.payloadType === "application/super+json";
+
+  const possibleTimezones = "possibleTimezones" in props ? props.possibleTimezones : [];
 
   const submitForm = useCallback(
     (e: React.FormEvent<HTMLFormElement>) => {
@@ -100,23 +97,6 @@ function ReplayForm({
     [currentPayload, editablePayload, formAction, submit]
   );
 
-  const handlePayloadChange = useCallback(
-    (newPayload: string) => {
-      setCurrentPayload(newPayload);
-
-      // Check if the new payload matches any of the runs
-      const matchingRun = runs.find((r) => r.payload === newPayload);
-      if (matchingRun) {
-        setSelectedRunId(matchingRun.id);
-        setIsPayloadModified(false);
-      } else {
-        setSelectedRunId(undefined);
-        setIsPayloadModified(true);
-      }
-    },
-    [runs]
-  );
-
   return (
     <Form
       action={formAction}
@@ -130,85 +110,107 @@ function ReplayForm({
             Replaying will create a new run using the same or modified payload, executing against
             the latest version in your selected environment.
           </Paragraph>
-          <div className="grid h-0 flex-1 grid-cols-[1fr_auto] gap-0 divide-x divide-grid-dimmed border-t border-grid-dimmed">
-            <div className="flex h-full min-h-0 flex-col">
-              <Header3>Payload</Header3>
-              <div className="min-h-0 flex-1 overflow-y-auto rounded-sm border-l border-grid-dimmed bg-charcoal-900 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-                <JSONEditor
-                  autoFocus
-                  defaultValue={currentPayload}
-                  readOnly={false}
-                  basicSetup
-                  onChange={handlePayloadChange}
-                  showClearButton={false}
-                  showCopyButton={false}
-                  height="100%"
-                  min-height="100%"
-                  max-height="100%"
-                />
-              </div>
-            </div>
-            <RecentPayloads
-              runs={runs}
-              selectedId={selectedRunId}
-              onSelected={(id) => {
-                const run = runs.find((r) => r.id === id);
-                if (run) {
-                  setSelectedRunId(id);
-                  setCurrentPayload(run.payload);
-                  setIsPayloadModified(false);
+          <div className="flex-1 rounded-tl-md border-t border-grid-dimmed">
+            {props.taskType === "STANDARD" ? (
+              <StandardTaskForm
+                task={props.task}
+                runs={props.runs as StandardRun[]}
+                footer={
+                  <ReplayFormFooter
+                    environment={props.environment}
+                    environments={props.environments}
+                    isSubmitting={navigation.formAction === formAction}
+                    formAction={formAction}
+                  />
                 }
-              }}
-            />
+                className="rounded-tl-md border-l border-grid-dimmed"
+              />
+            ) : props.taskType === "SCHEDULED" ? (
+              <ScheduledTaskForm
+                task={props.task}
+                runs={props.runs as ScheduledRun[]}
+                possibleTimezones={possibleTimezones}
+                footer={
+                  <ReplayFormFooter
+                    environment={props.environment}
+                    environments={props.environments}
+                    isSubmitting={navigation.formAction === formAction}
+                    formAction={formAction}
+                  />
+                }
+              />
+            ) : null}
           </div>
         </>
       ) : null}
-      <input type="hidden" name="failedRedirect" value={failedRedirect} />
-      <div className="flex items-center justify-between gap-2 border-t border-grid-dimmed pr-3 pt-3.5">
-        <DialogClose asChild>
-          <Button variant="tertiary/medium">Cancel</Button>
-        </DialogClose>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-2">
-            <Label>Replay this run in:</Label>
-            <Select
-              id="environment"
-              name="environment"
-              placeholder="Select an environment"
-              defaultValue={environment.id}
-              items={environments}
-              dropdownIcon
-              variant="tertiary/medium"
-              className="w-fit pl-1"
-              text={(value) => {
-                const env = environments.find((env) => env.id === value)!;
-                return (
-                  <div className="flex items-center pl-1 pr-2">
-                    <EnvironmentCombo environment={env} />
-                  </div>
-                );
-              }}
-            >
-              {(matches) =>
-                matches.map((env) => (
-                  <SelectItem key={env.id} value={env.id}>
-                    <EnvironmentCombo environment={env} />
-                  </SelectItem>
-                ))
-              }
-            </Select>
-          </div>
-          <Button
-            type="submit"
-            variant="primary/medium"
-            LeadingIcon={isSubmitting ? SpinnerWhite : undefined}
-            disabled={isSubmitting}
-            shortcut={{ modifiers: ["mod"], key: "enter", enabledOnInputElements: true }}
-          >
-            {isSubmitting ? "Replaying..." : "Replay run"}
-          </Button>
-        </div>
-      </div>
+      <input type="hidden" name="failedRedirect" value={props.failedRedirect} />
     </Form>
+  );
+}
+
+type DisplayableEnvironment = {
+  id: string;
+  type: string;
+  slug: string;
+  userName?: string;
+};
+
+function ReplayFormFooter({
+  environment,
+  environments,
+  isSubmitting,
+  formAction,
+}: {
+  environment: DisplayableEnvironment;
+  environments: DisplayableEnvironment[];
+  isSubmitting: boolean;
+  formAction: string;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-2 border-t border-grid-dimmed pr-3 pt-3.5">
+      <DialogClose asChild>
+        <Button variant="tertiary/medium">Cancel</Button>
+      </DialogClose>
+      <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2">
+          <Label>Replay this run in:</Label>
+          <Select
+            id="environment"
+            name="environment"
+            placeholder="Select an environment"
+            defaultValue={environment.id}
+            items={environments}
+            dropdownIcon
+            variant="tertiary/medium"
+            className="w-fit pl-1"
+            text={(value) => {
+              const env = environments.find((env) => env.id === value)!;
+              return (
+                <div className="flex items-center pl-1 pr-2">
+                  <EnvironmentCombo environment={env as RuntimeEnvironment} />
+                </div>
+              );
+            }}
+          >
+            {(matches) =>
+              matches.map((env) => (
+                <SelectItem key={env.id} value={env.id}>
+                  <EnvironmentCombo environment={env as RuntimeEnvironment} />
+                </SelectItem>
+              ))
+            }
+          </Select>
+        </div>
+        <Button
+          type="submit"
+          variant="primary/medium"
+          LeadingIcon={isSubmitting ? SpinnerWhite : undefined}
+          disabled={isSubmitting}
+          shortcut={{ modifiers: ["mod"], key: "enter", enabledOnInputElements: true }}
+        >
+          {isSubmitting ? "Replaying..." : "Replay run"}
+        </Button>
+      </div>
+    </div>
   );
 }

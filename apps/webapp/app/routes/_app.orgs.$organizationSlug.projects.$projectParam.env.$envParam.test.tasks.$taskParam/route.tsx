@@ -179,7 +179,14 @@ export default function Page() {
 
 const startingJson = "{\n\n}";
 
-function StandardTaskForm({ task, runs }: { task: TestTask["task"]; runs: StandardRun[] }) {
+type StandardTaskFormProps = {
+  task: TestTask["task"];
+  runs: StandardRun[];
+  footer?: React.ReactNode;
+  className?: string;
+};
+
+export function StandardTaskForm({ task, runs, footer, className }: StandardTaskFormProps) {
   const environment = useEnvironment();
   const { value, replace } = useSearchParams();
   const tab = value("tab");
@@ -204,7 +211,7 @@ function StandardTaskForm({ task, runs }: { task: TestTask["task"]; runs: Standa
   const currentPayloadJson = useRef<string>(defaultPayloadJson);
 
   const [defaultMetadataJson, setDefaultMetadataJson] = useState<string>(
-    selectedCodeSampleMetadata ?? "{}"
+    selectedCodeSampleMetadata ?? startingJson
   );
   const setMetadata = useCallback((code: string) => {
     setDefaultMetadataJson(code);
@@ -249,67 +256,120 @@ function StandardTaskForm({ task, runs }: { task: TestTask["task"]; runs: Standa
       onSubmit={(e) => submitForm(e)}
     >
       <input type="hidden" name="triggerSource" value={"STANDARD"} />
-      <TestTaskEditorPanel
-        tab={tab}
-        onTabChange={(tab) => replace({ tab })}
-        payloadJson={defaultPayloadJson}
-        onPayloadChange={(v) => {
-          currentPayloadJson.current = v;
-          if (selectedCodeSampleId) {
-            if (v !== selectedCodeSamplePayload) {
-              setDefaultPayloadJson(v);
-              setSelectedCodeSampleId(undefined);
-            }
-          }
-        }}
-        metadataJson={defaultMetadataJson}
-        onMetadataChange={(v) => {
-          currentMetadataJson.current = v;
-          if (selectedCodeSampleId) {
-            if (v !== selectedCodeSampleMetadata) {
-              setDefaultMetadataJson(v);
-              setSelectedCodeSampleId(undefined);
-            }
-          }
-        }}
-        selectedCodeSampleId={selectedCodeSampleId}
-        runs={runs}
-        onRecentPayloadSelect={(id) => {
-          const run = runs.find((r) => r.id === id);
-          if (!run) return;
-          setPayload(run.payload);
-          setMetadata(run.seedMetadata ?? "{}");
-          setSelectedCodeSampleId(id);
-        }}
-      />
-      <div className="flex items-center justify-end gap-3 border-t border-grid-bright bg-background-dimmed p-2">
-        <div className="flex items-center gap-1">
-          <Paragraph variant="small" className="whitespace-nowrap">
-            This test will run in
-          </Paragraph>
-          <EnvironmentLabel environment={environment} className="text-sm" />
+      <ResizablePanelGroup orientation="horizontal" className={className}>
+        <ResizablePanel id="test-task-main" min="200px" default="80%">
+          <div className="flex h-full flex-col overflow-hidden bg-charcoal-900">
+            <TabContainer className="px-3 pt-2">
+              <TabButton
+                isActive={!tab || tab === "payload"}
+                layoutId="test-editor"
+                onClick={() => {
+                  replace({ tab: "payload" });
+                }}
+              >
+                Payload
+              </TabButton>
+
+              <TabButton
+                isActive={tab === "metadata"}
+                layoutId="test-editor"
+                onClick={() => {
+                  replace({ tab: "metadata" });
+                }}
+              >
+                Metadata
+              </TabButton>
+            </TabContainer>
+            <div className="flex-1 overflow-hidden">
+              <JSONEditor
+                defaultValue={defaultPayloadJson}
+                readOnly={false}
+                basicSetup
+                onChange={(v) => {
+                  currentPayloadJson.current = v;
+
+                  //deselect the example if it's been edited
+                  if (selectedCodeSampleId) {
+                    if (v !== selectedCodeSamplePayload) {
+                      setDefaultPayloadJson(v);
+                      setSelectedCodeSampleId(undefined);
+                    }
+                  }
+                }}
+                height="100%"
+                autoFocus={!tab || tab === "payload"}
+                className={cn("h-full overflow-auto", tab === "metadata" && "hidden")}
+              />
+              <JSONEditor
+                defaultValue={defaultMetadataJson}
+                readOnly={false}
+                basicSetup
+                onChange={(v) => {
+                  currentMetadataJson.current = v;
+
+                  //deselect the example if it's been edited
+                  if (selectedCodeSampleId) {
+                    if (v !== selectedCodeSampleMetadata) {
+                      setDefaultMetadataJson(v);
+                      setSelectedCodeSampleId(undefined);
+                    }
+                  }
+                }}
+                height="100%"
+                autoFocus={tab === "metadata"}
+                placeholder=""
+                className={cn("h-full overflow-auto", tab !== "metadata" && "hidden")}
+              />
+            </div>
+          </div>
+        </ResizablePanel>
+        <ResizableHandle id="test-task-handle" />
+        <ResizablePanel id="test-task-inspector" min="285px">
+          <RecentPayloads
+            runs={runs}
+            selectedId={selectedCodeSampleId}
+            onSelected={(id) => {
+              const run = runs.find((r) => r.id === id);
+              if (!run) return;
+              setPayload(run.payload);
+              setMetadata(run.seedMetadata ?? "{}");
+              setSelectedCodeSampleId(id);
+            }}
+          />
+        </ResizablePanel>
+      </ResizablePanelGroup>
+      {footer ?? (
+        <div className="flex items-center justify-end gap-3 border-t border-grid-bright bg-background-dimmed p-2">
+          <div className="flex items-center gap-1">
+            <Paragraph variant="small" className="whitespace-nowrap">
+              This test will run in
+            </Paragraph>
+            <EnvironmentLabel environment={environment} className="text-sm" />
+          </div>
+          <Button
+            type="submit"
+            variant="primary/medium"
+            LeadingIcon={BeakerIcon}
+            shortcut={{ key: "enter", modifiers: ["mod"], enabledOnInputElements: true }}
+          >
+            Run test
+          </Button>
         </div>
-        <Button
-          type="submit"
-          variant="primary/medium"
-          LeadingIcon={BeakerIcon}
-          shortcut={{ key: "enter", modifiers: ["mod"], enabledOnInputElements: true }}
-        >
-          Run test
-        </Button>
-      </div>
+      )}
     </Form>
   );
 }
 
-function ScheduledTaskForm({
+export function ScheduledTaskForm({
   task,
   runs,
   possibleTimezones,
+  footer,
 }: {
   task: TestTask["task"];
   runs: ScheduledRun[];
   possibleTimezones: string[];
+  footer?: React.ReactNode;
 }) {
   const environment = useEnvironment();
   const lastSubmission = useActionData();
@@ -371,7 +431,7 @@ function ScheduledTaskForm({
         value={environment.id}
       />
       <ResizablePanelGroup orientation="horizontal">
-        <ResizablePanel id="test-task-main" min="100px" default="70%">
+        <ResizablePanel id="test-task-main" min="200px" default="80%">
           <div className="p-3">
             <Fieldset>
               <InputGroup>
@@ -467,7 +527,7 @@ function ScheduledTaskForm({
           </div>
         </ResizablePanel>
         <ResizableHandle id="test-task-handle" />
-        <ResizablePanel id="test-task-inspector" min="100px">
+        <ResizablePanel id="test-task-inspector" min="285px">
           <RecentPayloads
             runs={runs}
             selectedId={selectedCodeSampleId}
@@ -482,27 +542,29 @@ function ScheduledTaskForm({
           />
         </ResizablePanel>
       </ResizablePanelGroup>
-      <div className="flex items-center justify-end gap-2 border-t border-grid-bright bg-background-dimmed p-2">
-        <div className="flex items-center gap-1">
-          <Paragraph variant="small" className="whitespace-nowrap">
-            This test will run in
-          </Paragraph>
-          <EnvironmentLabel environment={environment} className="text-sm" />
+      {footer ?? (
+        <div className="flex items-center justify-end gap-2 border-t border-grid-bright bg-background-dimmed p-2">
+          <div className="flex items-center gap-1">
+            <Paragraph variant="small" className="whitespace-nowrap">
+              This test will run in
+            </Paragraph>
+            <EnvironmentLabel environment={environment} className="text-sm" />
+          </div>
+          <Button
+            type="submit"
+            variant="primary/small"
+            LeadingIcon={BeakerIcon}
+            shortcut={{ key: "enter", modifiers: ["mod"], enabledOnInputElements: true }}
+          >
+            Run test
+          </Button>
         </div>
-        <Button
-          type="submit"
-          variant="primary/small"
-          LeadingIcon={BeakerIcon}
-          shortcut={{ key: "enter", modifiers: ["mod"], enabledOnInputElements: true }}
-        >
-          Run test
-        </Button>
-      </div>
+      )}
     </Form>
   );
 }
 
-export function RecentPayloads({
+function RecentPayloads({
   runs,
   selectedId,
   onSelected,
@@ -528,7 +590,7 @@ export function RecentPayloads({
           </Callout>
         </div>
       ) : (
-        <div className="flex flex-col divide-y divide-charcoal-750 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+        <div className="flex flex-col divide-y divide-charcoal-750 overflow-y-auto border-b border-grid-dimmed scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
           {runs.map((run) => (
             <button
               key={run.id}
@@ -553,88 +615,5 @@ export function RecentPayloads({
         </div>
       )}
     </div>
-  );
-}
-
-export function TestTaskEditorPanel({
-  tab,
-  onTabChange,
-  payloadJson,
-  onPayloadChange,
-  metadataJson,
-  onMetadataChange,
-  selectedCodeSampleId,
-  runs,
-  onRecentPayloadSelect,
-}: {
-  tab: string | null | undefined;
-  onTabChange: (tab: string) => void;
-  payloadJson: string;
-  onPayloadChange: (v: string) => void;
-  metadataJson: string;
-  onMetadataChange: (v: string) => void;
-  selectedCodeSampleId?: string;
-  runs: {
-    id: string;
-    payload: string;
-    seedMetadata?: string;
-    createdAt: Date;
-    number: number;
-    status: any;
-  }[];
-  onRecentPayloadSelect: (id: string) => void;
-}) {
-  return (
-    <ResizablePanelGroup orientation="horizontal">
-      <ResizablePanel id="test-task-main" min="100px" default="60%">
-        <div className="flex h-full flex-col overflow-hidden bg-charcoal-900">
-          <TabContainer className="px-3 pt-2">
-            <TabButton
-              isActive={!tab || tab === "payload"}
-              layoutId="test-editor"
-              onClick={() => onTabChange("payload")}
-            >
-              Payload
-            </TabButton>
-            <TabButton
-              isActive={tab === "metadata"}
-              layoutId="test-editor"
-              onClick={() => onTabChange("metadata")}
-            >
-              Metadata
-            </TabButton>
-          </TabContainer>
-          <div className="flex-1 overflow-hidden">
-            <JSONEditor
-              defaultValue={payloadJson}
-              readOnly={false}
-              basicSetup
-              onChange={onPayloadChange}
-              height="100%"
-              autoFocus={!tab || tab === "payload"}
-              className={cn("h-full overflow-auto", tab === "metadata" && "hidden")}
-            />
-            <JSONEditor
-              defaultValue={metadataJson}
-              readOnly={false}
-              basicSetup
-              onChange={onMetadataChange}
-              height="100%"
-              autoFocus={tab === "metadata"}
-              placeholder=""
-              className={cn("h-full overflow-auto", tab !== "metadata" && "hidden")}
-            />
-          </div>
-        </div>
-      </ResizablePanel>
-      <ResizableHandle id="test-task-handle" />
-      <ResizablePanel id="test-task-inspector" min="100px">
-        <RecentPayloads
-          runs={runs}
-          selectedId={selectedCodeSampleId}
-          onSelected={onRecentPayloadSelect}
-        />
-      </ResizablePanel>
-    </ResizablePanelGroup>
   );
 }
