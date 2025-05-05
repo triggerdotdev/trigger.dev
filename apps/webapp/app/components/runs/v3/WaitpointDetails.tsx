@@ -7,7 +7,11 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { type WaitpointDetail } from "~/presenters/v3/WaitpointPresenter.server";
 import { ForceTimeout } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.waitpoints.$waitpointFriendlyId.complete/route";
-import { v3WaitpointTokenPath, v3WaitpointTokensPath } from "~/utils/pathBuilder";
+import {
+  v3WaitpointHttpCallbackPath,
+  v3WaitpointTokenPath,
+  v3WaitpointTokensPath,
+} from "~/utils/pathBuilder";
 import { PacketDisplay } from "./PacketDisplay";
 import { WaitpointStatusCombo } from "./WaitpointStatus";
 import { RunTag } from "./RunTag";
@@ -41,9 +45,15 @@ export function WaitpointDetailTable({
         <Property.Value className="whitespace-pre-wrap">
           {linkToList ? (
             <TextLink
-              to={v3WaitpointTokenPath(organization, project, environment, waitpoint, {
-                id: waitpoint.id,
-              })}
+              to={
+                waitpoint.resolver === "TOKEN"
+                  ? v3WaitpointTokenPath(organization, project, environment, waitpoint, {
+                      id: waitpoint.id,
+                    })
+                  : v3WaitpointHttpCallbackPath(organization, project, environment, waitpoint, {
+                      id: waitpoint.id,
+                    })
+              }
             >
               {waitpoint.id}
             </TextLink>

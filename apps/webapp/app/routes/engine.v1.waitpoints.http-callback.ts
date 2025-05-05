@@ -10,6 +10,7 @@ import {
   ApiWaitpointListPresenter,
   ApiWaitpointListSearchParams,
 } from "~/presenters/v3/ApiWaitpointListPresenter.server";
+import { generateWaitpointCallbackUrl } from "~/presenters/v3/WaitpointPresenter.server";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import {
   createActionApiRoute,
@@ -83,11 +84,7 @@ const { action } = createActionApiRoute(
       return json<CreateWaitpointHttpCallbackResponseBody>(
         {
           id: WaitpointId.toFriendlyId(result.waitpoint.id),
-          url: `${
-            env.API_ORIGIN ?? env.APP_ORIGIN
-          }/api/v1/waitpoints/http-callback/${WaitpointId.toFriendlyId(
-            result.waitpoint.id
-          )}/callback`,
+          url: generateWaitpointCallbackUrl(result.waitpoint.id),
           isCached: result.isCached,
         },
         { status: 200 }

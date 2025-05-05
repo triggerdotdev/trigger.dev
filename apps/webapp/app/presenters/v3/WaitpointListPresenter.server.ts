@@ -12,6 +12,7 @@ import { BasePresenter } from "./basePresenter.server";
 import { type WaitpointSearchParams } from "~/components/runs/v3/WaitpointTokenFilters";
 import { determineEngineVersion } from "~/v3/engineVersion.server";
 import { type WaitpointTokenStatus, type WaitpointTokenItem } from "@trigger.dev/core/v3";
+import { generateWaitpointCallbackUrl } from "./WaitpointPresenter.server";
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -42,7 +43,7 @@ export type WaitpointListOptions = {
 type Result =
   | {
       success: true;
-      tokens: WaitpointTokenItem[];
+      tokens: (WaitpointTokenItem & { callbackUrl: string })[];
       pagination: {
         next: string | undefined;
         previous: string | undefined;
@@ -266,6 +267,7 @@ export class WaitpointListPresenter extends BasePresenter {
       success: true,
       tokens: tokensToReturn.map((token) => ({
         id: token.friendlyId,
+        callbackUrl: generateWaitpointCallbackUrl(token.id),
         status: waitpointStatusToApiStatus(token.status, token.outputIsError),
         completedAt: token.completedAt ?? undefined,
         timeoutAt: token.completedAfter ?? undefined,

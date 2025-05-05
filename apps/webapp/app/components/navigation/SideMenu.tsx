@@ -54,6 +54,7 @@ import {
   v3SchedulesPath,
   v3TestPath,
   v3UsagePath,
+  v3WaitpointHttpCallbacksPath,
   v3WaitpointTokensPath,
 } from "~/utils/pathBuilder";
 import { useKapaWidget } from "../../hooks/useKapaWidget";
@@ -80,6 +81,7 @@ import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
 import { SideMenuSection } from "./SideMenuSection";
+import { HttpCallbackIcon } from "~/assets/icons/HttpCallbackIcon";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 export type SideMenuProject = Pick<
@@ -244,6 +246,12 @@ export function SideMenu({
               icon={WaitpointTokenIcon}
               activeIconColor="text-sky-500"
               to={v3WaitpointTokensPath(organization, project, environment)}
+            />
+            <SideMenuItem
+              name="HTTP callbacks"
+              icon={HttpCallbackIcon}
+              activeIconColor="text-teal-500"
+              to={v3WaitpointHttpCallbacksPath(organization, project, environment)}
             />
           </SideMenuSection>
 
