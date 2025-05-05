@@ -3,7 +3,7 @@ import { Outlet, useParams, type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
-import { NoWaitpointTokens } from "~/components/BlankStatePanels";
+import { NoHttpCallbacks } from "~/components/BlankStatePanels";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { ListPagination } from "~/components/ListPagination";
 import { LinkButton } from "~/components/primitives/Buttons";
@@ -132,7 +132,7 @@ export default function Page() {
       <PageBody scrollable={false}>
         {!hasAnyTokens ? (
           <MainCenteredContainer className="max-w-md">
-            <NoWaitpointTokens />
+            <NoHttpCallbacks />
           </MainCenteredContainer>
         ) : (
           <ResizablePanelGroup orientation="horizontal" className="max-h-full">
