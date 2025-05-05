@@ -598,7 +598,12 @@ function RecentPayloads({
               onClick={(e) => {
                 onSelected(run.id);
               }}
-              className="flex items-center gap-4 py-2 pl-4 pr-6 transition hover:bg-charcoal-800"
+              className={cn(
+                "group flex items-center gap-4 py-2 pl-4 pr-6 transition",
+                run.id === selectedId
+                  ? "bg-indigo-500/5 hover:bg-indigo-500/10"
+                  : "hover:bg-charcoal-800"
+              )}
             >
               <RadioButtonCircle checked={run.id === selectedId} />
               <div className="flex flex-col items-start">
