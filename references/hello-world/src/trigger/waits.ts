@@ -158,18 +158,5 @@ export const waitHttpCallback = task({
     } else {
       logger.log("Wait for HTTP callback completed", result);
     }
-
-    const result2 = await wait.forHttpCallbackWithSchema(
-      z.object({ bar: z.string() }),
-      async (url) => {
-        logger.log(`Wait for HTTP callback ${url}`);
-      }
-    );
-
-    if (!result2.ok) {
-      logger.log("Wait for HTTP callback failed", { error: result2.error });
-    } else {
-      logger.log("Wait for HTTP callback completed", result2);
-    }
   },
 });
