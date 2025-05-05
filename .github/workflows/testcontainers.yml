@@ -14,6 +14,12 @@ jobs:
       matrix:
         run: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     steps:
+      - name: 🔧 Disable IPv6
+        run: |
+          sudo sysctl -w net.ipv6.conf.all.disable_ipv6=1
+          sudo sysctl -w net.ipv6.conf.default.disable_ipv6=1
+          sudo sysctl -w net.ipv6.conf.lo.disable_ipv6=1
+
       - name: 🔧 Configure docker address pool
         run: |
           CONFIG='{
@@ -30,7 +36,9 @@ jobs:
           }'
           mkdir -p /etc/docker
           echo "$CONFIG" | sudo tee /etc/docker/daemon.json
-          sudo systemctl restart docker
+
+      - name: 🔧 Restart docker
+        run: sudo systemctl restart docker
 
       - name: ⬇️ Checkout repo
         uses: actions/checkout@v4
