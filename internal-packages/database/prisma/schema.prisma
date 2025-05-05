@@ -2100,6 +2100,9 @@ model Waitpoint {
   type   WaitpointType
   status WaitpointStatus @default(PENDING)
 
+  /// This is what will resolve the waitpoint, used to filter waitpoints in the dashboard
+  resolver WaitpointResolver @default(ENGINE)
+
   completedAt DateTime?
 
   /// If it's an Event type waitpoint, this is the event. It can also be provided for the DATETIME type
@@ -2150,7 +2153,7 @@ model Waitpoint {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  /// Denormized column that holds the raw tags
+  /// Denormalized column that holds the raw tags
   tags String[]
 
   /// Quickly find an idempotent waitpoint
@@ -2162,6 +2165,8 @@ model Waitpoint {
   @@index([environmentId, type, createdAt(sort: Desc)])
   /// Status filtering
   @@index([environmentId, type, status])
+  /// Dashboard filtering
+  @@index([environmentId, resolver, createdAt(sort: Desc)])
 }
 
 enum WaitpointType {
@@ -2174,6 +2179,15 @@ enum WaitpointType {
 enum WaitpointStatus {
   PENDING
   COMPLETED
+}
+
+enum WaitpointResolver {
+  /// The engine itself will resolve the waitpoint
+  ENGINE
+  /// A token will resolve the waitpoint, i.e. the user completes a token
+  TOKEN
+  /// A HTTP callback will resolve the waitpoint, i.e. the user uses our waitForHttpCallback function
+  HTTP_CALLBACK
 }
 
 model TaskRunWaitpoint {
