@@ -2163,8 +2163,6 @@ model Waitpoint {
   /// Used on the Waitpoint dashboard pages
   /// Time period filtering
   @@index([environmentId, type, createdAt(sort: Desc)])
-  /// Status filtering
-  @@index([environmentId, type, status])
   /// Dashboard filtering
   @@index([environmentId, resolver, createdAt(sort: Desc)])
   @@index([environmentId, resolver, status, createdAt(sort: Desc)])
