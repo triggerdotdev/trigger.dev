@@ -165,7 +165,7 @@ export class WaitpointTokenListPresenter extends BasePresenter {
       ${sqlDatabaseSchema}."Waitpoint" w
     WHERE
       w."environmentId" = ${environment.id}
-      AND w.type = 'MANUAL'
+      AND w.resolver = 'TOKEN'
       -- cursor
       ${
         cursor
@@ -250,7 +250,7 @@ export class WaitpointTokenListPresenter extends BasePresenter {
       const firstToken = await this._replica.waitpoint.findFirst({
         where: {
           environmentId: environment.id,
-          type: "MANUAL",
+          resolver: "TOKEN",
         },
       });
 
