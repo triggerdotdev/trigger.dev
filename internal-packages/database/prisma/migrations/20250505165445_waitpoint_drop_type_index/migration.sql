@@ -1,0 +1,1 @@
+DROP INDEX CONCURRENTLY IF EXISTS "Waitpoint_environmentId_type_createdAt_idx";
