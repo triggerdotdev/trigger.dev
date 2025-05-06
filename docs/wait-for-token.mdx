@@ -270,6 +270,18 @@ The `forToken` function returns a result object with the following properties:
   timeout error.
 </ParamField>
 
+### unwrap()
+
+We provide a handy `.unwrap()` method that will throw an error if the result is not ok. This means your happy path is a lot cleaner.
+
+```ts
+const approval = await wait.forToken<ApprovalToken>(tokenId).unwrap();
+// unwrap means an error will throw if the waitpoint times out 👆
+
+// This is the actual data you sent to the token now, not a result object
+console.log("Approval", approval);
+```
+
 ### Example
 
 ```ts
