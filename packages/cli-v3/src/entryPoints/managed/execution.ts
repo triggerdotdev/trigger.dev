@@ -448,13 +448,13 @@ export class RunExecution {
       snapshotFriendlyId: this.snapshotManager.snapshotId,
       logger: this.logger,
       snapshotPollIntervalSeconds: this.env.TRIGGER_SNAPSHOT_POLL_INTERVAL_SECONDS,
-      onPoll: this.fetchAndEnqueueSnapshotChange.bind(this),
+      onPoll: this.fetchAndProcessSnapshotChanges.bind(this),
     }).start();
 
     this.notifier = new RunNotifier({
       runFriendlyId: this.runFriendlyId,
       supervisorSocket: this.supervisorSocket,
-      onNotify: this.fetchAndEnqueueSnapshotChange.bind(this),
+      onNotify: this.fetchAndProcessSnapshotChanges.bind(this),
       logger: this.logger,
     }).start();
 
@@ -1081,29 +1081,71 @@ export class RunExecution {
    * Fetches the latest execution data and enqueues snapshot changes. Used by both poller and notification handlers.
    * @param source string - where this call originated (e.g. 'poller', 'notification')
    */
-  public async fetchAndEnqueueSnapshotChange(source: string): Promise<void> {
+  public async fetchAndProcessSnapshotChanges(source: string): Promise<void> {
     if (!this.runFriendlyId) {
-      this.sendDebugLog(`fetchAndEnqueueSnapshotChange: missing runFriendlyId`, { source });
+      this.sendDebugLog(`fetchAndProcessSnapshotChanges: missing runFriendlyId`, { source });
       return;
     }
 
-    const latestSnapshot = await this.httpClient.getRunExecutionData(this.runFriendlyId);
+    // Use the last processed snapshot as the since parameter
+    const sinceSnapshotId = this.currentSnapshotFriendlyId;
 
-    if (!latestSnapshot.success) {
-      this.sendDebugLog(`fetchAndEnqueueSnapshotChange: failed to get latest snapshot data`, {
+    if (!sinceSnapshotId) {
+      this.sendDebugLog(`fetchAndProcessSnapshotChanges: missing sinceSnapshotId`, { source });
+      return;
+    }
+
+    const response = await this.httpClient.getSnapshotsSince(this.runFriendlyId, sinceSnapshotId);
+
+    if (!response.success) {
+      this.sendDebugLog(`fetchAndProcessSnapshotChanges: failed to get snapshots since`, {
         source,
-        error: latestSnapshot.error,
+        error: response.error,
       });
       return;
     }
 
-    const [error] = await tryCatch(
-      this.enqueueSnapshotChangeAndWait(latestSnapshot.data.execution)
+    const { executions } = response.data;
+
+    if (!executions.length) {
+      this.sendDebugLog(`fetchAndProcessSnapshotChanges: no new snapshots`, { source });
+      return;
+    }
+
+    // Only act on the last snapshot
+    const lastSnapshot = executions[executions.length - 1];
+
+    if (!lastSnapshot) {
+      this.sendDebugLog(`fetchAndProcessSnapshotChanges: no last snapshot`, { source });
+      return;
+    }
+
+    const previousSnapshots = executions.slice(0, -1);
+
+    // If any previous snapshot is QUEUED or SUSPENDED, deprecate this worker
+    const deprecatedStatus: TaskRunExecutionStatus[] = ["QUEUED", "SUSPENDED"];
+    const foundDeprecated = previousSnapshots.find((snap) =>
+      deprecatedStatus.includes(snap.snapshot.executionStatus)
     );
+
+    if (foundDeprecated) {
+      this.sendDebugLog(
+        `fetchAndProcessSnapshotChanges: found deprecation marker in previous snapshots, exiting`,
+        {
+          source,
+          status: foundDeprecated.snapshot.executionStatus,
+          snapshotId: foundDeprecated.snapshot.friendlyId,
+        }
+      );
+      await this.exitTaskRunProcessWithoutFailingRun({ flush: false });
+      return;
+    }
+
+    const [error] = await tryCatch(this.enqueueSnapshotChangeAndWait(lastSnapshot));
 
     if (error) {
       this.sendDebugLog(
-        `fetchAndEnqueueSnapshotChange: failed to enqueue and process snapshot change`,
+        `fetchAndProcessSnapshotChanges: failed to enqueue and process snapshot change`,
         {
           source,
           error: error.message,
