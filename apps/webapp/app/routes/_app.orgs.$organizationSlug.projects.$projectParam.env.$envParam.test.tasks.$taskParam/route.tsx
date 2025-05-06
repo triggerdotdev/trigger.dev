@@ -55,10 +55,8 @@ import { OutOfEntitlementError } from "~/v3/services/triggerTask.server";
 import { TestTaskData } from "~/v3/testTask";
 
 //TODO:
-// Test page to default to using the most recent payload.
-// 1. Pass the footer into both standard and scheduled forms just like the ReplayRunDialog so it's consistent.
-// 2. Get rid of the extra form in the ReplayRunDialog.
-// 3. If the editablePayload is false on ReplayRunDialog, show a callout error explaining that the payload is not editable.
+// 1. Get rid of the extra form in the ReplayRunDialog.
+// 2. If the editablePayload is false on ReplayRunDialog, show a callout error explaining that the payload is not editable.
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -162,14 +160,20 @@ export const action: ActionFunction = async ({ request, params }) => {
 
 export default function Page() {
   const result = useTypedLoaderData<typeof loader>();
-
+  const environment = useEnvironment();
   if (!result.foundTask) {
     return <div></div>;
   }
 
   switch (result.task.triggerSource) {
     case "STANDARD": {
-      return <StandardTaskForm task={result.task.task} runs={result.task.runs} />;
+      return (
+        <StandardTaskForm
+          task={result.task.task}
+          runs={result.task.runs}
+          footer={<TestTaskFormFooter environment={environment} />}
+        />
+      );
     }
     case "SCHEDULED": {
       return (
@@ -177,6 +181,7 @@ export default function Page() {
           task={result.task.task}
           runs={result.task.runs}
           possibleTimezones={result.task.possibleTimezones}
+          footer={<TestTaskFormFooter environment={environment} />}
         />
       );
     }
@@ -344,24 +349,7 @@ export function StandardTaskForm({ task, runs, footer, className }: StandardTask
           />
         </ResizablePanel>
       </ResizablePanelGroup>
-      {footer ?? (
-        <div className="flex items-center justify-end gap-3 border-t border-grid-bright bg-background-dimmed p-2">
-          <div className="flex items-center gap-1">
-            <Paragraph variant="small" className="whitespace-nowrap">
-              This test will run in
-            </Paragraph>
-            <EnvironmentLabel environment={environment} className="text-sm" />
-          </div>
-          <Button
-            type="submit"
-            variant="primary/medium"
-            LeadingIcon={BeakerIcon}
-            shortcut={{ key: "enter", modifiers: ["mod"], enabledOnInputElements: true }}
-          >
-            Run test
-          </Button>
-        </div>
-      )}
+      {footer}
     </Form>
   );
 }
@@ -371,11 +359,13 @@ export function ScheduledTaskForm({
   runs,
   possibleTimezones,
   footer,
+  className,
 }: {
   task: TestTask["task"];
   runs: ScheduledRun[];
   possibleTimezones: string[];
   footer?: React.ReactNode;
+  className?: string;
 }) {
   const environment = useEnvironment();
   const lastSubmission = useActionData();
@@ -436,7 +426,7 @@ export function ScheduledTaskForm({
         {...conform.input(environmentId, { type: "hidden" })}
         value={environment.id}
       />
-      <ResizablePanelGroup orientation="horizontal">
+      <ResizablePanelGroup orientation="horizontal" className={className}>
         <ResizablePanel id="test-task-main" min="200px" default="80%">
           <div className="p-3">
             <Fieldset>
@@ -548,24 +538,7 @@ export function ScheduledTaskForm({
           />
         </ResizablePanel>
       </ResizablePanelGroup>
-      {footer ?? (
-        <div className="flex items-center justify-end gap-2 border-t border-grid-bright bg-background-dimmed p-2">
-          <div className="flex items-center gap-1">
-            <Paragraph variant="small" className="whitespace-nowrap">
-              This test will run in
-            </Paragraph>
-            <EnvironmentLabel environment={environment} className="text-sm" />
-          </div>
-          <Button
-            type="submit"
-            variant="primary/small"
-            LeadingIcon={BeakerIcon}
-            shortcut={{ key: "enter", modifiers: ["mod"], enabledOnInputElements: true }}
-          >
-            Run test
-          </Button>
-        </div>
-      )}
+      {footer}
     </Form>
   );
 }
@@ -625,6 +598,27 @@ function RecentPayloads({
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function TestTaskFormFooter({ environment }: { environment: any }) {
+  return (
+    <div className="flex items-center justify-end gap-3 border-t border-grid-bright bg-background-dimmed p-2">
+      <div className="flex items-center gap-1">
+        <Paragraph variant="small" className="whitespace-nowrap">
+          This test will run in
+        </Paragraph>
+        <EnvironmentLabel environment={environment} className="text-sm" />
+      </div>
+      <Button
+        type="submit"
+        variant="primary/medium"
+        LeadingIcon={BeakerIcon}
+        shortcut={{ key: "enter", modifiers: ["mod"], enabledOnInputElements: true }}
+      >
+        Run test
+      </Button>
     </div>
   );
 }
