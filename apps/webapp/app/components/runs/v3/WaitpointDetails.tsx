@@ -17,6 +17,9 @@ import { WaitpointStatusCombo } from "./WaitpointStatus";
 import { RunTag } from "./RunTag";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
+import { WaitpointResolver } from "@trigger.dev/database";
+import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
+import { HttpCallbackIcon } from "~/assets/icons/HttpCallbackIcon";
 
 export function WaitpointDetailTable({
   waitpoint,
@@ -60,6 +63,12 @@ export function WaitpointDetailTable({
           ) : (
             waitpoint.id
           )}
+        </Property.Value>
+      </Property.Item>
+      <Property.Item>
+        <Property.Label>Type</Property.Label>
+        <Property.Value>
+          <WaitpointResolverCombo resolver={waitpoint.resolver} />
         </Property.Value>
       </Property.Item>
       {waitpoint.callbackUrl && (
@@ -147,4 +156,23 @@ export function WaitpointDetailTable({
       )}
     </Property.Table>
   );
+}
+
+export function WaitpointResolverCombo({ resolver }: { resolver: WaitpointResolver }) {
+  switch (resolver) {
+    case "TOKEN":
+      return (
+        <div className="flex items-center gap-1">
+          <WaitpointTokenIcon className="size-4" />
+          <span>Token</span>
+        </div>
+      );
+    case "HTTP_CALLBACK":
+      return (
+        <div className="flex items-center gap-1">
+          <HttpCallbackIcon className="size-4" />
+          <span>HTTP Callback</span>
+        </div>
+      );
+  }
 }

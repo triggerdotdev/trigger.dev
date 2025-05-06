@@ -1,5 +1,5 @@
-import { logger, wait, task, retry, idempotencyKeys, auth } from "@trigger.dev/sdk/v3";
-import { z } from "zod";
+import { auth, idempotencyKeys, logger, retry, task, wait } from "@trigger.dev/sdk/v3";
+import Replicate, { Prediction } from "replicate";
 type Token = {
   status: "approved" | "pending" | "rejected";
 };
@@ -143,7 +143,43 @@ export const waitForDuration = task({
 
 export const waitHttpCallback = task({
   id: "wait-http-callback",
+  retry: {
+    maxAttempts: 1,
+  },
   run: async () => {
+    if (process.env.REPLICATE_API_KEY) {
+      const replicate = new Replicate({
+        auth: process.env.REPLICATE_API_KEY,
+      });
+
+      const prediction = await wait.forHttpCallback<Prediction>(
+        async (url) => {
+          //pass the provided URL to Replicate's webhook
+          await replicate.predictions.create({
+            version: "27b93a2413e7f36cd83da926f3656280b2931564ff050bf9575f1fdf9bcd7478",
+            input: {
+              prompt: "A painting of a cat by Any Warhol",
+            },
+            // pass the provided URL to Replicate's webhook, so they can "callback"
+            webhook: url,
+            webhook_events_filter: ["completed"],
+          });
+        },
+        {
+          timeout: "10m",
+        }
+      );
+
+      if (!prediction.ok) {
+        throw new Error("Failed to create prediction");
+      }
+
+      logger.log("Prediction", prediction);
+
+      const imageUrl = prediction.output.output;
+      logger.log("Image URL", imageUrl);
+    }
+
     const result = await wait.forHttpCallback<{ foo: string }>(
       async (url) => {
         logger.log(`Wait for HTTP callback ${url}`);
