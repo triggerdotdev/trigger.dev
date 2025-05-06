@@ -16,6 +16,7 @@ import { OutOfEntitlementError, TriggerTaskService } from "./triggerTask.server"
 type OverrideOptions = {
   environmentId?: string;
   payload?: string;
+  metadata?: unknown;
 };
 
 export class ReplayTaskRunService extends BaseService {
@@ -65,7 +66,9 @@ export class ReplayTaskRunService extends BaseService {
       payloadPacketType: payloadPacket.dataType,
     });
 
-    const metadata = existingTaskRun.seedMetadata
+    const metadata = overrideOptions?.metadata
+      ? overrideOptions.metadata
+      : existingTaskRun.seedMetadata
       ? await parsePacket({
           data: existingTaskRun.seedMetadata,
           dataType: existingTaskRun.seedMetadataType,

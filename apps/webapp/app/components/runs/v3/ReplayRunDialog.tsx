@@ -66,93 +66,50 @@ function ReplayForm(
   props: UseDataFunctionReturn<typeof loader> & { failedRedirect: string; runFriendlyId: string }
 ) {
   const navigation = useNavigation();
-  const submit = useSubmit();
   const formAction = `/resources/taskruns/${props.runFriendlyId}/replay`;
-
-  // State for managing the payload and selection
-  const [currentPayload, setCurrentPayload] = useState(props.payload);
-
-  const editablePayload =
-    props.payloadType === "application/json" || props.payloadType === "application/super+json";
+  const isSubmitting = navigation.formAction === formAction;
 
   const possibleTimezones = "possibleTimezones" in props ? props.possibleTimezones : [];
 
-  const submitForm = useCallback(
-    (e: React.FormEvent<HTMLFormElement>) => {
-      const formData = new FormData(e.currentTarget);
-      const data: Record<string, string> = {
-        environment: formData.get("environment") as string,
-        failedRedirect: formData.get("failedRedirect") as string,
-      };
-
-      if (editablePayload) {
-        data.payload = currentPayload;
-      }
-
-      submit(data, {
-        action: formAction,
-        method: "post",
-      });
-      e.preventDefault();
-    },
-    [currentPayload, editablePayload, formAction, submit]
-  );
-
   return (
-    <Form
-      action={formAction}
-      method="post"
-      onSubmit={(e) => submitForm(e)}
-      className="flex h-full flex-col overflow-hidden pt-2"
-    >
-      {editablePayload ? (
-        <>
-          <Paragraph variant="small" className="py-3.5">
-            Replaying will create a new run using the same or modified payload, executing against
-            the latest version in your selected environment.
-          </Paragraph>
-          <div className="flex-1">
-            {props.taskType === "STANDARD" ? (
-              <StandardTaskForm
-                task={props.task}
-                runs={props.runs as StandardRun[]}
-                footer={
-                  <ReplayFormFooter
-                    environment={props.environment}
-                    environments={props.environments}
-                    isSubmitting={navigation.formAction === formAction}
-                    formAction={formAction}
-                  />
-                }
-                className="rounded-l-lg border-y border-l border-grid-dimmed"
+    <>
+      <Paragraph variant="small" className="mt-3 py-3.5">
+        Replaying will create a new run using the same or modified payload, executing against the
+        latest version in your selected environment.
+      </Paragraph>
+      <div className="flex-1">
+        {props.taskType === "STANDARD" ? (
+          <StandardTaskForm
+            task={props.task}
+            runs={props.runs as StandardRun[]}
+            formAction={formAction}
+            footer={
+              <ReplayFormFooter
+                environment={props.environment}
+                environments={props.environments}
+                isSubmitting={isSubmitting}
               />
-            ) : props.taskType === "SCHEDULED" ? (
-              <ScheduledTaskForm
-                task={props.task}
-                runs={props.runs as ScheduledRun[]}
-                possibleTimezones={possibleTimezones}
-                footer={
-                  <ReplayFormFooter
-                    environment={props.environment}
-                    environments={props.environments}
-                    isSubmitting={navigation.formAction === formAction}
-                    formAction={formAction}
-                  />
-                }
-                className="rounded-l-lg border-y border-l border-grid-dimmed"
+            }
+            className="rounded-l-lg border-y border-l border-grid-dimmed"
+          />
+        ) : props.taskType === "SCHEDULED" ? (
+          <ScheduledTaskForm
+            task={props.task}
+            runs={props.runs as ScheduledRun[]}
+            possibleTimezones={possibleTimezones}
+            formAction={formAction}
+            footer={
+              <ReplayFormFooter
+                environment={props.environment}
+                environments={props.environments}
+                isSubmitting={isSubmitting}
               />
-            ) : null}
-          </div>
-        </>
-      ) : (
-        <div className="grid h-full place-items-center">
-          <Callout variant="error" className="mt-4 w-fit">
-            <Paragraph>This payload is not editable.</Paragraph>
-          </Callout>
-        </div>
-      )}
-      <input type="hidden" name="failedRedirect" value={props.failedRedirect} />
-    </Form>
+            }
+            className="rounded-l-lg border-y border-l border-grid-dimmed"
+          />
+        ) : null}
+      </div>
+    </>
   );
 }
 
@@ -167,12 +124,10 @@ function ReplayFormFooter({
   environment,
   environments,
   isSubmitting,
-  formAction,
 }: {
   environment: DisplayableEnvironment;
   environments: DisplayableEnvironment[];
   isSubmitting: boolean;
-  formAction: string;
 }) {
   return (
     <div className="flex items-center justify-between gap-2 pr-3 pt-3.5">
@@ -184,7 +139,7 @@ function ReplayFormFooter({
           <Label>Replay this run in:</Label>
           <Select
             id="environment"
-            name="environment"
+            name="environmentId"
             placeholder="Select an environment"
             defaultValue={environment.id}
             items={environments}

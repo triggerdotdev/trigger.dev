@@ -54,9 +54,6 @@ import { TestTaskService } from "~/v3/services/testTask.server";
 import { OutOfEntitlementError } from "~/v3/services/triggerTask.server";
 import { TestTaskData } from "~/v3/testTask";
 
-//TODO:
-// 1. Get rid of the extra form in the ReplayRunDialog.
-
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const { projectParam, organizationSlug, envParam, taskParam } = v3TaskParamsSchema.parse(params);
@@ -194,9 +191,18 @@ type StandardTaskFormProps = {
   runs: StandardRun[];
   footer?: React.ReactNode;
   className?: string;
+  formAction?: string;
+  failedRedirect?: string;
 };
 
-export function StandardTaskForm({ task, runs, footer, className }: StandardTaskFormProps) {
+export function StandardTaskForm({
+  task,
+  runs,
+  footer,
+  className,
+  formAction,
+  failedRedirect,
+}: StandardTaskFormProps) {
   const environment = useEnvironment();
   const { value, replace } = useSearchParams();
   const tab = value("tab");
@@ -238,15 +244,16 @@ export function StandardTaskForm({ task, runs, footer, className }: StandardTask
           metadata: currentMetadataJson.current,
           taskIdentifier: task.taskIdentifier,
           environmentId: environment.id,
+          failedRedirect: failedRedirect || "",
         },
         {
-          action: "",
+          action: formAction,
           method: "post",
         }
       );
       e.preventDefault();
     },
-    [currentPayloadJson, currentMetadataJson, task]
+    [currentPayloadJson, currentMetadataJson, task, environment, formAction, failedRedirect]
   );
 
   const [form, { environmentId, payload }] = useForm({
@@ -262,6 +269,7 @@ export function StandardTaskForm({ task, runs, footer, className }: StandardTask
     <Form
       className="grid h-full max-h-full grid-rows-[1fr_auto]"
       method="post"
+      action={formAction}
       {...form.props}
       onSubmit={(e) => submitForm(e)}
     >
@@ -359,12 +367,14 @@ export function ScheduledTaskForm({
   possibleTimezones,
   footer,
   className,
+  formAction,
 }: {
   task: TestTask["task"];
   runs: ScheduledRun[];
   possibleTimezones: string[];
   footer?: React.ReactNode;
   className?: string;
+  formAction?: string;
 }) {
   const environment = useEnvironment();
   const lastSubmission = useActionData();
@@ -409,7 +419,12 @@ export function ScheduledTaskForm({
   });
 
   return (
-    <Form className="grid h-full max-h-full grid-rows-[1fr_auto]" method="post" {...form.props}>
+    <Form
+      className="grid h-full max-h-full grid-rows-[1fr_auto]"
+      method="post"
+      action={formAction}
+      {...form.props}
+    >
       <input
         type="hidden"
         {...conform.input(triggerSource, { type: "hidden" })}

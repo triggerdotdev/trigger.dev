@@ -6,7 +6,11 @@ import { z } from "zod";
 import { $replica, prisma } from "~/db.server";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
-import { ScheduledRun, StandardRun } from "~/presenters/v3/TestTaskPresenter.server";
+import {
+  getScheduleTaskRunPayload,
+  type ScheduledRun,
+  type StandardRun,
+} from "~/presenters/v3/TestTaskPresenter.server";
 import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
 import { sortEnvironments } from "~/utils/environmentSort";
@@ -104,26 +108,19 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   const { project, ...runFields } = run;
 
   if (task.triggerSource === "SCHEDULED") {
-    const obj = JSON.parse(run.payload) as {
-      timestamp: string;
-      lastTimestamp?: string;
-      externalId?: string;
-      timezone: string;
-    };
+    const payload = await getScheduleTaskRunPayload(run);
+    if (!payload.success) {
+      throw new Error("Invalid payload");
+    }
+
     const shapedRun: ScheduledRun = {
       ...runFields,
-      payload: {
-        ...obj,
-        timestamp: new Date(obj.timestamp),
-        lastTimestamp: obj.lastTimestamp ? new Date(obj.lastTimestamp) : undefined,
-      },
+      payload: payload.data,
       seedMetadata: run.seedMetadata
         ? await prettyPrintPacket(run.seedMetadata, run.seedMetadataType)
         : undefined,
     };
     return typedjson({
-      payload: await prettyPrintPacket(run.payload, run.payloadType),
-      payloadType: run.payloadType,
       environment: displayableEnvironment(environment, userId),
       environments: sortEnvironments(
         run.project.environments.map((environment) => displayableEnvironment(environment, userId))
@@ -136,14 +133,12 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   } else {
     const shapedRun: StandardRun = {
       ...runFields,
-      payload: String(await prettyPrintPacket(run.payload, run.payloadType)),
+      payload: await prettyPrintPacket(run.payload, run.payloadType),
       seedMetadata: run.seedMetadata
         ? await prettyPrintPacket(run.seedMetadata, run.seedMetadataType)
         : undefined,
     };
     return typedjson({
-      payload: await prettyPrintPacket(run.payload, run.payloadType),
-      payloadType: run.payloadType,
       environment: displayableEnvironment(environment, userId),
       environments: sortEnvironments(
         run.project.environments.map((environment) => displayableEnvironment(environment, userId))
@@ -156,8 +151,26 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 }
 
 const FormSchema = z.object({
-  environment: z.string().optional(),
+  environmentId: z.string().optional(),
   payload: z.string().optional(),
+  metadata: z
+    .string()
+    .optional()
+    .transform((val, ctx) => {
+      if (!val) {
+        return {};
+      }
+
+      try {
+        return JSON.parse(val);
+      } catch {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Metadata must be a valid JSON string",
+        });
+        return z.NEVER;
+      }
+    }),
   failedRedirect: z.string(),
 });
 
@@ -198,8 +211,9 @@ export const action: ActionFunction = async ({ request, params }) => {
 
     const replayRunService = new ReplayTaskRunService();
     const newRun = await replayRunService.call(taskRun, {
-      environmentId: submission.value.environment,
+      environmentId: submission.value.environmentId,
       payload: submission.value.payload,
+      metadata: submission.value.metadata,
     });
 
     if (!newRun) {

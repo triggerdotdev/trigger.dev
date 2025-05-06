@@ -207,7 +207,7 @@ export class TestTaskPresenter {
   }
 }
 
-async function getScheduleTaskRunPayload(run: RawRun) {
+export async function getScheduleTaskRunPayload(run: Pick<RawRun, "payload" | "payloadType">) {
   const payload = await parsePacket({ data: run.payload, dataType: run.payloadType });
   if (!payload.timezone) {
     payload.timezone = "UTC";
