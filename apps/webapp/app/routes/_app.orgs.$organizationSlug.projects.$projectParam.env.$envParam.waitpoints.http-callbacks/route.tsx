@@ -49,7 +49,7 @@ import {
 export const meta: MetaFunction = () => {
   return [
     {
-      title: `Waitpoint tokens | Trigger.dev`,
+      title: `Waitpoint HTTP callbacks | Trigger.dev`,
     },
   ];
 };
