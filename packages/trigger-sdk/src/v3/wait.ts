@@ -580,7 +580,7 @@ export const wait = {
    * @param options - The options for the waitpoint token.
    * @returns The waitpoint token.
    */
-  forToken: async <T>(
+  forToken: <T>(
     /**
      * The token to wait for.
      * This can be a string token ID or an object with an `id` property.
@@ -599,76 +599,84 @@ export const wait = {
        */
       releaseConcurrency?: boolean;
     }
-  ): Promise<Prettify<WaitpointTokenTypedResult<T>>> => {
-    const ctx = taskContext.ctx;
+  ): ManualWaitpointPromise<T> => {
+    return new ManualWaitpointPromise<T>(async (resolve, reject) => {
+      try {
+        const ctx = taskContext.ctx;
 
-    if (!ctx) {
-      throw new Error("wait.forToken can only be used from inside a task.run()");
-    }
-
-    const apiClient = apiClientManager.clientOrThrow();
-
-    const tokenId = typeof token === "string" ? token : token.id;
-
-    return tracer.startActiveSpan(
-      `wait.forToken()`,
-      async (span) => {
-        const response = await apiClient.waitForWaitpointToken({
-          runFriendlyId: ctx.run.id,
-          waitpointFriendlyId: tokenId,
-          releaseConcurrency: options?.releaseConcurrency,
-        });
-
-        if (!response.success) {
-          throw new Error(`Failed to wait for wait token ${tokenId}`);
+        if (!ctx) {
+          throw new Error("wait.forToken can only be used from inside a task.run()");
         }
 
-        const result = await runtime.waitUntil(tokenId);
+        const apiClient = apiClientManager.clientOrThrow();
 
-        const data = result.output
-          ? await conditionallyImportAndParsePacket(
-              { data: result.output, dataType: result.outputType ?? "application/json" },
-              apiClient
-            )
-          : undefined;
+        const tokenId = typeof token === "string" ? token : token.id;
 
-        if (result.ok) {
-          return {
-            ok: result.ok,
-            output: data,
-          } as WaitpointTokenTypedResult<T>;
-        } else {
-          const error = new WaitpointTimeoutError(data.message);
+        const result = await tracer.startActiveSpan(
+          `wait.forToken()`,
+          async (span) => {
+            const response = await apiClient.waitForWaitpointToken({
+              runFriendlyId: ctx.run.id,
+              waitpointFriendlyId: tokenId,
+              releaseConcurrency: options?.releaseConcurrency,
+            });
 
-          span.recordException(error);
-          span.setStatus({
-            code: SpanStatusCode.ERROR,
-          });
+            if (!response.success) {
+              throw new Error(`Failed to wait for wait token ${tokenId}`);
+            }
 
-          return {
-            ok: result.ok,
-            error,
-          } as WaitpointTokenTypedResult<T>;
-        }
-      },
-      {
-        attributes: {
-          [SemanticInternalAttributes.STYLE_ICON]: "wait",
-          [SemanticInternalAttributes.ENTITY_TYPE]: "waitpoint",
-          [SemanticInternalAttributes.ENTITY_ID]: tokenId,
-          id: tokenId,
-          ...accessoryAttributes({
-            items: [
-              {
-                text: tokenId,
-                variant: "normal",
-              },
-            ],
-            style: "codepath",
-          }),
-        },
+            const result = await runtime.waitUntil(tokenId);
+
+            const data = result.output
+              ? await conditionallyImportAndParsePacket(
+                  { data: result.output, dataType: result.outputType ?? "application/json" },
+                  apiClient
+                )
+              : undefined;
+
+            if (result.ok) {
+              return {
+                ok: result.ok,
+                output: data,
+              } as WaitpointTokenTypedResult<T>;
+            } else {
+              const error = new WaitpointTimeoutError(data.message);
+
+              span.recordException(error);
+              span.setStatus({
+                code: SpanStatusCode.ERROR,
+              });
+
+              return {
+                ok: result.ok,
+                error,
+              } as WaitpointTokenTypedResult<T>;
+            }
+          },
+          {
+            attributes: {
+              [SemanticInternalAttributes.STYLE_ICON]: "wait",
+              [SemanticInternalAttributes.ENTITY_TYPE]: "waitpoint",
+              [SemanticInternalAttributes.ENTITY_ID]: tokenId,
+              id: tokenId,
+              ...accessoryAttributes({
+                items: [
+                  {
+                    text: tokenId,
+                    variant: "normal",
+                  },
+                ],
+                style: "codepath",
+              }),
+            },
+          }
+        );
+
+        resolve(result);
+      } catch (error) {
+        reject(error);
       }
-    );
+    });
   },
   /**
    * This allows you to start some work on another API (or one of your own services) 
