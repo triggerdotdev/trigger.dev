@@ -110,7 +110,7 @@ function ReplayForm(
             Replaying will create a new run using the same or modified payload, executing against
             the latest version in your selected environment.
           </Paragraph>
-          <div className="flex-1 rounded-tl-md border-t border-grid-dimmed">
+          <div className="flex-1">
             {props.taskType === "STANDARD" ? (
               <StandardTaskForm
                 task={props.task}
@@ -123,7 +123,7 @@ function ReplayForm(
                     formAction={formAction}
                   />
                 }
-                className="rounded-tl-md border-l border-grid-dimmed"
+                className="rounded-l-lg border-y border-l border-grid-dimmed"
               />
             ) : props.taskType === "SCHEDULED" ? (
               <ScheduledTaskForm
@@ -138,6 +138,7 @@ function ReplayForm(
                     formAction={formAction}
                   />
                 }
+                className="rounded-l-lg border-y border-l border-grid-dimmed"
               />
             ) : null}
           </div>
@@ -167,7 +168,7 @@ function ReplayFormFooter({
   formAction: string;
 }) {
   return (
-    <div className="flex items-center justify-between gap-2 border-t border-grid-dimmed pr-3 pt-3.5">
+    <div className="flex items-center justify-between gap-2 pr-3 pt-3.5">
       <DialogClose asChild>
         <Button variant="tertiary/medium">Cancel</Button>
       </DialogClose>
