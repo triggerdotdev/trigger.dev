@@ -47,7 +47,13 @@
               "errors-retrying",
               {
                 "group": "Wait",
-                "pages": ["wait", "wait-for", "wait-until", "wait-for-token"]
+                "pages": [
+                  "wait",
+                  "wait-for",
+                  "wait-until",
+                  "wait-for-token",
+                  "wait-for-http-callback"
+                ]
               },
               "queue-concurrency",
               "versioning",

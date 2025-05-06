@@ -1,0 +1,138 @@
+---
+title: "Wait for HTTP callback"
+description: "Pause runs until an HTTP callback is made to the provided URL."
+---
+
+import UpgradeToV4Note from "/snippets/upgrade-to-v4-note.mdx";
+
+The `wait.forHttpCallback()` function gives you a callback URL, and then pauses the run until that callback is hit. This is most commonly used with 3rd party APIs that take a long time and that accept a callback (or webhook) URL.
+
+When the callback URL is requested the run will continue where it left off with the body of the request as the output available for you to use.
+
+<UpgradeToV4Note />
+
+## Usage
+
+In this example we create an image using Replicate. Their API accepts a "webhook", which is a callback.
+
+```ts
+import { logger, task, wait } from "@trigger.dev/sdk";
+
+const replicate = new Replicate({
+  auth: process.env.REPLICATE_API_KEY,
+});
+
+export const replicate = task({
+  id: "replicate",
+  run: async () => {
+    // This will pause the run and give you a URL
+    const result = await wait.forHttpCallback<Prediction>(
+      async (url) => {
+        //   👆 This URL continues your run when hit with a POST request
+
+        // Make the call to Replicate, passing in the URL
+        await replicate.predictions.create({
+          version: "27b93a2413e7f36cd83da926f3656280b2931564ff050bf9575f1fdf9bcd7478",
+          input: {
+            prompt: "A painting of a cat by Any Warhol",
+          },
+          // Make sure to pass the callback URL
+          //       👇
+          webhook: url,
+          // We only want to call when it's completed
+          webhook_events_filter: ["completed"],
+        });
+      },
+      {
+        // We'll fail the waitpoint after 10m of inactivity
+        timeout: "10m",
+      }
+    );
+
+    if (!result.ok) {
+      throw new Error("Failed to create prediction");
+    }
+
+    logger.log("Result", result);
+
+    const imageUrl = result.output.output;
+    logger.log("Image URL", imageUrl);
+  },
+});
+```
+
+## unwrap()
+
+We provide a handy `.unwrap()` method that will throw an error if the result is not ok. This means your happy path is a lot cleaner.
+
+```ts
+const prediction = await wait
+  .forHttpCallback<Prediction>(
+    async (url) => {
+      // ...
+    },
+    {
+      timeout: "10m",
+    }
+  )
+  .unwrap();
+// 👆 This will throw an error if the waitpoint times out
+
+// This is the actual data you sent to the callback now, not a result object
+logger.log("Prediction", prediction);
+```
+
+### Options
+
+The `wait.forHttpCallback` function accepts an optional second parameter with the following properties:
+
+<ParamField query="timeout" type="string" optional>
+  The maximum amount of time to wait for the token to be completed.
+</ParamField>
+
+<ParamField query="idempotencyKey" type="string" optional>
+  An idempotency key for the token. If provided, the token will be completed with the same output if
+  the same idempotency key is used again.
+</ParamField>
+
+<ParamField query="idempotencyKeyTTL" type="string" optional>
+  The time to live for the idempotency key. After this time, the idempotency key will be ignored and
+  can be reused to create a new waitpoint.
+</ParamField>
+
+<ParamField query="tags" type="string[]" optional>
+  Tags to attach to the token. Tags can be used to filter waitpoints in the dashboard.
+</ParamField>
+
+<ParamField query="releaseConcurrency" type="boolean" optional>
+  If set to true, this will cause the waitpoint to release the current run from the queue's concurrency.
+
+This is useful if you want to allow other runs to execute while waiting
+
+Note: It's possible that this run will not be able to resume when the waitpoint is complete if this is set to true.
+It will go back in the queue and will resume once concurrency becomes available.
+
+The default is `false`.
+
+</ParamField>
+
+### returns
+
+The `forHttpCallback` function returns a result object with the following properties:
+
+<ParamField query="ok" type="boolean">
+  Whether the token was completed successfully.
+</ParamField>
+
+<ParamField query="output" type="any">
+  If `ok` is `true`, this will be the output of the token.
+</ParamField>
+
+<ParamField query="error" type="Error">
+  If `ok` is `false`, this will be the error that occurred. The only error that can occur is a
+  timeout error.
+</ParamField>
+
+### unwrap() returns
+
+If you use the `unwrap()` method, it will just return the output of the token. If an error occurs it will throw an error.
