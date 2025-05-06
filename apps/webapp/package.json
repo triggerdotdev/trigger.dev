@@ -193,6 +193,7 @@
   },
   "devDependencies": {
     "@internal/testcontainers": "workspace:*",
+    "@internal/replication": "workspace:*",
     "@internal/clickhouse": "workspace:*",
     "@remix-run/dev": "2.1.0",
     "@remix-run/eslint-config": "2.1.0",

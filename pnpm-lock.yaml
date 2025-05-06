@@ -673,6 +673,9 @@ importers:
       '@internal/clickhouse':
         specifier: workspace:*
         version: link:../../internal-packages/clickhouse
+      '@internal/replication':
+        specifier: workspace:*
+        version: link:../../internal-packages/replication
       '@internal/testcontainers':
         specifier: workspace:*
         version: link:../../internal-packages/testcontainers

@@ -1,55 +1,42 @@
 -- +goose Up
 SET enable_json_type = 1;
 
-/* ─────────────────────────────────────────────────────────────
-   RAW EVENT STREAM   trigger_dev.raw_run_events_v1
-   ─────────────────────────────────────────────────────────────
-   • One row for every status change / retry / metric emission
-   • All TaskRun scalar columns duplicated in each row
-     – they compress brilliantly and remove JOINs later
-   • Heavy blobs → ZSTD
-   • High-cardinality enums / strings → LowCardinality + LZ4
-   • Array / JSON fields → ZSTD + late-materialised
-   • Bloom-filter index on tags for instant “has(tag)”
-   ----------------------------------------------------------------- */
-
-CREATE TABLE trigger_dev.raw_run_events_v1
+CREATE TABLE trigger_dev.task_runs_v1
 (
   /*  ─── ids & hierarchy ─────────────────────────────────────── */
   environment_id            String,
   organization_id           String,
   project_id                String,
   run_id                    String,
-  event_name                LowCardinality(String),
   
-  environment_type          LowCardinality(Nullable(String)),
-  friendly_id               Nullable(String),
+  environment_type          LowCardinality(String),
+  friendly_id               String,
   attempt                   UInt8     DEFAULT 1,
 
   /*  ─── enums / status ──────────────────────────────────────── */
-  engine Nullable(Enum8('V1'=1,'V2'=2))
-                  CODEC(T64, LZ4),
-  status Enum8(           -- TaskRunStatus
-           'DELAYED'=1,
-           'PENDING'=2,
-           'PENDING_VERSION'=3,
-           'WAITING_FOR_DEPLOY'=4,
-           'EXECUTING'=5,
-           'WAITING_TO_RESUME'=6,
-           'RETRYING_AFTER_FAILURE'=7,
-           'PAUSED'=8,
-           'CANCELED'=9,
-           'INTERRUPTED'=10,
-           'COMPLETED_SUCCESSFULLY'=11,
-           'COMPLETED_WITH_ERRORS'=12,
-           'SYSTEM_FAILURE'=13,
-           'CRASHED'=14,
-           'EXPIRED'=15,
-           'TIMED_OUT'=16),
+  engine                    Enum8('V1'=1,'V2'=2) CODEC(T64, LZ4),
+  status                    Enum8(
+                              'DELAYED'=1,
+                              'PENDING'=2,
+                              'PENDING_VERSION'=3,
+                              'WAITING_FOR_DEPLOY'=4,
+                              'EXECUTING'=5,
+                              'WAITING_TO_RESUME'=6,
+                              'RETRYING_AFTER_FAILURE'=7,
+                              'PAUSED'=8,
+                              'CANCELED'=9,
+                              'INTERRUPTED'=10,
+                              'COMPLETED_SUCCESSFULLY'=11,
+                              'COMPLETED_WITH_ERRORS'=12,
+                              'SYSTEM_FAILURE'=13,
+                              'CRASHED'=14,
+                              'EXPIRED'=15,
+                              'TIMED_OUT'=16
+                            ),
 
   /*  ─── queue / concurrency / schedule ─────────────────────── */
-  task_identifier           Nullable(String),
-  queue                     Nullable(String),
+  task_identifier           String,
+  queue                     String,
 
   schedule_id               Nullable(String),
   batch_id                  Nullable(String),
@@ -60,8 +47,8 @@ CREATE TABLE trigger_dev.raw_run_events_v1
   depth                     UInt8 DEFAULT 0,
 
   /*  ─── telemetry ─────────────────────────────────────────────── */
-  span_id                   Nullable(String),
-  trace_id                  Nullable(String),
+  span_id                   String,
+  trace_id                  String,
   idempotency_key           Nullable(String),
 
   /*  ─── timing ─────────────────────────────────────────────── */
@@ -94,19 +81,19 @@ CREATE TABLE trigger_dev.raw_run_events_v1
   machine_preset     LowCardinality(Nullable(String)) CODEC(LZ4),
 
   is_test            UInt8 DEFAULT 0,
+
+  /*  ─── commit lsn ─────────────────────────────────────────────── */
+  _version           UInt64
 )
-ENGINE = MergeTree
-PARTITION BY toYYYYMMDD(event_time)
-ORDER BY (organization_id, project_id, environment_id, event_time, run_id)
-SETTINGS
-    index_granularity = 8192,
-    vertical_merge_algorithm_min_rows_to_activate = 100000;
+ENGINE = ReplacingMergeTree(_version)
+PARTITION BY toYYYYMMDD(created_at)
+ORDER BY (toDate(created_at), environment_id, task_identifier, created_at, run_id);
 
 /*  Fast tag filtering  */
-ALTER TABLE trigger_dev.raw_run_events_v1
+ALTER TABLE trigger_dev.task_runs_v1
   ADD INDEX idx_tags tags TYPE tokenbf_v1(32768, 3, 0) GRANULARITY 4;
 
 
 -- +goose Down
 SET enable_json_type = 0;
-DROP TABLE IF EXISTS trigger_dev.raw_run_events_v1;
+DROP TABLE IF EXISTS trigger_dev.task_runs_v1;

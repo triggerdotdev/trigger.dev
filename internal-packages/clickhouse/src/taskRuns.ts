@@ -3,15 +3,13 @@ import { ClickhouseWriter } from "./client/types.js";
 import { ClickHouseSettings } from "@clickhouse/client";
 import { TaskRunError } from "@trigger.dev/core/v3/schemas";
 
-export const RawRunEventV1 = z.object({
+export const TaskRunV1 = z.object({
   environment_id: z.string(),
   organization_id: z.string(),
   project_id: z.string(),
   run_id: z.string(),
   updated_at: z.number().int(),
   created_at: z.number().int(),
-  event_time: z.number().int(),
-  event_name: z.string(),
   status: z.enum([
     "DELAYED",
     "PENDING",
@@ -30,13 +28,12 @@ export const RawRunEventV1 = z.object({
     "EXPIRED",
     "TIMED_OUT",
   ]),
-  /* ─── optional fields ─────────────────────────────────────────────── */
-  environment_type: z.string().nullish(),
-  friendly_id: z.string().nullish(),
+  environment_type: z.string(),
+  friendly_id: z.string(),
   attempt: z.number().int().default(1),
-  engine: z.enum(["V1", "V2"]).nullish(),
-  task_identifier: z.string().nullish(),
-  queue: z.string().nullish(),
+  engine: z.enum(["V1", "V2"]),
+  task_identifier: z.string(),
+  queue: z.string(),
   schedule_id: z.string().nullish(),
   batch_id: z.string().nullish(),
   completed_at: z.number().int().nullish(),
@@ -45,16 +42,16 @@ export const RawRunEventV1 = z.object({
   delay_until: z.number().int().nullish(),
   queued_at: z.number().int().nullish(),
   expired_at: z.number().int().nullish(),
-  usage_duration_ms: z.number().int().nullish(),
-  cost_in_cents: z.number().nullish(),
-  base_cost_in_cents: z.number().nullish(),
+  usage_duration_ms: z.number().int().default(0),
+  cost_in_cents: z.number().default(0),
+  base_cost_in_cents: z.number().default(0),
   payload: z.unknown().nullish(),
   output: z.unknown().nullish(),
   error: TaskRunError.nullish(),
   tags: z
     .array(z.string())
     .transform((arr) => arr.sort())
-    .nullish(),
+    .default([]),
   task_version: z.string().nullish(),
   sdk_version: z.string().nullish(),
   cli_version: z.string().nullish(),
@@ -62,20 +59,21 @@ export const RawRunEventV1 = z.object({
   root_run_id: z.string().nullish(),
   parent_run_id: z.string().nullish(),
   depth: z.number().int().default(0),
-  span_id: z.string().nullish(),
-  trace_id: z.string().nullish(),
+  span_id: z.string(),
+  trace_id: z.string(),
   idempotency_key: z.string().nullish(),
   expiration_ttl: z.string().nullish(),
   is_test: z.boolean().default(false),
+  _version: z.string(),
 });
 
-export type RawRunEventV1 = z.infer<typeof RawRunEventV1>;
+export type TaskRunV1 = z.infer<typeof TaskRunV1>;
 
-export function insertRunEvents(ch: ClickhouseWriter, settings?: ClickHouseSettings) {
+export function insertTaskRuns(ch: ClickhouseWriter, settings?: ClickHouseSettings) {
   return ch.insert({
-    name: "insertRunEvents",
-    table: "trigger_dev.raw_run_events_v1",
-    schema: RawRunEventV1,
+    name: "insertTaskRuns",
+    table: "trigger_dev.task_runs_v1",
+    schema: TaskRunV1,
     settings: {
       async_insert: 1,
       wait_for_async_insert: 0,

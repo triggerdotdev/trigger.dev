@@ -2,7 +2,7 @@ import { ClickHouseSettings } from "@clickhouse/client";
 import { ClickhouseClient } from "./client/client.js";
 import { ClickhouseReader, ClickhouseWriter } from "./client/types.js";
 import { NoopClient } from "./client/noop.js";
-import { insertRunEvents } from "./runEvents.js";
+import { insertTaskRuns } from "./taskRuns.js";
 import { Logger } from "@trigger.dev/core/logger";
 
 export type ClickHouseConfig =
@@ -85,9 +85,9 @@ export class ClickHouse {
     });
   }
 
-  get runEvents() {
+  get taskRuns() {
     return {
-      insert: insertRunEvents(this.writer),
+      insert: insertTaskRuns(this.writer),
     };
   }
 }

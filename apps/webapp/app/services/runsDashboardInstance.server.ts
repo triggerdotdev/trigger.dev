@@ -1,6 +1,5 @@
 import { ClickHouse } from "@internal/clickhouse";
 import { EventEmitter } from "node:events";
-import { prisma } from "~/db.server";
 import { singleton } from "~/utils/singleton";
 import { engine } from "~/v3/runEngine.server";
 import { logger } from "./logger.server";
@@ -250,35 +249,5 @@ export const runsDashboard = singleton("runsDashboard", () => {
 });
 
 async function runCreated(time: Date, runId: string, service: RunsDashboardService) {
-  const run = await prisma.taskRun.findFirst({
-    where: {
-      id: runId,
-    },
-  });
-
-  if (!run) {
-    logger.error("RunDashboard: runCreated: run not found", {
-      runId,
-    });
-
-    return;
-  }
-
-  if (!run.environmentType) {
-    logger.error("RunDashboard: runCreated: run environment type not found", {
-      runId,
-    });
-
-    return;
-  }
-
-  if (!run.organizationId) {
-    logger.error("RunDashboard: runCreated: run organization id not found", {
-      runId,
-    });
-
-    return;
-  }
-
-  await service.runCreated(time, run, run.environmentType, run.organizationId);
+  // Noop for now
 }
