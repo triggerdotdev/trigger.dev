@@ -19,13 +19,17 @@ export class MetadataClient {
     this.url = new URL(url);
   }
 
-  async getEnvOverrides(): Promise<Metadata | null> {
+  async getEnvOverrides(): Promise<[error: Error, data: null] | [error: null, data: Metadata]> {
     try {
       const response = await fetch(new URL("/env", this.url));
-      return response.json();
+
+      if (!response.ok) {
+        return [new Error(`Status ${response.status} ${response.statusText}`), null];
+      }
+
+      return [null, await response.json()];
     } catch (error) {
-      console.error("Failed to fetch metadata", { error });
-      return null;
+      return [error instanceof Error ? error : new Error(String(error)), null];
     }
   }
 }

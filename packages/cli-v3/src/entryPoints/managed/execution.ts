@@ -17,7 +17,7 @@ import { WorkloadHttpClient } from "@trigger.dev/core/v3/workers";
 import { setTimeout as sleep } from "timers/promises";
 import { RunExecutionSnapshotPoller } from "./poller.js";
 import { assertExhaustive, tryCatch } from "@trigger.dev/core/utils";
-import { MetadataClient } from "./overrides.js";
+import { Metadata, MetadataClient } from "./overrides.js";
 import { randomBytes } from "node:crypto";
 import { SnapshotManager, SnapshotState } from "./snapshot.js";
 import type { SupervisorSocket } from "./controller.js";
@@ -76,6 +76,7 @@ export class RunExecution {
 
   private supervisorSocket: SupervisorSocket;
   private notifier?: RunNotifier;
+  private metadataClient?: MetadataClient;
 
   constructor(opts: RunExecutionOptions) {
     this.id = randomBytes(4).toString("hex");
@@ -87,6 +88,10 @@ export class RunExecution {
 
     this.restoreCount = 0;
     this.executionAbortController = new AbortController();
+
+    if (this.env.TRIGGER_METADATA_URL) {
+      this.metadataClient = new MetadataClient(this.env.TRIGGER_METADATA_URL);
+    }
   }
 
   /**
@@ -820,30 +825,42 @@ export class RunExecution {
   /**
    * Processes env overrides from the metadata service. Generally called when we're resuming from a suspended state.
    */
-  public async processEnvOverrides(reason?: string) {
-    if (!this.env.TRIGGER_METADATA_URL) {
-      this.sendDebugLog("no metadata url, skipping env overrides", { reason });
-      return;
+  public async processEnvOverrides(
+    reason?: string
+  ): Promise<{ executionWasRestored: boolean; overrides: Metadata } | null> {
+    if (!this.metadataClient) {
+      return null;
     }
 
-    const metadataClient = new MetadataClient(this.env.TRIGGER_METADATA_URL);
-    const overrides = await metadataClient.getEnvOverrides();
+    const [error, overrides] = await this.metadataClient.getEnvOverrides();
 
-    if (!overrides) {
-      this.sendDebugLog("no env overrides, skipping", { reason });
-      return;
+    if (error) {
+      this.sendDebugLog("[override] failed to fetch", { error: error.message });
+      return null;
     }
 
-    this.sendDebugLog(`processing env overrides: ${reason}`, {
+    if (overrides.TRIGGER_RUN_ID && overrides.TRIGGER_RUN_ID !== this.runFriendlyId) {
+      this.sendDebugLog("[override] run ID mismatch, ignoring overrides", {
+        currentRunId: this.runFriendlyId,
+        overrideRunId: overrides.TRIGGER_RUN_ID,
+      });
+      return null;
+    }
+
+    this.sendDebugLog(`[override] processing: ${reason}`, {
       overrides,
       currentEnv: this.env.raw,
     });
 
+    let executionWasRestored = false;
+
     if (this.env.TRIGGER_RUNNER_ID !== overrides.TRIGGER_RUNNER_ID) {
-      this.sendDebugLog("runner ID changed -> run was restored from a checkpoint", {
+      this.sendDebugLog("[override] runner ID changed -> execution was restored", {
         currentRunnerId: this.env.TRIGGER_RUNNER_ID,
         newRunnerId: overrides.TRIGGER_RUNNER_ID,
       });
+
+      executionWasRestored = true;
     }
 
     // Override the env with the new values
@@ -863,6 +880,11 @@ export class RunExecution {
     if (overrides.TRIGGER_RUNNER_ID) {
       this.httpClient.updateRunnerId(this.env.TRIGGER_RUNNER_ID);
     }
+
+    return {
+      executionWasRestored,
+      overrides,
+    };
   }
 
   private async onHeartbeat() {
@@ -1125,21 +1147,34 @@ export class RunExecution {
 
     // If any previous snapshot is QUEUED or SUSPENDED, deprecate this worker
     const deprecatedStatus: TaskRunExecutionStatus[] = ["QUEUED", "SUSPENDED"];
-    const foundDeprecated = previousSnapshots.find((snap) =>
+    const deprecatedSnapshots = previousSnapshots.filter((snap) =>
       deprecatedStatus.includes(snap.snapshot.executionStatus)
     );
 
-    if (foundDeprecated) {
-      this.sendDebugLog(
-        `fetchAndProcessSnapshotChanges: found deprecation marker in previous snapshots, exiting`,
-        {
-          source,
-          status: foundDeprecated.snapshot.executionStatus,
-          snapshotId: foundDeprecated.snapshot.friendlyId,
-        }
+    if (deprecatedSnapshots.length) {
+      const result = await this.processEnvOverrides(
+        "found deprecation marker in previous snapshots"
       );
-      await this.exitTaskRunProcessWithoutFailingRun({ flush: false });
-      return;
+
+      if (!result) {
+        return;
+      }
+
+      const { executionWasRestored } = result;
+
+      if (executionWasRestored) {
+        // It's normal for a restored run to have deprecation markers, e.g. it will have been SUSPENDED
+      } else {
+        this.sendDebugLog(
+          `fetchAndProcessSnapshotChanges: found deprecation marker in previous snapshots, exiting`,
+          {
+            source,
+            deprecatedSnapshots: deprecatedSnapshots.map((s) => s.snapshot),
+          }
+        );
+        await this.exitTaskRunProcessWithoutFailingRun({ flush: false });
+        return;
+      }
     }
 
     const [error] = await tryCatch(this.enqueueSnapshotChangeAndWait(lastSnapshot));
