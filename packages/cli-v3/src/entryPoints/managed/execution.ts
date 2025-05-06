@@ -216,7 +216,7 @@ export class RunExecution {
    *
    * This is the main entry point for snapshot changes, but processing is deferred to the snapshot manager.
    */
-  public async enqueueSnapshotChangeAndWait(runData: RunExecutionData): Promise<void> {
+  private async enqueueSnapshotChangesAndWait(snapshots: RunExecutionData[]): Promise<void> {
     if (this.isShuttingDown) {
       this.sendDebugLog("enqueueSnapshotChangeAndWait: shutting down, skipping");
       return;
@@ -227,10 +227,13 @@ export class RunExecution {
       return;
     }
 
-    await this.snapshotManager.handleSnapshotChange(runData);
+    await this.snapshotManager.handleSnapshotChanges(snapshots);
   }
 
-  private async processSnapshotChange(runData: RunExecutionData): Promise<void> {
+  private async processSnapshotChange(
+    runData: RunExecutionData,
+    deprecated: boolean
+  ): Promise<void> {
     const { run, snapshot, completedWaitpoints } = runData;
 
     const snapshotMetadata = {
@@ -257,6 +260,13 @@ export class RunExecution {
     this.snapshotPoller?.updateSnapshotId(snapshot.friendlyId);
     this.snapshotPoller?.resetCurrentInterval();
 
+    if (deprecated) {
+      this.sendDebugLog("run execution is deprecated", { incomingSnapshot: snapshot });
+
+      await this.exitTaskRunProcessWithoutFailingRun({ flush: false });
+      return;
+    }
+
     switch (snapshot.executionStatus) {
       case "PENDING_CANCEL": {
         this.sendDebugLog("run was cancelled", snapshotMetadata);
@@ -276,14 +286,12 @@ export class RunExecution {
       case "QUEUED": {
         this.sendDebugLog("run was re-queued", snapshotMetadata);
 
-        // Pretend we've just suspended the run. This will kill the process without failing the run.
         await this.exitTaskRunProcessWithoutFailingRun({ flush: true });
         return;
       }
       case "FINISHED": {
         this.sendDebugLog("run is finished", snapshotMetadata);
 
-        // Pretend we've just suspended the run. This will kill the process without failing the run.
         await this.exitTaskRunProcessWithoutFailingRun({ flush: true });
         return;
       }
@@ -434,10 +442,12 @@ export class RunExecution {
     // Create snapshot manager
     this.snapshotManager = new SnapshotManager({
       runFriendlyId: runOpts.runFriendlyId,
+      runnerId: this.env.TRIGGER_RUNNER_ID,
       initialSnapshotId: runOpts.snapshotFriendlyId,
       // We're just guessing here, but "PENDING_EXECUTING" is probably fine
       initialStatus: "PENDING_EXECUTING",
       logger: this.logger,
+      metadataClient: this.metadataClient,
       onSnapshotChange: this.processSnapshotChange.bind(this),
       onSuspendable: this.handleSuspendable.bind(this),
     });
@@ -835,14 +845,18 @@ export class RunExecution {
     const [error, overrides] = await this.metadataClient.getEnvOverrides();
 
     if (error) {
-      this.sendDebugLog("[override] failed to fetch", { error: error.message });
+      this.sendDebugLog("[override] failed to fetch", {
+        reason,
+        error: error.message,
+      });
       return null;
     }
 
     if (overrides.TRIGGER_RUN_ID && overrides.TRIGGER_RUN_ID !== this.runFriendlyId) {
       this.sendDebugLog("[override] run ID mismatch, ignoring overrides", {
+        reason,
         currentRunId: this.runFriendlyId,
-        overrideRunId: overrides.TRIGGER_RUN_ID,
+        incomingRunId: overrides.TRIGGER_RUN_ID,
       });
       return null;
     }
@@ -855,10 +869,13 @@ export class RunExecution {
     let executionWasRestored = false;
 
     if (this.env.TRIGGER_RUNNER_ID !== overrides.TRIGGER_RUNNER_ID) {
-      this.sendDebugLog("[override] runner ID changed -> execution was restored", {
+      this.sendDebugLog("[override] runner ID mismatch, execution was restored", {
+        reason,
         currentRunnerId: this.env.TRIGGER_RUNNER_ID,
-        newRunnerId: overrides.TRIGGER_RUNNER_ID,
+        incomingRunnerId: overrides.TRIGGER_RUNNER_ID,
       });
+
+      // we should keep a list of restored snapshots
 
       executionWasRestored = true;
     }
@@ -1124,7 +1141,6 @@ export class RunExecution {
       });
 
       await this.processEnvOverrides("snapshots since error");
-
       return;
     }
 
@@ -1135,49 +1151,7 @@ export class RunExecution {
       return;
     }
 
-    // Only act on the last snapshot
-    const lastSnapshot = snapshots[snapshots.length - 1];
-
-    if (!lastSnapshot) {
-      this.sendDebugLog(`fetchAndProcessSnapshotChanges: no last snapshot`, { source });
-      return;
-    }
-
-    const previousSnapshots = snapshots.slice(0, -1);
-
-    // If any previous snapshot is QUEUED or SUSPENDED, deprecate this worker
-    const deprecatedStatus: TaskRunExecutionStatus[] = ["QUEUED", "SUSPENDED"];
-    const deprecatedSnapshots = previousSnapshots.filter((snap) =>
-      deprecatedStatus.includes(snap.snapshot.executionStatus)
-    );
-
-    if (deprecatedSnapshots.length) {
-      const result = await this.processEnvOverrides(
-        "found deprecation marker in previous snapshots"
-      );
-
-      if (!result) {
-        return;
-      }
-
-      const { executionWasRestored } = result;
-
-      if (executionWasRestored) {
-        // It's normal for a restored run to have deprecation markers, e.g. it will have been SUSPENDED
-      } else {
-        this.sendDebugLog(
-          `fetchAndProcessSnapshotChanges: found deprecation marker in previous snapshots, exiting`,
-          {
-            source,
-            deprecatedSnapshots: deprecatedSnapshots.map((s) => s.snapshot),
-          }
-        );
-        await this.exitTaskRunProcessWithoutFailingRun({ flush: false });
-        return;
-      }
-    }
-
-    const [error] = await tryCatch(this.enqueueSnapshotChangeAndWait(lastSnapshot));
+    const [error] = await tryCatch(this.enqueueSnapshotChangesAndWait(snapshots));
 
     if (error) {
       this.sendDebugLog(

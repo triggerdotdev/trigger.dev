@@ -14,6 +14,7 @@ describe("SnapshotManager", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     manager = new SnapshotManager({
+      runnerId: "test-runner-1",
       runFriendlyId: "test-run-1",
       initialSnapshotId: "snapshot-1",
       initialStatus: "PENDING_EXECUTING",
@@ -48,12 +49,12 @@ describe("SnapshotManager", () => {
     expect(mockSuspendableHandler).not.toHaveBeenCalled();
 
     // When status changes to EXECUTING_WITH_WAITPOINTS, suspendable handler should be called
-    await manager.handleSnapshotChange(
+    await manager.handleSnapshotChanges([
       createRunExecutionData({
         snapshotId: "snapshot-2",
         executionStatus: "EXECUTING_WITH_WAITPOINTS",
-      })
-    );
+      }),
+    ]);
 
     expect(mockSuspendableHandler).toHaveBeenCalledWith({
       id: "snapshot-2",
@@ -96,12 +97,12 @@ describe("SnapshotManager", () => {
     vi.clearAllMocks();
 
     // Transitioning to QUEUED_EXECUTING should call the handler again
-    await manager.handleSnapshotChange(
+    await manager.handleSnapshotChanges([
       createRunExecutionData({
         snapshotId: "snapshot-3",
         executionStatus: "QUEUED_EXECUTING",
-      })
-    );
+      }),
+    ]);
     expect(mockSuspendableHandler).toHaveBeenCalledWith({
       id: "snapshot-3",
       status: "QUEUED_EXECUTING",
@@ -113,6 +114,7 @@ describe("SnapshotManager", () => {
 
     // Create a manager with handlers that track execution order
     const manager = new SnapshotManager({
+      runnerId: "test-runner-1",
       runFriendlyId: "test-run-1",
       initialSnapshotId: "snapshot-1",
       initialStatus: "PENDING_EXECUTING",
@@ -129,14 +131,14 @@ describe("SnapshotManager", () => {
 
     const promises = [
       manager.setSuspendable(false),
-      manager.handleSnapshotChange(createRunExecutionData({ snapshotId: "snapshot-2" })),
+      manager.handleSnapshotChanges([createRunExecutionData({ snapshotId: "snapshot-2" })]),
       manager.setSuspendable(true),
-      manager.handleSnapshotChange(
+      manager.handleSnapshotChanges([
         createRunExecutionData({
           snapshotId: "snapshot-3",
           executionStatus: "EXECUTING_WITH_WAITPOINTS",
-        })
-      ),
+        }),
+      ]),
     ];
 
     await Promise.all(promises);
@@ -155,6 +157,7 @@ describe("SnapshotManager", () => {
     const executionOrder: string[] = [];
 
     const manager = new SnapshotManager({
+      runnerId: "test-runner-1",
       runFriendlyId: "test-run-1",
       initialSnapshotId: "snapshot-1",
       initialStatus: "PENDING_EXECUTING",
@@ -167,9 +170,9 @@ describe("SnapshotManager", () => {
 
     // Queue snapshots in reverse order
     const promises = [
-      manager.handleSnapshotChange(createRunExecutionData({ snapshotId: "snapshot-3" })),
-      manager.handleSnapshotChange(createRunExecutionData({ snapshotId: "snapshot-2" })),
-      manager.handleSnapshotChange(createRunExecutionData({ snapshotId: "snapshot-1" })),
+      manager.handleSnapshotChanges([createRunExecutionData({ snapshotId: "snapshot-3" })]),
+      manager.handleSnapshotChanges([createRunExecutionData({ snapshotId: "snapshot-2" })]),
+      manager.handleSnapshotChanges([createRunExecutionData({ snapshotId: "snapshot-1" })]),
     ];
 
     await Promise.all(promises);
@@ -182,6 +185,7 @@ describe("SnapshotManager", () => {
     const executionOrder: string[] = [];
 
     const manager = new SnapshotManager({
+      runnerId: "test-runner-1",
       runFriendlyId: "test-run-1",
       initialSnapshotId: "snapshot-1",
       initialStatus: "PENDING_EXECUTING",
@@ -194,9 +198,9 @@ describe("SnapshotManager", () => {
 
     // Queue snapshots in reverse order
     const promises = [
-      manager.handleSnapshotChange(createRunExecutionData({ snapshotId: "snapshot-2" })),
-      manager.handleSnapshotChange(createRunExecutionData({ snapshotId: "snapshot-2" })),
-      manager.handleSnapshotChange(createRunExecutionData({ snapshotId: "snapshot-2" })),
+      manager.handleSnapshotChanges([createRunExecutionData({ snapshotId: "snapshot-2" })]),
+      manager.handleSnapshotChanges([createRunExecutionData({ snapshotId: "snapshot-2" })]),
+      manager.handleSnapshotChanges([createRunExecutionData({ snapshotId: "snapshot-2" })]),
     ];
 
     await Promise.all(promises);
@@ -210,6 +214,7 @@ describe("SnapshotManager", () => {
     let currentlyExecuting = false;
 
     const manager = new SnapshotManager({
+      runnerId: "test-runner-1",
       runFriendlyId: "test-run-1",
       initialSnapshotId: "snapshot-1",
       initialStatus: "PENDING_EXECUTING",
@@ -241,23 +246,23 @@ describe("SnapshotManager", () => {
     // Create a mix of rapid changes
     const promises = [
       manager.setSuspendable(true),
-      manager.handleSnapshotChange(createRunExecutionData({ snapshotId: "snapshot-2" })),
+      manager.handleSnapshotChanges([createRunExecutionData({ snapshotId: "snapshot-2" })]),
       manager.setSuspendable(false),
-      manager.handleSnapshotChange(createRunExecutionData({ snapshotId: "snapshot-3" })),
+      manager.handleSnapshotChanges([createRunExecutionData({ snapshotId: "snapshot-3" })]),
       manager.setSuspendable(true),
       manager.setSuspendable(true),
       manager.setSuspendable(false),
       manager.setSuspendable(false),
-      manager.handleSnapshotChange(createRunExecutionData({ snapshotId: "snapshot-4" })),
+      manager.handleSnapshotChanges([createRunExecutionData({ snapshotId: "snapshot-4" })]),
       manager.setSuspendable(false),
       manager.setSuspendable(true),
-      manager.handleSnapshotChange(createRunExecutionData({ snapshotId: "snapshot-1" })),
+      manager.handleSnapshotChanges([createRunExecutionData({ snapshotId: "snapshot-1" })]),
       manager.setSuspendable(false),
-      manager.handleSnapshotChange(createRunExecutionData({ snapshotId: "snapshot-3" })),
+      manager.handleSnapshotChanges([createRunExecutionData({ snapshotId: "snapshot-3" })]),
       manager.setSuspendable(true),
       manager.setSuspendable(true),
       manager.setSuspendable(false),
-      manager.handleSnapshotChange(createRunExecutionData({ snapshotId: "snapshot-2" })),
+      manager.handleSnapshotChanges([createRunExecutionData({ snapshotId: "snapshot-2" })]),
       manager.setSuspendable(false),
     ];
 
@@ -277,6 +282,7 @@ describe("SnapshotManager", () => {
     let shouldThrowSuspendableError = false;
 
     const manager = new SnapshotManager({
+      runnerId: "test-runner-1",
       runFriendlyId: "test-run-1",
       initialSnapshotId: "snapshot-1",
       initialStatus: "PENDING_EXECUTING",
@@ -299,9 +305,9 @@ describe("SnapshotManager", () => {
 
     // Queue up some changes
     const initialPromises = [
-      manager.handleSnapshotChange(createRunExecutionData({ snapshotId: "snapshot-2" })),
+      manager.handleSnapshotChanges([createRunExecutionData({ snapshotId: "snapshot-2" })]),
       manager.setSuspendable(true),
-      manager.handleSnapshotChange(createRunExecutionData({ snapshotId: "snapshot-3" })),
+      manager.handleSnapshotChanges([createRunExecutionData({ snapshotId: "snapshot-3" })]),
     ];
 
     expect(manager.queueLength).not.toBe(0);
@@ -327,17 +333,17 @@ describe("SnapshotManager", () => {
     // Now test error handling
     shouldThrowSnapshotError = true;
     await expect(
-      manager.handleSnapshotChange(createRunExecutionData({ snapshotId: "snapshot-4" }))
+      manager.handleSnapshotChanges([createRunExecutionData({ snapshotId: "snapshot-4" })])
     ).rejects.toThrow("Snapshot handler error");
 
     // Queue should continue processing after error
     shouldThrowSnapshotError = false;
-    await manager.handleSnapshotChange(
+    await manager.handleSnapshotChanges([
       createRunExecutionData({
         snapshotId: "snapshot-5",
         executionStatus: "EXECUTING_WITH_WAITPOINTS",
-      })
-    );
+      }),
+    ]);
     expect(executionOrder).toEqual(["snapshot:snapshot-2", "snapshot:snapshot-5"]);
 
     // Test suspendable error
@@ -365,6 +371,7 @@ describe("SnapshotManager", () => {
     let handlerExecutionCount = 0;
 
     const manager = new SnapshotManager({
+      runnerId: "test-runner-1",
       runFriendlyId: "test-run-1",
       initialSnapshotId: "snapshot-1",
       initialStatus: "PENDING_EXECUTING",
@@ -402,7 +409,7 @@ describe("SnapshotManager", () => {
     });
 
     // Test empty snapshot IDs
-    await manager.handleSnapshotChange(createRunExecutionData({ snapshotId: "" }));
+    await manager.handleSnapshotChanges([createRunExecutionData({ snapshotId: "" })]);
     expect(executionOrder).toEqual([]);
 
     // Create a very long queue of mixed changes
@@ -412,7 +419,7 @@ describe("SnapshotManager", () => {
     for (let i = 1; i <= 50; i++) {
       if (i % 2 === 0) {
         promises.push(
-          manager.handleSnapshotChange(createRunExecutionData({ snapshotId: `snapshot-${i}` }))
+          manager.handleSnapshotChanges([createRunExecutionData({ snapshotId: `snapshot-${i}` })])
         );
       } else {
         promises.push(manager.setSuspendable(i % 4 === 1));
@@ -429,9 +436,9 @@ describe("SnapshotManager", () => {
     for (const id of snapshotIds) {
       for (let i = 0; i < 5; i++) {
         promises.push(
-          manager.handleSnapshotChange(
-            createRunExecutionData({ snapshotId: `snapshot-${id}-${i}` })
-          )
+          manager.handleSnapshotChanges([
+            createRunExecutionData({ snapshotId: `snapshot-${id}-${i}` }),
+          ])
         );
       }
     }
@@ -475,6 +482,7 @@ describe("SnapshotManager", () => {
     let processingCount = 0;
 
     const manager = new SnapshotManager({
+      runnerId: "test-runner-1",
       runFriendlyId: "test-run-1",
       initialSnapshotId: "snapshot-1",
       initialStatus: "PENDING_EXECUTING",
@@ -495,12 +503,12 @@ describe("SnapshotManager", () => {
 
     // Test parallel queue processing prevention
     const parallelPromises = Array.from({ length: 5 }, (_, i) =>
-      manager.handleSnapshotChange(
+      manager.handleSnapshotChanges([
         createRunExecutionData({
           snapshotId: `parallel-${i}`,
           executionStatus: "EXECUTING",
-        })
-      )
+        }),
+      ])
     );
 
     // Add some suspendable changes in the middle
@@ -510,12 +518,12 @@ describe("SnapshotManager", () => {
     // Add more snapshot changes
     parallelPromises.push(
       ...Array.from({ length: 5 }, (_, i) =>
-        manager.handleSnapshotChange(
+        manager.handleSnapshotChanges([
           createRunExecutionData({
             snapshotId: `parallel-${i + 5}`,
             executionStatus: "EXECUTING",
-          })
-        )
+          }),
+        ])
       )
     );
 
@@ -526,42 +534,42 @@ describe("SnapshotManager", () => {
 
     // Test edge case: snapshot ID comparison with special characters
     const specialCharPromises = [
-      manager.handleSnapshotChange(
+      manager.handleSnapshotChanges([
         createRunExecutionData({
           snapshotId: "snapshot-1!",
           executionStatus: "EXECUTING",
-        })
-      ),
-      manager.handleSnapshotChange(
+        }),
+      ]),
+      manager.handleSnapshotChanges([
         createRunExecutionData({
           snapshotId: "snapshot-1@",
           executionStatus: "EXECUTING",
-        })
-      ),
-      manager.handleSnapshotChange(
+        }),
+      ]),
+      manager.handleSnapshotChanges([
         createRunExecutionData({
           snapshotId: "snapshot-1#",
           executionStatus: "EXECUTING",
-        })
-      ),
+        }),
+      ]),
     ];
 
     await Promise.all(specialCharPromises);
 
     // Test edge case: very long snapshot IDs
     const longIdPromises = [
-      manager.handleSnapshotChange(
+      manager.handleSnapshotChanges([
         createRunExecutionData({
           snapshotId: "a".repeat(1000),
           executionStatus: "EXECUTING",
-        })
-      ),
-      manager.handleSnapshotChange(
+        }),
+      ]),
+      manager.handleSnapshotChanges([
         createRunExecutionData({
           snapshotId: "b".repeat(1000),
           executionStatus: "EXECUTING",
-        })
-      ),
+        }),
+      ]),
     ];
 
     await Promise.all(longIdPromises);
@@ -569,6 +577,7 @@ describe("SnapshotManager", () => {
     // Test edge case: rapid queue changes during processing
     let isProcessing = false;
     const rapidChangeManager = new SnapshotManager({
+      runnerId: "test-runner-1",
       runFriendlyId: "test-run-2",
       initialSnapshotId: "snapshot-1",
       initialStatus: "PENDING_EXECUTING",
@@ -586,31 +595,31 @@ describe("SnapshotManager", () => {
     });
 
     // Start processing a snapshot
-    const initialPromise = rapidChangeManager.handleSnapshotChange(
+    const initialPromise = rapidChangeManager.handleSnapshotChanges([
       createRunExecutionData({
         runId: "test-run-2",
         snapshotId: "snapshot-2",
         executionStatus: "EXECUTING",
-      })
-    );
+      }),
+    ]);
 
     // Queue more changes while the first one is processing
     await setTimeout(10);
     const queuePromises = [
-      rapidChangeManager.handleSnapshotChange(
+      rapidChangeManager.handleSnapshotChanges([
         createRunExecutionData({
           runId: "test-run-2",
           snapshotId: "snapshot-3",
           executionStatus: "EXECUTING",
-        })
-      ),
-      rapidChangeManager.handleSnapshotChange(
+        }),
+      ]),
+      rapidChangeManager.handleSnapshotChanges([
         createRunExecutionData({
           runId: "test-run-2",
           snapshotId: "snapshot-4",
           executionStatus: "EXECUTING",
-        })
-      ),
+        }),
+      ]),
     ];
 
     await Promise.all([initialPromise, ...queuePromises]);
@@ -618,6 +627,75 @@ describe("SnapshotManager", () => {
     // Verify the rapid changes were processed in order
     const rapidChanges = executionOrder.filter((entry) => entry.startsWith("rapid:"));
     expect(rapidChanges).toEqual(["rapid:snapshot-2", "rapid:snapshot-3", "rapid:snapshot-4"]);
+  });
+
+  it("should detect restore and not deprecate restored runner", async () => {
+    // Mock MetadataClient
+    let runnerId = "test-runner-1";
+    const mockMetadataClient = {
+      getEnvOverrides: vi.fn().mockImplementation(() => {
+        return Promise.resolve([null, { TRIGGER_RUNNER_ID: runnerId }]);
+      }),
+    };
+
+    const onSnapshotChange = vi.fn();
+    const manager = new SnapshotManager({
+      runnerId: "test-runner-1",
+      runFriendlyId: "test-run-1",
+      initialSnapshotId: "snapshot-1",
+      initialStatus: "PENDING_EXECUTING",
+      logger: mockLogger,
+      metadataClient: mockMetadataClient as any,
+      onSnapshotChange,
+      onSuspendable: async () => {},
+    });
+
+    // Simulate some basic snapshot changes
+    await manager.handleSnapshotChanges([
+      createRunExecutionData({ snapshotId: "snapshot-2", executionStatus: "EXECUTING" }),
+      createRunExecutionData({
+        snapshotId: "snapshot-3",
+        executionStatus: "EXECUTING_WITH_WAITPOINTS",
+      }),
+    ]);
+
+    // Should call onSnapshotChange with deprecated = false
+    expect(onSnapshotChange).toHaveBeenCalledWith(
+      expect.objectContaining({ snapshot: expect.objectContaining({ friendlyId: "snapshot-3" }) }),
+      false
+    );
+
+    // Reset the mock
+    onSnapshotChange.mockClear();
+
+    // Simulate a series of snapshot changes with deprecation markers and a restored runner
+    // (standard checkpoint / restore flow)
+    runnerId = "test-runner-2";
+    await manager.handleSnapshotChanges([
+      createRunExecutionData({ snapshotId: "snapshot-4", executionStatus: "SUSPENDED" }),
+      createRunExecutionData({ snapshotId: "snapshot-5", executionStatus: "QUEUED" }),
+      createRunExecutionData({ snapshotId: "snapshot-6", executionStatus: "EXECUTING" }),
+    ]);
+
+    // Should call onSnapshotChange with deprecated = false
+    expect(onSnapshotChange).toHaveBeenCalledWith(
+      expect.objectContaining({ snapshot: expect.objectContaining({ friendlyId: "snapshot-6" }) }),
+      false
+    );
+
+    // Reset the mock
+    onSnapshotChange.mockClear();
+
+    // Simulate a new snapshot with a deprecation marker in previous snapshots, but no restore
+    await manager.handleSnapshotChanges([
+      createRunExecutionData({ snapshotId: "snapshot-7", executionStatus: "QUEUED" }),
+      createRunExecutionData({ snapshotId: "snapshot-8", executionStatus: "EXECUTING" }),
+    ]);
+    // Should call onSnapshotChange with deprecated = true
+    expect(onSnapshotChange).toHaveBeenCalledWith(
+      expect.objectContaining({ snapshot: expect.objectContaining({ friendlyId: "snapshot-8" }) }),
+      true
+    );
   });
 });
 

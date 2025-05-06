@@ -2,26 +2,29 @@ import { tryCatch } from "@trigger.dev/core/utils";
 import { RunLogger, SendDebugLogOptions } from "./logger.js";
 import { TaskRunExecutionStatus, type RunExecutionData } from "@trigger.dev/core/v3";
 import { assertExhaustive } from "@trigger.dev/core/utils";
+import { MetadataClient } from "./overrides.js";
 
 export type SnapshotState = {
   id: string;
   status: TaskRunExecutionStatus;
 };
 
-type SnapshotHandler = (runData: RunExecutionData) => Promise<void>;
+type SnapshotHandler = (runData: RunExecutionData, deprecated: boolean) => Promise<void>;
 type SuspendableHandler = (suspendableSnapshot: SnapshotState) => Promise<void>;
 
 type SnapshotManagerOptions = {
   runFriendlyId: string;
+  runnerId: string;
   initialSnapshotId: string;
   initialStatus: TaskRunExecutionStatus;
   logger: RunLogger;
+  metadataClient?: MetadataClient;
   onSnapshotChange: SnapshotHandler;
   onSuspendable: SuspendableHandler;
 };
 
 type QueuedChange =
-  | { id: string; type: "snapshot"; data: RunExecutionData }
+  | { id: string; type: "snapshot"; snapshots: RunExecutionData[] }
   | { id: string; type: "suspendable"; value: boolean };
 
 type QueuedChangeItem = {
@@ -31,10 +34,15 @@ type QueuedChangeItem = {
 };
 
 export class SnapshotManager {
-  private state: SnapshotState;
   private runFriendlyId: string;
+  private runnerId: string;
+
   private logger: RunLogger;
+  private metadataClient?: MetadataClient;
+
+  private state: SnapshotState;
   private isSuspendable: boolean = false;
+
   private readonly onSnapshotChange: SnapshotHandler;
   private readonly onSuspendable: SuspendableHandler;
 
@@ -43,11 +51,16 @@ export class SnapshotManager {
 
   constructor(opts: SnapshotManagerOptions) {
     this.runFriendlyId = opts.runFriendlyId;
+    this.runnerId = opts.runnerId;
+
     this.logger = opts.logger;
+    this.metadataClient = opts.metadataClient;
+
     this.state = {
       id: opts.initialSnapshotId,
       status: opts.initialStatus,
     };
+
     this.onSnapshotChange = opts.onSnapshotChange;
     this.onSuspendable = opts.onSuspendable;
   }
@@ -98,15 +111,15 @@ export class SnapshotManager {
     this.state = { id: snapshotId, status };
   }
 
-  public async handleSnapshotChange(runData: RunExecutionData): Promise<void> {
-    if (!this.statusCheck(runData)) {
+  public async handleSnapshotChanges(snapshots: RunExecutionData[]): Promise<void> {
+    if (!this.statusCheck(snapshots)) {
       return;
     }
 
     return this.enqueueSnapshotChange({
       id: crypto.randomUUID(),
       type: "snapshot",
-      data: runData,
+      snapshots,
     });
   }
 
@@ -114,8 +127,17 @@ export class SnapshotManager {
     return this.changeQueue.length;
   }
 
-  private statusCheck(runData: RunExecutionData): boolean {
-    const { run, snapshot } = runData;
+  private statusCheck(snapshots: RunExecutionData[]): boolean {
+    const latestSnapshot = snapshots[snapshots.length - 1];
+
+    if (!latestSnapshot) {
+      this.sendDebugLog("skipping status check for empty snapshots", {
+        snapshots,
+      });
+      return false;
+    }
+
+    const { run, snapshot } = latestSnapshot;
 
     const statusCheckData = {
       incomingId: snapshot.friendlyId,
@@ -186,8 +208,17 @@ export class SnapshotManager {
           return -1; // a goes before b
         }
         if (a.change.type === "snapshot" && b.change.type === "snapshot") {
-          // sort snapshot changes by creation time, CUIDs are sortable
-          return a.change.data.snapshot.friendlyId.localeCompare(b.change.data.snapshot.friendlyId);
+          // sort snapshot changes by creation time of the latest snapshot, CUIDs are sortable
+          const aLatestSnapshot = a.change.snapshots[a.change.snapshots.length - 1];
+          const bLatestSnapshot = b.change.snapshots[b.change.snapshots.length - 1];
+
+          if (!aLatestSnapshot || !bLatestSnapshot) {
+            return 0;
+          }
+
+          return aLatestSnapshot.snapshot.friendlyId.localeCompare(
+            bLatestSnapshot.snapshot.friendlyId
+          );
         }
         return 0; // both suspendable, maintain insertion order
       });
@@ -238,11 +269,40 @@ export class SnapshotManager {
   private async applyChange(change: QueuedChange): Promise<void> {
     switch (change.type) {
       case "snapshot": {
+        const { snapshots } = change;
+
         // Double check we should process this snapshot
-        if (!this.statusCheck(change.data)) {
+        if (!this.statusCheck(snapshots)) {
           return;
         }
-        const { snapshot } = change.data;
+
+        const latestSnapshot = change.snapshots[change.snapshots.length - 1];
+        if (!latestSnapshot) {
+          return;
+        }
+
+        // These are the snapshots between the current and the latest one
+        const previousSnapshots = snapshots.slice(0, -1);
+
+        // Check if any previous snapshot is QUEUED or SUSPENDED
+        const deprecatedStatus: TaskRunExecutionStatus[] = ["QUEUED", "SUSPENDED"];
+        const deprecatedSnapshots = previousSnapshots.filter((snap) =>
+          deprecatedStatus.includes(snap.snapshot.executionStatus)
+        );
+
+        let deprecated = false;
+        if (deprecatedSnapshots.length > 0) {
+          const hasBeenRestored = await this.hasBeenRestored();
+
+          if (hasBeenRestored) {
+            // It's normal for a restored run to have deprecation markers, e.g. it will have been SUSPENDED
+            deprecated = false;
+          } else {
+            deprecated = true;
+          }
+        }
+
+        const { snapshot } = latestSnapshot;
         const oldState = { ...this.state };
 
         this.updateSnapshot(snapshot.friendlyId, snapshot.executionStatus);
@@ -252,10 +312,11 @@ export class SnapshotManager {
           newId: snapshot.friendlyId,
           oldStatus: oldState.status,
           newStatus: snapshot.executionStatus,
+          deprecated,
         });
 
         // Execute handler
-        await this.onSnapshotChange(change.data);
+        await this.onSnapshotChange(latestSnapshot, deprecated);
 
         // Check suspendable state after snapshot change
         await this.checkSuspendableState();
@@ -272,6 +333,30 @@ export class SnapshotManager {
         assertExhaustive(change);
       }
     }
+  }
+
+  private async hasBeenRestored() {
+    if (!this.metadataClient) {
+      return false;
+    }
+
+    const [error, overrides] = await this.metadataClient.getEnvOverrides();
+
+    if (error) {
+      return false;
+    }
+
+    if (!overrides.TRIGGER_RUNNER_ID) {
+      return false;
+    }
+
+    if (overrides.TRIGGER_RUNNER_ID === this.runnerId) {
+      return false;
+    }
+
+    this.runnerId = overrides.TRIGGER_RUNNER_ID;
+
+    return true;
   }
 
   private async checkSuspendableState() {
