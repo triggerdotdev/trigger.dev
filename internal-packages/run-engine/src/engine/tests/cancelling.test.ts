@@ -220,7 +220,7 @@ describe("RunEngine cancelling", () => {
         );
         expect(envConcurrencyCompleted).toBe(0);
       } finally {
-        engine.quit();
+        await engine.quit();
       }
     }
   );
@@ -321,7 +321,7 @@ describe("RunEngine cancelling", () => {
       );
       expect(envConcurrencyCompleted).toBe(0);
     } finally {
-      engine.quit();
+      await engine.quit();
     }
   });
 
