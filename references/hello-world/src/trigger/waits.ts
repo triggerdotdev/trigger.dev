@@ -178,6 +178,26 @@ export const waitHttpCallback = task({
 
       const imageUrl = prediction.output.output;
       logger.log("Image URL", imageUrl);
+
+      //same again but with unwrapping
+      const result2 = await wait
+        .forHttpCallback<Prediction>(
+          async (url) => {
+            await replicate.predictions.create({
+              version: "27b93a2413e7f36cd83da926f3656280b2931564ff050bf9575f1fdf9bcd7478",
+              input: {
+                prompt: "A painting of a cat by Any Warhol",
+              },
+              webhook: url,
+            });
+          },
+          {
+            timeout: "60s",
+          }
+        )
+        .unwrap();
+
+      logger.log("Result2", { result2 });
     }
 
     const result = await wait.forHttpCallback<{ foo: string }>(

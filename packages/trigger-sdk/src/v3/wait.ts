@@ -1,35 +1,30 @@
+import { SpanStatusCode } from "@opentelemetry/api";
 import {
-  SemanticInternalAttributes,
   accessoryAttributes,
-  runtime,
   apiClientManager,
   ApiPromise,
   ApiRequestOptions,
-  CreateWaitpointTokenRequestBody,
-  CreateWaitpointTokenResponseBody,
-  mergeRequestOptions,
   CompleteWaitpointTokenResponseBody,
-  WaitpointTokenTypedResult,
-  Prettify,
-  taskContext,
-  ListWaitpointTokensQueryParams,
-  CursorPagePromise,
-  WaitpointTokenItem,
-  flattenAttributes,
-  WaitpointListTokenItem,
-  WaitpointTokenStatus,
-  WaitpointRetrieveTokenResponse,
+  CreateWaitpointTokenRequestBody,
   CreateWaitpointTokenResponse,
-  HttpCallbackSchema,
-  HttpCallbackResultTypeFromSchema,
+  CreateWaitpointTokenResponseBody,
+  CursorPagePromise,
+  flattenAttributes,
   HttpCallbackResult,
+  ListWaitpointTokensQueryParams,
+  mergeRequestOptions,
+  Prettify,
+  runtime,
+  SemanticInternalAttributes,
+  taskContext,
   tryCatch,
-  inferSchemaIn,
-  getSchemaParseFn,
+  WaitpointListTokenItem,
+  WaitpointRetrieveTokenResponse,
+  WaitpointTokenStatus,
+  WaitpointTokenTypedResult,
 } from "@trigger.dev/core/v3";
-import { tracer } from "./tracer.js";
 import { conditionallyImportAndParsePacket } from "@trigger.dev/core/v3/utils/ioSerialization";
-import { SpanStatusCode } from "@opentelemetry/api";
+import { tracer } from "./tracer.js";
 
 /**
  * This creates a waitpoint token.
@@ -383,6 +378,29 @@ function printWaitBelowThreshold() {
   );
 }
 
+class ManualWaitpointPromise<TOutput> extends Promise<WaitpointTokenTypedResult<TOutput>> {
+  constructor(
+    executor: (
+      resolve: (
+        value: WaitpointTokenTypedResult<TOutput> | PromiseLike<WaitpointTokenTypedResult<TOutput>>
+      ) => void,
+      reject: (reason?: any) => void
+    ) => void
+  ) {
+    super(executor);
+  }
+
+  unwrap(): Promise<TOutput> {
+    return this.then((result) => {
+      if (result.ok) {
+        return result.output;
+      } else {
+        throw new WaitpointTimeoutError(result.error.message);
+      }
+    });
+  }
+}
+
 export const wait = {
   for: async (options: WaitForOptions) => {
     const ctx = taskContext.ctx;
@@ -689,7 +707,7 @@ export const wait = {
    * @param requestOptions 
    * @returns 
    */
-  async forHttpCallback<TResult>(
+  forHttpCallback<TResult>(
     callback: (url: string) => Promise<void>,
     options?: CreateWaitpointTokenRequestBody & {
       /**
@@ -702,94 +720,105 @@ export const wait = {
       releaseConcurrency?: boolean;
     },
     requestOptions?: ApiRequestOptions
-  ): Promise<HttpCallbackResult<TResult>> {
-    const ctx = taskContext.ctx;
+  ): ManualWaitpointPromise<TResult> {
+    return new ManualWaitpointPromise<TResult>(async (resolve, reject) => {
+      try {
+        const ctx = taskContext.ctx;
 
-    if (!ctx) {
-      throw new Error("wait.forHttpCallback can only be used from inside a task.run()");
-    }
-
-    const apiClient = apiClientManager.clientOrThrow();
-
-    const waitpoint = await apiClient.createWaitpointHttpCallback(options ?? {}, requestOptions);
-
-    return tracer.startActiveSpan(
-      `wait.forHttpCallback()`,
-      async (span) => {
-        const [error] = await tryCatch(callback(waitpoint.url));
-
-        if (error) {
-          throw new Error(`You threw an error in your callback: ${error.message}`, {
-            cause: error,
-          });
+        if (!ctx) {
+          throw new Error("wait.forHttpCallback can only be used from inside a task.run()");
         }
 
-        const response = await apiClient.waitForWaitpointToken({
-          runFriendlyId: ctx.run.id,
-          waitpointFriendlyId: waitpoint.id,
-          releaseConcurrency: options?.releaseConcurrency,
-        });
+        const apiClient = apiClientManager.clientOrThrow();
 
-        if (!response.success) {
-          throw new Error(`Failed to wait for wait for HTTP callback ${waitpoint.id}`);
-        }
+        const waitpoint = await apiClient.createWaitpointHttpCallback(
+          options ?? {},
+          requestOptions
+        );
 
-        const result = await runtime.waitUntil(waitpoint.id);
+        const result = await tracer.startActiveSpan(
+          `wait.forHttpCallback()`,
+          async (span) => {
+            const [error] = await tryCatch(callback(waitpoint.url));
 
-        const data = result.output
-          ? await conditionallyImportAndParsePacket(
-              { data: result.output, dataType: result.outputType ?? "application/json" },
-              apiClient
-            )
-          : undefined;
+            if (error) {
+              throw new Error(`You threw an error in your callback: ${error.message}`, {
+                cause: error,
+              });
+            }
 
-        if (result.ok) {
-          return {
-            ok: result.ok,
-            output: data,
-          };
-        } else {
-          const error = new WaitpointTimeoutError(data.message);
+            const response = await apiClient.waitForWaitpointToken({
+              runFriendlyId: ctx.run.id,
+              waitpointFriendlyId: waitpoint.id,
+              releaseConcurrency: options?.releaseConcurrency,
+            });
 
-          span.recordException(error);
-          span.setStatus({
-            code: SpanStatusCode.ERROR,
-          });
+            if (!response.success) {
+              throw new Error(`Failed to wait for wait for HTTP callback ${waitpoint.id}`);
+            }
 
-          return {
-            ok: result.ok,
-            error,
-          };
-        }
-      },
-      {
-        attributes: {
-          [SemanticInternalAttributes.STYLE_ICON]: "wait",
-          [SemanticInternalAttributes.ENTITY_TYPE]: "waitpoint",
-          [SemanticInternalAttributes.ENTITY_ID]: waitpoint.id,
-          ...accessoryAttributes({
-            items: [
-              {
-                text: waitpoint.id,
-                variant: "normal",
-              },
-            ],
-            style: "codepath",
-          }),
-          id: waitpoint.id,
-          isCached: waitpoint.isCached,
-          idempotencyKey: options?.idempotencyKey,
-          idempotencyKeyTTL: options?.idempotencyKeyTTL,
-          timeout: options?.timeout
-            ? typeof options.timeout === "string"
-              ? options.timeout
-              : options.timeout.toISOString()
-            : undefined,
-          tags: options?.tags,
-          url: waitpoint.url,
-        },
+            const result = await runtime.waitUntil(waitpoint.id);
+
+            const data = result.output
+              ? await conditionallyImportAndParsePacket(
+                  { data: result.output, dataType: result.outputType ?? "application/json" },
+                  apiClient
+                )
+              : undefined;
+
+            if (result.ok) {
+              return {
+                ok: result.ok,
+                output: data,
+              };
+            } else {
+              const error = new WaitpointTimeoutError(data.message);
+
+              span.recordException(error);
+              span.setStatus({
+                code: SpanStatusCode.ERROR,
+              });
+
+              return {
+                ok: result.ok,
+                error,
+              };
+            }
+          },
+          {
+            attributes: {
+              [SemanticInternalAttributes.STYLE_ICON]: "wait",
+              [SemanticInternalAttributes.ENTITY_TYPE]: "waitpoint",
+              [SemanticInternalAttributes.ENTITY_ID]: waitpoint.id,
+              ...accessoryAttributes({
+                items: [
+                  {
+                    text: waitpoint.id,
+                    variant: "normal",
+                  },
+                ],
+                style: "codepath",
+              }),
+              id: waitpoint.id,
+              isCached: waitpoint.isCached,
+              idempotencyKey: options?.idempotencyKey,
+              idempotencyKeyTTL: options?.idempotencyKeyTTL,
+              timeout: options?.timeout
+                ? typeof options.timeout === "string"
+                  ? options.timeout
+                  : options.timeout.toISOString()
+                : undefined,
+              tags: options?.tags,
+              url: waitpoint.url,
+            },
+          }
+        );
+
+        resolve(result);
+      } catch (error) {
+        reject(error);
       }
-    );
+    });
   },
 };
 
