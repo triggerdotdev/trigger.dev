@@ -1034,8 +1034,7 @@ export class RunExecution {
     this.shutdownReason = reason;
 
     this.snapshotPoller?.stop();
-    this.snapshotManager?.dispose();
-
+    this.snapshotManager?.stop();
     this.notifier?.stop();
 
     this.taskRunProcess?.unsafeDetachEvtHandlers();

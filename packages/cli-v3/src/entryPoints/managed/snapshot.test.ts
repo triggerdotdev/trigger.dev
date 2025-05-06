@@ -313,7 +313,7 @@ describe("SnapshotManager", () => {
     expect(manager.queueLength).not.toBe(0);
 
     // Dispose manager before any promises complete
-    manager.dispose();
+    manager.stop();
 
     expect(manager.queueLength).toBe(0);
 

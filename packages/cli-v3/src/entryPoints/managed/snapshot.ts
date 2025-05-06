@@ -371,12 +371,12 @@ export class SnapshotManager {
     }
   }
 
-  public dispose() {
-    this.sendDebugLog("dispose");
+  public stop() {
+    this.sendDebugLog("stop");
 
     // Clear any pending changes
     for (const item of this.changeQueue) {
-      item.reject(new Error("SnapshotManager disposed"));
+      item.reject(new Error("SnapshotManager stopped"));
     }
     this.changeQueue = [];
   }
