@@ -578,7 +578,7 @@ export const wait = {
    *
    * @param token - The token to wait for.
    * @param options - The options for the waitpoint token.
-   * @returns The waitpoint token.
+   * @returns A promise that resolves to the result of the waitpoint. You can use `.unwrap()` to get the result and an error will throw.
    */
   forToken: <T>(
     /**
@@ -690,30 +690,35 @@ export const wait = {
    * ```ts
    * //wait for the prediction to complete
     const prediction = await wait.forHttpCallback<Prediction>(
-      async (url) => {
-        //pass the provided URL to Replicate's webhook
-        await replicate.predictions.create({
-          version:
-            "19deaef633fd44776c82edf39fd60e95a7250b8ececf11a725229dc75a81f9ca",
-          input: payload,
-          // pass the provided URL to Replicate's webhook, so they can "callback"
-          webhook: url,
-          webhook_events_filter: ["completed"],
-        });
-      },
-      {
-        timeout: "2m",
-      }
-    );
+        async (url) => {
+          //pass the provided URL to Replicate's webhook
+          await replicate.predictions.create({
+            version: "27b93a2413e7f36cd83da926f3656280b2931564ff050bf9575f1fdf9bcd7478",
+            input: {
+              prompt: "A painting of a cat by Any Warhol",
+            },
+            // pass the provided URL to Replicate's webhook, so they can "callback"
+            webhook: url,
+            webhook_events_filter: ["completed"],
+          });
+        },
+        {
+          timeout: "10m",
+        }
+      );
 
-    //the value of prediction is the body of the webook that Replicate sent
-    const result = prediction.output;
+      if (!prediction.ok) {
+        throw new Error("Failed to create prediction");
+      }
+
+      //the value of prediction is the body of the webook that Replicate sent
+      const result = prediction.output;  
    * ```
    * 
-   * @param callback 
-   * @param options 
-   * @param requestOptions 
-   * @returns 
+   * @param callback A function that gives you a URL you can use to send the result to.
+   * @param options - The options for the waitpoint.
+   * @param requestOptions - The request options for the waitpoint.
+   * @returns A promise that resolves to the result of the waitpoint. You can use `.unwrap()` to get the result and an error will throw.
    */
   forHttpCallback<TResult>(
     callback: (url: string) => Promise<void>,
