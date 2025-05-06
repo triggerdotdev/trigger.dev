@@ -785,7 +785,7 @@ export const wait = {
                 output: data,
               };
             } else {
-              const error = new WaitpointTimeoutError(data.message);
+              const error = new WaitpointTimeoutError(data?.message ?? "Timeout error");
 
               span.recordException(error);
               span.setStatus({
