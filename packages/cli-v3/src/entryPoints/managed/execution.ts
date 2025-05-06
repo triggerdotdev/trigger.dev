@@ -835,9 +835,7 @@ export class RunExecution {
   /**
    * Processes env overrides from the metadata service. Generally called when we're resuming from a suspended state.
    */
-  public async processEnvOverrides(
-    reason?: string
-  ): Promise<{ executionWasRestored: boolean; overrides: Metadata } | null> {
+  public async processEnvOverrides(reason?: string): Promise<{ overrides: Metadata } | null> {
     if (!this.metadataClient) {
       return null;
     }
@@ -866,20 +864,6 @@ export class RunExecution {
       currentEnv: this.env.raw,
     });
 
-    let executionWasRestored = false;
-
-    if (this.env.TRIGGER_RUNNER_ID !== overrides.TRIGGER_RUNNER_ID) {
-      this.sendDebugLog("[override] runner ID mismatch, execution was restored", {
-        reason,
-        currentRunnerId: this.env.TRIGGER_RUNNER_ID,
-        incomingRunnerId: overrides.TRIGGER_RUNNER_ID,
-      });
-
-      // we should keep a list of restored snapshots
-
-      executionWasRestored = true;
-    }
-
     // Override the env with the new values
     this.env.override(overrides);
 
@@ -899,7 +883,6 @@ export class RunExecution {
     }
 
     return {
-      executionWasRestored,
       overrides,
     };
   }
