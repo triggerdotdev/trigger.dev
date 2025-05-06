@@ -222,7 +222,9 @@ export default function Page() {
                               </TableCell>
                               <TableCell to={path} actionClassName="py-1">
                                 <div className="flex gap-1">
-                                  {token.tags.map((tag) => <RunTag key={tag} tag={tag} />) || "–"}
+                                  {token.tags.length > 0
+                                    ? token.tags.map((tag) => <RunTag key={tag} tag={tag} />)
+                                    : "–"}
                                 </div>
                               </TableCell>
                             </TableRow>
