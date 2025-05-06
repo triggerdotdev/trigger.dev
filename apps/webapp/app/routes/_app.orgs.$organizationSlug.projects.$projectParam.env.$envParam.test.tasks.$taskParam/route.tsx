@@ -54,6 +54,12 @@ import { TestTaskService } from "~/v3/services/testTask.server";
 import { OutOfEntitlementError } from "~/v3/services/triggerTask.server";
 import { TestTaskData } from "~/v3/testTask";
 
+//TODO:
+// Test page to default to using the most recent payload.
+// 1. Pass the footer into both standard and scheduled forms just like the ReplayRunDialog so it's consistent.
+// 2. Get rid of the extra form in the ReplayRunDialog.
+// 3. If the editablePayload is false on ReplayRunDialog, show a callout error explaining that the payload is not editable.
+
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const { projectParam, organizationSlug, envParam, taskParam } = v3TaskParamsSchema.parse(params);
@@ -196,7 +202,7 @@ export function StandardTaskForm({ task, runs, footer, className }: StandardTask
   const lastSubmission = useActionData();
 
   //recent runs
-  const [selectedCodeSampleId, setSelectedCodeSampleId] = useState<string | undefined>(undefined);
+  const [selectedCodeSampleId, setSelectedCodeSampleId] = useState<string | undefined>(runs[0]?.id);
   const selectedCodeSample = runs.find((r) => r.id === selectedCodeSampleId);
   const selectedCodeSamplePayload = selectedCodeSample?.payload;
   const selectedCodeSampleMetadata = selectedCodeSample?.seedMetadata;
@@ -373,7 +379,7 @@ export function ScheduledTaskForm({
 }) {
   const environment = useEnvironment();
   const lastSubmission = useActionData();
-  const [selectedCodeSampleId, setSelectedCodeSampleId] = useState<string | undefined>(undefined);
+  const [selectedCodeSampleId, setSelectedCodeSampleId] = useState<string | undefined>(runs[0]?.id);
   const [timestampValue, setTimestampValue] = useState<Date | undefined>();
   const [lastTimestampValue, setLastTimestampValue] = useState<Date | undefined>();
   const [externalIdValue, setExternalIdValue] = useState<string | undefined>();
