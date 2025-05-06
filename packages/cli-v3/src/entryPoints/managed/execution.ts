@@ -252,8 +252,6 @@ export class RunExecution {
     this.snapshotPoller?.updateSnapshotId(snapshot.friendlyId);
     this.snapshotPoller?.resetCurrentInterval();
 
-    await this.processEnvOverrides("snapshot change");
-
     switch (snapshot.executionStatus) {
       case "PENDING_CANCEL": {
         this.sendDebugLog("run was cancelled", snapshotMetadata);
@@ -1102,6 +1100,9 @@ export class RunExecution {
         source,
         error: response.error,
       });
+
+      await this.processEnvOverrides("snapshots since error");
+
       return;
     }
 
