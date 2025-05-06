@@ -13,6 +13,7 @@
     "skipLibCheck": true,
     "noEmit": true,
     "strict": true,
+    "noUncheckedIndexedAccess": true,
     "paths": {
       "@trigger.dev/core": ["../../packages/core/src/index"],
       "@trigger.dev/core/*": ["../../packages/core/src/*"],

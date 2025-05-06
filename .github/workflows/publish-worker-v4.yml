@@ -1,4 +1,4 @@
-name: "⚒️ Publish Worker RE2"
+name: "⚒️ Publish Worker (v4)"
 
 on:
   workflow_call:

@@ -158,7 +158,7 @@ describe("RunEngine pending version", () => {
         );
         expect(queueLength2).toBe(2);
       } finally {
-        engine.quit();
+        await engine.quit();
       }
     }
   );
@@ -319,7 +319,7 @@ describe("RunEngine pending version", () => {
         );
         expect(queueLength3).toBe(1);
       } finally {
-        engine.quit();
+        await engine.quit();
       }
     }
   );

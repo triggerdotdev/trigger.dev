@@ -98,7 +98,45 @@ export function formatDateTime(
 }
 
 export function formatDateTimeISO(date: Date, timeZone: string): string {
-  return new Date(date.toLocaleString("en-US", { timeZone })).toISOString();
+  // Special handling for UTC
+  if (timeZone === "UTC") {
+    return date.toISOString();
+  }
+
+  // Get the date parts in the target timezone
+  const dateFormatter = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+
+  // Get the timezone offset for this specific date
+  const timeZoneFormatter = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    timeZoneName: "longOffset",
+  });
+
+  const dateParts = Object.fromEntries(
+    dateFormatter.formatToParts(date).map(({ type, value }) => [type, value])
+  );
+
+  const timeZoneParts = timeZoneFormatter.formatToParts(date);
+  const offset =
+    timeZoneParts.find((part) => part.type === "timeZoneName")?.value.replace("GMT", "") ||
+    "+00:00";
+
+  // Format: YYYY-MM-DDThh:mm:ss.sss±hh:mm
+  return (
+    `${dateParts.year}-${dateParts.month}-${dateParts.day}T` +
+    `${dateParts.hour}:${dateParts.minute}:${dateParts.second}.${String(
+      date.getMilliseconds()
+    ).padStart(3, "0")}${offset}`
+  );
 }
 
 // New component that only shows date when it changes

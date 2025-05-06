@@ -177,7 +177,7 @@ describe("RunEngine batchTrigger", () => {
       });
       expect(batchAfter2?.status).toBe("COMPLETED");
     } finally {
-      engine.quit();
+      await engine.quit();
     }
   });
 });

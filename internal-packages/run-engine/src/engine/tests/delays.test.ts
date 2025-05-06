@@ -86,7 +86,7 @@ describe("RunEngine delays", () => {
       assertNonNullable(executionData2);
       expect(executionData2.snapshot.executionStatus).toBe("QUEUED");
     } finally {
-      engine.quit();
+      await engine.quit();
     }
   });
 
@@ -183,7 +183,7 @@ describe("RunEngine delays", () => {
       assertNonNullable(executionData3);
       expect(executionData3.snapshot.executionStatus).toBe("QUEUED");
     } finally {
-      engine.quit();
+      await engine.quit();
     }
   });
 
@@ -287,7 +287,7 @@ describe("RunEngine delays", () => {
 
       expect(run3.status).toBe("EXPIRED");
     } finally {
-      engine.quit();
+      await engine.quit();
     }
   });
 
@@ -398,7 +398,7 @@ describe("RunEngine delays", () => {
       expect(executionData4.snapshot.executionStatus).toBe("FINISHED");
       expect(executionData4.run.status).toBe("CANCELED");
     } finally {
-      engine.quit();
+      await engine.quit();
     }
   });
 });

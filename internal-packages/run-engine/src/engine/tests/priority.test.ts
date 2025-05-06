@@ -103,7 +103,7 @@ describe("RunEngine priority", () => {
         expect(dequeue2.length).toBe(1);
         expect(dequeue2[0].run.friendlyId).toBe(runs[2].friendlyId);
       } finally {
-        engine.quit();
+        await engine.quit();
       }
     }
   );
@@ -197,7 +197,7 @@ describe("RunEngine priority", () => {
         expect(dequeue[3].run.friendlyId).toBe(runs[4].friendlyId);
         expect(dequeue[4].run.friendlyId).toBe(runs[0].friendlyId);
       } finally {
-        engine.quit();
+        await engine.quit();
       }
     }
   );
