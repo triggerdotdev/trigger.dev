@@ -2161,8 +2161,8 @@ model Waitpoint {
   /// Quickly find a batch waitpoint
   @@index([completedByBatchId])
   /// Dashboard filtering
-  @@index([environmentId, resolver, createdAt(sort: Desc)])
-  @@index([environmentId, resolver, status, createdAt(sort: Desc)])
+  @@index([environmentId, resolver, id(sort: Desc)])
+  @@index([environmentId, resolver, status, id(sort: Desc)])
 }
 
 enum WaitpointType {
