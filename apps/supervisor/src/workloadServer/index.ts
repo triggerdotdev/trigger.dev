@@ -17,6 +17,7 @@ import {
   WorkloadRunAttemptStartRequestBody,
   type WorkloadRunAttemptStartResponseBody,
   type WorkloadRunLatestSnapshotResponseBody,
+  WorkloadRunSnapshotsSinceResponseBody,
   type WorkloadServerToClientEvents,
   type WorkloadSuspendRunResponseBody,
 } from "@trigger.dev/core/v3/workers";
@@ -341,6 +342,31 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
           } satisfies WorkloadRunLatestSnapshotResponseBody);
         },
       })
+      .route(
+        "/api/v1/workload-actions/runs/:runFriendlyId/snapshots/since/:snapshotFriendlyId",
+        "GET",
+        {
+          paramsSchema: WorkloadActionParams,
+          handler: async ({ req, reply, params }) => {
+            const sinceSnapshotResponse = await this.workerClient.getSnapshotsSince(
+              params.runFriendlyId,
+              params.snapshotFriendlyId,
+              this.runnerIdFromRequest(req)
+            );
+
+            if (!sinceSnapshotResponse.success) {
+              console.error("Failed to get snapshots since", {
+                runId: params.runFriendlyId,
+                error: sinceSnapshotResponse.error,
+              });
+              reply.empty(500);
+              return;
+            }
+
+            reply.json(sinceSnapshotResponse.data satisfies WorkloadRunSnapshotsSinceResponseBody);
+          },
+        }
+      )
       .route("/api/v1/workload-actions/runs/:runFriendlyId/logs/debug", "POST", {
         paramsSchema: WorkloadActionParams.pick({ runFriendlyId: true }),
         bodySchema: WorkloadDebugLogRequestBody,

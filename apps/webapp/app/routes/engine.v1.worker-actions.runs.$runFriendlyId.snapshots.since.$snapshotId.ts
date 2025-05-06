@@ -16,15 +16,15 @@ export const loader = createLoaderWorkerApiRoute(
   }): Promise<TypedResponse<WorkerApiRunSnapshotsSinceResponseBody>> => {
     const { runFriendlyId, snapshotId } = params;
 
-    const executions = await authenticatedWorker.getSnapshotsSince({
+    const snapshots = await authenticatedWorker.getSnapshotsSince({
       runFriendlyId,
       snapshotId,
     });
 
-    if (!executions) {
+    if (!snapshots) {
       throw new Error("Failed to retrieve snapshots since given snapshot");
     }
 
-    return json({ executions });
+    return json({ snapshots });
   }
 );

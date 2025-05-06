@@ -1105,22 +1105,22 @@ export class RunExecution {
       return;
     }
 
-    const { executions } = response.data;
+    const { snapshots } = response.data;
 
-    if (!executions.length) {
+    if (!snapshots.length) {
       this.sendDebugLog(`fetchAndProcessSnapshotChanges: no new snapshots`, { source });
       return;
     }
 
     // Only act on the last snapshot
-    const lastSnapshot = executions[executions.length - 1];
+    const lastSnapshot = snapshots[snapshots.length - 1];
 
     if (!lastSnapshot) {
       this.sendDebugLog(`fetchAndProcessSnapshotChanges: no last snapshot`, { source });
       return;
     }
 
-    const previousSnapshots = executions.slice(0, -1);
+    const previousSnapshots = snapshots.slice(0, -1);
 
     // If any previous snapshot is QUEUED or SUSPENDED, deprecate this worker
     const deprecatedStatus: TaskRunExecutionStatus[] = ["QUEUED", "SUSPENDED"];

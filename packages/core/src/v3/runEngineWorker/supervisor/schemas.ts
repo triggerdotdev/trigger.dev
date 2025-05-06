@@ -164,7 +164,7 @@ export type WorkerApiSuspendCompletionResponseBody = z.infer<
 >;
 
 export const WorkerApiRunSnapshotsSinceResponseBody = z.object({
-  executions: z.array(RunExecutionData),
+  snapshots: z.array(RunExecutionData),
 });
 export type WorkerApiRunSnapshotsSinceResponseBody = z.infer<
   typeof WorkerApiRunSnapshotsSinceResponseBody

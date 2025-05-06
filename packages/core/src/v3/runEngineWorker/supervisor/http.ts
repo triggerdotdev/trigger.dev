@@ -17,6 +17,7 @@ import {
   WorkerApiDebugLogBody,
   WorkerApiSuspendRunRequestBody,
   WorkerApiSuspendRunResponseBody,
+  WorkerApiRunSnapshotsSinceResponseBody,
 } from "./schemas.js";
 import { SupervisorClientCommonOptions } from "./types.js";
 import { getDefaultWorkerHeaders } from "./util.js";
@@ -175,6 +176,20 @@ export class SupervisorHttpClient {
     return wrapZodFetch(
       WorkerApiRunLatestSnapshotResponseBody,
       `${this.apiUrl}/engine/v1/worker-actions/runs/${runId}/snapshots/latest`,
+      {
+        method: "GET",
+        headers: {
+          ...this.defaultHeaders,
+          ...this.runnerIdHeader(runnerId),
+        },
+      }
+    );
+  }
+
+  async getSnapshotsSince(runId: string, snapshotId: string, runnerId?: string) {
+    return wrapZodFetch(
+      WorkerApiRunSnapshotsSinceResponseBody,
+      `${this.apiUrl}/engine/v1/worker-actions/runs/${runId}/snapshots/since/${snapshotId}`,
       {
         method: "GET",
         headers: {
