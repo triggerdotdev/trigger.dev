@@ -106,7 +106,7 @@ function ReplayForm(
     >
       {editablePayload ? (
         <>
-          <Paragraph className="py-3">
+          <Paragraph variant="small" className="py-3.5">
             Replaying will create a new run using the same or modified payload, executing against
             the latest version in your selected environment.
           </Paragraph>
