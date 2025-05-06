@@ -134,11 +134,21 @@ class BinaryReader {
     const lower = this.readInt32();
     return upper.toString(16).toUpperCase() + "/" + lower.toString(16).toUpperCase();
   }
+  readUint32(): number {
+    // >>> 0 ensures unsigned
+    return this.readInt32() >>> 0;
+  }
+
+  readUint64(): bigint {
+    // Combine two unsigned 32-bit ints into a 64-bit bigint
+    return (BigInt(this.readUint32()) << 32n) | BigInt(this.readUint32());
+  }
+
   readTime(): bigint {
-    // microseconds since 2000-01-01
-    const high = this.readInt32();
-    const low = this.readInt32();
-    return BigInt(high) * 4294967296n + BigInt(low);
+    // (POSTGRES_EPOCH_JDATE - UNIX_EPOCH_JDATE) * USECS_PER_DAY == 946684800000000
+    const microsSinceUnixEpoch = this.readUint64() + 946684800000000n;
+    // Convert to milliseconds for JS Date compatibility
+    return microsSinceUnixEpoch;
   }
 }
 

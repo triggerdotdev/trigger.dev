@@ -143,25 +143,7 @@ export class LogicalReplicationClient {
       this.ackIntervalTimer = null;
     }
     // Release leader lock if held
-    if (this.leaderLock) {
-      const [releaseError] = await tryCatch(this.leaderLock.release());
-
-      if (releaseError) {
-        this.logger.error("Failed to release leader lock", {
-          name: this.options.name,
-          slotName: this.options.slotName,
-          publicationName: this.options.publicationName,
-          error: releaseError,
-        });
-      } else {
-        this.logger.info("Released leader lock", {
-          name: this.options.name,
-          slotName: this.options.slotName,
-        });
-      }
-
-      this.leaderLock = null;
-    }
+    await this.#releaseLeaderLock();
 
     this.connection?.removeAllListeners();
     this.connection = null;
@@ -198,6 +180,24 @@ export class LogicalReplicationClient {
     return this;
   }
 
+  public async teardown(): Promise<boolean> {
+    await this.stop();
+
+    // Acquire the leaderLock
+    const leaderLockAcquired = await this.#acquireLeaderLock();
+
+    if (!leaderLockAcquired) {
+      return false;
+    }
+
+    // Drop the slot
+    const slotDropped = await this.#dropSlot();
+
+    await this.#releaseLeaderLock();
+
+    return slotDropped;
+  }
+
   public async subscribe(startLsn?: string): Promise<this> {
     await this.stop();
 
@@ -212,28 +212,10 @@ export class LogicalReplicationClient {
     });
 
     // 1. Leader election
-    try {
-      this.leaderLock = await this.redlock.acquire(
-        [`logical-replication-client:${this.options.name}`],
-        this.leaderLockTimeoutMs,
-        {
-          retryCount: 60,
-          retryDelay: 1000,
-          retryJitter: 100,
-        }
-      );
-    } catch (err) {
-      this.logger.error("Leader election failed", {
-        name: this.options.name,
-        table: this.options.table,
-        slotName: this.options.slotName,
-        publicationName: this.options.publicationName,
-        startLsn,
-        error: err,
-      });
+    const leaderLockAcquired = await this.#acquireLeaderLock();
 
+    if (!leaderLockAcquired) {
       this.events.emit("leaderElection", false);
-
       return this.stop();
     }
 
@@ -481,6 +463,31 @@ export class LogicalReplicationClient {
     return res.rows[0].exists;
   }
 
+  async #dropSlot(): Promise<boolean> {
+    if (!this.client) {
+      this.events.emit("error", new LogicalReplicationClientError("Cannot drop slot"));
+      return false;
+    }
+
+    const [dropError] = await tryCatch(
+      this.client.query(`SELECT pg_drop_replication_slot('${this.options.slotName}');`)
+    );
+
+    if (dropError) {
+      this.logger.error("Failed to drop slot", {
+        name: this.options.name,
+        table: this.options.table,
+        slotName: this.options.slotName,
+        publicationName: this.options.publicationName,
+        error: dropError,
+      });
+
+      this.events.emit("error", dropError);
+    }
+
+    return true;
+  }
+
   async #acknowledge(lsn: string): Promise<void> {
     if (!this.autoAcknowledge) return;
     this.events.emit("acknowledge", { lsn });
@@ -518,6 +525,45 @@ export class LogicalReplicationClient {
     this.connection.sendCopyFromChunk(response);
     this.lastAckTimestamp = Date.now();
     return true;
+  }
+
+  async #acquireLeaderLock(): Promise<boolean> {
+    try {
+      this.leaderLock = await this.redlock.acquire(
+        [`logical-replication-client:${this.options.name}`],
+        this.leaderLockTimeoutMs,
+        {
+          retryCount: 60,
+          retryDelay: 1000,
+          retryJitter: 100,
+        }
+      );
+    } catch (err) {
+      this.logger.error("Leader election failed", {
+        name: this.options.name,
+        table: this.options.table,
+        slotName: this.options.slotName,
+        publicationName: this.options.publicationName,
+        error: err,
+      });
+
+      return false;
+    }
+
+    return true;
+  }
+
+  async #releaseLeaderLock() {
+    if (!this.leaderLock) return;
+    const [releaseError] = await tryCatch(this.leaderLock.release());
+    this.leaderLock = null;
+
+    if (releaseError) {
+      this.logger.error("Failed to release leader lock", {
+        name: this.options.name,
+        error: releaseError,
+      });
+    }
   }
 
   async #startLeaderLockHeartbeat() {
