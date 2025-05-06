@@ -1,4 +1,6 @@
 export type Metadata = {
+  TRIGGER_RUN_ID: string | undefined;
+  TRIGGER_SNAPSHOT_ID: string | undefined;
   TRIGGER_SUPERVISOR_API_PROTOCOL: string | undefined;
   TRIGGER_SUPERVISOR_API_DOMAIN: string | undefined;
   TRIGGER_SUPERVISOR_API_PORT: number | undefined;
