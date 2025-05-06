@@ -1045,7 +1045,7 @@ export class RunExecution {
     this.sendDebugLog("handleSuspendable", { suspendableSnapshot });
 
     if (!this.snapshotManager) {
-      this.sendDebugLog("handleSuspendable: missing snapshot manager");
+      this.sendDebugLog("handleSuspendable: missing snapshot manager", { suspendableSnapshot });
       return;
     }
 
@@ -1147,7 +1147,6 @@ export class RunExecution {
     const { snapshots } = response.data;
 
     if (!snapshots.length) {
-      this.sendDebugLog(`fetchAndProcessSnapshotChanges: no new snapshots`, { source });
       return;
     }
 
