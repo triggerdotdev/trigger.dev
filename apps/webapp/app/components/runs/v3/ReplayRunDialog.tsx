@@ -17,6 +17,7 @@ import {
 } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.test.tasks.$taskParam/route";
 import { type loader } from "~/routes/resources.taskruns.$runParam.replay";
 import type { RuntimeEnvironment } from "~/models/runtimeEnvironment.server";
+import { Callout } from "~/components/primitives/Callout";
 
 type ReplayRunDialogProps = {
   runFriendlyId: string;
@@ -143,7 +144,13 @@ function ReplayForm(
             ) : null}
           </div>
         </>
-      ) : null}
+      ) : (
+        <div className="grid h-full place-items-center">
+          <Callout variant="error" className="mt-4 w-fit">
+            <Paragraph>This payload is not editable.</Paragraph>
+          </Callout>
+        </div>
+      )}
       <input type="hidden" name="failedRedirect" value={props.failedRedirect} />
     </Form>
   );

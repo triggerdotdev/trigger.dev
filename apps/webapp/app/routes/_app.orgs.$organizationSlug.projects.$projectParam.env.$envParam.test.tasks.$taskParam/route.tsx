@@ -56,7 +56,6 @@ import { TestTaskData } from "~/v3/testTask";
 
 //TODO:
 // 1. Get rid of the extra form in the ReplayRunDialog.
-// 2. If the editablePayload is false on ReplayRunDialog, show a callout error explaining that the payload is not editable.
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
