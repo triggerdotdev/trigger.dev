@@ -1,4 +1,4 @@
-import { SpanKind } from "@opentelemetry/api";
+import { Context, context, SpanKind, trace } from "@opentelemetry/api";
 import { VERSION } from "../../version.js";
 import { ApiError, RateLimitError } from "../apiClient/errors.js";
 import { ConsoleInterceptor } from "../consoleInterceptor.js";
@@ -51,6 +51,7 @@ import {
   stringifyIO,
 } from "../utils/ioSerialization.js";
 import { calculateNextRetryDelay } from "../utils/retries.js";
+import { promiseWithResolvers } from "../../utils.js";
 
 export type TaskExecutorOptions = {
   tracingSDK: TracingSDK;
@@ -90,7 +91,7 @@ export class TaskExecutor {
     execution: TaskRunExecution,
     worker: ServerBackgroundWorker,
     traceContext: Record<string, unknown>,
-    signal?: AbortSignal,
+    signal: AbortSignal,
     isWarmStart?: boolean
   ): Promise<{ result: TaskRunExecutionResult }> {
     const ctx = TaskRunContext.parse(execution);
@@ -120,6 +121,8 @@ export class TaskExecutor {
     const result = await this._tracer.startActiveSpan(
       attemptMessage,
       async (span) => {
+        const attemptContext = context.active();
+
         return await this._consoleInterceptor.intercept(console, async () => {
           let parsedPayload: any;
           let initOutput: any;
@@ -150,6 +153,26 @@ export class TaskExecutor {
             await this.#callOnResumeFunctions(wait, parsedPayload, ctx, initOutput, signal);
           });
 
+          const {
+            promise: runPromise,
+            resolve: runResolve,
+            reject: runReject,
+          } = promiseWithResolvers<void>();
+
+          // Make sure the run promise does not cause unhandled promise rejections
+          runPromise.catch(() => {});
+
+          lifecycleHooks.registerOnCancelHookListener(async () => {
+            await this.#callOnCancelFunctions(
+              runPromise,
+              parsedPayload,
+              ctx,
+              initOutput,
+              signal,
+              attemptContext
+            );
+          });
+
           const executeTask = async (payload: any) => {
             const [runError, output] = await tryCatch(
               (async () => {
@@ -172,6 +195,8 @@ export class TaskExecutor {
             );
 
             if (runError) {
+              runReject(runError);
+
               const [handleErrorError, handleErrorResult] = await tryCatch(
                 this.#handleError(execution, runError, payload, ctx, initOutput, signal)
               );
@@ -219,6 +244,8 @@ export class TaskExecutor {
                 skippedRetrying: handleErrorResult.status === "skipped",
               } satisfies TaskRunExecutionResult;
             }
+
+            runResolve(output);
 
             const [outputError, stringifiedOutput] = await tryCatch(stringifyIO(output));
 
@@ -336,7 +363,7 @@ export class TaskExecutor {
     execution: TaskRunExecution,
     hooks: RegisteredHookFunction<AnyOnMiddlewareHookFunction>[],
     executeTask: (payload: unknown) => Promise<TaskRunExecutionResult>,
-    signal?: AbortSignal
+    signal: AbortSignal
   ) {
     let output: any;
     let executeError: unknown;
@@ -384,7 +411,7 @@ export class TaskExecutor {
     return output;
   }
 
-  async #callRun(payload: unknown, ctx: TaskRunContext, init: unknown, signal?: AbortSignal) {
+  async #callRun(payload: unknown, ctx: TaskRunContext, init: unknown, signal: AbortSignal) {
     const runFn = this.task.fns.run;
 
     if (!runFn) {
@@ -392,30 +419,29 @@ export class TaskExecutor {
     }
 
     // Create a promise that rejects when the signal aborts
-    const abortPromise = signal
-      ? new Promise((_, reject) => {
-          signal.addEventListener("abort", () => {
-            const maxDuration = ctx.run.maxDuration;
-            reject(
-              new InternalError({
-                code: TaskRunErrorCodes.MAX_DURATION_EXCEEDED,
-                message: `Run exceeded maximum compute time (maxDuration) of ${maxDuration} seconds`,
-              })
-            );
-          });
-        })
-      : undefined;
+    const abortPromise = new Promise((_, reject) => {
+      signal.addEventListener("abort", () => {
+        if (typeof signal.reason === "string" && signal.reason.includes("cancel")) {
+          console.log("abortPromise: cancel");
+          return;
+        }
+
+        const maxDuration = ctx.run.maxDuration;
+        reject(
+          new InternalError({
+            code: TaskRunErrorCodes.MAX_DURATION_EXCEEDED,
+            message: `Run exceeded maximum compute time (maxDuration) of ${maxDuration} seconds`,
+          })
+        );
+      });
+    });
 
     return runTimelineMetrics.measureMetric("trigger.dev/execution", "run", async () => {
       return await this._tracer.startActiveSpan(
         "run()",
         async (span) => {
-          if (abortPromise) {
-            // Race between the run function and the abort promise
-            return await Promise.race([runFn(payload, { ctx, init, signal }), abortPromise]);
-          }
-
-          return await runFn(payload, { ctx, init, signal });
+          // Race between the run function and the abort promise
+          return await Promise.race([runFn(payload, { ctx, init, signal }), abortPromise]);
         },
         {
           attributes: { [SemanticInternalAttributes.STYLE_ICON]: "task-fn-run" },
@@ -429,7 +455,7 @@ export class TaskExecutor {
     payload: unknown,
     ctx: TaskRunContext,
     initOutput: TaskInitOutput,
-    signal?: AbortSignal
+    signal: AbortSignal
   ) {
     const globalWaitHooks = lifecycleHooks.getGlobalWaitHooks();
     const taskWaitHook = lifecycleHooks.getTaskWaitHook(this.task.id);
@@ -496,12 +522,94 @@ export class TaskExecutor {
     );
   }
 
+  async #callOnCancelFunctions(
+    runPromise: Promise<any>,
+    payload: unknown,
+    ctx: TaskRunContext,
+    initOutput: TaskInitOutput,
+    signal: AbortSignal,
+    attemptContext: Context
+  ) {
+    const globalCancelHooks = lifecycleHooks.getGlobalCancelHooks();
+    const taskCancelHook = lifecycleHooks.getTaskCancelHook(this.task.id);
+
+    if (globalCancelHooks.length === 0 && !taskCancelHook) {
+      return;
+    }
+
+    const result = await runTimelineMetrics.measureMetric(
+      "trigger.dev/execution",
+      "onCancel",
+      async () => {
+        for (const hook of globalCancelHooks) {
+          const [hookError] = await tryCatch(
+            this._tracer.startActiveSpan(
+              "onCancel()",
+              async (span) => {
+                await hook.fn({
+                  payload,
+                  ctx,
+                  signal,
+                  task: this.task.id,
+                  init: initOutput,
+                  runPromise,
+                });
+              },
+              {
+                attributes: {
+                  [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onCancel",
+                  [SemanticInternalAttributes.COLLAPSED]: true,
+                  ...this.#lifecycleHookAccessoryAttributes(hook.name),
+                },
+              },
+              attemptContext
+            )
+          );
+
+          if (hookError) {
+            throw hookError;
+          }
+        }
+
+        if (taskCancelHook) {
+          const [hookError] = await tryCatch(
+            this._tracer.startActiveSpan(
+              "onCancel()",
+              async (span) => {
+                await taskCancelHook({
+                  payload,
+                  ctx,
+                  signal,
+                  task: this.task.id,
+                  init: initOutput,
+                  runPromise,
+                });
+              },
+              {
+                attributes: {
+                  [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onCancel",
+                  [SemanticInternalAttributes.COLLAPSED]: true,
+                  ...this.#lifecycleHookAccessoryAttributes("task"),
+                },
+              },
+              attemptContext
+            )
+          );
+
+          if (hookError) {
+            throw hookError;
+          }
+        }
+      }
+    );
+  }
+
   async #callOnResumeFunctions(
     wait: TaskWait,
     payload: unknown,
     ctx: TaskRunContext,
     initOutput: TaskInitOutput,
-    signal?: AbortSignal
+    signal: AbortSignal
   ) {
     const globalResumeHooks = lifecycleHooks.getGlobalResumeHooks();
     const taskResumeHook = lifecycleHooks.getTaskResumeHook(this.task.id);
@@ -568,7 +676,7 @@ export class TaskExecutor {
     );
   }
 
-  async #callInitFunctions(payload: unknown, ctx: TaskRunContext, signal?: AbortSignal) {
+  async #callInitFunctions(payload: unknown, ctx: TaskRunContext, signal: AbortSignal) {
     const globalInitHooks = lifecycleHooks.getGlobalInitHooks();
     const taskInitHook = lifecycleHooks.getTaskInitHook(this.task.id);
 
@@ -671,7 +779,7 @@ export class TaskExecutor {
     output: any,
     ctx: TaskRunContext,
     initOutput: any,
-    signal?: AbortSignal
+    signal: AbortSignal
   ) {
     const globalSuccessHooks = lifecycleHooks.getGlobalSuccessHooks();
     const taskSuccessHook = lifecycleHooks.getTaskSuccessHook(this.task.id);
@@ -746,7 +854,7 @@ export class TaskExecutor {
     error: unknown,
     ctx: TaskRunContext,
     initOutput: any,
-    signal?: AbortSignal
+    signal: AbortSignal
   ) {
     const globalFailureHooks = lifecycleHooks.getGlobalFailureHooks();
     const taskFailureHook = lifecycleHooks.getTaskFailureHook(this.task.id);
@@ -832,7 +940,7 @@ export class TaskExecutor {
     payload: unknown,
     ctx: TaskRunContext,
     initOutput: any,
-    signal?: AbortSignal
+    signal: AbortSignal
   ) {
     const globalStartHooks = lifecycleHooks.getGlobalStartHooks();
     const taskStartHook = lifecycleHooks.getTaskStartHook(this.task.id);
@@ -898,7 +1006,7 @@ export class TaskExecutor {
     payload: unknown,
     ctx: TaskRunContext,
     initOutput: any,
-    signal?: AbortSignal
+    signal: AbortSignal
   ) {
     await this.#callCleanupFunctions(payload, ctx, initOutput, signal);
     await this.#blockForWaitUntil();
@@ -908,7 +1016,7 @@ export class TaskExecutor {
     payload: unknown,
     ctx: TaskRunContext,
     initOutput: any,
-    signal?: AbortSignal
+    signal: AbortSignal
   ) {
     const globalCleanupHooks = lifecycleHooks.getGlobalCleanupHooks();
     const taskCleanupHook = lifecycleHooks.getTaskCleanupHook(this.task.id);
@@ -1001,7 +1109,7 @@ export class TaskExecutor {
     payload: any,
     ctx: TaskRunContext,
     init: TaskInitOutput,
-    signal?: AbortSignal
+    signal: AbortSignal
   ): Promise<
     | { status: "retry"; retry: TaskRunExecutionRetry; error?: unknown }
     | { status: "skipped"; error?: unknown }
@@ -1191,7 +1299,7 @@ export class TaskExecutor {
     result: TaskCompleteResult<unknown>,
     ctx: TaskRunContext,
     initOutput: any,
-    signal?: AbortSignal
+    signal: AbortSignal
   ) {
     const globalCompleteHooks = lifecycleHooks.getGlobalCompleteHooks();
     const taskCompleteHook = lifecycleHooks.getTaskCompleteHook(this.task.id);

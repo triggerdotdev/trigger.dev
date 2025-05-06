@@ -12,6 +12,7 @@ import {
   OnStartHookFunction,
   OnSuccessHookFunction,
   OnWaitHookFunction,
+  OnCancelHookFunction,
 } from "../lifecycleHooks/types.js";
 import { RunTags } from "../schemas/api.js";
 import {
@@ -88,28 +89,36 @@ export type RunFnParams<TInitOutput extends InitOutput> = Prettify<{
   ctx: Context;
   /** If you use the `init` function, this will be whatever you returned. */
   init?: TInitOutput;
-  /** Abort signal that is aborted when a task run exceeds it's maxDuration. Can be used to automatically cancel downstream requests */
-  signal?: AbortSignal;
+  /** Abort signal that is aborted when a task run exceeds it's maxDuration or if the task run is cancelled. Can be used to automatically cancel downstream requests */
+  signal: AbortSignal;
 }>;
 
 export type MiddlewareFnParams = Prettify<{
   ctx: Context;
   next: () => Promise<void>;
-  /** Abort signal that is aborted when a task run exceeds it's maxDuration. Can be used to automatically cancel downstream requests */
-  signal?: AbortSignal;
+  /** Abort signal that is aborted when a task run exceeds it's maxDuration or if the task run is cancelled. Can be used to automatically cancel downstream requests */
+  signal: AbortSignal;
 }>;
 
 export type InitFnParams = Prettify<{
   ctx: Context;
-  /** Abort signal that is aborted when a task run exceeds it's maxDuration. Can be used to automatically cancel downstream requests */
-  signal?: AbortSignal;
+  /** Abort signal that is aborted when a task run exceeds it's maxDuration or if the task run is cancelled. Can be used to automatically cancel downstream requests */
+  signal: AbortSignal;
 }>;
 
 export type StartFnParams = Prettify<{
   ctx: Context;
   init?: InitOutput;
-  /** Abort signal that is aborted when a task run exceeds it's maxDuration. Can be used to automatically cancel downstream requests */
-  signal?: AbortSignal;
+  /** Abort signal that is aborted when a task run exceeds it's maxDuration or if the task run is cancelled. Can be used to automatically cancel downstream requests */
+  signal: AbortSignal;
+}>;
+
+export type CancelFnParams = Prettify<{
+  ctx: Context;
+  /** Abort signal that is aborted when a task run exceeds it's maxDuration or if the task run is cancelled. Can be used to automatically cancel downstream requests */
+  signal: AbortSignal;
+  runPromise: Promise<unknown>;
+  init?: InitOutput;
 }>;
 
 export type Context = TaskRunContext;
@@ -296,6 +305,7 @@ type CommonTaskOptions<
   onResume?: OnResumeHookFunction<TPayload>;
   onWait?: OnWaitHookFunction<TPayload>;
   onComplete?: OnCompleteHookFunction<TPayload, TOutput>;
+  onCancel?: OnCancelHookFunction<TPayload, TOutput, TInitOutput>;
 
   /**
    * middleware allows you to run code "around" the run function. This can be useful for logging, metrics, or other cross-cutting concerns.

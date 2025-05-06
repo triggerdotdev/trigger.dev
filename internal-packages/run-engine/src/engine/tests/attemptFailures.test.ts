@@ -155,7 +155,7 @@ describe("RunEngine attempt failures", () => {
       expect(executionData4.run.attemptNumber).toBe(2);
       expect(executionData4.run.status).toBe("COMPLETED_SUCCESSFULLY");
     } finally {
-      engine.quit();
+      await engine.quit();
     }
   });
 
@@ -266,7 +266,7 @@ describe("RunEngine attempt failures", () => {
       expect(executionData3.run.attemptNumber).toBe(1);
       expect(executionData3.run.status).toBe("COMPLETED_WITH_ERRORS");
     } finally {
-      engine.quit();
+      await engine.quit();
     }
   });
 
@@ -375,7 +375,7 @@ describe("RunEngine attempt failures", () => {
       expect(executionData3.run.attemptNumber).toBe(1);
       expect(executionData3.run.status).toBe("CRASHED");
     } finally {
-      engine.quit();
+      await engine.quit();
     }
   });
 
@@ -482,7 +482,7 @@ describe("RunEngine attempt failures", () => {
       expect(executionData.run.attemptNumber).toBe(1);
       expect(executionData.run.status).toBe("CRASHED");
     } finally {
-      engine.quit();
+      await engine.quit();
     }
   });
 
@@ -639,7 +639,7 @@ describe("RunEngine attempt failures", () => {
       expect(executionData4.run.attemptNumber).toBe(2);
       expect(executionData4.run.status).toBe("COMPLETED_SUCCESSFULLY");
     } finally {
-      engine.quit();
+      await engine.quit();
     }
   });
 
@@ -803,7 +803,7 @@ describe("RunEngine attempt failures", () => {
       expect(finalExecutionData.run.attemptNumber).toBe(2);
       expect(finalExecutionData.run.status).toBe("CRASHED");
     } finally {
-      engine.quit();
+      await engine.quit();
     }
   });
 });

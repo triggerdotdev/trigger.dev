@@ -102,7 +102,7 @@ describe("RunEngine ttl", () => {
       );
       expect(envConcurrencyCompleted).toBe(0);
     } finally {
-      engine.quit();
+      await engine.quit();
     }
   });
 });

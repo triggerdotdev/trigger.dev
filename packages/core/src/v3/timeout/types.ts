@@ -1,5 +1,5 @@
 export interface TimeoutManager {
-  abortAfterTimeout: (timeoutInSeconds: number) => AbortSignal;
+  abortAfterTimeout: (timeoutInSeconds?: number) => AbortController;
   signal?: AbortSignal;
 }
 

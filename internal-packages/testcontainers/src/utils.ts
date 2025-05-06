@@ -1,10 +1,14 @@
 import { PostgreSqlContainer, StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { RedisContainer, StartedRedisContainer } from "@testcontainers/redis";
+import { tryCatch } from "@trigger.dev/core";
 import Redis from "ioredis";
 import path from "path";
-import { GenericContainer, StartedNetwork, Wait } from "testcontainers";
+import { isDebug } from "std-env";
+import { GenericContainer, StartedNetwork, StartedTestContainer, Wait } from "testcontainers";
 import { x } from "tinyexec";
-import { expect } from "vitest";
+import { expect, TaskContext } from "vitest";
+import { getContainerMetadata, getTaskMetadata, logCleanup } from "./logs";
+import { logSetup } from "./logs";
 
 export async function createPostgresContainer(network: StartedNetwork) {
   const container = await new PostgreSqlContainer("docker.io/postgres:14")
@@ -67,7 +71,12 @@ export async function createRedisContainer({
     .start();
 
   // Add a verification step
-  await verifyRedisConnection(startedContainer);
+  const [error] = await tryCatch(verifyRedisConnection(startedContainer));
+
+  if (error) {
+    await startedContainer.stop({ timeout: 30 });
+    throw new Error("verifyRedisConnection error", { cause: error });
+  }
 
   return {
     container: startedContainer,
@@ -87,12 +96,28 @@ async function verifyRedisConnection(container: StartedRedisContainer) {
     },
   });
 
+  const containerMetadata = {
+    containerId: container.getId().slice(0, 12),
+    containerName: container.getName(),
+    containerNetworkNames: container.getNetworkNames(),
+  };
+
   redis.on("error", (error) => {
-    // swallow the error
+    if (isDebug) {
+      console.log("verifyRedisConnection: client error", error, containerMetadata);
+    }
+
+    // Don't throw here, we'll do that below if the ping fails
   });
 
   try {
     await redis.ping();
+  } catch (error) {
+    if (isDebug) {
+      console.log("verifyRedisConnection: ping error", error, containerMetadata);
+    }
+
+    throw new Error("verifyRedisConnection: ping error", { cause: error });
   } finally {
     await redis.quit();
   }
@@ -125,4 +150,57 @@ export async function createElectricContainer(
 export function assertNonNullable<T>(value: T): asserts value is NonNullable<T> {
   expect(value).toBeDefined();
   expect(value).not.toBeNull();
+}
+
+export async function withContainerSetup<T>({
+  name,
+  task,
+  setup,
+}: {
+  name: string;
+  task: TaskContext["task"];
+  setup: Promise<T extends { container: StartedTestContainer } ? T : never>;
+}): Promise<T & { metadata: Record<string, unknown> }> {
+  const testName = task.name;
+  logSetup(`${name}: starting`, { testName });
+
+  const start = Date.now();
+  const result = await setup;
+  const startDurationMs = Date.now() - start;
+
+  const metadata = {
+    ...getTaskMetadata(task),
+    ...getContainerMetadata(result.container),
+    startDurationMs,
+  };
+
+  logSetup(`${name}: started`, metadata);
+
+  return { ...result, metadata };
+}
+
+export async function useContainer<TContainer extends StartedTestContainer>(
+  name: string,
+  {
+    container,
+    task,
+    use,
+  }: { container: TContainer; task: TaskContext["task"]; use: () => Promise<void> }
+) {
+  const metadata = {
+    ...getTaskMetadata(task),
+    ...getContainerMetadata(container),
+    useDurationMs: 0,
+  };
+
+  try {
+    const start = Date.now();
+    await use();
+    const useDurationMs = Date.now() - start;
+    metadata.useDurationMs = useDurationMs;
+  } finally {
+    // WARNING: Testcontainers by default will not wait until the container has stopped. It will simply issue the stop command and return immediately.
+    // If you need to wait for the container to be stopped, you can provide a timeout. The unit of timeout option here is second
+    await logCleanup(name, container.stop({ timeout: 10 }), metadata);
+  }
 }

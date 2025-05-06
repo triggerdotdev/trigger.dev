@@ -1,4 +1,4 @@
-name: "⚒️ Publish Worker RE2"
+name: "⚒️ Publish Worker (v4)"
 
 on:
   workflow_call:
@@ -85,11 +85,11 @@ jobs:
           REPOSITORY: ${{ steps.get_repository.outputs.repo }}
           IMAGE_TAG: ${{ steps.get_tag.outputs.tag }}
 
-      - name: 🐙 Push 'v3' tag to GitHub Container Registry
-        if: steps.get_tag.outputs.is_semver == 'true'
-        run: |
-          docker tag infra_image "$REGISTRY/$REPOSITORY:v3"
-          docker push "$REGISTRY/$REPOSITORY:v3"
-        env:
-          REGISTRY: ghcr.io/triggerdotdev
-          REPOSITORY: ${{ steps.get_repository.outputs.repo }}
+      # - name: 🐙 Push 'v3' tag to GitHub Container Registry
+      #   if: steps.get_tag.outputs.is_semver == 'true'
+      #   run: |
+      #     docker tag infra_image "$REGISTRY/$REPOSITORY:v3"
+      #     docker push "$REGISTRY/$REPOSITORY:v3"
+      #   env:
+      #     REGISTRY: ghcr.io/triggerdotdev
+      #     REPOSITORY: ${{ steps.get_repository.outputs.repo }}

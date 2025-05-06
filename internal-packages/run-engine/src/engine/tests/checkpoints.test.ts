@@ -1380,7 +1380,7 @@ describe("RunEngine checkpoints", () => {
       });
       expect(batchAfter?.status === "COMPLETED");
     } finally {
-      engine.quit();
+      await engine.quit();
     }
   });
 });

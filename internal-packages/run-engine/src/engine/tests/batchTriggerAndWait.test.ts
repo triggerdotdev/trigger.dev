@@ -352,7 +352,7 @@ describe("RunEngine batchTriggerAndWait", () => {
       });
       expect(batchAfter?.status === "COMPLETED");
     } finally {
-      engine.quit();
+      await engine.quit();
     }
   });
 
@@ -570,7 +570,7 @@ describe("RunEngine batchTriggerAndWait", () => {
         );
         expect(parentAfterTriggerAndWait.batch).toBeUndefined();
       } finally {
-        engine.quit();
+        await engine.quit();
       }
     }
   );

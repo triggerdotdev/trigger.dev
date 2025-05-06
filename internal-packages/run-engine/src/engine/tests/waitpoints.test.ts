@@ -121,7 +121,7 @@ describe("RunEngine Waitpoints", () => {
       const executionDataAfter = await engine.getRunExecutionData({ runId: run.id });
       expect(executionDataAfter?.snapshot.executionStatus).toBe("EXECUTING");
     } finally {
-      engine.quit();
+      await engine.quit();
     }
   });
 
@@ -261,7 +261,7 @@ describe("RunEngine Waitpoints", () => {
       });
       expect(runWaitpoint).toBeNull();
     } finally {
-      engine.quit();
+      await engine.quit();
     }
   });
 
@@ -401,7 +401,7 @@ describe("RunEngine Waitpoints", () => {
         });
         expect(runWaitpoint).toBeNull();
       } finally {
-        engine.quit();
+        await engine.quit();
       }
     }
   );
@@ -518,7 +518,7 @@ describe("RunEngine Waitpoints", () => {
       });
       expect(runWaitpoint).toBeNull();
     } finally {
-      engine.quit();
+      await engine.quit();
     }
   });
 
@@ -667,7 +667,7 @@ describe("RunEngine Waitpoints", () => {
           expect(runWaitpoints.length).toBe(0);
         }
       } finally {
-        engine.quit();
+        await engine.quit();
       }
     }
   );
@@ -818,7 +818,7 @@ describe("RunEngine Waitpoints", () => {
         const isTimeout = isWaitpointOutputTimeout(waitpoint2.output);
         expect(isTimeout).toBe(true);
       } finally {
-        engine.quit();
+        await engine.quit();
       }
     }
   );
@@ -971,7 +971,7 @@ describe("RunEngine Waitpoints", () => {
       expect(waitpoint2.status).toBe("COMPLETED");
       expect(waitpoint2.outputIsError).toBe(false);
     } finally {
-      engine.quit();
+      await engine.quit();
     }
   });
 
@@ -1133,7 +1133,7 @@ describe("RunEngine Waitpoints", () => {
       expect(waitpoint2.status).toBe("COMPLETED");
       expect(waitpoint2.outputIsError).toBe(false);
     } finally {
-      engine.quit();
+      await engine.quit();
     }
   });
 

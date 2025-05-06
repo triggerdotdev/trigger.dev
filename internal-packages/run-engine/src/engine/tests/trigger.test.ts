@@ -198,7 +198,7 @@ describe("RunEngine trigger()", () => {
       expect(runWaitpointAfter[0].type).toBe("RUN");
       expect(runWaitpointAfter[0].output).toBe(`{"foo":"bar"}`);
     } finally {
-      engine.quit();
+      await engine.quit();
     }
   });
 
@@ -325,7 +325,7 @@ describe("RunEngine trigger()", () => {
       expect(output.type).toBe(error.type);
       expect(runWaitpointAfter[0].outputIsError).toBe(true);
     } finally {
-      engine.quit();
+      await engine.quit();
     }
   });
 });

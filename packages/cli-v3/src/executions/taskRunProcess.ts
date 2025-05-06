@@ -109,9 +109,9 @@ export class TaskRunProcess {
     this._isBeingCancelled = true;
 
     try {
-      await this.#flush();
+      await this.#cancel();
     } catch (err) {
-      console.error("Error flushing task run process", { err });
+      console.error("Error cancelling task run process", { err });
     }
 
     await this.kill();
@@ -119,6 +119,10 @@ export class TaskRunProcess {
 
   async cleanup(kill = true) {
     this._isPreparedForNextRun = false;
+
+    if (this._isBeingCancelled) {
+      return;
+    }
 
     try {
       await this.#flush();
@@ -224,10 +228,17 @@ export class TaskRunProcess {
     await this._ipc?.sendWithAck("FLUSH", { timeoutInMs }, timeoutInMs + 1_000);
   }
 
+  async #cancel(timeoutInMs: number = 30_000) {
+    logger.debug("sending cancel message to task run process", { pid: this.pid, timeoutInMs });
+
+    await this._ipc?.sendWithAck("CANCEL", { timeoutInMs }, timeoutInMs + 1_000);
+  }
+
   async execute(
     params: TaskRunProcessExecuteParams,
     isWarmStart?: boolean
   ): Promise<TaskRunExecutionResult> {
+    this._isBeingCancelled = false;
     this._isPreparedForNextRun = false;
     this._isPreparedForNextAttempt = false;
 
