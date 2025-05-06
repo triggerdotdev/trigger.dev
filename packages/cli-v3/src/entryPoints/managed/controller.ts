@@ -429,13 +429,21 @@ export class ManagedRunController {
       if (!controller.runFriendlyId) {
         this.sendDebugLog({
           runId: run.friendlyId,
-          message: "run:notify: ignoring notification, no local run ID",
+          message: "run:notify: ignoring notification, no run ID",
           properties: {
             notification,
             controller,
           },
         });
         return;
+      }
+
+      if (!controller.snapshotFriendlyId) {
+        this.sendDebugLog({
+          runId: run.friendlyId,
+          message: "run:notify: ignoring notification, no snapshot ID",
+          properties: { notification, controller },
+        });
       }
 
       if (run.friendlyId !== controller.runFriendlyId) {

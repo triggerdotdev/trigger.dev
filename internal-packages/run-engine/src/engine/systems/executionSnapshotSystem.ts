@@ -1,4 +1,4 @@
-import { CompletedWaitpoint, ExecutionResult } from "@trigger.dev/core/v3";
+import { CompletedWaitpoint, ExecutionResult, RunExecutionData } from "@trigger.dev/core/v3";
 import { BatchId, RunId, SnapshotId } from "@trigger.dev/core/v3/isomorphic";
 import {
   Prisma,
@@ -17,31 +17,23 @@ export type ExecutionSnapshotSystemOptions = {
   heartbeatTimeouts: HeartbeatTimeouts;
 };
 
-export interface LatestExecutionSnapshot extends TaskRunExecutionSnapshot {
+export interface EnhancedExecutionSnapshot extends TaskRunExecutionSnapshot {
   friendlyId: string;
   runFriendlyId: string;
   checkpoint: TaskRunCheckpoint | null;
   completedWaitpoints: CompletedWaitpoint[];
 }
 
-/* Gets the most recent valid snapshot for a run */
-export async function getLatestExecutionSnapshot(
-  prisma: PrismaClientOrTransaction,
-  runId: string
-): Promise<LatestExecutionSnapshot> {
-  const snapshot = await prisma.taskRunExecutionSnapshot.findFirst({
-    where: { runId, isValid: true },
-    include: {
-      completedWaitpoints: true,
-      checkpoint: true,
-    },
-    orderBy: { createdAt: "desc" },
-  });
+type ExecutionSnapshotWithCheckAndWaitpoints = Prisma.TaskRunExecutionSnapshotGetPayload<{
+  include: {
+    checkpoint: true;
+    completedWaitpoints: true;
+  };
+}>;
 
-  if (!snapshot) {
-    throw new Error(`No execution snapshot found for TaskRun ${runId}`);
-  }
-
+function enhanceExecutionSnapshot(
+  snapshot: ExecutionSnapshotWithCheckAndWaitpoints
+): EnhancedExecutionSnapshot {
   return {
     ...snapshot,
     friendlyId: SnapshotId.toFriendlyId(snapshot.id),
@@ -99,6 +91,27 @@ export async function getLatestExecutionSnapshot(
   };
 }
 
+/* Gets the most recent valid snapshot for a run */
+export async function getLatestExecutionSnapshot(
+  prisma: PrismaClientOrTransaction,
+  runId: string
+): Promise<EnhancedExecutionSnapshot> {
+  const snapshot = await prisma.taskRunExecutionSnapshot.findFirst({
+    where: { runId, isValid: true },
+    include: {
+      completedWaitpoints: true,
+      checkpoint: true,
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  if (!snapshot) {
+    throw new Error(`No execution snapshot found for TaskRun ${runId}`);
+  }
+
+  return enhanceExecutionSnapshot(snapshot);
+}
+
 export async function getExecutionSnapshotCompletedWaitpoints(
   prisma: PrismaClientOrTransaction,
   snapshotId: string
@@ -139,6 +152,72 @@ export function executionResultFromSnapshot(snapshot: TaskRunExecutionSnapshot):
       attemptNumber: snapshot.attemptNumber,
     },
   };
+}
+
+export function executionDataFromSnapshot(snapshot: EnhancedExecutionSnapshot): RunExecutionData {
+  return {
+    version: "1" as const,
+    snapshot: {
+      id: snapshot.id,
+      friendlyId: snapshot.friendlyId,
+      executionStatus: snapshot.executionStatus,
+      description: snapshot.description,
+    },
+    run: {
+      id: snapshot.runId,
+      friendlyId: snapshot.runFriendlyId,
+      status: snapshot.runStatus,
+      attemptNumber: snapshot.attemptNumber ?? undefined,
+    },
+    batch: snapshot.batchId
+      ? {
+          id: snapshot.batchId,
+          friendlyId: BatchId.toFriendlyId(snapshot.batchId),
+        }
+      : undefined,
+    checkpoint: snapshot.checkpoint
+      ? {
+          id: snapshot.checkpoint.id,
+          friendlyId: snapshot.checkpoint.friendlyId,
+          type: snapshot.checkpoint.type,
+          location: snapshot.checkpoint.location,
+          imageRef: snapshot.checkpoint.imageRef,
+          reason: snapshot.checkpoint.reason ?? undefined,
+        }
+      : undefined,
+    completedWaitpoints: snapshot.completedWaitpoints,
+  };
+}
+
+export async function getExecutionSnapshotsSince(
+  prisma: PrismaClientOrTransaction,
+  runId: string,
+  sinceSnapshotId: string
+): Promise<EnhancedExecutionSnapshot[]> {
+  // Find the createdAt of the sinceSnapshotId
+  const sinceSnapshot = await prisma.taskRunExecutionSnapshot.findUnique({
+    where: { id: sinceSnapshotId },
+    select: { createdAt: true },
+  });
+
+  if (!sinceSnapshot) {
+    throw new Error(`No execution snapshot found for id ${sinceSnapshotId}`);
+  }
+
+  const snapshots = await prisma.taskRunExecutionSnapshot.findMany({
+    where: {
+      runId,
+      isValid: true,
+      createdAt: { gt: sinceSnapshot.createdAt },
+    },
+    include: {
+      completedWaitpoints: true,
+      checkpoint: true,
+    },
+    orderBy: { createdAt: "asc" },
+  });
+
+  return snapshots.map(enhanceExecutionSnapshot);
 }
 
 export class ExecutionSnapshotSystem {

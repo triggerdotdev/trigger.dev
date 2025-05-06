@@ -759,6 +759,19 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     });
   }
 
+  async getSnapshotsSince({
+    runFriendlyId,
+    snapshotId,
+  }: {
+    runFriendlyId: string;
+    snapshotId: string;
+  }) {
+    return await this._engine.getSnapshotsSince({
+      runId: fromFriendlyId(runFriendlyId),
+      snapshotId: fromFriendlyId(snapshotId),
+    });
+  }
+
   toJSON(): WorkerGroupTokenAuthenticationResponse {
     if (this.type === WorkerInstanceGroupType.MANAGED) {
       return {
