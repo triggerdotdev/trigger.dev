@@ -18,7 +18,7 @@ type ManagedRunControllerOptions = {
   env: EnvObject;
 };
 
-type SupervisorSocket = Socket<WorkloadServerToClientEvents, WorkloadClientToServerEvents>;
+export type SupervisorSocket = Socket<WorkloadServerToClientEvents, WorkloadClientToServerEvents>;
 
 export class ManagedRunController {
   private readonly env: RunnerEnv;
@@ -30,6 +30,9 @@ export class ManagedRunController {
 
   private warmStartCount = 0;
   private restoreCount = 0;
+
+  private notificationCount = 0;
+  private lastNotificationAt: Date | null = null;
 
   private currentExecution: RunExecution | null = null;
 
@@ -91,6 +94,8 @@ export class ManagedRunController {
     return {
       warmStartCount: this.warmStartCount,
       restoreCount: this.restoreCount,
+      notificationCount: this.notificationCount,
+      lastNotificationAt: this.lastNotificationAt,
     };
   }
 
@@ -188,12 +193,16 @@ export class ManagedRunController {
         this.currentExecution = null;
       }
 
+      // Remove all run notification listeners just to be safe
+      this.socket.removeAllListeners("run:notify");
+
       if (!this.currentExecution || !this.currentExecution.canExecute) {
         this.currentExecution = new RunExecution({
           workerManifest: this.workerManifest,
           env: this.env,
           httpClient: this.httpClient,
           logger: this.logger,
+          supervisorSocket: this.socket,
         });
       }
 
@@ -224,8 +233,8 @@ export class ManagedRunController {
 
     const metrics = this.currentExecution?.metrics;
 
-    if (metrics?.restoreCount) {
-      this.restoreCount += metrics.restoreCount;
+    if (metrics?.execution?.restoreCount) {
+      this.restoreCount += metrics.execution.restoreCount;
     }
 
     this.lockedRunExecution = null;
@@ -288,6 +297,7 @@ export class ManagedRunController {
           env: this.env,
           httpClient: this.httpClient,
           logger: this.logger,
+          supervisorSocket: this.socket,
         }).prepareForExecution({
           taskRunEnv: previousTaskRunEnv,
         });
@@ -392,116 +402,12 @@ export class ManagedRunController {
   createSupervisorSocket(): SupervisorSocket {
     const wsUrl = new URL("/workload", this.workerApiUrl);
 
-    const socket = io(wsUrl.href, {
+    const socket: SupervisorSocket = io(wsUrl.href, {
       transports: ["websocket"],
       extraHeaders: {
         [WORKLOAD_HEADERS.DEPLOYMENT_ID]: this.env.TRIGGER_DEPLOYMENT_ID,
         [WORKLOAD_HEADERS.RUNNER_ID]: this.env.TRIGGER_RUNNER_ID,
       },
-    }) satisfies SupervisorSocket;
-
-    socket.on("run:notify", async ({ version, run }) => {
-      // Generate a unique ID for the notification
-      const notificationId = Math.random().toString(36).substring(2, 15);
-
-      // Use this to track the notification incl. any processing
-      const notification = {
-        id: notificationId,
-        runId: run.friendlyId,
-        version,
-      };
-
-      // Lock this to the current run and snapshot IDs
-      const controller = {
-        runFriendlyId: this.runFriendlyId,
-        snapshotFriendlyId: this.snapshotFriendlyId,
-      };
-
-      this.sendDebugLog({
-        runId: run.friendlyId,
-        message: "run:notify received by runner",
-        properties: {
-          notification,
-          controller,
-        },
-      });
-
-      if (!controller.runFriendlyId) {
-        this.sendDebugLog({
-          runId: run.friendlyId,
-          message: "run:notify: ignoring notification, no run ID",
-          properties: {
-            notification,
-            controller,
-          },
-        });
-        return;
-      }
-
-      if (!controller.snapshotFriendlyId) {
-        this.sendDebugLog({
-          runId: run.friendlyId,
-          message: "run:notify: ignoring notification, no snapshot ID",
-          properties: { notification, controller },
-        });
-      }
-
-      if (run.friendlyId !== controller.runFriendlyId) {
-        this.sendDebugLog({
-          runId: run.friendlyId,
-          message: "run:notify: ignoring notification for different run",
-          properties: {
-            notification,
-            controller,
-          },
-        });
-        return;
-      }
-
-      const latestSnapshot = await this.httpClient.getRunExecutionData(controller.runFriendlyId);
-
-      if (!latestSnapshot.success) {
-        this.sendDebugLog({
-          runId: run.friendlyId,
-          message: "run:notify: failed to get latest snapshot data",
-          properties: {
-            notification,
-            controller,
-            error: latestSnapshot.error,
-          },
-        });
-        return;
-      }
-
-      const runExecutionData = latestSnapshot.data.execution;
-
-      if (!this.currentExecution) {
-        this.sendDebugLog({
-          runId: run.friendlyId,
-          message: "run:notify: no current execution",
-          properties: {
-            notification,
-            controller,
-          },
-        });
-        return;
-      }
-
-      const [error] = await tryCatch(
-        this.currentExecution.enqueueSnapshotChangeAndWait(runExecutionData)
-      );
-
-      if (error) {
-        this.sendDebugLog({
-          runId: run.friendlyId,
-          message: "run:notify: unexpected error",
-          properties: {
-            notification,
-            controller,
-            error: error.message,
-          },
-        });
-      }
     });
 
     socket.on("connect", () => {

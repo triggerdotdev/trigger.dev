@@ -20,6 +20,8 @@ import { assertExhaustive, tryCatch } from "@trigger.dev/core/utils";
 import { MetadataClient } from "./overrides.js";
 import { randomBytes } from "node:crypto";
 import { SnapshotManager, SnapshotState } from "./snapshot.js";
+import type { SupervisorSocket } from "./controller.js";
+import { RunNotifier } from "./notifier.js";
 
 class ExecutionAbortError extends Error {
   constructor(message: string) {
@@ -33,6 +35,7 @@ type RunExecutionOptions = {
   env: RunnerEnv;
   httpClient: WorkloadHttpClient;
   logger: RunLogger;
+  supervisorSocket: SupervisorSocket;
 };
 
 type RunExecutionPrepareOptions = {
@@ -71,12 +74,16 @@ export class RunExecution {
   private isShuttingDown = false;
   private shutdownReason?: string;
 
+  private supervisorSocket: SupervisorSocket;
+  private notifier?: RunNotifier;
+
   constructor(opts: RunExecutionOptions) {
     this.id = randomBytes(4).toString("hex");
     this.workerManifest = opts.workerManifest;
     this.env = opts.env;
     this.httpClient = opts.httpClient;
     this.logger = opts.logger;
+    this.supervisorSocket = opts.supervisorSocket;
 
     this.restoreCount = 0;
     this.executionAbortController = new AbortController();
@@ -439,10 +446,16 @@ export class RunExecution {
     this.snapshotPoller = new RunExecutionSnapshotPoller({
       runFriendlyId: this.runFriendlyId,
       snapshotFriendlyId: this.snapshotManager.snapshotId,
-      httpClient: this.httpClient,
       logger: this.logger,
       snapshotPollIntervalSeconds: this.env.TRIGGER_SNAPSHOT_POLL_INTERVAL_SECONDS,
-      handleSnapshotChange: this.enqueueSnapshotChangeAndWait.bind(this),
+      onPoll: this.fetchAndEnqueueSnapshotChange.bind(this),
+    }).start();
+
+    this.notifier = new RunNotifier({
+      runFriendlyId: this.runFriendlyId,
+      supervisorSocket: this.supervisorSocket,
+      onNotify: this.fetchAndEnqueueSnapshotChange.bind(this),
+      logger: this.logger,
     }).start();
 
     const [startError, start] = await tryCatch(
@@ -947,7 +960,12 @@ export class RunExecution {
 
   public get metrics() {
     return {
-      restoreCount: this.restoreCount,
+      execution: {
+        restoreCount: this.restoreCount,
+        lastHeartbeat: this.lastHeartbeat,
+      },
+      poller: this.snapshotPoller?.metrics,
+      notifier: this.notifier?.metrics,
     };
   }
 
@@ -980,6 +998,8 @@ export class RunExecution {
 
     this.snapshotPoller?.stop();
     this.snapshotManager?.dispose();
+
+    this.notifier?.stop();
 
     this.taskRunProcess?.unsafeDetachEvtHandlers();
   }
@@ -1055,5 +1075,41 @@ export class RunExecution {
     }
 
     this.sendDebugLog("suspending, any day now 🚬", { suspendableSnapshot });
+  }
+
+  /**
+   * Fetches the latest execution data and enqueues snapshot changes. Used by both poller and notification handlers.
+   * @param source string - where this call originated (e.g. 'poller', 'notification')
+   */
+  public async fetchAndEnqueueSnapshotChange(source: string): Promise<void> {
+    if (!this.runFriendlyId) {
+      this.sendDebugLog(`fetchAndEnqueueSnapshotChange: missing runFriendlyId`, { source });
+      return;
+    }
+
+    const latestSnapshot = await this.httpClient.getRunExecutionData(this.runFriendlyId);
+
+    if (!latestSnapshot.success) {
+      this.sendDebugLog(`fetchAndEnqueueSnapshotChange: failed to get latest snapshot data`, {
+        source,
+        error: latestSnapshot.error,
+      });
+      return;
+    }
+
+    const [error] = await tryCatch(
+      this.enqueueSnapshotChangeAndWait(latestSnapshot.data.execution)
+    );
+
+    if (error) {
+      this.sendDebugLog(
+        `fetchAndEnqueueSnapshotChange: failed to enqueue and process snapshot change`,
+        {
+          source,
+          error: error.message,
+        }
+      );
+      return;
+    }
   }
 }
