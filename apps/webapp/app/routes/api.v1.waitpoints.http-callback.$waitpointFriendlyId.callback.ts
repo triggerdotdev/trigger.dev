@@ -76,8 +76,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
       { status: 200 }
     );
   } catch (error) {
-    logger.error("Failed to complete waitpoint token", { error });
-    throw json({ error: "Failed to complete waitpoint token" }, { status: 500 });
+    logger.error("Failed to complete HTTP callback", { error });
+    throw json({ error: "Failed to complete HTTP callback" }, { status: 500 });
   }
 }
 
