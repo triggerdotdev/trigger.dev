@@ -91,7 +91,6 @@ describe("RunEngine checkpoints", () => {
       const waitpointResult = await engine.createManualWaitpoint({
         environmentId: authenticatedEnvironment.id,
         projectId: authenticatedEnvironment.projectId,
-        resolver: "TOKEN",
       });
       expect(waitpointResult.waitpoint.status).toBe("PENDING");
 
@@ -350,7 +349,6 @@ describe("RunEngine checkpoints", () => {
       const waitpoint1 = await engine.createManualWaitpoint({
         environmentId: authenticatedEnvironment.id,
         projectId: authenticatedEnvironment.projectId,
-        resolver: "TOKEN",
       });
 
       const blocked1 = await engine.blockRunWithWaitpoint({
@@ -401,7 +399,6 @@ describe("RunEngine checkpoints", () => {
       const waitpoint2 = await engine.createManualWaitpoint({
         environmentId: authenticatedEnvironment.id,
         projectId: authenticatedEnvironment.projectId,
-        resolver: "TOKEN",
       });
 
       const blocked2 = await engine.blockRunWithWaitpoint({
@@ -554,7 +551,6 @@ describe("RunEngine checkpoints", () => {
         const waitpointResult = await engine.createManualWaitpoint({
           environmentId: authenticatedEnvironment.id,
           projectId: authenticatedEnvironment.projectId,
-          resolver: "TOKEN",
         });
         expect(waitpointResult.waitpoint.status).toBe("PENDING");
 
@@ -848,7 +844,6 @@ describe("RunEngine checkpoints", () => {
         const waitpoint = await engine.createManualWaitpoint({
           environmentId: authenticatedEnvironment.id,
           projectId: authenticatedEnvironment.projectId,
-          resolver: "TOKEN",
         });
         expect(waitpoint.waitpoint.status).toBe("PENDING");
 

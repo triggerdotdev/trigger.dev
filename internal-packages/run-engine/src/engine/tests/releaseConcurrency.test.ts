@@ -102,7 +102,6 @@ describe("RunEngine Releasing Concurrency", () => {
     const result = await engine.createManualWaitpoint({
       environmentId: authenticatedEnvironment.id,
       projectId: authenticatedEnvironment.projectId,
-      resolver: "TOKEN",
     });
 
     // Block the run, not specifying any release concurrency option
@@ -155,7 +154,6 @@ describe("RunEngine Releasing Concurrency", () => {
     const result2 = await engine.createManualWaitpoint({
       environmentId: authenticatedEnvironment.id,
       projectId: authenticatedEnvironment.projectId,
-      resolver: "TOKEN",
     });
 
     const executingWithWaitpointSnapshot2 = await engine.blockRunWithWaitpoint({
@@ -304,7 +302,6 @@ describe("RunEngine Releasing Concurrency", () => {
       const result = await engine.createManualWaitpoint({
         environmentId: authenticatedEnvironment.id,
         projectId: authenticatedEnvironment.projectId,
-        resolver: "TOKEN",
       });
 
       // Block the run, not specifying any release concurrency option
@@ -358,7 +355,6 @@ describe("RunEngine Releasing Concurrency", () => {
       const result2 = await engine.createManualWaitpoint({
         environmentId: authenticatedEnvironment.id,
         projectId: authenticatedEnvironment.projectId,
-        resolver: "TOKEN",
       });
 
       const executingWithWaitpointSnapshot2 = await engine.blockRunWithWaitpoint({
@@ -494,7 +490,6 @@ describe("RunEngine Releasing Concurrency", () => {
       const result = await engine.createManualWaitpoint({
         environmentId: authenticatedEnvironment.id,
         projectId: authenticatedEnvironment.projectId,
-        resolver: "TOKEN",
       });
 
       // Block the run, not specifying any release concurrency option
@@ -548,7 +543,6 @@ describe("RunEngine Releasing Concurrency", () => {
       const result2 = await engine.createManualWaitpoint({
         environmentId: authenticatedEnvironment.id,
         projectId: authenticatedEnvironment.projectId,
-        resolver: "TOKEN",
       });
 
       const executingWithWaitpointSnapshot2 = await engine.blockRunWithWaitpoint({
@@ -674,7 +668,6 @@ describe("RunEngine Releasing Concurrency", () => {
       const result = await engine.createManualWaitpoint({
         environmentId: authenticatedEnvironment.id,
         projectId: authenticatedEnvironment.projectId,
-        resolver: "TOKEN",
       });
 
       await engine.releaseConcurrencySystem.consumeToken(
@@ -837,7 +830,6 @@ describe("RunEngine Releasing Concurrency", () => {
       const result = await engine.createManualWaitpoint({
         environmentId: authenticatedEnvironment.id,
         projectId: authenticatedEnvironment.projectId,
-        resolver: "TOKEN",
       });
 
       await engine.releaseConcurrencySystem.consumeToken(
@@ -1020,7 +1012,6 @@ describe("RunEngine Releasing Concurrency", () => {
       const result = await engine.createManualWaitpoint({
         environmentId: authenticatedEnvironment.id,
         projectId: authenticatedEnvironment.projectId,
-        resolver: "TOKEN",
       });
 
       await engine.releaseConcurrencySystem.consumeToken(
@@ -1194,7 +1185,6 @@ describe("RunEngine Releasing Concurrency", () => {
       const result = await engine.createManualWaitpoint({
         environmentId: authenticatedEnvironment.id,
         projectId: authenticatedEnvironment.projectId,
-        resolver: "TOKEN",
       });
 
       // Block the run, not specifying any release concurrency option
@@ -1349,7 +1339,6 @@ describe("RunEngine Releasing Concurrency", () => {
       const result = await engine.createManualWaitpoint({
         environmentId: authenticatedEnvironment.id,
         projectId: authenticatedEnvironment.projectId,
-        resolver: "TOKEN",
       });
 
       // Block the run, specifying the release concurrency option as true

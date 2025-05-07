@@ -345,7 +345,6 @@ describe("RunEngine Waitpoints", () => {
         const result = await engine.createManualWaitpoint({
           environmentId: authenticatedEnvironment.id,
           projectId: authenticatedEnvironment.projectId,
-          resolver: "TOKEN",
         });
         expect(result.waitpoint.status).toBe("PENDING");
 
@@ -486,7 +485,6 @@ describe("RunEngine Waitpoints", () => {
         projectId: authenticatedEnvironment.projectId,
         //fail after 200ms
         timeout: new Date(Date.now() + 200),
-        resolver: "TOKEN",
       });
 
       //block the run
@@ -609,7 +607,6 @@ describe("RunEngine Waitpoints", () => {
               engine.createManualWaitpoint({
                 environmentId: authenticatedEnvironment.id,
                 projectId: authenticatedEnvironment.projectId,
-                resolver: "TOKEN",
               })
             )
           );
@@ -754,7 +751,6 @@ describe("RunEngine Waitpoints", () => {
           environmentId: authenticatedEnvironment.id,
           projectId: authenticatedEnvironment.projectId,
           timeout,
-          resolver: "TOKEN",
         });
         expect(result.waitpoint.status).toBe("PENDING");
         expect(result.waitpoint.completedAfter).toStrictEqual(timeout);
@@ -904,7 +900,6 @@ describe("RunEngine Waitpoints", () => {
         environmentId: authenticatedEnvironment.id,
         projectId: authenticatedEnvironment.projectId,
         idempotencyKey,
-        resolver: "TOKEN",
       });
       expect(result.waitpoint.status).toBe("PENDING");
       expect(result.waitpoint.idempotencyKey).toBe(idempotencyKey);
@@ -1057,7 +1052,6 @@ describe("RunEngine Waitpoints", () => {
         projectId: authenticatedEnvironment.projectId,
         idempotencyKey,
         idempotencyKeyExpiresAt: new Date(Date.now() + 200),
-        resolver: "TOKEN",
       });
       expect(result.waitpoint.status).toBe("PENDING");
       expect(result.waitpoint.idempotencyKey).toBe(idempotencyKey);
@@ -1068,7 +1062,6 @@ describe("RunEngine Waitpoints", () => {
         projectId: authenticatedEnvironment.projectId,
         idempotencyKey,
         idempotencyKeyExpiresAt: new Date(Date.now() + 200),
-        resolver: "TOKEN",
       });
       expect(sameWaitpointResult.waitpoint.id).toBe(result.waitpoint.id);
 
@@ -1224,7 +1217,6 @@ describe("RunEngine Waitpoints", () => {
         const waitpoint = await engine.createManualWaitpoint({
           environmentId: authenticatedEnvironment.id,
           projectId: authenticatedEnvironment.projectId,
-          resolver: "TOKEN",
         });
         expect(waitpoint.waitpoint.status).toBe("PENDING");
 
