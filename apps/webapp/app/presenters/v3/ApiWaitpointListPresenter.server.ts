@@ -1,5 +1,5 @@
 import { type RuntimeEnvironmentType, WaitpointTokenStatus } from "@trigger.dev/core/v3";
-import { type RunEngineVersion, type WaitpointResolver } from "@trigger.dev/database";
+import { type RunEngineVersion } from "@trigger.dev/database";
 import { z } from "zod";
 import { CoercedDate } from "~/utils/zod";
 import { ServiceValidationError } from "~/v3/services/baseService.server";

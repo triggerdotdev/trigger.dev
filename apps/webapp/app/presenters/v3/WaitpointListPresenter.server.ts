@@ -1,7 +1,6 @@
 import parse from "parse-duration";
 import {
   Prisma,
-  type WaitpointResolver,
   type RunEngineVersion,
   type RuntimeEnvironmentType,
   type WaitpointStatus,
