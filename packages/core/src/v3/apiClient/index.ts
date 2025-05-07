@@ -12,14 +12,11 @@ import {
   CreateEnvironmentVariableRequestBody,
   CreateScheduleOptions,
   CreateUploadPayloadUrlResponseBody,
-  CreateWaitpointHttpCallbackResponseBody,
   CreateWaitpointTokenRequestBody,
   CreateWaitpointTokenResponseBody,
   DeletedScheduleObject,
   EnvironmentVariableResponseBody,
-  EnvironmentVariableValue,
   EnvironmentVariableWithSecret,
-  EnvironmentVariables,
   ListQueueOptions,
   ListRunResponseItem,
   ListScheduleOptions,
@@ -43,8 +40,10 @@ import {
   WaitpointRetrieveTokenResponse,
   WaitpointTokenItem,
 } from "../schemas/index.js";
+import { AsyncIterableStream } from "../streams/asyncIterableStream.js";
 import { taskContext } from "../task-context-api.js";
 import { AnyRunTypes, TriggerJwtOptions } from "../types/tasks.js";
+import { Prettify } from "../types/utils.js";
 import {
   AnyZodFetchOptions,
   ApiPromise,
@@ -64,9 +63,9 @@ import {
   RunShape,
   RunStreamCallback,
   RunSubscription,
+  SSEStreamSubscriptionFactory,
   TaskRunShape,
   runShapeStream,
-  SSEStreamSubscriptionFactory,
 } from "./runStream.js";
 import {
   CreateEnvironmentVariableParams,
@@ -77,8 +76,6 @@ import {
   SubscribeToRunsQueryParams,
   UpdateEnvironmentVariableParams,
 } from "./types.js";
-import { AsyncIterableStream } from "../streams/asyncIterableStream.js";
-import { Prettify } from "../types/utils.js";
 
 export type CreateWaitpointTokenResponse = Prettify<
   CreateWaitpointTokenResponseBody & {
@@ -789,24 +786,6 @@ export class ApiClient {
       },
       mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );
-  }
-
-  createWaitpointHttpCallback(
-    options: CreateWaitpointTokenRequestBody,
-    requestOptions?: ZodFetchOptions
-  ) {
-    return zodfetch(
-      CreateWaitpointHttpCallbackResponseBody,
-      `${this.baseUrl}/engine/v1/waitpoints/http-callback`,
-      {
-        method: "POST",
-        headers: this.#getHeaders(false),
-        body: JSON.stringify(options),
-      },
-      {
-        ...mergeRequestOptions(this.defaultRequestOptions, requestOptions),
-      }
-    ) as ApiPromise<CreateWaitpointHttpCallbackResponseBody>;
   }
 
   async waitForDuration(

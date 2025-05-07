@@ -176,6 +176,8 @@ function listTokens(
  */
 export type WaitpointRetrievedToken<T> = {
   id: string;
+  /** A URL that you can make a POST request to in order to complete the waitpoint. */
+  url: string;
   status: WaitpointTokenStatus;
   completedAt?: Date;
   timeoutAt?: Date;
@@ -229,6 +231,7 @@ async function retrieveToken<T>(
       },
       onResponseBody: (body: WaitpointRetrieveTokenResponse, span) => {
         span.setAttribute("id", body.id);
+        span.setAttribute("url", body.url);
         span.setAttribute("status", body.status);
         if (body.completedAt) {
           span.setAttribute("completedAt", body.completedAt.toISOString());
@@ -269,6 +272,7 @@ async function retrieveToken<T>(
 
   return {
     id: result.id,
+    url: result.url,
     status: result.status,
     completedAt: result.completedAt,
     timeoutAt: result.timeoutAt,
