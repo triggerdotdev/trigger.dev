@@ -1013,15 +1013,6 @@ export const WaitForWaitpointTokenResponseBody = z.object({
 });
 export type WaitForWaitpointTokenResponseBody = z.infer<typeof WaitForWaitpointTokenResponseBody>;
 
-export const CreateWaitpointHttpCallbackResponseBody = z.object({
-  id: z.string(),
-  url: z.string(),
-  isCached: z.boolean(),
-});
-export type CreateWaitpointHttpCallbackResponseBody = z.infer<
-  typeof CreateWaitpointHttpCallbackResponseBody
->;
-
 export const WaitForDurationRequestBody = z.object({
   /**
    * An optional idempotency key for the waitpoint.
