@@ -7,6 +7,8 @@ import UpgradeToV4Note from "/snippets/upgrade-to-v4-note.mdx";
 
 Waitpoint tokens pause task runs until you complete the token. They're commonly used for approval workflows and other scenarios where you need to wait for external confirmation, such as human-in-the-loop processes.
 
+You can complete a token using the SDK or by making a POST request to the token's URL.
+
 <UpgradeToV4Note />
 
 ## Usage
@@ -52,6 +54,29 @@ await wait.completeToken<ApprovalToken>(tokenId, {
 });
 ```
 
+Or you can make an HTTP POST request to the `url` it returns:
+
+```ts
+import { wait } from "@trigger.dev/sdk";
+
+const token = await wait.createToken({
+  timeout: "10m",
+});
+
+const call = await replicate.predictions.create({
+  version: "27b93a2413e7f36cd83da926f3656280b2931564ff050bf9575f1fdf9bcd7478",
+  input: {
+    prompt: "A painting of a cat by Andy Warhol",
+  },
+  // pass the provided URL to Replicate's webhook, so they can "callback"
+  webhook: token.url,
+  webhook_events_filter: ["completed"],
+});
+
+const prediction = await wait.forToken<Prediction>(token).unwrap();
+// unwrap() throws a timeout error or returns the result   👆
+```
+
 ## wait.createToken
 
 Create a waitpoint token.
@@ -83,6 +108,13 @@ The `createToken` function returns a token object with the following properties:
 
 <ParamField query="id" type="string">
   The ID of the token. Starts with `waitpoint_`.
+</ParamField>
+
+<ParamField query="url" type="string">
+  The URL of the token. This is the URL you can make a POST request to in order to complete the token.
+
+The JSON body of the POST request will be used as the output of the token. If there's no body the output will be an empty object `{}`.
+
 </ParamField>
 
 <ParamField query="isCached" type="boolean">
@@ -338,6 +370,13 @@ Each token is an object with the following properties:
   The ID of the token.
 </ParamField>
 
+<ParamField query="url" type="string">
+  The URL of the token. This is the URL you can make a POST request to in order to complete the token.
+
+The JSON body of the POST request will be used as the output of the token. If there's no body the output will be an empty object `{}`.
+
+</ParamField>
+
 <ParamField query="status" type="string">
   The status of the token.
 </ParamField>
@@ -402,6 +441,13 @@ The `retrieveToken` function returns a token object with the following propertie
 
 <ParamField query="id" type="string">
   The ID of the token.
+</ParamField>
+
+<ParamField query="url" type="string">
+  The URL of the token. This is the URL you can make a POST request to in order to complete the token.
+
+The JSON body of the POST request will be used as the output of the token. If there's no body the output will be an empty object `{}`.
+
 </ParamField>
 
 <ParamField query="status" type="string">
