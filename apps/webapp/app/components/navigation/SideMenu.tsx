@@ -80,7 +80,6 @@ import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
 import { SideMenuSection } from "./SideMenuSection";
-import { HttpCallbackIcon } from "~/assets/icons/HttpCallbackIcon";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 export type SideMenuProject = Pick<
