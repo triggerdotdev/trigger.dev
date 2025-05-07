@@ -29,7 +29,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const waitpointId = WaitpointId.toId(waitpointFriendlyId);
 
   try {
-    //check permissions
     const waitpoint = await $replica.waitpoint.findFirst({
       where: {
         id: waitpointId,
