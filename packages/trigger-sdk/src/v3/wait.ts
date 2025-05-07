@@ -15,7 +15,6 @@ import {
   runtime,
   SemanticInternalAttributes,
   taskContext,
-  tryCatch,
   WaitpointListTokenItem,
   WaitpointRetrieveTokenResponse,
   WaitpointTokenStatus,
