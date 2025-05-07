@@ -64,6 +64,11 @@ if (process.env.HTTP_SERVER_DISABLED !== "true") {
     // helpful headers:
     res.set("Strict-Transport-Security", `max-age=${60 * 60 * 24 * 365 * 100}`);
 
+    // Add X-Robots-Tag header for test-cloud.trigger.dev
+    if (req.hostname !== "cloud.trigger.dev") {
+      res.set("X-Robots-Tag", "noindex, nofollow");
+    }
+
     // /clean-urls/ -> /clean-urls
     if (req.path.endsWith("/") && req.path.length > 1) {
       const query = req.url.slice(req.path.length);

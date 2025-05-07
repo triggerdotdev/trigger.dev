@@ -40,7 +40,10 @@ export const meta: MetaFunction = ({ data }) => {
     },
     {
       name: "robots",
-      content: typedData.features.isManagedCloud ? "index, follow" : "noindex, nofollow",
+      content:
+        typeof window === "undefined" || window.location.hostname !== "cloud.trigger.dev"
+          ? "noindex, nofollow"
+          : "index, follow",
     },
   ];
 };
