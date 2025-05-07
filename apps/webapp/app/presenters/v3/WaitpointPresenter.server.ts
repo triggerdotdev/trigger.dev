@@ -1,11 +1,9 @@
 import { isWaitpointOutputTimeout, prettyPrintPacket } from "@trigger.dev/core/v3";
+import { generateHttpCallbackUrl } from "~/services/httpCallback.server";
 import { logger } from "~/services/logger.server";
 import { BasePresenter } from "./basePresenter.server";
 import { type RunListItem, RunListPresenter } from "./RunListPresenter.server";
 import { waitpointStatusToApiStatus } from "./WaitpointListPresenter.server";
-import { WaitpointId } from "@trigger.dev/core/v3/isomorphic";
-import { env } from "~/env.server";
-import { generateHttpCallbackUrl } from "~/services/httpCallback.server";
 
 export type WaitpointDetail = NonNullable<Awaited<ReturnType<WaitpointPresenter["call"]>>>;
 
@@ -92,7 +90,7 @@ export class WaitpointPresenter extends BasePresenter {
     return {
       id: waitpoint.friendlyId,
       type: waitpoint.type,
-      callbackUrl: generateHttpCallbackUrl(waitpoint.id, waitpoint.environment.apiKey),
+      url: generateHttpCallbackUrl(waitpoint.id, waitpoint.environment.apiKey),
       status: waitpointStatusToApiStatus(waitpoint.status, waitpoint.outputIsError),
       idempotencyKey: waitpoint.idempotencyKey,
       userProvidedIdempotencyKey: waitpoint.userProvidedIdempotencyKey,

@@ -2,8 +2,8 @@ import { logger, type RuntimeEnvironmentType } from "@trigger.dev/core/v3";
 import { type RunEngineVersion } from "@trigger.dev/database";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { BasePresenter } from "./basePresenter.server";
-import { WaitpointPresenter } from "./WaitpointPresenter.server";
 import { waitpointStatusToApiStatus } from "./WaitpointListPresenter.server";
+import { generateHttpCallbackUrl } from "~/services/httpCallback.server";
 
 export class ApiWaitpointPresenter extends BasePresenter {
   public async call(
@@ -14,6 +14,7 @@ export class ApiWaitpointPresenter extends BasePresenter {
         id: string;
         engine: RunEngineVersion;
       };
+      apiKey: string;
     },
     waitpointId: string
   ) {
@@ -24,6 +25,7 @@ export class ApiWaitpointPresenter extends BasePresenter {
           environmentId: environment.id,
         },
         select: {
+          id: true,
           friendlyId: true,
           type: true,
           status: true,
@@ -62,6 +64,7 @@ export class ApiWaitpointPresenter extends BasePresenter {
       return {
         id: waitpoint.friendlyId,
         type: waitpoint.type,
+        url: generateHttpCallbackUrl(waitpoint.id, environment.apiKey),
         status: waitpointStatusToApiStatus(waitpoint.status, waitpoint.outputIsError),
         idempotencyKey: waitpoint.idempotencyKey,
         userProvidedIdempotencyKey: waitpoint.userProvidedIdempotencyKey,

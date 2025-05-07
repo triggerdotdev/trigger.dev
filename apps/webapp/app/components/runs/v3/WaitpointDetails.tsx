@@ -51,12 +51,14 @@ export function WaitpointDetailTable({
           )}
         </Property.Value>
       </Property.Item>
-      <Property.Item>
-        <Property.Label>Callback URL</Property.Label>
-        <Property.Value className="my-1">
-          <ClipboardField value={waitpoint.callbackUrl} variant={"secondary/small"} />
-        </Property.Value>
-      </Property.Item>
+      {waitpoint.type === "MANUAL" && (
+        <Property.Item>
+          <Property.Label>Callback URL</Property.Label>
+          <Property.Value className="my-1">
+            <ClipboardField value={waitpoint.url} variant={"secondary/small"} />
+          </Property.Value>
+        </Property.Item>
+      )}
       <Property.Item>
         <Property.Label>Idempotency key</Property.Label>
         <Property.Value>

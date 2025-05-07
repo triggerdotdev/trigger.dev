@@ -971,6 +971,8 @@ export type WaitpointTokenStatus = z.infer<typeof WaitpointTokenStatus>;
 
 export const WaitpointTokenItem = z.object({
   id: z.string(),
+  /** If you make a POST request to this URL, it will complete the waitpoint. */
+  url: z.string(),
   status: WaitpointTokenStatus,
   completedAt: z.coerce.date().optional(),
   completedAfter: z.coerce.date().optional(),

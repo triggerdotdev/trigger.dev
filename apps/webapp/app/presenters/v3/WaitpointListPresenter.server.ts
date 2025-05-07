@@ -43,7 +43,7 @@ export type WaitpointListOptions = {
 type Result =
   | {
       success: true;
-      tokens: (WaitpointTokenItem & { callbackUrl: string })[];
+      tokens: WaitpointTokenItem[];
       pagination: {
         next: string | undefined;
         previous: string | undefined;
@@ -266,7 +266,7 @@ export class WaitpointListPresenter extends BasePresenter {
       success: true,
       tokens: tokensToReturn.map((token) => ({
         id: token.friendlyId,
-        callbackUrl: generateHttpCallbackUrl(token.id, environment.apiKey),
+        url: generateHttpCallbackUrl(token.id, environment.apiKey),
         status: waitpointStatusToApiStatus(token.status, token.outputIsError),
         completedAt: token.completedAt ?? undefined,
         timeoutAt: token.completedAfter ?? undefined,

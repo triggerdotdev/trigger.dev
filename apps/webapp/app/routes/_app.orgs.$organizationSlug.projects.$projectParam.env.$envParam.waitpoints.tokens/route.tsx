@@ -181,10 +181,7 @@ export default function Page() {
                                 <CopyableText value={token.id} className="font-mono" />
                               </TableCell>
                               <TableCell to={path}>
-                                <ClipboardField
-                                  value={token.callbackUrl}
-                                  variant={"secondary/small"}
-                                />
+                                <ClipboardField value={token.url} variant={"secondary/small"} />
                               </TableCell>
                               <TableCell to={path}>
                                 <WaitpointStatusCombo status={token.status} className="text-xs" />
