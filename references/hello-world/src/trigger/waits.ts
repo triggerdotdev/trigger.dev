@@ -152,10 +152,10 @@ export const waitHttpCallback = task({
         auth: process.env.REPLICATE_API_KEY,
       });
 
-      const prediction = await wait.forHttpCallback<Prediction>(
+      const { token, data } = await wait.createHttpCallback(
         async (url) => {
           //pass the provided URL to Replicate's webhook
-          await replicate.predictions.create({
+          return replicate.predictions.create({
             version: "27b93a2413e7f36cd83da926f3656280b2931564ff050bf9575f1fdf9bcd7478",
             input: {
               prompt: "A painting of a cat by Any Warhol",
@@ -167,8 +167,12 @@ export const waitHttpCallback = task({
         },
         {
           timeout: "10m",
+          tags: ["replicate"],
         }
       );
+      logger.log("Create result", { token, data });
+
+      const prediction = await wait.forToken<Prediction>(token);
 
       if (!prediction.ok) {
         throw new Error("Failed to create prediction");
@@ -180,39 +184,9 @@ export const waitHttpCallback = task({
       logger.log("Image URL", imageUrl);
 
       //same again but with unwrapping
-      const result2 = await wait
-        .forHttpCallback<Prediction>(
-          async (url) => {
-            await replicate.predictions.create({
-              version: "27b93a2413e7f36cd83da926f3656280b2931564ff050bf9575f1fdf9bcd7478",
-              input: {
-                prompt: "A painting of a cat by Any Warhol",
-              },
-              webhook: url,
-            });
-          },
-          {
-            timeout: "60s",
-          }
-        )
-        .unwrap();
+      const result2 = await wait.forToken<Prediction>(token).unwrap();
 
       logger.log("Result2", { result2 });
-    }
-
-    const result = await wait.forHttpCallback<{ foo: string }>(
-      async (url) => {
-        logger.log(`Wait for HTTP callback ${url}`);
-      },
-      {
-        timeout: "60s",
-      }
-    );
-
-    if (!result.ok) {
-      logger.log("Wait for HTTP callback failed", { error: result.error });
-    } else {
-      logger.log("Wait for HTTP callback completed", result);
     }
   },
 });

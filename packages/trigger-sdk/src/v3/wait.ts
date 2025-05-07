@@ -5,15 +5,14 @@ import {
   ApiPromise,
   ApiRequestOptions,
   CompleteWaitpointTokenResponseBody,
+  CreateWaitpointHttpCallbackResponseBody,
   CreateWaitpointTokenRequestBody,
   CreateWaitpointTokenResponse,
   CreateWaitpointTokenResponseBody,
   CursorPagePromise,
   flattenAttributes,
-  HttpCallbackResult,
   ListWaitpointTokensQueryParams,
   mergeRequestOptions,
-  Prettify,
   runtime,
   SemanticInternalAttributes,
   taskContext,
@@ -80,6 +79,106 @@ function createToken(
   );
 
   return apiClient.createWaitpointToken(options ?? {}, $requestOptions);
+}
+
+/**
+   * This creates an HTTP callback that allows you to start some work on another API (or one of your own services) 
+   * and continue the run when a callback URL we give you is hit with the result.
+   * 
+   * You should send the callback URL to the other service, and then that service will 
+   * make a request to the callback URL with the result.
+   * 
+   * @example
+   * 
+   * ```ts
+   * // Create a waitpoint and pass the callback URL to the other service
+    const { token, data } = await wait.createHttpCallback(
+      async (url) => {
+        //pass the provided URL to Replicate's webhook
+        return replicate.predictions.create({
+          version: "27b93a2413e7f36cd83da926f3656280b2931564ff050bf9575f1fdf9bcd7478",
+          input: {
+            prompt: "A painting of a cat by Any Warhol",
+          },
+          // pass the provided URL to Replicate's webhook, so they can "callback"
+          webhook: url,
+          webhook_events_filter: ["completed"],
+        });
+      },
+      {
+        timeout: "10m",
+      }
+    );
+
+    // Now you can wait for the token to complete
+    // This will pause the run until the token is completed (by the other service calling the callback URL)
+    const prediction = await wait.forToken<Prediction>(token);
+
+    if (!prediction.ok) {
+      throw new Error("Failed to create prediction");
+    }
+
+    //the value of prediction is the body of the webook that Replicate sent
+    const result = prediction.output;  
+   * ```
+   * 
+   * @param callback A function that gives you a URL you should send to the other service (it will call back with the result)
+   * @param options - The options for the waitpoint.
+   * @param requestOptions - The request options for the waitpoint.
+   * @returns A promise that returns the token and anything you returned from your callback.
+   */
+async function createHttpCallback<TCallbackResult>(
+  callback: (url: string) => Promise<TCallbackResult>,
+  options?: CreateWaitpointTokenRequestBody,
+  requestOptions?: ApiRequestOptions
+): Promise<{
+  /** The token that you can use to wait for the callback */
+  token: CreateWaitpointHttpCallbackResponseBody;
+  /** Whatever you returned from the function */
+  data: TCallbackResult;
+}> {
+  const apiClient = apiClientManager.clientOrThrow();
+
+  return tracer.startActiveSpan(
+    `wait.createHttpCallback()`,
+    async (span) => {
+      const waitpoint = await apiClient.createWaitpointHttpCallback(options ?? {}, requestOptions);
+
+      span.setAttribute("id", waitpoint.id);
+      span.setAttribute("isCached", waitpoint.isCached);
+      span.setAttribute("url", waitpoint.url);
+
+      const callbackResult = await tracer.startActiveSpan(
+        `callback()`,
+        async () => {
+          return callback(waitpoint.url);
+        },
+        {
+          attributes: {
+            [SemanticInternalAttributes.STYLE_ICON]: "function",
+            id: waitpoint.id,
+            url: waitpoint.url,
+            isCached: waitpoint.isCached,
+          },
+        }
+      );
+
+      return { token: waitpoint, data: callbackResult };
+    },
+    {
+      attributes: {
+        [SemanticInternalAttributes.STYLE_ICON]: "wait-http-callback",
+        idempotencyKey: options?.idempotencyKey,
+        idempotencyKeyTTL: options?.idempotencyKeyTTL,
+        timeout: options?.timeout
+          ? typeof options.timeout === "string"
+            ? options.timeout
+            : options.timeout.toISOString()
+          : undefined,
+        tags: options?.tags,
+      },
+    }
+  );
 }
 
 /**
@@ -678,161 +777,7 @@ export const wait = {
       }
     });
   },
-  /**
-   * This allows you to start some work on another API (or one of your own services) 
-   * and continue the run when a callback URL we give you is hit with the result.
-   * 
-   * You should send the callback URL to the other service, and then that service will 
-   * make a request to the callback URL with the result.
-   * 
-   * @example
-   * 
-   * ```ts
-   * //wait for the prediction to complete
-    const prediction = await wait.forHttpCallback<Prediction>(
-        async (url) => {
-          //pass the provided URL to Replicate's webhook
-          await replicate.predictions.create({
-            version: "27b93a2413e7f36cd83da926f3656280b2931564ff050bf9575f1fdf9bcd7478",
-            input: {
-              prompt: "A painting of a cat by Any Warhol",
-            },
-            // pass the provided URL to Replicate's webhook, so they can "callback"
-            webhook: url,
-            webhook_events_filter: ["completed"],
-          });
-        },
-        {
-          timeout: "10m",
-        }
-      );
-
-      if (!prediction.ok) {
-        throw new Error("Failed to create prediction");
-      }
-
-      //the value of prediction is the body of the webook that Replicate sent
-      const result = prediction.output;  
-   * ```
-   * 
-   * @param callback A function that gives you a URL you can use to send the result to.
-   * @param options - The options for the waitpoint.
-   * @param requestOptions - The request options for the waitpoint.
-   * @returns A promise that resolves to the result of the waitpoint. You can use `.unwrap()` to get the result and an error will throw.
-   */
-  forHttpCallback<TResult>(
-    callback: (url: string) => Promise<void>,
-    options?: CreateWaitpointTokenRequestBody & {
-      /**
-       * If set to true, this will cause the waitpoint to release the current run from the queue's concurrency.
-       *
-       * This is useful if you want to allow other runs to execute while waiting
-       *
-       * @default false
-       */
-      releaseConcurrency?: boolean;
-    },
-    requestOptions?: ApiRequestOptions
-  ): ManualWaitpointPromise<TResult> {
-    return new ManualWaitpointPromise<TResult>(async (resolve, reject) => {
-      try {
-        const ctx = taskContext.ctx;
-
-        if (!ctx) {
-          throw new Error("wait.forHttpCallback can only be used from inside a task.run()");
-        }
-
-        const apiClient = apiClientManager.clientOrThrow();
-
-        const waitpoint = await apiClient.createWaitpointHttpCallback(
-          options ?? {},
-          requestOptions
-        );
-
-        const result = await tracer.startActiveSpan(
-          `wait.forHttpCallback()`,
-          async (span) => {
-            const [error] = await tryCatch(callback(waitpoint.url));
-
-            if (error) {
-              throw new Error(`You threw an error in your callback: ${error.message}`, {
-                cause: error,
-              });
-            }
-
-            const response = await apiClient.waitForWaitpointToken({
-              runFriendlyId: ctx.run.id,
-              waitpointFriendlyId: waitpoint.id,
-              releaseConcurrency: options?.releaseConcurrency,
-            });
-
-            if (!response.success) {
-              throw new Error(`Failed to wait for wait for HTTP callback ${waitpoint.id}`);
-            }
-
-            const result = await runtime.waitUntil(waitpoint.id);
-
-            const data = result.output
-              ? await conditionallyImportAndParsePacket(
-                  { data: result.output, dataType: result.outputType ?? "application/json" },
-                  apiClient
-                )
-              : undefined;
-
-            if (result.ok) {
-              return {
-                ok: result.ok,
-                output: data,
-              };
-            } else {
-              const error = new WaitpointTimeoutError(data?.message ?? "Timeout error");
-
-              span.recordException(error);
-              span.setStatus({
-                code: SpanStatusCode.ERROR,
-              });
-
-              return {
-                ok: result.ok,
-                error,
-              };
-            }
-          },
-          {
-            attributes: {
-              [SemanticInternalAttributes.STYLE_ICON]: "wait",
-              [SemanticInternalAttributes.ENTITY_TYPE]: "waitpoint",
-              [SemanticInternalAttributes.ENTITY_ID]: waitpoint.id,
-              ...accessoryAttributes({
-                items: [
-                  {
-                    text: waitpoint.id,
-                    variant: "normal",
-                  },
-                ],
-                style: "codepath",
-              }),
-              id: waitpoint.id,
-              isCached: waitpoint.isCached,
-              idempotencyKey: options?.idempotencyKey,
-              idempotencyKeyTTL: options?.idempotencyKeyTTL,
-              timeout: options?.timeout
-                ? typeof options.timeout === "string"
-                  ? options.timeout
-                  : options.timeout.toISOString()
-                : undefined,
-              tags: options?.tags,
-              url: waitpoint.url,
-            },
-          }
-        );
-
-        resolve(result);
-      } catch (error) {
-        reject(error);
-      }
-    });
-  },
+  createHttpCallback,
 };
 
 function nameForWaitOptions(options: WaitForOptions): string {
@@ -898,8 +843,3 @@ function calculateDurationInMs(options: WaitForOptions): number {
 
   throw new Error("Invalid options");
 }
-
-type RequestOptions = {
-  to: (url: string) => Promise<void>;
-  timeout: WaitForOptions;
-};
