@@ -1,5 +1,13 @@
 # @trigger.dev/sdk
 
+## 4.0.0-v4-beta.14
+
+### Patch Changes
+
+- When you create a Waitpoint token using `wait.createToken()` you get a URL back that can be used to complete it by making an HTTP POST request. ([#2025](https://github.com/triggerdotdev/trigger.dev/pull/2025))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.14`
+
 ## 4.0.0-v4-beta.13
 
 ### Patch Changes
