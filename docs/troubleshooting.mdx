@@ -34,6 +34,17 @@ sudo chown -R $(whoami) ~/.npm
 
 Ensure you have stopped your local dev server then locate the hidden `.trigger` folder in your project and delete it. You can then restart your local dev server.
 
+### Yarn Plug'n'Play conflicts
+
+If you see errors like this when running `trigger.dev dev`:
+
+```
+Could not resolve "@trigger.dev/core/v3"
+The Yarn Plug'n'Play manifest forbids importing "@trigger.dev/core" here because it's not listed as a dependency of this package
+```
+
+And you're using Yarn v1.22 or another package manager, check if you have a `.pnp.cjs` file in your home directory. This can happen if you previously had Yarn Plug'n'Play enabled globally. Remove the `.pnp.cjs` file to resolve the issue.
+
 ## Deployment
 
 Running the [trigger.dev deploy] command builds and deploys your code. Sometimes there can be issues building your code.
