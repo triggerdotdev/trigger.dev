@@ -127,47 +127,18 @@ function createToken(
    * @param requestOptions - The request options for the waitpoint.
    * @returns A promise that returns the token and anything you returned from your callback.
    */
-async function createHttpCallback<TCallbackResult>(
-  callback: (url: string) => Promise<TCallbackResult>,
+async function createHttpCallback(
   options?: CreateWaitpointTokenRequestBody,
   requestOptions?: ApiRequestOptions
-): Promise<{
-  /** The token that you can use to wait for the callback */
-  token: CreateWaitpointHttpCallbackResponseBody;
-  /** Whatever you returned from the function */
-  data: TCallbackResult;
-}> {
+): Promise<CreateWaitpointHttpCallbackResponseBody> {
   const apiClient = apiClientManager.clientOrThrow();
 
-  return tracer.startActiveSpan(
-    `wait.createHttpCallback()`,
-    async (span) => {
-      const waitpoint = await apiClient.createWaitpointHttpCallback(options ?? {}, requestOptions);
-
-      span.setAttribute("id", waitpoint.id);
-      span.setAttribute("isCached", waitpoint.isCached);
-      span.setAttribute("url", waitpoint.url);
-
-      const callbackResult = await tracer.startActiveSpan(
-        `callback()`,
-        async () => {
-          return callback(waitpoint.url);
-        },
-        {
-          attributes: {
-            [SemanticInternalAttributes.STYLE_ICON]: "function",
-            id: waitpoint.id,
-            url: waitpoint.url,
-            isCached: waitpoint.isCached,
-          },
-        }
-      );
-
-      return { token: waitpoint, data: callbackResult };
-    },
+  const $requestOptions = mergeRequestOptions(
     {
+      tracer,
+      name: "wait.createHttpCallback()",
+      icon: "wait-http-callback",
       attributes: {
-        [SemanticInternalAttributes.STYLE_ICON]: "wait-http-callback",
         idempotencyKey: options?.idempotencyKey,
         idempotencyKeyTTL: options?.idempotencyKeyTTL,
         timeout: options?.timeout
@@ -177,8 +148,16 @@ async function createHttpCallback<TCallbackResult>(
           : undefined,
         tags: options?.tags,
       },
-    }
+      onResponseBody: (body: CreateWaitpointHttpCallbackResponseBody, span) => {
+        span.setAttribute("id", body.id);
+        span.setAttribute("isCached", body.isCached);
+        span.setAttribute("url", body.url);
+      },
+    },
+    requestOptions
   );
+
+  return apiClient.createWaitpointHttpCallback(options ?? {}, $requestOptions);
 }
 
 /**

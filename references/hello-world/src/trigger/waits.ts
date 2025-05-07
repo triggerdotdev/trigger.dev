@@ -152,25 +152,21 @@ export const waitHttpCallback = task({
         auth: process.env.REPLICATE_API_KEY,
       });
 
-      const { token, data } = await wait.createHttpCallback(
-        async (url) => {
-          //pass the provided URL to Replicate's webhook
-          return replicate.predictions.create({
-            version: "27b93a2413e7f36cd83da926f3656280b2931564ff050bf9575f1fdf9bcd7478",
-            input: {
-              prompt: "A painting of a cat by Any Warhol",
-            },
-            // pass the provided URL to Replicate's webhook, so they can "callback"
-            webhook: url,
-            webhook_events_filter: ["completed"],
-          });
+      const token = await wait.createHttpCallback({
+        timeout: "10m",
+        tags: ["replicate"],
+      });
+      logger.log("Create result", { token });
+
+      const call = await replicate.predictions.create({
+        version: "27b93a2413e7f36cd83da926f3656280b2931564ff050bf9575f1fdf9bcd7478",
+        input: {
+          prompt: "A painting of a cat by Any Warhol",
         },
-        {
-          timeout: "10m",
-          tags: ["replicate"],
-        }
-      );
-      logger.log("Create result", { token, data });
+        // pass the provided URL to Replicate's webhook, so they can "callback"
+        webhook: token.url,
+        webhook_events_filter: ["completed"],
+      });
 
       const prediction = await wait.forToken<Prediction>(token);
 
