@@ -2151,6 +2151,7 @@ model Waitpoint {
   updatedAt DateTime @updatedAt
 
   /// Denormized column that holds the raw tags
+  /// Denormalized column that holds the raw tags
   tags String[]
 
   /// Quickly find an idempotent waitpoint

@@ -7,6 +7,7 @@ import { NoWaitpointTokens } from "~/components/BlankStatePanels";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { ListPagination } from "~/components/ListPagination";
 import { LinkButton } from "~/components/primitives/Buttons";
+import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { DateTime } from "~/components/primitives/DateTime";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
@@ -36,7 +37,7 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
-import { WaitpointTokenListPresenter } from "~/presenters/v3/WaitpointTokenListPresenter.server";
+import { WaitpointListPresenter } from "~/presenters/v3/WaitpointListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { docsPath, EnvironmentParamSchema, v3WaitpointTokenPath } from "~/utils/pathBuilder";
 
@@ -84,7 +85,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 
   try {
-    const presenter = new WaitpointTokenListPresenter();
+    const presenter = new WaitpointListPresenter();
     const result = await presenter.call({
       environment,
       ...searchParams,
@@ -143,6 +144,7 @@ export default function Page() {
                       <TableRow>
                         <TableHeaderCell className="w-[1%]">Created</TableHeaderCell>
                         <TableHeaderCell className="w-[20%]">ID</TableHeaderCell>
+                        <TableHeaderCell className="w-[20%]">Callback URL</TableHeaderCell>
                         <TableHeaderCell className="w-[20%]">Status</TableHeaderCell>
                         <TableHeaderCell className="w-[20%]">Completed</TableHeaderCell>
                         <TableHeaderCell className="w-[20%]">Idempotency Key</TableHeaderCell>
@@ -177,6 +179,9 @@ export default function Page() {
                               </TableCell>
                               <TableCell to={path}>
                                 <CopyableText value={token.id} className="font-mono" />
+                              </TableCell>
+                              <TableCell to={path}>
+                                <ClipboardField value={token.url} variant={"secondary/small"} />
                               </TableCell>
                               <TableCell to={path}>
                                 <WaitpointStatusCombo status={token.status} className="text-xs" />

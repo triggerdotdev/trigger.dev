@@ -961,6 +961,7 @@ export type CreateWaitpointTokenRequestBody = z.infer<typeof CreateWaitpointToke
 export const CreateWaitpointTokenResponseBody = z.object({
   id: z.string(),
   isCached: z.boolean(),
+  url: z.string(),
 });
 export type CreateWaitpointTokenResponseBody = z.infer<typeof CreateWaitpointTokenResponseBody>;
 
@@ -970,6 +971,8 @@ export type WaitpointTokenStatus = z.infer<typeof WaitpointTokenStatus>;
 
 export const WaitpointTokenItem = z.object({
   id: z.string(),
+  /** If you make a POST request to this URL, it will complete the waitpoint. */
+  url: z.string(),
   status: WaitpointTokenStatus,
   completedAt: z.coerce.date().optional(),
   completedAfter: z.coerce.date().optional(),

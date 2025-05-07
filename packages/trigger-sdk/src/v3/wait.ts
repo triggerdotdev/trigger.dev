@@ -1,35 +1,35 @@
+import { SpanStatusCode } from "@opentelemetry/api";
 import {
-  SemanticInternalAttributes,
   accessoryAttributes,
-  runtime,
   apiClientManager,
   ApiPromise,
   ApiRequestOptions,
-  CreateWaitpointTokenRequestBody,
-  CreateWaitpointTokenResponseBody,
-  mergeRequestOptions,
   CompleteWaitpointTokenResponseBody,
-  WaitpointTokenTypedResult,
-  Prettify,
-  taskContext,
-  ListWaitpointTokensQueryParams,
-  CursorPagePromise,
-  WaitpointTokenItem,
-  flattenAttributes,
-  WaitpointListTokenItem,
-  WaitpointTokenStatus,
-  WaitpointRetrieveTokenResponse,
+  CreateWaitpointTokenRequestBody,
   CreateWaitpointTokenResponse,
+  CreateWaitpointTokenResponseBody,
+  CursorPagePromise,
+  flattenAttributes,
+  ListWaitpointTokensQueryParams,
+  mergeRequestOptions,
+  runtime,
+  SemanticInternalAttributes,
+  taskContext,
+  WaitpointListTokenItem,
+  WaitpointRetrieveTokenResponse,
+  WaitpointTokenStatus,
+  WaitpointTokenTypedResult,
 } from "@trigger.dev/core/v3";
-import { tracer } from "./tracer.js";
 import { conditionallyImportAndParsePacket } from "@trigger.dev/core/v3/utils/ioSerialization";
-import { SpanStatusCode } from "@opentelemetry/api";
+import { tracer } from "./tracer.js";
 
 /**
  * This creates a waitpoint token.
  * You can use this to pause a run until you complete the waitpoint (or it times out).
  *
  * @example
+ *
+ * **Manually completing a token**
  *
  * ```ts
  * const token = await wait.createToken({
@@ -43,6 +43,30 @@ import { SpanStatusCode } from "@opentelemetry/api";
  *   status: "approved",
  *   comment: "Looks good to me!",
  * });
+ * ```
+ *
+ * @example
+ *
+ * **Completing a token with a webhook**
+ *
+ * ```ts
+ * const token = await wait.createToken({
+ *   timeout: "10m",
+ *   tags: ["replicate"],
+ * });
+ *
+ * // Later, in a different part of your codebase, you can complete the waitpoint
+ * await replicate.predictions.create({
+ *   version: "27b93a2413e7f36cd83da926f3656280b2931564ff050bf9575f1fdf9bcd7478",
+ *   input: {
+ *     prompt: "A painting of a cat by Andy Warhol",
+ *   },
+ *   // pass the provided URL to Replicate's webhook, so they can "callback"
+ *   webhook: token.url,
+ *   webhook_events_filter: ["completed"],
+ * });
+ *
+ * const prediction = await wait.forToken<Prediction>(token).unwrap();
  * ```
  *
  * @param options - The options for the waitpoint token.
@@ -73,6 +97,7 @@ function createToken(
       onResponseBody: (body: CreateWaitpointTokenResponseBody, span) => {
         span.setAttribute("id", body.id);
         span.setAttribute("isCached", body.isCached);
+        span.setAttribute("url", body.url);
       },
     },
     requestOptions
@@ -151,6 +176,8 @@ function listTokens(
  */
 export type WaitpointRetrievedToken<T> = {
   id: string;
+  /** A URL that you can make a POST request to in order to complete the waitpoint. */
+  url: string;
   status: WaitpointTokenStatus;
   completedAt?: Date;
   timeoutAt?: Date;
@@ -204,6 +231,7 @@ async function retrieveToken<T>(
       },
       onResponseBody: (body: WaitpointRetrieveTokenResponse, span) => {
         span.setAttribute("id", body.id);
+        span.setAttribute("url", body.url);
         span.setAttribute("status", body.status);
         if (body.completedAt) {
           span.setAttribute("completedAt", body.completedAt.toISOString());
@@ -244,6 +272,7 @@ async function retrieveToken<T>(
 
   return {
     id: result.id,
+    url: result.url,
     status: result.status,
     completedAt: result.completedAt,
     timeoutAt: result.timeoutAt,
@@ -375,6 +404,29 @@ function printWaitBelowThreshold() {
   console.warn(
     `Waits of ${DURATION_WAIT_CHARGE_THRESHOLD_MS / 1000}s or less count towards compute usage.`
   );
+}
+
+class ManualWaitpointPromise<TOutput> extends Promise<WaitpointTokenTypedResult<TOutput>> {
+  constructor(
+    executor: (
+      resolve: (
+        value: WaitpointTokenTypedResult<TOutput> | PromiseLike<WaitpointTokenTypedResult<TOutput>>
+      ) => void,
+      reject: (reason?: any) => void
+    ) => void
+  ) {
+    super(executor);
+  }
+
+  unwrap(): Promise<TOutput> {
+    return this.then((result) => {
+      if (result.ok) {
+        return result.output;
+      } else {
+        throw new WaitpointTimeoutError(result.error.message);
+      }
+    });
+  }
 }
 
 export const wait = {
@@ -554,9 +606,9 @@ export const wait = {
    *
    * @param token - The token to wait for.
    * @param options - The options for the waitpoint token.
-   * @returns The waitpoint token.
+   * @returns A promise that resolves to the result of the waitpoint. You can use `.unwrap()` to get the result and an error will throw.
    */
-  forToken: async <T>(
+  forToken: <T>(
     /**
      * The token to wait for.
      * This can be a string token ID or an object with an `id` property.
@@ -575,76 +627,84 @@ export const wait = {
        */
       releaseConcurrency?: boolean;
     }
-  ): Promise<Prettify<WaitpointTokenTypedResult<T>>> => {
-    const ctx = taskContext.ctx;
+  ): ManualWaitpointPromise<T> => {
+    return new ManualWaitpointPromise<T>(async (resolve, reject) => {
+      try {
+        const ctx = taskContext.ctx;
 
-    if (!ctx) {
-      throw new Error("wait.forToken can only be used from inside a task.run()");
-    }
-
-    const apiClient = apiClientManager.clientOrThrow();
-
-    const tokenId = typeof token === "string" ? token : token.id;
-
-    return tracer.startActiveSpan(
-      `wait.forToken()`,
-      async (span) => {
-        const response = await apiClient.waitForWaitpointToken({
-          runFriendlyId: ctx.run.id,
-          waitpointFriendlyId: tokenId,
-          releaseConcurrency: options?.releaseConcurrency,
-        });
-
-        if (!response.success) {
-          throw new Error(`Failed to wait for wait token ${tokenId}`);
+        if (!ctx) {
+          throw new Error("wait.forToken can only be used from inside a task.run()");
         }
 
-        const result = await runtime.waitUntil(tokenId);
+        const apiClient = apiClientManager.clientOrThrow();
 
-        const data = result.output
-          ? await conditionallyImportAndParsePacket(
-              { data: result.output, dataType: result.outputType ?? "application/json" },
-              apiClient
-            )
-          : undefined;
+        const tokenId = typeof token === "string" ? token : token.id;
 
-        if (result.ok) {
-          return {
-            ok: result.ok,
-            output: data,
-          } as WaitpointTokenTypedResult<T>;
-        } else {
-          const error = new WaitpointTimeoutError(data.message);
+        const result = await tracer.startActiveSpan(
+          `wait.forToken()`,
+          async (span) => {
+            const response = await apiClient.waitForWaitpointToken({
+              runFriendlyId: ctx.run.id,
+              waitpointFriendlyId: tokenId,
+              releaseConcurrency: options?.releaseConcurrency,
+            });
 
-          span.recordException(error);
-          span.setStatus({
-            code: SpanStatusCode.ERROR,
-          });
+            if (!response.success) {
+              throw new Error(`Failed to wait for wait token ${tokenId}`);
+            }
 
-          return {
-            ok: result.ok,
-            error,
-          } as WaitpointTokenTypedResult<T>;
-        }
-      },
-      {
-        attributes: {
-          [SemanticInternalAttributes.STYLE_ICON]: "wait",
-          [SemanticInternalAttributes.ENTITY_TYPE]: "waitpoint",
-          [SemanticInternalAttributes.ENTITY_ID]: tokenId,
-          id: tokenId,
-          ...accessoryAttributes({
-            items: [
-              {
-                text: tokenId,
-                variant: "normal",
-              },
-            ],
-            style: "codepath",
-          }),
-        },
+            const result = await runtime.waitUntil(tokenId);
+
+            const data = result.output
+              ? await conditionallyImportAndParsePacket(
+                  { data: result.output, dataType: result.outputType ?? "application/json" },
+                  apiClient
+                )
+              : undefined;
+
+            if (result.ok) {
+              return {
+                ok: result.ok,
+                output: data,
+              } as WaitpointTokenTypedResult<T>;
+            } else {
+              const error = new WaitpointTimeoutError(data.message);
+
+              span.recordException(error);
+              span.setStatus({
+                code: SpanStatusCode.ERROR,
+              });
+
+              return {
+                ok: result.ok,
+                error,
+              } as WaitpointTokenTypedResult<T>;
+            }
+          },
+          {
+            attributes: {
+              [SemanticInternalAttributes.STYLE_ICON]: "wait",
+              [SemanticInternalAttributes.ENTITY_TYPE]: "waitpoint",
+              [SemanticInternalAttributes.ENTITY_ID]: tokenId,
+              id: tokenId,
+              ...accessoryAttributes({
+                items: [
+                  {
+                    text: tokenId,
+                    variant: "normal",
+                  },
+                ],
+                style: "codepath",
+              }),
+            },
+          }
+        );
+
+        resolve(result);
+      } catch (error) {
+        reject(error);
       }
-    );
+    });
   },
 };
 
@@ -711,8 +771,3 @@ function calculateDurationInMs(options: WaitForOptions): number {
 
   throw new Error("Invalid options");
 }
-
-type RequestOptions = {
-  to: (url: string) => Promise<void>;
-  timeout: WaitForOptions;
-};
