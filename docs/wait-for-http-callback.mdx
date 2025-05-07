@@ -5,7 +5,7 @@ description: "Pause runs until an HTTP callback is made to the provided URL."
 
 import UpgradeToV4Note from "/snippets/upgrade-to-v4-note.mdx";
 
-The `wait.forHttpCallback()` function gives you a callback URL, and then pauses the run until that callback is hit. This is most commonly used with 3rd party APIs that take a long time and that accept a callback (or webhook) URL.
+The `wait.forHttpCallback()` function gives you a callback URL, and then pauses the run until that callback is hit with a POST request. This is most commonly used with 3rd party APIs that take a long time and that accept a callback (or webhook) URL.
 
 When the callback URL is requested the run will continue where it left off with the body of the request as the output available for you to use.
 
@@ -136,3 +136,9 @@ The `forHttpCallback` function returns a result object with the following proper
 ### unwrap() returns
 
 If you use the `unwrap()` method, it will just return the output of the token. If an error occurs it will throw an error.
+
+## The format of the callback request
+
+If you want to offload work to one of your own services you will need to do the callback request yourself.
+
+The `wait.forHttpCallback()` function gives you a unique one-time use URL. You should do a `POST` request to this URL with a text body that is JSON parseable.
