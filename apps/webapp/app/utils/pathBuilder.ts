@@ -430,3 +430,7 @@ export function docsPath(path: string) {
 export function docsTroubleshootingPath(path: string) {
   return `${docsRoot()}/v3/troubleshooting`;
 }
+
+export function adminPath() {
+  return `/@`;
+}
