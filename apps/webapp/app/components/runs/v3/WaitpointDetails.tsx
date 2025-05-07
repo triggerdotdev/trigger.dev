@@ -7,19 +7,11 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { type WaitpointDetail } from "~/presenters/v3/WaitpointPresenter.server";
 import { ForceTimeout } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.waitpoints.$waitpointFriendlyId.complete/route";
-import {
-  v3WaitpointHttpCallbackPath,
-  v3WaitpointTokenPath,
-  v3WaitpointTokensPath,
-} from "~/utils/pathBuilder";
+import { v3WaitpointTokenPath, v3WaitpointTokensPath } from "~/utils/pathBuilder";
 import { PacketDisplay } from "./PacketDisplay";
 import { WaitpointStatusCombo } from "./WaitpointStatus";
 import { RunTag } from "./RunTag";
-import { CopyableText } from "~/components/primitives/CopyableText";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
-import { WaitpointResolver } from "@trigger.dev/database";
-import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
-import { HttpCallbackIcon } from "~/assets/icons/HttpCallbackIcon";
 
 export function WaitpointDetailTable({
   waitpoint,
@@ -48,15 +40,9 @@ export function WaitpointDetailTable({
         <Property.Value className="whitespace-pre-wrap">
           {linkToList ? (
             <TextLink
-              to={
-                waitpoint.resolver === "TOKEN"
-                  ? v3WaitpointTokenPath(organization, project, environment, waitpoint, {
-                      id: waitpoint.id,
-                    })
-                  : v3WaitpointHttpCallbackPath(organization, project, environment, waitpoint, {
-                      id: waitpoint.id,
-                    })
-              }
+              to={v3WaitpointTokenPath(organization, project, environment, waitpoint, {
+                id: waitpoint.id,
+              })}
             >
               {waitpoint.id}
             </TextLink>
@@ -66,19 +52,11 @@ export function WaitpointDetailTable({
         </Property.Value>
       </Property.Item>
       <Property.Item>
-        <Property.Label>Type</Property.Label>
-        <Property.Value>
-          <WaitpointResolverCombo resolver={waitpoint.resolver} />
+        <Property.Label>Callback URL</Property.Label>
+        <Property.Value className="my-1">
+          <ClipboardField value={waitpoint.callbackUrl} variant={"secondary/small"} />
         </Property.Value>
       </Property.Item>
-      {waitpoint.callbackUrl && (
-        <Property.Item>
-          <Property.Label>Callback URL</Property.Label>
-          <Property.Value className="my-1">
-            <ClipboardField value={waitpoint.callbackUrl} variant={"secondary/small"} />
-          </Property.Value>
-        </Property.Item>
-      )}
       <Property.Item>
         <Property.Label>Idempotency key</Property.Label>
         <Property.Value>
@@ -156,23 +134,4 @@ export function WaitpointDetailTable({
       )}
     </Property.Table>
   );
-}
-
-export function WaitpointResolverCombo({ resolver }: { resolver: WaitpointResolver }) {
-  switch (resolver) {
-    case "TOKEN":
-      return (
-        <div className="flex items-center gap-1">
-          <WaitpointTokenIcon className="size-4" />
-          <span>Token</span>
-        </div>
-      );
-    case "HTTP_CALLBACK":
-      return (
-        <div className="flex items-center gap-1">
-          <HttpCallbackIcon className="size-4" />
-          <span>HTTP Callback</span>
-        </div>
-      );
-  }
 }

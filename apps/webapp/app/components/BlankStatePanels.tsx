@@ -36,7 +36,6 @@ import { TextLink } from "./primitives/TextLink";
 import { InitCommandV3, PackageManagerProvider, TriggerDevStepV3 } from "./SetupCommands";
 import { StepContentContainer } from "./StepContentContainer";
 import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
-import { HttpCallbackIcon } from "~/assets/icons/HttpCallbackIcon";
 
 export function HasNoTasksDev() {
   return (
@@ -432,33 +431,6 @@ export function NoWaitpointTokens() {
   );
 }
 
-export function NoHttpCallbacks() {
-  return (
-    <InfoPanel
-      title="You don't have any HTTP callbacks"
-      icon={HttpCallbackIcon}
-      iconClassName="text-teal-500"
-      panelClassName="max-w-md"
-      accessory={
-        <LinkButton
-          to={docsPath("wait-for-http-callback")}
-          variant="docs/small"
-          LeadingIcon={BookOpenIcon}
-        >
-          Waitpoint docs
-        </LinkButton>
-      }
-    >
-      <Paragraph spacing variant="small">
-        HTTP callbacks are used to pause runs until an HTTP request is made to a provided URL.
-      </Paragraph>
-      <Paragraph spacing variant="small">
-        They are useful when using APIs that provide a callback URL. You can send the URL to them
-        and when they callback your run will continue.
-      </Paragraph>
-    </InfoPanel>
-  );
-}
 function SwitcherPanel() {
   const organization = useOrganization();
   const project = useProject();

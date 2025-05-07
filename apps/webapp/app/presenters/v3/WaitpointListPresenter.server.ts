@@ -26,7 +26,6 @@ export type WaitpointListOptions = {
     };
     apiKey: string;
   };
-  resolver: WaitpointResolver;
   // filters
   id?: string;
   statuses?: WaitpointTokenStatus[];
@@ -70,7 +69,6 @@ type Result =
 export class WaitpointListPresenter extends BasePresenter {
   public async call({
     environment,
-    resolver,
     id,
     statuses,
     idempotencyKey,
@@ -170,8 +168,8 @@ export class WaitpointListPresenter extends BasePresenter {
       ${sqlDatabaseSchema}."Waitpoint" w
     WHERE
       w."environmentId" = ${environment.id}
-      AND w.resolver = ${resolver}::"WaitpointResolver"
-      -- cursor
+    AND w.type = 'MANUAL'      
+    -- cursor
       ${
         cursor
           ? direction === "forward"
@@ -255,7 +253,7 @@ export class WaitpointListPresenter extends BasePresenter {
       const firstToken = await this._replica.waitpoint.findFirst({
         where: {
           environmentId: environment.id,
-          resolver,
+          type: "MANUAL",
         },
       });
 

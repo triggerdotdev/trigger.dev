@@ -152,7 +152,7 @@ export const waitHttpCallback = task({
         auth: process.env.REPLICATE_API_KEY,
       });
 
-      const token = await wait.createHttpCallback({
+      const token = await wait.createToken({
         timeout: "10m",
         tags: ["replicate"],
       });

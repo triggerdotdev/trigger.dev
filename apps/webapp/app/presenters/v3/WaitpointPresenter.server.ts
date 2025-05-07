@@ -39,7 +39,6 @@ export class WaitpointPresenter extends BasePresenter {
         completedAfter: true,
         completedAt: true,
         createdAt: true,
-        resolver: true,
         connectedRuns: {
           select: {
             friendlyId: true,
@@ -93,11 +92,7 @@ export class WaitpointPresenter extends BasePresenter {
     return {
       id: waitpoint.friendlyId,
       type: waitpoint.type,
-      resolver: waitpoint.resolver,
-      callbackUrl:
-        waitpoint.resolver === "HTTP_CALLBACK"
-          ? generateHttpCallbackUrl(waitpoint.id, waitpoint.environment.apiKey)
-          : undefined,
+      callbackUrl: generateHttpCallbackUrl(waitpoint.id, waitpoint.environment.apiKey),
       status: waitpointStatusToApiStatus(waitpoint.status, waitpoint.outputIsError),
       idempotencyKey: waitpoint.idempotencyKey,
       userProvidedIdempotencyKey: waitpoint.userProvidedIdempotencyKey,

@@ -5,9 +5,9 @@ import { env } from "~/env.server";
 export function generateHttpCallbackUrl(waitpointId: string, apiKey: string) {
   const hash = generateHttpCallbackHash(waitpointId, apiKey);
 
-  return `${
-    env.API_ORIGIN ?? env.APP_ORIGIN
-  }/api/v1/waitpoints/http-callback/${WaitpointId.toFriendlyId(waitpointId)}/callback/${hash}`;
+  return `${env.API_ORIGIN ?? env.APP_ORIGIN}/api/v1/waitpoints/tokens/${WaitpointId.toFriendlyId(
+    waitpointId
+  )}/callback/${hash}`;
 }
 
 function generateHttpCallbackHash(waitpointId: string, apiKey: string) {

@@ -342,33 +342,6 @@ export function v3WaitpointTokenPath(
   return `${v3WaitpointTokensPath(organization, project, environment)}/${token.id}${query}`;
 }
 
-export function v3WaitpointHttpCallbacksPath(
-  organization: OrgForPath,
-  project: ProjectForPath,
-  environment: EnvironmentForPath,
-  filters?: WaitpointSearchParams
-) {
-  const searchParams = objectToSearchParams(filters);
-  const query = searchParams ? `?${searchParams.toString()}` : "";
-  return `${v3EnvironmentPath(
-    organization,
-    project,
-    environment
-  )}/waitpoints/http-callbacks${query}`;
-}
-
-export function v3WaitpointHttpCallbackPath(
-  organization: OrgForPath,
-  project: ProjectForPath,
-  environment: EnvironmentForPath,
-  token: { id: string },
-  filters?: WaitpointSearchParams
-) {
-  const searchParams = objectToSearchParams(filters);
-  const query = searchParams ? `?${searchParams.toString()}` : "";
-  return `${v3WaitpointHttpCallbacksPath(organization, project, environment)}/${token.id}${query}`;
-}
-
 export function v3BatchesPath(
   organization: OrgForPath,
   project: ProjectForPath,

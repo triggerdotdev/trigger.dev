@@ -961,6 +961,7 @@ export type CreateWaitpointTokenRequestBody = z.infer<typeof CreateWaitpointToke
 export const CreateWaitpointTokenResponseBody = z.object({
   id: z.string(),
   isCached: z.boolean(),
+  url: z.string(),
 });
 export type CreateWaitpointTokenResponseBody = z.infer<typeof CreateWaitpointTokenResponseBody>;
 

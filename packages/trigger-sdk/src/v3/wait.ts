@@ -31,6 +31,8 @@ import { tracer } from "./tracer.js";
  *
  * @example
  *
+ * **Manually completing a token**
+ *
  * ```ts
  * const token = await wait.createToken({
  *   idempotencyKey: `approve-document-${documentId}`,
@@ -43,6 +45,30 @@ import { tracer } from "./tracer.js";
  *   status: "approved",
  *   comment: "Looks good to me!",
  * });
+ * ```
+ *
+ * @example
+ *
+ * **Completing a token with a webhook**
+ *
+ * ```ts
+ * const token = await wait.createToken({
+ *   timeout: "10m",
+ *   tags: ["replicate"],
+ * });
+ *
+ * // Later, in a different part of your codebase, you can complete the waitpoint
+ * await replicate.predictions.create({
+ *   version: "27b93a2413e7f36cd83da926f3656280b2931564ff050bf9575f1fdf9bcd7478",
+ *   input: {
+ *     prompt: "A painting of a cat by Any Warhol",
+ *   },
+ *   // pass the provided URL to Replicate's webhook, so they can "callback"
+ *   webhook: token.url,
+ *   webhook_events_filter: ["completed"],
+ * });
+ *
+ * const prediction = await wait.forToken<Prediction>(token).unwrap();
  * ```
  *
  * @param options - The options for the waitpoint token.
@@ -73,91 +99,13 @@ function createToken(
       onResponseBody: (body: CreateWaitpointTokenResponseBody, span) => {
         span.setAttribute("id", body.id);
         span.setAttribute("isCached", body.isCached);
-      },
-    },
-    requestOptions
-  );
-
-  return apiClient.createWaitpointToken(options ?? {}, $requestOptions);
-}
-
-/**
-   * This creates an HTTP callback that allows you to start some work on another API (or one of your own services) 
-   * and continue the run when a callback URL we give you is hit with the result.
-   * 
-   * You should send the callback URL to the other service, and then that service will 
-   * make a request to the callback URL with the result.
-   * 
-   * @example
-   * 
-   * ```ts
-   * // Create a waitpoint and pass the callback URL to the other service
-    const { token, data } = await wait.createHttpCallback(
-      async (url) => {
-        //pass the provided URL to Replicate's webhook
-        return replicate.predictions.create({
-          version: "27b93a2413e7f36cd83da926f3656280b2931564ff050bf9575f1fdf9bcd7478",
-          input: {
-            prompt: "A painting of a cat by Any Warhol",
-          },
-          // pass the provided URL to Replicate's webhook, so they can "callback"
-          webhook: url,
-          webhook_events_filter: ["completed"],
-        });
-      },
-      {
-        timeout: "10m",
-      }
-    );
-
-    // Now you can wait for the token to complete
-    // This will pause the run until the token is completed (by the other service calling the callback URL)
-    const prediction = await wait.forToken<Prediction>(token);
-
-    if (!prediction.ok) {
-      throw new Error("Failed to create prediction");
-    }
-
-    //the value of prediction is the body of the webook that Replicate sent
-    const result = prediction.output;  
-   * ```
-   * 
-   * @param callback A function that gives you a URL you should send to the other service (it will call back with the result)
-   * @param options - The options for the waitpoint.
-   * @param requestOptions - The request options for the waitpoint.
-   * @returns A promise that returns the token and anything you returned from your callback.
-   */
-async function createHttpCallback(
-  options?: CreateWaitpointTokenRequestBody,
-  requestOptions?: ApiRequestOptions
-): Promise<CreateWaitpointHttpCallbackResponseBody> {
-  const apiClient = apiClientManager.clientOrThrow();
-
-  const $requestOptions = mergeRequestOptions(
-    {
-      tracer,
-      name: "wait.createHttpCallback()",
-      icon: "wait-http-callback",
-      attributes: {
-        idempotencyKey: options?.idempotencyKey,
-        idempotencyKeyTTL: options?.idempotencyKeyTTL,
-        timeout: options?.timeout
-          ? typeof options.timeout === "string"
-            ? options.timeout
-            : options.timeout.toISOString()
-          : undefined,
-        tags: options?.tags,
-      },
-      onResponseBody: (body: CreateWaitpointHttpCallbackResponseBody, span) => {
-        span.setAttribute("id", body.id);
-        span.setAttribute("isCached", body.isCached);
         span.setAttribute("url", body.url);
       },
     },
     requestOptions
   );
 
-  return apiClient.createWaitpointHttpCallback(options ?? {}, $requestOptions);
+  return apiClient.createWaitpointToken(options ?? {}, $requestOptions);
 }
 
 /**
@@ -756,7 +704,6 @@ export const wait = {
       }
     });
   },
-  createHttpCallback,
 };
 
 function nameForWaitOptions(options: WaitForOptions): string {

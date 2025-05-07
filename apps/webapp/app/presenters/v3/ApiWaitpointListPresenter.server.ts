@@ -70,13 +70,11 @@ export class ApiWaitpointListPresenter extends BasePresenter {
       };
       apiKey: string;
     },
-    resolver: WaitpointResolver,
     searchParams: ApiWaitpointListSearchParams
   ) {
     return this.trace("call", async (span) => {
       const options: WaitpointListOptions = {
         environment,
-        resolver,
       };
 
       if (searchParams["page[size]"]) {

@@ -10,6 +10,7 @@ import {
   ApiWaitpointListSearchParams,
 } from "~/presenters/v3/ApiWaitpointListPresenter.server";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { generateHttpCallbackUrl } from "~/services/httpCallback.server";
 import {
   createActionApiRoute,
   createLoaderApiRoute,
@@ -26,7 +27,7 @@ export const loader = createLoaderApiRoute(
   },
   async ({ searchParams, authentication }) => {
     const presenter = new ApiWaitpointListPresenter();
-    const result = await presenter.call(authentication.environment, "TOKEN", searchParams);
+    const result = await presenter.call(authentication.environment, searchParams);
 
     return json(result);
   }
@@ -75,7 +76,6 @@ const { action } = createActionApiRoute(
         idempotencyKey: body.idempotencyKey,
         idempotencyKeyExpiresAt,
         timeout,
-        resolver: "TOKEN",
         tags: bodyTags,
       });
 
@@ -85,6 +85,7 @@ const { action } = createActionApiRoute(
         {
           id: WaitpointId.toFriendlyId(result.waitpoint.id),
           isCached: result.isCached,
+          url: generateHttpCallbackUrl(result.waitpoint.id, authentication.environment.apiKey),
         },
         { status: 200, headers: $responseHeaders }
       );

@@ -7,6 +7,7 @@ import { NoWaitpointTokens } from "~/components/BlankStatePanels";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { ListPagination } from "~/components/ListPagination";
 import { LinkButton } from "~/components/primitives/Buttons";
+import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { DateTime } from "~/components/primitives/DateTime";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
@@ -87,7 +88,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     const presenter = new WaitpointListPresenter();
     const result = await presenter.call({
       environment,
-      resolver: "TOKEN",
       ...searchParams,
     });
 
@@ -144,6 +144,7 @@ export default function Page() {
                       <TableRow>
                         <TableHeaderCell className="w-[1%]">Created</TableHeaderCell>
                         <TableHeaderCell className="w-[20%]">ID</TableHeaderCell>
+                        <TableHeaderCell className="w-[20%]">Callback URL</TableHeaderCell>
                         <TableHeaderCell className="w-[20%]">Status</TableHeaderCell>
                         <TableHeaderCell className="w-[20%]">Completed</TableHeaderCell>
                         <TableHeaderCell className="w-[20%]">Idempotency Key</TableHeaderCell>
@@ -178,6 +179,12 @@ export default function Page() {
                               </TableCell>
                               <TableCell to={path}>
                                 <CopyableText value={token.id} className="font-mono" />
+                              </TableCell>
+                              <TableCell to={path}>
+                                <ClipboardField
+                                  value={token.callbackUrl}
+                                  variant={"secondary/small"}
+                                />
                               </TableCell>
                               <TableCell to={path}>
                                 <WaitpointStatusCombo status={token.status} className="text-xs" />

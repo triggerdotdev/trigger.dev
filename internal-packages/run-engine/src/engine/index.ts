@@ -841,7 +841,6 @@ export class RunEngine {
     idempotencyKey,
     idempotencyKeyExpiresAt,
     timeout,
-    resolver,
     tags,
   }: {
     environmentId: string;
@@ -849,7 +848,6 @@ export class RunEngine {
     idempotencyKey?: string;
     idempotencyKeyExpiresAt?: Date;
     timeout?: Date;
-    resolver: "TOKEN" | "HTTP_CALLBACK";
     tags?: string[];
   }): Promise<{ waitpoint: Waitpoint; isCached: boolean }> {
     return this.waitpointSystem.createManualWaitpoint({
@@ -858,7 +856,6 @@ export class RunEngine {
       idempotencyKey,
       idempotencyKeyExpiresAt,
       timeout,
-      resolver,
       tags,
     });
   }
