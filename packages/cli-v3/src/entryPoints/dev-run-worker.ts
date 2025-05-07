@@ -36,7 +36,7 @@ import {
   getEnvVar,
   getNumberEnvVar,
   logLevels,
-  ManagedRuntimeManager,
+  SharedRuntimeManager,
   OtelTaskLogger,
   populateEnv,
   StandardLifecycleHooksManager,
@@ -455,12 +455,6 @@ const zodIpc = new ZodIpcConnection({
         });
       }
     },
-    TASK_RUN_COMPLETED_NOTIFICATION: async () => {
-      await managedWorkerRuntime.completeWaitpoints([]);
-    },
-    WAIT_COMPLETED_NOTIFICATION: async () => {
-      await managedWorkerRuntime.completeWaitpoints([]);
-    },
     CANCEL: async ({ timeoutInMs }) => {
       _isCancelled = true;
       cancelController.abort("run cancelled");
@@ -473,11 +467,8 @@ const zodIpc = new ZodIpcConnection({
     FLUSH: async ({ timeoutInMs }) => {
       await flushAll(timeoutInMs);
     },
-    WAITPOINT_CREATED: async ({ wait, waitpoint }) => {
-      managedWorkerRuntime.associateWaitWithWaitpoint(wait.id, waitpoint.id);
-    },
-    WAITPOINT_COMPLETED: async ({ waitpoint }) => {
-      managedWorkerRuntime.completeWaitpoints([waitpoint]);
+    RESOLVE_WAITPOINT: async ({ waitpoint }) => {
+      sharedWorkerRuntime.resolveWaitpoints([waitpoint]);
     },
   },
 });
@@ -561,8 +552,8 @@ async function flushMetadata(timeoutInMs: number = 10_000) {
   };
 }
 
-const managedWorkerRuntime = new ManagedRuntimeManager(zodIpc, showInternalLogs);
-runtime.setGlobalRuntimeManager(managedWorkerRuntime);
+const sharedWorkerRuntime = new SharedRuntimeManager(zodIpc, showInternalLogs);
+runtime.setGlobalRuntimeManager(sharedWorkerRuntime);
 
 process.title = "trigger-managed-worker";
 

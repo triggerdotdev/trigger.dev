@@ -55,7 +55,8 @@ if output=$(pnpm exec changeset version --snapshot $version 2>&1); then
         exit 0
     fi
 else
-    echo "Error running changeset version command"
+    echo "$output"
+    echo "Error running changeset version command, detailed output above"
     exit 1
 fi
 

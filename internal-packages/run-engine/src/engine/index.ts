@@ -43,6 +43,8 @@ import { EnqueueSystem } from "./systems/enqueueSystem.js";
 import {
   ExecutionSnapshotSystem,
   getLatestExecutionSnapshot,
+  getExecutionSnapshotsSince,
+  executionDataFromSnapshot,
 } from "./systems/executionSnapshotSystem.js";
 import { PendingVersionSystem } from "./systems/pendingVersionSystem.js";
 import { ReleaseConcurrencySystem } from "./systems/releaseConcurrencySystem.js";
@@ -1100,43 +1102,31 @@ export class RunEngine {
     const prisma = tx ?? this.prisma;
     try {
       const snapshot = await getLatestExecutionSnapshot(prisma, runId);
-
-      const executionData: RunExecutionData = {
-        version: "1" as const,
-        snapshot: {
-          id: snapshot.id,
-          friendlyId: snapshot.friendlyId,
-          executionStatus: snapshot.executionStatus,
-          description: snapshot.description,
-        },
-        run: {
-          id: snapshot.runId,
-          friendlyId: snapshot.runFriendlyId,
-          status: snapshot.runStatus,
-          attemptNumber: snapshot.attemptNumber ?? undefined,
-        },
-        batch: snapshot.batchId
-          ? {
-              id: snapshot.batchId,
-              friendlyId: BatchId.toFriendlyId(snapshot.batchId),
-            }
-          : undefined,
-        checkpoint: snapshot.checkpoint
-          ? {
-              id: snapshot.checkpoint.id,
-              friendlyId: snapshot.checkpoint.friendlyId,
-              type: snapshot.checkpoint.type,
-              location: snapshot.checkpoint.location,
-              imageRef: snapshot.checkpoint.imageRef,
-              reason: snapshot.checkpoint.reason ?? undefined,
-            }
-          : undefined,
-        completedWaitpoints: snapshot.completedWaitpoints,
-      };
-
-      return executionData;
+      return executionDataFromSnapshot(snapshot);
     } catch (e) {
       this.logger.error("Failed to getRunExecutionData", {
+        message: e instanceof Error ? e.message : e,
+      });
+      return null;
+    }
+  }
+
+  async getSnapshotsSince({
+    runId,
+    snapshotId,
+    tx,
+  }: {
+    runId: string;
+    snapshotId: string;
+    tx?: PrismaClientOrTransaction;
+  }): Promise<RunExecutionData[] | null> {
+    const prisma = tx ?? this.prisma;
+
+    try {
+      const snapshots = await getExecutionSnapshotsSince(prisma, runId, snapshotId);
+      return snapshots.map(executionDataFromSnapshot);
+    } catch (e) {
+      this.logger.error("Failed to getSnapshotsSince", {
         message: e instanceof Error ? e.message : e,
       });
       return null;
@@ -1158,9 +1148,6 @@ export class RunEngine {
     }
   }
 
-  //#endregion
-
-  //#region Heartbeat
   async #handleStalledSnapshot({
     runId,
     snapshotId,

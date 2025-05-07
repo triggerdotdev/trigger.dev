@@ -21,7 +21,7 @@ export { ProdUsageManager, type ProdUsageManagerOptions } from "../usage/prodUsa
 export { UsageTimeoutManager } from "../timeout/usageTimeoutManager.js";
 export { StandardMetadataManager } from "../runMetadata/manager.js";
 export { StandardWaitUntilManager } from "../waitUntil/manager.js";
-export { ManagedRuntimeManager } from "../runtime/managedRuntimeManager.js";
+export { SharedRuntimeManager } from "../runtime/sharedRuntimeManager.js";
 export * from "../runEngineWorker/index.js";
 export { StandardRunTimelineMetricsManager } from "../runTimelineMetrics/runTimelineMetricsManager.js";
 export { WarmStartClient, type WarmStartClientOptions } from "../workers/warmStartClient.js";

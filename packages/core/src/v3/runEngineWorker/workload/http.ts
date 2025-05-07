@@ -11,6 +11,7 @@ import {
   WorkloadSuspendRunResponseBody,
   WorkloadContinueRunExecutionResponseBody,
   WorkloadDebugLogRequestBody,
+  WorkloadRunSnapshotsSinceResponseBody,
 } from "./schemas.js";
 import { WorkloadClientCommonOptions } from "./types.js";
 import { getDefaultWorkloadHeaders } from "./util.js";
@@ -133,6 +134,19 @@ export class WorkloadHttpClient {
     return wrapZodFetch(
       WorkloadRunLatestSnapshotResponseBody,
       `${this.apiUrl}/api/v1/workload-actions/runs/${runId}/snapshots/latest`,
+      {
+        method: "GET",
+        headers: {
+          ...this.defaultHeaders(),
+        },
+      }
+    );
+  }
+
+  async getSnapshotsSince(runId: string, snapshotId: string) {
+    return wrapZodFetch(
+      WorkloadRunSnapshotsSinceResponseBody,
+      `${this.apiUrl}/api/v1/workload-actions/runs/${runId}/snapshots/since/${snapshotId}`,
       {
         method: "GET",
         headers: {

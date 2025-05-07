@@ -5,6 +5,7 @@ import {
   type TaskRunExecutionMetrics,
   type TaskRunExecutionResult,
   TaskRunExecutionRetry,
+  TaskRunExecutionStatus,
   type TaskRunFailedExecutionResult,
   WorkerManifest,
 } from "@trigger.dev/core/v3";
@@ -16,8 +17,11 @@ import { WorkloadHttpClient } from "@trigger.dev/core/v3/workers";
 import { setTimeout as sleep } from "timers/promises";
 import { RunExecutionSnapshotPoller } from "./poller.js";
 import { assertExhaustive, tryCatch } from "@trigger.dev/core/utils";
-import { MetadataClient } from "./overrides.js";
+import { Metadata, MetadataClient } from "./overrides.js";
 import { randomBytes } from "node:crypto";
+import { SnapshotManager, SnapshotState } from "./snapshot.js";
+import type { SupervisorSocket } from "./controller.js";
+import { RunNotifier } from "./notifier.js";
 
 class ExecutionAbortError extends Error {
   constructor(message: string) {
@@ -31,6 +35,7 @@ type RunExecutionOptions = {
   env: RunnerEnv;
   httpClient: WorkloadHttpClient;
   logger: RunLogger;
+  supervisorSocket: SupervisorSocket;
 };
 
 type RunExecutionPrepareOptions = {
@@ -50,9 +55,9 @@ export class RunExecution {
   private executionAbortController: AbortController;
 
   private _runFriendlyId?: string;
-  private currentSnapshotId?: string;
   private currentAttemptNumber?: number;
   private currentTaskRunEnv?: Record<string, string>;
+  private snapshotManager?: SnapshotManager;
 
   private dequeuedAt?: Date;
   private podScheduledAt?: Date;
@@ -67,6 +72,11 @@ export class RunExecution {
 
   private lastHeartbeat?: Date;
   private isShuttingDown = false;
+  private shutdownReason?: string;
+
+  private supervisorSocket: SupervisorSocket;
+  private notifier?: RunNotifier;
+  private metadataClient?: MetadataClient;
 
   constructor(opts: RunExecutionOptions) {
     this.id = randomBytes(4).toString("hex");
@@ -74,9 +84,38 @@ export class RunExecution {
     this.env = opts.env;
     this.httpClient = opts.httpClient;
     this.logger = opts.logger;
+    this.supervisorSocket = opts.supervisorSocket;
 
     this.restoreCount = 0;
     this.executionAbortController = new AbortController();
+
+    if (this.env.TRIGGER_METADATA_URL) {
+      this.metadataClient = new MetadataClient(this.env.TRIGGER_METADATA_URL);
+    }
+  }
+
+  /**
+   * Cancels the current execution.
+   */
+  public async cancel(): Promise<void> {
+    if (this.isShuttingDown) {
+      throw new Error("cancel called after execution shut down");
+    }
+
+    this.sendDebugLog("cancelling attempt", { runId: this.runFriendlyId });
+
+    await this.taskRunProcess?.cancel();
+  }
+
+  /**
+   * Kills the current execution.
+   */
+  public async kill({ exitExecution = true }: { exitExecution?: boolean } = {}) {
+    await this.taskRunProcess?.kill("SIGKILL");
+
+    if (exitExecution) {
+      this.shutdown("kill");
+    }
   }
 
   /**
@@ -84,6 +123,10 @@ export class RunExecution {
    * This should be called before executing, typically after a successful run to prepare for the next one.
    */
   public prepareForExecution(opts: RunExecutionPrepareOptions): this {
+    if (this.isShuttingDown) {
+      throw new Error("prepareForExecution called after execution shut down");
+    }
+
     if (this.taskRunProcess) {
       throw new Error("prepareForExecution called after process was already created");
     }
@@ -144,6 +187,14 @@ export class RunExecution {
       }
     });
 
+    taskRunProcess.onSendDebugLog.attach(async (debugLog) => {
+      this.sendRuntimeDebugLog(debugLog.message, debugLog.properties);
+    });
+
+    taskRunProcess.onSetSuspendable.attach(async ({ suspendable }) => {
+      this.suspendable = suspendable;
+    });
+
     return taskRunProcess;
   }
 
@@ -161,74 +212,28 @@ export class RunExecution {
 
   /**
    * Called by the RunController when it receives a websocket notification
-   * or when the snapshot poller detects a change
+   * or when the snapshot poller detects a change.
+   *
+   * This is the main entry point for snapshot changes, but processing is deferred to the snapshot manager.
    */
-  public async handleSnapshotChange(runData: RunExecutionData): Promise<void> {
+  private async enqueueSnapshotChangesAndWait(snapshots: RunExecutionData[]): Promise<void> {
     if (this.isShuttingDown) {
-      this.sendDebugLog("handleSnapshotChange: shutting down, skipping");
+      this.sendDebugLog("enqueueSnapshotChangeAndWait: shutting down, skipping");
       return;
     }
 
-    const { run, snapshot, completedWaitpoints } = runData;
-
-    const snapshotMetadata = {
-      incomingRunId: run.friendlyId,
-      incomingSnapshotId: snapshot.friendlyId,
-      completedWaitpoints: completedWaitpoints.length,
-    };
-
-    // Ensure we have run details
-    if (!this.runFriendlyId || !this.currentSnapshotId) {
-      this.sendDebugLog(
-        "handleSnapshotChange: missing run or snapshot ID",
-        snapshotMetadata,
-        run.friendlyId
-      );
+    if (!this.snapshotManager) {
+      this.sendDebugLog("enqueueSnapshotChangeAndWait: missing snapshot manager");
       return;
     }
 
-    // Ensure the run ID matches
-    if (run.friendlyId !== this.runFriendlyId) {
-      // Send debug log to both runs
-      this.sendDebugLog("handleSnapshotChange: mismatched run IDs", snapshotMetadata);
-      this.sendDebugLog(
-        "handleSnapshotChange: mismatched run IDs",
-        snapshotMetadata,
-        run.friendlyId
-      );
-      return;
-    }
-
-    this.snapshotChangeQueue.push(runData);
-    await this.processSnapshotChangeQueue();
+    await this.snapshotManager.handleSnapshotChanges(snapshots);
   }
 
-  private snapshotChangeQueue: RunExecutionData[] = [];
-  private snapshotChangeQueueLock = false;
-
-  private async processSnapshotChangeQueue() {
-    if (this.snapshotChangeQueueLock) {
-      return;
-    }
-
-    this.snapshotChangeQueueLock = true;
-    while (this.snapshotChangeQueue.length > 0) {
-      const runData = this.snapshotChangeQueue.shift();
-
-      if (!runData) {
-        continue;
-      }
-
-      const [error] = await tryCatch(this.processSnapshotChange(runData));
-
-      if (error) {
-        this.sendDebugLog("Failed to process snapshot change", { error: error.message });
-      }
-    }
-    this.snapshotChangeQueueLock = false;
-  }
-
-  private async processSnapshotChange(runData: RunExecutionData): Promise<void> {
+  private async processSnapshotChange(
+    runData: RunExecutionData,
+    deprecated: boolean
+  ): Promise<void> {
     const { run, snapshot, completedWaitpoints } = runData;
 
     const snapshotMetadata = {
@@ -236,38 +241,36 @@ export class RunExecution {
       completedWaitpoints: completedWaitpoints.length,
     };
 
-    // Check if the incoming snapshot is newer than the current one
-    if (!this.currentSnapshotId || snapshot.friendlyId < this.currentSnapshotId) {
-      this.sendDebugLog(
-        "handleSnapshotChange: received older snapshot, skipping",
-        snapshotMetadata
-      );
-      return;
-    }
-
-    if (snapshot.friendlyId === this.currentSnapshotId) {
+    if (!this.snapshotManager) {
+      this.sendDebugLog("handleSnapshotChange: missing snapshot manager", snapshotMetadata);
       return;
     }
 
     if (this.currentAttemptNumber && this.currentAttemptNumber !== run.attemptNumber) {
-      this.sendDebugLog("ERROR: attempt number mismatch", snapshotMetadata);
-      await this.taskRunProcess?.suspend();
+      this.sendDebugLog("error: attempt number mismatch", snapshotMetadata);
+      // This is a rogue execution, a new one will already have been created elsewhere
+      await this.exitTaskRunProcessWithoutFailingRun({ flush: false });
       return;
     }
 
-    this.sendDebugLog(`snapshot has changed to: ${snapshot.executionStatus}`, snapshotMetadata);
+    // DO NOT REMOVE (very noisy, but helpful for debugging)
+    // this.sendDebugLog(`processing snapshot change: ${snapshot.executionStatus}`, snapshotMetadata);
 
     // Reset the snapshot poll interval so we don't do unnecessary work
+    this.snapshotPoller?.updateSnapshotId(snapshot.friendlyId);
     this.snapshotPoller?.resetCurrentInterval();
 
-    // Update internal state
-    this.currentSnapshotId = snapshot.friendlyId;
+    if (deprecated) {
+      this.sendDebugLog("run execution is deprecated", { incomingSnapshot: snapshot });
 
-    // Update services
-    this.snapshotPoller?.updateSnapshotId(snapshot.friendlyId);
+      await this.exitTaskRunProcessWithoutFailingRun({ flush: false });
+      return;
+    }
 
     switch (snapshot.executionStatus) {
       case "PENDING_CANCEL": {
+        this.sendDebugLog("run was cancelled", snapshotMetadata);
+
         const [error] = await tryCatch(this.cancel());
 
         if (error) {
@@ -281,113 +284,44 @@ export class RunExecution {
         return;
       }
       case "QUEUED": {
-        this.sendDebugLog("Run was re-queued", snapshotMetadata);
+        this.sendDebugLog("run was re-queued", snapshotMetadata);
 
-        // Pretend we've just suspended the run. This will kill the process without failing the run.
-        await this.taskRunProcess?.suspend();
+        await this.exitTaskRunProcessWithoutFailingRun({ flush: true });
         return;
       }
       case "FINISHED": {
-        this.sendDebugLog("Run is finished", snapshotMetadata);
+        this.sendDebugLog("run is finished", snapshotMetadata);
 
-        // Pretend we've just suspended the run. This will kill the process without failing the run.
-        await this.taskRunProcess?.suspend();
+        await this.exitTaskRunProcessWithoutFailingRun({ flush: true });
         return;
       }
       case "QUEUED_EXECUTING":
       case "EXECUTING_WITH_WAITPOINTS": {
-        this.sendDebugLog("Run is executing with waitpoints", snapshotMetadata);
+        this.sendDebugLog("run is executing with waitpoints", snapshotMetadata);
 
-        const [error] = await tryCatch(this.taskRunProcess?.cleanup(false));
-
-        if (error) {
-          this.sendDebugLog("Failed to cleanup task run process, carrying on", {
-            ...snapshotMetadata,
-            error: error.message,
-          });
-        }
-
-        if (snapshot.friendlyId !== this.currentSnapshotId) {
-          this.sendDebugLog("Snapshot changed after cleanup, abort", snapshotMetadata);
-
-          this.abortExecution();
-          return;
-        }
-
-        await sleep(this.env.TRIGGER_PRE_SUSPEND_WAIT_MS);
-
-        if (snapshot.friendlyId !== this.currentSnapshotId) {
-          this.sendDebugLog("Snapshot changed after suspend threshold, abort", snapshotMetadata);
-
-          this.abortExecution();
-          return;
-        }
-
-        if (!this.runFriendlyId || !this.currentSnapshotId) {
-          this.sendDebugLog(
-            "handleSnapshotChange: Missing run ID or snapshot ID after suspension, abort",
-            snapshotMetadata
-          );
-
-          this.abortExecution();
-          return;
-        }
-
-        const suspendResult = await this.httpClient.suspendRun(
-          this.runFriendlyId,
-          this.currentSnapshotId
-        );
-
-        if (!suspendResult.success) {
-          this.sendDebugLog("Failed to suspend run, staying alive 🎶", {
-            ...snapshotMetadata,
-            error: suspendResult.error,
-          });
-
-          this.sendDebugLog("checkpoint: suspend request failed", {
-            ...snapshotMetadata,
-            error: suspendResult.error,
-          });
-
-          // This is fine, we'll wait for the next status change
-          return;
-        }
-
-        if (!suspendResult.data.ok) {
-          this.sendDebugLog("checkpoint: failed to suspend run", {
-            snapshotId: this.currentSnapshotId,
-            error: suspendResult.data.error,
-          });
-
-          // This is fine, we'll wait for the next status change
-          return;
-        }
-
-        this.sendDebugLog("Suspending, any day now 🚬", snapshotMetadata);
-
-        // Wait for next status change
+        // Wait for next status change - suspension is handled by the snapshot manager
         return;
       }
       case "SUSPENDED": {
-        this.sendDebugLog("Run was suspended, kill the process", snapshotMetadata);
+        this.sendDebugLog("run was suspended", snapshotMetadata);
 
         // This will kill the process and fail the execution with a SuspendedProcessError
-        await this.taskRunProcess?.suspend();
-
+        // We don't flush because we already did before suspending
+        await this.exitTaskRunProcessWithoutFailingRun({ flush: false });
         return;
       }
       case "PENDING_EXECUTING": {
-        this.sendDebugLog("Run is pending execution", snapshotMetadata);
+        this.sendDebugLog("run is pending execution", snapshotMetadata);
 
         if (completedWaitpoints.length === 0) {
-          this.sendDebugLog("No waitpoints to complete, nothing to do", snapshotMetadata);
+          this.sendDebugLog("no waitpoints to complete, nothing to do", snapshotMetadata);
           return;
         }
 
         const [error] = await tryCatch(this.restore());
 
         if (error) {
-          this.sendDebugLog("Failed to restore execution", {
+          this.sendDebugLog("failed to restore execution", {
             ...snapshotMetadata,
             error: error.message,
           });
@@ -399,16 +333,15 @@ export class RunExecution {
         return;
       }
       case "EXECUTING": {
-        this.sendDebugLog("Run is now executing", snapshotMetadata);
-
         if (completedWaitpoints.length === 0) {
+          this.sendDebugLog("run is executing without completed waitpoints", snapshotMetadata);
           return;
         }
 
-        this.sendDebugLog("Processing completed waitpoints", snapshotMetadata);
+        this.sendDebugLog("run is executing with completed waitpoints", snapshotMetadata);
 
         if (!this.taskRunProcess) {
-          this.sendDebugLog("No task run process, ignoring completed waitpoints", snapshotMetadata);
+          this.sendDebugLog("no task run process, ignoring completed waitpoints", snapshotMetadata);
 
           this.abortExecution();
           return;
@@ -421,7 +354,10 @@ export class RunExecution {
         return;
       }
       case "RUN_CREATED": {
-        this.sendDebugLog("Invalid status change", snapshotMetadata);
+        this.sendDebugLog(
+          "aborting execution: invalid status change: RUN_CREATED",
+          snapshotMetadata
+        );
 
         this.abortExecution();
         return;
@@ -437,11 +373,11 @@ export class RunExecution {
   }: {
     isWarmStart?: boolean;
   }): Promise<WorkloadRunAttemptStartResponseBody & { metrics: TaskRunExecutionMetrics }> {
-    if (!this.runFriendlyId || !this.currentSnapshotId) {
-      throw new Error("Cannot start attempt: missing run or snapshot ID");
+    if (!this.runFriendlyId || !this.snapshotManager) {
+      throw new Error("Cannot start attempt: missing run or snapshot manager");
     }
 
-    this.sendDebugLog("Starting attempt");
+    this.sendDebugLog("starting attempt");
 
     const attemptStartedAt = Date.now();
 
@@ -452,7 +388,7 @@ export class RunExecution {
 
     const start = await this.httpClient.startRunAttempt(
       this.runFriendlyId,
-      this.currentSnapshotId,
+      this.snapshotManager.snapshotId,
       { isWarmStart }
     );
 
@@ -465,14 +401,17 @@ export class RunExecution {
     }
 
     // A snapshot was just created, so update the snapshot ID
-    this.currentSnapshotId = start.data.snapshot.friendlyId;
+    this.snapshotManager.updateSnapshot(
+      start.data.snapshot.friendlyId,
+      start.data.snapshot.executionStatus
+    );
 
     // Also set or update the attempt number - we do this to detect illegal attempt number changes, e.g. from stalled runners coming back online
     const attemptNumber = start.data.run.attemptNumber;
     if (attemptNumber && attemptNumber > 0) {
       this.currentAttemptNumber = attemptNumber;
     } else {
-      this.sendDebugLog("ERROR: invalid attempt number returned from start attempt", {
+      this.sendDebugLog("error: invalid attempt number returned from start attempt", {
         attemptNumber: String(attemptNumber),
       });
     }
@@ -483,7 +422,7 @@ export class RunExecution {
       podScheduledAt: this.podScheduledAt?.getTime(),
     });
 
-    this.sendDebugLog("Started attempt");
+    this.sendDebugLog("started attempt");
 
     return { ...start.data, metrics };
   }
@@ -493,45 +432,67 @@ export class RunExecution {
    * When this returns, the child process will have been cleaned up.
    */
   public async execute(runOpts: RunExecutionRunOptions): Promise<void> {
+    if (this.isShuttingDown) {
+      throw new Error("execute called after execution shut down");
+    }
+
     // Setup initial state
     this.runFriendlyId = runOpts.runFriendlyId;
-    this.currentSnapshotId = runOpts.snapshotFriendlyId;
+
+    // Create snapshot manager
+    this.snapshotManager = new SnapshotManager({
+      runFriendlyId: runOpts.runFriendlyId,
+      runnerId: this.env.TRIGGER_RUNNER_ID,
+      initialSnapshotId: runOpts.snapshotFriendlyId,
+      // We're just guessing here, but "PENDING_EXECUTING" is probably fine
+      initialStatus: "PENDING_EXECUTING",
+      logger: this.logger,
+      metadataClient: this.metadataClient,
+      onSnapshotChange: this.processSnapshotChange.bind(this),
+      onSuspendable: this.handleSuspendable.bind(this),
+    });
+
     this.dequeuedAt = runOpts.dequeuedAt;
     this.podScheduledAt = runOpts.podScheduledAt;
 
     // Create and start services
     this.snapshotPoller = new RunExecutionSnapshotPoller({
       runFriendlyId: this.runFriendlyId,
-      snapshotFriendlyId: this.currentSnapshotId,
-      httpClient: this.httpClient,
+      snapshotFriendlyId: this.snapshotManager.snapshotId,
       logger: this.logger,
       snapshotPollIntervalSeconds: this.env.TRIGGER_SNAPSHOT_POLL_INTERVAL_SECONDS,
-      handleSnapshotChange: this.handleSnapshotChange.bind(this),
-    });
+      onPoll: this.fetchAndProcessSnapshotChanges.bind(this),
+    }).start();
 
-    this.snapshotPoller.start();
+    this.notifier = new RunNotifier({
+      runFriendlyId: this.runFriendlyId,
+      supervisorSocket: this.supervisorSocket,
+      onNotify: this.fetchAndProcessSnapshotChanges.bind(this),
+      logger: this.logger,
+    }).start();
 
     const [startError, start] = await tryCatch(
       this.startAttempt({ isWarmStart: runOpts.isWarmStart })
     );
 
     if (startError) {
-      this.sendDebugLog("Failed to start attempt", { error: startError.message });
+      this.sendDebugLog("failed to start attempt", { error: startError.message });
 
-      this.stopServices();
+      this.shutdown("failed to start attempt");
       return;
     }
 
     const [executeError] = await tryCatch(this.executeRunWrapper(start));
 
     if (executeError) {
-      this.sendDebugLog("Failed to execute run", { error: executeError.message });
+      this.sendDebugLog("failed to execute run", { error: executeError.message });
 
-      this.stopServices();
+      this.shutdown("failed to execute run");
       return;
     }
 
-    this.stopServices();
+    // This is here for safety, but it
+    this.shutdown("execute call finished");
   }
 
   private async executeRunWrapper({
@@ -558,15 +519,12 @@ export class RunExecution {
       })
     );
 
-    this.sendDebugLog("Run execution completed", { error: executeError?.message });
-
     if (!executeError) {
-      this.stopServices();
       return;
     }
 
     if (executeError instanceof SuspendedProcessError) {
-      this.sendDebugLog("Run was suspended", {
+      this.sendDebugLog("execution was suspended", {
         run: run.friendlyId,
         snapshot: snapshot.friendlyId,
         error: executeError.message,
@@ -576,7 +534,7 @@ export class RunExecution {
     }
 
     if (executeError instanceof ExecutionAbortError) {
-      this.sendDebugLog("Run was interrupted", {
+      this.sendDebugLog("execution was aborted", {
         run: run.friendlyId,
         snapshot: snapshot.friendlyId,
         error: executeError.message,
@@ -585,7 +543,7 @@ export class RunExecution {
       return;
     }
 
-    this.sendDebugLog("Error while executing attempt", {
+    this.sendDebugLog("error while executing attempt", {
       error: executeError.message,
       runId: run.friendlyId,
       snapshotId: snapshot.friendlyId,
@@ -601,10 +559,8 @@ export class RunExecution {
     const [completeError] = await tryCatch(this.complete({ completion }));
 
     if (completeError) {
-      this.sendDebugLog("Failed to complete run", { error: completeError.message });
+      this.sendDebugLog("failed to complete run", { error: completeError.message });
     }
-
-    this.stopServices();
   }
 
   private async executeRun({
@@ -625,7 +581,7 @@ export class RunExecution {
       !this.taskRunProcess.isPreparedForNextAttempt
     ) {
       this.sendDebugLog("killing existing task run process before executing next attempt");
-      await this.kill().catch(() => {});
+      await this.kill({ exitExecution: false }).catch(() => {});
     }
 
     // To skip this step and eagerly create the task run process, run prepareForExecution first
@@ -637,7 +593,7 @@ export class RunExecution {
 
     // Set up an abort handler that will cleanup the task run process
     this.executionAbortController.signal.addEventListener("abort", async () => {
-      this.sendDebugLog("Execution aborted during task run, cleaning up process", {
+      this.sendDebugLog("execution aborted during task run, cleaning up process", {
         runId: execution.run.id,
       });
 
@@ -658,13 +614,13 @@ export class RunExecution {
     );
 
     // If we get here, the task completed normally
-    this.sendDebugLog("Completed run attempt", { attemptSuccess: completion.ok });
+    this.sendDebugLog("completed run attempt", { attemptSuccess: completion.ok });
 
     // The execution has finished, so we can cleanup the task run process. Killing it should be safe.
     const [error] = await tryCatch(this.taskRunProcess.cleanup(true));
 
     if (error) {
-      this.sendDebugLog("Failed to cleanup task run process, submitting completion anyway", {
+      this.sendDebugLog("failed to cleanup task run process, submitting completion anyway", {
         error: error.message,
       });
     }
@@ -672,37 +628,18 @@ export class RunExecution {
     const [completionError] = await tryCatch(this.complete({ completion }));
 
     if (completionError) {
-      this.sendDebugLog("Failed to complete run", { error: completionError.message });
+      this.sendDebugLog("failed to complete run", { error: completionError.message });
     }
-  }
-
-  /**
-   * Cancels the current execution.
-   */
-  public async cancel(): Promise<void> {
-    this.sendDebugLog("cancelling attempt", { runId: this.runFriendlyId });
-
-    await this.taskRunProcess?.cancel();
-  }
-
-  public exit() {
-    if (this.taskRunProcess?.isPreparedForNextRun) {
-      this.taskRunProcess?.forceExit();
-    }
-  }
-
-  public async kill() {
-    await this.taskRunProcess?.kill("SIGKILL");
   }
 
   private async complete({ completion }: { completion: TaskRunExecutionResult }): Promise<void> {
-    if (!this.runFriendlyId || !this.currentSnapshotId) {
-      throw new Error("Cannot complete run: missing run or snapshot ID");
+    if (!this.runFriendlyId || !this.snapshotManager) {
+      throw new Error("cannot complete run: missing run or snapshot manager");
     }
 
     const completionResult = await this.httpClient.completeRunAttempt(
       this.runFriendlyId,
-      this.currentSnapshotId,
+      this.snapshotManager.snapshotId,
       { completion }
     );
 
@@ -723,50 +660,68 @@ export class RunExecution {
     completion: TaskRunExecutionResult;
     result: CompleteRunAttemptResult;
   }) {
-    this.sendDebugLog("Handling completion result", {
+    this.sendDebugLog(`completion result: ${result.attemptStatus}`, {
       attemptSuccess: completion.ok,
       attemptStatus: result.attemptStatus,
       snapshotId: result.snapshot.friendlyId,
       runId: result.run.friendlyId,
     });
 
-    // Update our snapshot ID to match the completion result
-    // This ensures any subsequent API calls use the correct snapshot
-    this.currentSnapshotId = result.snapshot.friendlyId;
+    const snapshotStatus = this.convertAttemptStatusToSnapshotStatus(result.attemptStatus);
+
+    // Update our snapshot ID to match the completion result to ensure any subsequent API calls use the correct snapshot
+    this.updateSnapshotAfterCompletion(result.snapshot.friendlyId, snapshotStatus);
 
     const { attemptStatus } = result;
 
-    if (attemptStatus === "RUN_FINISHED") {
-      this.sendDebugLog("Run finished");
-
-      return;
-    }
-
-    if (attemptStatus === "RUN_PENDING_CANCEL") {
-      this.sendDebugLog("Run pending cancel");
-      return;
-    }
-
-    if (attemptStatus === "RETRY_QUEUED") {
-      this.sendDebugLog("Retry queued");
-
-      return;
-    }
-
-    if (attemptStatus === "RETRY_IMMEDIATELY") {
-      if (completion.ok) {
-        throw new Error("Should retry but completion OK.");
+    switch (attemptStatus) {
+      case "RUN_FINISHED":
+      case "RUN_PENDING_CANCEL":
+      case "RETRY_QUEUED": {
+        return;
       }
+      case "RETRY_IMMEDIATELY": {
+        if (attemptStatus !== "RETRY_IMMEDIATELY") {
+          return;
+        }
 
-      if (!completion.retry) {
-        throw new Error("Should retry but missing retry params.");
+        if (completion.ok) {
+          throw new Error("Should retry but completion OK.");
+        }
+
+        if (!completion.retry) {
+          throw new Error("Should retry but missing retry params.");
+        }
+
+        await this.retryImmediately({ retryOpts: completion.retry });
+        return;
       }
-
-      await this.retryImmediately({ retryOpts: completion.retry });
-      return;
+      default: {
+        assertExhaustive(attemptStatus);
+      }
     }
+  }
 
-    assertExhaustive(attemptStatus);
+  private updateSnapshotAfterCompletion(snapshotId: string, status: TaskRunExecutionStatus) {
+    this.snapshotManager?.updateSnapshot(snapshotId, status);
+    this.snapshotPoller?.updateSnapshotId(snapshotId);
+  }
+
+  private convertAttemptStatusToSnapshotStatus(
+    attemptStatus: CompleteRunAttemptResult["attemptStatus"]
+  ): TaskRunExecutionStatus {
+    switch (attemptStatus) {
+      case "RUN_FINISHED":
+        return "FINISHED";
+      case "RUN_PENDING_CANCEL":
+        return "PENDING_CANCEL";
+      case "RETRY_QUEUED":
+        return "QUEUED";
+      case "RETRY_IMMEDIATELY":
+        return "EXECUTING";
+      default:
+        assertExhaustive(attemptStatus);
+    }
   }
 
   private measureExecutionMetrics({
@@ -809,7 +764,7 @@ export class RunExecution {
   }
 
   private async retryImmediately({ retryOpts }: { retryOpts: TaskRunExecutionRetry }) {
-    this.sendDebugLog("Retrying run immediately", {
+    this.sendDebugLog("retrying run immediately", {
       timestamp: retryOpts.timestamp,
       delay: retryOpts.delay,
     });
@@ -825,43 +780,41 @@ export class RunExecution {
     const [startError, start] = await tryCatch(this.startAttempt({ isWarmStart: true }));
 
     if (startError) {
-      this.sendDebugLog("Failed to start attempt for retry", { error: startError.message });
+      this.sendDebugLog("failed to start attempt for retry", { error: startError.message });
 
-      this.stopServices();
+      this.shutdown("retryImmediately: failed to start attempt");
       return;
     }
 
     const [executeError] = await tryCatch(this.executeRunWrapper({ ...start, isWarmStart: true }));
 
     if (executeError) {
-      this.sendDebugLog("Failed to execute run for retry", { error: executeError.message });
+      this.sendDebugLog("failed to execute run for retry", { error: executeError.message });
 
-      this.stopServices();
+      this.shutdown("retryImmediately: failed to execute run");
       return;
     }
-
-    this.stopServices();
   }
 
   /**
    * Restores a suspended execution from PENDING_EXECUTING
    */
   private async restore(): Promise<void> {
-    this.sendDebugLog("Restoring execution");
+    this.sendDebugLog("restoring execution");
 
-    if (!this.runFriendlyId || !this.currentSnapshotId) {
-      throw new Error("Cannot restore: missing run or snapshot ID");
+    if (!this.runFriendlyId || !this.snapshotManager) {
+      throw new Error("Cannot restore: missing run or snapshot manager");
     }
 
     // Short delay to give websocket time to reconnect
     await sleep(100);
 
     // Process any env overrides
-    await this.processEnvOverrides();
+    await this.processEnvOverrides("restore");
 
     const continuationResult = await this.httpClient.continueRunExecution(
       this.runFriendlyId,
-      this.currentSnapshotId
+      this.snapshotManager.snapshotId
     );
 
     if (!continuationResult.success) {
@@ -872,24 +825,44 @@ export class RunExecution {
     this.restoreCount++;
   }
 
+  private async exitTaskRunProcessWithoutFailingRun({ flush }: { flush: boolean }) {
+    await this.taskRunProcess?.suspend({ flush });
+
+    // No services should be left running after this line - let's make sure of it
+    this.shutdown("exitTaskRunProcessWithoutFailingRun");
+  }
+
   /**
    * Processes env overrides from the metadata service. Generally called when we're resuming from a suspended state.
    */
-  private async processEnvOverrides() {
-    if (!this.env.TRIGGER_METADATA_URL) {
-      this.sendDebugLog("No metadata URL, skipping env overrides");
-      return;
+  public async processEnvOverrides(reason?: string): Promise<{ overrides: Metadata } | null> {
+    if (!this.metadataClient) {
+      return null;
     }
 
-    const metadataClient = new MetadataClient(this.env.TRIGGER_METADATA_URL);
-    const overrides = await metadataClient.getEnvOverrides();
+    const [error, overrides] = await this.metadataClient.getEnvOverrides();
 
-    if (!overrides) {
-      this.sendDebugLog("No env overrides, skipping");
-      return;
+    if (error) {
+      this.sendDebugLog("[override] failed to fetch", {
+        reason,
+        error: error.message,
+      });
+      return null;
     }
 
-    this.sendDebugLog("Processing env overrides", overrides);
+    if (overrides.TRIGGER_RUN_ID && overrides.TRIGGER_RUN_ID !== this.runFriendlyId) {
+      this.sendDebugLog("[override] run ID mismatch, ignoring overrides", {
+        reason,
+        currentRunId: this.runFriendlyId,
+        incomingRunId: overrides.TRIGGER_RUN_ID,
+      });
+      return null;
+    }
+
+    this.sendDebugLog(`[override] processing: ${reason}`, {
+      overrides,
+      currentEnv: this.env.raw,
+    });
 
     // Override the env with the new values
     this.env.override(overrides);
@@ -908,25 +881,32 @@ export class RunExecution {
     if (overrides.TRIGGER_RUNNER_ID) {
       this.httpClient.updateRunnerId(this.env.TRIGGER_RUNNER_ID);
     }
+
+    return {
+      overrides,
+    };
   }
 
   private async onHeartbeat() {
     if (!this.runFriendlyId) {
-      this.sendDebugLog("Heartbeat: missing run ID");
+      this.sendDebugLog("heartbeat: missing run ID");
       return;
     }
 
-    if (!this.currentSnapshotId) {
-      this.sendDebugLog("Heartbeat: missing snapshot ID");
+    if (!this.snapshotManager) {
+      this.sendDebugLog("heartbeat: missing snapshot manager");
       return;
     }
 
-    this.sendDebugLog("Heartbeat: started");
+    this.sendDebugLog("heartbeat");
 
-    const response = await this.httpClient.heartbeatRun(this.runFriendlyId, this.currentSnapshotId);
+    const response = await this.httpClient.heartbeatRun(
+      this.runFriendlyId,
+      this.snapshotManager.snapshotId
+    );
 
     if (!response.success) {
-      this.sendDebugLog("Heartbeat: failed", { error: response.error });
+      this.sendDebugLog("heartbeat: failed", { error: response.error });
     }
 
     this.lastHeartbeat = new Date();
@@ -943,11 +923,37 @@ export class RunExecution {
       properties: {
         ...properties,
         runId: this.runFriendlyId,
-        snapshotId: this.currentSnapshotId,
+        snapshotId: this.currentSnapshotFriendlyId,
         executionId: this.id,
         executionRestoreCount: this.restoreCount,
         lastHeartbeat: this.lastHeartbeat?.toISOString(),
       },
+    });
+  }
+
+  private sendRuntimeDebugLog(
+    message: string,
+    properties?: SendDebugLogOptions["properties"],
+    runIdOverride?: string
+  ) {
+    this.logger.sendDebugLog({
+      runId: runIdOverride ?? this.runFriendlyId,
+      message: `[runtime] ${message}`,
+      print: false,
+      properties: {
+        ...properties,
+        runId: this.runFriendlyId,
+        snapshotId: this.currentSnapshotFriendlyId,
+        executionId: this.id,
+        executionRestoreCount: this.restoreCount,
+        lastHeartbeat: this.lastHeartbeat?.toISOString(),
+      },
+    });
+  }
+
+  private set suspendable(suspendable: boolean) {
+    this.snapshotManager?.setSuspendable(suspendable).catch((error) => {
+      this.sendDebugLog("failed to set suspendable", { error: error.message });
     });
   }
 
@@ -965,7 +971,7 @@ export class RunExecution {
   }
 
   public get currentSnapshotFriendlyId(): string | undefined {
-    return this.currentSnapshotId;
+    return this.snapshotManager?.snapshotId;
   }
 
   public get taskRunEnv(): Record<string, string> | undefined {
@@ -974,7 +980,12 @@ export class RunExecution {
 
   public get metrics() {
     return {
-      restoreCount: this.restoreCount,
+      execution: {
+        restoreCount: this.restoreCount,
+        lastHeartbeat: this.lastHeartbeat,
+      },
+      poller: this.snapshotPoller?.metrics,
+      notifier: this.notifier?.metrics,
     };
   }
 
@@ -984,21 +995,154 @@ export class RunExecution {
 
   private abortExecution() {
     if (this.isAborted) {
-      this.sendDebugLog("Execution already aborted");
+      this.sendDebugLog("execution already aborted");
       return;
     }
 
     this.executionAbortController.abort();
-    this.stopServices();
+    this.shutdown("abortExecution");
   }
 
-  private stopServices() {
+  private shutdown(reason: string) {
     if (this.isShuttingDown) {
+      this.sendDebugLog(`[shutdown] ${reason} (already shutting down)`, {
+        firstShutdownReason: this.shutdownReason,
+      });
       return;
     }
 
+    this.sendDebugLog(`[shutdown] ${reason}`);
+
     this.isShuttingDown = true;
+    this.shutdownReason = reason;
+
     this.snapshotPoller?.stop();
-    this.taskRunProcess?.onTaskRunHeartbeat.detach();
+    this.snapshotManager?.stop();
+    this.notifier?.stop();
+
+    this.taskRunProcess?.unsafeDetachEvtHandlers();
+  }
+
+  private async handleSuspendable(suspendableSnapshot: SnapshotState) {
+    this.sendDebugLog("handleSuspendable", { suspendableSnapshot });
+
+    if (!this.snapshotManager) {
+      this.sendDebugLog("handleSuspendable: missing snapshot manager", { suspendableSnapshot });
+      return;
+    }
+
+    // Ensure this is the current snapshot
+    if (suspendableSnapshot.id !== this.currentSnapshotFriendlyId) {
+      this.sendDebugLog("snapshot changed before cleanup, abort", {
+        suspendableSnapshot,
+        currentSnapshotId: this.currentSnapshotFriendlyId,
+      });
+      this.abortExecution();
+      return;
+    }
+
+    // First cleanup the task run process
+    const [error] = await tryCatch(this.taskRunProcess?.cleanup(false));
+
+    if (error) {
+      this.sendDebugLog("failed to cleanup task run process, carrying on", {
+        suspendableSnapshot,
+        error: error.message,
+      });
+    }
+
+    // Double check snapshot hasn't changed after cleanup
+    if (suspendableSnapshot.id !== this.currentSnapshotFriendlyId) {
+      this.sendDebugLog("snapshot changed after cleanup, abort", {
+        suspendableSnapshot,
+        currentSnapshotId: this.currentSnapshotFriendlyId,
+      });
+      this.abortExecution();
+      return;
+    }
+
+    if (!this.runFriendlyId) {
+      this.sendDebugLog("missing run ID for suspension, abort", { suspendableSnapshot });
+      this.abortExecution();
+      return;
+    }
+
+    // Call the suspend API with the current snapshot ID
+    const suspendResult = await this.httpClient.suspendRun(
+      this.runFriendlyId,
+      suspendableSnapshot.id
+    );
+
+    if (!suspendResult.success) {
+      this.sendDebugLog("suspension request failed, staying alive 🎶", {
+        suspendableSnapshot,
+        error: suspendResult.error,
+      });
+
+      // This is fine, we'll wait for the next status change
+      return;
+    }
+
+    if (!suspendResult.data.ok) {
+      this.sendDebugLog("suspension request returned error, staying alive 🎶", {
+        suspendableSnapshot,
+        error: suspendResult.data.error,
+      });
+
+      // This is fine, we'll wait for the next status change
+      return;
+    }
+
+    this.sendDebugLog("suspending, any day now 🚬", { suspendableSnapshot });
+  }
+
+  /**
+   * Fetches the latest execution data and enqueues snapshot changes. Used by both poller and notification handlers.
+   * @param source string - where this call originated (e.g. 'poller', 'notification')
+   */
+  public async fetchAndProcessSnapshotChanges(source: string): Promise<void> {
+    if (!this.runFriendlyId) {
+      this.sendDebugLog(`fetchAndProcessSnapshotChanges: missing runFriendlyId`, { source });
+      return;
+    }
+
+    // Use the last processed snapshot as the since parameter
+    const sinceSnapshotId = this.currentSnapshotFriendlyId;
+
+    if (!sinceSnapshotId) {
+      this.sendDebugLog(`fetchAndProcessSnapshotChanges: missing sinceSnapshotId`, { source });
+      return;
+    }
+
+    const response = await this.httpClient.getSnapshotsSince(this.runFriendlyId, sinceSnapshotId);
+
+    if (!response.success) {
+      this.sendDebugLog(`fetchAndProcessSnapshotChanges: failed to get snapshots since`, {
+        source,
+        error: response.error,
+      });
+
+      await this.processEnvOverrides("snapshots since error");
+      return;
+    }
+
+    const { snapshots } = response.data;
+
+    if (!snapshots.length) {
+      return;
+    }
+
+    const [error] = await tryCatch(this.enqueueSnapshotChangesAndWait(snapshots));
+
+    if (error) {
+      this.sendDebugLog(
+        `fetchAndProcessSnapshotChanges: failed to enqueue and process snapshot change`,
+        {
+          source,
+          error: error.message,
+        }
+      );
+      return;
+    }
   }
 }

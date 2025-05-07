@@ -201,7 +201,7 @@ export class HttpServer {
         );
 
         if (error) {
-          logger.error("Route handler error", { error });
+          logger.error("Route handler error", { error: this.formatError(error) });
           return reply.empty(500);
         }
 
@@ -210,7 +210,7 @@ export class HttpServer {
           return;
         }
       } catch (error) {
-        logger.error("Failed to handle request", { error });
+        logger.error("Failed to handle request", { error: this.formatError(error) });
         return reply.empty(500);
       } finally {
         this.collectMetrics(req, res, startTime);
@@ -363,5 +363,17 @@ export class HttpServer {
     }
 
     return null;
+  }
+
+  private formatError(error: unknown): string | Record<string, string | undefined> {
+    if (error instanceof Error) {
+      return {
+        name: error.name,
+        message: error.message,
+        stack: error.stack,
+      };
+    }
+
+    return String(error);
   }
 }

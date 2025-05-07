@@ -22,8 +22,6 @@ const Env = z.object({
   // Set at runtime
   TRIGGER_WORKLOAD_CONTROLLER_ID: z.string().default(`controller_${randomUUID()}`),
   TRIGGER_ENV_ID: z.string(),
-  TRIGGER_RUN_ID: z.string().optional(), // This is only useful for cold starts
-  TRIGGER_SNAPSHOT_ID: z.string().optional(), // This is only useful for cold starts
   OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url(),
   TRIGGER_WARM_START_URL: z.string().optional(),
   TRIGGER_WARM_START_CONNECTION_TIMEOUT_MS: z.coerce.number().default(30_000),
@@ -32,13 +30,14 @@ const Env = z.object({
   TRIGGER_MACHINE_MEMORY: z.string().default("0"),
   TRIGGER_RUNNER_ID: z.string(),
   TRIGGER_METADATA_URL: z.string().optional(),
-  TRIGGER_PRE_SUSPEND_WAIT_MS: z.coerce.number().default(200),
 
   // Timeline metrics
   TRIGGER_POD_SCHEDULED_AT_MS: DateEnv,
   TRIGGER_DEQUEUED_AT_MS: DateEnv,
 
   // May be overridden
+  TRIGGER_RUN_ID: z.string().optional(), // This is set for cold starts and restores
+  TRIGGER_SNAPSHOT_ID: z.string().optional(), // This is set for cold starts and restores
   TRIGGER_SUPERVISOR_API_PROTOCOL: z.enum(["http", "https"]),
   TRIGGER_SUPERVISOR_API_DOMAIN: z.string(),
   TRIGGER_SUPERVISOR_API_PORT: z.coerce.number(),
@@ -95,12 +94,6 @@ export class RunnerEnv {
   get TRIGGER_ENV_ID() {
     return this.env.TRIGGER_ENV_ID;
   }
-  get TRIGGER_RUN_ID() {
-    return this.env.TRIGGER_RUN_ID;
-  }
-  get TRIGGER_SNAPSHOT_ID() {
-    return this.env.TRIGGER_SNAPSHOT_ID;
-  }
   get TRIGGER_WARM_START_URL() {
     return this.env.TRIGGER_WARM_START_URL;
   }
@@ -119,9 +112,6 @@ export class RunnerEnv {
   get TRIGGER_METADATA_URL() {
     return this.env.TRIGGER_METADATA_URL;
   }
-  get TRIGGER_PRE_SUSPEND_WAIT_MS() {
-    return this.env.TRIGGER_PRE_SUSPEND_WAIT_MS;
-  }
   get TRIGGER_POD_SCHEDULED_AT_MS() {
     return this.env.TRIGGER_POD_SCHEDULED_AT_MS;
   }
@@ -130,6 +120,12 @@ export class RunnerEnv {
   }
 
   // Overridable values
+  get TRIGGER_RUN_ID() {
+    return this.env.TRIGGER_RUN_ID;
+  }
+  get TRIGGER_SNAPSHOT_ID() {
+    return this.env.TRIGGER_SNAPSHOT_ID;
+  }
   get TRIGGER_SUCCESS_EXIT_CODE() {
     return this.env.TRIGGER_SUCCESS_EXIT_CODE;
   }
@@ -167,6 +163,14 @@ export class RunnerEnv {
 
   /** Overrides existing env vars with new values */
   override(overrides: Metadata) {
+    if (overrides.TRIGGER_RUN_ID) {
+      this.env.TRIGGER_RUN_ID = overrides.TRIGGER_RUN_ID;
+    }
+
+    if (overrides.TRIGGER_SNAPSHOT_ID) {
+      this.env.TRIGGER_SNAPSHOT_ID = overrides.TRIGGER_SNAPSHOT_ID;
+    }
+
     if (overrides.TRIGGER_SUCCESS_EXIT_CODE) {
       this.env.TRIGGER_SUCCESS_EXIT_CODE = overrides.TRIGGER_SUCCESS_EXIT_CODE;
     }

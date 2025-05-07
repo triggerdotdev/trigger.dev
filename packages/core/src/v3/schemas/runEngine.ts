@@ -109,6 +109,7 @@ const ExecutionSnapshot = z.object({
   friendlyId: z.string(),
   executionStatus: z.enum(Object.values(TaskRunExecutionStatus) as [TaskRunExecutionStatus]),
   description: z.string(),
+  createdAt: z.coerce.date(),
 });
 
 const BaseRunMetadata = z.object({

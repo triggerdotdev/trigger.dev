@@ -401,7 +401,7 @@ export function registerRunEngineEventBusHandlers() {
   engine.eventBus.on("executionSnapshotCreated", async ({ time, run, snapshot }) => {
     const eventResult = await recordRunDebugLog(
       run.id,
-      `${snapshot.executionStatus} - ${snapshot.description}`,
+      `[engine] ${snapshot.executionStatus} - ${snapshot.description}`,
       {
         attributes: {
           properties: {
@@ -450,6 +450,7 @@ export function registerRunEngineEventBusHandlers() {
       // Record notification event
       const eventResult = await recordRunDebugLog(
         run.id,
+        // don't prefix this with [engine] - "run:notify" is the correct prefix
         `run:notify platform -> supervisor: ${snapshot.executionStatus}`,
         {
           attributes: {
@@ -479,6 +480,7 @@ export function registerRunEngineEventBusHandlers() {
       // Record notification event
       const eventResult = await recordRunDebugLog(
         run.id,
+        // don't prefix this with [engine] - "run:notify" is the correct prefix
         `run:notify ERROR platform -> supervisor: ${snapshot.executionStatus}`,
         {
           attributes: {
@@ -505,7 +507,7 @@ export function registerRunEngineEventBusHandlers() {
   engine.eventBus.on("incomingCheckpointDiscarded", async ({ time, run, snapshot, checkpoint }) => {
     const eventResult = await recordRunDebugLog(
       run.id,
-      `Checkpoint discarded: ${checkpoint.discardReason}`,
+      `[engine] Checkpoint discarded: ${checkpoint.discardReason}`,
       {
         attributes: {
           properties: {

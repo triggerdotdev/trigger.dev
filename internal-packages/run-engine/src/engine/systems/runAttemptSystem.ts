@@ -892,6 +892,7 @@ export class RunAttemptSystem {
           friendlyId: newSnapshot.friendlyId,
           executionStatus: newSnapshot.executionStatus,
           description: newSnapshot.description,
+          createdAt: newSnapshot.createdAt,
         },
         run: {
           id: newSnapshot.runId,

@@ -1344,4 +1344,148 @@ describe("RunEngine Waitpoints", () => {
       }
     }
   );
+
+  containerTest(
+    "getSnapshotsSince returns correct snapshots and handles errors",
+    async ({ prisma, redisOptions }) => {
+      //create environment
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      const engine = new RunEngine({
+        prisma,
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+        },
+        runLock: {
+          redis: redisOptions,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0001,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      try {
+        const taskIdentifier = "test-task";
+        await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+        const run = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: "run_snapshotsince",
+            environment: authenticatedEnvironment,
+            taskIdentifier,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t_snapshotsince",
+            spanId: "s_snapshotsince",
+            masterQueue: "main",
+            queue: "task/test-task",
+            isTest: false,
+            tags: [],
+          },
+          prisma
+        );
+
+        // Dequeue and start the run (snapshot 1)
+        const dequeued = await engine.dequeueFromMasterQueue({
+          consumerId: "test_snapshotsince",
+          masterQueue: run.masterQueue,
+          maxRunCount: 10,
+        });
+        const attemptResult = await engine.startRunAttempt({
+          runId: dequeued[0].run.id,
+          snapshotId: dequeued[0].snapshot.id,
+        });
+
+        // Block the run with a waitpoint (snapshot 2)
+        const { waitpoint } = await engine.createDateTimeWaitpoint({
+          projectId: authenticatedEnvironment.project.id,
+          environmentId: authenticatedEnvironment.id,
+          completedAfter: new Date(Date.now() + 100),
+        });
+        await engine.blockRunWithWaitpoint({
+          runId: run.id,
+          waitpoints: [waitpoint.id],
+          projectId: authenticatedEnvironment.project.id,
+          organizationId: authenticatedEnvironment.organization.id,
+          releaseConcurrency: true,
+        });
+
+        // Wait for the waitpoint to complete and unblock (snapshot 3)
+        await setTimeout(200);
+        await engine.completeWaitpoint({ id: waitpoint.id });
+        await setTimeout(200);
+
+        // Get all snapshots for the run
+        const allSnapshots = await prisma.taskRunExecutionSnapshot.findMany({
+          where: { runId: run.id, isValid: true },
+          orderBy: { createdAt: "asc" },
+        });
+        expect(allSnapshots.length).toBeGreaterThanOrEqual(3);
+
+        // getSnapshotsSince with the first snapshot should return at least 2
+        const sinceFirst = await engine.getSnapshotsSince({
+          runId: run.id,
+          snapshotId: allSnapshots[0].id,
+        });
+        assertNonNullable(sinceFirst);
+        expect(sinceFirst.length).toBeGreaterThanOrEqual(2);
+
+        // Check completedWaitpoints for each returned snapshot
+        for (const snap of sinceFirst) {
+          expect(Array.isArray(snap.completedWaitpoints)).toBe(true);
+        }
+
+        // At least one snapshot should have a completed waitpoint
+        expect(sinceFirst.some((snap) => snap.completedWaitpoints.length === 1)).toBe(true);
+
+        // If any completedWaitpoints exist, check output is not an error
+        const withCompleted = sinceFirst.find((snap) => snap.completedWaitpoints.length === 1);
+        if (withCompleted) {
+          expect(withCompleted.completedWaitpoints[0].outputIsError).toBe(false);
+        }
+
+        // getSnapshotsSince with the latest snapshot should return 0
+        const sinceLatest = await engine.getSnapshotsSince({
+          runId: run.id,
+          snapshotId: allSnapshots[allSnapshots.length - 1].id,
+        });
+        assertNonNullable(sinceLatest);
+        expect(sinceLatest.length).toBe(0);
+
+        // getSnapshotsSince with an invalid snapshotId should throw or return []
+        let threw = false;
+        try {
+          const sinceInvalid = await engine.getSnapshotsSince({
+            runId: run.id,
+            snapshotId: "invalid-id",
+          });
+          expect(sinceInvalid).toBeNull();
+        } catch (e) {
+          threw = true;
+        }
+        // should never throw
+        expect(threw).toBe(false);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
 });

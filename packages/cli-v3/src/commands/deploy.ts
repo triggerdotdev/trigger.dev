@@ -1,10 +1,11 @@
-import { intro, outro } from "@clack/prompts";
+import { intro, log, outro } from "@clack/prompts";
 import { prepareDeploymentError } from "@trigger.dev/core/v3";
 import { InitializeDeploymentResponseBody } from "@trigger.dev/core/v3/schemas";
 import { Command, Option as CommandOption } from "commander";
 import { resolve } from "node:path";
 import { x } from "tinyexec";
 import { z } from "zod";
+import { isCI } from "std-env";
 import { CliApiClient } from "../apiClient.js";
 import { buildWorker } from "../build/buildWorker.js";
 import { resolveAlwaysExternal } from "../build/externals.js";
@@ -339,24 +340,24 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
 
   const version = deployment.version;
 
-  const deploymentLink = cliLink(
-    "View deployment",
-    `${authorization.dashboardUrl}/projects/v3/${resolvedConfig.project}/deployments/${deployment.shortCode}`
-  );
+  const rawDeploymentLink = `${authorization.dashboardUrl}/projects/v3/${resolvedConfig.project}/deployments/${deployment.shortCode}`;
+  const rawTestLink = `${authorization.dashboardUrl}/projects/v3/${
+    resolvedConfig.project
+  }/test?environment=${options.env === "prod" ? "prod" : "stg"}`;
 
-  const testLink = cliLink(
-    "Test tasks",
-    `${authorization.dashboardUrl}/projects/v3/${resolvedConfig.project}/test?environment=${
-      options.env === "prod" ? "prod" : "stg"
-    }`
-  );
+  const deploymentLink = cliLink("View deployment", rawDeploymentLink);
+  const testLink = cliLink("Test tasks", rawTestLink);
 
   const $spinner = spinner();
 
-  if (isLinksSupported) {
-    $spinner.start(`Building version ${version} ${deploymentLink}`);
+  if (isCI) {
+    log.step(`Building version ${version}\n`);
   } else {
-    $spinner.start(`Building version ${version}`);
+    if (isLinksSupported) {
+      $spinner.start(`Building version ${version} ${deploymentLink}`);
+    } else {
+      $spinner.start(`Building version ${version}`);
+    }
   }
 
   const selfHostedRegistryHost = deployment.registryHost ?? options.registry;
@@ -386,6 +387,11 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     buildEnvVars: buildManifest.build.env,
     network: options.network,
     onLog: (logMessage) => {
+      if (isCI) {
+        console.log(logMessage);
+        return;
+      }
+
       if (isLinksSupported) {
         $spinner.message(`Building version ${version} ${deploymentLink}: ${logMessage}`);
       } else {
@@ -459,10 +465,14 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
       }`
     : `${buildResult.image}${buildResult.digest ? `@${buildResult.digest}` : ""}`;
 
-  if (isLinksSupported) {
-    $spinner.message(`Deploying version ${version} ${deploymentLink}`);
+  if (isCI) {
+    log.step(`Deploying version ${version}\n`);
   } else {
-    $spinner.message(`Deploying version ${version}`);
+    if (isLinksSupported) {
+      $spinner.message(`Deploying version ${version} ${deploymentLink}`);
+    } else {
+      $spinner.message(`Deploying version ${version}`);
+    }
   }
 
   const finalizeResponse = await projectClient.client.finalizeDeployment(
@@ -473,6 +483,11 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
       skipPromotion: options.skipPromotion,
     },
     (logMessage) => {
+      if (isCI) {
+        console.log(logMessage);
+        return;
+      }
+
       if (isLinksSupported) {
         $spinner.message(`Deploying version ${version} ${deploymentLink}: ${logMessage}`);
       } else {
@@ -493,7 +508,11 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     throw new SkipLoggingError("Failed to finalize deployment");
   }
 
-  $spinner.stop(`Successfully deployed version ${version}`);
+  if (isCI) {
+    log.step(`Successfully deployed version ${version}`);
+  } else {
+    $spinner.stop(`Successfully deployed version ${version}`);
+  }
 
   const taskCount = deploymentWithWorker.worker?.tasks.length ?? 0;
 
@@ -502,6 +521,14 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
       isLinksSupported ? `| ${deploymentLink} | ${testLink}` : ""
     }`
   );
+
+  if (!isLinksSupported) {
+    console.log("View deployment");
+    console.log(rawDeploymentLink);
+    console.log(); // new line
+    console.log("Test tasks");
+    console.log(rawTestLink);
+  }
 
   setGithubActionsOutputAndEnvVars({
     envVars: {
