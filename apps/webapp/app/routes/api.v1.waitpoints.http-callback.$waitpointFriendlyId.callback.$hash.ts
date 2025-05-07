@@ -23,7 +23,11 @@ export async function action({ request, params }: ActionFunctionArgs) {
   }
 
   const contentLength = request.headers.get("content-length");
-  if (contentLength && parseInt(contentLength) > env.TASK_PAYLOAD_MAXIMUM_SIZE) {
+  if (!contentLength) {
+    return json({ error: "Content-Length header is required" }, { status: 411 });
+  }
+
+  if (parseInt(contentLength) > env.TASK_PAYLOAD_MAXIMUM_SIZE) {
     return json({ error: "Request body too large" }, { status: 413 });
   }
 
@@ -58,16 +62,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
       });
     }
 
-    let body;
-    try {
-      body = await readJsonWithLimit(request, env.TASK_PAYLOAD_MAXIMUM_SIZE);
-    } catch (e) {
-      return json({ error: "Request body too large" }, { status: 413 });
-    }
-
-    if (!body) {
-      body = {};
-    }
+    // If the request body is not valid JSON, return an empty object
+    const body = await request.json().catch(() => ({}));
 
     const stringifiedData = await stringifyIO(body);
     const finalData = await conditionallyExportPacket(
@@ -92,28 +88,4 @@ export async function action({ request, params }: ActionFunctionArgs) {
     logger.error("Failed to complete HTTP callback", { error });
     throw json({ error: "Failed to complete HTTP callback" }, { status: 500 });
   }
-}
-
-async function readJsonWithLimit(request: Request, maxSize: number) {
-  const reader = request.body?.getReader();
-  if (!reader) throw new Error("No body");
-  let received = 0;
-  let chunks: Uint8Array[] = [];
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    received += value.length;
-    if (received > maxSize) {
-      throw new Error("Request body too large");
-    }
-    chunks.push(value);
-  }
-  const full = new Uint8Array(received);
-  let offset = 0;
-  for (const chunk of chunks) {
-    full.set(chunk, offset);
-    offset += chunk.length;
-  }
-  const text = new TextDecoder().decode(full);
-  return JSON.parse(text);
 }
