@@ -5,7 +5,6 @@ import {
   ApiPromise,
   ApiRequestOptions,
   CompleteWaitpointTokenResponseBody,
-  CreateWaitpointHttpCallbackResponseBody,
   CreateWaitpointTokenRequestBody,
   CreateWaitpointTokenResponse,
   CreateWaitpointTokenResponseBody,
@@ -61,7 +60,7 @@ import { tracer } from "./tracer.js";
  * await replicate.predictions.create({
  *   version: "27b93a2413e7f36cd83da926f3656280b2931564ff050bf9575f1fdf9bcd7478",
  *   input: {
- *     prompt: "A painting of a cat by Any Warhol",
+ *     prompt: "A painting of a cat by Andy Warhol",
  *   },
  *   // pass the provided URL to Replicate's webhook, so they can "callback"
  *   webhook: token.url,
