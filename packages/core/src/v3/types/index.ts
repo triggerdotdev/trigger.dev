@@ -7,7 +7,6 @@ export * from "./tasks.js";
 export * from "./idempotencyKeys.js";
 export * from "./tools.js";
 export * from "./queues.js";
-export * from "./waitpoints.js";
 
 type ResolveEnvironmentVariablesOptions = {
   variables: Record<string, string> | Array<{ name: string; value: string }>;
