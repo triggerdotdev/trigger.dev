@@ -78,7 +78,8 @@ export class RunNotifier {
   }
 
   private sendDebugLog(message: string, properties?: SendDebugLogOptions["properties"]) {
-    this.logger?.sendDebugLog({
+    this.logger.sendDebugLog({
+      runId: this.runFriendlyId,
       message: `[notifier] ${message}`,
       properties: {
         ...properties,
