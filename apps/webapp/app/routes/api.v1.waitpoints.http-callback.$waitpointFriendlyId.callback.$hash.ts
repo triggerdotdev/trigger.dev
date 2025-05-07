@@ -45,11 +45,11 @@ export async function action({ request, params }: ActionFunctionArgs) {
     });
 
     if (!waitpoint) {
-      throw json({ error: "Waitpoint not found" }, { status: 404 });
+      return json({ error: "Waitpoint not found" }, { status: 404 });
     }
 
     if (!verifyHttpCallbackHash(waitpoint.id, hash, waitpoint.environment.apiKey)) {
-      throw json({ error: "Invalid URL, hash doesn't match" }, { status: 401 });
+      return json({ error: "Invalid URL, hash doesn't match" }, { status: 401 });
     }
 
     if (waitpoint.status === "COMPLETED") {
