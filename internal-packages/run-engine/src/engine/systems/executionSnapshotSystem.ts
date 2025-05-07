@@ -195,7 +195,7 @@ export async function getExecutionSnapshotsSince(
   sinceSnapshotId: string
 ): Promise<EnhancedExecutionSnapshot[]> {
   // Find the createdAt of the sinceSnapshotId
-  const sinceSnapshot = await prisma.taskRunExecutionSnapshot.findUnique({
+  const sinceSnapshot = await prisma.taskRunExecutionSnapshot.findFirst({
     where: { id: sinceSnapshotId },
     select: { createdAt: true },
   });
