@@ -37,7 +37,7 @@ export class SharedRuntimeManager implements RuntimeManager {
   ) {
     // Log out the runtime status on a long interval to help debug stuck executions
     setInterval(() => {
-      this.debugLog("SharedRuntimeManager status", this.status);
+      this.debugLog("SharedRuntimeManager status");
     }, 300_000);
   }
 
