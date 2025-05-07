@@ -19,6 +19,8 @@ import { FunctionIcon } from "~/assets/icons/FunctionIcon";
 import { TriggerIcon } from "~/assets/icons/TriggerIcon";
 import { PythonLogoIcon } from "~/assets/icons/PythonLogoIcon";
 import { TraceIcon } from "~/assets/icons/TraceIcon";
+import { HttpCallbackIcon } from "~/assets/icons/HttpCallbackIcon";
+import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
 
 type TaskIconProps = {
   name: string | undefined;
@@ -75,6 +77,12 @@ export function RunIcon({ name, className, spanName }: TaskIconProps) {
       return <TriggerIcon className={cn(className, "text-orange-500")} />;
     case "python":
       return <PythonLogoIcon className={className} />;
+    case "wait-http-callback":
+      return <HttpCallbackIcon className={cn(className, "text-teal-500")} />;
+    case "wait-token":
+      return <WaitpointTokenIcon className={cn(className, "text-sky-500")} />;
+    case "function":
+      return <FunctionIcon className={cn(className, "text-text-dimmed")} />;
     //log levels
     case "debug":
     case "log":
