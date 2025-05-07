@@ -199,7 +199,7 @@ export class SnapshotManager {
 
       // Sort queue:
       // 1. Suspendable changes always go to the back
-      // 2. Snapshot changes are ordered by ID
+      // 2. Snapshot changes are ordered by creation time, with the latest snapshot last
       this.changeQueue.sort((a, b) => {
         if (a.change.type === "suspendable" && b.change.type === "snapshot") {
           return 1; // a goes after b
@@ -208,17 +208,15 @@ export class SnapshotManager {
           return -1; // a goes before b
         }
         if (a.change.type === "snapshot" && b.change.type === "snapshot") {
-          // sort snapshot changes by creation time of the latest snapshot, CUIDs are sortable
-          const aLatestSnapshot = a.change.snapshots[a.change.snapshots.length - 1];
-          const bLatestSnapshot = b.change.snapshots[b.change.snapshots.length - 1];
+          const snapshotA = a.change.snapshots[a.change.snapshots.length - 1];
+          const snapshotB = b.change.snapshots[b.change.snapshots.length - 1];
 
-          if (!aLatestSnapshot || !bLatestSnapshot) {
+          if (!snapshotA || !snapshotB) {
             return 0;
           }
 
-          return aLatestSnapshot.snapshot.friendlyId.localeCompare(
-            bLatestSnapshot.snapshot.friendlyId
-          );
+          // Sort snapshot changes by creation time, old -> new
+          return snapshotA.snapshot.createdAt.getTime() - snapshotB.snapshot.createdAt.getTime();
         }
         return 0; // both suspendable, maintain insertion order
       });

@@ -409,6 +409,7 @@ export class DequeueSystem {
                     friendlyId: newSnapshot.friendlyId,
                     executionStatus: newSnapshot.executionStatus,
                     description: newSnapshot.description,
+                    createdAt: newSnapshot.createdAt,
                   },
                   image: result.deployment?.imageReference ?? undefined,
                   checkpoint: newSnapshot.checkpoint ?? undefined,

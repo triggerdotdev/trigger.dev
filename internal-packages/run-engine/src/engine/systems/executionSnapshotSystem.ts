@@ -144,6 +144,7 @@ export function executionResultFromSnapshot(snapshot: TaskRunExecutionSnapshot):
       friendlyId: SnapshotId.toFriendlyId(snapshot.id),
       executionStatus: snapshot.executionStatus,
       description: snapshot.description,
+      createdAt: snapshot.createdAt,
     },
     run: {
       id: snapshot.runId,
@@ -162,6 +163,7 @@ export function executionDataFromSnapshot(snapshot: EnhancedExecutionSnapshot): 
       friendlyId: snapshot.friendlyId,
       executionStatus: snapshot.executionStatus,
       description: snapshot.description,
+      createdAt: snapshot.createdAt,
     },
     run: {
       id: snapshot.runId,

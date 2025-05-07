@@ -728,6 +728,7 @@ function createRunExecutionData(
       friendlyId: snapshotFriendlyId,
       executionStatus: overrides.executionStatus ?? "EXECUTING",
       description: overrides.description ?? "Test snapshot",
+      createdAt: new Date(),
     },
     completedWaitpoints: [],
   };
