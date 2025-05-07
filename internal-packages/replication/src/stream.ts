@@ -1,6 +1,4 @@
 import { createAsyncIterableStreamFromAsyncIterable } from "@trigger.dev/core/v3";
-import { Readable } from "node:stream";
-import type { ClientConfig } from "pg";
 import { LogicalReplicationClient, LogicalReplicationClientOptions } from "./client.js";
 import type { MessageDelete, MessageInsert, MessageUpdate, PgoutputMessage } from "./pgoutput.js";
 

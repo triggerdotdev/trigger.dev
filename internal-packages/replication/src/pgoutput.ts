@@ -129,11 +129,20 @@ class BinaryReader {
   array<T>(n: number, fn: () => T): T[] {
     return Array.from({ length: n }, fn);
   }
-  readLsn(): string {
-    const upper = this.readInt32();
-    const lower = this.readInt32();
-    return upper.toString(16).toUpperCase() + "/" + lower.toString(16).toUpperCase();
+
+  readLsn(): string | null {
+    const upper = this.readUint32();
+    const lower = this.readUint32();
+    if (upper === 0 && lower === 0) {
+      return null;
+    }
+    return (
+      upper.toString(16).padStart(8, "0").toUpperCase() +
+      "/" +
+      lower.toString(16).padStart(8, "0").toUpperCase()
+    );
   }
+
   readUint32(): number {
     // >>> 0 ensures unsigned
     return this.readInt32() >>> 0;

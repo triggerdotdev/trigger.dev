@@ -48,10 +48,7 @@ export const TaskRunV1 = z.object({
   payload: z.unknown().nullish(),
   output: z.unknown().nullish(),
   error: TaskRunError.nullish(),
-  tags: z
-    .array(z.string())
-    .transform((arr) => arr.sort())
-    .default([]),
+  tags: z.array(z.string()).nullish(),
   task_version: z.string().nullish(),
   sdk_version: z.string().nullish(),
   cli_version: z.string().nullish(),

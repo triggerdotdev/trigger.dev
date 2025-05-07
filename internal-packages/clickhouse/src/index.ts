@@ -5,6 +5,8 @@ import { NoopClient } from "./client/noop.js";
 import { insertTaskRuns } from "./taskRuns.js";
 import { Logger } from "@trigger.dev/core/logger";
 
+export type * from "./taskRuns.js";
+
 export type ClickHouseConfig =
   | {
       name?: string;

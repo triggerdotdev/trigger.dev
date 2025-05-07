@@ -52,7 +52,6 @@ CREATE TABLE trigger_dev.task_runs_v1
   idempotency_key           Nullable(String),
 
   /*  ─── timing ─────────────────────────────────────────────── */
-  event_time         DateTime64(3),          -- when this row created
   created_at         DateTime64(3),
   updated_at         DateTime64(3),
   started_at         Nullable(DateTime64(3)),
