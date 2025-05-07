@@ -1,5 +1,17 @@
 # trigger.dev
 
+## 4.0.0-v4-beta.13
+
+### Patch Changes
+
+- - Correctly resolve waitpoints that come in early ([#2006](https://github.com/triggerdotdev/trigger.dev/pull/2006))
+  - Ensure correct state before requesting suspension
+  - Fix race conditions in snapshot processing
+- Always print full deploy logs in CI ([#2006](https://github.com/triggerdotdev/trigger.dev/pull/2006))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.13`
+  - `@trigger.dev/build@4.0.0-v4-beta.13`
+
 ## 4.0.0-v4-beta.12
 
 ### Patch Changes
