@@ -12,7 +12,7 @@ import { BasePresenter } from "./basePresenter.server";
 import { type WaitpointSearchParams } from "~/components/runs/v3/WaitpointTokenFilters";
 import { determineEngineVersion } from "~/v3/engineVersion.server";
 import { type WaitpointTokenStatus, type WaitpointTokenItem } from "@trigger.dev/core/v3";
-import { generateWaitpointCallbackUrl } from "./WaitpointPresenter.server";
+import { generateHttpCallbackUrl } from "~/services/httpCallback.server";
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -24,6 +24,7 @@ export type WaitpointListOptions = {
       id: string;
       engine: RunEngineVersion;
     };
+    apiKey: string;
   };
   resolver: WaitpointResolver;
   // filters
@@ -267,7 +268,7 @@ export class WaitpointListPresenter extends BasePresenter {
       success: true,
       tokens: tokensToReturn.map((token) => ({
         id: token.friendlyId,
-        callbackUrl: generateWaitpointCallbackUrl(token.id),
+        callbackUrl: generateHttpCallbackUrl(token.id, environment.apiKey),
         status: waitpointStatusToApiStatus(token.status, token.outputIsError),
         completedAt: token.completedAt ?? undefined,
         timeoutAt: token.completedAfter ?? undefined,

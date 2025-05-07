@@ -8,11 +8,13 @@ import { WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import { z } from "zod";
 import { $replica } from "~/db.server";
 import { env } from "~/env.server";
+import { verifyHttpCallbackHash } from "~/services/httpCallback.server";
 import { logger } from "~/services/logger.server";
 import { engine } from "~/v3/runEngine.server";
 
 const paramsSchema = z.object({
   waitpointFriendlyId: z.string(),
+  hash: z.string(),
 });
 
 export async function action({ request, params }: ActionFunctionArgs) {
@@ -25,7 +27,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ error: "Request body too large" }, { status: 413 });
   }
 
-  const { waitpointFriendlyId } = paramsSchema.parse(params);
+  const { waitpointFriendlyId, hash } = paramsSchema.parse(params);
   const waitpointId = WaitpointId.toId(waitpointFriendlyId);
 
   try {
@@ -33,10 +35,21 @@ export async function action({ request, params }: ActionFunctionArgs) {
       where: {
         id: waitpointId,
       },
+      include: {
+        environment: {
+          select: {
+            apiKey: true,
+          },
+        },
+      },
     });
 
     if (!waitpoint) {
       throw json({ error: "Waitpoint not found" }, { status: 404 });
+    }
+
+    if (!verifyHttpCallbackHash(waitpoint.id, hash, waitpoint.environment.apiKey)) {
+      throw json({ error: "Invalid URL, hash doesn't match" }, { status: 401 });
     }
 
     if (waitpoint.status === "COMPLETED") {
