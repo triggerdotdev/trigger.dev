@@ -68,8 +68,7 @@ CREATE TABLE trigger_dev.task_runs_v1
   base_cost_in_cents Float64 DEFAULT 0,
 
   /*  ─── payload & context ──────────────────────────────────── */
-  payload            Nullable(JSON(max_dynamic_paths = 2048)),
-  output             Nullable(JSON(max_dynamic_paths = 2048)),
+  output             JSON(max_dynamic_paths = 2048),
   error              Nullable(JSON(max_dynamic_paths = 64)),
 
   /*  ─── tagging / versions ─────────────────────────────────── */
@@ -92,7 +91,26 @@ ORDER BY (toDate(created_at), environment_id, task_identifier, created_at, run_i
 ALTER TABLE trigger_dev.task_runs_v1
   ADD INDEX idx_tags tags TYPE tokenbf_v1(32768, 3, 0) GRANULARITY 4;
 
+CREATE TABLE trigger_dev.raw_task_runs_payload_v1
+(
+  run_id           String,
+  created_at       DateTime64(3),
+  payload          JSON(max_dynamic_paths = 2048)
+)
+ENGINE = MergeTree
+PARTITION BY toYYYYMMDD(created_at)
+ORDER BY (run_id);
+
+CREATE VIEW trigger_dev.tmp_eric_task_runs_full_v1 AS
+SELECT
+  s.*,
+  p.payload as payload
+FROM trigger_dev.task_runs_v1 AS s FINAL
+LEFT JOIN trigger_dev.raw_task_runs_payload_v1 AS p ON s.run_id = p.run_id;
+
 
 -- +goose Down
 SET enable_json_type = 0;
 DROP TABLE IF EXISTS trigger_dev.task_runs_v1;
+DROP TABLE IF EXISTS trigger_dev.raw_task_runs_payload_v1;
+DROP VIEW IF EXISTS trigger_dev.tmp_eric_task_runs_full_v1;

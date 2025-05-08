@@ -1,4 +1,4 @@
-import type { ClickHouse, TaskRunV1 } from "@internal/clickhouse";
+import type { ClickHouse, TaskRunV1, RawTaskRunPayloadV1 } from "@internal/clickhouse";
 import { RedisOptions } from "@internal/redis";
 import { LogicalReplicationClient, Transaction, type PgoutputMessage } from "@internal/replication";
 import { Logger } from "@trigger.dev/core/logger";
@@ -25,6 +25,8 @@ export type RunsReplicationServiceOptions = {
   flushBatchSize?: number;
 };
 
+type TaskRunInsert = { _version: bigint; run: TaskRun; event: "insert" | "update" };
+
 export class RunsReplicationService {
   private _lastLsn: string | null = null;
   private _isSubscribed = false;
@@ -36,7 +38,7 @@ export class RunsReplicationService {
     | null = null;
 
   private _replicationClient: LogicalReplicationClient;
-  private _concurrentFlushScheduler: ConcurrentFlushScheduler<{ _version: bigint; run: TaskRun }>;
+  private _concurrentFlushScheduler: ConcurrentFlushScheduler<TaskRunInsert>;
   private logger: Logger;
   private _lastReplicationLagMs: number | null = null;
   private _transactionCounter?: Counter;
@@ -64,10 +66,7 @@ export class RunsReplicationService {
       ackIntervalSeconds: 10,
     });
 
-    this._concurrentFlushScheduler = new ConcurrentFlushScheduler<{
-      _version: bigint;
-      run: TaskRun;
-    }>({
+    this._concurrentFlushScheduler = new ConcurrentFlushScheduler<TaskRunInsert>({
       batchSize: options.flushBatchSize ?? 50,
       flushInterval: options.flushIntervalMs ?? 100,
       maxConcurrency: options.maxFlushConcurrency ?? 100,
@@ -128,7 +127,9 @@ export class RunsReplicationService {
     }
   }
 
-  async start() {
+  async start(insertStrategy?: "streaming" | "batching") {
+    this._insertStrategy = insertStrategy ?? this._insertStrategy;
+
     this.logger.info("Starting replication client", {
       lastLsn: this._lastLsn,
     });
@@ -216,6 +217,20 @@ export class RunsReplicationService {
       return;
     }
 
+    const relevantEvents = transaction.events.filter(
+      (event) => event.tag === "insert" || event.tag === "update"
+    );
+
+    if (relevantEvents.length === 0) {
+      this.logger.debug("No relevant events", {
+        transaction,
+      });
+
+      await this._replicationClient.acknowledge(transaction.commitEndLsn);
+
+      return;
+    }
+
     this.logger.debug("Handling transaction", {
       transaction,
     });
@@ -227,13 +242,21 @@ export class RunsReplicationService {
 
     if (this._insertStrategy === "streaming") {
       await this._concurrentFlushScheduler.addToBatch(
-        transaction.events.map((event) => ({ _version, run: event.data }))
+        relevantEvents.map((event) => ({
+          _version,
+          run: event.data,
+          event: event.tag as "insert" | "update",
+        }))
       );
     } else {
       const [flushError] = await tryCatch(
         this.#flushBatch(
           nanoid(),
-          transaction.events.map((event) => ({ _version, run: event.data }))
+          relevantEvents.map((event) => ({
+            _version,
+            run: event.data,
+            event: event.tag as "insert" | "update",
+          }))
         )
       );
 
@@ -247,7 +270,7 @@ export class RunsReplicationService {
     await this._replicationClient.acknowledge(transaction.commitEndLsn);
   }
 
-  async #flushBatch(flushId: string, batch: Array<{ _version: bigint; run: TaskRun }>) {
+  async #flushBatch(flushId: string, batch: Array<TaskRunInsert>) {
     if (batch.length === 0) {
       this.logger.debug("No runs to flush", {
         flushId,
@@ -260,19 +283,37 @@ export class RunsReplicationService {
       batchSize: batch.length,
     });
 
-    const preparedRuns = await Promise.all(batch.map(this.#prepareRun.bind(this)));
-    const runsToInsert = preparedRuns.filter(Boolean);
+    const preparedInserts = await Promise.all(batch.map(this.#prepareRunInserts.bind(this)));
 
-    if (runsToInsert.length === 0) {
-      this.logger.debug("No runs to insert", {
-        flushId,
-        batchSize: batch.length,
-      });
-      return;
-    }
+    const taskRunInserts = preparedInserts
+      .map(({ taskRunInsert }) => taskRunInsert)
+      .filter(Boolean);
 
+    const payloadInserts = preparedInserts
+      .map(({ payloadInsert }) => payloadInsert)
+      .filter(Boolean);
+
+    this.logger.info("Flushing inserts", {
+      flushId,
+      taskRunInserts: taskRunInserts.length,
+      payloadInserts: payloadInserts.length,
+    });
+
+    await Promise.all([
+      this.#insertTaskRunInserts(taskRunInserts),
+      this.#insertPayloadInserts(payloadInserts),
+    ]);
+
+    this.logger.info("Flushed inserts", {
+      flushId,
+      taskRunInserts: taskRunInserts.length,
+      payloadInserts: payloadInserts.length,
+    });
+  }
+
+  async #insertTaskRunInserts(taskRunInserts: TaskRunV1[]) {
     const [insertError, insertResult] = await this.options.clickhouse.taskRuns.insert(
-      runsToInsert,
+      taskRunInserts,
       {
         params: {
           clickhouse_settings: {
@@ -283,51 +324,100 @@ export class RunsReplicationService {
     );
 
     if (insertError) {
-      this.logger.error("Error inserting runs", {
+      this.logger.error("Error inserting task run inserts", {
         error: insertError,
-        flushId,
-        batchSize: batch.length,
-      });
-    } else {
-      this.logger.info("Flushed batch", {
-        flushId,
-        insertResult,
       });
     }
+
+    return insertResult;
   }
 
-  async #prepareRun(batchedRun: {
-    run: TaskRun;
-    _version: bigint;
-  }): Promise<TaskRunV1 | undefined> {
+  async #insertPayloadInserts(payloadInserts: RawTaskRunPayloadV1[]) {
+    const [insertError, insertResult] = await this.options.clickhouse.taskRuns.insertPayloads(
+      payloadInserts,
+      {
+        params: {
+          clickhouse_settings: {
+            wait_for_async_insert: this._insertStrategy === "batching" ? 1 : 0,
+          },
+        },
+      }
+    );
+
+    if (insertError) {
+      this.logger.error("Error inserting payload inserts", {
+        error: insertError,
+      });
+    }
+
+    return insertResult;
+  }
+
+  async #prepareRunInserts(
+    batchedRun: TaskRunInsert
+  ): Promise<{ taskRunInsert?: TaskRunV1; payloadInsert?: RawTaskRunPayloadV1 }> {
     this.logger.debug("Preparing run", {
       batchedRun,
     });
 
-    const { run, _version } = batchedRun;
+    const { run, _version, event } = batchedRun;
 
     if (!run.environmentType) {
-      return undefined;
+      return {
+        taskRunInsert: undefined,
+        payloadInsert: undefined,
+      };
     }
 
     if (!run.organizationId) {
-      return undefined;
+      return {
+        taskRunInsert: undefined,
+        payloadInsert: undefined,
+      };
     }
 
-    const [payload, output] = await Promise.all([
-      this.#prepareJson(run.payload, run.payloadType),
-      this.#prepareJson(run.output, run.outputType),
+    if (event === "update") {
+      const taskRunInsert = await this.#prepareTaskRunInsert(
+        run,
+        run.organizationId,
+        run.environmentType,
+        _version
+      );
+
+      return {
+        taskRunInsert,
+        payloadInsert: undefined,
+      };
+    }
+
+    const [taskRunInsert, payloadInsert] = await Promise.all([
+      this.#prepareTaskRunInsert(run, run.organizationId, run.environmentType, _version),
+      this.#preparePayloadInsert(run, _version),
     ]);
 
     return {
+      taskRunInsert,
+      payloadInsert,
+    };
+  }
+
+  async #prepareTaskRunInsert(
+    run: TaskRun,
+    organizationId: string,
+    environmentType: string,
+    _version: bigint
+  ): Promise<TaskRunV1> {
+    const output = await this.#prepareJson(run.output, run.outputType);
+
+    return {
       environment_id: run.runtimeEnvironmentId,
-      organization_id: run.organizationId,
+      organization_id: organizationId,
       project_id: run.projectId,
       run_id: run.id,
       updated_at: run.updatedAt.getTime(),
       created_at: run.createdAt.getTime(),
       status: run.status,
-      environment_type: run.environmentType,
+      environment_type: environmentType,
       friendly_id: run.friendlyId,
       engine: run.engine,
       task_identifier: run.taskIdentifier,
@@ -347,7 +437,7 @@ export class RunsReplicationService {
       usage_duration_ms: run.usageDurationMs,
       cost_in_cents: run.costInCents,
       base_cost_in_cents: run.baseCostInCents,
-      tags: run.runTags,
+      tags: run.runTags ?? [],
       task_version: run.taskVersion,
       sdk_version: run.sdkVersion,
       cli_version: run.cliVersion,
@@ -358,22 +448,31 @@ export class RunsReplicationService {
       is_test: run.isTest,
       idempotency_key: run.idempotencyKey,
       expiration_ttl: run.ttl,
-      payload,
       output,
       _version: _version.toString(),
+    };
+  }
+
+  async #preparePayloadInsert(run: TaskRun, _version: bigint): Promise<RawTaskRunPayloadV1> {
+    const payload = await this.#prepareJson(run.payload, run.payloadType);
+
+    return {
+      run_id: run.id,
+      created_at: run.createdAt.getTime(),
+      payload,
     };
   }
 
   async #prepareJson(
     data: string | undefined | null,
     dataType: string
-  ): Promise<unknown | undefined> {
+  ): Promise<{ data: unknown }> {
     if (!data) {
-      return undefined;
+      return { data: undefined };
     }
 
     if (dataType !== "application/json" && dataType !== "application/super+json") {
-      return undefined;
+      return { data: undefined };
     }
 
     const packet = {
@@ -384,7 +483,7 @@ export class RunsReplicationService {
     const parsedData = await parsePacket(packet);
 
     if (!parsedData) {
-      return undefined;
+      return { data: undefined };
     }
 
     return { data: parsedData };
@@ -450,6 +549,24 @@ export class ConcurrentFlushScheduler<T> {
         help: "Number of failed batches",
         collect() {
           this.set(scheduler.failedBatchCount);
+        },
+        registers: [this.metricsRegister],
+      });
+
+      new Gauge({
+        name: "concurrent_flush_scheduler_active_concurrency",
+        help: "Number of active concurrency",
+        collect() {
+          this.set(scheduler.concurrencyLimiter.activeCount);
+        },
+        registers: [this.metricsRegister],
+      });
+
+      new Gauge({
+        name: "concurrent_flush_scheduler_pending_concurrency",
+        help: "Number of pending concurrency",
+        collect() {
+          this.set(scheduler.concurrencyLimiter.pendingCount);
         },
         registers: [this.metricsRegister],
       });

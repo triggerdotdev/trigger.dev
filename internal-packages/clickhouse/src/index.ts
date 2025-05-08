@@ -2,7 +2,7 @@ import { ClickHouseSettings } from "@clickhouse/client";
 import { ClickhouseClient } from "./client/client.js";
 import { ClickhouseReader, ClickhouseWriter } from "./client/types.js";
 import { NoopClient } from "./client/noop.js";
-import { insertTaskRuns } from "./taskRuns.js";
+import { insertTaskRuns, insertRawTaskRunPayloads } from "./taskRuns.js";
 import { Logger } from "@trigger.dev/core/logger";
 
 export type * from "./taskRuns.js";
@@ -90,6 +90,7 @@ export class ClickHouse {
   get taskRuns() {
     return {
       insert: insertTaskRuns(this.writer),
+      insertPayloads: insertRawTaskRunPayloads(this.writer),
     };
   }
 }

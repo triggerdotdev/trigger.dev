@@ -1,7 +1,7 @@
 import { clickhouseTest } from "@internal/testcontainers";
 import { z } from "zod";
 import { ClickhouseClient } from "./client/client.js";
-import { insertTaskRuns } from "./taskRuns.js";
+import { insertRawTaskRunPayloads, insertTaskRuns } from "./taskRuns.js";
 
 describe("Task Runs V1", () => {
   clickhouseTest("should be able to insert task runs", async ({ clickhouseContainer }) => {
@@ -11,6 +11,10 @@ describe("Task Runs V1", () => {
     });
 
     const insert = insertTaskRuns(client, {
+      async_insert: 0, // turn off async insert for this test
+    });
+
+    const insertPayloads = insertRawTaskRunPayloads(client, {
       async_insert: 0, // turn off async insert for this test
     });
 
@@ -33,9 +37,6 @@ describe("Task Runs V1", () => {
         updated_at: Date.now(),
         completed_at: undefined,
         tags: ["tag1", "tag2"],
-        payload: {
-          key: "value",
-        },
         output: {
           key: "value",
         },
@@ -90,6 +91,37 @@ describe("Task Runs V1", () => {
         }),
       ])
     );
+
+    const [insertPayloadsError, insertPayloadsResult] = await insertPayloads([
+      {
+        run_id: "run_1234",
+        created_at: Date.now(),
+        payload: {
+          key: "value",
+        },
+      },
+    ]);
+
+    expect(insertPayloadsError).toBeNull();
+    expect(insertPayloadsResult).toEqual(expect.objectContaining({ executed: true }));
+    expect(insertPayloadsResult?.summary?.written_rows).toEqual("1");
+
+    const queryPayloads = client.query({
+      name: "query-raw-task-run-payloads",
+      query: "SELECT * FROM trigger_dev.raw_task_runs_payload_v1",
+      schema: z.object({
+        run_id: z.string(),
+        created_at: z.coerce.date(),
+        payload: z.unknown(),
+      }),
+    });
+
+    const [queryPayloadsError, resultPayloads] = await queryPayloads({ run_id: "run_1234" });
+
+    expect(queryPayloadsError).toBeNull();
+    expect(resultPayloads).toEqual(
+      expect.arrayContaining([expect.objectContaining({ run_id: "run_1234" })])
+    );
   });
 
   clickhouseTest("should deduplicate on the _version column", async ({ clickhouseContainer }) => {
@@ -135,7 +167,6 @@ describe("Task Runs V1", () => {
         usage_duration_ms: 0,
         cost_in_cents: 0,
         base_cost_in_cents: 0,
-        payload: { failCount: "3" },
         output: null,
         error: null,
         tags: [],
@@ -178,7 +209,6 @@ describe("Task Runs V1", () => {
         usage_duration_ms: 0,
         cost_in_cents: 0,
         base_cost_in_cents: 0,
-        payload: { failCount: "3" },
         output: null,
         error: null,
         tags: [],

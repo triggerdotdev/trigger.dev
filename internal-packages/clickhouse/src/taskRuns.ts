@@ -45,10 +45,9 @@ export const TaskRunV1 = z.object({
   usage_duration_ms: z.number().int().default(0),
   cost_in_cents: z.number().default(0),
   base_cost_in_cents: z.number().default(0),
-  payload: z.unknown().nullish(),
-  output: z.unknown().nullish(),
+  output: z.unknown(),
   error: TaskRunError.nullish(),
-  tags: z.array(z.string()).nullish(),
+  tags: z.array(z.string()).default([]),
   task_version: z.string().nullish(),
   sdk_version: z.string().nullish(),
   cli_version: z.string().nullish(),
@@ -64,13 +63,36 @@ export const TaskRunV1 = z.object({
   _version: z.string(),
 });
 
-export type TaskRunV1 = z.infer<typeof TaskRunV1>;
+export type TaskRunV1 = z.input<typeof TaskRunV1>;
 
 export function insertTaskRuns(ch: ClickhouseWriter, settings?: ClickHouseSettings) {
   return ch.insert({
     name: "insertTaskRuns",
     table: "trigger_dev.task_runs_v1",
     schema: TaskRunV1,
+    settings: {
+      async_insert: 1,
+      wait_for_async_insert: 0,
+      async_insert_max_data_size: "1000000",
+      async_insert_busy_timeout_ms: 1000,
+      ...settings,
+    },
+  });
+}
+
+export const RawTaskRunPayloadV1 = z.object({
+  run_id: z.string(),
+  created_at: z.number().int(),
+  payload: z.unknown(),
+});
+
+export type RawTaskRunPayloadV1 = z.infer<typeof RawTaskRunPayloadV1>;
+
+export function insertRawTaskRunPayloads(ch: ClickhouseWriter, settings?: ClickHouseSettings) {
+  return ch.insert({
+    name: "insertRawTaskRunPayloads",
+    table: "trigger_dev.raw_task_runs_payload_v1",
+    schema: RawTaskRunPayloadV1,
     settings: {
       async_insert: 1,
       wait_for_async_insert: 0,
