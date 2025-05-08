@@ -9,7 +9,8 @@ import { WorkerGroupService } from "~/v3/services/worker/workerGroupService.serv
 const RequestBodySchema = z.object({
   name: z.string().optional(),
   description: z.string().optional(),
-  makeDefaultForProjectId: z.string().optional(),
+  projectId: z.string().optional(),
+  makeDefaultForProject: z.boolean().default(false),
   removeDefaultFromProject: z.boolean().default(false),
 });
 
@@ -37,21 +38,20 @@ export async function action({ request }: ActionFunctionArgs) {
 
   try {
     const rawBody = await request.json();
-    const { name, description, makeDefaultForProjectId, removeDefaultFromProject } =
+    const { name, description, projectId, makeDefaultForProject, removeDefaultFromProject } =
       RequestBodySchema.parse(rawBody ?? {});
 
     if (removeDefaultFromProject) {
-      if (!makeDefaultForProjectId) {
+      if (!projectId) {
         return json(
           {
-            error:
-              "makeDefaultForProjectId is required to remove default worker group from project",
+            error: "projectId is required to remove default worker group from project",
           },
           { status: 400 }
         );
       }
 
-      const updated = await removeDefaultWorkerGroupFromProject(makeDefaultForProjectId);
+      const updated = await removeDefaultWorkerGroupFromProject(projectId);
 
       if (!updated.success) {
         return json(
@@ -76,7 +76,7 @@ export async function action({ request }: ActionFunctionArgs) {
     if (!existingWorkerGroup) {
       const { workerGroup, token } = await createWorkerGroup(name, description);
 
-      if (!makeDefaultForProjectId) {
+      if (!makeDefaultForProject) {
         return json({
           outcome: "created new worker group",
           token,
@@ -84,10 +84,14 @@ export async function action({ request }: ActionFunctionArgs) {
         });
       }
 
-      const updated = await setWorkerGroupAsDefaultForProject(
-        workerGroup.id,
-        makeDefaultForProjectId
-      );
+      if (!projectId) {
+        return json(
+          { error: "projectId is required to set worker group as default for project" },
+          { status: 400 }
+        );
+      }
+
+      const updated = await setWorkerGroupAsDefaultForProject(workerGroup.id, projectId);
 
       if (!updated.success) {
         return json({ error: updated.error }, { status: 400 });
@@ -101,7 +105,7 @@ export async function action({ request }: ActionFunctionArgs) {
       });
     }
 
-    if (!makeDefaultForProjectId) {
+    if (!makeDefaultForProject) {
       return json(
         {
           error: "worker group already exists",
@@ -111,10 +115,14 @@ export async function action({ request }: ActionFunctionArgs) {
       );
     }
 
-    const updated = await setWorkerGroupAsDefaultForProject(
-      existingWorkerGroup.id,
-      makeDefaultForProjectId
-    );
+    if (!projectId) {
+      return json(
+        { error: "projectId is required to set worker group as default for project" },
+        { status: 400 }
+      );
+    }
+
+    const updated = await setWorkerGroupAsDefaultForProject(existingWorkerGroup.id, projectId);
 
     if (!updated.success) {
       return json(
