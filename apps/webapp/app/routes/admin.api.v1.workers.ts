@@ -1,4 +1,6 @@
-import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
+import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
+import { tryCatch } from "@trigger.dev/core";
+import { type Project } from "@trigger.dev/database";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";
@@ -18,7 +20,7 @@ export async function action({ request }: ActionFunctionArgs) {
     return json({ error: "Invalid or Missing API key" }, { status: 401 });
   }
 
-  const user = await prisma.user.findUnique({
+  const user = await prisma.user.findFirst({
     where: {
       id: authenticationResult.userId,
     },
@@ -36,28 +38,133 @@ export async function action({ request }: ActionFunctionArgs) {
     const rawBody = await request.json();
     const { name, description, makeDefaultForProjectId } = RequestBodySchema.parse(rawBody ?? {});
 
-    const service = new WorkerGroupService();
-    const { workerGroup, token } = await service.createWorkerGroup({
-      name,
-      description,
+    const existingWorkerGroup = await prisma.workerInstanceGroup.findFirst({
+      where: {
+        // We only check managed worker groups
+        masterQueue: name,
+      },
     });
 
-    if (makeDefaultForProjectId) {
-      await prisma.project.update({
-        where: {
-          id: makeDefaultForProjectId,
-        },
-        data: {
-          defaultWorkerGroupId: workerGroup.id,
-        },
+    if (!existingWorkerGroup) {
+      const { workerGroup, token } = await createWorkerGroup(name, description);
+
+      if (!makeDefaultForProjectId) {
+        return json({
+          outcome: "created new worker group",
+          token,
+          workerGroup,
+        });
+      }
+
+      const updated = await setWorkerGroupAsDefaultForProject(
+        workerGroup.id,
+        makeDefaultForProjectId
+      );
+
+      if (!updated.success) {
+        return json({ error: updated.error }, { status: 400 });
+      }
+
+      return json({
+        outcome: "set new worker group as default for project",
+        token,
+        workerGroup,
+        project: updated.project,
       });
     }
 
+    if (!makeDefaultForProjectId) {
+      return json(
+        {
+          error: "worker group already exists",
+          workerGroup: existingWorkerGroup,
+        },
+        { status: 400 }
+      );
+    }
+
+    const updated = await setWorkerGroupAsDefaultForProject(
+      existingWorkerGroup.id,
+      makeDefaultForProjectId
+    );
+
+    if (!updated.success) {
+      return json(
+        {
+          error: `failed to set worker group as default for project: ${updated.error}`,
+          workerGroup: existingWorkerGroup,
+        },
+        { status: 400 }
+      );
+    }
+
     return json({
-      token,
-      workerGroup,
+      outcome: "set existing worker group as default for project",
+      workerGroup: existingWorkerGroup,
+      project: updated.project,
     });
   } catch (error) {
-    return json({ error: error instanceof Error ? error.message : error }, { status: 400 });
+    return json(
+      {
+        outcome: "unknown error",
+        error: error instanceof Error ? error.message : error,
+      },
+      { status: 400 }
+    );
   }
+}
+
+async function createWorkerGroup(name: string | undefined, description: string | undefined) {
+  const service = new WorkerGroupService();
+  return await service.createWorkerGroup({ name, description });
+}
+
+async function setWorkerGroupAsDefaultForProject(
+  workerGroupId: string,
+  projectId: string
+): Promise<
+  | {
+      success: false;
+      error: string;
+    }
+  | {
+      success: true;
+      project: Project;
+    }
+> {
+  const project = await prisma.project.findFirst({
+    where: {
+      id: projectId,
+    },
+  });
+
+  if (!project) {
+    return {
+      success: false,
+      error: "project not found",
+    };
+  }
+
+  const [error] = await tryCatch(
+    prisma.project.update({
+      where: {
+        id: projectId,
+      },
+      data: {
+        defaultWorkerGroupId: workerGroupId,
+      },
+    })
+  );
+
+  if (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : error,
+    };
+  }
+
+  return {
+    success: true,
+    project,
+  };
 }
