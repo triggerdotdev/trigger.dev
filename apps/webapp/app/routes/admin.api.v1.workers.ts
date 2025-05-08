@@ -10,6 +10,7 @@ const RequestBodySchema = z.object({
   name: z.string().optional(),
   description: z.string().optional(),
   makeDefaultForProjectId: z.string().optional(),
+  removeDefaultFromProject: z.boolean().default(false),
 });
 
 export async function action({ request }: ActionFunctionArgs) {
@@ -36,7 +37,34 @@ export async function action({ request }: ActionFunctionArgs) {
 
   try {
     const rawBody = await request.json();
-    const { name, description, makeDefaultForProjectId } = RequestBodySchema.parse(rawBody ?? {});
+    const { name, description, makeDefaultForProjectId, removeDefaultFromProject } =
+      RequestBodySchema.parse(rawBody ?? {});
+
+    if (removeDefaultFromProject) {
+      if (!makeDefaultForProjectId) {
+        return json(
+          {
+            error:
+              "makeDefaultForProjectId is required to remove default worker group from project",
+          },
+          { status: 400 }
+        );
+      }
+
+      const updated = await removeDefaultWorkerGroupFromProject(makeDefaultForProjectId);
+
+      if (!updated.success) {
+        return json(
+          { error: `failed to remove default worker group from project: ${updated.error}` },
+          { status: 400 }
+        );
+      }
+
+      return json({
+        outcome: "removed default worker group from project",
+        project: updated.project,
+      });
+    }
 
     const existingWorkerGroup = await prisma.workerInstanceGroup.findFirst({
       where: {
@@ -117,6 +145,44 @@ export async function action({ request }: ActionFunctionArgs) {
 async function createWorkerGroup(name: string | undefined, description: string | undefined) {
   const service = new WorkerGroupService();
   return await service.createWorkerGroup({ name, description });
+}
+
+async function removeDefaultWorkerGroupFromProject(projectId: string) {
+  const project = await prisma.project.findFirst({
+    where: {
+      id: projectId,
+    },
+  });
+
+  if (!project) {
+    return {
+      success: false,
+      error: "project not found",
+    };
+  }
+
+  const [error] = await tryCatch(
+    prisma.project.update({
+      where: {
+        id: projectId,
+      },
+      data: {
+        defaultWorkerGroupId: null,
+      },
+    })
+  );
+
+  if (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : error,
+    };
+  }
+
+  return {
+    success: true,
+    project,
+  };
 }
 
 async function setWorkerGroupAsDefaultForProject(
