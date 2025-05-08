@@ -34,7 +34,7 @@ export async function action({ request }: ActionFunctionArgs) {
     const body = await request.json();
     const { insertStrategy } = schema.parse(body);
 
-    await runsReplicationInstance.start(insertStrategy);
+    await runsReplicationInstance?.start(insertStrategy);
 
     return json({
       success: true,

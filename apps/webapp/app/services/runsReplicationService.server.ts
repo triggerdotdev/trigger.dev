@@ -23,9 +23,12 @@ export type RunsReplicationServiceOptions = {
   maxFlushConcurrency?: number;
   flushIntervalMs?: number;
   flushBatchSize?: number;
+  leaderLockTimeoutMs?: number;
+  leaderLockExtendIntervalMs?: number;
+  ackIntervalSeconds?: number;
 };
 
-type TaskRunInsert = { _version: bigint; run: TaskRun; event: "insert" | "update" };
+type TaskRunInsert = { _version: bigint; run: TaskRun; event: "insert" | "update" | "delete" };
 
 export class RunsReplicationService {
   private _lastLsn: string | null = null;
@@ -61,9 +64,9 @@ export class RunsReplicationService {
       autoAcknowledge: false,
       publicationActions: ["insert", "update"],
       logger: new Logger("RunsReplicationService", "debug"),
-      leaderLockTimeoutMs: 30_000,
-      leaderLockExtendIntervalMs: 10_000,
-      ackIntervalSeconds: 10,
+      leaderLockTimeoutMs: options.leaderLockTimeoutMs ?? 30_000,
+      leaderLockExtendIntervalMs: options.leaderLockExtendIntervalMs ?? 10_000,
+      ackIntervalSeconds: options.ackIntervalSeconds ?? 10,
     });
 
     this._concurrentFlushScheduler = new ConcurrentFlushScheduler<TaskRunInsert>({
@@ -217,20 +220,6 @@ export class RunsReplicationService {
       return;
     }
 
-    const relevantEvents = transaction.events.filter(
-      (event) => event.tag === "insert" || event.tag === "update"
-    );
-
-    if (relevantEvents.length === 0) {
-      this.logger.debug("No relevant events", {
-        transaction,
-      });
-
-      await this._replicationClient.acknowledge(transaction.commitEndLsn);
-
-      return;
-    }
-
     this.logger.debug("Handling transaction", {
       transaction,
     });
@@ -242,20 +231,20 @@ export class RunsReplicationService {
 
     if (this._insertStrategy === "streaming") {
       await this._concurrentFlushScheduler.addToBatch(
-        relevantEvents.map((event) => ({
+        transaction.events.map((event) => ({
           _version,
           run: event.data,
-          event: event.tag as "insert" | "update",
+          event: event.tag,
         }))
       );
     } else {
       const [flushError] = await tryCatch(
         this.#flushBatch(
           nanoid(),
-          relevantEvents.map((event) => ({
+          transaction.events.map((event) => ({
             _version,
             run: event.data,
-            event: event.tag as "insert" | "update",
+            event: event.tag,
           }))
         )
       );
@@ -376,11 +365,12 @@ export class RunsReplicationService {
       };
     }
 
-    if (event === "update") {
+    if (event === "update" || event === "delete") {
       const taskRunInsert = await this.#prepareTaskRunInsert(
         run,
         run.organizationId,
         run.environmentType,
+        event,
         _version
       );
 
@@ -391,7 +381,7 @@ export class RunsReplicationService {
     }
 
     const [taskRunInsert, payloadInsert] = await Promise.all([
-      this.#prepareTaskRunInsert(run, run.organizationId, run.environmentType, _version),
+      this.#prepareTaskRunInsert(run, run.organizationId, run.environmentType, event, _version),
       this.#preparePayloadInsert(run, _version),
     ]);
 
@@ -405,6 +395,7 @@ export class RunsReplicationService {
     run: TaskRun,
     organizationId: string,
     environmentType: string,
+    event: "insert" | "update" | "delete",
     _version: bigint
   ): Promise<TaskRunV1> {
     const output = await this.#prepareJson(run.output, run.outputType);
@@ -424,10 +415,10 @@ export class RunsReplicationService {
       queue: run.queue,
       span_id: run.spanId,
       trace_id: run.traceId,
-      error: run.error ? (run.error as TaskRunError) : undefined,
+      error: { data: run.error },
       attempt: run.attemptNumber ?? 1,
-      schedule_id: run.scheduleId,
-      batch_id: run.batchId,
+      schedule_id: run.scheduleId ?? "",
+      batch_id: run.batchId ?? "",
       completed_at: run.completedAt?.getTime(),
       started_at: run.startedAt?.getTime(),
       executed_at: run.executedAt?.getTime(),
@@ -438,18 +429,19 @@ export class RunsReplicationService {
       cost_in_cents: run.costInCents,
       base_cost_in_cents: run.baseCostInCents,
       tags: run.runTags ?? [],
-      task_version: run.taskVersion,
-      sdk_version: run.sdkVersion,
-      cli_version: run.cliVersion,
-      machine_preset: run.machinePreset,
-      root_run_id: run.rootTaskRunId,
-      parent_run_id: run.parentTaskRunId,
+      task_version: run.taskVersion ?? "",
+      sdk_version: run.sdkVersion ?? "",
+      cli_version: run.cliVersion ?? "",
+      machine_preset: run.machinePreset ?? "",
+      root_run_id: run.rootTaskRunId ?? "",
+      parent_run_id: run.parentTaskRunId ?? "",
       depth: run.depth,
       is_test: run.isTest,
-      idempotency_key: run.idempotencyKey,
-      expiration_ttl: run.ttl,
+      idempotency_key: run.idempotencyKey ?? "",
+      expiration_ttl: run.ttl ?? "",
       output,
       _version: _version.toString(),
+      _is_deleted: event === "delete" ? 1 : 0,
     };
   }
 

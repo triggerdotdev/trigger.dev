@@ -754,6 +754,18 @@ const EnvironmentSchema = z.object({
     .optional()
     .transform((v) => v ?? process.env.REDIS_PASSWORD),
   RUN_REPLICATION_REDIS_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
+
+  RUN_REPLICATION_CLICKHOUSE_URL: z.string().optional(),
+  RUN_REPLICATION_ENABLED: z.string().default("0"),
+  RUN_REPLICATION_SLOT_NAME: z.string().default("task_runs_to_clickhouse_v1"),
+  RUN_REPLICATION_PUBLICATION_NAME: z.string().default("task_runs_to_clickhouse_v1_publication"),
+  RUN_REPLICATION_MAX_FLUSH_CONCURRENCY: z.coerce.number().int().default(100),
+  RUN_REPLICATION_FLUSH_INTERVAL_MS: z.coerce.number().int().default(1000),
+  RUN_REPLICATION_FLUSH_BATCH_SIZE: z.coerce.number().int().default(100),
+  RUN_REPLICATION_INSERT_STRATEGY: z.enum(["streaming", "batching"]).default("batching"),
+  RUN_REPLICATION_LEADER_LOCK_TIMEOUT_MS: z.coerce.number().int().default(30_000),
+  RUN_REPLICATION_LEADER_LOCK_EXTEND_INTERVAL_MS: z.coerce.number().int().default(10_000),
+  RUN_REPLICATION_ACK_INTERVAL_SECONDS: z.coerce.number().int().default(10),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

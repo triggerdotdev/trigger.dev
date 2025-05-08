@@ -26,7 +26,7 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 
   try {
-    await runsReplicationInstance.teardown();
+    await runsReplicationInstance?.teardown();
 
     return json({
       success: true,

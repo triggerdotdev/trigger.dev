@@ -1,7 +1,6 @@
+import { ClickHouseSettings } from "@clickhouse/client";
 import { z } from "zod";
 import { ClickhouseWriter } from "./client/types.js";
-import { ClickHouseSettings } from "@clickhouse/client";
-import { TaskRunError } from "@trigger.dev/core/v3/schemas";
 
 export const TaskRunV1 = z.object({
   environment_id: z.string(),
@@ -10,32 +9,15 @@ export const TaskRunV1 = z.object({
   run_id: z.string(),
   updated_at: z.number().int(),
   created_at: z.number().int(),
-  status: z.enum([
-    "DELAYED",
-    "PENDING",
-    "PENDING_VERSION",
-    "WAITING_FOR_DEPLOY",
-    "EXECUTING",
-    "WAITING_TO_RESUME",
-    "RETRYING_AFTER_FAILURE",
-    "PAUSED",
-    "CANCELED",
-    "INTERRUPTED",
-    "COMPLETED_SUCCESSFULLY",
-    "COMPLETED_WITH_ERRORS",
-    "SYSTEM_FAILURE",
-    "CRASHED",
-    "EXPIRED",
-    "TIMED_OUT",
-  ]),
+  status: z.string(),
   environment_type: z.string(),
   friendly_id: z.string(),
   attempt: z.number().int().default(1),
-  engine: z.enum(["V1", "V2"]),
+  engine: z.string(),
   task_identifier: z.string(),
   queue: z.string(),
-  schedule_id: z.string().nullish(),
-  batch_id: z.string().nullish(),
+  schedule_id: z.string(),
+  batch_id: z.string(),
   completed_at: z.number().int().nullish(),
   started_at: z.number().int().nullish(),
   executed_at: z.number().int().nullish(),
@@ -46,21 +28,22 @@ export const TaskRunV1 = z.object({
   cost_in_cents: z.number().default(0),
   base_cost_in_cents: z.number().default(0),
   output: z.unknown(),
-  error: TaskRunError.nullish(),
+  error: z.unknown(),
   tags: z.array(z.string()).default([]),
-  task_version: z.string().nullish(),
-  sdk_version: z.string().nullish(),
-  cli_version: z.string().nullish(),
-  machine_preset: z.string().nullish(),
-  root_run_id: z.string().nullish(),
-  parent_run_id: z.string().nullish(),
+  task_version: z.string(),
+  sdk_version: z.string(),
+  cli_version: z.string(),
+  machine_preset: z.string(),
+  root_run_id: z.string(),
+  parent_run_id: z.string(),
   depth: z.number().int().default(0),
   span_id: z.string(),
   trace_id: z.string(),
-  idempotency_key: z.string().nullish(),
-  expiration_ttl: z.string().nullish(),
+  idempotency_key: z.string(),
+  expiration_ttl: z.string(),
   is_test: z.boolean().default(false),
   _version: z.string(),
+  _is_deleted: z.number().int().default(0),
 });
 
 export type TaskRunV1 = z.input<typeof TaskRunV1>;
@@ -75,6 +58,7 @@ export function insertTaskRuns(ch: ClickhouseWriter, settings?: ClickHouseSettin
       wait_for_async_insert: 0,
       async_insert_max_data_size: "1000000",
       async_insert_busy_timeout_ms: 1000,
+      enable_json_type: 1,
       ...settings,
     },
   });
@@ -98,6 +82,7 @@ export function insertRawTaskRunPayloads(ch: ClickhouseWriter, settings?: ClickH
       wait_for_async_insert: 0,
       async_insert_max_data_size: "1000000",
       async_insert_busy_timeout_ms: 1000,
+      enable_json_type: 1,
       ...settings,
     },
   });

@@ -4,6 +4,7 @@ import { singleton } from "~/utils/singleton";
 import invariant from "tiny-invariant";
 import { env } from "~/env.server";
 import { metricsRegister } from "~/metrics.server";
+import { logger } from "./logger.server";
 
 export const runsReplicationInstance = singleton(
   "runsReplicationInstance",
@@ -14,14 +15,22 @@ function initializeRunsReplicationInstance() {
   const { DATABASE_URL } = process.env;
   invariant(typeof DATABASE_URL === "string", "DATABASE_URL env var not set");
 
-  const clickhouse = ClickHouse.fromEnv();
+  if (!env.RUN_REPLICATION_CLICKHOUSE_URL) {
+    logger.info("🗃️ Runs replication service not enabled");
+    return;
+  }
+
+  const clickhouse = new ClickHouse({
+    url: env.RUN_REPLICATION_CLICKHOUSE_URL,
+    name: "runs-replication",
+  });
 
   const service = new RunsReplicationService({
     clickhouse: clickhouse,
     pgConnectionUrl: DATABASE_URL,
     serviceName: "runs-replication",
-    slotName: "task_runs_to_clickhouse_v1",
-    publicationName: "task_runs_to_clickhouse_v1_publication",
+    slotName: env.RUN_REPLICATION_SLOT_NAME,
+    publicationName: env.RUN_REPLICATION_PUBLICATION_NAME,
     redisOptions: {
       keyPrefix: "runs-replication:",
       port: env.RUN_REPLICATION_REDIS_PORT ?? undefined,
@@ -32,7 +41,27 @@ function initializeRunsReplicationInstance() {
       ...(env.RUN_REPLICATION_REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
     },
     metricsRegister: metricsRegister,
+    maxFlushConcurrency: env.RUN_REPLICATION_MAX_FLUSH_CONCURRENCY,
+    flushIntervalMs: env.RUN_REPLICATION_FLUSH_INTERVAL_MS,
+    flushBatchSize: env.RUN_REPLICATION_FLUSH_BATCH_SIZE,
+    insertStrategy: env.RUN_REPLICATION_INSERT_STRATEGY,
+    leaderLockTimeoutMs: env.RUN_REPLICATION_LEADER_LOCK_TIMEOUT_MS,
+    leaderLockExtendIntervalMs: env.RUN_REPLICATION_LEADER_LOCK_EXTEND_INTERVAL_MS,
+    ackIntervalSeconds: env.RUN_REPLICATION_ACK_INTERVAL_SECONDS,
   });
+
+  if (env.RUN_REPLICATION_ENABLED === "1") {
+    service
+      .start()
+      .then(() => {
+        logger.info("🗃️ Runs replication service started");
+      })
+      .catch((error) => {
+        logger.error("🗃️ Runs replication service failed to start", {
+          error,
+        });
+      });
+  }
 
   return service;
 }

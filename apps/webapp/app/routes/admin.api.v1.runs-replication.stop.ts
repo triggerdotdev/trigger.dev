@@ -26,7 +26,7 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 
   try {
-    await runsReplicationInstance.stop();
+    await runsReplicationInstance?.stop();
 
     return json({
       success: true,
