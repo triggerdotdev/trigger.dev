@@ -17,7 +17,7 @@ import {
   ServerStackIcon,
   Squares2X2Icon,
 } from "@heroicons/react/20/solid";
-import { useLocation, useNavigation } from "@remix-run/react";
+import { useNavigation } from "@remix-run/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import simplur from "simplur";
 import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
@@ -31,6 +31,7 @@ import { type MatchedProject } from "~/hooks/useProject";
 import { type User } from "~/models/user.server";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 import { type FeedbackType } from "~/routes/resources.feedback";
+import { IncidentStatusPanel } from "~/routes/resources.incidents";
 import { cn } from "~/utils/cn";
 import {
   accountPath,
@@ -279,16 +280,19 @@ export function SideMenu({
           </SideMenuSection>
         </div>
       </div>
-      <div className="flex flex-col gap-1 border-t border-grid-bright p-1">
-        <div className="flex w-full items-center justify-between">
-          <HelpAndAI />
+      <div>
+        <IncidentStatusPanel />
+        <div className="flex flex-col gap-1 border-t border-grid-bright p-1">
+          <div className="flex w-full items-center justify-between">
+            <HelpAndAI />
+          </div>
+          {isFreeUser && (
+            <FreePlanUsage
+              to={v3BillingPath(organization)}
+              percentage={currentPlan.v3Usage.usagePercentage}
+            />
+          )}
         </div>
-        {isFreeUser && (
-          <FreePlanUsage
-            to={v3BillingPath(organization)}
-            percentage={currentPlan.v3Usage.usagePercentage}
-          />
-        )}
       </div>
     </div>
   );
