@@ -1,4 +1,6 @@
-import { wrapZodFetch } from "@trigger.dev/core/v3/zodfetch";
+import { type ApiResult, wrapZodFetch } from "@trigger.dev/core/v3/zodfetch";
+import { createCache, DefaultStatefulContext, Namespace } from "@unkey/cache";
+import { MemoryStore } from "@unkey/cache/stores";
 import { z } from "zod";
 import { env } from "~/env.server";
 
@@ -14,6 +16,17 @@ const IncidentSchema = z.object({
 
 export type Incident = z.infer<typeof IncidentSchema>;
 
+const ctx = new DefaultStatefulContext();
+const memory = new MemoryStore({ persistentMap: new Map() });
+
+const cache = createCache({
+  query: new Namespace<ApiResult<Incident>>(ctx, {
+    stores: [memory],
+    fresh: 15_000,
+    stale: 30_000,
+  }),
+});
+
 export class BetterStackClient {
   private readonly baseUrl = "https://uptime.betterstack.com/api/v2";
 
@@ -28,27 +41,48 @@ export class BetterStackClient {
       return { success: false as const, error: "BETTERSTACK_STATUS_PAGE_ID is not set" };
     }
 
-    try {
-      return await wrapZodFetch(
-        IncidentSchema,
-        `${this.baseUrl}/status-pages/${statusPageId}`,
-        {
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            "Content-Type": "application/json",
+    const cachedResult = await cache.query.swr("betterstack", async () => {
+      try {
+        const result = await wrapZodFetch(
+          IncidentSchema,
+          `${this.baseUrl}/status-pages/${statusPageId}`,
+          {
+            headers: {
+              Authorization: `Bearer ${apiKey}`,
+              "Content-Type": "application/json",
+            },
           },
-        },
-        {
-          retry: {
-            maxAttempts: 3,
-            minTimeoutInMs: 1000,
-            maxTimeoutInMs: 5000,
-          },
-        }
-      );
-    } catch (error) {
-      console.error("Failed to fetch incidents from BetterStack:", error);
-      return { success: false as const, error };
+          {
+            retry: {
+              maxAttempts: 3,
+              minTimeoutInMs: 1000,
+              maxTimeoutInMs: 5000,
+            },
+          }
+        );
+
+        return result;
+      } catch (error) {
+        console.error("Failed to fetch incidents from BetterStack:", error);
+        return {
+          success: false as const,
+          error: error instanceof Error ? error.message : "Unknown error",
+        };
+      }
+    });
+
+    if (cachedResult.err) {
+      return { success: false as const, error: cachedResult.err };
     }
+
+    if (!cachedResult.val) {
+      return { success: false as const, error: "No result from BetterStack" };
+    }
+
+    if (!cachedResult.val.success) {
+      return { success: false as const, error: cachedResult.val.error };
+    }
+
+    return { success: true as const, data: cachedResult.val.data.data };
   }
 }

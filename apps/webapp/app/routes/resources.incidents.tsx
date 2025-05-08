@@ -17,7 +17,7 @@ export async function loader() {
   }
 
   return json({
-    operational: result.data.data.attributes.aggregate_state === "operational",
+    operational: result.data.attributes.aggregate_state === "operational",
   });
 }
 
