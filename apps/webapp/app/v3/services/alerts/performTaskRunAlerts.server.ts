@@ -1,10 +1,8 @@
 import { type Prisma, type ProjectAlertChannel } from "@trigger.dev/database";
-import { $transaction, type PrismaClientOrTransaction, type prisma } from "~/db.server";
-import { workerQueue } from "~/services/worker.server";
-import { generateFriendlyId } from "~/v3/friendlyIdentifiers";
+import { type prisma } from "~/db.server";
+import { commonWorker } from "~/v3/commonWorker.server";
 import { BaseService } from "../baseService.server";
 import { DeliverAlertService } from "./deliverAlert.server";
-import { commonWorker } from "~/v3/commonWorker.server";
 
 type FoundRun = Prisma.Result<
   typeof prisma.taskRun,

@@ -34,7 +34,6 @@ import { sendAlertEmail } from "~/services/email.server";
 import { logger } from "~/services/logger.server";
 import { decryptSecret } from "~/services/secrets/secretStore.server";
 import { commonWorker } from "~/v3/commonWorker.server";
-import { FINAL_ATTEMPT_STATUSES } from "~/v3/taskStatus";
 import { BaseService } from "../baseService.server";
 import { generateFriendlyId } from "~/v3/friendlyIdentifiers";
 import { type ProjectAlertChannelType, type ProjectAlertType } from "@trigger.dev/database";
@@ -53,13 +52,6 @@ type FoundAlert = Prisma.Result<
         };
       };
       environment: true;
-      taskRunAttempt: {
-        include: {
-          taskRun: true;
-          backgroundWorkerTask: true;
-          backgroundWorker: true;
-        };
-      };
       taskRun: {
         include: {
           lockedBy: true;
@@ -78,13 +70,7 @@ type FoundAlert = Prisma.Result<
     };
   },
   "findUniqueOrThrow"
-> & {
-  failedAttempt?: Prisma.Result<
-    typeof prisma.taskRunAttempt,
-    { select: { output: true; outputType: true; error: true } },
-    "findFirst"
-  >;
-};
+>;
 
 class SkipRetryError extends Error {}
 
@@ -100,13 +86,6 @@ export class DeliverAlertService extends BaseService {
           },
         },
         environment: true,
-        taskRunAttempt: {
-          include: {
-            taskRun: true,
-            backgroundWorkerTask: true,
-            backgroundWorker: true,
-          },
-        },
         taskRun: {
           include: {
             lockedBy: true,
@@ -131,24 +110,6 @@ export class DeliverAlertService extends BaseService {
 
     if (alert.status !== "PENDING") {
       return;
-    }
-
-    if (alert.taskRun) {
-      const finishedAttempt = await this._prisma.taskRunAttempt.findFirst({
-        select: {
-          output: true,
-          outputType: true,
-          error: true,
-        },
-        where: {
-          status: { in: FINAL_ATTEMPT_STATUSES },
-          taskRunId: alert.taskRun.id,
-        },
-        orderBy: {
-          createdAt: "desc",
-        },
-      });
-      alert.failedAttempt = finishedAttempt;
     }
 
     try {
@@ -1014,18 +975,18 @@ export class DeliverAlertService extends BaseService {
   }
 
   #getRunError(alert: FoundAlert): TaskRunError {
-    if (alert.failedAttempt) {
-      const res = TaskRunError.safeParse(alert.failedAttempt.error);
+    if (alert.taskRun) {
+      const res = TaskRunError.safeParse(alert.taskRun.error);
 
       if (!res.success) {
         logger.error("[DeliverAlert] Failed to parse task run error, sending with unknown error", {
           issues: res.error.issues,
-          taskAttemptError: alert.failedAttempt.error,
+          taskRunError: alert.taskRun.error,
         });
 
         return {
           type: "CUSTOM_ERROR",
-          raw: JSON.stringify(alert.failedAttempt.error ?? "Unknown error"),
+          raw: JSON.stringify(alert.taskRun.error ?? "Unknown error"),
         };
       }
 
@@ -1034,7 +995,7 @@ export class DeliverAlertService extends BaseService {
 
     return {
       type: "CUSTOM_ERROR",
-      raw: "No error on attempt",
+      raw: "No error on run",
     };
   }
 
