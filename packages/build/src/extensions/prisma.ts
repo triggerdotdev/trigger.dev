@@ -186,7 +186,7 @@ export class PrismaExtension implements BuildExtension {
       commands.push(
         `${binaryForRuntime(
           manifest.runtime
-        )} node_modules/prisma/build/index.js generate ${generatorFlags.join(" ")}` // Don't add the --schema flag or this will fail
+        )} node_modules/prisma/build/index.js generate --schema=./prisma/schema ${generatorFlags.join(" ")}` // Add the --schema flag for prisma@^6.6.0 compatibility
       );
     } else {
       prismaDir = dirname(this._resolvedSchemaPath);
