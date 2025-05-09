@@ -16,7 +16,6 @@ import { findQueueInEnvironment, sanitizeQueueName } from "~/models/taskQueue.se
 import { RedisClient, createRedisClient } from "~/redis.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
-import { runsDashboard } from "~/services/runsDashboardInstance.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { resolveVariablesForEnvironment } from "../environmentVariables/environmentVariablesRepository.server";
 import { FailedTaskRunService } from "../failedTaskRun.server";
@@ -541,36 +540,6 @@ export class DevQueueConsumer {
 
         logger.debug("Executing the run", {
           messageId: message.messageId,
-        });
-
-        runsDashboard.emit.runLocked({
-          time: new Date(),
-          run: {
-            id: lockedTaskRun.id,
-            updatedAt: lockedTaskRun.updatedAt,
-            createdAt: lockedTaskRun.createdAt,
-            status: lockedTaskRun.status,
-            lockedAt,
-            lockedById: backgroundTask.id,
-            lockedToVersionId: backgroundWorker.id,
-            lockedQueueId: queue.id,
-            startedAt,
-            maxDurationInSeconds: lockedTaskRun.maxDurationInSeconds ?? undefined,
-            taskVersion: backgroundWorker.version,
-            sdkVersion: backgroundWorker.sdkVersion,
-            cliVersion: backgroundWorker.cliVersion,
-            baseCostInCents: lockedTaskRun.baseCostInCents,
-            machinePreset: lockedTaskRun.machinePreset ?? "small-1x",
-          },
-          organization: {
-            id: this.env.organizationId,
-          },
-          project: {
-            id: this.env.projectId,
-          },
-          environment: {
-            id: this.env.id,
-          },
         });
 
         this._inProgressRuns.set(lockedTaskRun.friendlyId, message.messageId);

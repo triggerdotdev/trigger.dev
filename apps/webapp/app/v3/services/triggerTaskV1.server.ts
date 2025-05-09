@@ -43,7 +43,6 @@ import {
 import { getTaskEventStore } from "../taskEventStore.server";
 import { enqueueRun } from "./enqueueRun.server";
 import { z } from "zod";
-import { runsDashboard } from "~/services/runsDashboardInstance.server";
 
 // This is here for backwords compatibility for v3 users
 const QueueOptions = z.object({
@@ -605,8 +604,6 @@ export class TriggerTaskServiceV1 extends BaseService {
         if (!run) {
           return;
         }
-
-        runsDashboard.emit.runCreated(run.createdAt, run.id);
 
         return {
           run,

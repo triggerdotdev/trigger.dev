@@ -1,6 +1,5 @@
 import { parseNaturalLanguageDuration } from "@trigger.dev/core/v3/isomorphic";
 import { logger } from "~/services/logger.server";
-import { runsDashboard } from "~/services/runsDashboardInstance.server";
 import { workerQueue } from "~/services/worker.server";
 import { commonWorker } from "../commonWorker.server";
 import { BaseService } from "./baseService.server";
@@ -97,28 +96,6 @@ export class EnqueueDelayedRunService extends BaseService {
       if (expireAt) {
         await ExpireEnqueuedRunService.enqueue(run.id, expireAt);
       }
-    }
-
-    if (run.organizationId) {
-      runsDashboard.emit.runEnqueuedAfterDelay({
-        time: new Date(),
-        run: {
-          id: run.id,
-          status: run.status,
-          queuedAt: run.queuedAt ?? new Date(),
-          updatedAt: run.updatedAt,
-          createdAt: run.createdAt,
-        },
-        organization: {
-          id: run.organizationId,
-        },
-        project: {
-          id: run.projectId,
-        },
-        environment: {
-          id: run.runtimeEnvironmentId,
-        },
-      });
     }
 
     await enqueueRun({

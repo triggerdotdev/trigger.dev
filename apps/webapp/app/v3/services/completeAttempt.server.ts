@@ -21,7 +21,6 @@ import { PrismaClientOrTransaction } from "~/db.server";
 import { env } from "~/env.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
-import { runsDashboard } from "~/services/runsDashboardInstance.server";
 import { safeJsonParse } from "~/utils/json";
 import { marqs } from "~/v3/marqs/index.server";
 import { createExceptionPropertiesFromError, eventRepository } from "../eventRepository.server";
@@ -615,32 +614,6 @@ export class CompleteAttemptService extends BaseService {
       data: {
         status: "RETRYING_AFTER_FAILURE",
       },
-    });
-
-    runsDashboard.emit.runRetryScheduled({
-      time: new Date(),
-      run: {
-        id: taskRunAttempt.taskRunId,
-        status: "RETRYING_AFTER_FAILURE",
-        friendlyId: taskRunAttempt.taskRun.friendlyId,
-        spanId: taskRunAttempt.taskRun.spanId,
-        attemptNumber: execution.attempt.number,
-        queue: taskRunAttempt.taskRun.queue,
-        traceContext: taskRunAttempt.taskRun.traceContext as Record<string, string | undefined>,
-        taskIdentifier: taskRunAttempt.taskRun.taskIdentifier,
-        baseCostInCents: taskRunAttempt.taskRun.baseCostInCents,
-        updatedAt: taskRunAttempt.taskRun.updatedAt,
-        createdAt: taskRunAttempt.taskRun.createdAt,
-        error,
-      },
-      organization: {
-        id: environment.organizationId,
-      },
-      environment: {
-        ...environment,
-        orgMember: environment.orgMember ?? null,
-      },
-      retryAt,
     });
 
     if (environment.type === "DEVELOPMENT") {

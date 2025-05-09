@@ -6,7 +6,6 @@ import { findQueueInEnvironment } from "~/models/taskQueue.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { reportInvocationUsage } from "~/services/platform.v3.server";
-import { runsDashboard } from "~/services/runsDashboardInstance.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { machinePresetFromConfig, machinePresetFromRun } from "../machinePresets.server";
 import { FINAL_RUN_STATUSES } from "../taskStatus";
@@ -181,28 +180,6 @@ export class CreateTaskRunAttemptService extends BaseService {
           runId: taskRun.id,
         });
       }
-
-      runsDashboard.emit.runAttemptStarted({
-        time: new Date(),
-        run: {
-          id: taskRun.id,
-          status: taskRun.status,
-          createdAt: taskRun.createdAt,
-          updatedAt: taskRun.updatedAt,
-          attemptNumber: taskRunAttempt.number,
-          baseCostInCents: taskRun.baseCostInCents,
-          executedAt: taskRun.executedAt ?? undefined,
-        },
-        organization: {
-          id: environment.organizationId,
-        },
-        project: {
-          id: environment.projectId,
-        },
-        environment: {
-          id: environment.id,
-        },
-      });
 
       const machinePreset =
         machinePresetFromRun(taskRun) ?? machinePresetFromConfig(lockedBy.machineConfig ?? {});
