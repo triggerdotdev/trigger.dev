@@ -6,6 +6,7 @@ import { tryCatch } from "@trigger.dev/core/utils";
 import { parsePacket } from "@trigger.dev/core/v3/utils/ioSerialization";
 import { TaskRun } from "@trigger.dev/database";
 import { nanoid } from "nanoid";
+import EventEmitter from "node:events";
 import pLimit from "p-limit";
 import { Counter, Gauge } from "prom-client";
 import type { MetricsRegister } from "~/metrics.server";
@@ -25,9 +26,14 @@ export type RunsReplicationServiceOptions = {
   leaderLockTimeoutMs?: number;
   leaderLockExtendIntervalMs?: number;
   ackIntervalSeconds?: number;
+  logger?: Logger;
 };
 
 type TaskRunInsert = { _version: bigint; run: TaskRun; event: "insert" | "update" | "delete" };
+
+export type RunsReplicationServiceEvents = {
+  message: [{ lsn: string; message: PgoutputMessage; service: RunsReplicationService }];
+};
 
 export class RunsReplicationService {
   private _lastLsn: string | null = null;
@@ -44,12 +50,16 @@ export class RunsReplicationService {
   private logger: Logger;
   private _lastReplicationLagMs: number | null = null;
   private _transactionCounter?: Counter;
+  private _lagGauge?: Gauge;
   private _insertStrategy: "streaming" | "batching";
   private _isShuttingDown = false;
   private _isShutDownComplete = false;
 
+  public readonly events: EventEmitter<RunsReplicationServiceEvents>;
+
   constructor(private readonly options: RunsReplicationServiceOptions) {
-    this.logger = new Logger("RunsReplicationService", "debug");
+    this.logger = options.logger ?? new Logger("RunsReplicationService", "debug");
+    this.events = new EventEmitter();
 
     this._insertStrategy = options.insertStrategy ?? "streaming";
 
@@ -113,7 +123,7 @@ export class RunsReplicationService {
 
     if (options.metricsRegister) {
       const replicationService = this;
-      new Gauge({
+      this._lagGauge = new Gauge({
         name: "runs_replication_service_replication_lag_ms",
         help: "The replication lag in milliseconds",
         collect() {
@@ -134,9 +144,25 @@ export class RunsReplicationService {
     }
   }
 
-  public shutdown() {
-    this.logger.info("Initiating shutdown of runs replication service");
+  public async getTransactionCountMetric() {
+    return this._transactionCounter?.get();
+  }
+
+  public async getLagGaugeMetric() {
+    return this._lagGauge?.get();
+  }
+
+  public async shutdown() {
     this._isShuttingDown = true;
+
+    this.logger.info("Initiating shutdown of runs replication service");
+
+    if (!this._currentTransaction) {
+      this.logger.info("No transaction to commit, shutting down immediately");
+      await this._replicationClient.stop();
+      this._isShutDownComplete = true;
+      return;
+    }
   }
 
   async start(insertStrategy?: "streaming" | "batching") {
@@ -162,8 +188,19 @@ export class RunsReplicationService {
   }
 
   async #handleData(lsn: string, message: PgoutputMessage) {
+    this.logger.debug("Handling data", {
+      lsn,
+      tag: message.tag,
+    });
+
+    this.events.emit("message", { lsn, message, service: this });
+
     switch (message.tag) {
       case "begin": {
+        if (this._isShuttingDown || this._isShutDownComplete) {
+          return;
+        }
+
         this._currentTransaction = {
           commitLsn: message.commitLsn,
           xid: message.xid,
@@ -195,6 +232,19 @@ export class RunsReplicationService {
         });
         break;
       }
+      case "delete": {
+        if (!this._currentTransaction) {
+          return;
+        }
+
+        this._currentTransaction.events.push({
+          tag: message.tag,
+          data: message.old as TaskRun,
+          raw: message,
+        });
+
+        break;
+      }
       case "commit": {
         if (!this._currentTransaction) {
           return;
@@ -202,8 +252,9 @@ export class RunsReplicationService {
         const replicationLagMs = Date.now() - Number(message.commitTime / 1000n);
         this._currentTransaction.commitEndLsn = message.commitEndLsn;
         this._currentTransaction.replicationLagMs = replicationLagMs;
-        await this.#handleTransaction(this._currentTransaction as Transaction<TaskRun>);
+        const transaction = this._currentTransaction as Transaction<TaskRun>;
         this._currentTransaction = null;
+        await this.#handleTransaction(transaction);
         break;
       }
     }

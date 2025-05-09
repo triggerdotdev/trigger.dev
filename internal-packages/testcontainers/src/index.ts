@@ -175,16 +175,16 @@ const electricOrigin = async (
 };
 
 const clickhouseContainer = async (
-  { network }: { network: StartedNetwork },
+  { network, task }: { network: StartedNetwork } & TaskContext,
   use: Use<StartedClickHouseContainer>
 ) => {
-  const { container } = await createClickHouseContainer(network);
+  const { container, metadata } = await withContainerSetup({
+    name: "clickhouseContainer",
+    task,
+    setup: createClickHouseContainer(network),
+  });
 
-  try {
-    await use(container);
-  } finally {
-    await container.stop();
-  }
+  await useContainer("clickhouseContainer", { container, task, use: () => use(container) });
 };
 
 const clickhouseClient = async (
