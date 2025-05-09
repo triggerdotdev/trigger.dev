@@ -41,6 +41,7 @@
     "msw": "^2.2.1",
     "openai": "^4.47.0",
     "pg": "^8.11.5",
+    "playwright": "^1.50.1",
     "puppeteer": "^23.4.0",
     "react": "19.0.0-rc.0",
     "react-email": "^3.0.1",
