@@ -10,6 +10,7 @@ import EventEmitter from "node:events";
 import pLimit from "p-limit";
 import { Counter, Gauge } from "prom-client";
 import type { MetricsRegister } from "~/metrics.server";
+import { Span, type Tracer, recordSpanError, trace } from "@internal/tracing";
 
 export type RunsReplicationServiceOptions = {
   clickhouse: ClickHouse;
@@ -27,6 +28,7 @@ export type RunsReplicationServiceOptions = {
   leaderLockExtendIntervalMs?: number;
   ackIntervalSeconds?: number;
   logger?: Logger;
+  tracer?: Tracer;
 };
 
 type TaskRunInsert = { _version: bigint; run: TaskRun; event: "insert" | "update" | "delete" };
@@ -54,12 +56,15 @@ export class RunsReplicationService {
   private _insertStrategy: "streaming" | "batching";
   private _isShuttingDown = false;
   private _isShutDownComplete = false;
+  private _tracer: Tracer;
+  private _currentSpan: Span | null = null;
 
   public readonly events: EventEmitter<RunsReplicationServiceEvents>;
 
   constructor(private readonly options: RunsReplicationServiceOptions) {
     this.logger = options.logger ?? new Logger("RunsReplicationService", "debug");
     this.events = new EventEmitter();
+    this._tracer = options.tracer ?? trace.getTracer("runs-replication-service");
 
     this._insertStrategy = options.insertStrategy ?? "streaming";
 
@@ -206,6 +211,13 @@ export class RunsReplicationService {
           xid: message.xid,
           events: [],
         };
+
+        this._currentSpan = this._tracer.startSpan("handle_transaction", {
+          attributes: {
+            "transaction.xid": message.xid,
+          },
+        });
+
         break;
       }
       case "insert": {
@@ -269,6 +281,8 @@ export class RunsReplicationService {
       // We need to immediately acknowledge the transaction
       // And then try and handle this transaction
       if (transaction.commitEndLsn) {
+        this._currentSpan?.setAttribute("transaction.shutdown", true);
+
         await this._replicationClient.acknowledge(transaction.commitEndLsn);
         alreadyAcknowledged = true;
       }
@@ -279,11 +293,22 @@ export class RunsReplicationService {
 
     this._lastReplicationLagMs = transaction.replicationLagMs;
 
+    this._currentSpan?.setAttribute("transaction.replication_lag_ms", transaction.replicationLagMs);
+    this._currentSpan?.setAttribute("transaction.xid", transaction.xid);
+
+    if (transaction.commitEndLsn) {
+      this._currentSpan?.setAttribute("transaction.commit_end_lsn", transaction.commitEndLsn);
+    }
+
+    this._currentSpan?.setAttribute("transaction.events", transaction.events.length);
+
     // If there are no events, do nothing
     if (transaction.events.length === 0) {
       if (transaction.commitEndLsn && !alreadyAcknowledged) {
         await this._replicationClient.acknowledge(transaction.commitEndLsn);
       }
+
+      this._currentSpan?.end();
 
       return;
     }
@@ -293,6 +318,8 @@ export class RunsReplicationService {
         transaction,
       });
 
+      this._currentSpan?.end();
+
       return;
     }
 
@@ -301,12 +328,19 @@ export class RunsReplicationService {
       alreadyAcknowledged,
     });
 
+    const lsnToUInt64Start = process.hrtime.bigint();
+
     // If there are events, we need to handle them
     const _version = lsnToUInt64(transaction.commitEndLsn);
 
+    this._currentSpan?.setAttribute(
+      "transaction.lsn_to_uint64_ms",
+      Number(process.hrtime.bigint() - lsnToUInt64Start) / 1_000_000
+    );
+
     this._transactionCounter?.inc();
 
-    if (this._insertStrategy === "streaming") {
+    if (this._insertStrategy === "batching") {
       this._concurrentFlushScheduler
         .addToBatch(
           transaction.events.map((event) => ({
@@ -336,12 +370,23 @@ export class RunsReplicationService {
         this.logger.error("Error flushing batch", {
           error: flushError,
         });
+
+        if (this._currentSpan) {
+          recordSpanError(this._currentSpan, flushError);
+        }
       }
     }
 
     if (!alreadyAcknowledged) {
+      const acknowledgeStart = process.hrtime.bigint();
       await this._replicationClient.acknowledge(transaction.commitEndLsn);
+      this._currentSpan?.setAttribute(
+        "transaction.acknowledge_ms",
+        Number(process.hrtime.bigint() - acknowledgeStart) / 1_000_000
+      );
     }
+
+    this._currentSpan?.end();
   }
 
   async #flushBatch(flushId: string, batch: Array<TaskRunInsert>) {

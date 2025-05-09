@@ -255,6 +255,9 @@ importers:
       '@internal/run-engine':
         specifier: workspace:*
         version: link:../../internal-packages/run-engine
+      '@internal/tracing':
+        specifier: workspace:*
+        version: link:../../internal-packages/tracing
       '@internal/zod-worker':
         specifier: workspace:*
         version: link:../../internal-packages/zod-worker

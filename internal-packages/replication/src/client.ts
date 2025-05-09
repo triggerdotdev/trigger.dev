@@ -7,6 +7,7 @@ import { createRedisClient } from "@internal/redis";
 import { Logger } from "@trigger.dev/core/logger";
 import { LogicalReplicationClientError } from "./errors.js";
 import { PgoutputMessage, PgoutputParser, getPgoutputStartReplicationSQL } from "./pgoutput.js";
+import { startSpan, trace, Tracer } from "@internal/tracing";
 
 export interface LogicalReplicationClientOptions {
   /**
@@ -70,6 +71,8 @@ export interface LogicalReplicationClientOptions {
    * The actions to publish to the publication.
    */
   publicationActions?: Array<"insert" | "update" | "delete" | "truncate">;
+
+  tracer?: Tracer;
 }
 
 export type LogicalReplicationClientEvents = {
@@ -101,6 +104,7 @@ export class LogicalReplicationClient {
   private lastAckTimestamp: number = 0;
   private ackIntervalTimer: NodeJS.Timeout | null = null;
   private _isStopped: boolean = false;
+  private _tracer: Tracer;
 
   public get lastLsn(): string {
     return this.lastAcknowledgedLsn ?? "0/00000000";
@@ -113,6 +117,7 @@ export class LogicalReplicationClient {
   constructor(options: LogicalReplicationClientOptions) {
     this.options = options;
     this.logger = options.logger ?? new Logger("LogicalReplicationClient", "info");
+    this._tracer = options.tracer ?? trace.getTracer("logical-replication-client");
 
     this.autoAcknowledge =
       typeof options.autoAcknowledge === "boolean" ? options.autoAcknowledge : true;
@@ -145,54 +150,62 @@ export class LogicalReplicationClient {
   }
 
   public async stop(): Promise<this> {
-    if (this._isStopped) return this;
-    this._isStopped = true;
-    // Clean up leader lock heartbeat
-    if (this.leaderLockHeartbeatTimer) {
-      clearInterval(this.leaderLockHeartbeatTimer);
-      this.leaderLockHeartbeatTimer = null;
-    }
-    // Clean up ack interval
-    if (this.ackIntervalTimer) {
-      clearInterval(this.ackIntervalTimer);
-      this.ackIntervalTimer = null;
-    }
-    // Release leader lock if held
-    await this.#releaseLeaderLock();
+    return await startSpan(this._tracer, "logical_replication_client.stop", async (span) => {
+      if (this._isStopped) return this;
 
-    this.connection?.removeAllListeners();
-    this.connection = null;
+      span.setAttribute("replication_client.name", this.options.name);
+      span.setAttribute("replication_client.table", this.options.table);
+      span.setAttribute("replication_client.slot_name", this.options.slotName);
+      span.setAttribute("replication_client.publication_name", this.options.publicationName);
 
-    if (this.client) {
-      this.client.removeAllListeners();
-
-      const [endError] = await tryCatch(this.client.end());
-
-      if (endError) {
-        this.logger.error("Failed to end client", {
-          name: this.options.name,
-          error: endError,
-        });
-      } else {
-        this.logger.info("Ended client", {
-          name: this.options.name,
-        });
+      this._isStopped = true;
+      // Clean up leader lock heartbeat
+      if (this.leaderLockHeartbeatTimer) {
+        clearInterval(this.leaderLockHeartbeatTimer);
+        this.leaderLockHeartbeatTimer = null;
       }
-      this.client = null;
-    }
+      // Clean up ack interval
+      if (this.ackIntervalTimer) {
+        clearInterval(this.ackIntervalTimer);
+        this.ackIntervalTimer = null;
+      }
+      // Release leader lock if held
+      await this.#releaseLeaderLock();
 
-    // clear any intervals
-    if (this.leaderLockHeartbeatTimer) {
-      clearInterval(this.leaderLockHeartbeatTimer);
-      this.leaderLockHeartbeatTimer = null;
-    }
+      this.connection?.removeAllListeners();
+      this.connection = null;
 
-    if (this.ackIntervalTimer) {
-      clearInterval(this.ackIntervalTimer);
-      this.ackIntervalTimer = null;
-    }
+      if (this.client) {
+        this.client.removeAllListeners();
 
-    return this;
+        const [endError] = await tryCatch(this.client.end());
+
+        if (endError) {
+          this.logger.error("Failed to end client", {
+            name: this.options.name,
+            error: endError,
+          });
+        } else {
+          this.logger.info("Ended client", {
+            name: this.options.name,
+          });
+        }
+        this.client = null;
+      }
+
+      // clear any intervals
+      if (this.leaderLockHeartbeatTimer) {
+        clearInterval(this.leaderLockHeartbeatTimer);
+        this.leaderLockHeartbeatTimer = null;
+      }
+
+      if (this.ackIntervalTimer) {
+        clearInterval(this.ackIntervalTimer);
+        this.ackIntervalTimer = null;
+      }
+
+      return this;
+    });
   }
 
   public async teardown(): Promise<boolean> {
@@ -523,34 +536,43 @@ export class LogicalReplicationClient {
   public async acknowledge(lsn: string): Promise<boolean> {
     if (this._isStopped) return false;
     if (!this.connection) return false;
-    // WAL LSN split
-    const slice = lsn.split("/");
-    let [upperWAL, lowerWAL]: [number, number] = [parseInt(slice[0], 16), parseInt(slice[1], 16)];
-    // Timestamp as microseconds since midnight 2000-01-01
-    const now = Date.now() - 946080000000;
-    const upperTimestamp = Math.floor(now / 4294967.296);
-    const lowerTimestamp = Math.floor(now - upperTimestamp * 4294967.296);
-    if (lowerWAL === 4294967295) {
-      upperWAL = upperWAL + 1;
-      lowerWAL = 0;
-    } else {
-      lowerWAL = lowerWAL + 1;
-    }
-    const response = Buffer.alloc(34);
-    response.fill(0x72); // 'r'
-    response.writeUInt32BE(upperWAL, 1);
-    response.writeUInt32BE(lowerWAL, 5);
-    response.writeUInt32BE(upperWAL, 9);
-    response.writeUInt32BE(lowerWAL, 13);
-    response.writeUInt32BE(upperWAL, 17);
-    response.writeUInt32BE(lowerWAL, 21);
-    response.writeUInt32BE(upperTimestamp, 25);
-    response.writeUInt32BE(lowerTimestamp, 29);
-    response.writeInt8(0, 33);
-    // @ts-ignore
-    this.connection.sendCopyFromChunk(response);
-    this.lastAckTimestamp = Date.now();
-    return true;
+
+    return await startSpan(this._tracer, "logical_replication_client.acknowledge", async (span) => {
+      span.setAttribute("replication_client.lsn", lsn);
+      span.setAttribute("replication_client.name", this.options.name);
+      span.setAttribute("replication_client.table", this.options.table);
+      span.setAttribute("replication_client.slot_name", this.options.slotName);
+      span.setAttribute("replication_client.publication_name", this.options.publicationName);
+
+      // WAL LSN split
+      const slice = lsn.split("/");
+      let [upperWAL, lowerWAL]: [number, number] = [parseInt(slice[0], 16), parseInt(slice[1], 16)];
+      // Timestamp as microseconds since midnight 2000-01-01
+      const now = Date.now() - 946080000000;
+      const upperTimestamp = Math.floor(now / 4294967.296);
+      const lowerTimestamp = Math.floor(now - upperTimestamp * 4294967.296);
+      if (lowerWAL === 4294967295) {
+        upperWAL = upperWAL + 1;
+        lowerWAL = 0;
+      } else {
+        lowerWAL = lowerWAL + 1;
+      }
+      const response = Buffer.alloc(34);
+      response.fill(0x72); // 'r'
+      response.writeUInt32BE(upperWAL, 1);
+      response.writeUInt32BE(lowerWAL, 5);
+      response.writeUInt32BE(upperWAL, 9);
+      response.writeUInt32BE(lowerWAL, 13);
+      response.writeUInt32BE(upperWAL, 17);
+      response.writeUInt32BE(lowerWAL, 21);
+      response.writeUInt32BE(upperTimestamp, 25);
+      response.writeUInt32BE(lowerTimestamp, 29);
+      response.writeInt8(0, 33);
+      // @ts-ignore
+      this.connection.sendCopyFromChunk(response);
+      this.lastAckTimestamp = Date.now();
+      return true;
+    });
   }
 
   async #acquireLeaderLock(): Promise<boolean> {
