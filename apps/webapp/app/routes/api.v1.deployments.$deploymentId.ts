@@ -61,7 +61,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
             id: task.friendlyId,
             slug: task.slug,
             filePath: task.filePath,
-            exportName: task.exportName,
+            exportName: task.exportName ?? "@deprecated",
           })),
         }
       : undefined,

@@ -3,7 +3,7 @@ import { DEFAULT_RUNTIME, ResolvedConfig } from "@trigger.dev/core/v3/build";
 import { BuildManifest, BuildTarget, TaskFile } from "@trigger.dev/core/v3/schemas";
 import * as esbuild from "esbuild";
 import { createHash } from "node:crypto";
-import { join, relative, resolve } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { createFile } from "../utilities/fileSystem.js";
 import { logger } from "../utilities/logger.js";
 import { resolveFileSources } from "../utilities/sourceFiles.js";
@@ -47,8 +47,18 @@ export type BundleResult = {
   runControllerEntryPoint: string | undefined;
   indexWorkerEntryPoint: string | undefined;
   indexControllerEntryPoint: string | undefined;
+  initEntryPoint: string | undefined;
   stop: (() => Promise<void>) | undefined;
 };
+
+export class BundleError extends Error {
+  constructor(
+    message: string,
+    public readonly issues?: esbuild.Message[]
+  ) {
+    super(message);
+  }
+}
 
 export async function bundleWorker(options: BundleOptions): Promise<BundleResult> {
   const { resolvedConfig } = options;
@@ -128,7 +138,7 @@ export async function bundleWorker(options: BundleOptions): Promise<BundleResult
     await currentContext.watch();
     result = await initialBuildResultPromise;
     if (result.errors.length > 0) {
-      throw new Error("Failed to build");
+      throw new BundleError("Failed to build", result.errors);
     }
 
     stop = async function () {
@@ -203,6 +213,7 @@ async function createBuildOptions(
     logLevel: "silent",
     logOverride: {
       "empty-glob": "silent",
+      "package.json": "silent",
     },
   };
 }
@@ -229,10 +240,28 @@ export async function getBundleResultFromBuild(
   let runControllerEntryPoint: string | undefined;
   let indexWorkerEntryPoint: string | undefined;
   let indexControllerEntryPoint: string | undefined;
+  let initEntryPoint: string | undefined;
 
   const configEntryPoint = resolvedConfig.configFile
     ? relative(resolvedConfig.workingDir, resolvedConfig.configFile)
     : "trigger.config.ts";
+
+  // Check if the entry point is an init.ts file at the root of a trigger directory
+  function isInitEntryPoint(entryPoint: string): boolean {
+    const initFileNames = ["init.ts", "init.mts", "init.cts", "init.js", "init.mjs", "init.cjs"];
+
+    // Check if it's directly in one of the trigger directories
+    return resolvedConfig.dirs.some((dir) => {
+      const normalizedDir = resolve(dir);
+      const normalizedEntryDir = resolve(dirname(entryPoint));
+
+      if (normalizedDir !== normalizedEntryDir) {
+        return false;
+      }
+
+      return initFileNames.includes(basename(entryPoint));
+    });
+  }
 
   for (const [outputPath, outputMeta] of Object.entries(result.metafile.outputs)) {
     if (outputPath.endsWith(".mjs")) {
@@ -254,6 +283,8 @@ export async function getBundleResultFromBuild(
         indexControllerEntryPoint = $outputPath;
       } else if (isIndexWorkerForTarget(outputMeta.entryPoint, target)) {
         indexWorkerEntryPoint = $outputPath;
+      } else if (isInitEntryPoint(outputMeta.entryPoint)) {
+        initEntryPoint = $outputPath;
       } else {
         if (
           !outputMeta.entryPoint.startsWith("..") &&
@@ -280,6 +311,7 @@ export async function getBundleResultFromBuild(
     runControllerEntryPoint,
     indexWorkerEntryPoint,
     indexControllerEntryPoint,
+    initEntryPoint,
     contentHash: hasher.digest("hex"),
   };
 }
@@ -357,6 +389,7 @@ export async function createBuildManifestFromBundle({
     runControllerEntryPoint: bundle.runControllerEntryPoint ?? getRunControllerForTarget(target),
     runWorkerEntryPoint: bundle.runWorkerEntryPoint ?? getRunWorkerForTarget(target),
     loaderEntryPoint: bundle.loaderEntryPoint,
+    initEntryPoint: bundle.initEntryPoint,
     configPath: bundle.configPath,
     customConditions: resolvedConfig.build.conditions ?? [],
     deploy: {

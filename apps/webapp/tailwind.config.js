@@ -61,10 +61,12 @@ const charcoal = {
   300: "#B5B8C0",
   400: "#878C99",
   500: "#5F6570",
+  550: "#4D525B",
   600: "#3B3E45",
   650: "#2C3034",
   700: "#272A2E",
   750: "#212327",
+  775: "#1C1E21",
   800: "#1A1B1F",
   850: "#15171A",
   900: "#121317",
@@ -148,7 +150,23 @@ const warning = colors.amber[500];
 const error = colors.rose[600];
 const devEnv = colors.pink[500];
 const stagingEnv = colors.amber[400];
+const previewEnv = colors.amber[400];
 const prodEnv = mint[500];
+
+/** Icon colors */
+const tasks = colors.blue[500];
+const runs = colors.indigo[500];
+const batches = colors.pink[500];
+const schedules = colors.yellow[500];
+const queues = colors.purple[500];
+const deployments = colors.green[500];
+const tests = colors.lime[500];
+const apiKeys = colors.amber[500];
+const environmentVariables = colors.pink[500];
+const alerts = colors.red[500];
+const projectSettings = colors.blue[500];
+const orgSettings = colors.blue[500];
+const docs = colors.blue[500];
 
 /** Other variables */
 const radius = "0.5rem";
@@ -210,6 +228,20 @@ module.exports = {
         dev: devEnv,
         staging: stagingEnv,
         prod: prodEnv,
+        preview: previewEnv,
+        tasks,
+        runs,
+        batches,
+        schedules,
+        queues,
+        deployments,
+        tests,
+        apiKeys,
+        environmentVariables,
+        alerts,
+        projectSettings,
+        orgSettings,
+        docs,
       },
       focusStyles: {
         outline: "1px solid",

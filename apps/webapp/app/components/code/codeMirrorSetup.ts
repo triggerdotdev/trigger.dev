@@ -1,8 +1,7 @@
 import { closeBrackets } from "@codemirror/autocomplete";
 import { indentWithTab } from "@codemirror/commands";
-import { jsonParseLinter } from "@codemirror/lang-json";
 import { bracketMatching } from "@codemirror/language";
-import { lintGutter, lintKeymap, linter } from "@codemirror/lint";
+import { lintKeymap } from "@codemirror/lint";
 import { highlightSelectionMatches } from "@codemirror/search";
 import { Prec, type Extension } from "@codemirror/state";
 import {
@@ -21,8 +20,6 @@ export function getEditorSetup(showLineNumbers = true, showHighlights = true): A
     dropCursor(),
     bracketMatching(),
     closeBrackets(),
-    lintGutter(),
-    linter(jsonParseLinter()),
     Prec.highest(
       keymap.of([
         {

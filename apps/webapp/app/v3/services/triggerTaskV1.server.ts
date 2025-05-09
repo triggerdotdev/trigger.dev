@@ -1,7 +1,6 @@
 import {
   IOPacket,
   packetRequiresOffloading,
-  QueueOptions,
   SemanticInternalAttributes,
   taskRunErrorToString,
   taskRunErrorEnhancer,
@@ -11,7 +10,7 @@ import {
   parseNaturalLanguageDuration,
   sanitizeQueueName,
   stringifyDuration,
-} from "@trigger.dev/core/v3/apps";
+} from "@trigger.dev/core/v3/isomorphic";
 import { Prisma } from "@trigger.dev/database";
 import { env } from "~/env.server";
 import { createTag, MAX_TAGS_PER_RUN } from "~/models/taskRunTag.server";
@@ -43,6 +42,13 @@ import {
 } from "./triggerTask.server";
 import { getTaskEventStore } from "../taskEventStore.server";
 import { enqueueRun } from "./enqueueRun.server";
+import { z } from "zod";
+
+// This is here for backwords compatibility for v3 users
+const QueueOptions = z.object({
+  name: z.string(),
+  concurrencyLimit: z.number().int().optional(),
+});
 
 /** @deprecated Use TriggerTaskService in `triggerTask.server.ts` instead. */
 export class TriggerTaskServiceV1 extends BaseService {

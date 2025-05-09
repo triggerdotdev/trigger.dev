@@ -5,6 +5,7 @@ import { calculateNextRetryDelay } from "../utils/retries.js";
 import { ApiConnectionError, ApiError, ApiSchemaValidationError } from "./errors.js";
 
 import { Attributes, context, propagation, Span } from "@opentelemetry/api";
+import { suppressTracing } from "@opentelemetry/core";
 import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
 import type { TriggerTracer } from "../tracer.js";
 import { accessoryAttributes } from "../utils/styleAttributes.js";
@@ -26,14 +27,14 @@ export const defaultRetryOptions = {
   randomize: false,
 } satisfies RetryOptions;
 
-export type ZodFetchOptions<T = unknown> = {
+export type ZodFetchOptions<TData = any> = {
   retry?: RetryOptions;
   tracer?: TriggerTracer;
   name?: string;
   attributes?: Attributes;
   icon?: string;
-  onResponseBody?: (body: T, span: Span) => void;
-  prepareData?: (data: T) => Promise<T> | T;
+  onResponseBody?: (body: TData, span: Span) => void;
+  prepareData?: (data: TData, response: Response) => Promise<TData> | TData;
 };
 
 export type AnyZodFetchOptions = ZodFetchOptions<any>;
@@ -143,7 +144,14 @@ export function zodfetchOffsetLimitPage<TItemSchema extends z.ZodTypeAny>(
 
   const fetchResult = _doZodFetch(offsetLimitPageSchema, $url.href, requestInit, options);
 
-  return new OffsetLimitPagePromise(fetchResult, schema, url, params, requestInit, options);
+  return new OffsetLimitPagePromise(
+    fetchResult as Promise<ZodFetchResult<OffsetLimitPageResponse<z.output<TItemSchema>>>>,
+    schema,
+    url,
+    params,
+    requestInit,
+    options
+  );
 }
 
 type ZodFetchResult<T> = {
@@ -187,7 +195,7 @@ async function _doZodFetch<TResponseBodySchema extends z.ZodTypeAny>(
   schema: TResponseBodySchema,
   url: string,
   requestInit?: PromiseOrValue<RequestInit>,
-  options?: ZodFetchOptions
+  options?: ZodFetchOptions<z.output<TResponseBodySchema>>
 ): Promise<ZodFetchResult<z.output<TResponseBodySchema>>> {
   let $requestInit = await requestInit;
 
@@ -201,7 +209,7 @@ async function _doZodFetch<TResponseBodySchema extends z.ZodTypeAny>(
     }
 
     if (options?.prepareData) {
-      result.data = await options.prepareData(result.data);
+      result.data = await options.prepareData(result.data, result.response);
     }
 
     return result;
@@ -216,7 +224,9 @@ async function _doZodFetchWithRetries<TResponseBodySchema extends z.ZodTypeAny>(
   attempt = 1
 ): Promise<ZodFetchResult<z.output<TResponseBodySchema>>> {
   try {
-    const response = await fetch(url, requestInitWithCache(requestInit));
+    const response = await context.with(suppressTracing(context.active()), () =>
+      fetch(url, requestInitWithCache(requestInit))
+    );
 
     const responseHeaders = createResponseHeaders(response.headers);
 
@@ -691,4 +701,53 @@ export function zodfetchSSE<TMessageCatalog extends ZodFetchSSEMessageCatalogSch
   options: ZodFetchSSEOptions<TMessageCatalog>
 ): ZodFetchSSEResult<TMessageCatalog> {
   return new ZodFetchSSEResult(options);
+}
+
+export type ApiResult<TSuccessResult> =
+  | { success: true; data: TSuccessResult }
+  | {
+      success: false;
+      error: string;
+    };
+
+export async function wrapZodFetch<T extends z.ZodTypeAny>(
+  schema: T,
+  url: string,
+  requestInit?: RequestInit,
+  options?: ZodFetchOptions<z.output<T>>
+): Promise<ApiResult<z.infer<T>>> {
+  try {
+    const response = await zodfetch(schema, url, requestInit, {
+      retry: {
+        minTimeoutInMs: 500,
+        maxTimeoutInMs: 5000,
+        maxAttempts: 5,
+        factor: 2,
+        randomize: false,
+      },
+      ...options,
+    });
+
+    return {
+      success: true,
+      data: response,
+    };
+  } catch (error) {
+    if (error instanceof ApiError) {
+      return {
+        success: false,
+        error: error.message,
+      };
+    } else if (error instanceof Error) {
+      return {
+        success: false,
+        error: error.message,
+      };
+    } else {
+      return {
+        success: false,
+        error: String(error),
+      };
+    }
+  }
 }

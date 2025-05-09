@@ -612,7 +612,10 @@ export class SharedQueueConsumer {
         ? await getWorkerDeploymentFromWorkerTask(existingTaskRun.lockedById)
         : existingTaskRun.lockedToVersionId
         ? await getWorkerDeploymentFromWorker(existingTaskRun.lockedToVersionId)
-        : await findCurrentWorkerDeployment(existingTaskRun.runtimeEnvironmentId);
+        : await findCurrentWorkerDeployment({
+            environmentId: existingTaskRun.runtimeEnvironmentId,
+            type: "V1",
+          });
     });
 
     const worker = deployment?.worker;
@@ -1688,7 +1691,7 @@ class SharedQueueTasks {
       task: {
         id: backgroundWorkerTask.slug,
         filePath: backgroundWorkerTask.filePath,
-        exportName: backgroundWorkerTask.exportName,
+        exportName: backgroundWorkerTask.exportName ?? backgroundWorkerTask.slug,
       },
       attempt: {
         id: attempt.friendlyId,

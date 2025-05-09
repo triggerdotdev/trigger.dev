@@ -1,8 +1,8 @@
 import type { z } from "zod";
 import { Paragraph } from "./Paragraph";
-import { NamedIcon } from "./NamedIcon";
 import { motion } from "framer-motion";
 import { cn } from "~/utils/cn";
+import { ErrorIcon } from "~/assets/icons/ErrorIcon";
 
 export function FormError({
   children,
@@ -22,7 +22,7 @@ export function FormError({
           transition={{ duration: 0.3 }}
           className={cn("flex items-start gap-0.5", className)}
         >
-          <NamedIcon name="error" className="h-4 w-4 shrink-0 justify-start" />
+          <ErrorIcon className="h-4 w-4 shrink-0 justify-start text-rose-500" />
           <Paragraph id={id} variant="extra-small" className="text-rose-500">
             {children}
           </Paragraph>

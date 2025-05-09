@@ -1,4 +1,4 @@
-import { SpanKind, SpanStatusCode } from "@opentelemetry/api";
+import { SpanKind } from "@opentelemetry/api";
 import { SerializableJson } from "@trigger.dev/core";
 import {
   accessoryAttributes,
@@ -8,45 +8,60 @@ import {
   convertToolParametersToSchema,
   createErrorTaskError,
   defaultRetryOptions,
+  flattenIdempotencyKey,
+  getEnvVar,
   getSchemaParseFn,
   InitOutput,
+  lifecycleHooks,
   makeIdempotencyKey,
   parsePacket,
   Queue,
   QueueOptions,
+  resourceCatalog,
   runtime,
   SemanticInternalAttributes,
   stringifyIO,
   SubtaskUnwrapError,
-  taskCatalog,
   taskContext,
+  TaskFromIdentifier,
   TaskRunContext,
   TaskRunExecutionResult,
   TaskRunPromise,
-  TaskFromIdentifier,
-  flattenIdempotencyKey,
-  getEnvVar,
 } from "@trigger.dev/core/v3";
 import { PollOptions, runs } from "./runs.js";
 import { tracer } from "./tracer.js";
 
 import type {
+  AnyOnCatchErrorHookFunction,
+  AnyOnCleanupHookFunction,
+  AnyOnCompleteHookFunction,
+  AnyOnFailureHookFunction,
+  AnyOnInitHookFunction,
+  AnyOnMiddlewareHookFunction,
+  AnyOnResumeHookFunction,
+  AnyOnStartHookFunction,
+  AnyOnSuccessHookFunction,
+  AnyOnWaitHookFunction,
+  AnyOnCancelHookFunction,
   AnyRunHandle,
   AnyRunTypes,
   AnyTask,
+  AnyTaskRunResult,
   BatchByIdAndWaitItem,
-  BatchByTaskAndWaitItem,
   BatchByIdItem,
+  BatchByIdResult,
+  BatchByTaskAndWaitItem,
   BatchByTaskItem,
   BatchByTaskResult,
-  BatchByIdResult,
   BatchItem,
   BatchResult,
   BatchRunHandle,
   BatchRunHandleFromTypes,
   BatchTasksRunHandleFromTypes,
   BatchTriggerAndWaitItem,
+  BatchTriggerAndWaitOptions,
   BatchTriggerOptions,
+  BatchTriggerTaskV2RequestBody,
   InferRunTypes,
   inferSchemaIn,
   inferToolParameters,
@@ -74,9 +89,6 @@ import type {
   TriggerAndWaitOptions,
   TriggerApiRequestOptions,
   TriggerOptions,
-  AnyTaskRunResult,
-  BatchTriggerAndWaitOptions,
-  BatchTriggerTaskV2RequestBody,
 } from "@trigger.dev/core/v3";
 
 export type {
@@ -93,6 +105,7 @@ export type {
   SerializableJson,
   Task,
   TaskBatchOutputHandle,
+  TaskFromIdentifier,
   TaskIdentifier,
   TaskOptions,
   TaskOutput,
@@ -100,14 +113,18 @@ export type {
   TaskPayload,
   TaskRunResult,
   TriggerOptions,
-  TaskFromIdentifier,
 };
 
 export { SubtaskUnwrapError, TaskRunPromise };
 
 export type Context = TaskRunContext;
 
-export function queue(options: { name: string } & QueueOptions): Queue {
+export function queue(options: QueueOptions): Queue {
+  resourceCatalog.registerQueueMetadata(options);
+
+  // @ts-expect-error
+  options[Symbol.for("trigger.dev/queue")] = true;
+
   return options;
 }
 
@@ -119,60 +136,41 @@ export function createTask<
 >(
   params: TaskOptions<TIdentifier, TInput, TOutput, TInitOutput>
 ): Task<TIdentifier, TInput, TOutput> {
-  const customQueue = params.queue
-    ? queue({
-        name: params.queue?.name ?? `task/${params.id}`,
-        ...params.queue,
-      })
-    : undefined;
-
   const task: Task<TIdentifier, TInput, TOutput> = {
     id: params.id,
     description: params.description,
     trigger: async (payload, options) => {
-      const taskMetadata = taskCatalog.getTaskManifest(params.id);
-
       return await trigger_internal<RunTypes<TIdentifier, TInput, TOutput>>(
-        taskMetadata && taskMetadata.exportName
-          ? `${taskMetadata.exportName}.trigger()`
-          : `trigger()`,
+        "trigger()",
         params.id,
         payload,
         undefined,
         {
-          queue: customQueue,
+          queue: params.queue?.name,
           ...options,
         }
       );
     },
     batchTrigger: async (items, options) => {
-      const taskMetadata = taskCatalog.getTaskManifest(params.id);
-
       return await batchTrigger_internal<RunTypes<TIdentifier, TInput, TOutput>>(
-        taskMetadata && taskMetadata.exportName
-          ? `${taskMetadata.exportName}.batchTrigger()`
-          : `batchTrigger()`,
+        "batchTrigger()",
         params.id,
         items,
         options,
         undefined,
         undefined,
-        customQueue
+        params.queue?.name
       );
     },
     triggerAndWait: (payload, options) => {
-      const taskMetadata = taskCatalog.getTaskManifest(params.id);
-
       return new TaskRunPromise<TIdentifier, TOutput>((resolve, reject) => {
         triggerAndWait_internal<TIdentifier, TInput, TOutput>(
-          taskMetadata && taskMetadata.exportName
-            ? `${taskMetadata.exportName}.triggerAndWait()`
-            : `triggerAndWait()`,
+          "triggerAndWait()",
           params.id,
           payload,
           undefined,
           {
-            queue: customQueue,
+            queue: params.queue?.name,
             ...options,
           }
         )
@@ -185,23 +183,21 @@ export function createTask<
       }, params.id);
     },
     batchTriggerAndWait: async (items, options) => {
-      const taskMetadata = taskCatalog.getTaskManifest(params.id);
-
       return await batchTriggerAndWait_internal<TIdentifier, TInput, TOutput>(
-        taskMetadata && taskMetadata.exportName
-          ? `${taskMetadata.exportName}.batchTriggerAndWait()`
-          : `batchTriggerAndWait()`,
+        "batchTriggerAndWait()",
         params.id,
         items,
         undefined,
         options,
         undefined,
-        customQueue
+        params.queue?.name
       );
     },
   };
 
-  taskCatalog.registerTaskMetadata({
+  registerTaskLifecycleHooks(params.id, params);
+
+  resourceCatalog.registerTaskMetadata({
     id: params.id,
     description: params.description,
     queue: params.queue,
@@ -210,15 +206,18 @@ export function createTask<
     maxDuration: params.maxDuration,
     fns: {
       run: params.run,
-      init: params.init,
-      cleanup: params.cleanup,
-      middleware: params.middleware,
-      handleError: params.handleError,
-      onSuccess: params.onSuccess,
-      onFailure: params.onFailure,
-      onStart: params.onStart,
     },
   });
+
+  const queue = params.queue;
+
+  if (queue && typeof queue.name === "string") {
+    resourceCatalog.registerQueueMetadata({
+      name: queue.name,
+      concurrencyLimit: queue.concurrencyLimit,
+      releaseConcurrencyOnWaitpoint: queue.releaseConcurrencyOnWaitpoint,
+    });
+  }
 
   // @ts-expect-error
   task[Symbol.for("trigger.dev/task")] = true;
@@ -226,6 +225,9 @@ export function createTask<
   return task;
 }
 
+/**
+ * @deprecated use ai.tool() instead
+ */
 export function createToolTask<
   TIdentifier extends string,
   TParameters extends ToolTaskParameters,
@@ -259,13 +261,6 @@ export function createSchemaTask<
 >(
   params: TaskWithSchemaOptions<TIdentifier, TSchema, TOutput, TInitOutput>
 ): TaskWithSchema<TIdentifier, TSchema, TOutput> {
-  const customQueue = params.queue
-    ? queue({
-        name: params.queue?.name ?? `task/${params.id}`,
-        ...params.queue,
-      })
-    : undefined;
-
   const parsePayload = params.schema
     ? getSchemaParseFn<inferSchemaIn<TSchema>>(params.schema)
     : undefined;
@@ -275,50 +270,38 @@ export function createSchemaTask<
     description: params.description,
     schema: params.schema,
     trigger: async (payload, options, requestOptions) => {
-      const taskMetadata = taskCatalog.getTaskManifest(params.id);
-
       return await trigger_internal<RunTypes<TIdentifier, inferSchemaIn<TSchema>, TOutput>>(
-        taskMetadata && taskMetadata.exportName
-          ? `${taskMetadata.exportName}.trigger()`
-          : `trigger()`,
+        "trigger()",
         params.id,
         payload,
         parsePayload,
         {
-          queue: customQueue,
+          queue: params.queue?.name,
           ...options,
         },
         requestOptions
       );
     },
     batchTrigger: async (items, options, requestOptions) => {
-      const taskMetadata = taskCatalog.getTaskManifest(params.id);
-
       return await batchTrigger_internal<RunTypes<TIdentifier, inferSchemaIn<TSchema>, TOutput>>(
-        taskMetadata && taskMetadata.exportName
-          ? `${taskMetadata.exportName}.batchTrigger()`
-          : `batchTrigger()`,
+        "batchTrigger()",
         params.id,
         items,
         options,
         parsePayload,
         requestOptions,
-        customQueue
+        params.queue?.name
       );
     },
     triggerAndWait: (payload, options) => {
-      const taskMetadata = taskCatalog.getTaskManifest(params.id);
-
       return new TaskRunPromise<TIdentifier, TOutput>((resolve, reject) => {
         triggerAndWait_internal<TIdentifier, inferSchemaIn<TSchema>, TOutput>(
-          taskMetadata && taskMetadata.exportName
-            ? `${taskMetadata.exportName}.triggerAndWait()`
-            : `triggerAndWait()`,
+          "triggerAndWait()",
           params.id,
           payload,
           parsePayload,
           {
-            queue: customQueue,
+            queue: params.queue?.name,
             ...options,
           }
         )
@@ -331,23 +314,21 @@ export function createSchemaTask<
       }, params.id);
     },
     batchTriggerAndWait: async (items, options) => {
-      const taskMetadata = taskCatalog.getTaskManifest(params.id);
-
       return await batchTriggerAndWait_internal<TIdentifier, inferSchemaIn<TSchema>, TOutput>(
-        taskMetadata && taskMetadata.exportName
-          ? `${taskMetadata.exportName}.batchTriggerAndWait()`
-          : `batchTriggerAndWait()`,
+        "batchTriggerAndWait()",
         params.id,
         items,
         parsePayload,
         options,
         undefined,
-        customQueue
+        params.queue?.name
       );
     },
   };
 
-  taskCatalog.registerTaskMetadata({
+  registerTaskLifecycleHooks(params.id, params);
+
+  resourceCatalog.registerTaskMetadata({
     id: params.id,
     description: params.description,
     queue: params.queue,
@@ -356,16 +337,19 @@ export function createSchemaTask<
     maxDuration: params.maxDuration,
     fns: {
       run: params.run,
-      init: params.init,
-      cleanup: params.cleanup,
-      middleware: params.middleware,
-      handleError: params.handleError,
-      onSuccess: params.onSuccess,
-      onFailure: params.onFailure,
-      onStart: params.onStart,
       parsePayload,
     },
   });
+
+  const queue = params.queue;
+
+  if (queue && typeof queue.name === "string") {
+    resourceCatalog.registerQueueMetadata({
+      name: queue.name,
+      concurrencyLimit: queue.concurrencyLimit,
+      releaseConcurrencyOnWaitpoint: queue.releaseConcurrencyOnWaitpoint,
+    });
+  }
 
   // @ts-expect-error
   task[Symbol.for("trigger.dev/task")] = true;
@@ -590,7 +574,7 @@ export async function batchTriggerById<TTask extends AnyTask>(
     {
       items: await Promise.all(
         items.map(async (item, index) => {
-          const taskMetadata = taskCatalog.getTask(item.id);
+          const taskMetadata = resourceCatalog.getTask(item.id);
 
           const parsedPayload = taskMetadata?.fns.parsePayload
             ? await taskMetadata?.fns.parsePayload(item.payload)
@@ -606,7 +590,7 @@ export async function batchTriggerById<TTask extends AnyTask>(
             task: item.id,
             payload: payloadPacket.data,
             options: {
-              queue: item.options?.queue,
+              queue: item.options?.queue ? { name: item.options.queue } : undefined,
               concurrencyKey: item.options?.concurrencyKey,
               test: taskContext.ctx?.run.isTest,
               payloadType: payloadPacket.dataType,
@@ -757,7 +741,7 @@ export async function batchTriggerByIdAndWait<TTask extends AnyTask>(
         {
           items: await Promise.all(
             items.map(async (item, index) => {
-              const taskMetadata = taskCatalog.getTask(item.id);
+              const taskMetadata = resourceCatalog.getTask(item.id);
 
               const parsedPayload = taskMetadata?.fns.parsePayload
                 ? await taskMetadata?.fns.parsePayload(item.payload)
@@ -774,7 +758,7 @@ export async function batchTriggerByIdAndWait<TTask extends AnyTask>(
                 payload: payloadPacket.data,
                 options: {
                   lockToVersion: taskContext.worker?.version,
-                  queue: item.options?.queue,
+                  queue: item.options?.queue ? { name: item.options.queue } : undefined,
                   concurrencyKey: item.options?.concurrencyKey,
                   test: taskContext.ctx?.run.isTest,
                   payloadType: payloadPacket.dataType,
@@ -918,7 +902,7 @@ export async function batchTriggerTasks<TTasks extends readonly AnyTask[]>(
     {
       items: await Promise.all(
         items.map(async (item, index) => {
-          const taskMetadata = taskCatalog.getTask(item.task.id);
+          const taskMetadata = resourceCatalog.getTask(item.task.id);
 
           const parsedPayload = taskMetadata?.fns.parsePayload
             ? await taskMetadata?.fns.parsePayload(item.payload)
@@ -934,7 +918,7 @@ export async function batchTriggerTasks<TTasks extends readonly AnyTask[]>(
             task: item.task.id,
             payload: payloadPacket.data,
             options: {
-              queue: item.options?.queue,
+              queue: item.options?.queue ? { name: item.options.queue } : undefined,
               concurrencyKey: item.options?.concurrencyKey,
               test: taskContext.ctx?.run.isTest,
               payloadType: payloadPacket.dataType,
@@ -1087,7 +1071,7 @@ export async function batchTriggerAndWaitTasks<TTasks extends readonly AnyTask[]
         {
           items: await Promise.all(
             items.map(async (item, index) => {
-              const taskMetadata = taskCatalog.getTask(item.task.id);
+              const taskMetadata = resourceCatalog.getTask(item.task.id);
 
               const parsedPayload = taskMetadata?.fns.parsePayload
                 ? await taskMetadata?.fns.parsePayload(item.payload)
@@ -1104,7 +1088,7 @@ export async function batchTriggerAndWaitTasks<TTasks extends readonly AnyTask[]
                 payload: payloadPacket.data,
                 options: {
                   lockToVersion: taskContext.worker?.version,
-                  queue: item.options?.queue,
+                  queue: item.options?.queue ? { name: item.options.queue } : undefined,
                   concurrencyKey: item.options?.concurrencyKey,
                   test: taskContext.ctx?.run.isTest,
                   payloadType: payloadPacket.dataType,
@@ -1177,7 +1161,7 @@ async function trigger_internal<TRunTypes extends AnyRunTypes>(
     {
       payload: payloadPacket.data,
       options: {
-        queue: options?.queue,
+        queue: options?.queue ? { name: options.queue } : undefined,
         concurrencyKey: options?.concurrencyKey,
         test: taskContext.ctx?.run.isTest,
         payloadType: payloadPacket.dataType,
@@ -1223,7 +1207,7 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
   options?: BatchTriggerOptions,
   parsePayload?: SchemaParseFn<TRunTypes["payload"]>,
   requestOptions?: TriggerApiRequestOptions,
-  queue?: QueueOptions
+  queue?: string
 ): Promise<BatchRunHandleFromTypes<TRunTypes>> {
   const apiClient = apiClientManager.clientOrThrow();
 
@@ -1245,7 +1229,11 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
             task: taskIdentifier,
             payload: payloadPacket.data,
             options: {
-              queue: item.options?.queue ?? queue,
+              queue: item.options?.queue
+                ? { name: item.options.queue }
+                : queue
+                ? { name: queue }
+                : undefined,
               concurrencyKey: item.options?.concurrencyKey,
               test: taskContext.ctx?.run.isTest,
               payloadType: payloadPacket.dataType,
@@ -1329,7 +1317,7 @@ async function triggerAndWait_internal<TIdentifier extends string, TPayload, TOu
           options: {
             dependentAttempt: ctx.attempt.id,
             lockToVersion: taskContext.worker?.version, // Lock to current version because we're waiting for it to finish
-            queue: options?.queue,
+            queue: options?.queue ? { name: options.queue } : undefined,
             concurrencyKey: options?.concurrencyKey,
             test: taskContext.ctx?.run.isTest,
             payloadType: payloadPacket.dataType,
@@ -1345,6 +1333,7 @@ async function triggerAndWait_internal<TIdentifier extends string, TPayload, TOu
             idempotencyKeyTTL: options?.idempotencyKeyTTL,
             machine: options?.machine,
             priority: options?.priority,
+            releaseConcurrency: options?.releaseConcurrency,
           },
         },
         {},
@@ -1385,7 +1374,7 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
   parsePayload?: SchemaParseFn<TPayload>,
   options?: BatchTriggerAndWaitOptions,
   requestOptions?: ApiRequestOptions,
-  queue?: QueueOptions
+  queue?: string
 ): Promise<BatchResult<TIdentifier, TOutput>> {
   const ctx = taskContext.ctx;
 
@@ -1415,7 +1404,11 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
                 payload: payloadPacket.data,
                 options: {
                   lockToVersion: taskContext.worker?.version,
-                  queue: item.options?.queue ?? queue,
+                  queue: item.options?.queue
+                    ? { name: item.options.queue }
+                    : queue
+                    ? { name: queue }
+                    : undefined,
                   concurrencyKey: item.options?.concurrencyKey,
                   test: taskContext.ctx?.run.isTest,
                   payloadType: payloadPacket.dataType,
@@ -1570,5 +1563,85 @@ async function handleTaskRunExecutionResult<TIdentifier extends string = string,
       taskIdentifier: (execution.taskIdentifier ?? taskIdentifier) as TIdentifier,
       error: createErrorTaskError(execution.error),
     };
+  }
+}
+
+function registerTaskLifecycleHooks<
+  TIdentifier extends string,
+  TInput = void,
+  TOutput = unknown,
+  TInitOutput extends InitOutput = any,
+>(taskId: TIdentifier, params: TaskOptions<TIdentifier, TInput, TOutput, TInitOutput>) {
+  if (params.init) {
+    lifecycleHooks.registerTaskInitHook(taskId, {
+      fn: params.init as AnyOnInitHookFunction,
+    });
+  }
+
+  if (params.onStart) {
+    lifecycleHooks.registerTaskStartHook(taskId, {
+      fn: params.onStart as AnyOnStartHookFunction,
+    });
+  }
+
+  if (params.onFailure) {
+    lifecycleHooks.registerTaskFailureHook(taskId, {
+      fn: params.onFailure as AnyOnFailureHookFunction,
+    });
+  }
+
+  if (params.onSuccess) {
+    lifecycleHooks.registerTaskSuccessHook(taskId, {
+      fn: params.onSuccess as AnyOnSuccessHookFunction,
+    });
+  }
+
+  if (params.onComplete) {
+    lifecycleHooks.registerTaskCompleteHook(taskId, {
+      fn: params.onComplete as AnyOnCompleteHookFunction,
+    });
+  }
+
+  if (params.onWait) {
+    lifecycleHooks.registerTaskWaitHook(taskId, {
+      fn: params.onWait as AnyOnWaitHookFunction,
+    });
+  }
+
+  if (params.onResume) {
+    lifecycleHooks.registerTaskResumeHook(taskId, {
+      fn: params.onResume as AnyOnResumeHookFunction,
+    });
+  }
+
+  if (params.catchError) {
+    // We don't need to use an adapter here because catchError is the new version of handleError
+    lifecycleHooks.registerTaskCatchErrorHook(taskId, {
+      fn: params.catchError as AnyOnCatchErrorHookFunction,
+    });
+  }
+
+  if (params.handleError) {
+    lifecycleHooks.registerTaskCatchErrorHook(taskId, {
+      fn: params.handleError as AnyOnCatchErrorHookFunction,
+    });
+  }
+
+  if (params.middleware) {
+    lifecycleHooks.registerTaskMiddlewareHook(taskId, {
+      fn: params.middleware as AnyOnMiddlewareHookFunction,
+    });
+  }
+
+  if (params.cleanup) {
+    lifecycleHooks.registerTaskCleanupHook(taskId, {
+      fn: params.cleanup as AnyOnCleanupHookFunction,
+    });
+  }
+
+  if (params.onCancel) {
+    lifecycleHooks.registerTaskCancelHook(taskId, {
+      fn: params.onCancel as AnyOnCancelHookFunction,
+    });
   }
 }

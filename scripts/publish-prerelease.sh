@@ -35,6 +35,17 @@ else
     echo "Git status is clean. Proceeding with the script.";
 fi
 
+# From here on, if the user aborts the script, we will clean up the git stage
+git_reset() {
+    git reset --hard HEAD
+}
+abort() {
+    echo "Aborted. Cleaning up..."
+    git_reset
+    exit 1
+}
+trap abort INT
+
 # Run your commands
 # Run changeset version command and capture its output
 echo "Running: pnpm exec changeset version --snapshot $version"
@@ -44,9 +55,15 @@ if output=$(pnpm exec changeset version --snapshot $version 2>&1); then
         exit 0
     fi
 else
-    echo "Error running changeset version command"
+    echo "$output"
+    echo "Error running changeset version command, detailed output above"
     exit 1
 fi
+
+read -e -p "Pausing for manual changes, press Enter when ready to continue..."
+
+echo "Running: pnpm run clean --filter \"@trigger.dev/*\" --filter \"trigger.dev\""
+pnpm run clean --filter "@trigger.dev/*" --filter "trigger.dev"
 
 echo "Running: pnpm run build --filter \"@trigger.dev/*\" --filter \"trigger.dev\""
 pnpm run build --filter "@trigger.dev/*" --filter "trigger.dev"
@@ -56,11 +73,9 @@ read -p "Do you wish to continue? (y/N): " prompt
 if [[ $prompt =~ [yY](es)* ]]; then
     pnpm exec changeset publish --no-git-tag --snapshot --tag $version
 else
-    echo "Publish command aborted by the user."
-    git reset --hard HEAD
-    exit 1;
+    abort
 fi
 
 # If there were no errors, clear the git stage
 echo "Commands ran successfully. Clearing the git stage."
-git reset --hard HEAD
+git_reset

@@ -1,9 +1,8 @@
+import { XMarkIcon } from "@heroicons/react/20/solid";
 import * as SheetPrimitive from "@radix-ui/react-dialog";
 import { cva, type VariantProps } from "class-variance-authority";
 import * as React from "react";
 import { cn } from "~/utils/cn";
-import { Header2 } from "./Headers";
-import { NamedIcon } from "./NamedIcon";
 import { ShortcutKey } from "./ShortcutKey";
 
 const Sheet = SheetPrimitive.Root;
@@ -93,7 +92,7 @@ const SheetTitle = React.forwardRef<
     {children}
     <SheetPrimitive.Close className="flex items-center gap-1 rounded-sm p-1 pl-0 transition hover:bg-charcoal-750 focus-visible:focus-custom disabled:pointer-events-none">
       <ShortcutKey shortcut={{ key: "esc" }} variant="small" />
-      <NamedIcon name="close" className="size-4" />
+      <XMarkIcon className="size-4 text-text-dimmed" />
       <span className="sr-only">Close</span>
     </SheetPrimitive.Close>
   </SheetPrimitive.Title>

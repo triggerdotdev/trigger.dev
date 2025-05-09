@@ -1,6 +1,6 @@
 import { json, TypedResponse } from "@remix-run/server-runtime";
 import { WaitForDurationRequestBody, WaitForDurationResponseBody } from "@trigger.dev/core/v3";
-import { RunId } from "@trigger.dev/core/v3/apps";
+import { RunId } from "@trigger.dev/core/v3/isomorphic";
 
 import { z } from "zod";
 import { prisma } from "~/db.server";
@@ -48,12 +48,9 @@ const { action } = createActionApiRoute(
       const waitResult = await engine.blockRunWithWaitpoint({
         runId: run.id,
         waitpoints: waitpoint.id,
-        environmentId: authentication.environment.id,
         projectId: authentication.environment.project.id,
         organizationId: authentication.environment.organization.id,
-        releaseConcurrency: {
-          releaseQueue: true,
-        },
+        releaseConcurrency: body.releaseConcurrency,
       });
 
       return json({

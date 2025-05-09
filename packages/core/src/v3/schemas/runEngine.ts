@@ -1,13 +1,12 @@
 import { z } from "zod";
-import { MachinePreset, TaskRunExecution } from "./common.js";
+import { Enum, MachinePreset, RuntimeEnvironmentType, TaskRunExecution } from "./common.js";
 import { EnvironmentType } from "./schemas.js";
 import type * as DB_TYPES from "@trigger.dev/database";
-
-type Enum<T extends string> = { [K in T]: K };
 
 export const TaskRunExecutionStatus = {
   RUN_CREATED: "RUN_CREATED",
   QUEUED: "QUEUED",
+  QUEUED_EXECUTING: "QUEUED_EXECUTING",
   PENDING_EXECUTING: "PENDING_EXECUTING",
   EXECUTING: "EXECUTING",
   EXECUTING_WITH_WAITPOINTS: "EXECUTING_WITH_WAITPOINTS",
@@ -22,6 +21,7 @@ export type TaskRunExecutionStatus =
 export const TaskRunStatus = {
   DELAYED: "DELAYED",
   PENDING: "PENDING",
+  PENDING_VERSION: "PENDING_VERSION",
   WAITING_FOR_DEPLOY: "WAITING_FOR_DEPLOY",
   EXECUTING: "EXECUTING",
   WAITING_TO_RESUME: "WAITING_TO_RESUME",
@@ -56,16 +56,6 @@ export const WaitpointStatus = z.enum(
   Object.values(WaitpointStatusValues) as [DB_TYPES.WaitpointStatus]
 );
 export type WaitpointStatus = z.infer<typeof WaitpointStatus>;
-
-export const RuntimeEnvironmentType = {
-  PRODUCTION: "PRODUCTION",
-  STAGING: "STAGING",
-  DEVELOPMENT: "DEVELOPMENT",
-  PREVIEW: "PREVIEW",
-} satisfies Enum<DB_TYPES.RuntimeEnvironmentType>;
-
-export type RuntimeEnvironmentType =
-  (typeof RuntimeEnvironmentType)[keyof typeof RuntimeEnvironmentType];
 
 export type TaskEventEnvironment = {
   id: string;
@@ -119,6 +109,7 @@ const ExecutionSnapshot = z.object({
   friendlyId: z.string(),
   executionStatus: z.enum(Object.values(TaskRunExecutionStatus) as [TaskRunExecutionStatus]),
   description: z.string(),
+  createdAt: z.coerce.date(),
 });
 
 const BaseRunMetadata = z.object({
@@ -134,51 +125,6 @@ export const ExecutionResult = z.object({
 });
 
 export type ExecutionResult = z.infer<typeof ExecutionResult>;
-
-/** This is sent to a Worker when a run is dequeued (a new run or continuing run) */
-export const DequeuedMessage = z.object({
-  version: z.literal("1"),
-  snapshot: ExecutionSnapshot,
-  image: z.string().optional(),
-  checkpoint: z
-    .object({
-      id: z.string(),
-      type: z.string(),
-      location: z.string(),
-      reason: z.string().nullish(),
-    })
-    .optional(),
-  completedWaitpoints: z.array(CompletedWaitpoint),
-  backgroundWorker: z.object({
-    id: z.string(),
-    friendlyId: z.string(),
-    version: z.string(),
-  }),
-  deployment: z.object({
-    id: z.string().optional(),
-    friendlyId: z.string().optional(),
-  }),
-  run: z.object({
-    id: z.string(),
-    friendlyId: z.string(),
-    isTest: z.boolean(),
-    machine: MachinePreset,
-    attemptNumber: z.number(),
-    masterQueue: z.string(),
-    traceContext: z.record(z.unknown()),
-  }),
-  environment: z.object({
-    id: z.string(),
-    type: EnvironmentType,
-  }),
-  organization: z.object({
-    id: z.string(),
-  }),
-  project: z.object({
-    id: z.string(),
-  }),
-});
-export type DequeuedMessage = z.infer<typeof DequeuedMessage>;
 
 /** The response to the Worker when starting an attempt */
 export const StartRunAttemptResult = ExecutionResult.and(
@@ -216,7 +162,7 @@ export type CheckpointType = z.infer<typeof CheckpointType>;
 export const CheckpointInput = z.object({
   type: CheckpointType,
   location: z.string(),
-  imageRef: z.string(),
+  imageRef: z.string().nullish(),
   reason: z.string().nullish(),
 });
 
@@ -267,3 +213,51 @@ export const MachineResources = z.object({
   memory: z.number(),
 });
 export type MachineResources = z.infer<typeof MachineResources>;
+
+export const DequeueMessageCheckpoint = z.object({
+  id: z.string(),
+  type: CheckpointType,
+  location: z.string(),
+  imageRef: z.string().nullish(),
+  reason: z.string().nullish(),
+});
+export type DequeueMessageCheckpoint = z.infer<typeof DequeueMessageCheckpoint>;
+
+/** This is sent to a Worker when a run is dequeued (a new run or continuing run) */
+export const DequeuedMessage = z.object({
+  version: z.literal("1"),
+  snapshot: ExecutionSnapshot,
+  dequeuedAt: z.coerce.date(),
+  image: z.string().optional(),
+  checkpoint: DequeueMessageCheckpoint.optional(),
+  completedWaitpoints: z.array(CompletedWaitpoint),
+  backgroundWorker: z.object({
+    id: z.string(),
+    friendlyId: z.string(),
+    version: z.string(),
+  }),
+  deployment: z.object({
+    id: z.string().optional(),
+    friendlyId: z.string().optional(),
+  }),
+  run: z.object({
+    id: z.string(),
+    friendlyId: z.string(),
+    isTest: z.boolean(),
+    machine: MachinePreset,
+    attemptNumber: z.number(),
+    masterQueue: z.string(),
+    traceContext: z.record(z.unknown()),
+  }),
+  environment: z.object({
+    id: z.string(),
+    type: EnvironmentType,
+  }),
+  organization: z.object({
+    id: z.string(),
+  }),
+  project: z.object({
+    id: z.string(),
+  }),
+});
+export type DequeuedMessage = z.infer<typeof DequeuedMessage>;

@@ -47,29 +47,6 @@ export class CancelTaskRunService extends BaseService {
       tx: this._prisma,
     });
 
-    const inProgressEvents = await eventRepository.queryIncompleteEvents(
-      getTaskEventStoreTableForRun(taskRun),
-      {
-        runId: taskRun.friendlyId,
-      },
-      taskRun.createdAt,
-      taskRun.completedAt ?? undefined
-    );
-
-    logger.debug("Cancelling in-progress events", {
-      inProgressEvents: inProgressEvents.map((event) => event.id),
-    });
-
-    await Promise.all(
-      inProgressEvents.map((event) => {
-        return eventRepository.cancelEvent(
-          event,
-          options?.cancelledAt ?? new Date(),
-          options?.reason ?? "Run cancelled"
-        );
-      })
-    );
-
     return {
       id: result.run.id,
     };

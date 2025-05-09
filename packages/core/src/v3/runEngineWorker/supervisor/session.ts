@@ -8,40 +8,52 @@ import { VERSION } from "../../../version.js";
 import { io, Socket } from "socket.io-client";
 import { WorkerClientToServerEvents, WorkerServerToClientEvents } from "../types.js";
 import { getDefaultWorkerHeaders } from "./util.js";
-import { HeartbeatService } from "../../utils/heartbeat.js";
+import { IntervalService } from "../../utils/interval.js";
 
 type SupervisorSessionOptions = SupervisorClientCommonOptions & {
-  heartbeatIntervalSeconds?: number;
-  dequeueIntervalMs?: number;
+  queueConsumerEnabled?: boolean;
+  runNotificationsEnabled?: boolean;
+  heartbeatIntervalSeconds: number;
+  dequeueIntervalMs: number;
+  dequeueIdleIntervalMs: number;
   preDequeue?: PreDequeueFn;
   preSkip?: PreSkipFn;
+  maxRunCount?: number;
+  maxConsumerCount?: number;
 };
 
 export class SupervisorSession extends EventEmitter<WorkerEvents> {
   public readonly httpClient: SupervisorHttpClient;
 
-  private socket?: Socket<WorkerServerToClientEvents, WorkerClientToServerEvents>;
+  private readonly runNotificationsEnabled: boolean;
+  private runNotificationsSocket?: Socket<WorkerServerToClientEvents, WorkerClientToServerEvents>;
 
-  private readonly queueConsumer: RunQueueConsumer;
-  private readonly heartbeatService: HeartbeatService;
-  private readonly heartbeatIntervalSeconds: number;
+  private readonly queueConsumerEnabled: boolean;
+  private readonly queueConsumers: RunQueueConsumer[];
+
+  private readonly heartbeat: IntervalService;
 
   constructor(private opts: SupervisorSessionOptions) {
     super();
 
+    this.runNotificationsEnabled = opts.runNotificationsEnabled ?? true;
+    this.queueConsumerEnabled = opts.queueConsumerEnabled ?? true;
+
     this.httpClient = new SupervisorHttpClient(opts);
-    this.queueConsumer = new RunQueueConsumer({
-      client: this.httpClient,
-      preDequeue: opts.preDequeue,
-      preSkip: opts.preSkip,
-      onDequeue: this.onDequeue.bind(this),
-      intervalMs: opts.dequeueIntervalMs,
+    this.queueConsumers = Array.from({ length: opts.maxConsumerCount ?? 1 }, () => {
+      return new RunQueueConsumer({
+        client: this.httpClient,
+        preDequeue: opts.preDequeue,
+        preSkip: opts.preSkip,
+        onDequeue: this.onDequeue.bind(this),
+        intervalMs: opts.dequeueIntervalMs,
+        idleIntervalMs: opts.dequeueIdleIntervalMs,
+        maxRunCount: opts.maxRunCount,
+      });
     });
 
-    // TODO: This should be dynamic and set by (or at least overridden by) the platform
-    this.heartbeatIntervalSeconds = opts.heartbeatIntervalSeconds || 30;
-    this.heartbeatService = new HeartbeatService({
-      heartbeat: async () => {
+    this.heartbeat = new IntervalService({
+      onInterval: async () => {
         console.debug("[SupervisorSession] Sending heartbeat");
 
         const body = this.getHeartbeatBody();
@@ -51,7 +63,7 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
           console.error("[SupervisorSession] Heartbeat failed", { error: response.error });
         }
       },
-      intervalMs: this.heartbeatIntervalSeconds * 1000,
+      intervalMs: opts.heartbeatIntervalSeconds * 1000,
       leadingEdge: false,
       onError: async (error) => {
         console.error("[SupervisorSession] Failed to send heartbeat", { error });
@@ -76,12 +88,12 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
   subscribeToRunNotifications(runFriendlyIds: string[]) {
     console.log("[SupervisorSession] Subscribing to run notifications", { runFriendlyIds });
 
-    if (!this.socket) {
+    if (!this.runNotificationsSocket) {
       console.error("[SupervisorSession] Socket not connected");
       return;
     }
 
-    this.socket.emit("run:subscribe", { version: "1", runFriendlyIds });
+    this.runNotificationsSocket.emit("run:subscribe", { version: "1", runFriendlyIds });
 
     Promise.allSettled(
       runFriendlyIds.map((runFriendlyId) =>
@@ -96,12 +108,12 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
   unsubscribeFromRunNotifications(runFriendlyIds: string[]) {
     console.log("[SupervisorSession] Unsubscribing from run notifications", { runFriendlyIds });
 
-    if (!this.socket) {
+    if (!this.runNotificationsSocket) {
       console.error("[SupervisorSession] Socket not connected");
       return;
     }
 
-    this.socket.emit("run:unsubscribe", { version: "1", runFriendlyIds });
+    this.runNotificationsSocket.emit("run:unsubscribe", { version: "1", runFriendlyIds });
 
     Promise.allSettled(
       runFriendlyIds.map((runFriendlyId) =>
@@ -116,15 +128,15 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
     );
   }
 
-  private createSocket() {
+  private createRunNotificationsSocket() {
     const wsUrl = new URL(this.opts.apiUrl);
     wsUrl.pathname = "/worker";
 
-    this.socket = io(wsUrl.href, {
+    const socket = io(wsUrl.href, {
       transports: ["websocket"],
       extraHeaders: getDefaultWorkerHeaders(this.opts),
     });
-    this.socket.on("run:notify", ({ version, run }) => {
+    socket.on("run:notify", ({ version, run }) => {
       console.log("[SupervisorSession][WS] Received run notification", { version, run });
       this.emit("runNotification", { time: new Date(), run });
 
@@ -137,15 +149,17 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
           console.error("[SupervisorSession] Failed to send debug log", { error });
         });
     });
-    this.socket.on("connect", () => {
+    socket.on("connect", () => {
       console.log("[SupervisorSession][WS] Connected to platform");
     });
-    this.socket.on("connect_error", (error) => {
+    socket.on("connect_error", (error) => {
       console.error("[SupervisorSession][WS] Connection error", { error });
     });
-    this.socket.on("disconnect", (reason, description) => {
+    socket.on("disconnect", (reason, description) => {
       console.log("[SupervisorSession][WS] Disconnected from platform", { reason, description });
     });
+
+    return socket;
   }
 
   async start() {
@@ -167,14 +181,26 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
       name: workerGroup.name,
     });
 
-    this.queueConsumer.start();
-    this.heartbeatService.start();
-    this.createSocket();
+    if (this.queueConsumerEnabled) {
+      console.log("[SupervisorSession] Queue consumer enabled");
+      await Promise.allSettled(this.queueConsumers.map(async (q) => q.start()));
+      this.heartbeat.start();
+    } else {
+      console.warn("[SupervisorSession] Queue consumer disabled");
+    }
+
+    if (this.runNotificationsEnabled) {
+      console.log("[SupervisorSession] Run notifications enabled");
+      this.runNotificationsSocket = this.createRunNotificationsSocket();
+    } else {
+      console.warn("[SupervisorSession] Run notifications disabled");
+    }
   }
 
   async stop() {
-    this.heartbeatService.stop();
-    this.socket?.disconnect();
+    await Promise.allSettled(this.queueConsumers.map(async (q) => q.stop()));
+    this.heartbeat.stop();
+    this.runNotificationsSocket?.disconnect();
   }
 
   private getHeartbeatBody(): WorkerApiHeartbeatRequestBody {

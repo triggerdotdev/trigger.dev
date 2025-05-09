@@ -8,6 +8,7 @@ import { TaskRunProcess } from "../src/executions/taskRunProcess.js";
 import { createTestHttpServer } from "@epic-web/test-server/http";
 import { TestCase, TestCaseRun } from "./fixtures.js";
 import { access } from "node:fs/promises";
+import { MachinePreset } from "@trigger.dev/core/v3";
 
 export type PackageManager = "npm" | "pnpm" | "yarn";
 
@@ -295,6 +296,13 @@ export async function executeTestCaseRun({
     },
   });
 
+  const machine = {
+    name: "small-1x",
+    cpu: 1,
+    memory: 256,
+    centsPerMs: 0.0000001,
+  } satisfies MachinePreset;
+
   try {
     const taskRunProcess = new TaskRunProcess({
       workerManifest: workerManifest!,
@@ -314,6 +322,10 @@ export async function executeTestCaseRun({
         version: "1.0.0",
         contentHash,
       },
+      machineResources: machine,
+    }).initialize();
+
+    const result = await taskRunProcess.execute({
       payload: {
         traceContext: {
           traceparent: "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
@@ -363,14 +375,11 @@ export async function executeTestCaseRun({
             ref: "main",
             name: "test",
           },
+          machine,
         },
       },
       messageId: "run_1234",
     });
-
-    await taskRunProcess.initialize();
-
-    const result = await taskRunProcess.execute();
 
     await taskRunProcess.cleanup(true);
 

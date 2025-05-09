@@ -8,6 +8,7 @@ import {
   DialogFooter,
   DialogHeader,
 } from "~/components/primitives/Dialog";
+import { SpinnerWhite } from "~/components/primitives/Spinner";
 
 type RollbackDeploymentDialogProps = {
   projectId: string;
@@ -46,7 +47,7 @@ export function RollbackDeploymentDialog({
             name="redirectUrl"
             value={redirectPath}
             variant="primary/medium"
-            LeadingIcon={isLoading ? "spinner-white" : ArrowPathIcon}
+            LeadingIcon={isLoading ? SpinnerWhite : ArrowPathIcon}
             disabled={isLoading}
             shortcut={{ modifiers: ["mod"], key: "enter" }}
           >
@@ -88,7 +89,7 @@ export function PromoteDeploymentDialog({
             name="redirectUrl"
             value={redirectPath}
             variant="primary/medium"
-            LeadingIcon={isLoading ? "spinner-white" : ArrowPathIcon}
+            LeadingIcon={isLoading ? SpinnerWhite : ArrowPathIcon}
             disabled={isLoading}
             shortcut={{ modifiers: ["mod"], key: "enter" }}
           >

@@ -1,17 +1,25 @@
-import { RunEngineVersion, RuntimeEnvironmentType } from "@trigger.dev/database";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
-import {
-  findCurrentWorkerDeploymentWithoutTasks,
-  findCurrentWorkerFromEnvironment,
-} from "./models/workerDeployment.server";
+import { RunEngineVersion, type RuntimeEnvironmentType } from "@trigger.dev/database";
 import { $replica } from "~/db.server";
+import {
+  findCurrentWorkerFromEnvironment,
+  getCurrentWorkerDeploymentEngineVersion,
+} from "./models/workerDeployment.server";
+
+type Environment = {
+  id: string;
+  type: RuntimeEnvironmentType;
+  project: {
+    id: string;
+    engine: RunEngineVersion;
+  };
+};
 
 export async function determineEngineVersion({
   environment,
   workerVersion,
   engineVersion: version,
 }: {
-  environment: AuthenticatedEnvironment;
+  environment: Environment;
   workerVersion?: string;
   engineVersion?: RunEngineVersion;
 }): Promise<RunEngineVersion> {
@@ -36,7 +44,7 @@ export async function determineEngineVersion({
       },
       where: {
         projectId_runtimeEnvironmentId_version: {
-          projectId: environment.projectId,
+          projectId: environment.project.id,
           runtimeEnvironmentId: environment.id,
           version: workerVersion,
         },
@@ -57,10 +65,12 @@ export async function determineEngineVersion({
   }
 
   // Deployed: use the latest deployed BackgroundWorker
-  const currentDeployment = await findCurrentWorkerDeploymentWithoutTasks(environment.id);
-  if (currentDeployment?.type === "V1") {
-    return "V1";
+  const currentDeploymentEngineVersion = await getCurrentWorkerDeploymentEngineVersion(
+    environment.id
+  );
+  if (currentDeploymentEngineVersion) {
+    return currentDeploymentEngineVersion;
   }
 
-  return "V2";
+  return environment.project.engine;
 }

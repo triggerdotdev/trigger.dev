@@ -1,0 +1,51 @@
+---
+title: "Using Cursor with Trigger.dev"
+sidebarTitle: "Cursor rules"
+description: "This guide shows how to add Cursor rules to a project to help you write Trigger.dev tasks faster and more accurately."
+icon: "hexagon"
+---
+
+## Overview
+
+[Cursor](https://www.cursor.com/) is a powerful AI coding editor which understands your codebase and can help you write code faster and more accurately. This guide shows you how to add our Cursor rules to your project to help you write Trigger.dev tasks.
+
+## Prerequisites
+
+- [Cursor](https://www.cursor.com/) installed on your machine
+
+## Installing our Cursor rules
+
+1. Locate the `.cursor/rules` folder in your project root, or click the "add new rule" button in `Cursor Settings` > `Rules`.
+2. Download the [writing-tasks.mdc](https://github.com/triggerdotdev/trigger.dev/blob/main/.cursor/rules/writing-tasks.mdc) file and place it in the `.cursor/rules` folder
+3. For more help installing Cursor rules, see [Cursor's docs](https://docs.cursor.com/context/rules-for-ai)
+
+<video
+  src="https://content.trigger.dev/cursor-rules-write-task.mp4"
+  preload="auto"
+  controls={true}
+  loop
+  muted
+  autoPlay={true}
+  width="100%"
+  height="100%"
+/>
+
+| <span style={{ color: '#28BF5C' }}>Helps with</span> | <span style={{ color: '#E11D48' }}>Don't use it for</span> |
+| ---------------------------------------------------- | ---------------------------------------------------------- |
+| Creating basic tasks                                 | Deploying                                                  |
+| Creating scheduled tasks                             | Project setup                                              |
+| Creating schema tasks                                | Infrastructure configuration                               |
+| Triggering tasks from backend                        | API keys                                                   |
+| Task lifecycle functions                             | Using tags                                                 |
+| Using Realtime                                       |                                                            |
+| Idempotency patterns                                 |                                                            |
+| Metadata handling                                    |                                                            |
+| Using build extensions                               |                                                            |
+
+## Tips for making the most of Cursor
+
+1. **Turn on auto-run** in Cursor settings. This allows Cursor to act more like an agent that checks for errors, fixes them, runs commands to install packages, and it won't stop until the code is error-free and running. _NB: Use this mode with caution, as it can make changes without your approval._
+
+2. **Use version control like GitHub or GitLab**, and commit frequently, so you can roll-back if something changes unexpectedly. Cursor can make changes to multiple files at once, so it's best to commit often to keep track of all your changes.
+
+3. **Explicitly add context when needed** - Cursor should know when to use the rules file, but I recommend selecting it from the "@ Add context" button above the prompt window. Then select "Cursor Rules" and select your rules file.

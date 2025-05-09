@@ -1,0 +1,864 @@
+---
+title: "Upgrading to v4"
+description: "What's new in v4, how to upgrade, and breaking changes."
+---
+
+## What's new in v4?
+
+[Read our blog post](https://trigger.dev/blog/v4-beta-launch) for an overview of the new features.
+
+### Wait tokens
+
+In addition to waiting for a specific duration, or waiting for a child task to complete, you can now create and wait for a token to be completed, giving you more flexibility and the ability to wait for arbitrary conditions. For example, you can send the token to a Slack channel, and only complete the token when the user has clicked an "Approve" button.
+
+To wait for a token, you need to first create one using the `wait.createToken` function:
+
+```ts
+import { wait } from "@trigger.dev/sdk";
+
+// Somewhere in your code, either your backend or inside a task
+const token = await wait.createToken({
+  timeout: "10m", // you can optionally specify a timeout for the token
+});
+
+await sendTokenToSlack(token.id);
+```
+
+Wait tokens are completed with a payload that you can specify when you complete the token:
+
+```ts
+// When the user clicks the "Approve" button, you can complete the token
+await wait.completeToken(tokenId, {
+  status: "approved",
+});
+```
+
+You can wait for the token using the token ID:
+
+```ts
+type ApprovalToken = {
+  status: "approved" | "rejected";
+};
+
+// Inside a task
+const result = await wait.forToken<ApprovalToken>(tokenId);
+
+if (result.ok) {
+  console.log("Token completed", result.output.status); // "approved" or "rejected"
+} else {
+  console.log("Token timed out", result.error);
+}
+```
+
+### Wait idempotency
+
+You can now pass an idempotency key to any wait function, allowing you to skip waits if the same idempotency key is used again. This can be useful if you want to skip waits when retrying a task, for example:
+
+```ts
+// Specify the idempotency key and TTL when creating a wait token
+const token = await wait.createToken({
+  idempotencyKey: "my-idempotency-key",
+  idempotencyKeyTTL: "1h",
+});
+
+// Specify the idempotency key and TTL when waiting for a duration:
+await wait.for({ seconds: 10 }, { idempotencyKey: "my-idempotency-key", idempotencyKeyTTL: "1h" });
+
+// Specify the idempotency key and TTL when waiting for a child task:
+await childTask.triggerAndWait(
+  { foo: "bar" },
+  {
+    idempotencyKey: "my-idempotency-key",
+    idempotencyKeyTTL: "1h",
+  }
+);
+```
+
+`idempotencyKeyTTL` allows you to specify how long the idempotency key should be valid for. The default is 30 days.
+
+### Priority
+
+You can now specify a priority when triggering a task. This allows you to prioritize certain tasks over others, and is useful if you want to ensure that certain tasks are executed before others.
+
+```ts
+await task.trigger({ foo: "bar" }, { priority: 1 });
+```
+
+The priority value is a time duration in seconds, which offsets the timestamp of the run in the queue. If you specify a priority of `10`, the run will win over runs with a priority of `0` that were triggered within the last 10 seconds. A more concrete example:
+
+```ts
+// Triggered at 12:00:00, into a queue with a large number of queued runs
+await task.trigger({ foo: "bar" }, { priority: 0 });
+// Triggered at 12:00:09, into the same queue
+await task.trigger({ foo: "bar" }, { priority: 10 });
+```
+
+In this case, the second run will be executed first, because it's priority moved it 1 second ahead of the first run.
+
+<Note>
+  We purposefully chose to use a time duration as the priority value instead of specifying priority
+  levels, because priority levels can cause "level starvation" where lower priority runs are never
+  executed because there are always higher priority runs in the queue.
+</Note>
+
+### Global lifecycle hooks
+
+We've added a new way to register global lifecycle hooks that are executed for all runs, regardless of the task. Previously, this was only possible in the `trigger.config.ts` file, but now you can register them anywhere in your codebase:
+
+```ts
+import { tasks } from "@trigger.dev/sdk";
+
+tasks.onStart(({ ctx, payload, task }) => {
+  console.log("Run started", ctx.run);
+});
+
+tasks.onSuccess(({ ctx, output }) => {
+  console.log("Run finished", ctx.run);
+});
+
+tasks.onFailure(({ ctx, error }) => {
+  console.log("Run failed", ctx.run);
+});
+```
+
+### `init.ts`
+
+If you create a `init.ts` file at the root of your trigger directory, it will be automatically loaded when a task is executed. This is useful if you want to register global lifecycle hooks, or initialize a database connection, etc.
+
+```ts init.ts
+import { tasks } from "@trigger.dev/sdk";
+
+tasks.onStart(({ ctx, payload, task }) => {
+  console.log("Run started", ctx.run);
+});
+```
+
+### onWait and onResume
+
+We've added two new lifecycle hooks that allow you to run code when a run is paused or resumed because of a wait:
+
+```ts
+export const myTask = task({
+  id: "my-task",
+  onWait: async ({ wait }) => {
+    console.log("Run paused", wait);
+  },
+  onResume: async ({ wait }) => {
+    console.log("Run resumed", wait);
+  },
+  run: async (payload: any, { ctx }) => {
+    console.log("Run started", ctx.run);
+
+    await wait.for({ seconds: 10 });
+
+    console.log("Run finished", ctx.run);
+  },
+});
+```
+
+### onComplete
+
+We've added a new lifecycle hook that is executed when a run completes, regardless of whether it succeeded or failed:
+
+```ts
+tasks.onComplete(({ ctx, result }) => {
+  if (result.ok) {
+    console.log("Run succeeded", result.data);
+  } else {
+    console.log("Run failed", result.error);
+  }
+});
+```
+
+### onCancel
+
+<Note>Available in v4.0.0-beta.12 and later.</Note>
+
+You can now define an `onCancel` hook that is called when a run is cancelled. This is useful if you want to clean up any resources that were allocated for the run.
+
+```ts
+tasks.onCancel(({ ctx, signal }) => {
+  console.log("Run cancelled", signal);
+});
+```
+
+You can use the `onCancel` hook along with the `signal` passed into the run function to interrupt a call to an external service, for example using the [streamText](https://ai-sdk.dev/docs/reference/ai-sdk-core/stream-text) function from the AI SDK:
+
+```ts
+import { logger, tasks, schemaTask } from "@trigger.dev/sdk";
+import { streamText } from "ai";
+import { z } from "zod";
+
+export const interruptibleChat = schemaTask({
+  id: "interruptible-chat",
+  description: "Chat with the AI",
+  schema: z.object({
+    prompt: z.string().describe("The prompt to chat with the AI"),
+  }),
+  run: async ({ prompt }, { signal }) => {
+    const chunks: TextStreamPart<{}>[] = [];
+
+    // 👇 This is a global onCancel hook, but it's inside of the run function
+    tasks.onCancel(async () => {
+      // We have access to the chunks here, and can save them to the database
+      await saveChunksToDatabase(chunks);
+    });
+
+    try {
+      const result = streamText({
+        model: getModel(),
+        prompt,
+        experimental_telemetry: {
+          isEnabled: true,
+        },
+        tools: {},
+        abortSignal: signal, // 👈 Pass the signal to the streamText function, which aborts with the run is cancelled
+        onChunk: ({ chunk }) => {
+          chunks.push(chunk);
+        },
+      });
+
+      const textParts = [];
+
+      for await (const part of result.textStream) {
+        textParts.push(part);
+      }
+
+      return textParts.join("");
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        // streamText will throw an AbortError if the signal is aborted, so we can handle it here
+      } else {
+        throw error;
+      }
+    }
+  },
+});
+```
+
+The `onCancel` hook can optionally wait for the `run` function to finish, and access the output of the run:
+
+```ts
+import { logger, task } from "@trigger.dev/sdk";
+import { setTimeout } from "node:timers/promises";
+
+export const cancelExampleTask = task({
+  id: "cancel-example",
+  // Signal will be aborted when the task is cancelled 👇
+  run: async (payload: { message: string }, { signal }) => {
+    try {
+      // We pass the signal to setTimeout to abort the timeout if the task is cancelled
+      await setTimeout(10_000, undefined, { signal });
+    } catch (error) {
+      // Ignore the abort error
+    }
+
+    // Do some more work here
+
+    return {
+      message: "Hello, world!",
+    };
+  },
+  onCancel: async ({ runPromise }) => {
+    // You can await the runPromise to get the output of the task
+    const output = await runPromise;
+  },
+});
+```
+
+<Note>
+  You will have up to 30 seconds to complete the `runPromise` in the `onCancel` hook. After that
+  point the process will be killed.
+</Note>
+
+### Improved middleware and locals
+
+Our task middleware system is now much more useful. Previously it only ran "around" the `run` function, but now we've hoisted it to the top level and it now runs before/after all the other hooks.
+
+We've also added a new `locals` API that allows you to share data between middleware and hooks.
+
+```ts db.ts
+import { locals } from "@trigger.dev/sdk";
+import { logger, tasks } from "@trigger.dev/sdk";
+
+// This would be type of your database client here
+const DbLocal = locals.create<{ connect: () => Promise<void>; disconnect: () => Promise<void> }>(
+  "db"
+);
+
+export function getDb() {
+  return locals.getOrThrow(DbLocal);
+}
+
+export function setDb(db: { connect: () => Promise<void> }) {
+  locals.set(DbLocal, db);
+}
+
+tasks.middleware("db", async ({ ctx, payload, next, task }) => {
+  // This would be your database client here
+  const db = locals.set(DbLocal, {
+    connect: async () => {
+      logger.info("Connecting to the database");
+    },
+    disconnect: async () => {
+      logger.info("Disconnecting from the database");
+    },
+  });
+
+  await db.connect();
+
+  await next();
+
+  await db.disconnect();
+});
+
+// Disconnect when the run is paused
+tasks.onWait("db", async ({ ctx, payload, task }) => {
+  const db = getDb();
+  await db.disconnect();
+});
+
+// Reconnect when the run is resumed
+tasks.onResume("db", async ({ ctx, payload, task }) => {
+  const db = getDb();
+  await db.connect();
+});
+```
+
+Now in your tasks `run` function and all your hooks (global or task specific) you can access the database client using `getDb()`:
+
+```ts
+import { getDb } from "./db";
+
+export const myTask = task({
+  run: async (payload: any, { ctx }) => {
+    const db = getDb();
+    await db.query("SELECT 1");
+  },
+});
+```
+
+### Hidden tasks
+
+Previously, you were required to export the task from a file in your trigger directory to be able to execute it. We've changed the way tasks are indexed and this requirement has been removed. So you can now just define a task without exporting it, and everything will still work:
+
+```ts trigger/my-task.ts
+import { task } from "@trigger.dev/sdk";
+
+const myTask = task({
+  run: async (payload: any, { ctx }) => {},
+});
+```
+
+You can use this to define "hidden" tasks that should only ever be triggered by other tasks in the same file:
+
+```ts trigger/my-task.ts
+import { task } from "@trigger.dev/sdk";
+
+const myTask = task({
+  run: async (payload: any, { ctx }) => {},
+});
+
+export const myTask2 = task({
+  run: async (payload: any, { ctx }) => {
+    await myTask.trigger(payload);
+  },
+});
+```
+
+Or you can create a package of reusable tasks that can be imported and used in your tasks, without having to re-export them:
+
+```ts trigger/my-task.ts
+import { task } from "@trigger.dev/sdk";
+import { sendToSlack } from "@repo/tasks";
+
+export const myTask = task({
+  run: async (payload: any, { ctx }) => {
+    await sendToSlack.trigger(payload);
+  },
+});
+```
+
+### useWaitToken
+
+We've added a new `useWaitToken` react hook that allows you to complete a wait token from a React component, using a Public Access Token.
+
+```ts backend.ts
+import { wait } from "@trigger.dev/sdk";
+
+// Somewhere in your code, you'll need to create the token and then pass the token ID and the public token to the frontend
+const token = await wait.createToken({
+  timeout: "10m",
+});
+
+return {
+  tokenId: token.id,
+  publicToken: token.publicAccessToken, // An automatically generated public access token that expires in 1 hour
+};
+```
+
+Now you can use the `useWaitToken` hook in your frontend code:
+
+```tsx frontend.tsx
+import { useWaitToken } from "@trigger.dev/react-hooks";
+
+export function MyComponent({ publicToken, tokenId }: { publicToken: string; tokenId: string }) {
+  const { complete } = useWaitToken(tokenId, {
+    accessToken: publicToken,
+  });
+
+  return <button onClick={() => complete({ foo: "bar" })}>Complete</button>;
+}
+```
+
+### `ai.tool`
+
+We've added a new `ai.tool` function that allows you to create an AI tool from an existing `schemaTask` to use with the Vercel [AI SDK](https://vercel.com/docs/ai-sdk):
+
+```ts
+import { ai } from "@trigger.dev/sdk/ai";
+import { schemaTask } from "@trigger.dev/sdk";
+import { z } from "zod";
+import { generateText } from "ai";
+
+const myToolTask = schemaTask({
+  id: "my-tool-task",
+  schema: z.object({
+    foo: z.string(),
+  }),
+  run: async (payload: any, { ctx }) => {},
+});
+
+const myTool = ai.tool(myToolTask);
+
+export const myAiTask = schemaTask({
+  id: "my-ai-task",
+  schema: z.object({
+    text: z.string(),
+  }),
+  run: async (payload, { ctx }) => {
+    const { text } = await generateText({
+      prompt: payload.text,
+      model: openai("gpt-4o"),
+      tools: {
+        myTool,
+      },
+    });
+  },
+});
+```
+
+You can also pass the `experimental_toToolResultContent` option to the `ai.tool` function to customize the content of the tool result:
+
+```ts
+import { openai } from "@ai-sdk/openai";
+import { Sandbox } from "@e2b/code-interpreter";
+import { ai } from "@trigger.dev/sdk/ai";
+import { schemaTask } from "@trigger.dev/sdk/v3";
+import { generateObject } from "ai";
+import { z } from "zod";
+
+const chartTask = schemaTask({
+  id: "chart",
+  description: "Generate a chart using natural language",
+  schema: z.object({
+    input: z.string().describe("The chart to generate"),
+  }),
+  run: async ({ input }) => {
+    const code = await generateObject({
+      model: openai("gpt-4o"),
+      schema: z.object({
+        code: z.string().describe("The Python code to execute"),
+      }),
+      system: `
+        You are a helpful assistant that can generate Python code to be executed in a sandbox, using matplotlib.pyplot.
+
+        For example: 
+        
+        import matplotlib.pyplot as plt
+        plt.plot([1, 2, 3, 4])
+        plt.ylabel('some numbers')
+        plt.show()
+        
+        Make sure the code ends with plt.show()
+      `,
+      prompt: input,
+    });
+
+    const sandbox = await Sandbox.create();
+
+    const execution = await sandbox.runCode(code.object.code);
+
+    const firstResult = execution.results[0];
+
+    if (firstResult.png) {
+      return {
+        chart: firstResult.png,
+      };
+    } else {
+      throw new Error("No chart generated");
+    }
+  },
+});
+
+// This is useful if you want to return an image from the tool
+export const chartTool = ai.tool(chartTask, {
+  experimental_toToolResultContent: (result) => {
+    return [
+      {
+        type: "image",
+        data: result.chart,
+        mimeType: "image/png",
+      },
+    ];
+  },
+});
+```
+
+You can also now get access to the current tool execution options inside the task run function using the `ai.currentToolOptions()` function:
+
+```ts
+import { ai } from "@trigger.dev/sdk/ai";
+import { schemaTask } from "@trigger.dev/sdk";
+import { z } from "zod";
+
+const myToolTask = schemaTask({
+  id: "my-tool-task",
+  schema: z.object({
+    foo: z.string(),
+  }),
+  run: async (payload, { ctx }) => {
+    const toolOptions = ai.currentToolOptions();
+    console.log(toolOptions);
+  },
+});
+
+export const myAiTask = ai.tool(myToolTask);
+```
+
+See the [AI SDK tool execution options docs](https://sdk.vercel.ai/docs/ai-sdk-core/tools-and-tool-calling#tool-execution-options) for more details on the tool execution options.
+
+<Note>
+  `ai.tool` is compatible with `schemaTask`'s defined with Zod and ArkType schemas, or any schemas
+  that implement a `.toJsonSchema()` function.
+</Note>
+
+## How to migrate to v4
+
+First read the deprecations, breaking changes, and known issues sections below.
+
+We recommend the following steps to migrate to v4:
+
+1. Install the v4 package.
+2. Run the `trigger dev` CLI command and test your tasks locally, fixing any breaking changes.
+3. Deploy to the staging environment and test your tasks in staging, fixing any breaking changes. (this step is optional, but highly recommended)
+4. Once you've verified that v4 is working as expected, you should deploy your application backend with the updated v4 package.
+5. Once you've deployed your application backend, you should deploy your tasks to the production environment.
+
+Note that between steps 4 and 5, runs triggered with the v4 package will continue using v3, and only new runs triggered after step 5 is complete will use v4.
+
+<Warning>
+  Once v4 is activated in your environment, there will be a period of time where old runs will
+  continue to execute using v3, while new runs will use v4. Because these engines use completely
+  different underlying queues and concurrency models, it's possible you may have up to double the
+  amount of concurrently executing runs. Once the runs drain from the old run engine, the
+  concurrency will return to normal.
+</Warning>
+
+## Installation
+
+To opt-in to using v4, you will need to update your dependencies to the latest version of the `v4-beta` tag.
+
+<CodeGroup>
+
+```bash npm
+npm add @trigger.dev/sdk@v4-beta -E
+```
+
+```bash yarn
+yarn add @trigger.dev/sdk@v4-beta -E
+```
+
+```bash pnpm
+pnpm add @trigger.dev/sdk@v4-beta -E
+```
+
+</CodeGroup>
+
+<Note> You will need to do this for all your `@trigger.dev/*` packages. </Note>
+
+You'll also need to use the `v4-beta` version of the `trigger.dev` CLI package:
+
+<CodeGroup>
+
+```bash npx
+npx trigger.dev@v4-beta dev
+```
+
+```bash yarn
+yarn dlx trigger.dev@v4-beta dev
+```
+
+```bash pnpm
+pnpm dlx trigger.dev@v4-beta dev
+```
+
+</CodeGroup>
+
+## Known issues
+
+During the beta we will be tracking issues and releasing regular fixes.
+
+**ISSUE:** Runs not continuing after a child run(s) have completed.
+
+## Deprecations
+
+We've deprecated the following APIs:
+
+### @trigger.dev/sdk/v3
+
+We've deprecated the `@trigger.dev/sdk/v3` import path and moved to a new path:
+
+```ts
+// This still works, but will be removed in a future version
+import { task } from "@trigger.dev/sdk/v3";
+
+// This is the new path
+import { task } from "@trigger.dev/sdk";
+```
+
+### `handleError` and `init`
+
+We've renamed the `handleError` hook to `catchError` to better reflect that it can catch and react to errors. `handleError` will be removed in a future version.
+
+`init` was previously used to initialize data used in the run function:
+
+```ts
+import { task } from "@trigger.dev/sdk";
+
+const myTask = task({
+  init: async () => {
+    return {
+      myClient: new MyClient(),
+    };
+  },
+  run: async (payload: any, { ctx, init }) => {
+    const client = init.myClient;
+    await client.doSomething();
+  },
+});
+```
+
+This has now been deprecated in favor of the `locals` API and middleware. See the [Improved middleware and locals](#improved-middleware-and-locals) section for more details.
+
+### toolTask
+
+We've deprecated the `toolTask` function, which created both a Trigger.dev task and a tool compatible with the Vercel [AI SDK](https://vercel.com/docs/ai-sdk):
+
+```ts
+import { toolTask, schemaTask } from "@trigger.dev/sdk";
+import { z } from "zod";
+import { generateText } from "ai";
+
+const myToolTask = toolTask({
+  id: "my-tool-task",
+  run: async (payload: any, { ctx }) => {},
+});
+
+export const myAiTask = schemaTask({
+  id: "my-ai-task",
+  schema: z.object({
+    text: z.string(),
+  }),
+  run: async (payload, { ctx }) => {
+    const { text } = await generateText({
+      prompt: payload.text,
+      model: openai("gpt-4o"),
+      tools: {
+        myToolTask,
+      },
+    });
+  },
+});
+```
+
+We've replaced the `toolTask` function with the `ai.tool` function, which creates an AI tool from an existing `schemaTask`. See the [ai.tool](#ai-tool) section for more details.
+
+## Breaking changes
+
+### Queue changes
+
+Previously, it was possible to specify a queue name of a queue that did not exist, along with a concurrency limit. The queue would then be created "on-demand" with the specified concurrency limit. If the queue did exist, the concurrency limit of the queue would be updated to the specified value:
+
+```ts
+await myTask.trigger({ foo: "bar" }, { queue: { name: "my-queue", concurrencyLimit: 10 } });
+```
+
+This is no longer possible, and queues must now be defined ahead of time using the `queue` function:
+
+```ts
+import { queue } from "@trigger.dev/sdk";
+
+const myQueue = queue({
+  name: "my-queue",
+  concurrencyLimit: 10,
+});
+```
+
+Now when you trigger a task, you can only specify the queue by name:
+
+```ts
+await myTask.trigger({ foo: "bar" }, { queue: "my-queue" });
+```
+
+Or you can set the queue on the task:
+
+```ts
+import { queue, task } from "@trigger.dev/sdk";
+
+const myQueue = queue({
+  name: "my-queue",
+  concurrencyLimit: 10,
+});
+
+export const myTask = task({
+  id: "my-task",
+  queue: myQueue,
+  run: async (payload: any, { ctx }) => {},
+});
+
+// You can optionally specify the queue directly on the task
+export const myTask2 = task({
+  id: "my-task-2",
+  queue: {
+    name: "my-queue-2",
+    concurrencyLimit: 50,
+  },
+  run: async (payload: any, { ctx }) => {},
+});
+```
+
+Now you can trigger these tasks without having to specify the queue name in the trigger options:
+
+```ts
+await myTask.trigger({ foo: "bar" }); // Will use the queue defined on the task
+await myTask2.trigger({ foo: "bar" }); // Will use the queue defined on the task
+```
+
+### Releasing concurrency on waits
+
+We've changed the default behavior on how concurrency is released when a run is paused or resumed because of a wait. Previously, the concurrency would be released immediately when the run was first paused, no matter the settings on the queue.
+
+Now we will no longer release concurrency on a queue that has a specified `concurrencyLimit` when a run is paused. You can go back to the previous behavior by setting the `releaseConcurrencyOnWaitpoint` option to `true` on the queue:
+
+```ts
+const myQueue = queue({
+  name: "my-queue",
+  concurrencyLimit: 10,
+  releaseConcurrencyOnWaitpoint: true,
+});
+```
+
+You can also now control whether concurrency is released when performing a wait:
+
+```ts
+// This will prevent the run from being released back into the queue when the wait starts
+await wait.for({ seconds: 10 }, { releaseConcurrency: false });
+```
+
+The new default behavior allows you to ensure that you can control the number of executing & waiting runs on a queue, and guarantee runs will resume once they are meant to be resumed.
+
+<Note>
+  If you do choose to release concurrency on waits, be aware that it's possible a resume is delayed
+  if the concurrency that was released is not available at the time the wait completes. In this
+  case, the run will go back into the queue and will resume once concurrency becomes available.
+</Note>
+
+This new behavior effects all the wait functions:
+
+- Wait for duration (e.g. `wait.for({ seconds: 10 })`)
+- Wait for a child task to complete (e.g. `myTask.triggerAndWait()`, `myTask.batchTriggerAndWait([...])`)
+- Wait for a token to complete (e.g. `wait.forToken(tokenId)`)
+
+### Lifecycle hooks
+
+We've changed the function signatures of the lifecycle hooks to be more consistent and easier to use, by unifying all the parameters into a single object that can be destructured.
+
+Previously, hooks received a payload as the first argument and then an additional object as the second argument:
+
+```ts
+import { task } from "@trigger.dev/sdk";
+
+export const myTask = task({
+  id: "my-task",
+  onStart: (payload, { ctx }) => {},
+  run: async (payload, { ctx }) => {},
+});
+```
+
+Now, all the parameters are passed in a single object:
+
+```ts
+import { task } from "@trigger.dev/sdk";
+
+export const myTask = task({
+  id: "my-task",
+  onStart: ({ payload, ctx }) => {},
+  // The run function still uses separate parameters
+  run: async (payload, { ctx }) => {},
+});
+```
+
+This is true for all the lifecycle hooks:
+
+```ts
+import { task } from "@trigger.dev/sdk";
+
+export const myTask = task({
+  id: "my-task",
+  onStart: ({ payload, ctx, task }) => {},
+  onSuccess: ({ payload, ctx, task, output }) => {},
+  onFailure: ({ payload, ctx, task, error }) => {},
+  onWait: ({ payload, ctx, task, wait }) => {},
+  onResume: ({ payload, ctx, task, wait }) => {},
+  onComplete: ({ payload, ctx, task, result }) => {},
+  catchError: ({ payload, ctx, task, error, retry, retryAt, retryDelayInMs }) => {},
+  run: async (payload, { ctx }) => {},
+});
+```
+
+### Context changes
+
+We've made a few small changes to the `ctx` object:
+
+- `ctx.attempt.id` and `ctx.attempt.status` have been removed. `ctx.attempt.number` is still available.
+- `ctx.task.exportName` has been removed (since we no longer require tasks to be exported to be triggered).
+
+### BatchTrigger changes
+
+The `batchTrigger` function no longer returns a `runs` list directly. In v3, you could access the runs directly from the batch handle:
+
+```ts
+// In v3
+const batchHandle = await tasks.batchTrigger([
+  [myTask, { foo: "bar" }],
+  [myOtherTask, { baz: "qux" }],
+]);
+
+// You could access runs directly
+console.log(batchHandle.runs);
+```
+
+In v4, you now need to use the `runs.list()` method to get the list of runs:
+
+```ts
+// In v4
+const batchHandle = await tasks.batchTrigger([
+  [myTask, { foo: "bar" }],
+  [myOtherTask, { baz: "qux" }],
+]);
+
+// Now you need to call runs.list()
+const runs = await batchHandle.runs.list();
+console.log(runs);
+```

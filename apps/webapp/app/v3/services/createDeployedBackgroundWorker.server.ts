@@ -1,17 +1,16 @@
 import { CreateBackgroundWorkerRequestBody } from "@trigger.dev/core/v3";
 import type { BackgroundWorker } from "@trigger.dev/database";
-import { CURRENT_DEPLOYMENT_LABEL } from "@trigger.dev/core/v3/apps";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { socketIo } from "../handleSocketIo.server";
 import { updateEnvConcurrencyLimits } from "../runQueue.server";
 import { PerformDeploymentAlertsService } from "./alerts/performDeploymentAlerts.server";
 import { BaseService } from "./baseService.server";
-import { createBackgroundTasks, syncDeclarativeSchedules } from "./createBackgroundWorker.server";
+import { createWorkerResources, syncDeclarativeSchedules } from "./createBackgroundWorker.server";
 import { ExecuteTasksWaitingForDeployService } from "./executeTasksWaitingForDeploy";
 import { projectPubSub } from "./projectPubSub.server";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
-import { BackgroundWorkerId } from "@trigger.dev/core/v3/apps";
+import { CURRENT_DEPLOYMENT_LABEL, BackgroundWorkerId } from "@trigger.dev/core/v3/isomorphic";
 
 export class CreateDeployedBackgroundWorkerService extends BaseService {
   public async call(
@@ -65,12 +64,7 @@ export class CreateDeployedBackgroundWorkerService extends BaseService {
       }
 
       try {
-        await createBackgroundTasks(
-          body.metadata.tasks,
-          backgroundWorker,
-          environment,
-          this._prisma
-        );
+        await createWorkerResources(body.metadata, backgroundWorker, environment, this._prisma);
         await syncDeclarativeSchedules(
           body.metadata.tasks,
           backgroundWorker,
@@ -107,6 +101,7 @@ export class CreateDeployedBackgroundWorkerService extends BaseService {
           status: "DEPLOYED",
           workerId: backgroundWorker.id,
           deployedAt: new Date(),
+          type: backgroundWorker.engine === "V2" ? "MANAGED" : "V1",
         },
       });
 

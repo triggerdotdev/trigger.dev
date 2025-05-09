@@ -36,62 +36,39 @@ import {
   batchStatusTitle,
   descriptionForBatchStatus,
 } from "./BatchStatus";
-import {
-  AppliedCustomDateRangeFilter,
-  AppliedEnvironmentFilter,
-  AppliedPeriodFilter,
-  appliedSummary,
-  CreatedAtDropdown,
-  CustomDateRangeDropdown,
-  EnvironmentsDropdown,
-  FilterMenuProvider,
-} from "./SharedFilters";
+import { TimeFilter, appliedSummary, FilterMenuProvider } from "./SharedFilters";
 
 export const BatchStatus = z.enum(allBatchStatuses);
 
 export const BatchListFilters = z.object({
   cursor: z.string().optional(),
   direction: z.enum(["forward", "backward"]).optional(),
-  environments: z.preprocess(
-    (value) => (typeof value === "string" ? [value] : value),
-    z.string().array().optional()
-  ),
   statuses: z.preprocess(
     (value) => (typeof value === "string" ? [value] : value),
     BatchStatus.array().optional()
   ),
-  period: z.preprocess((value) => (value === "all" ? undefined : value), z.string().optional()),
   id: z.string().optional(),
+  period: z.preprocess((value) => (value === "all" ? undefined : value), z.string().optional()),
   from: z.coerce.number().optional(),
   to: z.coerce.number().optional(),
 });
 
 export type BatchListFilters = z.infer<typeof BatchListFilters>;
 
-type DisplayableEnvironment = Pick<RuntimeEnvironment, "type" | "id"> & {
-  userName?: string;
-};
-
 type BatchFiltersProps = {
-  possibleEnvironments: DisplayableEnvironment[];
   hasFilters: boolean;
 };
 
 export function BatchFilters(props: BatchFiltersProps) {
   const location = useOptimisticLocation();
   const searchParams = new URLSearchParams(location.search);
-  const hasFilters =
-    searchParams.has("statuses") ||
-    searchParams.has("environments") ||
-    searchParams.has("id") ||
-    searchParams.has("period") ||
-    searchParams.has("from") ||
-    searchParams.has("to");
+  const hasFilters = searchParams.has("statuses") || searchParams.has("id");
 
   return (
     <div className="flex flex-row flex-wrap items-center gap-1">
       <FilterMenu {...props} />
-      <AppliedFilters {...props} />
+      <TimeFilter />
+      <AppliedFilters />
       {hasFilters && (
         <Form className="h-6">
           <Button variant="minimal/small" LeadingIcon={TrashIcon}>
@@ -113,9 +90,6 @@ const filterTypes = [
       </div>
     ),
   },
-  { name: "environments", title: "Environment", icon: <CpuChipIcon className="size-4" /> },
-  { name: "created", title: "Created", icon: <CalendarIcon className="size-4" /> },
-  { name: "daterange", title: "Custom date range", icon: <CalendarIcon className="size-4" /> },
   { name: "batch", title: "Batch ID", icon: <Squares2X2Icon className="size-4" /> },
 ] as const;
 
@@ -157,13 +131,10 @@ function FilterMenu(props: BatchFiltersProps) {
   );
 }
 
-function AppliedFilters({ possibleEnvironments }: BatchFiltersProps) {
+function AppliedFilters() {
   return (
     <>
       <AppliedStatusFilter />
-      <AppliedEnvironmentFilter possibleEnvironments={possibleEnvironments} />
-      <AppliedPeriodFilter />
-      <AppliedCustomDateRangeFilter />
       <AppliedBatchIdFilter />
     </>
   );
@@ -183,12 +154,6 @@ function Menu(props: MenuProps) {
       return <MainMenu {...props} />;
     case "statuses":
       return <StatusDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
-    case "environments":
-      return <EnvironmentsDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
-    case "created":
-      return <CreatedAtDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
-    case "daterange":
-      return <CustomDateRangeDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
     case "batch":
       return <BatchIdDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
   }
@@ -197,7 +162,6 @@ function Menu(props: MenuProps) {
 function MainMenu({ searchValue, trigger, clearSearchValue, setFilterType }: MenuProps) {
   const filtered = useMemo(() => {
     return filterTypes.filter((item) => {
-      if (item.name === "daterange") return false;
       return item.title.toLowerCase().includes(searchValue.toLowerCase());
     });
   }, [searchValue]);

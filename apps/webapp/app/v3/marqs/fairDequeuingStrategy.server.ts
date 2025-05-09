@@ -1,4 +1,3 @@
-import { flattenAttributes } from "@trigger.dev/core/v3";
 import { createCache, DefaultStatefulContext, Namespace, Cache as UnkeyCache } from "@unkey/cache";
 import { MemoryStore } from "@unkey/cache/stores";
 import { randomUUID } from "crypto";
@@ -44,6 +43,11 @@ export type FairDequeuingStrategyOptions = {
   biases?: FairDequeuingStrategyBiases;
   reuseSnapshotCount?: number;
   maximumEnvCount?: number;
+  /**
+   * Maximum number of queues to process per environment
+   * If not provided, all queues in an environment will be processed
+   */
+  maximumQueuePerEnvCount?: number;
 };
 
 type FairQueueConcurrency = {
@@ -217,8 +221,6 @@ export class FairDequeuingStrategy implements MarQSFairDequeueStrategy {
     return result;
   }
 
-  // Helper method to maintain DRY principle
-  // Update return type
   #orderQueuesByEnvs(envs: string[], snapshot: FairQueueSnapshot): Array<EnvQueues> {
     const queuesByEnv = snapshot.queues.reduce((acc, queue) => {
       if (!acc[queue.env]) {
@@ -232,11 +234,17 @@ export class FairDequeuingStrategy implements MarQSFairDequeueStrategy {
       if (queuesByEnv[envId]) {
         // Get ordered queues for this env
         const orderedQueues = this.#weightedRandomQueueOrder(queuesByEnv[envId]);
+
+        // Apply queue limit if maximumQueuePerEnvCount is set
+        const limitedQueues = this.options.maximumQueuePerEnvCount
+          ? orderedQueues.slice(0, this.options.maximumQueuePerEnvCount)
+          : orderedQueues;
+
         // Only add the env if it has queues
-        if (orderedQueues.length > 0) {
+        if (limitedQueues.length > 0) {
           acc.push({
             envId,
-            queues: orderedQueues.map((queue) => queue.id),
+            queues: limitedQueues.map((queue) => queue.id),
           });
         }
       }
@@ -512,6 +520,10 @@ export class FairDequeuingStrategy implements MarQSFairDequeueStrategy {
       }
 
       span.setAttribute("queue_count", result.length);
+
+      if (result.length === this.options.parentQueueLimit) {
+        span.setAttribute("parent_queue_limit_reached", true);
+      }
 
       return result;
     });

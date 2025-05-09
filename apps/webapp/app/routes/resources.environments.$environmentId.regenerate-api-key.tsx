@@ -1,9 +1,9 @@
 import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { z } from "zod";
+import { environmentFullTitle } from "~/components/environments/EnvironmentLabel";
 import { regenerateApiKey } from "~/models/api-key.server";
-import { requireUserId } from "~/services/session.server";
 import { jsonWithErrorMessage, jsonWithSuccessMessage } from "~/models/message.server";
-import { environmentTitle } from "~/components/environments/EnvironmentLabel";
+import { requireUserId } from "~/services/session.server";
 
 const ParamsSchema = z.object({
   environmentId: z.string(),
@@ -25,7 +25,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return jsonWithSuccessMessage(
       { ok: true },
       request,
-      `API keys regenerated for ${environmentTitle(updatedEnvironment)} environment`
+      `API keys regenerated for ${environmentFullTitle(updatedEnvironment)} environment`
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";

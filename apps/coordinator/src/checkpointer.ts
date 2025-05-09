@@ -1,5 +1,5 @@
 import { ExponentialBackoff } from "@trigger.dev/core/v3/apps";
-import { testDockerCheckpoint } from "@trigger.dev/core/v3/checkpoints";
+import { testDockerCheckpoint } from "@trigger.dev/core/v3/serverOnly";
 import { nanoid } from "nanoid";
 import fs from "node:fs/promises";
 import { ChaosMonkey } from "./chaosMonkey";

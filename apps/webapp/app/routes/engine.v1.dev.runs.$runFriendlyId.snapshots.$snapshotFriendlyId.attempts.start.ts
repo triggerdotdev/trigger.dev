@@ -1,6 +1,6 @@
 import { json, TypedResponse } from "@remix-run/server-runtime";
 import { MachinePreset } from "@trigger.dev/core/v3";
-import { RunId, SnapshotId } from "@trigger.dev/core/v3/apps";
+import { RunId, SnapshotId } from "@trigger.dev/core/v3/isomorphic";
 import {
   WorkerApiRunAttemptStartRequestBody,
   WorkerApiRunAttemptStartResponseBody,

@@ -5,5 +5,6 @@
   "search.exclude": {
     "**/node_modules/**": true,
     "packages/cli-v3/e2e": true
-  }
+  },
+  "vitest.disableWorkspaceWarning": true
 }

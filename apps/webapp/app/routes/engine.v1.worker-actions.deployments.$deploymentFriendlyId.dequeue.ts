@@ -1,5 +1,5 @@
 import { json, TypedResponse } from "@remix-run/server-runtime";
-import { CURRENT_DEPLOYMENT_LABEL } from "@trigger.dev/core/v3/apps";
+import { CURRENT_DEPLOYMENT_LABEL } from "@trigger.dev/core/v3/isomorphic";
 import { WorkerApiDequeueResponseBody } from "@trigger.dev/core/v3/workers";
 import { z } from "zod";
 import { $replica, prisma } from "~/db.server";

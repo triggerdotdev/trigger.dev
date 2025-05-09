@@ -1,6 +1,7 @@
 import { TaskRunExecutionStatus, TaskRunStatus } from "@trigger.dev/database";
-import { AuthenticatedEnvironment } from "../shared";
+import { AuthenticatedEnvironment } from "../shared/index.js";
 import { FlushedRunMetadata, TaskRunError } from "@trigger.dev/core/v3";
+import { EventEmitter } from "events";
 
 export type EventBusEvents = {
   runAttemptStarted: [
@@ -84,6 +85,7 @@ export type EventBusEvents = {
         traceContext: Record<string, string | undefined>;
         taskIdentifier: string;
         baseCostInCents: number;
+        nextMachineAfterOOM?: string;
       };
       organization: {
         id: string;
@@ -178,3 +180,33 @@ export type EventBusEvents = {
 };
 
 export type EventBusEventArgs<T extends keyof EventBusEvents> = EventBusEvents[T];
+
+export type EventBus = EventEmitter<EventBusEvents>;
+
+/**
+ * Sends a notification that a run has changed and we need to fetch the latest run state.
+ * The worker will call `getRunExecutionData` via the API and act accordingly.
+ */
+export async function sendNotificationToWorker({
+  runId,
+  snapshot,
+  eventBus,
+}: {
+  runId: string;
+  snapshot: {
+    id: string;
+    executionStatus: TaskRunExecutionStatus;
+  };
+  eventBus: EventBus;
+}) {
+  eventBus.emit("workerNotification", {
+    time: new Date(),
+    run: {
+      id: runId,
+    },
+    snapshot: {
+      id: snapshot.id,
+      executionStatus: snapshot.executionStatus,
+    },
+  });
+}

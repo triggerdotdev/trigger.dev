@@ -1,4 +1,4 @@
-import { FreePlanUsage } from "~/components/billing/v2/FreePlanUsage";
+import { FreePlanUsage } from "~/components/billing/FreePlanUsage";
 
 export default function Story() {
   return (

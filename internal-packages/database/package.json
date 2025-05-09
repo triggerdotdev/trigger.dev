@@ -2,21 +2,25 @@
   "name": "@trigger.dev/database",
   "private": true,
   "version": "0.0.2",
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "dependencies": {
     "@prisma/client": "5.4.1"
   },
   "devDependencies": {
-    "prisma": "5.4.1"
+    "prisma": "5.4.1",
+    "rimraf": "6.0.1"
   },
   "scripts": {
+    "clean": "rimraf dist",
     "generate": "prisma generate",
     "db:migrate:dev:create": "prisma migrate dev --create-only",
     "db:migrate:deploy": "prisma migrate deploy",
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
     "db:reset": "prisma migrate reset",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build": "pnpm run clean && tsc --noEmit false --outDir dist --declaration",
+    "dev": "tsc --noEmit false --outDir dist --declaration --watch"
   }
 }

@@ -1,70 +1,53 @@
-import { Link, MetaFunction } from "@remix-run/react";
-import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { Badge } from "~/components/primitives/Badge";
-import { LinkButton } from "~/components/primitives/Buttons";
-import { Header3 } from "~/components/primitives/Headers";
-import { NamedIcon } from "~/components/primitives/NamedIcon";
-import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
-import { Paragraph } from "~/components/primitives/Paragraph";
-import { useOrganization } from "~/hooks/useOrganizations";
-import { newProjectPath, projectPath } from "~/utils/pathBuilder";
+import { type LoaderFunctionArgs, redirect } from "@remix-run/server-runtime";
+import { prisma } from "~/db.server";
+import { SelectBestEnvironmentPresenter } from "~/presenters/SelectBestEnvironmentPresenter.server";
+import { logger } from "~/services/logger.server";
+import { requireUser } from "~/services/session.server";
+import {
+  newOrganizationPath,
+  newProjectPath,
+  OrganizationParamsSchema,
+  v3ProjectPath,
+} from "~/utils/pathBuilder";
 
-export const meta: MetaFunction = () => {
-  return [
-    {
-      title: "Projects | Trigger.dev",
+export const loader = async ({ request, params }: LoaderFunctionArgs) => {
+  const user = await requireUser(request);
+  const { organizationSlug } = OrganizationParamsSchema.parse(params);
+
+  const org = await prisma.organization.findFirst({
+    where: { slug: organizationSlug, members: { some: { userId: user.id } }, deletedAt: null },
+    orderBy: { createdAt: "desc" },
+    select: {
+      projects: {
+        where: { deletedAt: null, version: "V3" },
+        select: {
+          id: true,
+          slug: true,
+          name: true,
+          updatedAt: true,
+        },
+        orderBy: { name: "asc" },
+      },
     },
-  ];
+  });
+
+  if (!org) {
+    throw redirect(newOrganizationPath());
+  }
+
+  const selector = new SelectBestEnvironmentPresenter();
+  const bestProject = await selector.selectBestProjectFromProjects({
+    user,
+    projectSlug: undefined,
+    projects: org.projects,
+  });
+  if (!bestProject) {
+    logger.info("Not Found: project", {
+      request,
+      project: bestProject,
+    });
+    throw redirect(newProjectPath({ slug: organizationSlug }));
+  }
+
+  return redirect(v3ProjectPath({ slug: organizationSlug }, bestProject));
 };
-
-export default function Page() {
-  const organization = useOrganization();
-
-  return (
-    <PageContainer>
-      <NavBar>
-        <PageTitle title={`${organization.title} projects`} />
-        <PageAccessories>
-          <Paragraph variant="extra-small" className="text-charcoal-500">
-            Org UID: {organization.id}
-          </Paragraph>
-          <LinkButton
-            to={newProjectPath(organization)}
-            variant="primary/small"
-            shortcut={{ key: "n" }}
-          >
-            Create a new project
-          </LinkButton>
-        </PageAccessories>
-      </NavBar>
-      <PageBody>
-        <ul className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {organization.projects.length > 0 ? (
-            organization.projects.map((project) => {
-              return (
-                <li key={project.id}>
-                  <Link
-                    className="border-grid-bright-dimmed flex gap-4 rounded-md border p-4 transition hover:bg-charcoal-900 "
-                    to={projectPath(organization, project)}
-                  >
-                    <NamedIcon name="folder" className="h-10 w-10 flex-none" />
-                    <div className="flex flex-col">
-                      <Header3>{project.name}</Header3>
-                      <Badge className="max-w-max">{project.version}</Badge>
-                    </div>
-                  </Link>
-                </li>
-              );
-            })
-          ) : (
-            <li>
-              <LinkButton to={newProjectPath(organization)} variant="primary/small">
-                Create a Project
-              </LinkButton>
-            </li>
-          )}
-        </ul>
-      </PageBody>
-    </PageContainer>
-  );
-}

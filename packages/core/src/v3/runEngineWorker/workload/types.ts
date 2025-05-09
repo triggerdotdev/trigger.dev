@@ -1,5 +1,7 @@
 export type WorkloadClientCommonOptions = {
   workerApiUrl: string;
-  deploymentId: string;
   runnerId: string;
+  deploymentId: string;
+  deploymentVersion: string;
+  projectRef: string;
 };

@@ -1,13 +1,17 @@
-import { Prisma, RuntimeEnvironmentType, ScheduleType } from "@trigger.dev/database";
-import { ScheduleListFilters } from "~/components/runs/v3/ScheduleFilters";
+import { Prisma, type RuntimeEnvironmentType, type ScheduleType } from "@trigger.dev/database";
+import { type ScheduleListFilters } from "~/components/runs/v3/ScheduleFilters";
 import { sqlDatabaseSchema } from "~/db.server";
 import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
-import { getCurrentPlan, getLimit, getLimits } from "~/services/platform.v3.server";
+import { getLimit } from "~/services/platform.v3.server";
+import { CheckScheduleService } from "~/v3/services/checkSchedule.server";
 import { calculateNextScheduledTimestamp } from "~/v3/utils/calculateNextSchedule.server";
 import { BasePresenter } from "./basePresenter.server";
+import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.server";
+import { ServiceValidationError } from "~/v3/services/baseService.server";
 
 type ScheduleListOptions = {
   projectId: string;
+  environmentId: string;
   userId?: string;
   pageSize?: number;
 } & ScheduleListFilters;
@@ -41,18 +45,15 @@ export class ScheduleListPresenter extends BasePresenter {
   public async call({
     userId,
     projectId,
+    environmentId,
     tasks,
-    environments,
     search,
     page,
     type,
     pageSize = DEFAULT_PAGE_SIZE,
   }: ScheduleListOptions) {
     const hasFilters =
-      type !== undefined ||
-      tasks !== undefined ||
-      environments !== undefined ||
-      (search !== undefined && search !== "");
+      type !== undefined || tasks !== undefined || (search !== undefined && search !== "");
 
     const filterType =
       type === "declarative" ? "DECLARATIVE" : type === "imperative" ? "IMPERATIVE" : undefined;
@@ -86,17 +87,45 @@ export class ScheduleListPresenter extends BasePresenter {
       },
     });
 
-    const schedulesCount = await this._prisma.taskSchedule.count({
-      where: {
-        projectId,
-      },
+    const environment = project.environments.find((env) => env.id === environmentId);
+    if (!environment) {
+      throw new ServiceValidationError("No matching environment for project", 404);
+    }
+
+    const schedulesCount = await CheckScheduleService.getUsedSchedulesCount({
+      prisma: this._replica,
+      environments: project.environments,
     });
+
+    const limit = await getLimit(project.organizationId, "schedules", 100_000_000);
+
+    //get the latest BackgroundWorker
+    const latestWorker = await findCurrentWorkerFromEnvironment(environment, this._replica);
+    if (!latestWorker) {
+      return {
+        currentPage: 1,
+        totalPages: 1,
+        totalCount: 0,
+        schedules: [],
+        possibleTasks: [],
+        hasFilters,
+        limits: {
+          used: schedulesCount,
+          limit,
+        },
+        filters: {
+          tasks,
+          search,
+        },
+      };
+    }
 
     //get all possible scheduled tasks
     const possibleTasks = await this._replica.backgroundWorkerTask.findMany({
-      distinct: ["slug"],
       where: {
+        workerId: latestWorker.id,
         projectId: project.id,
+        runtimeEnvironmentId: environmentId,
         triggerSource: "SCHEDULED",
       },
     });
@@ -110,7 +139,7 @@ export class ScheduleListPresenter extends BasePresenter {
         taskIdentifier: tasks ? { in: tasks } : undefined,
         instances: {
           some: {
-            environmentId: environments ? { in: environments } : undefined,
+            environmentId,
           },
         },
         type: filterType,
@@ -165,17 +194,17 @@ export class ScheduleListPresenter extends BasePresenter {
           },
         },
         active: true,
+        lastRunTriggeredAt: true,
+        createdAt: true,
       },
       where: {
         projectId: project.id,
         taskIdentifier: tasks ? { in: tasks } : undefined,
-        instances: environments
-          ? {
-              some: {
-                environmentId: environments ? { in: environments } : undefined,
-              },
-            }
-          : undefined,
+        instances: {
+          some: {
+            environmentId,
+          },
+        },
         type: filterType,
         AND: search
           ? {
@@ -208,27 +237,14 @@ export class ScheduleListPresenter extends BasePresenter {
             }
           : undefined,
       },
+      orderBy: {
+        createdAt: "desc",
+      },
       take: pageSize,
       skip: (page - 1) * pageSize,
     });
 
-    const latestRuns =
-      rawSchedules.length > 0
-        ? await this._replica.$queryRaw<{ scheduleId: string; createdAt: Date }[]>`
-    SELECT t."scheduleId", t."createdAt"
-    FROM (
-      SELECT "scheduleId", MAX("createdAt") as "LatestRun"
-      FROM ${sqlDatabaseSchema}."TaskRun"
-      WHERE "scheduleId" IN (${Prisma.join(rawSchedules.map((s) => s.id))})
-      GROUP BY "scheduleId"
-    ) r
-    JOIN ${sqlDatabaseSchema}."TaskRun" t
-    ON t."scheduleId" = r."scheduleId" AND t."createdAt" = r."LatestRun";`
-        : [];
-
     const schedules: ScheduleListItem[] = rawSchedules.map((schedule) => {
-      const latestRun = latestRuns.find((r) => r.scheduleId === schedule.id);
-
       return {
         id: schedule.id,
         type: schedule.type,
@@ -241,7 +257,7 @@ export class ScheduleListPresenter extends BasePresenter {
         timezone: schedule.timezone,
         active: schedule.active,
         externalId: schedule.externalId,
-        lastRun: latestRun?.createdAt,
+        lastRun: schedule.lastRunTriggeredAt ?? undefined,
         nextRun: calculateNextScheduledTimestamp(schedule.generatorExpression, schedule.timezone),
         environments: schedule.instances.map((instance) => {
           const environment = project.environments.find((env) => env.id === instance.environmentId);
@@ -256,17 +272,12 @@ export class ScheduleListPresenter extends BasePresenter {
       };
     });
 
-    const limit = await getLimit(project.organizationId, "schedules", 100_000_000);
-
     return {
       currentPage: page,
       totalPages: Math.ceil(totalCount / pageSize),
       totalCount: totalCount,
       schedules,
-      possibleTasks: possibleTasks.map((task) => task.slug),
-      possibleEnvironments: project.environments.map((environment) => {
-        return displayableEnvironment(environment, userId);
-      }),
+      possibleTasks: possibleTasks.map((task) => task.slug).sort((a, b) => a.localeCompare(b)),
       hasFilters,
       limits: {
         used: schedulesCount,
@@ -274,7 +285,6 @@ export class ScheduleListPresenter extends BasePresenter {
       },
       filters: {
         tasks,
-        environments,
         search,
       },
     };

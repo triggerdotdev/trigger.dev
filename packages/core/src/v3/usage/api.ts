@@ -44,6 +44,10 @@ export class UsageAPI implements UsageManager {
     return this.#getUsageManager().sample();
   }
 
+  public flush(): Promise<void> {
+    return this.#getUsageManager().flush();
+  }
+
   #getUsageManager(): UsageManager {
     return getGlobal(API_NAME) ?? NOOP_USAGE_MANAGER;
   }

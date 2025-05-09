@@ -20,28 +20,9 @@
     "baseUrl": ".",
     "paths": {
       "~/*": ["./app/*"],
-      "@/*": ["./*"],
-      "@trigger.dev/sdk": ["../../packages/trigger-sdk/src/index"],
-      "@trigger.dev/sdk/*": ["../../packages/trigger-sdk/src/*"],
-      "@trigger.dev/core": ["../../packages/core/src/index"],
-      "@trigger.dev/core/*": ["../../packages/core/src/*"],
-      "@trigger.dev/database": ["../../internal-packages/database/src/index"],
-      "@trigger.dev/database/*": ["../../internal-packages/database/src/*"],
-      "@trigger.dev/yalt": ["../../packages/yalt/src/index"],
-      "@trigger.dev/yalt/*": ["../../packages/yalt/src/*"],
-      "@trigger.dev/otlp-importer": ["../../internal-packages/otlp-importer/src/index"],
-      "@trigger.dev/otlp-importer/*": ["../../internal-packages/otlp-importer/src/*"],
-      "emails": ["../../internal-packages/emails/src/index"],
-      "emails/*": ["../../internal-packages/emails/src/*"],
-      "@internal/zod-worker": ["../../internal-packages/zod-worker/src/index"],
-      "@internal/zod-worker/*": ["../../internal-packages/zod-worker/src/*"],
-      "@internal/run-engine": ["../../internal-packages/run-engine/src/index"],
-      "@internal/run-engine/*": ["../../internal-packages/run-engine/src/*"],
-      "@internal/redis-worker": ["../../internal-packages/redis-worker/src/index"],
-      "@internal/redis-worker/*": ["../../internal-packages/redis-worker/src/*"],
-      "@internal/redis": ["../../internal-packages/redis/src/index"],
-      "@internal/redis/*": ["../../internal-packages/redis/src/*"]
+      "@/*": ["./*"]
     },
-    "noEmit": true
+    "noEmit": true,
+    "customConditions": ["@triggerdotdev/source"]
   }
 }

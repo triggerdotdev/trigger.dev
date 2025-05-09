@@ -1,4 +1,4 @@
-import { parseNaturalLanguageDuration } from "@trigger.dev/core/v3/apps";
+import { parseNaturalLanguageDuration } from "@trigger.dev/core/v3/isomorphic";
 import { $transaction } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { marqs } from "~/v3/marqs/index.server";

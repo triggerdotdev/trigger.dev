@@ -15,10 +15,13 @@ import {
   WorkerApiRunHeartbeatResponseBody,
   WorkerApiRunLatestSnapshotResponseBody,
   WorkerApiDebugLogBody,
+  WorkerApiSuspendRunRequestBody,
+  WorkerApiSuspendRunResponseBody,
+  WorkerApiRunSnapshotsSinceResponseBody,
 } from "./schemas.js";
 import { SupervisorClientCommonOptions } from "./types.js";
 import { getDefaultWorkerHeaders } from "./util.js";
-import { ApiError, zodfetch } from "../../zodfetch.js";
+import { wrapZodFetch } from "../../zodfetch.js";
 import { createHeaders } from "../util.js";
 import { WORKER_HEADERS } from "../consts.js";
 
@@ -79,6 +82,7 @@ export class SupervisorHttpClient {
     );
   }
 
+  /** @deprecated Not currently used */
   async dequeueFromVersion(deploymentId: string, maxRunCount = 1, runnerId?: string) {
     return wrapZodFetch(
       WorkerApiDequeueResponseBody,
@@ -182,6 +186,20 @@ export class SupervisorHttpClient {
     );
   }
 
+  async getSnapshotsSince(runId: string, snapshotId: string, runnerId?: string) {
+    return wrapZodFetch(
+      WorkerApiRunSnapshotsSinceResponseBody,
+      `${this.apiUrl}/engine/v1/worker-actions/runs/${runId}/snapshots/since/${snapshotId}`,
+      {
+        method: "GET",
+        headers: {
+          ...this.defaultHeaders,
+          ...this.runnerIdHeader(runnerId),
+        },
+      }
+    );
+  }
+
   async sendDebugLog(runId: string, body: WorkerApiDebugLogBody, runnerId?: string): Promise<void> {
     try {
       const res = await wrapZodFetch(
@@ -220,66 +238,35 @@ export class SupervisorHttpClient {
     );
   }
 
-  getSuspendCompletionUrl(runId: string, snapshotId: string, runnerId?: string) {
-    return {
-      url: `${this.apiUrl}/engine/v1/worker-actions/runs/${runId}/snapshots/${snapshotId}/suspend`,
-      headers: {
-        ...this.defaultHeaders,
-        ...this.runnerIdHeader(runnerId),
-      },
-    };
+  async submitSuspendCompletion({
+    runId,
+    snapshotId,
+    runnerId,
+    body,
+  }: {
+    runId: string;
+    snapshotId: string;
+    runnerId?: string;
+    body: WorkerApiSuspendRunRequestBody;
+  }) {
+    return wrapZodFetch(
+      WorkerApiSuspendRunResponseBody,
+      `${this.apiUrl}/engine/v1/worker-actions/runs/${runId}/snapshots/${snapshotId}/suspend`,
+      {
+        method: "POST",
+        headers: {
+          ...this.defaultHeaders,
+          ...this.runnerIdHeader(runnerId),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      }
+    );
   }
 
   private runnerIdHeader(runnerId?: string): Record<string, string> {
     return createHeaders({
       [WORKER_HEADERS.RUNNER_ID]: runnerId,
     });
-  }
-}
-
-type ApiResult<TSuccessResult> =
-  | { success: true; data: TSuccessResult }
-  | {
-      success: false;
-      error: string;
-    };
-
-async function wrapZodFetch<T extends z.ZodTypeAny>(
-  schema: T,
-  url: string,
-  requestInit?: RequestInit
-): Promise<ApiResult<z.infer<T>>> {
-  try {
-    const response = await zodfetch(schema, url, requestInit, {
-      retry: {
-        minTimeoutInMs: 500,
-        maxTimeoutInMs: 5000,
-        maxAttempts: 5,
-        factor: 2,
-        randomize: false,
-      },
-    });
-
-    return {
-      success: true,
-      data: response,
-    };
-  } catch (error) {
-    if (error instanceof ApiError) {
-      return {
-        success: false,
-        error: error.message,
-      };
-    } else if (error instanceof Error) {
-      return {
-        success: false,
-        error: error.message,
-      };
-    } else {
-      return {
-        success: false,
-        error: String(error),
-      };
-    }
   }
 }

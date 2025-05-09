@@ -1,6 +1,6 @@
 import { ClockIcon } from "@heroicons/react/20/solid";
-import { TaskTriggerSource } from "@trigger.dev/database";
-import { TaskIcon } from "~/assets/icons/TaskIcon";
+import { type TaskTriggerSource } from "@trigger.dev/database";
+import { TaskIconSmall } from "~/assets/icons/TaskIcon";
 import { cn } from "~/utils/cn";
 
 export function TaskTriggerSourceIcon({
@@ -12,14 +12,12 @@ export function TaskTriggerSourceIcon({
 }) {
   switch (source) {
     case "STANDARD": {
-      return (
-        <div className={cn("grid size-4 place-items-center text-blue-500", className)}>
-          <TaskIcon className="size-[87.5%]" />
-        </div>
-      );
+      return <TaskIconSmall className="size-[1.125rem] min-w-[1.125rem] text-tasks" />;
     }
     case "SCHEDULED": {
-      return <ClockIcon className={cn("size-4 text-sun-500", className)} />;
+      return (
+        <ClockIcon className={cn("size-[1.125rem] min-w-[1.125rem] text-schedules", className)} />
+      );
     }
   }
 }

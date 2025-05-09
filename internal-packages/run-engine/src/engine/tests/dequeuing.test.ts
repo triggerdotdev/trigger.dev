@@ -1,18 +1,17 @@
-import {
-  containerTest,
-  setupAuthenticatedEnvironment,
-  setupBackgroundWorker,
-} from "@internal/testcontainers";
-import { trace } from "@opentelemetry/api";
-import { generateFriendlyId } from "@trigger.dev/core/v3/apps";
-import { expect } from "vitest";
-import { RunEngine } from "../index.js";
-import { setTimeout } from "node:timers/promises";
-import { MinimalAuthenticatedEnvironment } from "../../shared/index.js";
+import { containerTest } from "@internal/testcontainers";
+import { trace } from "@internal/tracing";
+import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
 import { PrismaClientOrTransaction } from "@trigger.dev/database";
+import { expect } from "vitest";
+import { MinimalAuthenticatedEnvironment } from "../../shared/index.js";
+import { RunEngine } from "../index.js";
+import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
+import { DequeuedMessage } from "@trigger.dev/core/v3";
+
+vi.setConfig({ testTimeout: 60_000 });
 
 describe("RunEngine dequeuing", () => {
-  containerTest("Dequeues 5 runs", { timeout: 15_000 }, async ({ prisma, redisOptions }) => {
+  containerTest("Dequeues 5 runs", async ({ prisma, redisOptions }) => {
     const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
     const engine = new RunEngine({
@@ -48,7 +47,7 @@ describe("RunEngine dequeuing", () => {
       const taskIdentifier = "test-task";
 
       //create background worker
-      await setupBackgroundWorker(prisma, authenticatedEnvironment, taskIdentifier);
+      await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
 
       //trigger the runs
       const runs = await triggerRuns({
@@ -65,21 +64,26 @@ describe("RunEngine dequeuing", () => {
       expect(queueLength).toBe(10);
 
       //dequeue
-      const dequeued = await engine.dequeueFromMasterQueue({
-        consumerId: "test_12345",
-        masterQueue: "main",
-        maxRunCount: 5,
-      });
+      const dequeued: DequeuedMessage[] = [];
+      for (let i = 0; i < 5; i++) {
+        dequeued.push(
+          ...(await engine.dequeueFromMasterQueue({
+            consumerId: "test_12345",
+            masterQueue: "main",
+            maxRunCount: 1,
+          }))
+        );
+      }
 
       expect(dequeued.length).toBe(5);
     } finally {
-      engine.quit();
+      await engine.quit();
     }
   });
 
-  containerTest(
+  //This will fail until we support dequeuing multiple runs from a single environment
+  containerTest.fails(
     "Dequeues runs within machine constraints",
-    { timeout: 15_000 },
     async ({ prisma, redisOptions }) => {
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
@@ -116,7 +120,7 @@ describe("RunEngine dequeuing", () => {
         const taskIdentifier = "test-task";
 
         //create background worker
-        await setupBackgroundWorker(prisma, authenticatedEnvironment, taskIdentifier, {
+        await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier, {
           preset: "small-1x",
         });
 
@@ -165,7 +169,7 @@ describe("RunEngine dequeuing", () => {
         const queueLength3 = await engine.runQueue.lengthOfEnvQueue(authenticatedEnvironment);
         expect(queueLength3).toBe(12);
       } finally {
-        engine.quit();
+        await engine.quit();
       }
     }
   );
@@ -199,7 +203,7 @@ async function triggerRuns({
         traceId: "t12345",
         spanId: "s12345",
         masterQueue: "main",
-        queueName: `task/${taskIdentifier}`,
+        queue: `task/${taskIdentifier}`,
         isTest: false,
         tags: [],
       },

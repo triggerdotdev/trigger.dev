@@ -2,7 +2,7 @@ import { WorkerDeployment } from "@trigger.dev/database";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { ExecuteTasksWaitingForDeployService } from "./executeTasksWaitingForDeploy";
 import { compareDeploymentVersions } from "../utils/deploymentVersions";
-import { CURRENT_DEPLOYMENT_LABEL } from "@trigger.dev/core/v3/apps";
+import { CURRENT_DEPLOYMENT_LABEL } from "@trigger.dev/core/v3/isomorphic";
 
 export type ChangeCurrentDeploymentDirection = "promote" | "rollback";
 

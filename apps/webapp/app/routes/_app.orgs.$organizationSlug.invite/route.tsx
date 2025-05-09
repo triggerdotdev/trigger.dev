@@ -1,6 +1,6 @@
 import { conform, list, requestIntent, useFieldList, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { LockOpenIcon } from "@heroicons/react/20/solid";
+import { EnvelopeIcon, LockOpenIcon, UserPlusIcon } from "@heroicons/react/20/solid";
 import type { ActionFunction, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { Form, useActionData } from "@remix-run/react";
@@ -143,7 +143,7 @@ export default function Page() {
     <MainCenteredContainer>
       <div>
         <FormTitle
-          LeadingIcon="invite-member"
+          LeadingIcon={<UserPlusIcon className="size-6 text-indigo-500" />}
           title="Invite team members"
           description={`Invite new team members to ${organization.title}.`}
         />
@@ -153,8 +153,11 @@ export default function Page() {
             icon={LockOpenIcon}
             iconClassName="text-indigo-500"
             title="Unlock more team members"
-            to={v3BillingPath(organization)}
-            buttonLabel="Upgrade"
+            accessory={
+              <LinkButton to={v3BillingPath(organization)} variant="secondary/small">
+                Upgrade
+              </LinkButton>
+            }
             panelClassName="mb-4"
           >
             <Paragraph variant="small">
@@ -172,7 +175,7 @@ export default function Page() {
                   <Input
                     {...conform.input(email, { type: "email" })}
                     placeholder={index === 0 ? "Enter an email address" : "Add another email"}
-                    icon="envelope"
+                    icon={EnvelopeIcon}
                     autoFocus={index === 0}
                     onChange={(e) => {
                       fieldValues.current[index] = e.target.value;

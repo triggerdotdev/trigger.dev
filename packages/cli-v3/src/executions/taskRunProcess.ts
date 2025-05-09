@@ -1,12 +1,15 @@
 import {
+  attemptKey,
   CompletedWaitpoint,
   ExecutorToWorkerMessageCatalog,
+  MachinePresetResources,
   ServerBackgroundWorker,
   TaskRunErrorCodes,
   TaskRunExecution,
   TaskRunExecutionPayload,
   TaskRunExecutionResult,
   type TaskRunInternalError,
+  tryCatch,
   WorkerManifest,
   WorkerToExecutorMessageCatalog,
 } from "@trigger.dev/core/v3";
@@ -19,6 +22,7 @@ import { ChildProcess, fork } from "node:child_process";
 import { chalkError, chalkGrey, chalkRun, prettyPrintDate } from "../utilities/cliOutput.js";
 
 import { execOptionsForRuntime, execPathForRuntime } from "@trigger.dev/core/v3/build";
+import { nodeOptionsWithMaxOldSpaceSize } from "@trigger.dev/core/v3/machines";
 import { InferSocketMessageSchema } from "@trigger.dev/core/v3/zodSocket";
 import { logger } from "../utilities/logger.js";
 import {
@@ -27,30 +31,32 @@ import {
   internalErrorFromUnexpectedExit,
   GracefulExitTimeoutError,
   UnexpectedExitError,
+  SuspendedProcessError,
 } from "@trigger.dev/core/v3/errors";
 
-export type OnWaitForDurationMessage = InferSocketMessageSchema<
+export type OnSendDebugLogMessage = InferSocketMessageSchema<
   typeof ExecutorToWorkerMessageCatalog,
-  "WAIT_FOR_DURATION"
+  "SEND_DEBUG_LOG"
 >;
-export type OnWaitForTaskMessage = InferSocketMessageSchema<
+
+export type OnSetSuspendableMessage = InferSocketMessageSchema<
   typeof ExecutorToWorkerMessageCatalog,
-  "WAIT_FOR_TASK"
+  "SET_SUSPENDABLE"
 >;
-export type OnWaitForBatchMessage = InferSocketMessageSchema<
-  typeof ExecutorToWorkerMessageCatalog,
-  "WAIT_FOR_BATCH"
->;
-export type OnWaitMessage = InferSocketMessageSchema<typeof ExecutorToWorkerMessageCatalog, "WAIT">;
 
 export type TaskRunProcessOptions = {
   workerManifest: WorkerManifest;
   serverWorker: ServerBackgroundWorker;
   env: Record<string, string>;
+  machineResources: MachinePresetResources;
+  isWarmStart?: boolean;
+  cwd?: string;
+};
+
+export type TaskRunProcessExecuteParams = {
   payload: TaskRunExecutionPayload;
   messageId: string;
-
-  cwd?: string;
+  env?: Record<string, string>;
 };
 
 export class TaskRunProcess {
@@ -66,33 +72,60 @@ export class TaskRunProcess {
   private _gracefulExitTimeoutElapsed: boolean = false;
   private _isBeingKilled: boolean = false;
   private _isBeingCancelled: boolean = false;
+  private _isBeingSuspended: boolean = false;
   private _stderr: Array<string> = [];
 
   public onTaskRunHeartbeat: Evt<string> = new Evt();
   public onExit: Evt<{ code: number | null; signal: NodeJS.Signals | null; pid?: number }> =
     new Evt();
   public onIsBeingKilled: Evt<TaskRunProcess> = new Evt();
-  public onReadyToDispose: Evt<TaskRunProcess> = new Evt();
+  public onSendDebugLog: Evt<OnSendDebugLogMessage> = new Evt();
+  public onSetSuspendable: Evt<OnSetSuspendableMessage> = new Evt();
 
-  public onWaitForTask: Evt<OnWaitForTaskMessage> = new Evt();
-  public onWaitForBatch: Evt<OnWaitForBatchMessage> = new Evt();
-  public onWait: Evt<OnWaitMessage> = new Evt();
+  private _isPreparedForNextRun: boolean = false;
+  private _isPreparedForNextAttempt: boolean = false;
 
-  constructor(public readonly options: TaskRunProcessOptions) {}
+  constructor(public readonly options: TaskRunProcessOptions) {
+    this._isPreparedForNextRun = true;
+    this._isPreparedForNextAttempt = true;
+  }
+
+  get isPreparedForNextRun() {
+    return this._isPreparedForNextRun;
+  }
+
+  get isPreparedForNextAttempt() {
+    return this._isPreparedForNextAttempt;
+  }
+
+  unsafeDetachEvtHandlers() {
+    this.onExit.detach();
+    this.onIsBeingKilled.detach();
+    this.onSendDebugLog.detach();
+    this.onSetSuspendable.detach();
+    this.onTaskRunHeartbeat.detach();
+  }
 
   async cancel() {
+    this._isPreparedForNextRun = false;
     this._isBeingCancelled = true;
 
     try {
-      await this.#flush();
+      await this.#cancel();
     } catch (err) {
-      console.error("Error flushing task run process", { err });
+      console.error("Error cancelling task run process", { err });
     }
 
     await this.kill();
   }
 
   async cleanup(kill = true) {
+    this._isPreparedForNextRun = false;
+
+    if (this._isBeingCancelled) {
+      return;
+    }
+
     try {
       await this.#flush();
     } catch (err) {
@@ -104,32 +137,22 @@ export class TaskRunProcess {
     }
   }
 
-  get runId() {
-    return this.options.payload.execution.run.id;
-  }
+  initialize() {
+    const { env: $env, workerManifest, cwd, machineResources: machine } = this.options;
 
-  get isTest() {
-    return this.options.payload.execution.run.isTest;
-  }
-
-  get payload() {
-    return this.options.payload;
-  }
-
-  async initialize() {
-    const { env: $env, workerManifest, cwd, messageId } = this.options;
+    const maxOldSpaceSize = nodeOptionsWithMaxOldSpaceSize(undefined, machine);
 
     const fullEnv = {
-      ...(this.isTest ? { TRIGGER_LOG_LEVEL: "debug" } : {}),
       ...$env,
       OTEL_IMPORT_HOOK_INCLUDES: workerManifest.otelImportHook?.include?.join(","),
       // TODO: this will probably need to use something different for bun (maybe --preload?)
-      NODE_OPTIONS: execOptionsForRuntime(workerManifest.runtime, workerManifest),
+      NODE_OPTIONS: execOptionsForRuntime(workerManifest.runtime, workerManifest, maxOldSpaceSize),
       PATH: process.env.PATH,
       TRIGGER_PROCESS_FORK_START_TIME: String(Date.now()),
+      TRIGGER_WARM_START: this.options.isWarmStart ? "true" : "false",
     };
 
-    logger.debug(`[${this.runId}] initializing task run process`, {
+    logger.debug(`initializing task run process`, {
       env: fullEnv,
       path: workerManifest.workerEntryPoint,
       cwd,
@@ -154,15 +177,17 @@ export class TaskRunProcess {
         TASK_RUN_COMPLETED: async (message) => {
           const { result, execution } = message;
 
-          const promiseStatus = this._attemptStatuses.get(execution.attempt.id);
+          const key = attemptKey(execution);
+
+          const promiseStatus = this._attemptStatuses.get(key);
 
           if (promiseStatus !== "PENDING") {
             return;
           }
 
-          this._attemptStatuses.set(execution.attempt.id, "RESOLVED");
+          this._attemptStatuses.set(key, "RESOLVED");
 
-          const attemptPromise = this._attemptPromises.get(execution.attempt.id);
+          const attemptPromise = this._attemptPromises.get(key);
 
           if (!attemptPromise) {
             return;
@@ -172,22 +197,17 @@ export class TaskRunProcess {
 
           resolver(result);
         },
-        READY_TO_DISPOSE: async (message) => {
-          logger.debug(`[${this.runId}] task run process is ready to dispose`);
-
-          this.onReadyToDispose.post(this);
-        },
         TASK_HEARTBEAT: async (message) => {
-          this.onTaskRunHeartbeat.post(messageId);
-        },
-        WAIT_FOR_TASK: async (message) => {
-          this.onWaitForTask.post(message);
-        },
-        WAIT_FOR_BATCH: async (message) => {
-          this.onWaitForBatch.post(message);
+          this.onTaskRunHeartbeat.post(message.id);
         },
         UNCAUGHT_EXCEPTION: async (message) => {
-          logger.debug(`[${this.runId}] uncaught exception in task run process`, { ...message });
+          logger.debug("uncaught exception in task run process", { ...message });
+        },
+        SEND_DEBUG_LOG: async (message) => {
+          this.onSendDebugLog.post(message);
+        },
+        SET_SUSPENDABLE: async (message) => {
+          this.onSetSuspendable.post(message);
         },
       },
     });
@@ -195,6 +215,8 @@ export class TaskRunProcess {
     this._child.on("exit", this.#handleExit.bind(this));
     this._child.stdout?.on("data", this.#handleLog.bind(this));
     this._child.stderr?.on("data", this.#handleStdErr.bind(this));
+
+    return this;
   }
 
   async #flush(timeoutInMs: number = 5_000) {
@@ -203,7 +225,20 @@ export class TaskRunProcess {
     await this._ipc?.sendWithAck("FLUSH", { timeoutInMs }, timeoutInMs + 1_000);
   }
 
-  async execute(): Promise<TaskRunExecutionResult> {
+  async #cancel(timeoutInMs: number = 30_000) {
+    logger.debug("sending cancel message to task run process", { pid: this.pid, timeoutInMs });
+
+    await this._ipc?.sendWithAck("CANCEL", { timeoutInMs }, timeoutInMs + 1_000);
+  }
+
+  async execute(
+    params: TaskRunProcessExecuteParams,
+    isWarmStart?: boolean
+  ): Promise<TaskRunExecutionResult> {
+    this._isBeingCancelled = false;
+    this._isPreparedForNextRun = false;
+    this._isPreparedForNextAttempt = false;
+
     let resolver: (value: TaskRunExecutionResult) => void;
     let rejecter: (err?: any) => void;
 
@@ -212,19 +247,21 @@ export class TaskRunProcess {
       rejecter = reject;
     });
 
-    this._attemptStatuses.set(this.payload.execution.attempt.id, "PENDING");
+    const key = attemptKey(params.payload.execution);
+
+    this._attemptStatuses.set(key, "PENDING");
 
     // @ts-expect-error - We know that the resolver and rejecter are defined
-    this._attemptPromises.set(this.payload.execution.attempt.id, { resolver, rejecter });
+    this._attemptPromises.set(key, { resolver, rejecter });
 
-    const { execution, traceContext, metrics } = this.payload;
+    const { execution, traceContext, metrics } = params.payload;
 
     this._currentExecution = execution;
 
     if (this._child?.connected && !this._isBeingKilled && !this._child.killed) {
       logger.debug(
         `[${new Date().toISOString()}][${
-          this.runId
+          params.payload.execution.run.id
         }] sending EXECUTE_TASK_RUN message to task run process`,
         {
           pid: this.pid,
@@ -236,64 +273,17 @@ export class TaskRunProcess {
         traceContext,
         metadata: this.options.serverWorker,
         metrics,
+        env: params.env,
+        isWarmStart: isWarmStart ?? this.options.isWarmStart,
       });
     }
 
     const result = await promise;
 
     this._currentExecution = undefined;
+    this._isPreparedForNextAttempt = true;
 
     return result;
-  }
-
-  taskRunCompletedNotification(completion: TaskRunExecutionResult) {
-    if (!completion.ok && typeof completion.retry !== "undefined") {
-      logger.debug(
-        "Task run completed with error and wants to retry, won't send task run completed notification"
-      );
-      return;
-    }
-
-    if (!this._child?.connected || this._isBeingKilled || this._child.killed) {
-      logger.debug(
-        "Child process not connected or being killed, can't send task run completed notification"
-      );
-      return;
-    }
-
-    this._ipc?.send("TASK_RUN_COMPLETED_NOTIFICATION", {
-      version: "v2",
-      completion,
-    });
-  }
-
-  waitCompletedNotification() {
-    if (!this._child?.connected || this._isBeingKilled || this._child.killed) {
-      console.error(
-        "Child process not connected or being killed, can't send wait completed notification"
-      );
-      return;
-    }
-
-    this._ipc?.send("WAIT_COMPLETED_NOTIFICATION", {});
-  }
-
-  waitpointCreated(waitId: string, waitpointId: string) {
-    if (!this._child?.connected || this._isBeingKilled || this._child.killed) {
-      console.error(
-        "Child process not connected or being killed, can't send waitpoint created notification"
-      );
-      return;
-    }
-
-    this._ipc?.send("WAITPOINT_CREATED", {
-      wait: {
-        id: waitId,
-      },
-      waitpoint: {
-        id: waitpointId,
-      },
-    });
   }
 
   waitpointCompleted(waitpoint: CompletedWaitpoint) {
@@ -304,9 +294,7 @@ export class TaskRunProcess {
       return;
     }
 
-    this._ipc?.send("WAITPOINT_COMPLETED", {
-      waitpoint,
-    });
+    this._ipc?.send("RESOLVE_WAITPOINT", { waitpoint });
   }
 
   async #handleExit(code: number | null, signal: NodeJS.Signals | null) {
@@ -333,7 +321,11 @@ export class TaskRunProcess {
           // Order matters, this has to be before the graceful exit timeout
           rejecter(new GracefulExitTimeoutError());
         } else if (this._isBeingKilled) {
-          rejecter(new CleanupProcessError());
+          if (this._isBeingSuspended) {
+            rejecter(new SuspendedProcessError());
+          } else {
+            rejecter(new CleanupProcessError());
+          }
         } else {
           rejecter(
             new UnexpectedExitError(
@@ -394,8 +386,9 @@ export class TaskRunProcess {
     this._stderr.push(errorLine);
   }
 
+  /** This will never throw. */
   async kill(signal?: number | NodeJS.Signals, timeoutInMs?: number) {
-    logger.debug(`[${this.runId}] killing task run process`, {
+    logger.debug(`killing task run process`, {
       signal,
       timeoutInMs,
       pid: this.pid,
@@ -407,11 +400,35 @@ export class TaskRunProcess {
 
     this.onIsBeingKilled.post(this);
 
-    this._child?.kill(signal);
-
-    if (timeoutInMs) {
-      await killTimeout;
+    try {
+      this._child?.kill(signal);
+    } catch (error) {
+      logger.debug("kill: failed to kill child process", { error });
     }
+
+    if (!timeoutInMs) {
+      return;
+    }
+
+    const [error] = await tryCatch(killTimeout);
+
+    if (error) {
+      logger.debug("kill: failed to wait for child process to exit", { error });
+    }
+  }
+
+  async suspend({ flush }: { flush: boolean }) {
+    this._isBeingSuspended = true;
+
+    if (flush) {
+      const [error] = await tryCatch(this.#flush());
+
+      if (error) {
+        console.error("Error flushing task run process", { error });
+      }
+    }
+
+    await this.kill("SIGKILL");
   }
 
   get isBeingKilled() {

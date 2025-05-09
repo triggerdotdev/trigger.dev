@@ -1,5 +1,124 @@
 # @trigger.dev/sdk
 
+## 4.0.0-v4-beta.14
+
+### Patch Changes
+
+- When you create a Waitpoint token using `wait.createToken()` you get a URL back that can be used to complete it by making an HTTP POST request. ([#2025](https://github.com/triggerdotdev/trigger.dev/pull/2025))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.14`
+
+## 4.0.0-v4-beta.13
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.13`
+
+## 4.0.0-v4-beta.12
+
+### Patch Changes
+
+- Display clickable links in Cursor terminal ([#1998](https://github.com/triggerdotdev/trigger.dev/pull/1998))
+- Add onCancel lifecycle hook ([#2022](https://github.com/triggerdotdev/trigger.dev/pull/2022))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.12`
+
+## 4.0.0-v4-beta.11
+
+### Patch Changes
+
+- Fixed an issue with realtime streams that timeout and resume streaming dropping chunks ([#1993](https://github.com/triggerdotdev/trigger.dev/pull/1993))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.11`
+
+## 4.0.0-v4-beta.10
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.10`
+
+## 4.0.0-v4-beta.9
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.9`
+
+## 4.0.0-v4-beta.8
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.8`
+
+## 4.0.0-v4-beta.7
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.7`
+
+## 4.0.0-v4-beta.6
+
+### Patch Changes
+
+- Fix issue where realtime streams would cut off after 5 minutes ([#1952](https://github.com/triggerdotdev/trigger.dev/pull/1952))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.6`
+
+## 4.0.0-v4-beta.5
+
+### Patch Changes
+
+- The envvars.list() and retrieve() functions receive isSecret for each value. Secret values are always redacted. ([#1942](https://github.com/triggerdotdev/trigger.dev/pull/1942))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.5`
+
+## 4.0.0-v4-beta.4
+
+### Patch Changes
+
+- maintain proper context in metadata.root and parent getters ([#1917](https://github.com/triggerdotdev/trigger.dev/pull/1917))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.4`
+
+## 4.0.0-v4-beta.3
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.3`
+
+## 4.0.0-v4-beta.2
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.2`
+
+## 4.0.0-v4-beta.1
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.1`
+
+## 4.0.0-v4-beta.0
+
+### Major Changes
+
+- Trigger.dev v4 release. Please see our upgrade to v4 docs to view the full changelog: https://trigger.dev/docs/upgrade-to-v4 ([#1869](https://github.com/triggerdotdev/trigger.dev/pull/1869))
+
+### Patch Changes
+
+- Run Engine 2.0 (alpha) ([#1575](https://github.com/triggerdotdev/trigger.dev/pull/1575))
+- Deprecate toolTask and replace with `ai.tool(mySchemaTask)` ([#1863](https://github.com/triggerdotdev/trigger.dev/pull/1863))
+- v4: New lifecycle hooks ([#1817](https://github.com/triggerdotdev/trigger.dev/pull/1817))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.0`
+
 ## 3.3.17
 
 ### Patch Changes

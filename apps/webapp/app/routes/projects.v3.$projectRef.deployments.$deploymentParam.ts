@@ -1,4 +1,4 @@
-import { LoaderFunctionArgs, redirect } from "@remix-run/server-runtime";
+import { type LoaderFunctionArgs, redirect } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { requireUserId } from "~/services/session.server";
@@ -33,8 +33,8 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     return new Response("Not found", { status: 404 });
   }
 
-  // Redirect to the project's runs page
+  // Redirect to the project's deployments page
   return redirect(
-    `/orgs/${project.organization.slug}/projects/v3/${project.slug}/deployments/${validatedParams.deploymentParam}`
+    `/orgs/${project.organization.slug}/projects/${project.slug}/deployments/${validatedParams.deploymentParam}`
   );
 }

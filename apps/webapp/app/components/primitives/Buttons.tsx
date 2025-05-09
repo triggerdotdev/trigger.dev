@@ -1,10 +1,10 @@
-import { Link, LinkProps, NavLink, NavLinkProps } from "@remix-run/react";
-import React, { forwardRef, ReactNode, useImperativeHandle, useRef } from "react";
-import { ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
+import { Link, type LinkProps, NavLink, type NavLinkProps } from "@remix-run/react";
+import React, { forwardRef, type ReactNode, useImperativeHandle, useRef } from "react";
+import { type ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
-import { IconNamesOrString, NamedIcon } from "./NamedIcon";
 import { ShortcutKey } from "./ShortcutKey";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./Tooltip";
+import { Icon, type RenderIcon } from "./Icon";
 
 const sizes = {
   small: {
@@ -42,17 +42,17 @@ type Size = keyof typeof sizes;
 const theme = {
   primary: {
     textColor:
-      "text-charcoal-900 group-hover/button:text-charcoal-900 transition group-disabled/button:text-charcoal-900",
+      "text-text-bright group-hover/button:text-white transition group-disabled/button:text-text-dimmed",
     button:
-      "bg-primary group-hover/button:bg-apple-200 group-disabled/button:opacity-50 group-disabled/button:bg-primary group-disabled/button:pointer-events-none",
+      "bg-indigo-600 border border-indigo-500 group-hover/button:bg-indigo-500 group-hover/button:border-indigo-400 group-disabled/button:opacity-50 group-disabled/button:bg-indigo-600 group-disabled/button:border-indigo-500 group-disabled/button:pointer-events-none",
     shortcut:
-      "border-black/40 text-charcoal-900 group-hover/button:border-black/60 group-hover/button:text-charcoal-900",
-    icon: "text-charcoal-900",
+      "border-text-bright/40 text-text-bright group-hover/button:border-text-bright/60 group-hover/button:text-text-bright",
+    icon: "text-text-bright",
   },
   secondary: {
     textColor: "text-text-bright transition group-disabled/button:text-text-dimmed/80",
     button:
-      "bg-secondary group-hover/button:bg-charcoal-600 group-hover/button:border-charcoal-650 border border-charcoal-600 group-disabled/button:bg-secondary group-disabled/button:opacity-60 group-disabled/button:pointer-events-none",
+      "bg-secondary group-hover/button:bg-charcoal-600 group-hover/button:border-charcoal-550 border border-charcoal-600 group-disabled/button:bg-secondary group-disabled/button:opacity-60 group-disabled/button:pointer-events-none",
     shortcut:
       "border-text-dimmed/40 text-text-dimmed group-hover/button:text-text-bright group-hover/button:border-text-dimmed",
     icon: "text-text-bright",
@@ -142,7 +142,7 @@ const variant = {
     textColor: "text-text-bright",
     button:
       "h-[1.8rem] px-[0.4rem] text-2sm rounded-sm text-text-dimmed bg-transparent group-hover/button:bg-charcoal-750",
-    icon: "h-4",
+    icon: "h-[1.125rem]",
     iconSpacing: "gap-x-1.5",
     shortcutVariant: undefined,
     shortcut: undefined,
@@ -165,8 +165,8 @@ const allVariants = {
 
 export type ButtonContentPropsType = {
   children?: React.ReactNode;
-  LeadingIcon?: React.ComponentType<any> | IconNamesOrString;
-  TrailingIcon?: React.ComponentType<any> | IconNamesOrString;
+  LeadingIcon?: RenderIcon;
+  TrailingIcon?: RenderIcon;
   trailingIconClassName?: string;
   leadingIconClassName?: string;
   fullWidth?: boolean;
@@ -177,6 +177,7 @@ export type ButtonContentPropsType = {
   shortcutPosition?: "before-trailing-icon" | "after-trailing-icon";
   tooltip?: ReactNode;
   iconSpacing?: string;
+  hideShortcutKey?: boolean;
 };
 
 export function ButtonContent(props: ButtonContentPropsType) {
@@ -192,6 +193,7 @@ export function ButtonContent(props: ButtonContentPropsType) {
     className,
     tooltip,
     iconSpacing,
+    hideShortcutKey,
   } = props;
   const variation = allVariants.variant[props.variant];
 
@@ -202,7 +204,8 @@ export function ButtonContent(props: ButtonContentPropsType) {
   const textColorClassName = variation.textColor;
 
   const renderShortcutKey = () =>
-    shortcut && (
+    shortcut &&
+    !hideShortcutKey && (
       <ShortcutKey
         className={cn(shortcutClassName)}
         shortcut={shortcut}
@@ -220,27 +223,17 @@ export function ButtonContent(props: ButtonContentPropsType) {
           iconSpacing
         )}
       >
-        {LeadingIcon &&
-          (typeof LeadingIcon === "string" ? (
-            <NamedIcon
-              name={LeadingIcon}
-              className={cn(
-                iconClassName,
-                leadingIconClassName,
-                "shrink-0 justify-start",
-                variation.icon
-              )}
-            />
-          ) : (
-            <LeadingIcon
-              className={cn(
-                iconClassName,
-                variation.icon,
-                leadingIconClassName,
-                "shrink-0 justify-start"
-              )}
-            />
-          ))}
+        {LeadingIcon && (
+          <Icon
+            icon={LeadingIcon}
+            className={cn(
+              iconClassName,
+              variation.icon,
+              leadingIconClassName,
+              "shrink-0 justify-start"
+            )}
+          />
+        )}
 
         {text &&
           (typeof text === "string" ? (
@@ -256,27 +249,17 @@ export function ButtonContent(props: ButtonContentPropsType) {
           props.shortcutPosition === "before-trailing-icon" &&
           renderShortcutKey()}
 
-        {TrailingIcon &&
-          (typeof TrailingIcon === "string" ? (
-            <NamedIcon
-              name={TrailingIcon}
-              className={cn(
-                iconClassName,
-                trailingIconClassName,
-                "shrink-0 justify-end",
-                variation.icon
-              )}
-            />
-          ) : (
-            <TrailingIcon
-              className={cn(
-                iconClassName,
-                variation.icon,
-                trailingIconClassName,
-                "shrink-0 justify-end"
-              )}
-            />
-          ))}
+        {TrailingIcon && (
+          <Icon
+            icon={TrailingIcon}
+            className={cn(
+              iconClassName,
+              variation.icon,
+              trailingIconClassName,
+              "shrink-0 justify-end"
+            )}
+          />
+        )}
 
         {shortcut &&
           !tooltip &&

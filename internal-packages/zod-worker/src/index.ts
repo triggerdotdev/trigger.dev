@@ -1,4 +1,4 @@
-import { SpanKind, SpanStatusCode, trace } from "@opentelemetry/api";
+import { SpanKind, SpanStatusCode, trace } from "@internal/tracing";
 import { flattenAttributes } from "@trigger.dev/core/v3";
 import type {
   CronItem,

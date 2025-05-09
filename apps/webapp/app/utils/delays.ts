@@ -1,4 +1,4 @@
-import { parseNaturalLanguageDuration } from "@trigger.dev/core/v3/apps";
+import { parseNaturalLanguageDuration } from "@trigger.dev/core/v3/isomorphic";
 
 export const calculateDurationInMs = (options: {
   seconds?: number;

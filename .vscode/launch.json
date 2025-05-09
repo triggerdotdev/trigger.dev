@@ -25,8 +25,8 @@
     {
       "type": "node-terminal",
       "request": "launch",
-      "name": "Debug fairDequeuingStrategy.test.ts",
-      "command": "pnpm run test -t FairDequeuingStrategy",
+      "name": "Debug triggerTask.test.ts",
+      "command": "pnpm run test --run ./test/engine/triggerTask.test.ts",
       "envFile": "${workspaceFolder}/.env",
       "cwd": "${workspaceFolder}/apps/webapp",
       "sourceMaps": true
@@ -138,8 +138,24 @@
       "type": "node-terminal",
       "request": "launch",
       "name": "Debug RunEngine tests",
-      "command": "pnpm run test --filter @internal/run-engine",
-      "cwd": "${workspaceFolder}",
+      "command": "pnpm run test ./src/engine/tests/releaseConcurrencyTokenBucketQueue.test.ts -t 'Should retrieve metrics for all queues via getQueueMetrics'",
+      "cwd": "${workspaceFolder}/internal-packages/run-engine",
+      "sourceMaps": true
+    },
+    {
+      "type": "node-terminal",
+      "request": "launch",
+      "name": "Debug RunQueue tests",
+      "command": "pnpm run test ./src/run-queue/index.test.ts",
+      "cwd": "${workspaceFolder}/internal-packages/run-engine",
+      "sourceMaps": true
+    },
+    {
+      "type": "node-terminal",
+      "request": "launch",
+      "name": "Debug d3-demo",
+      "command": "pnpm exec trigger dev",
+      "cwd": "${workspaceFolder}/references/d3-demo",
       "sourceMaps": true
     }
   ]

@@ -1,9 +1,10 @@
-import { BatchTaskRunStatus, Prisma } from "@trigger.dev/database";
+import { type BatchTaskRunStatus, Prisma } from "@trigger.dev/database";
 import parse from "parse-duration";
-import { type Direction } from "~/components/runs/RunStatuses";
 import { sqlDatabaseSchema } from "~/db.server";
 import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { BasePresenter } from "./basePresenter.server";
+import { type Direction } from "~/components/ListPagination";
+import { timeFilters } from "~/components/runs/v3/SharedFilters";
 
 export type BatchListOptions = {
   userId?: string;
@@ -41,15 +42,16 @@ export class BatchListPresenter extends BasePresenter {
     cursor,
     pageSize = DEFAULT_PAGE_SIZE,
   }: BatchListOptions) {
+    //get the time values from the raw values (including a default period)
+    const time = timeFilters({
+      period,
+      from,
+      to,
+    });
+
     const hasStatusFilters = statuses && statuses.length > 0;
 
-    const hasFilters =
-      hasStatusFilters ||
-      (environments !== undefined && environments.length > 0) ||
-      (period !== undefined && period !== "all") ||
-      friendlyId !== undefined ||
-      from !== undefined ||
-      to !== undefined;
+    const hasFilters = hasStatusFilters || friendlyId !== undefined || !time.isDefault;
 
     // Find the project scoped to the organization
     const project = await this._replica.project.findFirstOrThrow({
@@ -89,7 +91,7 @@ export class BatchListPresenter extends BasePresenter {
       throw new Error("No matching environments found for the project");
     }
 
-    const periodMs = period ? parse(period) : undefined;
+    const periodMs = time.period ? parse(time.period) : undefined;
 
     //get the batches
     const batches = await this._replica.$queryRaw<
@@ -143,11 +145,11 @@ WHERE
         : Prisma.empty
     }
     ${
-      from
-        ? Prisma.sql`AND b."createdAt" >= ${new Date(from).toISOString()}::timestamp`
+      time.from
+        ? Prisma.sql`AND b."createdAt" >= ${time.from.toISOString()}::timestamp`
         : Prisma.empty
     }
-    ${to ? Prisma.sql`AND b."createdAt" <= ${new Date(to).toISOString()}::timestamp` : Prisma.empty}
+    ${time.to ? Prisma.sql`AND b."createdAt" <= ${time.to.toISOString()}::timestamp` : Prisma.empty}
     ORDER BY
         ${direction === "forward" ? Prisma.sql`b.id DESC` : Prisma.sql`b.id ASC`}
     LIMIT ${pageSize + 1}`;
@@ -179,6 +181,21 @@ WHERE
       direction === "backward" && hasMore
         ? batches.slice(1, pageSize + 1)
         : batches.slice(0, pageSize);
+
+    let hasAnyBatches = batchesToReturn.length > 0;
+    if (!hasAnyBatches) {
+      const firstBatch = await this._replica.batchTaskRun.findFirst({
+        where: {
+          runtimeEnvironmentId: {
+            in: environmentIds,
+          },
+        },
+      });
+
+      if (firstBatch) {
+        hasAnyBatches = true;
+      }
+    }
 
     return {
       batches: batchesToReturn.map((batch) => {
@@ -217,10 +234,9 @@ WHERE
         friendlyId,
         statuses: statuses || [],
         environments: environments || [],
-        from,
-        to,
       },
       hasFilters,
+      hasAnyBatches,
     };
   }
 }

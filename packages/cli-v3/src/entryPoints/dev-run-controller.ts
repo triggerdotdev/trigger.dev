@@ -1,10 +1,11 @@
 import {
   CompleteRunAttemptResult,
   DequeuedMessage,
-  HeartbeatService,
+  IntervalService,
   LogLevel,
   RunExecutionData,
   TaskRunExecution,
+  TaskRunExecutionMetrics,
   TaskRunExecutionResult,
   TaskRunFailedExecutionResult,
 } from "@trigger.dev/core/v3";
@@ -43,9 +44,9 @@ export class DevRunController {
   private taskRunProcess?: TaskRunProcess;
   private readonly worker: BackgroundWorker;
   private readonly httpClient: CliApiClient;
-  private readonly runHeartbeat: HeartbeatService;
+  private readonly runHeartbeat: IntervalService;
   private readonly heartbeatIntervalSeconds: number;
-  private readonly snapshotPoller: HeartbeatService;
+  private readonly snapshotPoller: IntervalService;
   private readonly snapshotPollIntervalSeconds: number;
 
   private state:
@@ -77,8 +78,8 @@ export class DevRunController {
 
     this.httpClient = opts.httpClient;
 
-    this.snapshotPoller = new HeartbeatService({
-      heartbeat: async () => {
+    this.snapshotPoller = new IntervalService({
+      onInterval: async () => {
         if (!this.runFriendlyId) {
           logger.debug("[DevRunController] Skipping snapshot poll, no run ID");
           return;
@@ -120,8 +121,8 @@ export class DevRunController {
       },
     });
 
-    this.runHeartbeat = new HeartbeatService({
-      heartbeat: async () => {
+    this.runHeartbeat = new IntervalService({
+      onInterval: async () => {
         if (!this.runFriendlyId || !this.snapshotFriendlyId) {
           logger.debug("[DevRunController] Skipping heartbeat, no run ID or snapshot ID");
           return;
@@ -368,11 +369,15 @@ export class DevRunController {
           try {
             await this.cancelAttempt();
           } catch (error) {
-            logger.debug("Failed to cancel attempt, shutting down", {
+            logger.debug("Failed to cancel attempt, killing task run process", {
               error,
             });
 
-            //todo kill the process?
+            try {
+              await this.taskRunProcess?.kill("SIGKILL");
+            } catch (error) {
+              logger.debug("Failed to cancel attempt, failed to kill task run process", { error });
+            }
 
             return;
           }
@@ -448,6 +453,7 @@ export class DevRunController {
           return;
         }
         case "RUN_CREATED":
+        case "QUEUED_EXECUTING":
         case "QUEUED": {
           logger.debug("Status change not handled", { status: snapshot.executionStatus });
           return;
@@ -475,16 +481,20 @@ export class DevRunController {
   private async startAndExecuteRunAttempt({
     runFriendlyId,
     snapshotFriendlyId,
+    dequeuedAt,
     isWarmStart = false,
   }: {
     runFriendlyId: string;
     snapshotFriendlyId: string;
+    dequeuedAt?: Date;
     isWarmStart?: boolean;
   }) {
     this.subscribeToRunNotifications({
       run: { friendlyId: runFriendlyId },
       snapshot: { friendlyId: snapshotFriendlyId },
     });
+
+    const attemptStartedAt = Date.now();
 
     const start = await this.httpClient.dev.startRunAttempt(runFriendlyId, snapshotFriendlyId);
 
@@ -495,6 +505,8 @@ export class DevRunController {
       return;
     }
 
+    const attemptDuration = Date.now() - attemptStartedAt;
+
     const { run, snapshot, execution, envVars } = start.data;
 
     eventBus.emit("runStarted", this.opts.worker, execution);
@@ -504,16 +516,31 @@ export class DevRunController {
       snapshot: snapshot.friendlyId,
     });
 
-    // TODO: We may already be executing this run, this may be a new attempt
-    //  This is the only case where incrementing the attempt number is allowed
     this.enterRunPhase(run, snapshot);
 
-    try {
-      return await this.executeRun({ run, snapshot, execution, envVars });
-    } catch (error) {
-      // TODO: Handle the case where we're in the warm start phase or executing a new run
-      // This can happen if we kill the run while it's still executing, e.g. after receiving an attempt number mismatch
+    const metrics = [
+      {
+        name: "start",
+        event: "create_attempt",
+        timestamp: attemptStartedAt,
+        duration: attemptDuration,
+      },
+    ].concat(
+      dequeuedAt
+        ? [
+            {
+              name: "start",
+              event: "dequeue",
+              timestamp: dequeuedAt.getTime(),
+              duration: 0,
+            },
+          ]
+        : []
+    );
 
+    try {
+      return await this.executeRun({ run, snapshot, execution, envVars, metrics });
+    } catch (error) {
       logger.debug("Error while executing attempt", {
         error,
       });
@@ -542,8 +569,6 @@ export class DevRunController {
           error: completionResult.error,
         });
 
-        // TODO: Maybe we should keep retrying for a while longer
-
         this.runFinished();
         return;
       }
@@ -566,7 +591,10 @@ export class DevRunController {
     snapshot,
     execution,
     envVars,
-  }: WorkloadRunAttemptStartResponseBody) {
+    metrics,
+  }: WorkloadRunAttemptStartResponseBody & {
+    metrics?: TaskRunExecutionMetrics;
+  }) {
     if (!this.opts.worker.serverWorker) {
       throw new Error(`No server worker for Dev ${run.friendlyId}`);
     }
@@ -591,21 +619,22 @@ export class DevRunController {
         version: this.opts.worker.serverWorker?.version,
         engine: "V2",
       },
-      payload: {
-        execution,
-        traceContext: execution.run.traceContext ?? {},
-      },
-      messageId: run.friendlyId,
-    });
-
-    await this.taskRunProcess.initialize();
+      machineResources: execution.machine,
+    }).initialize();
 
     logger.debug("executing task run process", {
-      attemptId: execution.attempt.id,
+      attemptNumber: execution.attempt.number,
       runId: execution.run.id,
     });
 
-    const completion = await this.taskRunProcess.execute();
+    const completion = await this.taskRunProcess.execute({
+      payload: {
+        execution,
+        traceContext: execution.run.traceContext ?? {},
+        metrics,
+      },
+      messageId: run.friendlyId,
+    });
 
     logger.debug("Completed run", completion);
 
@@ -753,6 +782,7 @@ export class DevRunController {
     await this.startAndExecuteRunAttempt({
       runFriendlyId: dequeueMessage.run.friendlyId,
       snapshotFriendlyId: dequeueMessage.snapshot.friendlyId,
+      dequeuedAt: dequeueMessage.dequeuedAt,
     }).finally(async () => {});
   }
 

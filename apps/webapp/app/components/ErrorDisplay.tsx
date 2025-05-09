@@ -6,6 +6,7 @@ import { LinkButton } from "./primitives/Buttons";
 import { Header1 } from "./primitives/Headers";
 import { Paragraph } from "./primitives/Paragraph";
 import Spline from "@splinetool/react-spline";
+import { type ReactNode } from "react";
 
 type ErrorDisplayOptions = {
   button?: {
@@ -38,7 +39,7 @@ export function RouteErrorDisplay(options?: ErrorDisplayOptions) {
 
 type DisplayOptionsProps = {
   title: string;
-  message?: string;
+  message?: ReactNode;
 } & ErrorDisplayOptions;
 
 export function ErrorDisplay({ title, message, button }: DisplayOptionsProps) {

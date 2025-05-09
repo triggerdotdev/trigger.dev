@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from "@remix-run/react";
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Fragment } from "react";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { AppContainer } from "~/components/layout/AppLayout";
@@ -8,6 +8,10 @@ import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 
 const stories: Story[] = [
+  {
+    name: "Avatar",
+    slug: "avatar",
+  },
   {
     name: "Badges",
     slug: "badges",
@@ -47,6 +51,10 @@ const stories: Story[] = [
   {
     name: "Free plan usage",
     slug: "free-plan-usage",
+  },
+  {
+    name: "Info panel",
+    slug: "info-panel",
   },
   {
     name: "Inline code",

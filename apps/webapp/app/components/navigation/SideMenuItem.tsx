@@ -2,7 +2,7 @@ import { type AnchorHTMLAttributes } from "react";
 import { usePathName } from "~/hooks/usePathName";
 import { cn } from "~/utils/cn";
 import { LinkButton } from "../primitives/Buttons";
-import { type IconNames } from "../primitives/NamedIcon";
+import { type RenderIcon } from "../primitives/Icon";
 
 export function SideMenuItem({
   icon,
@@ -14,25 +14,23 @@ export function SideMenuItem({
   to,
   badge,
   target,
-  subItem = false,
 }: {
-  icon?: IconNames | React.ComponentType<any>;
+  icon?: RenderIcon;
   activeIconColor?: string;
   inactiveIconColor?: string;
-  trailingIcon?: IconNames | React.ComponentType<any>;
+  trailingIcon?: RenderIcon;
   trailingIconClassName?: string;
   name: string;
   to: string;
   badge?: string;
   target?: AnchorHTMLAttributes<HTMLAnchorElement>["target"];
-  subItem?: boolean;
 }) {
   const pathName = usePathName();
   const isActive = pathName === to;
 
   return (
     <LinkButton
-      variant={subItem ? "small-menu-sub-item" : "small-menu-item"}
+      variant="small-menu-item"
       fullWidth
       textAlignLeft
       LeadingIcon={icon}
@@ -43,7 +41,6 @@ export function SideMenuItem({
       target={target}
       className={cn(
         "text-text-bright group-hover:bg-charcoal-750 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0",
-        subItem ? "text-text-dimmed" : "",
         isActive ? "bg-tertiary text-text-bright" : "group-hover:text-text-bright"
       )}
     >
@@ -59,7 +56,7 @@ export function SideMenuItem({
 
 export function MenuCount({ count }: { count: number | string }) {
   return (
-    <div className="rounded-full bg-charcoal-900 px-2 py-1 text-xxs uppercase tracking-wider text-text-dimmed">
+    <div className="rounded border border-charcoal-650 bg-background-dimmed/70 px-1.5 py-1 text-xxs uppercase tracking-wider text-text-dimmed">
       {count}
     </div>
   );

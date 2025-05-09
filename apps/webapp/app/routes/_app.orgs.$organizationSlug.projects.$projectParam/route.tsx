@@ -1,45 +1,38 @@
 import { Outlet } from "@remix-run/react";
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { redirect } from "remix-typedjson";
+import { DevPresenceProvider } from "~/components/DevPresence";
 import { RouteErrorDisplay } from "~/components/ErrorDisplay";
-import { prisma } from "~/db.server";
-import { useOrganization } from "~/hooks/useOrganizations";
+import { MainBody } from "~/components/layout/AppLayout";
+import { SideMenu } from "~/components/navigation/SideMenu";
+import { useEnvironment } from "~/hooks/useEnvironment";
+import { useIsImpersonating, useOrganization, useOrganizations } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { Handle } from "~/utils/handle";
-import { ProjectParamSchema, projectPath, v3ProjectPath } from "~/utils/pathBuilder";
-
-export const loader = async ({ params }: LoaderFunctionArgs) => {
-  const { organizationSlug, projectParam } = ProjectParamSchema.parse(params);
-
-  const project = await prisma.project.findUnique({
-    select: { version: true },
-    where: { slug: projectParam },
-  });
-
-  if (!project) {
-    throw new Response("Project not found", { status: 404, statusText: "Project not found" });
-  }
-
-  if (project.version === "V3") {
-    return redirect(v3ProjectPath({ slug: organizationSlug }, { slug: projectParam }));
-  }
-
-  return null;
-};
-
-export const handle: Handle = {
-  scripts: (match) => [
-    {
-      src: "https://cdn.jsdelivr.net/npm/canvas-confetti@1.5.1/dist/confetti.browser.min.js",
-      crossOrigin: "anonymous",
-    },
-  ],
-};
+import { useUser } from "~/hooks/useUser";
+import { v3ProjectPath } from "~/utils/pathBuilder";
 
 export default function Project() {
+  const organizations = useOrganizations();
+  const organization = useOrganization();
+  const project = useProject();
+  const environment = useEnvironment();
+  const user = useUser();
+  const isImpersonating = useIsImpersonating();
+
   return (
     <>
-      <Outlet />
+      <div className="grid grid-cols-[14rem_1fr] overflow-hidden">
+        <DevPresenceProvider enabled={environment.type === "DEVELOPMENT"}>
+          <SideMenu
+            user={{ ...user, isImpersonating }}
+            project={project}
+            environment={environment}
+            organization={organization}
+            organizations={organizations}
+          />
+          <MainBody>
+            <Outlet />
+          </MainBody>
+        </DevPresenceProvider>
+      </div>
     </>
   );
 }
@@ -47,5 +40,5 @@ export default function Project() {
 export function ErrorBoundary() {
   const org = useOrganization();
   const project = useProject();
-  return <RouteErrorDisplay button={{ title: project.name, to: projectPath(org, project) }} />;
+  return <RouteErrorDisplay button={{ title: project.name, to: v3ProjectPath(org, project) }} />;
 }

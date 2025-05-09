@@ -6,7 +6,7 @@
     "schema": "./prisma/schema.zmodel"
   },
   "scripts": {
-    "dev:trigger": "trigger dev",
+    "dev": "trigger dev",
     "deploy": "trigger deploy --self-hosted --load-image",
     "management": "tsx -r dotenv/config ./src/management.ts",
     "queues": "ts-node -r dotenv/config -r tsconfig-paths/register ./src/queues.ts",

@@ -1,12 +1,14 @@
-import { Redis, RedisOptions } from "ioredis";
+import { Redis, type RedisOptions } from "ioredis";
 import { Logger } from "@trigger.dev/core/logger";
+
+export { Redis, type Callback, type RedisOptions, type Result, type RedisCommander } from "ioredis";
 
 const defaultOptions: Partial<RedisOptions> = {
   retryStrategy: (times: number) => {
     const delay = Math.min(times * 50, 1000);
     return delay;
   },
-  maxRetriesPerRequest: 20,
+  maxRetriesPerRequest: process.env.GITHUB_ACTIONS ? 50 : process.env.VITEST ? 5 : 20,
 };
 
 const logger = new Logger("Redis", "debug");

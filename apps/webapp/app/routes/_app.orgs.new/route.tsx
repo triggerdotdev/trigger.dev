@@ -1,10 +1,10 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
+import { BuildingOffice2Icon } from "@heroicons/react/20/solid";
 import { RadioGroup } from "@radix-ui/react-radio-group";
 import type { ActionFunction, LoaderFunctionArgs } from "@remix-run/node";
 import { json, redirect } from "@remix-run/node";
 import { Form, useActionData, useNavigation } from "@remix-run/react";
-import { uiComponent } from "@team-plain/typescript-sdk";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { MainCenteredContainer } from "~/components/layout/AppLayout";
@@ -22,10 +22,9 @@ import { TextArea } from "~/components/primitives/TextArea";
 import { useFeatures } from "~/hooks/useFeatures";
 import { createOrganization } from "~/models/organization.server";
 import { NewOrganizationPresenter } from "~/presenters/NewOrganizationPresenter.server";
-import { logger } from "~/services/logger.server";
 import { requireUser, requireUserId } from "~/services/session.server";
+import { sendNewOrgMessage } from "~/services/slack.server";
 import { organizationPath, rootPath } from "~/utils/pathBuilder";
-import { sendToPlain } from "~/utils/plain.server";
 
 const schema = z.object({
   orgName: z.string().min(3).max(50),
@@ -62,32 +61,11 @@ export const action: ActionFunction = async ({ request }) => {
     const whyUseUs = formData.get("whyUseUs");
 
     if (whyUseUs) {
-      try {
-        await sendToPlain({
-          userId: user.id,
-          email: user.email,
-          name: user.name ?? user.displayName ?? user.email,
-          title: "New org feedback",
-          components: [
-            uiComponent.text({
-              text: `${submission.value.orgName} just created a new organization.`,
-            }),
-            uiComponent.divider({ spacingSize: "M" }),
-            uiComponent.text({
-              size: "L",
-              color: "NORMAL",
-              text: "What problem are you trying to solve?",
-            }),
-            uiComponent.text({
-              size: "L",
-              color: "NORMAL",
-              text: whyUseUs.toString(),
-            }),
-          ],
-        });
-      } catch (error) {
-        logger.error("Error sending data to Plain when creating an org:", { error });
-      }
+      await sendNewOrgMessage({
+        orgName: submission.value.orgName,
+        whyUseUs: whyUseUs.toString(),
+        userEmail: user.email,
+      });
     }
 
     return redirect(organizationPath(organization));
@@ -117,7 +95,10 @@ export default function NewOrganizationPage() {
 
   return (
     <MainCenteredContainer className="max-w-[22rem]">
-      <FormTitle LeadingIcon="organization" title="Create an Organization" />
+      <FormTitle
+        LeadingIcon={<BuildingOffice2Icon className="size-6 text-fuchsia-600" />}
+        title="Create an Organization"
+      />
       <Form method="post" {...form.props}>
         <Fieldset>
           <InputGroup>
@@ -125,7 +106,7 @@ export default function NewOrganizationPage() {
             <Input
               {...conform.input(orgName, { type: "text" })}
               placeholder="Your Organization name"
-              icon="organization"
+              icon={BuildingOffice2Icon}
               autoFocus
             />
             <Hint>E.g. your company name or your workspace name.</Hint>

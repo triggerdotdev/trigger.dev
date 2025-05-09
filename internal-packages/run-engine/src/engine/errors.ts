@@ -13,6 +13,9 @@ export function runStatusFromError(error: TaskRunError): TaskRunStatus {
   //e.g. a bug
   switch (error.code) {
     case "RECURSIVE_WAIT_DEADLOCK":
+    case "TASK_INPUT_ERROR":
+    case "TASK_OUTPUT_ERROR":
+    case "TASK_MIDDLEWARE_ERROR":
       return "COMPLETED_WITH_ERRORS";
     case "TASK_RUN_CANCELLED":
       return "CANCELED";
@@ -41,18 +44,45 @@ export function runStatusFromError(error: TaskRunError): TaskRunStatus {
     case "TASK_RUN_STALLED_EXECUTING_WITH_WAITPOINTS":
     case "TASK_HAS_N0_EXECUTION_SNAPSHOT":
     case "GRACEFUL_EXIT_TIMEOUT":
-    case "TASK_INPUT_ERROR":
-    case "TASK_OUTPUT_ERROR":
     case "POD_EVICTED":
     case "POD_UNKNOWN_ERROR":
     case "TASK_EXECUTION_ABORTED":
     case "TASK_EXECUTION_FAILED":
     case "TASK_PROCESS_SIGTERM":
-    case "TASK_DEQUEUED_INVALID_RETRY_CONFIG":
-    case "TASK_DEQUEUED_NO_RETRY_CONFIG":
     case "TASK_DID_CONCURRENT_WAIT":
       return "SYSTEM_FAILURE";
     default:
       assertExhaustive(error.code);
+  }
+}
+
+export class ServiceValidationError extends Error {
+  constructor(
+    message: string,
+    public status?: number
+  ) {
+    super(message);
+    this.name = "ServiceValidationError";
+  }
+}
+
+export class NotImplementedError extends Error {
+  constructor(message: string) {
+    console.error("This isn't implemented", { message });
+    super(message);
+  }
+}
+
+export class RunDuplicateIdempotencyKeyError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RunDuplicateIdempotencyKeyError";
+  }
+}
+
+export class RunOneTimeUseTokenError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RunOneTimeUseTokenError";
   }
 }

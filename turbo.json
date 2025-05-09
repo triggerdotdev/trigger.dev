@@ -53,7 +53,10 @@
       "cache": false
     },
     "dev": {
-      "cache": false
+      "cache": false,
+      "dependsOn": [
+        "^build"
+      ]
     },
     "i:dev": {
       "cache": false

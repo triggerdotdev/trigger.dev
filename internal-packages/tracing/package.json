@@ -1,0 +1,20 @@
+{
+  "name": "@internal/tracing",
+  "private": true,
+  "version": "0.0.1",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "type": "module",
+  "dependencies": {
+    "@opentelemetry/api": "1.9.0",
+    "@opentelemetry/api-logs": "0.52.1",
+    "@opentelemetry/semantic-conventions": "^1.27.0",
+    "@trigger.dev/core": "workspace:*"
+  },
+  "devDependencies": {
+    "vitest": "^1.4.0"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  }
+}

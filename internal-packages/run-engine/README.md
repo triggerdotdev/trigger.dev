@@ -24,6 +24,7 @@ It is responsible for:
 Many operations on the run are "atomic" in the sense that only a single operation can mutate them at a time. We use RedLock to create a distributed lock to ensure this. Postgres locking is not enough on its own because we have multiple API instances and Redis is used for the queue.
 
 There are race conditions we need to deal with:
+
 - When checkpointing the run continues to execute until the checkpoint has been stored. At the same time the run continues and the checkpoint can become irrelevant if the waitpoint is completed. Both can happen at the same time, so we must lock the run and protect against outdated checkpoints.
 
 ## Run execution
@@ -41,6 +42,7 @@ We can also store invalid states by setting an error. These invalid states are p
 ## Workers
 
 A worker is a server that runs tasks. There are two types of workers:
+
 - Hosted workers (serverless, managed and cloud-only)
 - Self-hosted workers
 
@@ -67,6 +69,7 @@ If there's only a `workerGroup`, we can just `dequeueFromMasterQueue()` to get r
 This is a fair multi-tenant queue. It is designed to fairly select runs, respect concurrency limits, and have high throughput. It provides visibility into the current concurrency for the env, org, etc.
 
 It has built-in reliability features:
+
 - When nacking we increment the `attempt` and if it continually fails we will move it to a Dead Letter Queue (DLQ).
 - If a run is in the DLQ you can redrive it.
 
@@ -87,23 +90,26 @@ A single Waitpoint can block many runs, the same waitpoint can only block a run 
 They can have output data associated with them, e.g. the finished run payload. That includes an error, e.g. a failed run.
 
 There are currently three types:
-  - `RUN` which gets completed when the associated run completes. Every run has an `associatedWaitpoint` that matches the lifetime of the run.
-  - `DATETIME` which gets completed when the datetime is reached.
-  - `MANUAL` which gets completed when that event occurs.
+
+- `RUN` which gets completed when the associated run completes. Every run has an `associatedWaitpoint` that matches the lifetime of the run.
+- `DATETIME` which gets completed when the datetime is reached.
+- `MANUAL` which gets completed when that event occurs.
 
 Waitpoints can have an idempotencyKey which allows stops them from being created multiple times. This is especially useful for event waitpoints, where you don't want to create a new waitpoint for the same event twice.
 
 ### `wait.for()` or `wait.until()`
+
 Wait for a future time, then continue. We should add the option to pass an `idempotencyKey` so a second attempt doesn't wait again. By default it would wait again.
 
 ```ts
 //Note if the idempotency key is a string, it will get prefixed with the run id.
 //you can explicitly pass in an idempotency key created with the the global scope.
-await wait.until(new Date('2022-01-01T00:00:00Z'), { idempotencyKey: "first-wait" });
-await wait.until(new Date('2022-01-01T00:00:00Z'), { idempotencyKey: "second-wait" });
+await wait.until(new Date("2022-01-01T00:00:00Z"), { idempotencyKey: "first-wait" });
+await wait.until(new Date("2022-01-01T00:00:00Z"), { idempotencyKey: "second-wait" });
 ```
 
 ### `triggerAndWait()` or `batchTriggerAndWait()`
+
 Trigger and then wait for run(s) to finish. If the run fails it will still continue but with the errors so the developer can decide what to do.
 
 ### The `trigger` `delay` option
@@ -111,6 +117,7 @@ Trigger and then wait for run(s) to finish. If the run fails it will still conti
 When triggering a run and passing the `delay` option, we use a `DATETIME` waitpoint to block the run from starting.
 
 ### `wait.forRequest()`
+
 Wait until a request has been received at the URL that you are given. This is useful for pausing a run and then continuing it again when some external event occurs on another service. For example, Replicate have an API where they will callback when their work is complete.
 
 ### `wait.forWaitpoint(waitpointId)`
@@ -155,6 +162,7 @@ When `trigger` is called the run is added to the queue. We only dequeue when the
 When `trigger` is called, we check if the rate limit has been exceeded. If it has then we ignore the trigger. The run is thrown away and an appropriate error is returned.
 
 This is useful:
+
 - To prevent abuse.
 - To control how many executions a user can do (using a `key` with rate limiting).
 
@@ -163,6 +171,7 @@ This is useful:
 When `trigger` is called, we prevent too many runs happening in a period by collapsing into a single run. This is done by discarding some runs in a period.
 
 This is useful:
+
 - To prevent too many runs happening in a short period.
 
 We should mark the run as `"DELAYED"` with the correct `delayUntil` time. This will allow the user to see that the run is delayed and why.
@@ -172,6 +181,7 @@ We should mark the run as `"DELAYED"` with the correct `delayUntil` time. This w
 When `trigger` is called the run is added to the queue. We only run them when they don't exceed the limit in that time period, by controlling the timing of when they are dequeued.
 
 This is useful:
+
 - To prevent too many runs happening in a short period.
 - To control how many executions a user can do (using a `key` with throttling).
 - When you need to execute every run but not too many in a short period, e.g. avoiding rate limits.
@@ -181,9 +191,140 @@ This is useful:
 When `trigger` is called, we batch the runs together. This means the payload of the run is an array of items, each being a single payload.
 
 This is useful:
+
 - For performance, as it reduces the number of runs in the system.
 - It can be useful when using 3rd party APIs that support batching.
 
 ## Emitting events
 
 The Run Engine emits events using its `eventBus`. This is used for runs completing, failing, or things that any workers should be aware of.
+
+# RunEngine System Architecture
+
+The RunEngine is composed of several specialized systems that handle different aspects of task execution and management. Below is a diagram showing the relationships between these systems.
+
+```mermaid
+graph TD
+    RE[RunEngine]
+    DS[DequeueSystem]
+    RAS[RunAttemptSystem]
+    ESS[ExecutionSnapshotSystem]
+    WS[WaitpointSystem]
+    BS[BatchSystem]
+    ES[EnqueueSystem]
+    CS[CheckpointSystem]
+    DRS[DelayedRunSystem]
+    TS[TtlSystem]
+    WFS[WaitingForWorkerSystem]
+
+    %% Core Dependencies
+    RE --> DS
+    RE --> RAS
+    RE --> ESS
+    RE --> WS
+    RE --> BS
+    RE --> ES
+    RE --> CS
+    RE --> DRS
+    RE --> TS
+    RE --> WFS
+
+    %% System Dependencies
+    DS --> ESS
+    DS --> RAS
+
+    RAS --> ESS
+    RAS --> WS
+    RAS --> BS
+
+    WS --> ESS
+    WS --> ES
+
+    ES --> ESS
+
+    CS --> ESS
+    CS --> ES
+
+    DRS --> ES
+
+    WFS --> ES
+
+    TS --> WS
+
+    %% Shared Resources
+    subgraph Resources
+        PRI[(Prisma)]
+        LOG[Logger]
+        TRC[Tracer]
+        RQ[RunQueue]
+        RL[RunLocker]
+        EB[EventBus]
+        WRK[Worker]
+        RCQ[ReleaseConcurrencyQueue]
+    end
+
+    %% Resource Dependencies
+    RE -.-> Resources
+    DS & RAS & ESS & WS & BS & ES & CS & DRS & TS & WFS -.-> Resources
+```
+
+## System Responsibilities
+
+### DequeueSystem
+
+- Handles dequeuing of tasks from master queues
+- Manages resource allocation and constraints
+- Handles task deployment verification
+
+### RunAttemptSystem
+
+- Manages run attempt lifecycle
+- Handles success/failure scenarios
+- Manages retries and cancellations
+- Coordinates with other systems for run completion
+
+### ExecutionSnapshotSystem
+
+- Creates and manages execution snapshots
+- Tracks run state and progress
+- Manages heartbeats for active runs
+- Maintains execution history
+
+### WaitpointSystem
+
+- Manages waitpoints for task synchronization
+- Handles waitpoint completion
+- Coordinates blocked runs
+- Manages concurrency release
+
+### BatchSystem
+
+- Manages batch operations
+- Handles batch completion
+- Coordinates batch-related task runs
+
+### EnqueueSystem
+
+- Handles enqueueing of runs
+- Manages run scheduling
+- Coordinates with execution snapshots
+
+## Shared Resources
+
+- **Prisma**: Database access
+- **Logger**: Logging functionality
+- **Tracer**: Tracing and monitoring
+- **RunQueue**: Task queue management
+- **RunLocker**: Run locking mechanism
+- **EventBus**: Event communication
+- **Worker**: Background task execution
+- **ReleaseConcurrencyQueue**: Manages concurrency token release
+
+## Key Interactions
+
+1. **RunEngine** orchestrates all systems and manages shared resources
+2. **DequeueSystem** works with **RunAttemptSystem** for task execution
+3. **RunAttemptSystem** coordinates with **WaitpointSystem** and **BatchSystem**
+4. **WaitpointSystem** uses **EnqueueSystem** for run scheduling
+5. **ExecutionSnapshotSystem** is used by all other systems to track state
+6. All systems share common resources through the `SystemResources` interface

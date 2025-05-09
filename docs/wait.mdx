@@ -4,15 +4,14 @@ sidebarTitle: "Overview"
 description: "During your run you can wait for a period of time or for something to happen."
 ---
 
-import PausedExecutionFree from "/snippets/paused-execution-free.mdx"
+import PausedExecutionFree from "/snippets/paused-execution-free.mdx";
 
-Waiting allows you to write complex tasks as a set of async code, without having to scheduled another task or poll for changes.
+Waiting allows you to write complex tasks as a set of async code, without having to schedule another task or poll for changes.
 
 <PausedExecutionFree />
 
-| Function                                  | What it does                                                                              |
-| ----------------------------------------- | ----------------------------------------------------------------------------------------- |
-| [wait.for()](/wait-for)                | Waits for a specific period of time, e.g. 1 day.                                          |
-| [wait.until()](/wait-until)            | Waits until the provided `Date`.                                                          |
-| [wait.forRequest()](/wait-for-request) | Waits until a matching HTTP request is received, and gives you the data to continue with. |
-| [waitForEvent()](/wait-for-event)      | Waits for a matching event, like in the example above.                                    |
+| Function                           | What it does                                     |
+| :--------------------------------- | :----------------------------------------------- |
+| [wait.for()](/wait-for)            | Waits for a specific period of time, e.g. 1 day. |
+| [wait.until()](/wait-until)        | Waits until the provided `Date`.                 |
+| [wait.forToken()](/wait-for-token) | Pauses runs until a token is completed.          |

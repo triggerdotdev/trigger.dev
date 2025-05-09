@@ -1,16 +1,11 @@
-import { StopCircleIcon } from "@heroicons/react/20/solid";
 import { NoSymbolIcon } from "@heroicons/react/24/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
-import { Form, useFetcher, useNavigation } from "@remix-run/react";
+import { Form, useNavigation } from "@remix-run/react";
 import { Button } from "~/components/primitives/Buttons";
-import {
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-} from "~/components/primitives/Dialog";
+import { DialogContent, DialogHeader } from "~/components/primitives/Dialog";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { SpinnerWhite } from "~/components/primitives/Spinner";
 
 type CancelRunDialogProps = {
   runFriendlyId: string;
@@ -38,7 +33,7 @@ export function CancelRunDialog({ runFriendlyId, redirectPath }: CancelRunDialog
                 name="redirectUrl"
                 value={redirectPath}
                 variant="danger/medium"
-                LeadingIcon={isLoading ? "spinner-white" : NoSymbolIcon}
+                LeadingIcon={isLoading ? SpinnerWhite : NoSymbolIcon}
                 disabled={isLoading}
                 shortcut={{ modifiers: ["mod"], key: "enter" }}
               >

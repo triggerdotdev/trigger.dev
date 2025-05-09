@@ -1,10 +1,5 @@
 import { OrganizationIntegration } from "@trigger.dev/database";
 import { BaseService } from "./baseService.server";
-import { WebClient } from "@slack/web-api";
-import { env } from "~/env.server";
-import { $transaction } from "~/db.server";
-import { getSecretStore } from "~/services/secrets/secretStore.server";
-import { generateFriendlyId } from "../friendlyIdentifiers";
 import { OrgIntegrationRepository } from "~/models/orgIntegration.server";
 
 export class CreateOrgIntegrationService extends BaseService {

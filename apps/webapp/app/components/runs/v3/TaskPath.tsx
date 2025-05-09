@@ -19,16 +19,16 @@ export function TaskPath({ filePath, functionName, className }: TaskPathProps) {
   );
 }
 
-type TaskFunctionNameProps = {
-  functionName: string;
+type TaskFileNameProps = {
+  fileName: string;
   variant?: InlineCodeVariant;
   className?: string;
 };
 
-export function TaskFunctionName({ variant, functionName, className }: TaskFunctionNameProps) {
+export function TaskFileName({ variant, fileName, className }: TaskFileNameProps) {
   return (
     <InlineCode variant={variant} className={cn("text-text-dimmed", className)}>
-      {`${functionName}()`}
+      {`${fileName}`}
     </InlineCode>
   );
 }

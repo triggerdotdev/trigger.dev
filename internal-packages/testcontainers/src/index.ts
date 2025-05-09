@@ -1,14 +1,20 @@
 import { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { StartedRedisContainer } from "@testcontainers/redis";
 import { PrismaClient } from "@trigger.dev/database";
-import { Redis, RedisOptions } from "ioredis";
+import { RedisOptions } from "ioredis";
 import { Network, type StartedNetwork } from "testcontainers";
-import { test } from "vitest";
-import { createElectricContainer, createPostgresContainer, createRedisContainer } from "./utils";
+import { TaskContext, test } from "vitest";
+import {
+  createElectricContainer,
+  createPostgresContainer,
+  createRedisContainer,
+  useContainer,
+  withContainerSetup,
+} from "./utils";
+import { getTaskMetadata, logCleanup, logSetup } from "./logs";
 
-export { StartedRedisContainer };
-export * from "./setup";
 export { assertNonNullable } from "./utils";
+export { StartedRedisContainer };
 
 type NetworkContext = { network: StartedNetwork };
 
@@ -32,61 +38,84 @@ type ContainerWithElectricContext = NetworkContext & PostgresContext & ElectricC
 
 type Use<T> = (value: T) => Promise<void>;
 
-const network = async ({}, use: Use<StartedNetwork>) => {
+const network = async ({ task }: TaskContext, use: Use<StartedNetwork>) => {
+  const testName = task.name;
+
+  logSetup("network: starting", { testName });
+
+  const start = Date.now();
   const network = await new Network().start();
+  const startDurationMs = Date.now() - start;
+
+  const metadata = {
+    ...getTaskMetadata(task),
+    networkId: network.getId().slice(0, 12),
+    networkName: network.getName(),
+    startDurationMs,
+  };
+
+  logSetup("network: started", metadata);
+
   try {
     await use(network);
   } finally {
     // Make sure to stop the network after use
-    await network.stop();
+    await logCleanup("network", network.stop(), metadata);
   }
 };
 
 const postgresContainer = async (
-  { network }: { network: StartedNetwork },
+  { network, task }: { network: StartedNetwork } & TaskContext,
   use: Use<StartedPostgreSqlContainer>
 ) => {
-  const { container } = await createPostgresContainer(network);
-  try {
-    await use(container);
-  } finally {
-    await container.stop();
-  }
+  const { container, metadata } = await withContainerSetup({
+    name: "postgresContainer",
+    task,
+    setup: createPostgresContainer(network),
+  });
+
+  await useContainer("postgresContainer", { container, task, use: () => use(container) });
 };
 
 const prisma = async (
-  { postgresContainer }: { postgresContainer: StartedPostgreSqlContainer },
+  { postgresContainer, task }: { postgresContainer: StartedPostgreSqlContainer } & TaskContext,
   use: Use<PrismaClient>
 ) => {
+  const testName = task.name;
+  const url = postgresContainer.getConnectionUri();
+
+  console.log("Initializing Prisma with URL:", url);
+
   const prisma = new PrismaClient({
     datasources: {
       db: {
-        url: postgresContainer.getConnectionUri(),
+        url,
       },
     },
   });
   try {
     await use(prisma);
   } finally {
-    await prisma.$disconnect();
+    await logCleanup("prisma", prisma.$disconnect(), { testName });
   }
 };
 
 export const postgresTest = test.extend<PostgresContext>({ network, postgresContainer, prisma });
 
 const redisContainer = async (
-  { network }: { network: StartedNetwork },
+  { network, task }: { network: StartedNetwork } & TaskContext,
   use: Use<StartedRedisContainer>
 ) => {
-  const { container } = await createRedisContainer({
-    port: 6379,
-    network,
+  const { container, metadata } = await withContainerSetup({
+    name: "redisContainer",
+    task,
+    setup: createRedisContainer({
+      port: 6379,
+      network,
+    }),
   });
-  try {
-    await use(container);
-  } finally {
-    await container.stop();
-  }
+
+  await useContainer("redisContainer", { container, task, use: () => use(container) });
 };
 
 const redisOptions = async (
@@ -128,15 +157,17 @@ const electricOrigin = async (
   {
     postgresContainer,
     network,
-  }: { postgresContainer: StartedPostgreSqlContainer; network: StartedNetwork },
+    task,
+  }: { postgresContainer: StartedPostgreSqlContainer; network: StartedNetwork } & TaskContext,
   use: Use<string>
 ) => {
-  const { origin, container } = await createElectricContainer(postgresContainer, network);
-  try {
-    await use(origin);
-  } finally {
-    await container.stop();
-  }
+  const { origin, container, metadata } = await withContainerSetup({
+    name: "electricContainer",
+    task,
+    setup: createElectricContainer(postgresContainer, network),
+  });
+
+  await useContainer("electricContainer", { container, task, use: () => use(origin) });
 };
 
 export const containerTest = test.extend<ContainerContext>({

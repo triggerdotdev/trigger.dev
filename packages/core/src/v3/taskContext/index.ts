@@ -31,11 +31,16 @@ export class TaskContextAPI {
     return this.#getTaskContext()?.worker;
   }
 
+  get isWarmStart(): boolean | undefined {
+    return this.#getTaskContext()?.isWarmStart;
+  }
+
   get attributes(): Attributes {
     if (this.ctx) {
       return {
         ...this.contextAttributes,
         ...this.workerAttributes,
+        [SemanticInternalAttributes.WARM_START]: !!this.isWarmStart,
       };
     }
 

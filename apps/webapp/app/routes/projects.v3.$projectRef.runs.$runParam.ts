@@ -1,4 +1,4 @@
-import { LoaderFunctionArgs, redirect } from "@remix-run/server-runtime";
+import { type LoaderFunctionArgs, redirect } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { requireUserId } from "~/services/session.server";
@@ -38,6 +38,9 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     where: {
       friendlyId: validatedParams.runParam,
     },
+    include: {
+      runtimeEnvironment: true,
+    },
   });
 
   if (!run) {
@@ -46,8 +49,14 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
 
   // Redirect to the project's runs page
   return redirect(
-    v3RunSpanPath({ slug: project.organization.slug }, { slug: project.slug }, run, {
-      spanId: run.spanId,
-    })
+    v3RunSpanPath(
+      { slug: project.organization.slug },
+      { slug: project.slug },
+      run.runtimeEnvironment,
+      run,
+      {
+        spanId: run.spanId,
+      }
+    )
   );
 }

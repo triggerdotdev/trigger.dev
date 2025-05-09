@@ -1,7 +1,7 @@
 import { TaskRunExecutionStatus, TaskRunStatus } from "@trigger.dev/database";
 
 export function isDequeueableExecutionStatus(status: TaskRunExecutionStatus): boolean {
-  const dequeuableExecutionStatuses: TaskRunExecutionStatus[] = ["QUEUED"];
+  const dequeuableExecutionStatuses: TaskRunExecutionStatus[] = ["QUEUED", "QUEUED_EXECUTING"];
   return dequeuableExecutionStatuses.includes(status);
 }
 
@@ -26,8 +26,19 @@ export function isCheckpointable(status: TaskRunExecutionStatus): boolean {
     //executing
     "EXECUTING",
     "EXECUTING_WITH_WAITPOINTS",
+    "QUEUED_EXECUTING",
   ];
   return checkpointableStatuses.includes(status);
+}
+
+export function isFinishedOrPendingFinished(status: TaskRunExecutionStatus): boolean {
+  const finishedStatuses: TaskRunExecutionStatus[] = ["FINISHED", "PENDING_CANCEL"];
+  return finishedStatuses.includes(status);
+}
+
+export function isInitialState(status: TaskRunExecutionStatus): boolean {
+  const startedStatuses: TaskRunExecutionStatus[] = ["RUN_CREATED"];
+  return startedStatuses.includes(status);
 }
 
 export function isFinalRunStatus(status: TaskRunStatus): boolean {
@@ -43,4 +54,9 @@ export function isFinalRunStatus(status: TaskRunStatus): boolean {
   ];
 
   return finalStatuses.includes(status);
+}
+
+export function canReleaseConcurrency(status: TaskRunExecutionStatus): boolean {
+  const releaseableStatuses: TaskRunExecutionStatus[] = ["SUSPENDED", "EXECUTING_WITH_WAITPOINTS"];
+  return releaseableStatuses.includes(status);
 }

@@ -55,7 +55,6 @@ jobs:
           TRIGGER_VERSION: ${{ steps.deploy-trigger.outputs.deploymentVersion }}
 
       - name: Promote Trigger.dev Version
-        if: false
         run: npx trigger.dev@latest promote $TRIGGER_VERSION
         env:
           TRIGGER_ACCESS_TOKEN: ${{ secrets.TRIGGER_ACCESS_TOKEN }}
@@ -127,9 +126,10 @@ jobs:
 
       - name: Wait for vercel deployment (push)
         id: wait-for-vercel
-        uses: ericallam/vercel-wait@main
+        uses: ludalex/vercel-wait@v1
         with:
           project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          team-id: ${{ secrets.VERCEL_SCOPE_NAME }}
           token: ${{ secrets.VERCEL_TOKEN }}
           sha: ${{ github.sha }}
 
@@ -145,12 +145,12 @@ jobs:
         env:
           VERCEL_DEPLOYMENT_ID: ${{ steps.wait-for-vercel.outputs.deployment-id }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_SCOPE_NAME: "<your team slug>"
+          VERCEL_SCOPE_NAME: ${{ secrets.VERCEL_SCOPE_NAME }}
 ```
 
 This workflow does the following:
 
-1. Waits for the Vercel deployment to complete using the `ericallam/vercel-wait` action.
+1. Waits for the Vercel deployment to complete using the `ludalex/vercel-wait` action.
 2. Deploys the tasks to Trigger.dev using the `npx trigger.dev deploy` command. There's no need to use the `--skip-promotion` flag because we want to promote the deployment.
 3. Promotes the Vercel deployment using the `npx vercel promote` command.
 
@@ -164,8 +164,9 @@ For this workflow to work, you need to set up the following secrets in your GitH
 Checkout our [example repo](https://github.com/ericallam/vercel-atomic-deploys) to see this workflow in action.
 
 <Note>
-  We are using the `ericallam/vercel-wait` action above as a fork of the [official
+  We are using the `ludalex/vercel-wait` action above as a fork of the [official
   tj-actions/vercel-wait](https://github.com/tj-actions/vercel-wait) action because there is a bug
-  in the official action that exits early if the deployment isn't found in the first check. I've
-  opened a PR for this issue [here](https://github.com/tj-actions/vercel-wait/pull/106).
+  in the official action that exits early if the deployment isn't found in the first check and due
+  to the fact that it supports treating skipped (cancelled) Vercel deployments as valid (on by default). 
+  I've opened a PR for this issue [here](https://github.com/tj-actions/vercel-wait/pull/106).
 </Note>

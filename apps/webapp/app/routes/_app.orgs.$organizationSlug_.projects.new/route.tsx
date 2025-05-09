@@ -1,5 +1,6 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
+import { FolderIcon } from "@heroicons/react/20/solid";
 import type { ActionFunction, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { Form, useActionData, useNavigation } from "@remix-run/react";
@@ -27,7 +28,7 @@ import { requireUserId } from "~/services/session.server";
 import {
   OrganizationParamsSchema,
   organizationPath,
-  projectPath,
+  v3ProjectPath,
   selectPlanPath,
 } from "~/utils/pathBuilder";
 
@@ -110,7 +111,7 @@ export const action: ActionFunction = async ({ request, params }) => {
     });
 
     return redirectWithSuccessMessage(
-      projectPath(project.organization, project),
+      v3ProjectPath(project.organization, project),
       request,
       `${submission.value.projectName} created`
     );
@@ -143,7 +144,7 @@ export default function Page() {
     <MainCenteredContainer>
       <div>
         <FormTitle
-          LeadingIcon="folder"
+          LeadingIcon={<FolderIcon className="size-7 text-indigo-500" />}
           title="Create a new project"
           description={`This will create a new project in your "${organization.title}" organization.`}
         />
@@ -159,7 +160,7 @@ export default function Page() {
               <Input
                 {...conform.input(projectName, { type: "text" })}
                 placeholder="Your project name"
-                icon="folder"
+                icon={FolderIcon}
                 autoFocus
               />
               <FormError id={projectName.errorId}>{projectName.error}</FormError>

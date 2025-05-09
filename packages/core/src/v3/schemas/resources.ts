@@ -1,13 +1,13 @@
 import { z } from "zod";
-import { QueueOptions, RetryOptions, ScheduleMetadata } from "./schemas.js";
+import { QueueManifest, RetryOptions, ScheduleMetadata } from "./schemas.js";
 import { MachineConfig } from "./common.js";
 
 export const TaskResource = z.object({
   id: z.string(),
   description: z.string().optional(),
   filePath: z.string(),
-  exportName: z.string(),
-  queue: QueueOptions.optional(),
+  exportName: z.string().optional(),
+  queue: QueueManifest.extend({ name: z.string().optional() }).optional(),
   retry: RetryOptions.optional(),
   machine: MachineConfig.optional(),
   triggerSource: z.string().optional(),
@@ -31,6 +31,7 @@ export const BackgroundWorkerMetadata = z.object({
   contentHash: z.string(),
   cliPackageVersion: z.string().optional(),
   tasks: z.array(TaskResource),
+  queues: z.array(QueueManifest).optional(),
   sourceFiles: z.array(BackgroundWorkerSourceFileMetadata).optional(),
 });
 

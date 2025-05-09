@@ -1,19 +1,29 @@
 import type { Tracer } from "@opentelemetry/api";
 import type { Logger } from "@opentelemetry/api-logs";
 import {
+  AnyOnCatchErrorHookFunction,
+  AnyOnFailureHookFunction,
+  AnyOnInitHookFunction,
+  AnyOnStartHookFunction,
+  AnyOnSuccessHookFunction,
   apiClientManager,
+  attemptKey,
   clock,
   ExecutorToWorkerMessageCatalog,
   type HandleErrorFunction,
+  lifecycleHooks,
+  localsAPI,
   logger,
   LogLevel,
+  resourceCatalog,
   runMetadata,
   runtime,
-  taskCatalog,
+  runTimelineMetrics,
   TaskRunErrorCodes,
   TaskRunExecution,
   timeout,
   TriggerConfig,
+  UsageMeasurement,
   waitUntil,
   WorkerManifest,
   WorkerToExecutorMessageCatalog,
@@ -26,10 +36,14 @@ import {
   getEnvVar,
   getNumberEnvVar,
   logLevels,
-  ManagedRuntimeManager,
+  SharedRuntimeManager,
   OtelTaskLogger,
+  populateEnv,
+  StandardLifecycleHooksManager,
+  StandardLocalsManager,
   StandardMetadataManager,
-  StandardTaskCatalog,
+  StandardResourceCatalog,
+  StandardRunTimelineMetricsManager,
   StandardWaitUntilManager,
   TaskExecutor,
   TracingDiagnosticLogLevel,
@@ -87,10 +101,19 @@ process.on("uncaughtException", function (error, origin) {
 
 const heartbeatIntervalMs = getEnvVar("HEARTBEAT_INTERVAL_MS");
 
+const standardLocalsManager = new StandardLocalsManager();
+localsAPI.setGlobalLocalsManager(standardLocalsManager);
+
+const standardRunTimelineMetricsManager = new StandardRunTimelineMetricsManager();
+runTimelineMetrics.setGlobalManager(standardRunTimelineMetricsManager);
+
+const standardLifecycleHooksManager = new StandardLifecycleHooksManager();
+lifecycleHooks.setGlobalLifecycleHooksManager(standardLifecycleHooksManager);
+
 const devUsageManager = new DevUsageManager();
 usage.setGlobalUsageManager(devUsageManager);
 timeout.setGlobalManager(new UsageTimeoutManager(devUsageManager));
-taskCatalog.setGlobalTaskCatalog(new StandardTaskCatalog());
+resourceCatalog.setGlobalResourceCatalog(new StandardResourceCatalog());
 
 const durableClock = new DurableClock();
 clock.setGlobalClock(durableClock);
@@ -133,6 +156,8 @@ async function loadWorkerManifest() {
 async function bootstrap() {
   const workerManifest = await loadWorkerManifest();
 
+  resourceCatalog.registerWorkerManifest(workerManifest);
+
   const { config, handleError } = await importConfig(workerManifest.configPath);
 
   const tracingSDK = new TracingSDK({
@@ -162,11 +187,38 @@ async function bootstrap() {
 
   logger.setGlobalTaskLogger(otelTaskLogger);
 
-  for (const task of workerManifest.tasks) {
-    taskCatalog.registerTaskFileMetadata(task.id, {
-      exportName: task.exportName,
-      filePath: task.filePath,
-      entryPoint: task.entryPoint,
+  if (config.init) {
+    lifecycleHooks.registerGlobalInitHook({
+      id: "config",
+      fn: config.init as AnyOnInitHookFunction,
+    });
+  }
+
+  if (config.onStart) {
+    lifecycleHooks.registerGlobalStartHook({
+      id: "config",
+      fn: config.onStart as AnyOnStartHookFunction,
+    });
+  }
+
+  if (config.onSuccess) {
+    lifecycleHooks.registerGlobalSuccessHook({
+      id: "config",
+      fn: config.onSuccess as AnyOnSuccessHookFunction,
+    });
+  }
+
+  if (config.onFailure) {
+    lifecycleHooks.registerGlobalFailureHook({
+      id: "config",
+      fn: config.onFailure as AnyOnFailureHookFunction,
+    });
+  }
+
+  if (handleError) {
+    lifecycleHooks.registerGlobalCatchErrorHook({
+      id: "config",
+      fn: handleError as AnyOnCatchErrorHookFunction,
     });
   }
 
@@ -175,22 +227,32 @@ async function bootstrap() {
     tracingSDK,
     consoleInterceptor,
     config,
-    handleErrorFn: handleError,
     workerManifest,
   };
 }
 
 let _execution: TaskRunExecution | undefined;
 let _isRunning = false;
+let _isCancelled = false;
 let _tracingSDK: TracingSDK | undefined;
+let _executionMeasurement: UsageMeasurement | undefined;
+const cancelController = new AbortController();
 
 const zodIpc = new ZodIpcConnection({
   listenSchema: WorkerToExecutorMessageCatalog,
   emitSchema: ExecutorToWorkerMessageCatalog,
   process,
   handlers: {
-    EXECUTE_TASK_RUN: async ({ execution, traceContext, metadata }, sender) => {
+    EXECUTE_TASK_RUN: async ({ execution, traceContext, metadata, metrics, env }, sender) => {
+      if (env) {
+        populateEnv(env, {
+          override: true,
+        });
+      }
+
       log(`[${new Date().toISOString()}] Received EXECUTE_TASK_RUN`, execution);
+
+      standardRunTimelineMetricsManager.registerMetricsFromExecution(metrics);
 
       if (_isRunning) {
         logError("Worker is already running a task");
@@ -215,7 +277,7 @@ const zodIpc = new ZodIpcConnection({
       }
 
       try {
-        const { tracer, tracingSDK, consoleInterceptor, config, handleErrorFn, workerManifest } =
+        const { tracer, tracingSDK, consoleInterceptor, config, workerManifest } =
           await bootstrap();
 
         _tracingSDK = tracingSDK;
@@ -246,11 +308,37 @@ const zodIpc = new ZodIpcConnection({
         }
 
         try {
-          const beforeImport = performance.now();
-          await import(normalizeImportPath(taskManifest.entryPoint));
-          const durationMs = performance.now() - beforeImport;
+          await runTimelineMetrics.measureMetric(
+            "trigger.dev/start",
+            "import",
+            {
+              entryPoint: taskManifest.entryPoint,
+              file: taskManifest.filePath,
+            },
+            async () => {
+              const beforeImport = performance.now();
+              resourceCatalog.setCurrentFileContext(taskManifest.entryPoint, taskManifest.filePath);
 
-          log(`Imported task ${execution.task.id} [${taskManifest.entryPoint}] in ${durationMs}ms`);
+              // Load init file if it exists
+              if (workerManifest.initEntryPoint) {
+                try {
+                  await import(normalizeImportPath(workerManifest.initEntryPoint));
+                  log(`Loaded init file from ${workerManifest.initEntryPoint}`);
+                } catch (err) {
+                  logError(`Failed to load init file`, err);
+                  throw err;
+                }
+              }
+
+              await import(normalizeImportPath(taskManifest.entryPoint));
+              resourceCatalog.clearCurrentFileContext();
+              const durationMs = performance.now() - beforeImport;
+
+              log(
+                `Imported task ${execution.task.id} [${taskManifest.entryPoint}] in ${durationMs}ms`
+              );
+            }
+          );
         } catch (err) {
           logError(`Failed to import task ${execution.task.id}`, err);
 
@@ -278,7 +366,7 @@ const zodIpc = new ZodIpcConnection({
         process.title = `trigger-dev-worker: ${execution.task.id} ${execution.run.id}`;
 
         // Import the task module
-        const task = taskCatalog.getTask(execution.task.id);
+        const task = resourceCatalog.getTask(execution.task.id);
 
         if (!task) {
           logError(`Could not find task ${execution.task.id}`);
@@ -302,12 +390,13 @@ const zodIpc = new ZodIpcConnection({
           return;
         }
 
+        runMetadataManager.runId = execution.run.id;
+
         const executor = new TaskExecutor(task, {
           tracer,
           tracingSDK,
           consoleInterceptor,
-          config,
-          handleErrorFn,
+          retries: config.retries,
         });
 
         try {
@@ -318,53 +407,17 @@ const zodIpc = new ZodIpcConnection({
             getNumberEnvVar("TRIGGER_RUN_METADATA_FLUSH_INTERVAL", 1000)
           );
 
-          const measurement = usage.start();
+          _executionMeasurement = usage.start();
 
-          // This lives outside of the executor because this will eventually be moved to the controller level
-          const signal = execution.run.maxDuration
-            ? timeout.abortAfterTimeout(execution.run.maxDuration)
-            : undefined;
+          const timeoutController = timeout.abortAfterTimeout(execution.run.maxDuration);
 
-          signal?.addEventListener("abort", async (e) => {
-            if (_isRunning) {
-              _isRunning = false;
-              _execution = undefined;
+          const signal = AbortSignal.any([cancelController.signal, timeoutController.signal]);
 
-              const usageSample = usage.stop(measurement);
+          const { result } = await executor.execute(execution, metadata, traceContext, signal);
 
-              await sender.send("TASK_RUN_COMPLETED", {
-                execution,
-                result: {
-                  ok: false,
-                  id: execution.run.id,
-                  error: {
-                    type: "INTERNAL_ERROR",
-                    code: TaskRunErrorCodes.MAX_DURATION_EXCEEDED,
-                    message:
-                      signal.reason instanceof Error
-                        ? signal.reason.message
-                        : String(signal.reason),
-                  },
-                  usage: {
-                    durationMs: usageSample.cpuTime,
-                  },
-                  metadata: runMetadataManager.stopAndReturnLastFlush(),
-                },
-              });
-            }
-          });
+          if (_isRunning && !_isCancelled) {
+            const usageSample = usage.stop(_executionMeasurement);
 
-          const { result } = await executor.execute(
-            execution,
-            metadata,
-            traceContext,
-            measurement,
-            signal
-          );
-
-          const usageSample = usage.stop(measurement);
-
-          if (_isRunning) {
             return sender.send("TASK_RUN_COMPLETED", {
               execution,
               result: {
@@ -391,6 +444,8 @@ const zodIpc = new ZodIpcConnection({
             error: {
               type: "INTERNAL_ERROR",
               code: TaskRunErrorCodes.CONFIGURED_INCORRECTLY,
+              message: err instanceof Error ? err.message : String(err),
+              stackTrace: err instanceof Error ? err.stack : undefined,
             },
             usage: {
               durationMs: 0,
@@ -400,28 +455,67 @@ const zodIpc = new ZodIpcConnection({
         });
       }
     },
-    TASK_RUN_COMPLETED_NOTIFICATION: async () => {
-      await managedWorkerRuntime.completeWaitpoints([]);
-    },
-    WAIT_COMPLETED_NOTIFICATION: async () => {
-      await managedWorkerRuntime.completeWaitpoints([]);
-    },
-    FLUSH: async ({ timeoutInMs }, sender) => {
+    CANCEL: async ({ timeoutInMs }) => {
+      _isCancelled = true;
+      cancelController.abort("run cancelled");
+      await callCancelHooks(timeoutInMs);
+      if (_executionMeasurement) {
+        usage.stop(_executionMeasurement);
+      }
       await flushAll(timeoutInMs);
     },
-    WAITPOINT_CREATED: async ({ wait, waitpoint }) => {
-      managedWorkerRuntime.associateWaitWithWaitpoint(wait.id, waitpoint.id);
+    FLUSH: async ({ timeoutInMs }) => {
+      await flushAll(timeoutInMs);
     },
-    WAITPOINT_COMPLETED: async ({ waitpoint }) => {
-      managedWorkerRuntime.completeWaitpoints([waitpoint]);
+    RESOLVE_WAITPOINT: async ({ waitpoint }) => {
+      sharedWorkerRuntime.resolveWaitpoints([waitpoint]);
     },
   },
 });
 
+async function callCancelHooks(timeoutInMs: number = 10_000) {
+  const now = performance.now();
+
+  try {
+    await Promise.race([lifecycleHooks.callOnCancelHookListeners(), setTimeout(timeoutInMs)]);
+  } finally {
+    const duration = performance.now() - now;
+
+    log(`Called cancel hooks in ${duration}ms`);
+  }
+}
+
 async function flushAll(timeoutInMs: number = 10_000) {
   const now = performance.now();
 
-  await Promise.all([flushTracingSDK(timeoutInMs), flushMetadata(timeoutInMs)]);
+  const results = await Promise.allSettled([
+    flushTracingSDK(timeoutInMs),
+    flushMetadata(timeoutInMs),
+  ]);
+
+  const successfulFlushes = results
+    .filter((result) => result.status === "fulfilled")
+    .map((result) => result.value.flushed);
+
+  const failedFlushes = ["tracingSDK", "runMetadata"].filter(
+    (flushed) => !successfulFlushes.includes(flushed)
+  );
+
+  if (failedFlushes.length > 0) {
+    logError(`Failed to flush ${failedFlushes.join(", ")}`);
+  }
+
+  const errorMessages = results
+    .filter((result) => result.status === "rejected")
+    .map((result) => result.reason);
+
+  if (errorMessages.length > 0) {
+    logError(errorMessages.join("\n"));
+  }
+
+  for (const flushed of successfulFlushes) {
+    log(`Flushed ${flushed} successfully`);
+  }
 
   const duration = performance.now() - now;
 
@@ -436,6 +530,11 @@ async function flushTracingSDK(timeoutInMs: number = 10_000) {
   const duration = performance.now() - now;
 
   log(`Flushed tracingSDK in ${duration}ms`);
+
+  return {
+    flushed: "tracingSDK",
+    durationMs: duration,
+  };
 }
 
 async function flushMetadata(timeoutInMs: number = 10_000) {
@@ -446,10 +545,15 @@ async function flushMetadata(timeoutInMs: number = 10_000) {
   const duration = performance.now() - now;
 
   log(`Flushed runMetadata in ${duration}ms`);
+
+  return {
+    flushed: "runMetadata",
+    durationMs: duration,
+  };
 }
 
-const managedWorkerRuntime = new ManagedRuntimeManager(zodIpc, showInternalLogs);
-runtime.setGlobalRuntimeManager(managedWorkerRuntime);
+const sharedWorkerRuntime = new SharedRuntimeManager(zodIpc, showInternalLogs);
+runtime.setGlobalRuntimeManager(sharedWorkerRuntime);
 
 process.title = "trigger-managed-worker";
 
@@ -458,7 +562,7 @@ const heartbeatInterval = parseInt(heartbeatIntervalMs ?? "30000", 10);
 for await (const _ of setInterval(heartbeatInterval)) {
   if (_isRunning && _execution) {
     try {
-      await zodIpc.send("TASK_HEARTBEAT", { id: _execution.attempt.id });
+      await zodIpc.send("TASK_HEARTBEAT", { id: attemptKey(_execution) });
     } catch (err) {
       logError("Failed to send HEARTBEAT message", err);
     }

@@ -1,11 +1,11 @@
 import { json } from "@remix-run/server-runtime";
 import {
   CompleteWaitpointTokenRequestBody,
-  CompleteWaitpointTokenResponseBody,
+  type CompleteWaitpointTokenResponseBody,
   conditionallyExportPacket,
   stringifyIO,
 } from "@trigger.dev/core/v3";
-import { WaitpointId } from "@trigger.dev/core/v3/apps";
+import { WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import { z } from "zod";
 import { $replica } from "~/db.server";
 import { env } from "~/env.server";
@@ -13,14 +13,20 @@ import { logger } from "~/services/logger.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { engine } from "~/v3/runEngine.server";
 
-const { action } = createActionApiRoute(
+const { action, loader } = createActionApiRoute(
   {
     params: z.object({
       waitpointFriendlyId: z.string(),
     }),
     body: CompleteWaitpointTokenRequestBody,
     maxContentLength: env.TASK_PAYLOAD_MAXIMUM_SIZE,
-    method: "POST",
+    allowJWT: true,
+    authorization: {
+      action: "write",
+      resource: (params) => ({ waitpoints: params.waitpointFriendlyId }),
+      superScopes: ["write:waitpoints", "admin"],
+    },
+    corsStrategy: "all",
   },
   async ({ authentication, body, params }) => {
     // Resume tokens are actually just waitpoints
@@ -37,6 +43,12 @@ const { action } = createActionApiRoute(
 
       if (!waitpoint) {
         throw json({ error: "Waitpoint not found" }, { status: 404 });
+      }
+
+      if (waitpoint.status === "COMPLETED") {
+        return json<CompleteWaitpointTokenResponseBody>({
+          success: true,
+        });
       }
 
       const stringifiedData = await stringifyIO(body.data);
@@ -65,4 +77,4 @@ const { action } = createActionApiRoute(
   }
 );
 
-export { action };
+export { action, loader };

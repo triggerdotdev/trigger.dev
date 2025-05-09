@@ -9,7 +9,7 @@ import {
   accessoryAttributes,
   apiClientManager,
   mergeRequestOptions,
-  taskCatalog,
+  resourceCatalog,
 } from "@trigger.dev/core/v3";
 import { zodfetch } from "@trigger.dev/core/v3/zodfetch";
 import { Task, TaskOptions, createTask } from "../shared.js";
@@ -59,7 +59,7 @@ export function task<TIdentifier extends string, TOutput, TInitOutput extends In
   const timezone =
     (params.cron && typeof params.cron !== "string" ? params.cron.timezone : "UTC") ?? "UTC";
 
-  taskCatalog.updateTaskMetadata(task.id, {
+  resourceCatalog.updateTaskMetadata(task.id, {
     triggerSource: "schedule",
     schedule: cron
       ? {

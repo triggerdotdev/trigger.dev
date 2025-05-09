@@ -1,17 +1,19 @@
 import { ScheduledTaskPayload, parsePacket, prettyPrintPacket } from "@trigger.dev/core/v3";
-import { BackgroundWorkerTask, RuntimeEnvironmentType, TaskRunStatus } from "@trigger.dev/database";
-import { PrismaClient, prisma, sqlDatabaseSchema } from "~/db.server";
+import { type RuntimeEnvironmentType, type TaskRunStatus } from "@trigger.dev/database";
+import { type PrismaClient, prisma, sqlDatabaseSchema } from "~/db.server";
 import { getTimezones } from "~/utils/timezones.server";
-import { getUsername } from "~/utils/username";
 import {
-  BackgroundWorkerTaskSlim,
+  type BackgroundWorkerTaskSlim,
   findCurrentWorkerDeployment,
 } from "~/v3/models/workerDeployment.server";
 
 type TestTaskOptions = {
   userId: string;
-  projectSlug: string;
-  environmentSlug: string;
+  projectId: string;
+  environment: {
+    id: string;
+    type: RuntimeEnvironmentType;
+  };
   taskIdentifier: string;
 };
 
@@ -19,14 +21,7 @@ type Task = {
   id: string;
   taskIdentifier: string;
   filePath: string;
-  exportName: string;
   friendlyId: string;
-  environment: {
-    id: string;
-    type: RuntimeEnvironmentType;
-    userId?: string;
-    userName?: string;
-  };
 };
 
 export type TestTask =
@@ -87,38 +82,13 @@ export class TestTaskPresenter {
 
   public async call({
     userId,
-    projectSlug,
-    environmentSlug,
+    projectId,
+    environment,
     taskIdentifier,
   }: TestTaskOptions): Promise<TestTaskResult> {
-    const environment = await this.#prismaClient.runtimeEnvironment.findFirstOrThrow({
-      where: {
-        slug: environmentSlug,
-        project: {
-          slug: projectSlug,
-        },
-        orgMember: environmentSlug === "dev" ? { userId } : undefined,
-      },
-      select: {
-        id: true,
-        type: true,
-        orgMember: {
-          select: {
-            user: {
-              select: {
-                id: true,
-                name: true,
-                displayName: true,
-              },
-            },
-          },
-        },
-      },
-    });
-
     let task: BackgroundWorkerTaskSlim | null = null;
     if (environment.type !== "DEVELOPMENT") {
-      const deployment = await findCurrentWorkerDeployment(environment.id);
+      const deployment = await findCurrentWorkerDeployment({ environmentId: environment.id });
       if (deployment) {
         task = deployment.worker?.tasks.find((t) => t.slug === taskIdentifier) ?? null;
       }
@@ -155,7 +125,7 @@ export class TestTaskPresenter {
           tr."runtimeEnvironmentId" = ${environment.id}
       ORDER BY
           tr."createdAt" DESC
-      LIMIT 5
+      LIMIT 10
     )
     SELECT
         taskr.id,
@@ -180,14 +150,7 @@ export class TestTaskPresenter {
       id: task.id,
       taskIdentifier: task.slug,
       filePath: task.filePath,
-      exportName: task.exportName,
       friendlyId: task.friendlyId,
-      environment: {
-        id: environment.id,
-        type: environment.type,
-        userId: environment.orgMember?.user.id,
-        userName: getUsername(environment.orgMember?.user),
-      },
     };
 
     switch (task.triggerSource) {

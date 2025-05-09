@@ -1,13 +1,9 @@
-import React, { FunctionComponent, createElement } from "react";
+import React, { type FunctionComponent, createElement } from "react";
 import { cn } from "~/utils/cn";
-import { IconNamesOrString, NamedIcon } from "./NamedIcon";
 
-export type RenderIcon =
-  | IconNamesOrString
-  | FunctionComponent<{ className?: string }>
-  | React.ReactNode;
+export type RenderIcon = FunctionComponent<{ className?: string }> | React.ReactNode;
 
-type IconProps = {
+export type IconProps = {
   icon?: RenderIcon;
   className?: string;
 };
@@ -15,10 +11,6 @@ type IconProps = {
 /** Use this icon to either render a passed in React component, or a NamedIcon/CompanyIcon */
 export function Icon(props: IconProps) {
   if (!props.icon) return null;
-
-  if (typeof props.icon === "string") {
-    return <NamedIcon name={props.icon} className={props.className ?? ""} fallback={<></>} />;
-  }
 
   if (typeof props.icon === "function") {
     const Icon = props.icon;

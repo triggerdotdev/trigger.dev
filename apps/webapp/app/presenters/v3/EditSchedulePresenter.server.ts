@@ -1,13 +1,16 @@
-import { RuntimeEnvironmentType } from "@trigger.dev/database";
-import { PrismaClient, prisma } from "~/db.server";
-import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
+import { type RuntimeEnvironmentType } from "@trigger.dev/database";
+import { type PrismaClient, prisma } from "~/db.server";
+import { displayableEnvironment, findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { logger } from "~/services/logger.server";
 import { filterOrphanedEnvironments } from "~/utils/environmentSort";
 import { getTimezones } from "~/utils/timezones.server";
+import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.server";
+import { ServiceValidationError } from "~/v3/services/baseService.server";
 
 type EditScheduleOptions = {
   userId: string;
   projectSlug: string;
+  environmentSlug: string;
   friendlyId?: string;
 };
 
@@ -26,7 +29,7 @@ export class EditSchedulePresenter {
     this.#prismaClient = prismaClient;
   }
 
-  public async call({ userId, projectSlug, friendlyId }: EditScheduleOptions) {
+  public async call({ userId, projectSlug, environmentSlug, friendlyId }: EditScheduleOptions) {
     // Find the project scoped to the organization
     const project = await this.#prismaClient.project.findFirstOrThrow({
       select: {
@@ -62,13 +65,25 @@ export class EditSchedulePresenter {
       },
     });
 
-    const possibleTasks = await this.#prismaClient.backgroundWorkerTask.findMany({
-      distinct: ["slug"],
-      where: {
-        projectId: project.id,
-        triggerSource: "SCHEDULED",
-      },
-    });
+    const environment = await findEnvironmentBySlug(project.id, environmentSlug, userId);
+    if (!environment) {
+      throw new ServiceValidationError("No matching environment for project", 404);
+    }
+
+    //get the latest BackgroundWorker
+    const latestWorker = await findCurrentWorkerFromEnvironment(environment, this.#prismaClient);
+
+    //get all possible scheduled tasks
+    const possibleTasks = latestWorker
+      ? await this.#prismaClient.backgroundWorkerTask.findMany({
+          where: {
+            workerId: latestWorker.id,
+            projectId: project.id,
+            runtimeEnvironmentId: environment.id,
+            triggerSource: "SCHEDULED",
+          },
+        })
+      : [];
 
     const possibleEnvironments = filterOrphanedEnvironments(project.environments).map(
       (environment) => {
@@ -77,7 +92,7 @@ export class EditSchedulePresenter {
     );
 
     return {
-      possibleTasks: possibleTasks.map((task) => task.slug),
+      possibleTasks: possibleTasks.map((task) => task.slug).sort(),
       possibleEnvironments,
       possibleTimezones: getTimezones(),
       schedule: await this.#getExistingSchedule(friendlyId, possibleEnvironments),

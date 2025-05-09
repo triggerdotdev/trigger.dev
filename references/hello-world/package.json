@@ -6,6 +6,12 @@
     "trigger.dev": "workspace:*"
   },
   "dependencies": {
-    "@trigger.dev/sdk": "workspace:*"
+    "@trigger.dev/sdk": "workspace:*",
+    "openai": "^4.97.0",
+    "replicate": "^1.0.1",
+    "zod": "3.23.8"
+  },
+  "scripts": {
+    "dev": "trigger dev"
   }
 }

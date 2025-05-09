@@ -48,6 +48,8 @@ export class DevUsageManager implements UsageManager {
 
   disable(): void {}
 
+  async flush(): Promise<void> {}
+
   sample(): UsageSample | undefined {
     return this._firstMeasurement?.sample();
   }
@@ -72,7 +74,9 @@ export class DevUsageManager implements UsageManager {
 
     const sample = measurement.sample();
 
-    this._currentMeasurements.delete(measurement.id);
+    if (this._currentMeasurements.has(measurement.id)) {
+      this._currentMeasurements.delete(measurement.id);
+    }
 
     return sample;
   }

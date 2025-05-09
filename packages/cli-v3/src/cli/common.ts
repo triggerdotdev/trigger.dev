@@ -9,6 +9,7 @@ import { outro } from "@clack/prompts";
 import { chalkError } from "../utilities/cliOutput.js";
 import { CLOUD_API_URL } from "../consts.js";
 import { readAuthConfigCurrentProfileName } from "../utilities/configFiles.js";
+import { BundleError } from "../build/bundle.js";
 
 export const CommonCommandOptions = z.object({
   apiUrl: z.string().optional(),
@@ -54,7 +55,7 @@ export async function wrapCommandAction<T extends z.AnyZodObject, TResult>(
   schema: T,
   options: unknown,
   action: (opts: z.output<T>) => Promise<TResult>
-): Promise<TResult> {
+): Promise<TResult | undefined> {
   return await tracer.startActiveSpan(name, async (span) => {
     try {
       const parsedOptions = schema.safeParse(options);
@@ -86,6 +87,8 @@ export async function wrapCommandAction<T extends z.AnyZodObject, TResult>(
         outro("Operation cancelled");
       } else if (e instanceof SkipCommandError) {
         // do nothing
+      } else if (e instanceof BundleError) {
+        process.exit(1);
       } else {
         recordSpanException(span, e);
 

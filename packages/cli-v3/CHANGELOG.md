@@ -1,5 +1,155 @@
 # trigger.dev
 
+## 4.0.0-v4-beta.14
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/build@4.0.0-v4-beta.14`
+  - `@trigger.dev/core@4.0.0-v4-beta.14`
+
+## 4.0.0-v4-beta.13
+
+### Patch Changes
+
+- - Correctly resolve waitpoints that come in early ([#2006](https://github.com/triggerdotdev/trigger.dev/pull/2006))
+  - Ensure correct state before requesting suspension
+  - Fix race conditions in snapshot processing
+- Always print full deploy logs in CI ([#2006](https://github.com/triggerdotdev/trigger.dev/pull/2006))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.13`
+  - `@trigger.dev/build@4.0.0-v4-beta.13`
+
+## 4.0.0-v4-beta.12
+
+### Patch Changes
+
+- Display clickable links in Cursor terminal ([#1998](https://github.com/triggerdotdev/trigger.dev/pull/1998))
+- Added AI assistance link when you have build errors ([#1925](https://github.com/triggerdotdev/trigger.dev/pull/1925))
+- If you pass a directory when calling deploy we validate it exists and give helpful hints ([#2013](https://github.com/triggerdotdev/trigger.dev/pull/2013))
+- Updated dependencies:
+  - `@trigger.dev/build@4.0.0-v4-beta.12`
+  - `@trigger.dev/core@4.0.0-v4-beta.12`
+
+## 4.0.0-v4-beta.11
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/build@4.0.0-v4-beta.11`
+  - `@trigger.dev/core@4.0.0-v4-beta.11`
+
+## 4.0.0-v4-beta.10
+
+### Patch Changes
+
+- TriggerApiError 4xx errors will no longer cause tasks to be retried ([#1970](https://github.com/triggerdotdev/trigger.dev/pull/1970))
+- - Fix polling interval reset bug that could create duplicate intervals ([#1987](https://github.com/triggerdotdev/trigger.dev/pull/1987))
+  - Protect against unexpected attempt number changes
+  - Prevent run execution zombies after warm starts
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.10`
+  - `@trigger.dev/build@4.0.0-v4-beta.10`
+
+## 4.0.0-v4-beta.9
+
+### Patch Changes
+
+- fix: default machine config indexing now works ([#1979](https://github.com/triggerdotdev/trigger.dev/pull/1979))
+- Updated dependencies:
+  - `@trigger.dev/build@4.0.0-v4-beta.9`
+  - `@trigger.dev/core@4.0.0-v4-beta.9`
+
+## 4.0.0-v4-beta.8
+
+### Patch Changes
+
+- Prevent large outputs from overwriting each other ([#1971](https://github.com/triggerdotdev/trigger.dev/pull/1971))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.8`
+  - `@trigger.dev/build@4.0.0-v4-beta.8`
+
+## 4.0.0-v4-beta.7
+
+### Patch Changes
+
+- Fixes runLimiter check on #dequeueRuns ([#1953](https://github.com/triggerdotdev/trigger.dev/pull/1953))
+- Fix QUEUED status snapshot handler ([#1963](https://github.com/triggerdotdev/trigger.dev/pull/1963))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.7`
+  - `@trigger.dev/build@4.0.0-v4-beta.7`
+
+## 4.0.0-v4-beta.6
+
+### Patch Changes
+
+- The dev command will now use the platform-provided engine URL ([#1949](https://github.com/triggerdotdev/trigger.dev/pull/1949))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.6`
+  - `@trigger.dev/build@4.0.0-v4-beta.6`
+
+## 4.0.0-v4-beta.5
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/build@4.0.0-v4-beta.5`
+  - `@trigger.dev/core@4.0.0-v4-beta.5`
+
+## 4.0.0-v4-beta.4
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/build@4.0.0-v4-beta.4`
+  - `@trigger.dev/core@4.0.0-v4-beta.4`
+
+## 4.0.0-v4-beta.3
+
+### Patch Changes
+
+- Improve usage flushing ([#1931](https://github.com/triggerdotdev/trigger.dev/pull/1931))
+- Fix stalled run detection ([#1934](https://github.com/triggerdotdev/trigger.dev/pull/1934))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.3`
+  - `@trigger.dev/build@4.0.0-v4-beta.3`
+
+## 4.0.0-v4-beta.2
+
+### Patch Changes
+
+- Managed run controller performance and reliability improvements ([#1927](https://github.com/triggerdotdev/trigger.dev/pull/1927))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.2`
+  - `@trigger.dev/build@4.0.0-v4-beta.2`
+
+## 4.0.0-v4-beta.1
+
+### Patch Changes
+
+- Fix init.ts in custom trigger dirs ([#1914](https://github.com/triggerdotdev/trigger.dev/pull/1914))
+- Init command will now correctly install v4-beta packages ([#1914](https://github.com/triggerdotdev/trigger.dev/pull/1914))
+- Update nypm package to support test-based bun.lock files ([#1914](https://github.com/triggerdotdev/trigger.dev/pull/1914))
+- Handle flush errors gracefully in dev ([#1914](https://github.com/triggerdotdev/trigger.dev/pull/1914))
+- Updated dependencies:
+  - `@trigger.dev/build@4.0.0-v4-beta.1`
+  - `@trigger.dev/core@4.0.0-v4-beta.1`
+
+## 4.0.0-v4-beta.0
+
+### Major Changes
+
+- Trigger.dev v4 release. Please see our upgrade to v4 docs to view the full changelog: https://trigger.dev/docs/upgrade-to-v4 ([#1869](https://github.com/triggerdotdev/trigger.dev/pull/1869))
+
+### Patch Changes
+
+- Run Engine 2.0 (alpha) ([#1575](https://github.com/triggerdotdev/trigger.dev/pull/1575))
+- Improve warm start times by eagerly creating the child TaskRunProcess when a previous run as completed ([#1879](https://github.com/triggerdotdev/trigger.dev/pull/1879))
+- v4: New lifecycle hooks ([#1817](https://github.com/triggerdotdev/trigger.dev/pull/1817))
+- Updated dependencies:
+  - `@trigger.dev/build@4.0.0-v4-beta.0`
+  - `@trigger.dev/core@4.0.0-v4-beta.0`
+
 ## 3.3.17
 
 ### Patch Changes

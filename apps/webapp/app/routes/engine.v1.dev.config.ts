@@ -1,5 +1,5 @@
-import { json, TypedResponse } from "@remix-run/server-runtime";
-import { DevConfigResponseBody } from "@trigger.dev/core/v3/schemas";
+import { json, type TypedResponse } from "@remix-run/server-runtime";
+import { type DevConfigResponseBody } from "@trigger.dev/core/v3/schemas";
 import { z } from "zod";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
@@ -20,6 +20,8 @@ export const loader = createLoaderApiRoute(
         environmentId: authentication.environment.id,
         dequeueIntervalWithRun: env.DEV_DEQUEUE_INTERVAL_WITH_RUN,
         dequeueIntervalWithoutRun: env.DEV_DEQUEUE_INTERVAL_WITHOUT_RUN,
+        maxConcurrentRuns: env.DEV_MAX_CONCURRENT_RUNS,
+        engineUrl: env.DEV_ENGINE_URL,
       });
     } catch (error) {
       logger.error("Failed to get dev settings", {

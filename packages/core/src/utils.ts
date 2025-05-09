@@ -1,37 +1,40 @@
-// EventFilter is typed as type EventFilter = { [key: string]: EventFilter | string[] | number[] | boolean[] }
-
-import { EventFilter } from "./schemas/index.js";
-
-// This function should take any number of EventFilters and return a new EventFilter that is the result of merging of them.
-export function deepMergeFilters(...filters: EventFilter[]): EventFilter {
-  const result: EventFilter = {};
-
-  for (const filter of filters) {
-    for (const key in filter) {
-      if (filter.hasOwnProperty(key)) {
-        const filterValue = filter[key];
-        const existingValue = result[key];
-
-        if (
-          existingValue &&
-          typeof existingValue === "object" &&
-          typeof filterValue === "object" &&
-          !Array.isArray(existingValue) &&
-          !Array.isArray(filterValue) &&
-          existingValue !== null &&
-          filterValue !== null
-        ) {
-          result[key] = deepMergeFilters(existingValue, filterValue);
-        } else {
-          result[key] = filterValue as any;
-        }
-      }
-    }
-  }
-
-  return result;
-}
-
 export function assertExhaustive(x: never): never {
   throw new Error("Unexpected object: " + x);
+}
+
+export async function tryCatch<T, E = Error>(
+  promise: Promise<T> | undefined
+): Promise<[null, T] | [E, null]> {
+  if (!promise) {
+    return [null, undefined as T];
+  }
+
+  try {
+    const data = await promise;
+    return [null, data];
+  } catch (error) {
+    return [error as E, null];
+  }
+}
+
+export type Deferred<T> = {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+  reject: (reason?: any) => void;
+};
+
+export function promiseWithResolvers<T>(): Deferred<T> {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: any) => void;
+
+  const promise = new Promise<T>((_resolve, _reject) => {
+    resolve = _resolve;
+    reject = _reject;
+  });
+
+  return {
+    promise,
+    resolve,
+    reject,
+  };
 }

@@ -16,13 +16,15 @@ import {
   CreateWaitpointTokenResponseBody,
   DeletedScheduleObject,
   EnvironmentVariableResponseBody,
-  EnvironmentVariableValue,
-  EnvironmentVariables,
+  EnvironmentVariableWithSecret,
+  ListQueueOptions,
   ListRunResponseItem,
   ListScheduleOptions,
+  QueueItem,
   ReplayRunResponse,
   RescheduleRunRequestBody,
   RetrieveBatchV2Response,
+  RetrieveQueueParam,
   RetrieveRunResponse,
   ScheduleObject,
   TaskRunExecutionResult,
@@ -35,11 +37,16 @@ import {
   WaitForDurationRequestBody,
   WaitForDurationResponseBody,
   WaitForWaitpointTokenResponseBody,
+  WaitpointRetrieveTokenResponse,
+  WaitpointTokenItem,
 } from "../schemas/index.js";
+import { AsyncIterableStream } from "../streams/asyncIterableStream.js";
 import { taskContext } from "../task-context-api.js";
 import { AnyRunTypes, TriggerJwtOptions } from "../types/tasks.js";
+import { Prettify } from "../types/utils.js";
 import {
   AnyZodFetchOptions,
+  ApiPromise,
   ApiRequestOptions,
   CursorPagePromise,
   ZodFetchOptions,
@@ -56,19 +63,25 @@ import {
   RunShape,
   RunStreamCallback,
   RunSubscription,
+  SSEStreamSubscriptionFactory,
   TaskRunShape,
   runShapeStream,
-  SSEStreamSubscriptionFactory,
 } from "./runStream.js";
 import {
   CreateEnvironmentVariableParams,
   ImportEnvironmentVariablesParams,
   ListProjectRunsQueryParams,
   ListRunsQueryParams,
+  ListWaitpointTokensQueryParams,
   SubscribeToRunsQueryParams,
   UpdateEnvironmentVariableParams,
 } from "./types.js";
-import { AsyncIterableStream } from "../streams/asyncIterableStream.js";
+
+export type CreateWaitpointTokenResponse = Prettify<
+  CreateWaitpointTokenResponseBody & {
+    publicAccessToken: string;
+  }
+>;
 
 export type {
   CreateEnvironmentVariableParams,
@@ -210,7 +223,7 @@ export class ApiClient {
       mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     )
       .withResponse()
-      .then(async ({ response, data }) => {
+      .then(async ({ data, response }) => {
         const jwtHeader = response.headers.get("x-trigger-jwt");
 
         if (typeof jwtHeader === "string") {
@@ -257,7 +270,7 @@ export class ApiClient {
       mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     )
       .withResponse()
-      .then(async ({ response, data }) => {
+      .then(async ({ data, response }) => {
         const claimsHeader = response.headers.get("x-trigger-jwt-claims");
         const claims = claimsHeader ? JSON.parse(claimsHeader) : undefined;
 
@@ -404,6 +417,18 @@ export class ApiClient {
     );
   }
 
+  listRunEvents(runId: string, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      z.any(), // TODO: define a proper schema for this
+      `${this.baseUrl}/api/v1/runs/${runId}/events`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
   addTags(runId: string, body: AddTagsRequestBody, requestOptions?: ZodFetchOptions) {
     return zodfetch(
       z.object({ message: z.string() }),
@@ -523,7 +548,7 @@ export class ApiClient {
 
   listEnvVars(projectRef: string, slug: string, requestOptions?: ZodFetchOptions) {
     return zodfetch(
-      EnvironmentVariables,
+      z.array(EnvironmentVariableWithSecret),
       `${this.baseUrl}/api/v1/projects/${projectRef}/envvars/${slug}`,
       {
         method: "GET",
@@ -553,7 +578,7 @@ export class ApiClient {
 
   retrieveEnvVar(projectRef: string, slug: string, key: string, requestOptions?: ZodFetchOptions) {
     return zodfetch(
-      EnvironmentVariableValue,
+      EnvironmentVariableWithSecret,
       `${this.baseUrl}/api/v1/projects/${projectRef}/envvars/${slug}/${key}`,
       {
         method: "GET",
@@ -650,6 +675,70 @@ export class ApiClient {
         headers: this.#getHeaders(false),
         body: JSON.stringify(options),
       },
+      {
+        ...mergeRequestOptions(this.defaultRequestOptions, requestOptions),
+        prepareData: async (data, response) => {
+          const jwtHeader = response.headers.get("x-trigger-jwt");
+
+          if (typeof jwtHeader === "string") {
+            return {
+              ...data,
+              publicAccessToken: jwtHeader,
+            };
+          }
+
+          const claimsHeader = response.headers.get("x-trigger-jwt-claims");
+          const claims = claimsHeader ? JSON.parse(claimsHeader) : undefined;
+
+          const jwt = await generateJWT({
+            secretKey: this.accessToken,
+            payload: {
+              ...claims,
+              scopes: [`write:waitpoints:${data.id}`],
+            },
+            expirationTime: "24h",
+          });
+
+          return {
+            ...data,
+            publicAccessToken: jwt,
+          };
+        },
+      }
+    ) as ApiPromise<CreateWaitpointTokenResponse>;
+  }
+
+  listWaitpointTokens(
+    params?: ListWaitpointTokensQueryParams,
+    requestOptions?: ZodFetchOptions
+  ): CursorPagePromise<typeof WaitpointTokenItem> {
+    const searchParams = createSearchQueryForListWaitpointTokens(params);
+
+    return zodfetchCursorPage(
+      WaitpointTokenItem,
+      `${this.baseUrl}/api/v1/waitpoints/tokens`,
+      {
+        query: searchParams,
+        limit: params?.limit,
+        after: params?.after,
+        before: params?.before,
+      },
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  retrieveWaitpointToken(friendlyId: string, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      WaitpointRetrieveTokenResponse,
+      `${this.baseUrl}/api/v1/waitpoints/tokens/${friendlyId}`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
       mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );
   }
@@ -667,13 +756,22 @@ export class ApiClient {
         headers: this.#getHeaders(false),
         body: JSON.stringify(options),
       },
-      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+      {
+        ...mergeRequestOptions(this.defaultRequestOptions, requestOptions),
+      }
     );
   }
 
   waitForWaitpointToken(
-    runFriendlyId: string,
-    waitpointFriendlyId: string,
+    {
+      runFriendlyId,
+      waitpointFriendlyId,
+      releaseConcurrency,
+    }: {
+      runFriendlyId: string;
+      waitpointFriendlyId: string;
+      releaseConcurrency?: boolean;
+    },
     requestOptions?: ZodFetchOptions
   ) {
     return zodfetch(
@@ -682,6 +780,9 @@ export class ApiClient {
       {
         method: "POST",
         headers: this.#getHeaders(false),
+        body: JSON.stringify({
+          releaseConcurrency,
+        }),
       },
       mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );
@@ -699,6 +800,76 @@ export class ApiClient {
         method: "POST",
         headers: this.#getHeaders(false),
         body: JSON.stringify(body),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  listQueues(options?: ListQueueOptions, requestOptions?: ZodFetchOptions) {
+    const searchParams = new URLSearchParams();
+
+    if (options?.page) {
+      searchParams.append("page", options.page.toString());
+    }
+
+    if (options?.perPage) {
+      searchParams.append("perPage", options.perPage.toString());
+    }
+
+    return zodfetchOffsetLimitPage(
+      QueueItem,
+      `${this.baseUrl}/api/v1/queues`,
+      {
+        page: options?.page,
+        limit: options?.perPage,
+      },
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  retrieveQueue(queue: RetrieveQueueParam, requestOptions?: ZodFetchOptions) {
+    const type = typeof queue === "string" ? "id" : queue.type;
+    const value = typeof queue === "string" ? queue : queue.name;
+
+    // Explicitly encode slashes before encoding the rest of the string
+    const encodedValue = encodeURIComponent(value.replace(/\//g, "%2F"));
+
+    return zodfetch(
+      QueueItem,
+      `${this.baseUrl}/api/v1/queues/${encodedValue}?type=${type}`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  pauseQueue(
+    queue: RetrieveQueueParam,
+    action: "pause" | "resume",
+    requestOptions?: ZodFetchOptions
+  ) {
+    const type = typeof queue === "string" ? "id" : queue.type;
+    const value = typeof queue === "string" ? queue : queue.name;
+
+    // Explicitly encode slashes before encoding the rest of the string
+    const encodedValue = encodeURIComponent(value.replace(/\//g, "%2F"));
+
+    return zodfetch(
+      QueueItem,
+      `${this.baseUrl}/api/v1/queues/${encodedValue}/pause`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify({
+          type,
+          action,
+        }),
       },
       mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );
@@ -801,7 +972,6 @@ export class ApiClient {
       "Content-Type": "application/json",
       Authorization: `Bearer ${this.accessToken}`,
       "trigger-version": VERSION,
-      "x-trigger-engine-version": taskContext.worker?.engine ?? "V1",
       ...Object.entries(additionalHeaders ?? {}).reduce(
         (acc, [key, value]) => {
           if (value !== undefined) {
@@ -817,6 +987,8 @@ export class ApiClient {
     // Only inject the context if we are inside a task
     if (taskContext.isInsideTask) {
       headers["x-trigger-worker"] = "true";
+      // Only pass the engine version if we are inside a task
+      headers["x-trigger-engine-version"] = "V2";
 
       if (spanParentAsLink) {
         headers["x-trigger-span-parent-as-link"] = "1";
@@ -923,6 +1095,52 @@ function createSearchQueryForListRuns(query?: ListRunsQueryParams): URLSearchPar
 
     if (query.batch) {
       searchParams.append("filter[batch]", query.batch);
+    }
+  }
+
+  return searchParams;
+}
+
+function createSearchQueryForListWaitpointTokens(
+  query?: ListWaitpointTokensQueryParams
+): URLSearchParams {
+  const searchParams = new URLSearchParams();
+
+  if (query) {
+    if (query.status) {
+      searchParams.append(
+        "filter[status]",
+        Array.isArray(query.status) ? query.status.join(",") : query.status
+      );
+    }
+
+    if (query.idempotencyKey) {
+      searchParams.append("filter[idempotencyKey]", query.idempotencyKey);
+    }
+
+    if (query.tags) {
+      searchParams.append(
+        "filter[tags]",
+        Array.isArray(query.tags) ? query.tags.join(",") : query.tags
+      );
+    }
+
+    if (query.period) {
+      searchParams.append("filter[createdAt][period]", query.period);
+    }
+
+    if (query.from) {
+      searchParams.append(
+        "filter[createdAt][from]",
+        query.from instanceof Date ? query.from.getTime().toString() : query.from.toString()
+      );
+    }
+
+    if (query.to) {
+      searchParams.append(
+        "filter[createdAt][to]",
+        query.to instanceof Date ? query.to.getTime().toString() : query.to.toString()
+      );
     }
   }
 

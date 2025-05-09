@@ -1,6 +1,6 @@
 import { useState } from "react";
+import { OneTreeIcon } from "~/assets/icons/OneTreeIcon";
 import { Button } from "~/components/primitives/Buttons";
-import { NamedIcon } from "~/components/primitives/NamedIcon";
 import { RadioGroup, RadioGroupItem } from "~/components/primitives/RadioButton";
 
 export default function Story() {
@@ -34,7 +34,7 @@ export default function Story() {
             description="This is a description"
             value={"6"}
             variant="icon"
-            icon={<NamedIcon name="tree" className="h-8 w-8" />}
+            icon={<OneTreeIcon className="h-8 w-8 text-green-500" />}
           />
           <RadioGroupItem
             id="r8"

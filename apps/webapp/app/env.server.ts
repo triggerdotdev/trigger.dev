@@ -1,7 +1,7 @@
-import { SecretStoreOptionsSchema } from "./services/secrets/secretStoreOptionsSchema.server";
 import { z } from "zod";
-import { isValidRegex } from "./utils/regex";
+import { SecretStoreOptionsSchema } from "./services/secrets/secretStoreOptionsSchema.server";
 import { isValidDatabaseUrl } from "./utils/db";
+import { isValidRegex } from "./utils/regex";
 
 const EnvironmentSchema = z.object({
   NODE_ENV: z.union([z.literal("development"), z.literal("production"), z.literal("test")]),
@@ -42,7 +42,6 @@ const EnvironmentSchema = z.object({
   TELEMETRY_TRIGGER_API_KEY: z.string().optional(),
   TELEMETRY_TRIGGER_API_URL: z.string().optional(),
   TRIGGER_TELEMETRY_DISABLED: z.string().optional(),
-  HIGHLIGHT_PROJECT_ID: z.string().optional(),
   AUTH_GITHUB_CLIENT_ID: z.string().optional(),
   AUTH_GITHUB_CLIENT_SECRET: z.string().optional(),
   EMAIL_TRANSPORT: z.enum(["resend", "smtp", "aws-ses"]).optional(),
@@ -151,6 +150,38 @@ const EnvironmentSchema = z.object({
     .transform((v) => v ?? process.env.REDIS_PASSWORD),
   CACHE_REDIS_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
   CACHE_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
+
+  REALTIME_STREAMS_REDIS_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_HOST),
+  REALTIME_STREAMS_REDIS_READER_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_READER_HOST),
+  REALTIME_STREAMS_REDIS_READER_PORT: z.coerce
+    .number()
+    .optional()
+    .transform(
+      (v) =>
+        v ?? (process.env.REDIS_READER_PORT ? parseInt(process.env.REDIS_READER_PORT) : undefined)
+    ),
+  REALTIME_STREAMS_REDIS_PORT: z.coerce
+    .number()
+    .optional()
+    .transform((v) => v ?? (process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined)),
+  REALTIME_STREAMS_REDIS_USERNAME: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_USERNAME),
+  REALTIME_STREAMS_REDIS_PASSWORD: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_PASSWORD),
+  REALTIME_STREAMS_REDIS_TLS_DISABLED: z
+    .string()
+    .default(process.env.REDIS_TLS_DISABLED ?? "false"),
+  REALTIME_STREAMS_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
 
   PUBSUB_REDIS_HOST: z
     .string()
@@ -353,6 +384,7 @@ const EnvironmentSchema = z.object({
     .int()
     .default(60 * 1000 * 15),
   MARQS_SHARED_QUEUE_LIMIT: z.coerce.number().int().default(1000),
+  MARQS_MAXIMUM_QUEUE_PER_ENV_COUNT: z.coerce.number().int().default(50),
   MARQS_DEV_QUEUE_LIMIT: z.coerce.number().int().default(1000),
   MARQS_MAXIMUM_NACK_COUNT: z.coerce.number().int().default(64),
   MARQS_CONCURRENCY_LIMIT_BIAS: z.coerce.number().default(0.75),
@@ -413,12 +445,22 @@ const EnvironmentSchema = z.object({
   // Run Engine 2.0
   RUN_ENGINE_WORKER_COUNT: z.coerce.number().int().default(4),
   RUN_ENGINE_TASKS_PER_WORKER: z.coerce.number().int().default(10),
+  RUN_ENGINE_WORKER_CONCURRENCY_LIMIT: z.coerce.number().int().default(10),
   RUN_ENGINE_WORKER_POLL_INTERVAL: z.coerce.number().int().default(100),
+  RUN_ENGINE_WORKER_IMMEDIATE_POLL_INTERVAL: z.coerce.number().int().default(100),
   RUN_ENGINE_TIMEOUT_PENDING_EXECUTING: z.coerce.number().int().default(60_000),
   RUN_ENGINE_TIMEOUT_PENDING_CANCEL: z.coerce.number().int().default(60_000),
   RUN_ENGINE_TIMEOUT_EXECUTING: z.coerce.number().int().default(60_000),
   RUN_ENGINE_TIMEOUT_EXECUTING_WITH_WAITPOINTS: z.coerce.number().int().default(60_000),
   RUN_ENGINE_DEBUG_WORKER_NOTIFICATIONS: z.coerce.boolean().default(false),
+  RUN_ENGINE_PARENT_QUEUE_LIMIT: z.coerce.number().int().default(1000),
+  RUN_ENGINE_CONCURRENCY_LIMIT_BIAS: z.coerce.number().default(0.75),
+  RUN_ENGINE_AVAILABLE_CAPACITY_BIAS: z.coerce.number().default(0.3),
+  RUN_ENGINE_QUEUE_AGE_RANDOMIZATION_BIAS: z.coerce.number().default(0.25),
+  RUN_ENGINE_REUSE_SNAPSHOT_COUNT: z.coerce.number().int().default(0),
+  RUN_ENGINE_MAXIMUM_ENV_COUNT: z.coerce.number().int().optional(),
+  RUN_ENGINE_WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().default(60_000),
+  RUN_ENGINE_RETRY_WARM_START_THRESHOLD_MS: z.coerce.number().int().default(30_000),
 
   RUN_ENGINE_WORKER_REDIS_HOST: z
     .string()
@@ -560,10 +602,20 @@ const EnvironmentSchema = z.object({
   RUN_ENGINE_RATE_LIMIT_REJECTION_LOGS_ENABLED: z.string().default("1"),
   RUN_ENGINE_RATE_LIMIT_LIMITER_LOGS_ENABLED: z.string().default("0"),
 
+  RUN_ENGINE_RELEASE_CONCURRENCY_ENABLED: z.string().default("0"),
+  RUN_ENGINE_RELEASE_CONCURRENCY_DISABLE_CONSUMERS: z.string().default("0"),
+  RUN_ENGINE_RELEASE_CONCURRENCY_MAX_TOKENS_RATIO: z.coerce.number().default(1),
+  RUN_ENGINE_RELEASE_CONCURRENCY_MAX_RETRIES: z.coerce.number().int().default(3),
+  RUN_ENGINE_RELEASE_CONCURRENCY_CONSUMERS_COUNT: z.coerce.number().int().default(1),
+  RUN_ENGINE_RELEASE_CONCURRENCY_POLL_INTERVAL: z.coerce.number().int().default(500),
+  RUN_ENGINE_RELEASE_CONCURRENCY_BATCH_SIZE: z.coerce.number().int().default(10),
+
+  RUN_ENGINE_WORKER_ENABLED: z.string().default("1"),
+
   /** How long should the presence ttl last */
-  DEV_PRESENCE_TTL_MS: z.coerce.number().int().default(30_000),
-  DEV_PRESENCE_POLL_INTERVAL_MS: z.coerce.number().int().default(5_000),
-  DEV_PRESENCE_RECONNECT_THRESHOLD_MS: z.coerce.number().int().default(2_000),
+  DEV_PRESENCE_SSE_TIMEOUT: z.coerce.number().int().default(30_000),
+  DEV_PRESENCE_TTL_MS: z.coerce.number().int().default(5_000),
+  DEV_PRESENCE_POLL_MS: z.coerce.number().int().default(1_000),
   /** How many ms to wait until dequeuing again, if there was a run last time */
   DEV_DEQUEUE_INTERVAL_WITH_RUN: z.coerce.number().int().default(250),
   /** How many ms to wait until dequeuing again, if there was no run last time */
@@ -571,12 +623,19 @@ const EnvironmentSchema = z.object({
   /** The max number of runs per API call that we'll dequeue in DEV */
   DEV_DEQUEUE_MAX_RUNS_PER_PULL: z.coerce.number().int().default(10),
 
+  /** The maximum concurrent local run processes executing at once in dev */
+  DEV_MAX_CONCURRENT_RUNS: z.coerce.number().int().default(25),
+
+  /** The CLI should connect to this for dev runs */
+  DEV_ENGINE_URL: z.string().default(process.env.APP_ORIGIN ?? "http://localhost:3030"),
+
   LEGACY_RUN_ENGINE_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
   LEGACY_RUN_ENGINE_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(2),
   LEGACY_RUN_ENGINE_WORKER_CONCURRENCY_TASKS_PER_WORKER: z.coerce.number().int().default(1),
   LEGACY_RUN_ENGINE_WORKER_POLL_INTERVAL: z.coerce.number().int().default(1000),
   LEGACY_RUN_ENGINE_WORKER_IMMEDIATE_POLL_INTERVAL: z.coerce.number().int().default(50),
   LEGACY_RUN_ENGINE_WORKER_CONCURRENCY_LIMIT: z.coerce.number().int().default(100),
+  LEGACY_RUN_ENGINE_WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().default(60_000),
 
   LEGACY_RUN_ENGINE_WORKER_REDIS_HOST: z
     .string()
@@ -619,6 +678,7 @@ const EnvironmentSchema = z.object({
   COMMON_WORKER_POLL_INTERVAL: z.coerce.number().int().default(1000),
   COMMON_WORKER_IMMEDIATE_POLL_INTERVAL: z.coerce.number().int().default(50),
   COMMON_WORKER_CONCURRENCY_LIMIT: z.coerce.number().int().default(100),
+  COMMON_WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().default(60_000),
 
   COMMON_WORKER_REDIS_HOST: z
     .string()
@@ -652,6 +712,19 @@ const EnvironmentSchema = z.object({
 
   TASK_EVENT_PARTITIONING_ENABLED: z.string().default("0"),
   TASK_EVENT_PARTITIONED_WINDOW_IN_SECONDS: z.coerce.number().int().default(60), // 1 minute
+
+  QUEUE_SSE_AUTORELOAD_INTERVAL_MS: z.coerce.number().int().default(5_000),
+  QUEUE_SSE_AUTORELOAD_TIMEOUT_MS: z.coerce.number().int().default(60_000),
+
+  SLACK_BOT_TOKEN: z.string().optional(),
+  SLACK_SIGNUP_REASON_CHANNEL_ID: z.string().optional(),
+
+  // kapa.ai
+  KAPA_AI_WEBSITE_ID: z.string().optional(),
+
+  // BetterStack
+  BETTERSTACK_API_KEY: z.string().optional(),
+  BETTERSTACK_STATUS_PAGE_ID: z.string().optional(),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

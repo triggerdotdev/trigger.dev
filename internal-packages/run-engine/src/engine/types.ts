@@ -1,17 +1,27 @@
-import { type WorkerConcurrencyOptions } from "@internal/redis-worker";
-import { Tracer } from "@opentelemetry/api";
-import { MachinePreset, MachinePresetName, QueueOptions, RetryOptions } from "@trigger.dev/core/v3";
+import { type RedisOptions } from "@internal/redis";
+import { Worker, type WorkerConcurrencyOptions } from "@trigger.dev/redis-worker";
+import { Tracer } from "@internal/tracing";
+import {
+  MachinePreset,
+  MachinePresetName,
+  QueueOptions,
+  RetryOptions,
+  RunChainState,
+} from "@trigger.dev/core/v3";
 import { PrismaClient } from "@trigger.dev/database";
-import { type RedisOptions } from "ioredis";
-import { MinimalAuthenticatedEnvironment } from "../shared";
+import { FairQueueSelectionStrategyOptions } from "../run-queue/fairQueueSelectionStrategy.js";
+import { MinimalAuthenticatedEnvironment } from "../shared/index.js";
+import { workerCatalog } from "./workerCatalog.js";
 
 export type RunEngineOptions = {
   prisma: PrismaClient;
-  worker: WorkerConcurrencyOptions & {
+  worker: {
+    disabled?: boolean;
     redis: RedisOptions;
     pollIntervalMs?: number;
     immediatePollIntervalMs?: number;
-  };
+    shutdownTimeoutMs?: number;
+  } & WorkerConcurrencyOptions;
   machines: {
     defaultMachine: MachinePresetName;
     machines: Record<string, MachinePreset>;
@@ -21,6 +31,10 @@ export type RunEngineOptions = {
     redis: RedisOptions;
     retryOptions?: RetryOptions;
     defaultEnvConcurrency?: number;
+    queueSelectionStrategyOptions?: Pick<
+      FairQueueSelectionStrategyOptions,
+      "parentQueueLimit" | "tracer" | "biases" | "reuseSnapshotCount" | "maximumEnvCount"
+    >;
   };
   runLock: {
     redis: RedisOptions;
@@ -30,6 +44,21 @@ export type RunEngineOptions = {
   heartbeatTimeoutsMs?: Partial<HeartbeatTimeouts>;
   queueRunsWaitingForWorkerBatchSize?: number;
   tracer: Tracer;
+  releaseConcurrency?: {
+    disabled?: boolean;
+    maxTokensRatio?: number;
+    redis?: Partial<RedisOptions>;
+    maxRetries?: number;
+    consumersCount?: number;
+    pollInterval?: number;
+    batchSize?: number;
+    backoff?: {
+      minDelay?: number; // Defaults to 1000
+      maxDelay?: number; // Defaults to 60000
+      factor?: number; // Defaults to 2
+    };
+    disableConsumers?: boolean;
+  };
 };
 
 export type HeartbeatTimeouts = {
@@ -59,14 +88,15 @@ export type TriggerParams = {
   cliVersion?: string;
   concurrencyKey?: string;
   masterQueue?: string;
-  queueName: string;
-  queue?: QueueOptions;
+  queue: string;
+  lockedQueueId?: string;
   isTest: boolean;
   delayUntil?: Date;
   queuedAt?: Date;
   maxAttempts?: number;
   taskEventStore?: string;
   priorityMs?: number;
+  queueTimestamp?: Date;
   ttl?: string;
   tags: { id: string; name: string }[];
   parentTaskRunId?: string;
@@ -86,4 +116,8 @@ export type TriggerParams = {
   machine?: MachinePresetName;
   workerId?: string;
   runnerId?: string;
+  releaseConcurrency?: boolean;
+  runChainState?: RunChainState;
 };
+
+export type EngineWorker = Worker<typeof workerCatalog>;

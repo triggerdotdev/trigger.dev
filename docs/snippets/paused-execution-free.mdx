@@ -1,4 +1,4 @@
-<Note>
-  In the Trigger.dev Cloud we automatically pause execution of tasks when they are waiting for
-  longer than a few seconds. You are not charged when execution is paused.
-</Note>
+In the Trigger.dev Cloud we automatically pause execution of tasks when they are waiting for
+longer than a few seconds.
+
+When triggering and waiting for subtasks, the parent is checkpointed and while waiting does not count towards compute usage. When waiting for a time period (`wait.for` or `wait.until`), if the wait is longer than 5 seconds we checkpoint and it does not count towards compute usage.

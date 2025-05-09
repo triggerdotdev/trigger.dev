@@ -1,273 +1,43 @@
-import { ArrowUpIcon } from "@heroicons/react/24/solid";
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { FrameworkSelector } from "~/components/frameworks/FrameworkSelector";
-import { JobsTable } from "~/components/jobs/JobsTable";
-import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { Callout } from "~/components/primitives/Callout";
-import { Header2 } from "~/components/primitives/Headers";
-import { Help, HelpContent, HelpTrigger } from "~/components/primitives/Help";
-import { Input } from "~/components/primitives/Input";
-import { NamedIcon } from "~/components/primitives/NamedIcon";
-import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
-import { Paragraph } from "~/components/primitives/Paragraph";
-import { Switch } from "~/components/primitives/Switch";
-import { TextLink } from "~/components/primitives/TextLink";
-import { useFilterJobs } from "~/hooks/useFilterJobs";
-import { useOrganization } from "~/hooks/useOrganizations";
-import { useProject } from "~/hooks/useProject";
-import { JobListPresenter } from "~/presenters/JobListPresenter.server";
-import { requireUserId } from "~/services/session.server";
-import { cn } from "~/utils/cn";
-import { ProjectParamSchema, organizationIntegrationsPath } from "~/utils/pathBuilder";
+import { redirect, type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { prisma } from "~/db.server";
+import { SelectBestEnvironmentPresenter } from "~/presenters/SelectBestEnvironmentPresenter.server";
+import { requireUser } from "~/services/session.server";
+import { ProjectParamSchema, v3EnvironmentPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const userId = await requireUserId(request);
+  const user = await requireUser(request);
   const { organizationSlug, projectParam } = ProjectParamSchema.parse(params);
 
-  try {
-    const presenter = new JobListPresenter();
-    const jobs = await presenter.call({ userId, organizationSlug, projectSlug: projectParam });
-
-    return typedjson({
-      jobs,
-    });
-  } catch (error) {
-    console.error(error);
+  const project = await prisma.project.findFirst({
+    where: {
+      slug: projectParam,
+      deletedAt: null,
+      organization: { slug: organizationSlug, members: { some: { userId: user.id } } },
+    },
+    include: {
+      environments: {
+        select: {
+          id: true,
+          type: true,
+          slug: true,
+          orgMember: {
+            select: {
+              userId: true,
+            },
+          },
+        },
+      },
+    },
+  });
+  if (!project) {
     throw new Response(undefined, {
-      status: 400,
-      statusText: "Something went wrong, if this problem persists please contact support.",
+      status: 404,
+      statusText: "Project not found",
     });
   }
+
+  const selector = new SelectBestEnvironmentPresenter();
+  const environment = await selector.selectBestEnvironment(project.id, user, project.environments);
+
+  return redirect(v3EnvironmentPath({ slug: organizationSlug }, project, environment));
 };
-
-export default function Page() {
-  const organization = useOrganization();
-  const project = useProject();
-  const { jobs } = useTypedLoaderData<typeof loader>();
-  const { filterText, setFilterText, filteredItems, onlyActiveJobs, setOnlyActiveJobs } =
-    useFilterJobs(jobs);
-  const totalJobs = jobs.length;
-  const hasJobs = totalJobs > 0;
-  const activeJobCount = jobs.filter((j) => j.status === "ACTIVE").length;
-
-  return (
-    <PageContainer>
-      <NavBar>
-        <PageTitle title="Jobs" />
-      </NavBar>
-      <PageBody>
-        <Help>
-          {(open) => (
-            <div className={cn("grid gap-4", open ? "grid-cols-2" : "grid-cols-1")}>
-              <div className="h-full">
-                {hasJobs ? (
-                  <>
-                    {jobs.some((j) => j.hasIntegrationsRequiringAction) && (
-                      <Callout
-                        variant="error"
-                        to={organizationIntegrationsPath(organization)}
-                        className="mb-2"
-                      >
-                        Some of your Jobs have Integrations that have not been configured.
-                      </Callout>
-                    )}
-                    <div className="mb-2 flex flex-col">
-                      <div className="flex w-full gap-x-2">
-                        <Input
-                          placeholder="Search Jobs"
-                          variant="tertiary"
-                          icon="search"
-                          fullWidth={true}
-                          value={filterText}
-                          onChange={(e) => setFilterText(e.target.value)}
-                          autoFocus
-                        />
-                        <Switch
-                          variant="small"
-                          label="Active Jobs"
-                          checked={onlyActiveJobs}
-                          onCheckedChange={setOnlyActiveJobs}
-                          className={"shrink-0"}
-                        />
-                        <HelpTrigger title="Example Jobs and inspiration" />
-                      </div>
-                    </div>
-                    <JobsTable
-                      jobs={filteredItems}
-                      noResultsText={`No Jobs match ${filterText}. Try a different search
-          query.`}
-                    />
-                    {jobs.length === 1 &&
-                      jobs.every((r) => r.lastRun === undefined) &&
-                      jobs.every((i) => i.hasIntegrationsRequiringAction === false) && (
-                        <RunYourJobPrompt />
-                      )}
-                  </>
-                ) : (
-                  <FrameworkSelector />
-                )}
-              </div>
-              <HelpContent title="Example Jobs and inspiration">
-                <ExampleJobs />
-              </HelpContent>
-            </div>
-          )}
-        </Help>
-      </PageBody>
-    </PageContainer>
-  );
-}
-
-function RunYourJobPrompt() {
-  return (
-    <div className="mt-2 flex w-full gap-x-2 rounded border border-charcoal-800 bg-charcoal-900 p-4 pl-6">
-      <ArrowUpIcon className="h-5 w-5 animate-bounce text-green-500" />
-      <Paragraph variant="small" className="text-green-500">
-        Your Job is ready to run! Click it to run it now.
-      </Paragraph>
-    </div>
-  );
-}
-
-function ExampleJobs() {
-  return (
-    <>
-      <Header2 spacing>Video walk-through</Header2>
-      <Paragraph spacing variant="small">
-        Watch Matt, CEO of Trigger.dev create a GitHub issue reminder in Slack using Trigger.dev.
-        (10 mins)
-      </Paragraph>
-      <iframe
-        src="https://www.youtube.com/embed/uocBQt2HeQo?&showinfo=0&rel=0&modestbranding=1"
-        title="Trigger.dev explainer video"
-        width="400"
-        height="250"
-        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-        allowFullScreen
-        className="mb-4 border-b border-charcoal-800"
-      />
-      <Header2 spacing>How to create a Job</Header2>
-      <Paragraph variant="small" spacing>
-        Our docs are a great way to learn how to create Jobs with each type of Trigger, from
-        webhooks, to delays, to triggering Jobs on a schedule.{" "}
-      </Paragraph>
-      <a
-        href="https://trigger.dev/docs/documentation/guides/create-a-job"
-        className="mb-4 flex w-full items-center rounded border-b border-charcoal-800 py-2 transition hover:border-transparent hover:bg-charcoal-800"
-      >
-        <NamedIcon name={"external-link"} className={iconStyles} />
-        <Paragraph variant="small" className="font-semibold text-text-bright">
-          How to create a Job
-        </Paragraph>
-      </a>
-      <Header2 spacing>Check out some example Jobs in code</Header2>
-      <Paragraph spacing variant="small">
-        If you're looking for inspiration for your next Job, check out our{" "}
-        <TextLink href="https://github.com/triggerdotdev/examples">examples repo</TextLink>. Or jump
-        straight into an example repo from the list below:
-      </Paragraph>
-      <div className="flex w-full flex-col">
-        {examples.map((example) => (
-          <a
-            href={example.codeLink}
-            key={example.title}
-            className="flex w-full items-center rounded border-b border-grid-bright py-2 transition hover:border-transparent hover:bg-charcoal-800"
-          >
-            {example.icon}
-            <Paragraph variant="small">
-              <span className="font-semibold text-text-bright">{example.title}</span> -{" "}
-              {example.description}
-            </Paragraph>
-          </a>
-        ))}
-      </div>
-    </>
-  );
-}
-
-const iconStyles = "h-7 w-7 mr-2 pl-2 min-w-[28px]";
-
-const examples = [
-  {
-    icon: <NamedIcon name={"clock"} className={iconStyles} />,
-    title: "Basic delay",
-    description: "Logs a message to the console, waits 5 minutes, and then logs another message.",
-    codeLink: "https://github.com/triggerdotdev/examples/blob/main/delays/src/jobs/delayJob.ts",
-  },
-  {
-    icon: <NamedIcon name="calendar" className={iconStyles} />,
-    title: "Basic interval",
-    description: "This Job runs every 60 seconds, starting 60 seconds after it is first indexed.",
-    codeLink: "https://github.com/triggerdotdev/examples/blob/main/scheduled/src/jobs/interval.ts",
-  },
-  {
-    icon: <NamedIcon name="calendar" className={iconStyles} />,
-    title: "Cron scheduled interval",
-    description: "A scheduled Job which runs at 2:30pm every Monday.",
-    codeLink:
-      "https://github.com/triggerdotdev/examples/blob/main/scheduled/src/jobs/cronScheduled.ts",
-  },
-  {
-    icon: <NamedIcon name="openai" className={iconStyles} />,
-    title: "OpenAI text summarizer",
-    description:
-      "Summarizes a block of text, pulling out the most unique / helpful points using OpenAI.",
-    codeLink:
-      "https://github.com/triggerdotdev/examples/blob/main/openai-text-summarizer/src/jobs/textSummarizer.ts",
-  },
-  {
-    icon: <NamedIcon name="openai" className={iconStyles} />,
-    title: "Tell me a joke using OpenAI",
-    description: "Generates a random joke using OpenAI GPT 3.5.",
-    codeLink: "https://github.com/triggerdotdev/examples/blob/main/openai/src/jobs/tellMeAJoke.ts",
-  },
-  {
-    icon: <NamedIcon name="openai" className={iconStyles} />,
-    title: "Generate a random image using OpenAI",
-    description: "Generates a random image of a hedgehog using OpenAI DALL-E.",
-    codeLink:
-      "https://github.com/triggerdotdev/examples/blob/main/openai/src/jobs/generateHedgehogImages.ts",
-  },
-  {
-    icon: <NamedIcon name="resend" className={iconStyles} />,
-    title: "Send an email using Resend",
-    description: "Send a basic email using Resend.",
-    codeLink:
-      "https://github.com/triggerdotdev/examples/blob/main/resend/src/jobs/resendBasicEmail.ts",
-  },
-  {
-    icon: <NamedIcon name="github" className={iconStyles} />,
-    title: "GitHub issue reminder",
-    description: "Sends a Slack message if a GitHub issue is left for 24h.",
-    codeLink:
-      "https://github.com/triggerdotdev/examples/blob/main/github-issue-reminder/jobs/githubIssue.ts",
-  },
-  {
-    icon: <NamedIcon name="github" className={iconStyles} />,
-    title: "Github new star alert in Slack",
-    description: "When a repo is starred, a message is sent to a Slack.",
-    codeLink:
-      "https://github.com/triggerdotdev/examples/blob/main/github/src/jobs/newStarToSlack.ts",
-  },
-  {
-    icon: <NamedIcon name="github" className={iconStyles} />,
-    title: "Add a custom label to a GitHub issue",
-    description: "When a new GitHub issue is opened it adds a “Bug” label to it.",
-    codeLink:
-      "https://github.com/triggerdotdev/examples/blob/main/github/src/jobs/onIssueOpened.ts",
-  },
-  {
-    icon: <NamedIcon name="github" className={iconStyles} />,
-    title: "GitHub new star alert",
-    description: "When a repo is starred a message is logged with the new Stargazers count.",
-    codeLink: "https://github.com/triggerdotdev/examples/blob/main/github/src/jobs/newStarAlert.ts",
-  },
-  {
-    icon: <NamedIcon name="slack" className={iconStyles} />,
-    title: "Send a Slack message",
-    description: "Sends a Slack message to a specific channel when an event is received.",
-    codeLink:
-      "https://github.com/triggerdotdev/examples/blob/main/slack/src/jobs/sendSlackMessage.ts",
-  },
-];

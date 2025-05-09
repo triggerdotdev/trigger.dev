@@ -1,25 +1,18 @@
 import * as Ariakit from "@ariakit/react";
 import {
-  CalendarIcon,
   ClockIcon,
-  CpuChipIcon,
   FingerPrintIcon,
   Squares2X2Icon,
   TagIcon,
   TrashIcon,
 } from "@heroicons/react/20/solid";
 import { Form, useFetcher } from "@remix-run/react";
-import type {
-  BulkActionType,
-  RuntimeEnvironment,
-  TaskRunStatus,
-  TaskTriggerSource,
-} from "@trigger.dev/database";
+import type { BulkActionType, TaskRunStatus, TaskTriggerSource } from "@trigger.dev/database";
 import { ListChecks, ListFilterIcon } from "lucide-react";
 import { matchSorter } from "match-sorter";
-import type { ReactNode } from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { z } from "zod";
+import { StatusIcon } from "~/assets/icons/StatusIcon";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
 import { DateTime } from "~/components/primitives/DateTime";
@@ -51,16 +44,7 @@ import { useSearchParams } from "~/hooks/useSearchParam";
 import { type loader as tagsLoader } from "~/routes/resources.projects.$projectParam.runs.tags";
 import { Button } from "../../primitives/Buttons";
 import { BulkActionStatusCombo } from "./BulkAction";
-import {
-  AppliedCustomDateRangeFilter,
-  AppliedEnvironmentFilter,
-  AppliedPeriodFilter,
-  appliedSummary,
-  CreatedAtDropdown,
-  CustomDateRangeDropdown,
-  EnvironmentsDropdown,
-  FilterMenuProvider,
-} from "./SharedFilters";
+import { appliedSummary, FilterMenuProvider, TimeFilter } from "./SharedFilters";
 import {
   allTaskRunStatuses,
   descriptionForTaskRunStatus,
@@ -95,8 +79,8 @@ export const TaskRunListSearchFilters = z.object({
     (value) => (typeof value === "string" ? [value] : value),
     z.string().array().optional()
   ),
-  period: z.preprocess((value) => (value === "all" ? undefined : value), z.string().optional()),
   bulkId: z.string().optional(),
+  period: z.preprocess((value) => (value === "all" ? undefined : value), z.string().optional()),
   from: z.coerce.number().optional(),
   to: z.coerce.number().optional(),
   rootOnly: z.coerce.boolean().optional(),
@@ -107,12 +91,7 @@ export const TaskRunListSearchFilters = z.object({
 
 export type TaskRunListSearchFilters = z.infer<typeof TaskRunListSearchFilters>;
 
-type DisplayableEnvironment = Pick<RuntimeEnvironment, "type" | "id"> & {
-  userName?: string;
-};
-
 type RunFiltersProps = {
-  possibleEnvironments: DisplayableEnvironment[];
   possibleTasks: { slug: string; triggerSource: TaskTriggerSource }[];
   bulkActions: {
     id: string;
@@ -128,13 +107,9 @@ export function RunsFilters(props: RunFiltersProps) {
   const searchParams = new URLSearchParams(location.search);
   const hasFilters =
     searchParams.has("statuses") ||
-    searchParams.has("environments") ||
     searchParams.has("tasks") ||
-    searchParams.has("period") ||
     searchParams.has("bulkId") ||
     searchParams.has("tags") ||
-    searchParams.has("from") ||
-    searchParams.has("to") ||
     searchParams.has("batchId") ||
     searchParams.has("runId") ||
     searchParams.has("scheduleId");
@@ -143,6 +118,7 @@ export function RunsFilters(props: RunFiltersProps) {
     <div className="flex flex-row flex-wrap items-center gap-1">
       <FilterMenu {...props} />
       <RootOnlyToggle defaultValue={props.rootOnlyDefault} />
+      <TimeFilter />
       <AppliedFilters {...props} />
       {hasFilters && (
         <Form className="h-6">
@@ -162,17 +138,10 @@ const filterTypes = [
   {
     name: "statuses",
     title: "Status",
-    icon: (
-      <div className="flex size-4 items-center justify-center">
-        <div className="size-3 rounded-full border-2 border-text-dimmed" />
-      </div>
-    ),
+    icon: <StatusIcon className="size-4" />,
   },
-  { name: "environments", title: "Environment", icon: <CpuChipIcon className="size-4" /> },
   { name: "tasks", title: "Tasks", icon: <TaskIcon className="size-4" /> },
   { name: "tags", title: "Tags", icon: <TagIcon className="size-4" /> },
-  { name: "created", title: "Created", icon: <CalendarIcon className="size-4" /> },
-  { name: "daterange", title: "Custom date range", icon: <CalendarIcon className="size-4" /> },
   { name: "run", title: "Run ID", icon: <FingerPrintIcon className="size-4" /> },
   { name: "batch", title: "Batch ID", icon: <Squares2X2Icon className="size-4" /> },
   { name: "schedule", title: "Schedule ID", icon: <ClockIcon className="size-4" /> },
@@ -193,7 +162,7 @@ function FilterMenu(props: RunFiltersProps) {
           <ListFilterIcon className="size-3.5" />
         </div>
       }
-      variant={"minimal/small"}
+      variant={"tertiary/small"}
       shortcut={shortcut}
       tooltipTitle={"Filter runs"}
     >
@@ -217,15 +186,12 @@ function FilterMenu(props: RunFiltersProps) {
   );
 }
 
-function AppliedFilters({ possibleEnvironments, possibleTasks, bulkActions }: RunFiltersProps) {
+function AppliedFilters({ possibleTasks, bulkActions }: RunFiltersProps) {
   return (
     <>
       <AppliedStatusFilter />
-      <AppliedEnvironmentFilter possibleEnvironments={possibleEnvironments} />
       <AppliedTaskFilter possibleTasks={possibleTasks} />
       <AppliedTagsFilter />
-      <AppliedPeriodFilter />
-      <AppliedCustomDateRangeFilter />
       <AppliedRunIdFilter />
       <AppliedBatchIdFilter />
       <AppliedScheduleIdFilter />
@@ -248,14 +214,8 @@ function Menu(props: MenuProps) {
       return <MainMenu {...props} />;
     case "statuses":
       return <StatusDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
-    case "environments":
-      return <EnvironmentsDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
     case "tasks":
       return <TasksDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
-    case "created":
-      return <CreatedAtDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
-    case "daterange":
-      return <CustomDateRangeDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
     case "bulk":
       return <BulkActionsDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
     case "tags":
@@ -272,7 +232,6 @@ function Menu(props: MenuProps) {
 function MainMenu({ searchValue, trigger, clearSearchValue, setFilterType }: MenuProps) {
   const filtered = useMemo(() => {
     return filterTypes.filter((item) => {
-      if (item.name === "daterange") return false;
       return item.title.toLowerCase().includes(searchValue.toLowerCase());
     });
   }, [searchValue]);
@@ -719,9 +678,10 @@ function RootOnlyToggle({ defaultValue }: { defaultValue: boolean }) {
   return (
     <Switch
       disabled={disabled}
-      variant="small"
+      variant="tertiary/small"
       label="Root only"
       checked={disabled ? false : rootOnly}
+      className="bg-tertiary transition hover:bg-charcoal-600"
       onCheckedChange={(checked) => {
         replace({
           rootOnly: checked ? "true" : "false",
@@ -881,8 +841,8 @@ function BatchIdDropdown({
   if (batchId) {
     if (!batchId.startsWith("batch_")) {
       error = "Batch IDs start with 'batch_'";
-    } else if (batchId.length !== 27) {
-      error = "Batch IDs are 27 characters long";
+    } else if (batchId.length !== 27 && batchId.length !== 31) {
+      error = "Batch IDs are 27 or 31 characters long";
     }
   }
 

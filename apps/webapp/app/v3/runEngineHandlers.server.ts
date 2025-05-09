@@ -12,7 +12,7 @@ import { reportInvocationUsage } from "~/services/platform.v3.server";
 import { roomFromFriendlyRunId, socketIo } from "./handleSocketIo.server";
 import { engine } from "./runEngine.server";
 import { PerformTaskRunAlertsService } from "./services/alerts/performTaskRunAlerts.server";
-import { RunId } from "@trigger.dev/core/v3/apps";
+import { RunId } from "@trigger.dev/core/v3/isomorphic";
 import { updateMetadataService } from "~/services/metadata/updateMetadata.server";
 import { findEnvironmentFromRun } from "~/models/runtimeEnvironment.server";
 import { env } from "~/env.server";
@@ -326,12 +326,20 @@ export function registerRunEngineEventBusHandlers() {
 
   engine.eventBus.on("runRetryScheduled", async ({ time, run, environment, retryAt }) => {
     try {
-      await eventRepository.recordEvent(`Retry #${run.attemptNumber} delay`, {
+      let retryMessage = `Retry #${run.attemptNumber} delay`;
+
+      if (run.nextMachineAfterOOM) {
+        retryMessage += ` after OOM`;
+      }
+
+      await eventRepository.recordEvent(retryMessage, {
+        startTime: BigInt(time.getTime() * 1000000),
         taskSlug: run.taskIdentifier,
         environment,
         attributes: {
           properties: {
             retryAt: retryAt.toISOString(),
+            nextMachine: run.nextMachineAfterOOM,
           },
           runId: run.friendlyId,
           style: {
@@ -340,7 +348,6 @@ export function registerRunEngineEventBusHandlers() {
           queueName: run.queue,
         },
         context: run.traceContext as Record<string, string | undefined>,
-        spanIdSeed: `retry-${run.attemptNumber + 1}`,
         endTime: retryAt,
       });
     } catch (error) {
@@ -394,7 +401,7 @@ export function registerRunEngineEventBusHandlers() {
   engine.eventBus.on("executionSnapshotCreated", async ({ time, run, snapshot }) => {
     const eventResult = await recordRunDebugLog(
       run.id,
-      `${snapshot.executionStatus} - ${snapshot.description}`,
+      `[engine] ${snapshot.executionStatus} - ${snapshot.description}`,
       {
         attributes: {
           properties: {
@@ -443,6 +450,7 @@ export function registerRunEngineEventBusHandlers() {
       // Record notification event
       const eventResult = await recordRunDebugLog(
         run.id,
+        // don't prefix this with [engine] - "run:notify" is the correct prefix
         `run:notify platform -> supervisor: ${snapshot.executionStatus}`,
         {
           attributes: {
@@ -472,6 +480,7 @@ export function registerRunEngineEventBusHandlers() {
       // Record notification event
       const eventResult = await recordRunDebugLog(
         run.id,
+        // don't prefix this with [engine] - "run:notify" is the correct prefix
         `run:notify ERROR platform -> supervisor: ${snapshot.executionStatus}`,
         {
           attributes: {
@@ -498,7 +507,7 @@ export function registerRunEngineEventBusHandlers() {
   engine.eventBus.on("incomingCheckpointDiscarded", async ({ time, run, snapshot, checkpoint }) => {
     const eventResult = await recordRunDebugLog(
       run.id,
-      `Checkpoint discarded: ${checkpoint.discardReason}`,
+      `[engine] Checkpoint discarded: ${checkpoint.discardReason}`,
       {
         attributes: {
           properties: {

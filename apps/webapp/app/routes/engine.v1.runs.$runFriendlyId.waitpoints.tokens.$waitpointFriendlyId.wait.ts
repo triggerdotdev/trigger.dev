@@ -1,6 +1,6 @@
 import { json } from "@remix-run/server-runtime";
-import { WaitForWaitpointTokenResponseBody } from "@trigger.dev/core/v3";
-import { RunId, WaitpointId } from "@trigger.dev/core/v3/apps";
+import { type WaitForWaitpointTokenResponseBody } from "@trigger.dev/core/v3";
+import { RunId, WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import { z } from "zod";
 import { $replica } from "~/db.server";
 import { logger } from "~/services/logger.server";
@@ -12,6 +12,9 @@ const { action } = createActionApiRoute(
     params: z.object({
       runFriendlyId: z.string(),
       waitpointFriendlyId: z.string(),
+    }),
+    body: z.object({
+      releaseConcurrency: z.boolean().optional(),
     }),
     maxContentLength: 1024 * 10, // 10KB
     method: "POST",
@@ -37,9 +40,9 @@ const { action } = createActionApiRoute(
       const result = await engine.blockRunWithWaitpoint({
         runId,
         waitpoints: [waitpointId],
-        environmentId: authentication.environment.id,
         projectId: authentication.environment.project.id,
         organizationId: authentication.environment.organization.id,
+        releaseConcurrency: body.releaseConcurrency,
       });
 
       return json<WaitForWaitpointTokenResponseBody>(

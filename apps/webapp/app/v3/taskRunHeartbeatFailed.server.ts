@@ -98,6 +98,7 @@ export class TaskRunHeartbeatFailedService extends BaseService {
         break;
       }
       case "DELAYED":
+      case "PENDING_VERSION":
       case "WAITING_FOR_DEPLOY": {
         logger.debug(
           `[TaskRunHeartbeatFailedService] ${taskRun.status} Removing task run from queue`,

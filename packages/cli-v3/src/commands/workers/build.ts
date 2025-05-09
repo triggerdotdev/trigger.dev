@@ -419,7 +419,7 @@ async function _workerBuildCommand(dir: string, options: WorkersBuildCommandOpti
     logger.table(
       deploymentWithWorker.worker.tasks.map((task) => ({
         id: task.slug,
-        export: task.exportName,
+        export: task.exportName ?? "@deprecated",
         path: task.filePath,
       }))
     );

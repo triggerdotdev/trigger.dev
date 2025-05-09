@@ -1,0 +1,11 @@
+{
+  "extends": "../../.configs/tsconfig.base.json",
+  "include": ["./src/**/*.ts"],
+  "references": [{ "path": "./tsconfig.src.json" }],
+  "compilerOptions": {
+    "isolatedDeclarations": false,
+    "composite": true,
+    "customConditions": ["@triggerdotdev/source"],
+    "types": ["vitest/globals"]
+  }
+}

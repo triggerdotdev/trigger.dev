@@ -1,19 +1,16 @@
-import {
-  containerTest,
-  setupAuthenticatedEnvironment,
-  setupBackgroundWorker,
-  assertNonNullable,
-} from "@internal/testcontainers";
-import { trace } from "@opentelemetry/api";
+import { containerTest, assertNonNullable } from "@internal/testcontainers";
+import { trace } from "@internal/tracing";
 import { expect } from "vitest";
 import { RunEngine } from "../index.js";
 import { setTimeout } from "timers/promises";
 import { EventBusEventArgs } from "../eventBus.js";
+import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
+
+vi.setConfig({ testTimeout: 60_000 });
 
 describe("RunEngine cancelling", () => {
   containerTest(
     "Cancelling a run with children (that is executing)",
-    { timeout: 15_000 },
     async ({ prisma, redisOptions }) => {
       //create environment
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
@@ -52,7 +49,7 @@ describe("RunEngine cancelling", () => {
         const childTask = "child-task";
 
         //create background worker
-        await setupBackgroundWorker(prisma, authenticatedEnvironment, [parentTask, childTask]);
+        await setupBackgroundWorker(engine, authenticatedEnvironment, [parentTask, childTask]);
 
         //trigger the run
         const parentRun = await engine.trigger(
@@ -68,7 +65,7 @@ describe("RunEngine cancelling", () => {
             traceId: "t12345",
             spanId: "s12345",
             masterQueue: "main",
-            queueName: `task/${parentTask}`,
+            queue: `task/${parentTask}`,
             isTest: false,
             tags: [],
           },
@@ -103,7 +100,7 @@ describe("RunEngine cancelling", () => {
             traceId: "t12345",
             spanId: "s12345",
             masterQueue: "main",
-            queueName: `task/${childTask}`,
+            queue: `task/${childTask}`,
             isTest: false,
             tags: [],
             resumeParentOnCompletion: true,
@@ -223,114 +220,110 @@ describe("RunEngine cancelling", () => {
         );
         expect(envConcurrencyCompleted).toBe(0);
       } finally {
-        engine.quit();
+        await engine.quit();
       }
     }
   );
 
-  containerTest(
-    "Cancelling a run (not executing)",
-    { timeout: 15_000 },
-    async ({ prisma, redisOptions }) => {
-      //create environment
-      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+  containerTest("Cancelling a run (not executing)", async ({ prisma, redisOptions }) => {
+    //create environment
+    const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
-      const engine = new RunEngine({
-        prisma,
-        worker: {
-          redis: redisOptions,
-          workers: 1,
-          tasksPerWorker: 10,
-          pollIntervalMs: 100,
-        },
-        queue: {
-          redis: redisOptions,
-        },
-        runLock: {
-          redis: redisOptions,
-        },
+    const engine = new RunEngine({
+      prisma,
+      worker: {
+        redis: redisOptions,
+        workers: 1,
+        tasksPerWorker: 10,
+        pollIntervalMs: 100,
+      },
+      queue: {
+        redis: redisOptions,
+      },
+      runLock: {
+        redis: redisOptions,
+      },
+      machines: {
+        defaultMachine: "small-1x",
         machines: {
-          defaultMachine: "small-1x",
-          machines: {
-            "small-1x": {
-              name: "small-1x" as const,
-              cpu: 0.5,
-              memory: 0.5,
-              centsPerMs: 0.0001,
-            },
+          "small-1x": {
+            name: "small-1x" as const,
+            cpu: 0.5,
+            memory: 0.5,
+            centsPerMs: 0.0001,
           },
-          baseCostInCents: 0.0001,
         },
-        tracer: trace.getTracer("test", "0.0.0"),
+        baseCostInCents: 0.0001,
+      },
+      tracer: trace.getTracer("test", "0.0.0"),
+    });
+
+    try {
+      const parentTask = "parent-task";
+
+      //create background worker
+      await setupBackgroundWorker(engine, authenticatedEnvironment, [parentTask]);
+
+      //trigger the run
+      const parentRun = await engine.trigger(
+        {
+          number: 1,
+          friendlyId: "run_p1234",
+          environment: authenticatedEnvironment,
+          taskIdentifier: parentTask,
+          payload: "{}",
+          payloadType: "application/json",
+          context: {},
+          traceContext: {},
+          traceId: "t12345",
+          spanId: "s12345",
+          masterQueue: "main",
+          queue: `task/${parentTask}`,
+          isTest: false,
+          tags: [],
+        },
+        prisma
+      );
+
+      //dequeue the run
+      const dequeued = await engine.dequeueFromMasterQueue({
+        consumerId: "test_12345",
+        masterQueue: parentRun.masterQueue,
+        maxRunCount: 10,
       });
 
-      try {
-        const parentTask = "parent-task";
+      let cancelledEventData: EventBusEventArgs<"runCancelled">[0][] = [];
+      engine.eventBus.on("runCancelled", (result) => {
+        cancelledEventData.push(result);
+      });
 
-        //create background worker
-        await setupBackgroundWorker(prisma, authenticatedEnvironment, [parentTask]);
+      //cancel the parent run
+      const result = await engine.cancelRun({
+        runId: parentRun.id,
+        completedAt: new Date(),
+        reason: "Cancelled by the user",
+      });
+      expect(result.snapshot.executionStatus).toBe("FINISHED");
 
-        //trigger the run
-        const parentRun = await engine.trigger(
-          {
-            number: 1,
-            friendlyId: "run_p1234",
-            environment: authenticatedEnvironment,
-            taskIdentifier: parentTask,
-            payload: "{}",
-            payloadType: "application/json",
-            context: {},
-            traceContext: {},
-            traceId: "t12345",
-            spanId: "s12345",
-            masterQueue: "main",
-            queueName: `task/${parentTask}`,
-            isTest: false,
-            tags: [],
-          },
-          prisma
-        );
+      const executionData = await engine.getRunExecutionData({ runId: parentRun.id });
+      expect(executionData?.snapshot.executionStatus).toBe("FINISHED");
+      expect(executionData?.run.status).toBe("CANCELED");
 
-        //dequeue the run
-        const dequeued = await engine.dequeueFromMasterQueue({
-          consumerId: "test_12345",
-          masterQueue: parentRun.masterQueue,
-          maxRunCount: 10,
-        });
+      //check emitted event
+      expect(cancelledEventData.length).toBe(1);
+      const parentEvent = cancelledEventData.find((r) => r.run.id === parentRun.id);
+      assertNonNullable(parentEvent);
+      expect(parentEvent.run.spanId).toBe(parentRun.spanId);
 
-        let cancelledEventData: EventBusEventArgs<"runCancelled">[0][] = [];
-        engine.eventBus.on("runCancelled", (result) => {
-          cancelledEventData.push(result);
-        });
-
-        //cancel the parent run
-        const result = await engine.cancelRun({
-          runId: parentRun.id,
-          completedAt: new Date(),
-          reason: "Cancelled by the user",
-        });
-        expect(result.snapshot.executionStatus).toBe("FINISHED");
-
-        const executionData = await engine.getRunExecutionData({ runId: parentRun.id });
-        expect(executionData?.snapshot.executionStatus).toBe("FINISHED");
-        expect(executionData?.run.status).toBe("CANCELED");
-
-        //check emitted event
-        expect(cancelledEventData.length).toBe(1);
-        const parentEvent = cancelledEventData.find((r) => r.run.id === parentRun.id);
-        assertNonNullable(parentEvent);
-        expect(parentEvent.run.spanId).toBe(parentRun.spanId);
-
-        //concurrency should have been released
-        const envConcurrencyCompleted = await engine.runQueue.currentConcurrencyOfEnvironment(
-          authenticatedEnvironment
-        );
-        expect(envConcurrencyCompleted).toBe(0);
-      } finally {
-        engine.quit();
-      }
+      //concurrency should have been released
+      const envConcurrencyCompleted = await engine.runQueue.currentConcurrencyOfEnvironment(
+        authenticatedEnvironment
+      );
+      expect(envConcurrencyCompleted).toBe(0);
+    } finally {
+      await engine.quit();
     }
-  );
+  });
 
   //todo bulk cancelling runs
 });

@@ -2,19 +2,19 @@ import {
   BuildManifest,
   type HandleErrorFunction,
   indexerToWorkerMessages,
-  taskCatalog,
+  resourceCatalog,
   type TaskManifest,
   TriggerConfig,
 } from "@trigger.dev/core/v3";
 import {
-  StandardTaskCatalog,
+  StandardResourceCatalog,
   TracingDiagnosticLogLevel,
   TracingSDK,
 } from "@trigger.dev/core/v3/workers";
 import { sendMessageInCatalog, ZodSchemaParsedError } from "@trigger.dev/core/v3/zodMessageHandler";
 import { readFile } from "node:fs/promises";
 import sourceMapSupport from "source-map-support";
-import { registerTasks } from "../indexing/registerTasks.js";
+import { registerResources } from "../indexing/registerResources.js";
 import { env } from "std-env";
 import { normalizeImportPath } from "../utilities/normalizeImportPath.js";
 
@@ -51,7 +51,7 @@ process.on("uncaughtException", function (error, origin) {
   }
 });
 
-taskCatalog.setGlobalTaskCatalog(new StandardTaskCatalog());
+resourceCatalog.setGlobalResourceCatalog(new StandardResourceCatalog());
 
 async function importConfig(
   configPath: string
@@ -86,7 +86,7 @@ async function bootstrap() {
     forceFlushTimeoutMillis: 30_000,
   });
 
-  const importErrors = await registerTasks(buildManifest);
+  const importErrors = await registerResources(buildManifest);
 
   return {
     tracingSDK,
@@ -98,7 +98,7 @@ async function bootstrap() {
 
 const { buildManifest, importErrors, config } = await bootstrap();
 
-let tasks = taskCatalog.listTaskManifests();
+let tasks = resourceCatalog.listTaskManifests();
 
 // If the config has retry defaults, we need to apply them to all tasks that don't have any retry settings
 if (config.retries?.default) {
@@ -128,18 +128,36 @@ if (typeof config.maxDuration === "number") {
   });
 }
 
+// If the config has a machine preset, we need to apply it to all tasks that don't have a machine preset
+if (typeof config.machine === "string") {
+  tasks = tasks.map((task) => {
+    if (typeof task.machine?.preset !== "string") {
+      return {
+        ...task,
+        machine: {
+          preset: config.machine,
+        },
+      } satisfies TaskManifest;
+    }
+
+    return task;
+  });
+}
+
 await sendMessageInCatalog(
   indexerToWorkerMessages,
   "INDEX_COMPLETE",
   {
     manifest: {
       tasks,
+      queues: resourceCatalog.listQueueManifests(),
       configPath: buildManifest.configPath,
       runtime: buildManifest.runtime,
       workerEntryPoint: buildManifest.runWorkerEntryPoint,
       controllerEntryPoint: buildManifest.runControllerEntryPoint,
       loaderEntryPoint: buildManifest.loaderEntryPoint,
       customConditions: buildManifest.customConditions,
+      initEntryPoint: buildManifest.initEntryPoint,
     },
     importErrors,
   },

@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/core",
-  "version": "3.3.17",
+  "version": "4.0.0-v4-beta.14",
   "description": "Core code used across the Trigger.dev SDK and platform",
   "license": "MIT",
   "publishConfig": {
@@ -23,16 +23,9 @@
       "./package.json": "./package.json",
       ".": "./src/index.ts",
       "./logger": "./src/logger.ts",
-      "./bloom": "./src/bloom.ts",
-      "./eventFilterMatches": "./src/eventFilterMatches.ts",
-      "./replacements": "./src/replacements.ts",
-      "./requestFilterMatches": "./src/requestFilterMatches.ts",
-      "./retry": "./src/retry.ts",
-      "./debounce": "./src/debounce.ts",
       "./utils": "./src/utils.ts",
       "./schemas": "./src/schemas/index.ts",
       "./types": "./src/types.ts",
-      "./versions": "./src/versions.ts",
       "./v3": "./src/v3/index.ts",
       "./v3/tracer": "./src/v3/tracer.ts",
       "./v3/build": "./src/v3/build/index.ts",
@@ -54,12 +47,12 @@
       "./v3/zodSocket": "./src/v3/zodSocket.ts",
       "./v3/zodIpc": "./src/v3/zodIpc.ts",
       "./v3/utils/timers": "./src/v3/utils/timers.ts",
-      "./v3/dev": "./src/v3/dev/index.ts",
-      "./v3/prod": "./src/v3/prod/index.ts",
       "./v3/workers": "./src/v3/workers/index.ts",
       "./v3/schemas": "./src/v3/schemas/index.ts",
       "./v3/runEngineWorker": "./src/v3/runEngineWorker/index.ts",
-      "./v3/checkpoints": "./src/v3/checkpoints/index.ts"
+      "./v3/machines": "./src/v3/machines/index.ts",
+      "./v3/serverOnly": "./src/v3/serverOnly/index.ts",
+      "./v3/isomorphic": "./src/v3/isomorphic/index.ts"
     },
     "sourceDialects": [
       "@triggerdotdev/source"
@@ -70,24 +63,6 @@
       "logger": [
         "dist/commonjs/logger.d.ts"
       ],
-      "bloom": [
-        "dist/commonjs/bloom.d.ts"
-      ],
-      "eventFilterMatches": [
-        "dist/commonjs/eventFilterMatches.d.ts"
-      ],
-      "replacements": [
-        "dist/commonjs/replacements.d.ts"
-      ],
-      "requestFilterMatches": [
-        "dist/commonjs/requestFilterMatches.d.ts"
-      ],
-      "retry": [
-        "dist/commonjs/retry.d.ts"
-      ],
-      "debounce": [
-        "dist/commonjs/debounce.d.ts"
-      ],
       "utils": [
         "dist/commonjs/utils.d.ts"
       ],
@@ -96,9 +71,6 @@
       ],
       "types": [
         "dist/commonjs/types.d.ts"
-      ],
-      "versions": [
-        "dist/commonjs/versions.d.ts"
       ],
       "v3": [
         "dist/commonjs/v3/index.d.ts"
@@ -160,12 +132,6 @@
       "v3/utils/timers": [
         "dist/commonjs/v3/utils/timers.d.ts"
       ],
-      "v3/dev": [
-        "dist/commonjs/v3/dev/index.d.ts"
-      ],
-      "v3/prod": [
-        "dist/commonjs/v3/prod/index.d.ts"
-      ],
       "v3/workers": [
         "dist/commonjs/v3/workers/index.d.ts"
       ],
@@ -178,8 +144,14 @@
       "v3/runEngineWorker": [
         "dist/commonjs/v3/runEngineWorker/index.d.ts"
       ],
-      "v3/checkpoints": [
-        "dist/commonjs/v3/checkpoints/index.d.ts"
+      "v3/machines": [
+        "dist/commonjs/v3/machines/index.d.ts"
+      ],
+      "v3/serverOnly": [
+        "dist/commonjs/v3/serverOnly/index.d.ts"
+      ],
+      "v3/isomorphic": [
+        "dist/commonjs/v3/isomorphic/index.d.ts"
       ]
     }
   },
@@ -200,6 +172,7 @@
     "@jsonhero/path": "^1.0.21",
     "@opentelemetry/api": "1.9.0",
     "@opentelemetry/api-logs": "0.52.1",
+    "@opentelemetry/core": "^1.30.1",
     "@opentelemetry/exporter-logs-otlp-http": "0.52.1",
     "@opentelemetry/exporter-trace-otlp-http": "0.52.1",
     "@opentelemetry/instrumentation": "0.52.1",
@@ -215,9 +188,11 @@
     "execa": "^8.0.1",
     "humanize-duration": "^3.27.3",
     "jose": "^5.4.0",
-    "nanoid": "^3.3.4",
+    "nanoid": "3.3.8",
+    "prom-client": "^15.1.0",
     "socket.io": "4.7.4",
     "socket.io-client": "4.7.5",
+    "std-env": "^3.8.1",
     "superjson": "^2.2.1",
     "tinyexec": "^0.3.2",
     "zod": "3.23.8",
@@ -267,72 +242,6 @@
         "default": "./dist/commonjs/logger.js"
       }
     },
-    "./bloom": {
-      "import": {
-        "@triggerdotdev/source": "./src/bloom.ts",
-        "types": "./dist/esm/bloom.d.ts",
-        "default": "./dist/esm/bloom.js"
-      },
-      "require": {
-        "types": "./dist/commonjs/bloom.d.ts",
-        "default": "./dist/commonjs/bloom.js"
-      }
-    },
-    "./eventFilterMatches": {
-      "import": {
-        "@triggerdotdev/source": "./src/eventFilterMatches.ts",
-        "types": "./dist/esm/eventFilterMatches.d.ts",
-        "default": "./dist/esm/eventFilterMatches.js"
-      },
-      "require": {
-        "types": "./dist/commonjs/eventFilterMatches.d.ts",
-        "default": "./dist/commonjs/eventFilterMatches.js"
-      }
-    },
-    "./replacements": {
-      "import": {
-        "@triggerdotdev/source": "./src/replacements.ts",
-        "types": "./dist/esm/replacements.d.ts",
-        "default": "./dist/esm/replacements.js"
-      },
-      "require": {
-        "types": "./dist/commonjs/replacements.d.ts",
-        "default": "./dist/commonjs/replacements.js"
-      }
-    },
-    "./requestFilterMatches": {
-      "import": {
-        "@triggerdotdev/source": "./src/requestFilterMatches.ts",
-        "types": "./dist/esm/requestFilterMatches.d.ts",
-        "default": "./dist/esm/requestFilterMatches.js"
-      },
-      "require": {
-        "types": "./dist/commonjs/requestFilterMatches.d.ts",
-        "default": "./dist/commonjs/requestFilterMatches.js"
-      }
-    },
-    "./retry": {
-      "import": {
-        "@triggerdotdev/source": "./src/retry.ts",
-        "types": "./dist/esm/retry.d.ts",
-        "default": "./dist/esm/retry.js"
-      },
-      "require": {
-        "types": "./dist/commonjs/retry.d.ts",
-        "default": "./dist/commonjs/retry.js"
-      }
-    },
-    "./debounce": {
-      "import": {
-        "@triggerdotdev/source": "./src/debounce.ts",
-        "types": "./dist/esm/debounce.d.ts",
-        "default": "./dist/esm/debounce.js"
-      },
-      "require": {
-        "types": "./dist/commonjs/debounce.d.ts",
-        "default": "./dist/commonjs/debounce.js"
-      }
-    },
     "./utils": {
       "import": {
         "@triggerdotdev/source": "./src/utils.ts",
@@ -364,17 +273,6 @@
       "require": {
         "types": "./dist/commonjs/types.d.ts",
         "default": "./dist/commonjs/types.js"
-      }
-    },
-    "./versions": {
-      "import": {
-        "@triggerdotdev/source": "./src/versions.ts",
-        "types": "./dist/esm/versions.d.ts",
-        "default": "./dist/esm/versions.js"
-      },
-      "require": {
-        "types": "./dist/commonjs/versions.d.ts",
-        "default": "./dist/commonjs/versions.js"
       }
     },
     "./v3": {
@@ -608,28 +506,6 @@
         "default": "./dist/commonjs/v3/utils/timers.js"
       }
     },
-    "./v3/dev": {
-      "import": {
-        "@triggerdotdev/source": "./src/v3/dev/index.ts",
-        "types": "./dist/esm/v3/dev/index.d.ts",
-        "default": "./dist/esm/v3/dev/index.js"
-      },
-      "require": {
-        "types": "./dist/commonjs/v3/dev/index.d.ts",
-        "default": "./dist/commonjs/v3/dev/index.js"
-      }
-    },
-    "./v3/prod": {
-      "import": {
-        "@triggerdotdev/source": "./src/v3/prod/index.ts",
-        "types": "./dist/esm/v3/prod/index.d.ts",
-        "default": "./dist/esm/v3/prod/index.js"
-      },
-      "require": {
-        "types": "./dist/commonjs/v3/prod/index.d.ts",
-        "default": "./dist/commonjs/v3/prod/index.js"
-      }
-    },
     "./v3/workers": {
       "import": {
         "@triggerdotdev/source": "./src/v3/workers/index.ts",
@@ -663,15 +539,37 @@
         "default": "./dist/commonjs/v3/runEngineWorker/index.js"
       }
     },
-    "./v3/checkpoints": {
+    "./v3/machines": {
       "import": {
-        "@triggerdotdev/source": "./src/v3/checkpoints/index.ts",
-        "types": "./dist/esm/v3/checkpoints/index.d.ts",
-        "default": "./dist/esm/v3/checkpoints/index.js"
+        "@triggerdotdev/source": "./src/v3/machines/index.ts",
+        "types": "./dist/esm/v3/machines/index.d.ts",
+        "default": "./dist/esm/v3/machines/index.js"
       },
       "require": {
-        "types": "./dist/commonjs/v3/checkpoints/index.d.ts",
-        "default": "./dist/commonjs/v3/checkpoints/index.js"
+        "types": "./dist/commonjs/v3/machines/index.d.ts",
+        "default": "./dist/commonjs/v3/machines/index.js"
+      }
+    },
+    "./v3/serverOnly": {
+      "import": {
+        "@triggerdotdev/source": "./src/v3/serverOnly/index.ts",
+        "types": "./dist/esm/v3/serverOnly/index.d.ts",
+        "default": "./dist/esm/v3/serverOnly/index.js"
+      },
+      "require": {
+        "types": "./dist/commonjs/v3/serverOnly/index.d.ts",
+        "default": "./dist/commonjs/v3/serverOnly/index.js"
+      }
+    },
+    "./v3/isomorphic": {
+      "import": {
+        "@triggerdotdev/source": "./src/v3/isomorphic/index.ts",
+        "types": "./dist/esm/v3/isomorphic/index.d.ts",
+        "default": "./dist/esm/v3/isomorphic/index.js"
+      },
+      "require": {
+        "types": "./dist/commonjs/v3/isomorphic/index.d.ts",
+        "default": "./dist/commonjs/v3/isomorphic/index.js"
       }
     }
   },

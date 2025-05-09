@@ -1,3 +1,4 @@
+import { flipCauseOption } from "effect/Cause";
 import { PrismaClient, prisma } from "~/db.server";
 import { Project } from "~/models/project.server";
 import { User } from "~/models/user.server";
@@ -48,6 +49,7 @@ export class EnvironmentVariablesPresenter {
                 key: true,
               },
             },
+            isSecret: true,
           },
         },
       },
@@ -82,34 +84,43 @@ export class EnvironmentVariablesPresenter {
       },
     });
 
-    const sortedEnvironments = sortEnvironments(filterOrphanedEnvironments(environments));
+    const sortedEnvironments = sortEnvironments(filterOrphanedEnvironments(environments)).filter(
+      (e) => e.orgMember?.userId === userId || e.orgMember === null
+    );
 
     const repository = new EnvironmentVariablesRepository(this.#prismaClient);
     const variables = await repository.getProject(project.id);
 
     return {
-      environmentVariables: environmentVariables.map((environmentVariable) => {
-        const variable = variables.find((v) => v.key === environmentVariable.key);
+      environmentVariables: environmentVariables
+        .flatMap((environmentVariable) => {
+          const variable = variables.find((v) => v.key === environmentVariable.key);
 
-        return {
-          id: environmentVariable.id,
-          key: environmentVariable.key,
-          values: sortedEnvironments.reduce((previous, env) => {
+          return sortedEnvironments.flatMap((env) => {
             const val = variable?.values.find((v) => v.environment.id === env.id);
-            previous[env.id] = {
-              value: val?.value,
-              environment: { type: env.type, id: env.id },
-            };
-            return { ...previous };
-          }, {} as Record<string, { value: string | undefined; environment: { type: string; id: string } }>),
-        };
-      }),
-      environments: sortedEnvironments
-        .filter((e) => e.orgMember?.userId === userId || e.orgMember === null)
-        .map((environment) => ({
-          id: environment.id,
-          type: environment.type,
-        })),
+            const isSecret =
+              environmentVariable.values.find((v) => v.environmentId === env.id)?.isSecret ?? false;
+
+            if (!val) {
+              return [];
+            }
+
+            return [
+              {
+                id: environmentVariable.id,
+                key: environmentVariable.key,
+                environment: { type: env.type, id: env.id },
+                value: isSecret ? "" : val.value,
+                isSecret,
+              },
+            ];
+          });
+        })
+        .sort((a, b) => a.key.localeCompare(b.key)),
+      environments: sortedEnvironments.map((environment) => ({
+        id: environment.id,
+        type: environment.type,
+      })),
       hasStaging: environments.some((environment) => environment.type === "STAGING"),
     };
   }

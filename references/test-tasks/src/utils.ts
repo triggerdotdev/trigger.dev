@@ -74,9 +74,7 @@ const EnvironmentStatsResponseBody = z.object({
   id: z.string(),
   concurrencyLimit: z.number(),
   currentConcurrency: z.number(),
-  reserveConcurrency: z.number(),
   queueConcurrency: z.number().optional(),
-  queueReserveConcurrency: z.number().optional(),
   queueCurrentConcurrency: z.number().optional(),
 });
 

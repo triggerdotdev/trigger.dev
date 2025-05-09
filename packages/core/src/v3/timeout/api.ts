@@ -4,8 +4,8 @@ import { TimeoutManager } from "./types.js";
 const API_NAME = "timeout";
 
 class NoopTimeoutManager implements TimeoutManager {
-  abortAfterTimeout(timeoutInSeconds: number): AbortSignal {
-    return new AbortController().signal;
+  abortAfterTimeout(timeoutInSeconds?: number): AbortController {
+    return new AbortController();
   }
 }
 
@@ -25,11 +25,11 @@ export class TimeoutAPI implements TimeoutManager {
   }
 
   public get signal(): AbortSignal | undefined {
-    return this.#getManagerManager().signal;
+    return this.#getManager().signal;
   }
 
-  public abortAfterTimeout(timeoutInSeconds: number): AbortSignal {
-    return this.#getManagerManager().abortAfterTimeout(timeoutInSeconds);
+  public abortAfterTimeout(timeoutInSeconds?: number): AbortController {
+    return this.#getManager().abortAfterTimeout(timeoutInSeconds);
   }
 
   public setGlobalManager(manager: TimeoutManager): boolean {
@@ -40,7 +40,7 @@ export class TimeoutAPI implements TimeoutManager {
     unregisterGlobal(API_NAME);
   }
 
-  #getManagerManager(): TimeoutManager {
+  #getManager(): TimeoutManager {
     return getGlobal(API_NAME) ?? NOOP_TIMEOUT_MANAGER;
   }
 }

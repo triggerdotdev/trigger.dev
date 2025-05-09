@@ -6,6 +6,7 @@ import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
 import { Button } from "~/components/primitives/Buttons";
 import { FormError } from "~/components/primitives/FormError";
 import { Label } from "~/components/primitives/Label";
+import { Spinner } from "~/components/primitives/Spinner";
 import { env } from "~/env.server";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -82,14 +83,14 @@ export function AIGeneratedCronField({ onSuccess }: AIGeneratedCronFieldProps) {
   return (
     <div className="max-w-md">
       <Label>
-        <AISparkleIcon className="inline-block h-4 w-4" /> Describe your schedule using natural
+        <AISparkleIcon className="inline-block size-4" /> Describe your schedule using natural
         language
       </Label>
       <div
-        className="rounded-sm p-px"
+        className="mt-1 rounded p-px"
         style={{ background: "linear-gradient(to bottom right, #E543FF, #286399)" }}
       >
-        <div className="rounded-[calc(0.5rem-2px)] bg-background-bright">
+        <div className="overflow-hidden rounded-sm bg-background-bright">
           <textarea
             value={text}
             placeholder="e.g. the last Friday of the month at 6am"
@@ -102,8 +103,10 @@ export function AIGeneratedCronField({ onSuccess }: AIGeneratedCronFieldProps) {
               type="button"
               variant="tertiary/small"
               disabled={isLoading}
-              LeadingIcon={isLoading ? "spinner" : AISparkleIcon}
+              LeadingIcon={isLoading ? Spinner : AISparkleIcon}
               onClick={() => submit(text)}
+              className="pl-1.5"
+              iconSpacing="gap-1.5"
             >
               {isLoading ? "Generating" : "Generate"}
             </Button>

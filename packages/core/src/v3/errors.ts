@@ -76,6 +76,58 @@ export function isManualOutOfMemoryError(error: TaskRunError) {
   return false;
 }
 
+export function isOOMRunError(error: TaskRunError) {
+  if (error.type === "INTERNAL_ERROR") {
+    if (
+      error.code === "TASK_PROCESS_OOM_KILLED" ||
+      error.code === "TASK_PROCESS_MAYBE_OOM_KILLED"
+    ) {
+      return true;
+    }
+
+    // For the purposes of retrying on a larger machine, we're going to treat this is an OOM error.
+    // This is what they look like if we're executing using k8s. They then get corrected later, but it's too late.
+    // {"code": "TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE", "type": "INTERNAL_ERROR", "message": "Process exited with code -1 after signal SIGKILL."}
+    if (
+      error.code === "TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE" &&
+      error.message &&
+      error.message.includes("-1")
+    ) {
+      if (error.message.includes("SIGKILL")) {
+        return true;
+      }
+
+      if (error.message.includes("SIGABRT") && error.stackTrace) {
+        const oomIndicators = [
+          "JavaScript heap out of memory",
+          "Reached heap limit",
+          "FATAL ERROR: Reached heap limit Allocation failed",
+        ];
+
+        if (oomIndicators.some((indicator) => error.stackTrace!.includes(indicator))) {
+          return true;
+        }
+      }
+    }
+  }
+
+  if (error.type === "BUILT_IN_ERROR") {
+    // ffmpeg also does weird stuff
+    // { "name": "Error", "type": "BUILT_IN_ERROR", "message": "ffmpeg was killed with signal SIGKILL" }
+    if (error.message && error.message.includes("ffmpeg was killed with signal SIGKILL")) {
+      return true;
+    }
+  }
+
+  // Special `OutOfMemoryError` for doing a manual OOM kill.
+  // Useful if a native library does an OOM but doesn't actually crash the run and you want to manually
+  if (isManualOutOfMemoryError(error)) {
+    return true;
+  }
+
+  return false;
+}
+
 export class TaskPayloadParsedError extends Error {
   public readonly cause: unknown;
 
@@ -86,6 +138,20 @@ export class TaskPayloadParsedError extends Error {
     this.name = "TaskPayloadParsedError";
     this.cause = cause;
   }
+}
+
+export class CompleteTaskWithOutput extends Error {
+  public readonly output: unknown;
+
+  constructor(output?: unknown) {
+    super("Complete task with output");
+    this.name = "CompleteTaskWithOutput";
+    this.output = output;
+  }
+}
+
+export function isCompleteTaskWithOutput(error: unknown): error is CompleteTaskWithOutput {
+  return error instanceof Error && error.name === "CompleteTaskWithOutput";
 }
 
 export function parseError(error: unknown): TaskRunError {
@@ -239,8 +305,6 @@ export function shouldRetryError(error: TaskRunError): boolean {
         // run engine errors
         case "TASK_DEQUEUED_INVALID_STATE":
         case "TASK_DEQUEUED_QUEUE_NOT_FOUND":
-        case "TASK_DEQUEUED_INVALID_RETRY_CONFIG":
-        case "TASK_DEQUEUED_NO_RETRY_CONFIG":
         case "TASK_HAS_N0_EXECUTION_SNAPSHOT":
         case "TASK_RUN_DEQUEUED_MAX_RETRIES":
           return false;
@@ -253,6 +317,7 @@ export function shouldRetryError(error: TaskRunError): boolean {
         case "HANDLE_ERROR_ERROR":
         case "TASK_INPUT_ERROR":
         case "TASK_OUTPUT_ERROR":
+        case "TASK_MIDDLEWARE_ERROR":
         case "POD_EVICTED":
         case "POD_UNKNOWN_ERROR":
         case "TASK_EXECUTION_ABORTED":
@@ -432,6 +497,14 @@ export class CleanupProcessError extends Error {
   }
 }
 
+export class SuspendedProcessError extends Error {
+  constructor() {
+    super("Suspended");
+
+    this.name = "SuspendedProcessError";
+  }
+}
+
 export class CancelledProcessError extends Error {
   constructor() {
     super("Cancelled");
@@ -562,6 +635,8 @@ const findSignalInMessage = (message?: string, truncateLength = 100) => {
     return "SIGSEGV";
   } else if (trunc.includes("SIGKILL")) {
     return "SIGKILL";
+  } else if (trunc.includes("SIGABRT")) {
+    return "SIGABRT";
   } else {
     return;
   }
@@ -584,6 +659,10 @@ export function taskRunErrorEnhancer(error: TaskRunError): EnhanceError<TaskRunE
                 ...getPrettyTaskRunError("TASK_PROCESS_SIGSEGV"),
               };
             case "SIGKILL":
+              return {
+                ...getPrettyTaskRunError("TASK_PROCESS_MAYBE_OOM_KILLED"),
+              };
+            case "SIGABRT":
               return {
                 ...getPrettyTaskRunError("TASK_PROCESS_MAYBE_OOM_KILLED"),
               };
@@ -611,6 +690,21 @@ export function taskRunErrorEnhancer(error: TaskRunError): EnhanceError<TaskRunE
         };
       }
 
+      if (error.name === "TriggerApiError") {
+        if (error.message.startsWith("Deadlock detected:")) {
+          return {
+            type: "BUILT_IN_ERROR",
+            name: "Concurrency Deadlock Error",
+            message: error.message,
+            stackTrace: "",
+            link: {
+              name: "Read the docs",
+              href: links.docs.concurrency.deadlock,
+            },
+          };
+        }
+      }
+
       break;
     }
     case "STRING_ERROR": {
@@ -633,6 +727,10 @@ export function taskRunErrorEnhancer(error: TaskRunError): EnhanceError<TaskRunE
               ...getPrettyTaskRunError("TASK_PROCESS_SIGSEGV"),
             };
           case "SIGKILL":
+            return {
+              ...getPrettyTaskRunError("TASK_PROCESS_MAYBE_OOM_KILLED"),
+            };
+          case "SIGABRT":
             return {
               ...getPrettyTaskRunError("TASK_PROCESS_MAYBE_OOM_KILLED"),
             };
@@ -685,6 +783,11 @@ export function exceptionEventEnhancer(
               ...getPrettyExceptionEvent("TASK_PROCESS_SIGSEGV"),
             };
           case "SIGKILL":
+            return {
+              ...exception,
+              ...getPrettyExceptionEvent("TASK_PROCESS_MAYBE_OOM_KILLED"),
+            };
+          case "SIGABRT":
             return {
               ...exception,
               ...getPrettyExceptionEvent("TASK_PROCESS_MAYBE_OOM_KILLED"),

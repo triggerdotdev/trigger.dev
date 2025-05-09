@@ -14,7 +14,6 @@ import {
   OperatingSystemContextProvider,
   OperatingSystemPlatform,
 } from "./components/primitives/OperatingSystemProvider";
-import { getSharedSqsEventConsumer } from "./services/events/sqsEventConsumer";
 import { singleton } from "./utils/singleton";
 
 const ABORT_DELAY = 30000;
@@ -209,8 +208,6 @@ process.on("uncaughtException", (error, origin) => {
 
   process.exit(1);
 });
-
-const sqsEventConsumer = singleton("sqsEventConsumer", getSharedSqsEventConsumer);
 
 singleton("RunEngineEventBusHandlers", registerRunEngineEventBusHandlers);
 

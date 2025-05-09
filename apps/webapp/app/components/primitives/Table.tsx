@@ -1,6 +1,6 @@
 import { ChevronRightIcon } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
-import React, { ReactNode, forwardRef, useState, useContext, createContext } from "react";
+import React, { type ReactNode, forwardRef, useState, useContext, createContext } from "react";
 import { cn } from "~/utils/cn";
 import { Popover, PopoverContent, PopoverVerticalEllipseTrigger } from "./Popover";
 import { InfoIconTooltip } from "./Tooltip";
@@ -21,7 +21,7 @@ const variants = {
     stickyCell: "group-hover/table-row:bg-charcoal-800",
     menuButton:
       "bg-background-dimmed group-hover/table-row:bg-charcoal-800 group-hover/table-row:ring-grid-bright group-has-[[tabindex='0']:focus]/table-row:bg-background-bright",
-    menuButtonDivider: "group-hover/table-row:border-grid-dimmed",
+    menuButtonDivider: "group-hover/table-row:border-grid-bright",
     rowSelected: "bg-charcoal-750 group-hover/table-row:bg-charcoal-750",
   },
 } as const;
@@ -161,7 +161,12 @@ export const TableHeaderCell = forwardRef<HTMLTableCellElement, TableHeaderCellP
         {hiddenLabel ? (
           <span className="sr-only">{children}</span>
         ) : tooltip ? (
-          <div className="flex items-center gap-1">
+          <div
+            className={cn("flex items-center gap-1", {
+              "justify-center": alignment === "center",
+              "justify-end": alignment === "right",
+            })}
+          >
             {children}
             <InfoIconTooltip content={tooltip} contentClassName="normal-case tracking-normal" />
           </div>
@@ -339,11 +344,14 @@ export const TableCellMenu = forwardRef<
             {hiddenButtons && (
               <div
                 className={cn(
-                  "hidden pr-0.5 group-hover/table-row:block group-hover/table-row:border-r",
+                  "hidden group-hover/table-row:block",
+                  popoverContent && "pr-0.5 group-hover/table-row:border-r",
                   variants[variant].menuButtonDivider
                 )}
               >
-                {hiddenButtons}
+                <div className={cn("flex items-center gap-x-0.5 divide-x divide-grid-bright")}>
+                  {hiddenButtons}
+                </div>
               </div>
             )}
             {/* Always visible buttons  */}
@@ -360,18 +368,6 @@ export const TableCellMenu = forwardRef<
                   align="end"
                 >
                   <div className="flex flex-col gap-1 p-1">{popoverContent}</div>
-                </PopoverContent>
-              </Popover>
-            )}
-            {/* Optionally pass in children to render in a popover */}
-            {!visibleButtons && !hiddenButtons && !popoverContent && (
-              <Popover onOpenChange={(open) => setIsOpen(open)}>
-                <PopoverVerticalEllipseTrigger isOpen={isOpen} />
-                <PopoverContent
-                  className="w-fit max-w-[10rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
-                  align="end"
-                >
-                  <div className="flex flex-col gap-1 p-1">{children}</div>
                 </PopoverContent>
               </Popover>
             )}

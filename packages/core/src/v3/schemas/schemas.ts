@@ -127,7 +127,7 @@ export const RetryOptions = z.object({
 
 export type RetryOptions = z.infer<typeof RetryOptions>;
 
-export const QueueOptions = z.object({
+export const QueueManifest = z.object({
   /** You can define a shared queue and then pass the name in to your task.
    *
    * @example
@@ -159,14 +159,19 @@ export const QueueOptions = z.object({
     });
    * ```
    */
-  name: z.string().optional(),
+  name: z.string(),
   /** An optional property that specifies the maximum number of concurrent run executions.
    *
    * If this property is omitted, the task can potentially use up the full concurrency of an environment */
   concurrencyLimit: z.number().int().min(0).max(1000).optional().nullable(),
+  /** An optional property that specifies whether to release concurrency on waitpoint.
+   *
+   * If this property is omitted, the task will not release concurrency on waitpoint.
+   */
+  releaseConcurrencyOnWaitpoint: z.boolean().optional(),
 });
 
-export type QueueOptions = z.infer<typeof QueueOptions>;
+export type QueueManifest = z.infer<typeof QueueManifest>;
 
 export const ScheduleMetadata = z.object({
   cron: z.string(),
@@ -176,7 +181,7 @@ export const ScheduleMetadata = z.object({
 const taskMetadata = {
   id: z.string(),
   description: z.string().optional(),
-  queue: QueueOptions.optional(),
+  queue: QueueManifest.extend({ name: z.string().optional() }).optional(),
   retry: RetryOptions.optional(),
   machine: MachineConfig.optional(),
   triggerSource: z.string().optional(),
@@ -197,7 +202,7 @@ export type TaskFile = z.infer<typeof TaskFile>;
 
 const taskFileMetadata = {
   filePath: z.string(),
-  exportName: z.string(),
+  exportName: z.string().optional(),
   entryPoint: z.string(),
 };
 
@@ -270,20 +275,6 @@ export const TaskRunExecutionLazyAttemptPayload = z.object({
 
 export type TaskRunExecutionLazyAttemptPayload = z.infer<typeof TaskRunExecutionLazyAttemptPayload>;
 
-export const RuntimeWait = z.discriminatedUnion("type", [
-  z.object({
-    type: z.literal("DATETIME"),
-    id: z.string(),
-    date: z.coerce.date(),
-  }),
-  z.object({
-    type: z.literal("MANUAL"),
-    id: z.string(),
-  }),
-]);
-
-export type RuntimeWait = z.infer<typeof RuntimeWait>;
-
 export const ManualCheckpointMetadata = z.object({
   /** NOT a friendly ID */
   attemptId: z.string(),
@@ -292,3 +283,14 @@ export const ManualCheckpointMetadata = z.object({
 });
 
 export type ManualCheckpointMetadata = z.infer<typeof ManualCheckpointMetadata>;
+
+export const RunChainState = z.object({
+  concurrency: z
+    .object({
+      queues: z.array(z.object({ id: z.string(), name: z.string(), holding: z.number() })),
+      environment: z.number().optional(),
+    })
+    .optional(),
+});
+
+export type RunChainState = z.infer<typeof RunChainState>;

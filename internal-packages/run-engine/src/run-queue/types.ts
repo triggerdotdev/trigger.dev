@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { RuntimeEnvironmentType } from "../../../database/src/index.js";
-import { MinimalAuthenticatedEnvironment } from "../shared/index.js";
+import { RuntimeEnvironmentType } from "@trigger.dev/database";
+import type { MinimalAuthenticatedEnvironment } from "../shared/index.js";
 
 export const InputPayload = z.object({
   runId: z.string(),
@@ -22,30 +22,31 @@ export const OutputPayload = InputPayload.extend({
 });
 export type OutputPayload = z.infer<typeof OutputPayload>;
 
-export type QueueCapacity = {
-  current: number;
-  limit: number;
-};
-
-export type QueueCapacities = {
-  queue: QueueCapacity;
-  env: QueueCapacity;
-};
-
-export type QueueWithScores = {
+export type QueueDescriptor = {
+  orgId: string;
+  projectId: string;
+  envId: string;
   queue: string;
-  capacities: QueueCapacities;
-  age: number;
-  size: number;
+  concurrencyKey: string | undefined;
 };
 
-export type QueueRange = { offset: number; count: number };
+export type EnvDescriptor = {
+  orgId: string;
+  projectId: string;
+  envId: string;
+};
 
 export interface RunQueueKeyProducer {
-  masterQueueScanPattern(masterQueue: string): string;
-  queueCurrentConcurrencyScanPattern(): string;
   //queue
+  queueKey(
+    orgId: string,
+    projId: string,
+    envId: string,
+    queue: string,
+    concurrencyKey?: string
+  ): string;
   queueKey(env: MinimalAuthenticatedEnvironment, queue: string, concurrencyKey?: string): string;
+
   envQueueKey(env: MinimalAuthenticatedEnvironment): string;
   envQueueKeyFromQueue(queue: string): string;
   queueConcurrencyLimitKey(env: MinimalAuthenticatedEnvironment, queue: string): string;
@@ -58,63 +59,36 @@ export interface RunQueueKeyProducer {
   ): string;
   disabledConcurrencyLimitKeyFromQueue(queue: string): string;
   //env oncurrency
+  envCurrentConcurrencyKey(env: EnvDescriptor): string;
   envCurrentConcurrencyKey(env: MinimalAuthenticatedEnvironment): string;
+
+  envConcurrencyLimitKey(env: EnvDescriptor): string;
   envConcurrencyLimitKey(env: MinimalAuthenticatedEnvironment): string;
+
   envConcurrencyLimitKeyFromQueue(queue: string): string;
   envCurrentConcurrencyKeyFromQueue(queue: string): string;
-  //task concurrency
-  taskIdentifierCurrentConcurrencyKey(
-    env: MinimalAuthenticatedEnvironment,
-    taskIdentifier: string
-  ): string;
-  taskIdentifierCurrentConcurrencyKeyPrefixFromQueue(queue: string): string;
-  taskIdentifierCurrentConcurrencyKeyFromQueue(queue: string, taskIdentifier: string): string;
-  //project concurrency
-  projectCurrentConcurrencyKey(env: MinimalAuthenticatedEnvironment): string;
-  projectCurrentConcurrencyKeyFromQueue(queue: string): string;
   //message payload
   messageKeyPrefixFromQueue(queue: string): string;
   messageKey(orgId: string, messageId: string): string;
   //utils
-  stripKeyPrefix(key: string): string;
-  extractComponentsFromQueue(queue: string): {
-    orgId: string;
-    projectId: string;
-    envId: string;
-    queue: string;
-    concurrencyKey: string | undefined;
-  };
+  orgIdFromQueue(queue: string): string;
+  envIdFromQueue(queue: string): string;
+  projectIdFromQueue(queue: string): string;
+  descriptorFromQueue(queue: string): QueueDescriptor;
+
+  deadLetterQueueKey(env: MinimalAuthenticatedEnvironment): string;
+  deadLetterQueueKey(env: EnvDescriptor): string;
+  deadLetterQueueKeyFromQueue(queue: string): string;
 }
 
-export type PriorityStrategyChoice = string[] | { abort: true };
+export type EnvQueues = {
+  envId: string;
+  queues: string[];
+};
 
-export interface RunQueuePriorityStrategy {
-  /**
-   * chooseQueue is called to select the next queue to process a message from
-   *
-   * @param queues
-   * @param parentQueue
-   * @param consumerId
-   *
-   * @returns The queue to process the message from, or an object with `abort: true` if no queue is available
-   */
-  chooseQueues(
-    queues: Array<QueueWithScores>,
+export interface RunQueueSelectionStrategy {
+  distributeFairQueuesFromParentQueue(
     parentQueue: string,
-    consumerId: string,
-    previousRange: QueueRange,
-    maxCount: number
-  ): { choices: PriorityStrategyChoice; nextRange: QueueRange };
-
-  /**
-   * This function is called to get the next candidate selection for the queue
-   * The `range` is used to select the set of queues that will be considered for the next selection (passed to chooseQueue)
-   * The `selectionId` is used to identify the selection and should be passed to chooseQueue
-   *
-   * @param parentQueue The parent queue that holds the candidate queues
-   * @param consumerId The consumerId that is making the request
-   *
-   * @returns The scores and the selectionId for the next candidate selection
-   */
-  nextCandidateSelection(parentQueue: string, consumerId: string): Promise<{ range: QueueRange }>;
+    consumerId: string
+  ): Promise<Array<EnvQueues>>;
 }

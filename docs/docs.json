@@ -23,7 +23,8 @@
               "quick-start",
               "video-walkthrough",
               "how-it-works",
-              "limits"
+              "limits",
+              "upgrade-to-v4"
             ]
           },
           {
@@ -31,11 +32,7 @@
             "pages": [
               {
                 "group": "Tasks",
-                "pages": [
-                  "tasks/overview",
-                  "tasks/schemaTask",
-                  "tasks/scheduled"
-                ]
+                "pages": ["tasks/overview", "tasks/schemaTask", "tasks/scheduled"]
               },
               "triggering",
               "runs",
@@ -50,13 +47,7 @@
               "errors-retrying",
               {
                 "group": "Wait",
-                "pages": [
-                  "wait",
-                  "wait-for",
-                  "wait-until",
-                  "wait-for-event",
-                  "wait-for-request"
-                ]
+                "pages": ["wait", "wait-for", "wait-until", "wait-for-token"]
               },
               "queue-concurrency",
               "versioning",
@@ -100,9 +91,7 @@
           },
           {
             "group": "Development",
-            "pages": [
-              "cli-dev"
-            ]
+            "pages": ["cli-dev"]
           },
           {
             "group": "Deployment",
@@ -113,9 +102,7 @@
               "deployment/atomic-deployment",
               {
                 "group": "Deployment integrations",
-                "pages": [
-                  "vercel-integration"
-                ]
+                "pages": ["vercel-integration"]
               }
             ]
           },
@@ -166,12 +153,7 @@
           },
           {
             "group": "Using the Dashboard",
-            "pages": [
-              "run-tests",
-              "troubleshooting-alerts",
-              "replaying",
-              "bulk-actions"
-            ]
+            "pages": ["run-tests", "troubleshooting-alerts", "replaying", "bulk-actions"]
           },
           {
             "group": "Troubleshooting",
@@ -179,7 +161,7 @@
               "troubleshooting",
               "troubleshooting-debugging-in-vscode",
               "upgrading-packages",
-              "upgrading-beta",
+
               "troubleshooting-uptime-status",
               "troubleshooting-github-issues",
               "request-feature"
@@ -197,11 +179,7 @@
           },
           {
             "group": "Help",
-            "pages": [
-              "community",
-              "help-slack",
-              "help-email"
-            ]
+            "pages": ["community", "help-slack", "help-email"]
           }
         ]
       },
@@ -222,10 +200,7 @@
           },
           {
             "group": "Tasks API",
-            "pages": [
-              "management/tasks/trigger",
-              "management/tasks/batch-trigger"
-            ]
+            "pages": ["management/tasks/trigger", "management/tasks/batch-trigger"]
           },
           {
             "group": "Runs API",
@@ -271,9 +246,7 @@
         "groups": [
           {
             "group": "Introduction",
-            "pages": [
-              "guides/introduction"
-            ]
+            "pages": ["guides/introduction"]
           },
           {
             "group": "Frameworks",
@@ -299,10 +272,11 @@
                   "guides/ai-agents/generate-translate-copy",
                   "guides/ai-agents/route-question",
                   "guides/ai-agents/respond-and-check-content",
-                  "guides/ai-agents/verify-news-article",
-                  "guides/ai-agents/translate-and-refine"
+                  "guides/ai-agents/translate-and-refine",
+                  "guides/ai-agents/verify-news-article"
                 ]
               },
+              "guides/cursor-rules",
               "guides/frameworks/drizzle",
               "guides/frameworks/prisma",
               "guides/frameworks/sequin",
@@ -315,7 +289,8 @@
                 "pages": [
                   "guides/frameworks/supabase-guides-overview",
                   "guides/frameworks/supabase-edge-functions-basic",
-                  "guides/frameworks/supabase-edge-functions-database-webhooks"
+                  "guides/frameworks/supabase-edge-functions-database-webhooks",
+                  "guides/frameworks/supabase-authentication"
                 ]
               },
               {
@@ -334,12 +309,24 @@
             ]
           },
           {
+            "group": "Python guides",
+            "pages": [
+              "guides/python/python-image-processing",
+              "guides/python/python-doc-to-markdown",
+              "guides/python/python-crawl4ai",
+              "guides/python/python-pdf-form-extractor"
+            ]
+          },
+          {
             "group": "Example projects",
             "pages": [
               "guides/example-projects/batch-llm-evaluator",
               "guides/example-projects/claude-thinking-chatbot",
-              "guides/example-projects/realtime-fal-ai",
+              "guides/example-projects/human-in-the-loop-workflow",
+              "guides/example-projects/meme-generator-human-in-the-loop",
               "guides/example-projects/realtime-csv-importer",
+              "guides/example-projects/realtime-fal-ai",
+              "guides/example-projects/turborepo-monorepo-prisma",
               "guides/example-projects/vercel-ai-sdk-image-generator"
             ]
           },
@@ -356,16 +343,22 @@
               "guides/examples/open-ai-with-retrying",
               "guides/examples/pdf-to-image",
               "guides/examples/puppeteer",
+              "guides/examples/react-pdf",
+              "guides/examples/react-email",
+              "guides/examples/resend-email-sequence",
+              "guides/examples/satori",
               "guides/examples/scrape-hacker-news",
               "guides/examples/sentry-error-tracking",
               "guides/examples/sharp-image-processing",
               "guides/examples/supabase-database-operations",
               "guides/examples/supabase-storage-upload",
-              "guides/examples/react-pdf",
-              "guides/examples/resend-email-sequence",
               "guides/examples/vercel-ai-sdk",
               "guides/examples/vercel-sync-env-vars"
             ]
+          },
+          {
+            "group": "Migration guides",
+            "pages": ["migration-mergent"]
           },
           {
             "group": "Community packages",
@@ -386,10 +379,7 @@
     "href": "https://trigger.dev"
   },
   "api": {
-    "openapi": [
-      "openapi.yml",
-      "v3-openapi.yaml"
-    ],
+    "openapi": ["openapi.yml", "v3-openapi.yaml"],
     "playground": {
       "display": "simple"
     }
