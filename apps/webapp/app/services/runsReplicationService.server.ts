@@ -1,9 +1,8 @@
-import type { ClickHouse, TaskRunV1, RawTaskRunPayloadV1 } from "@internal/clickhouse";
+import type { ClickHouse, RawTaskRunPayloadV1, TaskRunV1 } from "@internal/clickhouse";
 import { RedisOptions } from "@internal/redis";
 import { LogicalReplicationClient, Transaction, type PgoutputMessage } from "@internal/replication";
 import { Logger } from "@trigger.dev/core/logger";
 import { tryCatch } from "@trigger.dev/core/utils";
-import { TaskRunError } from "@trigger.dev/core/v3/schemas";
 import { parsePacket } from "@trigger.dev/core/v3/utils/ioSerialization";
 import { TaskRun } from "@trigger.dev/database";
 import { nanoid } from "nanoid";
@@ -46,6 +45,8 @@ export class RunsReplicationService {
   private _lastReplicationLagMs: number | null = null;
   private _transactionCounter?: Counter;
   private _insertStrategy: "streaming" | "batching";
+  private _isShuttingDown = false;
+  private _isShutDownComplete = false;
 
   constructor(private readonly options: RunsReplicationServiceOptions) {
     this.logger = new Logger("RunsReplicationService", "debug");
@@ -62,7 +63,7 @@ export class RunsReplicationService {
       table: "TaskRun",
       redisOptions: options.redisOptions,
       autoAcknowledge: false,
-      publicationActions: ["insert", "update"],
+      publicationActions: ["insert", "update", "delete"],
       logger: new Logger("RunsReplicationService", "debug"),
       leaderLockTimeoutMs: options.leaderLockTimeoutMs ?? 30_000,
       leaderLockExtendIntervalMs: options.leaderLockExtendIntervalMs ?? 10_000,
@@ -84,6 +85,9 @@ export class RunsReplicationService {
     });
 
     this._replicationClient.events.on("heartbeat", async ({ lsn, shouldRespond }) => {
+      if (this._isShuttingDown) return;
+      if (this._isShutDownComplete) return;
+
       if (shouldRespond) {
         await this._replicationClient.acknowledge(lsn);
       }
@@ -128,6 +132,11 @@ export class RunsReplicationService {
         registers: [options.metricsRegister],
       });
     }
+  }
+
+  public shutdown() {
+    this.logger.info("Initiating shutdown of runs replication service");
+    this._isShuttingDown = true;
   }
 
   async start(insertStrategy?: "streaming" | "batching") {
@@ -201,11 +210,27 @@ export class RunsReplicationService {
   }
 
   async #handleTransaction(transaction: Transaction<TaskRun>) {
+    if (this._isShutDownComplete) return;
+
+    let alreadyAcknowledged = false;
+
+    if (this._isShuttingDown) {
+      // We need to immediately acknowledge the transaction
+      // And then try and handle this transaction
+      if (transaction.commitEndLsn) {
+        await this._replicationClient.acknowledge(transaction.commitEndLsn);
+        alreadyAcknowledged = true;
+      }
+
+      await this._replicationClient.stop();
+      this._isShutDownComplete = true;
+    }
+
     this._lastReplicationLagMs = transaction.replicationLagMs;
 
     // If there are no events, do nothing
     if (transaction.events.length === 0) {
-      if (transaction.commitEndLsn) {
+      if (transaction.commitEndLsn && !alreadyAcknowledged) {
         await this._replicationClient.acknowledge(transaction.commitEndLsn);
       }
 
@@ -222,6 +247,7 @@ export class RunsReplicationService {
 
     this.logger.debug("Handling transaction", {
       transaction,
+      alreadyAcknowledged,
     });
 
     // If there are events, we need to handle them
@@ -230,13 +256,19 @@ export class RunsReplicationService {
     this._transactionCounter?.inc();
 
     if (this._insertStrategy === "streaming") {
-      await this._concurrentFlushScheduler.addToBatch(
-        transaction.events.map((event) => ({
-          _version,
-          run: event.data,
-          event: event.tag,
-        }))
-      );
+      this._concurrentFlushScheduler
+        .addToBatch(
+          transaction.events.map((event) => ({
+            _version,
+            run: event.data,
+            event: event.tag,
+          }))
+        )
+        .catch((error) => {
+          this.logger.error("Error adding to batch", {
+            error,
+          });
+        });
     } else {
       const [flushError] = await tryCatch(
         this.#flushBatch(
@@ -256,7 +288,9 @@ export class RunsReplicationService {
       }
     }
 
-    await this._replicationClient.acknowledge(transaction.commitEndLsn);
+    if (!alreadyAcknowledged) {
+      await this._replicationClient.acknowledge(transaction.commitEndLsn);
+    }
   }
 
   async #flushBatch(flushId: string, batch: Array<TaskRunInsert>) {
@@ -497,7 +531,6 @@ export class ConcurrentFlushScheduler<T> {
   private readonly MAX_CONCURRENCY: number;
   private readonly concurrencyLimiter: ReturnType<typeof pLimit>;
   private flushTimer: NodeJS.Timeout | null;
-  private isShuttingDown;
   private failedBatchCount;
   private metricsRegister?: MetricsRegister;
   private logger: Logger;
@@ -510,7 +543,6 @@ export class ConcurrentFlushScheduler<T> {
     this.MAX_CONCURRENCY = config.maxConcurrency || 1;
     this.concurrencyLimiter = pLimit(this.MAX_CONCURRENCY);
     this.flushTimer = null;
-    this.isShuttingDown = false;
     this.failedBatchCount = 0;
 
     this.logger.info("Initializing ConcurrentFlushScheduler", {
@@ -520,7 +552,6 @@ export class ConcurrentFlushScheduler<T> {
     });
 
     this.startFlushTimer();
-    this.setupShutdownHandlers();
 
     if (!process.env.VITEST && config.metricsRegister) {
       this.metricsRegister = config.metricsRegister;
@@ -590,27 +621,6 @@ export class ConcurrentFlushScheduler<T> {
   private startFlushTimer(): void {
     this.flushTimer = setInterval(() => this.checkAndFlush(), this.FLUSH_INTERVAL);
     this.logger.debug("Started flush timer", { interval: this.FLUSH_INTERVAL });
-  }
-
-  private setupShutdownHandlers() {
-    process.on("SIGTERM", this.shutdown.bind(this));
-    process.on("SIGINT", this.shutdown.bind(this));
-    this.logger.debug("Shutdown handlers configured");
-  }
-
-  private async shutdown(): Promise<void> {
-    if (this.isShuttingDown) return;
-    this.isShuttingDown = true;
-    this.logger.info("Initiating shutdown of dynamic flush scheduler", {
-      remainingItems: this.currentBatch.length,
-    });
-
-    await this.checkAndFlush();
-    this.clearTimer();
-
-    this.logger.info("Dynamic flush scheduler shutdown complete", {
-      totalFailedBatches: this.failedBatchCount,
-    });
   }
 
   private clearTimer(): void {

@@ -50,6 +50,17 @@ export interface LogicalReplicationClientOptions {
    * The interval in ms to extend the leader lock (default: 10000)
    */
   leaderLockExtendIntervalMs?: number;
+
+  /**
+   * The number of times to retry acquiring the leader lock (default: 120)
+   */
+  leaderLockRetryCount?: number;
+
+  /**
+   * The interval in ms to retry acquiring the leader lock (default: 500)
+   */
+  leaderLockRetryIntervalMs?: number;
+
   /**
    * The interval in seconds to automatically acknowledge the last LSN if no ack has been sent (default: 10)
    */
@@ -83,6 +94,8 @@ export class LogicalReplicationClient {
   private lastAcknowledgedLsn: string | null = null;
   private leaderLockTimeoutMs: number;
   private leaderLockExtendIntervalMs: number;
+  private leaderLockRetryCount: number;
+  private leaderLockRetryIntervalMs: number;
   private leaderLockHeartbeatTimer: NodeJS.Timeout | null = null;
   private ackIntervalSeconds: number;
   private lastAckTimestamp: number = 0;
@@ -106,6 +119,8 @@ export class LogicalReplicationClient {
 
     this.leaderLockTimeoutMs = options.leaderLockTimeoutMs ?? 30000;
     this.leaderLockExtendIntervalMs = options.leaderLockExtendIntervalMs ?? 10000;
+    this.leaderLockRetryCount = options.leaderLockRetryCount ?? 120;
+    this.leaderLockRetryIntervalMs = options.leaderLockRetryIntervalMs ?? 500;
     this.ackIntervalSeconds = options.ackIntervalSeconds ?? 10;
 
     this.redis = createRedisClient(
@@ -544,9 +559,8 @@ export class LogicalReplicationClient {
         [`logical-replication-client:${this.options.name}`],
         this.leaderLockTimeoutMs,
         {
-          retryCount: 60,
-          retryDelay: 1000,
-          retryJitter: 100,
+          retryCount: this.leaderLockRetryCount,
+          retryDelay: this.leaderLockRetryIntervalMs,
         }
       );
     } catch (err) {

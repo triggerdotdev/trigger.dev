@@ -61,6 +61,9 @@ function initializeRunsReplicationInstance() {
           error,
         });
       });
+
+    process.on("SIGTERM", service.shutdown.bind(service));
+    process.on("SIGINT", service.shutdown.bind(service));
   }
 
   return service;

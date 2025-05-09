@@ -32,8 +32,6 @@ import {
   ValidationResult,
 } from "~/runEngine/types";
 import { RunEngineTriggerTaskService } from "../../app/runEngine/services/triggerTask.server";
-import { ClickHouse } from "@internal/clickhouse";
-import { RunsDashboardService } from "~/services/runsDashboardService.server";
 
 vi.setConfig({ testTimeout: 30_000 }); // 30 seconds timeout
 
