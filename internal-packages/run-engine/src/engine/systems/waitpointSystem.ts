@@ -99,6 +99,9 @@ export class WaitpointSystem {
     }
 
     if (waitpoint.status !== "COMPLETED") {
+      this.$.logger.error(`completeWaitpoint: waitpoint is not completed`, {
+        waitpointId: id,
+      });
       throw new Error(`Waitpoint ${id} is not completed`);
     }
 
