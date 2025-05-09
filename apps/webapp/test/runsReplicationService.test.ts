@@ -429,6 +429,114 @@ describe("RunsReplicationService", () => {
   );
 
   containerTest(
+    "should insert the payload even if it's very large into ClickHouse when a TaskRun is created",
+    async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
+      await prisma.$executeRawUnsafe(`ALTER TABLE public."TaskRun" REPLICA IDENTITY FULL;`);
+
+      const clickhouse = new ClickHouse({
+        url: clickhouseContainer.getConnectionUrl(),
+        name: "runs-replication-payload",
+      });
+
+      const runsReplicationService = new RunsReplicationService({
+        clickhouse,
+        pgConnectionUrl: postgresContainer.getConnectionUri(),
+        serviceName: "runs-replication-payload",
+        slotName: "task_runs_to_clickhouse_v1",
+        publicationName: "task_runs_to_clickhouse_v1_publication",
+        redisOptions,
+        maxFlushConcurrency: 1,
+        flushIntervalMs: 100,
+        flushBatchSize: 1,
+        insertStrategy: "batching",
+        leaderLockTimeoutMs: 5000,
+        leaderLockExtendIntervalMs: 1000,
+        ackIntervalSeconds: 5,
+      });
+
+      await runsReplicationService.start("batching");
+
+      const organization = await prisma.organization.create({
+        data: {
+          title: "test-payload",
+          slug: "test-payload",
+        },
+      });
+
+      const project = await prisma.project.create({
+        data: {
+          name: "test-payload",
+          slug: "test-payload",
+          organizationId: organization.id,
+          externalRef: "test-payload",
+        },
+      });
+
+      const runtimeEnvironment = await prisma.runtimeEnvironment.create({
+        data: {
+          slug: "test-payload",
+          type: "DEVELOPMENT",
+          projectId: project.id,
+          organizationId: organization.id,
+          apiKey: "test-payload",
+          pkApiKey: "test-payload",
+          shortcode: "test-payload",
+        },
+      });
+
+      // Insert a row into the table with a unique payload
+      const largePayload = {
+        foo: Array.from({ length: 100 }, () => "foo").join(""),
+        bar: Array.from({ length: 100 }, () => "bar").join(""),
+        baz: Array.from({ length: 100 }, () => "baz").join(""),
+      };
+
+      const taskRun = await prisma.taskRun.create({
+        data: {
+          friendlyId: `run_payload_${Date.now()}`,
+          taskIdentifier: "my-task-payload",
+          payload: JSON.stringify(largePayload),
+          payloadType: "application/json",
+          traceId: "payload-1234",
+          spanId: "payload-1234",
+          queue: "test-payload",
+          runtimeEnvironmentId: runtimeEnvironment.id,
+          projectId: project.id,
+          organizationId: organization.id,
+          environmentType: "DEVELOPMENT",
+          engine: "V2",
+        },
+      });
+
+      // Wait for replication
+      await setTimeout(1000);
+
+      // Query ClickHouse for the replicated payload
+      const queryPayloads = clickhouse.reader.query({
+        name: "runs-replication-payload",
+        query: "SELECT * FROM trigger_dev.raw_task_runs_payload_v1 WHERE run_id = {run_id:String}",
+        schema: z.any(),
+        params: z.object({ run_id: z.string() }),
+      });
+
+      const [queryError, result] = await queryPayloads({ run_id: taskRun.id });
+
+      expect(queryError).toBeNull();
+      expect(result?.length).toBe(1);
+      expect(result?.[0]).toEqual(
+        expect.objectContaining({
+          run_id: taskRun.id,
+          payload: expect.objectContaining({
+            data: largePayload,
+          }),
+        })
+      );
+
+      await runsReplicationService.stop();
+    }
+  );
+
+  containerTest(
     "should replicate updates to an existing TaskRun to ClickHouse",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
       await prisma.$executeRawUnsafe(`ALTER TABLE public."TaskRun" REPLICA IDENTITY FULL;`);
