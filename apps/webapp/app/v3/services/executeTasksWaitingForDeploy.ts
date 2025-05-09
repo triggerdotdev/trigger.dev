@@ -1,9 +1,9 @@
 import { PrismaClientOrTransaction } from "~/db.server";
+import { env } from "~/env.server";
+import { logger } from "~/services/logger.server";
 import { workerQueue } from "~/services/worker.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { BaseService } from "./baseService.server";
-import { logger } from "~/services/logger.server";
-import { env } from "~/env.server";
 
 export class ExecuteTasksWaitingForDeployService extends BaseService {
   public async call(backgroundWorkerId: string) {
@@ -51,6 +51,8 @@ export class ExecuteTasksWaitingForDeployService extends BaseService {
         taskIdentifier: true,
         concurrencyKey: true,
         queue: true,
+        updatedAt: true,
+        createdAt: true,
       },
       take: maxCount + 1,
     });

@@ -1,11 +1,10 @@
-import { startSpan } from "@internal/tracing";
-import { SystemResources } from "./systems.js";
-import { PrismaClientOrTransaction, TaskRun } from "@trigger.dev/database";
-import { getLatestExecutionSnapshot } from "./executionSnapshotSystem.js";
 import { parseNaturalLanguageDuration } from "@trigger.dev/core/v3/isomorphic";
+import { TaskRunError } from "@trigger.dev/core/v3/schemas";
+import { PrismaClientOrTransaction } from "@trigger.dev/database";
 import { ServiceValidationError } from "../errors.js";
 import { isExecuting } from "../statuses.js";
-import { TaskRunError } from "@trigger.dev/core/v3/schemas";
+import { getLatestExecutionSnapshot } from "./executionSnapshotSystem.js";
+import { SystemResources } from "./systems.js";
 import { WaitpointSystem } from "./waitpointSystem.js";
 
 export type TtlSystemOptions = {
@@ -85,6 +84,7 @@ export class TtlSystem {
           id: true,
           spanId: true,
           ttl: true,
+          updatedAt: true,
           associatedWaitpoint: {
             select: {
               id: true,
@@ -93,12 +93,16 @@ export class TtlSystem {
           runtimeEnvironment: {
             select: {
               organizationId: true,
+              projectId: true,
+              id: true,
             },
           },
           createdAt: true,
           completedAt: true,
           taskEventStore: true,
           parentTaskRunId: true,
+          expiredAt: true,
+          status: true,
         },
       });
 
@@ -113,7 +117,13 @@ export class TtlSystem {
         output: { value: JSON.stringify(error), isError: true },
       });
 
-      this.$.eventBus.emit("runExpired", { run: updatedRun, time: new Date() });
+      this.$.eventBus.emit("runExpired", {
+        run: updatedRun,
+        time: new Date(),
+        organization: { id: updatedRun.runtimeEnvironment.organizationId },
+        project: { id: updatedRun.runtimeEnvironment.projectId },
+        environment: { id: updatedRun.runtimeEnvironment.id },
+      });
     });
   }
 

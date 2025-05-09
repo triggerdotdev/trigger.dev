@@ -100,6 +100,25 @@ export class PendingVersionSystem {
           tx,
         });
       });
+
+      this.$.eventBus.emit("runStatusChanged", {
+        time: new Date(),
+        run: {
+          id: run.id,
+          status: "PENDING",
+          updatedAt: run.updatedAt,
+          createdAt: run.createdAt,
+        },
+        organization: {
+          id: backgroundWorker.runtimeEnvironment.organizationId,
+        },
+        project: {
+          id: backgroundWorker.runtimeEnvironment.projectId,
+        },
+        environment: {
+          id: backgroundWorker.runtimeEnvironmentId,
+        },
+      });
     }
 
     //enqueue more if needed

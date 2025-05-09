@@ -1,5 +1,8 @@
 ARG NODE_IMAGE=node:20.11.1-bullseye-slim@sha256:5a5a92b3a8d392691c983719dbdc65d9f30085d6dcd65376e7a32e6fe9bf4cbe
 
+FROM golang:1.23-alpine AS goose_builder
+RUN go install github.com/pressly/goose/v3/cmd/goose@latest
+
 FROM ${NODE_IMAGE} AS pruner
 
 WORKDIR /triggerdotdev
@@ -43,6 +46,11 @@ WORKDIR /triggerdotdev
 # Corepack is used to install pnpm
 RUN corepack enable
 
+# Goose and schemas
+COPY --from=goose_builder /go/bin/goose /usr/local/bin/goose
+RUN chmod +x /usr/local/bin/goose
+COPY --chown=node:node internal-packages/clickhouse/schema /triggerdotdev/internal-packages/clickhouse/schema
+
 COPY --from=pruner --chown=node:node /triggerdotdev/out/full/ .
 COPY --from=dev-deps --chown=node:node /triggerdotdev/ .
 COPY --chown=node:node turbo.json turbo.json
@@ -69,6 +77,10 @@ COPY --from=builder --chown=node:node /triggerdotdev/apps/webapp/build ./apps/we
 COPY --from=builder --chown=node:node /triggerdotdev/apps/webapp/public ./apps/webapp/public
 COPY --from=builder --chown=node:node /triggerdotdev/apps/webapp/prisma/seed.js ./apps/webapp/prisma/seed.js
 COPY --from=builder --chown=node:node /triggerdotdev/scripts ./scripts
+
+# Goose and schemas
+COPY --from=builder /usr/local/bin/goose /usr/local/bin/goose
+COPY --from=builder --chown=node:node /triggerdotdev/internal-packages/clickhouse/schema /triggerdotdev/internal-packages/clickhouse/schema
 
 EXPOSE 3000
 

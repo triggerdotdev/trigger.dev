@@ -29,6 +29,8 @@ export type TriggerTaskServiceOptions = {
   runFriendlyId?: string;
   skipChecks?: boolean;
   oneTimeUseToken?: string;
+  scheduleId?: string;
+  scheduleInstanceId?: string;
 };
 
 export class OutOfEntitlementError extends Error {

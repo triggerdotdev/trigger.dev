@@ -12,6 +12,7 @@
     "zod": "3.23.8"
   },
   "scripts": {
-    "dev": "trigger dev"
+    "dev": "trigger dev",
+    "deploy": "trigger deploy"
   }
 }

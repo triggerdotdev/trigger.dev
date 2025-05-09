@@ -305,6 +305,8 @@ export class RunEngineTriggerTaskService {
                       ? parentRun.queueTimestamp ?? undefined
                       : undefined,
                   runChainState,
+                  scheduleId: options.scheduleId,
+                  scheduleInstanceId: options.scheduleInstanceId,
                 },
                 this.prisma
               );

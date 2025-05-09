@@ -94,9 +94,11 @@ export class FinalizeTaskRunService extends BaseService {
     // - A single update is more efficient than two
     // - If the status updates to a final status, realtime will receive that status and then shut down the stream
     //   before the error is updated, which would cause the error to be lost
+    const taskRunError = error ? sanitizeError(error) : undefined;
+
     const run = await this._prisma.taskRun.update({
       where: { id },
-      data: { status, expiredAt, completedAt, error: error ? sanitizeError(error) : undefined },
+      data: { status, expiredAt, completedAt, error: taskRunError },
       ...(include ? { include } : {}),
     });
 

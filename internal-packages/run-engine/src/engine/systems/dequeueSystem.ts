@@ -329,30 +329,65 @@ export class DequeueSystem {
                   maxAttempts = parsedConfig.data?.maxAttempts;
                 }
                 //update the run
+                const lockedAt = new Date();
+                const startedAt = result.run.startedAt ?? lockedAt;
+                const maxDurationInSeconds = getMaxDuration(
+                  result.run.maxDurationInSeconds,
+                  result.task.maxDurationInSeconds
+                );
+
                 const lockedTaskRun = await prisma.taskRun.update({
                   where: {
                     id: runId,
                   },
                   data: {
-                    lockedAt: new Date(),
+                    lockedAt,
                     lockedById: result.task.id,
                     lockedToVersionId: result.worker.id,
                     lockedQueueId: result.queue.id,
-                    startedAt: result.run.startedAt ?? new Date(),
+                    startedAt,
                     baseCostInCents: this.options.machines.baseCostInCents,
                     machinePreset: machinePreset.name,
                     taskVersion: result.worker.version,
                     sdkVersion: result.worker.sdkVersion,
                     cliVersion: result.worker.cliVersion,
-                    maxDurationInSeconds: getMaxDuration(
-                      result.run.maxDurationInSeconds,
-                      result.task.maxDurationInSeconds
-                    ),
+                    maxDurationInSeconds,
                     maxAttempts: maxAttempts ?? undefined,
                   },
                   include: {
                     runtimeEnvironment: true,
                     tags: true,
+                  },
+                });
+
+                this.$.eventBus.emit("runLocked", {
+                  time: new Date(),
+                  run: {
+                    id: runId,
+                    status: lockedTaskRun.status,
+                    lockedAt,
+                    lockedById: result.task.id,
+                    lockedToVersionId: result.worker.id,
+                    lockedQueueId: result.queue.id,
+                    startedAt,
+                    baseCostInCents: this.options.machines.baseCostInCents,
+                    machinePreset: machinePreset.name,
+                    taskVersion: result.worker.version,
+                    sdkVersion: result.worker.sdkVersion,
+                    cliVersion: result.worker.cliVersion,
+                    maxDurationInSeconds: lockedTaskRun.maxDurationInSeconds ?? undefined,
+                    maxAttempts: lockedTaskRun.maxAttempts ?? undefined,
+                    updatedAt: lockedTaskRun.updatedAt,
+                    createdAt: lockedTaskRun.createdAt,
+                  },
+                  organization: {
+                    id: orgId,
+                  },
+                  project: {
+                    id: lockedTaskRun.projectId,
+                  },
+                  environment: {
+                    id: lockedTaskRun.runtimeEnvironmentId,
                   },
                 });
 
@@ -539,6 +574,8 @@ export class DequeueSystem {
               id: true,
               status: true,
               attemptNumber: true,
+              updatedAt: true,
+              createdAt: true,
               runtimeEnvironment: {
                 select: {
                   id: true,
@@ -573,6 +610,25 @@ export class DequeueSystem {
 
           //we ack because when it's deployed it will be requeued
           await this.$.runQueue.acknowledgeMessage(orgId, runId);
+
+          this.$.eventBus.emit("runStatusChanged", {
+            time: new Date(),
+            run: {
+              id: runId,
+              status: run.status,
+              updatedAt: run.updatedAt,
+              createdAt: run.createdAt,
+            },
+            organization: {
+              id: run.runtimeEnvironment.project.organizationId,
+            },
+            project: {
+              id: run.runtimeEnvironment.projectId,
+            },
+            environment: {
+              id: run.runtimeEnvironment.id,
+            },
+          });
         });
       },
       {

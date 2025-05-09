@@ -22,7 +22,7 @@
     "lint": "turbo run lint",
     "docker": "docker compose -p triggerdotdev-docker -f docker/docker-compose.yml up -d --build --remove-orphans",
     "docker:stop": "docker compose -p triggerdotdev-docker -f docker/docker-compose.yml stop",
-    "dev:docker": "docker compose -p triggerdotdev-dev-docker -f docker/dev-compose.yml up -d",
+    "dev:docker": "docker compose -p triggerdotdev-dev-docker -f docker/dev-compose.yml up -d --build --remove-orphans",
     "dev:docker:build": "docker compose -p triggerdotdev-dev-docker -f docker/dev-compose.yml up -d --build",
     "dev:docker:stop": "docker compose -p triggerdotdev-dev-docker -f docker/dev-compose.yml stop",
     "test": "turbo run test --concurrency=1 -- --run",

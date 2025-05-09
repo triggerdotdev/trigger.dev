@@ -51,7 +51,7 @@ export function createAsyncIterableReadable<S, T>(
 
 export function createAsyncIterableStreamFromAsyncIterable<T>(
   asyncIterable: AsyncIterable<T>,
-  transformer: Transformer<T, T>,
+  transformer?: Transformer<T, T>,
   signal?: AbortSignal
 ): AsyncIterableStream<T> {
   const stream = new ReadableStream<T>({
@@ -94,4 +94,12 @@ export function createAsyncIterableStreamFromAsyncIterable<T>(
   const transformedStream = stream.pipeThrough(new TransformStream(transformer));
 
   return transformedStream as AsyncIterableStream<T>;
+}
+
+export function createAsyncIterableStreamFromAsyncGenerator<T>(
+  asyncGenerator: AsyncGenerator<T, void, unknown>,
+  transformer: Transformer<T, T>,
+  signal?: AbortSignal
+): AsyncIterableStream<T> {
+  return createAsyncIterableStreamFromAsyncIterable(asyncGenerator, transformer, signal);
 }

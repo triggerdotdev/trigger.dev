@@ -45,6 +45,14 @@ export async function startSpan<T>(
   });
 }
 
+export function recordSpanError(span: Span, error: Error) {
+  span.recordException(error);
+  span.setStatus({
+    code: SpanStatusCode.ERROR,
+    message: error.message,
+  });
+}
+
 export async function emitDebugLog(
   logger: Logger,
   message: string,
