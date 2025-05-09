@@ -51,6 +51,7 @@ export function IncidentStatusPanel() {
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
           transition={{ duration: 0.3 }}
           className="p-1"
         >
@@ -62,15 +63,17 @@ export function IncidentStatusPanel() {
               </Paragraph>
             </div>
             <Paragraph variant="extra-small/bright" className="text-warning/80">
-              Our team is working on resolving the issue. Monitor our status page for updates.
+              Our team is working on resolving the issue. Check our status page for more
+              information.
             </Paragraph>
             <LinkButton
               variant="secondary/small"
               to="https://status.trigger.dev"
               target="_blank"
               fullWidth
+              className="border-warning/20 bg-warning/10 hover:!border-warning/30 hover:!bg-warning/20"
             >
-              View status page
+              <span className="text-warning">View status page</span>
             </LinkButton>
           </div>
         </motion.div>
