@@ -171,7 +171,7 @@ async function getAllClickhouseMigrationQueries(migrationsPath: string) {
     // The array will be: ["", "Up", "up queries", "Down", "down queries"]
     // We want the "up queries" part which is at index 2
     if (parts.length >= 3) {
-      const upQueries = parts[2].trim();
+      const upQueries = parts[2]!.trim();
       queries.push(
         ...upQueries
           .split(";")
