@@ -61,6 +61,22 @@ describe("flattenAttributes", () => {
     expect(unflattenAttributes(result)).toEqual(input);
   });
 
+  it("flattens empty array attributes correctly", () => {
+    const input: number[] = [];
+
+    const result = flattenAttributes(input);
+    expect(result).toEqual({ "": "$@empty_array((" });
+    expect(unflattenAttributes(result)).toEqual(input);
+  });
+
+  it("flattens empty array child attributes correctly", () => {
+    const input: number[] = [];
+
+    const result = flattenAttributes({ input });
+    expect(result).toEqual({ input: "$@empty_array((" });
+    expect(unflattenAttributes(result)).toEqual({ input });
+  });
+
   it("flattens complex objects correctly", () => {
     const obj = {
       level1: {
@@ -157,13 +173,13 @@ describe("flattenAttributes", () => {
     expect(flattenAttributes(obj, "retry.byStatus")).toEqual(expected);
   });
 
-   it("handles circular references correctly", () => {
+  it("handles circular references correctly", () => {
     const user = { name: "Alice" };
     user["blogPosts"] = [{ title: "Post 1", author: user }]; // Circular reference
 
     const result = flattenAttributes(user);
     expect(result).toEqual({
-      "name": "Alice",
+      name: "Alice",
       "blogPosts.[0].title": "Post 1",
       "blogPosts.[0].author": "$@circular((",
     });
@@ -175,7 +191,7 @@ describe("flattenAttributes", () => {
 
     const result = flattenAttributes(user);
     expect(result).toEqual({
-      "name": "Bob",
+      name: "Bob",
       "friends.[0]": "$@circular((",
     });
   });
@@ -246,10 +262,24 @@ describe("unflattenAttributes", () => {
     };
     expect(unflattenAttributes(flattened)).toEqual(expected);
   });
-  
+
+  it("correctly reconstructs empty arrays", () => {
+    const flattened = {
+      "": "$@empty_array((",
+      array1: "$@empty_array((",
+      "array2.[0]": "$@empty_array((",
+    };
+    const expected = {
+      "": [],
+      array1: [],
+      array2: [[]],
+    };
+    expect(unflattenAttributes(flattened)).toEqual(expected);
+  });
+
   it("rehydrates circular references correctly", () => {
     const flattened = {
-      "name": "Alice",
+      name: "Alice",
       "blogPosts.[0].title": "Post 1",
       "blogPosts.[0].author": "$@circular((",
     };
