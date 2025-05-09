@@ -1,7 +1,7 @@
-import { SecretStoreOptionsSchema } from "./services/secrets/secretStoreOptionsSchema.server";
 import { z } from "zod";
-import { isValidRegex } from "./utils/regex";
+import { SecretStoreOptionsSchema } from "./services/secrets/secretStoreOptionsSchema.server";
 import { isValidDatabaseUrl } from "./utils/db";
+import { isValidRegex } from "./utils/regex";
 
 const EnvironmentSchema = z.object({
   NODE_ENV: z.union([z.literal("development"), z.literal("production"), z.literal("test")]),
@@ -721,6 +721,10 @@ const EnvironmentSchema = z.object({
 
   // kapa.ai
   KAPA_AI_WEBSITE_ID: z.string().optional(),
+
+  // BetterStack
+  BETTERSTACK_API_KEY: z.string().optional(),
+  BETTERSTACK_STATUS_PAGE_ID: z.string().optional(),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;
