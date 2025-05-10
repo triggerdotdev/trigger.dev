@@ -1,0 +1,19 @@
+{
+  "name": "prisma-test-new",
+  "version": "1.0.0",
+  "description": "Test project for Prisma 6.6+ compatibility",
+  "main": "index.js",
+  "scripts": {
+    "generate:prisma": "prisma generate",
+    "test": "node index.js"
+  },
+  "keywords": ["prisma", "test", "compatibility"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@prisma/client": "^6.6.0"
+  },
+  "devDependencies": {
+    "prisma": "^6.6.0"
+  }
+}
