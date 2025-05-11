@@ -60,12 +60,12 @@ export async function action({ request, params }: ActionFunctionArgs) {
   let created = 0;
 
   for (const project of organization.projects) {
-    const stagingResult = await upsertEnvironment(organization, project, "STAGING");
+    const stagingResult = await upsertEnvironment(organization, project, "STAGING", false);
     if (stagingResult.status === "created") {
       created++;
     }
 
-    const previewResult = await upsertEnvironment(organization, project, "PREVIEW");
+    const previewResult = await upsertEnvironment(organization, project, "PREVIEW", true);
     if (previewResult.status === "created") {
       created++;
     }
@@ -77,12 +77,18 @@ export async function action({ request, params }: ActionFunctionArgs) {
 async function upsertEnvironment(
   organization: Organization,
   project: Project & { environments: RuntimeEnvironment[] },
-  type: RuntimeEnvironmentType
+  type: RuntimeEnvironmentType,
+  isBranchableEnvironment: boolean
 ) {
   const existingEnvironment = project.environments.find((env) => env.type === type);
 
   if (!existingEnvironment) {
-    const newEnvironment = await createEnvironment(organization, project, type);
+    const newEnvironment = await createEnvironment(
+      organization,
+      project,
+      type,
+      isBranchableEnvironment
+    );
     await updateEnvConcurrencyLimits({ ...newEnvironment, organization, project });
     return { status: "created", environment: newEnvironment };
   } else {

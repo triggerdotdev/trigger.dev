@@ -346,13 +346,15 @@ export async function getEntitlement(organizationId: string) {
 }
 
 export async function projectCreated(organization: Organization, project: Project) {
-  if (project.version === "V2" || !isCloud()) {
+  if (!isCloud()) {
     await createEnvironment(organization, project, "STAGING");
+    await createEnvironment(organization, project, "PREVIEW", true);
   } else {
     //staging is only available on certain plans
     const plan = await getCurrentPlan(organization.id);
     if (plan?.v3Subscription.plan?.limits.hasStagingEnvironment) {
       await createEnvironment(organization, project, "STAGING");
+      await createEnvironment(organization, project, "PREVIEW", true);
     }
   }
 }

@@ -80,6 +80,7 @@ export async function createEnvironment(
   organization: Pick<Organization, "id" | "maximumConcurrencyLimit">,
   project: Pick<Project, "id">,
   type: RuntimeEnvironment["type"],
+  isBranchableEnvironment = false,
   member?: OrgMember,
   prismaClient: PrismaClientOrTransaction = prisma
 ) {
@@ -108,6 +109,7 @@ export async function createEnvironment(
       },
       orgMember: member ? { connect: { id: member.id } } : undefined,
       type,
+      isBranchableEnvironment,
     },
   });
 }

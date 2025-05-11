@@ -1,5 +1,3 @@
-/* eslint-disable turbo/no-undeclared-env-vars */
-
 import { seedCloud } from "./seedCloud";
 import { prisma } from "../app/db.server";
 import { createEnvironment } from "~/models/organization.server";
@@ -48,7 +46,7 @@ async function runStagingEnvironmentMigration() {
             `Creating staging environment for project ${project.slug} on org ${project.organization.slug}`
           );
 
-          await createEnvironment(project.organization, project, "STAGING", undefined, tx);
+          await createEnvironment(project.organization, project, "STAGING", false, undefined, tx);
         } catch (error) {
           console.error(error);
         }
