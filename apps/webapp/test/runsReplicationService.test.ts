@@ -2,10 +2,10 @@ import { ClickHouse } from "@internal/clickhouse";
 import { containerTest } from "@internal/testcontainers";
 import { Logger } from "@trigger.dev/core/logger";
 import { setTimeout } from "node:timers/promises";
-import { OpenMetricsContentType, Registry } from "prom-client";
 import { z } from "zod";
 import { TaskRunStatus } from "~/database-types";
 import { RunsReplicationService } from "~/services/runsReplicationService.server";
+import { createInMemoryTracing } from "./utils/tracing";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -20,6 +20,8 @@ describe("RunsReplicationService", () => {
         name: "runs-replication",
       });
 
+      const { tracer, exporter } = createInMemoryTracing();
+
       const runsReplicationService = new RunsReplicationService({
         clickhouse,
         pgConnectionUrl: postgresContainer.getConnectionUri(),
@@ -30,10 +32,10 @@ describe("RunsReplicationService", () => {
         maxFlushConcurrency: 1,
         flushIntervalMs: 100,
         flushBatchSize: 1,
-        insertStrategy: "batching",
         leaderLockTimeoutMs: 5000,
         leaderLockExtendIntervalMs: 1000,
         ackIntervalSeconds: 5,
+        tracer,
       });
 
       await runsReplicationService.start();
@@ -109,6 +111,21 @@ describe("RunsReplicationService", () => {
         })
       );
 
+      const spans = exporter.getFinishedSpans();
+
+      expect(spans.length).toBeGreaterThan(0);
+
+      const transactionSpan = spans.find(
+        (span) =>
+          span.name === "handle_transaction" &&
+          typeof span.attributes["transaction.events"] === "number" &&
+          span.attributes["transaction.events"] > 0
+      );
+
+      expect(transactionSpan).not.toBeNull();
+      expect(transactionSpan?.attributes["transaction.parse_duration_ms"]).toBeGreaterThan(0);
+      expect(transactionSpan?.attributes["transaction.parse_duration_ms"]).toBeLessThan(1);
+
       await runsReplicationService.stop();
     }
   );
@@ -133,13 +150,12 @@ describe("RunsReplicationService", () => {
         maxFlushConcurrency: 1,
         flushIntervalMs: 100,
         flushBatchSize: 1,
-        insertStrategy: "batching",
         leaderLockTimeoutMs: 5000,
         leaderLockExtendIntervalMs: 1000,
         ackIntervalSeconds: 5,
       });
 
-      await runsReplicationService.start("batching");
+      await runsReplicationService.start();
 
       const organization = await prisma.organization.create({
         data: {
@@ -220,112 +236,6 @@ describe("RunsReplicationService", () => {
   );
 
   containerTest(
-    "should replicate a new TaskRun to ClickHouse using streaming insert strategy",
-    async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
-      await prisma.$executeRawUnsafe(`ALTER TABLE public."TaskRun" REPLICA IDENTITY FULL;`);
-
-      const clickhouse = new ClickHouse({
-        url: clickhouseContainer.getConnectionUrl(),
-        name: "runs-replication-streaming",
-      });
-
-      const runsReplicationService = new RunsReplicationService({
-        clickhouse,
-        pgConnectionUrl: postgresContainer.getConnectionUri(),
-        serviceName: "runs-replication-streaming",
-        slotName: "task_runs_to_clickhouse_v1",
-        publicationName: "task_runs_to_clickhouse_v1_publication",
-        redisOptions,
-        maxFlushConcurrency: 1,
-        flushIntervalMs: 100,
-        flushBatchSize: 1,
-        insertStrategy: "streaming",
-        leaderLockTimeoutMs: 5000,
-        leaderLockExtendIntervalMs: 1000,
-        ackIntervalSeconds: 5,
-      });
-
-      await runsReplicationService.start("streaming");
-
-      const organization = await prisma.organization.create({
-        data: {
-          title: "test-streaming",
-          slug: "test-streaming",
-        },
-      });
-
-      const project = await prisma.project.create({
-        data: {
-          name: "test-streaming",
-          slug: "test-streaming",
-          organizationId: organization.id,
-          externalRef: "test-streaming",
-        },
-      });
-
-      const runtimeEnvironment = await prisma.runtimeEnvironment.create({
-        data: {
-          slug: "test-streaming",
-          type: "DEVELOPMENT",
-          projectId: project.id,
-          organizationId: organization.id,
-          apiKey: "test-streaming",
-          pkApiKey: "test-streaming",
-          shortcode: "test-streaming",
-        },
-      });
-
-      // Insert a row into the table with a unique friendlyId
-      const uniqueFriendlyId = `run_streaming_${Date.now()}`;
-      const taskRun = await prisma.taskRun.create({
-        data: {
-          friendlyId: uniqueFriendlyId,
-          taskIdentifier: "my-task-streaming",
-          payload: JSON.stringify({ foo: "bar-streaming" }),
-          traceId: "streaming-1234",
-          spanId: "streaming-1234",
-          queue: "test-streaming",
-          runtimeEnvironmentId: runtimeEnvironment.id,
-          projectId: project.id,
-          organizationId: organization.id,
-          environmentType: "DEVELOPMENT",
-          engine: "V2",
-        },
-      });
-
-      // Wait for replication
-      await setTimeout(1000);
-
-      // Query ClickHouse for the replicated run
-      const queryRuns = clickhouse.reader.query({
-        name: "runs-replication-streaming",
-        query: "SELECT * FROM trigger_dev.task_runs_v1 WHERE run_id = {run_id:String}",
-        schema: z.any(),
-        params: z.object({ run_id: z.string() }),
-      });
-
-      const [queryError, result] = await queryRuns({ run_id: taskRun.id });
-
-      expect(queryError).toBeNull();
-      expect(result?.length).toBe(1);
-      expect(result?.[0]).toEqual(
-        expect.objectContaining({
-          run_id: taskRun.id,
-          friendly_id: taskRun.friendlyId,
-          task_identifier: taskRun.taskIdentifier,
-          environment_id: runtimeEnvironment.id,
-          project_id: project.id,
-          organization_id: organization.id,
-          environment_type: "DEVELOPMENT",
-          engine: "V2",
-        })
-      );
-
-      await runsReplicationService.stop();
-    }
-  );
-
-  containerTest(
     "should insert the payload into ClickHouse when a TaskRun is created",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
       await prisma.$executeRawUnsafe(`ALTER TABLE public."TaskRun" REPLICA IDENTITY FULL;`);
@@ -345,13 +255,12 @@ describe("RunsReplicationService", () => {
         maxFlushConcurrency: 1,
         flushIntervalMs: 100,
         flushBatchSize: 1,
-        insertStrategy: "batching",
         leaderLockTimeoutMs: 5000,
         leaderLockExtendIntervalMs: 1000,
         ackIntervalSeconds: 5,
       });
 
-      await runsReplicationService.start("batching");
+      await runsReplicationService.start();
 
       const organization = await prisma.organization.create({
         data: {
@@ -448,13 +357,12 @@ describe("RunsReplicationService", () => {
         maxFlushConcurrency: 1,
         flushIntervalMs: 100,
         flushBatchSize: 1,
-        insertStrategy: "batching",
         leaderLockTimeoutMs: 5000,
         leaderLockExtendIntervalMs: 1000,
         ackIntervalSeconds: 5,
       });
 
-      await runsReplicationService.start("batching");
+      await runsReplicationService.start();
 
       const organization = await prisma.organization.create({
         data: {
@@ -556,13 +464,12 @@ describe("RunsReplicationService", () => {
         maxFlushConcurrency: 1,
         flushIntervalMs: 100,
         flushBatchSize: 1,
-        insertStrategy: "batching",
         leaderLockTimeoutMs: 5000,
         leaderLockExtendIntervalMs: 1000,
         ackIntervalSeconds: 5,
       });
 
-      await runsReplicationService.start("batching");
+      await runsReplicationService.start();
 
       const organization = await prisma.organization.create({
         data: {
@@ -667,13 +574,12 @@ describe("RunsReplicationService", () => {
         maxFlushConcurrency: 1,
         flushIntervalMs: 100,
         flushBatchSize: 1,
-        insertStrategy: "batching",
         leaderLockTimeoutMs: 5000,
         leaderLockExtendIntervalMs: 1000,
         ackIntervalSeconds: 5,
       });
 
-      await runsReplicationService.start("batching");
+      await runsReplicationService.start();
 
       const organization = await prisma.organization.create({
         data: {
@@ -772,13 +678,12 @@ describe("RunsReplicationService", () => {
         maxFlushConcurrency: 1,
         flushIntervalMs: 100,
         flushBatchSize: 1,
-        insertStrategy: "batching",
         leaderLockTimeoutMs: 5000,
         leaderLockExtendIntervalMs: 1000,
         ackIntervalSeconds: 5,
       });
 
-      await runsReplicationServiceA.start("batching");
+      await runsReplicationServiceA.start();
 
       const organization = await prisma.organization.create({
         data: {
@@ -884,13 +789,12 @@ describe("RunsReplicationService", () => {
         maxFlushConcurrency: 1,
         flushIntervalMs: 100,
         flushBatchSize: 1,
-        insertStrategy: "batching",
         leaderLockTimeoutMs: 5000,
         leaderLockExtendIntervalMs: 1000,
         ackIntervalSeconds: 5,
       });
 
-      await runsReplicationServiceB.start("batching");
+      await runsReplicationServiceB.start();
 
       // Wait for replication
       await setTimeout(1000);
@@ -931,13 +835,12 @@ describe("RunsReplicationService", () => {
         maxFlushConcurrency: 1,
         flushIntervalMs: 100,
         flushBatchSize: 1,
-        insertStrategy: "batching",
         leaderLockTimeoutMs: 5000,
         leaderLockExtendIntervalMs: 1000,
         ackIntervalSeconds: 5,
       });
 
-      await runsReplicationServiceA.start("batching");
+      await runsReplicationServiceA.start();
 
       const organization = await prisma.organization.create({
         data: {
@@ -1038,13 +941,12 @@ describe("RunsReplicationService", () => {
         maxFlushConcurrency: 1,
         flushIntervalMs: 100,
         flushBatchSize: 1,
-        insertStrategy: "batching",
         leaderLockTimeoutMs: 5000,
         leaderLockExtendIntervalMs: 1000,
         ackIntervalSeconds: 5,
       });
 
-      await runsReplicationServiceB.start("batching");
+      await runsReplicationServiceB.start();
 
       await setTimeout(1000);
 
@@ -1078,14 +980,13 @@ describe("RunsReplicationService", () => {
         maxFlushConcurrency: 10,
         flushIntervalMs: 100,
         flushBatchSize: 50,
-        insertStrategy: "batching",
         leaderLockTimeoutMs: 5000,
         leaderLockExtendIntervalMs: 1000,
         ackIntervalSeconds: 5,
         logger: new Logger("runs-replication-stress-bulk-insert", "info"),
       });
 
-      await runsReplicationService.start("batching");
+      await runsReplicationService.start();
 
       const organization = await prisma.organization.create({
         data: {
@@ -1183,8 +1084,6 @@ describe("RunsReplicationService", () => {
         name: "runs-replication-stress-bulk-insert",
       });
 
-      const registry = new Registry<OpenMetricsContentType>();
-
       const runsReplicationService = new RunsReplicationService({
         clickhouse,
         pgConnectionUrl: postgresContainer.getConnectionUri(),
@@ -1195,15 +1094,13 @@ describe("RunsReplicationService", () => {
         maxFlushConcurrency: 10,
         flushIntervalMs: 100,
         flushBatchSize: 50,
-        insertStrategy: "batching",
         leaderLockTimeoutMs: 5000,
         leaderLockExtendIntervalMs: 1000,
         ackIntervalSeconds: 5,
         logger: new Logger("runs-replication-stress-bulk-insert", "info"),
-        metricsRegister: registry,
       });
 
-      await runsReplicationService.start("batching");
+      await runsReplicationService.start();
 
       const organization = await prisma.organization.create({
         data: {
@@ -1317,13 +1214,12 @@ describe("RunsReplicationService", () => {
         maxFlushConcurrency: 1,
         flushIntervalMs: 100,
         flushBatchSize: 10,
-        insertStrategy: "batching",
         leaderLockTimeoutMs: 5000,
         leaderLockExtendIntervalMs: 1000,
         ackIntervalSeconds: 5,
       });
 
-      await runsReplicationService.start("batching");
+      await runsReplicationService.start();
 
       const organization = await prisma.organization.create({
         data: {
@@ -1428,5 +1324,113 @@ describe("RunsReplicationService", () => {
 
       await runsReplicationService.stop();
     }
+  );
+
+  containerTest(
+    "should be able to handle processing transactions for a long period of time",
+    async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
+      await prisma.$executeRawUnsafe(`ALTER TABLE public."TaskRun" REPLICA IDENTITY FULL;`);
+
+      const clickhouse = new ClickHouse({
+        url: clickhouseContainer.getConnectionUrl(),
+        name: "runs-replication-long-tx",
+      });
+
+      const runsReplicationService = new RunsReplicationService({
+        clickhouse,
+        pgConnectionUrl: postgresContainer.getConnectionUri(),
+        serviceName: "runs-replication-long-tx",
+        slotName: "task_runs_to_clickhouse_v1",
+        publicationName: "task_runs_to_clickhouse_v1_publication",
+        redisOptions,
+        maxFlushConcurrency: 1,
+        flushIntervalMs: 100,
+        flushBatchSize: 10,
+        leaderLockTimeoutMs: 5000,
+        leaderLockExtendIntervalMs: 1000,
+        ackIntervalSeconds: 5,
+        logger: new Logger("runs-replication-long-tx", "info"),
+      });
+
+      await runsReplicationService.start();
+
+      const organization = await prisma.organization.create({
+        data: {
+          title: "test-long-tx",
+          slug: "test-long-tx",
+        },
+      });
+
+      const project = await prisma.project.create({
+        data: {
+          name: "test-long-tx",
+          slug: "test-long-tx",
+          organizationId: organization.id,
+          externalRef: "test-long-tx",
+        },
+      });
+
+      const runtimeEnvironment = await prisma.runtimeEnvironment.create({
+        data: {
+          slug: "test-long-tx",
+          type: "DEVELOPMENT",
+          projectId: project.id,
+          organizationId: organization.id,
+          apiKey: "test-long-tx",
+          pkApiKey: "test-long-tx",
+          shortcode: "test-long-tx",
+        },
+      });
+
+      // Start an interval that will create a new run every 500ms for 4 minutes
+      const interval = setInterval(async () => {
+        await prisma.taskRun.create({
+          data: {
+            friendlyId: `run_long_tx_${Date.now()}`,
+            taskIdentifier: "my-task-long-tx",
+            payload: JSON.stringify({ long: 1 }),
+            payloadType: "application/json",
+            traceId: `long-${Date.now()}`,
+            spanId: `long-${Date.now()}`,
+            queue: "test-long-tx",
+            runtimeEnvironmentId: runtimeEnvironment.id,
+            projectId: project.id,
+            organizationId: organization.id,
+            environmentType: "DEVELOPMENT",
+            engine: "V2",
+            status: "PENDING",
+            attemptNumber: 1,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+        });
+      }, 500);
+
+      // Wait for 4 minutes
+      await setTimeout(4 * 60 * 1000);
+
+      // Stop the interval
+      clearInterval(interval);
+
+      // Wait for replication
+      await setTimeout(1000);
+
+      // Query ClickHouse for all runs using FINAL
+      const queryRuns = clickhouse.reader.query({
+        name: "runs-replication-long-tx",
+        query: `SELECT * FROM trigger_dev.task_runs_v1 FINAL`,
+        schema: z.any(),
+      });
+
+      const [queryError, result] = await queryRuns({});
+      expect(queryError).toBeNull();
+
+      // Check that there are between 200 and 480 runs in ClickHouse
+      expect(result?.length).toBeGreaterThanOrEqual(200);
+      expect(result?.length).toBeLessThanOrEqual(480);
+
+      await runsReplicationService.stop();
+    },
+    { timeout: 60_000 * 5 }
   );
 });

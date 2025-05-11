@@ -78,7 +78,7 @@ export interface LogicalReplicationClientOptions {
 export type LogicalReplicationClientEvents = {
   leaderElection: [boolean];
   error: [Error];
-  data: [{ lsn: string; log: PgoutputMessage }];
+  data: [{ lsn: string; log: PgoutputMessage; parseDuration: bigint }];
   start: [];
   acknowledge: [{ lsn: string }];
   heartbeat: [{ lsn: string; timestamp: number; shouldRespond: boolean }];
@@ -351,8 +351,10 @@ export class LogicalReplicationClient {
         if (buffer[0] === 0x77) {
           // XLogData
           try {
+            const start = process.hrtime.bigint();
             const log = parser.parse(buffer.subarray(25));
-            this.events.emit("data", { lsn, log });
+            const duration = process.hrtime.bigint() - start;
+            this.events.emit("data", { lsn, log, parseDuration: duration });
             await this.#acknowledge(lsn);
           } catch (err) {
             this.logger.error("Failed to parse XLogData", { error: err });
