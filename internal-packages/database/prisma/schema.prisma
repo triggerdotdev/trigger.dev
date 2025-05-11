@@ -382,11 +382,13 @@ model RuntimeEnvironment {
 
   type RuntimeEnvironmentType @default(DEVELOPMENT)
 
-  /// Preview branches
-  branchName          String?
-  parentEnvironment   RuntimeEnvironment?  @relation("parentEnvironment", fields: [parentEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  parentEnvironmentId String?
-  childEnvironments   RuntimeEnvironment[] @relation("parentEnvironment")
+  // Preview branches
+  /// If true, this environment has branches and is treated differently in the dashboard/API
+  isBranchableEnvironment Boolean              @default(false)
+  branchName              String?
+  parentEnvironment       RuntimeEnvironment?  @relation("parentEnvironment", fields: [parentEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  parentEnvironmentId     String?
+  childEnvironments       RuntimeEnvironment[] @relation("parentEnvironment")
 
   git Json?
 
