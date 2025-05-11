@@ -1,3 +1,4 @@
+import { GitBranchIcon } from "lucide-react";
 import {
   DeployedEnvironmentIconSmall,
   DevEnvironmentIconSmall,
@@ -6,7 +7,7 @@ import {
 import type { RuntimeEnvironment } from "~/models/runtimeEnvironment.server";
 import { cn } from "~/utils/cn";
 
-type Environment = Pick<RuntimeEnvironment, "type">;
+type Environment = Pick<RuntimeEnvironment, "type"> & { branchName?: string | null };
 
 export function EnvironmentIcon({
   environment,
@@ -15,6 +16,10 @@ export function EnvironmentIcon({
   environment: Environment;
   className?: string;
 }) {
+  if (environment.branchName) {
+    return <GitBranchIcon className={cn(environmentTextClassName(environment), className)} />;
+  }
+
   switch (environment.type) {
     case "DEVELOPMENT":
       return (
@@ -60,12 +65,16 @@ export function EnvironmentLabel({
 }) {
   return (
     <span className={cn(environmentTextClassName(environment), className)}>
-      {environmentFullTitle(environment)}
+      {environment.branchName ? environment.branchName : environmentFullTitle(environment)}
     </span>
   );
 }
 
 export function environmentTitle(environment: Environment, username?: string) {
+  if (environment.branchName) {
+    return environment.branchName;
+  }
+
   switch (environment.type) {
     case "PRODUCTION":
       return "Prod";

@@ -174,7 +174,14 @@ export async function acceptInvite({ userId, inviteId }: { userId: string; invit
 
     // 3. Create an environment for each project
     for (const project of invite.organization.projects) {
-      await createEnvironment(invite.organization, project, "DEVELOPMENT", false, member, tx);
+      await createEnvironment({
+        organization: invite.organization,
+        project,
+        type: "DEVELOPMENT",
+        isBranchableEnvironment: false,
+        member,
+        prismaClient: tx,
+      });
     }
 
     // 4. Check for other invites

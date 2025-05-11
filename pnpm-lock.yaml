@@ -621,6 +621,9 @@ importers:
       slug:
         specifier: ^6.0.0
         version: 6.1.0
+      slugify:
+        specifier: ^1.6.6
+        version: 1.6.6
       socket.io:
         specifier: 4.7.4
         version: 4.7.4
@@ -32298,6 +32301,11 @@ packages:
 
   /slug@6.1.0:
     resolution: {integrity: sha512-x6vLHCMasg4DR2LPiyFGI0gJJhywY6DTiGhCrOMzb3SOk/0JVLIaL4UhyFSHu04SD3uAavrKY/K3zZ3i6iRcgA==}
+    dev: false
+
+  /slugify@1.6.6:
+    resolution: {integrity: sha512-h+z7HKHYXj6wJU+AnS/+IH8Uh9fdcX1Lrhg1/VMdf9PwoBQXFcXiAdsy2tSK0P6gKwJLXp02r90ahUCqHk9rrw==}
+    engines: {node: '>=8.0.0'}
     dev: false
 
   /smart-buffer@4.2.0:

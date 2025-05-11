@@ -83,12 +83,12 @@ async function upsertEnvironment(
   const existingEnvironment = project.environments.find((env) => env.type === type);
 
   if (!existingEnvironment) {
-    const newEnvironment = await createEnvironment(
+    const newEnvironment = await createEnvironment({
       organization,
       project,
       type,
-      isBranchableEnvironment
-    );
+      isBranchableEnvironment,
+    });
     await updateEnvConcurrencyLimits({ ...newEnvironment, organization, project });
     return { status: "created", environment: newEnvironment };
   } else {

@@ -88,10 +88,21 @@ export async function createProject(
   });
 
   // Create the dev and prod environments
-  await createEnvironment(organization, project, "PRODUCTION", false);
+  await createEnvironment({
+    organization,
+    project,
+    type: "PRODUCTION",
+    isBranchableEnvironment: false,
+  });
 
   for (const member of project.organization.members) {
-    await createEnvironment(organization, project, "DEVELOPMENT", false, member);
+    await createEnvironment({
+      organization,
+      project,
+      type: "DEVELOPMENT",
+      isBranchableEnvironment: false,
+      member,
+    });
   }
 
   await projectCreated(organization, project);

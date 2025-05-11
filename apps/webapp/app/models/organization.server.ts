@@ -1,3 +1,4 @@
+import slugify from "slugify";
 import type {
   Organization,
   OrgMember,
@@ -7,7 +8,7 @@ import type {
 } from "@trigger.dev/database";
 import { customAlphabet } from "nanoid";
 import slug from "slug";
-import { prisma, PrismaClientOrTransaction } from "~/db.server";
+import { prisma, type PrismaClientOrTransaction } from "~/db.server";
 import { generate } from "random-words";
 import { createApiKeyForEnv, createPkApiKeyForEnv, envSlug } from "./api-key.server";
 import { env } from "~/env.server";
@@ -76,14 +77,21 @@ export async function createOrganization(
   return { ...organization };
 }
 
-export async function createEnvironment(
-  organization: Pick<Organization, "id" | "maximumConcurrencyLimit">,
-  project: Pick<Project, "id">,
-  type: RuntimeEnvironment["type"],
+export async function createEnvironment({
+  organization,
+  project,
+  type,
   isBranchableEnvironment = false,
-  member?: OrgMember,
-  prismaClient: PrismaClientOrTransaction = prisma
-) {
+  member,
+  prismaClient = prisma,
+}: {
+  organization: Pick<Organization, "id" | "maximumConcurrencyLimit">;
+  project: Pick<Project, "id">;
+  type: RuntimeEnvironment["type"];
+  isBranchableEnvironment?: boolean;
+  member?: OrgMember;
+  prismaClient?: PrismaClientOrTransaction;
+}) {
   const slug = envSlug(type);
   const apiKey = createApiKeyForEnv(type);
   const pkApiKey = createPkApiKeyForEnv(type);
@@ -110,6 +118,49 @@ export async function createEnvironment(
       orgMember: member ? { connect: { id: member.id } } : undefined,
       type,
       isBranchableEnvironment,
+    },
+  });
+}
+
+export function createBranchEnvironment({
+  organization,
+  project,
+  parentEnvironment,
+  branchName,
+}: {
+  organization: Pick<Organization, "id" | "maximumConcurrencyLimit">;
+  project: Pick<Project, "id">;
+  parentEnvironment: RuntimeEnvironment;
+  branchName: string;
+}) {
+  const slug = slugify(`${parentEnvironment.slug}-${branchName}`, {
+    lower: true,
+    strict: true,
+  });
+  const apiKey = createApiKeyForEnv(parentEnvironment.type);
+  const pkApiKey = createPkApiKeyForEnv(parentEnvironment.type);
+  const shortcode = createShortcode().join("-");
+
+  return prisma.runtimeEnvironment.create({
+    data: {
+      slug,
+      apiKey,
+      pkApiKey,
+      shortcode,
+      maximumConcurrencyLimit: parentEnvironment.maximumConcurrencyLimit,
+      organization: {
+        connect: {
+          id: organization.id,
+        },
+      },
+      project: {
+        connect: { id: project.id },
+      },
+      branchName,
+      type: parentEnvironment.type,
+      parentEnvironment: {
+        connect: { id: parentEnvironment.id },
+      },
     },
   });
 }

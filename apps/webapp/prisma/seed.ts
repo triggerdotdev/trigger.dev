@@ -46,7 +46,14 @@ async function runStagingEnvironmentMigration() {
             `Creating staging environment for project ${project.slug} on org ${project.organization.slug}`
           );
 
-          await createEnvironment(project.organization, project, "STAGING", false, undefined, tx);
+          await createEnvironment({
+            organization: project.organization,
+            project,
+            type: "STAGING",
+            isBranchableEnvironment: false,
+            member: undefined,
+            prismaClient: tx,
+          });
         } catch (error) {
           console.error(error);
         }
