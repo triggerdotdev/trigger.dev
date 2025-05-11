@@ -373,12 +373,25 @@ model OrgMemberInvite {
 }
 
 model RuntimeEnvironment {
-  id       String @id @default(cuid())
-  slug     String
-  apiKey   String @unique
+  id     String @id @default(cuid())
+  slug   String
+  apiKey String @unique
+
+  /// Deprecated, was for v2
   pkApiKey String @unique
 
   type RuntimeEnvironmentType @default(DEVELOPMENT)
+
+  /// Preview branches
+  branchName          String?
+  parentEnvironment   RuntimeEnvironment?  @relation("parentEnvironment", fields: [parentEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  parentEnvironmentId String?
+  childEnvironments   RuntimeEnvironment[] @relation("parentEnvironment")
+
+  git Json?
+
+  /// When set API calls will fail
+  archivedAt DateTime?
 
   ///A memorable code for the environment
   shortcode String
@@ -401,24 +414,26 @@ model RuntimeEnvironment {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tunnelId String?
+  /// Deprecated (v2)
+  tunnelId                 String?
+  endpoints                Endpoint[]
+  jobVersions              JobVersion[]
+  events                   EventRecord[]
+  jobRuns                  JobRun[]
+  requestDeliveries        HttpSourceRequestDelivery[]
+  jobAliases               JobAlias[]
+  JobQueue                 JobQueue[]
+  sources                  TriggerSource[]
+  eventDispatchers         EventDispatcher[]
+  scheduleSources          ScheduleSource[]
+  ExternalAccount          ExternalAccount[]
+  httpEndpointEnvironments TriggerHttpEndpointEnvironment[]
+  concurrencyLimitGroups   ConcurrencyLimitGroup[]
+  keyValueItems            KeyValueItem[]
+  webhookEnvironments      WebhookEnvironment[]
+  webhookRequestDeliveries WebhookRequestDelivery[]
 
-  endpoints                  Endpoint[]
-  jobVersions                JobVersion[]
-  events                     EventRecord[]
-  jobRuns                    JobRun[]
-  requestDeliveries          HttpSourceRequestDelivery[]
-  jobAliases                 JobAlias[]
-  JobQueue                   JobQueue[]
-  sources                    TriggerSource[]
-  eventDispatchers           EventDispatcher[]
-  scheduleSources            ScheduleSource[]
-  ExternalAccount            ExternalAccount[]
-  httpEndpointEnvironments   TriggerHttpEndpointEnvironment[]
-  concurrencyLimitGroups     ConcurrencyLimitGroup[]
-  keyValueItems              KeyValueItem[]
-  webhookEnvironments        WebhookEnvironment[]
-  webhookRequestDeliveries   WebhookRequestDelivery[]
+  /// v3
   backgroundWorkers          BackgroundWorker[]
   backgroundWorkerTasks      BackgroundWorkerTask[]
   taskRuns                   TaskRun[]
@@ -445,6 +460,7 @@ model RuntimeEnvironment {
 
   @@unique([projectId, slug, orgMemberId])
   @@unique([projectId, shortcode])
+  @@index([parentEnvironmentId])
 }
 
 enum RuntimeEnvironmentType {
