@@ -1,7 +1,5 @@
 import { type Path, useMatches } from "@remix-run/react";
-import { type MinimumEnvironment } from "~/presenters/SelectBestEnvironmentPresenter.server";
-import { useEnvironment } from "./useEnvironment";
-import { useEnvironments } from "./useEnvironments";
+import { type RuntimeEnvironment } from "@trigger.dev/database";
 import { useOptimisticLocation } from "./useOptimisticLocation";
 
 /**
@@ -12,7 +10,7 @@ export function useEnvironmentSwitcher() {
   const matches = useMatches();
   const location = useOptimisticLocation();
 
-  const urlForEnvironment = (newEnvironment: MinimumEnvironment) => {
+  const urlForEnvironment = (newEnvironment: Pick<RuntimeEnvironment, "id" | "slug">) => {
     return routeForEnvironmentSwitch({
       location,
       matchId: matches[matches.length - 1].id,
