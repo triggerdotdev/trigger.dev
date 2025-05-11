@@ -1,9 +1,14 @@
-import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
+import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
+import {
+  type RuntimeEnvironment,
+  type Organization,
+  type Project,
+  type RuntimeEnvironmentType,
+} from "@trigger.dev/database";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { createEnvironment } from "~/models/organization.server";
 import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";
-import { marqs } from "~/v3/marqs/index.server";
 import { updateEnvConcurrencyLimits } from "~/v3/runQueue.server";
 
 const ParamsSchema = z.object({
@@ -55,16 +60,33 @@ export async function action({ request, params }: ActionFunctionArgs) {
   let created = 0;
 
   for (const project of organization.projects) {
-    const stagingEnvironment = project.environments.find((env) => env.type === "STAGING");
-
-    if (!stagingEnvironment) {
-      const staging = await createEnvironment(organization, project, "STAGING");
-      await updateEnvConcurrencyLimits({ ...staging, organization, project });
+    const stagingResult = await upsertEnvironment(organization, project, "STAGING");
+    if (stagingResult.status === "created") {
       created++;
-    } else {
-      await updateEnvConcurrencyLimits({ ...stagingEnvironment, organization, project });
+    }
+
+    const previewResult = await upsertEnvironment(organization, project, "PREVIEW");
+    if (previewResult.status === "created") {
+      created++;
     }
   }
 
   return json({ success: true, created, total: organization.projects.length });
+}
+
+async function upsertEnvironment(
+  organization: Organization,
+  project: Project & { environments: RuntimeEnvironment[] },
+  type: RuntimeEnvironmentType
+) {
+  const existingEnvironment = project.environments.find((env) => env.type === type);
+
+  if (!existingEnvironment) {
+    const newEnvironment = await createEnvironment(organization, project, type);
+    await updateEnvConcurrencyLimits({ ...newEnvironment, organization, project });
+    return { status: "created", environment: newEnvironment };
+  } else {
+    await updateEnvConcurrencyLimits({ ...existingEnvironment, organization, project });
+    return { status: "updated", environment: existingEnvironment };
+  }
 }
