@@ -5,6 +5,7 @@ import { RedisOptions } from "ioredis";
 import { Network, type StartedNetwork } from "testcontainers";
 import { TaskContext, test } from "vitest";
 import {
+  createClickHouseContainer,
   createElectricContainer,
   createPostgresContainer,
   createRedisContainer,
@@ -12,6 +13,8 @@ import {
   withContainerSetup,
 } from "./utils";
 import { getTaskMetadata, logCleanup, logSetup } from "./logs";
+import { StartedClickHouseContainer } from "./clickhouse";
+import { ClickHouseClient, createClient } from "@clickhouse/client";
 
 export { assertNonNullable } from "./utils";
 export { StartedRedisContainer };
@@ -32,7 +35,8 @@ type ElectricContext = {
   electricOrigin: string;
 };
 
-type ContainerContext = NetworkContext & PostgresContext & RedisContext;
+type ContainerContext = NetworkContext & PostgresContext & RedisContext & ClickhouseContext;
+type PostgresAndRedisContext = NetworkContext & PostgresContext & RedisContext;
 type ContainerWithElectricAndRedisContext = ContainerContext & ElectricContext;
 type ContainerWithElectricContext = NetworkContext & PostgresContext & ElectricContext;
 
@@ -170,12 +174,61 @@ const electricOrigin = async (
   await useContainer("electricContainer", { container, task, use: () => use(origin) });
 };
 
+const clickhouseContainer = async (
+  { network, task }: { network: StartedNetwork } & TaskContext,
+  use: Use<StartedClickHouseContainer>
+) => {
+  const { container, metadata } = await withContainerSetup({
+    name: "clickhouseContainer",
+    task,
+    setup: createClickHouseContainer(network),
+  });
+
+  await useContainer("clickhouseContainer", { container, task, use: () => use(container) });
+};
+
+const clickhouseClient = async (
+  { clickhouseContainer, task }: { clickhouseContainer: StartedClickHouseContainer } & TaskContext,
+  use: Use<ClickHouseClient>
+) => {
+  const testName = task.name;
+  const client = createClient({ url: clickhouseContainer.getConnectionUrl() });
+
+  try {
+    await use(client);
+  } finally {
+    await logCleanup("clickhouseClient", client.close(), { testName });
+  }
+};
+
+type ClickhouseContext = {
+  network: StartedNetwork;
+  clickhouseContainer: StartedClickHouseContainer;
+  clickhouseClient: ClickHouseClient;
+};
+
+export const clickhouseTest = test.extend<ClickhouseContext>({
+  network,
+  clickhouseContainer,
+  clickhouseClient,
+});
+
+export const postgresAndRedisTest = test.extend<PostgresAndRedisContext>({
+  network,
+  postgresContainer,
+  prisma,
+  redisContainer,
+  redisOptions,
+});
+
 export const containerTest = test.extend<ContainerContext>({
   network,
   postgresContainer,
   prisma,
   redisContainer,
   redisOptions,
+  clickhouseContainer,
+  clickhouseClient,
 });
 
 export const containerWithElectricTest = test.extend<ContainerWithElectricContext>({
@@ -192,4 +245,6 @@ export const containerWithElectricAndRedisTest = test.extend<ContainerWithElectr
   redisContainer,
   redisOptions,
   electricOrigin,
+  clickhouseContainer,
+  clickhouseClient,
 });

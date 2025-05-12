@@ -118,6 +118,8 @@ export type TriggerParams = {
   runnerId?: string;
   releaseConcurrency?: boolean;
   runChainState?: RunChainState;
+  scheduleId?: string;
+  scheduleInstanceId?: string;
 };
 
 export type EngineWorker = Worker<typeof workerCatalog>;

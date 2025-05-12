@@ -1,0 +1,30 @@
+{
+  "name": "@internal/replication",
+  "private": true,
+  "version": "0.0.1",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "type": "module",
+  "dependencies": {
+    "@internal/redis": "workspace:*",
+    "@internal/tracing": "workspace:*",
+    "@trigger.dev/core": "workspace:*",
+    "pg": "8.15.6",
+    "redlock": "5.0.0-beta.2"
+  },
+  "devDependencies": {
+    "@internal/testcontainers": "workspace:*",
+    "@vitest/coverage-v8": "^3.0.8",
+    "rimraf": "6.0.1",
+    "vitest": "^3.0.8",
+    "@types/pg": "8.11.14"
+  },
+  "scripts": {
+    "clean": "rimraf dist",
+    "typecheck": "tsc --noEmit -p tsconfig.build.json",
+    "build": "pnpm run clean && tsc -p tsconfig.build.json",
+    "dev": "tsc --watch  -p tsconfig.build.json",
+    "test": "vitest --sequence.concurrent=false --no-file-parallelism",
+    "test:coverage": "vitest --sequence.concurrent=false --no-file-parallelism --coverage.enabled"
+  }
+}

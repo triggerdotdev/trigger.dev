@@ -32,7 +32,6 @@ import {
   ValidationResult,
 } from "~/runEngine/types";
 import { RunEngineTriggerTaskService } from "../../app/runEngine/services/triggerTask.server";
-import { getEntitlement } from "~/services/platform.v3.server";
 
 vi.setConfig({ testTimeout: 30_000 }); // 30 seconds timeout
 

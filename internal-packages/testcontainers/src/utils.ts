@@ -9,6 +9,9 @@ import { x } from "tinyexec";
 import { expect, TaskContext } from "vitest";
 import { getContainerMetadata, getTaskMetadata, logCleanup } from "./logs";
 import { logSetup } from "./logs";
+import { ClickHouseContainer, runClickhouseMigrations } from "./clickhouse";
+import { createClient } from "@clickhouse/client";
+import { readdir, readFile } from "node:fs/promises";
 
 export async function createPostgresContainer(network: StartedNetwork) {
   const container = await new PostgreSqlContainer("docker.io/postgres:14")
@@ -43,6 +46,27 @@ export async function createPostgresContainer(network: StartedNetwork) {
   );
 
   return { url: container.getConnectionUri(), container, network };
+}
+
+export async function createClickHouseContainer(network: StartedNetwork) {
+  const container = await new ClickHouseContainer().withNetwork(network).start();
+
+  const client = createClient({
+    url: container.getConnectionUrl(),
+  });
+
+  await client.ping();
+
+  // Now we run the migrations
+  const migrationsPath = path.resolve(__dirname, "../../clickhouse/schema");
+
+  await runClickhouseMigrations(client, migrationsPath);
+
+  return {
+    url: container.getConnectionUrl(),
+    container,
+    network,
+  };
 }
 
 export async function createRedisContainer({
