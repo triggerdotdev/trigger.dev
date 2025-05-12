@@ -110,7 +110,7 @@ export const TableRow = forwardRef<HTMLTableRowElement, TableRowProps>(
       <tr
         ref={ref}
         className={cn(
-          "group/table-row relative w-full outline-none after:absolute after:bottom-0 after:left-3 after:right-0 after:h-px after:bg-grid-dimmed",
+          "group/table-row relative w-full outline-none [&>td:first-child>div]:after:left-3",
           isSelected && variants[variant].rowSelected,
           disabled && "opacity-50",
           className
@@ -228,42 +228,42 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
     const { variant } = useContext(TableContext);
 
     return (
-      <td
-        ref={ref}
-        className={cn(
-          "text-xs text-charcoal-400 has-[[tabindex='0']:focus]:before:absolute has-[[tabindex='0']:focus]:before:-top-px has-[[tabindex='0']:focus]:before:left-0 has-[[tabindex='0']:focus]:before:h-px has-[[tabindex='0']:focus]:before:w-3 has-[[tabindex='0']:focus]:before:bg-grid-dimmed has-[[tabindex='0']:focus]:after:absolute has-[[tabindex='0']:focus]:after:bottom-0 has-[[tabindex='0']:focus]:after:left-0 has-[[tabindex='0']:focus]:after:right-0 has-[[tabindex='0']:focus]:after:h-px has-[[tabindex='0']:focus]:after:bg-grid-dimmed",
-          variants[variant].cell,
-          to || onClick || hasAction ? "cursor-pointer" : "cursor-default px-3 py-3 align-middle",
-          !to && !onClick && alignmentClassName,
-          isSticky &&
-            "[&:has(.group-hover/table-row:block)]:w-auto sticky right-0 bg-background-dimmed",
-          isSticky && variants[variant].stickyCell,
-          isSelected && variants[variant].rowSelected,
-          !isSelected &&
-            "group-hover/table-row:before:absolute group-hover/table-row:before:left-0 group-hover/table-row:before:top-[-1px] group-hover/table-row:before:h-px group-hover/table-row:before:w-3 group-hover/table-row:before:bg-charcoal-750 group-hover/table-row:after:absolute group-hover/table-row:after:bottom-0 group-hover/table-row:after:left-0 group-hover/table-row:after:h-px group-hover/table-row:after:w-3 group-hover/table-row:after:bg-charcoal-750 group-focus-visible/table-row:bg-background-bright",
-          className
-        )}
-        colSpan={colSpan}
-      >
-        {to ? (
-          <Link
-            to={to}
-            className={cn("cursor-pointer focus:outline-none", flexClasses, actionClassName)}
-            tabIndex={isTabbableCell ? 0 : -1}
-          >
-            {children}
-          </Link>
-        ) : onClick ? (
-          <button
-            onClick={onClick}
-            className={cn("cursor-pointer focus:outline-none", flexClasses, actionClassName)}
-            tabIndex={isTabbableCell ? 0 : -1}
-          >
-            {children}
-          </button>
-        ) : (
-          <>{children}</>
-        )}
+      <td ref={ref} className="h-full p-0" colSpan={colSpan}>
+        <div
+          className={cn(
+            "relative h-[2.625rem] min-h-[2.625rem] text-xs text-charcoal-400 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-grid-dimmed has-[[tabindex='0']:focus]:before:absolute has-[[tabindex='0']:focus]:before:-top-px has-[[tabindex='0']:focus]:before:left-0 has-[[tabindex='0']:focus]:before:h-px has-[[tabindex='0']:focus]:before:w-3 has-[[tabindex='0']:focus]:before:bg-grid-dimmed has-[[tabindex='0']:focus]:after:absolute has-[[tabindex='0']:focus]:after:bottom-0 has-[[tabindex='0']:focus]:after:left-0 has-[[tabindex='0']:focus]:after:right-0 has-[[tabindex='0']:focus]:after:h-px has-[[tabindex='0']:focus]:after:bg-grid-dimmed",
+            variants[variant].cell,
+            to || onClick || hasAction ? "cursor-pointer" : "cursor-default px-3 py-3 align-middle",
+            !to && !onClick && alignmentClassName,
+            isSticky &&
+              "[&:has(.group-hover/table-row:block)]:w-auto sticky right-0 bg-background-dimmed",
+            isSticky && variants[variant].stickyCell,
+            isSelected && variants[variant].rowSelected,
+            !isSelected &&
+              "group-hover/table-row:before:absolute group-hover/table-row:before:left-0 group-hover/table-row:before:top-[-1px] group-hover/table-row:before:h-px group-hover/table-row:before:w-3 group-hover/table-row:before:bg-charcoal-750 group-hover/table-row:after:absolute group-hover/table-row:after:bottom-0 group-hover/table-row:after:left-0 group-hover/table-row:after:h-px group-hover/table-row:after:w-3 group-hover/table-row:after:bg-charcoal-750 group-focus-visible/table-row:bg-background-bright",
+            className
+          )}
+        >
+          {to ? (
+            <Link
+              to={to}
+              className={cn("cursor-pointer focus:outline-none", flexClasses, actionClassName)}
+              tabIndex={isTabbableCell ? 0 : -1}
+            >
+              {children}
+            </Link>
+          ) : onClick ? (
+            <button
+              onClick={onClick}
+              className={cn("cursor-pointer focus:outline-none", flexClasses, actionClassName)}
+              tabIndex={isTabbableCell ? 0 : -1}
+            >
+              {children}
+            </button>
+          ) : (
+            <>{children}</>
+          )}
+        </div>
       </td>
     );
   }
