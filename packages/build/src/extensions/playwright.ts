@@ -297,13 +297,17 @@ class PlaywrightExtension implements BuildExtension {
 
         `RUN INSTALL_DIR=$(grep "Install location:" /tmp/${browser}-info.txt | cut -d':' -f2- | xargs) && \
           DIR_NAME=$(basename "$INSTALL_DIR") && \
+          if [ -z "$DIR_NAME" ]; then echo "Failed to extract installation directory for ${browser}"; exit 1; fi && \
           MS_DIR="/ms-playwright/$DIR_NAME" && \
           mkdir -p "$MS_DIR"`,
 
         `RUN DOWNLOAD_URL=$(grep "Download url:" /tmp/${browser}-info.txt | cut -d':' -f2- | xargs | sed "s/mac-arm64/linux/g" | sed "s/mac-15-arm64/ubuntu-20.04/g") && \
+          if [ -z "$DOWNLOAD_URL" ]; then echo "Failed to extract download URL for ${browser}"; exit 1; fi && \
           echo "Downloading ${browser} from $DOWNLOAD_URL" && \
           curl -L -o /tmp/${browser}.zip "$DOWNLOAD_URL" && \
+          if [ $? -ne 0 ]; then echo "Failed to download ${browser}"; exit 1; fi && \
           unzip -q /tmp/${browser}.zip -d "/ms-playwright/$(basename $(grep "Install location:" /tmp/${browser}-info.txt | cut -d':' -f2- | xargs))" && \
+          if [ $? -ne 0 ]; then echo "Failed to extract ${browser}"; exit 1; fi && \
           chmod -R +x "/ms-playwright/$(basename $(grep "Install location:" /tmp/${browser}-info.txt | cut -d':' -f2- | xargs))" && \
           rm /tmp/${browser}.zip`
       );
