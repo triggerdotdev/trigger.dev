@@ -156,7 +156,6 @@ class BinaryReader {
   readTime(): bigint {
     // (POSTGRES_EPOCH_JDATE - UNIX_EPOCH_JDATE) * USECS_PER_DAY == 946684800000000
     const microsSinceUnixEpoch = this.readUint64() + 946684800000000n;
-    // Convert to milliseconds for JS Date compatibility
     return microsSinceUnixEpoch;
   }
 }

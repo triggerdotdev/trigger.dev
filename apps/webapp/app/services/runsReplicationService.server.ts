@@ -385,7 +385,13 @@ export class RunsReplicationService {
       lastAcknowledgedAt: this._lastAcknowledgedAt,
     });
 
-    await this._replicationClient.acknowledge(this._latestCommitEndLsn);
+    const [ackError] = await tryCatch(
+      this._replicationClient.acknowledge(this._latestCommitEndLsn)
+    );
+
+    if (ackError) {
+      this.logger.error("Error acknowledging transaction", { ackError });
+    }
 
     if (this._isShutDownComplete && this._acknowledgeInterval) {
       clearInterval(this._acknowledgeInterval);
