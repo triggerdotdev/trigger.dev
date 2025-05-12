@@ -1,4 +1,5 @@
 import type { BuildContext, BuildExtension } from "@trigger.dev/core/v3/build";
+import type { BuildManifest, BuildTarget } from "@trigger.dev/core/v3";
 
 type PlaywrightBrowser = "chromium" | "firefox" | "webkit";
 
@@ -14,6 +15,11 @@ interface PlaywrightExtensionOptions {
    * @default true
    */
   headless?: boolean;
+
+  /**
+   * Playwright version override. If not provided, we will try to detect the version automatically.
+   */
+  version?: string;
 }
 
 /**
@@ -204,20 +210,51 @@ export function playwright(options: PlaywrightExtensionOptions = {}) {
  */
 class PlaywrightExtension implements BuildExtension {
   public readonly name = "PlaywrightExtension";
-  private readonly options: Required<PlaywrightExtensionOptions>;
+  private moduleExternals: string[];
 
-  constructor({ browsers = ["chromium"], headless = true }: PlaywrightExtensionOptions = {}) {
+  private readonly options: Required<Omit<PlaywrightExtensionOptions, "version">> & {
+    version?: string;
+  };
+
+  constructor({
+    browsers = ["chromium"],
+    headless = true,
+    version,
+  }: PlaywrightExtensionOptions = {}) {
     if (browsers && browsers.length === 0) {
       throw new Error("At least one browser must be specified");
     }
-    this.options = { browsers, headless };
+    this.options = { browsers, headless, version };
+    this.moduleExternals = ["playwright"];
   }
 
-  onBuildComplete(context: BuildContext) {
+  externalsForTarget(target: BuildTarget) {
+    if (target === "dev") {
+      return [];
+    }
+
+    return this.moduleExternals;
+  }
+
+  onBuildComplete(context: BuildContext, manifest: BuildManifest) {
     if (context.target === "dev") return;
 
+    // Detect Playwright version from manifest.externals or use override
+    const playwrightExternal = manifest.externals?.find(
+      (external: any) => external.name === "playwright" || external.name === "@playwright/test"
+    );
+    const version = playwrightExternal?.version ?? this.options.version;
+
+    if (!version) {
+      throw new Error(
+        "PlaywrightExtension could not determine the version of playwright. Please provide a version in the PlaywrightExtension options."
+      );
+    }
+
     context.logger.debug(
-      `Adding ${this.name} to the build with browsers: ${this.options.browsers.join(", ")}`
+      `Adding ${this.name} to the build with browsers: ${this.options.browsers.join(
+        ", "
+      )}, version: ${version}`
     );
 
     const instructions: string[] = [
@@ -231,8 +268,8 @@ class PlaywrightExtension implements BuildExtension {
         npm \
         && apt-get clean && rm -rf /var/lib/apt/lists/*`,
 
-      // Install Playwright globally
-      `RUN npm install -g playwright`,
+      // Install Playwright globally with detected version
+      `RUN npm install -g playwright@${version}`,
     ];
 
     const deps = [...debian12Deps.tools, ...Object.values(debian12Deps.lib2package)];
@@ -298,6 +335,9 @@ class PlaywrightExtension implements BuildExtension {
       deploy: {
         env: envVars,
         override: true,
+      },
+      dependencies: {
+        playwright: version,
       },
     });
   }
