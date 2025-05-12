@@ -312,7 +312,6 @@ export class CompleteAttemptService extends BaseService {
         checkpoint,
         forceRequeue: isOOMRetry,
         oomMachine,
-        error: sanitizedError,
       });
     }
 
@@ -559,7 +558,6 @@ export class CompleteAttemptService extends BaseService {
     checkpoint,
     forceRequeue = false,
     oomMachine,
-    error,
   }: {
     execution: TaskRunExecution;
     executionRetry: TaskRunExecutionRetry;
@@ -570,7 +568,6 @@ export class CompleteAttemptService extends BaseService {
     forceRequeue?: boolean;
     /** Setting this will also alter the retry span message */
     oomMachine?: MachinePresetName;
-    error: TaskRunError;
   }) {
     const retryAt = new Date(executionRetry.timestamp);
 
