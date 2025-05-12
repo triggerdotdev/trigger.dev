@@ -233,6 +233,17 @@ export function v3RunsPath(
   return `${v3EnvironmentPath(organization, project, environment)}/runs${query}`;
 }
 
+export function v3RunsNextPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath,
+  filters?: TaskRunListSearchFilters
+) {
+  const searchParams = objectToSearchParams(filters);
+  const query = searchParams ? `?${searchParams.toString()}` : "";
+  return `${v3EnvironmentPath(organization, project, environment)}/runs/next${query}`;
+}
+
 export function v3RunPath(
   organization: OrgForPath,
   project: ProjectForPath,

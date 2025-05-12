@@ -28,11 +28,7 @@ import { FairQueueSelectionStrategy } from "../run-queue/fairQueueSelectionStrat
 import { RunQueue } from "../run-queue/index.js";
 import { RunQueueFullKeyProducer } from "../run-queue/keyProducer.js";
 import { MinimalAuthenticatedEnvironment } from "../shared/index.js";
-import {
-  NotImplementedError,
-  RunDuplicateIdempotencyKeyError,
-  ServiceValidationError,
-} from "./errors.js";
+import { NotImplementedError, RunDuplicateIdempotencyKeyError } from "./errors.js";
 import { EventBus, EventBusEvents } from "./eventBus.js";
 import { RunLocker } from "./locking.js";
 import { BatchSystem } from "./systems/batchSystem.js";
@@ -369,6 +365,8 @@ export class RunEngine {
       runnerId,
       releaseConcurrency,
       runChainState,
+      scheduleId,
+      scheduleInstanceId,
     }: TriggerParams,
     tx?: PrismaClientOrTransaction
   ): Promise<TaskRun> {
@@ -407,6 +405,8 @@ export class RunEngine {
               number,
               friendlyId,
               runtimeEnvironmentId: environment.id,
+              environmentType: environment.type,
+              organizationId: environment.organization.id,
               projectId: environment.project.id,
               idempotencyKey,
               idempotencyKeyExpiresAt,
@@ -455,6 +455,8 @@ export class RunEngine {
               maxDurationInSeconds,
               machinePreset: machine,
               runChainState,
+              scheduleId,
+              scheduleInstanceId,
               executionSnapshots: {
                 create: {
                   engine: "V2",
@@ -550,6 +552,11 @@ export class RunEngine {
               await this.ttlSystem.scheduleExpireRun({ runId: taskRun.id, ttl: taskRun.ttl });
             }
           }
+        });
+
+        this.eventBus.emit("runCreated", {
+          time: new Date(),
+          runId: taskRun.id,
         });
 
         return taskRun;

@@ -147,7 +147,11 @@ export class TriggerScheduledTaskService extends BaseService {
           instance.taskSchedule.taskIdentifier,
           instance.environment,
           { payload: payloadPacket.data, options: { payloadType: payloadPacket.dataType } },
-          { customIcon: "scheduled" }
+          {
+            customIcon: "scheduled",
+            scheduleId: instance.taskSchedule.id,
+            scheduleInstanceId: instance.id,
+          }
         );
 
         if (!result) {
@@ -157,16 +161,6 @@ export class TriggerScheduledTaskService extends BaseService {
             payloadPacket,
           });
         } else {
-          await this._prisma.taskRun.update({
-            where: {
-              id: result.run.id,
-            },
-            data: {
-              scheduleId: instance.taskSchedule.id,
-              scheduleInstanceId: instance.id,
-            },
-          });
-
           await this._prisma.taskSchedule.update({
             where: {
               id: instance.taskSchedule.id,

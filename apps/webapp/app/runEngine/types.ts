@@ -7,7 +7,6 @@ import {
   TriggerTaskRequestBody,
 } from "@trigger.dev/core/v3";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
-import { z } from "zod";
 
 export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
