@@ -41,6 +41,8 @@ export interface ClickhouseReader {
      */
     settings?: ClickHouseSettings;
   }): ClickhouseQueryFunction<z.input<TIn>, z.output<TOut>>;
+
+  close(): Promise<void>;
 }
 
 export type ClickhouseInsertFunction<TInput> = (
@@ -58,4 +60,6 @@ export interface ClickhouseWriter {
     schema: TSchema;
     settings?: ClickHouseSettings;
   }): ClickhouseInsertFunction<z.input<TSchema>>;
+
+  close(): Promise<void>;
 }

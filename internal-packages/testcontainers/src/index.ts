@@ -188,11 +188,17 @@ const clickhouseContainer = async (
 };
 
 const clickhouseClient = async (
-  { clickhouseContainer }: { clickhouseContainer: StartedClickHouseContainer },
+  { clickhouseContainer, task }: { clickhouseContainer: StartedClickHouseContainer } & TaskContext,
   use: Use<ClickHouseClient>
 ) => {
+  const testName = task.name;
   const client = createClient({ url: clickhouseContainer.getConnectionUrl() });
-  await use(client);
+
+  try {
+    await use(client);
+  } finally {
+    await logCleanup("clickhouseClient", client.close(), { testName });
+  }
 };
 
 type ClickhouseContext = {

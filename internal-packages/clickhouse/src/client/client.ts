@@ -48,6 +48,10 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
     this.tracer = config.tracer ?? trace.getTracer("@internal/clickhouse");
   }
 
+  public async close() {
+    await this.client.close();
+  }
+
   public query<TIn extends z.ZodSchema<any>, TOut extends z.ZodSchema<any>>(req: {
     /**
      * The name of the operation.

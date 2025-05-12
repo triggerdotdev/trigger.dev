@@ -31,6 +31,7 @@ export class ClickHouse {
   public readonly reader: ClickhouseReader;
   public readonly writer: ClickhouseWriter;
   private readonly logger: Logger;
+  private _splitClients: boolean;
 
   constructor(config: ClickHouseConfig) {
     this.logger = config.logger ?? new Logger("ClickHouse", "debug");
@@ -49,6 +50,8 @@ export class ClickHouse {
       });
       this.reader = client;
       this.writer = client;
+
+      this._splitClients = false;
     } else if (config.writerUrl && config.readerUrl) {
       this.reader = new ClickhouseClient({
         name: config.readerName ?? "clickhouse-reader",
@@ -62,9 +65,13 @@ export class ClickHouse {
         clickhouseSettings: config.clickhouseSettings,
         logger: this.logger,
       });
+
+      this._splitClients = true;
     } else {
       this.reader = new NoopClient();
       this.writer = new NoopClient();
+
+      this._splitClients = true;
     }
   }
 
@@ -85,6 +92,14 @@ export class ClickHouse {
       url: process.env.CLICKHOUSE_URL,
       name: process.env.CLICKHOUSE_NAME,
     });
+  }
+
+  async close() {
+    if (this._splitClients) {
+      await Promise.all([this.reader.close(), this.writer.close()]);
+    } else {
+      await this.reader.close();
+    }
   }
 
   get taskRuns() {

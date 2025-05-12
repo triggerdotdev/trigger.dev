@@ -6,6 +6,10 @@ import { z } from "zod";
 import { ClickHouseSettings, InsertResult } from "@clickhouse/client";
 
 export class NoopClient implements ClickhouseReader, ClickhouseWriter {
+  public async close() {
+    return;
+  }
+
   public query<TIn extends z.ZodSchema<any>, TOut extends z.ZodSchema<any>>(req: {
     query: string;
     params?: TIn;
