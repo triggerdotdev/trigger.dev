@@ -1,6 +1,12 @@
 import type { ClickHouse, RawTaskRunPayloadV1, TaskRunV1 } from "@internal/clickhouse";
 import { RedisOptions } from "@internal/redis";
-import { LogicalReplicationClient, Transaction, type PgoutputMessage } from "@internal/replication";
+import {
+  LogicalReplicationClient,
+  type MessageDelete,
+  type MessageInsert,
+  type MessageUpdate,
+  type PgoutputMessage,
+} from "@internal/replication";
 import { Span, startSpan, trace, type Tracer } from "@internal/tracing";
 import { Logger, LogLevel } from "@trigger.dev/core/logger";
 import { tryCatch } from "@trigger.dev/core/utils";
@@ -9,6 +15,20 @@ import { TaskRun } from "@trigger.dev/database";
 import { nanoid } from "nanoid";
 import EventEmitter from "node:events";
 import pLimit from "p-limit";
+
+interface TransactionEvent<T = any> {
+  tag: "insert" | "update" | "delete";
+  data: T;
+  raw: MessageInsert | MessageUpdate | MessageDelete;
+}
+
+interface Transaction<T = any> {
+  commitLsn: string | null;
+  commitEndLsn: string | null;
+  xid: number;
+  events: TransactionEvent<T>[];
+  replicationLagMs: number;
+}
 
 export type RunsReplicationServiceOptions = {
   clickhouse: ClickHouse;
