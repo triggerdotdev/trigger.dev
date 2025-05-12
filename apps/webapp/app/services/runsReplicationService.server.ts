@@ -7,7 +7,7 @@ import {
   type MessageUpdate,
   type PgoutputMessage,
 } from "@internal/replication";
-import { Span, startSpan, trace, type Tracer } from "@internal/tracing";
+import { startSpan, trace, type Tracer } from "@internal/tracing";
 import { Logger, LogLevel } from "@trigger.dev/core/logger";
 import { tryCatch } from "@trigger.dev/core/utils";
 import { parsePacket } from "@trigger.dev/core/v3/utils/ioSerialization";
@@ -23,6 +23,7 @@ interface TransactionEvent<T = any> {
 }
 
 interface Transaction<T = any> {
+  beginStartTimestamp: number;
   commitLsn: string | null;
   commitEndLsn: string | null;
   xid: number;
@@ -70,7 +71,6 @@ export class RunsReplicationService {
   private _isShuttingDown = false;
   private _isShutDownComplete = false;
   private _tracer: Tracer;
-  private _currentSpan: Span | null = null;
   private _currentParseDurationMs: number | null = null;
   private _lastAcknowledgedAt: number | null = null;
   private _acknowledgeTimeoutMs: number;
@@ -208,16 +208,11 @@ export class RunsReplicationService {
         }
 
         this._currentTransaction = {
+          beginStartTimestamp: Date.now(),
           commitLsn: message.commitLsn,
           xid: message.xid,
           events: [],
         };
-
-        this._currentSpan = this._tracer.startSpan("handle_transaction", {
-          attributes: {
-            "transaction.xid": message.xid,
-          },
-        });
 
         this._currentParseDurationMs = Number(parseDuration) / 1_000_000;
 
@@ -283,11 +278,6 @@ export class RunsReplicationService {
         if (this._currentParseDurationMs) {
           this._currentParseDurationMs =
             this._currentParseDurationMs + Number(parseDuration) / 1_000_000;
-
-          this._currentSpan?.setAttribute(
-            "transaction.parse_duration_ms",
-            this._currentParseDurationMs
-          );
         }
 
         const replicationLagMs = Date.now() - Number(message.commitTime / 1000n);
@@ -303,6 +293,11 @@ export class RunsReplicationService {
         this.#handleTransaction(transaction);
         break;
       }
+      default: {
+        this.logger.debug("Unknown message tag", {
+          pgMessage: message,
+        });
+      }
     }
   }
 
@@ -315,19 +310,8 @@ export class RunsReplicationService {
       });
     }
 
-    this._currentSpan?.setAttribute("transaction.replication_lag_ms", transaction.replicationLagMs);
-    this._currentSpan?.setAttribute("transaction.xid", transaction.xid);
-
-    if (transaction.commitEndLsn) {
-      this._currentSpan?.setAttribute("transaction.commit_end_lsn", transaction.commitEndLsn);
-    }
-
-    this._currentSpan?.setAttribute("transaction.events", transaction.events.length);
-
     // If there are no events, do nothing
     if (transaction.events.length === 0) {
-      this._currentSpan?.end();
-
       return;
     }
 
@@ -335,8 +319,6 @@ export class RunsReplicationService {
       this.logger.error("Transaction has no commit end lsn", {
         transaction,
       });
-
-      this._currentSpan?.end();
 
       return;
     }
@@ -350,10 +332,7 @@ export class RunsReplicationService {
     // If there are events, we need to handle them
     const _version = lsnToUInt64(transaction.commitEndLsn);
 
-    this._currentSpan?.setAttribute(
-      "transaction.lsn_to_uint64_ms",
-      Number(process.hrtime.bigint() - lsnToUInt64Start) / 1_000_000
-    );
+    const lsnToUInt64DurationMs = Number(process.hrtime.bigint() - lsnToUInt64Start) / 1_000_000;
 
     this._concurrentFlushScheduler.addToBatch(
       transaction.events.map((event) => ({
@@ -363,7 +342,20 @@ export class RunsReplicationService {
       }))
     );
 
-    this._currentSpan?.end();
+    const currentSpan = this._tracer.startSpan("handle_transaction", {
+      attributes: {
+        "transaction.xid": transaction.xid,
+        "transaction.replication_lag_ms": transaction.replicationLagMs,
+        "transaction.events": transaction.events.length,
+        "transaction.commit_end_lsn": transaction.commitEndLsn,
+        "transaction.parse_duration_ms": this._currentParseDurationMs ?? undefined,
+        "transaction.lsn_to_uint64_ms": lsnToUInt64DurationMs,
+        "transaction.version": _version.toString(),
+      },
+      startTime: transaction.beginStartTimestamp,
+    });
+
+    currentSpan.end();
   }
 
   async #acknowledgeLatestTransaction() {

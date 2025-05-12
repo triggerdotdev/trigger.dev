@@ -131,6 +131,76 @@ describe("RunsReplicationService", () => {
   );
 
   containerTest(
+    "should not produce any handle_transaction spans when no TaskRun events are produced",
+    async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
+      await prisma.$executeRawUnsafe(`ALTER TABLE public."TaskRun" REPLICA IDENTITY FULL;`);
+
+      const clickhouse = new ClickHouse({
+        url: clickhouseContainer.getConnectionUrl(),
+        name: "runs-replication",
+      });
+
+      const { tracer, exporter } = createInMemoryTracing();
+
+      const runsReplicationService = new RunsReplicationService({
+        clickhouse,
+        pgConnectionUrl: postgresContainer.getConnectionUri(),
+        serviceName: "runs-replication",
+        slotName: "task_runs_to_clickhouse_v1",
+        publicationName: "task_runs_to_clickhouse_v1_publication",
+        redisOptions,
+        maxFlushConcurrency: 1,
+        flushIntervalMs: 100,
+        flushBatchSize: 1,
+        leaderLockTimeoutMs: 5000,
+        leaderLockExtendIntervalMs: 1000,
+        ackIntervalSeconds: 5,
+        tracer,
+      });
+
+      await runsReplicationService.start();
+
+      const organization = await prisma.organization.create({
+        data: {
+          title: "test",
+          slug: "test",
+        },
+      });
+
+      const project = await prisma.project.create({
+        data: {
+          name: "test",
+          slug: "test",
+          organizationId: organization.id,
+          externalRef: "test",
+        },
+      });
+
+      await prisma.runtimeEnvironment.create({
+        data: {
+          slug: "test",
+          type: "DEVELOPMENT",
+          projectId: project.id,
+          organizationId: organization.id,
+          apiKey: "test",
+          pkApiKey: "test",
+          shortcode: "test",
+        },
+      });
+
+      await setTimeout(1000);
+
+      const spans = exporter.getFinishedSpans();
+
+      const handleTransactionSpans = spans.filter((span) => span.name === "handle_transaction");
+
+      expect(handleTransactionSpans.length).toBe(0);
+
+      await runsReplicationService.stop();
+    }
+  );
+
+  containerTest(
     "should replicate a new TaskRun to ClickHouse using batching insert strategy",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
       await prisma.$executeRawUnsafe(`ALTER TABLE public."TaskRun" REPLICA IDENTITY FULL;`);
