@@ -73,6 +73,7 @@
                     "pages": [
                       "config/extensions/prismaExtension",
                       "config/extensions/pythonExtension",
+                      "config/extensions/playwright",
                       "config/extensions/puppeteer",
                       "config/extensions/ffmpeg",
                       "config/extensions/aptGet",
