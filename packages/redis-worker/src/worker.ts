@@ -28,6 +28,7 @@ type JobHandler<Catalog extends WorkerCatalog, K extends keyof Catalog> = (param
   payload: z.infer<Catalog[K]["schema"]>;
   visibilityTimeoutMs: number;
   attempt: number;
+  deduplicationKey?: string;
 }) => Promise<void>;
 
 export type WorkerConcurrencyOptions = {
@@ -345,7 +346,7 @@ class Worker<TCatalog extends WorkerCatalog> {
    * Processes a single item.
    */
   private async processItem(
-    { id, job, item, visibilityTimeoutMs, attempt, timestamp }: AnyQueueItem,
+    { id, job, item, visibilityTimeoutMs, attempt, timestamp, deduplicationKey }: AnyQueueItem,
     batchSize: number,
     workerId: string
   ): Promise<void> {
@@ -362,7 +363,7 @@ class Worker<TCatalog extends WorkerCatalog> {
       async () => {
         await this.withHistogram(
           this.metrics.jobDuration,
-          handler({ id, payload: item, visibilityTimeoutMs, attempt }),
+          handler({ id, payload: item, visibilityTimeoutMs, attempt, deduplicationKey }),
           {
             worker_id: workerId,
             batch_size: batchSize,
@@ -372,7 +373,7 @@ class Worker<TCatalog extends WorkerCatalog> {
         );
 
         // On success, acknowledge the item.
-        await this.queue.ack(id);
+        await this.queue.ack(id, deduplicationKey);
       },
       {
         kind: SpanKind.CONSUMER,

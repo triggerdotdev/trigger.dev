@@ -39,6 +39,32 @@ export function darkTheme(): Extension {
         fontSize: "14px",
       },
 
+      ".cm-tooltip.cm-tooltip-lint": {
+        backgroundColor: tooltipBackground,
+      },
+
+      ".cm-diagnostic": {
+        padding: "4px 8px",
+        color: ivory,
+        fontFamily: "Geist Mono Variable",
+        fontSize: "12px",
+      },
+
+      ".cm-diagnostic-error": {
+        borderLeft: "2px solid #e11d48",
+      },
+
+      ".cm-lint-marker-error": {
+        content: "none",
+        backgroundColor: "#e11d48",
+        height: "100%",
+        width: "2px",
+      },
+
+      ".cm-lintPoint:after": {
+        borderBottom: "4px solid #e11d48",
+      },
+
       ".cm-cursor, .cm-dropCursor": { borderLeftColor: cursor },
       "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": {
         backgroundColor: selection,
@@ -82,6 +108,7 @@ export function darkTheme(): Extension {
 
       ".cm-tooltip": {
         border: "none",
+        marginTop: "6px",
         backgroundColor: tooltipBackground,
       },
       ".cm-tooltip .cm-tooltip-arrow:before": {

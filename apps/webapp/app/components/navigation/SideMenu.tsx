@@ -16,10 +16,12 @@ import {
   RectangleStackIcon,
   ServerStackIcon,
   Squares2X2Icon,
+  UsersIcon,
 } from "@heroicons/react/20/solid";
 import { useNavigation } from "@remix-run/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import simplur from "simplur";
+import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
 import { RunsIconExtraSmall } from "~/assets/icons/RunsIcon";
 import { TaskIconSmall } from "~/assets/icons/TaskIcon";
 import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
@@ -27,12 +29,15 @@ import { Avatar } from "~/components/primitives/Avatar";
 import { type MatchedEnvironment } from "~/hooks/useEnvironment";
 import { type MatchedOrganization } from "~/hooks/useOrganizations";
 import { type MatchedProject } from "~/hooks/useProject";
+import { useHasAdminAccess } from "~/hooks/useUser";
 import { type User } from "~/models/user.server";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 import { type FeedbackType } from "~/routes/resources.feedback";
+import { IncidentStatusPanel } from "~/routes/resources.incidents";
 import { cn } from "~/utils/cn";
 import {
   accountPath,
+  adminPath,
   logoutPath,
   newOrganizationPath,
   newProjectPath,
@@ -55,6 +60,7 @@ import {
   v3UsagePath,
   v3WaitpointTokensPath,
 } from "~/utils/pathBuilder";
+import { useKapaWidget } from "../../hooks/useKapaWidget";
 import { FreePlanUsage } from "../billing/FreePlanUsage";
 import { ConnectionIcon, DevPresencePanel, useDevPresence } from "../DevPresence";
 import { ImpersonationBanner } from "../ImpersonationBanner";
@@ -68,8 +74,10 @@ import {
   PopoverMenuItem,
   PopoverTrigger,
 } from "../primitives/Popover";
+import { ShortcutKey } from "../primitives/ShortcutKey";
 import { TextLink } from "../primitives/TextLink";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
+import { ShortcutsAutoOpen } from "../Shortcuts";
 import { UserProfilePhoto } from "../UserProfilePhoto";
 import { EnvironmentSelector } from "./EnvironmentSelector";
 import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
@@ -106,6 +114,7 @@ export function SideMenu({
   const currentPlan = useCurrentPlan();
   const { isConnected } = useDevPresence();
   const isFreeUser = currentPlan?.v3Subscription?.isPaying === false;
+  const isAdmin = useHasAdminAccess();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -139,6 +148,20 @@ export function SideMenu({
           project={project}
           user={user}
         />
+        {isAdmin && !user.isImpersonating ? (
+          <TooltipProvider disableHoverableContent={true}>
+            <Tooltip>
+              <TooltipTrigger>
+                <LinkButton variant="minimal/medium" to={adminPath()} TrailingIcon={UsersIcon} />
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className={"text-xs"}>
+                Admin dashboard
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        ) : isAdmin && user.isImpersonating ? (
+          <ImpersonationBanner />
+        ) : null}
       </div>
       <div
         className="overflow-hidden overflow-y-auto pt-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
@@ -275,14 +298,19 @@ export function SideMenu({
           </SideMenuSection>
         </div>
       </div>
-      <div className="flex flex-col gap-1 border-t border-grid-bright p-1">
-        <HelpAndFeedback />
-        {isFreeUser && (
-          <FreePlanUsage
-            to={v3BillingPath(organization)}
-            percentage={currentPlan.v3Usage.usagePercentage}
-          />
-        )}
+      <div>
+        <IncidentStatusPanel />
+        <div className="flex flex-col gap-1 border-t border-grid-bright p-1">
+          <div className="flex w-full items-center justify-between">
+            <HelpAndAI />
+          </div>
+          {isFreeUser && (
+            <FreePlanUsage
+              to={v3BillingPath(organization)}
+              percentage={currentPlan.v3Usage.usagePercentage}
+            />
+          )}
+        </div>
       </div>
     </div>
   );
@@ -319,10 +347,7 @@ function ProjectSelector({
       <PopoverArrowTrigger
         isOpen={isOrgMenuOpen}
         overflowHidden
-        className={cn(
-          "h-8 w-full justify-between py-1 pl-1.5",
-          user.isImpersonating && "border border-dashed border-amber-400"
-        )}
+        className="h-8 w-full justify-between py-1 pl-1.5"
       >
         <span className="flex items-center gap-1.5 overflow-hidden">
           <Avatar avatar={organization.avatar} size={1.25} orgName={organization.title} />
@@ -406,19 +431,24 @@ function ProjectSelector({
           <PopoverMenuItem to={newProjectPath(organization)} title="New project" icon={PlusIcon} />
         </div>
         <div className="border-t border-charcoal-700 p-1">
-          <SwitchOrganizations organizations={organizations} organization={organization} />
+          {organizations.length > 1 ? (
+            <SwitchOrganizations organizations={organizations} organization={organization} />
+          ) : (
+            <PopoverMenuItem
+              to={newOrganizationPath()}
+              title="New organization"
+              icon={PlusIcon}
+              leadingIconClassName="text-text-dimmed"
+            />
+          )}
         </div>
         <div className="border-t border-charcoal-700 p-1">
           <PopoverMenuItem
             to={accountPath()}
             title="Account"
             icon={UserProfilePhoto}
-            leadingIconClassName={cn(
-              "text-text-dimmed rounded-full border border-transparent",
-              user.isImpersonating && "rounded-full border-yellow-500"
-            )}
+            leadingIconClassName="text-text-dimmed rounded-full border border-transparent"
           />
-          {user.isImpersonating && <ImpersonationBanner />}
         </div>
         <div className="border-t border-charcoal-700 p-1">
           <PopoverMenuItem
@@ -513,7 +543,7 @@ function SwitchOrganizations({
           <div className="border-t border-charcoal-700 p-1">
             <PopoverMenuItem
               to={newOrganizationPath()}
-              title="New Organization"
+              title="New organization"
               icon={PlusIcon}
               leadingIconClassName="text-text-dimmed"
             />
@@ -536,5 +566,45 @@ function SelectorDivider() {
         strokeLinecap="round"
       />
     </svg>
+  );
+}
+
+function HelpAndAI() {
+  const { isKapaEnabled, isKapaOpen, openKapa } = useKapaWidget();
+
+  return (
+    <>
+      <ShortcutsAutoOpen />
+      <HelpAndFeedback disableShortcut={isKapaOpen} />
+      {isKapaEnabled && (
+        <TooltipProvider disableHoverableContent>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="inline-flex">
+                <Button
+                  variant="small-menu-item"
+                  data-action="ask-ai"
+                  shortcut={{ modifiers: ["mod"], key: "/", enabledOnInputElements: true }}
+                  hideShortcutKey
+                  data-modal-override-open-class-ask-ai="true"
+                  onClick={() => {
+                    openKapa();
+                  }}
+                >
+                  <AISparkleIcon className="size-5" />
+                </Button>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent
+              side="top"
+              className="flex items-center gap-1 py-1.5 pl-2.5 pr-2 text-xs"
+            >
+              Ask AI
+              <ShortcutKey shortcut={{ modifiers: ["mod"], key: "/" }} variant="medium/bright" />
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      )}
+    </>
   );
 }

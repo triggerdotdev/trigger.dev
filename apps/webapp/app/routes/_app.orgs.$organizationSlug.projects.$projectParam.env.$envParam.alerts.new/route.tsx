@@ -356,6 +356,31 @@ export default function Page() {
                       <SlackIcon className="size-5" /> Connect to Slack
                     </span>
                   </LinkButton>
+                ) : slack.status === "TOKEN_REVOKED" || slack.status === "TOKEN_EXPIRED" ? (
+                  <div className="flex flex-col gap-4">
+                    <Callout variant="info">
+                      The Slack integration in your workspace has been revoked or has expired.
+                      Please re-connect your Slack workspace.
+                    </Callout>
+                    <LinkButton
+                      variant="tertiary/large"
+                      to={{
+                        pathname: "connect-to-slack",
+                        search: "?reinstall=true",
+                      }}
+                      fullWidth
+                    >
+                      <span className="flex items-center gap-2 text-text-bright">
+                        <SlackIcon className="size-5" /> Connect to Slack
+                      </span>
+                    </LinkButton>
+                  </div>
+                ) : slack.status === "FAILED_FETCHING_CHANNELS" ? (
+                  <div className="flex flex-col gap-4">
+                    <Callout variant="warning">
+                      Failed loading channels from Slack. Please try again later.
+                    </Callout>
+                  </div>
                 ) : (
                   <Callout variant="warning">
                     Slack integration is not available. Please contact your organization

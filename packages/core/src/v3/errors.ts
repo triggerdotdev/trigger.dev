@@ -690,6 +690,21 @@ export function taskRunErrorEnhancer(error: TaskRunError): EnhanceError<TaskRunE
         };
       }
 
+      if (error.name === "TriggerApiError") {
+        if (error.message.startsWith("Deadlock detected:")) {
+          return {
+            type: "BUILT_IN_ERROR",
+            name: "Concurrency Deadlock Error",
+            message: error.message,
+            stackTrace: "",
+            link: {
+              name: "Read the docs",
+              href: links.docs.concurrency.deadlock,
+            },
+          };
+        }
+      }
+
       break;
     }
     case "STRING_ERROR": {

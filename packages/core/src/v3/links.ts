@@ -18,6 +18,7 @@ export const links = {
     concurrency: {
       recursiveDeadlock:
         "https://trigger.dev/docs/queue-concurrency#waiting-for-a-subtask-on-the-same-queue",
+      deadlock: "https://trigger.dev/docs/queue-concurrency#deadlock",
     },
   },
   site: {

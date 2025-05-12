@@ -8,47 +8,56 @@ If you don't have Docker installed on your machine, you'll run into some complic
 
 Below are the steps on how you can avoid that.
 
-First you need to setup docker-compose as it is an underlying tool that this command: `pnpm run docker` fires behind the scene.
+First you need to setup docker compose as it is an underlying tool that this command: `pnpm run docker` fires behind the scene.
 
 ## Linux
 
-To install Docker Compose on Linux Ubuntu via the terminal, you can follow these steps:
+To install Docker Compose on Linux Ubuntu, you can follow these steps:
 
-1. Update the package index on your system by running the following command:
-
-   ```shell
-   sudo apt update
-   ```
-
-2. Install the required dependencies by running the following command:
+1. Create the Docker config directory and cli-plugins subdirectory:
 
    ```shell
-   sudo apt install curl
+   DOCKER_CONFIG=${DOCKER_CONFIG:-$HOME/.docker}
+   mkdir -p $DOCKER_CONFIG/cli-plugins
    ```
 
-3. Download the Docker Compose binary into the `/usr/local/bin` directory using the `curl` command:
+2. Download the Docker Compose plugin:
 
    ```shell
-   sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+   curl -SL "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o $DOCKER_CONFIG/cli-plugins/docker-compose
    ```
 
-4. Set the appropriate permissions to make the `docker-compose` binary executable:
+   Note:
+
+   - To install for all users, replace `$DOCKER_CONFIG/cli-plugins` with `/usr/local/lib/docker/cli-plugins`
+
+3. Set the appropriate permissions to make the Docker Compose plugin executable:
 
    ```shell
-   sudo chmod +x /usr/local/bin/docker-compose
+   chmod +x $DOCKER_CONFIG/cli-plugins/docker-compose
    ```
 
-5. Verify that Docker Compose has been successfully installed by running the following command:
+   If you installed for all users:
 
    ```shell
-   docker-compose --version
+   sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
    ```
 
-   This command should display the version information of Docker Compose without any errors.
+4. Verify that Docker Compose has been successfully installed:
 
-After following these steps, you should have Docker Compose installed on your Ubuntu system, and you can use it by running `docker-compose` commands in the terminal.
+   ```shell
+   docker compose version
+   ```
 
-When you've verified that the `docker-compose` package is installed and you proceed to start Docker with `pnpm run docker`.
+   You should see output similar to:
+
+   ```
+   Docker Compose version vX.Y.Z
+   ```
+
+After following these steps, you should have Docker Compose installed on your Ubuntu system, and you can use it by running `docker compose` commands in the terminal.
+
+When you've verified that the `docker compose` package is installed and you proceed to start Docker with `pnpm run docker`.
 
 You'll probably get an error similar to the one below:
 

@@ -126,21 +126,32 @@ export type WorkerApiDequeueFromVersionResponseBody = z.infer<
   typeof WorkerApiDequeueFromVersionResponseBody
 >;
 
-const AttributeValue = z.union([
+export const DebugLogPropertiesValue = z.union([
   z.string(),
   z.number(),
   z.boolean(),
-  z.array(z.string().nullable()),
-  z.array(z.number().nullable()),
-  z.array(z.boolean().nullable()),
+  z.array(z.string().nullish()),
+  z.array(z.number().nullish()),
+  z.array(z.boolean().nullish()),
 ]);
 
-const Attributes = z.record(z.string(), AttributeValue.optional());
+export const DebugLogProperties = z.record(z.string(), DebugLogPropertiesValue.optional());
+export type DebugLogProperties = z.infer<typeof DebugLogProperties>;
+
+export const DebugLogPropertiesInput = z.record(z.string(), z.unknown());
+export type DebugLogPropertiesInput = z.infer<typeof DebugLogPropertiesInput>;
+
+export const WorkerApiDebugLogBodyInput = z.object({
+  time: z.coerce.date(),
+  message: z.string(),
+  properties: DebugLogPropertiesInput.optional(),
+});
+export type WorkerApiDebugLogBodyInput = z.infer<typeof WorkerApiDebugLogBodyInput>;
 
 export const WorkerApiDebugLogBody = z.object({
   time: z.coerce.date(),
   message: z.string(),
-  properties: Attributes.optional(),
+  properties: DebugLogProperties.optional(),
 });
 export type WorkerApiDebugLogBody = z.infer<typeof WorkerApiDebugLogBody>;
 
@@ -150,4 +161,11 @@ export const WorkerApiSuspendCompletionResponseBody = z.object({
 });
 export type WorkerApiSuspendCompletionResponseBody = z.infer<
   typeof WorkerApiSuspendCompletionResponseBody
+>;
+
+export const WorkerApiRunSnapshotsSinceResponseBody = z.object({
+  snapshots: z.array(RunExecutionData),
+});
+export type WorkerApiRunSnapshotsSinceResponseBody = z.infer<
+  typeof WorkerApiRunSnapshotsSinceResponseBody
 >;

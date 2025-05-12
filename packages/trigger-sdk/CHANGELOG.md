@@ -1,5 +1,65 @@
 # @trigger.dev/sdk
 
+## 4.0.0-v4-beta.14
+
+### Patch Changes
+
+- When you create a Waitpoint token using `wait.createToken()` you get a URL back that can be used to complete it by making an HTTP POST request. ([#2025](https://github.com/triggerdotdev/trigger.dev/pull/2025))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.14`
+
+## 4.0.0-v4-beta.13
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.13`
+
+## 4.0.0-v4-beta.12
+
+### Patch Changes
+
+- Display clickable links in Cursor terminal ([#1998](https://github.com/triggerdotdev/trigger.dev/pull/1998))
+- Add onCancel lifecycle hook ([#2022](https://github.com/triggerdotdev/trigger.dev/pull/2022))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.12`
+
+## 4.0.0-v4-beta.11
+
+### Patch Changes
+
+- Fixed an issue with realtime streams that timeout and resume streaming dropping chunks ([#1993](https://github.com/triggerdotdev/trigger.dev/pull/1993))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.11`
+
+## 4.0.0-v4-beta.10
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.10`
+
+## 4.0.0-v4-beta.9
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.9`
+
+## 4.0.0-v4-beta.8
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.8`
+
+## 4.0.0-v4-beta.7
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.7`
+
 ## 4.0.0-v4-beta.6
 
 ### Patch Changes

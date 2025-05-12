@@ -23,6 +23,7 @@ module.exports = {
     "superjson",
     "prismjs/components/prism-json",
     "prismjs/components/prism-typescript",
+    "redlock",
   ],
   browserNodeBuiltinsPolyfill: { modules: { path: true, os: true, crypto: true } },
 };

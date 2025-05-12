@@ -24,6 +24,7 @@ import { clearTmpDirs, EphemeralDirectory, getTmpDir } from "../utilities/tempDi
 import { startDevOutput } from "./devOutput.js";
 import { startWorkerRuntime } from "./devSupervisor.js";
 import { startMcpServer, stopMcpServer } from "./mcpServer.js";
+import { aiHelpLink } from "../utilities/cliOutput.js";
 
 export type DevSessionOptions = {
   name: string | undefined;
@@ -172,24 +173,34 @@ export async function startDevSession({
   async function runBundle() {
     eventBus.emit("buildStarted", "dev");
 
-    // Use glob to find initial entryPoints
-    // Use chokidar to watch for entryPoints changes (e.g. added or removed?)
-    // When there is a change, update entryPoints and start a new build with watch: true
-    const bundleResult = await bundleWorker({
-      target: "dev",
-      cwd: rawConfig.workingDir,
-      destination: destination.path,
-      watch: true,
-      resolvedConfig: rawConfig,
-      plugins: [...pluginsFromExtensions, onEnd],
-      jsxFactory: rawConfig.build.jsx.factory,
-      jsxFragment: rawConfig.build.jsx.fragment,
-      jsxAutomatic: rawConfig.build.jsx.automatic,
-    });
+    try {
+      // Use glob to find initial entryPoints
+      // Use chokidar to watch for entryPoints changes (e.g. added or removed?)
+      // When there is a change, update entryPoints and start a new build with watch: true
+      const bundleResult = await bundleWorker({
+        target: "dev",
+        cwd: rawConfig.workingDir,
+        destination: destination.path,
+        watch: true,
+        resolvedConfig: rawConfig,
+        plugins: [...pluginsFromExtensions, onEnd],
+        jsxFactory: rawConfig.build.jsx.factory,
+        jsxFragment: rawConfig.build.jsx.fragment,
+        jsxAutomatic: rawConfig.build.jsx.automatic,
+      });
 
-    await updateBundle(bundleResult);
+      await updateBundle(bundleResult);
 
-    return bundleResult.stop;
+      return bundleResult.stop;
+    } catch (error) {
+      if (error instanceof Error) {
+        eventBus.emit("buildFailed", "dev", error);
+      } else {
+        eventBus.emit("buildFailed", "dev", new Error(String(error)));
+      }
+
+      throw error;
+    }
   }
 
   const stopBundling = await runBundle();

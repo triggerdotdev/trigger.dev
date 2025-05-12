@@ -53,7 +53,7 @@ export class CheckpointSystem {
   }): Promise<CreateCheckpointResult> {
     const prisma = tx ?? this.$.prisma;
 
-    return await this.$.runLock.lock([runId], 5_000, async () => {
+    return await this.$.runLock.lock("createCheckpoint", [runId], 5_000, async () => {
       const snapshot = await getLatestExecutionSnapshot(prisma, runId);
 
       const isValidSnapshot =
@@ -142,6 +142,25 @@ export class CheckpointSystem {
 
         throw new ServiceValidationError("Run not found", 404);
       }
+
+      this.$.eventBus.emit("runStatusChanged", {
+        time: new Date(),
+        run: {
+          id: runId,
+          status: run.status,
+          updatedAt: run.updatedAt,
+          createdAt: run.createdAt,
+        },
+        organization: {
+          id: run.runtimeEnvironment.organizationId,
+        },
+        project: {
+          id: run.runtimeEnvironment.projectId,
+        },
+        environment: {
+          id: run.runtimeEnvironment.id,
+        },
+      });
 
       // Create the checkpoint
       const taskRunCheckpoint = await prisma.taskRunCheckpoint.create({
@@ -238,7 +257,7 @@ export class CheckpointSystem {
   }): Promise<ExecutionResult> {
     const prisma = tx ?? this.$.prisma;
 
-    return await this.$.runLock.lock([runId], 5_000, async () => {
+    return await this.$.runLock.lock("continueRunExecution", [runId], 5_000, async () => {
       const snapshot = await getLatestExecutionSnapshot(prisma, runId);
 
       if (snapshot.id !== snapshotId) {
@@ -261,6 +280,11 @@ export class CheckpointSystem {
           id: true,
           status: true,
           attemptNumber: true,
+          organizationId: true,
+          runtimeEnvironmentId: true,
+          projectId: true,
+          updatedAt: true,
+          createdAt: true,
         },
       });
 
@@ -271,6 +295,25 @@ export class CheckpointSystem {
 
         throw new ServiceValidationError("Run not found", 404);
       }
+
+      this.$.eventBus.emit("runStatusChanged", {
+        time: new Date(),
+        run: {
+          id: runId,
+          status: run.status,
+          updatedAt: run.updatedAt,
+          createdAt: run.createdAt,
+        },
+        organization: {
+          id: run.organizationId ?? undefined,
+        },
+        project: {
+          id: run.projectId,
+        },
+        environment: {
+          id: run.runtimeEnvironmentId,
+        },
+      });
 
       const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(prisma, {
         run,

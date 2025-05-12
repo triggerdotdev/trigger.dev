@@ -22,6 +22,7 @@ import {
   TaskRunExecution,
   timeout,
   TriggerConfig,
+  UsageMeasurement,
   waitUntil,
   WorkerManifest,
   WorkerToExecutorMessageCatalog,
@@ -34,7 +35,7 @@ import {
   getEnvVar,
   getNumberEnvVar,
   logLevels,
-  ManagedRuntimeManager,
+  SharedRuntimeManager,
   OtelTaskLogger,
   populateEnv,
   ProdUsageManager,
@@ -229,7 +230,10 @@ async function bootstrap() {
 
 let _execution: TaskRunExecution | undefined;
 let _isRunning = false;
+let _isCancelled = false;
 let _tracingSDK: TracingSDK | undefined;
+let _executionMeasurement: UsageMeasurement | undefined;
+const cancelController = new AbortController();
 
 const zodIpc = new ZodIpcConnection({
   listenSchema: WorkerToExecutorMessageCatalog,
@@ -398,18 +402,17 @@ const zodIpc = new ZodIpcConnection({
             getNumberEnvVar("TRIGGER_RUN_METADATA_FLUSH_INTERVAL", 1000)
           );
 
-          const measurement = usage.start();
+          _executionMeasurement = usage.start();
 
-          // This lives outside of the executor because this will eventually be moved to the controller level
-          const signal = execution.run.maxDuration
-            ? timeout.abortAfterTimeout(execution.run.maxDuration)
-            : undefined;
+          const timeoutController = timeout.abortAfterTimeout(execution.run.maxDuration);
+
+          const signal = AbortSignal.any([cancelController.signal, timeoutController.signal]);
 
           const { result } = await executor.execute(execution, metadata, traceContext, signal);
 
-          const usageSample = usage.stop(measurement);
+          if (_isRunning && !_isCancelled) {
+            const usageSample = usage.stop(_executionMeasurement);
 
-          if (_isRunning) {
             return sender.send("TASK_RUN_COMPLETED", {
               execution,
               result: {
@@ -445,23 +448,35 @@ const zodIpc = new ZodIpcConnection({
         });
       }
     },
-    TASK_RUN_COMPLETED_NOTIFICATION: async () => {
-      await managedWorkerRuntime.completeWaitpoints([]);
-    },
-    WAIT_COMPLETED_NOTIFICATION: async () => {
-      await managedWorkerRuntime.completeWaitpoints([]);
-    },
     FLUSH: async ({ timeoutInMs }, sender) => {
       await flushAll(timeoutInMs);
     },
-    WAITPOINT_CREATED: async ({ wait, waitpoint }) => {
-      managedWorkerRuntime.associateWaitWithWaitpoint(wait.id, waitpoint.id);
+    CANCEL: async ({ timeoutInMs }, sender) => {
+      _isCancelled = true;
+      cancelController.abort("run cancelled");
+      await callCancelHooks(timeoutInMs);
+      if (_executionMeasurement) {
+        usage.stop(_executionMeasurement);
+      }
+      await flushAll(timeoutInMs);
     },
-    WAITPOINT_COMPLETED: async ({ waitpoint }) => {
-      managedWorkerRuntime.completeWaitpoints([waitpoint]);
+    RESOLVE_WAITPOINT: async ({ waitpoint }) => {
+      sharedWorkerRuntime.resolveWaitpoints([waitpoint]);
     },
   },
 });
+
+async function callCancelHooks(timeoutInMs: number = 10_000) {
+  const now = performance.now();
+
+  try {
+    await Promise.race([lifecycleHooks.callOnCancelHookListeners(), setTimeout(timeoutInMs)]);
+  } finally {
+    const duration = performance.now() - now;
+
+    console.log(`Called cancel hooks in ${duration}ms`);
+  }
+}
 
 async function flushAll(timeoutInMs: number = 10_000) {
   const now = performance.now();
@@ -565,9 +580,9 @@ function initializeUsageManager({
   timeout.setGlobalManager(new UsageTimeoutManager(devUsageManager));
 }
 
-const managedWorkerRuntime = new ManagedRuntimeManager(zodIpc, true);
+const sharedWorkerRuntime = new SharedRuntimeManager(zodIpc, true);
 
-runtime.setGlobalRuntimeManager(managedWorkerRuntime);
+runtime.setGlobalRuntimeManager(sharedWorkerRuntime);
 
 process.title = "trigger-managed-worker";
 

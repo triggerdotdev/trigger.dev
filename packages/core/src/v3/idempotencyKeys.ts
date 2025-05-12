@@ -105,7 +105,7 @@ function injectScope(scope: "run" | "attempt" | "global"): string[] {
     }
     case "attempt": {
       if (taskContext?.ctx) {
-        return [taskContext.ctx.attempt.id];
+        return [taskContext.ctx.run.id, taskContext.ctx.attempt.number.toString()];
       }
       break;
     }
@@ -124,4 +124,18 @@ async function generateIdempotencyKey(keyMaterial: string[]) {
   return Array.from(new Uint8Array(hash))
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
+}
+
+type AttemptKeyMaterial = {
+  run: {
+    id: string;
+  };
+  attempt: {
+    number: number;
+  };
+};
+
+/** Creates a unique key for each attempt. */
+export function attemptKey(ctx: AttemptKeyMaterial): string {
+  return `${ctx.run.id}-${ctx.attempt.number}`;
 }

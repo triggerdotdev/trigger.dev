@@ -1,5 +1,5 @@
-import { logger, wait, task, retry, idempotencyKeys, auth } from "@trigger.dev/sdk/v3";
-
+import { auth, idempotencyKeys, logger, retry, task, wait } from "@trigger.dev/sdk/v3";
+import Replicate, { Prediction } from "replicate";
 type Token = {
   status: "approved" | "pending" | "rejected";
 };
@@ -138,5 +138,51 @@ export const waitForDuration = task({
         maxAttempts: 2,
       }
     );
+  },
+});
+
+export const waitHttpCallback = task({
+  id: "wait-http-callback",
+  retry: {
+    maxAttempts: 1,
+  },
+  run: async () => {
+    if (process.env.REPLICATE_API_KEY) {
+      const replicate = new Replicate({
+        auth: process.env.REPLICATE_API_KEY,
+      });
+
+      const token = await wait.createToken({
+        timeout: "10m",
+        tags: ["replicate"],
+      });
+      logger.log("Create result", { token });
+
+      const call = await replicate.predictions.create({
+        version: "27b93a2413e7f36cd83da926f3656280b2931564ff050bf9575f1fdf9bcd7478",
+        input: {
+          prompt: "A painting of a cat by Any Warhol",
+        },
+        // pass the provided URL to Replicate's webhook, so they can "callback"
+        webhook: token.url,
+        webhook_events_filter: ["completed"],
+      });
+
+      const prediction = await wait.forToken<Prediction>(token);
+
+      if (!prediction.ok) {
+        throw new Error("Failed to create prediction");
+      }
+
+      logger.log("Prediction", prediction);
+
+      const imageUrl = prediction.output.output;
+      logger.log("Image URL", imageUrl);
+
+      //same again but with unwrapping
+      const result2 = await wait.forToken<Prediction>(token).unwrap();
+
+      logger.log("Result2", { result2 });
+    }
   },
 });

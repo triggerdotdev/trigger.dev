@@ -11,10 +11,11 @@ import { BasePresenter } from "./basePresenter.server";
 import { type WaitpointSearchParams } from "~/components/runs/v3/WaitpointTokenFilters";
 import { determineEngineVersion } from "~/v3/engineVersion.server";
 import { type WaitpointTokenStatus, type WaitpointTokenItem } from "@trigger.dev/core/v3";
+import { generateHttpCallbackUrl } from "~/services/httpCallback.server";
 
 const DEFAULT_PAGE_SIZE = 25;
 
-export type WaitpointTokenListOptions = {
+export type WaitpointListOptions = {
   environment: {
     id: string;
     type: RuntimeEnvironmentType;
@@ -22,6 +23,7 @@ export type WaitpointTokenListOptions = {
       id: string;
       engine: RunEngineVersion;
     };
+    apiKey: string;
   };
   // filters
   id?: string;
@@ -63,7 +65,7 @@ type Result =
       filters: undefined;
     };
 
-export class WaitpointTokenListPresenter extends BasePresenter {
+export class WaitpointListPresenter extends BasePresenter {
   public async call({
     environment,
     id,
@@ -76,7 +78,7 @@ export class WaitpointTokenListPresenter extends BasePresenter {
     direction = "forward",
     cursor,
     pageSize = DEFAULT_PAGE_SIZE,
-  }: WaitpointTokenListOptions): Promise<Result> {
+  }: WaitpointListOptions): Promise<Result> {
     const engineVersion = await determineEngineVersion({ environment });
     if (engineVersion === "V1") {
       return {
@@ -165,8 +167,8 @@ export class WaitpointTokenListPresenter extends BasePresenter {
       ${sqlDatabaseSchema}."Waitpoint" w
     WHERE
       w."environmentId" = ${environment.id}
-      AND w.type = 'MANUAL'
-      -- cursor
+    AND w.type = 'MANUAL'      
+    -- cursor
       ${
         cursor
           ? direction === "forward"
@@ -263,6 +265,7 @@ export class WaitpointTokenListPresenter extends BasePresenter {
       success: true,
       tokens: tokensToReturn.map((token) => ({
         id: token.friendlyId,
+        url: generateHttpCallbackUrl(token.id, environment.apiKey),
         status: waitpointStatusToApiStatus(token.status, token.outputIsError),
         completedAt: token.completedAt ?? undefined,
         timeoutAt: token.completedAfter ?? undefined,

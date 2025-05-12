@@ -22,7 +22,7 @@ import { runStatusFromError, ServiceValidationError } from "../errors.js";
 import { sendNotificationToWorker } from "../eventBus.js";
 import { getMachinePreset } from "../machinePresets.js";
 import { retryOutcomeFromCompletion } from "../retrying.js";
-import { isExecuting } from "../statuses.js";
+import { isExecuting, isInitialState } from "../statuses.js";
 import { RunEngineOptions } from "../types.js";
 import { BatchSystem } from "./batchSystem.js";
 import {
@@ -32,12 +32,14 @@ import {
 } from "./executionSnapshotSystem.js";
 import { SystemResources } from "./systems.js";
 import { WaitpointSystem } from "./waitpointSystem.js";
+import { DelayedRunSystem } from "./delayedRunSystem.js";
 
 export type RunAttemptSystemOptions = {
   resources: SystemResources;
   executionSnapshotSystem: ExecutionSnapshotSystem;
   batchSystem: BatchSystem;
   waitpointSystem: WaitpointSystem;
+  delayedRunSystem: DelayedRunSystem;
   retryWarmStartThresholdMs?: number;
   machines: RunEngineOptions["machines"];
 };
@@ -47,12 +49,14 @@ export class RunAttemptSystem {
   private readonly executionSnapshotSystem: ExecutionSnapshotSystem;
   private readonly batchSystem: BatchSystem;
   private readonly waitpointSystem: WaitpointSystem;
+  private readonly delayedRunSystem: DelayedRunSystem;
 
   constructor(private readonly options: RunAttemptSystemOptions) {
     this.$ = options.resources;
     this.executionSnapshotSystem = options.executionSnapshotSystem;
     this.batchSystem = options.batchSystem;
     this.waitpointSystem = options.waitpointSystem;
+    this.delayedRunSystem = options.delayedRunSystem;
   }
 
   public async startRunAttempt({
@@ -76,7 +80,7 @@ export class RunAttemptSystem {
       this.$.tracer,
       "startRunAttempt",
       async (span) => {
-        return this.$.runLock.lock([runId], 5000, async () => {
+        return this.$.runLock.lock("startRunAttempt", [runId], 5000, async () => {
           const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId);
 
           if (latestSnapshot.id !== snapshotId) {
@@ -171,18 +175,6 @@ export class RunAttemptSystem {
             throw new ServiceValidationError("Max attempts reached", 400);
           }
 
-          this.$.eventBus.emit("runAttemptStarted", {
-            time: new Date(),
-            run: {
-              id: taskRun.id,
-              attemptNumber: nextAttemptNumber,
-              baseCostInCents: taskRun.baseCostInCents,
-            },
-            organization: {
-              id: environment.organization.id,
-            },
-          });
-
           const result = await $transaction(
             prisma,
             async (tx) => {
@@ -253,6 +245,28 @@ export class RunAttemptSystem {
           }
 
           const { run, snapshot } = result;
+
+          this.$.eventBus.emit("runAttemptStarted", {
+            time: new Date(),
+            run: {
+              id: run.id,
+              status: run.status,
+              createdAt: run.createdAt,
+              updatedAt: run.updatedAt,
+              attemptNumber: nextAttemptNumber,
+              baseCostInCents: run.baseCostInCents,
+              executedAt: run.executedAt ?? undefined,
+            },
+            organization: {
+              id: environment.organization.id,
+            },
+            project: {
+              id: environment.project.id,
+            },
+            environment: {
+              id: environment.id,
+            },
+          });
 
           const machinePreset = getMachinePreset({
             machines: this.options.machines.machines,
@@ -412,7 +426,7 @@ export class RunAttemptSystem {
       this.$.tracer,
       "#completeRunAttemptSuccess",
       async (span) => {
-        return this.$.runLock.lock([runId], 5_000, async (signal) => {
+        return this.$.runLock.lock("attemptSucceeded", [runId], 5_000, async (signal) => {
           const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId);
 
           if (latestSnapshot.id !== snapshotId) {
@@ -451,6 +465,7 @@ export class RunAttemptSystem {
               status: true,
               attemptNumber: true,
               spanId: true,
+              updatedAt: true,
               associatedWaitpoint: {
                 select: {
                   id: true,
@@ -466,6 +481,10 @@ export class RunAttemptSystem {
               completedAt: true,
               taskEventStore: true,
               parentTaskRunId: true,
+              usageDurationMs: true,
+              costInCents: true,
+              runtimeEnvironmentId: true,
+              projectId: true,
             },
           });
           const newSnapshot = await getLatestExecutionSnapshot(prisma, runId);
@@ -499,12 +518,26 @@ export class RunAttemptSystem {
             time: completedAt,
             run: {
               id: runId,
+              status: run.status,
               spanId: run.spanId,
               output: completion.output,
               outputType: completion.outputType,
               createdAt: run.createdAt,
               completedAt: run.completedAt,
               taskEventStore: run.taskEventStore,
+              usageDurationMs: run.usageDurationMs,
+              costInCents: run.costInCents,
+              updatedAt: run.updatedAt,
+              attemptNumber: run.attemptNumber ?? 1,
+            },
+            organization: {
+              id: run.project.organizationId,
+            },
+            project: {
+              id: run.projectId,
+            },
+            environment: {
+              id: run.runtimeEnvironmentId,
             },
           });
 
@@ -546,7 +579,7 @@ export class RunAttemptSystem {
       this.$.tracer,
       "completeRunAttemptFailure",
       async (span) => {
-        return this.$.runLock.lock([runId], 5_000, async (signal) => {
+        return this.$.runLock.lock("attemptFailed", [runId], 5_000, async (signal) => {
           const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId);
 
           if (latestSnapshot.id !== snapshotId) {
@@ -589,6 +622,7 @@ export class RunAttemptSystem {
                 taskEventStore: true,
                 createdAt: true,
                 completedAt: true,
+                updatedAt: true,
               },
             });
 
@@ -607,6 +641,7 @@ export class RunAttemptSystem {
                 createdAt: minimalRun.createdAt,
                 completedAt: minimalRun.completedAt,
                 taskEventStore: minimalRun.taskEventStore,
+                updatedAt: minimalRun.updatedAt,
               },
             });
           }
@@ -675,6 +710,7 @@ export class RunAttemptSystem {
                     createdAt: run.createdAt,
                     completedAt: run.completedAt,
                     taskEventStore: run.taskEventStore,
+                    updatedAt: run.updatedAt,
                   },
                 });
               }
@@ -683,6 +719,7 @@ export class RunAttemptSystem {
                 time: failedAt,
                 run: {
                   id: run.id,
+                  status: run.status,
                   friendlyId: run.friendlyId,
                   attemptNumber: nextAttemptNumber,
                   queue: run.queue,
@@ -691,6 +728,9 @@ export class RunAttemptSystem {
                   baseCostInCents: run.baseCostInCents,
                   spanId: run.spanId,
                   nextMachineAfterOOM: retryResult.machine,
+                  updatedAt: run.updatedAt,
+                  error: completion.error,
+                  createdAt: run.createdAt,
                 },
                 organization: {
                   id: run.runtimeEnvironment.organizationId,
@@ -850,7 +890,7 @@ export class RunAttemptSystem {
   }): Promise<{ wasRequeued: boolean } & ExecutionResult> {
     const prisma = tx ?? this.$.prisma;
 
-    return await this.$.runLock.lock([run.id], 5000, async (signal) => {
+    return await this.$.runLock.lock("tryNackAndRequeue", [run.id], 5000, async (signal) => {
       //we nack the message, this allows another work to pick up the run
       const gotRequeued = await this.$.runQueue.nackMessage({
         orgId,
@@ -888,6 +928,7 @@ export class RunAttemptSystem {
           friendlyId: newSnapshot.friendlyId,
           executionStatus: newSnapshot.executionStatus,
           description: newSnapshot.description,
+          createdAt: newSnapshot.createdAt,
         },
         run: {
           id: newSnapshot.runId,
@@ -926,7 +967,7 @@ export class RunAttemptSystem {
     reason = reason ?? "Cancelled by user";
 
     return startSpan(this.$.tracer, "cancelRun", async (span) => {
-      return this.$.runLock.lock([runId], 5_000, async (signal) => {
+      return this.$.runLock.lock("cancelRun", [runId], 5_000, async (signal) => {
         const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId);
 
         //already finished, do nothing
@@ -968,6 +1009,8 @@ export class RunAttemptSystem {
             completedAt: true,
             taskEventStore: true,
             parentTaskRunId: true,
+            delayUntil: true,
+            updatedAt: true,
             runtimeEnvironment: {
               select: {
                 organizationId: true,
@@ -985,6 +1028,11 @@ export class RunAttemptSystem {
             },
           },
         });
+
+        //if the run is delayed and hasn't started yet, we need to prevent it being added to the queue in future
+        if (isInitialState(latestSnapshot.executionStatus) && run.delayUntil) {
+          await this.delayedRunSystem.preventDelayedRunFromBeingEnqueued({ runId });
+        }
 
         //remove it from the queue and release concurrency
         await this.$.runQueue.acknowledgeMessage(run.runtimeEnvironment.organizationId, runId);
@@ -1045,12 +1093,24 @@ export class RunAttemptSystem {
           time: new Date(),
           run: {
             id: run.id,
+            status: run.status,
             friendlyId: run.friendlyId,
             spanId: run.spanId,
             taskEventStore: run.taskEventStore,
             createdAt: run.createdAt,
             completedAt: run.completedAt,
             error,
+            updatedAt: run.updatedAt,
+            attemptNumber: run.attemptNumber ?? 1,
+          },
+          organization: {
+            id: latestSnapshot.organizationId,
+          },
+          project: {
+            id: latestSnapshot.projectId,
+          },
+          environment: {
+            id: latestSnapshot.environmentId,
           },
         });
 
@@ -1110,6 +1170,9 @@ export class RunAttemptSystem {
           spanId: true,
           batchId: true,
           parentTaskRunId: true,
+          updatedAt: true,
+          usageDurationMs: true,
+          costInCents: true,
           associatedWaitpoint: {
             select: {
               id: true,
@@ -1170,6 +1233,19 @@ export class RunAttemptSystem {
           taskEventStore: run.taskEventStore,
           createdAt: run.createdAt,
           completedAt: run.completedAt,
+          updatedAt: run.updatedAt,
+          attemptNumber: run.attemptNumber ?? 1,
+          usageDurationMs: run.usageDurationMs,
+          costInCents: run.costInCents,
+        },
+        organization: {
+          id: run.runtimeEnvironment.project.organizationId,
+        },
+        project: {
+          id: run.runtimeEnvironment.project.id,
+        },
+        environment: {
+          id: run.runtimeEnvironment.id,
         },
       });
 

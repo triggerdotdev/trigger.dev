@@ -28,11 +28,7 @@ import { FairQueueSelectionStrategy } from "../run-queue/fairQueueSelectionStrat
 import { RunQueue } from "../run-queue/index.js";
 import { RunQueueFullKeyProducer } from "../run-queue/keyProducer.js";
 import { MinimalAuthenticatedEnvironment } from "../shared/index.js";
-import {
-  NotImplementedError,
-  RunDuplicateIdempotencyKeyError,
-  ServiceValidationError,
-} from "./errors.js";
+import { NotImplementedError, RunDuplicateIdempotencyKeyError } from "./errors.js";
 import { EventBus, EventBusEvents } from "./eventBus.js";
 import { RunLocker } from "./locking.js";
 import { BatchSystem } from "./systems/batchSystem.js";
@@ -43,6 +39,8 @@ import { EnqueueSystem } from "./systems/enqueueSystem.js";
 import {
   ExecutionSnapshotSystem,
   getLatestExecutionSnapshot,
+  getExecutionSnapshotsSince,
+  executionDataFromSnapshot,
 } from "./systems/executionSnapshotSystem.js";
 import { PendingVersionSystem } from "./systems/pendingVersionSystem.js";
 import { ReleaseConcurrencySystem } from "./systems/releaseConcurrencySystem.js";
@@ -92,7 +90,11 @@ export class RunEngine {
         },
       }
     );
-    this.runLock = new RunLocker({ redis: this.runLockRedis });
+    this.runLock = new RunLocker({
+      redis: this.runLockRedis,
+      logger: this.logger,
+      tracer: trace.getTracer("RunLocker"),
+    });
 
     const keys = new RunQueueFullKeyProducer();
 
@@ -109,7 +111,6 @@ export class RunEngine {
       logger: new Logger("RunQueue", "debug"),
       redis: { ...options.queue.redis, keyPrefix: `${options.queue.redis.keyPrefix}runqueue:` },
       retryOptions: options.queue?.retryOptions,
-      maxDequeueLoopAttempts: options.queue?.maxDequeueLoopAttempts ?? 10,
     });
 
     this.worker = new Worker({
@@ -299,7 +300,9 @@ export class RunEngine {
       executionSnapshotSystem: this.executionSnapshotSystem,
       batchSystem: this.batchSystem,
       waitpointSystem: this.waitpointSystem,
+      delayedRunSystem: this.delayedRunSystem,
       machines: this.options.machines,
+      retryWarmStartThresholdMs: this.options.retryWarmStartThresholdMs,
     });
 
     this.dequeueSystem = new DequeueSystem({
@@ -336,6 +339,7 @@ export class RunEngine {
       concurrencyKey,
       masterQueue,
       queue,
+      lockedQueueId,
       isTest,
       delayUntil,
       queuedAt,
@@ -360,6 +364,9 @@ export class RunEngine {
       workerId,
       runnerId,
       releaseConcurrency,
+      runChainState,
+      scheduleId,
+      scheduleInstanceId,
     }: TriggerParams,
     tx?: PrismaClientOrTransaction
   ): Promise<TaskRun> {
@@ -398,6 +405,8 @@ export class RunEngine {
               number,
               friendlyId,
               runtimeEnvironmentId: environment.id,
+              environmentType: environment.type,
+              organizationId: environment.organization.id,
               projectId: environment.project.id,
               idempotencyKey,
               idempotencyKeyExpiresAt,
@@ -415,6 +424,7 @@ export class RunEngine {
               cliVersion,
               concurrencyKey,
               queue,
+              lockedQueueId,
               masterQueue,
               secondaryMasterQueue,
               isTest,
@@ -444,6 +454,9 @@ export class RunEngine {
               seedMetadataType,
               maxDurationInSeconds,
               machinePreset: machine,
+              runChainState,
+              scheduleId,
+              scheduleInstanceId,
               executionSnapshots: {
                 create: {
                   engine: "V2",
@@ -491,7 +504,7 @@ export class RunEngine {
 
         span.setAttribute("runId", taskRun.id);
 
-        await this.runLock.lock([taskRun.id], 5000, async (signal) => {
+        await this.runLock.lock("trigger", [taskRun.id], 5000, async (signal) => {
           //create associated waitpoint (this completes when the run completes)
           const associatedWaitpoint = await this.waitpointSystem.createRunAssociatedWaitpoint(
             prisma,
@@ -539,6 +552,11 @@ export class RunEngine {
               await this.ttlSystem.scheduleExpireRun({ runId: taskRun.id, ttl: taskRun.ttl });
             }
           }
+        });
+
+        this.eventBus.emit("runCreated", {
+          time: new Date(),
+          runId: taskRun.id,
         });
 
         return taskRun;
@@ -1091,43 +1109,31 @@ export class RunEngine {
     const prisma = tx ?? this.prisma;
     try {
       const snapshot = await getLatestExecutionSnapshot(prisma, runId);
-
-      const executionData: RunExecutionData = {
-        version: "1" as const,
-        snapshot: {
-          id: snapshot.id,
-          friendlyId: snapshot.friendlyId,
-          executionStatus: snapshot.executionStatus,
-          description: snapshot.description,
-        },
-        run: {
-          id: snapshot.runId,
-          friendlyId: snapshot.runFriendlyId,
-          status: snapshot.runStatus,
-          attemptNumber: snapshot.attemptNumber ?? undefined,
-        },
-        batch: snapshot.batchId
-          ? {
-              id: snapshot.batchId,
-              friendlyId: BatchId.toFriendlyId(snapshot.batchId),
-            }
-          : undefined,
-        checkpoint: snapshot.checkpoint
-          ? {
-              id: snapshot.checkpoint.id,
-              friendlyId: snapshot.checkpoint.friendlyId,
-              type: snapshot.checkpoint.type,
-              location: snapshot.checkpoint.location,
-              imageRef: snapshot.checkpoint.imageRef,
-              reason: snapshot.checkpoint.reason ?? undefined,
-            }
-          : undefined,
-        completedWaitpoints: snapshot.completedWaitpoints,
-      };
-
-      return executionData;
+      return executionDataFromSnapshot(snapshot);
     } catch (e) {
       this.logger.error("Failed to getRunExecutionData", {
+        message: e instanceof Error ? e.message : e,
+      });
+      return null;
+    }
+  }
+
+  async getSnapshotsSince({
+    runId,
+    snapshotId,
+    tx,
+  }: {
+    runId: string;
+    snapshotId: string;
+    tx?: PrismaClientOrTransaction;
+  }): Promise<RunExecutionData[] | null> {
+    const prisma = tx ?? this.prisma;
+
+    try {
+      const snapshots = await getExecutionSnapshotsSince(prisma, runId, snapshotId);
+      return snapshots.map(executionDataFromSnapshot);
+    } catch (e) {
+      this.logger.error("Failed to getSnapshotsSince", {
         message: e instanceof Error ? e.message : e,
       });
       return null;
@@ -1149,9 +1155,6 @@ export class RunEngine {
     }
   }
 
-  //#endregion
-
-  //#region Heartbeat
   async #handleStalledSnapshot({
     runId,
     snapshotId,
@@ -1162,7 +1165,7 @@ export class RunEngine {
     tx?: PrismaClientOrTransaction;
   }) {
     const prisma = tx ?? this.prisma;
-    return await this.runLock.lock([runId], 5_000, async () => {
+    return await this.runLock.lock("handleStalledSnapshot", [runId], 5_000, async () => {
       const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId);
       if (latestSnapshot.id !== snapshotId) {
         this.logger.log(

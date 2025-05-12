@@ -1627,6 +1627,8 @@ model BackgroundWorker {
 
   @@unique([projectId, runtimeEnvironmentId, version])
   @@index([runtimeEnvironmentId])
+  // Get the latest worker for a given environment
+  @@index([runtimeEnvironmentId, createdAt(sort: Desc)])
 }
 
 model BackgroundWorkerFile {
@@ -1729,8 +1731,12 @@ model TaskRun {
   runtimeEnvironment   RuntimeEnvironment @relation(fields: [runtimeEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   runtimeEnvironmentId String
 
+  environmentType RuntimeEnvironmentType?
+
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   projectId String
+
+  organizationId String?
 
   // The specific queue this run is in
   queue         String
@@ -1852,6 +1858,9 @@ model TaskRun {
 
   /// The span ID of the "trigger" span in the parent task run
   parentSpanId String?
+
+  /// Holds the state of the run chain for deadlock detection
+  runChainState Json?
 
   /// seed run metadata
   seedMetadata     String?
@@ -2146,6 +2155,7 @@ model Waitpoint {
   updatedAt DateTime @updatedAt
 
   /// Denormized column that holds the raw tags
+  /// Denormalized column that holds the raw tags
   tags String[]
 
   /// Quickly find an idempotent waitpoint

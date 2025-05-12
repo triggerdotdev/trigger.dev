@@ -189,7 +189,7 @@ describe("RunEngine triggerAndWait", () => {
       );
       expect(parentExecutionDataAfter.completedWaitpoints![0].output).toBe('{"foo":"bar"}');
     } finally {
-      engine.quit();
+      await engine.quit();
     }
   });
 
@@ -445,7 +445,7 @@ describe("RunEngine triggerAndWait", () => {
         );
         expect(parent2ExecutionDataAfter.completedWaitpoints![0].output).toBe('{"foo":"bar"}');
       } finally {
-        engine.quit();
+        await engine.quit();
       }
     }
   );

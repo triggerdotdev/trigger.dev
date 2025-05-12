@@ -37,7 +37,7 @@ export class DelayedRunSystem {
       this.$.tracer,
       "rescheduleDelayedRun",
       async () => {
-        return await this.$.runLock.lock([runId], 5_000, async () => {
+        return await this.$.runLock.lock("rescheduleDelayedRun", [runId], 5_000, async () => {
           const snapshot = await getLatestExecutionSnapshot(prisma, runId);
 
           //if the run isn't just created then we can't reschedule it
@@ -67,6 +67,26 @@ export class DelayedRunSystem {
           });
 
           await this.$.worker.reschedule(`enqueueDelayedRun:${updatedRun.id}`, delayUntil);
+
+          this.$.eventBus.emit("runDelayRescheduled", {
+            time: new Date(),
+            run: {
+              id: updatedRun.id,
+              status: updatedRun.status,
+              delayUntil: delayUntil,
+              updatedAt: updatedRun.updatedAt,
+              createdAt: updatedRun.createdAt,
+            },
+            organization: {
+              id: snapshot.organizationId,
+            },
+            project: {
+              id: updatedRun.projectId,
+            },
+            environment: {
+              id: updatedRun.runtimeEnvironmentId,
+            },
+          });
 
           return updatedRun;
         });
@@ -101,11 +121,33 @@ export class DelayedRunSystem {
       batchId: run.batchId ?? undefined,
     });
 
-    await this.$.prisma.taskRun.update({
+    const queuedAt = new Date();
+
+    const updatedRun = await this.$.prisma.taskRun.update({
       where: { id: runId },
       data: {
         status: "PENDING",
-        queuedAt: new Date(),
+        queuedAt,
+      },
+    });
+
+    this.$.eventBus.emit("runEnqueuedAfterDelay", {
+      time: new Date(),
+      run: {
+        id: runId,
+        status: "PENDING",
+        queuedAt,
+        updatedAt: updatedRun.updatedAt,
+        createdAt: updatedRun.createdAt,
+      },
+      organization: {
+        id: run.runtimeEnvironment.organizationId,
+      },
+      project: {
+        id: run.runtimeEnvironment.projectId,
+      },
+      environment: {
+        id: run.runtimeEnvironmentId,
       },
     });
 
@@ -130,5 +172,9 @@ export class DelayedRunSystem {
       payload: { runId },
       availableAt: delayUntil,
     });
+  }
+
+  async preventDelayedRunFromBeingEnqueued({ runId }: { runId: string }) {
+    await this.$.worker.ack(`enqueueDelayedRun:${runId}`);
   }
 }

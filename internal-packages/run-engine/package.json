@@ -11,6 +11,12 @@
       "import": "./dist/src/index.js",
       "types": "./dist/src/index.d.ts",
       "default": "./dist/src/index.js"
+    },
+    "./tests": {
+      "@triggerdotdev/source": "./src/engine/tests/setup.ts",
+      "import": "./dist/src/engine/tests/setup.js",
+      "types": "./dist/src/engine/tests/setup.d.ts",
+      "default": "./dist/src/engine/tests/setup.js"
     }
   },
   "dependencies": {

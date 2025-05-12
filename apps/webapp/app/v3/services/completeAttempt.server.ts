@@ -10,7 +10,6 @@ import {
   TaskRunFailedExecutionResult,
   TaskRunSuccessfulExecutionResult,
   flattenAttributes,
-  isManualOutOfMemoryError,
   isOOMRunError,
   sanitizeError,
   shouldRetryError,
@@ -26,14 +25,14 @@ import { safeJsonParse } from "~/utils/json";
 import { marqs } from "~/v3/marqs/index.server";
 import { createExceptionPropertiesFromError, eventRepository } from "../eventRepository.server";
 import { FailedTaskRunRetryHelper } from "../failedTaskRun.server";
+import { socketIo } from "../handleSocketIo.server";
+import { getTaskEventStoreTableForRun } from "../taskEventStore.server";
 import { FAILED_RUN_STATUSES, isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
 import { BaseService } from "./baseService.server";
 import { CancelAttemptService } from "./cancelAttempt.server";
 import { CreateCheckpointService } from "./createCheckpoint.server";
 import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
 import { RetryAttemptService } from "./retryAttempt.server";
-import { getTaskEventStoreTableForRun } from "../taskEventStore.server";
-import { socketIo } from "../handleSocketIo.server";
 
 type FoundAttempt = Awaited<ReturnType<typeof findAttempt>>;
 

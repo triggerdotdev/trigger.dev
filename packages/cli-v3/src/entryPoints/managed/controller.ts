@@ -8,7 +8,7 @@ import {
 } from "@trigger.dev/core/v3/workers";
 import { io, type Socket } from "socket.io-client";
 import { RunnerEnv } from "./env.js";
-import { RunLogger, SendDebugLogOptions } from "./logger.js";
+import { ManagedRunLogger, RunLogger, SendDebugLogOptions } from "./logger.js";
 import { EnvObject } from "std-env";
 import { RunExecution } from "./execution.js";
 import { tryCatch } from "@trigger.dev/core/utils";
@@ -18,7 +18,7 @@ type ManagedRunControllerOptions = {
   env: EnvObject;
 };
 
-type SupervisorSocket = Socket<WorkloadServerToClientEvents, WorkloadClientToServerEvents>;
+export type SupervisorSocket = Socket<WorkloadServerToClientEvents, WorkloadClientToServerEvents>;
 
 export class ManagedRunController {
   private readonly env: RunnerEnv;
@@ -30,6 +30,9 @@ export class ManagedRunController {
 
   private warmStartCount = 0;
   private restoreCount = 0;
+
+  private notificationCount = 0;
+  private lastNotificationAt: Date | null = null;
 
   private currentExecution: RunExecution | null = null;
 
@@ -47,7 +50,7 @@ export class ManagedRunController {
       projectRef: env.TRIGGER_PROJECT_REF,
     });
 
-    this.logger = new RunLogger({
+    this.logger = new ManagedRunLogger({
       httpClient: this.httpClient,
       env,
     });
@@ -91,6 +94,8 @@ export class ManagedRunController {
     return {
       warmStartCount: this.warmStartCount,
       restoreCount: this.restoreCount,
+      notificationCount: this.notificationCount,
+      lastNotificationAt: this.lastNotificationAt,
     };
   }
 
@@ -178,12 +183,26 @@ export class ManagedRunController {
     }
 
     const execution = async () => {
-      if (!this.currentExecution || !this.currentExecution.isPreparedForNextRun) {
+      // If we have an existing execution that isn't prepared for the next run, kill it
+      if (this.currentExecution && !this.currentExecution.canExecute) {
+        this.sendDebugLog({
+          runId: runFriendlyId,
+          message: "killing existing execution before starting new run",
+        });
+        await this.currentExecution.kill().catch(() => {});
+        this.currentExecution = null;
+      }
+
+      // Remove all run notification listeners just to be safe
+      this.socket.removeAllListeners("run:notify");
+
+      if (!this.currentExecution || !this.currentExecution.canExecute) {
         this.currentExecution = new RunExecution({
           workerManifest: this.workerManifest,
           env: this.env,
           httpClient: this.httpClient,
           logger: this.logger,
+          supervisorSocket: this.socket,
         });
       }
 
@@ -214,8 +233,8 @@ export class ManagedRunController {
 
     const metrics = this.currentExecution?.metrics;
 
-    if (metrics?.restoreCount) {
-      this.restoreCount += metrics.restoreCount;
+    if (metrics?.execution?.restoreCount) {
+      this.restoreCount += metrics.execution.restoreCount;
     }
 
     this.lockedRunExecution = null;
@@ -267,16 +286,18 @@ export class ManagedRunController {
       if (this.currentExecution?.taskRunEnv) {
         this.sendDebugLog({
           runId: this.runFriendlyId,
-          message: "waitForNextRun: eagerly recreating task run process",
+          message: "waitForNextRun: eagerly creating fresh execution for next run",
         });
 
         const previousTaskRunEnv = this.currentExecution.taskRunEnv;
 
+        // Create a fresh execution for the next run
         this.currentExecution = new RunExecution({
           workerManifest: this.workerManifest,
           env: this.env,
           httpClient: this.httpClient,
           logger: this.logger,
+          supervisorSocket: this.socket,
         }).prepareForExecution({
           taskRunEnv: previousTaskRunEnv,
         });
@@ -373,7 +394,7 @@ export class ManagedRunController {
       properties: { code },
     });
 
-    this.currentExecution?.exit();
+    this.currentExecution?.kill().catch(() => {});
 
     process.exit(code);
   }
@@ -381,80 +402,12 @@ export class ManagedRunController {
   createSupervisorSocket(): SupervisorSocket {
     const wsUrl = new URL("/workload", this.workerApiUrl);
 
-    const socket = io(wsUrl.href, {
+    const socket: SupervisorSocket = io(wsUrl.href, {
       transports: ["websocket"],
       extraHeaders: {
         [WORKLOAD_HEADERS.DEPLOYMENT_ID]: this.env.TRIGGER_DEPLOYMENT_ID,
         [WORKLOAD_HEADERS.RUNNER_ID]: this.env.TRIGGER_RUNNER_ID,
       },
-    }) satisfies SupervisorSocket;
-
-    socket.on("run:notify", async ({ version, run }) => {
-      this.sendDebugLog({
-        runId: run.friendlyId,
-        message: "run:notify received by runner",
-        properties: { version, runId: run.friendlyId },
-      });
-
-      if (!this.runFriendlyId) {
-        this.sendDebugLog({
-          runId: run.friendlyId,
-          message: "run:notify: ignoring notification, no local run ID",
-          properties: {
-            currentRunId: this.runFriendlyId,
-            currentSnapshotId: this.snapshotFriendlyId,
-          },
-        });
-        return;
-      }
-
-      if (run.friendlyId !== this.runFriendlyId) {
-        this.sendDebugLog({
-          runId: run.friendlyId,
-          message: "run:notify: ignoring notification for different run",
-          properties: {
-            currentRunId: this.runFriendlyId,
-            currentSnapshotId: this.snapshotFriendlyId,
-            notificationRunId: run.friendlyId,
-          },
-        });
-        return;
-      }
-
-      const latestSnapshot = await this.httpClient.getRunExecutionData(this.runFriendlyId);
-
-      if (!latestSnapshot.success) {
-        this.sendDebugLog({
-          runId: this.runFriendlyId,
-          message: "run:notify: failed to get latest snapshot data",
-          properties: {
-            currentRunId: this.runFriendlyId,
-            currentSnapshotId: this.snapshotFriendlyId,
-            error: latestSnapshot.error,
-          },
-        });
-        return;
-      }
-
-      const runExecutionData = latestSnapshot.data.execution;
-
-      if (!this.currentExecution) {
-        this.sendDebugLog({
-          runId: runExecutionData.run.friendlyId,
-          message: "handleSnapshotChange: no current execution",
-        });
-        return;
-      }
-
-      const [error] = await tryCatch(this.currentExecution.handleSnapshotChange(runExecutionData));
-
-      if (error) {
-        this.sendDebugLog({
-          runId: runExecutionData.run.friendlyId,
-          message: "handleSnapshotChange: unexpected error",
-          properties: { error: error.message },
-        });
-      }
     });
 
     socket.on("connect", () => {
@@ -485,25 +438,61 @@ export class ManagedRunController {
       });
     });
 
-    socket.on("disconnect", (reason, description) => {
+    socket.on("disconnect", async (reason, description) => {
+      const parseDescription = ():
+        | {
+            description: string;
+            context?: string;
+          }
+        | undefined => {
+        if (!description) {
+          return undefined;
+        }
+
+        if (description instanceof Error) {
+          return {
+            description: description.toString(),
+          };
+        }
+
+        return {
+          description: description.description,
+          context: description.context ? String(description.context) : undefined,
+        };
+      };
+
+      if (this.currentExecution) {
+        const currentEnv = {
+          workerInstanceName: this.env.TRIGGER_WORKER_INSTANCE_NAME,
+          runnerId: this.env.TRIGGER_RUNNER_ID,
+          supervisorApiUrl: this.env.TRIGGER_SUPERVISOR_API_URL,
+        };
+
+        await this.currentExecution.processEnvOverrides("socket disconnected");
+
+        const newEnv = {
+          workerInstanceName: this.env.TRIGGER_WORKER_INSTANCE_NAME,
+          runnerId: this.env.TRIGGER_RUNNER_ID,
+          supervisorApiUrl: this.env.TRIGGER_SUPERVISOR_API_URL,
+        };
+
+        this.sendDebugLog({
+          runId: this.runFriendlyId,
+          message: "Socket disconnected from supervisor - processed env overrides",
+          properties: { reason, ...parseDescription(), currentEnv, newEnv },
+        });
+
+        return;
+      }
+
       this.sendDebugLog({
         runId: this.runFriendlyId,
         message: "Socket disconnected from supervisor",
-        properties: { reason, description: description?.toString() },
+        properties: { reason, ...parseDescription() },
       });
     });
 
     return socket;
-  }
-
-  async cancelAttempt(runId: string) {
-    this.sendDebugLog({
-      runId,
-      message: "cancelling attempt",
-      properties: { runId },
-    });
-
-    await this.currentExecution?.cancel();
   }
 
   start() {
@@ -534,7 +523,18 @@ export class ManagedRunController {
       message: "Shutting down",
     });
 
-    await this.currentExecution?.cancel();
+    // Cancel the current execution
+    const [error] = await tryCatch(this.currentExecution?.cancel());
+
+    if (error) {
+      this.sendDebugLog({
+        runId: this.runFriendlyId,
+        message: "Error during shutdown",
+        properties: { error: String(error) },
+      });
+    }
+
+    // Close the socket
     this.socket.close();
   }
 

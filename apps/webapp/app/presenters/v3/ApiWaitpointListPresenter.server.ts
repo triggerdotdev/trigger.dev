@@ -1,16 +1,12 @@
-import { RuntimeEnvironmentType, WaitpointTokenStatus } from "@trigger.dev/core/v3";
+import { type RuntimeEnvironmentType, WaitpointTokenStatus } from "@trigger.dev/core/v3";
+import { type RunEngineVersion } from "@trigger.dev/database";
 import { z } from "zod";
-import { BasePresenter } from "./basePresenter.server";
 import { CoercedDate } from "~/utils/zod";
-import { AuthenticatedEnvironment } from "@internal/run-engine";
-import {
-  WaitpointTokenListOptions,
-  WaitpointTokenListPresenter,
-} from "./WaitpointTokenListPresenter.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
-import { RunEngineVersion } from "@trigger.dev/database";
+import { BasePresenter } from "./basePresenter.server";
+import { type WaitpointListOptions, WaitpointListPresenter } from "./WaitpointListPresenter.server";
 
-export const ApiWaitpointTokenListSearchParams = z.object({
+export const ApiWaitpointListSearchParams = z.object({
   "page[size]": z.coerce.number().int().positive().min(1).max(100).optional(),
   "page[after]": z.string().optional(),
   "page[before]": z.string().optional(),
@@ -61,9 +57,9 @@ export const ApiWaitpointTokenListSearchParams = z.object({
   "filter[createdAt][to]": CoercedDate,
 });
 
-type ApiWaitpointTokenListSearchParams = z.infer<typeof ApiWaitpointTokenListSearchParams>;
+type ApiWaitpointListSearchParams = z.infer<typeof ApiWaitpointListSearchParams>;
 
-export class ApiWaitpointTokenListPresenter extends BasePresenter {
+export class ApiWaitpointListPresenter extends BasePresenter {
   public async call(
     environment: {
       id: string;
@@ -72,11 +68,12 @@ export class ApiWaitpointTokenListPresenter extends BasePresenter {
         id: string;
         engine: RunEngineVersion;
       };
+      apiKey: string;
     },
-    searchParams: ApiWaitpointTokenListSearchParams
+    searchParams: ApiWaitpointListSearchParams
   ) {
     return this.trace("call", async (span) => {
-      const options: WaitpointTokenListOptions = {
+      const options: WaitpointListOptions = {
         environment,
       };
 
@@ -118,7 +115,7 @@ export class ApiWaitpointTokenListPresenter extends BasePresenter {
         options.to = searchParams["filter[createdAt][to]"].getTime();
       }
 
-      const presenter = new WaitpointTokenListPresenter();
+      const presenter = new WaitpointListPresenter();
       const result = await presenter.call(options);
 
       if (!result.success) {

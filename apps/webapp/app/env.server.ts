@@ -1,7 +1,7 @@
-import { SecretStoreOptionsSchema } from "./services/secrets/secretStoreOptionsSchema.server";
 import { z } from "zod";
-import { isValidRegex } from "./utils/regex";
+import { SecretStoreOptionsSchema } from "./services/secrets/secretStoreOptionsSchema.server";
 import { isValidDatabaseUrl } from "./utils/db";
+import { isValidRegex } from "./utils/regex";
 
 const EnvironmentSchema = z.object({
   NODE_ENV: z.union([z.literal("development"), z.literal("production"), z.literal("test")]),
@@ -384,6 +384,7 @@ const EnvironmentSchema = z.object({
     .int()
     .default(60 * 1000 * 15),
   MARQS_SHARED_QUEUE_LIMIT: z.coerce.number().int().default(1000),
+  MARQS_MAXIMUM_QUEUE_PER_ENV_COUNT: z.coerce.number().int().default(50),
   MARQS_DEV_QUEUE_LIMIT: z.coerce.number().int().default(1000),
   MARQS_MAXIMUM_NACK_COUNT: z.coerce.number().int().default(64),
   MARQS_CONCURRENCY_LIMIT_BIAS: z.coerce.number().default(0.75),
@@ -459,7 +460,7 @@ const EnvironmentSchema = z.object({
   RUN_ENGINE_REUSE_SNAPSHOT_COUNT: z.coerce.number().int().default(0),
   RUN_ENGINE_MAXIMUM_ENV_COUNT: z.coerce.number().int().optional(),
   RUN_ENGINE_WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().default(60_000),
-  RUN_ENGINE_MAX_DEQUEUE_LOOP_ATTEMPTS: z.coerce.number().int().default(10),
+  RUN_ENGINE_RETRY_WARM_START_THRESHOLD_MS: z.coerce.number().int().default(30_000),
 
   RUN_ENGINE_WORKER_REDIS_HOST: z
     .string()
@@ -714,6 +715,57 @@ const EnvironmentSchema = z.object({
 
   QUEUE_SSE_AUTORELOAD_INTERVAL_MS: z.coerce.number().int().default(5_000),
   QUEUE_SSE_AUTORELOAD_TIMEOUT_MS: z.coerce.number().int().default(60_000),
+
+  SLACK_BOT_TOKEN: z.string().optional(),
+  SLACK_SIGNUP_REASON_CHANNEL_ID: z.string().optional(),
+
+  // kapa.ai
+  KAPA_AI_WEBSITE_ID: z.string().optional(),
+
+  // BetterStack
+  BETTERSTACK_API_KEY: z.string().optional(),
+  BETTERSTACK_STATUS_PAGE_ID: z.string().optional(),
+
+  RUN_REPLICATION_REDIS_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_HOST),
+  RUN_REPLICATION_REDIS_READER_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_READER_HOST),
+  RUN_REPLICATION_REDIS_READER_PORT: z.coerce
+    .number()
+    .optional()
+    .transform(
+      (v) =>
+        v ?? (process.env.REDIS_READER_PORT ? parseInt(process.env.REDIS_READER_PORT) : undefined)
+    ),
+  RUN_REPLICATION_REDIS_PORT: z.coerce
+    .number()
+    .optional()
+    .transform((v) => v ?? (process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined)),
+  RUN_REPLICATION_REDIS_USERNAME: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_USERNAME),
+  RUN_REPLICATION_REDIS_PASSWORD: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_PASSWORD),
+  RUN_REPLICATION_REDIS_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
+
+  RUN_REPLICATION_CLICKHOUSE_URL: z.string().optional(),
+  RUN_REPLICATION_ENABLED: z.string().default("0"),
+  RUN_REPLICATION_SLOT_NAME: z.string().default("task_runs_to_clickhouse_v1"),
+  RUN_REPLICATION_PUBLICATION_NAME: z.string().default("task_runs_to_clickhouse_v1_publication"),
+  RUN_REPLICATION_MAX_FLUSH_CONCURRENCY: z.coerce.number().int().default(100),
+  RUN_REPLICATION_FLUSH_INTERVAL_MS: z.coerce.number().int().default(1000),
+  RUN_REPLICATION_FLUSH_BATCH_SIZE: z.coerce.number().int().default(100),
+  RUN_REPLICATION_LEADER_LOCK_TIMEOUT_MS: z.coerce.number().int().default(30_000),
+  RUN_REPLICATION_LEADER_LOCK_EXTEND_INTERVAL_MS: z.coerce.number().int().default(10_000),
+  RUN_REPLICATION_ACK_INTERVAL_SECONDS: z.coerce.number().int().default(10),
+  RUN_REPLICATION_LOG_LEVEL: z.enum(["log", "error", "warn", "info", "debug"]).default("info"),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

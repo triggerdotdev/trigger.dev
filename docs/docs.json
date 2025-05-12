@@ -272,10 +272,11 @@
                   "guides/ai-agents/generate-translate-copy",
                   "guides/ai-agents/route-question",
                   "guides/ai-agents/respond-and-check-content",
-                  "guides/ai-agents/verify-news-article",
-                  "guides/ai-agents/translate-and-refine"
+                  "guides/ai-agents/translate-and-refine",
+                  "guides/ai-agents/verify-news-article"
                 ]
               },
+              "guides/cursor-rules",
               "guides/frameworks/drizzle",
               "guides/frameworks/prisma",
               "guides/frameworks/sequin",
@@ -311,6 +312,7 @@
             "group": "Python guides",
             "pages": [
               "guides/python/python-image-processing",
+              "guides/python/python-doc-to-markdown",
               "guides/python/python-crawl4ai",
               "guides/python/python-pdf-form-extractor"
             ]
@@ -353,6 +355,10 @@
               "guides/examples/vercel-ai-sdk",
               "guides/examples/vercel-sync-env-vars"
             ]
+          },
+          {
+            "group": "Migration guides",
+            "pages": ["migration-mergent"]
           },
           {
             "group": "Community packages",

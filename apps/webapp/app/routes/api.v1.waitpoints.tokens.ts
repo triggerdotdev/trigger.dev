@@ -6,14 +6,15 @@ import {
 import { WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import { createWaitpointTag, MAX_TAGS_PER_WAITPOINT } from "~/models/waitpointTag.server";
 import {
-  ApiWaitpointTokenListPresenter,
-  ApiWaitpointTokenListSearchParams,
-} from "~/presenters/v3/ApiWaitpointTokenListPresenter.server";
+  ApiWaitpointListPresenter,
+  ApiWaitpointListSearchParams,
+} from "~/presenters/v3/ApiWaitpointListPresenter.server";
+import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { generateHttpCallbackUrl } from "~/services/httpCallback.server";
 import {
   createActionApiRoute,
   createLoaderApiRoute,
 } from "~/services/routeBuilders/apiBuilder.server";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { parseDelay } from "~/utils/delays";
 import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
 import { engine } from "~/v3/runEngine.server";
@@ -21,11 +22,11 @@ import { ServiceValidationError } from "~/v3/services/baseService.server";
 
 export const loader = createLoaderApiRoute(
   {
-    searchParams: ApiWaitpointTokenListSearchParams,
+    searchParams: ApiWaitpointListSearchParams,
     findResource: async () => 1, // This is a dummy function, we don't need to find a resource
   },
   async ({ searchParams, authentication }) => {
-    const presenter = new ApiWaitpointTokenListPresenter();
+    const presenter = new ApiWaitpointListPresenter();
     const result = await presenter.call(authentication.environment, searchParams);
 
     return json(result);
@@ -84,6 +85,7 @@ const { action } = createActionApiRoute(
         {
           id: WaitpointId.toFriendlyId(result.waitpoint.id),
           isCached: result.isCached,
+          url: generateHttpCallbackUrl(result.waitpoint.id, authentication.environment.apiKey),
         },
         { status: 200, headers: $responseHeaders }
       );

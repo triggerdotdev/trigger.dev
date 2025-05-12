@@ -13,6 +13,7 @@ export class IntervalService {
   private _nextInterval: NodeJS.Timeout | undefined;
   private _leadingEdge: boolean;
   private _isEnabled: boolean;
+  private _isExecuting: boolean;
 
   constructor(opts: IntervalServiceOptions) {
     this._onInterval = opts.onInterval;
@@ -22,6 +23,7 @@ export class IntervalService {
     this._nextInterval = undefined;
     this._leadingEdge = opts.leadingEdge ?? false;
     this._isEnabled = false;
+    this._isExecuting = false;
   }
 
   start() {
@@ -38,17 +40,27 @@ export class IntervalService {
     }
   }
 
-  stop() {
+  stop(): { isExecuting: boolean } {
+    const returnValue = {
+      isExecuting: this._isExecuting,
+    };
+
     if (!this._isEnabled) {
-      return;
+      return returnValue;
     }
 
     this._isEnabled = false;
     this.#clearNextInterval();
+
+    return returnValue;
   }
 
   resetCurrentInterval() {
     if (!this._isEnabled) {
+      return;
+    }
+
+    if (this._isExecuting) {
       return;
     }
 
@@ -61,12 +73,23 @@ export class IntervalService {
     this.resetCurrentInterval();
   }
 
+  get intervalMs() {
+    return this._intervalMs;
+  }
+
   #doInterval = async () => {
     this.#clearNextInterval();
 
     if (!this._isEnabled) {
       return;
     }
+
+    if (this._isExecuting) {
+      console.error("Interval handler already running, skipping");
+      return;
+    }
+
+    this._isExecuting = true;
 
     try {
       await this._onInterval();
@@ -78,9 +101,10 @@ export class IntervalService {
           console.error("Error during interval error handler", error);
         }
       }
+    } finally {
+      this.#scheduleNextInterval();
+      this._isExecuting = false;
     }
-
-    this.#scheduleNextInterval();
   };
 
   #clearNextInterval() {

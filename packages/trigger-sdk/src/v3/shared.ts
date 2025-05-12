@@ -42,6 +42,7 @@ import type {
   AnyOnStartHookFunction,
   AnyOnSuccessHookFunction,
   AnyOnWaitHookFunction,
+  AnyOnCancelHookFunction,
   AnyRunHandle,
   AnyRunTypes,
   AnyTask,
@@ -1635,6 +1636,12 @@ function registerTaskLifecycleHooks<
   if (params.cleanup) {
     lifecycleHooks.registerTaskCleanupHook(taskId, {
       fn: params.cleanup as AnyOnCleanupHookFunction,
+    });
+  }
+
+  if (params.onCancel) {
+    lifecycleHooks.registerTaskCancelHook(taskId, {
+      fn: params.onCancel as AnyOnCancelHookFunction,
     });
   }
 }

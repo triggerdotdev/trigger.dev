@@ -86,7 +86,7 @@ describe("RunEngine delays", () => {
       assertNonNullable(executionData2);
       expect(executionData2.snapshot.executionStatus).toBe("QUEUED");
     } finally {
-      engine.quit();
+      await engine.quit();
     }
   });
 
@@ -183,7 +183,7 @@ describe("RunEngine delays", () => {
       assertNonNullable(executionData3);
       expect(executionData3.snapshot.executionStatus).toBe("QUEUED");
     } finally {
-      engine.quit();
+      await engine.quit();
     }
   });
 
@@ -287,7 +287,118 @@ describe("RunEngine delays", () => {
 
       expect(run3.status).toBe("EXPIRED");
     } finally {
-      engine.quit();
+      await engine.quit();
+    }
+  });
+
+  containerTest("Cancelling a delayed run", async ({ prisma, redisOptions }) => {
+    //create environment
+    const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+    const engine = new RunEngine({
+      prisma,
+      worker: {
+        redis: redisOptions,
+        workers: 1,
+        tasksPerWorker: 10,
+        pollIntervalMs: 100,
+      },
+      queue: {
+        redis: redisOptions,
+      },
+      runLock: {
+        redis: redisOptions,
+      },
+      machines: {
+        defaultMachine: "small-1x",
+        machines: {
+          "small-1x": {
+            name: "small-1x" as const,
+            cpu: 0.5,
+            memory: 0.5,
+            centsPerMs: 0.0001,
+          },
+        },
+        baseCostInCents: 0.0001,
+      },
+      tracer: trace.getTracer("test", "0.0.0"),
+    });
+
+    try {
+      const taskIdentifier = "test-task";
+
+      //create background worker
+      const backgroundWorker = await setupBackgroundWorker(
+        engine,
+        authenticatedEnvironment,
+        taskIdentifier
+      );
+
+      //trigger the run with a 1 second delay
+      const run = await engine.trigger(
+        {
+          number: 1,
+          friendlyId: "run_1234",
+          environment: authenticatedEnvironment,
+          taskIdentifier,
+          payload: "{}",
+          payloadType: "application/json",
+          context: {},
+          traceContext: {},
+          traceId: "t12345",
+          spanId: "s12345",
+          masterQueue: "main",
+          queue: "task/test-task",
+          isTest: false,
+          tags: [],
+          delayUntil: new Date(Date.now() + 1000),
+        },
+        prisma
+      );
+
+      //verify it's created but not queued
+      const executionData = await engine.getRunExecutionData({ runId: run.id });
+      assertNonNullable(executionData);
+      expect(executionData.snapshot.executionStatus).toBe("RUN_CREATED");
+      expect(run.status).toBe("DELAYED");
+
+      //cancel the run
+      await engine.cancelRun({
+        runId: run.id,
+        reason: "Cancelled by test",
+      });
+
+      //verify it's cancelled
+      const executionData2 = await engine.getRunExecutionData({ runId: run.id });
+      assertNonNullable(executionData2);
+      expect(executionData2.snapshot.executionStatus).toBe("FINISHED");
+      expect(executionData2.run.status).toBe("CANCELED");
+
+      //wait past the original delay time
+      await setTimeout(1500);
+
+      //verify the run is still cancelled
+      const executionData3 = await engine.getRunExecutionData({ runId: run.id });
+      assertNonNullable(executionData3);
+      expect(executionData3.snapshot.executionStatus).toBe("FINISHED");
+      expect(executionData3.run.status).toBe("CANCELED");
+
+      //attempt to dequeue - should get nothing
+      const dequeued = await engine.dequeueFromMasterQueue({
+        consumerId: "test_12345",
+        masterQueue: run.masterQueue,
+        maxRunCount: 10,
+      });
+
+      expect(dequeued.length).toBe(0);
+
+      //verify final state is still cancelled
+      const executionData4 = await engine.getRunExecutionData({ runId: run.id });
+      assertNonNullable(executionData4);
+      expect(executionData4.snapshot.executionStatus).toBe("FINISHED");
+      expect(executionData4.run.status).toBe("CANCELED");
+    } finally {
+      await engine.quit();
     }
   });
 });

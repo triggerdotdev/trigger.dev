@@ -7,7 +7,7 @@ type LoadingBarDividerProps = {
 
 export function LoadingBarDivider({ isLoading }: LoadingBarDividerProps) {
   return (
-    <div className="relative h-px w-full bg-grid-bright">
+    <div className="relative h-px w-full overflow-hidden bg-grid-bright">
       <AnimationDivider isLoading={isLoading} />
     </div>
   );
@@ -18,14 +18,14 @@ export function AnimationDivider({ isLoading }: LoadingBarDividerProps) {
   const [isPresent, safeToRemove] = usePresence();
 
   useEffect(() => {
+    if (!scope.current) return;
+
     if (isPresent) {
       const enterAnimation = async () => {
         await animate(
-          [
-            [scope.current, { width: "30%", left: "35%" }, { duration: 1, ease: "easeIn" }],
-            [scope.current, { width: 0, left: "100%" }, { duration: 1, ease: "easeOut" }],
-          ],
-          { repeat: Infinity, repeatType: "reverse" }
+          scope.current,
+          { left: ["-100%", "100%"], width: "100%" },
+          { duration: 2, ease: "easeOut", repeat: Infinity }
         );
       };
       enterAnimation();

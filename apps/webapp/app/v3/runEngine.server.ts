@@ -58,7 +58,6 @@ function createRunEngine() {
         maximumEnvCount: env.RUN_ENGINE_MAXIMUM_ENV_COUNT,
         tracer,
       },
-      maxDequeueLoopAttempts: env.RUN_ENGINE_MAX_DEQUEUE_LOOP_ATTEMPTS,
     },
     runLock: {
       redis: {
@@ -96,6 +95,7 @@ function createRunEngine() {
         ...(env.RUN_ENGINE_RUN_QUEUE_REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
       },
     },
+    retryWarmStartThresholdMs: env.RUN_ENGINE_RETRY_WARM_START_THRESHOLD_MS,
   });
 
   return engine;

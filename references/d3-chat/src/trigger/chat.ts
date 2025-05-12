@@ -1,7 +1,7 @@
 import { anthropic } from "@ai-sdk/anthropic";
 import { openai } from "@ai-sdk/openai";
 import { ai } from "@trigger.dev/sdk/ai";
-import { logger, metadata, schemaTask, wait } from "@trigger.dev/sdk/v3";
+import { logger, metadata, schemaTask, tasks, wait } from "@trigger.dev/sdk/v3";
 import { sql } from "@vercel/postgres";
 import { streamText, TextStreamPart, tool } from "ai";
 import { nanoid } from "nanoid";
@@ -110,7 +110,7 @@ export const todoChat = schemaTask({
       ),
     userId: z.string(),
   }),
-  run: async ({ input, userId }) => {
+  run: async ({ input, userId }, { signal }) => {
     metadata.set("user_id", userId);
 
     const system = `
@@ -157,6 +157,8 @@ export const todoChat = schemaTask({
 
     const prompt = input;
 
+    const chunks: TextStreamPart<TOOLS>[] = [];
+
     const result = streamText({
       model: getModel(),
       system,
@@ -173,6 +175,10 @@ export const todoChat = schemaTask({
       },
       experimental_telemetry: {
         isEnabled: true,
+      },
+      abortSignal: signal,
+      onChunk: ({ chunk }) => {
+        chunks.push(chunk);
       },
     });
 
@@ -213,3 +219,49 @@ function getModel() {
     return anthropic("claude-3-5-sonnet-latest");
   }
 }
+
+export const interruptibleChat = schemaTask({
+  id: "interruptible-chat",
+  description: "Chat with the AI",
+  schema: z.object({
+    prompt: z.string().describe("The prompt to chat with the AI"),
+  }),
+  run: async ({ prompt }, { signal }) => {
+    const chunks: TextStreamPart<{}>[] = [];
+
+    // 👇 This is a global onCancel hook, but it's inside of the run function
+    tasks.onCancel(async () => {
+      // We have access to the chunks here
+      logger.info("interruptible-chat: task cancelled with chunks", { chunks });
+    });
+
+    try {
+      const result = streamText({
+        model: getModel(),
+        prompt,
+        experimental_telemetry: {
+          isEnabled: true,
+        },
+        tools: {},
+        abortSignal: signal,
+        onChunk: ({ chunk }) => {
+          chunks.push(chunk);
+        },
+      });
+
+      const textParts = [];
+
+      for await (const part of result.textStream) {
+        textParts.push(part);
+      }
+
+      return textParts.join("");
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        // streamText will throw an AbortError if the signal is aborted, so we can handle it here
+      } else {
+        throw error;
+      }
+    }
+  },
+});

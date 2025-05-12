@@ -170,6 +170,107 @@ tasks.onComplete(({ ctx, result }) => {
 });
 ```
 
+### onCancel
+
+<Note>Available in v4.0.0-beta.12 and later.</Note>
+
+You can now define an `onCancel` hook that is called when a run is cancelled. This is useful if you want to clean up any resources that were allocated for the run.
+
+```ts
+tasks.onCancel(({ ctx, signal }) => {
+  console.log("Run cancelled", signal);
+});
+```
+
+You can use the `onCancel` hook along with the `signal` passed into the run function to interrupt a call to an external service, for example using the [streamText](https://ai-sdk.dev/docs/reference/ai-sdk-core/stream-text) function from the AI SDK:
+
+```ts
+import { logger, tasks, schemaTask } from "@trigger.dev/sdk";
+import { streamText } from "ai";
+import { z } from "zod";
+
+export const interruptibleChat = schemaTask({
+  id: "interruptible-chat",
+  description: "Chat with the AI",
+  schema: z.object({
+    prompt: z.string().describe("The prompt to chat with the AI"),
+  }),
+  run: async ({ prompt }, { signal }) => {
+    const chunks: TextStreamPart<{}>[] = [];
+
+    // 👇 This is a global onCancel hook, but it's inside of the run function
+    tasks.onCancel(async () => {
+      // We have access to the chunks here, and can save them to the database
+      await saveChunksToDatabase(chunks);
+    });
+
+    try {
+      const result = streamText({
+        model: getModel(),
+        prompt,
+        experimental_telemetry: {
+          isEnabled: true,
+        },
+        tools: {},
+        abortSignal: signal, // 👈 Pass the signal to the streamText function, which aborts with the run is cancelled
+        onChunk: ({ chunk }) => {
+          chunks.push(chunk);
+        },
+      });
+
+      const textParts = [];
+
+      for await (const part of result.textStream) {
+        textParts.push(part);
+      }
+
+      return textParts.join("");
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        // streamText will throw an AbortError if the signal is aborted, so we can handle it here
+      } else {
+        throw error;
+      }
+    }
+  },
+});
+```
+
+The `onCancel` hook can optionally wait for the `run` function to finish, and access the output of the run:
+
+```ts
+import { logger, task } from "@trigger.dev/sdk";
+import { setTimeout } from "node:timers/promises";
+
+export const cancelExampleTask = task({
+  id: "cancel-example",
+  // Signal will be aborted when the task is cancelled 👇
+  run: async (payload: { message: string }, { signal }) => {
+    try {
+      // We pass the signal to setTimeout to abort the timeout if the task is cancelled
+      await setTimeout(10_000, undefined, { signal });
+    } catch (error) {
+      // Ignore the abort error
+    }
+
+    // Do some more work here
+
+    return {
+      message: "Hello, world!",
+    };
+  },
+  onCancel: async ({ runPromise }) => {
+    // You can await the runPromise to get the output of the task
+    const output = await runPromise;
+  },
+});
+```
+
+<Note>
+  You will have up to 30 seconds to complete the `runPromise` in the `onCancel` hook. After that
+  point the process will be killed.
+</Note>
+
 ### Improved middleware and locals
 
 Our task middleware system is now much more useful. Previously it only ran "around" the `run` function, but now we've hoisted it to the top level and it now runs before/after all the other hooks.
@@ -508,7 +609,7 @@ pnpm dlx trigger.dev@v4-beta dev
 
 During the beta we will be tracking issues and releasing regular fixes.
 
-There are no known issues at the moment.
+**ISSUE:** Runs not continuing after a child run(s) have completed.
 
 ## Deprecations
 
@@ -703,7 +804,8 @@ import { task } from "@trigger.dev/sdk";
 export const myTask = task({
   id: "my-task",
   onStart: ({ payload, ctx }) => {},
-  run: async ({ payload, ctx }) => {},
+  // The run function still uses separate parameters
+  run: async (payload, { ctx }) => {},
 });
 ```
 
@@ -721,7 +823,7 @@ export const myTask = task({
   onResume: ({ payload, ctx, task, wait }) => {},
   onComplete: ({ payload, ctx, task, result }) => {},
   catchError: ({ payload, ctx, task, error, retry, retryAt, retryDelayInMs }) => {},
-  run: async ({ payload, ctx }) => {},
+  run: async (payload, { ctx }) => {},
 });
 ```
 
@@ -731,3 +833,32 @@ We've made a few small changes to the `ctx` object:
 
 - `ctx.attempt.id` and `ctx.attempt.status` have been removed. `ctx.attempt.number` is still available.
 - `ctx.task.exportName` has been removed (since we no longer require tasks to be exported to be triggered).
+
+### BatchTrigger changes
+
+The `batchTrigger` function no longer returns a `runs` list directly. In v3, you could access the runs directly from the batch handle:
+
+```ts
+// In v3
+const batchHandle = await tasks.batchTrigger([
+  [myTask, { foo: "bar" }],
+  [myOtherTask, { baz: "qux" }],
+]);
+
+// You could access runs directly
+console.log(batchHandle.runs);
+```
+
+In v4, you now need to use the `runs.list()` method to get the list of runs:
+
+```ts
+// In v4
+const batchHandle = await tasks.batchTrigger([
+  [myTask, { foo: "bar" }],
+  [myOtherTask, { baz: "qux" }],
+]);
+
+// Now you need to call runs.list()
+const runs = await batchHandle.runs.list();
+console.log(runs);
+```

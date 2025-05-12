@@ -647,7 +647,12 @@ function RunBody({
                 <Property.Item>
                   <Property.Label>Max duration</Property.Label>
                   <Property.Value>
-                    {run.maxDurationInSeconds ? `${run.maxDurationInSeconds}s` : "–"}
+                    {run.maxDurationInSeconds
+                      ? `${run.maxDurationInSeconds}s (${formatDurationMilliseconds(
+                          run.maxDurationInSeconds * 1000,
+                          { style: "short" }
+                        )})`
+                      : "–"}
                   </Property.Value>
                 </Property.Item>
                 <Property.Item>
@@ -808,7 +813,13 @@ function RunError({ error }: { error: TaskRunError }) {
       return (
         <div className="flex flex-col gap-2 rounded-sm border border-rose-500/50 px-3 pb-3 pt-2">
           <Header3 className="text-rose-500">{name}</Header3>
-          {enhancedError.message && <Callout variant="error">{enhancedError.message}</Callout>}
+          {enhancedError.message && (
+            <Callout variant="error">
+              <pre className="text-wrap font-sans text-sm font-normal text-rose-200">
+                {enhancedError.message}
+              </pre>
+            </Callout>
+          )}
           {enhancedError.link &&
             (enhancedError.link.magic === "CONTACT_FORM" ? (
               <Feedback

@@ -1,6 +1,6 @@
 {
   "name": "trigger.dev",
-  "version": "4.0.0-v4-beta.6",
+  "version": "4.0.0-v4-beta.14",
   "description": "A Command-Line Interface for Trigger.dev (v3) projects",
   "type": "module",
   "license": "MIT",
@@ -39,6 +39,9 @@
       "esm"
     ],
     "project": "./tsconfig.src.json",
+    "exclude": [
+      "**/*.test.ts"
+    ],
     "exports": {
       "./package.json": "./package.json",
       ".": "./src/index.ts"
@@ -70,6 +73,7 @@
     "typecheck": "tsc -p tsconfig.src.json --noEmit",
     "build": "tshy && pnpm run update-version",
     "dev": "tshy --watch",
+    "test": "vitest",
     "test:e2e": "vitest --run -c ./e2e/vitest.config.ts",
     "update-version": "tsx ../../scripts/updateVersion.ts"
   },
@@ -89,8 +93,9 @@
     "@opentelemetry/sdk-trace-base": "1.25.1",
     "@opentelemetry/sdk-trace-node": "1.25.1",
     "@opentelemetry/semantic-conventions": "1.25.1",
-    "@trigger.dev/build": "workspace:4.0.0-v4-beta.6",
-    "@trigger.dev/core": "workspace:4.0.0-v4-beta.6",
+    "@trigger.dev/build": "workspace:4.0.0-v4-beta.14",
+    "@trigger.dev/core": "workspace:4.0.0-v4-beta.14",
+    "ansi-escapes": "^7.0.0",
     "c12": "^1.11.1",
     "chalk": "^5.2.0",
     "chokidar": "^3.6.0",
@@ -103,6 +108,7 @@
     "evt": "^2.4.13",
     "fast-npm-meta": "^0.2.2",
     "gradient-string": "^2.0.2",
+    "has-flag": "^5.0.1",
     "import-in-the-middle": "1.11.0",
     "import-meta-resolve": "^4.1.0",
     "jsonc-parser": "3.2.1",
@@ -123,7 +129,7 @@
     "socket.io-client": "4.7.5",
     "source-map-support": "0.5.21",
     "std-env": "^3.7.0",
-    "terminal-link": "^3.0.0",
+    "supports-color": "^10.0.0",
     "tiny-invariant": "^1.2.0",
     "tinyexec": "^0.3.1",
     "tinyglobby": "^0.2.10",

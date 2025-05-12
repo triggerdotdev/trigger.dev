@@ -13,12 +13,12 @@ import {
   ProdTaskRunExecution,
   ProdTaskRunExecutionPayload,
   RunEngineVersionSchema,
-  RuntimeWait,
   TaskRunExecutionLazyAttemptPayload,
   TaskRunExecutionMetrics,
   WaitReason,
 } from "./schemas.js";
 import { CompletedWaitpoint } from "./runEngine.js";
+import { DebugLogPropertiesInput } from "../runEngineWorker/index.js";
 
 export const AckCallbackResult = z.discriminatedUnion("success", [
   z.object({
@@ -172,37 +172,20 @@ export const ExecutorToWorkerMessageCatalog = {
       id: z.string(),
     }),
   },
-  READY_TO_DISPOSE: {
-    message: z.undefined(),
-  },
-  WAIT_FOR_DURATION: {
-    message: z.object({
-      version: z.literal("v1").default("v1"),
-      ms: z.number(),
-      now: z.number(),
-      waitThresholdInMs: z.number(),
-    }),
-  },
-  WAIT_FOR_TASK: {
-    message: z.object({
-      version: z.literal("v1").default("v1"),
-      friendlyId: z.string(),
-    }),
-  },
-  WAIT_FOR_BATCH: {
-    message: z.object({
-      version: z.literal("v1").default("v1"),
-      batchFriendlyId: z.string(),
-      runFriendlyIds: z.string().array(),
-    }),
-  },
   UNCAUGHT_EXCEPTION: {
     message: UncaughtExceptionMessage,
   },
-  WAIT: {
+  SEND_DEBUG_LOG: {
     message: z.object({
       version: z.literal("v1").default("v1"),
-      wait: RuntimeWait,
+      message: z.string(),
+      properties: DebugLogPropertiesInput.optional(),
+    }),
+  },
+  SET_SUSPENDABLE: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      suspendable: z.boolean(),
     }),
   },
 };
@@ -219,42 +202,19 @@ export const WorkerToExecutorMessageCatalog = {
       isWarmStart: z.boolean().optional(),
     }),
   },
-  TASK_RUN_COMPLETED_NOTIFICATION: {
-    message: z.discriminatedUnion("version", [
-      z.object({
-        version: z.literal("v1"),
-        completion: TaskRunExecutionResult,
-        execution: TaskRunExecution,
-      }),
-      z.object({
-        version: z.literal("v2"),
-        completion: TaskRunExecutionResult,
-      }),
-    ]),
-  },
-  WAIT_COMPLETED_NOTIFICATION: {
-    message: z.object({
-      version: z.literal("v1").default("v1"),
-    }),
-  },
   FLUSH: {
     message: z.object({
       timeoutInMs: z.number(),
     }),
     callback: z.void(),
   },
-  WAITPOINT_CREATED: {
+  CANCEL: {
     message: z.object({
-      version: z.literal("v1").default("v1"),
-      wait: z.object({
-        id: z.string(),
-      }),
-      waitpoint: z.object({
-        id: z.string(),
-      }),
+      timeoutInMs: z.number(),
     }),
+    callback: z.void(),
   },
-  WAITPOINT_COMPLETED: {
+  RESOLVE_WAITPOINT: {
     message: z.object({
       version: z.literal("v1").default("v1"),
       waitpoint: CompletedWaitpoint,

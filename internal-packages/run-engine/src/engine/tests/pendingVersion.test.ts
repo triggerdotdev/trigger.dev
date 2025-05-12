@@ -3,6 +3,7 @@ import { trace } from "@internal/tracing";
 import { RunEngine } from "../index.js";
 import { setTimeout } from "timers/promises";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
+import { DequeuedMessage } from "@trigger.dev/core/v3";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -100,11 +101,17 @@ describe("RunEngine pending version", () => {
         await setupBackgroundWorker(engine, authenticatedEnvironment, ["test-task-other"]);
 
         //dequeuing should fail
-        const dequeued = await engine.dequeueFromMasterQueue({
-          consumerId: "test_12345",
-          masterQueue: run.masterQueue,
-          maxRunCount: 10,
-        });
+
+        const dequeued: DequeuedMessage[] = [];
+        for (let i = 0; i < 2; i++) {
+          dequeued.push(
+            ...(await engine.dequeueFromMasterQueue({
+              consumerId: "test_12345",
+              masterQueue: "main",
+              maxRunCount: 1,
+            }))
+          );
+        }
         expect(dequeued.length).toBe(0);
 
         //queue should be empty
@@ -151,7 +158,7 @@ describe("RunEngine pending version", () => {
         );
         expect(queueLength2).toBe(2);
       } finally {
-        engine.quit();
+        await engine.quit();
       }
     }
   );
@@ -312,7 +319,7 @@ describe("RunEngine pending version", () => {
         );
         expect(queueLength3).toBe(1);
       } finally {
-        engine.quit();
+        await engine.quit();
       }
     }
   );

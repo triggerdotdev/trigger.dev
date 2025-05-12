@@ -16,9 +16,7 @@ import {
   CreateWaitpointTokenResponseBody,
   DeletedScheduleObject,
   EnvironmentVariableResponseBody,
-  EnvironmentVariableValue,
   EnvironmentVariableWithSecret,
-  EnvironmentVariables,
   ListQueueOptions,
   ListRunResponseItem,
   ListScheduleOptions,
@@ -42,8 +40,10 @@ import {
   WaitpointRetrieveTokenResponse,
   WaitpointTokenItem,
 } from "../schemas/index.js";
+import { AsyncIterableStream } from "../streams/asyncIterableStream.js";
 import { taskContext } from "../task-context-api.js";
 import { AnyRunTypes, TriggerJwtOptions } from "../types/tasks.js";
+import { Prettify } from "../types/utils.js";
 import {
   AnyZodFetchOptions,
   ApiPromise,
@@ -63,9 +63,9 @@ import {
   RunShape,
   RunStreamCallback,
   RunSubscription,
+  SSEStreamSubscriptionFactory,
   TaskRunShape,
   runShapeStream,
-  SSEStreamSubscriptionFactory,
 } from "./runStream.js";
 import {
   CreateEnvironmentVariableParams,
@@ -76,8 +76,6 @@ import {
   SubscribeToRunsQueryParams,
   UpdateEnvironmentVariableParams,
 } from "./types.js";
-import { AsyncIterableStream } from "../streams/asyncIterableStream.js";
-import { Prettify } from "../types/utils.js";
 
 export type CreateWaitpointTokenResponse = Prettify<
   CreateWaitpointTokenResponseBody & {

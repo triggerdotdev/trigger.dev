@@ -91,348 +91,395 @@ export class DequeueSystem {
 
           //lock the run so nothing else can modify it
           try {
-            const dequeuedRun = await this.$.runLock.lock([runId], 5000, async (signal) => {
-              const snapshot = await getLatestExecutionSnapshot(prisma, runId);
+            const dequeuedRun = await this.$.runLock.lock(
+              "dequeueFromMasterQueue",
+              [runId],
+              5000,
+              async (signal) => {
+                const snapshot = await getLatestExecutionSnapshot(prisma, runId);
 
-              if (!isDequeueableExecutionStatus(snapshot.executionStatus)) {
-                //create a failed snapshot
-                await this.executionSnapshotSystem.createExecutionSnapshot(prisma, {
-                  run: {
-                    id: snapshot.runId,
-                    status: snapshot.runStatus,
-                  },
-                  snapshot: {
-                    executionStatus: snapshot.executionStatus,
-                    description:
-                      "Tried to dequeue a run that is not in a valid state to be dequeued.",
-                  },
-                  previousSnapshotId: snapshot.id,
-                  environmentId: snapshot.environmentId,
-                  environmentType: snapshot.environmentType,
-                  projectId: snapshot.projectId,
-                  organizationId: snapshot.organizationId,
-                  checkpointId: snapshot.checkpointId ?? undefined,
-                  completedWaitpoints: snapshot.completedWaitpoints,
-                  error: `Tried to dequeue a run that is not in a valid state to be dequeued.`,
-                  workerId,
-                  runnerId,
-                });
-
-                //todo is there a way to recover this, so the run can be retried?
-                //for example should we update the status to a dequeuable status and nack it?
-                //then at least it has a chance of succeeding and we have the error log above
-                await this.runAttemptSystem.systemFailure({
-                  runId,
-                  error: {
-                    type: "INTERNAL_ERROR",
-                    code: "TASK_DEQUEUED_INVALID_STATE",
-                    message: `Task was in the ${snapshot.executionStatus} state when it was dequeued for execution.`,
-                  },
-                  tx: prisma,
-                });
-                this.$.logger.error(
-                  `RunEngine.dequeueFromMasterQueue(): Run is not in a valid state to be dequeued: ${runId}\n ${snapshot.id}:${snapshot.executionStatus}`
-                );
-                return null;
-              }
-
-              if (snapshot.executionStatus === "QUEUED_EXECUTING") {
-                const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(
-                  prisma,
-                  {
+                if (!isDequeueableExecutionStatus(snapshot.executionStatus)) {
+                  //create a failed snapshot
+                  await this.executionSnapshotSystem.createExecutionSnapshot(prisma, {
                     run: {
-                      id: runId,
+                      id: snapshot.runId,
                       status: snapshot.runStatus,
-                      attemptNumber: snapshot.attemptNumber,
                     },
                     snapshot: {
-                      executionStatus: "EXECUTING",
-                      description: "Run was continued, whilst still executing.",
+                      executionStatus: snapshot.executionStatus,
+                      description:
+                        "Tried to dequeue a run that is not in a valid state to be dequeued.",
                     },
                     previousSnapshotId: snapshot.id,
                     environmentId: snapshot.environmentId,
                     environmentType: snapshot.environmentType,
                     projectId: snapshot.projectId,
                     organizationId: snapshot.organizationId,
-                    batchId: snapshot.batchId ?? undefined,
-                    completedWaitpoints: snapshot.completedWaitpoints.map((waitpoint) => ({
-                      id: waitpoint.id,
-                      index: waitpoint.index,
-                    })),
-                  }
-                );
+                    checkpointId: snapshot.checkpointId ?? undefined,
+                    completedWaitpoints: snapshot.completedWaitpoints,
+                    error: `Tried to dequeue a run that is not in a valid state to be dequeued.`,
+                    workerId,
+                    runnerId,
+                  });
 
-                if (snapshot.previousSnapshotId) {
-                  await this.releaseConcurrencySystem.refillTokensForSnapshot(
-                    snapshot.previousSnapshotId
+                  //todo is there a way to recover this, so the run can be retried?
+                  //for example should we update the status to a dequeuable status and nack it?
+                  //then at least it has a chance of succeeding and we have the error log above
+                  await this.runAttemptSystem.systemFailure({
+                    runId,
+                    error: {
+                      type: "INTERNAL_ERROR",
+                      code: "TASK_DEQUEUED_INVALID_STATE",
+                      message: `Task was in the ${snapshot.executionStatus} state when it was dequeued for execution.`,
+                    },
+                    tx: prisma,
+                  });
+                  this.$.logger.error(
+                    `RunEngine.dequeueFromMasterQueue(): Run is not in a valid state to be dequeued: ${runId}\n ${snapshot.id}:${snapshot.executionStatus}`
                   );
+                  return null;
                 }
 
-                await sendNotificationToWorker({
-                  runId,
-                  snapshot: newSnapshot,
-                  eventBus: this.$.eventBus,
-                });
+                if (snapshot.executionStatus === "QUEUED_EXECUTING") {
+                  const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(
+                    prisma,
+                    {
+                      run: {
+                        id: runId,
+                        status: snapshot.runStatus,
+                        attemptNumber: snapshot.attemptNumber,
+                      },
+                      snapshot: {
+                        executionStatus: "EXECUTING",
+                        description: "Run was continued, whilst still executing.",
+                      },
+                      previousSnapshotId: snapshot.id,
+                      environmentId: snapshot.environmentId,
+                      environmentType: snapshot.environmentType,
+                      projectId: snapshot.projectId,
+                      organizationId: snapshot.organizationId,
+                      batchId: snapshot.batchId ?? undefined,
+                      completedWaitpoints: snapshot.completedWaitpoints.map((waitpoint) => ({
+                        id: waitpoint.id,
+                        index: waitpoint.index,
+                      })),
+                    }
+                  );
 
-                return null;
-              }
-
-              const result = await getRunWithBackgroundWorkerTasks(
-                prisma,
-                runId,
-                backgroundWorkerId
-              );
-
-              if (!result.success) {
-                switch (result.code) {
-                  case "NO_RUN": {
-                    //this should not happen, the run is unrecoverable so we'll ack it
-                    this.$.logger.error("RunEngine.dequeueFromMasterQueue(): No run found", {
-                      runId,
-                      latestSnapshot: snapshot.id,
-                    });
-                    await this.$.runQueue.acknowledgeMessage(orgId, runId);
-                    return null;
+                  if (snapshot.previousSnapshotId) {
+                    await this.releaseConcurrencySystem.refillTokensForSnapshot(
+                      snapshot.previousSnapshotId
+                    );
                   }
-                  case "NO_WORKER":
-                  case "TASK_NEVER_REGISTERED":
-                  case "QUEUE_NOT_FOUND":
-                  case "TASK_NOT_IN_LATEST": {
-                    this.$.logger.warn(`RunEngine.dequeueFromMasterQueue(): ${result.code}`, {
+
+                  await sendNotificationToWorker({
+                    runId,
+                    snapshot: newSnapshot,
+                    eventBus: this.$.eventBus,
+                  });
+
+                  return null;
+                }
+
+                const result = await getRunWithBackgroundWorkerTasks(
+                  prisma,
+                  runId,
+                  backgroundWorkerId
+                );
+
+                if (!result.success) {
+                  switch (result.code) {
+                    case "NO_RUN": {
+                      //this should not happen, the run is unrecoverable so we'll ack it
+                      this.$.logger.error("RunEngine.dequeueFromMasterQueue(): No run found", {
+                        runId,
+                        latestSnapshot: snapshot.id,
+                      });
+                      await this.$.runQueue.acknowledgeMessage(orgId, runId);
+                      return null;
+                    }
+                    case "NO_WORKER":
+                    case "TASK_NEVER_REGISTERED":
+                    case "QUEUE_NOT_FOUND":
+                    case "TASK_NOT_IN_LATEST": {
+                      this.$.logger.warn(`RunEngine.dequeueFromMasterQueue(): ${result.code}`, {
+                        runId,
+                        latestSnapshot: snapshot.id,
+                        result,
+                      });
+
+                      //not deployed yet, so we'll wait for the deploy
+                      await this.#pendingVersion({
+                        orgId,
+                        runId,
+                        reason: result.message,
+                        statusReason: result.code,
+                        tx: prisma,
+                      });
+                      return null;
+                    }
+                    case "BACKGROUND_WORKER_MISMATCH": {
+                      this.$.logger.warn(
+                        "RunEngine.dequeueFromMasterQueue(): Background worker mismatch",
+                        {
+                          runId,
+                          latestSnapshot: snapshot.id,
+                          result,
+                        }
+                      );
+
+                      //worker mismatch so put it back in the queue
+                      await this.$.runQueue.nackMessage({ orgId, messageId: runId });
+
+                      return null;
+                    }
+                    default: {
+                      assertExhaustive(result);
+                    }
+                  }
+                }
+
+                //check for a valid deployment if it's not a development environment
+                if (result.run.runtimeEnvironment.type !== "DEVELOPMENT") {
+                  if (!result.deployment || !result.deployment.imageReference) {
+                    this.$.logger.warn("RunEngine.dequeueFromMasterQueue(): No deployment found", {
                       runId,
                       latestSnapshot: snapshot.id,
                       result,
                     });
-
                     //not deployed yet, so we'll wait for the deploy
                     await this.#pendingVersion({
                       orgId,
                       runId,
-                      reason: result.message,
-                      statusReason: result.code,
+                      reason: "No deployment or deployment image reference found for deployed run",
+                      statusReason: "NO_DEPLOYMENT",
                       tx: prisma,
                     });
+
                     return null;
                   }
-                  case "BACKGROUND_WORKER_MISMATCH": {
-                    this.$.logger.warn(
-                      "RunEngine.dequeueFromMasterQueue(): Background worker mismatch",
+                }
+
+                const machinePreset = getMachinePreset({
+                  machines: this.options.machines.machines,
+                  defaultMachine: this.options.machines.defaultMachine,
+                  config: result.task.machineConfig ?? {},
+                  run: result.run,
+                });
+
+                //increment the consumed resources
+                consumedResources.cpu += machinePreset.cpu;
+                consumedResources.memory += machinePreset.memory;
+
+                //are we under the limit?
+                if (maxResources) {
+                  if (
+                    consumedResources.cpu > maxResources.cpu ||
+                    consumedResources.memory > maxResources.memory
+                  ) {
+                    this.$.logger.debug(
+                      "RunEngine.dequeueFromMasterQueue(): Consumed resources over limit, nacking",
                       {
                         runId,
-                        latestSnapshot: snapshot.id,
-                        result,
+                        consumedResources,
+                        maxResources,
                       }
                     );
 
-                    //worker mismatch so put it back in the queue
-                    await this.$.runQueue.nackMessage({ orgId, messageId: runId });
-
+                    //put it back in the queue where it was
+                    await this.$.runQueue.nackMessage({
+                      orgId,
+                      messageId: runId,
+                      incrementAttemptCount: false,
+                      retryAt: result.run.createdAt.getTime() - result.run.priorityMs,
+                    });
                     return null;
                   }
-                  default: {
-                    assertExhaustive(result);
-                  }
                 }
-              }
 
-              //check for a valid deployment if it's not a development environment
-              if (result.run.runtimeEnvironment.type !== "DEVELOPMENT") {
-                if (!result.deployment || !result.deployment.imageReference) {
-                  this.$.logger.warn("RunEngine.dequeueFromMasterQueue(): No deployment found", {
-                    runId,
-                    latestSnapshot: snapshot.id,
-                    result,
-                  });
-                  //not deployed yet, so we'll wait for the deploy
-                  await this.#pendingVersion({
-                    orgId,
-                    runId,
-                    reason: "No deployment or deployment image reference found for deployed run",
-                    statusReason: "NO_DEPLOYMENT",
-                    tx: prisma,
-                  });
+                // Check max attempts that can optionally be set when triggering a run
+                let maxAttempts: number | null | undefined = result.run.maxAttempts;
 
-                  return null;
-                }
-              }
+                // If it's not set, we'll grab it from the task's retry config
+                if (!maxAttempts) {
+                  const retryConfig = result.task.retryConfig;
 
-              const machinePreset = getMachinePreset({
-                machines: this.options.machines.machines,
-                defaultMachine: this.options.machines.defaultMachine,
-                config: result.task.machineConfig ?? {},
-                run: result.run,
-              });
-
-              //increment the consumed resources
-              consumedResources.cpu += machinePreset.cpu;
-              consumedResources.memory += machinePreset.memory;
-
-              //are we under the limit?
-              if (maxResources) {
-                if (
-                  consumedResources.cpu > maxResources.cpu ||
-                  consumedResources.memory > maxResources.memory
-                ) {
                   this.$.logger.debug(
-                    "RunEngine.dequeueFromMasterQueue(): Consumed resources over limit, nacking",
+                    "RunEngine.dequeueFromMasterQueue(): maxAttempts not set, using task's retry config",
                     {
                       runId,
-                      consumedResources,
-                      maxResources,
+                      task: result.task.id,
+                      rawRetryConfig: retryConfig,
                     }
                   );
 
-                  //put it back in the queue where it was
-                  await this.$.runQueue.nackMessage({
-                    orgId,
-                    messageId: runId,
-                    incrementAttemptCount: false,
-                    retryAt: result.run.createdAt.getTime() - result.run.priorityMs,
-                  });
+                  const parsedConfig = RetryOptions.nullable().safeParse(retryConfig);
+
+                  if (!parsedConfig.success) {
+                    this.$.logger.error(
+                      "RunEngine.dequeueFromMasterQueue(): Invalid retry config",
+                      {
+                        runId,
+                        task: result.task.id,
+                        rawRetryConfig: retryConfig,
+                      }
+                    );
+                  }
+
+                  maxAttempts = parsedConfig.data?.maxAttempts;
+                }
+                //update the run
+                const lockedAt = new Date();
+                const startedAt = result.run.startedAt ?? lockedAt;
+                const maxDurationInSeconds = getMaxDuration(
+                  result.run.maxDurationInSeconds,
+                  result.task.maxDurationInSeconds
+                );
+
+                const lockedTaskRun = await prisma.taskRun.update({
+                  where: {
+                    id: runId,
+                  },
+                  data: {
+                    lockedAt,
+                    lockedById: result.task.id,
+                    lockedToVersionId: result.worker.id,
+                    lockedQueueId: result.queue.id,
+                    startedAt,
+                    baseCostInCents: this.options.machines.baseCostInCents,
+                    machinePreset: machinePreset.name,
+                    taskVersion: result.worker.version,
+                    sdkVersion: result.worker.sdkVersion,
+                    cliVersion: result.worker.cliVersion,
+                    maxDurationInSeconds,
+                    maxAttempts: maxAttempts ?? undefined,
+                  },
+                  include: {
+                    runtimeEnvironment: true,
+                    tags: true,
+                  },
+                });
+
+                this.$.eventBus.emit("runLocked", {
+                  time: new Date(),
+                  run: {
+                    id: runId,
+                    status: lockedTaskRun.status,
+                    lockedAt,
+                    lockedById: result.task.id,
+                    lockedToVersionId: result.worker.id,
+                    lockedQueueId: result.queue.id,
+                    startedAt,
+                    baseCostInCents: this.options.machines.baseCostInCents,
+                    machinePreset: machinePreset.name,
+                    taskVersion: result.worker.version,
+                    sdkVersion: result.worker.sdkVersion,
+                    cliVersion: result.worker.cliVersion,
+                    maxDurationInSeconds: lockedTaskRun.maxDurationInSeconds ?? undefined,
+                    maxAttempts: lockedTaskRun.maxAttempts ?? undefined,
+                    updatedAt: lockedTaskRun.updatedAt,
+                    createdAt: lockedTaskRun.createdAt,
+                  },
+                  organization: {
+                    id: orgId,
+                  },
+                  project: {
+                    id: lockedTaskRun.projectId,
+                  },
+                  environment: {
+                    id: lockedTaskRun.runtimeEnvironmentId,
+                  },
+                });
+
+                if (!lockedTaskRun) {
+                  this.$.logger.error(
+                    "RunEngine.dequeueFromMasterQueue(): Failed to lock task run",
+                    {
+                      taskRun: result.run.id,
+                      taskIdentifier: result.run.taskIdentifier,
+                      deployment: result.deployment?.id,
+                      worker: result.worker.id,
+                      task: result.task.id,
+                      runId,
+                    }
+                  );
+
+                  await this.$.runQueue.acknowledgeMessage(orgId, runId);
                   return null;
                 }
-              }
 
-              // Check max attempts that can optionally be set when triggering a run
-              let maxAttempts: number | null | undefined = result.run.maxAttempts;
+                const currentAttemptNumber = lockedTaskRun.attemptNumber ?? 0;
+                const nextAttemptNumber = currentAttemptNumber + 1;
 
-              // If it's not set, we'll grab it from the task's retry config
-              if (!maxAttempts) {
-                const retryConfig = result.task.retryConfig;
-
-                this.$.logger.debug(
-                  "RunEngine.dequeueFromMasterQueue(): maxAttempts not set, using task's retry config",
+                const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(
+                  prisma,
                   {
-                    runId,
-                    task: result.task.id,
-                    rawRetryConfig: retryConfig,
+                    run: {
+                      id: runId,
+                      status: snapshot.runStatus,
+                      attemptNumber: lockedTaskRun.attemptNumber,
+                    },
+                    snapshot: {
+                      executionStatus: "PENDING_EXECUTING",
+                      description: "Run was dequeued for execution",
+                    },
+                    previousSnapshotId: snapshot.id,
+                    environmentId: snapshot.environmentId,
+                    environmentType: snapshot.environmentType,
+                    projectId: snapshot.projectId,
+                    organizationId: snapshot.organizationId,
+                    checkpointId: snapshot.checkpointId ?? undefined,
+                    batchId: snapshot.batchId ?? undefined,
+                    completedWaitpoints: snapshot.completedWaitpoints,
+                    workerId,
+                    runnerId,
                   }
                 );
 
-                const parsedConfig = RetryOptions.nullable().safeParse(retryConfig);
-
-                if (!parsedConfig.success) {
-                  this.$.logger.error("RunEngine.dequeueFromMasterQueue(): Invalid retry config", {
-                    runId,
-                    task: result.task.id,
-                    rawRetryConfig: retryConfig,
-                  });
-                }
-
-                maxAttempts = parsedConfig.data?.maxAttempts;
-              }
-              //update the run
-              const lockedTaskRun = await prisma.taskRun.update({
-                where: {
-                  id: runId,
-                },
-                data: {
-                  lockedAt: new Date(),
-                  lockedById: result.task.id,
-                  lockedToVersionId: result.worker.id,
-                  lockedQueueId: result.queue.id,
-                  startedAt: result.run.startedAt ?? new Date(),
-                  baseCostInCents: this.options.machines.baseCostInCents,
-                  machinePreset: machinePreset.name,
-                  taskVersion: result.worker.version,
-                  sdkVersion: result.worker.sdkVersion,
-                  cliVersion: result.worker.cliVersion,
-                  maxDurationInSeconds: getMaxDuration(
-                    result.run.maxDurationInSeconds,
-                    result.task.maxDurationInSeconds
-                  ),
-                  maxAttempts: maxAttempts ?? undefined,
-                },
-                include: {
-                  runtimeEnvironment: true,
-                  tags: true,
-                },
-              });
-
-              if (!lockedTaskRun) {
-                this.$.logger.error("RunEngine.dequeueFromMasterQueue(): Failed to lock task run", {
-                  taskRun: result.run.id,
-                  taskIdentifier: result.run.taskIdentifier,
-                  deployment: result.deployment?.id,
-                  worker: result.worker.id,
-                  task: result.task.id,
-                  runId,
-                });
-
-                await this.$.runQueue.acknowledgeMessage(orgId, runId);
-                return null;
-              }
-
-              const currentAttemptNumber = lockedTaskRun.attemptNumber ?? 0;
-              const nextAttemptNumber = currentAttemptNumber + 1;
-
-              const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(
-                prisma,
-                {
-                  run: {
-                    id: runId,
-                    status: snapshot.runStatus,
-                    attemptNumber: lockedTaskRun.attemptNumber,
-                  },
+                return {
+                  version: "1" as const,
+                  dequeuedAt: new Date(),
                   snapshot: {
-                    executionStatus: "PENDING_EXECUTING",
-                    description: "Run was dequeued for execution",
+                    id: newSnapshot.id,
+                    friendlyId: newSnapshot.friendlyId,
+                    executionStatus: newSnapshot.executionStatus,
+                    description: newSnapshot.description,
+                    createdAt: newSnapshot.createdAt,
                   },
-                  previousSnapshotId: snapshot.id,
-                  environmentId: snapshot.environmentId,
-                  environmentType: snapshot.environmentType,
-                  projectId: snapshot.projectId,
-                  organizationId: snapshot.organizationId,
-                  checkpointId: snapshot.checkpointId ?? undefined,
-                  batchId: snapshot.batchId ?? undefined,
+                  image: result.deployment?.imageReference ?? undefined,
+                  checkpoint: newSnapshot.checkpoint ?? undefined,
                   completedWaitpoints: snapshot.completedWaitpoints,
-                  workerId,
-                  runnerId,
-                }
-              );
-
-              return {
-                version: "1" as const,
-                dequeuedAt: new Date(),
-                snapshot: {
-                  id: newSnapshot.id,
-                  friendlyId: newSnapshot.friendlyId,
-                  executionStatus: newSnapshot.executionStatus,
-                  description: newSnapshot.description,
-                },
-                image: result.deployment?.imageReference ?? undefined,
-                checkpoint: newSnapshot.checkpoint ?? undefined,
-                completedWaitpoints: snapshot.completedWaitpoints,
-                backgroundWorker: {
-                  id: result.worker.id,
-                  friendlyId: result.worker.friendlyId,
-                  version: result.worker.version,
-                },
-                deployment: {
-                  id: result.deployment?.id,
-                  friendlyId: result.deployment?.friendlyId,
-                },
-                run: {
-                  id: lockedTaskRun.id,
-                  friendlyId: lockedTaskRun.friendlyId,
-                  isTest: lockedTaskRun.isTest,
-                  machine: machinePreset,
-                  attemptNumber: nextAttemptNumber,
-                  masterQueue: lockedTaskRun.masterQueue,
-                  traceContext: lockedTaskRun.traceContext as Record<string, unknown>,
-                },
-                environment: {
-                  id: lockedTaskRun.runtimeEnvironment.id,
-                  type: lockedTaskRun.runtimeEnvironment.type,
-                },
-                organization: {
-                  id: orgId,
-                },
-                project: {
-                  id: lockedTaskRun.projectId,
-                },
-              } satisfies DequeuedMessage;
-            });
+                  backgroundWorker: {
+                    id: result.worker.id,
+                    friendlyId: result.worker.friendlyId,
+                    version: result.worker.version,
+                  },
+                  deployment: {
+                    id: result.deployment?.id,
+                    friendlyId: result.deployment?.friendlyId,
+                  },
+                  run: {
+                    id: lockedTaskRun.id,
+                    friendlyId: lockedTaskRun.friendlyId,
+                    isTest: lockedTaskRun.isTest,
+                    machine: machinePreset,
+                    attemptNumber: nextAttemptNumber,
+                    masterQueue: lockedTaskRun.masterQueue,
+                    traceContext: lockedTaskRun.traceContext as Record<string, unknown>,
+                  },
+                  environment: {
+                    id: lockedTaskRun.runtimeEnvironment.id,
+                    type: lockedTaskRun.runtimeEnvironment.type,
+                  },
+                  organization: {
+                    id: orgId,
+                  },
+                  project: {
+                    id: lockedTaskRun.projectId,
+                  },
+                } satisfies DequeuedMessage;
+              }
+            );
 
             if (dequeuedRun !== null) {
               dequeuedRuns.push(dequeuedRun);
@@ -515,7 +562,7 @@ export class DequeueSystem {
       this.$.tracer,
       "#pendingVersion",
       async (span) => {
-        return this.$.runLock.lock([runId], 5_000, async (signal) => {
+        return this.$.runLock.lock("pendingVersion", [runId], 5_000, async (signal) => {
           //mark run as waiting for deploy
           const run = await prisma.taskRun.update({
             where: { id: runId },
@@ -527,6 +574,8 @@ export class DequeueSystem {
               id: true,
               status: true,
               attemptNumber: true,
+              updatedAt: true,
+              createdAt: true,
               runtimeEnvironment: {
                 select: {
                   id: true,
@@ -561,6 +610,25 @@ export class DequeueSystem {
 
           //we ack because when it's deployed it will be requeued
           await this.$.runQueue.acknowledgeMessage(orgId, runId);
+
+          this.$.eventBus.emit("runStatusChanged", {
+            time: new Date(),
+            run: {
+              id: runId,
+              status: run.status,
+              updatedAt: run.updatedAt,
+              createdAt: run.createdAt,
+            },
+            organization: {
+              id: run.runtimeEnvironment.project.organizationId,
+            },
+            project: {
+              id: run.runtimeEnvironment.projectId,
+            },
+            environment: {
+              id: run.runtimeEnvironment.id,
+            },
+          });
         });
       },
       {

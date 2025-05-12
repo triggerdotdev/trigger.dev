@@ -5,12 +5,7 @@ volumes:
   database-data-alt:
   pgadmin-data:
   redis-data:
-  redis-cluster_data-0:
-  redis-cluster_data-1:
-  redis-cluster_data-2:
-  redis-cluster_data-3:
-  redis-cluster_data-4:
-  redis-cluster_data-5:
+  clickhouse:
 
 networks:
   app_network:
@@ -52,94 +47,8 @@ services:
     ports:
       - 6379:6379
 
-  # redis-node-0:
-  #   image: docker.io/bitnami/redis-cluster:7.0
-  #   container_name: redis-node-0
-  #   networks:
-  #     - app_network
-  #   ports:
-  #     - "6378:6379"
-  #   volumes:
-  #     - redis-cluster_data-0:/bitnami/redis/data
-  #   environment:
-  #     - "REDIS_PASSWORD=bitnami"
-  #     - "REDIS_NODES=redis-node-0 redis-node-1 redis-node-2 redis-node-3 redis-node-4 redis-node-5"
-
-  # redis-node-1:
-  #   image: docker.io/bitnami/redis-cluster:7.0
-  #   container_name: redis-node-1
-  #   networks:
-  #     - app_network
-  #   ports:
-  #     - "6380:6379"
-  #   volumes:
-  #     - redis-cluster_data-1:/bitnami/redis/data
-  #   environment:
-  #     - "REDIS_PASSWORD=bitnami"
-  #     - "REDIS_NODES=redis-node-0 redis-node-1 redis-node-2 redis-node-3 redis-node-4 redis-node-5"
-
-  # redis-node-2:
-  #   image: docker.io/bitnami/redis-cluster:7.0
-  #   container_name: redis-node-2
-  #   networks:
-  #     - app_network
-  #   ports:
-  #     - "6381:6379"
-  #   volumes:
-  #     - redis-cluster_data-2:/bitnami/redis/data
-  #   environment:
-  #     - "REDIS_PASSWORD=bitnami"
-  #     - "REDIS_NODES=redis-node-0 redis-node-1 redis-node-2 redis-node-3 redis-node-4 redis-node-5"
-
-  # redis-node-3:
-  #   image: docker.io/bitnami/redis-cluster:7.0
-  #   container_name: redis-node-3
-  #   networks:
-  #     - app_network
-  #   ports:
-  #     - "6382:6379"
-  #   volumes:
-  #     - redis-cluster_data-3:/bitnami/redis/data
-  #   environment:
-  #     - "REDIS_PASSWORD=bitnami"
-  #     - "REDIS_NODES=redis-node-0 redis-node-1 redis-node-2 redis-node-3 redis-node-4 redis-node-5"
-
-  # redis-node-4:
-  #   image: docker.io/bitnami/redis-cluster:7.0
-  #   container_name: redis-node-4
-  #   networks:
-  #     - app_network
-  #   ports:
-  #     - "6383:6379"
-  #   volumes:
-  #     - redis-cluster_data-4:/bitnami/redis/data
-  #   environment:
-  #     - "REDIS_PASSWORD=bitnami"
-  #     - "REDIS_NODES=redis-node-0 redis-node-1 redis-node-2 redis-node-3 redis-node-4 redis-node-5"
-
-  # redis-node-5:
-  #   image: docker.io/bitnami/redis-cluster:7.0
-  #   container_name: redis-node-5
-  #   networks:
-  #     - app_network
-  #   ports:
-  #     - "6384:6379"
-  #   volumes:
-  #     - redis-cluster_data-5:/bitnami/redis/data
-  #   depends_on:
-  #     - redis-node-0
-  #     - redis-node-1
-  #     - redis-node-2
-  #     - redis-node-3
-  #     - redis-node-4
-  #   environment:
-  #     - "REDIS_PASSWORD=bitnami"
-  #     - "REDISCLI_AUTH=bitnami"
-  #     - "REDIS_CLUSTER_REPLICAS=1"
-  #     - "REDIS_NODES=redis-node-0 redis-node-1 redis-node-2 redis-node-3 redis-node-4 redis-node-5"
-  #     - "REDIS_CLUSTER_CREATOR=yes"
-
   electric:
+    container_name: electric
     image: electricsql/electric:1.0.0-beta.15@sha256:4ae0f895753b82684aa31ea1c708e9e86d0a9bca355acb7270dcb24062520810
     restart: always
     environment:
@@ -150,6 +59,63 @@ services:
       - "3060:3000"
     depends_on:
       - database
+
+  clickhouse:
+    image: bitnami/clickhouse:latest
+    container_name: clickhouse
+    environment:
+      CLICKHOUSE_ADMIN_USER: default
+      CLICKHOUSE_ADMIN_PASSWORD: password
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - clickhouse:/bitnami/clickhouse
+    networks:
+      - app_network
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "clickhouse-client",
+          "--host",
+          "localhost",
+          "--port",
+          "9000",
+          "--user",
+          "default",
+          "--password",
+          "password",
+          "--query",
+          "SELECT 1",
+        ]
+      interval: 3s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  clickhouse_migrator:
+    build:
+      context: ../internal-packages/clickhouse
+      dockerfile: ./Dockerfile
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    networks:
+      - app_network
+    command: ["goose", "${GOOSE_COMMAND:-up}"]
+
+  ch-ui:
+    image: ghcr.io/caioricciuti/ch-ui:latest
+    restart: always
+    ports:
+      - "5521:5521"
+    environment:
+      VITE_CLICKHOUSE_URL: "http://clickhouse:8123"
+      VITE_CLICKHOUSE_USER: "default"
+      VITE_CLICKHOUSE_PASS: "password"
+    networks:
+      - app_network
 
   # otel-collector:
   #   container_name: otel-collector

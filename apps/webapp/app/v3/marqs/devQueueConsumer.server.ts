@@ -6,11 +6,14 @@ import {
   TaskRunFailedExecutionResult,
   serverWebsocketMessages,
 } from "@trigger.dev/core/v3";
+import { getMaxDuration } from "@trigger.dev/core/v3/isomorphic";
 import { ZodMessageSender } from "@trigger.dev/core/v3/zodMessageHandler";
 import { BackgroundWorker, BackgroundWorkerTask } from "@trigger.dev/database";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { createNewSession, disconnectSession } from "~/models/runtimeEnvironment.server";
+import { findQueueInEnvironment, sanitizeQueueName } from "~/models/taskQueue.server";
+import { RedisClient, createRedisClient } from "~/redis.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { marqs } from "~/v3/marqs/index.server";
@@ -19,10 +22,7 @@ import { FailedTaskRunService } from "../failedTaskRun.server";
 import { CancelDevSessionRunsService } from "../services/cancelDevSessionRuns.server";
 import { CompleteAttemptService } from "../services/completeAttempt.server";
 import { attributesFromAuthenticatedEnv, tracer } from "../tracer.server";
-import { getMaxDuration } from "@trigger.dev/core/v3/isomorphic";
 import { DevSubscriber, devPubSub } from "./devPubSub.server";
-import { findQueueInEnvironment, sanitizeQueueName } from "~/models/taskQueue.server";
-import { createRedisClient, RedisClient } from "~/redis.server";
 
 const MessageBody = z.discriminatedUnion("type", [
   z.object({
@@ -440,19 +440,22 @@ export class DevQueueConsumer {
       return;
     }
 
+    const lockedAt = new Date();
+    const startedAt = existingTaskRun.startedAt ?? new Date();
+
     const lockedTaskRun = await prisma.taskRun.update({
       where: {
         id: message.messageId,
       },
       data: {
-        lockedAt: new Date(),
+        lockedAt,
         lockedById: backgroundTask.id,
         status: "EXECUTING",
         lockedToVersionId: backgroundWorker.id,
         taskVersion: backgroundWorker.version,
         sdkVersion: backgroundWorker.sdkVersion,
         cliVersion: backgroundWorker.cliVersion,
-        startedAt: existingTaskRun.startedAt ?? new Date(),
+        startedAt,
         maxDurationInSeconds: getMaxDuration(
           existingTaskRun.maxDurationInSeconds,
           backgroundTask.maxDurationInSeconds

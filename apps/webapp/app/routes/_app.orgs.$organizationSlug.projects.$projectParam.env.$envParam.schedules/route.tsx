@@ -38,7 +38,7 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
-import { SimpleTooltip } from "~/components/primitives/Tooltip";
+import { InfoIconTooltip, SimpleTooltip } from "~/components/primitives/Tooltip";
 import { EnabledStatus } from "~/components/runs/v3/EnabledStatus";
 import { ScheduleFilters, ScheduleListFilters } from "~/components/runs/v3/ScheduleFilters";
 import {
@@ -93,12 +93,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
   const s = Object.fromEntries(url.searchParams.entries());
   const filters = ScheduleListFilters.parse(s);
-  filters.environments = [environment.id];
 
   const presenter = new ScheduleListPresenter();
   const list = await presenter.call({
     userId,
     projectId: project.id,
+    environmentId: environment.id,
     ...filters,
   });
 
@@ -106,15 +106,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 export default function Page() {
-  const {
-    schedules,
-    possibleTasks,
-    possibleEnvironments,
-    hasFilters,
-    limits,
-    currentPage,
-    totalPages,
-  } = useTypedLoaderData<typeof loader>();
+  const { schedules, possibleTasks, hasFilters, limits, currentPage, totalPages } =
+    useTypedLoaderData<typeof loader>();
   const location = useLocation();
   const organization = useOrganization();
   const project = useProject();
@@ -229,7 +222,7 @@ export default function Page() {
 
                   <div
                     className={cn(
-                      "grid h-fit max-h-full min-h-full overflow-x-auto",
+                      "grid max-h-full min-h-full overflow-x-auto",
                       totalPages > 1 ? "grid-rows-[1fr_auto]" : "grid-rows-[1fr]"
                     )}
                   >
@@ -281,9 +274,12 @@ export default function Page() {
                             plan to enable more.
                           </Header3>
                         ) : (
-                          <Header3>
-                            You've used {limits.used}/{limits.limit} of your schedules.
-                          </Header3>
+                          <div className="flex items-center gap-1">
+                            <Header3>
+                              You've used {limits.used}/{limits.limit} of your schedules
+                            </Header3>
+                            <InfoIconTooltip content="Schedules created in Dev don't count towards your limit." />
+                          </div>
                         )}
 
                         {canUpgrade ? (
@@ -291,6 +287,7 @@ export default function Page() {
                             to={v3BillingPath(organization)}
                             variant="secondary/small"
                             LeadingIcon={ArrowUpCircleIcon}
+                            leadingIconClassName="text-indigo-500"
                           >
                             Upgrade
                           </LinkButton>

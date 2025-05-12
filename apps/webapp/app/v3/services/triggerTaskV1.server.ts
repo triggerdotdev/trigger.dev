@@ -375,6 +375,8 @@ export class TriggerTaskServiceV1 extends BaseService {
                     number: num,
                     friendlyId: runFriendlyId,
                     runtimeEnvironmentId: environment.id,
+                    environmentType: environment.type,
+                    organizationId: environment.organizationId,
                     projectId: environment.projectId,
                     idempotencyKey,
                     idempotencyKeyExpiresAt: idempotencyKey ? idempotencyKeyExpiresAt : undefined,
@@ -434,6 +436,8 @@ export class TriggerTaskServiceV1 extends BaseService {
                     runTags: bodyTags,
                     oneTimeUseToken: options.oneTimeUseToken,
                     machinePreset: body.options?.machine,
+                    scheduleId: options.scheduleId,
+                    scheduleInstanceId: options.scheduleInstanceId,
                   },
                 });
 

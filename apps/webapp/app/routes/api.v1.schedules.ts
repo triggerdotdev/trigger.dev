@@ -100,9 +100,9 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
   const result = await presenter.call({
     projectId: authenticationResult.environment.projectId,
+    environmentId: authenticationResult.environment.id,
     page: params.data.page ?? 1,
     pageSize: params.data.perPage,
-    environments: [authenticationResult.environment.id],
   });
 
   return {

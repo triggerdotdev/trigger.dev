@@ -20,11 +20,11 @@
     "format": "prettier . --write --config prettier.config.js",
     "generate": "turbo run generate",
     "lint": "turbo run lint",
-    "docker": "docker-compose -p triggerdotdev-docker -f docker/docker-compose.yml up -d --build --remove-orphans",
-    "docker:stop": "docker-compose -p triggerdotdev-docker -f docker/docker-compose.yml stop",
-    "dev:docker": "docker-compose -p triggerdotdev-dev-docker -f docker/dev-compose.yml up -d",
-    "dev:docker:build": "docker-compose -p triggerdotdev-dev-docker -f docker/dev-compose.yml up -d --build",
-    "dev:docker:stop": "docker-compose -p triggerdotdev-dev-docker -f docker/dev-compose.yml stop",
+    "docker": "docker compose -p triggerdotdev-docker -f docker/docker-compose.yml up -d --build --remove-orphans",
+    "docker:stop": "docker compose -p triggerdotdev-docker -f docker/docker-compose.yml stop",
+    "dev:docker": "docker compose -p triggerdotdev-dev-docker -f docker/dev-compose.yml up -d --build --remove-orphans",
+    "dev:docker:build": "docker compose -p triggerdotdev-dev-docker -f docker/dev-compose.yml up -d --build",
+    "dev:docker:stop": "docker compose -p triggerdotdev-dev-docker -f docker/dev-compose.yml stop",
     "test": "turbo run test --concurrency=1 -- --run",
     "test:webapp": "turbo run test --filter webapp -- --run",
     "test:packages": "turbo run test --concurrency=1 --filter \"@trigger.dev/*\" -- --run",
@@ -78,7 +78,6 @@
       "engine.io-parser@5.2.2": "patches/engine.io-parser@5.2.2.patch",
       "graphile-worker@0.16.6": "patches/graphile-worker@0.16.6.patch",
       "redlock@5.0.0-beta.2": "patches/redlock@5.0.0-beta.2.patch",
-      "supports-hyperlinks@2.3.0": "patches/supports-hyperlinks@2.3.0.patch",
       "@kubernetes/client-node@1.0.0": "patches/@kubernetes__client-node@1.0.0.patch"
     }
   }

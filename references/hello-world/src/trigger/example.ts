@@ -1,5 +1,6 @@
-import { batch, logger, task, timeout, wait } from "@trigger.dev/sdk";
+import { batch, logger, task, tasks, timeout, wait } from "@trigger.dev/sdk";
 import { setTimeout } from "timers/promises";
+import { ResourceMonitor } from "../resourceMonitor.js";
 
 export const helloWorldTask = task({
   id: "hello-world",
@@ -36,6 +37,7 @@ export const helloWorldTask = task({
 
 export const parentTask = task({
   id: "parent",
+  machine: "medium-1x",
   run: async (payload: any, { ctx }) => {
     logger.log("Hello, world from the parent", { payload });
     await childTask.triggerAndWait(
@@ -204,5 +206,80 @@ export const hooksTask = task({
   },
   cleanup: async ({ ctx, payload }) => {
     logger.info("Hello, world from the cleanup hook", { payload });
+  },
+  onCancel: async ({ payload }) => {
+    logger.info("Hello, world from the onCancel hook", { payload });
+  },
+});
+
+export const cancelExampleTask = task({
+  id: "cancel-example",
+  // Signal will be aborted when the task is cancelled 👇
+  run: async (payload: { timeoutInSeconds: number }, { signal }) => {
+    logger.info("Hello, world from the cancel task", {
+      timeoutInSeconds: payload.timeoutInSeconds,
+    });
+
+    // This is a global hook that will be called if the task is cancelled
+    tasks.onCancel(async () => {
+      logger.info("global task onCancel hook but inside of the run function baby!");
+    });
+
+    await logger.trace("timeout", async (span) => {
+      try {
+        // We pass the signal to setTimeout to abort the timeout if the task is cancelled
+        await setTimeout(payload.timeoutInSeconds * 1000, undefined, { signal });
+      } catch (error) {
+        // If the timeout is aborted, this error will be thrown, we can handle it here
+        logger.error("Timeout error", { error });
+      }
+    });
+
+    logger.info("Hello, world from the cancel task after the timeout", {
+      timeoutInSeconds: payload.timeoutInSeconds,
+    });
+
+    return {
+      message: "Hello, world!",
+    };
+  },
+  onCancel: async ({ payload, runPromise }) => {
+    logger.info("Hello, world from the onCancel hook", { payload });
+    // You can await the runPromise to get the output of the task
+    const output = await runPromise;
+
+    logger.info("Hello, world from the onCancel hook after the run", { payload, output });
+
+    // You can do work inside the onCancel hook, up to 30 seconds
+    await setTimeout(10_000);
+
+    logger.info("Hello, world from the onCancel hook after the timeout", { payload });
+  },
+});
+
+export const resourceMonitorTest = task({
+  id: "resource-monitor-test",
+  run: async (payload: { dirName?: string; processName?: string }, { ctx }) => {
+    logger.info("Hello, resources!", { payload });
+
+    const resMon = new ResourceMonitor({
+      ctx,
+      dirName: payload.dirName ?? "/tmp",
+      processName: payload.processName ?? "node",
+    });
+
+    resMon.startMonitoring(1_000);
+
+    await resMon.logResourceSnapshot();
+
+    await wait.for({ seconds: 5 });
+
+    await resMon.logResourceSnapshot();
+
+    resMon.stopMonitoring();
+
+    return {
+      message: "Hello, resources!",
+    };
   },
 });
