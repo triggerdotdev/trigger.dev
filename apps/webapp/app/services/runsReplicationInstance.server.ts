@@ -46,6 +46,7 @@ function initializeRunsReplicationInstance() {
     leaderLockTimeoutMs: env.RUN_REPLICATION_LEADER_LOCK_TIMEOUT_MS,
     leaderLockExtendIntervalMs: env.RUN_REPLICATION_LEADER_LOCK_EXTEND_INTERVAL_MS,
     ackIntervalSeconds: env.RUN_REPLICATION_ACK_INTERVAL_SECONDS,
+    logLevel: env.RUN_REPLICATION_LOG_LEVEL,
   });
 
   if (env.RUN_REPLICATION_ENABLED === "1") {

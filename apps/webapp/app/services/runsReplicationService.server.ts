@@ -2,14 +2,13 @@ import type { ClickHouse, RawTaskRunPayloadV1, TaskRunV1 } from "@internal/click
 import { RedisOptions } from "@internal/redis";
 import { LogicalReplicationClient, Transaction, type PgoutputMessage } from "@internal/replication";
 import { Span, startSpan, trace, type Tracer } from "@internal/tracing";
-import { Logger } from "@trigger.dev/core/logger";
+import { Logger, LogLevel } from "@trigger.dev/core/logger";
 import { tryCatch } from "@trigger.dev/core/utils";
 import { parsePacket } from "@trigger.dev/core/v3/utils/ioSerialization";
 import { TaskRun } from "@trigger.dev/database";
 import { nanoid } from "nanoid";
 import EventEmitter from "node:events";
 import pLimit from "p-limit";
-import { Counter, Gauge } from "prom-client";
 
 export type RunsReplicationServiceOptions = {
   clickhouse: ClickHouse;
@@ -26,6 +25,7 @@ export type RunsReplicationServiceOptions = {
   ackIntervalSeconds?: number;
   acknowledgeTimeoutMs?: number;
   logger?: Logger;
+  logLevel?: LogLevel;
   tracer?: Tracer;
 };
 
@@ -36,7 +36,6 @@ export type RunsReplicationServiceEvents = {
 };
 
 export class RunsReplicationService {
-  private _lastLsn: string | null = null;
   private _isSubscribed = false;
   private _currentTransaction:
     | (Omit<Transaction<TaskRun>, "commitEndLsn" | "replicationLagMs"> & {
@@ -48,9 +47,6 @@ export class RunsReplicationService {
   private _replicationClient: LogicalReplicationClient;
   private _concurrentFlushScheduler: ConcurrentFlushScheduler<TaskRunInsert>;
   private logger: Logger;
-  private _lastReplicationLagMs: number | null = null;
-  private _transactionCounter?: Counter;
-  private _lagGauge?: Gauge;
   private _isShuttingDown = false;
   private _isShutDownComplete = false;
   private _tracer: Tracer;
@@ -58,11 +54,15 @@ export class RunsReplicationService {
   private _currentParseDurationMs: number | null = null;
   private _lastAcknowledgedAt: number | null = null;
   private _acknowledgeTimeoutMs: number;
+  private _latestCommitEndLsn: string | null = null;
+  private _lastAcknowledgedLsn: string | null = null;
+  private _acknowledgeInterval: NodeJS.Timeout | null = null;
 
   public readonly events: EventEmitter<RunsReplicationServiceEvents>;
 
   constructor(private readonly options: RunsReplicationServiceOptions) {
-    this.logger = options.logger ?? new Logger("RunsReplicationService", "debug");
+    this.logger =
+      options.logger ?? new Logger("RunsReplicationService", options.logLevel ?? "info");
     this.events = new EventEmitter();
     this._tracer = options.tracer ?? trace.getTracer("runs-replication-service");
 
@@ -79,7 +79,7 @@ export class RunsReplicationService {
       redisOptions: options.redisOptions,
       autoAcknowledge: false,
       publicationActions: ["insert", "update", "delete"],
-      logger: this.logger,
+      logger: new Logger("LogicalReplicationClient", options.logLevel ?? "info"),
       leaderLockTimeoutMs: options.leaderLockTimeoutMs ?? 30_000,
       leaderLockExtendIntervalMs: options.leaderLockExtendIntervalMs ?? 10_000,
       ackIntervalSeconds: options.ackIntervalSeconds ?? 10,
@@ -90,12 +90,11 @@ export class RunsReplicationService {
       flushInterval: options.flushIntervalMs ?? 100,
       maxConcurrency: options.maxFlushConcurrency ?? 100,
       callback: this.#flushBatch.bind(this),
+      logger: new Logger("ConcurrentFlushScheduler", options.logLevel ?? "info"),
     });
 
     this._replicationClient.events.on("data", async ({ lsn, log, parseDuration }) => {
-      this._lastLsn = lsn;
-
-      await this.#handleData(lsn, log, parseDuration);
+      this.#handleData(lsn, log, parseDuration);
     });
 
     this._replicationClient.events.on("heartbeat", async ({ lsn, shouldRespond }) => {
@@ -103,6 +102,7 @@ export class RunsReplicationService {
       if (this._isShutDownComplete) return;
 
       if (shouldRespond) {
+        this._lastAcknowledgedLsn = lsn;
         await this._replicationClient.acknowledge(lsn);
       }
     });
@@ -126,14 +126,6 @@ export class RunsReplicationService {
     });
   }
 
-  public async getTransactionCountMetric() {
-    return this._transactionCounter?.get();
-  }
-
-  public async getLagGaugeMetric() {
-    return this._lagGauge?.get();
-  }
-
   public async shutdown() {
     this._isShuttingDown = true;
 
@@ -145,32 +137,46 @@ export class RunsReplicationService {
       this._isShutDownComplete = true;
       return;
     }
+
+    this._concurrentFlushScheduler.shutdown();
   }
 
   async start() {
     this.logger.info("Starting replication client", {
-      lastLsn: this._lastLsn,
+      lastLsn: this._latestCommitEndLsn,
     });
 
-    await this._replicationClient.subscribe(this._lastLsn ?? undefined);
+    await this._replicationClient.subscribe(this._latestCommitEndLsn ?? undefined);
+
+    this._acknowledgeInterval = setInterval(this.#acknowledgeLatestTransaction.bind(this), 1000);
+    this._concurrentFlushScheduler.start();
   }
 
   async stop() {
     this.logger.info("Stopping replication client");
 
     await this._replicationClient.stop();
+
+    if (this._acknowledgeInterval) {
+      clearInterval(this._acknowledgeInterval);
+    }
   }
 
   async teardown() {
     this.logger.info("Teardown replication client");
 
     await this._replicationClient.teardown();
+
+    if (this._acknowledgeInterval) {
+      clearInterval(this._acknowledgeInterval);
+    }
   }
 
-  async #handleData(lsn: string, message: PgoutputMessage, parseDuration: bigint) {
+  #handleData(lsn: string, message: PgoutputMessage, parseDuration: bigint) {
     this.logger.debug("Handling data", {
       lsn,
       tag: message.tag,
+      parseDuration,
     });
 
     this.events.emit("message", { lsn, message, service: this });
@@ -269,32 +275,25 @@ export class RunsReplicationService {
         this._currentTransaction.replicationLagMs = replicationLagMs;
         const transaction = this._currentTransaction as Transaction<TaskRun>;
         this._currentTransaction = null;
-        await this.#handleTransaction(transaction);
+
+        if (transaction.commitEndLsn) {
+          this._latestCommitEndLsn = transaction.commitEndLsn;
+        }
+
+        this.#handleTransaction(transaction);
         break;
       }
     }
   }
 
-  async #handleTransaction(transaction: Transaction<TaskRun>) {
+  #handleTransaction(transaction: Transaction<TaskRun>) {
     if (this._isShutDownComplete) return;
 
-    let alreadyAcknowledged = false;
-
     if (this._isShuttingDown) {
-      // We need to immediately acknowledge the transaction
-      // And then try and handle this transaction
-      if (transaction.commitEndLsn) {
-        this._currentSpan?.setAttribute("transaction.shutdown", true);
-
-        await this.#maybeAcknowledge(transaction.commitEndLsn);
-        alreadyAcknowledged = true;
-      }
-
-      await this._replicationClient.stop();
-      this._isShutDownComplete = true;
+      this._replicationClient.stop().finally(() => {
+        this._isShutDownComplete = true;
+      });
     }
-
-    this._lastReplicationLagMs = transaction.replicationLagMs;
 
     this._currentSpan?.setAttribute("transaction.replication_lag_ms", transaction.replicationLagMs);
     this._currentSpan?.setAttribute("transaction.xid", transaction.xid);
@@ -307,10 +306,6 @@ export class RunsReplicationService {
 
     // If there are no events, do nothing
     if (transaction.events.length === 0) {
-      if (transaction.commitEndLsn && !alreadyAcknowledged) {
-        await this.#maybeAcknowledge(transaction.commitEndLsn);
-      }
-
       this._currentSpan?.end();
 
       return;
@@ -328,7 +323,6 @@ export class RunsReplicationService {
 
     this.logger.debug("Handling transaction", {
       transaction,
-      alreadyAcknowledged,
     });
 
     const lsnToUInt64Start = process.hrtime.bigint();
@@ -341,35 +335,26 @@ export class RunsReplicationService {
       Number(process.hrtime.bigint() - lsnToUInt64Start) / 1_000_000
     );
 
-    this._transactionCounter?.inc();
-
-    this._concurrentFlushScheduler
-      .addToBatch(
-        transaction.events.map((event) => ({
-          _version,
-          run: event.data,
-          event: event.tag,
-        }))
-      )
-      .catch((error) => {
-        this.logger.error("Error adding to batch", {
-          error,
-        });
-      });
-
-    if (!alreadyAcknowledged) {
-      const acknowledgeStart = process.hrtime.bigint();
-      await this.#maybeAcknowledge(transaction.commitEndLsn);
-      this._currentSpan?.setAttribute(
-        "transaction.acknowledge_ms",
-        Number(process.hrtime.bigint() - acknowledgeStart) / 1_000_000
-      );
-    }
+    this._concurrentFlushScheduler.addToBatch(
+      transaction.events.map((event) => ({
+        _version,
+        run: event.data,
+        event: event.tag,
+      }))
+    );
 
     this._currentSpan?.end();
   }
 
-  async #maybeAcknowledge(commitEndLsn: string) {
+  async #acknowledgeLatestTransaction() {
+    if (!this._latestCommitEndLsn) {
+      return;
+    }
+
+    if (this._lastAcknowledgedLsn === this._latestCommitEndLsn) {
+      return;
+    }
+
     const now = Date.now();
 
     if (this._lastAcknowledgedAt) {
@@ -381,13 +366,18 @@ export class RunsReplicationService {
     }
 
     this._lastAcknowledgedAt = now;
+    this._lastAcknowledgedLsn = this._latestCommitEndLsn;
 
-    this.logger.info("Acknowledging transaction", {
-      commitEndLsn,
+    this.logger.debug("Acknowledging transaction", {
+      commitEndLsn: this._latestCommitEndLsn,
       lastAcknowledgedAt: this._lastAcknowledgedAt,
     });
 
-    await this._replicationClient.acknowledge(commitEndLsn);
+    await this._replicationClient.acknowledge(this._latestCommitEndLsn);
+
+    if (this._isShutDownComplete && this._acknowledgeInterval) {
+      clearInterval(this._acknowledgeInterval);
+    }
   }
 
   async #flushBatch(flushId: string, batch: Array<TaskRunInsert>) {
@@ -398,7 +388,7 @@ export class RunsReplicationService {
       return;
     }
 
-    this.logger.info("Flushing batch", {
+    this.logger.debug("Flushing batch", {
       flushId,
       batchSize: batch.length,
     });
@@ -419,7 +409,7 @@ export class RunsReplicationService {
       span.setAttribute("task_run_inserts", taskRunInserts.length);
       span.setAttribute("payload_inserts", payloadInserts.length);
 
-      this.logger.info("Flushing inserts", {
+      this.logger.debug("Flushing inserts", {
         flushId,
         taskRunInserts: taskRunInserts.length,
         payloadInserts: payloadInserts.length,
@@ -430,7 +420,7 @@ export class RunsReplicationService {
         this.#insertPayloadInserts(payloadInserts),
       ]);
 
-      this.logger.info("Flushed inserts", {
+      this.logger.debug("Flushed inserts", {
         flushId,
         taskRunInserts: taskRunInserts.length,
         payloadInserts: payloadInserts.length,
@@ -610,9 +600,14 @@ export class RunsReplicationService {
       dataType,
     };
 
-    const parsedData = await parsePacket(packet);
+    const [parseError, parsedData] = await tryCatch(parsePacket(packet));
 
-    if (!parsedData) {
+    if (parseError) {
+      this.logger.error("Error parsing packet", {
+        error: parseError,
+        packet,
+      });
+
       return { data: undefined };
     }
 
@@ -626,93 +621,99 @@ export type ConcurrentFlushSchedulerConfig<T> = {
   maxConcurrency?: number;
   callback: (flushId: string, batch: T[]) => Promise<void>;
   tracer?: Tracer;
+  logger?: Logger;
 };
 
 export class ConcurrentFlushScheduler<T> {
   private currentBatch: T[]; // Adjust the type according to your data structure
   private readonly BATCH_SIZE: number;
-  private readonly FLUSH_INTERVAL: number;
+  private readonly flushInterval: number;
   private readonly MAX_CONCURRENCY: number;
   private readonly concurrencyLimiter: ReturnType<typeof pLimit>;
   private flushTimer: NodeJS.Timeout | null;
   private failedBatchCount;
   private logger: Logger;
   private _tracer: Tracer;
+  private _isShutDown = false;
 
   constructor(private readonly config: ConcurrentFlushSchedulerConfig<T>) {
-    this.logger = new Logger("ConcurrentFlushScheduler", "info");
+    this.logger = config.logger ?? new Logger("ConcurrentFlushScheduler", "info");
     this._tracer = config.tracer ?? trace.getTracer("concurrent-flush-scheduler");
 
     this.currentBatch = [];
     this.BATCH_SIZE = config.batchSize;
-    this.FLUSH_INTERVAL = config.flushInterval;
+    this.flushInterval = config.flushInterval;
     this.MAX_CONCURRENCY = config.maxConcurrency || 1;
     this.concurrencyLimiter = pLimit(this.MAX_CONCURRENCY);
     this.flushTimer = null;
     this.failedBatchCount = 0;
+  }
 
-    this.logger.info("Initializing ConcurrentFlushScheduler", {
+  addToBatch(items: T[]): void {
+    this.currentBatch = this.currentBatch.concat(items);
+    this.#flushNextBatchIfNeeded();
+  }
+
+  start(): void {
+    this.logger.info("Starting ConcurrentFlushScheduler", {
       batchSize: this.BATCH_SIZE,
-      flushInterval: this.FLUSH_INTERVAL,
+      flushInterval: this.flushInterval,
       maxConcurrency: this.MAX_CONCURRENCY,
     });
 
-    this.startFlushTimer();
+    this.#startFlushTimer();
   }
 
-  /**
-   *
-   * If you want to fire and forget, don't await this method.
-   */
-  async addToBatch(items: T[]): Promise<void> {
-    this.currentBatch = this.currentBatch.concat(items);
+  shutdown(): void {
+    this.logger.info("Shutting down ConcurrentFlushScheduler");
 
-    this.logger.debug("Adding items to batch", {
-      currentBatchSize: this.currentBatch.length,
-      itemsAdded: items.length,
-    });
+    this._isShutDown = true;
 
-    if (this.currentBatch.length >= this.BATCH_SIZE) {
+    this.#clearTimer();
+    this.#flushNextBatchIfNeeded();
+  }
+
+  #flushNextBatchIfNeeded(): void {
+    if (this.currentBatch.length >= this.BATCH_SIZE || this._isShutDown) {
       this.logger.debug("Batch size threshold reached, initiating flush", {
         batchSize: this.BATCH_SIZE,
         currentSize: this.currentBatch.length,
+        isShutDown: this._isShutDown,
       });
-      await this.flushNextBatch();
-      this.resetFlushTimer();
+
+      this.#flushNextBatch().catch((error) => {
+        this.logger.error("Error flushing next batch", {
+          error,
+        });
+      });
     }
   }
 
-  private startFlushTimer(): void {
-    this.flushTimer = setInterval(() => this.checkAndFlush(), this.FLUSH_INTERVAL);
-    this.logger.debug("Started flush timer", { interval: this.FLUSH_INTERVAL });
+  #startFlushTimer(): void {
+    this.flushTimer = setInterval(() => this.#checkAndFlush().catch(() => {}), this.flushInterval);
+    this.logger.debug("Started flush timer", { interval: this.flushInterval });
   }
 
-  private clearTimer(): void {
+  #clearTimer(): void {
     if (this.flushTimer) {
       clearInterval(this.flushTimer);
       this.logger.debug("Flush timer cleared");
     }
   }
 
-  private resetFlushTimer(): void {
-    this.clearTimer();
-    this.startFlushTimer();
-    this.logger.debug("Flush timer reset");
-  }
-
-  private async checkAndFlush(): Promise<void> {
+  async #checkAndFlush(): Promise<void> {
     if (this.currentBatch.length > 0) {
       this.logger.debug("Periodic flush check triggered", {
         currentBatchSize: this.currentBatch.length,
       });
-      await this.flushNextBatch();
+      await this.#flushNextBatch();
     }
   }
 
-  private async flushNextBatch(): Promise<void> {
+  async #flushNextBatch(): Promise<void> {
     if (this.currentBatch.length === 0) return;
 
-    const batch = [...this.currentBatch];
+    const batch = this.currentBatch;
     this.currentBatch = [];
 
     const callback = this.config.callback;
@@ -734,12 +735,14 @@ export class ConcurrentFlushScheduler<T> {
     const [error] = await tryCatch(promise);
 
     if (error) {
-      this.logger.error("Error processing batch", {
+      this.logger.error("Error flushing batch", {
         error,
       });
+
+      this.failedBatchCount++;
     }
 
-    this.logger.info("Batch flush complete", {
+    this.logger.debug("Batch flush complete", {
       totalBatches: 1,
       successfulBatches: 1,
       failedBatches: 0,

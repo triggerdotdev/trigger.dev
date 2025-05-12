@@ -2,11 +2,6 @@ import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { prisma } from "~/db.server";
 import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";
 import { runsReplicationInstance } from "~/services/runsReplicationInstance.server";
-import { z } from "zod";
-
-const schema = z.object({
-  insertStrategy: z.enum(["streaming", "batching"]).optional(),
-});
 
 export async function action({ request }: ActionFunctionArgs) {
   // Next authenticate the request
@@ -31,10 +26,7 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 
   try {
-    const body = await request.json();
-    const { insertStrategy } = schema.parse(body);
-
-    await runsReplicationInstance?.start(insertStrategy);
+    await runsReplicationInstance?.start();
 
     return json({
       success: true,

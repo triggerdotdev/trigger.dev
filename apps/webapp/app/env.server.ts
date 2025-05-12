@@ -765,6 +765,7 @@ const EnvironmentSchema = z.object({
   RUN_REPLICATION_LEADER_LOCK_TIMEOUT_MS: z.coerce.number().int().default(30_000),
   RUN_REPLICATION_LEADER_LOCK_EXTEND_INTERVAL_MS: z.coerce.number().int().default(10_000),
   RUN_REPLICATION_ACK_INTERVAL_SECONDS: z.coerce.number().int().default(10),
+  RUN_REPLICATION_LOG_LEVEL: z.enum(["log", "error", "warn", "info", "debug"]).default("info"),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;
