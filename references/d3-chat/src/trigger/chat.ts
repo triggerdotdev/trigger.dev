@@ -227,6 +227,8 @@ export const interruptibleChat = schemaTask({
     prompt: z.string().describe("The prompt to chat with the AI"),
   }),
   run: async ({ prompt }, { signal }) => {
+    logger.info("interruptible-chat: starting", { prompt });
+
     const chunks: TextStreamPart<{}>[] = [];
 
     // 👇 This is a global onCancel hook, but it's inside of the run function

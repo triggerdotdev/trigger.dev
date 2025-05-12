@@ -164,6 +164,7 @@ async function bootstrap() {
     url: env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://0.0.0.0:4318",
     instrumentations: config.telemetry?.instrumentations ?? config.instrumentations ?? [],
     exporters: config.telemetry?.exporters ?? [],
+    logExporters: config.telemetry?.logExporters ?? [],
     diagLogLevel: (env.OTEL_LOG_LEVEL as TracingDiagnosticLogLevel) ?? "none",
     forceFlushTimeoutMillis: 30_000,
   });

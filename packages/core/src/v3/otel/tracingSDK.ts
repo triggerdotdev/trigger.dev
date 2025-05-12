@@ -15,6 +15,7 @@ import {
 import {
   BatchLogRecordProcessor,
   LoggerProvider,
+  LogRecordExporter,
   SimpleLogRecordProcessor,
 } from "@opentelemetry/sdk-logs";
 import {
@@ -87,6 +88,7 @@ export type TracingSDKConfig = {
   resource?: IResource;
   instrumentations?: Instrumentation[];
   exporters?: SpanExporter[];
+  logExporters?: LogRecordExporter[];
   diagLogLevel?: TracingDiagnosticLogLevel;
 };
 
@@ -209,6 +211,19 @@ export class TracingSDK {
           : new SimpleLogRecordProcessor(logExporter)
       )
     );
+
+    for (const externalLogExporter of config.logExporters ?? []) {
+      loggerProvider.addLogRecordProcessor(
+        getEnvVar("OTEL_BATCH_PROCESSING_ENABLED") === "1"
+          ? new BatchLogRecordProcessor(externalLogExporter, {
+              maxExportBatchSize: parseInt(getEnvVar("OTEL_LOG_MAX_EXPORT_BATCH_SIZE") ?? "64"),
+              scheduledDelayMillis: parseInt(getEnvVar("OTEL_LOG_SCHEDULED_DELAY_MILLIS") ?? "200"),
+              exportTimeoutMillis: parseInt(getEnvVar("OTEL_LOG_EXPORT_TIMEOUT_MILLIS") ?? "30000"),
+              maxQueueSize: parseInt(getEnvVar("OTEL_LOG_MAX_QUEUE_SIZE") ?? "512"),
+            })
+          : new SimpleLogRecordProcessor(externalLogExporter)
+      );
+    }
 
     this._logProvider = loggerProvider;
     this._spanExporter = spanExporter;

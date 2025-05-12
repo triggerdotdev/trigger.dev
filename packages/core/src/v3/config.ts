@@ -11,6 +11,7 @@ import type {
 } from "./index.js";
 import type { LogLevel } from "./logger/taskLogger.js";
 import type { MachinePresetName } from "./schemas/common.js";
+import { LogRecordExporter } from "@opentelemetry/sdk-logs";
 
 export type CompatibilityFlag = "run_engine_v2";
 
@@ -80,6 +81,13 @@ export type TriggerConfig = {
      * @see https://trigger.dev/docs/config/config-file#exporters
      */
     exporters?: Array<SpanExporter>;
+
+    /**
+     * Log exporters to use for OpenTelemetry. This is useful if you want to add custom log exporters to your tasks.
+     *
+     * @see https://trigger.dev/docs/config/config-file#exporters
+     */
+    logExporters?: Array<LogRecordExporter>;
   };
 
   /**

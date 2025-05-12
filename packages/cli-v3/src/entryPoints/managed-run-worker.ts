@@ -163,6 +163,8 @@ async function bootstrap() {
     instrumentations: config.instrumentations ?? [],
     diagLogLevel: (env.OTEL_LOG_LEVEL as TracingDiagnosticLogLevel) ?? "none",
     forceFlushTimeoutMillis: 30_000,
+    exporters: config.telemetry?.exporters ?? [],
+    logExporters: config.telemetry?.logExporters ?? [],
   });
 
   const otelTracer: Tracer = tracingSDK.getTracer("trigger-dev-worker", VERSION);
