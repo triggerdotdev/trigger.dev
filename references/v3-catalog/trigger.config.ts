@@ -10,8 +10,6 @@ import { prismaExtension } from "@trigger.dev/build/extensions/prisma";
 import { emitDecoratorMetadata } from "@trigger.dev/build/extensions/typescript";
 import { defineConfig } from "@trigger.dev/sdk/v3";
 
-export { handleError } from "./src/handleError.js";
-
 export default defineConfig({
   runtime: "node",
   project: "yubjwjsfkxnylobaqvqz",
@@ -32,16 +30,6 @@ export default defineConfig({
   },
   enableConsoleLogging: false,
   logLevel: "info",
-  onStart: async (payload, { ctx }) => {
-    console.log(`Task ${ctx.task.id} started ${ctx.run.id}`);
-  },
-  onFailure: async (payload, error, { ctx }) => {
-    console.log(
-      `Task ${ctx.task.id} failed ${ctx.run.id}: ${
-        error instanceof Error ? error.message : String(error)
-      }`
-    );
-  },
   build: {
     conditions: ["react-server"],
     extensions: [

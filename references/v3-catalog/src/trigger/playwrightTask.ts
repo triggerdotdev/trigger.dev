@@ -1,6 +1,5 @@
 import { logger, task } from "@trigger.dev/sdk/v3";
 import { chromium } from "playwright";
-
 /**
  * Example task demonstrating Playwright browser automation with Trigger.dev
  *
@@ -23,7 +22,9 @@ export const playwrightTestTask = task({
     maxAttempts: 1,
   },
   run: async () => {
-    logger.log("Starting Playwright automation task");
+    const playwrightVersion = require("playwright/package.json").version;
+
+    logger.log("Starting Playwright automation task", { version: playwrightVersion });
 
     for (const browserType of [chromium]) {
       const prefix = (msg: string) => `[${browserType.name()}]: ${msg}`;
