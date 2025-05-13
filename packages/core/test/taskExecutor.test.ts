@@ -1809,6 +1809,37 @@ describe("TaskExecutor", () => {
     expect(delay).toBeGreaterThan(29900); // Allow for some time passing during test
     expect(delay).toBeLessThan(32000); // Account for max 2000ms jitter
   });
+
+  test("should return error and skip retrying if parsePayload throws", async () => {
+    const parseError = new Error("Parse failed");
+    const task = {
+      id: "test-task",
+      fns: {
+        run: async () => {
+          throw new Error("Should not reach run");
+        },
+        parsePayload: async () => {
+          throw parseError;
+        },
+      },
+    };
+
+    const result = await executeTask(task, { foo: "bar" }, undefined);
+
+    expect(result).toEqual({
+      result: {
+        ok: false,
+        id: "test-run-id",
+        error: {
+          type: "INTERNAL_ERROR",
+          code: TaskRunErrorCodes.TASK_INPUT_ERROR,
+          message: "TaskPayloadParsedError: Parsing payload with schema failed: Parse failed",
+          stackTrace: expect.any(String),
+        },
+        skippedRetrying: true,
+      },
+    });
+  });
 });
 
 function executeTask(
@@ -1828,7 +1859,11 @@ function executeTask(
     logger: tracingSDK.getLogger("test-task"),
   });
 
-  const consoleInterceptor = new ConsoleInterceptor(tracingSDK.getLogger("test-task"), false);
+  const consoleInterceptor = new ConsoleInterceptor(
+    tracingSDK.getLogger("test-task"),
+    false,
+    false
+  );
 
   const executor = new TaskExecutor(task, {
     tracingSDK,
