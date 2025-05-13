@@ -5,11 +5,10 @@ import { esbuildPlugin } from "@trigger.dev/build";
 import { audioWaveform } from "@trigger.dev/build/extensions/audioWaveform";
 import { ffmpeg, syncEnvVars } from "@trigger.dev/build/extensions/core";
 import { puppeteer } from "@trigger.dev/build/extensions/puppeteer";
+import { playwright } from "@trigger.dev/build/extensions/playwright";
 import { prismaExtension } from "@trigger.dev/build/extensions/prisma";
 import { emitDecoratorMetadata } from "@trigger.dev/build/extensions/typescript";
 import { defineConfig } from "@trigger.dev/sdk/v3";
-
-export { handleError } from "./src/handleError.js";
 
 export default defineConfig({
   runtime: "node",
@@ -31,16 +30,6 @@ export default defineConfig({
   },
   enableConsoleLogging: false,
   logLevel: "info",
-  onStart: async (payload, { ctx }) => {
-    console.log(`Task ${ctx.task.id} started ${ctx.run.id}`);
-  },
-  onFailure: async (payload, error, { ctx }) => {
-    console.log(
-      `Task ${ctx.task.id} failed ${ctx.run.id}: ${
-        error instanceof Error ? error.message : String(error)
-      }`
-    );
-  },
   build: {
     conditions: ["react-server"],
     extensions: [
@@ -87,6 +76,7 @@ export default defineConfig({
         }));
       }),
       puppeteer(),
+      playwright(),
     ],
     external: ["re2"],
   },
