@@ -184,8 +184,13 @@ const debian12Deps = {
 };
 
 /**
- * Creates a Playwright extension for trigger.dev
- * @param options Configuration options
+ * Installs Playwright browsers and dependencies for your Trigger.dev deployments.
+ *
+ * @param options - Configuration options for the Playwright extension.
+ * @param options.browsers Browsers to install. Accepts an array of strings. Default: `["chromium"]`
+ * @param options.headless Whether to run browsers in headless mode. Default: `true`
+ * @param options.version Playwright version to use for browser installation. When not set, will automatically detect the version (recommended). Default: `undefined`
+ *
  */
 export function playwright(options: PlaywrightExtensionOptions = {}) {
   return new PlaywrightExtension(options);
