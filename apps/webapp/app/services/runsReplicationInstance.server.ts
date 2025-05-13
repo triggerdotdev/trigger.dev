@@ -45,6 +45,8 @@ function initializeRunsReplicationInstance() {
     flushBatchSize: env.RUN_REPLICATION_FLUSH_BATCH_SIZE,
     leaderLockTimeoutMs: env.RUN_REPLICATION_LEADER_LOCK_TIMEOUT_MS,
     leaderLockExtendIntervalMs: env.RUN_REPLICATION_LEADER_LOCK_EXTEND_INTERVAL_MS,
+    leaderLockRetryCount: env.RUN_REPLICATION_LEADER_LOCK_RETRY_COUNT,
+    leaderLockRetryIntervalMs: env.RUN_REPLICATION_LEADER_LOCK_RETRY_INTERVAL_MS,
     ackIntervalSeconds: env.RUN_REPLICATION_ACK_INTERVAL_SECONDS,
     logLevel: env.RUN_REPLICATION_LOG_LEVEL,
   });

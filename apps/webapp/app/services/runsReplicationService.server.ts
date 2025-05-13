@@ -43,6 +43,8 @@ export type RunsReplicationServiceOptions = {
   flushBatchSize?: number;
   leaderLockTimeoutMs?: number;
   leaderLockExtendIntervalMs?: number;
+  leaderLockRetryCount?: number;
+  leaderLockRetryIntervalMs?: number;
   ackIntervalSeconds?: number;
   acknowledgeTimeoutMs?: number;
   logger?: Logger;
@@ -103,6 +105,8 @@ export class RunsReplicationService {
       leaderLockTimeoutMs: options.leaderLockTimeoutMs ?? 30_000,
       leaderLockExtendIntervalMs: options.leaderLockExtendIntervalMs ?? 10_000,
       ackIntervalSeconds: options.ackIntervalSeconds ?? 10,
+      leaderLockRetryCount: options.leaderLockRetryCount ?? 240,
+      leaderLockRetryIntervalMs: options.leaderLockRetryIntervalMs ?? 500,
     });
 
     this._concurrentFlushScheduler = new ConcurrentFlushScheduler<TaskRunInsert>({
