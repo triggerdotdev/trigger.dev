@@ -143,7 +143,21 @@ export class TaskExecutor {
             );
           }
 
-          parsedPayload = await this.#parsePayload(payloadResult);
+          const [parsePayloadError, parsedPayloadResult] = await tryCatch(
+            this.#parsePayload(payloadResult)
+          );
+
+          if (parsePayloadError) {
+            recordSpanException(span, parsePayloadError);
+            return this.#internalErrorResult(
+              execution,
+              TaskRunErrorCodes.TASK_INPUT_ERROR,
+              parsePayloadError,
+              true
+            );
+          }
+
+          parsedPayload = parsedPayloadResult;
 
           lifecycleHooks.registerOnWaitHookListener(async (wait) => {
             await this.#callOnWaitFunctions(wait, parsedPayload, ctx, initOutput, signal);
@@ -1369,7 +1383,12 @@ export class TaskExecutor {
     });
   }
 
-  #internalErrorResult(execution: TaskRunExecution, code: TaskRunErrorCodes, error: unknown) {
+  #internalErrorResult(
+    execution: TaskRunExecution,
+    code: TaskRunErrorCodes,
+    error: unknown,
+    skippedRetrying?: boolean
+  ) {
     return {
       ok: false,
       id: execution.run.id,
@@ -1384,6 +1403,7 @@ export class TaskExecutor {
             : undefined,
         stackTrace: error instanceof Error ? error.stack : undefined,
       },
+      skippedRetrying,
     } satisfies TaskRunExecutionResult;
   }
 
