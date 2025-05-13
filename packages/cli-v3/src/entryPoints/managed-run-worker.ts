@@ -460,16 +460,16 @@ const zodIpc = new ZodIpcConnection({
         });
       }
     },
-    FLUSH: async ({ timeoutInMs }, sender) => {
-      await flushAll(timeoutInMs);
-    },
-    CANCEL: async ({ timeoutInMs }, sender) => {
+    CANCEL: async ({ timeoutInMs }) => {
       _isCancelled = true;
       cancelController.abort("run cancelled");
       await callCancelHooks(timeoutInMs);
       if (_executionMeasurement) {
         usage.stop(_executionMeasurement);
       }
+      await flushAll(timeoutInMs);
+    },
+    FLUSH: async ({ timeoutInMs }) => {
       await flushAll(timeoutInMs);
     },
     RESOLVE_WAITPOINT: async ({ waitpoint }) => {
