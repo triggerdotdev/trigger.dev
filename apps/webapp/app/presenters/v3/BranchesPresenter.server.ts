@@ -13,8 +13,6 @@ const BRANCHES_PER_PAGE = 10;
 
 type Options = z.infer<typeof BranchesOptions>;
 
-//TODO filter by branch name
-
 export const BranchGit = z
   .object({
     repo: z.string(),
@@ -144,10 +142,19 @@ export class BranchesPresenter {
       currentPage: page,
       totalPages: Math.ceil(visibleCount / BRANCHES_PER_PAGE),
       totalCount: visibleCount,
-      branches: branches.map((branch) => ({
-        ...branch,
-        git: BranchGit.parse(branch.git),
-      })),
+      branches: branches.flatMap((branch) => {
+        if (branch.branchName === null) {
+          return [];
+        }
+
+        return [
+          {
+            ...branch,
+            branchName: branch.branchName,
+            git: BranchGit.parse(branch.git),
+          } as const,
+        ];
+      }),
       hasFilters,
       limits,
     };

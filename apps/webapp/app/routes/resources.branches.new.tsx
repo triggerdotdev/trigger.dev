@@ -59,7 +59,7 @@ export function NewBranchPanel({ parentEnvironment }: { parentEnvironment: { id:
   const lastSubmission = useActionData();
 
   const [form, { parentEnvironmentId, branchName, failurePath }] = useForm({
-    id: "accept-invite",
+    id: "create-branch",
     lastSubmission: lastSubmission as any,
     onValidate({ formData }) {
       return parse(formData, { schema });

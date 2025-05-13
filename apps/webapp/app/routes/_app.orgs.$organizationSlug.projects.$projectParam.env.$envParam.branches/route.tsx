@@ -64,6 +64,8 @@ import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { NewBranchPanel } from "../resources.branches.new";
 import { ArchiveIcon, UnarchiveIcon } from "~/assets/icons/ArchiveIcon";
 import { V4Badge, V4Title } from "~/components/V4Badge";
+import { ArchiveButton, UnarchiveButton } from "../resources.branches.archive";
+import { Paragraph } from "~/components/primitives/Paragraph";
 
 export const BranchesOptions = z.object({
   search: z.string().optional(),
@@ -267,43 +269,13 @@ export default function Page() {
                                     title="View branch"
                                   />
                                   {branch.archivedAt ? (
-                                    <>
-                                      {limits.isAtLimit ? (
-                                        <UpgradePanel
-                                          limits={limits}
-                                          canUpgrade={canUpgrade ?? false}
-                                        />
-                                      ) : (
-                                        <Button
-                                          variant="small-menu-item"
-                                          LeadingIcon={UnarchiveIcon}
-                                          leadingIconClassName="text-text-dimmed"
-                                          fullWidth
-                                          textAlignLeft
-                                          className="w-full px-1.5 py-[0.9rem]"
-                                        >
-                                          Unarchive branch
-                                        </Button>
-                                      )}
-                                    </>
+                                    <UnarchiveButton
+                                      environment={branch}
+                                      limits={limits}
+                                      canUpgrade={canUpgrade ?? false}
+                                    />
                                   ) : (
-                                    <Dialog>
-                                      <DialogTrigger
-                                        asChild
-                                        className="size-6 rounded-sm p-1 text-text-dimmed transition hover:bg-charcoal-700 hover:text-text-bright"
-                                      >
-                                        <Button
-                                          variant="small-menu-item"
-                                          LeadingIcon={ArchiveIcon}
-                                          leadingIconClassName="text-error"
-                                          fullWidth
-                                          textAlignLeft
-                                          className="w-full px-1.5 py-[0.9rem]"
-                                        >
-                                          Archive branch
-                                        </Button>
-                                      </DialogTrigger>
-                                    </Dialog>
+                                    <ArchiveButton environment={branch} />
                                   )}
                                 </>
                               }
@@ -469,9 +441,12 @@ function UpgradePanel({
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>You've exceeded your limit</DialogHeader>
-        <DialogDescription>
-          You've used {limits.used}/{limits.limit} of your branches.
-        </DialogDescription>
+        <div className="mt-2">
+          <Paragraph spacing>
+            You've used {limits.used}/{limits.limit} of your branches.
+          </Paragraph>
+          <Paragraph>You can archive one or upgrade your plan for more.</Paragraph>
+        </div>
         <DialogFooter>
           {canUpgrade ? (
             <LinkButton variant="primary/small" to={v3BillingPath(organization)}>
