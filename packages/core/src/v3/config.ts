@@ -139,6 +139,11 @@ export type TriggerConfig = {
    */
   enableConsoleLogging?: boolean;
 
+  /**
+   * Disable the console interceptor. This will prevent logs from being sent to the trigger.dev backend.
+   */
+  disableConsoleInterceptor?: boolean;
+
   build?: {
     /**
      * Add custom conditions to the esbuild build. For example, if you are importing `ai/rsc`, you'll need to add "react-server" condition.

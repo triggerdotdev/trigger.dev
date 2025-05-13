@@ -1831,6 +1831,9 @@ importers:
       '@opentelemetry/exporter-logs-otlp-http':
         specifier: 0.52.1
         version: 0.52.1(@opentelemetry/api@1.9.0)
+      '@opentelemetry/exporter-trace-otlp-http':
+        specifier: 0.52.1
+        version: 0.52.1(@opentelemetry/api@1.9.0)
       '@radix-ui/react-avatar':
         specifier: ^1.1.3
         version: 1.1.3(@types/react-dom@19.0.4)(@types/react@19.0.12)(react-dom@19.0.0)(react@19.0.0)

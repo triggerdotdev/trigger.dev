@@ -2,6 +2,7 @@ import { defineConfig } from "@trigger.dev/sdk";
 import { pythonExtension } from "@trigger.dev/python/extension";
 import { installPlaywrightChromium } from "./src/extensions/playwright";
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
+import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 
 export default defineConfig({
   project: "proj_cdmymsrobxmcgjqzhdkq",
@@ -10,6 +11,15 @@ export default defineConfig({
     logExporters: [
       new OTLPLogExporter({
         url: "https://api.axiom.co/v1/logs",
+        headers: {
+          Authorization: `Bearer ${process.env.AXIOM_TOKEN}`,
+          "X-Axiom-Dataset": "d3-chat-tester",
+        },
+      }),
+    ],
+    exporters: [
+      new OTLPTraceExporter({
+        url: "https://api.axiom.co/v1/traces",
         headers: {
           Authorization: `Bearer ${process.env.AXIOM_TOKEN}`,
           "X-Axiom-Dataset": "d3-chat-tester",

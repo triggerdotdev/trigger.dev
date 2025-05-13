@@ -175,7 +175,8 @@ async function bootstrap() {
   const tracer = new TriggerTracer({ tracer: otelTracer, logger: otelLogger });
   const consoleInterceptor = new ConsoleInterceptor(
     otelLogger,
-    typeof config.enableConsoleLogging === "boolean" ? config.enableConsoleLogging : true
+    typeof config.enableConsoleLogging === "boolean" ? config.enableConsoleLogging : true,
+    typeof config.disableConsoleInterceptor === "boolean" ? config.disableConsoleInterceptor : false
   );
 
   const configLogLevel = triggerLogLevel ?? config.logLevel ?? "info";
