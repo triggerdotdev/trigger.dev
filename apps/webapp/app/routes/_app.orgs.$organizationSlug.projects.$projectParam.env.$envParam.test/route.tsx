@@ -191,7 +191,6 @@ function TaskRow({ task }: { task: TaskListItem }) {
     >
       <TableCell
         to={path}
-        actionClassName="pl-2.5 pr-2 py-1"
         className={cn("w-[1%]", (isActive || isPending) && "group-hover/table-row:bg-indigo-500/5")}
       >
         <RadioButtonCircle checked={isActive || isPending} />
@@ -199,8 +198,7 @@ function TaskRow({ task }: { task: TaskListItem }) {
       <TableCell
         to={path}
         isTabbableCell
-        actionClassName="pl-0 pr-2"
-        className={cn((isActive || isPending) && "group-hover/table-row:bg-indigo-500/5")}
+        className={cn("pl-0", (isActive || isPending) && "group-hover/table-row:bg-indigo-500/5")}
       >
         <div className="flex items-center gap-1.5">
           <TaskTriggerSourceIcon source={task.triggerSource} />
