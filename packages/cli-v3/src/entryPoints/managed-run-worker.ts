@@ -451,6 +451,8 @@ const zodIpc = new ZodIpcConnection({
             error: {
               type: "INTERNAL_ERROR",
               code: TaskRunErrorCodes.CONFIGURED_INCORRECTLY,
+              message: err instanceof Error ? err.message : String(err),
+              stackTrace: err instanceof Error ? err.stack : undefined,
             },
             usage: {
               durationMs: 0,
