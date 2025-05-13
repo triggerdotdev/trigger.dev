@@ -112,6 +112,16 @@ export const TableRow = forwardRef<HTMLTableRowElement, TableRowProps>(
         className={cn(
           "group/table-row relative w-full outline-none [&>td:first-child>div]:after:left-3",
           isSelected && variants[variant].rowSelected,
+          !isSelected && "before:absolute after:absolute",
+          "hover:before:bg-charcoal-750",
+          "focus-visible:bg-background-bright",
+          "[&>td:first-child>div]:hover:before:left-0",
+          "[&>td:first-child>div]:hover:before:top-[-2px]",
+          "[&>td:first-child>div]:hover:before:bg-red-500",
+          "[&>td:first-child>div]:hover:before:h-px",
+          "[&>td:first-child>div]:hover:after:bottom-0",
+          "[&>td:first-child>div]:hover:after:left-0",
+          "[&>td:first-child>div]:hover:after:h-px",
           disabled && "opacity-50",
           className
         )}
@@ -239,8 +249,7 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
               "[&:has(.group-hover/table-row:block)]:w-auto sticky right-0 bg-background-dimmed",
             isSticky && variants[variant].stickyCell,
             isSelected && variants[variant].rowSelected,
-            !isSelected &&
-              "group-hover/table-row:before:absolute group-hover/table-row:before:left-0 group-hover/table-row:before:top-[-1px] group-hover/table-row:before:h-px group-hover/table-row:before:w-3 group-hover/table-row:before:bg-charcoal-750 group-hover/table-row:after:absolute group-hover/table-row:after:bottom-0 group-hover/table-row:after:left-0 group-hover/table-row:after:h-px group-hover/table-row:after:w-3 group-hover/table-row:after:bg-charcoal-750 group-focus-visible/table-row:bg-background-bright",
+
             className
           )}
         >
