@@ -369,7 +369,7 @@ export default function Page() {
                         <Header3>
                           You've used {limits.used}/{limits.limit} of your branches
                         </Header3>
-                        <InfoIconTooltip content="Only unarchived branches count towards your limit." />
+                        <InfoIconTooltip content="Archived branches don't count towards your limit." />
                       </div>
                     )}
 
