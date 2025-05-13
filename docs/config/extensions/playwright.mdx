@@ -4,13 +4,17 @@ sidebarTitle: "playwright"
 description: "Use the playwright build extension to use Playwright with Trigger.dev"
 ---
 
-If you are using Playwright, you should use the Playwright build extension.
+If you are using [Playwright](https://playwright.dev/), you should use the Playwright build extension.
 
 - Automatically installs Playwright and required browser dependencies
 - Allows you to specify which browsers to install (chromium, firefox, webkit)
 - Supports headless or non-headless mode
 - Lets you specify the Playwright version, or auto-detects it
 - Installs only the dependencies needed for the selected browsers to optimize build time and image size
+
+<Note>
+  This extension only affects the build and deploy process, not the `dev` command.
+</Note>
 
 You can use it for a simple Playwright setup like this:
 
@@ -29,10 +33,6 @@ export default defineConfig({
 });
 ```
 
-<Note>
-  This extension only affects the build and deploy process, not the `dev` command.
-</Note>
-
 ### Options
 
 - `browsers`: Array of browsers to install. Valid values: `"chromium"`, `"firefox"`, `"webkit"`. Default: `["chromium"]`.
@@ -40,7 +40,7 @@ export default defineConfig({
 - `version`: Playwright version to install. If not provided, the version will be auto-detected from your dependencies (recommended).
 
   <Warning>
-    Using a different version in your app than specified here will break things.
+    Using a different version in your app than specified here will break things. We recommend not setting this option to automatically detect the version.
   </Warning>
 
 ### Custom browsers and version
@@ -91,13 +91,79 @@ The extension sets the following environment variables during the build:
 - `PLAYWRIGHT_SKIP_BROWSER_VALIDATION`: Set to `1` to skip browser validation at runtime
 - `DISPLAY`: Set to `:99` if `headless: false` (for Xvfb)
 
-### Notes
+## Managing browser instances
 
-- The extension installs only the dependencies required for the browsers you select, reducing build time and image size.
-- Playwright is installed globally in the build image.
-- The extension does not affect local development (`dev` command), only the build and deploy process.
-- Only specify the Playwright version in the options if automatic detection is not working.
+To prevent issues with waits and resumes, you can use middleware and locals to manage the browser instance. This will ensure the browser is available for the whole run, and is properly cleaned up on waits, resumes, and after the run completes.
 
-<Note>
-  For more information about Playwright, see the [official Playwright documentation](https://playwright.dev/).
-</Note>
+Here's an example using `chromium`, but you can adapt it for other browsers:
+
+```ts
+import { logger, tasks, locals } from "@trigger.dev/sdk";
+import { chromium, type Browser } from "playwright";
+
+// Create a locals key for the browser instance
+const PlaywrightBrowserLocal = locals.create<{ browser: Browser }>("playwright-browser");
+
+export function getBrowser() {
+  return locals.getOrThrow(PlaywrightBrowserLocal).browser;
+}
+
+export function setBrowser(browser: Browser) {
+  locals.set(PlaywrightBrowserLocal, { browser });
+}
+
+tasks.middleware("playwright-browser", async ({ next }) => {
+  // Launch the browser before the task runs
+  const browser = await chromium.launch();
+  setBrowser(browser);
+  logger.log("[chromium]: Browser launched (middleware)");
+
+  try {
+    await next();
+  } finally {
+    // Always close the browser after the task completes
+    await browser.close();
+    logger.log("[chromium]: Browser closed (middleware)");
+  }
+});
+
+tasks.onWait("playwright-browser", async () => {
+  // Close the browser when the run is waiting
+  const browser = getBrowser();
+  await browser.close();
+  logger.log("[chromium]: Browser closed (onWait)");
+});
+
+tasks.onResume("playwright-browser", async () => {
+  // Relaunch the browser when the run resumes
+  // Note: You will have to have to manually get a new browser instance in the run function
+  const browser = await chromium.launch();
+  setBrowser(browser);
+  logger.log("[chromium]: Browser launched (onResume)");
+});
+```
+
+You can then use `getBrowser()` in your task's `run` function to access the browser instance:
+
+```ts
+export const playwrightTestTask = task({
+  id: "playwright-test",
+  run: async () => {
+    const browser = getBrowser();
+    const page = await browser.newPage();
+    await page.goto("https://google.com");
+    await page.screenshot({ path: "screenshot.png" });
+    await page.close();
+
+    // Waits will gracefully close the browser
+    await wait.for({ seconds: 10 });
+
+    // On resume, we will re-launch the browser but you will have to manually get the new instance
+    const newBrowser = getBrowser();
+    const newPage = await newBrowser.newPage();
+    await newPage.goto("https://playwright.dev");
+    await newPage.screenshot({ path: "screenshot2.png" });
+    await newPage.close();
+  },
+});
+```
