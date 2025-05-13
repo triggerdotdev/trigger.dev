@@ -406,8 +406,8 @@ importers:
         specifier: workspace:*
         version: link:../../internal-packages/otlp-importer
       '@trigger.dev/platform':
-        specifier: 1.0.14
-        version: 1.0.14
+        specifier: 1.0.15
+        version: 1.0.15
       '@trigger.dev/redis-worker':
         specifier: workspace:*
         version: link:../../packages/redis-worker
@@ -621,9 +621,6 @@ importers:
       slug:
         specifier: ^6.0.0
         version: 6.1.0
-      slugify:
-        specifier: ^1.6.6
-        version: 1.6.6
       socket.io:
         specifier: 4.7.4
         version: 4.7.4
@@ -17893,8 +17890,8 @@ packages:
       react-dom: 18.2.0(react@18.2.0)
     dev: false
 
-  /@trigger.dev/platform@1.0.14:
-    resolution: {integrity: sha512-sYWzsH5oNnSTe4zhm1s0JFtvuRyAjBadScE9REN4f0AkntRG572mJHOolr0HyER4k1gS1mSK0nQScXSG5LCVIA==}
+  /@trigger.dev/platform@1.0.15:
+    resolution: {integrity: sha512-rorRJJl7ecyiO8iQZcHGlXR00bTzm7e1xZt0ddCYJFhaQjxq2bo2oen5DVxUbLZsE2cp60ipQWFrmAipFwK79Q==}
     dependencies:
       zod: 3.23.8
     dev: false
@@ -32301,11 +32298,6 @@ packages:
 
   /slug@6.1.0:
     resolution: {integrity: sha512-x6vLHCMasg4DR2LPiyFGI0gJJhywY6DTiGhCrOMzb3SOk/0JVLIaL4UhyFSHu04SD3uAavrKY/K3zZ3i6iRcgA==}
-    dev: false
-
-  /slugify@1.6.6:
-    resolution: {integrity: sha512-h+z7HKHYXj6wJU+AnS/+IH8Uh9fdcX1Lrhg1/VMdf9PwoBQXFcXiAdsy2tSK0P6gKwJLXp02r90ahUCqHk9rrw==}
-    engines: {node: '>=8.0.0'}
     dev: false
 
   /smart-buffer@4.2.0:

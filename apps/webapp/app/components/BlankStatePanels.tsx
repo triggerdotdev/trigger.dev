@@ -18,6 +18,7 @@ import { useProject } from "~/hooks/useProject";
 import { type MinimumEnvironment } from "~/presenters/SelectBestEnvironmentPresenter.server";
 import {
   docsPath,
+  v3BillingPath,
   v3EnvironmentPath,
   v3EnvironmentVariablesPath,
   v3NewProjectAlertPath,
@@ -36,6 +37,12 @@ import { TextLink } from "./primitives/TextLink";
 import { InitCommandV3, PackageManagerProvider, TriggerDevStepV3 } from "./SetupCommands";
 import { StepContentContainer } from "./StepContentContainer";
 import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
+import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
+import { useFeatures } from "~/hooks/useFeatures";
+import { DialogContent } from "./primitives/Dialog";
+import { DialogTrigger } from "./primitives/Dialog";
+import { Dialog } from "./primitives/Dialog";
+import { NewBranchPanel } from "~/routes/resources.branches.new";
 
 export function HasNoTasksDev() {
   return (
@@ -426,6 +433,116 @@ export function NoWaitpointTokens() {
         Waitpoint tokens pause task runs until you complete the token. They're commonly used for
         approval workflows and other scenarios where you need to wait for external confirmation,
         such as human-in-the-loop processes.
+      </Paragraph>
+    </InfoPanel>
+  );
+}
+
+export function BranchesNoBranchableEnvironment() {
+  const { isManagedCloud } = useFeatures();
+  const organization = useOrganization();
+
+  if (!isManagedCloud) {
+    return (
+      <InfoPanel
+        title="Create a preview environment"
+        icon={BranchEnvironmentIconSmall}
+        iconClassName="text-preview"
+        panelClassName="max-w-full"
+      >
+        <Paragraph spacing variant="small">
+          To add branches you need to have a <InlineCode>RuntimeEnvironment</InlineCode> where{" "}
+          <InlineCode>isBranchableEnvironment</InlineCode> is true. We recommend creating a
+          dedicated one using the "PREVIEW" type.
+        </Paragraph>
+      </InfoPanel>
+    );
+  }
+
+  return (
+    <InfoPanel
+      title="Upgrade to get preview branches"
+      icon={BranchEnvironmentIconSmall}
+      iconClassName="text-preview"
+      panelClassName="max-w-full"
+      accessory={
+        <LinkButton variant="primary/small" to={v3BillingPath(organization)}>
+          Upgrade
+        </LinkButton>
+      }
+    >
+      <Paragraph spacing variant="small">
+        Preview branches in Trigger.dev create isolated environments for testing new features before
+        production.
+      </Paragraph>
+    </InfoPanel>
+  );
+}
+
+export function BranchesNoBranches({
+  parentEnvironment,
+  limits,
+  canUpgrade,
+}: {
+  parentEnvironment: { id: string };
+  limits: { used: number; limit: number };
+  canUpgrade: boolean;
+}) {
+  const organization = useOrganization();
+  if (limits.used >= limits.limit) {
+    return (
+      <InfoPanel
+        title="Upgrade to get more branches"
+        icon={BranchEnvironmentIconSmall}
+        iconClassName="text-preview"
+        panelClassName="max-w-full"
+        accessory={
+          canUpgrade ? (
+            <LinkButton variant="primary/small" to={v3BillingPath(organization)}>
+              Upgrade
+            </LinkButton>
+          ) : (
+            <Feedback
+              button={<Button variant="primary/small">Request more</Button>}
+              defaultValue="help"
+            />
+          )
+        }
+      >
+        <Paragraph spacing variant="small">
+          You've reached the limit ({limits.used}/{limits.limit}) of branches for your plan. Upgrade
+          to get more branches.
+        </Paragraph>
+      </InfoPanel>
+    );
+  }
+
+  return (
+    <InfoPanel
+      title="Create your first branch"
+      icon={BranchEnvironmentIconSmall}
+      iconClassName="text-preview"
+      panelClassName="max-w-full"
+      accessory={
+        <Dialog>
+          <DialogTrigger asChild>
+            <Button
+              variant="primary/small"
+              LeadingIcon={PlusIcon}
+              leadingIconClassName="text-white"
+            >
+              New branch
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <NewBranchPanel parentEnvironment={parentEnvironment} />
+          </DialogContent>
+        </Dialog>
+      }
+    >
+      <Paragraph spacing variant="small">
+        Branches are a way to test new features in isolation before merging them into the main
+        environment.
       </Paragraph>
     </InfoPanel>
   );

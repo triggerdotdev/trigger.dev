@@ -1,6 +1,6 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { ChevronRightIcon, PlusIcon } from "@heroicons/react/20/solid";
+import { ChevronRightIcon, Cog8ToothIcon, PlusIcon } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { Form, useActionData, useNavigation } from "@remix-run/react";
 import { GitBranchIcon } from "lucide-react";
@@ -8,9 +8,9 @@ import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import { useEnvironmentSwitcher } from "~/hooks/useEnvironmentSwitcher";
 import { useFeatures } from "~/hooks/useFeatures";
-import { type MatchedOrganization } from "~/hooks/useOrganizations";
+import { useOrganization, type MatchedOrganization } from "~/hooks/useOrganizations";
 import { cn } from "~/utils/cn";
-import { v3BillingPath } from "~/utils/pathBuilder";
+import { branchesPath, v3BillingPath } from "~/utils/pathBuilder";
 import { EnvironmentCombo } from "../environments/EnvironmentLabel";
 import { Button, ButtonContent } from "../primitives/Buttons";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "../primitives/Dialog";
@@ -31,6 +31,9 @@ import {
 } from "../primitives/Popover";
 import { type SideMenuEnvironment, type SideMenuProject } from "./SideMenu";
 import { schema } from "~/routes/resources.branches.new";
+import { useProject } from "~/hooks/useProject";
+import { useEnvironment } from "~/hooks/useEnvironment";
+import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
 
 export function EnvironmentSelector({
   organization,
@@ -150,6 +153,9 @@ function Branches({
   branchEnvironments: SideMenuEnvironment[];
   currentEnvironment: SideMenuEnvironment;
 }) {
+  const organization = useOrganization();
+  const project = useProject();
+  const environment = useEnvironment();
   const { urlForEnvironment } = useEnvironmentSwitcher();
   const navigation = useNavigation();
   const [isMenuOpen, setMenuOpen] = useState(false);
@@ -213,9 +219,8 @@ function Branches({
                 <PopoverMenuItem
                   key={env.id}
                   to={urlForEnvironment(env)}
-                  title={env.branchName}
-                  icon={<GitBranchIcon className="size-4 text-text-dimmed" />}
-                  leadingIconClassName="text-text-dimmed"
+                  title={<span className="block text-preview">{env.branchName}</span>}
+                  icon={<BranchEnvironmentIconSmall className="size-4 text-preview" />}
                   isSelected={env.id === currentEnvironment.id}
                 />
               ))}
@@ -228,73 +233,15 @@ function Branches({
             </div>
           )}
           <div className="border-t border-charcoal-700 p-1">
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button
-                  variant="small-menu-item"
-                  LeadingIcon={PlusIcon}
-                  leadingIconClassName="text-text-dimmed"
-                  fullWidth
-                  textAlignLeft
-                >
-                  New branch
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <NewBranchPanel parentEnvironment={parentEnvironment} />
-              </DialogContent>
-            </Dialog>
+            <PopoverMenuItem
+              to={branchesPath(organization, project, environment)}
+              title="Manage branches"
+              icon={<Cog8ToothIcon className="size-4 text-text-dimmed" />}
+              leadingIconClassName="text-text-dimmed"
+            />
           </div>
         </PopoverContent>
       </div>
     </Popover>
-  );
-}
-
-function NewBranchPanel({ parentEnvironment }: { parentEnvironment: SideMenuEnvironment }) {
-  const lastSubmission = useActionData();
-
-  const [form, { parentEnvironmentId, branchName, failurePath }] = useForm({
-    id: "accept-invite",
-    lastSubmission: lastSubmission as any,
-    onValidate({ formData }) {
-      return parse(formData, { schema });
-    },
-    shouldRevalidate: "onInput",
-  });
-
-  return (
-    <>
-      <DialogHeader>New branch</DialogHeader>
-      <div className="mt-2 flex flex-col gap-4">
-        <Form method="post" action="/resources/branches/new" {...form.props} className="w-full">
-          <Fieldset className="max-w-full gap-y-3">
-            <input
-              value={parentEnvironment.id}
-              {...conform.input(parentEnvironmentId, { type: "hidden" })}
-            />
-            <input value={location.pathname} {...conform.input(failurePath, { type: "hidden" })} />
-            <InputGroup className="max-w-full">
-              <Label>Branch name</Label>
-              <Input {...conform.input(branchName)} />
-              <FormError id={branchName.errorId}>{branchName.error}</FormError>
-            </InputGroup>
-            <FormError>{form.error}</FormError>
-            <FormButtons
-              confirmButton={
-                <Button type="submit" variant="primary/medium">
-                  Create branch
-                </Button>
-              }
-              cancelButton={
-                <DialogClose asChild>
-                  <Button variant="tertiary/medium">Cancel</Button>
-                </DialogClose>
-              }
-            />
-          </Fieldset>
-        </Form>
-      </div>
-    </>
   );
 }

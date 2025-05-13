@@ -1,4 +1,3 @@
-import slugify from "slugify";
 import type {
   Organization,
   OrgMember,
@@ -13,6 +12,7 @@ import { generate } from "random-words";
 import { createApiKeyForEnv, createPkApiKeyForEnv, envSlug } from "./api-key.server";
 import { env } from "~/env.server";
 import { featuresForUrl } from "~/features.server";
+import { BranchGit } from "~/presenters/v3/BranchesPresenter.server";
 
 export type { Organization };
 
@@ -127,23 +127,22 @@ export function createBranchEnvironment({
   project,
   parentEnvironment,
   branchName,
+  git,
 }: {
   organization: Pick<Organization, "id" | "maximumConcurrencyLimit">;
   project: Pick<Project, "id">;
   parentEnvironment: RuntimeEnvironment;
   branchName: string;
+  git?: BranchGit;
 }) {
-  const slug = slugify(`${parentEnvironment.slug}-${branchName}`, {
-    lower: true,
-    strict: true,
-  });
+  const branchSlug = `${slug(`${parentEnvironment.slug}-${branchName}`)}-${nanoid(4)}`;
   const apiKey = createApiKeyForEnv(parentEnvironment.type);
   const pkApiKey = createPkApiKeyForEnv(parentEnvironment.type);
   const shortcode = createShortcode().join("-");
 
   return prisma.runtimeEnvironment.create({
     data: {
-      slug,
+      slug: branchSlug,
       apiKey,
       pkApiKey,
       shortcode,
@@ -161,6 +160,7 @@ export function createBranchEnvironment({
       parentEnvironment: {
         connect: { id: parentEnvironment.id },
       },
+      git: git ?? undefined,
     },
   });
 }

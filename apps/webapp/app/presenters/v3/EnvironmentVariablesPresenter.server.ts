@@ -71,6 +71,8 @@ export class EnvironmentVariablesPresenter {
       select: {
         id: true,
         type: true,
+        isBranchableEnvironment: true,
+        branchName: true,
         orgMember: {
           select: {
             userId: true,
@@ -120,6 +122,8 @@ export class EnvironmentVariablesPresenter {
       environments: sortedEnvironments.map((environment) => ({
         id: environment.id,
         type: environment.type,
+        isBranchableEnvironment: environment.isBranchableEnvironment,
+        branchName: environment.branchName,
       })),
       hasStaging: environments.some((environment) => environment.type === "STAGING"),
     };

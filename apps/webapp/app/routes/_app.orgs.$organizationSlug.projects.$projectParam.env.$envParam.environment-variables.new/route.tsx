@@ -180,6 +180,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 export default function Page() {
   const [isOpen, setIsOpen] = useState(false);
   const { environments, hasStaging } = useTypedLoaderData<typeof loader>();
+  const [selectedEnvironmentIds, setSelectedEnvironmentIds] = useState<string[]>([]);
   const lastSubmission = useActionData();
   const navigation = useNavigation();
   const navigate = useNavigate();
@@ -221,17 +222,19 @@ export default function Page() {
             <InputGroup fullWidth>
               <Label>Environments</Label>
               <div className="flex items-center gap-2">
-                {environments.map((environment) => (
-                  <CheckboxWithLabel
-                    key={environment.id}
-                    id={environment.id}
-                    value={environment.id}
-                    name="environmentIds"
-                    type="radio"
-                    label={<EnvironmentLabel environment={environment} className="text-sm" />}
-                    variant="button"
-                  />
-                ))}
+                {environments
+                  .filter((env) => !env.branchName)
+                  .map((environment) => (
+                    <CheckboxWithLabel
+                      key={environment.id}
+                      id={environment.id}
+                      value={environment.id}
+                      name="environmentIds"
+                      type="radio"
+                      label={<EnvironmentLabel environment={environment} className="text-sm" />}
+                      variant="button"
+                    />
+                  ))}
                 {!hasStaging && (
                   <TooltipProvider>
                     <Tooltip>

@@ -1,5 +1,6 @@
 import { GitBranchIcon } from "lucide-react";
 import {
+  BranchEnvironmentIconSmall,
   DeployedEnvironmentIconSmall,
   DevEnvironmentIconSmall,
   ProdEnvironmentIconSmall,
@@ -17,7 +18,11 @@ export function EnvironmentIcon({
   className?: string;
 }) {
   if (environment.branchName) {
-    return <GitBranchIcon className={cn(environmentTextClassName(environment), className)} />;
+    return (
+      <BranchEnvironmentIconSmall
+        className={cn(environmentTextClassName(environment), className)}
+      />
+    );
   }
 
   switch (environment.type) {
