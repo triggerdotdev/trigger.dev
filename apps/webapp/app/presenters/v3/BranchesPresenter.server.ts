@@ -95,7 +95,7 @@ export class BranchesPresenter {
         projectId: project.id,
         branchName: search
           ? {
-              startsWith: search,
+              contains: search,
               mode: "insensitive",
             }
           : {
