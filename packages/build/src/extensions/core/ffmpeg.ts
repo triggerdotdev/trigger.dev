@@ -24,6 +24,13 @@ export type FfmpegOptions = {
 export function ffmpeg(options: FfmpegOptions = {}): BuildExtension {
   return {
     name: "ffmpeg",
+    externalsForTarget(target) {
+      if (target === "dev") {
+        return [];
+      }
+
+      return ["fluent-ffmpeg"];
+    },
     onBuildComplete(context) {
       if (context.target === "dev") {
         return;
