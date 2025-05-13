@@ -1,9 +1,8 @@
-import { type AnchorHTMLAttributes } from "react";
+import { type AnchorHTMLAttributes, type ReactNode } from "react";
 import { usePathName } from "~/hooks/usePathName";
 import { cn } from "~/utils/cn";
 import { LinkButton } from "../primitives/Buttons";
 import { type RenderIcon } from "../primitives/Icon";
-import { Badge } from "../primitives/Badge";
 
 export function SideMenuItem({
   icon,
@@ -23,7 +22,7 @@ export function SideMenuItem({
   trailingIconClassName?: string;
   name: string;
   to: string;
-  badge?: string;
+  badge?: ReactNode;
   target?: AnchorHTMLAttributes<HTMLAnchorElement>["target"];
 }) {
   const pathName = usePathName();
@@ -47,9 +46,7 @@ export function SideMenuItem({
     >
       <div className="flex w-full items-center justify-between">
         {name}
-        <div className="flex items-center gap-1">
-          {badge !== undefined && <Badge variant="extra-small">{badge}</Badge>}
-        </div>
+        <div className="flex items-center gap-1">{badge !== undefined && badge}</div>
       </div>
     </LinkButton>
   );

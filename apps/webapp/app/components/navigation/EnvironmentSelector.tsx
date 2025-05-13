@@ -36,6 +36,7 @@ import { useEnvironment } from "~/hooks/useEnvironment";
 import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
 import { Header2 } from "../primitives/Headers";
 import { TextLink } from "../primitives/TextLink";
+import { V4Badge } from "../V4Badge";
 
 export function EnvironmentSelector({
   organization,
@@ -238,7 +239,7 @@ function Branches({
                 main environment.
               </Paragraph>
               <Paragraph variant="small">
-                Branches are only available when using v4 or above. Read our{" "}
+                Branches are only available when using <V4Badge inline /> or above. Read our{" "}
                 <TextLink to={docsPath("upgrade-to-v4")}>v4 upgrade guide</TextLink> to learn more.
               </Paragraph>
             </div>

@@ -86,6 +86,7 @@ import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
 import { SideMenuSection } from "./SideMenuSection";
 import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
+import { V4Badge } from "../V4Badge";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 export type SideMenuProject = Pick<
@@ -265,7 +266,7 @@ export function SideMenu({
               icon={WaitpointTokenIcon}
               activeIconColor="text-sky-500"
               to={v3WaitpointTokensPath(organization, project, environment)}
-              badge="V4"
+              badge={<V4Badge />}
             />
           </SideMenuSection>
 
@@ -297,7 +298,7 @@ export function SideMenu({
               activeIconColor="text-branches"
               to={branchesPath(organization, project, environment)}
               data-action="preview-branches"
-              badge="V4"
+              badge={<V4Badge />}
             />
             <SideMenuItem
               name="Project settings"
