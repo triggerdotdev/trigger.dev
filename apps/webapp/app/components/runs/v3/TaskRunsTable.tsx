@@ -293,7 +293,7 @@ export function TaskRunsTable({
             return (
               <TableRow key={run.id}>
                 {allowSelection && (
-                  <TableCell className="pl-3 pr-0">
+                  <TableCell>
                     <Checkbox
                       checked={has(run.id)}
                       onChange={(element) => {
