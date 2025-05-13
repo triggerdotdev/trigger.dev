@@ -3,6 +3,7 @@ import { usePathName } from "~/hooks/usePathName";
 import { cn } from "~/utils/cn";
 import { LinkButton } from "../primitives/Buttons";
 import { type RenderIcon } from "../primitives/Icon";
+import { Badge } from "../primitives/Badge";
 
 export function SideMenuItem({
   icon,
@@ -47,17 +48,9 @@ export function SideMenuItem({
       <div className="flex w-full items-center justify-between">
         {name}
         <div className="flex items-center gap-1">
-          {badge !== undefined && <MenuCount count={badge} />}
+          {badge !== undefined && <Badge variant="extra-small">{badge}</Badge>}
         </div>
       </div>
     </LinkButton>
-  );
-}
-
-export function MenuCount({ count }: { count: number | string }) {
-  return (
-    <div className="rounded border border-charcoal-650 bg-background-dimmed/70 px-1.5 py-1 text-xxs uppercase tracking-wider text-text-dimmed">
-      {count}
-    </div>
   );
 }

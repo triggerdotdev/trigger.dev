@@ -39,9 +39,7 @@ import { StepContentContainer } from "./StepContentContainer";
 import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
 import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
 import { useFeatures } from "~/hooks/useFeatures";
-import { DialogContent } from "./primitives/Dialog";
-import { DialogTrigger } from "./primitives/Dialog";
-import { Dialog } from "./primitives/Dialog";
+import { DialogContent, DialogTrigger, Dialog } from "./primitives/Dialog";
 import { NewBranchPanel } from "~/routes/resources.branches.new";
 
 export function HasNoTasksDev() {
@@ -543,6 +541,10 @@ export function BranchesNoBranches({
       <Paragraph spacing variant="small">
         Branches are a way to test new features in isolation before merging them into the main
         environment.
+      </Paragraph>
+      <Paragraph spacing variant="small">
+        Branches are only available when using v4 or above. Read our{" "}
+        <TextLink to={docsPath("upgrade-to-v4")}>v4 upgrade guide</TextLink> to learn more.
       </Paragraph>
     </InfoPanel>
   );

@@ -3,6 +3,7 @@ import { type PrismaClient, prisma } from "~/db.server";
 import { type Project } from "~/models/project.server";
 import { type User } from "~/models/user.server";
 import { type BranchesOptions } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.branches/route";
+import { checkBranchLimit } from "~/services/createBranch.server";
 import { getLimit } from "~/services/platform.v3.server";
 
 type Result = Awaited<ReturnType<BranchesPresenter["call"]>>;
@@ -86,6 +87,7 @@ export class BranchesPresenter {
         limits: {
           used: 0,
           limit: 0,
+          isAtLimit: true,
         },
       };
     }
@@ -106,17 +108,7 @@ export class BranchesPresenter {
     });
 
     // Limits
-    // We limit the number of active branches
-    const used = await this.#prismaClient.runtimeEnvironment.count({
-      where: {
-        projectId: project.id,
-        branchName: {
-          not: null,
-        },
-        archivedAt: null,
-      },
-    });
-    const limit = await getLimit(project.organizationId, "branches", 50);
+    const limits = await checkBranchLimit(this.#prismaClient, project.organizationId, project.id);
 
     const branches = await this.#prismaClient.runtimeEnvironment.findMany({
       select: {
@@ -157,10 +149,7 @@ export class BranchesPresenter {
         git: BranchGit.parse(branch.git),
       })),
       hasFilters,
-      limits: {
-        used,
-        limit,
-      },
+      limits,
     };
   }
 }

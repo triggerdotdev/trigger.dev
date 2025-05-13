@@ -63,6 +63,7 @@ import {
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { NewBranchPanel } from "../resources.branches.new";
 import { ArchiveIcon, UnarchiveIcon } from "~/assets/icons/ArchiveIcon";
+import { V4Badge, V4Title } from "~/components/V4Badge";
 
 export const BranchesOptions = z.object({
   search: z.string().optional(),
@@ -107,9 +108,6 @@ export default function Page() {
   } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
-  const environment = useEnvironment();
-  const location = useLocation();
-  const pathName = usePathName();
 
   const plan = useCurrentPlan();
   const requiresUpgrade =
@@ -119,13 +117,11 @@ export default function Page() {
   const canUpgrade =
     plan?.v3Subscription?.plan && !plan.v3Subscription.plan.limits.branches.canExceed;
 
-  const isAtLimit = limits.used >= limits.limit;
-
   if (!branchableEnvironment) {
     return (
       <PageContainer>
         <NavBar>
-          <PageTitle title="Preview branches" />
+          <PageTitle title={<V4Title>Preview branches</V4Title>} />
         </NavBar>
         <PageBody>
           <MainCenteredContainer className="max-w-md">
@@ -139,7 +135,7 @@ export default function Page() {
   return (
     <PageContainer>
       <NavBar>
-        <PageTitle title="Preview branches" />
+        <PageTitle title={<V4Title>Preview branches</V4Title>} />
         <PageAccessories>
           <AdminDebugTooltip>
             <Property.Table>
@@ -156,7 +152,7 @@ export default function Page() {
             Branches docs
           </LinkButton>
 
-          {isAtLimit ? (
+          {limits.isAtLimit ? (
             <UpgradePanel limits={limits} canUpgrade={canUpgrade ?? false} />
           ) : (
             <Dialog>
@@ -272,7 +268,7 @@ export default function Page() {
                                   />
                                   {branch.archivedAt ? (
                                     <>
-                                      {isAtLimit ? (
+                                      {limits.isAtLimit ? (
                                         <UpgradePanel
                                           limits={limits}
                                           canUpgrade={canUpgrade ?? false}
@@ -400,7 +396,6 @@ export default function Page() {
 }
 
 export function BranchFilters() {
-  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { search, showArchived, page } = BranchesOptions.parse(
     Object.fromEntries(searchParams.entries())
@@ -427,7 +422,7 @@ export function BranchFilters() {
   }, 300);
 
   return (
-    <div className="flex w-full">
+    <div className="flex w-full gap-2">
       <Input
         name="search"
         placeholder="Search branch name"

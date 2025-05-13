@@ -4,7 +4,6 @@ import { DialogClose } from "@radix-ui/react-dialog";
 import { Form, useActionData } from "@remix-run/react";
 import { type ActionFunctionArgs } from "@remix-run/server-runtime";
 import { z } from "zod";
-import { type SideMenuEnvironment } from "~/components/navigation/SideMenu";
 import { Button } from "~/components/primitives/Buttons";
 import { DialogHeader } from "~/components/primitives/Dialog";
 import { Fieldset } from "~/components/primitives/Fieldset";
@@ -13,20 +12,26 @@ import { FormError } from "~/components/primitives/FormError";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
-import { prisma } from "~/db.server";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
-import { createBranchEnvironment } from "~/models/organization.server";
-import { requireUser } from "~/services/session.server";
+import { CreateBranchService } from "~/services/createBranch.server";
+import { requireUserId } from "~/services/session.server";
 import { v3EnvironmentPath } from "~/utils/pathBuilder";
 
-export const schema = z.object({
+export const CreateBranchOptions = z.object({
   parentEnvironmentId: z.string(),
   branchName: z.string().min(1),
-  failurePath: z.string(),
 });
 
+export type CreateBranchOptions = z.infer<typeof CreateBranchOptions>;
+
+export const schema = CreateBranchOptions.and(
+  z.object({
+    failurePath: z.string(),
+  })
+);
+
 export async function action({ request }: ActionFunctionArgs) {
-  const user = await requireUser(request);
+  const userId = await requireUserId(request);
 
   const formData = await request.formData();
   const submission = parse(formData, { schema });
@@ -35,52 +40,19 @@ export async function action({ request }: ActionFunctionArgs) {
     return redirectWithErrorMessage("/", request, "Invalid form data");
   }
 
-  try {
-    const parentEnvironment = await prisma.runtimeEnvironment.findFirstOrThrow({
-      where: {
-        id: submission.value.parentEnvironmentId,
-        organization: {
-          members: {
-            some: {
-              userId: user.id,
-            },
-          },
-        },
-      },
-      include: {
-        organization: true,
-        project: true,
-      },
-    });
+  const createBranchService = new CreateBranchService();
 
-    if (!parentEnvironment.isBranchableEnvironment) {
-      return redirectWithErrorMessage(
-        submission.value.failurePath,
-        request,
-        "Parent environment is not branchable"
-      );
-    }
+  const result = await createBranchService.call(userId, submission.value);
 
-    const branch = await createBranchEnvironment({
-      organization: parentEnvironment.organization,
-      project: parentEnvironment.project,
-      parentEnvironment,
-      branchName: submission.value.branchName,
-    });
-
+  if (result.success) {
     return redirectWithSuccessMessage(
-      v3EnvironmentPath(parentEnvironment.organization, parentEnvironment.project, branch),
+      v3EnvironmentPath(result.organization, result.project, result.branch),
       request,
-      "Thanks for your feedback! We'll get back to you soon."
-    );
-  } catch (e) {
-    submission.error.message = e instanceof Error ? e.message : "Unknown error";
-    return redirectWithErrorMessage(
-      submission.value.failurePath,
-      request,
-      "Failed to create branch"
+      `Branch "${result.branch.branchName}" created`
     );
   }
+
+  return redirectWithErrorMessage(submission.value.failurePath, request, result.error);
 }
 
 export function NewBranchPanel({ parentEnvironment }: { parentEnvironment: { id: string } }) {

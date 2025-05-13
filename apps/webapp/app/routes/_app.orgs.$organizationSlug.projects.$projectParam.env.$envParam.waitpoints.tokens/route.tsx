@@ -32,6 +32,7 @@ import {
   WaitpointSearchParamsSchema,
   WaitpointTokenFilters,
 } from "~/components/runs/v3/WaitpointTokenFilters";
+import { V4Title } from "~/components/V4Badge";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -115,7 +116,7 @@ export default function Page() {
   return (
     <PageContainer>
       <NavBar>
-        <PageTitle title="Waitpoint Tokens" />
+        <PageTitle title={<V4Title>Waitpoint Tokens</V4Title>} />
         <PageAccessories>
           <AdminDebugTooltip />
           <LinkButton variant={"docs/small"} LeadingIcon={BookOpenIcon} to={docsPath("/wait")}>

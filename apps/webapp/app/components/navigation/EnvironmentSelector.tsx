@@ -10,7 +10,7 @@ import { useEnvironmentSwitcher } from "~/hooks/useEnvironmentSwitcher";
 import { useFeatures } from "~/hooks/useFeatures";
 import { useOrganization, type MatchedOrganization } from "~/hooks/useOrganizations";
 import { cn } from "~/utils/cn";
-import { branchesPath, v3BillingPath } from "~/utils/pathBuilder";
+import { branchesPath, docsPath, v3BillingPath } from "~/utils/pathBuilder";
 import { EnvironmentCombo } from "../environments/EnvironmentLabel";
 import { Button, ButtonContent } from "../primitives/Buttons";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "../primitives/Dialog";
@@ -34,6 +34,8 @@ import { schema } from "~/routes/resources.branches.new";
 import { useProject } from "~/hooks/useProject";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
+import { Header2 } from "../primitives/Headers";
+import { TextLink } from "../primitives/TextLink";
 
 export function EnvironmentSelector({
   organization,
@@ -226,9 +228,18 @@ function Branches({
               ))}
             </div>
           ) : (
-            <div className="flex flex-col gap-1 p-1">
-              <Paragraph variant="extra-small" className="p-1">
-                No branches found
+            <div className="flex max-w-sm flex-col gap-1 p-3">
+              <div className="flex items-center gap-1">
+                <BranchEnvironmentIconSmall className="size-4 text-preview" />
+                <Header2>Create your first branch</Header2>
+              </div>
+              <Paragraph spacing variant="small">
+                Branches are a way to test new features in isolation before merging them into the
+                main environment.
+              </Paragraph>
+              <Paragraph variant="small">
+                Branches are only available when using v4 or above. Read our{" "}
+                <TextLink to={docsPath("upgrade-to-v4")}>v4 upgrade guide</TextLink> to learn more.
               </Paragraph>
             </div>
           )}

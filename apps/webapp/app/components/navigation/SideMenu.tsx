@@ -265,6 +265,7 @@ export function SideMenu({
               icon={WaitpointTokenIcon}
               activeIconColor="text-sky-500"
               to={v3WaitpointTokensPath(organization, project, environment)}
+              badge="V4"
             />
           </SideMenuSection>
 
@@ -296,6 +297,7 @@ export function SideMenu({
               activeIconColor="text-branches"
               to={branchesPath(organization, project, environment)}
               data-action="preview-branches"
+              badge="V4"
             />
             <SideMenuItem
               name="Project settings"
