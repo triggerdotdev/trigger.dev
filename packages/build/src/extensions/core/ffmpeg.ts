@@ -40,12 +40,12 @@ export function ffmpeg(options: FfmpegOptions = {}): BuildExtension {
           image: {
             instructions: [
               // Install ffmpeg after checksum validation
-              "RUN apt-get update && apt-get install -y --no-install-recommends wget xz-utils nscd && apt-get clean && rm -rf /var/lib/apt/lists/* && " +
-                "wget https://johnvansickle.com/ffmpeg/builds/ffmpeg-git-amd64-static.tar.xz.md5 -O ffmpeg.tar.xz.md5 && " +
-                "wget https://johnvansickle.com/ffmpeg/builds/ffmpeg-git-amd64-static.tar.xz -O ffmpeg.tar.xz && " +
-                "md5sum -c ffmpeg.tar.xz.md5 && " +
-                "tar xvf ffmpeg.tar.xz -C /usr/bin --strip-components=1 --no-anchored 'ffmpeg' 'ffprobe' && " +
-                "rm ffmpeg.tar.xz ffmpeg.tar.xz.md5",
+              "RUN apt-get update && apt-get install -y --no-install-recommends wget xz-utils nscd ca-certificates && apt-get clean && rm -rf /var/lib/apt/lists/* && " +
+                "wget https://johnvansickle.com/ffmpeg/builds/ffmpeg-git-amd64-static.tar.xz.md5 && " +
+                "wget https://johnvansickle.com/ffmpeg/builds/ffmpeg-git-amd64-static.tar.xz && " +
+                "md5sum -c ffmpeg-git-amd64-static.tar.xz.md5 && " +
+                "tar xvf ffmpeg-git-amd64-static.tar.xz -C /usr/bin --strip-components=1 --no-anchored 'ffmpeg' 'ffprobe' && " +
+                "rm ffmpeg-git-amd64-static.tar.xz*",
             ],
           },
           deploy: {
