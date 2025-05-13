@@ -5,7 +5,6 @@ import {
   BellSlashIcon,
   BookOpenIcon,
   EnvelopeIcon,
-  GlobeAltIcon,
   LockClosedIcon,
   PlusIcon,
   TrashIcon,
@@ -17,12 +16,12 @@ import { type ProjectAlertChannelType, type ProjectAlertType } from "@trigger.de
 import assertNever from "assert-never";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
-import { AlertsNoneDev, AlertsNoneDeployed } from "~/components/BlankStatePanels";
+import { WebhookIcon } from "~/assets/icons/WebhookIcon";
+import { AlertsNoneDeployed, AlertsNoneDev } from "~/components/BlankStatePanels";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
-import { DetailCell } from "~/components/primitives/DetailCell";
 import { Header2, Header3 } from "~/components/primitives/Headers";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -35,13 +34,7 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
-import {
-  SimpleTooltip,
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "~/components/primitives/Tooltip";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { EnabledStatus } from "~/components/runs/v3/EnabledStatus";
 import { prisma } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
@@ -55,7 +48,6 @@ import {
   type AlertChannelListPresenterRecord,
 } from "~/presenters/v3/AlertChannelListPresenter.server";
 import { requireUserId } from "~/services/session.server";
-import { cn } from "~/utils/cn";
 import {
   EnvironmentParamSchema,
   docsPath,
@@ -224,7 +216,7 @@ export default function Page() {
                       <TableCell className={alertChannel.enabled ? "" : "opacity-50"}>
                         {alertChannel.alertTypes.map((type) => alertTypeTitle(type)).join(", ")}
                       </TableCell>
-                      <TableCell className={cn("py-1", alertChannel.enabled ? "" : "opacity-50")}>
+                      <TableCell className={alertChannel.enabled ? "" : "opacity-50"}>
                         <AlertChannelDetails alertChannel={alertChannel} />
                       </TableCell>
                       <TableCell className={alertChannel.enabled ? "" : "opacity-50"}>
@@ -415,7 +407,6 @@ function DisableAlertChannelButton(props: { id: string }) {
   return (
     <Form method="post" {...form.props}>
       <input type="hidden" name="id" value={props.id} />
-
       <Button
         name="action"
         value="disable"
@@ -455,7 +446,6 @@ function EnableAlertChannelButton(props: { id: string }) {
   return (
     <Form method="post" {...form.props}>
       <input type="hidden" name="id" value={props.id} />
-
       <Button
         name="action"
         value="enable"
@@ -477,66 +467,39 @@ function AlertChannelDetails({ alertChannel }: { alertChannel: AlertChannelListP
   switch (alertChannel.properties?.type) {
     case "EMAIL": {
       return (
-        <DetailCell
-          leadingIcon={
-            <AlertChannelTypeIcon
-              channelType={alertChannel.type}
-              className="size-5 text-charcoal-400"
-            />
-          }
-          leadingIconClassName="text-charcoal-400"
-          label={"Email"}
+        <ChannelDetails
+          icon={<AlertChannelTypeIcon channelType={alertChannel.type} className="size-4" />}
+          title="Email:"
           description={alertChannel.properties.email}
-          boxClassName="group-hover/table-row:bg-charcoal-800"
-          className="h-12"
         />
       );
     }
     case "WEBHOOK": {
       return (
-        <DetailCell
-          leadingIcon={
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger>
-                  <AlertChannelTypeIcon
-                    channelType={alertChannel.type}
-                    className="size-5 text-charcoal-400"
-                  />
-                </TooltipTrigger>
-                <TooltipContent className="flex items-center gap-1">Webhook</TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          }
-          leadingIconClassName="text-charcoal-400"
-          label={alertChannel.properties.url}
+        <ChannelDetails
+          icon={<AlertChannelTypeIcon channelType={alertChannel.type} className="size-4" />}
+          title="Webhook:"
           description={
-            <ClipboardField
-              value={alertChannel.properties.secret}
-              variant="secondary/small"
-              icon={<LockClosedIcon className="size-4" />}
-              iconButton
-              secure={"•".repeat(alertChannel.properties.secret.length)}
-              className="mt-1 w-80"
-            />
+            <div className="flex items-center gap-1">
+              <Paragraph variant="extra-small">{alertChannel.properties.url}</Paragraph>
+              <ClipboardField
+                value={alertChannel.properties.secret}
+                variant="secondary/small"
+                icon={<LockClosedIcon className="size-3.5" />}
+                iconButton
+                secure={"•".repeat(alertChannel.properties.secret.length)}
+              />
+            </div>
           }
-          boxClassName="group-hover/table-row:bg-charcoal-800"
         />
       );
     }
     case "SLACK": {
       return (
-        <DetailCell
-          leadingIcon={
-            <AlertChannelTypeIcon
-              channelType={alertChannel.type}
-              className="size-5 text-charcoal-400"
-            />
-          }
-          leadingIconClassName="text-charcoal-400"
-          label={"Slack"}
+        <ChannelDetails
+          icon={<AlertChannelTypeIcon channelType={alertChannel.type} className="size-4" />}
+          title="Slack channel:"
           description={`#${alertChannel.properties.channelName}`}
-          boxClassName="group-hover/table-row:bg-charcoal-800"
         />
       );
     }
@@ -574,9 +537,29 @@ export function AlertChannelTypeIcon({
     case "SLACK":
       return <SlackIcon className={className} />;
     case "WEBHOOK":
-      return <GlobeAltIcon className={className} />;
+      return <WebhookIcon className={className} />;
     default: {
       assertNever(channelType);
     }
   }
+}
+
+function ChannelDetails({
+  icon,
+  title,
+  description,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  description: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-1.5">
+        {icon}
+        <Paragraph variant="extra-small">{title}</Paragraph>
+      </div>
+      <Paragraph variant="extra-small">{description}</Paragraph>
+    </div>
+  );
 }

@@ -37,10 +37,6 @@ const stories: Story[] = [
     slug: "code-block",
   },
   {
-    name: "Detail cell",
-    slug: "detail-cell",
-  },
-  {
     name: "Dialog",
     slug: "dialog",
   },
