@@ -10,12 +10,17 @@ import { clock } from "./clock-api.js";
 export class ConsoleInterceptor {
   constructor(
     private readonly logger: logsAPI.Logger,
-    private readonly sendToStdIO: boolean
+    private readonly sendToStdIO: boolean,
+    private readonly interceptingDisabled: boolean
   ) {}
 
   // Intercept the console and send logs to the OpenTelemetry logger
   // during the execution of the callback
   async intercept<T>(console: Console, callback: () => Promise<T>): Promise<T> {
+    if (this.interceptingDisabled) {
+      return await callback();
+    }
+
     // Save the original console methods
     const originalConsole = {
       log: console.log,

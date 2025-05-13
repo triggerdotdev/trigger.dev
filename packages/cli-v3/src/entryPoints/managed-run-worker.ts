@@ -163,6 +163,8 @@ async function bootstrap() {
     instrumentations: config.instrumentations ?? [],
     diagLogLevel: (env.OTEL_LOG_LEVEL as TracingDiagnosticLogLevel) ?? "none",
     forceFlushTimeoutMillis: 30_000,
+    exporters: config.telemetry?.exporters ?? [],
+    logExporters: config.telemetry?.logExporters ?? [],
   });
 
   const otelTracer: Tracer = tracingSDK.getTracer("trigger-dev-worker", VERSION);
@@ -171,7 +173,8 @@ async function bootstrap() {
   const tracer = new TriggerTracer({ tracer: otelTracer, logger: otelLogger });
   const consoleInterceptor = new ConsoleInterceptor(
     otelLogger,
-    typeof config.enableConsoleLogging === "boolean" ? config.enableConsoleLogging : true
+    typeof config.enableConsoleLogging === "boolean" ? config.enableConsoleLogging : true,
+    typeof config.disableConsoleInterceptor === "boolean" ? config.disableConsoleInterceptor : false
   );
 
   const configLogLevel = triggerLogLevel ?? config.logLevel ?? "info";

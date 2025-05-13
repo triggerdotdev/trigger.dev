@@ -27,6 +27,8 @@
     "@trigger.dev/python": "workspace:*",
     "@trigger.dev/react-hooks": "workspace:*",
     "@trigger.dev/sdk": "workspace:*",
+    "@opentelemetry/exporter-logs-otlp-http": "0.52.1",
+    "@opentelemetry/exporter-trace-otlp-http": "0.52.1",
     "@vercel/postgres": "^0.10.0",
     "ai": "4.2.5",
     "class-variance-authority": "^0.7.1",
