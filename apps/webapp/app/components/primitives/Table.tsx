@@ -70,7 +70,7 @@ export const TableHeader = forwardRef<HTMLTableSectionElement, TableHeaderProps>
       <thead
         ref={ref}
         className={cn(
-          "sticky top-0 z-10 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-grid-bright",
+          "sticky top-0 z-10 pl-3 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-grid-bright",
           variants[variant].header,
           className
         )}
@@ -111,13 +111,11 @@ export const TableRow = forwardRef<HTMLTableRowElement, TableRowProps>(
         ref={ref}
         className={cn(
           "group/table-row relative w-full outline-none",
-          isSelected && variants[variant].rowSelected,
-          !isSelected && "before:absolute after:absolute",
-          "focus-visible:bg-background-bright",
-          "[&>td:first-child>div]:after:left-3",
+          isSelected && cn(variants[variant].rowSelected),
+          !isSelected &&
+            "before:absolute after:absolute focus-visible:bg-background-bright [&>td:first-child>div]:after:left-3",
           // fills in the small left hand divider lines on hover
-          "[&>td:first-child>div]:hover:before:w-3",
-          "[&>td:first-child>div]:hover:after:left-0",
+          "[&>td:first-child>div]:hover:before:w-3 [&>td:first-child>div]:hover:after:left-0",
           disabled && "opacity-50",
           className
         )}
@@ -224,7 +222,7 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
     }
 
     const flexClasses = cn(
-      "flex w-full whitespace-nowrap px-3 py-3 items-center text-xs text-text-dimmed",
+      "flex w-full whitespace-nowrap items-center text-xs text-text-dimmed",
       alignment === "left"
         ? "justify-start text-left"
         : alignment === "center"
@@ -240,17 +238,18 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
           "h-full p-0",
           isSticky &&
             "[&:has(.group-hover/table-row:block)]:w-auto sticky right-0 bg-background-dimmed",
-          isSticky && variants[variant].stickyCell
+          isSticky && variants[variant].stickyCell,
+          isSelected && variants[variant].rowSelected,
+          variants[variant].cell,
+          to || onClick || hasAction ? "cursor-pointer" : "cursor-default align-middle",
+          !to && !onClick && alignmentClassName,
+          className
         )}
         colSpan={colSpan}
       >
         <div
           className={cn(
-            "relative",
-            "h-[2.625rem]",
-            "min-h-[2.625rem]",
-            "text-xs",
-            "text-charcoal-400",
+            "relative flex h-[2.625rem] min-h-[2.625rem] items-center px-3 text-xs text-charcoal-400",
             "after:absolute",
             "after:bottom-0",
             "after:left-0",
@@ -262,31 +261,17 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
             "before:left-0",
             "before:w-0",
             "before:h-px",
-            "before:bg-grid-dimmed",
-            // "has-[[tabindex='0']:focus]:before:absolute",
-            // "has-[[tabindex='0']:focus]:before:-top-px",
-            // "has-[[tabindex='0']:focus]:before:left-0",
-            // "has-[[tabindex='0']:focus]:before:h-px",
-            // "has-[[tabindex='0']:focus]:before:w-3",
-            // "has-[[tabindex='0']:focus]:before:bg-grid-dimmed",
-            // "has-[[tabindex='0']:focus]:after:absolute",
-            // "has-[[tabindex='0']:focus]:after:bottom-0",
-            // "has-[[tabindex='0']:focus]:after:left-0",
-            // "has-[[tabindex='0']:focus]:after:right-0",
-            // "has-[[tabindex='0']:focus]:after:h-px",
-            // "has-[[tabindex='0']:focus]:after:bg-grid-dimmed",
-            variants[variant].cell,
-            to || onClick || hasAction ? "cursor-pointer" : "cursor-default px-3 py-3 align-middle",
-            !to && !onClick && alignmentClassName,
-
-            isSelected && variants[variant].rowSelected,
-            className
+            "before:bg-grid-dimmed"
           )}
         >
           {to ? (
             <Link
               to={to}
-              className={cn("cursor-pointer focus:outline-none", flexClasses, actionClassName)}
+              className={cn(
+                "h-full cursor-pointer focus:outline-none",
+                flexClasses,
+                actionClassName
+              )}
               tabIndex={isTabbableCell ? 0 : -1}
             >
               {children}
@@ -294,7 +279,11 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
           ) : onClick ? (
             <button
               onClick={onClick}
-              className={cn("cursor-pointer focus:outline-none", flexClasses, actionClassName)}
+              className={cn(
+                "h-full cursor-pointer focus:outline-none",
+                flexClasses,
+                actionClassName
+              )}
               tabIndex={isTabbableCell ? 0 : -1}
             >
               {children}
