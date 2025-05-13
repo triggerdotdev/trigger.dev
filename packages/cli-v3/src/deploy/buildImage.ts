@@ -155,6 +155,7 @@ export interface DepotBuildImageOptions {
 type BuildImageSuccess = {
   ok: true;
   image: string;
+  imageSizeBytes: number;
   logs: string;
   digest?: string;
 };
@@ -264,6 +265,7 @@ async function depotBuildImage(options: DepotBuildImageOptions): Promise<BuildIm
     return {
       ok: true as const,
       image: `registry.depot.dev/${options.buildProjectId}:${options.buildId}`,
+      imageSizeBytes: 0,
       logs,
       digest,
     };
@@ -366,6 +368,26 @@ async function selfHostedBuildImage(
 
   digest = extractImageDigest(errors);
 
+  // Get the image size
+  const sizeProcess = x("docker", ["image", "inspect", imageRef, "--format={{.Size}}"], {
+    nodeOptions: { cwd: options.cwd },
+  });
+
+  let imageSizeBytes = 0;
+  for await (const line of sizeProcess) {
+    if (line.trim() === "") {
+      continue;
+    }
+
+    imageSizeBytes = parseInt(line, 10);
+    break;
+  }
+
+  if (imageSizeBytes) {
+    // Convert to MB and log
+    options.onLog?.(`Image size: ${(imageSizeBytes / (1024 * 1024)).toFixed(2)} MB`);
+  }
+
   if (options.selfHostedRegistry || options.pushImage) {
     const pushArgs = ["push", imageRef].filter(Boolean) as string[];
 
@@ -393,6 +415,7 @@ async function selfHostedBuildImage(
   return {
     ok: true as const,
     image: options.imageTag,
+    imageSizeBytes,
     digest,
     logs: extractLogs(errors),
   };
