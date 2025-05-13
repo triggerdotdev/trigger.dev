@@ -593,6 +593,8 @@ export class LogicalReplicationClient {
         table: this.options.table,
         slotName: this.options.slotName,
         publicationName: this.options.publicationName,
+        retryCount: this.leaderLockRetryCount,
+        retryIntervalMs: this.leaderLockRetryIntervalMs,
         error: err,
       });
 
