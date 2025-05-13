@@ -284,7 +284,6 @@ export default function Page() {
             <TableBody>
               {groupedEnvironmentVariables.length > 0 ? (
                 groupedEnvironmentVariables.map((variable) => {
-                  const cellClassName = "py-2";
                   let borderedCellClassName = "";
 
                   if (variable.occurences > 1) {
@@ -304,14 +303,12 @@ export default function Page() {
                         variable.isLastTime ? "after:bg-charcoal-600" : "after:bg-transparent"
                       }
                     >
-                      <TableCell className={cellClassName}>
+                      <TableCell>
                         {variable.isFirstTime ? (
                           <CopyableText value={variable.key} className="font-mono" />
                         ) : null}
                       </TableCell>
-                      <TableCell
-                        className={cn(cellClassName, borderedCellClassName, "after:left-3")}
-                      >
+                      <TableCell className={cn(borderedCellClassName, "after:left-3")}>
                         {variable.isSecret ? (
                           <SimpleTooltip
                             button={
@@ -332,11 +329,11 @@ export default function Page() {
                         )}
                       </TableCell>
 
-                      <TableCell className={cn(cellClassName, borderedCellClassName)}>
+                      <TableCell className={cn(borderedCellClassName)}>
                         <EnvironmentCombo environment={variable.environment} className="text-sm" />
                       </TableCell>
                       <TableCellMenu
-                        className={cn(cellClassName, borderedCellClassName)}
+                        className={cn(borderedCellClassName)}
                         isSticky
                         hiddenButtons={
                           <>
