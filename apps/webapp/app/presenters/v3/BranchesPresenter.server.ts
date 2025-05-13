@@ -93,9 +93,14 @@ export class BranchesPresenter {
     const visibleCount = await this.#prismaClient.runtimeEnvironment.count({
       where: {
         projectId: project.id,
-        branchName: {
-          not: null,
-        },
+        branchName: search
+          ? {
+              startsWith: search,
+              mode: "insensitive",
+            }
+          : {
+              not: null,
+            },
         ...(showArchived ? {} : { archivedAt: null }),
       },
     });
@@ -125,23 +130,29 @@ export class BranchesPresenter {
       },
       where: {
         projectId: project.id,
-        branchName: {
-          not: null,
-        },
+        branchName: search
+          ? {
+              contains: search,
+              mode: "insensitive",
+            }
+          : {
+              not: null,
+            },
         ...(showArchived ? {} : { archivedAt: null }),
+      },
+      orderBy: {
+        branchName: "asc",
       },
       skip: (page - 1) * BRANCHES_PER_PAGE,
       take: BRANCHES_PER_PAGE,
     });
-
-    const sortedBranches = branches.sort((a, b) => a.branchName!.localeCompare(b.branchName!));
 
     return {
       branchableEnvironment,
       currentPage: page,
       totalPages: Math.ceil(visibleCount / BRANCHES_PER_PAGE),
       totalCount: visibleCount,
-      branches: sortedBranches.map((branch) => ({
+      branches: branches.map((branch) => ({
         ...branch,
         git: BranchGit.parse(branch.git),
       })),
