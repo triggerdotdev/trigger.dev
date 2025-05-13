@@ -40,7 +40,7 @@ export function ffmpeg(options: FfmpegOptions = {}): BuildExtension {
           image: {
             instructions: [
               // Install ffmpeg after checksum validation
-              "RUN apt-get update && apt-get install -y --no-install-recommends wget xz-utils && apt-get clean && rm -rf /var/lib/apt/lists/* && " +
+              "RUN apt-get update && apt-get install -y --no-install-recommends wget xz-utils nscd && apt-get clean && rm -rf /var/lib/apt/lists/* && " +
                 "wget https://johnvansickle.com/ffmpeg/builds/ffmpeg-git-amd64-static.tar.xz.md5 -O ffmpeg.tar.xz.md5 && " +
                 "wget https://johnvansickle.com/ffmpeg/builds/ffmpeg-git-amd64-static.tar.xz -O ffmpeg.tar.xz && " +
                 "md5sum -c ffmpeg.tar.xz.md5 && " +
