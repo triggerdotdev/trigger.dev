@@ -7,7 +7,7 @@ cd packages/cli-v3
 pnpm run dev
 ```
 
-2. Test the local CLI using the job-catalogs located in the `/references` directory
+2. Test the local CLI using the job-catalogs located in the `/test-projects` directory
 
 ```sh
 pnpm i

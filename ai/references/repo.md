@@ -27,7 +27,7 @@ This is a pnpm 8.15.5 monorepo that uses turborepo @turbo.json. The following wo
 
 ## References
 
-- <root>/references/\* are test workspaces that we use to write and test the system. Not quite e2e tests or automated, but just a useful place to help develop new features
+- <root>/test-projects/\* are test workspaces that we use to write and test the system. Not quite e2e tests or automated, but just a useful place to help develop new features
 
 ## Other
 
