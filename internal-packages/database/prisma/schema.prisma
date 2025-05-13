@@ -463,6 +463,7 @@ model RuntimeEnvironment {
   @@unique([projectId, slug, orgMemberId])
   @@unique([projectId, shortcode])
   @@index([parentEnvironmentId])
+  @@index([projectId])
 }
 
 enum RuntimeEnvironmentType {
