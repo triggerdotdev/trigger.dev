@@ -116,6 +116,9 @@ export function rewriteBuildManifestPaths(
     loaderEntryPoint: buildManifest.loaderEntryPoint
       ? rewriteOutputPath(destinationDir, buildManifest.loaderEntryPoint)
       : undefined,
+    initEntryPoint: buildManifest.initEntryPoint
+      ? rewriteOutputPath(destinationDir, buildManifest.initEntryPoint)
+      : undefined,
   };
 }
 // Remove any query parameters from the entry path

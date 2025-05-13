@@ -104,11 +104,11 @@ const heartbeatIntervalMs = getEnvVar("HEARTBEAT_INTERVAL_MS");
 const standardLocalsManager = new StandardLocalsManager();
 localsAPI.setGlobalLocalsManager(standardLocalsManager);
 
-const standardRunTimelineMetricsManager = new StandardRunTimelineMetricsManager();
-runTimelineMetrics.setGlobalManager(standardRunTimelineMetricsManager);
-
 const standardLifecycleHooksManager = new StandardLifecycleHooksManager();
 lifecycleHooks.setGlobalLifecycleHooksManager(standardLifecycleHooksManager);
+
+const standardRunTimelineMetricsManager = new StandardRunTimelineMetricsManager();
+runTimelineMetrics.setGlobalManager(standardRunTimelineMetricsManager);
 
 const devUsageManager = new DevUsageManager();
 usage.setGlobalUsageManager(devUsageManager);
