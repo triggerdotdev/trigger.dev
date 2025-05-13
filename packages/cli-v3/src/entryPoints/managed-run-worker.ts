@@ -324,6 +324,18 @@ const zodIpc = new ZodIpcConnection({
             async () => {
               const beforeImport = performance.now();
               resourceCatalog.setCurrentFileContext(taskManifest.entryPoint, taskManifest.filePath);
+
+              // Load init file if it exists
+              if (workerManifest.initEntryPoint) {
+                try {
+                  await import(normalizeImportPath(workerManifest.initEntryPoint));
+                  console.log(`Loaded init file from ${workerManifest.initEntryPoint}`);
+                } catch (err) {
+                  console.error(`Failed to load init file`, err);
+                  throw err;
+                }
+              }
+
               await import(normalizeImportPath(taskManifest.entryPoint));
               resourceCatalog.clearCurrentFileContext();
               const durationMs = performance.now() - beforeImport;
