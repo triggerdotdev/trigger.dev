@@ -4,4 +4,4 @@
 "@trigger.dev/rsc": patch
 ---
 
-Remove experimental Bun support
+Remove experimental `bun` support. `node` is now the only supported runtime.
