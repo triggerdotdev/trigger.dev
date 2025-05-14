@@ -4,12 +4,11 @@ import { type Project } from "~/models/project.server";
 import { type User } from "~/models/user.server";
 import { type BranchesOptions } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.branches/route";
 import { checkBranchLimit } from "~/services/upsertBranch.server";
-import { getLimit } from "~/services/platform.v3.server";
 
 type Result = Awaited<ReturnType<BranchesPresenter["call"]>>;
 export type Branch = Result["branches"][number];
 
-const BRANCHES_PER_PAGE = 10;
+const BRANCHES_PER_PAGE = 25;
 
 type Options = z.infer<typeof BranchesOptions>;
 

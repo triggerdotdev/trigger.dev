@@ -10,7 +10,7 @@ import {
 import { BookOpenIcon } from "@heroicons/react/24/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { Form, useActionData, useSearchParams } from "@remix-run/react";
-import { ActionFunctionArgs, json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { type ActionFunctionArgs, json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { useCallback } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
@@ -21,6 +21,7 @@ import { V4Title } from "~/components/V4Badge";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { InlineCode } from "~/components/code/InlineCode";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { Badge } from "~/components/primitives/Badge";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { DateTime } from "~/components/primitives/DateTime";
@@ -56,6 +57,7 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { InfoIconTooltip, SimpleTooltip } from "~/components/primitives/Tooltip";
+import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useThrottle } from "~/hooks/useThrottle";
@@ -73,13 +75,11 @@ import {
 } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { ArchiveButton } from "../resources.branches.archive";
-import { useEnvironment } from "~/hooks/useEnvironment";
-import { Badge } from "~/components/primitives/Badge";
 
 export const BranchesOptions = z.object({
   search: z.string().optional(),
   showArchived: z.preprocess((val) => val === "true" || val === true, z.boolean()).optional(),
-  page: z.number().optional(),
+  page: z.preprocess((val) => Number(val), z.number()).optional(),
 });
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
