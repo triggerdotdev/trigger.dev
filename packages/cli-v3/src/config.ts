@@ -329,11 +329,8 @@ function validateConfig(config: TriggerConfig, warn = true) {
     );
   }
 
-  if (config.runtime && config.runtime === "bun") {
-    warn &&
-      prettyWarning(
-        `The "bun" runtime is currently experimental, and certain features may not work, especially opentelemetry instrumentation of 3rd party packages.`
-      );
+  if (config.runtime && (config.runtime as string) === "bun") {
+    throw new Error("Bun support was removed in v4. Please use the `node` runtime instead.");
   }
 }
 

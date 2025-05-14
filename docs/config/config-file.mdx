@@ -168,22 +168,6 @@ export default defineConfig({
 
 Make sure to set the `AXIOM_API_TOKEN` and `AXIOM_DATASET` environment variables in your project.
 
-## Runtime
-
-We currently only officially support the `node` runtime, but you can try our experimental `bun` runtime by setting the `runtime` option in your config file:
-
-```ts trigger.config.ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
-
-export default defineConfig({
-  project: "<project ref>",
-  // Your other config settings...
-  runtime: "bun",
-});
-```
-
-See our [Bun guide](/guides/frameworks/bun) for more information.
-
 ## Default machine
 
 You can specify the default machine for all tasks in your project:

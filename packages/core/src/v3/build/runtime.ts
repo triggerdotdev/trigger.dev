@@ -8,10 +8,8 @@ export const DEFAULT_RUNTIME = "node" satisfies BuildRuntime;
 export function binaryForRuntime(runtime: BuildRuntime): string {
   switch (runtime) {
     case "node":
-    case "node-22":
+    case "node-test":
       return "node";
-    case "bun":
-      return "bun";
     default:
       throw new Error(`Unsupported runtime ${runtime}`);
   }
@@ -20,18 +18,8 @@ export function binaryForRuntime(runtime: BuildRuntime): string {
 export function execPathForRuntime(runtime: BuildRuntime): string {
   switch (runtime) {
     case "node":
-    case "node-22":
+    case "node-test":
       return process.execPath;
-    case "bun":
-      if (typeof process.env.BUN_INSTALL === "string") {
-        return join(process.env.BUN_INSTALL, "bin", "bun");
-      }
-
-      if (typeof process.env.BUN_INSTALL_BIN === "string") {
-        return join(process.env.BUN_INSTALL_BIN, "bun");
-      }
-
-      return join("~", ".bin", "bin", "bun");
     default:
       throw new Error(`Unsupported runtime ${runtime}`);
   }
@@ -49,7 +37,7 @@ export function execOptionsForRuntime(
 ): string {
   switch (runtime) {
     case "node":
-    case "node-22": {
+    case "node-test": {
       const importEntryPoint = options.loaderEntryPoint
         ? `--import=${pathToFileURL(options.loaderEntryPoint).href}`
         : undefined;
@@ -69,9 +57,6 @@ export function execOptionsForRuntime(
         .join(" ");
 
       return dedupFlags(flags);
-    }
-    case "bun": {
-      return "";
     }
   }
 }

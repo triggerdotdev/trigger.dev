@@ -860,3 +860,7 @@ const batchHandle = await tasks.batchTrigger([
 const runs = await batchHandle.runs.list();
 console.log(runs);
 ```
+
+### Runtime changes
+
+We've removed experimental support for the `bun` runtime. The only supported runtime is now `node`.

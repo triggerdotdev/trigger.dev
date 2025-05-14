@@ -21,6 +21,8 @@ export type CompatibilityFlagFeatures = {
 
 export type TriggerConfig = {
   /**
+   * The runtime to use for your trigger.dev tasks.
+   *
    * @default "node"
    */
   runtime?: BuildRuntime;
