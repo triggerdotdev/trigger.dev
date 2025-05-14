@@ -1,10 +1,7 @@
-import { type PrismaClient, type PrismaClientOrTransaction } from "@trigger.dev/database";
+import { type PrismaClient } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
-import { createBranchEnvironment } from "~/models/organization.server";
-import { type CreateBranchOptions } from "~/routes/resources.branches.new";
-import { logger } from "./logger.server";
-import { getLimit } from "./platform.v3.server";
 import { checkBranchLimit } from "./createBranch.server";
+import { logger } from "./logger.server";
 
 export class ArchiveBranchService {
   #prismaClient: PrismaClient;
