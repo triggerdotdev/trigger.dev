@@ -65,9 +65,9 @@ branch are tagged into a release periodically.
    ```
    pnpm run db:migrate
    ```
-10. Build the server app
+10. Build everything
     ```
-    pnpm run build --filter webapp
+    pnpm run build --filter webapp && pnpm run build --filter trigger.dev && pnpm run build --filter @trigger.dev/sdk
     ```
 11. Run the app. See the section below.
 
