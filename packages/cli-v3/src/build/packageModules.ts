@@ -1,5 +1,5 @@
 import { BuildTarget } from "@trigger.dev/core/v3";
-import { join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { sourceDir } from "../sourceDir.js";
 import { assertExhaustive } from "../utilities/assertExhaustive.js";
 
@@ -234,4 +234,28 @@ export function getIndexControllerForTarget(target: BuildTarget) {
 
 export function isConfigEntryPoint(entryPoint: string) {
   return entryPoint.startsWith("trigger.config.ts");
+}
+
+// Check if the entry point is an init.ts file at the root of a trigger directory
+export function isInitEntryPoint(entryPoint: string, triggerDirs: string[]): boolean {
+  const initFileNames = ["init.ts", "init.mts", "init.cts", "init.js", "init.mjs", "init.cjs"];
+
+  // Check if it's directly in one of the trigger directories
+  return triggerDirs.some((dir) => {
+    const normalizedDir = resolve(dir);
+    const normalizedEntryDir = resolve(dirname(entryPoint));
+
+    if (normalizedDir !== normalizedEntryDir) {
+      return false;
+    }
+
+    // Strip query string suffixes (e.g., ?sentryProxyModule=true)
+    const entryPointWithoutSuffix = entryPoint.split("?")[0];
+
+    if (!entryPointWithoutSuffix) {
+      return false;
+    }
+
+    return initFileNames.includes(basename(entryPointWithoutSuffix));
+  });
 }

@@ -3,7 +3,7 @@ import { DEFAULT_RUNTIME, ResolvedConfig } from "@trigger.dev/core/v3/build";
 import { BuildManifest, BuildTarget, TaskFile } from "@trigger.dev/core/v3/schemas";
 import * as esbuild from "esbuild";
 import { createHash } from "node:crypto";
-import { basename, dirname, join, relative, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { createFile } from "../utilities/fileSystem.js";
 import { logger } from "../utilities/logger.js";
 import { resolveFileSources } from "../utilities/sourceFiles.js";
@@ -17,6 +17,7 @@ import {
   getRunWorkerForTarget,
   isIndexControllerForTarget,
   isIndexWorkerForTarget,
+  isInitEntryPoint,
   isLoaderEntryPoint,
   isRunControllerForTarget,
   isRunWorkerForTarget,
@@ -246,23 +247,6 @@ export async function getBundleResultFromBuild(
     ? relative(resolvedConfig.workingDir, resolvedConfig.configFile)
     : "trigger.config.ts";
 
-  // Check if the entry point is an init.ts file at the root of a trigger directory
-  function isInitEntryPoint(entryPoint: string): boolean {
-    const initFileNames = ["init.ts", "init.mts", "init.cts", "init.js", "init.mjs", "init.cjs"];
-
-    // Check if it's directly in one of the trigger directories
-    return resolvedConfig.dirs.some((dir) => {
-      const normalizedDir = resolve(dir);
-      const normalizedEntryDir = resolve(dirname(entryPoint));
-
-      if (normalizedDir !== normalizedEntryDir) {
-        return false;
-      }
-
-      return initFileNames.includes(basename(entryPoint));
-    });
-  }
-
   for (const [outputPath, outputMeta] of Object.entries(result.metafile.outputs)) {
     if (outputPath.endsWith(".mjs")) {
       const $outputPath = resolve(workingDir, outputPath);
@@ -283,7 +267,7 @@ export async function getBundleResultFromBuild(
         indexControllerEntryPoint = $outputPath;
       } else if (isIndexWorkerForTarget(outputMeta.entryPoint, target)) {
         indexWorkerEntryPoint = $outputPath;
-      } else if (isInitEntryPoint(outputMeta.entryPoint)) {
+      } else if (isInitEntryPoint(outputMeta.entryPoint, resolvedConfig.dirs)) {
         initEntryPoint = $outputPath;
       } else {
         if (
