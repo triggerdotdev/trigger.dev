@@ -336,7 +336,7 @@ export const TableCellMenu = forwardRef<
         hasAction={true}
         isSelected={isSelected}
       >
-        <div className="relative h-full p-1">
+        <div className="relative h-full w-full p-1">
           <div
             className={cn(
               "absolute right-0 top-1/2 mr-1 flex -translate-y-1/2 items-center justify-end gap-0.5 rounded-[0.25rem] p-0.5 group-hover/table-row:ring-1",
