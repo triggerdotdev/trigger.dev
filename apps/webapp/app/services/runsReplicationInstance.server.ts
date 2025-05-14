@@ -1,10 +1,10 @@
 import { ClickHouse } from "@internal/clickhouse";
-import { RunsReplicationService } from "./runsReplicationService.server";
-import { singleton } from "~/utils/singleton";
 import invariant from "tiny-invariant";
 import { env } from "~/env.server";
-import { metricsRegister } from "~/metrics.server";
+import { singleton } from "~/utils/singleton";
+import { provider } from "~/v3/tracer.server";
 import { logger } from "./logger.server";
+import { RunsReplicationService } from "./runsReplicationService.server";
 
 export const runsReplicationInstance = singleton(
   "runsReplicationInstance",
@@ -49,6 +49,7 @@ function initializeRunsReplicationInstance() {
     leaderLockRetryIntervalMs: env.RUN_REPLICATION_LEADER_LOCK_RETRY_INTERVAL_MS,
     ackIntervalSeconds: env.RUN_REPLICATION_ACK_INTERVAL_SECONDS,
     logLevel: env.RUN_REPLICATION_LOG_LEVEL,
+    tracer: provider.getTracer("runs-replication-service"),
   });
 
   if (env.RUN_REPLICATION_ENABLED === "1") {

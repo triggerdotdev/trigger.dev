@@ -83,7 +83,7 @@ class CustomWebappSampler implements Sampler {
   }
 }
 
-export const { tracer, logger: otelLogger } = singleton("tracer", getTracer);
+export const { tracer, logger: otelLogger, provider } = singleton("tracer", getTracer);
 
 export async function startActiveSpan<T>(
   name: string,
@@ -155,6 +155,7 @@ function getTracer() {
     return {
       tracer: trace.getTracer("trigger.dev", "3.3.12"),
       logger: logs.getLogger("trigger.dev", "3.3.12"),
+      provider: new NodeTracerProvider(),
     };
   }
 
@@ -260,6 +261,7 @@ function getTracer() {
   return {
     tracer: provider.getTracer("trigger.dev", "3.3.12"),
     logger: logs.getLogger("trigger.dev", "3.3.12"),
+    provider,
   };
 }
 
