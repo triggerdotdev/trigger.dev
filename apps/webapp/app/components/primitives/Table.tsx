@@ -70,7 +70,7 @@ export const TableHeader = forwardRef<HTMLTableSectionElement, TableHeaderProps>
       <thead
         ref={ref}
         className={cn(
-          "sticky top-0 z-10 pl-3 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-grid-bright",
+          "sticky top-0 z-10 border-b border-grid-bright pl-3 after:absolute after:-bottom-px after:left-0 after:right-0 after:h-px after:bg-grid-bright",
           variants[variant].header,
           className
         )}
@@ -306,21 +306,11 @@ export const TableCellMenu = forwardRef<
     visibleButtons?: ReactNode;
     hiddenButtons?: ReactNode;
     popoverContent?: ReactNode;
-    children?: ReactNode;
     isSelected?: boolean;
   }
 >(
   (
-    {
-      className,
-      isSticky,
-      onClick,
-      visibleButtons,
-      hiddenButtons,
-      popoverContent,
-      children,
-      isSelected,
-    },
+    { className, isSticky, onClick, visibleButtons, hiddenButtons, popoverContent, isSelected },
     ref
   ) => {
     const [isOpen, setIsOpen] = useState(false);
