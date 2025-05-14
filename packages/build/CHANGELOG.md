@@ -1,5 +1,14 @@
 # @trigger.dev/build
 
+## 4.0.0-v4-beta.15
+
+### Patch Changes
+
+- Add ffmpeg v7 support to existing extension: `ffmpeg({ version: "7" })` ([#1777](https://github.com/triggerdotdev/trigger.dev/pull/1777))
+- Add playwright extension ([#1764](https://github.com/triggerdotdev/trigger.dev/pull/1764))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.15`
+
 ## 4.0.0-v4-beta.14
 
 ### Patch Changes
