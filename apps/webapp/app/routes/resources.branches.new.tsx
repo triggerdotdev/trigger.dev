@@ -58,7 +58,9 @@ export async function action({ request }: ActionFunctionArgs) {
 
   if (result.success) {
     if (result.alreadyExisted) {
-      submission.error = { branchName: `Branch "${result.branch.branchName}" already exists` };
+      submission.error = {
+        branchName: `Branch "${result.branch.branchName}" already exists. You can archive it and create a new one with the same name.`,
+      };
       return json(submission);
     }
 
