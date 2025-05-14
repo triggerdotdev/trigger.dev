@@ -27,6 +27,13 @@ cp internal-packages/database/prisma/schema.prisma apps/webapp/prisma/
 cp node_modules/@prisma/engines/*.node apps/webapp/prisma/
 
 cd /triggerdotdev/apps/webapp
-# exec dumb-init pnpm run start:local
-NODE_PATH='/triggerdotdev/node_modules/.pnpm/node_modules' exec dumb-init node --max-old-space-size=8192 ./build/server.js
+
+
+# Decide how much old-space memory Node should get.
+# Use $NODE_MAX_OLD_SPACE_SIZE if it’s set; otherwise fall back to 8192.
+MAX_OLD_SPACE_SIZE="${NODE_MAX_OLD_SPACE_SIZE:-8192}"
+
+echo "Setting max old space size to ${MAX_OLD_SPACE_SIZE}"
+
+NODE_PATH='/triggerdotdev/node_modules/.pnpm/node_modules' exec dumb-init node --max-old-space-size=${MAX_OLD_SPACE_SIZE} ./build/server.js
 
