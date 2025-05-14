@@ -43,7 +43,7 @@ export type RunsReplicationServiceOptions = {
   flushBatchSize?: number;
   leaderLockTimeoutMs?: number;
   leaderLockExtendIntervalMs?: number;
-  leaderLockRetryCount?: number;
+  leaderLockAcquireAdditionalTimeMs?: number;
   leaderLockRetryIntervalMs?: number;
   ackIntervalSeconds?: number;
   acknowledgeTimeoutMs?: number;
@@ -102,11 +102,11 @@ export class RunsReplicationService {
       redisOptions: options.redisOptions,
       autoAcknowledge: false,
       publicationActions: ["insert", "update", "delete"],
-      logger: new Logger("LogicalReplicationClient", options.logLevel ?? "info"),
+      logger: options.logger ?? new Logger("LogicalReplicationClient", options.logLevel ?? "info"),
       leaderLockTimeoutMs: options.leaderLockTimeoutMs ?? 30_000,
       leaderLockExtendIntervalMs: options.leaderLockExtendIntervalMs ?? 10_000,
       ackIntervalSeconds: options.ackIntervalSeconds ?? 10,
-      leaderLockRetryCount: options.leaderLockRetryCount ?? 240,
+      leaderLockAcquireAdditionalTimeMs: options.leaderLockAcquireAdditionalTimeMs ?? 10_000,
       leaderLockRetryIntervalMs: options.leaderLockRetryIntervalMs ?? 500,
       tracer: options.tracer,
     });
