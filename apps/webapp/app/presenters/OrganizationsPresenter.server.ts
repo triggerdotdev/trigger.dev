@@ -79,6 +79,7 @@ export class OrganizationsPresenter {
             isBranchableEnvironment: true,
             branchName: true,
             parentEnvironmentId: true,
+            archivedAt: true,
             orgMember: {
               select: {
                 userId: true,
@@ -184,6 +185,7 @@ export class OrganizationsPresenter {
       | "paused"
       | "parentEnvironmentId"
       | "isBranchableEnvironment"
+      | "archivedAt"
     > & {
       orgMember: null | {
         userId: string | undefined;

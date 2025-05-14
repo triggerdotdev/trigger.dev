@@ -218,15 +218,17 @@ function Branches({
         >
           {branchEnvironments.length > 0 ? (
             <div className="flex flex-col gap-1 p-1">
-              {branchEnvironments.map((env) => (
-                <PopoverMenuItem
-                  key={env.id}
-                  to={urlForEnvironment(env)}
-                  title={<span className="block text-preview">{env.branchName}</span>}
-                  icon={<BranchEnvironmentIconSmall className="size-4 text-preview" />}
-                  isSelected={env.id === currentEnvironment.id}
-                />
-              ))}
+              {branchEnvironments
+                .filter((env) => env.archivedAt === null)
+                .map((env) => (
+                  <PopoverMenuItem
+                    key={env.id}
+                    to={urlForEnvironment(env)}
+                    title={<span className="block text-preview">{env.branchName}</span>}
+                    icon={<BranchEnvironmentIconSmall className="size-4 text-preview" />}
+                    isSelected={env.id === currentEnvironment.id}
+                  />
+                ))}
             </div>
           ) : (
             <div className="flex max-w-sm flex-col gap-1 p-3">
