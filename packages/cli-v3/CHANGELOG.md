@@ -1,5 +1,14 @@
 # trigger.dev
 
+## 4.0.0-v4-beta.16
+
+### Patch Changes
+
+- Fix init.ts detection when using the sentry esbuild plugin ([#2051](https://github.com/triggerdotdev/trigger.dev/pull/2051))
+- Updated dependencies:
+  - `@trigger.dev/build@4.0.0-v4-beta.16`
+  - `@trigger.dev/core@4.0.0-v4-beta.16`
+
 ## 4.0.0-v4-beta.15
 
 ### Patch Changes
