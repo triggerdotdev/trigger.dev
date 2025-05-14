@@ -19,6 +19,7 @@ COPY --from=pruner --chown=node:node /app/out/pnpm-workspace.yaml ./pnpm-workspa
 RUN corepack enable && corepack prepare --activate
 
 FROM base AS deps-fetcher
+RUN apk add --no-cache python3
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store pnpm fetch --frozen-lockfile
 
 FROM deps-fetcher AS dev-deps
