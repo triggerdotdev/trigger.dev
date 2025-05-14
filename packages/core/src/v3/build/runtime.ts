@@ -8,7 +8,7 @@ export const DEFAULT_RUNTIME = "node" satisfies BuildRuntime;
 export function binaryForRuntime(runtime: BuildRuntime): string {
   switch (runtime) {
     case "node":
-    case "node-22":
+    case "node-test":
       return "node";
     default:
       throw new Error(`Unsupported runtime ${runtime}`);
@@ -18,7 +18,7 @@ export function binaryForRuntime(runtime: BuildRuntime): string {
 export function execPathForRuntime(runtime: BuildRuntime): string {
   switch (runtime) {
     case "node":
-    case "node-22":
+    case "node-test":
       return process.execPath;
     default:
       throw new Error(`Unsupported runtime ${runtime}`);
@@ -37,7 +37,7 @@ export function execOptionsForRuntime(
 ): string {
   switch (runtime) {
     case "node":
-    case "node-22": {
+    case "node-test": {
       const importEntryPoint = options.loaderEntryPoint
         ? `--import=${pathToFileURL(options.loaderEntryPoint).href}`
         : undefined;

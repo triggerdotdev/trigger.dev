@@ -473,10 +473,14 @@ export type GenerateContainerfileOptions = {
   entrypoint: string;
 };
 
+const NODE_21_IMAGE =
+  "node:21.7.3-bookworm-slim@sha256:dfc05dee209a1d7adf2ef189bd97396daad4e97c6eaa85778d6f75205ba1b0fb";
+
+const NODE_TEST_IMAGE = NODE_21_IMAGE;
+
 const BASE_IMAGE: Record<BuildRuntime, string> = {
-  node: "node:21.7.3-bookworm-slim@sha256:dfc05dee209a1d7adf2ef189bd97396daad4e97c6eaa85778d6f75205ba1b0fb",
-  "node-22":
-    "node:22.12.0-bookworm-slim@sha256:a4b757cd491c7f0b57f57951f35f4e85b7e1ad54dbffca4cf9af0725e1650cd8",
+  node: NODE_21_IMAGE,
+  "node-test": NODE_TEST_IMAGE,
 };
 
 const DEFAULT_PACKAGES = ["busybox", "ca-certificates", "dumb-init", "git", "openssl"];
@@ -484,7 +488,7 @@ const DEFAULT_PACKAGES = ["busybox", "ca-certificates", "dumb-init", "git", "ope
 export async function generateContainerfile(options: GenerateContainerfileOptions) {
   switch (options.runtime) {
     case "node":
-    case "node-22": {
+    case "node-test": {
       return await generateNodeContainerfile(options);
     }
   }
