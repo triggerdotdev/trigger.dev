@@ -20,12 +20,12 @@ RUN corepack enable && corepack prepare --activate
 
 FROM base AS deps-fetcher
 RUN apk add --no-cache python3-dev py3-setuptools make g++ gcc linux-headers
-RUN --mount=type=cache,id=pnpm-2,target=/root/.local/share/pnpm/store pnpm fetch --frozen-lockfile
+RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store pnpm fetch --frozen-lockfile
 
 FROM deps-fetcher AS dev-deps
 ENV NODE_ENV development
 
-RUN --mount=type=cache,id=pnpm-2,target=/root/.local/share/pnpm/store pnpm install --frozen-lockfile --offline --ignore-scripts
+RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store pnpm install --frozen-lockfile --offline --ignore-scripts
 
 FROM base AS builder
 
