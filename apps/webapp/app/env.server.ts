@@ -768,6 +768,7 @@ const EnvironmentSchema = z.object({
   RUN_REPLICATION_LOG_LEVEL: z.enum(["log", "error", "warn", "info", "debug"]).default("info"),
   RUN_REPLICATION_LEADER_LOCK_RETRY_COUNT: z.coerce.number().int().default(240),
   RUN_REPLICATION_LEADER_LOCK_RETRY_INTERVAL_MS: z.coerce.number().int().default(500),
+  RUN_REPLICATION_WAIT_FOR_ASYNC_INSERT: z.string().default("0"),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

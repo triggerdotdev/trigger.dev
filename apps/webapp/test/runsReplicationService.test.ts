@@ -90,7 +90,7 @@ describe("RunsReplicationService", () => {
       // Check that the row was replicated to clickhouse
       const queryRuns = clickhouse.reader.query({
         name: "runs-replication",
-        query: "SELECT * FROM trigger_dev.task_runs_v1",
+        query: "SELECT * FROM trigger_dev.task_runs_v2",
         schema: z.any(),
       });
 
@@ -279,7 +279,7 @@ describe("RunsReplicationService", () => {
       // Query ClickHouse for the replicated run
       const queryRuns = clickhouse.reader.query({
         name: "runs-replication-batching",
-        query: "SELECT * FROM trigger_dev.task_runs_v1 WHERE run_id = {run_id:String}",
+        query: "SELECT * FROM trigger_dev.task_runs_v2 WHERE run_id = {run_id:String}",
         schema: z.any(),
         params: z.object({ run_id: z.string() }),
       });
@@ -604,7 +604,7 @@ describe("RunsReplicationService", () => {
       // Query ClickHouse for the replicated run
       const queryRuns = clickhouse.reader.query({
         name: "runs-replication-update",
-        query: "SELECT * FROM trigger_dev.task_runs_v1 FINAL WHERE run_id = {run_id:String}",
+        query: "SELECT * FROM trigger_dev.task_runs_v2 FINAL WHERE run_id = {run_id:String}",
         schema: z.any(),
         params: z.object({ run_id: z.string() }),
       });
@@ -713,7 +713,7 @@ describe("RunsReplicationService", () => {
       // Query ClickHouse for the replicated run using FINAL
       const queryRuns = clickhouse.reader.query({
         name: "runs-replication-delete",
-        query: "SELECT * FROM trigger_dev.task_runs_v1 FINAL WHERE run_id = {run_id:String}",
+        query: "SELECT * FROM trigger_dev.task_runs_v2 FINAL WHERE run_id = {run_id:String}",
         schema: z.any(),
         params: z.object({ run_id: z.string() }),
       });
@@ -838,7 +838,7 @@ describe("RunsReplicationService", () => {
       // Query ClickHouse for both runs using FINAL
       const queryRuns = clickhouse.reader.query({
         name: "runs-replication-shutdown-handover",
-        query: "SELECT * FROM trigger_dev.task_runs_v1 FINAL ORDER BY created_at ASC",
+        query: "SELECT * FROM trigger_dev.task_runs_v2 FINAL ORDER BY created_at ASC",
         schema: z.any(),
       });
 
@@ -966,7 +966,7 @@ describe("RunsReplicationService", () => {
       // Query ClickHouse for the run using FINAL
       const queryRuns = clickhouse.reader.query({
         name: "runs-replication-shutdown-after-processed",
-        query: "SELECT * FROM trigger_dev.task_runs_v1 FINAL WHERE run_id = {run_id:String}",
+        query: "SELECT * FROM trigger_dev.task_runs_v2 FINAL WHERE run_id = {run_id:String}",
         schema: z.any(),
         params: z.object({ run_id: z.string() }),
       });
@@ -1117,7 +1117,7 @@ describe("RunsReplicationService", () => {
       // Query ClickHouse for all runs using FINAL
       const queryRuns = clickhouse.reader.query({
         name: "runs-replication-stress-bulk-insert",
-        query: `SELECT run_id, friendly_id, trace_id, task_identifier FROM trigger_dev.task_runs_v1 FINAL`,
+        query: `SELECT run_id, friendly_id, trace_id, task_identifier FROM trigger_dev.task_runs_v2 FINAL`,
         schema: z.any(),
       });
 
@@ -1236,7 +1236,7 @@ describe("RunsReplicationService", () => {
       // Query ClickHouse for all runs using FINAL
       const queryRuns = clickhouse.reader.query({
         name: "runs-replication-stress-bulk-insert",
-        query: `SELECT * FROM trigger_dev.task_runs_v1 FINAL`,
+        query: `SELECT * FROM trigger_dev.task_runs_v2 FINAL`,
         schema: z.any(),
       });
 
@@ -1375,7 +1375,7 @@ describe("RunsReplicationService", () => {
       // Query ClickHouse for both runs using FINAL
       const queryRuns = clickhouse.reader.query({
         name: "runs-replication-multi-event-tx",
-        query: `SELECT * FROM trigger_dev.task_runs_v1 FINAL WHERE run_id IN ({run_id_1:String}, {run_id_2:String})`,
+        query: `SELECT * FROM trigger_dev.task_runs_v2 FINAL WHERE run_id IN ({run_id_1:String}, {run_id_2:String})`,
         schema: z.any(),
         params: z.object({ run_id_1: z.string(), run_id_2: z.string() }),
       });
@@ -1488,7 +1488,7 @@ describe("RunsReplicationService", () => {
       // Query ClickHouse for all runs using FINAL
       const queryRuns = clickhouse.reader.query({
         name: "runs-replication-long-tx",
-        query: `SELECT * FROM trigger_dev.task_runs_v1 FINAL`,
+        query: `SELECT * FROM trigger_dev.task_runs_v2 FINAL`,
         schema: z.any(),
       });
 

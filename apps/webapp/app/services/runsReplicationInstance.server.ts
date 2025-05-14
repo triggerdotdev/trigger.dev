@@ -49,6 +49,7 @@ function initializeRunsReplicationInstance() {
     leaderLockRetryIntervalMs: env.RUN_REPLICATION_LEADER_LOCK_RETRY_INTERVAL_MS,
     ackIntervalSeconds: env.RUN_REPLICATION_ACK_INTERVAL_SECONDS,
     logLevel: env.RUN_REPLICATION_LOG_LEVEL,
+    waitForAsyncInsert: env.RUN_REPLICATION_WAIT_FOR_ASYNC_INSERT === "1",
     tracer: provider.getTracer("runs-replication-service"),
   });
 

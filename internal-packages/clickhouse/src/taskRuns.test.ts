@@ -3,7 +3,7 @@ import { z } from "zod";
 import { ClickhouseClient } from "./client/client.js";
 import { insertRawTaskRunPayloads, insertTaskRuns } from "./taskRuns.js";
 
-describe("Task Runs V1", () => {
+describe("Task Runs V2", () => {
   clickhouseTest("should be able to insert task runs", async ({ clickhouseContainer }) => {
     const client = new ClickhouseClient({
       name: "test",
@@ -70,7 +70,7 @@ describe("Task Runs V1", () => {
 
     const query = client.query({
       name: "query-task-runs",
-      query: "SELECT * FROM trigger_dev.task_runs_v1",
+      query: "SELECT * FROM trigger_dev.task_runs_v2",
       schema: z.object({
         environment_id: z.string(),
         run_id: z.string(),
@@ -226,7 +226,7 @@ describe("Task Runs V1", () => {
 
     const query = client.query({
       name: "query-task-runs",
-      query: "SELECT * FROM trigger_dev.task_runs_v1 FINAL",
+      query: "SELECT * FROM trigger_dev.task_runs_v2 FINAL",
       schema: z.object({
         environment_id: z.string(),
         run_id: z.string(),

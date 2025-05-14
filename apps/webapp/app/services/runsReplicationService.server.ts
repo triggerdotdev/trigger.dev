@@ -1,4 +1,4 @@
-import type { ClickHouse, RawTaskRunPayloadV1, TaskRunV1 } from "@internal/clickhouse";
+import type { ClickHouse, RawTaskRunPayloadV1, TaskRunV2 } from "@internal/clickhouse";
 import { RedisOptions } from "@internal/redis";
 import {
   LogicalReplicationClient,
@@ -7,7 +7,7 @@ import {
   type MessageUpdate,
   type PgoutputMessage,
 } from "@internal/replication";
-import { startSpan, trace, type Tracer } from "@internal/tracing";
+import { recordSpanError, startSpan, trace, type Tracer } from "@internal/tracing";
 import { Logger, LogLevel } from "@trigger.dev/core/logger";
 import { tryCatch } from "@trigger.dev/core/utils";
 import { parsePacket } from "@trigger.dev/core/v3/utils/ioSerialization";
@@ -50,6 +50,7 @@ export type RunsReplicationServiceOptions = {
   logger?: Logger;
   logLevel?: LogLevel;
   tracer?: Tracer;
+  waitForAsyncInsert?: boolean;
 };
 
 type TaskRunInsert = { _version: bigint; run: TaskRun; event: "insert" | "update" | "delete" };
@@ -107,6 +108,7 @@ export class RunsReplicationService {
       ackIntervalSeconds: options.ackIntervalSeconds ?? 10,
       leaderLockRetryCount: options.leaderLockRetryCount ?? 240,
       leaderLockRetryIntervalMs: options.leaderLockRetryIntervalMs ?? 500,
+      tracer: options.tracer,
     });
 
     this._concurrentFlushScheduler = new ConcurrentFlushScheduler<TaskRunInsert>({
@@ -115,6 +117,7 @@ export class RunsReplicationService {
       maxConcurrency: options.maxFlushConcurrency ?? 100,
       callback: this.#flushBatch.bind(this),
       logger: new Logger("ConcurrentFlushScheduler", options.logLevel ?? "info"),
+      tracer: options.tracer,
     });
 
     this._replicationClient.events.on("data", async ({ lsn, log, parseDuration }) => {
@@ -404,9 +407,6 @@ export class RunsReplicationService {
 
   async #flushBatch(flushId: string, batch: Array<TaskRunInsert>) {
     if (batch.length === 0) {
-      this.logger.debug("No runs to flush", {
-        flushId,
-      });
       return;
     }
 
@@ -437,10 +437,8 @@ export class RunsReplicationService {
         payloadInserts: payloadInserts.length,
       });
 
-      await Promise.all([
-        this.#insertTaskRunInserts(taskRunInserts),
-        this.#insertPayloadInserts(payloadInserts),
-      ]);
+      await this.#insertTaskRunInserts(taskRunInserts);
+      await this.#insertPayloadInserts(payloadInserts);
 
       this.logger.debug("Flushed inserts", {
         flushId,
@@ -450,51 +448,59 @@ export class RunsReplicationService {
     });
   }
 
-  async #insertTaskRunInserts(taskRunInserts: TaskRunV1[]) {
-    const [insertError, insertResult] = await this.options.clickhouse.taskRuns.insert(
-      taskRunInserts,
-      {
-        params: {
-          clickhouse_settings: {
-            wait_for_async_insert: 1,
+  async #insertTaskRunInserts(taskRunInserts: TaskRunV2[]) {
+    return await startSpan(this._tracer, "insertTaskRunsInserts", async (span) => {
+      const [insertError, insertResult] = await this.options.clickhouse.taskRuns.insert(
+        taskRunInserts,
+        {
+          params: {
+            clickhouse_settings: {
+              wait_for_async_insert: this.options.waitForAsyncInsert ? 1 : 0,
+            },
           },
-        },
+        }
+      );
+
+      if (insertError) {
+        this.logger.error("Error inserting task run inserts", {
+          error: insertError,
+        });
+
+        recordSpanError(span, insertError);
       }
-    );
 
-    if (insertError) {
-      this.logger.error("Error inserting task run inserts", {
-        error: insertError,
-      });
-    }
-
-    return insertResult;
+      return insertResult;
+    });
   }
 
   async #insertPayloadInserts(payloadInserts: RawTaskRunPayloadV1[]) {
-    const [insertError, insertResult] = await this.options.clickhouse.taskRuns.insertPayloads(
-      payloadInserts,
-      {
-        params: {
-          clickhouse_settings: {
-            wait_for_async_insert: 1,
+    return await startSpan(this._tracer, "insertPayloadInserts", async (span) => {
+      const [insertError, insertResult] = await this.options.clickhouse.taskRuns.insertPayloads(
+        payloadInserts,
+        {
+          params: {
+            clickhouse_settings: {
+              wait_for_async_insert: this.options.waitForAsyncInsert ? 1 : 0,
+            },
           },
-        },
+        }
+      );
+
+      if (insertError) {
+        this.logger.error("Error inserting payload inserts", {
+          error: insertError,
+        });
+
+        recordSpanError(span, insertError);
       }
-    );
 
-    if (insertError) {
-      this.logger.error("Error inserting payload inserts", {
-        error: insertError,
-      });
-    }
-
-    return insertResult;
+      return insertResult;
+    });
   }
 
   async #prepareRunInserts(
     batchedRun: TaskRunInsert
-  ): Promise<{ taskRunInsert?: TaskRunV1; payloadInsert?: RawTaskRunPayloadV1 }> {
+  ): Promise<{ taskRunInsert?: TaskRunV2; payloadInsert?: RawTaskRunPayloadV1 }> {
     this.logger.debug("Preparing run", {
       batchedRun,
     });
@@ -547,7 +553,7 @@ export class RunsReplicationService {
     environmentType: string,
     event: "insert" | "update" | "delete",
     _version: bigint
-  ): Promise<TaskRunV1> {
+  ): Promise<TaskRunV2> {
     const output = await this.#prepareJson(run.output, run.outputType);
 
     return {

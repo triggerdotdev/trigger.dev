@@ -2,7 +2,7 @@ import { ClickHouseSettings } from "@clickhouse/client";
 import { z } from "zod";
 import { ClickhouseWriter } from "./client/types.js";
 
-export const TaskRunV1 = z.object({
+export const TaskRunV2 = z.object({
   environment_id: z.string(),
   organization_id: z.string(),
   project_id: z.string(),
@@ -46,13 +46,13 @@ export const TaskRunV1 = z.object({
   _is_deleted: z.number().int().default(0),
 });
 
-export type TaskRunV1 = z.input<typeof TaskRunV1>;
+export type TaskRunV2 = z.input<typeof TaskRunV2>;
 
 export function insertTaskRuns(ch: ClickhouseWriter, settings?: ClickHouseSettings) {
   return ch.insert({
     name: "insertTaskRuns",
-    table: "trigger_dev.task_runs_v1",
-    schema: TaskRunV1,
+    table: "trigger_dev.task_runs_v2",
+    schema: TaskRunV2,
     settings: {
       async_insert: 1,
       wait_for_async_insert: 0,
