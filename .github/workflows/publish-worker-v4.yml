@@ -85,5 +85,5 @@ jobs:
         with:
           file: ./apps/${{ matrix.package }}/Containerfile
           platforms: linux/amd64,linux/arm64
-          tags: ${{ steps.get_tag.outputs.tag }}
+          tags: ${{ steps.set_tags.outputs.image_tags }}
           push: true
