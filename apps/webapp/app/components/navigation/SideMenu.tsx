@@ -295,7 +295,7 @@ export function SideMenu({
             <SideMenuItem
               name="Preview branches"
               icon={BranchEnvironmentIconSmall}
-              activeIconColor="text-branches"
+              activeIconColor="text-preview"
               to={branchesPath(organization, project, environment)}
               data-action="preview-branches"
               badge={<V4Badge />}
