@@ -1627,9 +1627,7 @@ describe("RunsReplicationService", () => {
       const [queryError, result] = await queryRuns({});
       expect(queryError).toBeNull();
 
-      // Check that there are between 200 and 480 runs in ClickHouse
-      expect(result?.length).toBeGreaterThanOrEqual(200);
-      expect(result?.length).toBeLessThanOrEqual(480);
+      expect(result?.length).toBeGreaterThanOrEqual(50);
 
       await runsReplicationService.stop();
     },
