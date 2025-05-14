@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import { env as stdEnv } from "std-env";
 import { z } from "zod";
-import { AdditionalEnvVars, BoolEnv } from "./envUtil.js";
+import { AdditionalEnvVars, BoolEnv, CoercedBoolean } from "./envUtil.js";
 
 const Env = z.object({
   // This will come from `spec.nodeName` in k8s
@@ -45,7 +45,7 @@ const Env = z.object({
   // Used by the workload manager, e.g docker/k8s
   DOCKER_NETWORK: z.string().default("host"),
   OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url(),
-  ENFORCE_MACHINE_PRESETS: z.coerce.boolean().default(false),
+  ENFORCE_MACHINE_PRESETS: CoercedBoolean.default(false),
   KUBERNETES_IMAGE_PULL_SECRETS: z.string().optional(), // csv
 
   // Used by the resource monitor
