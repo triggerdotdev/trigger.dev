@@ -23,6 +23,11 @@ function initializeRunsReplicationInstance() {
   const clickhouse = new ClickHouse({
     url: env.RUN_REPLICATION_CLICKHOUSE_URL,
     name: "runs-replication",
+    keepAlive: {
+      enabled: env.RUN_REPLICATION_KEEP_ALIVE_ENABLED === "1",
+      idleSocketTtl: env.RUN_REPLICATION_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
+    },
+    logLevel: env.RUN_REPLICATION_LOG_LEVEL,
   });
 
   const service = new RunsReplicationService({

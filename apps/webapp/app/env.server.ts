@@ -769,6 +769,8 @@ const EnvironmentSchema = z.object({
   RUN_REPLICATION_LEADER_LOCK_ADDITIONAL_TIME_MS: z.coerce.number().int().default(10_000),
   RUN_REPLICATION_LEADER_LOCK_RETRY_INTERVAL_MS: z.coerce.number().int().default(500),
   RUN_REPLICATION_WAIT_FOR_ASYNC_INSERT: z.string().default("0"),
+  RUN_REPLICATION_KEEP_ALIVE_ENABLED: z.string().default("1"),
+  RUN_REPLICATION_KEEP_ALIVE_IDLE_SOCKET_TTL_MS: z.coerce.number().int().default(9_000),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;
