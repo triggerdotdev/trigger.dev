@@ -40,8 +40,8 @@ import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
 import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
 import { useFeatures } from "~/hooks/useFeatures";
 import { DialogContent, DialogTrigger, Dialog } from "./primitives/Dialog";
-import { NewBranchPanel } from "~/routes/resources.branches.new";
 import { V4Badge } from "./V4Badge";
+import { NewBranchPanel } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.branches/route";
 
 export function HasNoTasksDev() {
   return (
@@ -491,7 +491,7 @@ export function BranchesNoBranches({
   if (limits.used >= limits.limit) {
     return (
       <InfoPanel
-        title="Upgrade to get more branches"
+        title="Upgrade to get preview branches"
         icon={BranchEnvironmentIconSmall}
         iconClassName="text-preview"
         panelClassName="max-w-full"
@@ -510,7 +510,7 @@ export function BranchesNoBranches({
       >
         <Paragraph spacing variant="small">
           You've reached the limit ({limits.used}/{limits.limit}) of branches for your plan. Upgrade
-          to get more branches.
+          to get branches.
         </Paragraph>
       </InfoPanel>
     );

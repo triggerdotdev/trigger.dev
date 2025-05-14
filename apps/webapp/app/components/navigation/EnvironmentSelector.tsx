@@ -1,25 +1,17 @@
-import { conform, useForm } from "@conform-to/react";
-import { parse } from "@conform-to/zod";
-import { ChevronRightIcon, Cog8ToothIcon, PlusIcon } from "@heroicons/react/20/solid";
-import { DialogClose } from "@radix-ui/react-dialog";
-import { Form, useActionData, useNavigation } from "@remix-run/react";
-import { GitBranchIcon } from "lucide-react";
+import { ChevronRightIcon, Cog8ToothIcon } from "@heroicons/react/20/solid";
+import { useNavigation } from "@remix-run/react";
 import { useEffect, useRef, useState } from "react";
-import { z } from "zod";
+import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
+import { useEnvironment } from "~/hooks/useEnvironment";
 import { useEnvironmentSwitcher } from "~/hooks/useEnvironmentSwitcher";
 import { useFeatures } from "~/hooks/useFeatures";
 import { useOrganization, type MatchedOrganization } from "~/hooks/useOrganizations";
+import { useProject } from "~/hooks/useProject";
 import { cn } from "~/utils/cn";
 import { branchesPath, docsPath, v3BillingPath } from "~/utils/pathBuilder";
 import { EnvironmentCombo } from "../environments/EnvironmentLabel";
-import { Button, ButtonContent } from "../primitives/Buttons";
-import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "../primitives/Dialog";
-import { Fieldset } from "../primitives/Fieldset";
-import { FormButtons } from "../primitives/FormButtons";
-import { FormError } from "../primitives/FormError";
-import { Input } from "../primitives/Input";
-import { InputGroup } from "../primitives/InputGroup";
-import { Label } from "../primitives/Label";
+import { ButtonContent } from "../primitives/Buttons";
+import { Header2 } from "../primitives/Headers";
 import { Paragraph } from "../primitives/Paragraph";
 import {
   Popover,
@@ -29,14 +21,9 @@ import {
   PopoverSectionHeader,
   PopoverTrigger,
 } from "../primitives/Popover";
-import { type SideMenuEnvironment, type SideMenuProject } from "./SideMenu";
-import { schema } from "~/routes/resources.branches.new";
-import { useProject } from "~/hooks/useProject";
-import { useEnvironment } from "~/hooks/useEnvironment";
-import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
-import { Header2 } from "../primitives/Headers";
 import { TextLink } from "../primitives/TextLink";
 import { V4Badge } from "../V4Badge";
+import { type SideMenuEnvironment, type SideMenuProject } from "./SideMenu";
 
 export function EnvironmentSelector({
   organization,
@@ -191,6 +178,14 @@ function Branches({
     }, 150);
   };
 
+  const activeBranches = branchEnvironments.filter((env) => env.archivedAt === null);
+  const state =
+    branchEnvironments.length === 0
+      ? "no-branches"
+      : activeBranches.length === 0
+      ? "no-active-branches"
+      : "has-branches";
+
   return (
     <Popover onOpenChange={(open) => setMenuOpen(open)} open={isMenuOpen}>
       <div onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} className="flex">
@@ -216,7 +211,7 @@ function Branches({
           onMouseEnter={handleMouseEnter}
           onMouseLeave={handleMouseLeave}
         >
-          {branchEnvironments.length > 0 ? (
+          {state === "has-branches" ? (
             <div className="flex flex-col gap-1 p-1">
               {branchEnvironments
                 .filter((env) => env.archivedAt === null)
@@ -224,13 +219,13 @@ function Branches({
                   <PopoverMenuItem
                     key={env.id}
                     to={urlForEnvironment(env)}
-                    title={<span className="block text-preview">{env.branchName}</span>}
-                    icon={<BranchEnvironmentIconSmall className="size-4 text-preview" />}
+                    title={<span className="block w-full text-preview">{env.branchName}</span>}
+                    icon={<BranchEnvironmentIconSmall className="size-4 shrink-0 text-preview" />}
                     isSelected={env.id === currentEnvironment.id}
                   />
                 ))}
             </div>
-          ) : (
+          ) : state === "no-branches" ? (
             <div className="flex max-w-sm flex-col gap-1 p-3">
               <div className="flex items-center gap-1">
                 <BranchEnvironmentIconSmall className="size-4 text-preview" />
@@ -244,6 +239,10 @@ function Branches({
                 Branches are only available when using <V4Badge inline /> or above. Read our{" "}
                 <TextLink to={docsPath("upgrade-to-v4")}>v4 upgrade guide</TextLink> to learn more.
               </Paragraph>
+            </div>
+          ) : (
+            <div className="flex max-w-sm flex-col gap-1 p-3">
+              <Paragraph variant="extra-small">All branches are archived.</Paragraph>
             </div>
           )}
           <div className="border-t border-charcoal-700 p-1">

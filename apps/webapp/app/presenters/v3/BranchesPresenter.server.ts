@@ -79,7 +79,7 @@ export class BranchesPresenter {
         branchableEnvironment: null,
         currentPage: page,
         totalPages: 0,
-        totalCount: 0,
+        hasBranches: false,
         branches: [],
         hasFilters: false,
         limits: {
@@ -137,11 +137,20 @@ export class BranchesPresenter {
       take: BRANCHES_PER_PAGE,
     });
 
+    const totalBranches = await this.#prismaClient.runtimeEnvironment.count({
+      where: {
+        projectId: project.id,
+        branchName: {
+          not: null,
+        },
+      },
+    });
+
     return {
       branchableEnvironment,
       currentPage: page,
       totalPages: Math.ceil(visibleCount / BRANCHES_PER_PAGE),
-      totalCount: visibleCount,
+      hasBranches: totalBranches > 0,
       branches: branches.flatMap((branch) => {
         if (branch.branchName === null) {
           return [];

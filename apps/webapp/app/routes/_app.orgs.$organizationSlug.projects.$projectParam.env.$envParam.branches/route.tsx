@@ -1,5 +1,6 @@
+import { conform, useForm } from "@conform-to/react";
+import { parse } from "@conform-to/zod";
 import {
-  ArchiveBoxIcon,
   ArrowRightIcon,
   ArrowUpCircleIcon,
   CheckIcon,
@@ -7,15 +8,18 @@ import {
   PlusIcon,
 } from "@heroicons/react/20/solid";
 import { BookOpenIcon } from "@heroicons/react/24/solid";
-import { useLocation, useNavigate, useSearchParams } from "@remix-run/react";
-import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { DialogClose } from "@radix-ui/react-dialog";
+import { Form, useActionData, useSearchParams } from "@remix-run/react";
+import { ActionFunctionArgs, json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { useCallback } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
 import { BranchesNoBranchableEnvironment, BranchesNoBranches } from "~/components/BlankStatePanels";
 import { Feedback } from "~/components/Feedback";
+import { V4Title } from "~/components/V4Badge";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
+import { InlineCode } from "~/components/code/InlineCode";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { CopyableText } from "~/components/primitives/CopyableText";
@@ -23,15 +27,21 @@ import { DateTime } from "~/components/primitives/DateTime";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTrigger,
 } from "~/components/primitives/Dialog";
+import { Fieldset } from "~/components/primitives/Fieldset";
+import { FormButtons } from "~/components/primitives/FormButtons";
+import { FormError } from "~/components/primitives/FormError";
 import { Header3 } from "~/components/primitives/Headers";
+import { Hint } from "~/components/primitives/Hint";
 import { Input } from "~/components/primitives/Input";
+import { InputGroup } from "~/components/primitives/InputGroup";
+import { Label } from "~/components/primitives/Label";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { PaginationControls } from "~/components/primitives/Pagination";
+import { Paragraph } from "~/components/primitives/Paragraph";
 import { PopoverMenuItem } from "~/components/primitives/Popover";
 import * as Property from "~/components/primitives/PropertyTable";
 import { Switch } from "~/components/primitives/Switch";
@@ -46,26 +56,23 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { InfoIconTooltip, SimpleTooltip } from "~/components/primitives/Tooltip";
-import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
-import { usePathName } from "~/hooks/usePathName";
 import { useProject } from "~/hooks/useProject";
 import { useThrottle } from "~/hooks/useThrottle";
+import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { BranchesPresenter } from "~/presenters/v3/BranchesPresenter.server";
 import { requireUserId } from "~/services/session.server";
+import { UpsertBranchService } from "~/services/upsertBranch.server";
 import { cn } from "~/utils/cn";
 import {
+  branchesPath,
   docsPath,
   ProjectParamSchema,
   v3BillingPath,
   v3EnvironmentPath,
 } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
-import { NewBranchPanel } from "../resources.branches.new";
-import { ArchiveIcon, UnarchiveIcon } from "~/assets/icons/ArchiveIcon";
-import { V4Badge, V4Title } from "~/components/V4Badge";
-import { ArchiveButton, UnarchiveButton } from "../resources.branches.archive";
-import { Paragraph } from "~/components/primitives/Paragraph";
+import { ArchiveButton } from "../resources.branches.archive";
 
 export const BranchesOptions = z.object({
   search: z.string().optional(),
@@ -98,6 +105,62 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 };
 
+export const CreateBranchOptions = z.object({
+  parentEnvironmentId: z.string(),
+  branchName: z.string().min(1),
+  git: z
+    .object({
+      repoOwner: z.string(),
+      repoName: z.string(),
+      refFull: z.string(),
+      refType: z.enum(["branch", "tag", "commit", "pull_request"]),
+      commitSha: z.string(),
+      createdBy: z.string().optional(),
+      pullRequestNumber: z.number().optional(),
+    })
+    .optional(),
+});
+
+export type CreateBranchOptions = z.infer<typeof CreateBranchOptions>;
+
+export const schema = CreateBranchOptions.and(
+  z.object({
+    failurePath: z.string(),
+  })
+);
+
+export async function action({ request }: ActionFunctionArgs) {
+  const userId = await requireUserId(request);
+
+  const formData = await request.formData();
+  const submission = parse(formData, { schema });
+
+  if (!submission.value) {
+    return redirectWithErrorMessage("/", request, "Invalid form data");
+  }
+
+  const upsertBranchService = new UpsertBranchService();
+  const result = await upsertBranchService.call(userId, submission.value);
+
+  if (result.success) {
+    if (result.alreadyExisted) {
+      submission.error = {
+        branchName: `Branch "${result.branch.branchName}" already exists. You can archive it and create a new one with the same name.`,
+      };
+      return json(submission);
+    }
+
+    return redirectWithSuccessMessage(
+      branchesPath(result.organization, result.project, result.branch),
+      request,
+      `Branch "${result.branch.branchName}" created`
+    );
+  }
+
+  submission.error = { branchName: result.error };
+  return json(submission);
+}
+
 export default function Page() {
   const {
     branchableEnvironment,
@@ -106,7 +169,7 @@ export default function Page() {
     limits,
     currentPage,
     totalPages,
-    totalCount,
+    hasBranches,
   } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
@@ -179,7 +242,7 @@ export default function Page() {
       </NavBar>
       <PageBody scrollable={false}>
         <div className="grid max-h-full min-h-full grid-rows-[auto_1fr_auto]">
-          {totalCount === 0 && !hasFilters ? (
+          {!hasBranches ? (
             <MainCenteredContainer className="max-w-md">
               <BranchesNoBranches
                 parentEnvironment={branchableEnvironment}
@@ -221,8 +284,8 @@ export default function Page() {
                   </TableHeader>
                   <TableBody>
                     {branches.length === 0 ? (
-                      <TableBlankRow colSpan={10}>
-                        There are no matches for your filters
+                      <TableBlankRow colSpan={6}>
+                        <Paragraph>There are no matches for your filters</Paragraph>
                       </TableBlankRow>
                     ) : (
                       branches.map((branch) => {
@@ -268,15 +331,9 @@ export default function Page() {
                                     leadingIconClassName="text-blue-500"
                                     title="View branch"
                                   />
-                                  {branch.archivedAt ? (
-                                    <UnarchiveButton
-                                      environment={branch}
-                                      limits={limits}
-                                      canUpgrade={canUpgrade ?? false}
-                                    />
-                                  ) : (
+                                  {!branch.archivedAt ? (
                                     <ArchiveButton environment={branch} />
-                                  )}
+                                  ) : null}
                                 </>
                               }
                             />
@@ -461,5 +518,66 @@ function UpgradePanel({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+export function NewBranchPanel({ parentEnvironment }: { parentEnvironment: { id: string } }) {
+  const lastSubmission = useActionData<typeof action>();
+
+  const [form, { parentEnvironmentId, branchName, failurePath }] = useForm({
+    id: "create-branch",
+    lastSubmission: lastSubmission as any,
+    onValidate({ formData }) {
+      return parse(formData, { schema });
+    },
+    shouldRevalidate: "onInput",
+  });
+
+  return (
+    <>
+      <DialogHeader>New branch</DialogHeader>
+      <div className="mt-2 flex flex-col gap-4">
+        <Form method="post" {...form.props} className="w-full">
+          <Fieldset className="max-w-full gap-y-3">
+            <input
+              value={parentEnvironment.id}
+              {...conform.input(parentEnvironmentId, { type: "hidden" })}
+            />
+            <input value={location.pathname} {...conform.input(failurePath, { type: "hidden" })} />
+            <InputGroup className="max-w-full">
+              <Label>Branch name</Label>
+              <Input {...conform.input(branchName)} />
+              <Hint>
+                Must not contain: spaces <InlineCode variant="extra-small">~</InlineCode>{" "}
+                <InlineCode variant="extra-small">^</InlineCode>{" "}
+                <InlineCode variant="extra-small">:</InlineCode>{" "}
+                <InlineCode variant="extra-small">?</InlineCode>{" "}
+                <InlineCode variant="extra-small">*</InlineCode>{" "}
+                <InlineCode variant="extra-small">{"["}</InlineCode>{" "}
+                <InlineCode variant="extra-small">\\</InlineCode>{" "}
+                <InlineCode variant="extra-small">//</InlineCode>{" "}
+                <InlineCode variant="extra-small">..</InlineCode>{" "}
+                <InlineCode variant="extra-small">{"@{"}</InlineCode>{" "}
+                <InlineCode variant="extra-small">.lock</InlineCode>
+              </Hint>
+              <FormError id={branchName.errorId}>{branchName.error}</FormError>
+            </InputGroup>
+            <FormError>{form.error}</FormError>
+            <FormButtons
+              confirmButton={
+                <Button type="submit" variant="primary/medium">
+                  Create branch
+                </Button>
+              }
+              cancelButton={
+                <DialogClose asChild>
+                  <Button variant="tertiary/medium">Cancel</Button>
+                </DialogClose>
+              }
+            />
+          </Fieldset>
+        </Form>
+      </div>
+    </>
   );
 }

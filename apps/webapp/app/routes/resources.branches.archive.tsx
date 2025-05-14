@@ -1,33 +1,22 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { PlusIcon } from "@heroicons/react/24/outline";
 import { DialogClose } from "@radix-ui/react-dialog";
-import { Form, useActionData, useLocation } from "@remix-run/react";
-import { type ActionFunctionArgs } from "@remix-run/server-runtime";
+import { Form, useActionData, useFetcher, useLocation } from "@remix-run/react";
+import { json, type ActionFunctionArgs } from "@remix-run/server-runtime";
 import { z } from "zod";
-import { ArchiveIcon, UnarchiveIcon } from "~/assets/icons/ArchiveIcon";
-import { Feedback } from "~/components/Feedback";
-import { Button, LinkButton } from "~/components/primitives/Buttons";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTrigger,
-} from "~/components/primitives/Dialog";
-import { Fieldset } from "~/components/primitives/Fieldset";
+import { ArchiveIcon } from "~/assets/icons/ArchiveIcon";
+import { Button } from "~/components/primitives/Buttons";
+import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { useOrganization } from "~/hooks/useOrganizations";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { ArchiveBranchService } from "~/services/archiveBranch.server";
 import { requireUserId } from "~/services/session.server";
-import { v3BillingPath, v3EnvironmentPath } from "~/utils/pathBuilder";
+import { branchesPath, v3EnvironmentPath } from "~/utils/pathBuilder";
 
 const ArchiveBranchOptions = z.object({
   environmentId: z.string(),
-  action: z.enum(["archive", "unarchive"]),
 });
 
 const schema = ArchiveBranchOptions.and(
@@ -52,11 +41,9 @@ export async function action({ request }: ActionFunctionArgs) {
 
   if (result.success) {
     return redirectWithSuccessMessage(
-      submission.value.redirectPath,
+      branchesPath(result.organization, result.project, result.branch),
       request,
-      `Branch "${result.branch.branchName}" ${
-        submission.value.action === "archive" ? "archived" : "unarchived"
-      }`
+      `Branch "${result.branch.branchName}" archived`
     );
   }
 
@@ -68,10 +55,10 @@ export function ArchiveButton({
 }: {
   environment: { id: string; branchName: string };
 }) {
+  const lastSubmission = useActionData<typeof action>();
   const location = useLocation();
-  const lastSubmission = useActionData();
 
-  const [form, { environmentId, action, redirectPath }] = useForm({
+  const [form, { environmentId, redirectPath }] = useForm({
     id: "archive-branch",
     lastSubmission: lastSubmission as any,
     onValidate({ formData }) {
@@ -81,17 +68,9 @@ export function ArchiveButton({
   });
 
   return (
-    <>
-      <Form method="post" action="/resources/branches/archive" {...form.props} className="w-full">
-        <input value={environment.id} {...conform.input(environmentId, { type: "hidden" })} />
-        <input value={"archive"} {...conform.input(action, { type: "hidden" })} />
-        <input
-          value={`${location.pathname}${location.search}`}
-          {...conform.input(redirectPath, { type: "hidden" })}
-        />
-        <FormError>{form.error}</FormError>
+    <Dialog>
+      <DialogTrigger asChild>
         <Button
-          type="submit"
           variant="small-menu-item"
           LeadingIcon={ArchiveIcon}
           leadingIconClassName="text-error"
@@ -101,92 +80,48 @@ export function ArchiveButton({
         >
           Archive branch
         </Button>
-      </Form>
-    </>
-  );
-}
-
-export function UnarchiveButton({
-  environment,
-  limits,
-  canUpgrade,
-}: {
-  environment: { id: string; branchName: string };
-  limits: { used: number; limit: number; isAtLimit: boolean };
-  canUpgrade: boolean;
-}) {
-  const location = useLocation();
-  const organization = useOrganization();
-  const lastSubmission = useActionData();
-
-  const [form, { environmentId, action, redirectPath }] = useForm({
-    id: "archive-branch",
-    lastSubmission: lastSubmission as any,
-    onValidate({ formData }) {
-      return parse(formData, { schema });
-    },
-    shouldRevalidate: "onInput",
-  });
-
-  if (limits.isAtLimit) {
-    return (
-      <Dialog>
-        <DialogTrigger asChild>
-          <Button
-            variant="small-menu-item"
-            LeadingIcon={UnarchiveIcon}
-            leadingIconClassName="text-text-dimmed"
-            fullWidth
-            textAlignLeft
-            className="w-full px-1.5 py-[0.9rem]"
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>Archive "{environment.branchName}"</DialogHeader>
+        <div className="mt-2 flex flex-col gap-4">
+          <Form
+            method="post"
+            action="/resources/branches/archive"
+            {...form.props}
+            className="w-full"
           >
-            Unarchive
-          </Button>
-        </DialogTrigger>
-        <DialogContent>
-          <DialogHeader>You've exceeded your branch limit</DialogHeader>
-          <div className="mt-2">
+            <input value={environment.id} {...conform.input(environmentId, { type: "hidden" })} />
+            <input
+              value={`${location.pathname}${location.search}`}
+              {...conform.input(redirectPath, { type: "hidden" })}
+            />
             <Paragraph spacing>
-              You've used {limits.used}/{limits.limit} of your branches.
+              This will <span className="text-text-bright">permanently</span> make this branch{" "}
+              <span className="text-text-bright">read-only</span>. You won't be able to trigger
+              runs, execute runs, or use the API for this branch.
             </Paragraph>
-            <Paragraph>You can archive one or upgrade your plan for more.</Paragraph>
-          </div>
-          <DialogFooter>
-            {canUpgrade ? (
-              <LinkButton variant="primary/small" to={v3BillingPath(organization)}>
-                Upgrade
-              </LinkButton>
-            ) : (
-              <Feedback
-                button={<Button variant="primary/small">Request more</Button>}
-                defaultValue="help"
-              />
-            )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    );
-  }
-
-  return (
-    <Form method="post" action="/resources/branches/archive" {...form.props} className="w-full">
-      <input value={environment.id} {...conform.input(environmentId, { type: "hidden" })} />
-      <input value={"unarchive"} {...conform.input(action, { type: "hidden" })} />
-      <input
-        value={`${location.pathname}${location.search}`}
-        {...conform.input(redirectPath, { type: "hidden" })}
-      />
-      <Button
-        type="submit"
-        variant="small-menu-item"
-        LeadingIcon={UnarchiveIcon}
-        leadingIconClassName="text-text-dimmed"
-        fullWidth
-        textAlignLeft
-        className="w-full px-1.5 py-[0.9rem]"
-      >
-        Unarchive
-      </Button>
-    </Form>
+            <Paragraph spacing>
+              You will still be able to view the branch and its associated runs.
+            </Paragraph>
+            <Paragraph spacing>
+              Once archived you can create a new branch with the same name.
+            </Paragraph>
+            <FormError>{form.error}</FormError>
+            <FormButtons
+              confirmButton={
+                <Button LeadingIcon={ArchiveIcon} type="submit" variant="danger/medium">
+                  Archive branch
+                </Button>
+              }
+              cancelButton={
+                <DialogClose asChild>
+                  <Button variant="tertiary/medium">Cancel</Button>
+                </DialogClose>
+              }
+            />
+          </Form>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

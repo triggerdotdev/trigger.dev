@@ -2,9 +2,9 @@ import { type PrismaClient, type PrismaClientOrTransaction } from "@trigger.dev/
 import slug from "slug";
 import { prisma } from "~/db.server";
 import { createApiKeyForEnv, createPkApiKeyForEnv } from "~/models/api-key.server";
-import { type CreateBranchOptions } from "~/routes/resources.branches.new";
 import { logger } from "./logger.server";
 import { getLimit } from "./platform.v3.server";
+import { type CreateBranchOptions } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.branches/route";
 
 //TODO Archive
 // - Save the slug in another column (archivedSlug)
