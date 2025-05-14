@@ -84,7 +84,8 @@ export function routeForEnvironmentSwitch({
  * Replace the /env/<slug>/ in the path so it's /env/<environmentSlug>
  */
 function replaceEnvInPath(path: string, environmentSlug: string) {
-  return path.replace(/env\/([a-z0-9-]+)/, `env/${environmentSlug}`);
+  //allow anything except /
+  return path.replace(/env\/([^/]+)/, `env/${environmentSlug}`);
 }
 
 function fullPath(location: Path) {

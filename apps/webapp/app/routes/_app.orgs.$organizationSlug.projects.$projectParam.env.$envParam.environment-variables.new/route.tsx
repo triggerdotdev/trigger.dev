@@ -236,23 +236,48 @@ export default function Page() {
                     />
                   ))}
                 {!hasStaging && (
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger>
-                        <TextLink
-                          to={v3BillingPath(organization)}
-                          className="flex w-fit cursor-pointer items-center gap-2 rounded border border-dashed border-charcoal-600 py-2.5 pl-3 pr-4 transition hover:border-charcoal-500 hover:bg-charcoal-850"
-                        >
-                          <LockClosedIcon className="size-4 text-charcoal-500" />
-                          <EnvironmentLabel environment={{ type: "STAGING" }} className="text-sm" />
-                        </TextLink>
-                      </TooltipTrigger>
-                      <TooltipContent className="flex items-center gap-2">
-                        <LockOpenIcon className="size-4 text-indigo-500" />
-                        Upgrade your plan to add a Staging environment.
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
+                  <>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger>
+                          <TextLink
+                            to={v3BillingPath(organization)}
+                            className="flex w-fit cursor-pointer items-center gap-2 rounded border border-dashed border-charcoal-600 py-2.5 pl-3 pr-4 transition hover:border-charcoal-500 hover:bg-charcoal-850"
+                          >
+                            <LockClosedIcon className="size-4 text-charcoal-500" />
+                            <EnvironmentLabel
+                              environment={{ type: "STAGING" }}
+                              className="text-sm"
+                            />
+                          </TextLink>
+                        </TooltipTrigger>
+                        <TooltipContent className="flex items-center gap-2">
+                          <LockOpenIcon className="size-4 text-indigo-500" />
+                          Upgrade your plan to add a Staging environment.
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger>
+                          <TextLink
+                            to={v3BillingPath(organization)}
+                            className="flex w-fit cursor-pointer items-center gap-2 rounded border border-dashed border-charcoal-600 py-2.5 pl-3 pr-4 transition hover:border-charcoal-500 hover:bg-charcoal-850"
+                          >
+                            <LockClosedIcon className="size-4 text-charcoal-500" />
+                            <EnvironmentLabel
+                              environment={{ type: "PREVIEW" }}
+                              className="text-sm"
+                            />
+                          </TextLink>
+                        </TooltipTrigger>
+                        <TooltipContent className="flex items-center gap-2">
+                          <LockOpenIcon className="size-4 text-indigo-500" />
+                          Upgrade your plan to add Preview branches.
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </>
                 )}
               </div>
               <FormError id={environmentIds.errorId}>{environmentIds.error}</FormError>

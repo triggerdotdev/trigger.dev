@@ -6,18 +6,6 @@ import { logger } from "./logger.server";
 import { getLimit } from "./platform.v3.server";
 import { type CreateBranchOptions } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.branches/route";
 
-//TODO Archive
-// - Save the slug in another column (archivedSlug)
-// - Scramble the slug and shortcode columns
-// - Disable creative, destructive actions in the dashboard
-//   - Replay, Cancel runs
-//   - Create, edit schedules
-
-// TODO Don't allow unarchiving
-
-//TODO
-// When finding an environment for the URL ($envParam) only find non-archived ones
-
 export class UpsertBranchService {
   #prismaClient: PrismaClient;
 

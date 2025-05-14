@@ -1,4 +1,3 @@
-import { GitBranchIcon } from "lucide-react";
 import {
   BranchEnvironmentIconSmall,
   DeployedEnvironmentIconSmall,
@@ -93,6 +92,10 @@ export function environmentTitle(environment: Environment, username?: string) {
 }
 
 export function environmentFullTitle(environment: Environment) {
+  if (environment.branchName) {
+    return environment.branchName;
+  }
+
   switch (environment.type) {
     case "PRODUCTION":
       return "Production";

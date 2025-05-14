@@ -24,6 +24,7 @@ import {
 import { TextLink } from "../primitives/TextLink";
 import { V4Badge } from "../V4Badge";
 import { type SideMenuEnvironment, type SideMenuProject } from "./SideMenu";
+import { Badge } from "../primitives/Badge";
 
 export function EnvironmentSelector({
   organization,
@@ -186,6 +187,8 @@ function Branches({
       ? "no-active-branches"
       : "has-branches";
 
+  const currentBranchIsArchived = environment.archivedAt !== null;
+
   return (
     <Popover onOpenChange={(open) => setMenuOpen(open)} open={isMenuOpen}>
       <div onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} className="flex">
@@ -211,40 +214,57 @@ function Branches({
           onMouseEnter={handleMouseEnter}
           onMouseLeave={handleMouseLeave}
         >
-          {state === "has-branches" ? (
-            <div className="flex flex-col gap-1 p-1">
-              {branchEnvironments
-                .filter((env) => env.archivedAt === null)
-                .map((env) => (
-                  <PopoverMenuItem
-                    key={env.id}
-                    to={urlForEnvironment(env)}
-                    title={<span className="block w-full text-preview">{env.branchName}</span>}
-                    icon={<BranchEnvironmentIconSmall className="size-4 shrink-0 text-preview" />}
-                    isSelected={env.id === currentEnvironment.id}
-                  />
-                ))}
-            </div>
-          ) : state === "no-branches" ? (
-            <div className="flex max-w-sm flex-col gap-1 p-3">
-              <div className="flex items-center gap-1">
-                <BranchEnvironmentIconSmall className="size-4 text-preview" />
-                <Header2>Create your first branch</Header2>
+          <div className="flex flex-col gap-1 p-1">
+            {currentBranchIsArchived && (
+              <PopoverMenuItem
+                key={environment.id}
+                to={urlForEnvironment(environment)}
+                title={
+                  <>
+                    <span className="block w-full text-preview">{environment.branchName}</span>
+                    <Badge variant="extra-small">Archived</Badge>
+                  </>
+                }
+                icon={<BranchEnvironmentIconSmall className="size-4 shrink-0 text-preview" />}
+                isSelected={environment.id === currentEnvironment.id}
+              />
+            )}
+            {state === "has-branches" ? (
+              <>
+                {branchEnvironments
+                  .filter((env) => env.archivedAt === null)
+                  .map((env) => (
+                    <PopoverMenuItem
+                      key={env.id}
+                      to={urlForEnvironment(env)}
+                      title={<span className="block w-full text-preview">{env.branchName}</span>}
+                      icon={<BranchEnvironmentIconSmall className="size-4 shrink-0 text-preview" />}
+                      isSelected={env.id === currentEnvironment.id}
+                    />
+                  ))}
+              </>
+            ) : state === "no-branches" ? (
+              <div className="flex max-w-sm flex-col gap-1 p-2">
+                <div className="flex items-center gap-1">
+                  <BranchEnvironmentIconSmall className="size-4 text-preview" />
+                  <Header2>Create your first branch</Header2>
+                </div>
+                <Paragraph spacing variant="small">
+                  Branches are a way to test new features in isolation before merging them into the
+                  main environment.
+                </Paragraph>
+                <Paragraph variant="small">
+                  Branches are only available when using <V4Badge inline /> or above. Read our{" "}
+                  <TextLink to={docsPath("upgrade-to-v4")}>v4 upgrade guide</TextLink> to learn
+                  more.
+                </Paragraph>
               </div>
-              <Paragraph spacing variant="small">
-                Branches are a way to test new features in isolation before merging them into the
-                main environment.
-              </Paragraph>
-              <Paragraph variant="small">
-                Branches are only available when using <V4Badge inline /> or above. Read our{" "}
-                <TextLink to={docsPath("upgrade-to-v4")}>v4 upgrade guide</TextLink> to learn more.
-              </Paragraph>
-            </div>
-          ) : (
-            <div className="flex max-w-sm flex-col gap-1 p-3">
-              <Paragraph variant="extra-small">All branches are archived.</Paragraph>
-            </div>
-          )}
+            ) : (
+              <div className="flex max-w-sm flex-col gap-1 p-2">
+                <Paragraph variant="extra-small">All branches are archived.</Paragraph>
+              </div>
+            )}
+          </div>
           <div className="border-t border-charcoal-700 p-1">
             <PopoverMenuItem
               to={branchesPath(organization, project, environment)}

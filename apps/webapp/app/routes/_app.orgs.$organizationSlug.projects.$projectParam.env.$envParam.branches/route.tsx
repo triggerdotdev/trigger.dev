@@ -73,6 +73,8 @@ import {
 } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { ArchiveButton } from "../resources.branches.archive";
+import { useEnvironment } from "~/hooks/useEnvironment";
+import { Badge } from "~/components/primitives/Badge";
 
 export const BranchesOptions = z.object({
   search: z.string().optional(),
@@ -173,6 +175,7 @@ export default function Page() {
   } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
+  const environment = useEnvironment();
 
   const plan = useCurrentPlan();
   const requiresUpgrade =
@@ -291,13 +294,20 @@ export default function Page() {
                       branches.map((branch) => {
                         const path = v3EnvironmentPath(organization, project, branch);
                         const cellClass = branch.archivedAt ? "opacity-50" : "";
+                        const isSelected = branch.id === environment.id;
 
                         return (
                           <TableRow key={branch.id}>
                             <TableCell isTabbableCell className={cellClass}>
                               <div className="flex items-center gap-1">
-                                <BranchEnvironmentIconSmall className="size-4" />
-                                <CopyableText value={branch.branchName ?? ""} />
+                                <BranchEnvironmentIconSmall
+                                  className={cn("size-4", isSelected && "text-preview")}
+                                />
+                                <CopyableText
+                                  value={branch.branchName ?? ""}
+                                  className={cn(isSelected && "text-preview")}
+                                />
+                                {isSelected && <Badge variant="extra-small">Current</Badge>}
                               </div>
                             </TableCell>
                             <TableCell className={cellClass}>
