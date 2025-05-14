@@ -53,14 +53,14 @@ export interface LogicalReplicationClientOptions {
   leaderLockExtendIntervalMs?: number;
 
   /**
-   * The number of times to retry acquiring the leader lock (default: 120)
-   */
-  leaderLockRetryCount?: number;
-
-  /**
    * The interval in ms to retry acquiring the leader lock (default: 500)
    */
   leaderLockRetryIntervalMs?: number;
+
+  /**
+   * The additional time in ms to retry acquiring the leader lock (default: 1000ms)
+   */
+  leaderLockAcquireAdditionalTimeMs?: number;
 
   /**
    * The interval in seconds to automatically acknowledge the last LSN if no ack has been sent (default: 10)
@@ -97,7 +97,7 @@ export class LogicalReplicationClient {
   private lastAcknowledgedLsn: string | null = null;
   private leaderLockTimeoutMs: number;
   private leaderLockExtendIntervalMs: number;
-  private leaderLockRetryCount: number;
+  private leaderLockAcquireAdditionalTimeMs: number;
   private leaderLockRetryIntervalMs: number;
   private leaderLockHeartbeatTimer: NodeJS.Timeout | null = null;
   private ackIntervalSeconds: number;
@@ -124,7 +124,7 @@ export class LogicalReplicationClient {
 
     this.leaderLockTimeoutMs = options.leaderLockTimeoutMs ?? 30000;
     this.leaderLockExtendIntervalMs = options.leaderLockExtendIntervalMs ?? 10000;
-    this.leaderLockRetryCount = options.leaderLockRetryCount ?? 120;
+    this.leaderLockAcquireAdditionalTimeMs = options.leaderLockAcquireAdditionalTimeMs ?? 1000;
     this.leaderLockRetryIntervalMs = options.leaderLockRetryIntervalMs ?? 500;
     this.ackIntervalSeconds = options.ackIntervalSeconds ?? 10;
 
@@ -578,34 +578,74 @@ export class LogicalReplicationClient {
   }
 
   async #acquireLeaderLock(): Promise<boolean> {
-    try {
-      this.leaderLock = await this.redlock.acquire(
-        [`logical-replication-client:${this.options.name}`],
-        this.leaderLockTimeoutMs,
-        {
-          retryCount: this.leaderLockRetryCount,
-          retryDelay: this.leaderLockRetryIntervalMs,
-        }
-      );
-    } catch (err) {
-      this.logger.error("Leader election failed", {
-        name: this.options.name,
-        table: this.options.table,
-        slotName: this.options.slotName,
-        publicationName: this.options.publicationName,
-        retryCount: this.leaderLockRetryCount,
-        retryIntervalMs: this.leaderLockRetryIntervalMs,
-        error: err,
-      });
+    const startTime = Date.now();
+    const maxWaitTime = this.leaderLockTimeoutMs + this.leaderLockAcquireAdditionalTimeMs;
 
-      return false;
+    this.logger.debug("Acquiring leader lock", {
+      name: this.options.name,
+      slotName: this.options.slotName,
+      publicationName: this.options.publicationName,
+      maxWaitTime,
+    });
+
+    let attempt = 0;
+
+    while (Date.now() - startTime < maxWaitTime) {
+      try {
+        this.leaderLock = await this.redlock.acquire(
+          [`logical-replication-client:${this.options.name}`],
+          this.leaderLockTimeoutMs
+        );
+
+        this.logger.debug("Acquired leader lock", {
+          name: this.options.name,
+          slotName: this.options.slotName,
+          publicationName: this.options.publicationName,
+          lockTimeoutMs: this.leaderLockTimeoutMs,
+          lockExtendIntervalMs: this.leaderLockExtendIntervalMs,
+          lock: this.leaderLock,
+          attempt,
+        });
+        return true;
+      } catch (err) {
+        attempt++;
+
+        this.logger.debug("Failed to acquire leader lock, retrying", {
+          name: this.options.name,
+          slotName: this.options.slotName,
+          publicationName: this.options.publicationName,
+          attempt,
+          retryIntervalMs: this.leaderLockRetryIntervalMs,
+          error: err,
+        });
+
+        await new Promise((resolve) => setTimeout(resolve, this.leaderLockRetryIntervalMs));
+      }
     }
 
-    return true;
+    this.logger.error("Leader election failed after retries", {
+      name: this.options.name,
+      table: this.options.table,
+      slotName: this.options.slotName,
+      publicationName: this.options.publicationName,
+      totalAttempts: attempt,
+      totalWaitTimeMs: Date.now() - startTime,
+    });
+    return false;
   }
 
   async #releaseLeaderLock() {
     if (!this.leaderLock) return;
+
+    this.logger.debug("Releasing leader lock", {
+      name: this.options.name,
+      slotName: this.options.slotName,
+      publicationName: this.options.publicationName,
+      lockTimeoutMs: this.leaderLockTimeoutMs,
+      lockExtendIntervalMs: this.leaderLockExtendIntervalMs,
+      lock: this.leaderLock,
+    });
+
     const [releaseError] = await tryCatch(this.leaderLock.release());
     this.leaderLock = null;
 
@@ -631,6 +671,9 @@ export class LogicalReplicationClient {
           name: this.options.name,
           slotName: this.options.slotName,
           publicationName: this.options.publicationName,
+          lockTimeoutMs: this.leaderLockTimeoutMs,
+          lockExtendIntervalMs: this.leaderLockExtendIntervalMs,
+          lock: this.leaderLock,
         });
       } catch (err) {
         this.logger.error("Failed to extend leader lock", {
@@ -638,6 +681,9 @@ export class LogicalReplicationClient {
           slotName: this.options.slotName,
           publicationName: this.options.publicationName,
           error: err,
+          lockTimeoutMs: this.leaderLockTimeoutMs,
+          lockExtendIntervalMs: this.leaderLockExtendIntervalMs,
+          lock: this.leaderLock,
         });
         // Optionally emit an error or handle loss of leadership
         this.events.emit("error", err instanceof Error ? err : new Error(String(err)));

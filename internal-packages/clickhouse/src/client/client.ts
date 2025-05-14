@@ -15,14 +15,22 @@ import type {
   ClickhouseWriter,
 } from "./types.js";
 import { generateErrorMessage } from "zod-error";
-import { Logger } from "@trigger.dev/core/logger";
+import { Logger, type LogLevel } from "@trigger.dev/core/logger";
+import type { Agent as HttpAgent } from "http";
+import type { Agent as HttpsAgent } from "https";
 
 export type ClickhouseConfig = {
   name: string;
   url: string;
   tracer?: Tracer;
+  keepAlive?: {
+    enabled?: boolean;
+    idleSocketTtl?: number;
+  };
+  httpAgent?: HttpAgent | HttpsAgent;
   clickhouseSettings?: ClickHouseSettings;
   logger?: Logger;
+  logLevel?: LogLevel;
 };
 
 export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
@@ -33,11 +41,12 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
 
   constructor(config: ClickhouseConfig) {
     this.name = config.name;
-    this.logger = config.logger ?? new Logger("ClickhouseClient", "debug");
+    this.logger = config.logger ?? new Logger("ClickhouseClient", config.logLevel ?? "info");
 
     this.client = createClient({
       url: config.url,
-
+      keep_alive: config.keepAlive,
+      http_agent: config.httpAgent,
       clickhouse_settings: {
         ...config.clickhouseSettings,
         output_format_json_quote_64bit_integers: 0,

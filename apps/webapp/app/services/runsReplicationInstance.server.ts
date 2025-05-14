@@ -23,6 +23,11 @@ function initializeRunsReplicationInstance() {
   const clickhouse = new ClickHouse({
     url: env.RUN_REPLICATION_CLICKHOUSE_URL,
     name: "runs-replication",
+    keepAlive: {
+      enabled: env.RUN_REPLICATION_KEEP_ALIVE_ENABLED === "1",
+      idleSocketTtl: env.RUN_REPLICATION_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
+    },
+    logLevel: env.RUN_REPLICATION_LOG_LEVEL,
   });
 
   const service = new RunsReplicationService({
@@ -45,7 +50,7 @@ function initializeRunsReplicationInstance() {
     flushBatchSize: env.RUN_REPLICATION_FLUSH_BATCH_SIZE,
     leaderLockTimeoutMs: env.RUN_REPLICATION_LEADER_LOCK_TIMEOUT_MS,
     leaderLockExtendIntervalMs: env.RUN_REPLICATION_LEADER_LOCK_EXTEND_INTERVAL_MS,
-    leaderLockRetryCount: env.RUN_REPLICATION_LEADER_LOCK_RETRY_COUNT,
+    leaderLockAcquireAdditionalTimeMs: env.RUN_REPLICATION_LEADER_LOCK_ADDITIONAL_TIME_MS,
     leaderLockRetryIntervalMs: env.RUN_REPLICATION_LEADER_LOCK_RETRY_INTERVAL_MS,
     ackIntervalSeconds: env.RUN_REPLICATION_ACK_INTERVAL_SECONDS,
     logLevel: env.RUN_REPLICATION_LOG_LEVEL,

@@ -3,29 +3,38 @@ import { ClickhouseClient } from "./client/client.js";
 import { ClickhouseReader, ClickhouseWriter } from "./client/types.js";
 import { NoopClient } from "./client/noop.js";
 import { insertTaskRuns, insertRawTaskRunPayloads } from "./taskRuns.js";
-import { Logger } from "@trigger.dev/core/logger";
+import { Logger, type LogLevel } from "@trigger.dev/core/logger";
+import type { Agent as HttpAgent } from "http";
+import type { Agent as HttpsAgent } from "https";
 
 export type * from "./taskRuns.js";
 
+export type ClickhouseCommonConfig = {
+  keepAlive?: {
+    enabled?: boolean;
+    idleSocketTtl?: number;
+  };
+  httpAgent?: HttpAgent | HttpsAgent;
+  clickhouseSettings?: ClickHouseSettings;
+  logger?: Logger;
+  logLevel?: LogLevel;
+};
+
 export type ClickHouseConfig =
-  | {
+  | ({
       name?: string;
       url?: string;
       writerUrl?: never;
       readerUrl?: never;
-      clickhouseSettings?: ClickHouseSettings;
-      logger?: Logger;
-    }
-  | {
+    } & ClickhouseCommonConfig)
+  | ({
       name?: never;
       url?: never;
       writerName?: string;
       writerUrl: string;
       readerName?: string;
       readerUrl: string;
-      clickhouseSettings?: ClickHouseSettings;
-      logger?: Logger;
-    };
+    } & ClickhouseCommonConfig);
 
 export class ClickHouse {
   public readonly reader: ClickhouseReader;
@@ -47,6 +56,9 @@ export class ClickHouse {
         url: config.url,
         clickhouseSettings: config.clickhouseSettings,
         logger: this.logger,
+        logLevel: config.logLevel,
+        keepAlive: config.keepAlive,
+        httpAgent: config.httpAgent,
       });
       this.reader = client;
       this.writer = client;
@@ -58,12 +70,18 @@ export class ClickHouse {
         url: config.readerUrl,
         clickhouseSettings: config.clickhouseSettings,
         logger: this.logger,
+        logLevel: config.logLevel,
+        keepAlive: config.keepAlive,
+        httpAgent: config.httpAgent,
       });
       this.writer = new ClickhouseClient({
         name: config.writerName ?? "clickhouse-writer",
         url: config.writerUrl,
         clickhouseSettings: config.clickhouseSettings,
         logger: this.logger,
+        logLevel: config.logLevel,
+        keepAlive: config.keepAlive,
+        httpAgent: config.httpAgent,
       });
 
       this._splitClients = true;
