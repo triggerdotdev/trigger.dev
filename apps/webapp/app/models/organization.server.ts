@@ -6,13 +6,13 @@ import type {
   User,
 } from "@trigger.dev/database";
 import { customAlphabet } from "nanoid";
-import slug from "slug";
-import { Prisma, prisma, type PrismaClientOrTransaction } from "~/db.server";
 import { generate } from "random-words";
-import { createApiKeyForEnv, createPkApiKeyForEnv, envSlug } from "./api-key.server";
+import slug from "slug";
+import { prisma, type PrismaClientOrTransaction } from "~/db.server";
 import { env } from "~/env.server";
 import { featuresForUrl } from "~/features.server";
-import { BranchGit } from "~/presenters/v3/BranchesPresenter.server";
+import { type BranchGit } from "~/presenters/v3/BranchesPresenter.server";
+import { createApiKeyForEnv, createPkApiKeyForEnv, envSlug } from "./api-key.server";
 
 export type { Organization };
 
@@ -120,65 +120,6 @@ export async function createEnvironment({
       isBranchableEnvironment,
     },
   });
-}
-
-export async function upsertBranchEnvironment({
-  organization,
-  project,
-  parentEnvironment,
-  branchName,
-  git,
-}: {
-  organization: Pick<Organization, "id" | "maximumConcurrencyLimit">;
-  project: Pick<Project, "id">;
-  parentEnvironment: RuntimeEnvironment;
-  branchName: string;
-  git?: BranchGit;
-}) {
-  const branchSlug = `${slug(`${parentEnvironment.slug}-${branchName}`)}`;
-  const apiKey = createApiKeyForEnv(parentEnvironment.type);
-  const pkApiKey = createPkApiKeyForEnv(parentEnvironment.type);
-  const shortcode = branchSlug;
-
-  const now = new Date();
-
-  const branch = await prisma.runtimeEnvironment.upsert({
-    where: {
-      projectId_shortcode: {
-        projectId: project.id,
-        shortcode: shortcode,
-      },
-    },
-    create: {
-      slug: branchSlug,
-      apiKey,
-      pkApiKey,
-      shortcode,
-      maximumConcurrencyLimit: parentEnvironment.maximumConcurrencyLimit,
-      organization: {
-        connect: {
-          id: organization.id,
-        },
-      },
-      project: {
-        connect: { id: project.id },
-      },
-      branchName,
-      type: parentEnvironment.type,
-      parentEnvironment: {
-        connect: { id: parentEnvironment.id },
-      },
-      git: git ?? undefined,
-    },
-    update: {
-      git: git ?? undefined,
-    },
-  });
-
-  return {
-    alreadyExisted: branch.createdAt < now,
-    branch,
-  };
 }
 
 function createShortcode() {
