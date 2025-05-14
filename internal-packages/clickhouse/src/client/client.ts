@@ -1,6 +1,7 @@
 import {
   type ClickHouseClient,
   ClickHouseError,
+  ClickHouseLogLevel,
   type ClickHouseSettings,
   createClient,
 } from "@clickhouse/client";
@@ -30,7 +31,12 @@ export type ClickhouseConfig = {
   httpAgent?: HttpAgent | HttpsAgent;
   clickhouseSettings?: ClickHouseSettings;
   logger?: Logger;
+  maxOpenConnections?: number;
   logLevel?: LogLevel;
+  compression?: {
+    request?: boolean;
+    response?: boolean;
+  };
 };
 
 export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
@@ -47,10 +53,15 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
       url: config.url,
       keep_alive: config.keepAlive,
       http_agent: config.httpAgent,
+      compression: config.compression,
+      max_open_connections: config.maxOpenConnections,
       clickhouse_settings: {
         ...config.clickhouseSettings,
         output_format_json_quote_64bit_integers: 0,
         output_format_json_quote_64bit_floats: 0,
+      },
+      log: {
+        level: convertLogLevelToClickhouseLogLevel(config.logLevel),
       },
     });
 
@@ -286,5 +297,24 @@ function recordClickhouseError(span: Span, error: Error) {
     recordSpanError(span, error);
   } else {
     recordSpanError(span, error);
+  }
+}
+
+function convertLogLevelToClickhouseLogLevel(logLevel?: LogLevel) {
+  if (!logLevel) {
+    return ClickHouseLogLevel.INFO;
+  }
+
+  switch (logLevel) {
+    case "debug":
+      return ClickHouseLogLevel.DEBUG;
+    case "info":
+      return ClickHouseLogLevel.INFO;
+    case "warn":
+      return ClickHouseLogLevel.WARN;
+    case "error":
+      return ClickHouseLogLevel.ERROR;
+    default:
+      return ClickHouseLogLevel.INFO;
   }
 }

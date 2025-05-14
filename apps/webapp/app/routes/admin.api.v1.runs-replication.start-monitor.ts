@@ -1,8 +1,13 @@
 import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
+import { z } from "zod";
 import { prisma } from "~/db.server";
+import { startTcpBufferMonitor } from "~/services/monitorTcpBuffers.server";
 import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";
-import { getRunsReplicationGlobal } from "~/services/runsReplicationGlobal.server";
-import { runsReplicationInstance } from "~/services/runsReplicationInstance.server";
+import { getTcpMonitorGlobal, setTcpMonitorGlobal } from "~/services/runsReplicationGlobal.server";
+
+const schema = z.object({
+  intervalMs: z.number().min(1000).max(60_000).default(5_000),
+});
 
 export async function action({ request }: ActionFunctionArgs) {
   // Next authenticate the request
@@ -27,13 +32,23 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 
   try {
-    const globalService = getRunsReplicationGlobal();
+    const body = await request.json();
+    const { intervalMs } = schema.parse(body);
 
-    if (globalService) {
-      await globalService.stop();
-    } else {
-      await runsReplicationInstance?.stop();
+    const globalMonitor = getTcpMonitorGlobal();
+
+    if (globalMonitor) {
+      return json(
+        {
+          error: "Tcp buffer monitor already running, you must stop it before starting a new one",
+        },
+        {
+          status: 400,
+        }
+      );
     }
+
+    setTcpMonitorGlobal(startTcpBufferMonitor(intervalMs));
 
     return json({
       success: true,
