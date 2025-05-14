@@ -1,8 +1,10 @@
 import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { prisma } from "~/db.server";
 import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";
-import { getRunsReplicationGlobal } from "~/services/runsReplicationGlobal.server";
-import { runsReplicationInstance } from "~/services/runsReplicationInstance.server";
+import {
+  getTcpMonitorGlobal,
+  unregisterTcpMonitorGlobal,
+} from "~/services/runsReplicationGlobal.server";
 
 export async function action({ request }: ActionFunctionArgs) {
   // Next authenticate the request
@@ -27,13 +29,14 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 
   try {
-    const globalService = getRunsReplicationGlobal();
+    const globalMonitor = getTcpMonitorGlobal();
 
-    if (globalService) {
-      await globalService.stop();
-    } else {
-      await runsReplicationInstance?.stop();
+    if (!globalMonitor) {
+      return json({ error: "Tcp buffer monitor not running" }, { status: 400 });
     }
+
+    clearInterval(globalMonitor);
+    unregisterTcpMonitorGlobal();
 
     return json({
       success: true,

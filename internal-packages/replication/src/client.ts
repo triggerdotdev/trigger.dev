@@ -673,7 +673,6 @@ export class LogicalReplicationClient {
           publicationName: this.options.publicationName,
           lockTimeoutMs: this.leaderLockTimeoutMs,
           lockExtendIntervalMs: this.leaderLockExtendIntervalMs,
-          lock: this.leaderLock,
         });
       } catch (err) {
         this.logger.error("Failed to extend leader lock", {
@@ -683,7 +682,6 @@ export class LogicalReplicationClient {
           error: err,
           lockTimeoutMs: this.leaderLockTimeoutMs,
           lockExtendIntervalMs: this.leaderLockExtendIntervalMs,
-          lock: this.leaderLock,
         });
         // Optionally emit an error or handle loss of leadership
         this.events.emit("error", err instanceof Error ? err : new Error(String(err)));

@@ -1,6 +1,7 @@
 import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { prisma } from "~/db.server";
 import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";
+import { getRunsReplicationGlobal } from "~/services/runsReplicationGlobal.server";
 import { runsReplicationInstance } from "~/services/runsReplicationInstance.server";
 
 export async function action({ request }: ActionFunctionArgs) {
@@ -26,7 +27,13 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 
   try {
-    await runsReplicationInstance?.start();
+    const globalService = getRunsReplicationGlobal();
+
+    if (globalService) {
+      await globalService.start();
+    } else {
+      await runsReplicationInstance?.start();
+    }
 
     return json({
       success: true,

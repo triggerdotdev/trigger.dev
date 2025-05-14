@@ -18,6 +18,11 @@ export type ClickhouseCommonConfig = {
   clickhouseSettings?: ClickHouseSettings;
   logger?: Logger;
   logLevel?: LogLevel;
+  compression?: {
+    request?: boolean;
+    response?: boolean;
+  };
+  maxOpenConnections?: number;
 };
 
 export type ClickHouseConfig =
@@ -59,6 +64,8 @@ export class ClickHouse {
         logLevel: config.logLevel,
         keepAlive: config.keepAlive,
         httpAgent: config.httpAgent,
+        maxOpenConnections: config.maxOpenConnections,
+        compression: config.compression,
       });
       this.reader = client;
       this.writer = client;
@@ -73,6 +80,8 @@ export class ClickHouse {
         logLevel: config.logLevel,
         keepAlive: config.keepAlive,
         httpAgent: config.httpAgent,
+        maxOpenConnections: config.maxOpenConnections,
+        compression: config.compression,
       });
       this.writer = new ClickhouseClient({
         name: config.writerName ?? "clickhouse-writer",
@@ -82,6 +91,8 @@ export class ClickHouse {
         logLevel: config.logLevel,
         keepAlive: config.keepAlive,
         httpAgent: config.httpAgent,
+        maxOpenConnections: config.maxOpenConnections,
+        compression: config.compression,
       });
 
       this._splitClients = true;

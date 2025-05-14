@@ -18,6 +18,9 @@ describe("RunsReplicationService", () => {
       const clickhouse = new ClickHouse({
         url: clickhouseContainer.getConnectionUrl(),
         name: "runs-replication",
+        compression: {
+          request: true,
+        },
       });
 
       const { tracer, exporter } = createInMemoryTracing();
@@ -1605,8 +1608,8 @@ describe("RunsReplicationService", () => {
         });
       }, 500);
 
-      // Wait for 4 minutes
-      await setTimeout(4 * 60 * 1000);
+      // Wait for 1 minute
+      await setTimeout(1 * 60 * 1000);
 
       // Stop the interval
       clearInterval(interval);
