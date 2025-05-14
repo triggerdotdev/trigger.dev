@@ -330,10 +330,6 @@ export class RunsReplicationService {
       return;
     }
 
-    this.logger.debug("Handling transaction", {
-      transaction,
-    });
-
     const lsnToUInt64Start = process.hrtime.bigint();
 
     // If there are events, we need to handle them
@@ -349,20 +345,32 @@ export class RunsReplicationService {
       }))
     );
 
-    const currentSpan = this._tracer.startSpan("handle_transaction", {
-      attributes: {
-        "transaction.xid": transaction.xid,
-        "transaction.replication_lag_ms": transaction.replicationLagMs,
-        "transaction.events": transaction.events.length,
-        "transaction.commit_end_lsn": transaction.commitEndLsn,
-        "transaction.parse_duration_ms": this._currentParseDurationMs ?? undefined,
-        "transaction.lsn_to_uint64_ms": lsnToUInt64DurationMs,
-        "transaction.version": _version.toString(),
-      },
-      startTime: transaction.beginStartTimestamp,
-    });
+    this._tracer
+      .startSpan("handle_transaction", {
+        attributes: {
+          "transaction.xid": transaction.xid,
+          "transaction.replication_lag_ms": transaction.replicationLagMs,
+          "transaction.events": transaction.events.length,
+          "transaction.commit_end_lsn": transaction.commitEndLsn,
+          "transaction.parse_duration_ms": this._currentParseDurationMs ?? undefined,
+          "transaction.lsn_to_uint64_ms": lsnToUInt64DurationMs,
+          "transaction.version": _version.toString(),
+        },
+        startTime: transaction.beginStartTimestamp,
+      })
+      .end();
 
-    currentSpan.end();
+    this.logger.debug("handle_transaction", {
+      transaction: {
+        xid: transaction.xid,
+        commitLsn: transaction.commitLsn,
+        commitEndLsn: transaction.commitEndLsn,
+        events: transaction.events.length,
+        parseDurationMs: this._currentParseDurationMs,
+        lsnToUInt64DurationMs,
+        version: _version.toString(),
+      },
+    });
   }
 
   async #acknowledgeLatestTransaction() {
@@ -387,7 +395,7 @@ export class RunsReplicationService {
     this._lastAcknowledgedAt = now;
     this._lastAcknowledgedLsn = this._latestCommitEndLsn;
 
-    this.logger.debug("Acknowledging transaction", {
+    this.logger.debug("acknowledge_latest_transaction", {
       commitEndLsn: this._latestCommitEndLsn,
       lastAcknowledgedAt: this._lastAcknowledgedAt,
     });
@@ -747,7 +755,7 @@ export class ConcurrentFlushScheduler<T> {
     const callback = this.config.callback;
 
     const promise = this.concurrencyLimiter(async () => {
-      await startSpan(this._tracer, "flushNextBatch", async (span) => {
+      return await startSpan(this._tracer, "flushNextBatch", async (span) => {
         const batchId = nanoid();
 
         span.setAttribute("batch_id", batchId);
@@ -756,26 +764,47 @@ export class ConcurrentFlushScheduler<T> {
         span.setAttribute("concurrency_pending_count", this.concurrencyLimiter.pendingCount);
         span.setAttribute("concurrency_concurrency", this.concurrencyLimiter.concurrency);
 
+        this.logger.debug("flush_next_batch", {
+          batchId,
+          batchSize: batch.length,
+          concurrencyActiveCount: this.concurrencyLimiter.activeCount,
+          concurrencyPendingCount: this.concurrencyLimiter.pendingCount,
+          concurrencyConcurrency: this.concurrencyLimiter.concurrency,
+        });
+
+        const start = performance.now();
+
         await callback(batchId, batch);
+
+        const end = performance.now();
+
+        const duration = end - start;
+
+        return {
+          batchId,
+          duration,
+        };
       });
     });
 
-    const [error] = await tryCatch(promise);
+    const [error, result] = await tryCatch(promise);
 
     if (error) {
-      this.logger.error("Error flushing batch", {
+      this.logger.error("flush_batch_error", {
         error,
       });
 
       this.failedBatchCount++;
+    } else {
+      this.logger.debug("flush_batch_complete", {
+        totalBatches: 1,
+        successfulBatches: 1,
+        failedBatches: 0,
+        totalFailedBatches: this.failedBatchCount,
+        duration: result?.duration,
+        batchId: result?.batchId,
+      });
     }
-
-    this.logger.debug("Batch flush complete", {
-      totalBatches: 1,
-      successfulBatches: 1,
-      failedBatches: 0,
-      totalFailedBatches: this.failedBatchCount,
-    });
   }
 }
 
