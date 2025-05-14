@@ -13,9 +13,9 @@ import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
-import { CreateBranchService } from "~/services/createBranch.server";
 import { requireUserId } from "~/services/session.server";
-import { v3EnvironmentPath } from "~/utils/pathBuilder";
+import { UpsertBranchService } from "~/services/upsertBranch.server";
+import { branchesPath, v3EnvironmentPath } from "~/utils/pathBuilder";
 
 export const CreateBranchOptions = z.object({
   parentEnvironmentId: z.string(),
@@ -40,13 +40,20 @@ export async function action({ request }: ActionFunctionArgs) {
     return redirectWithErrorMessage("/", request, "Invalid form data");
   }
 
-  const createBranchService = new CreateBranchService();
-
-  const result = await createBranchService.call(userId, submission.value);
+  const upsertBranchService = new UpsertBranchService();
+  const result = await upsertBranchService.call(userId, submission.value);
 
   if (result.success) {
+    if (result.alreadyExisted) {
+      return redirectWithErrorMessage(
+        submission.value.failurePath,
+        request,
+        `Branch "${result.branch.branchName}" already exists`
+      );
+    }
+
     return redirectWithSuccessMessage(
-      v3EnvironmentPath(result.organization, result.project, result.branch),
+      branchesPath(result.organization, result.project, result.branch),
       request,
       `Branch "${result.branch.branchName}" created`
     );

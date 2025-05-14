@@ -1,6 +1,6 @@
 import { type PrismaClient } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
-import { checkBranchLimit } from "./createBranch.server";
+import { checkBranchLimit } from "./upsertBranch.server";
 import { logger } from "./logger.server";
 
 export class ArchiveBranchService {

@@ -3,7 +3,7 @@ import { type PrismaClient, prisma } from "~/db.server";
 import { type Project } from "~/models/project.server";
 import { type User } from "~/models/user.server";
 import { type BranchesOptions } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.branches/route";
-import { checkBranchLimit } from "~/services/createBranch.server";
+import { checkBranchLimit } from "~/services/upsertBranch.server";
 import { getLimit } from "~/services/platform.v3.server";
 
 type Result = Awaited<ReturnType<BranchesPresenter["call"]>>;

@@ -140,7 +140,9 @@ export async function upsertBranchEnvironment({
   const pkApiKey = createPkApiKeyForEnv(parentEnvironment.type);
   const shortcode = branchSlug;
 
-  return prisma.runtimeEnvironment.upsert({
+  const now = new Date();
+
+  const branch = await prisma.runtimeEnvironment.upsert({
     where: {
       projectId_shortcode: {
         projectId: project.id,
@@ -172,6 +174,11 @@ export async function upsertBranchEnvironment({
       git: git ?? undefined,
     },
   });
+
+  return {
+    alreadyExisted: branch.createdAt < now,
+    branch,
+  };
 }
 
 function createShortcode() {

@@ -40,7 +40,7 @@ const BranchName = z.preprocess((val) => {
 //TODO
 // When finding an environment for the URL ($envParam) only find non-archived ones
 
-export class CreateBranchService {
+export class UpsertBranchService {
   #prismaClient: PrismaClient;
 
   constructor(prismaClient: PrismaClient = prisma) {
@@ -106,7 +106,8 @@ export class CreateBranchService {
 
       return {
         success: true as const,
-        branch,
+        alreadyExisted: branch.alreadyExisted,
+        branch: branch.branch,
         organization: parentEnvironment.organization,
         project: parentEnvironment.project,
       };
