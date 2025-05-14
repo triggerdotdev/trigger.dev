@@ -115,6 +115,10 @@ export const action: ActionFunction = async ({ request, params }) => {
     return redirectBackWithErrorMessage(request, "Environment not found");
   }
 
+  if (environment.archivedAt) {
+    return redirectBackWithErrorMessage(request, "This branch is archived");
+  }
+
   const testService = new TestTaskService();
   try {
     const run = await testService.call(environment, submission.value);
