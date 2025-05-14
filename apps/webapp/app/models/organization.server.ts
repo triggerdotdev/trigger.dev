@@ -7,7 +7,7 @@ import type {
 } from "@trigger.dev/database";
 import { customAlphabet } from "nanoid";
 import slug from "slug";
-import { prisma, type PrismaClientOrTransaction } from "~/db.server";
+import { Prisma, prisma, type PrismaClientOrTransaction } from "~/db.server";
 import { generate } from "random-words";
 import { createApiKeyForEnv, createPkApiKeyForEnv, envSlug } from "./api-key.server";
 import { env } from "~/env.server";
@@ -122,7 +122,7 @@ export async function createEnvironment({
   });
 }
 
-export function createBranchEnvironment({
+export async function upsertBranchEnvironment({
   organization,
   project,
   parentEnvironment,
@@ -135,13 +135,19 @@ export function createBranchEnvironment({
   branchName: string;
   git?: BranchGit;
 }) {
-  const branchSlug = `${slug(`${parentEnvironment.slug}-${branchName}`)}-${nanoid(4)}`;
+  const branchSlug = `${slug(`${parentEnvironment.slug}-${branchName}`)}`;
   const apiKey = createApiKeyForEnv(parentEnvironment.type);
   const pkApiKey = createPkApiKeyForEnv(parentEnvironment.type);
-  const shortcode = createShortcode().join("-");
+  const shortcode = branchSlug;
 
-  return prisma.runtimeEnvironment.create({
-    data: {
+  return prisma.runtimeEnvironment.upsert({
+    where: {
+      projectId_shortcode: {
+        projectId: project.id,
+        shortcode: shortcode,
+      },
+    },
+    create: {
       slug: branchSlug,
       apiKey,
       pkApiKey,
@@ -160,6 +166,9 @@ export function createBranchEnvironment({
       parentEnvironment: {
         connect: { id: parentEnvironment.id },
       },
+      git: git ?? undefined,
+    },
+    update: {
       git: git ?? undefined,
     },
   });

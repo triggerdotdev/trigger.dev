@@ -1,9 +1,44 @@
 import { type PrismaClient, type PrismaClientOrTransaction } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
-import { createBranchEnvironment } from "~/models/organization.server";
+import { upsertBranchEnvironment } from "~/models/organization.server";
 import { type CreateBranchOptions } from "~/routes/resources.branches.new";
 import { logger } from "./logger.server";
 import { getLimit } from "./platform.v3.server";
+import { z } from "zod";
+
+/*
+Regex that only allows 
+- alpha (upper, lower)
+- dashes
+- underscores
+- period
+- slashes
+- At least one character
+*/
+const branchRegEx = /[a-zA-Z\-_.]+/;
+
+// name schema, use on the frontend too to give errors in the browser
+const BranchName = z.preprocess((val) => {
+  return val;
+}, z.string());
+
+//TODO CreateBranchService
+//- Should "upsert" branch
+
+//TODO At the database layer prevent duplicate projectId, slug
+//look at /// The second one implemented in SQL only prevents a TaskRun + Waitpoint with a null batchIndex
+// @@unique([taskRunId, waitpointId, batchIndex])
+
+//TODO Archive
+// - Save the slug in another column
+// - Scramble the slug column (archivedSlug)
+
+//TODO unarchiving
+// - Only unarchive if there isn't an active branch with the same name
+// - Restore the slug from the other column
+
+//TODO
+// When finding an environment for the URL ($envParam) only find non-archived ones
 
 export class CreateBranchService {
   #prismaClient: PrismaClient;
@@ -62,7 +97,7 @@ export class CreateBranchService {
         };
       }
 
-      const branch = await createBranchEnvironment({
+      const branch = await upsertBranchEnvironment({
         organization: parentEnvironment.organization,
         project: parentEnvironment.project,
         parentEnvironment,
