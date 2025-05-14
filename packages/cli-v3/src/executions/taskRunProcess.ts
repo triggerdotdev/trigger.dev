@@ -145,7 +145,6 @@ export class TaskRunProcess {
     const fullEnv = {
       ...$env,
       OTEL_IMPORT_HOOK_INCLUDES: workerManifest.otelImportHook?.include?.join(","),
-      // TODO: this will probably need to use something different for bun (maybe --preload?)
       NODE_OPTIONS: execOptionsForRuntime(workerManifest.runtime, workerManifest, maxOldSpaceSize),
       PATH: process.env.PATH,
       TRIGGER_PROCESS_FORK_START_TIME: String(Date.now()),

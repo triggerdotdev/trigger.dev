@@ -474,7 +474,6 @@ export type GenerateContainerfileOptions = {
 };
 
 const BASE_IMAGE: Record<BuildRuntime, string> = {
-  bun: "imbios/bun-node:1.2.1-22-slim@sha256:6c31db8f11f0d37357ef8156c2dab684448b54a1fb50ca1c22bca82bce76c788",
   node: "node:21.7.3-bookworm-slim@sha256:dfc05dee209a1d7adf2ef189bd97396daad4e97c6eaa85778d6f75205ba1b0fb",
   "node-22":
     "node:22.12.0-bookworm-slim@sha256:a4b757cd491c7f0b57f57951f35f4e85b7e1ad54dbffca4cf9af0725e1650cd8",
@@ -487,9 +486,6 @@ export async function generateContainerfile(options: GenerateContainerfileOption
     case "node":
     case "node-22": {
       return await generateNodeContainerfile(options);
-    }
-    case "bun": {
-      return await generateBunContainerfile(options);
     }
   }
 }
@@ -519,104 +515,6 @@ const parseGenerateOptions = (options: GenerateContainerfileOptions) => {
     postInstallCommands,
   };
 };
-
-async function generateBunContainerfile(options: GenerateContainerfileOptions) {
-  const { baseImage, buildArgs, buildEnvVars, postInstallCommands, baseInstructions, packages } =
-    parseGenerateOptions(options);
-
-  return `# syntax=docker/dockerfile:1
-FROM ${baseImage} AS base
-
-${baseInstructions}
-
-ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && \
-  apt-get --fix-broken install -y && \
-  apt-get install -y --no-install-recommends ${packages} && \
-  apt-get clean && \
-  rm -rf /var/lib/apt/lists/*
-
-FROM base AS build
-
-RUN apt-get update && \
-  apt-get install -y --no-install-recommends python3 make g++ && \
-  apt-get clean && \
-  rm -rf /var/lib/apt/lists/*
-
-USER bun
-WORKDIR /app
-
-${buildArgs}
-
-${buildEnvVars}
-
-COPY --chown=bun:bun package.json ./
-RUN bun install --production --no-save
-
-# Now copy all the files
-# IMPORTANT: Do this after running npm install because npm i will wipe out the node_modules directory
-COPY --chown=bun:bun . .
-
-${postInstallCommands}
-
-FROM build AS indexer
-
-USER bun
-WORKDIR /app
-
-ARG TRIGGER_PROJECT_ID
-ARG TRIGGER_DEPLOYMENT_ID
-ARG TRIGGER_DEPLOYMENT_VERSION
-ARG TRIGGER_CONTENT_HASH
-ARG TRIGGER_PROJECT_REF
-ARG NODE_EXTRA_CA_CERTS
-ARG TRIGGER_SECRET_KEY
-ARG TRIGGER_API_URL
-
-ENV TRIGGER_PROJECT_ID=\${TRIGGER_PROJECT_ID} \
-    TRIGGER_DEPLOYMENT_ID=\${TRIGGER_DEPLOYMENT_ID} \
-    TRIGGER_DEPLOYMENT_VERSION=\${TRIGGER_DEPLOYMENT_VERSION} \
-    TRIGGER_PROJECT_REF=\${TRIGGER_PROJECT_REF} \
-    TRIGGER_CONTENT_HASH=\${TRIGGER_CONTENT_HASH} \
-    TRIGGER_SECRET_KEY=\${TRIGGER_SECRET_KEY} \
-    TRIGGER_API_URL=\${TRIGGER_API_URL} \
-    NODE_EXTRA_CA_CERTS=\${NODE_EXTRA_CA_CERTS} \
-    NODE_ENV=production
-
-# Run the indexer
-RUN bun run ${options.indexScript}
-
-# Development or production stage builds upon the base stage
-FROM base AS final
-
-USER bun
-WORKDIR /app
-
-ARG TRIGGER_PROJECT_ID
-ARG TRIGGER_DEPLOYMENT_ID
-ARG TRIGGER_DEPLOYMENT_VERSION
-ARG TRIGGER_CONTENT_HASH
-ARG TRIGGER_PROJECT_REF
-ARG NODE_EXTRA_CA_CERTS
-
-ENV TRIGGER_PROJECT_ID=\${TRIGGER_PROJECT_ID} \
-    TRIGGER_DEPLOYMENT_ID=\${TRIGGER_DEPLOYMENT_ID} \
-    TRIGGER_DEPLOYMENT_VERSION=\${TRIGGER_DEPLOYMENT_VERSION} \
-    TRIGGER_CONTENT_HASH=\${TRIGGER_CONTENT_HASH} \
-    TRIGGER_PROJECT_REF=\${TRIGGER_PROJECT_REF} \
-    NODE_EXTRA_CA_CERTS=\${NODE_EXTRA_CA_CERTS} \
-    NODE_ENV=production
-
-# Copy the files from the build stage
-COPY --from=build --chown=bun:bun /app ./
-
-# Copy the index.json file from the indexer stage
-COPY --from=indexer --chown=bun:bun /app/index.json ./
-
-ENTRYPOINT [ "dumb-init", "node", "${options.entrypoint}" ]
-CMD []
-  `;
-}
 
 async function generateNodeContainerfile(options: GenerateContainerfileOptions) {
   const { baseImage, buildArgs, buildEnvVars, postInstallCommands, baseInstructions, packages } =

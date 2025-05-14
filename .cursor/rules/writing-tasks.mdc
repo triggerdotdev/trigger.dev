@@ -1,6 +1,6 @@
 ---
-globs: **/trigger/**/*.ts, **/trigger/**/*.tsx,**/trigger/**/*.js,**/trigger/**/*.jsx
 description: Guidelines for writing Trigger.dev tasks
+globs: **/trigger/**/*.ts, **/trigger/**/*.tsx,**/trigger/**/*.js,**/trigger/**/*.jsx
 alwaysApply: false
 ---
 # How to write Trigger.dev tasks
@@ -1165,7 +1165,7 @@ telemetry: {
 Specify the runtime environment:
 
 ```ts
-runtime: "node", // or "bun" (experimental)
+runtime: "node",
 ```
 
 #### Machine settings

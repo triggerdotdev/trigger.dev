@@ -1804,19 +1804,6 @@ importers:
         specifier: 3.23.8
         version: 3.23.8
 
-  references/bun-catalog:
-    dependencies:
-      '@trigger.dev/sdk':
-        specifier: workspace:*
-        version: link:../../packages/trigger-sdk
-    devDependencies:
-      '@types/bun':
-        specifier: ^1.1.6
-        version: 1.1.6
-      trigger.dev:
-        specifier: workspace:*
-        version: link:../../packages/cli-v3
-
   references/d3-chat:
     dependencies:
       '@ai-sdk/anthropic':
@@ -18118,12 +18105,6 @@ packages:
       '@types/node': 20.14.14
     dev: true
 
-  /@types/bun@1.1.6:
-    resolution: {integrity: sha512-uJgKjTdX0GkWEHZzQzFsJkWp5+43ZS7HC8sZPFnOwnSo1AsNl2q9o2bFeS23disNDqbggEgyFkKCHl/w8iZsMA==}
-    dependencies:
-      bun-types: 1.1.17
-    dev: true
-
   /@types/caseless@0.12.5:
     resolution: {integrity: sha512-hWtVTC2q7hc7xZ/RLbxapMvDMgUnDvKvMOpKal4DrMyfGBUfB1oKaZlIRr6mJL+If3bAP6sV/QneGzF6tJjZDg==}
     dev: false
@@ -18501,12 +18482,6 @@ packages:
       undici-types: 5.26.5
     dev: false
 
-  /@types/node@20.12.14:
-    resolution: {integrity: sha512-scnD59RpYD91xngrQQLGkE+6UrHUPzeKZWhhjBSa3HSkwjbQc38+q3RoIVEwxQGRw3M+j5hpNAM+lgV3cVormg==}
-    dependencies:
-      undici-types: 5.26.5
-    dev: true
-
   /@types/node@20.14.14:
     resolution: {integrity: sha512-d64f00982fS9YoOgJkAMolK7MN8Iq3TDdVjchbYHdEmjth/DHowx82GnoA+tVUAN+7vxfYUgAzi+JXbKNd2SDQ==}
     dependencies:
@@ -18804,6 +18779,7 @@ packages:
     resolution: {integrity: sha512-vmQSUcfalpIq0R9q7uTo2lXs6eGIpt9wtnLdMv9LVpIjCA/+ufZRozlVoVelIYixx1ugCBKDhn89vnsEGOCx9A==}
     dependencies:
       '@types/node': 20.14.14
+    dev: false
 
   /@types/ws@8.5.12:
     resolution: {integrity: sha512-3tPRkv1EtkDpzlgyKyI8pGsGZAGPEaXeu0DOj5DI25Ja91bdAYddYHbADRYVrZMRbfW+1l5YwXVDKohDJNQxkQ==}
@@ -21025,13 +21001,6 @@ packages:
     resolution: {integrity: sha512-qwVpFEHNfhYJIzNRBvd2C1kyo6jz3ZSMPyyuR47OPdiKWlbYnZNyDWuyR175qDnAJLiCo5fBBqPb3RiXgWlkOQ==}
     dependencies:
       semver: 7.6.3
-    dev: true
-
-  /bun-types@1.1.17:
-    resolution: {integrity: sha512-Z4+OplcSd/YZq7ZsrfD00DKJeCwuNY96a1IDJyR73+cTBaFIS7SC6LhpY/W3AMEXO9iYq5NJ58WAwnwL1p5vKg==}
-    dependencies:
-      '@types/node': 20.12.14
-      '@types/ws': 8.5.10
     dev: true
 
   /bundle-name@4.1.0:
