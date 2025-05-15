@@ -94,6 +94,7 @@ export type GetEnvOptions = {
   apiUrl: string;
   projectRef: string;
   env: string;
+  branch?: string;
   profile: string;
 };
 
@@ -108,6 +109,7 @@ export async function getProjectClient(options: GetEnvOptions) {
   const projectEnv = await apiClient.getProjectEnv({
     projectRef: options.projectRef,
     env: options.env,
+    branch: options.branch,
   });
 
   if (!projectEnv.success) {

@@ -161,21 +161,32 @@ export class CliApiClient {
     });
   }
 
-  async getProjectEnv({ projectRef, env }: { projectRef: string; env: string }) {
+  async getProjectEnv({
+    projectRef,
+    env,
+    branch,
+  }: {
+    projectRef: string;
+    env: string;
+    branch?: string;
+  }) {
     if (!this.accessToken) {
       throw new Error("getProjectDevEnv: No access token");
     }
 
-    return wrapZodFetch(
-      GetProjectEnvResponse,
-      `${this.apiURL}/api/v1/projects/${projectRef}/${env}`,
-      {
-        headers: {
-          Authorization: `Bearer ${this.accessToken}`,
-          "Content-Type": "application/json",
-        },
-      }
-    );
+    const url = new URL(`api/v1/projects/${projectRef}/${env}`, this.apiURL);
+    if (branch) {
+      url.searchParams.set("branch", branch);
+    }
+
+    console.log("url", url.toString());
+
+    return wrapZodFetch(GetProjectEnvResponse, url.toString(), {
+      headers: {
+        Authorization: `Bearer ${this.accessToken}`,
+        "Content-Type": "application/json",
+      },
+    });
   }
 
   async getEnvironmentVariables(projectRef: string) {
