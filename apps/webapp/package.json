@@ -162,7 +162,7 @@
     "react-popper": "^2.3.0",
     "react-resizable-panels": "^2.0.9",
     "react-stately": "^3.29.1",
-    "react-use": "^17.4.0",
+    "react-use": "17.5.1",
     "react-window-splitter": "^0.4.1",
     "recharts": "^2.12.6",
     "regression": "^2.0.1",
