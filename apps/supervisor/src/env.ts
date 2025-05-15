@@ -49,8 +49,9 @@ const Env = z.object({
   KUBERNETES_IMAGE_PULL_SECRETS: z.string().optional(), // csv
 
   // Used by the resource monitor
-  OVERRIDE_CPU_TOTAL: z.coerce.number().optional(),
-  OVERRIDE_MEMORY_TOTAL_GB: z.coerce.number().optional(),
+  RESOURCE_MONITOR_ENABLED: BoolEnv.default(false),
+  RESOURCE_MONITOR_OVERRIDE_CPU_TOTAL: z.coerce.number().optional(),
+  RESOURCE_MONITOR_OVERRIDE_MEMORY_TOTAL_GB: z.coerce.number().optional(),
 
   // Kubernetes specific settings
   KUBERNETES_FORCE_ENABLED: BoolEnv.default(false),

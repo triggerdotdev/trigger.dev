@@ -70,18 +70,21 @@ export abstract class ResourceMonitor {
   }
 
   protected applyOverrides(resources: NodeResources): NodeResources {
-    if (!env.OVERRIDE_CPU_TOTAL && !env.OVERRIDE_MEMORY_TOTAL_GB) {
+    if (
+      !env.RESOURCE_MONITOR_OVERRIDE_CPU_TOTAL &&
+      !env.RESOURCE_MONITOR_OVERRIDE_MEMORY_TOTAL_GB
+    ) {
       return resources;
     }
 
     logger.debug("[ResourceMonitor] 🛡️ Applying resource overrides", {
-      cpuTotal: env.OVERRIDE_CPU_TOTAL,
-      memoryTotalGb: env.OVERRIDE_MEMORY_TOTAL_GB,
+      cpuTotal: env.RESOURCE_MONITOR_OVERRIDE_CPU_TOTAL,
+      memoryTotalGb: env.RESOURCE_MONITOR_OVERRIDE_MEMORY_TOTAL_GB,
     });
 
-    const cpuTotal = env.OVERRIDE_CPU_TOTAL ?? resources.cpuTotal;
-    const memoryTotal = env.OVERRIDE_MEMORY_TOTAL_GB
-      ? this.gbToBytes(env.OVERRIDE_MEMORY_TOTAL_GB)
+    const cpuTotal = env.RESOURCE_MONITOR_OVERRIDE_CPU_TOTAL ?? resources.cpuTotal;
+    const memoryTotal = env.RESOURCE_MONITOR_OVERRIDE_MEMORY_TOTAL_GB
+      ? this.gbToBytes(env.RESOURCE_MONITOR_OVERRIDE_MEMORY_TOTAL_GB)
       : resources.memoryTotal;
 
     const cpuDiff = cpuTotal - resources.cpuTotal;
@@ -212,6 +215,21 @@ export class KubernetesResourceMonitor extends ResourceMonitor {
   }
 }
 
+export class NoopResourceMonitor extends ResourceMonitor {
+  constructor() {
+    super(NoopResourceParser);
+  }
+
+  async getNodeResources(): Promise<NodeResources> {
+    return {
+      cpuTotal: 0,
+      cpuAvailable: Infinity,
+      memoryTotal: 0,
+      memoryAvailable: Infinity,
+    };
+  }
+}
+
 abstract class ResourceParser {
   abstract cpu(cpu: number | string): number;
   abstract memory(memory: number | string): number;
@@ -246,5 +264,15 @@ class KubernetesResourceParser extends ResourceParser {
       return parseInt(memory.slice(0, -2)) * 1024 * 1024 * 1024;
     }
     return parseInt(memory);
+  }
+}
+
+class NoopResourceParser extends ResourceParser {
+  cpu(cpu: number): number {
+    return cpu;
+  }
+
+  memory(memory: number): number {
+    return memory;
   }
 }

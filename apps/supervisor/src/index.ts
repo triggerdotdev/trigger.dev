@@ -9,6 +9,7 @@ import { type DequeuedMessage } from "@trigger.dev/core/v3";
 import {
   DockerResourceMonitor,
   KubernetesResourceMonitor,
+  NoopResourceMonitor,
   type ResourceMonitor,
 } from "./resourceMonitor.js";
 import { KubernetesWorkloadManager } from "./workloadManager/kubernetes.js";
@@ -69,6 +70,16 @@ class ManagedSupervisor {
       dockerAutoremove: env.RUNNER_DOCKER_AUTOREMOVE,
     } satisfies WorkloadManagerOptions;
 
+    this.resourceMonitor = env.RESOURCE_MONITOR_ENABLED
+      ? this.isKubernetes
+        ? new KubernetesResourceMonitor(createK8sApi(), env.TRIGGER_WORKER_INSTANCE_NAME)
+        : new DockerResourceMonitor(new Docker())
+      : new NoopResourceMonitor();
+
+    this.workloadManager = this.isKubernetes
+      ? new KubernetesWorkloadManager(workloadManagerOptions)
+      : new DockerWorkloadManager(workloadManagerOptions);
+
     if (this.isKubernetes) {
       if (env.POD_CLEANER_ENABLED) {
         this.logger.log("🧹 Pod cleaner enabled", {
@@ -99,15 +110,6 @@ class ManagedSupervisor {
       } else {
         this.logger.warn("Failed pod handler disabled");
       }
-
-      this.resourceMonitor = new KubernetesResourceMonitor(
-        createK8sApi(),
-        env.TRIGGER_WORKER_INSTANCE_NAME
-      );
-      this.workloadManager = new KubernetesWorkloadManager(workloadManagerOptions);
-    } else {
-      this.resourceMonitor = new DockerResourceMonitor(new Docker());
-      this.workloadManager = new DockerWorkloadManager(workloadManagerOptions);
     }
 
     this.workerSession = new SupervisorSession({
@@ -123,12 +125,17 @@ class ManagedSupervisor {
       runNotificationsEnabled: env.TRIGGER_WORKLOAD_API_ENABLED,
       heartbeatIntervalSeconds: env.TRIGGER_WORKER_HEARTBEAT_INTERVAL_SECONDS,
       preDequeue: async () => {
+        if (!env.RESOURCE_MONITOR_ENABLED) {
+          return {};
+        }
+
         if (this.isKubernetes) {
           // Not used in k8s for now
           return {};
         }
 
         const resources = await this.resourceMonitor.getNodeResources();
+
         return {
           maxResources: {
             cpu: resources.cpuAvailable,
