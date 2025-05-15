@@ -1,5 +1,4 @@
 import type Docker from "dockerode";
-import type * as TDocker from "docker-api-ts";
 import type { MachineResources } from "@trigger.dev/core/v3";
 import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
 import { env } from "./env.js";
@@ -100,6 +99,11 @@ export abstract class ResourceMonitor {
   }
 }
 
+type SystemInfo = {
+  NCPU: number | undefined;
+  MemTotal: number | undefined;
+};
+
 export class DockerResourceMonitor extends ResourceMonitor {
   private docker: Docker;
 
@@ -114,7 +118,7 @@ export class DockerResourceMonitor extends ResourceMonitor {
       return this.cachedResources;
     }
 
-    const info: TDocker.SystemInfo = await this.docker.info();
+    const info: SystemInfo = await this.docker.info();
     const stats = await this.docker.listContainers({ all: true });
 
     // Get system-wide resources

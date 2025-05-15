@@ -177,9 +177,6 @@ importers:
       '@types/dockerode':
         specifier: ^3.3.33
         version: 3.3.35
-      docker-api-ts:
-        specifier: ^0.2.2
-        version: 0.2.2
       vitest:
         specifier: ^1.4.0
         version: 1.6.0(@types/node@20.14.14)
@@ -22599,10 +22596,6 @@ packages:
 
   /dlv@1.1.3:
     resolution: {integrity: sha512-+HlytyjlPKnIG8XuRG8WvmBP8xs8P71y+SKKS6ZXWoEgLuePxtDoUEiH7WkdePWrQ5JBpE6aoVqfZfJUQkjXwA==}
-
-  /docker-api-ts@0.2.2:
-    resolution: {integrity: sha512-ayoc0OuS6lY7b64GeUtKcPzbKMkK70Vh3BYLKKG13cXX+/gGS9LyTNVvvJyvZ19Y6kbE4Kbv+2gwRUD17UVTRA==}
-    dev: true
 
   /docker-compose@0.24.8:
     resolution: {integrity: sha512-plizRs/Vf15H+GCVxq2EUvyPK7ei9b/cVesHvjnX4xaXjM9spHe2Ytq0BitndFgvTJ3E3NljPNUEl7BAN43iZw==}

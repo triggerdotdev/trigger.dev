@@ -23,7 +23,6 @@
   },
   "devDependencies": {
     "@types/dockerode": "^3.3.33",
-    "docker-api-ts": "^0.2.2",
     "vitest": "^1.4.0"
   }
 }
