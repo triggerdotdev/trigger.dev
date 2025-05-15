@@ -151,7 +151,7 @@
     "posthog-js": "^1.93.3",
     "posthog-node": "4.17.1",
     "prism-react-renderer": "^2.3.1",
-    "prismjs": "^1.29.0",
+    "prismjs": "^1.30.0",
     "prom-client": "^15.1.0",
     "random-words": "^2.0.0",
     "react": "^18.2.0",
