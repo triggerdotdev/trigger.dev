@@ -27,6 +27,10 @@ export class ReplayTaskRunService extends BaseService {
       return;
     }
 
+    if (authenticatedEnvironment.archivedAt) {
+      return;
+    }
+
     logger.info("Replaying task run", {
       taskRunId: existingTaskRun.id,
       taskRunFriendlyId: existingTaskRun.friendlyId,
