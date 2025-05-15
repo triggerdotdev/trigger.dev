@@ -126,7 +126,7 @@
     "effect": "^3.11.7",
     "emails": "workspace:*",
     "evt": "^2.4.13",
-    "express": "^4.18.1",
+    "express": "4.20.0",
     "framer-motion": "^10.12.11",
     "graphile-worker": "0.16.6",
     "highlight.run": "^7.3.4",
