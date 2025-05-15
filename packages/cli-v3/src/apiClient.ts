@@ -31,6 +31,9 @@ import {
   DevDequeueRequestBody,
   DevDequeueResponseBody,
   PromoteDeploymentResponseBody,
+  GitMeta,
+  UpsertBranchResponseBody,
+  UpsertBranchRequestBody,
 } from "@trigger.dev/core/v3";
 import { ApiResult, wrapZodFetch, zodfetchSSE } from "@trigger.dev/core/v3/zodfetch";
 import { logger } from "./utilities/logger.js";
@@ -179,14 +182,31 @@ export class CliApiClient {
       url.searchParams.set("branch", branch);
     }
 
-    console.log("url", url.toString());
-
     return wrapZodFetch(GetProjectEnvResponse, url.toString(), {
       headers: {
         Authorization: `Bearer ${this.accessToken}`,
         "Content-Type": "application/json",
       },
     });
+  }
+
+  async upsertBranch(projectRef: string, body: UpsertBranchRequestBody) {
+    if (!this.accessToken) {
+      throw new Error("upsertBranch: No access token");
+    }
+
+    return wrapZodFetch(
+      UpsertBranchResponseBody,
+      `${this.apiURL}/api/v1/projects/${projectRef}/branches`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      }
+    );
   }
 
   async getEnvironmentVariables(projectRef: string) {

@@ -75,6 +75,7 @@ import {
 } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { ArchiveButton } from "../resources.branches.archive";
+import { GitMeta } from "@trigger.dev/core/v3";
 
 export const BranchesOptions = z.object({
   search: z.string().optional(),
@@ -110,17 +111,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 export const CreateBranchOptions = z.object({
   parentEnvironmentId: z.string(),
   branchName: z.string().min(1),
-  git: z
-    .object({
-      repoOwner: z.string(),
-      repoName: z.string(),
-      refFull: z.string(),
-      refType: z.enum(["branch", "tag", "commit", "pull_request"]),
-      commitSha: z.string(),
-      createdBy: z.string().optional(),
-      pullRequestNumber: z.number().optional(),
-    })
-    .optional(),
+  git: GitMeta.optional(),
 });
 
 export type CreateBranchOptions = z.infer<typeof CreateBranchOptions>;

@@ -30,7 +30,7 @@ export class UpsertBranchService {
     }
 
     try {
-      const parentEnvironment = await this.#prismaClient.runtimeEnvironment.findFirstOrThrow({
+      const parentEnvironment = await this.#prismaClient.runtimeEnvironment.findFirst({
         where: {
           id: parentEnvironmentId,
           organization: {
@@ -58,10 +58,17 @@ export class UpsertBranchService {
         },
       });
 
+      if (!parentEnvironment) {
+        return {
+          success: false as const,
+          error: "You don't have preview branches setup. Go to the dashboard to enable them.",
+        };
+      }
+
       if (!parentEnvironment.isBranchableEnvironment) {
         return {
           success: false as const,
-          error: "Parent environment is not branchable",
+          error: "Your preview environment is not branchable",
         };
       }
 
@@ -131,7 +138,7 @@ export class UpsertBranchService {
       logger.error("CreateBranchService error", { error: e });
       return {
         success: false as const,
-        error: "Failed to create branch",
+        error: e instanceof Error ? e.message : "Failed to create branch",
       };
     }
   }

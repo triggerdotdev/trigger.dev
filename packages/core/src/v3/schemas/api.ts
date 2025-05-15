@@ -309,9 +309,24 @@ export const GitMeta = z.object({
   commitSha: z.string().optional(),
   dirty: z.boolean().optional(),
   remoteUrl: z.string().optional(),
+  pullRequestNumber: z.number().optional(),
 });
 
 export type GitMeta = z.infer<typeof GitMeta>;
+
+export const UpsertBranchRequestBody = z.object({
+  git: GitMeta.optional(),
+  env: z.enum(["preview"]),
+  branch: z.string(),
+});
+
+export type UpsertBranchRequestBody = z.infer<typeof UpsertBranchRequestBody>;
+
+export const UpsertBranchResponseBody = z.object({
+  id: z.string(),
+});
+
+export type UpsertBranchResponseBody = z.infer<typeof UpsertBranchResponseBody>;
 
 export const InitializeDeploymentResponseBody = z.object({
   id: z.string(),

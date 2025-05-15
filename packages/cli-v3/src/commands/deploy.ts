@@ -29,7 +29,7 @@ import { chalkError, cliLink, isLinksSupported, prettyError } from "../utilities
 import { loadDotEnvVars } from "../utilities/dotEnv.js";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { logger } from "../utilities/logger.js";
-import { getProjectClient } from "../utilities/session.js";
+import { getProjectClient, upsertBranch } from "../utilities/session.js";
 import { getTmpDir } from "../utilities/tempDirectories.js";
 import { spinner } from "../utilities/windows.js";
 import { login } from "./login.js";
@@ -237,6 +237,20 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     throw new Error(
       "You need to specify a preview branch when deploying to preview, pass --branch <branch>."
     );
+  }
+
+  if (options.env === "preview" && branch) {
+    const branchEnv = await upsertBranch({
+      accessToken: authorization.auth.accessToken,
+      apiUrl: authorization.auth.apiUrl,
+      projectRef: resolvedConfig.project,
+      branch,
+      gitMeta,
+    });
+
+    if (!branchEnv) {
+      throw new Error(`Failed to create branch "${branch}"`);
+    }
   }
 
   const projectClient = await getProjectClient({

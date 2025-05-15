@@ -3,6 +3,7 @@ import { CliApiClient } from "../apiClient.js";
 import { readAuthConfigProfile } from "./configFiles.js";
 import { getTracer } from "../telemetry/tracing.js";
 import { logger } from "./logger.js";
+import { GitMeta } from "@trigger.dev/core/v3";
 
 const tracer = getTracer();
 
@@ -133,4 +134,29 @@ export async function getProjectClient(options: GetEnvOptions) {
     name: projectEnv.data.name,
     client,
   };
+}
+
+export type UpsertBranchOptions = {
+  accessToken: string;
+  apiUrl: string;
+  projectRef: string;
+  branch: string;
+  gitMeta: GitMeta | undefined;
+};
+
+export async function upsertBranch(options: UpsertBranchOptions) {
+  const apiClient = new CliApiClient(options.apiUrl, options.accessToken);
+
+  const branchEnv = await apiClient.upsertBranch(options.projectRef, {
+    env: "preview",
+    branch: options.branch,
+    git: options.gitMeta,
+  });
+
+  if (!branchEnv.success) {
+    logger.error(`Failed to upsert branch: ${branchEnv.error}`);
+    return;
+  }
+
+  return branchEnv.data;
 }
