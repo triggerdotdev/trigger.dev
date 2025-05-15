@@ -4,17 +4,9 @@ import ini from "ini";
 import git from "git-last-commit";
 import { x } from "tinyexec";
 import { logger } from "../utilities/logger.js";
+import { GitMeta } from "@trigger.dev/core/v3";
 
-export type GitMetadata = {
-  commitAuthorName?: string;
-  commitMessage?: string;
-  commitRef?: string;
-  commitSha?: string;
-  dirty?: boolean;
-  remoteUrl?: string;
-};
-
-export async function createGitMeta(directory: string): Promise<GitMetadata | undefined> {
+export async function createGitMeta(directory: string): Promise<GitMeta | undefined> {
   const remoteUrl = await getOriginUrl(join(directory, ".git/config"));
 
   const [commitResult, dirtyResult] = await Promise.allSettled([

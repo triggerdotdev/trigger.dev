@@ -302,6 +302,17 @@ export const ExternalBuildData = z.object({
 
 export type ExternalBuildData = z.infer<typeof ExternalBuildData>;
 
+export const GitMeta = z.object({
+  commitAuthorName: z.string().optional(),
+  commitMessage: z.string().optional(),
+  commitRef: z.string().optional(),
+  commitSha: z.string().optional(),
+  dirty: z.boolean().optional(),
+  remoteUrl: z.string().optional(),
+});
+
+export type GitMeta = z.infer<typeof GitMeta>;
+
 export const InitializeDeploymentResponseBody = z.object({
   id: z.string(),
   contentHash: z.string(),
@@ -320,6 +331,7 @@ export const InitializeDeploymentRequestBody = z.object({
   registryHost: z.string().optional(),
   selfHosted: z.boolean().optional(),
   namespace: z.string().optional(),
+  gitMeta: GitMeta.optional(),
   type: z.enum(["MANAGED", "UNMANAGED", "V1"]).optional(),
 });
 

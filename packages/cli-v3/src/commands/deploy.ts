@@ -296,6 +296,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     selfHosted: options.selfHosted,
     registryHost: options.registry,
     namespace: options.namespace,
+    gitMeta,
     type: features.run_engine_v2 ? "MANAGED" : "V1",
   });
 
