@@ -18,6 +18,8 @@ export enum LogLevel {
 }
 
 export class SimpleStructuredLogger implements StructuredLogger {
+  private prettyPrint = ["1", "true"].includes(process.env.PRETTY_LOGS ?? "");
+
   constructor(
     private name: string,
     private level: LogLevel = ["1", "true"].includes(process.env.DEBUG ?? "")
@@ -82,6 +84,10 @@ export class SimpleStructuredLogger implements StructuredLogger {
       ...(args.length === 1 ? args[0] : args),
     };
 
-    loggerFunction(JSON.stringify(structuredLog));
+    if (this.prettyPrint) {
+      loggerFunction(JSON.stringify(structuredLog, null, 2));
+    } else {
+      loggerFunction(JSON.stringify(structuredLog));
+    }
   }
 }

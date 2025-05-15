@@ -1,3 +1,4 @@
+import { SimpleStructuredLogger } from "../../utils/structuredLogger.js";
 import { SupervisorHttpClient } from "./http.js";
 import { WorkerApiDequeueResponseBody } from "./schemas.js";
 import { PreDequeueFn, PreSkipFn } from "./types.js";
@@ -18,6 +19,8 @@ export class RunQueueConsumer {
   private readonly preSkip?: PreSkipFn;
   private readonly maxRunCount?: number;
   private readonly onDequeue: (messages: WorkerApiDequeueResponseBody) => Promise<void>;
+
+  private readonly logger = new SimpleStructuredLogger("queue-consumer");
 
   private intervalMs: number;
   private idleIntervalMs: number;
@@ -53,7 +56,7 @@ export class RunQueueConsumer {
 
   private async dequeue() {
     // Incredibly verbose logging for debugging purposes
-    // console.debug("[RunQueueConsumer] dequeue()", { enabled: this.isEnabled });
+    // this.logger.debug("dequeue()", { enabled: this.isEnabled });
 
     if (!this.isEnabled) {
       return;
@@ -61,16 +64,16 @@ export class RunQueueConsumer {
 
     let preDequeueResult: Awaited<ReturnType<PreDequeueFn>> | undefined;
     if (this.preDequeue) {
-      // console.debug("[RunQueueConsumer] preDequeue()");
+      // this.logger.debug("preDequeue()");
 
       try {
         preDequeueResult = await this.preDequeue();
       } catch (preDequeueError) {
-        console.error("[RunQueueConsumer] preDequeue error", { error: preDequeueError });
+        this.logger.error("preDequeue error", { error: preDequeueError });
       }
     }
 
-    // console.debug("[RunQueueConsumer] preDequeueResult", { preDequeueResult });
+    // this.logger.debug("preDequeueResult", { preDequeueResult });
 
     if (
       preDequeueResult?.skipDequeue ||
@@ -78,12 +81,12 @@ export class RunQueueConsumer {
       preDequeueResult?.maxResources?.memory === 0
     ) {
       if (this.preSkip) {
-        console.debug("[RunQueueConsumer] preSkip()");
+        this.logger.debug("preSkip()");
 
         try {
           await this.preSkip();
         } catch (preSkipError) {
-          console.error("[RunQueueConsumer] preSkip error", { error: preSkipError });
+          this.logger.error("preSkip error", { error: preSkipError });
         }
       }
 
@@ -99,7 +102,7 @@ export class RunQueueConsumer {
       });
 
       if (!response.success) {
-        console.error("[RunQueueConsumer] Failed to dequeue", { error: response.error });
+        this.logger.error("Failed to dequeue", { error: response.error });
       } else {
         try {
           await this.onDequeue(response.data);
@@ -108,11 +111,11 @@ export class RunQueueConsumer {
             nextIntervalMs = this.intervalMs;
           }
         } catch (handlerError) {
-          console.error("[RunQueueConsumer] onDequeue error", { error: handlerError });
+          this.logger.error("onDequeue error", { error: handlerError });
         }
       }
     } catch (clientError) {
-      console.error("[RunQueueConsumer] client.dequeue error", { error: clientError });
+      this.logger.error("client.dequeue error", { error: clientError });
     }
 
     this.scheduleNextDequeue(nextIntervalMs);
