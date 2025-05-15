@@ -141,7 +141,7 @@ export class RunsReplicationService {
     });
 
     this._replicationClient.events.on("start", () => {
-      this.logger.debug("Replication client started");
+      this.logger.info("Replication client started");
     });
 
     this._replicationClient.events.on("acknowledge", ({ lsn }) => {
@@ -149,7 +149,7 @@ export class RunsReplicationService {
     });
 
     this._replicationClient.events.on("leaderElection", (isLeader) => {
-      this.logger.debug("Leader election", { isLeader });
+      this.logger.info("Leader election", { isLeader });
     });
   }
 
@@ -360,7 +360,7 @@ export class RunsReplicationService {
       })
       .end();
 
-    this.logger.debug("handle_transaction", {
+    this.logger.info("handle_transaction", {
       transaction: {
         xid: transaction.xid,
         commitLsn: transaction.commitLsn,
@@ -395,7 +395,7 @@ export class RunsReplicationService {
     this._lastAcknowledgedAt = now;
     this._lastAcknowledgedLsn = this._latestCommitEndLsn;
 
-    this.logger.debug("acknowledge_latest_transaction", {
+    this.logger.info("acknowledge_latest_transaction", {
       commitEndLsn: this._latestCommitEndLsn,
       lastAcknowledgedAt: this._lastAcknowledgedAt,
     });
@@ -764,7 +764,7 @@ export class ConcurrentFlushScheduler<T> {
         span.setAttribute("concurrency_pending_count", this.concurrencyLimiter.pendingCount);
         span.setAttribute("concurrency_concurrency", this.concurrencyLimiter.concurrency);
 
-        this.logger.debug("flush_next_batch", {
+        this.logger.info("flush_next_batch", {
           batchId,
           batchSize: batch.length,
           concurrencyActiveCount: this.concurrencyLimiter.activeCount,
@@ -796,7 +796,7 @@ export class ConcurrentFlushScheduler<T> {
 
       this.failedBatchCount++;
     } else {
-      this.logger.debug("flush_batch_complete", {
+      this.logger.info("flush_batch_complete", {
         totalBatches: 1,
         successfulBatches: 1,
         failedBatches: 0,
