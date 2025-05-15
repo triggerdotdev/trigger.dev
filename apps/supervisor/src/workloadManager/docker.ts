@@ -4,88 +4,104 @@ import {
   type WorkloadManagerCreateOptions,
   type WorkloadManagerOptions,
 } from "./types.js";
-import { x } from "tinyexec";
 import { env } from "../env.js";
 import { getDockerHostDomain, getRunnerId } from "../util.js";
+import Docker from "dockerode";
 
 export class DockerWorkloadManager implements WorkloadManager {
-  private readonly logger = new SimpleStructuredLogger("docker-workload-provider");
+  private readonly logger = new SimpleStructuredLogger("docker-workload-manager");
+  private readonly docker: Docker;
 
   constructor(private opts: WorkloadManagerOptions) {
+    this.docker = new Docker({
+      socketPath: env.DOCKER_SOCKET_PATH,
+    });
+
     if (opts.workloadApiDomain) {
-      this.logger.warn("[DockerWorkloadProvider] ⚠️ Custom workload API domain", {
+      this.logger.warn("⚠️ Custom workload API domain", {
         domain: opts.workloadApiDomain,
       });
     }
   }
 
   async create(opts: WorkloadManagerCreateOptions) {
-    this.logger.log("[DockerWorkloadProvider] Creating container", { opts });
+    this.logger.log("create()", { opts });
 
     const runnerId = getRunnerId(opts.runFriendlyId, opts.nextAttemptNumber);
 
-    const runArgs = [
-      "run",
-      "--detach",
-      `--network=${env.DOCKER_NETWORK}`,
-      `--env=TRIGGER_DEQUEUED_AT_MS=${opts.dequeuedAt.getTime()}`,
-      `--env=TRIGGER_POD_SCHEDULED_AT_MS=${Date.now()}`,
-      `--env=TRIGGER_ENV_ID=${opts.envId}`,
-      `--env=TRIGGER_RUN_ID=${opts.runFriendlyId}`,
-      `--env=TRIGGER_SNAPSHOT_ID=${opts.snapshotFriendlyId}`,
-      `--env=TRIGGER_SUPERVISOR_API_PROTOCOL=${this.opts.workloadApiProtocol}`,
-      `--env=TRIGGER_SUPERVISOR_API_PORT=${this.opts.workloadApiPort}`,
-      `--env=TRIGGER_SUPERVISOR_API_DOMAIN=${this.opts.workloadApiDomain ?? getDockerHostDomain()}`,
-      `--env=TRIGGER_WORKER_INSTANCE_NAME=${env.TRIGGER_WORKER_INSTANCE_NAME}`,
-      `--env=OTEL_EXPORTER_OTLP_ENDPOINT=${env.OTEL_EXPORTER_OTLP_ENDPOINT}`,
-      `--env=TRIGGER_RUNNER_ID=${runnerId}`,
-      `--hostname=${runnerId}`,
-      `--name=${runnerId}`,
+    // Build environment variables
+    const envVars: string[] = [
+      `TRIGGER_DEQUEUED_AT_MS=${opts.dequeuedAt.getTime()}`,
+      `TRIGGER_POD_SCHEDULED_AT_MS=${Date.now()}`,
+      `TRIGGER_ENV_ID=${opts.envId}`,
+      `TRIGGER_RUN_ID=${opts.runFriendlyId}`,
+      `TRIGGER_SNAPSHOT_ID=${opts.snapshotFriendlyId}`,
+      `TRIGGER_SUPERVISOR_API_PROTOCOL=${this.opts.workloadApiProtocol}`,
+      `TRIGGER_SUPERVISOR_API_PORT=${this.opts.workloadApiPort}`,
+      `TRIGGER_SUPERVISOR_API_DOMAIN=${this.opts.workloadApiDomain ?? getDockerHostDomain()}`,
+      `TRIGGER_WORKER_INSTANCE_NAME=${env.TRIGGER_WORKER_INSTANCE_NAME}`,
+      `OTEL_EXPORTER_OTLP_ENDPOINT=${env.OTEL_EXPORTER_OTLP_ENDPOINT}`,
+      `TRIGGER_RUNNER_ID=${runnerId}`,
     ];
 
-    if (this.opts.dockerAutoremove) {
-      runArgs.push("--rm");
-    }
-
     if (this.opts.warmStartUrl) {
-      runArgs.push(`--env=TRIGGER_WARM_START_URL=${this.opts.warmStartUrl}`);
+      envVars.push(`TRIGGER_WARM_START_URL=${this.opts.warmStartUrl}`);
     }
 
     if (this.opts.metadataUrl) {
-      runArgs.push(`--env=TRIGGER_METADATA_URL=${this.opts.metadataUrl}`);
+      envVars.push(`TRIGGER_METADATA_URL=${this.opts.metadataUrl}`);
     }
 
     if (this.opts.heartbeatIntervalSeconds) {
-      runArgs.push(
-        `--env=TRIGGER_HEARTBEAT_INTERVAL_SECONDS=${this.opts.heartbeatIntervalSeconds}`
-      );
+      envVars.push(`TRIGGER_HEARTBEAT_INTERVAL_SECONDS=${this.opts.heartbeatIntervalSeconds}`);
     }
 
     if (this.opts.snapshotPollIntervalSeconds) {
-      runArgs.push(
-        `--env=TRIGGER_SNAPSHOT_POLL_INTERVAL_SECONDS=${this.opts.snapshotPollIntervalSeconds}`
+      envVars.push(
+        `TRIGGER_SNAPSHOT_POLL_INTERVAL_SECONDS=${this.opts.snapshotPollIntervalSeconds}`
       );
     }
 
     if (this.opts.additionalEnvVars) {
       Object.entries(this.opts.additionalEnvVars).forEach(([key, value]) => {
-        runArgs.push(`--env=${key}=${value}`);
+        envVars.push(`${key}=${value}`);
       });
     }
 
+    const hostConfig: Docker.HostConfig = {
+      NetworkMode: env.DOCKER_NETWORK,
+      AutoRemove: !!this.opts.dockerAutoremove,
+    };
+
     if (env.ENFORCE_MACHINE_PRESETS) {
-      runArgs.push(`--cpus=${opts.machine.cpu}`, `--memory=${opts.machine.memory}G`);
-      runArgs.push(`--env=TRIGGER_MACHINE_CPU=${opts.machine.cpu}`);
-      runArgs.push(`--env=TRIGGER_MACHINE_MEMORY=${opts.machine.memory}`);
+      envVars.push(`TRIGGER_MACHINE_CPU=${opts.machine.cpu}`);
+      envVars.push(`TRIGGER_MACHINE_MEMORY=${opts.machine.memory}`);
+
+      hostConfig.NanoCpus = opts.machine.cpu * 1e9;
+      hostConfig.Memory = opts.machine.memory * 1024 * 1024 * 1024;
     }
 
-    runArgs.push(`${opts.image}`);
+    const containerCreateOpts: Docker.ContainerCreateOptions = {
+      Env: envVars,
+      name: runnerId,
+      Hostname: runnerId,
+      HostConfig: hostConfig,
+      Image: opts.image,
+      AttachStdout: false,
+      AttachStderr: false,
+      AttachStdin: false,
+    };
 
     try {
-      const { stdout, stderr } = await x("docker", runArgs);
-      this.logger.debug("[DockerWorkloadProvider] Create succeeded", { stdout, stderr });
+      // Create container
+      const container = await this.docker.createContainer(containerCreateOpts);
+
+      // Start container
+      const startResult = await container.start();
+
+      this.logger.debug("create succeeded", { opts, startResult, container, containerCreateOpts });
     } catch (error) {
-      this.logger.error("[DockerWorkloadProvider] Create failed:", { opts, error });
+      this.logger.error("create failed:", { opts, error, containerCreateOpts });
     }
   }
 }

@@ -161,9 +161,6 @@ importers:
       dockerode:
         specifier: ^4.0.3
         version: 4.0.4
-      nanoid:
-        specifier: ^5.0.9
-        version: 5.1.2
       prom-client:
         specifier: ^15.1.0
         version: 15.1.0
@@ -173,9 +170,6 @@ importers:
       std-env:
         specifier: ^3.8.0
         version: 3.8.1
-      tinyexec:
-        specifier: ^0.3.1
-        version: 0.3.2
       zod:
         specifier: 3.23.8
         version: 3.23.8
