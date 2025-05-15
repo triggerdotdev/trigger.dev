@@ -53,6 +53,7 @@ import {
   TaskRunStatusCombo,
 } from "./TaskRunStatus";
 import { TaskTriggerSourceIcon } from "./TaskTriggerSource";
+import { CoercedBoolean } from "~/utils/zod";
 
 export const TaskAttemptStatus = z.enum(allTaskRunStatuses);
 
@@ -83,7 +84,7 @@ export const TaskRunListSearchFilters = z.object({
   period: z.preprocess((value) => (value === "all" ? undefined : value), z.string().optional()),
   from: z.coerce.number().optional(),
   to: z.coerce.number().optional(),
-  rootOnly: z.coerce.boolean().optional(),
+  rootOnly: CoercedBoolean.optional(),
   batchId: z.string().optional(),
   runId: z.string().optional(),
   scheduleId: z.string().optional(),

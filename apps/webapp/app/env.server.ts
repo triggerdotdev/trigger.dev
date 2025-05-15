@@ -2,6 +2,7 @@ import { z } from "zod";
 import { SecretStoreOptionsSchema } from "./services/secrets/secretStoreOptionsSchema.server";
 import { isValidDatabaseUrl } from "./utils/db";
 import { isValidRegex } from "./utils/regex";
+import { CoercedBoolean } from "./utils/zod";
 
 const EnvironmentSchema = z.object({
   NODE_ENV: z.union([z.literal("development"), z.literal("production"), z.literal("test")]),
@@ -50,7 +51,7 @@ const EnvironmentSchema = z.object({
   RESEND_API_KEY: z.string().optional(),
   SMTP_HOST: z.string().optional(),
   SMTP_PORT: z.coerce.number().optional(),
-  SMTP_SECURE: z.coerce.boolean().optional(),
+  SMTP_SECURE: CoercedBoolean.optional(),
   SMTP_USER: z.string().optional(),
   SMTP_PASSWORD: z.string().optional(),
 
@@ -338,7 +339,7 @@ const EnvironmentSchema = z.object({
   ALERT_RESEND_API_KEY: z.string().optional(),
   ALERT_SMTP_HOST: z.string().optional(),
   ALERT_SMTP_PORT: z.coerce.number().optional(),
-  ALERT_SMTP_SECURE: z.coerce.boolean().optional(),
+  ALERT_SMTP_SECURE: CoercedBoolean.optional(),
   ALERT_SMTP_USER: z.string().optional(),
   ALERT_SMTP_PASSWORD: z.string().optional(),
   ALERT_RATE_LIMITER_EMISSION_INTERVAL: z.coerce.number().int().default(2_500),
@@ -378,7 +379,7 @@ const EnvironmentSchema = z.object({
   MAX_SEQUENTIAL_INDEX_FAILURE_COUNT: z.coerce.number().default(96),
 
   LOOPS_API_KEY: z.string().optional(),
-  MARQS_DISABLE_REBALANCING: z.coerce.boolean().default(false),
+  MARQS_DISABLE_REBALANCING: CoercedBoolean.default(false),
   MARQS_VISIBILITY_TIMEOUT_MS: z.coerce
     .number()
     .int()
@@ -452,7 +453,7 @@ const EnvironmentSchema = z.object({
   RUN_ENGINE_TIMEOUT_PENDING_CANCEL: z.coerce.number().int().default(60_000),
   RUN_ENGINE_TIMEOUT_EXECUTING: z.coerce.number().int().default(60_000),
   RUN_ENGINE_TIMEOUT_EXECUTING_WITH_WAITPOINTS: z.coerce.number().int().default(60_000),
-  RUN_ENGINE_DEBUG_WORKER_NOTIFICATIONS: z.coerce.boolean().default(false),
+  RUN_ENGINE_DEBUG_WORKER_NOTIFICATIONS: CoercedBoolean.default(false),
   RUN_ENGINE_PARENT_QUEUE_LIMIT: z.coerce.number().int().default(1000),
   RUN_ENGINE_CONCURRENCY_LIMIT_BIAS: z.coerce.number().default(0.75),
   RUN_ENGINE_AVAILABLE_CAPACITY_BIAS: z.coerce.number().default(0.3),
