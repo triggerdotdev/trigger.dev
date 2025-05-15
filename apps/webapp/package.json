@@ -149,7 +149,7 @@
     "parse-duration": "^1.1.0",
     "p-limit": "^6.2.0",
     "posthog-js": "^1.93.3",
-    "posthog-node": "^3.1.3",
+    "posthog-node": "4.17.1",
     "prism-react-renderer": "^2.3.1",
     "prismjs": "^1.29.0",
     "prom-client": "^15.1.0",
