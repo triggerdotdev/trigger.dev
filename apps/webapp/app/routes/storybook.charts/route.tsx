@@ -1,4 +1,5 @@
 import { ArrowTrendingUpIcon } from "@heroicons/react/20/solid";
+import { IconTimeline } from "@tabler/icons-react";
 import { useState } from "react";
 import { AbacusIcon } from "~/assets/icons/AbacusIcon";
 import { ArrowTopRightBottomLeftIcon } from "~/assets/icons/ArrowTopRightBottomLeftIcon";
@@ -131,7 +132,28 @@ function ChartsDashboard() {
           </Card.Content>
         </Card>
         <Card>
-          <Card.Header>Line Chart</Card.Header>
+          <Card.Header>
+            <div className="flex items-center gap-1.5">
+              <IconTimeline className="size-5 text-indigo-500" />
+              Success rate <span className="font-normal text-text-dimmed">by status</span>
+            </div>
+            <Card.Accessory>
+              <SegmentedControl
+                name="runCountByStatus"
+                options={[
+                  { label: "By status", value: "status" },
+                  { label: "By task", value: "task" },
+                ]}
+                defaultValue="status"
+                variant="secondary/small"
+              />
+              <Button
+                variant="secondary/small"
+                TrailingIcon={<ArrowTopRightBottomLeftIcon className="size-4" />}
+                className="px-1"
+              />
+            </Card.Accessory>
+          </Card.Header>
           <Card.Content>
             <ChartLine
               config={lineChartConfig}
@@ -177,36 +199,36 @@ const API_DATA = {
     endDate: new Date(2023, 10, 30), // November 30, 2023
   },
   lineChartData: [
-    { day: "Nov 1", desktop: 156, mobile: 89 },
-    { day: "Nov 2", desktop: 187, mobile: 102 },
-    { day: "Nov 3", desktop: 215, mobile: 95 },
-    { day: "Nov 4", desktop: 203, mobile: 114 },
-    { day: "Nov 5", desktop: 148, mobile: 81 },
-    { day: "Nov 6", desktop: 178, mobile: 110 },
-    { day: "Nov 7", desktop: 225, mobile: 132 },
-    { day: "Nov 8", desktop: 243, mobile: 145 },
-    { day: "Nov 9", desktop: 201, mobile: 118 },
-    { day: "Nov 10", desktop: 176, mobile: 97 },
-    { day: "Nov 11", desktop: 132, mobile: 78 },
-    { day: "Nov 12", desktop: 145, mobile: 85 },
-    { day: "Nov 13", desktop: 189, mobile: 103 },
-    { day: "Nov 14", desktop: 232, mobile: 128 },
-    { day: "Nov 15", desktop: 256, mobile: 142 },
-    { day: "Nov 16", desktop: 276, mobile: 159 },
-    { day: "Nov 17", desktop: 287, mobile: 168 },
-    { day: "Nov 18", desktop: 243, mobile: 146 },
-    { day: "Nov 19", desktop: 198, mobile: 125 },
-    { day: "Nov 20", desktop: 212, mobile: 117 },
-    { day: "Nov 21", desktop: 186, mobile: 80 },
-    { day: "Nov 22", desktop: 305, mobile: 200 },
-    { day: "Nov 23", desktop: 237, mobile: 120 },
-    { day: "Nov 24", desktop: 173, mobile: 190 },
-    { day: "Nov 25", desktop: 209, mobile: 130 },
-    { day: "Nov 26", desktop: 214, mobile: 140 },
-    { day: "Nov 27", desktop: 546, mobile: 150 },
-    { day: "Nov 28", desktop: 432, mobile: 165 },
-    { day: "Nov 29", desktop: 387, mobile: 139 },
-    { day: "Nov 30", desktop: 423, mobile: 157 },
+    { day: "Nov 1", "success-rate": 96.8, "failure-rate": 3.2 },
+    { day: "Nov 2", "success-rate": 95.3, "failure-rate": 4.7 },
+    { day: "Nov 3", "success-rate": 97.1, "failure-rate": 2.9 },
+    { day: "Nov 4", "success-rate": 94.5, "failure-rate": 5.5 },
+    { day: "Nov 5", "success-rate": 98.6, "failure-rate": 1.4 },
+    { day: "Nov 6", "success-rate": 97.8, "failure-rate": 2.2 },
+    { day: "Nov 7", "success-rate": 93.9, "failure-rate": 6.1 },
+    { day: "Nov 8", "success-rate": 95.7, "failure-rate": 4.3 },
+    { day: "Nov 9", "success-rate": 98.2, "failure-rate": 1.8 },
+    { day: "Nov 10", "success-rate": 96.5, "failure-rate": 3.5 },
+    { day: "Nov 11", "success-rate": 94.8, "failure-rate": 5.2 },
+    { day: "Nov 12", "success-rate": 99.1, "failure-rate": 0.9 },
+    { day: "Nov 13", "success-rate": 97.3, "failure-rate": 2.7 },
+    { day: "Nov 14", "success-rate": 95.9, "failure-rate": 4.1 },
+    { day: "Nov 15", "success-rate": 98.4, "failure-rate": 1.6 },
+    { day: "Nov 16", "success-rate": 96.2, "failure-rate": 3.8 },
+    { day: "Nov 17", "success-rate": 94.3, "failure-rate": 5.7 },
+    { day: "Nov 18", "success-rate": 97.5, "failure-rate": 2.5 },
+    { day: "Nov 19", "success-rate": 95.6, "failure-rate": 4.4 },
+    { day: "Nov 20", "success-rate": 98.9, "failure-rate": 1.1 },
+    { day: "Nov 21", "success-rate": 96.7, "failure-rate": 3.3 },
+    { day: "Nov 22", "success-rate": 95.1, "failure-rate": 4.9 },
+    { day: "Nov 23", "success-rate": 97.9, "failure-rate": 2.1 },
+    { day: "Nov 24", "success-rate": 94.7, "failure-rate": 5.3 },
+    { day: "Nov 25", "success-rate": 98.3, "failure-rate": 1.7 },
+    { day: "Nov 26", "success-rate": 96.4, "failure-rate": 3.6 },
+    { day: "Nov 27", "success-rate": 94.9, "failure-rate": 5.1 },
+    { day: "Nov 28", "success-rate": 97.7, "failure-rate": 2.3 },
+    { day: "Nov 29", "success-rate": 95.4, "failure-rate": 4.6 },
+    { day: "Nov 30", "success-rate": 98.8, "failure-rate": 1.2 },
   ],
   barChartData: [
     { day: "Nov 1", completed: 3245, "in-progress": 4321, canceled: 657, failed: 2987 },
@@ -575,13 +597,13 @@ const API_DATA = {
 };
 
 const lineChartConfig = {
-  desktop: {
-    label: "Desktop",
-    color: "#3B82F6",
+  "success-rate": {
+    label: "Success Rate",
+    color: "#22C55E",
   },
-  mobile: {
-    label: "Mobile",
-    color: "#28BF5C",
+  "failure-rate": {
+    label: "Failure Rate",
+    color: "#F43F5E",
   },
 } satisfies ChartConfig;
 
