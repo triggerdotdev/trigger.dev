@@ -36,11 +36,13 @@ import { login } from "./login.js";
 import { updateTriggerPackages } from "./update.js";
 import { setGithubActionsOutputAndEnvVars } from "../utilities/githubActions.js";
 import { isDirectory } from "../utilities/fileSystem.js";
+import { createGitMeta } from "../utilities/gitMeta.js";
 
 const DeployCommandOptions = CommonCommandOptions.extend({
   dryRun: z.boolean().default(false),
   skipSyncEnvVars: z.boolean().default(false),
-  env: z.enum(["prod", "staging"]),
+  env: z.enum(["prod", "staging", "preview"]),
+  branch: z.string().optional(),
   loadImage: z.boolean().default(false),
   buildPlatform: z.enum(["linux/amd64", "linux/arm64"]).default("linux/amd64"),
   namespace: z.string().optional(),
@@ -71,6 +73,10 @@ export function configureDeployCommand(program: Command) {
         "-e, --env <env>",
         "Deploy to a specific environment (currently only prod and staging are supported)",
         "prod"
+      )
+      .option(
+        "-b, --branch <branch>",
+        "The preview branch to deploy to when passing --env preview. If not provided, we'll detect your local git branch."
       )
       .option("--skip-update-check", "Skip checking for @trigger.dev package updates")
       .option("-c, --config <config file>", "The name of the config file, found at [path]")
@@ -215,11 +221,30 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
 
   logger.debug("Resolved config", resolvedConfig);
 
+  const gitMeta = await createGitMeta(resolvedConfig.workspaceDir);
+  logger.debug("gitMeta", gitMeta);
+
+  let branch = options.branch;
+  if (options.env === "preview" && !branch) {
+    if (gitMeta?.commitRef) {
+      branch = gitMeta.commitRef;
+    } else {
+      throw new Error("Could not determine branch name from git metadata");
+    }
+  }
+
+  if (options.env === "preview" && !branch) {
+    throw new Error(
+      "You need to specify a preview branch when deploying to preview, pass --branch <branch>."
+    );
+  }
+
   const projectClient = await getProjectClient({
     accessToken: authorization.auth.accessToken,
     apiUrl: authorization.auth.apiUrl,
     projectRef: resolvedConfig.project,
     env: options.env,
+    branch,
     profile: options.profile,
   });
 
