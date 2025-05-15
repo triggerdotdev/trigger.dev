@@ -541,8 +541,8 @@ importers:
         specifier: ^6.2.0
         version: 6.2.0
       parse-duration:
-        specifier: ^1.1.0
-        version: 1.1.0
+        specifier: ^2.1.0
+        version: 2.1.4
       posthog-js:
         specifier: ^1.93.3
         version: 1.93.3
@@ -29499,8 +29499,8 @@ packages:
     dependencies:
       callsites: 3.1.0
 
-  /parse-duration@1.1.0:
-    resolution: {integrity: sha512-z6t9dvSJYaPoQq7quMzdEagSFtpGu+utzHqqxmpVWNNZRIXnvqyCvn9XsTdh7c/w0Bqmdz3RB3YnRaKtpRtEXQ==}
+  /parse-duration@2.1.4:
+    resolution: {integrity: sha512-b98m6MsCh+akxfyoz9w9dt0AlH2dfYLOBss5SdDsr9pkhKNvkWBXU/r8A4ahmIGByBOLV2+4YwfCuFxbDDaGyg==}
     dev: false
 
   /parse-entities@4.0.0:
