@@ -10,18 +10,34 @@ import {
 import { ChartLineLoading } from "./ChartLoading";
 import { useDateRange } from "./DateRangeContext";
 
+type CurveType =
+  | "basis"
+  | "basisClosed"
+  | "basisOpen"
+  | "linear"
+  | "linearClosed"
+  | "natural"
+  | "monotoneX"
+  | "monotoneY"
+  | "monotone"
+  | "step"
+  | "stepBefore"
+  | "stepAfter";
+
 export function ChartLine({
   config,
   data: initialData,
   dataKey,
   state,
   useGlobalDateRange = false,
+  lineType = "step",
 }: {
   config: ChartConfig;
   data: any[];
   dataKey: string;
   state?: ChartState;
   useGlobalDateRange?: boolean;
+  lineType?: CurveType;
 }) {
   const globalDateRange = useDateRange();
 
@@ -44,10 +60,6 @@ export function ChartLine({
 
       // If we can't find the exact dates, just return all data
       if (startDateIndex === -1 || endDateIndex === -1) {
-        console.warn(
-          `Date range not found in data. Start: ${globalDateRange.startDate}, End: ${globalDateRange.endDate}`
-        );
-        console.log("Available dates:", allDays);
         return initialData;
       }
 
@@ -69,34 +81,62 @@ export function ChartLine({
   ]);
 
   return (
-    <ChartContainer config={config} className="min-h-[200px] w-full">
-      {state === "loading" ? (
-        <ChartLineLoading />
-      ) : (
-        <LineChart
-          accessibilityLayer
-          data={data}
-          margin={{
-            left: 12,
-            right: 12,
-          }}
-        >
-          <CartesianGrid vertical={false} stroke="#272A2E" />
-          <XAxis dataKey={dataKey} tickLine={false} axisLine={false} tickMargin={8} />
-          <YAxis axisLine={false} tickLine={false} tickMargin={8} />
-          <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
-          {Object.keys(config).map((key) => (
-            <Line
-              key={key}
-              dataKey={key}
-              type="step"
-              stroke={config[key].color}
-              strokeWidth={2}
-              dot={false}
-            />
-          ))}
-        </LineChart>
-      )}
-    </ChartContainer>
+    <div className="relative flex w-full flex-col">
+      <div
+        className="mt-8 h-full w-full cursor-crosshair"
+        style={{ touchAction: "none", userSelect: "none" }}
+      >
+        <ChartContainer config={config} className="min-h-[200px] w-full">
+          {state === "loading" ? (
+            <ChartLineLoading />
+          ) : (
+            <LineChart
+              accessibilityLayer
+              data={data}
+              margin={{
+                left: 12,
+                right: 12,
+              }}
+            >
+              <CartesianGrid vertical={false} stroke="#272A2E" />
+              <XAxis
+                dataKey={dataKey}
+                tickLine={false}
+                axisLine={false}
+                tickMargin={10}
+                tick={{
+                  fill: "#878C99",
+                  fontSize: 11,
+                  style: { fontVariantNumeric: "tabular-nums" },
+                }}
+              />
+              <YAxis
+                axisLine={false}
+                tickLine={false}
+                tickMargin={8}
+                tick={{
+                  fill: "#878C99",
+                  fontSize: 11,
+                  style: { fontVariantNumeric: "tabular-nums" },
+                }}
+                domain={[0, 100]}
+                tickFormatter={(value) => `${value}%`}
+              />
+              <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
+              {Object.keys(config).map((key) => (
+                <Line
+                  key={key}
+                  dataKey={key}
+                  type={lineType}
+                  stroke={config[key].color}
+                  strokeWidth={2}
+                  dot={false}
+                />
+              ))}
+            </LineChart>
+          )}
+        </ChartContainer>
+      </div>
+    </div>
   );
 }
