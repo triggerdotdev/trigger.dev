@@ -13,9 +13,7 @@ export class DockerWorkloadManager implements WorkloadManager {
   private readonly docker: Docker;
 
   constructor(private opts: WorkloadManagerOptions) {
-    this.docker = new Docker({
-      socketPath: env.DOCKER_SOCKET_PATH,
-    });
+    this.docker = new Docker();
 
     if (opts.workloadApiDomain) {
       this.logger.warn("⚠️ Custom workload API domain", {
