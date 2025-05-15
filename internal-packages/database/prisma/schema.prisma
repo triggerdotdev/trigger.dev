@@ -390,6 +390,7 @@ model RuntimeEnvironment {
   parentEnvironmentId     String?
   childEnvironments       RuntimeEnvironment[] @relation("parentEnvironment")
 
+  // This is GitMeta type
   git Json?
 
   /// When set API calls will fail
@@ -2876,6 +2877,9 @@ model WorkerDeployment {
 
   failedAt  DateTime?
   errorData Json?
+
+  // This is GitMeta type
+  git Json?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
