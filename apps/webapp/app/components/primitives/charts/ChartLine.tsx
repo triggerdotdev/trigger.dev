@@ -7,7 +7,13 @@ import {
   ChartTooltipContent,
   type ChartState,
 } from "~/components/primitives/charts/Chart";
-import { ChartLineLoading, ChartNoData, ChartInvalid } from "./ChartLoading";
+import {
+  ChartLineLoading,
+  ChartBarNoData,
+  ChartBarInvalid,
+  ChartLineNoData,
+  ChartLineInvalid,
+} from "./ChartLoading";
 import { useDateRange } from "./DateRangeContext";
 
 type CurveType =
@@ -105,9 +111,9 @@ export function ChartLine({
     if (displayState === "loading") {
       return <ChartLineLoading />;
     } else if (displayState === "noData" || hasNoData) {
-      return <ChartNoData />;
+      return <ChartLineNoData />;
     } else if (displayState === "invalid") {
-      return <ChartInvalid />;
+      return <ChartLineInvalid />;
     }
 
     // Get the x-axis ticks based on tooltip state

@@ -9,7 +9,7 @@ export function ChartBarLoading() {
   return (
     <div className="relative grid h-full place-items-center p-2 pt-0">
       <ChartBarLoadingBackground />
-      <div className="absolute z-10 flex items-center gap-2">
+      <div className="absolute z-10 mb-16 flex items-center gap-2">
         <Spinner className="size-6" />
         <Paragraph variant="base/bright">Loading data…</Paragraph>
       </div>
@@ -17,13 +17,13 @@ export function ChartBarLoading() {
   );
 }
 
-export function ChartNoData() {
+export function ChartBarNoData() {
   const dateRange = useDateRange();
 
   return (
     <div className="relative grid h-full place-items-center p-2 pt-0">
       <ChartBarLoadingBackground />
-      <div className="absolute z-10 flex flex-col items-center gap-2">
+      <div className="absolute z-10 mb-16 flex flex-col items-center gap-2">
         <Paragraph variant="small/bright">No data</Paragraph>
         <Paragraph variant="small" spacing>
           There's no data available for the filters you've set.
@@ -36,13 +36,13 @@ export function ChartNoData() {
   );
 }
 
-export function ChartInvalid() {
+export function ChartBarInvalid() {
   const dateRange = useDateRange();
 
   return (
     <div className="relative grid h-full place-items-center p-2 pt-0">
       <ChartBarLoadingBackground />
-      <div className="absolute z-10 flex flex-col items-center gap-2">
+      <div className="absolute z-10 mb-16 flex flex-col items-center gap-2">
         <Paragraph variant="small/bright">Chart not applicable</Paragraph>
         <Paragraph variant="small" spacing>
           Your current filter settings don't apply to this chart's data type.
@@ -57,11 +57,49 @@ export function ChartInvalid() {
 
 export function ChartLineLoading() {
   return (
-    <div className="relative grid h-full place-items-center p-2 pt-0">
+    <div className="relative mb-16 grid h-full place-items-center p-2 pt-0">
       <ChartLineLoadingBackground />
       <div className="absolute z-10 flex items-center gap-2">
         <Spinner className="size-6" />
         <Paragraph variant="base/bright">Loading data…</Paragraph>
+      </div>
+    </div>
+  );
+}
+
+export function ChartLineNoData() {
+  const dateRange = useDateRange();
+
+  return (
+    <div className="relative grid h-full place-items-center p-2 pt-0">
+      <ChartLineLoadingBackground />
+      <div className="absolute z-10 mb-16 flex flex-col items-center gap-2">
+        <Paragraph variant="small/bright">No data</Paragraph>
+        <Paragraph variant="small" spacing>
+          There's no data available for the filters you've set.
+        </Paragraph>
+        <Button variant="secondary/small" onClick={dateRange.resetDateRange}>
+          Clear filters
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+export function ChartLineInvalid() {
+  const dateRange = useDateRange();
+
+  return (
+    <div className="relative grid h-full place-items-center p-2 pt-0">
+      <ChartLineLoadingBackground />
+      <div className="absolute z-10 mb-16 flex flex-col items-center gap-2">
+        <Paragraph variant="small/bright">Chart not applicable</Paragraph>
+        <Paragraph variant="small" spacing>
+          Your current filter settings don't apply to this chart's data type.
+        </Paragraph>
+        <Button variant="secondary/small" onClick={dateRange.resetDateRange}>
+          Clear filters
+        </Button>
       </div>
     </div>
   );
