@@ -1,23 +1,22 @@
 import { json } from "@remix-run/server-runtime";
-import { Prettify } from "@trigger.dev/core";
+import { type Prettify } from "@trigger.dev/core";
 import { SignJWT, errors, jwtVerify } from "jose";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { findProjectByRef } from "~/models/project.server";
 import {
-  RuntimeEnvironment,
   findEnvironmentByApiKey,
   findEnvironmentByPublicApiKey,
 } from "~/models/runtimeEnvironment.server";
+import { type RuntimeEnvironmentForEnvRepo } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import { logger } from "./logger.server";
 import {
-  PersonalAccessTokenAuthenticationResult,
+  type PersonalAccessTokenAuthenticationResult,
   authenticateApiRequestWithPersonalAccessToken,
   isPersonalAccessToken,
 } from "./personalAccessToken.server";
 import { isPublicJWT, validatePublicJwtKey } from "./realtime/jwtAuth.server";
-import { RuntimeEnvironmentForEnvRepo } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 
 const ClaimsSchema = z.object({
   scopes: z.array(z.string()).optional(),
@@ -160,7 +159,7 @@ export async function authenticateApiKey(
  * This method is the same as `authenticateApiKey` but it returns a failure result instead of undefined.
  * It should be used from now on to ensure that the API key is always validated and provide a failure result.
  */
-export async function authenticateApiKeyWithFailure(
+async function authenticateApiKeyWithFailure(
   apiKey: string,
   options: { allowPublicKey?: boolean; allowJWT?: boolean } = {}
 ): Promise<ApiAuthenticationResult> {
@@ -254,19 +253,19 @@ export async function authenticateAuthorizationHeader(
   return authenticateApiKey(apiKey, { allowPublicKey, allowJWT });
 }
 
-export function isPublicApiKey(key: string) {
+function isPublicApiKey(key: string) {
   return key.startsWith("pk_");
 }
 
-export function isSecretApiKey(key: string) {
+function isSecretApiKey(key: string) {
   return key.startsWith("tr_");
 }
 
-export function getApiKeyFromRequest(request: Request) {
+function getApiKeyFromRequest(request: Request) {
   return getApiKeyFromHeader(request.headers.get("Authorization"));
 }
 
-export function getApiKeyFromHeader(authorization?: string | null) {
+function getApiKeyFromHeader(authorization?: string | null) {
   if (typeof authorization !== "string" || !authorization) {
     return;
   }
@@ -275,7 +274,7 @@ export function getApiKeyFromHeader(authorization?: string | null) {
   return apiKey;
 }
 
-export function getApiKeyResult(apiKey: string): {
+function getApiKeyResult(apiKey: string): {
   apiKey: string;
   type: "PUBLIC" | "PRIVATE" | "PUBLIC_JWT";
 } {
