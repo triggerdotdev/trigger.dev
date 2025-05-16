@@ -63,7 +63,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   const result: GetProjectEnvResponse = {
     apiKey: runtimeEnv.apiKey,
     name: project.name,
-    apiUrl: processEnv.APP_ORIGIN,
+    apiUrl: processEnv.API_ORIGIN ?? processEnv.APP_ORIGIN,
     projectId: project.id,
   };
 
