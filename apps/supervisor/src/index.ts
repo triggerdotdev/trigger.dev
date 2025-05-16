@@ -112,6 +112,12 @@ class ManagedSupervisor {
       }
     }
 
+    if (env.TRIGGER_DEQUEUE_INTERVAL_MS > env.TRIGGER_DEQUEUE_IDLE_INTERVAL_MS) {
+      this.logger.warn(
+        `⚠️  TRIGGER_DEQUEUE_INTERVAL_MS (${env.TRIGGER_DEQUEUE_INTERVAL_MS}) is greater than TRIGGER_DEQUEUE_IDLE_INTERVAL_MS (${env.TRIGGER_DEQUEUE_IDLE_INTERVAL_MS}) - did you mix them up?`
+      );
+    }
+
     this.workerSession = new SupervisorSession({
       workerToken: env.TRIGGER_WORKER_TOKEN,
       apiUrl: env.TRIGGER_API_URL,
