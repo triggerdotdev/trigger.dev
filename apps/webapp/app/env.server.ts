@@ -725,6 +725,53 @@ const EnvironmentSchema = z.object({
   // BetterStack
   BETTERSTACK_API_KEY: z.string().optional(),
   BETTERSTACK_STATUS_PAGE_ID: z.string().optional(),
+
+  RUN_REPLICATION_REDIS_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_HOST),
+  RUN_REPLICATION_REDIS_READER_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_READER_HOST),
+  RUN_REPLICATION_REDIS_READER_PORT: z.coerce
+    .number()
+    .optional()
+    .transform(
+      (v) =>
+        v ?? (process.env.REDIS_READER_PORT ? parseInt(process.env.REDIS_READER_PORT) : undefined)
+    ),
+  RUN_REPLICATION_REDIS_PORT: z.coerce
+    .number()
+    .optional()
+    .transform((v) => v ?? (process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined)),
+  RUN_REPLICATION_REDIS_USERNAME: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_USERNAME),
+  RUN_REPLICATION_REDIS_PASSWORD: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_PASSWORD),
+  RUN_REPLICATION_REDIS_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
+
+  RUN_REPLICATION_CLICKHOUSE_URL: z.string().optional(),
+  RUN_REPLICATION_ENABLED: z.string().default("0"),
+  RUN_REPLICATION_SLOT_NAME: z.string().default("task_runs_to_clickhouse_v1"),
+  RUN_REPLICATION_PUBLICATION_NAME: z.string().default("task_runs_to_clickhouse_v1_publication"),
+  RUN_REPLICATION_MAX_FLUSH_CONCURRENCY: z.coerce.number().int().default(100),
+  RUN_REPLICATION_FLUSH_INTERVAL_MS: z.coerce.number().int().default(1000),
+  RUN_REPLICATION_FLUSH_BATCH_SIZE: z.coerce.number().int().default(100),
+  RUN_REPLICATION_LEADER_LOCK_TIMEOUT_MS: z.coerce.number().int().default(30_000),
+  RUN_REPLICATION_LEADER_LOCK_EXTEND_INTERVAL_MS: z.coerce.number().int().default(10_000),
+  RUN_REPLICATION_ACK_INTERVAL_SECONDS: z.coerce.number().int().default(10),
+  RUN_REPLICATION_LOG_LEVEL: z.enum(["log", "error", "warn", "info", "debug"]).default("info"),
+  RUN_REPLICATION_LEADER_LOCK_ADDITIONAL_TIME_MS: z.coerce.number().int().default(10_000),
+  RUN_REPLICATION_LEADER_LOCK_RETRY_INTERVAL_MS: z.coerce.number().int().default(500),
+  RUN_REPLICATION_WAIT_FOR_ASYNC_INSERT: z.string().default("0"),
+  RUN_REPLICATION_KEEP_ALIVE_ENABLED: z.string().default("1"),
+  RUN_REPLICATION_KEEP_ALIVE_IDLE_SOCKET_TTL_MS: z.coerce.number().int().default(9_000),
+  RUN_REPLICATION_MAX_OPEN_CONNECTIONS: z.coerce.number().int().default(10),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

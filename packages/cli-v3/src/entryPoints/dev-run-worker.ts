@@ -104,11 +104,11 @@ const heartbeatIntervalMs = getEnvVar("HEARTBEAT_INTERVAL_MS");
 const standardLocalsManager = new StandardLocalsManager();
 localsAPI.setGlobalLocalsManager(standardLocalsManager);
 
-const standardRunTimelineMetricsManager = new StandardRunTimelineMetricsManager();
-runTimelineMetrics.setGlobalManager(standardRunTimelineMetricsManager);
-
 const standardLifecycleHooksManager = new StandardLifecycleHooksManager();
 lifecycleHooks.setGlobalLifecycleHooksManager(standardLifecycleHooksManager);
+
+const standardRunTimelineMetricsManager = new StandardRunTimelineMetricsManager();
+runTimelineMetrics.setGlobalManager(standardRunTimelineMetricsManager);
 
 const devUsageManager = new DevUsageManager();
 usage.setGlobalUsageManager(devUsageManager);
@@ -164,6 +164,7 @@ async function bootstrap() {
     url: env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://0.0.0.0:4318",
     instrumentations: config.telemetry?.instrumentations ?? config.instrumentations ?? [],
     exporters: config.telemetry?.exporters ?? [],
+    logExporters: config.telemetry?.logExporters ?? [],
     diagLogLevel: (env.OTEL_LOG_LEVEL as TracingDiagnosticLogLevel) ?? "none",
     forceFlushTimeoutMillis: 30_000,
   });
@@ -174,7 +175,8 @@ async function bootstrap() {
   const tracer = new TriggerTracer({ tracer: otelTracer, logger: otelLogger });
   const consoleInterceptor = new ConsoleInterceptor(
     otelLogger,
-    typeof config.enableConsoleLogging === "boolean" ? config.enableConsoleLogging : true
+    typeof config.enableConsoleLogging === "boolean" ? config.enableConsoleLogging : true,
+    typeof config.disableConsoleInterceptor === "boolean" ? config.disableConsoleInterceptor : false
   );
 
   const configLogLevel = triggerLogLevel ?? config.logLevel ?? "info";

@@ -41,6 +41,36 @@ export async function parsePacket(value: IOPacket, options?: ParsePacketOptions)
   }
 }
 
+export async function parsePacketAsJson(
+  value: IOPacket,
+  options?: ParsePacketOptions
+): Promise<any> {
+  if (!value.data) {
+    return undefined;
+  }
+
+  switch (value.dataType) {
+    case "application/json":
+      return JSON.parse(value.data, makeSafeReviver(options));
+    case "application/super+json":
+      const { parse, serialize } = await loadSuperJSON();
+
+      const superJsonResult = parse(value.data);
+
+      const { json } = serialize(superJsonResult);
+
+      return json;
+    case "text/plain":
+      return value.data;
+    case "application/store":
+      throw new Error(
+        `Cannot parse an application/store packet (${value.data}). Needs to be imported first.`
+      );
+    default:
+      return value.data;
+  }
+}
+
 export async function conditionallyImportAndParsePacket(
   value: IOPacket,
   client?: ApiClient

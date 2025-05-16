@@ -19,7 +19,11 @@ export default defineConfig({
 });
 ```
 
-By default, this will install the version of `ffmpeg` that is available in the Debian package manager. If you need a specific version, you can pass in the version as an argument:
+By default, this will install the version of `ffmpeg` that is available in the Debian package manager (via `apt`).
+
+## FFmpeg 7.x (static build)
+
+If you need FFmpeg 7.x, you can pass `{ version: "7" }` to the extension. This will install a static build of FFmpeg 7.x instead of using the Debian package:
 
 ```ts
 import { defineConfig } from "@trigger.dev/sdk/v3";
@@ -29,7 +33,7 @@ export default defineConfig({
   project: "<project ref>",
   // Your other config settings...
   build: {
-    extensions: [ffmpeg({ version: "6.0-4" })],
+    extensions: [ffmpeg({ version: "7" })],
   },
 });
 ```

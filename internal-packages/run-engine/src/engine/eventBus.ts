@@ -1,18 +1,132 @@
-import { TaskRunExecutionStatus, TaskRunStatus } from "@trigger.dev/database";
-import { AuthenticatedEnvironment } from "../shared/index.js";
 import { FlushedRunMetadata, TaskRunError } from "@trigger.dev/core/v3";
+import {
+  RuntimeEnvironmentType,
+  TaskRunExecutionStatus,
+  TaskRunStatus,
+} from "@trigger.dev/database";
 import { EventEmitter } from "events";
+import { AuthenticatedEnvironment } from "../shared/index.js";
 
 export type EventBusEvents = {
+  runCreated: [
+    {
+      time: Date;
+      runId: string;
+    },
+  ];
+  runEnqueuedAfterDelay: [
+    {
+      time: Date;
+      run: {
+        id: string;
+        status: TaskRunStatus;
+        queuedAt: Date;
+        updatedAt: Date;
+        createdAt: Date;
+      };
+      organization: {
+        id: string;
+      };
+      project: {
+        id: string;
+      };
+      environment: {
+        id: string;
+      };
+    },
+  ];
+  runDelayRescheduled: [
+    {
+      time: Date;
+      run: {
+        id: string;
+        status: TaskRunStatus;
+        delayUntil: Date;
+        updatedAt: Date;
+        createdAt: Date;
+      };
+      organization: {
+        id: string;
+      };
+      project: {
+        id: string;
+      };
+      environment: {
+        id: string;
+      };
+    },
+  ];
+  runLocked: [
+    {
+      time: Date;
+      run: {
+        id: string;
+        updatedAt: Date;
+        status: TaskRunStatus;
+        lockedAt: Date;
+        lockedById: string;
+        lockedToVersionId: string;
+        lockedQueueId: string;
+        startedAt: Date;
+        baseCostInCents: number;
+        machinePreset: string;
+        taskVersion: string;
+        sdkVersion: string;
+        cliVersion: string;
+        maxDurationInSeconds?: number;
+        maxAttempts?: number;
+        createdAt: Date;
+      };
+      organization: {
+        id: string;
+      };
+      project: {
+        id: string;
+      };
+      environment: {
+        id: string;
+      };
+    },
+  ];
+  runStatusChanged: [
+    {
+      time: Date;
+      run: {
+        id: string;
+        status: TaskRunStatus;
+        updatedAt: Date;
+        createdAt: Date;
+      };
+      organization: {
+        id?: string;
+      };
+      project: {
+        id: string;
+      };
+      environment: {
+        id: string;
+      };
+    },
+  ];
   runAttemptStarted: [
     {
       time: Date;
       run: {
         id: string;
+        status: TaskRunStatus;
+        createdAt: Date;
+        updatedAt: Date;
         attemptNumber: number;
         baseCostInCents: number;
+        executedAt: Date | undefined;
       };
       organization: {
+        id: string;
+      };
+      project: {
+        id: string;
+      };
+      environment: {
         id: string;
       };
     },
@@ -29,6 +143,7 @@ export type EventBusEvents = {
         taskEventStore: string;
         createdAt: Date;
         completedAt: Date | null;
+        updatedAt: Date;
       };
     },
   ];
@@ -37,11 +152,23 @@ export type EventBusEvents = {
       time: Date;
       run: {
         id: string;
+        status: TaskRunStatus;
         spanId: string;
         ttl: string | null;
         taskEventStore: string;
         createdAt: Date;
         completedAt: Date | null;
+        expiredAt: Date | null;
+        updatedAt: Date;
+      };
+      organization: {
+        id: string;
+      };
+      project: {
+        id: string;
+      };
+      environment: {
+        id: string;
       };
     },
   ];
@@ -50,12 +177,26 @@ export type EventBusEvents = {
       time: Date;
       run: {
         id: string;
+        status: TaskRunStatus;
         spanId: string;
         output: string | undefined;
         outputType: string;
         taskEventStore: string;
         createdAt: Date;
         completedAt: Date | null;
+        usageDurationMs: number;
+        costInCents: number;
+        updatedAt: Date;
+        attemptNumber: number;
+      };
+      organization: {
+        id: string;
+      };
+      project: {
+        id: string;
+      };
+      environment: {
+        id: string;
       };
     },
   ];
@@ -70,6 +211,19 @@ export type EventBusEvents = {
         taskEventStore: string;
         createdAt: Date;
         completedAt: Date | null;
+        updatedAt: Date;
+        attemptNumber: number;
+        usageDurationMs: number;
+        costInCents: number;
+      };
+      organization: {
+        id: string;
+      };
+      project: {
+        id: string;
+      };
+      environment: {
+        id: string;
       };
     },
   ];
@@ -78,6 +232,7 @@ export type EventBusEvents = {
       time: Date;
       run: {
         id: string;
+        status: TaskRunStatus;
         friendlyId: string;
         spanId: string;
         attemptNumber: number;
@@ -86,6 +241,9 @@ export type EventBusEvents = {
         taskIdentifier: string;
         baseCostInCents: number;
         nextMachineAfterOOM?: string;
+        updatedAt: Date;
+        createdAt: Date;
+        error: TaskRunError;
       };
       organization: {
         id: string;
@@ -99,12 +257,24 @@ export type EventBusEvents = {
       time: Date;
       run: {
         id: string;
+        status: TaskRunStatus;
         friendlyId: string;
         spanId: string;
         error: TaskRunError;
         taskEventStore: string;
         createdAt: Date;
         completedAt: Date | null;
+        updatedAt: Date;
+        attemptNumber: number;
+      };
+      organization: {
+        id: string;
+      };
+      project: {
+        id: string;
+      };
+      environment: {
+        id: string;
       };
     },
   ];

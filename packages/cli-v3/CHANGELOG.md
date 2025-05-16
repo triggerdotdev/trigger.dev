@@ -1,5 +1,25 @@
 # trigger.dev
 
+## 4.0.0-v4-beta.16
+
+### Patch Changes
+
+- Fix init.ts detection when using the sentry esbuild plugin ([#2051](https://github.com/triggerdotdev/trigger.dev/pull/2051))
+- Updated dependencies:
+  - `@trigger.dev/build@4.0.0-v4-beta.16`
+  - `@trigger.dev/core@4.0.0-v4-beta.16`
+
+## 4.0.0-v4-beta.15
+
+### Patch Changes
+
+- Add external log exporters and fix missing external trace exporters in deployed tasks ([#2038](https://github.com/triggerdotdev/trigger.dev/pull/2038))
+- Log images sizes for self-hosted deploys ([#1764](https://github.com/triggerdotdev/trigger.dev/pull/1764))
+- Fix init.ts auto-import for deployed workers ([#2041](https://github.com/triggerdotdev/trigger.dev/pull/2041))
+- Updated dependencies:
+  - `@trigger.dev/build@4.0.0-v4-beta.15`
+  - `@trigger.dev/core@4.0.0-v4-beta.15`
+
 ## 4.0.0-v4-beta.14
 
 ### Patch Changes

@@ -1,4 +1,5 @@
 import { DiagConsoleLogger, DiagLogLevel, TracerProvider, diag } from "@opentelemetry/api";
+import { RandomIdGenerator } from "@opentelemetry/sdk-trace-base";
 import { logs } from "@opentelemetry/api-logs";
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
@@ -15,6 +16,8 @@ import {
 import {
   BatchLogRecordProcessor,
   LoggerProvider,
+  LogRecordExporter,
+  ReadableLogRecord,
   SimpleLogRecordProcessor,
 } from "@opentelemetry/sdk-logs";
 import {
@@ -87,8 +90,11 @@ export type TracingSDKConfig = {
   resource?: IResource;
   instrumentations?: Instrumentation[];
   exporters?: SpanExporter[];
+  logExporters?: LogRecordExporter[];
   diagLogLevel?: TracingDiagnosticLogLevel;
 };
+
+const idGenerator = new RandomIdGenerator();
 
 export class TracingSDK {
   public readonly asyncResourceDetector = new AsyncResourceDetector();
@@ -158,7 +164,7 @@ export class TracingSDK {
       )
     );
 
-    const externalTraceId = crypto.randomUUID();
+    const externalTraceId = idGenerator.generateTraceId();
 
     for (const exporter of config.exporters ?? []) {
       traceProvider.addSpanProcessor(
@@ -209,6 +215,28 @@ export class TracingSDK {
           : new SimpleLogRecordProcessor(logExporter)
       )
     );
+
+    for (const externalLogExporter of config.logExporters ?? []) {
+      loggerProvider.addLogRecordProcessor(
+        getEnvVar("OTEL_BATCH_PROCESSING_ENABLED") === "1"
+          ? new BatchLogRecordProcessor(
+              new ExternalLogRecordExporterWrapper(externalLogExporter, externalTraceId),
+              {
+                maxExportBatchSize: parseInt(getEnvVar("OTEL_LOG_MAX_EXPORT_BATCH_SIZE") ?? "64"),
+                scheduledDelayMillis: parseInt(
+                  getEnvVar("OTEL_LOG_SCHEDULED_DELAY_MILLIS") ?? "200"
+                ),
+                exportTimeoutMillis: parseInt(
+                  getEnvVar("OTEL_LOG_EXPORT_TIMEOUT_MILLIS") ?? "30000"
+                ),
+                maxQueueSize: parseInt(getEnvVar("OTEL_LOG_MAX_QUEUE_SIZE") ?? "512"),
+              }
+            )
+          : new SimpleLogRecordProcessor(
+              new ExternalLogRecordExporterWrapper(externalLogExporter, externalTraceId)
+            )
+      );
+    }
 
     this._logProvider = loggerProvider;
     this._spanExporter = spanExporter;
@@ -304,5 +332,52 @@ class ExternalSpanExporterWrapper {
     return this.underlyingExporter.forceFlush
       ? this.underlyingExporter.forceFlush()
       : Promise.resolve();
+  }
+}
+
+class ExternalLogRecordExporterWrapper {
+  constructor(
+    private underlyingExporter: LogRecordExporter,
+    private externalTraceId: string
+  ) {}
+
+  export(logs: any[], resultCallback: (result: any) => void): void {
+    const modifiedLogs = logs.map(this.transformLogRecord.bind(this));
+
+    this.underlyingExporter.export(modifiedLogs, resultCallback);
+  }
+
+  shutdown(): Promise<void> {
+    return this.underlyingExporter.shutdown();
+  }
+
+  transformLogRecord(logRecord: ReadableLogRecord): ReadableLogRecord {
+    // If there's no spanContext, or if the externalTraceId is not set, return the original logRecord.
+    if (!logRecord.spanContext || !this.externalTraceId) {
+      return logRecord;
+    }
+
+    // Capture externalTraceId for use within the proxy's scope.
+    const { externalTraceId } = this;
+
+    return new Proxy(logRecord, {
+      get(target, prop, receiver) {
+        if (prop === "spanContext") {
+          // Intercept access to spanContext.
+          const originalSpanContext = target.spanContext;
+          // Ensure originalSpanContext exists (it should, due to the check above, but good for safety).
+          if (originalSpanContext) {
+            return {
+              ...originalSpanContext,
+              traceId: externalTraceId, // Override traceId.
+            };
+          }
+          // Fallback if, for some reason, originalSpanContext is undefined here.
+          return undefined;
+        }
+        // For all other properties, defer to the original object.
+        return Reflect.get(target, prop, receiver);
+      },
+    });
   }
 }

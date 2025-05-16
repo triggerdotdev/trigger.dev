@@ -4,7 +4,9 @@ import { env } from "./env.server";
 
 export const metricsRegister = singleton("metricsRegister", initializeMetricsRegister);
 
-function initializeMetricsRegister() {
+export type MetricsRegister = Registry<OpenMetricsContentType>;
+
+function initializeMetricsRegister(): MetricsRegister {
   const registry = new Registry<OpenMetricsContentType>();
 
   register.setDefaultLabels({
