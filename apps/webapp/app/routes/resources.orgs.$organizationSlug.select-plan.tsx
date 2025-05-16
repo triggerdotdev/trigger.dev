@@ -801,7 +801,7 @@ function TierContainer({
     <div
       className={cn(
         "flex w-full min-w-[16rem] flex-col p-6",
-        isHighlighted ? "border border-primary" : "border border-grid-dimmed",
+        isHighlighted ? "border border-indigo-500" : "border border-grid-dimmed",
         className
       )}
     >
@@ -832,7 +832,10 @@ function PricingHeader({
   return (
     <div className="flex flex-col gap-2">
       <h2
-        className={cn("text-xl font-medium", isHighlighted ? "text-primary" : "text-text-dimmed")}
+        className={cn(
+          "text-xl font-medium",
+          isHighlighted ? "text-indigo-500" : "text-text-dimmed"
+        )}
       >
         {title}
       </h2>
