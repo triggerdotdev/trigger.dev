@@ -29,6 +29,17 @@ const Env = z.object({
   RUNNER_SNAPSHOT_POLL_INTERVAL_SECONDS: z.coerce.number().optional(),
   RUNNER_ADDITIONAL_ENV_VARS: AdditionalEnvVars, // optional (csv)
   RUNNER_DOCKER_AUTOREMOVE: BoolEnv.default(true),
+  /**
+   * Network mode to use for all runners. Supported standard values are: `bridge`, `host`, `none`, and `container:<name|id>`.
+   * Any other value is taken as a custom network's name to which all runners should connect to.
+   *
+   * Accepts a list of comma-separated values to attach to multiple networks. Additional networks are interpreted as network names and will be attached after container creation.
+   *
+   * **WARNING**: Specifying multiple networks will slightly increase startup times.
+   *
+   * @default "host"
+   */
+  RUNNER_DOCKER_NETWORKS: z.string().default("host"),
 
   // Dequeue settings (provider mode)
   TRIGGER_DEQUEUE_ENABLED: BoolEnv.default("true"),
@@ -43,7 +54,6 @@ const Env = z.object({
   TRIGGER_METADATA_URL: z.string().optional(),
 
   // Used by the workload manager, e.g docker/k8s
-  DOCKER_NETWORK: z.string().default("host"),
   OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url(),
   ENFORCE_MACHINE_PRESETS: z.coerce.boolean().default(false),
   KUBERNETES_IMAGE_PULL_SECRETS: z.string().optional(), // csv
