@@ -13,7 +13,7 @@ export function getBranch({
   }
 
   // not specified, so detect from process.env
-  const envVar = getEnvVar("TRIGGER_BRANCH");
+  const envVar = getEnvVar("TRIGGER_PREVIEW_BRANCH");
   if (envVar) {
     return envVar;
   }
