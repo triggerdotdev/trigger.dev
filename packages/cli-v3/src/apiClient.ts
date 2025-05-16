@@ -146,22 +146,6 @@ export class CliApiClient {
     );
   }
 
-  async createTaskRunAttempt(
-    runFriendlyId: string
-  ): Promise<ApiResult<z.infer<typeof TaskRunExecution>>> {
-    if (!this.accessToken) {
-      throw new Error("creatTaskRunAttempt: No access token");
-    }
-
-    return wrapZodFetch(TaskRunExecution, `${this.apiURL}/api/v1/runs/${runFriendlyId}/attempts`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${this.accessToken}`,
-        "Content-Type": "application/json",
-      },
-    });
-  }
-
   async getProjectEnv({ projectRef, env }: { projectRef: string; env: string }) {
     if (!this.accessToken) {
       throw new Error("getProjectDevEnv: No access token");
