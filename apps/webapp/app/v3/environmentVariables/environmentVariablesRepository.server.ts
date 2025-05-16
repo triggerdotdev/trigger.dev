@@ -780,6 +780,7 @@ export const RuntimeEnvironmentForEnvRepoPayload = {
     projectId: true,
     apiKey: true,
     organizationId: true,
+    branchName: true,
   },
 } as const;
 
@@ -888,6 +889,7 @@ async function resolveBuiltInProdVariables(runtimeEnvironment: RuntimeEnvironmen
       key: "TRIGGER_SECRET_KEY",
       value: runtimeEnvironment.apiKey,
     },
+
     {
       key: "TRIGGER_API_URL",
       value: env.API_ORIGIN ?? env.APP_ORIGIN,
@@ -905,6 +907,15 @@ async function resolveBuiltInProdVariables(runtimeEnvironment: RuntimeEnvironmen
       value: runtimeEnvironment.organizationId,
     },
   ];
+
+  if (runtimeEnvironment.branchName) {
+    result = result.concat([
+      {
+        key: "TRIGGER_PREVIEW_BRANCH",
+        value: runtimeEnvironment.branchName,
+      },
+    ]);
+  }
 
   if (env.PROD_OTEL_BATCH_PROCESSING_ENABLED === "1") {
     result = result.concat([
