@@ -168,6 +168,10 @@ const pricingDefinitions = {
     title: "Concurrent runs",
     content: "The number of runs that can be executed at the same time.",
   },
+  additionalConcurrency: {
+    title: "Additional concurrency",
+    content: "Then $50/month per 50",
+  },
   taskRun: {
     title: "Task runs",
     content: "A single execution of a task.",
@@ -185,6 +189,10 @@ const pricingDefinitions = {
     title: "Schedules",
     content: "You can attach recurring schedules to tasks using cron syntax.",
   },
+  additionalSchedules: {
+    title: "Additional schedules",
+    content: "Then $10/month per 1,000",
+  },
   alerts: {
     title: "Alert destination",
     content:
@@ -194,6 +202,14 @@ const pricingDefinitions = {
     title: "Realtime connections",
     content:
       "Realtime allows you to send the live status and data from your runs to your frontend. This is the number of simultaneous Realtime connections that can be made.",
+  },
+  additionalRealtimeConnections: {
+    title: "Additional Realtime connections",
+    content: "Then $10/month per 100",
+  },
+  additionalSeats: {
+    title: "Additional seats",
+    content: "Then $20/month per seat",
   },
 };
 
@@ -499,7 +515,7 @@ export function TierFree({
             <LogRetention limits={plan.limits} />
             <SupportLevel limits={plan.limits} />
             <Alerts limits={plan.limits} />
-            <RealtimeConnecurrency limits={plan.limits} />
+            <RealtimeConcurrency limits={plan.limits} />
           </ul>
         </>
       )}
@@ -614,7 +630,7 @@ export function TierHobby({
         <LogRetention limits={plan.limits} />
         <SupportLevel limits={plan.limits} />
         <Alerts limits={plan.limits} />
-        <RealtimeConnecurrency limits={plan.limits} />
+        <RealtimeConcurrency limits={plan.limits} />
       </ul>
     </TierContainer>
   );
@@ -713,7 +729,7 @@ export function TierPro({
           )}
         </div>
       </Form>
-      <ul className="flex flex-col gap-2.5">
+      {/* <ul className="flex flex-col gap-2.5">
         <ConcurrentRuns limits={plan.limits} />
         <FeatureItem checked>
           Unlimited{" "}
@@ -731,6 +747,29 @@ export function TierPro({
         <SupportLevel limits={plan.limits} />
         <Alerts limits={plan.limits} />
         <RealtimeConnecurrency limits={plan.limits} />
+      </ul> */}
+      <ul className="flex flex-col gap-2.5">
+        <ConcurrentRuns limits={plan.limits}>
+          {pricingDefinitions.additionalConcurrency.content}
+        </ConcurrentRuns>
+        <FeatureItem checked>
+          Unlimited{" "}
+          <DefinitionTip
+            title={pricingDefinitions.tasks.title}
+            content={pricingDefinitions.tasks.content}
+          >
+            tasks
+          </DefinitionTip>
+        </FeatureItem>
+        <TeamMembers limits={plan.limits}>{pricingDefinitions.additionalSeats.content}</TeamMembers>
+        <Environments limits={plan.limits} />
+        <Schedules limits={plan.limits}>{pricingDefinitions.additionalSchedules.content}</Schedules>
+        <LogRetention limits={plan.limits} />
+        <SupportLevel limits={plan.limits} />
+        <Alerts limits={plan.limits} />
+        <RealtimeConcurrency limits={plan.limits}>
+          {pricingDefinitions.additionalRealtimeConnections.content}
+        </RealtimeConcurrency>
       </ul>
     </TierContainer>
   );
@@ -891,16 +930,16 @@ function FeatureItem({
   children: React.ReactNode;
 }) {
   return (
-    <li className="flex items-center gap-2">
+    <li className="flex items-start gap-2">
       {checked ? (
         <CheckIcon
           className={cn(
-            "size-4 min-w-4",
+            "mt-0.5 size-4 min-w-4",
             checkedColor === "primary" ? "text-primary" : "text-text-bright"
           )}
         />
       ) : (
-        <XMarkIcon className="size-4 min-w-4 text-charcoal-500" />
+        <XMarkIcon className="size-4 text-charcoal-500" />
       )}
       <div
         className={cn(
@@ -914,26 +953,42 @@ function FeatureItem({
   );
 }
 
-function ConcurrentRuns({ limits }: { limits: Limits }) {
+function ConcurrentRuns({ limits, children }: { limits: Limits; children?: React.ReactNode }) {
   return (
     <FeatureItem checked>
-      {limits.concurrentRuns.number}
-      {limits.concurrentRuns.canExceed ? "+" : ""}{" "}
-      <DefinitionTip
-        title={pricingDefinitions.concurrentRuns.title}
-        content={pricingDefinitions.concurrentRuns.content}
-      >
-        concurrent runs
-      </DefinitionTip>
+      <div className="flex flex-col gap-y-0.5">
+        <div className="flex items-center gap-1">
+          {limits.concurrentRuns.canExceed ? (
+            <>
+              {limits.concurrentRuns.number}
+              {"+"}
+            </>
+          ) : (
+            <>{limits.concurrentRuns.number} </>
+          )}{" "}
+          <DefinitionTip
+            title={pricingDefinitions.concurrentRuns.title}
+            content={pricingDefinitions.concurrentRuns.content}
+          >
+            concurrent runs
+          </DefinitionTip>
+        </div>
+        {children && <span className="text-xs text-text-dimmed">{children}</span>}
+      </div>
     </FeatureItem>
   );
 }
 
-function TeamMembers({ limits }: { limits: Limits }) {
+function TeamMembers({ limits, children }: { limits: Limits; children?: React.ReactNode }) {
   return (
     <FeatureItem checked>
-      {limits.teamMembers.number}
-      {limits.concurrentRuns.canExceed ? "+" : ""} team members
+      <div className="flex flex-col gap-y-0.5">
+        <div className="flex items-center gap-1">
+          {limits.teamMembers.number}
+          {limits.teamMembers.canExceed ? "+" : ""} team members
+        </div>
+        {children && <span className="text-xs text-text-dimmed">{children}</span>}
+      </div>
     </FeatureItem>
   );
 }
@@ -952,17 +1007,22 @@ function Environments({ limits }: { limits: Limits }) {
   );
 }
 
-function Schedules({ limits }: { limits: Limits }) {
+function Schedules({ limits, children }: { limits: Limits; children?: React.ReactNode }) {
   return (
     <FeatureItem checked>
-      {limits.schedules.number}
-      {limits.schedules.canExceed ? "+" : ""}{" "}
-      <DefinitionTip
-        title={pricingDefinitions.schedules.title}
-        content={pricingDefinitions.schedules.content}
-      >
-        schedules
-      </DefinitionTip>
+      <div className="flex flex-col gap-y-0.5">
+        <div className="flex items-center gap-1">
+          {limits.schedules.number}
+          {limits.schedules.canExceed ? "+" : ""}{" "}
+          <DefinitionTip
+            title={pricingDefinitions.schedules.title}
+            content={pricingDefinitions.schedules.content}
+          >
+            schedules
+          </DefinitionTip>
+        </div>
+        {children && <span className="text-xs text-text-dimmed">{children}</span>}
+      </div>
     </FeatureItem>
   );
 }
@@ -1007,17 +1067,28 @@ function Alerts({ limits }: { limits: Limits }) {
   );
 }
 
-function RealtimeConnecurrency({ limits }: { limits: Limits }) {
+function RealtimeConcurrency({ limits, children }: { limits: Limits; children?: React.ReactNode }) {
   return (
     <FeatureItem checked>
-      {limits.realtimeConcurrentConnections.number}
-      {limits.realtimeConcurrentConnections.canExceed ? "+" : ""}{" "}
-      <DefinitionTip
-        title={pricingDefinitions.realtime.title}
-        content={pricingDefinitions.realtime.content}
-      >
-        concurrent Realtime connections
-      </DefinitionTip>
+      <div className="flex flex-col gap-y-0.5">
+        <div className="flex items-start gap-1">
+          {limits.realtimeConcurrentConnections.canExceed ? (
+            <>
+              {limits.realtimeConcurrentConnections.number}
+              {"+"}
+            </>
+          ) : (
+            <>{limits.realtimeConcurrentConnections.number} </>
+          )}{" "}
+          <DefinitionTip
+            title={pricingDefinitions.realtime.title}
+            content={pricingDefinitions.realtime.content}
+          >
+            concurrent Realtime connections
+          </DefinitionTip>
+        </div>
+        {children && <span className="text-xs text-text-dimmed">{children}</span>}
+      </div>
     </FeatureItem>
   );
 }
