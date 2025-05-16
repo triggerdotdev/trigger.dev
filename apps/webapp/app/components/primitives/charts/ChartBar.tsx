@@ -20,7 +20,7 @@ import {
 import { cn } from "~/utils/cn";
 import { Button } from "../Buttons";
 import { Paragraph } from "../Paragraph";
-import { ChartBarLoading, ChartInvalid, ChartNoData } from "./ChartLoading";
+import { ChartBarLoading, ChartBarInvalid, ChartBarNoData } from "./ChartLoading";
 import { useDateRange } from "./DateRangeContext";
 
 //TODO: fix the first and last bars in a stack not having rounded corners
@@ -391,9 +391,9 @@ export function ChartBar({
     if (displayState === "loading") {
       return <ChartBarLoading />;
     } else if (displayState === "noData" || hasNoData) {
-      return <ChartNoData />;
+      return <ChartBarNoData />;
     } else if (displayState === "invalid") {
-      return <ChartInvalid />;
+      return <ChartBarInvalid />;
     }
 
     // Get the x-axis ticks based on tooltip state
