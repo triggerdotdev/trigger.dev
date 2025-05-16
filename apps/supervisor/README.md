@@ -36,7 +36,7 @@ TRIGGER_WORKER_TOKEN=tr_wgt_...
 pnpm dev
 ```
 
-4. Build CLI, then deploy a reference project
+4. Build CLI, then deploy a test project
 
 ```sh
 pnpm exec trigger deploy --self-hosted
