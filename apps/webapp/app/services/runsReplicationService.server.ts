@@ -10,7 +10,7 @@ import {
 import { recordSpanError, startSpan, trace, type Tracer } from "@internal/tracing";
 import { Logger, LogLevel } from "@trigger.dev/core/logger";
 import { tryCatch } from "@trigger.dev/core/utils";
-import { parsePacket } from "@trigger.dev/core/v3/utils/ioSerialization";
+import { parsePacketAsJson } from "@trigger.dev/core/v3/utils/ioSerialization";
 import { TaskRun } from "@trigger.dev/database";
 import { nanoid } from "nanoid";
 import EventEmitter from "node:events";
@@ -636,7 +636,7 @@ export class RunsReplicationService {
       dataType,
     };
 
-    const [parseError, parsedData] = await tryCatch(parsePacket(packet));
+    const [parseError, parsedData] = await tryCatch(parsePacketAsJson(packet));
 
     if (parseError) {
       this.logger.error("Error parsing packet", {
