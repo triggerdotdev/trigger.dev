@@ -62,8 +62,6 @@ branch are tagged into a release periodically.
    pnpm run docker
    ```
 
-   This will also start and run a local instance of [pgAdmin](https://www.pgadmin.org/) on [localhost:5480](http://localhost:5480), preconfigured with email `admin@example.com` and pwd `admin`. Then use `postgres` as the password to the Trigger.dev server.
-
 9. Migrate the database
    ```
    pnpm run db:migrate
