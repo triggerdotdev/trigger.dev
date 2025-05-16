@@ -48,14 +48,10 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     return json({ error: "Project not found" }, { status: 404 });
   }
 
-  const url = new URL(request.url);
-  const branch = url.searchParams.get("branch");
-
   const envResult = await getEnvironmentFromEnv({
     projectId: project.id,
     userId: env,
     env,
-    branch,
   });
 
   if (!envResult.success) {
@@ -78,12 +74,10 @@ async function getEnvironmentFromEnv({
   projectId,
   userId,
   env,
-  branch,
 }: {
   projectId: string;
   userId: string;
   env: ParamsSchema["env"];
-  branch: string | null;
 }): Promise<
   | {
       success: true;
@@ -117,70 +111,37 @@ async function getEnvironmentFromEnv({
     };
   }
 
-  if (env !== "preview") {
-    const environment = await prisma.runtimeEnvironment.findFirst({
-      where: {
-        projectId,
-        slug: env === "staging" ? "stg" : "prod",
-      },
-    });
-
-    if (!environment) {
-      return {
-        success: false,
-        error: `${env === "staging" ? "Staging" : "Production"} environment not found`,
-      };
-    }
-
-    return {
-      success: true,
-      environment,
-    };
+  let slug: "stg" | "prod" | "preview" = "prod";
+  switch (env) {
+    case "staging":
+      slug = "stg";
+      break;
+    case "prod":
+      slug = "prod";
+      break;
+    case "preview":
+      slug = "preview";
+      break;
+    default:
+      break;
   }
 
-  // Preview branch
-
-  if (!branch) {
-    return {
-      success: false,
-      error: "Preview branch not specified",
-    };
-  }
-
-  // Get the parent preview environment first
-  const previewEnvironment = await prisma.runtimeEnvironment.findFirst({
+  const environment = await prisma.runtimeEnvironment.findFirst({
     where: {
       projectId,
-      slug: "preview",
+      slug,
     },
   });
 
-  if (!previewEnvironment) {
+  if (!environment) {
     return {
       success: false,
-      error:
-        "You don't have Preview branches enabled for this project. Visit the dashboard to enable them",
-    };
-  }
-
-  // Now get the branch environment
-  const branchEnvironment = await prisma.runtimeEnvironment.findFirst({
-    where: {
-      projectId,
-      parentEnvironmentId: previewEnvironment.id,
-      branchName: branch,
-    },
-  });
-
-  if (!branchEnvironment) {
-    return {
-      success: false,
-      error: `Preview branch "${branch}" not found`,
+      error: `${env === "staging" ? "Staging" : "Production"} environment not found`,
     };
   }
 
   return {
     success: true,
-    environment: branchEnvironment,
+    environment,
   };
 }

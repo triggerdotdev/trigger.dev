@@ -1,5 +1,5 @@
 import { intro, log, outro } from "@clack/prompts";
-import { prepareDeploymentError } from "@trigger.dev/core/v3";
+import { getBranch, prepareDeploymentError } from "@trigger.dev/core/v3";
 import { InitializeDeploymentResponseBody } from "@trigger.dev/core/v3/schemas";
 import { Command, Option as CommandOption } from "commander";
 import { resolve } from "node:path";
@@ -224,15 +224,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   const gitMeta = await createGitMeta(resolvedConfig.workspaceDir);
   logger.debug("gitMeta", gitMeta);
 
-  let branch = options.branch;
-  if (options.env === "preview" && !branch) {
-    if (gitMeta?.commitRef) {
-      branch = gitMeta.commitRef;
-    } else {
-      throw new Error("Could not determine branch name from git metadata");
-    }
-  }
-
+  const branch = getBranch({ specified: options.branch, gitMeta });
   if (options.env === "preview" && !branch) {
     throw new Error(
       "You need to specify a preview branch when deploying to preview, pass --branch <branch>."
@@ -240,6 +232,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   }
 
   if (options.env === "preview" && branch) {
+    logger.debug("Upserting branch", { env: options.env, branch });
     const branchEnv = await upsertBranch({
       accessToken: authorization.auth.accessToken,
       apiUrl: authorization.auth.apiUrl,
@@ -247,6 +240,8 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
       branch,
       gitMeta,
     });
+
+    logger.debug("Upserted branch env", branchEnv);
 
     if (!branchEnv) {
       throw new Error(`Failed to create branch "${branch}"`);

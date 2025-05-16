@@ -110,7 +110,6 @@ export async function getProjectClient(options: GetEnvOptions) {
   const projectEnv = await apiClient.getProjectEnv({
     projectRef: options.projectRef,
     env: options.env,
-    branch: options.branch,
   });
 
   if (!projectEnv.success) {
@@ -127,7 +126,7 @@ export async function getProjectClient(options: GetEnvOptions) {
     return;
   }
 
-  const client = new CliApiClient(projectEnv.data.apiUrl, projectEnv.data.apiKey);
+  const client = new CliApiClient(projectEnv.data.apiUrl, projectEnv.data.apiKey, options.branch);
 
   return {
     id: projectEnv.data.projectId,

@@ -1,13 +1,7 @@
-import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
-import {
-  tryCatch,
-  UpsertBranchRequestBody,
-  type GetProjectEnvResponse,
-} from "@trigger.dev/core/v3";
-import { type RuntimeEnvironment } from "@trigger.dev/database";
+import { json, type ActionFunctionArgs } from "@remix-run/server-runtime";
+import { tryCatch, UpsertBranchRequestBody } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { prisma } from "~/db.server";
-import { env as processEnv } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";
 import { UpsertBranchService } from "~/services/upsertBranch.server";

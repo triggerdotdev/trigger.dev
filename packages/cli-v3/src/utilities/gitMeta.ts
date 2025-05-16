@@ -29,6 +29,11 @@ export async function createGitMeta(directory: string): Promise<GitMeta | undefi
   const dirty = dirtyResult.value;
   const commit = commitResult.value;
 
+  // Get the pull request number from process.env (GitHub Actions)
+  const pullRequestNumber: number | undefined = process.env.GITHUB_PULL_REQUEST_NUMBER
+    ? parseInt(process.env.GITHUB_PULL_REQUEST_NUMBER)
+    : undefined;
+
   return {
     remoteUrl: remoteUrl ?? undefined,
     commitAuthorName: commit.author.name,
@@ -36,6 +41,7 @@ export async function createGitMeta(directory: string): Promise<GitMeta | undefi
     commitRef: commit.branch,
     commitSha: commit.hash,
     dirty,
+    pullRequestNumber,
   };
 }
 

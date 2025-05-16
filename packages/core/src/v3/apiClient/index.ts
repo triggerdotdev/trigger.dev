@@ -128,6 +128,8 @@ export type {
   TaskRunShape,
 };
 
+export * from "./getBranch.js";
+
 /**
  * Trigger.dev v3 API client
  */
