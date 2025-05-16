@@ -393,7 +393,7 @@ export function TierFree({
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen} key="cancel">
               <DialogTrigger asChild>
                 <div className="my-6">
-                  <Button variant="tertiary/large" fullWidth className="text-md font-medium">
+                  <Button variant="secondary/large" fullWidth className="text-md font-medium">
                     {`Downgrade to ${plan.title}`}
                   </Button>
                 </div>
@@ -592,7 +592,7 @@ export function TierHobby({
           </Dialog>
         ) : (
           <Button
-            variant={isHighlighted ? "primary/large" : "tertiary/large"}
+            variant={isHighlighted ? "primary/large" : "secondary/large"}
             fullWidth
             className="text-md font-medium"
             form="subscribe-hobby"
@@ -704,7 +704,7 @@ export function TierPro({
             </Dialog>
           ) : (
             <Button
-              variant="tertiary/large"
+              variant="secondary/large"
               fullWidth
               form="subscribe-pro"
               className="text-md font-medium"
@@ -729,25 +729,6 @@ export function TierPro({
           )}
         </div>
       </Form>
-      {/* <ul className="flex flex-col gap-2.5">
-        <ConcurrentRuns limits={plan.limits} />
-        <FeatureItem checked>
-          Unlimited{" "}
-          <DefinitionTip
-            title={pricingDefinitions.tasks.title}
-            content={pricingDefinitions.tasks.content}
-          >
-            tasks
-          </DefinitionTip>
-        </FeatureItem>
-        <TeamMembers limits={plan.limits} />
-        <Environments limits={plan.limits} />
-        <Schedules limits={plan.limits} />
-        <LogRetention limits={plan.limits} />
-        <SupportLevel limits={plan.limits} />
-        <Alerts limits={plan.limits} />
-        <RealtimeConnecurrency limits={plan.limits} />
-      </ul> */}
       <ul className="flex flex-col gap-2.5">
         <ConcurrentRuns limits={plan.limits}>
           {pricingDefinitions.additionalConcurrency.content}
@@ -816,7 +797,7 @@ export function TierEnterprise() {
           <Feedback
             defaultValue="enterprise"
             button={
-              <div className="flex h-10 w-full cursor-pointer items-center justify-center rounded bg-tertiary px-8 text-base font-medium transition hover:bg-charcoal-600">
+              <div className="flex h-10 w-full cursor-pointer items-center justify-center rounded border border-charcoal-600 bg-tertiary text-base font-medium transition hover:border-charcoal-550 hover:bg-charcoal-600">
                 <span className="text-center text-text-bright">Contact us</span>
               </div>
             }
