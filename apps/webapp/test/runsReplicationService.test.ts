@@ -6,6 +6,7 @@ import { z } from "zod";
 import { TaskRunStatus } from "~/database-types";
 import { RunsReplicationService } from "~/services/runsReplicationService.server";
 import { createInMemoryTracing } from "./utils/tracing";
+import superjson from "superjson";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -128,6 +129,147 @@ describe("RunsReplicationService", () => {
       expect(transactionSpan).not.toBeNull();
       expect(transactionSpan?.attributes["transaction.parse_duration_ms"]).toBeGreaterThan(0);
       expect(transactionSpan?.attributes["transaction.parse_duration_ms"]).toBeLessThan(1);
+
+      await runsReplicationService.stop();
+    }
+  );
+
+  containerTest(
+    "should replicate runs with super json payloads to clickhouse",
+    async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
+      await prisma.$executeRawUnsafe(`ALTER TABLE public."TaskRun" REPLICA IDENTITY FULL;`);
+
+      const clickhouse = new ClickHouse({
+        url: clickhouseContainer.getConnectionUrl(),
+        name: "runs-replication",
+        compression: {
+          request: true,
+        },
+      });
+
+      const { tracer, exporter } = createInMemoryTracing();
+
+      const runsReplicationService = new RunsReplicationService({
+        clickhouse,
+        pgConnectionUrl: postgresContainer.getConnectionUri(),
+        serviceName: "runs-replication",
+        slotName: "task_runs_to_clickhouse_v1",
+        publicationName: "task_runs_to_clickhouse_v1_publication",
+        redisOptions,
+        maxFlushConcurrency: 1,
+        flushIntervalMs: 100,
+        flushBatchSize: 1,
+        leaderLockTimeoutMs: 5000,
+        leaderLockExtendIntervalMs: 1000,
+        ackIntervalSeconds: 5,
+        tracer,
+      });
+
+      await runsReplicationService.start();
+
+      const organization = await prisma.organization.create({
+        data: {
+          title: "test",
+          slug: "test",
+        },
+      });
+
+      const project = await prisma.project.create({
+        data: {
+          name: "test",
+          slug: "test",
+          organizationId: organization.id,
+          externalRef: "test",
+        },
+      });
+
+      const runtimeEnvironment = await prisma.runtimeEnvironment.create({
+        data: {
+          slug: "test",
+          type: "DEVELOPMENT",
+          projectId: project.id,
+          organizationId: organization.id,
+          apiKey: "test",
+          pkApiKey: "test",
+          shortcode: "test",
+        },
+      });
+
+      const date = new Date();
+
+      // Now we insert a row into the table
+      const taskRun = await prisma.taskRun.create({
+        data: {
+          friendlyId: "run_1234",
+          taskIdentifier: "my-task",
+          payload: superjson.stringify({
+            foo: "bar",
+            bigint: BigInt(1234),
+            date,
+            map: new Map([["foo", "bar"]]),
+          }),
+          payloadType: "application/super+json",
+          traceId: "1234",
+          spanId: "1234",
+          queue: "test",
+          runtimeEnvironmentId: runtimeEnvironment.id,
+          projectId: project.id,
+          organizationId: organization.id,
+          environmentType: "DEVELOPMENT",
+          engine: "V2",
+        },
+      });
+
+      await setTimeout(1000);
+
+      // Check that the row was replicated to clickhouse
+      const queryRuns = clickhouse.reader.query({
+        name: "runs-replication",
+        query: "SELECT * FROM trigger_dev.task_runs_v2",
+        schema: z.any(),
+      });
+
+      const [queryError, result] = await queryRuns({});
+
+      expect(queryError).toBeNull();
+      expect(result?.length).toBe(1);
+      expect(result?.[0]).toEqual(
+        expect.objectContaining({
+          run_id: taskRun.id,
+          friendly_id: taskRun.friendlyId,
+          task_identifier: taskRun.taskIdentifier,
+          environment_id: runtimeEnvironment.id,
+          project_id: project.id,
+          organization_id: organization.id,
+          environment_type: "DEVELOPMENT",
+          engine: "V2",
+        })
+      );
+
+      const queryPayloads = clickhouse.reader.query({
+        name: "runs-replication",
+        query: "SELECT * FROM trigger_dev.raw_task_runs_payload_v1 WHERE run_id = {run_id:String}",
+        schema: z.any(),
+        params: z.object({ run_id: z.string() }),
+      });
+
+      const [payloadQueryError, payloadResult] = await queryPayloads({ run_id: taskRun.id });
+
+      expect(payloadQueryError).toBeNull();
+      expect(payloadResult?.length).toBe(1);
+      expect(payloadResult?.[0]).toEqual(
+        expect.objectContaining({
+          run_id: taskRun.id,
+          payload: {
+            data: expect.objectContaining({
+              foo: "bar",
+              bigint: "1234",
+              date: date.toISOString(),
+              map: [["foo", "bar"]],
+            }),
+          },
+        })
+      );
 
       await runsReplicationService.stop();
     }
