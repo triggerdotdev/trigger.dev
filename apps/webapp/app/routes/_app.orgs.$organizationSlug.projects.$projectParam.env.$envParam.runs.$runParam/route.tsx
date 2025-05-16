@@ -1174,9 +1174,10 @@ function ShowParentOrRootLinks({
           { friendlyId: relationships.root.friendlyId },
           { spanId: relationships.root.spanId }
         )}
+        shortcut={{ key: "t" }}
         className="text-xs"
       >
-        Show Root & Parent run
+        Jump to Root & Parent
       </TextLink>
     );
   }
@@ -1193,9 +1194,10 @@ function ShowParentOrRootLinks({
             { friendlyId: relationships.root.friendlyId },
             { spanId: relationships.root.spanId }
           )}
+          shortcut={{ key: "t" }}
           className="text-xs"
         >
-          Show Root run
+          Jump to Root
         </TextLink>
       )}
       {relationships.parent && (
@@ -1207,9 +1209,10 @@ function ShowParentOrRootLinks({
             { friendlyId: relationships.parent.friendlyId },
             { spanId: relationships.parent.spanId }
           )}
+          shortcut={{ key: "p" }}
           className="text-xs"
         >
-          Show Parent run
+          Jump to Parent
         </TextLink>
       )}
     </div>

@@ -147,6 +147,12 @@ function ShortcutContent() {
               </Paragraph>
               <ShortcutKey shortcut={{ key: "9" }} variant="medium/bright" />
             </Shortcut>
+            <Shortcut name="Jump to root run">
+              <ShortcutKey shortcut={{ key: "t" }} variant="medium/bright" />
+            </Shortcut>
+            <Shortcut name="Jump to parent run">
+              <ShortcutKey shortcut={{ key: "p" }} variant="medium/bright" />
+            </Shortcut>
           </div>
           <div className="space-y-3">
             <Header3>Schedules page</Header3>
