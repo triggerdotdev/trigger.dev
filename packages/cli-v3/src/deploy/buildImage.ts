@@ -327,7 +327,7 @@ async function selfHostedBuildImage(
     "--build-arg",
     `TRIGGER_PROJECT_REF=${options.projectRef}`,
     "--build-arg",
-    `TRIGGER_API_URL=${options.apiUrl}`,
+    `TRIGGER_API_URL=${normalizeApiUrlForBuild(options.apiUrl)}`,
     "--build-arg",
     `TRIGGER_SECRET_KEY=${options.apiKey}`,
     ...(buildArgs || []),
@@ -722,4 +722,14 @@ COPY --from=indexer --chown=node:node /app/index.json ./
 ENTRYPOINT [ "dumb-init", "node", "${options.entrypoint}" ]
 CMD []
   `;
+}
+
+// If apiUrl is something like http://localhost:3030, AND we are on macOS, we need to convert it to http://host.docker.internal:3030
+// this way the indexing will work because the docker image can reach the local server
+function normalizeApiUrlForBuild(apiUrl: string) {
+  if (process.platform === "darwin") {
+    return apiUrl.replace("localhost", "host.docker.internal");
+  }
+
+  return apiUrl;
 }
