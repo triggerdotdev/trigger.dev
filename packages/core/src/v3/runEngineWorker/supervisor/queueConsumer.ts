@@ -55,16 +55,23 @@ export class RunQueueConsumer {
   }
 
   private async dequeue() {
-    // Incredibly verbose logging for debugging purposes
-    // this.logger.debug("dequeue()", { enabled: this.isEnabled });
+    this.logger.verbose("dequeue()", {
+      enabled: this.isEnabled,
+      intervalMs: this.intervalMs,
+      idleIntervalMs: this.idleIntervalMs,
+      maxRunCount: this.maxRunCount,
+      preDequeue: !!this.preDequeue,
+      preSkip: !!this.preSkip,
+    });
 
     if (!this.isEnabled) {
+      this.logger.warn("dequeue() - not enabled");
       return;
     }
 
     let preDequeueResult: Awaited<ReturnType<PreDequeueFn>> | undefined;
     if (this.preDequeue) {
-      // this.logger.debug("preDequeue()");
+      this.logger.verbose("preDequeue()");
 
       try {
         preDequeueResult = await this.preDequeue();
@@ -73,13 +80,15 @@ export class RunQueueConsumer {
       }
     }
 
-    // this.logger.debug("preDequeueResult", { preDequeueResult });
+    this.logger.verbose("preDequeueResult", { preDequeueResult });
 
     if (
       preDequeueResult?.skipDequeue ||
       preDequeueResult?.maxResources?.cpu === 0 ||
       preDequeueResult?.maxResources?.memory === 0
     ) {
+      this.logger.debug("skipping dequeue", { preDequeueResult });
+
       if (this.preSkip) {
         this.logger.debug("preSkip()");
 
@@ -90,7 +99,8 @@ export class RunQueueConsumer {
         }
       }
 
-      return this.scheduleNextDequeue(this.idleIntervalMs);
+      this.scheduleNextDequeue(this.idleIntervalMs);
+      return;
     }
 
     let nextIntervalMs = this.idleIntervalMs;
@@ -122,6 +132,10 @@ export class RunQueueConsumer {
   }
 
   scheduleNextDequeue(delayMs: number) {
+    if (delayMs === this.idleIntervalMs && this.idleIntervalMs !== this.intervalMs) {
+      this.logger.verbose("scheduled dequeue with idle interval", { delayMs });
+    }
+
     setTimeout(this.dequeue.bind(this), delayMs);
   }
 }

@@ -75,11 +75,9 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
   }
 
   private async onDequeue(messages: WorkerApiDequeueResponseBody): Promise<void> {
-    // Incredibly verbose logging for debugging purposes
-    // this.logger.debug("Dequeued messages with contents", { count: messages.length, messages });
+    this.logger.verbose("Dequeued messages with contents", { count: messages.length, messages });
 
     for (const message of messages) {
-      this.logger.debug("Emitting message", { message });
       this.emit("runQueueMessage", {
         time: new Date(),
         message,

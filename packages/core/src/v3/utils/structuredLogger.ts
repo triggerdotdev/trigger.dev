@@ -15,6 +15,7 @@ export enum LogLevel {
   "warn",
   "info",
   "debug",
+  "verbose",
 }
 
 export class SimpleStructuredLogger implements StructuredLogger {
@@ -22,7 +23,9 @@ export class SimpleStructuredLogger implements StructuredLogger {
 
   constructor(
     private name: string,
-    private level: LogLevel = ["1", "true"].includes(process.env.DEBUG ?? "")
+    private level: LogLevel = ["1", "true"].includes(process.env.VERBOSE ?? "")
+      ? LogLevel.verbose
+      : ["1", "true"].includes(process.env.DEBUG ?? "")
       ? LogLevel.debug
       : LogLevel.info,
     private fields?: Record<string, unknown>
@@ -60,6 +63,12 @@ export class SimpleStructuredLogger implements StructuredLogger {
     if (this.level < LogLevel.debug) return;
 
     this.#structuredLog(console.debug, message, "debug", ...args);
+  }
+
+  verbose(message: string, ...args: StructuredArgs) {
+    if (this.level < LogLevel.verbose) return;
+
+    this.#structuredLog(console.debug, message, "verbose", ...args);
   }
 
   addFields(fields: Record<string, unknown>) {

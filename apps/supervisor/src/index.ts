@@ -168,11 +168,6 @@ class ManagedSupervisor {
       });
     }
 
-    // setInterval(async () => {
-    //   const resources = await this.resourceMonitor.getNodeResources(true);
-    //   this.logger.debug("Current resources", { resources });
-    // }, 1000);
-
     this.workerSession.on("runNotification", async ({ time, run }) => {
       this.logger.log("runNotification", { time, run });
 
@@ -187,7 +182,6 @@ class ManagedSupervisor {
           runId: message.run.id,
           completedWaitpoints: message.completedWaitpoints.length,
         });
-        // TODO: Do something with them or if we don't need the data here, maybe we shouldn't even send it
       }
 
       if (!message.image) {
