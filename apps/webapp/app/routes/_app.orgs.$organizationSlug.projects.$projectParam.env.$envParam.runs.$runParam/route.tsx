@@ -95,6 +95,7 @@ import {
 } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { SpanView } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.$runParam.spans.$spanParam/route";
+import { TextLink } from "~/components/primitives/TextLink";
 
 const resizableSettings = {
   parent: {
@@ -587,16 +588,31 @@ function TasksTreeView({
         >
           <div className="grid h-full grid-rows-[2rem_1fr] overflow-hidden">
             <div className="flex items-center pr-2">
-              {rootRun ? (
-                <ShowParentLink
-                  runFriendlyId={rootRun.friendlyId}
-                  isRoot={true}
-                  spanId={rootRun.spanId}
+              {rootRun || parentRunFriendlyId ? (
+                <ShowParentOrRootLinks
+                  relationships={{
+                    root: rootRun
+                      ? {
+                          friendlyId: rootRun.friendlyId,
+                          taskIdentifier: rootRun.taskIdentifier,
+                          spanId: rootRun.spanId,
+                          isParent: parentRunFriendlyId
+                            ? rootRun.friendlyId === parentRunFriendlyId
+                            : true,
+                        }
+                      : undefined,
+                    parent:
+                      parentRunFriendlyId && rootRun?.friendlyId !== parentRunFriendlyId
+                        ? {
+                            friendlyId: parentRunFriendlyId,
+                            taskIdentifier: "",
+                            spanId: "",
+                          }
+                        : undefined,
+                  }}
                 />
-              ) : parentRunFriendlyId ? (
-                <ShowParentLink runFriendlyId={parentRunFriendlyId} isRoot={false} />
               ) : (
-                <Paragraph variant="small" className="flex-1 text-charcoal-500">
+                <Paragraph variant="extra-small" className="flex-1 text-charcoal-500">
                   This is the root task
                 </Paragraph>
               )}
@@ -1126,60 +1142,77 @@ function TaskLine({ isError, isSelected }: { isError: boolean; isSelected: boole
   return <div className={cn("h-8 w-2 border-r border-grid-bright")} />;
 }
 
-function ShowParentLink({
-  runFriendlyId,
-  spanId,
-  isRoot,
+function ShowParentOrRootLinks({
+  relationships,
 }: {
-  runFriendlyId: string;
-  spanId?: string;
-  isRoot: boolean;
+  relationships: {
+    root?: {
+      friendlyId: string;
+      taskIdentifier: string;
+      spanId: string;
+      isParent?: boolean;
+    };
+    parent?: {
+      friendlyId: string;
+      taskIdentifier: string;
+      spanId: string;
+    };
+  };
 }) {
-  const [mouseOver, setMouseOver] = useState(false);
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
-  const { spanParam } = useParams();
 
-  const span = spanId ? spanId : spanParam;
-
-  return (
-    <LinkButton
-      variant="minimal/medium"
-      to={
-        span
-          ? v3RunSpanPath(
-              organization,
-              project,
-              environment,
-              {
-                friendlyId: runFriendlyId,
-              },
-              { spanId: span }
-            )
-          : v3RunPath(organization, project, environment, {
-              friendlyId: runFriendlyId,
-            })
-      }
-      onMouseEnter={() => setMouseOver(true)}
-      onMouseLeave={() => setMouseOver(false)}
-      fullWidth
-      textAlignLeft
-      shortcut={{ key: "p" }}
-      className="flex-1"
-    >
-      {mouseOver ? (
-        <ShowParentIconSelected className="h-4 w-4 text-indigo-500" />
-      ) : (
-        <ShowParentIcon className="h-4 w-4 text-charcoal-650" />
-      )}
-      <Paragraph
-        variant="small"
-        className={cn(mouseOver ? "text-indigo-500" : "text-charcoal-500")}
+  // Case 1: Root is also the parent
+  if (relationships.root?.isParent === true) {
+    return (
+      <TextLink
+        to={v3RunSpanPath(
+          organization,
+          project,
+          environment,
+          { friendlyId: relationships.root.friendlyId },
+          { spanId: relationships.root.spanId }
+        )}
+        className="text-xs"
       >
-        {isRoot ? "Show root run" : "Show parent run"}
-      </Paragraph>
-    </LinkButton>
+        Show Root & Parent run
+      </TextLink>
+    );
+  }
+
+  // Case 2: Root and Parent are different runs
+  return (
+    <div className="flex flex-1 items-center gap-2">
+      {relationships.root && (
+        <TextLink
+          to={v3RunSpanPath(
+            organization,
+            project,
+            environment,
+            { friendlyId: relationships.root.friendlyId },
+            { spanId: relationships.root.spanId }
+          )}
+          className="text-xs"
+        >
+          Show Root run
+        </TextLink>
+      )}
+      {relationships.parent && (
+        <TextLink
+          to={v3RunSpanPath(
+            organization,
+            project,
+            environment,
+            { friendlyId: relationships.parent.friendlyId },
+            { spanId: relationships.parent.spanId }
+          )}
+          className="text-xs"
+        >
+          Show Parent run
+        </TextLink>
+      )}
+    </div>
   );
 }
 
