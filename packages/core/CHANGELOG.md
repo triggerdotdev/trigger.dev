@@ -1,5 +1,12 @@
 # internal-platform
 
+## 4.0.0-v4-beta.17
+
+### Patch Changes
+
+- Improve structured logs ([#2062](https://github.com/triggerdotdev/trigger.dev/pull/2062))
+- Add verbose structured log level ([#2062](https://github.com/triggerdotdev/trigger.dev/pull/2062))
+
 ## 4.0.0-v4-beta.16
 
 ## 4.0.0-v4-beta.15
