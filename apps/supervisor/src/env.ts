@@ -55,7 +55,7 @@ const Env = z.object({
 
   // Used by the workload manager, e.g docker/k8s
   OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url(),
-  ENFORCE_MACHINE_PRESETS: z.coerce.boolean().default(false),
+  DOCKER_ENFORCE_MACHINE_PRESETS: z.coerce.boolean().default(true),
   KUBERNETES_IMAGE_PULL_SECRETS: z.string().optional(), // csv
 
   // Used by the resource monitor

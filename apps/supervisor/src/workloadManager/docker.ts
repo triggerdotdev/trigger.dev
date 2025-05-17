@@ -34,6 +34,7 @@ export class DockerWorkloadManager implements WorkloadManager {
 
     // Build environment variables
     const envVars: string[] = [
+      `OTEL_EXPORTER_OTLP_ENDPOINT=${env.OTEL_EXPORTER_OTLP_ENDPOINT}`,
       `TRIGGER_DEQUEUED_AT_MS=${opts.dequeuedAt.getTime()}`,
       `TRIGGER_POD_SCHEDULED_AT_MS=${Date.now()}`,
       `TRIGGER_ENV_ID=${opts.envId}`,
@@ -43,8 +44,9 @@ export class DockerWorkloadManager implements WorkloadManager {
       `TRIGGER_SUPERVISOR_API_PORT=${this.opts.workloadApiPort}`,
       `TRIGGER_SUPERVISOR_API_DOMAIN=${this.opts.workloadApiDomain ?? getDockerHostDomain()}`,
       `TRIGGER_WORKER_INSTANCE_NAME=${env.TRIGGER_WORKER_INSTANCE_NAME}`,
-      `OTEL_EXPORTER_OTLP_ENDPOINT=${env.OTEL_EXPORTER_OTLP_ENDPOINT}`,
       `TRIGGER_RUNNER_ID=${runnerId}`,
+      `TRIGGER_MACHINE_CPU=${opts.machine.cpu}`,
+      `TRIGGER_MACHINE_MEMORY=${opts.machine.memory}`,
     ];
 
     if (this.opts.warmStartUrl) {
@@ -82,10 +84,7 @@ export class DockerWorkloadManager implements WorkloadManager {
     // - If there are multiple networks to attach, this will ensure the runner won't also be connected to the bridge network
     hostConfig.NetworkMode = firstNetwork;
 
-    if (env.ENFORCE_MACHINE_PRESETS) {
-      envVars.push(`TRIGGER_MACHINE_CPU=${opts.machine.cpu}`);
-      envVars.push(`TRIGGER_MACHINE_MEMORY=${opts.machine.memory}`);
-
+    if (env.DOCKER_ENFORCE_MACHINE_PRESETS) {
       hostConfig.NanoCpus = opts.machine.cpu * 1e9;
       hostConfig.Memory = opts.machine.memory * 1024 * 1024 * 1024;
     }
