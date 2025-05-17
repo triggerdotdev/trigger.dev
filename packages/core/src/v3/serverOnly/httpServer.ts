@@ -5,7 +5,7 @@ import { HttpReply, getJsonBody } from "../apps/http.js";
 import { Registry, Histogram, Counter } from "prom-client";
 import { tryCatch } from "../../utils.js";
 
-const logger = new SimpleStructuredLogger("worker-http");
+const logger = new SimpleStructuredLogger("http-server");
 
 type RouteHandler<
   TParams extends z.ZodFirstPartySchemaTypes = z.ZodUnknown,
@@ -124,7 +124,7 @@ export class HttpServer {
       try {
         const { url, method } = req;
 
-        logger.log(`${method} ${url?.split("?")[0]}`, { url });
+        logger.debug(`${method} ${url?.split("?")[0]}`, { url });
 
         if (!url) {
           logger.error("Request URL is empty", { method });

@@ -16,16 +16,13 @@
     "@kubernetes/client-node": "^1.0.0",
     "@trigger.dev/core": "workspace:*",
     "dockerode": "^4.0.3",
-    "nanoid": "^5.0.9",
     "prom-client": "^15.1.0",
     "socket.io": "4.7.4",
     "std-env": "^3.8.0",
-    "tinyexec": "^0.3.1",
     "zod": "3.23.8"
   },
   "devDependencies": {
     "@types/dockerode": "^3.3.33",
-    "docker-api-ts": "^0.2.2",
     "vitest": "^1.4.0"
   }
 }
