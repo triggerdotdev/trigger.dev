@@ -206,27 +206,6 @@ export async function adminGetOrganizations(userId: string, { page, search }: Se
   };
 }
 
-export async function setV3Enabled(userId: string, id: string, v3Enabled: boolean) {
-  const user = await prisma.user.findUnique({
-    where: {
-      id: userId,
-    },
-  });
-
-  if (user?.admin !== true) {
-    throw new Error("Unauthorized");
-  }
-
-  return prisma.organization.update({
-    where: {
-      id,
-    },
-    data: {
-      v3Enabled,
-    },
-  });
-}
-
 export async function redirectWithImpersonation(request: Request, userId: string, path: string) {
   const user = await requireUser(request);
   if (!user.admin) {

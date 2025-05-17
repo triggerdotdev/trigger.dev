@@ -66,7 +66,7 @@ export async function createOrganization(
           role: "ADMIN",
         },
       },
-      v3Enabled: features.v3Enabled && !features.isManagedCloud,
+      v3Enabled: !features.isManagedCloud,
     },
     include: {
       members: true,

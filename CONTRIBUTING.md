@@ -92,13 +92,11 @@ We use the `<root>/references/v3-catalog` subdirectory as a staging ground for t
 
 First, make sure you are running the webapp according to the instructions above. Then:
 
-1. In Postgres go to the "Organizations" table and on your org set the `v3Enabled` column to `true`.
+1. Visit http://localhost:3030 in your browser and create a new V3 project called "v3-catalog".
 
-2. Visit http://localhost:3030 in your browser and create a new V3 project called "v3-catalog". If you don't see an option for V3, you haven't set the `v3Enabled` flag to true.
+2. In Postgres go to the "Projects" table and for the project you create change the `externalRef` to `yubjwjsfkxnylobaqvqz`.
 
-3. In Postgres go to the "Projects" table and for the project you create change the `externalRef` to `yubjwjsfkxnylobaqvqz`.
-
-4. Build the CLI
+3. Build the CLI
 
 ```sh
 # Build the CLI
@@ -107,7 +105,7 @@ pnpm run build --filter trigger.dev
 pnpm i
 ```
 
-5. Change into the `<root>/references/v3-catalog` directory and authorize the CLI to the local server:
+4. Change into the `<root>/references/v3-catalog` directory and authorize the CLI to the local server:
 
 ```sh
 cd references/v3-catalog
