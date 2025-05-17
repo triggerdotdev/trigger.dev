@@ -23,7 +23,7 @@
     "@ai-sdk/openai": "1.3.3",
     "@e2b/code-interpreter": "^1.1.0",
     "@radix-ui/react-avatar": "^1.1.3",
-    "@slack/web-api": "^6.8.1",
+    "@slack/web-api": "7.9.1",
     "@trigger.dev/python": "workspace:*",
     "@trigger.dev/react-hooks": "workspace:*",
     "@trigger.dev/sdk": "workspace:*",

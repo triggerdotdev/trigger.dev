@@ -129,6 +129,10 @@ if (process.env.HTTP_SERVER_DISABLED !== "true") {
   });
 
   server.keepAliveTimeout = 65 * 1000;
+  // Mitigate against https://github.com/triggerdotdev/trigger.dev/security/dependabot/128
+  // by not allowing 2000+ headers to be sent and causing a DoS
+  // headers will instead be limited by the maxHeaderSize
+  server.maxHeadersCount = 0;
 
   process.on("SIGTERM", () => {
     server.close((err) => {

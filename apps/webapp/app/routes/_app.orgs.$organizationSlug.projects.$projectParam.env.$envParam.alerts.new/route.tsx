@@ -186,7 +186,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
 
   if (!project) {
-    submission.error.key = "Project not found";
+    submission.error.key = ["Project not found"];
     return json(submission);
   }
 
@@ -198,7 +198,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   );
 
   if (!alertChannel) {
-    submission.error.key = "Failed to create alert channel";
+    submission.error.key = ["Failed to create alert channel"];
     return json(submission);
   }
 
