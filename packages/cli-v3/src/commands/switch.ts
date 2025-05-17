@@ -63,7 +63,7 @@ export async function switchProfiles(options: SwitchProfilesOptions) {
   });
 
   const profileSelection = await select({
-    message: "Please select a new profile",
+    message: "Select a new default profile",
     initialValue: authConfig.currentProfile,
     options: profileNames.map((profile) => ({
       value: profile,
