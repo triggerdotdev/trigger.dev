@@ -28,7 +28,6 @@ const Env = z.object({
   RUNNER_HEARTBEAT_INTERVAL_SECONDS: z.coerce.number().optional(),
   RUNNER_SNAPSHOT_POLL_INTERVAL_SECONDS: z.coerce.number().optional(),
   RUNNER_ADDITIONAL_ENV_VARS: AdditionalEnvVars, // optional (csv)
-  RUNNER_DOCKER_AUTOREMOVE: BoolEnv.default(true),
   /**
    * Network mode to use for all runners. Supported standard values are: `bridge`, `host`, `none`, and `container:<name|id>`.
    * Any other value is taken as a custom network's name to which all runners should connect to.
@@ -56,6 +55,7 @@ const Env = z.object({
   // Used by the workload manager, e.g docker/k8s
   OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url(),
   DOCKER_ENFORCE_MACHINE_PRESETS: z.coerce.boolean().default(true),
+  DOCKER_AUTOREMOVE_EXITED_CONTAINERS: BoolEnv.default(true),
   KUBERNETES_IMAGE_PULL_SECRETS: z.string().optional(), // csv
 
   // Used by the resource monitor
