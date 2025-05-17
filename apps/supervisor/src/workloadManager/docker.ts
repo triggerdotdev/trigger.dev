@@ -24,7 +24,7 @@ export class DockerWorkloadManager implements WorkloadManager {
       });
     }
 
-    this.runnerNetworks = env.RUNNER_DOCKER_NETWORKS.split(",");
+    this.runnerNetworks = env.DOCKER_RUNNER_NETWORKS.split(",");
   }
 
   async create(opts: WorkloadManagerCreateOptions) {

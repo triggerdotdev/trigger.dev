@@ -12,6 +12,7 @@ const Env = z.object({
   TRIGGER_API_URL: z.string().url(),
   TRIGGER_WORKER_TOKEN: z.string(),
   MANAGED_WORKER_SECRET: z.string(),
+  OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url(), // set on the runners
 
   // Workload API settings (coordinator mode) - the workload API is what the run controller connects to
   TRIGGER_WORKLOAD_API_ENABLED: BoolEnv.default("true"),
@@ -28,19 +29,8 @@ const Env = z.object({
   RUNNER_HEARTBEAT_INTERVAL_SECONDS: z.coerce.number().optional(),
   RUNNER_SNAPSHOT_POLL_INTERVAL_SECONDS: z.coerce.number().optional(),
   RUNNER_ADDITIONAL_ENV_VARS: AdditionalEnvVars, // optional (csv)
-  /**
-   * Network mode to use for all runners. Supported standard values are: `bridge`, `host`, `none`, and `container:<name|id>`.
-   * Any other value is taken as a custom network's name to which all runners should connect to.
-   *
-   * Accepts a list of comma-separated values to attach to multiple networks. Additional networks are interpreted as network names and will be attached after container creation.
-   *
-   * **WARNING**: Specifying multiple networks will slightly increase startup times.
-   *
-   * @default "host"
-   */
-  RUNNER_DOCKER_NETWORKS: z.string().default("host"),
 
-  // Dequeue settings (provider mode)
+  // Dequeue settings
   TRIGGER_DEQUEUE_ENABLED: BoolEnv.default("true"),
   TRIGGER_DEQUEUE_INTERVAL_MS: z.coerce.number().int().default(250),
   TRIGGER_DEQUEUE_IDLE_INTERVAL_MS: z.coerce.number().int().default(1000),
@@ -52,17 +42,27 @@ const Env = z.object({
   TRIGGER_CHECKPOINT_URL: z.string().optional(),
   TRIGGER_METADATA_URL: z.string().optional(),
 
-  // Used by the workload manager, e.g docker/k8s
-  OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url(),
-  DOCKER_ENFORCE_MACHINE_PRESETS: z.coerce.boolean().default(true),
-  DOCKER_AUTOREMOVE_EXITED_CONTAINERS: BoolEnv.default(true),
-
   // Used by the resource monitor
   RESOURCE_MONITOR_ENABLED: BoolEnv.default(false),
   RESOURCE_MONITOR_OVERRIDE_CPU_TOTAL: z.coerce.number().optional(),
   RESOURCE_MONITOR_OVERRIDE_MEMORY_TOTAL_GB: z.coerce.number().optional(),
 
-  // Kubernetes specific settings
+  // Docker settings
+  DOCKER_ENFORCE_MACHINE_PRESETS: z.coerce.boolean().default(true),
+  DOCKER_AUTOREMOVE_EXITED_CONTAINERS: BoolEnv.default(true),
+  /**
+   * Network mode to use for all runners. Supported standard values are: `bridge`, `host`, `none`, and `container:<name|id>`.
+   * Any other value is taken as a custom network's name to which all runners should connect to.
+   *
+   * Accepts a list of comma-separated values to attach to multiple networks. Additional networks are interpreted as network names and will be attached after container creation.
+   *
+   * **WARNING**: Specifying multiple networks will slightly increase startup times.
+   *
+   * @default "host"
+   */
+  DOCKER_RUNNER_NETWORKS: z.string().default("host"),
+
+  // Kubernetes settings
   KUBERNETES_FORCE_ENABLED: BoolEnv.default(false),
   KUBERNETES_NAMESPACE: z.string().default("default"),
   KUBERNETES_WORKER_NODETYPE_LABEL: z.string().default("v4-worker"),
