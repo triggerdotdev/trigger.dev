@@ -11,7 +11,7 @@ import {
   MagnifyingGlassPlusIcon,
   StopCircleIcon,
 } from "@heroicons/react/20/solid";
-import { useLoaderData, useParams, useRevalidator } from "@remix-run/react";
+import { useLoaderData, useRevalidator } from "@remix-run/react";
 import { type LoaderFunctionArgs, type SerializeFrom, json } from "@remix-run/server-runtime";
 import { type Virtualizer } from "@tanstack/react-virtual";
 import {
@@ -25,7 +25,8 @@ import { motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { redirect } from "remix-typedjson";
-import { ShowParentIcon, ShowParentIconSelected } from "~/assets/icons/ShowParentIcon";
+import { MoveToTopIcon } from "~/assets/icons/MoveToTopIcon";
+import { MoveUpIcon } from "~/assets/icons/MoveUpIcon";
 import tileBgPath from "~/assets/images/error-banner-tile@2x.png";
 import { DevDisconnectedBanner, useCrossEngineIsConnected } from "~/components/DevPresence";
 import { WarmStartIconWithTooltip } from "~/components/WarmStarts";
@@ -87,7 +88,6 @@ import {
   docsPath,
   v3BillingPath,
   v3RunParamsSchema,
-  v3RunPath,
   v3RunRedirectPath,
   v3RunSpanPath,
   v3RunStreamingPath,
@@ -296,8 +296,7 @@ function TraceView({ run, trace, maximumLiveReloadingSetting, resizable }: Loade
     return <></>;
   }
 
-  const { events, parentRunFriendlyId, duration, rootSpanStatus, rootStartedAt, queuedDuration } =
-    trace;
+  const { events, duration, rootSpanStatus, rootStartedAt, queuedDuration } = trace;
   const shouldLiveReload = events.length <= maximumLiveReloadingSetting;
 
   const changeToSpan = useDebounce((selectedSpan: string) => {
@@ -334,7 +333,6 @@ function TraceView({ run, trace, maximumLiveReloadingSetting, resizable }: Loade
             selectedId={selectedSpanId}
             key={events[0]?.id ?? "-"}
             events={events}
-            parentRunFriendlyId={parentRunFriendlyId}
             onSelectedIdChanged={(selectedSpan) => {
               //instantly close the panel if no span is selected
               if (!selectedSpan) {
@@ -352,6 +350,7 @@ function TraceView({ run, trace, maximumLiveReloadingSetting, resizable }: Loade
             shouldLiveReload={shouldLiveReload}
             maximumLiveReloadingSetting={maximumLiveReloadingSetting}
             rootRun={run.rootTaskRun}
+            parentRun={run.parentTaskRun}
             isCompleted={run.completedAt !== null}
           />
         </ResizablePanel>
@@ -470,7 +469,6 @@ function NoLogsView({ run, resizable }: LoaderData) {
 type TasksTreeViewProps = {
   events: TraceEvent[];
   selectedId?: string;
-  parentRunFriendlyId?: string;
   onSelectedIdChanged: (selectedId: string | undefined) => void;
   totalDuration: number;
   rootSpanStatus: "executing" | "completed" | "failed";
@@ -484,13 +482,17 @@ type TasksTreeViewProps = {
     taskIdentifier: string;
     spanId: string;
   } | null;
+  parentRun: {
+    friendlyId: string;
+    taskIdentifier: string;
+    spanId: string;
+  } | null;
   isCompleted: boolean;
 };
 
 function TasksTreeView({
   events,
   selectedId,
-  parentRunFriendlyId,
   onSelectedIdChanged,
   totalDuration,
   rootSpanStatus,
@@ -500,6 +502,7 @@ function TasksTreeView({
   shouldLiveReload,
   maximumLiveReloadingSetting,
   rootRun,
+  parentRun,
   isCompleted,
 }: TasksTreeViewProps) {
   const isAdmin = useHasAdminAccess();
@@ -583,20 +586,32 @@ function TasksTreeView({
           id={resizableSettings.tree.tree.id}
           default={resizableSettings.tree.tree.default}
           min={resizableSettings.tree.tree.min}
-          className="pl-3"
         >
           <div className="grid h-full grid-rows-[2rem_1fr] overflow-hidden">
-            <div className="flex items-center pr-2">
-              {rootRun ? (
-                <ShowParentLink
-                  runFriendlyId={rootRun.friendlyId}
-                  isRoot={true}
-                  spanId={rootRun.spanId}
+            <div className="flex items-center pl-1 pr-2">
+              {rootRun || parentRun ? (
+                <ShowParentOrRootLinks
+                  relationships={{
+                    root: rootRun
+                      ? {
+                          friendlyId: rootRun.friendlyId,
+                          taskIdentifier: rootRun.taskIdentifier,
+                          spanId: rootRun.spanId,
+                          isParent: parentRun ? rootRun.friendlyId === parentRun.friendlyId : true,
+                        }
+                      : undefined,
+                    parent:
+                      parentRun && rootRun?.friendlyId !== parentRun.friendlyId
+                        ? {
+                            friendlyId: parentRun.friendlyId,
+                            taskIdentifier: "",
+                            spanId: "",
+                          }
+                        : undefined,
+                  }}
                 />
-              ) : parentRunFriendlyId ? (
-                <ShowParentLink runFriendlyId={parentRunFriendlyId} isRoot={false} />
               ) : (
-                <Paragraph variant="small" className="flex-1 text-charcoal-500">
+                <Paragraph variant="extra-small" className="flex-1 pl-3 text-charcoal-500">
                   This is the root task
                 </Paragraph>
               )}
@@ -615,6 +630,7 @@ function TasksTreeView({
               nodes={nodes}
               getNodeProps={getNodeProps}
               getTreeProps={getTreeProps}
+              parentClassName="pl-3"
               renderNode={({ node, state, index }) => (
                 <>
                   <div
@@ -1126,60 +1142,110 @@ function TaskLine({ isError, isSelected }: { isError: boolean; isSelected: boole
   return <div className={cn("h-8 w-2 border-r border-grid-bright")} />;
 }
 
-function ShowParentLink({
-  runFriendlyId,
-  spanId,
-  isRoot,
+function ShowParentOrRootLinks({
+  relationships,
 }: {
-  runFriendlyId: string;
-  spanId?: string;
-  isRoot: boolean;
+  relationships: {
+    root?: {
+      friendlyId: string;
+      taskIdentifier: string;
+      spanId: string;
+      isParent?: boolean;
+    };
+    parent?: {
+      friendlyId: string;
+      taskIdentifier: string;
+      spanId: string;
+    };
+  };
 }) {
-  const [mouseOver, setMouseOver] = useState(false);
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
-  const { spanParam } = useParams();
 
-  const span = spanId ? spanId : spanParam;
-
-  return (
-    <LinkButton
-      variant="minimal/medium"
-      to={
-        span
-          ? v3RunSpanPath(
-              organization,
-              project,
-              environment,
-              {
-                friendlyId: runFriendlyId,
-              },
-              { spanId: span }
-            )
-          : v3RunPath(organization, project, environment, {
-              friendlyId: runFriendlyId,
-            })
-      }
-      onMouseEnter={() => setMouseOver(true)}
-      onMouseLeave={() => setMouseOver(false)}
-      fullWidth
-      textAlignLeft
-      shortcut={{ key: "p" }}
-      className="flex-1"
-    >
-      {mouseOver ? (
-        <ShowParentIconSelected className="h-4 w-4 text-indigo-500" />
-      ) : (
-        <ShowParentIcon className="h-4 w-4 text-charcoal-650" />
-      )}
-      <Paragraph
-        variant="small"
-        className={cn(mouseOver ? "text-indigo-500" : "text-charcoal-500")}
+  // Case 1: Root is also the parent
+  if (relationships.root?.isParent === true) {
+    return (
+      <LinkButton
+        variant="minimal/small"
+        to={v3RunSpanPath(
+          organization,
+          project,
+          environment,
+          { friendlyId: relationships.root.friendlyId },
+          { spanId: relationships.root.spanId }
+        )}
+        LeadingIcon={MoveToTopIcon}
+        leadingIconClassName="gap-x-2"
+        shortcut={{ key: "t" }}
+        hideShortcutKey
+        tooltip={
+          <div className="-mr-1 flex items-center gap-1">
+            <Paragraph variant="extra-small">Jump to root/parent run</Paragraph>
+            <ShortcutKey shortcut={{ key: "t" }} variant="small" />
+          </div>
+        }
+        className="text-xs"
       >
-        {isRoot ? "Show root run" : "Show parent run"}
-      </Paragraph>
-    </LinkButton>
+        Root/parent
+      </LinkButton>
+    );
+  }
+
+  // Case 2: Root and Parent are different runs
+  return (
+    <div className="flex items-center">
+      {relationships.root && (
+        <LinkButton
+          variant="minimal/small"
+          to={v3RunSpanPath(
+            organization,
+            project,
+            environment,
+            { friendlyId: relationships.root.friendlyId },
+            { spanId: relationships.root.spanId }
+          )}
+          LeadingIcon={MoveToTopIcon}
+          leadingIconClassName="gap-x-2"
+          shortcut={{ key: "t" }}
+          hideShortcutKey
+          tooltip={
+            <div className="-mr-1 flex items-center gap-1">
+              <Paragraph variant="extra-small">Jump to root run</Paragraph>
+              <ShortcutKey shortcut={{ key: "t" }} variant="small" />
+            </div>
+          }
+          className="text-xs"
+        >
+          Root
+        </LinkButton>
+      )}
+      {relationships.parent && (
+        <LinkButton
+          variant="minimal/small"
+          to={v3RunSpanPath(
+            organization,
+            project,
+            environment,
+            { friendlyId: relationships.parent.friendlyId },
+            { spanId: relationships.parent.spanId }
+          )}
+          LeadingIcon={MoveUpIcon}
+          leadingIconClassName="gap-x-2"
+          shortcut={{ key: "p" }}
+          hideShortcutKey
+          tooltip={
+            <div className="-mr-1 flex items-center gap-1">
+              <Paragraph variant="extra-small">Jump to parent run</Paragraph>
+              <ShortcutKey shortcut={{ key: "p" }} variant="small" />
+            </div>
+          }
+          className="text-xs"
+        >
+          Parent
+        </LinkButton>
+      )}
+    </div>
   );
 }
 

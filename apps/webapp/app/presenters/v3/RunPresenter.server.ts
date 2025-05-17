@@ -61,6 +61,14 @@ export class RunPresenter {
             createdAt: true,
           },
         },
+        parentTaskRun: {
+          select: {
+            friendlyId: true,
+            taskIdentifier: true,
+            spanId: true,
+            createdAt: true,
+          },
+        },
         runtimeEnvironment: {
           select: {
             id: true,
@@ -109,6 +117,7 @@ export class RunPresenter {
       completedAt: run.completedAt,
       logsDeletedAt: showDeletedLogs ? null : run.logsDeletedAt,
       rootTaskRun: run.rootTaskRun,
+      parentTaskRun: run.parentTaskRun,
       environment: {
         id: run.runtimeEnvironment.id,
         organizationId: run.runtimeEnvironment.organizationId,
@@ -199,8 +208,6 @@ export class RunPresenter {
       trace: {
         rootSpanStatus,
         events: events,
-        parentRunFriendlyId:
-          tree?.id === traceSummary.rootSpan.id ? undefined : traceSummary.rootSpan.runId,
         duration: totalDuration,
         rootStartedAt: tree?.data.startTime,
         startedAt: run.startedAt,
