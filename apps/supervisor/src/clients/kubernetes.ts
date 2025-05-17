@@ -3,8 +3,11 @@ import { Informer } from "@kubernetes/client-node";
 import { ListPromise } from "@kubernetes/client-node";
 import { KubernetesObject } from "@kubernetes/client-node";
 import { assertExhaustive } from "@trigger.dev/core/utils";
+import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
 
 export const RUNTIME_ENV = process.env.KUBERNETES_PORT ? "kubernetes" : "local";
+
+const logger = new SimpleStructuredLogger("kubernetes-client");
 
 export function createK8sApi() {
   const kubeConfig = getKubeConfig();
@@ -31,7 +34,7 @@ export function createK8sApi() {
 export type K8sApi = ReturnType<typeof createK8sApi>;
 
 function getKubeConfig() {
-  console.log("getKubeConfig()", { RUNTIME_ENV });
+  logger.debug("getKubeConfig()", { RUNTIME_ENV });
 
   const kubeConfig = new k8s.KubeConfig();
 

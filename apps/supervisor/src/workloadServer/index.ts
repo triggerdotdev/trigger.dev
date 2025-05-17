@@ -63,6 +63,8 @@ type WorkloadServerOptions = {
 export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
   private checkpointClient?: CheckpointClient;
 
+  private readonly logger = new SimpleStructuredLogger("workload-server");
+
   private readonly httpServer: HttpServer;
   private readonly websocketServer: Namespace<
     WorkloadClientToServerEvents,
@@ -151,7 +153,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
             );
 
             if (!startResponse.success) {
-              console.error("Failed to start run", {
+              this.logger.error("Failed to start run", {
                 params,
                 error: startResponse.error,
               });
@@ -171,7 +173,6 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
           paramsSchema: WorkloadActionParams,
           bodySchema: WorkloadRunAttemptCompleteRequestBody,
           handler: async ({ req, reply, params, body }) => {
-            console.log("headers", req.headers);
             const completeResponse = await this.workerClient.completeRunAttempt(
               params.runFriendlyId,
               params.snapshotFriendlyId,
@@ -180,7 +181,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
             );
 
             if (!completeResponse.success) {
-              console.error("Failed to complete run", {
+              this.logger.error("Failed to complete run", {
                 params,
                 error: completeResponse.error,
               });
@@ -208,7 +209,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
             );
 
             if (!heartbeatResponse.success) {
-              console.error("Failed to heartbeat run", {
+              this.logger.error("Failed to heartbeat run", {
                 params,
                 error: heartbeatResponse.error,
               });
@@ -228,7 +229,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
         {
           paramsSchema: WorkloadActionParams,
           handler: async ({ reply, params, req }) => {
-            console.debug("Suspend request", { params, headers: req.headers });
+            this.logger.debug("Suspend request", { params, headers: req.headers });
 
             if (!this.checkpointClient) {
               reply.json(
@@ -247,7 +248,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
             const projectRef = this.projectRefFromRequest(req);
 
             if (!runnerId || !deploymentVersion || !projectRef) {
-              console.error("Invalid headers for suspend request", {
+              this.logger.error("Invalid headers for suspend request", {
                 ...params,
                 headers: req.headers,
               });
@@ -283,7 +284,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
             });
 
             if (!suspendResult) {
-              console.error("Failed to suspend run", { params });
+              this.logger.error("Failed to suspend run", { params });
               return;
             }
           },
@@ -295,7 +296,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
         {
           paramsSchema: WorkloadActionParams,
           handler: async ({ req, reply, params }) => {
-            console.debug("Run continuation request", { params });
+            this.logger.debug("Run continuation request", { params });
 
             const continuationResult = await this.workerClient.continueRunExecution(
               params.runFriendlyId,
@@ -304,7 +305,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
             );
 
             if (!continuationResult.success) {
-              console.error("Failed to continue run execution", { params });
+              this.logger.error("Failed to continue run execution", { params });
               reply.json(
                 {
                   ok: false,
@@ -329,7 +330,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
           );
 
           if (!latestSnapshotResponse.success) {
-            console.error("Failed to get latest snapshot", {
+            this.logger.error("Failed to get latest snapshot", {
               runId: params.runFriendlyId,
               error: latestSnapshotResponse.error,
             });
@@ -355,7 +356,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
             );
 
             if (!sinceSnapshotResponse.success) {
-              console.error("Failed to get snapshots since", {
+              this.logger.error("Failed to get snapshots since", {
                 runId: params.runFriendlyId,
                 error: sinceSnapshotResponse.error,
               });
@@ -393,7 +394,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
           );
 
           if (!dequeueResponse.success) {
-            console.error("Failed to get latest snapshot", {
+            this.logger.error("Failed to get latest snapshot", {
               deploymentId: params.deploymentId,
               error: dequeueResponse.error,
             });
@@ -417,14 +418,14 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
     > = io.of("/workload");
 
     websocketServer.on("disconnect", (socket) => {
-      console.log("[WorkloadSocket] disconnect", socket.id);
+      this.logger.log("[WS] disconnect", socket.id);
     });
     websocketServer.use(async (socket, next) => {
-      function setSocketDataFromHeader(
+      const setSocketDataFromHeader = (
         dataKey: keyof typeof socket.data,
         headerName: string,
         required: boolean = true
-      ) {
+      ) => {
         const value = socket.handshake.headers[headerName];
 
         if (value) {
@@ -440,27 +441,26 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
         }
 
         if (required) {
-          console.error("[WorkloadSocket] missing required header", { headerName });
+          this.logger.error("[WS] missing required header", { headerName });
           throw new Error("missing header");
         }
-      }
+      };
 
       try {
         setSocketDataFromHeader("deploymentId", WORKLOAD_HEADERS.DEPLOYMENT_ID);
         setSocketDataFromHeader("runnerId", WORKLOAD_HEADERS.RUNNER_ID);
       } catch (error) {
-        console.error("[WorkloadSocket] setSocketDataFromHeader error", { error });
+        this.logger.error("[WS] setSocketDataFromHeader error", { error });
         socket.disconnect(true);
         return;
       }
 
-      console.debug("[WorkloadSocket] auth success", socket.data);
+      this.logger.debug("[WS] auth success", socket.data);
 
       next();
     });
     websocketServer.on("connection", (socket) => {
-      const logger = new SimpleStructuredLogger("workload-namespace", undefined, {
-        namespace: "workload",
+      const socketLogger = this.logger.child({
         socketId: socket.id,
         socketData: socket.data,
       });
@@ -475,11 +475,11 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
       };
 
       const runConnected = (friendlyId: string) => {
-        logger.debug("runConnected", { ...getSocketMetadata() });
+        socketLogger.debug("runConnected", { ...getSocketMetadata() });
 
         // If there's already a run ID set, we should "disconnect" it from this socket
         if (socket.data.runFriendlyId && socket.data.runFriendlyId !== friendlyId) {
-          logger.debug("runConnected: disconnecting existing run", {
+          socketLogger.debug("runConnected: disconnecting existing run", {
             ...getSocketMetadata(),
             newRunId: friendlyId,
             oldRunId: socket.data.runFriendlyId,
@@ -493,14 +493,14 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
       };
 
       const runDisconnected = (friendlyId: string) => {
-        logger.debug("runDisconnected", { ...getSocketMetadata() });
+        socketLogger.debug("runDisconnected", { ...getSocketMetadata() });
 
         this.runSockets.delete(friendlyId);
         this.emit("runDisconnected", { run: { friendlyId } });
         socket.data.runFriendlyId = undefined;
       };
 
-      logger.log("wsServer socket connected", { ...getSocketMetadata() });
+      socketLogger.log("wsServer socket connected", { ...getSocketMetadata() });
 
       // FIXME: where does this get set?
       if (socket.data.runFriendlyId) {
@@ -508,7 +508,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
       }
 
       socket.on("disconnecting", (reason, description) => {
-        logger.log("Socket disconnecting", { ...getSocketMetadata(), reason, description });
+        socketLogger.log("Socket disconnecting", { ...getSocketMetadata(), reason, description });
 
         if (socket.data.runFriendlyId) {
           runDisconnected(socket.data.runFriendlyId);
@@ -516,11 +516,11 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
       });
 
       socket.on("disconnect", (reason, description) => {
-        logger.log("Socket disconnected", { ...getSocketMetadata(), reason, description });
+        socketLogger.log("Socket disconnected", { ...getSocketMetadata(), reason, description });
       });
 
       socket.on("error", (error) => {
-        logger.error("Socket error", {
+        socketLogger.error("Socket error", {
           ...getSocketMetadata(),
           error: {
             name: error.name,
@@ -531,7 +531,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
       });
 
       socket.on("run:start", async (message) => {
-        const log = logger.child({
+        const log = socketLogger.child({
           eventName: "run:start",
           ...getSocketMetadata(),
           ...message,
@@ -547,7 +547,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
       });
 
       socket.on("run:stop", async (message) => {
-        const log = logger.child({
+        const log = socketLogger.child({
           eventName: "run:stop",
           ...getSocketMetadata(),
           ...message,
@@ -571,7 +571,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
       const runSocket = this.runSockets.get(run.friendlyId);
 
       if (!runSocket) {
-        console.debug("[WorkloadServer] notifyRun: Run socket not found", { run });
+        this.logger.debug("notifyRun: Run socket not found", { run });
 
         this.workerClient.sendDebugLog(run.friendlyId, {
           time: new Date(),
@@ -582,14 +582,14 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
       }
 
       runSocket.emit("run:notify", { version: "1", run });
-      console.debug("[WorkloadServer] run:notify sent", { run });
+      this.logger.debug("run:notify sent", { run });
 
       this.workerClient.sendDebugLog(run.friendlyId, {
         time: new Date(),
         message: "run:notify supervisor -> runner",
       });
     } catch (error) {
-      console.error("[WorkloadServer] Error in notifyRun", { run, error });
+      this.logger.error("Error in notifyRun", { run, error });
 
       this.workerClient.sendDebugLog(run.friendlyId, {
         time: new Date(),

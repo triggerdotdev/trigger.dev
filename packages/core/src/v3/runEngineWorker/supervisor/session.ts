@@ -9,6 +9,7 @@ import { io, Socket } from "socket.io-client";
 import { WorkerClientToServerEvents, WorkerServerToClientEvents } from "../types.js";
 import { getDefaultWorkerHeaders } from "./util.js";
 import { IntervalService } from "../../utils/interval.js";
+import { SimpleStructuredLogger } from "../../utils/structuredLogger.js";
 
 type SupervisorSessionOptions = SupervisorClientCommonOptions & {
   queueConsumerEnabled?: boolean;
@@ -24,6 +25,8 @@ type SupervisorSessionOptions = SupervisorClientCommonOptions & {
 
 export class SupervisorSession extends EventEmitter<WorkerEvents> {
   public readonly httpClient: SupervisorHttpClient;
+
+  private readonly logger = new SimpleStructuredLogger("supervisor-session");
 
   private readonly runNotificationsEnabled: boolean;
   private runNotificationsSocket?: Socket<WorkerServerToClientEvents, WorkerClientToServerEvents>;
@@ -54,30 +57,27 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
 
     this.heartbeat = new IntervalService({
       onInterval: async () => {
-        console.debug("[SupervisorSession] Sending heartbeat");
+        this.logger.debug("Sending heartbeat");
 
         const body = this.getHeartbeatBody();
         const response = await this.httpClient.heartbeatWorker(body);
 
         if (!response.success) {
-          console.error("[SupervisorSession] Heartbeat failed", { error: response.error });
+          this.logger.error("Heartbeat failed", { error: response.error });
         }
       },
       intervalMs: opts.heartbeatIntervalSeconds * 1000,
       leadingEdge: false,
       onError: async (error) => {
-        console.error("[SupervisorSession] Failed to send heartbeat", { error });
+        this.logger.error("Failed to send heartbeat", { error });
       },
     });
   }
 
   private async onDequeue(messages: WorkerApiDequeueResponseBody): Promise<void> {
-    // Incredibly verbose logging for debugging purposes
-    // console.log("[SupervisorSession] Dequeued messages", { count: messages.length });
-    // console.debug("[SupervisorSession] Dequeued messages with contents", messages);
+    this.logger.verbose("Dequeued messages with contents", { count: messages.length, messages });
 
     for (const message of messages) {
-      console.log("[SupervisorSession] Emitting message", { message });
       this.emit("runQueueMessage", {
         time: new Date(),
         message,
@@ -86,10 +86,10 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
   }
 
   subscribeToRunNotifications(runFriendlyIds: string[]) {
-    console.log("[SupervisorSession] Subscribing to run notifications", { runFriendlyIds });
+    this.logger.debug("Subscribing to run notifications", { runFriendlyIds });
 
     if (!this.runNotificationsSocket) {
-      console.error("[SupervisorSession] Socket not connected");
+      this.logger.error("Socket not connected");
       return;
     }
 
@@ -106,10 +106,10 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
   }
 
   unsubscribeFromRunNotifications(runFriendlyIds: string[]) {
-    console.log("[SupervisorSession] Unsubscribing from run notifications", { runFriendlyIds });
+    this.logger.debug("Unsubscribing from run notifications", { runFriendlyIds });
 
     if (!this.runNotificationsSocket) {
-      console.error("[SupervisorSession] Socket not connected");
+      this.logger.error("Socket not connected");
       return;
     }
 
@@ -137,26 +137,22 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
       extraHeaders: getDefaultWorkerHeaders(this.opts),
     });
     socket.on("run:notify", ({ version, run }) => {
-      console.log("[SupervisorSession][WS] Received run notification", { version, run });
+      this.logger.debug("[WS] Received run notification", { version, run });
       this.emit("runNotification", { time: new Date(), run });
 
-      this.httpClient
-        .sendDebugLog(run.friendlyId, {
-          time: new Date(),
-          message: "run:notify received by supervisor",
-        })
-        .catch((error) => {
-          console.error("[SupervisorSession] Failed to send debug log", { error });
-        });
+      this.httpClient.sendDebugLog(run.friendlyId, {
+        time: new Date(),
+        message: "run:notify received by supervisor",
+      });
     });
     socket.on("connect", () => {
-      console.log("[SupervisorSession][WS] Connected to platform");
+      this.logger.log("[WS] Connected to platform");
     });
     socket.on("connect_error", (error) => {
-      console.error("[SupervisorSession][WS] Connection error", { error });
+      this.logger.error("[WS] Connection error", { error });
     });
     socket.on("disconnect", (reason, description) => {
-      console.log("[SupervisorSession][WS] Disconnected from platform", { reason, description });
+      this.logger.log("[WS] Disconnected from platform", { reason, description });
     });
 
     return socket;
@@ -170,30 +166,30 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
     });
 
     if (!connect.success) {
-      console.error("[SupervisorSession][HTTP] Failed to connect", { error: connect.error });
-      throw new Error("[SupervisorSession][HTTP] Failed to connect");
+      this.logger.error("Failed to connect", { error: connect.error });
+      throw new Error("[SupervisorSession]Failed to connect");
     }
 
     const { workerGroup } = connect.data;
 
-    console.log("[SupervisorSession][HTTP] Connected to platform", {
+    this.logger.log("Connected to platform", {
       type: workerGroup.type,
       name: workerGroup.name,
     });
 
     if (this.queueConsumerEnabled) {
-      console.log("[SupervisorSession] Queue consumer enabled");
+      this.logger.log("Queue consumer enabled");
       await Promise.allSettled(this.queueConsumers.map(async (q) => q.start()));
       this.heartbeat.start();
     } else {
-      console.warn("[SupervisorSession] Queue consumer disabled");
+      this.logger.warn("Queue consumer disabled");
     }
 
     if (this.runNotificationsEnabled) {
-      console.log("[SupervisorSession] Run notifications enabled");
+      this.logger.log("Run notifications enabled");
       this.runNotificationsSocket = this.createRunNotificationsSocket();
     } else {
-      console.warn("[SupervisorSession] Run notifications disabled");
+      this.logger.warn("Run notifications disabled");
     }
   }
 
