@@ -38,10 +38,6 @@ export async function createProject(
     if (!organization.v3Enabled) {
       throw new Error(`Organization can't create v3 projects.`);
     }
-
-    if (!env.V3_ENABLED) {
-      throw new Error(`v3 is not available yet.`);
-    }
   }
 
   //ensure the slug is globally unique

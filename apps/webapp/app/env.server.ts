@@ -259,7 +259,6 @@ const EnvironmentSchema = z.object({
   INGEST_EVENT_RATE_LIMIT_MAX: z.coerce.number().int().optional(),
 
   //v3
-  V3_ENABLED: z.string().default("false"),
   PROVIDER_SECRET: z.string().default("provider-secret"),
   COORDINATOR_SECRET: z.string().default("coordinator-secret"),
   DEPOT_TOKEN: z.string().optional(),

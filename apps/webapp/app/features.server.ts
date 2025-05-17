@@ -18,7 +18,7 @@ function isManagedCloud(host: string): boolean {
 function featuresForHost(host: string): TriggerFeatures {
   return {
     isManagedCloud: isManagedCloud(host),
-    v3Enabled: env.V3_ENABLED === "true",
+    v3Enabled: true,
   };
 }
 
