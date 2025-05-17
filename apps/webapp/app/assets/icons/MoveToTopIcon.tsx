@@ -17,35 +17,7 @@ export function MoveToTopIcon({ className }: { className?: string }) {
           strokeLinejoin="round"
         />
         <path
-          d="M3 7L6 7"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        <path
-          d="M3 11L4 11"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        <path
-          d="M18 7L21 7"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        <path
-          d="M20 11L21 11"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        <path
-          d="M15.5 10.5L12 7L8.5 10.5"
+          d="M16.5 11.5L12 7L7.5 11.5"
           stroke="currentColor"
           strokeWidth="2"
           strokeLinecap="round"

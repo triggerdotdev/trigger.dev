@@ -1176,6 +1176,7 @@ function ShowParentOrRootLinks({
           { spanId: relationships.root.spanId }
         )}
         LeadingIcon={MoveToTopIcon}
+        leadingIconClassName="gap-x-2"
         shortcut={{ key: "t" }}
         hideShortcutKey
         tooltip={
@@ -1205,6 +1206,7 @@ function ShowParentOrRootLinks({
             { spanId: relationships.root.spanId }
           )}
           LeadingIcon={MoveToTopIcon}
+          leadingIconClassName="gap-x-2"
           shortcut={{ key: "t" }}
           hideShortcutKey
           tooltip={
@@ -1229,6 +1231,7 @@ function ShowParentOrRootLinks({
             { spanId: relationships.parent.spanId }
           )}
           LeadingIcon={MoveUpIcon}
+          leadingIconClassName="gap-x-2"
           shortcut={{ key: "p" }}
           hideShortcutKey
           tooltip={
