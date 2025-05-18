@@ -24,6 +24,7 @@ import { collectDefaultMetrics } from "prom-client";
 import { register } from "./metrics.js";
 import { PodCleaner } from "./services/podCleaner.js";
 import { FailedPodHandler } from "./services/failedPodHandler.js";
+import { getWorkerToken } from "./workerToken.js";
 
 if (env.METRICS_COLLECT_DEFAULTS) {
   collectDefaultMetrics({ register });
@@ -119,7 +120,7 @@ class ManagedSupervisor {
     }
 
     this.workerSession = new SupervisorSession({
-      workerToken: env.TRIGGER_WORKER_TOKEN,
+      workerToken: getWorkerToken(),
       apiUrl: env.TRIGGER_API_URL,
       instanceName: env.TRIGGER_WORKER_INSTANCE_NAME,
       managedWorkerSecret: env.MANAGED_WORKER_SECRET,
