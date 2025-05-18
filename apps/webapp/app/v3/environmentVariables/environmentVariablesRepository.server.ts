@@ -824,7 +824,7 @@ async function resolveBuiltInDevVariables(runtimeEnvironment: RuntimeEnvironment
   let result: Array<EnvironmentVariable> = [
     {
       key: "OTEL_EXPORTER_OTLP_ENDPOINT",
-      value: env.DEV_OTEL_EXPORTER_OTLP_ENDPOINT ?? env.APP_ORIGIN,
+      value: env.DEV_OTEL_EXPORTER_OTLP_ENDPOINT ?? `${env.APP_ORIGIN.replace(/\/$/, "")}/otel`,
     },
     {
       key: "TRIGGER_API_URL",
