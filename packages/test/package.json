@@ -1,0 +1,83 @@
+{
+  "name": "@trigger.dev/test",
+  "version": "4.0.0-v4-beta.16",
+  "description": "Testing utilities for trigger.dev tasks",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/triggerdotdev/trigger.dev",
+    "directory": "packages/test"
+  },
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "tshy": {
+    "selfLink": false,
+    "main": true,
+    "module": true,
+    "project": "./tsconfig.build.json",
+    "exports": {
+      "./package.json": "./package.json",
+      ".": "./src/index.ts"
+    },
+    "sourceDialects": [
+      "@triggerdotdev/source"
+    ]
+  },
+  "typesVersions": {
+    "*": {
+      ".": [
+        "dist/commonjs/index.d.ts"
+      ]
+    }
+  },
+  "scripts": {
+    "clean": "rimraf dist .tshy .tshy-build .turbo",
+    "build": "tshy && pnpm run update-version",
+    "dev": "tshy --watch",
+    "typecheck": "tsc --noEmit",
+    "update-version": "tsx ../../scripts/updateVersion.ts",
+    "check-exports": "attw --pack .",
+    "test": "vitest"
+  },
+  "dependencies": {
+    "@trigger.dev/core": "workspace:4.0.0-v4-beta.16"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "^0.15.4",
+    "@trigger.dev/sdk": "workspace:4.0.0-v4-beta.16",
+    "rimraf": "^3.0.2",
+    "tshy": "^3.0.2",
+    "tsx": "4.17.0",
+    "vitest": "^1.6.0",
+    "zod": "3.23.8"
+  },
+  "peerDependencies": {
+    "@trigger.dev/sdk": "^4.0.0-v4-beta.16",
+    "zod": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=18.20.0"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "@triggerdotdev/source": "./src/index.ts",
+        "types": "./dist/esm/index.d.ts",
+        "default": "./dist/esm/index.js"
+      },
+      "require": {
+        "types": "./dist/commonjs/index.d.ts",
+        "default": "./dist/commonjs/index.js"
+      }
+    }
+  },
+  "main": "./dist/commonjs/index.js",
+  "types": "./dist/commonjs/index.d.ts",
+  "module": "./dist/esm/index.js"
+}

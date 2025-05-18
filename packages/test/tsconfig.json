@@ -1,0 +1,16 @@
+{
+  "extends": "../../.configs/tsconfig.base.json",
+  "compilerOptions": {
+    "isolatedDeclarations": false,
+    "composite": true,
+    "sourceMap": true,
+    "stripInternal": true,
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "types": ["vitest/globals"],
+    "skipLibCheck": true,
+    "noEmitOnError": false
+  },
+  "include": ["src/**/*", "./test/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}
