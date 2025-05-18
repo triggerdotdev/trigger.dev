@@ -15,6 +15,7 @@ import {
   OperatingSystemPlatform,
 } from "./components/primitives/OperatingSystemProvider";
 import { singleton } from "./utils/singleton";
+import { bootstrap } from "./bootstrap";
 
 const ABORT_DELAY = 30000;
 
@@ -174,6 +175,10 @@ export function handleError(error: unknown, { request, params, context }: DataFu
 }
 
 Worker.init().catch((error) => {
+  logError(error);
+});
+
+bootstrap().catch((error) => {
   logError(error);
 });
 

@@ -771,6 +771,11 @@ const EnvironmentSchema = z.object({
   RUN_REPLICATION_KEEP_ALIVE_ENABLED: z.string().default("1"),
   RUN_REPLICATION_KEEP_ALIVE_IDLE_SOCKET_TTL_MS: z.coerce.number().int().default(9_000),
   RUN_REPLICATION_MAX_OPEN_CONNECTIONS: z.coerce.number().int().default(10),
+
+  // Bootstrap
+  TRIGGER_BOOTSTRAP_ENABLED: z.string().default("0"),
+  TRIGGER_BOOTSTRAP_WORKER_GROUP_NAME: z.string().optional(),
+  TRIGGER_BOOTSTRAP_WORKER_TOKEN_PATH: z.string().optional(),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;
