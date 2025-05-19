@@ -18,6 +18,10 @@ jobs:
   release:
     name: 🦋 Changesets Release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+      pull-requests: write
     if: github.repository == 'triggerdotdev/trigger.dev'
     outputs:
       published: ${{ steps.changesets.outputs.published }}
@@ -93,6 +97,8 @@ jobs:
   publish:
     needs: release
     uses: ./.github/workflows/publish.yml
+    permissions:
+      contents: read
     secrets: inherit
     # if: needs.release.outputs.published == 'true'
     # disable automatic publishing for now
