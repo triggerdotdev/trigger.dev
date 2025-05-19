@@ -116,7 +116,7 @@ export const action: ActionFunction = async ({ request, params }) => {
   }
 
   if (environment.archivedAt) {
-    return redirectBackWithErrorMessage(request, "This branch is archived");
+    return redirectBackWithErrorMessage(request, "Can't run a test on an archived environment");
   }
 
   const testService = new TestTaskService();
