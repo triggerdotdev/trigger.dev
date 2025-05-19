@@ -244,6 +244,8 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
 
     logger.debug("Upserted branch env", branchEnv);
 
+    log.success(`Using preview branch "${branch}"`);
+
     if (!branchEnv) {
       throw new Error(`Failed to create branch "${branch}"`);
     }

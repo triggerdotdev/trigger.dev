@@ -889,7 +889,6 @@ async function resolveBuiltInProdVariables(runtimeEnvironment: RuntimeEnvironmen
       key: "TRIGGER_SECRET_KEY",
       value: runtimeEnvironment.apiKey,
     },
-
     {
       key: "TRIGGER_API_URL",
       value: env.API_ORIGIN ?? env.APP_ORIGIN,
