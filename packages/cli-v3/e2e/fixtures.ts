@@ -66,7 +66,7 @@ export const fixturesConfig: TestCase[] = [
       {
         task: { id: "helloWorld", filePath: "src/trigger/helloWorld.ts", exportName: "helloWorld" },
         payload: "{}",
-        result: { ok: true, durationMs: 1000 },
+        result: { ok: true, durationMs: 500 },
       },
     ],
     tsconfig: "tsconfig.json",
