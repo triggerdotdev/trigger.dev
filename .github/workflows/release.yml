@@ -1,5 +1,8 @@
 name: 🦋 Changesets Release
 
+permissions:
+  contents: write
+
 on:
   push:
     branches:
