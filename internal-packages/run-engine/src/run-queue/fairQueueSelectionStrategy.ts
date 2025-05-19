@@ -448,7 +448,7 @@ export class FairQueueSelectionStrategy implements RunQueueSelectionStrategy {
     // Group queues by env
     const queuesByEnv = queues.reduce(
       (acc, queue) => {
-        if (!acc[`${queue.org}:${queue.project}:${queue.env}`]) {
+        if (!acc[queue.env]) {
           acc[queue.env] = [];
         }
         acc[queue.env].push(queue);

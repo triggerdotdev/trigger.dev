@@ -142,7 +142,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     },
   });
   if (!project) {
-    submission.error.key = "Project not found";
+    submission.error.key = ["Project not found"];
     return json(submission);
   }
 
@@ -152,7 +152,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       const result = await repository.editValue(project.id, submission.value);
 
       if (!result.success) {
-        submission.error.key = result.error;
+        submission.error.key = [result.error];
         return json(submission);
       }
 
@@ -175,7 +175,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       const result = await repository.deleteValue(project.id, submission.value);
 
       if (!result.success) {
-        submission.error.key = result.error;
+        submission.error.key = [result.error];
         return json(submission);
       }
 

@@ -93,7 +93,7 @@ export const action: ActionFunction = async ({ request, params }) => {
         projectId,
         deploymentShortCode,
       });
-      submission.error = { runParam: error.message };
+      submission.error = { runParam: [error.message] };
       return json(submission);
     } else {
       logger.error("Failed to retry deployment indexing", {
@@ -101,7 +101,7 @@ export const action: ActionFunction = async ({ request, params }) => {
         projectId,
         deploymentShortCode,
       });
-      submission.error = { runParam: JSON.stringify(error) };
+      submission.error = { runParam: [JSON.stringify(error)] };
       return json(submission);
     }
   }

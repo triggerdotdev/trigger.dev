@@ -5,6 +5,7 @@ import { RunQueue } from "../../run-queue/index.js";
 import { EventBus } from "../eventBus.js";
 import { RunLocker } from "../locking.js";
 import { EngineWorker } from "../types.js";
+import { RaceSimulationSystem } from "./raceSimulationSystem.js";
 
 export type SystemResources = {
   prisma: PrismaClient;
@@ -14,4 +15,5 @@ export type SystemResources = {
   tracer: Tracer;
   runLock: RunLocker;
   runQueue: RunQueue;
+  raceSimulationSystem: RaceSimulationSystem;
 };
