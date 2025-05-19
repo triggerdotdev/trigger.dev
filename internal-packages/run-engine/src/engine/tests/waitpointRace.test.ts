@@ -82,7 +82,7 @@ describe("RunEngine Waitpoints – race condition", () => {
           projectId: env.projectId,
         });
 
-        engine.registerRacepointForRun({ runId: run.id, waitInterval: 1000 });
+        engine.registerRacepointForRun({ runId: run.id, waitInterval: 500 });
 
         // complete the waitpoint (this will schedule a continueRunIfUnblocked job normally)
         await engine.completeWaitpoint({ id: waitpoint.id });
@@ -100,8 +100,6 @@ describe("RunEngine Waitpoints – race condition", () => {
         const joinRow = await prisma.taskRunWaitpoint.findFirst({
           where: { taskRunId: run.id, waitpointId: waitpoint2.id },
         });
-
-        console.log("joinRow", joinRow);
 
         // Intentionally expect it to still be there – current implementation erroneously deletes it so test fails.
         expect(joinRow).not.toBeNull();
