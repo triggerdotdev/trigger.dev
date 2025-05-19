@@ -136,11 +136,18 @@ export * from "./getBranch.js";
 export class ApiClient {
   public readonly baseUrl: string;
   public readonly accessToken: string;
+  public readonly previewBranch?: string;
   private readonly defaultRequestOptions: ZodFetchOptions;
 
-  constructor(baseUrl: string, accessToken: string, requestOptions: ApiRequestOptions = {}) {
+  constructor(
+    baseUrl: string,
+    accessToken: string,
+    previewBranch?: string,
+    requestOptions: ApiRequestOptions = {}
+  ) {
     this.accessToken = accessToken;
     this.baseUrl = baseUrl.replace(/\/$/, "");
+    this.previewBranch = previewBranch;
     this.defaultRequestOptions = mergeRequestOptions(DEFAULT_ZOD_FETCH_OPTIONS, requestOptions);
   }
 
@@ -985,6 +992,10 @@ export class ApiClient {
         {} as Record<string, string>
       ),
     };
+
+    if (this.previewBranch) {
+      headers["x-trigger-branch"] = this.previewBranch;
+    }
 
     // Only inject the context if we are inside a task
     if (taskContext.isInsideTask) {

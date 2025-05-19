@@ -44,12 +44,18 @@ export class APIClientManagerAPI {
     );
   }
 
+  get branchName(): string | undefined {
+    const config = this.#getConfig();
+    const value = config?.previewBranch ?? getEnvVar("TRIGGER_PREVIEW_BRANCH") ?? undefined;
+    return value ? value : undefined;
+  }
+
   get client(): ApiClient | undefined {
     if (!this.baseURL || !this.accessToken) {
       return undefined;
     }
 
-    return new ApiClient(this.baseURL, this.accessToken);
+    return new ApiClient(this.baseURL, this.accessToken, this.branchName);
   }
 
   clientOrThrow(): ApiClient {
@@ -57,7 +63,7 @@ export class APIClientManagerAPI {
       throw new ApiClientMissingError(this.apiClientMissingError());
     }
 
-    return new ApiClient(this.baseURL, this.accessToken);
+    return new ApiClient(this.baseURL, this.accessToken, this.branchName);
   }
 
   runWithConfig<R extends (...args: any[]) => Promise<any>>(
