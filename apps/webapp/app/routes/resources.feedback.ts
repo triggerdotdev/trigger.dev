@@ -83,7 +83,7 @@ export async function action({ request }: ActionFunctionArgs) {
       "Thanks for your feedback! We'll get back to you soon."
     );
   } catch (e) {
-    submission.error.message = e instanceof Error ? e.message : "Unknown error";
+    submission.error.message = [e instanceof Error ? e.message : "Unknown error"];
     return json(submission);
   }
 }
