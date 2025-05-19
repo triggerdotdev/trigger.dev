@@ -1,5 +1,5 @@
 import { RunEngine } from "@internal/run-engine";
-import { defaultMachine } from "@trigger.dev/platform/v3";
+import { defaultMachine } from "~/services/platform.v3.server";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { singleton } from "~/utils/singleton";

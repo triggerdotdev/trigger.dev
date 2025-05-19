@@ -776,6 +776,9 @@ const EnvironmentSchema = z.object({
   TRIGGER_BOOTSTRAP_ENABLED: z.string().default("0"),
   TRIGGER_BOOTSTRAP_WORKER_GROUP_NAME: z.string().optional(),
   TRIGGER_BOOTSTRAP_WORKER_TOKEN_PATH: z.string().optional(),
+
+  // Machine presets
+  MACHINE_PRESETS_OVERRIDE_PATH: z.string().optional(),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

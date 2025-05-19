@@ -29,7 +29,7 @@ import {
   fromFriendlyId,
 } from "@trigger.dev/core/v3/isomorphic";
 import { machinePresetFromName } from "~/v3/machinePresets.server";
-import { defaultMachine } from "@trigger.dev/platform/v3";
+import { defaultMachine } from "~/services/platform.v3.server";
 
 export class WorkerGroupTokenService extends WithRunEngine {
   private readonly tokenPrefix = "tr_wgt_";

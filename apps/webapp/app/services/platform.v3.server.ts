@@ -1,10 +1,13 @@
-import { Organization, Project } from "@trigger.dev/database";
+import type { Organization, Project } from "@trigger.dev/database";
 import {
   BillingClient,
-  Limits,
-  SetPlanBody,
-  UsageSeriesParams,
-  UsageResult,
+  type Limits,
+  type SetPlanBody,
+  type UsageSeriesParams,
+  type UsageResult,
+  defaultMachine as defaultMachineFromPlatform,
+  machines as machinesFromPlatform,
+  type MachineCode,
 } from "@trigger.dev/platform/v3";
 import { createCache, DefaultStatefulContext, Namespace } from "@unkey/cache";
 import { MemoryStore } from "@unkey/cache/stores";
@@ -17,6 +20,9 @@ import { logger } from "~/services/logger.server";
 import { newProjectPath, organizationBillingPath } from "~/utils/pathBuilder";
 import { singleton } from "~/utils/singleton";
 import { RedisCacheStore } from "./unkey/redisCacheStore.server";
+import { existsSync, readFileSync } from "node:fs";
+import { z } from "zod";
+import { MachinePresetName } from "@trigger.dev/core/v3";
 
 function initializeClient() {
   if (isCloud() && process.env.BILLING_API_URL && process.env.BILLING_API_KEY) {
@@ -66,6 +72,111 @@ function initializePlatformCache() {
 }
 
 const platformCache = singleton("platformCache", initializePlatformCache);
+
+type Machines = typeof machinesFromPlatform;
+
+const MachineOverrideValues = z.object({
+  cpu: z.number(),
+  memory: z.number(),
+});
+type MachineOverrideValues = z.infer<typeof MachineOverrideValues>;
+
+const MachineOverrides = z.record(MachinePresetName, MachineOverrideValues.partial());
+type MachineOverrides = z.infer<typeof MachineOverrides>;
+
+const MachinePresetOverrides = z.object({
+  defaultMachine: MachinePresetName.optional(),
+  machines: MachineOverrides.optional(),
+});
+
+function initializeMachinePresets(): {
+  defaultMachine: MachineCode;
+  machines: Machines;
+} {
+  const overrides = getMachinePresetOverrides();
+
+  if (!overrides) {
+    return {
+      defaultMachine: defaultMachineFromPlatform,
+      machines: machinesFromPlatform,
+    };
+  }
+
+  return {
+    defaultMachine: overrideDefaultMachine(defaultMachineFromPlatform, overrides.defaultMachine),
+    machines: overrideMachines(machinesFromPlatform, overrides.machines),
+  };
+}
+
+export const { defaultMachine, machines } = singleton("machinePresets", initializeMachinePresets);
+
+function overrideDefaultMachine(defaultMachine: MachineCode, override?: MachineCode): MachineCode {
+  if (!override) {
+    return defaultMachine;
+  }
+
+  return override;
+}
+
+function overrideMachines(machines: Machines, overrides?: MachineOverrides): Machines {
+  if (!overrides) {
+    return machines;
+  }
+
+  const mergedMachines = {
+    ...machines,
+  };
+
+  for (const machine of Object.keys(overrides) as MachinePresetName[]) {
+    mergedMachines[machine] = {
+      ...mergedMachines[machine],
+      ...overrides[machine],
+    };
+  }
+
+  return mergedMachines;
+}
+
+function getMachinePresetOverrides() {
+  const path = env.MACHINE_PRESETS_OVERRIDE_PATH;
+  if (!path) {
+    return;
+  }
+
+  const overrides = safeReadMachinePresetOverrides(path);
+  if (!overrides) {
+    return;
+  }
+
+  const parsed = MachinePresetOverrides.safeParse(overrides);
+
+  if (!parsed.success) {
+    logger.error("Error parsing machine preset overrides", { path, error: parsed.error });
+    return;
+  }
+
+  return parsed.data;
+}
+
+function safeReadMachinePresetOverrides(path: string) {
+  try {
+    const fileExists = existsSync(path);
+    if (!fileExists) {
+      logger.error("Machine preset overrides file does not exist", { path });
+      return;
+    }
+
+    const fileContents = readFileSync(path, "utf8");
+
+    return JSON.parse(fileContents);
+  } catch (error) {
+    logger.error("Error reading machine preset overrides", {
+      path,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return;
+  }
+}
 
 export async function getCurrentPlan(orgId: string) {
   if (!client) return undefined;

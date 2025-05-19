@@ -6,7 +6,7 @@ import {
   WorkerApiRunAttemptStartResponseBody,
 } from "@trigger.dev/core/v3/workers";
 import { RuntimeEnvironment } from "@trigger.dev/database";
-import { defaultMachine } from "@trigger.dev/platform/v3";
+import { defaultMachine } from "~/services/platform.v3.server";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { generateJWTTokenForEnvironment } from "~/services/apiAuth.server";
