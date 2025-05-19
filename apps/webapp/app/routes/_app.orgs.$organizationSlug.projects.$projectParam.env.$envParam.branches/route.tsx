@@ -76,6 +76,9 @@ import {
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { ArchiveButton } from "../resources.branches.archive";
 import { GitMeta } from "@trigger.dev/core/v3";
+import { logger } from "~/services/logger.server";
+import { TextLink } from "~/components/primitives/TextLink";
+import { GitBranchIcon, GitCommitIcon, GitPullRequestIcon } from "lucide-react";
 
 export const BranchesOptions = z.object({
   search: z.string().optional(),
@@ -101,6 +104,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
     return typedjson(result);
   } catch (error) {
+    logger.error("Error loading preview branches page", { error });
     throw new Response(undefined, {
       status: 400,
       statusText: "Something went wrong, if this problem persists please contact support.",
@@ -268,8 +272,7 @@ export default function Page() {
                     <TableRow>
                       <TableHeaderCell>Branch</TableHeaderCell>
                       <TableHeaderCell>Created</TableHeaderCell>
-                      <TableHeaderCell>Git branch</TableHeaderCell>
-                      <TableHeaderCell>Git PR</TableHeaderCell>
+                      <TableHeaderCell>Git</TableHeaderCell>
                       <TableHeaderCell>Archived</TableHeaderCell>
                       <TableHeaderCell>
                         <span className="sr-only">Actions</span>
@@ -278,7 +281,7 @@ export default function Page() {
                   </TableHeader>
                   <TableBody>
                     {branches.length === 0 ? (
-                      <TableBlankRow colSpan={6}>
+                      <TableBlankRow colSpan={5}>
                         <Paragraph>There are no matches for your filters</Paragraph>
                       </TableBlankRow>
                     ) : (
@@ -305,15 +308,40 @@ export default function Page() {
                               <DateTime date={branch.createdAt} />
                             </TableCell>
                             <TableCell className={cellClass}>
-                              {branch.git?.branch ? (
-                                <CopyableText value={branch.git.branch} />
-                              ) : (
-                                "–"
-                              )}
+                              <div className="-ml-2 flex items-center">
+                                {branch.git?.branchUrl && (
+                                  <LinkButton
+                                    variant="minimal/small"
+                                    LeadingIcon={<GitBranchIcon className="size-4" />}
+                                    iconSpacing="gap-x-1"
+                                    to={branch.git.branchUrl}
+                                  >
+                                    {branch.branchName}
+                                  </LinkButton>
+                                )}
+                                {branch.git?.shortSha && (
+                                  <LinkButton
+                                    variant="minimal/small"
+                                    to={branch.git.commitUrl}
+                                    LeadingIcon={<GitCommitIcon className="size-4" />}
+                                    iconSpacing="gap-x-1"
+                                  >
+                                    {`${branch.git.shortSha} / ${branch.git.commitMessage}`}
+                                  </LinkButton>
+                                )}
+                                {branch.git?.pullRequestUrl && (
+                                  <LinkButton
+                                    variant="minimal/small"
+                                    to={branch.git.pullRequestUrl}
+                                    LeadingIcon={<GitPullRequestIcon className="size-4" />}
+                                    iconSpacing="gap-x-1"
+                                  >
+                                    #{branch.git.pullRequestNumber}
+                                  </LinkButton>
+                                )}
+                              </div>
                             </TableCell>
-                            <TableCell className={cellClass}>
-                              {branch.git?.pr ? <CopyableText value={branch.git.pr} /> : "–"}
-                            </TableCell>
+
                             <TableCell className={cellClass}>
                               {branch.archivedAt ? (
                                 <CheckIcon className="size-4 text-charcoal-400" />

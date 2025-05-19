@@ -1,4 +1,5 @@
-import { z } from "zod";
+import { GitMeta } from "@trigger.dev/core/v3";
+import { type z } from "zod";
 import { type PrismaClient, prisma } from "~/db.server";
 import { type Project } from "~/models/project.server";
 import { type User } from "~/models/user.server";
@@ -12,16 +13,30 @@ const BRANCHES_PER_PAGE = 25;
 
 type Options = z.infer<typeof BranchesOptions>;
 
-export const BranchGit = z
-  .object({
-    repo: z.string(),
-    pr: z.string().optional(),
-    branch: z.string().optional(),
-    commit: z.string().optional(),
-  })
-  .nullable();
-
-export type BranchGit = z.infer<typeof BranchGit>;
+type GitMetaLinks = {
+  /** The cleaned repository URL without any username/password */
+  repositoryUrl: string;
+  /** The branch name */
+  branchName: string;
+  /** Link to the specific branch */
+  branchUrl: string;
+  /** Link to the specific commit */
+  commitUrl: string;
+  /** Link to the pull request (if available) */
+  pullRequestUrl?: string;
+  /** The pull request number (if available) */
+  pullRequestNumber?: number;
+  /** Link to compare this branch with main */
+  compareUrl: string;
+  /** Shortened commit SHA (first 7 characters) */
+  shortSha: string;
+  /** Whether the branch has uncommitted changes */
+  isDirty: boolean;
+  /** The commit message */
+  commitMessage: string;
+  /** The commit author */
+  commitAuthor: string;
+};
 
 export class BranchesPresenter {
   #prismaClient: PrismaClient;
@@ -155,16 +170,68 @@ export class BranchesPresenter {
           return [];
         }
 
+        let git: GitMetaLinks | null = null;
+        if (branch.git) {
+          const parsed = GitMeta.safeParse(branch.git);
+          if (parsed.success) {
+            git = this.processGitMeta(parsed.data);
+          }
+        }
+
         return [
           {
             ...branch,
             branchName: branch.branchName,
-            git: BranchGit.parse(branch.git),
+            git,
           } as const,
         ];
       }),
       hasFilters,
       limits,
+    };
+  }
+
+  private processGitMeta(gitMeta: GitMeta): GitMetaLinks | null {
+    if (!gitMeta || !gitMeta.remoteUrl) return null;
+
+    // Clean the remote URL by removing any username/password and ensuring it's a proper GitHub URL
+    const cleanRemoteUrl = (() => {
+      try {
+        const url = new URL(gitMeta.remoteUrl);
+        // Remove any username/password from the URL
+        url.username = "";
+        url.password = "";
+        // Ensure we're using https
+        url.protocol = "https:";
+        // Remove any trailing .git
+        return url.toString().replace(/\.git$/, "");
+      } catch (e) {
+        // If URL parsing fails, try to clean it manually
+        return gitMeta.remoteUrl
+          .replace(/^git@github\.com:/, "https://github.com/")
+          .replace(/^https?:\/\/[^@]+@/, "https://")
+          .replace(/\.git$/, "");
+      }
+    })();
+
+    if (!gitMeta.commitRef || !gitMeta.commitSha) return null;
+
+    const shortSha = gitMeta.commitSha.slice(0, 7);
+
+    return {
+      repositoryUrl: cleanRemoteUrl,
+      branchName: gitMeta.commitRef,
+      branchUrl: `${cleanRemoteUrl}/tree/${gitMeta.commitRef}`,
+      commitUrl: `${cleanRemoteUrl}/commit/${gitMeta.commitSha}`,
+      pullRequestUrl: gitMeta.pullRequestNumber
+        ? `${cleanRemoteUrl}/pull/${gitMeta.pullRequestNumber}`
+        : undefined,
+      pullRequestNumber: gitMeta.pullRequestNumber,
+      compareUrl: `${cleanRemoteUrl}/compare/main...${gitMeta.commitRef}`,
+      shortSha,
+      isDirty: gitMeta.dirty ?? false,
+      commitMessage: gitMeta.commitMessage ?? "",
+      commitAuthor: gitMeta.commitAuthorName ?? "",
     };
   }
 }
