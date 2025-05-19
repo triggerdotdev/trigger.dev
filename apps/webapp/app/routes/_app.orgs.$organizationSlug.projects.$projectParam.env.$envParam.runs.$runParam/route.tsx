@@ -1181,7 +1181,7 @@ function ShowParentOrRootLinks({
         hideShortcutKey
         tooltip={
           <div className="-mr-1 flex items-center gap-1">
-            <Paragraph variant="extra-small">Jump to root/parent run</Paragraph>
+            <Paragraph variant="extra-small">Jump to root and parent run</Paragraph>
             <ShortcutKey shortcut={{ key: "t" }} variant="small" />
           </div>
         }
