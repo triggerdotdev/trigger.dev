@@ -56,13 +56,13 @@ export async function authenticateApiRequest(
   request: Request,
   options: { allowPublicKey?: boolean; allowJWT?: boolean } = {}
 ): Promise<ApiAuthenticationResultSuccess | undefined> {
-  const apiKey = getApiKeyFromRequest(request);
+  const { apiKey, branchName } = getApiKeyFromRequest(request);
 
   if (!apiKey) {
     return;
   }
 
-  const authentication = await authenticateApiKey(apiKey, options);
+  const authentication = await authenticateApiKey(apiKey, { ...options, branchName });
 
   return authentication;
 }
@@ -75,7 +75,7 @@ export async function authenticateApiRequestWithFailure(
   request: Request,
   options: { allowPublicKey?: boolean; allowJWT?: boolean } = {}
 ): Promise<ApiAuthenticationResult> {
-  const apiKey = getApiKeyFromRequest(request);
+  const { apiKey, branchName } = getApiKeyFromRequest(request);
 
   if (!apiKey) {
     return {
@@ -84,7 +84,7 @@ export async function authenticateApiRequestWithFailure(
     };
   }
 
-  const authentication = await authenticateApiKeyWithFailure(apiKey, options);
+  const authentication = await authenticateApiKeyWithFailure(apiKey, { ...options, branchName });
 
   return authentication;
 }
@@ -94,7 +94,7 @@ export async function authenticateApiRequestWithFailure(
  */
 export async function authenticateApiKey(
   apiKey: string,
-  options: { allowPublicKey?: boolean; allowJWT?: boolean } = {}
+  options: { allowPublicKey?: boolean; allowJWT?: boolean; branchName?: string } = {}
 ): Promise<ApiAuthenticationResultSuccess | undefined> {
   const result = getApiKeyResult(apiKey);
 
@@ -112,7 +112,7 @@ export async function authenticateApiKey(
 
   switch (result.type) {
     case "PUBLIC": {
-      const environment = await findEnvironmentByPublicApiKey(result.apiKey);
+      const environment = await findEnvironmentByPublicApiKey(result.apiKey, options.branchName);
       if (!environment) {
         return;
       }
@@ -124,7 +124,7 @@ export async function authenticateApiKey(
       };
     }
     case "PRIVATE": {
-      const environment = await findEnvironmentByApiKey(result.apiKey);
+      const environment = await findEnvironmentByApiKey(result.apiKey, options.branchName);
       if (!environment) {
         return;
       }
@@ -161,7 +161,7 @@ export async function authenticateApiKey(
  */
 async function authenticateApiKeyWithFailure(
   apiKey: string,
-  options: { allowPublicKey?: boolean; allowJWT?: boolean } = {}
+  options: { allowPublicKey?: boolean; allowJWT?: boolean; branchName?: string } = {}
 ): Promise<ApiAuthenticationResult> {
   const result = getApiKeyResult(apiKey);
 
@@ -188,7 +188,7 @@ async function authenticateApiKeyWithFailure(
 
   switch (result.type) {
     case "PUBLIC": {
-      const environment = await findEnvironmentByPublicApiKey(result.apiKey);
+      const environment = await findEnvironmentByPublicApiKey(result.apiKey, options.branchName);
       if (!environment) {
         return {
           ok: false,
@@ -203,7 +203,7 @@ async function authenticateApiKeyWithFailure(
       };
     }
     case "PRIVATE": {
-      const environment = await findEnvironmentByApiKey(result.apiKey);
+      const environment = await findEnvironmentByApiKey(result.apiKey, options.branchName);
       if (!environment) {
         return {
           ok: false,
@@ -261,8 +261,14 @@ function isSecretApiKey(key: string) {
   return key.startsWith("tr_");
 }
 
-function getApiKeyFromRequest(request: Request) {
-  return getApiKeyFromHeader(request.headers.get("Authorization"));
+function getApiKeyFromRequest(request: Request): {
+  apiKey: string | undefined;
+  branchName: string | undefined;
+} {
+  const apiKey = getApiKeyFromHeader(request.headers.get("Authorization"));
+  const branchHeaderValue = request.headers.get("x-trigger-branch");
+
+  return { apiKey, branchName: branchHeaderValue ? branchHeaderValue : undefined };
 }
 
 function getApiKeyFromHeader(authorization?: string | null) {
@@ -301,7 +307,7 @@ export type DualAuthenticationResult =
 export async function authenticateProjectApiKeyOrPersonalAccessToken(
   request: Request
 ): Promise<DualAuthenticationResult | undefined> {
-  const apiKey = getApiKeyFromRequest(request);
+  const { apiKey, branchName } = getApiKeyFromRequest(request);
   if (!apiKey) {
     return;
   }
@@ -319,7 +325,7 @@ export async function authenticateProjectApiKeyOrPersonalAccessToken(
     };
   }
 
-  const result = await authenticateApiKey(apiKey, { allowPublicKey: false });
+  const result = await authenticateApiKey(apiKey, { allowPublicKey: false, branchName });
 
   if (!result) {
     return;

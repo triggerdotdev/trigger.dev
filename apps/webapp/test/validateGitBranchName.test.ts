@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { branchNameFromRef, isValidGitBranchName } from "../app/services/upsertBranch.server";
+import { sanitizeBranchName, isValidGitBranchName } from "../app/services/upsertBranch.server";
 
 describe("isValidGitBranchName", () => {
   it("returns true for a valid branch name", async () => {
@@ -77,32 +77,32 @@ describe("isValidGitBranchName", () => {
 
 describe("branchNameFromRef", () => {
   it("returns the branch name for refs/heads/branch", async () => {
-    const result = branchNameFromRef("refs/heads/feature/branch");
+    const result = sanitizeBranchName("refs/heads/feature/branch");
     expect(result).toBe("feature/branch");
   });
 
   it("returns the branch name for refs/remotes/origin/branch", async () => {
-    const result = branchNameFromRef("refs/remotes/origin/feature/branch");
+    const result = sanitizeBranchName("refs/remotes/origin/feature/branch");
     expect(result).toBe("origin/feature/branch");
   });
 
   it("returns the tag name for refs/tags/v1.0.0", async () => {
-    const result = branchNameFromRef("refs/tags/v1.0.0");
+    const result = sanitizeBranchName("refs/tags/v1.0.0");
     expect(result).toBe("v1.0.0");
   });
 
   it("returns the input if just a branch name is given", async () => {
-    const result = branchNameFromRef("feature/branch");
+    const result = sanitizeBranchName("feature/branch");
     expect(result).toBe("feature/branch");
   });
 
   it("returns null for an invalid ref", async () => {
-    const result = branchNameFromRef("refs/invalid/branch");
+    const result = sanitizeBranchName("refs/invalid/branch");
     expect(result).toBeNull();
   });
 
   it("returns null for an empty string", async () => {
-    const result = branchNameFromRef("");
+    const result = sanitizeBranchName("");
     expect(result).toBeNull();
   });
 });

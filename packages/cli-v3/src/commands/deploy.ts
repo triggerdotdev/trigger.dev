@@ -224,7 +224,8 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   const gitMeta = await createGitMeta(resolvedConfig.workspaceDir);
   logger.debug("gitMeta", gitMeta);
 
-  const branch = getBranch({ specified: options.branch, gitMeta });
+  const branch =
+    options.env === "preview" ? getBranch({ specified: options.branch, gitMeta }) : undefined;
   if (options.env === "preview" && !branch) {
     throw new Error(
       "You need to specify a preview branch when deploying to preview, pass --branch <branch>."
@@ -417,6 +418,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     projectRef: resolvedConfig.project,
     apiUrl: projectClient.client.apiURL,
     apiKey: projectClient.client.accessToken!,
+    branchName: branch,
     authAccessToken: authorization.auth.accessToken,
     compilationPath: destination.path,
     buildEnvVars: buildManifest.build.env,

@@ -14,7 +14,7 @@ export class UpsertBranchService {
   }
 
   public async call(userId: string, { parentEnvironmentId, branchName, git }: CreateBranchOptions) {
-    const sanitizedBranchName = branchNameFromRef(branchName);
+    const sanitizedBranchName = sanitizeBranchName(branchName);
     if (!sanitizedBranchName) {
       return {
         success: false as const,
@@ -198,7 +198,7 @@ export function isValidGitBranchName(branch: string): boolean {
   return true;
 }
 
-export function branchNameFromRef(ref: string): string | null {
+export function sanitizeBranchName(ref: string): string | null {
   if (!ref) return null;
   if (ref.startsWith("refs/heads/")) return ref.substring("refs/heads/".length);
   if (ref.startsWith("refs/remotes/")) return ref.substring("refs/remotes/".length);
