@@ -188,7 +188,7 @@ export default function Page() {
   const project = useProject();
   const environment = useEnvironment();
   const [selectedEnvironmentIds, setSelectedEnvironmentIds] = useState<Set<string>>(new Set());
-  const [selectedBranchIds, setSelectedBranchIds] = useState<string[]>([]);
+  const [selectedBranchId, setSelectedBranchId] = useState<string | undefined>(undefined);
 
   const branchEnvironments = environments.filter((env) => env.branchName);
   const nonBranchEnvironments = environments.filter((env) => !env.branchName);
@@ -221,7 +221,7 @@ export default function Page() {
         if (environmentType === "PREVIEW") {
           // If PREVIEW is checked, clear all other selections including branches
           newSet.clear();
-          setSelectedBranchIds([]);
+
           newSet.add(environmentId);
         } else {
           // If a non-PREVIEW environment is checked, remove PREVIEW if it's selected
@@ -230,7 +230,7 @@ export default function Page() {
             newSet.delete(previewEnv.id);
           }
           newSet.add(environmentId);
-          setSelectedBranchIds([]);
+          setSelectedBranchId(undefined);
         }
       } else {
         newSet.delete(environmentId);
@@ -240,17 +240,12 @@ export default function Page() {
     });
   };
 
-  const handleBranchChange = (branchIds: string[]) => {
-    setSelectedBranchIds(branchIds);
-    setSelectedEnvironmentIds((prev) => {
-      const newSet = new Set(prev);
-      // Remove PREVIEW environment if it was selected
-      const previewEnv = environments.find((env) => env.branchName === null);
-      if (previewEnv) {
-        newSet.delete(previewEnv.id);
+  const handleBranchChange = (branchId: string) => {
+    if (branchId === "all") {
+      setSelectedBranchId(undefined);
+    } else {
+      setSelectedBranchId(branchId);
       }
-      return newSet;
-    });
   };
 
   const [revealAll, setRevealAll] = useState(true);
@@ -274,13 +269,13 @@ export default function Page() {
           <Fieldset className="max-h-[70vh] overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
             <InputGroup fullWidth>
               <Label>Environments</Label>
-              {selectedBranchIds.length > 0
-                ? selectedBranchIds.map((id) => (
+              {selectedBranchId ? (
+                <input type="hidden" name="environmentIds" value={selectedBranchId} />
+              ) : (
+                Array.from(selectedEnvironmentIds).map((id) => (
                     <input key={id} type="hidden" name="environmentIds" value={id} />
                   ))
-                : Array.from(selectedEnvironmentIds).map((id) => (
-                    <input key={id} type="hidden" name="environmentIds" value={id} />
-                  ))}
+              )}
               <div className="flex items-center gap-2">
                 {nonBranchEnvironments.map((environment) => (
                   <CheckboxWithLabel
@@ -349,23 +344,22 @@ export default function Page() {
 
             {previewIsSelected && (
               <InputGroup fullWidth>
-                <Label>Preview branch override (optional)</Label>
+                <Label>Select branch</Label>
+                <div className="flex items-center gap-1">
                 <Select
                   variant="tertiary/medium"
-                  value={selectedBranchIds}
+                    value={selectedBranchId ?? "all"}
                   setValue={handleBranchChange}
-                  placeholder="No override"
-                  items={branchEnvironments}
-                  className="w-fit"
+                    placeholder="All branches"
+                    items={[{ id: "all", branchName: "All branches" }, ...branchEnvironments]}
+                    className="w-fit min-w-52"
                   filter={{
-                    keys: [(item) => item.branchName?.replace(/\//g, " ").replace(/_/g, " ") ?? ""],
+                      keys: [
+                        (item) => item.branchName?.replace(/\//g, " ").replace(/_/g, " ") ?? "",
+                      ],
                   }}
-                  text={(vals) =>
-                    vals.length > 0
-                      ? vals
-                          ?.map((env) => branchEnvironments.find((b) => b.id === env)?.branchName)
-                          .join(", ")
-                      : null
+                    text={(val) =>
+                      val ? branchEnvironments.find((b) => b.id === val)?.branchName : null
                   }
                   dropdownIcon
                 >
@@ -377,12 +371,16 @@ export default function Page() {
                     ))
                   }
                 </Select>
-                <Hint>
-                  You can select branches to override variables.{" "}
-                  {selectedBranchIds.length > 0
-                    ? "The variables below will be overriden for runs on these branches."
-                    : "No overrides are currently set."}
-                </Hint>
+                  {selectedBranchId !== "all" && selectedBranchId !== undefined && (
+                    <Button
+                      variant="minimal/medium"
+                      type="button"
+                      onClick={() => setSelectedBranchId(undefined)}
+                      LeadingIcon={XMarkIcon}
+                    />
+                  )}
+                </div>
+                <Hint>Select a branch to override variables in the Preview environment.</Hint>
               </InputGroup>
             )}
 
@@ -547,7 +545,7 @@ function VariableFields({
           type="button"
           onClick={() => {
             requestIntent(formRef.current ?? undefined, list.append(variablesFields.name));
-            append([{ key: "", value: "" }]);
+            list.append(variablesFields.name, { defaultValue: [{ key: "", value: "" }] });
           }}
           LeadingIcon={PlusIcon}
         >
