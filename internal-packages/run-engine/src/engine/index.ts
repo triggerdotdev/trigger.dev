@@ -306,6 +306,7 @@ export class RunEngine {
       delayedRunSystem: this.delayedRunSystem,
       machines: this.options.machines,
       retryWarmStartThresholdMs: this.options.retryWarmStartThresholdMs,
+      releaseConcurrencySystem: this.releaseConcurrencySystem,
     });
 
     this.dequeueSystem = new DequeueSystem({
