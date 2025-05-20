@@ -51,6 +51,7 @@ import {
 } from "~/utils/pathBuilder";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import { EnvironmentVariableKey } from "~/v3/environmentVariables/repository";
+import { Select, SelectItem } from "~/components/primitives/Select";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -187,6 +188,14 @@ export default function Page() {
   const project = useProject();
   const environment = useEnvironment();
   const [selectedEnvironmentIds, setSelectedEnvironmentIds] = useState<Set<string>>(new Set());
+  const [selectedBranchIds, setSelectedBranchIds] = useState<string[]>([]);
+
+  const branchEnvironments = environments.filter((env) => env.branchName);
+  const nonBranchEnvironments = environments.filter((env) => !env.branchName);
+  const selectedEnvironments = environments.filter((env) => selectedEnvironmentIds.has(env.id));
+  const previewIsSelected = selectedEnvironments.some(
+    (env) => env.branchName !== null || env.type === "PREVIEW"
+  );
 
   const isLoading = navigation.state !== "idle" && navigation.formMethod === "post";
 
@@ -210,8 +219,9 @@ export default function Page() {
 
       if (isChecked) {
         if (environmentType === "PREVIEW") {
-          // If PREVIEW is checked, clear all other selections
+          // If PREVIEW is checked, clear all other selections including branches
           newSet.clear();
+          setSelectedBranchIds([]);
           newSet.add(environmentId);
         } else {
           // If a non-PREVIEW environment is checked, remove PREVIEW if it's selected
@@ -225,6 +235,19 @@ export default function Page() {
         newSet.delete(environmentId);
       }
 
+      return newSet;
+    });
+  };
+
+  const handleBranchChange = (branchIds: string[]) => {
+    setSelectedBranchIds(branchIds);
+    setSelectedEnvironmentIds((prev) => {
+      const newSet = new Set(prev);
+      // Remove PREVIEW environment if it was selected
+      const previewEnv = environments.find((env) => env.branchName === null);
+      if (previewEnv) {
+        newSet.delete(previewEnv.id);
+      }
       return newSet;
     });
   };
@@ -251,22 +274,20 @@ export default function Page() {
             <InputGroup fullWidth>
               <Label>Environments</Label>
               <div className="flex items-center gap-2">
-                {environments
-                  .filter((env) => !env.branchName)
-                  .map((environment) => (
-                    <CheckboxWithLabel
-                      key={environment.id}
-                      id={environment.id}
-                      value={environment.id}
-                      name="environmentIds"
-                      defaultChecked={selectedEnvironmentIds.has(environment.id)}
-                      onChange={(isChecked) =>
-                        handleEnvironmentChange(environment.id, isChecked, environment.type)
-                      }
-                      label={<EnvironmentLabel environment={environment} className="text-sm" />}
-                      variant="button"
-                    />
-                  ))}
+                {nonBranchEnvironments.map((environment) => (
+                  <CheckboxWithLabel
+                    key={environment.id}
+                    id={environment.id}
+                    value={environment.id}
+                    name="environmentIds"
+                    defaultChecked={selectedEnvironmentIds.has(environment.id)}
+                    onChange={(isChecked) =>
+                      handleEnvironmentChange(environment.id, isChecked, environment.type)
+                    }
+                    label={<EnvironmentLabel environment={environment} className="text-sm" />}
+                    variant="button"
+                  />
+                ))}
                 {!hasStaging && (
                   <>
                     <TooltipProvider>
@@ -318,6 +339,36 @@ export default function Page() {
                 file when running locally.
               </Hint>
             </InputGroup>
+
+            {previewIsSelected && (
+              <InputGroup fullWidth>
+                <Label>Preview branches</Label>
+                <Select
+                  name="environmentIds"
+                  value={selectedBranchIds}
+                  setValue={handleBranchChange}
+                  placeholder="Default for Preview"
+                  items={branchEnvironments}
+                  text={(vals) =>
+                    vals
+                      ?.map((env) => branchEnvironments.find((b) => b.id === env)?.branchName)
+                      .join(", ")
+                  }
+                >
+                  {(matches) =>
+                    matches?.map((env) => (
+                      <SelectItem key={env.id} value={env.id}>
+                        {env.branchName}
+                      </SelectItem>
+                    ))
+                  }
+                </Select>
+                <Hint>
+                  Select specific preview branches to apply these environment variables to.
+                </Hint>
+              </InputGroup>
+            )}
+
             <InputGroup className="w-auto">
               <Switch
                 name="isSecret"
