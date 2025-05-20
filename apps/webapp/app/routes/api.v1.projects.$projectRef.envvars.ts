@@ -17,12 +17,9 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
   // Next authenticate the request
   const authenticationResult = await authenticateApiRequest(request);
-
   if (!authenticationResult) {
     return json({ error: "Invalid or Missing API key" }, { status: 401 });
   }
-
-  const authenticatedEnv = authenticationResult.environment;
 
   const { projectRef } = parsedParams.data;
 
@@ -31,7 +28,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       externalRef: projectRef,
       environments: {
         some: {
-          id: authenticatedEnv.id,
+          id: authenticationResult.environment.id,
         },
       },
     },
@@ -41,7 +38,23 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     return json({ error: "Project not found" }, { status: 404 });
   }
 
-  const variables = await resolveVariablesForEnvironment(authenticatedEnv);
+  const envVarEnvironment = await prisma.runtimeEnvironment.findFirst({
+    where: {
+      id: authenticationResult.environment.id,
+    },
+    include: {
+      parentEnvironment: true,
+    },
+  });
+
+  if (!envVarEnvironment) {
+    return json({ error: "Environment not found" }, { status: 404 });
+  }
+
+  const variables = await resolveVariablesForEnvironment(
+    envVarEnvironment,
+    envVarEnvironment.parentEnvironment ?? undefined
+  );
 
   return json({
     variables: variables.reduce((acc: Record<string, string>, variable) => {

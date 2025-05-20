@@ -34,7 +34,14 @@ export async function findEnvironmentByApiKey(
     return null;
   }
 
-  if (branchName && environment.type === "PREVIEW") {
+  if (environment.type === "PREVIEW") {
+    if (!branchName) {
+      logger.error("findEnvironmentByApiKey(): Preview env with no branch name provided", {
+        environmentId: environment.id,
+      });
+      return null;
+    }
+
     const childEnvironment = environment?.childEnvironments.at(0);
 
     if (childEnvironment) {

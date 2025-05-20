@@ -546,7 +546,11 @@ export class EnvironmentVariablesRepository implements Repository {
     });
   }
 
-  async getEnvironment(projectId: string, environmentId: string): Promise<EnvironmentVariable[]> {
+  async getEnvironment(
+    projectId: string,
+    environmentId: string,
+    parentEnvironmentId?: string
+  ): Promise<EnvironmentVariable[]> {
     const project = await this.prismaClient.project.findFirst({
       where: {
         id: projectId,
@@ -568,36 +572,54 @@ export class EnvironmentVariablesRepository implements Repository {
       return [];
     }
 
-    return this.getEnvironmentVariables(projectId, environmentId);
+    return this.getEnvironmentVariables(projectId, environmentId, parentEnvironmentId);
   }
 
   async #getSecretEnvironmentVariables(
     projectId: string,
-    environmentId: string
+    environmentId: string,
+    parentEnvironmentId?: string
   ): Promise<EnvironmentVariable[]> {
     const secretStore = getSecretStore("DATABASE", {
       prismaClient: this.prismaClient,
     });
 
-    const secrets = await secretStore.getSecrets(
+    const parentSecrets = parentEnvironmentId
+      ? await secretStore.getSecrets(
+          SecretValue,
+          secretKeyEnvironmentPrefix(projectId, parentEnvironmentId)
+        )
+      : [];
+
+    const childSecrets = await secretStore.getSecrets(
       SecretValue,
       secretKeyEnvironmentPrefix(projectId, environmentId)
     );
 
-    return secrets.map((secret) => {
-      const { key } = parseSecretKey(secret.key);
+    // Merge the secrets, we want child ones to override parent ones
+    const mergedSecrets = new Map<string, string>();
+    for (const secret of parentSecrets) {
+      mergedSecrets.set(secret.key, secret.value.secret);
+    }
+    for (const secret of childSecrets) {
+      mergedSecrets.set(secret.key, secret.value.secret);
+    }
+
+    return Array.from(mergedSecrets.entries()).map(([key, value]) => {
+      const { key: parsedKey } = parseSecretKey(key);
       return {
-        key,
-        value: secret.value.secret,
+        key: parsedKey,
+        value,
       };
     });
   }
 
   async getEnvironmentVariables(
     projectId: string,
-    environmentId: string
+    environmentId: string,
+    parentEnvironmentId?: string
   ): Promise<EnvironmentVariable[]> {
-    return this.#getSecretEnvironmentVariables(projectId, environmentId);
+    return this.#getSecretEnvironmentVariables(projectId, environmentId, parentEnvironmentId);
   }
 
   async delete(projectId: string, options: DeleteEnvironmentVariable): Promise<Result> {
@@ -791,11 +813,13 @@ export type RuntimeEnvironmentForEnvRepo = Prisma.RuntimeEnvironmentGetPayload<
 export const environmentVariablesRepository = new EnvironmentVariablesRepository();
 
 export async function resolveVariablesForEnvironment(
-  runtimeEnvironment: RuntimeEnvironmentForEnvRepo
+  runtimeEnvironment: RuntimeEnvironmentForEnvRepo,
+  parentEnvironment?: RuntimeEnvironmentForEnvRepo
 ) {
   const projectSecrets = await environmentVariablesRepository.getEnvironmentVariables(
     runtimeEnvironment.projectId,
-    runtimeEnvironment.id
+    runtimeEnvironment.id,
+    parentEnvironment?.id
   );
 
   const overridableTriggerVariables = await resolveOverridableTriggerVariables(runtimeEnvironment);
@@ -803,7 +827,7 @@ export async function resolveVariablesForEnvironment(
   const builtInVariables =
     runtimeEnvironment.type === "DEVELOPMENT"
       ? await resolveBuiltInDevVariables(runtimeEnvironment)
-      : await resolveBuiltInProdVariables(runtimeEnvironment);
+      : await resolveBuiltInProdVariables(runtimeEnvironment, parentEnvironment);
 
   return [...overridableTriggerVariables, ...projectSecrets, ...builtInVariables];
 }
@@ -883,11 +907,14 @@ async function resolveBuiltInDevVariables(runtimeEnvironment: RuntimeEnvironment
   return [...result, ...commonVariables];
 }
 
-async function resolveBuiltInProdVariables(runtimeEnvironment: RuntimeEnvironmentForEnvRepo) {
+async function resolveBuiltInProdVariables(
+  runtimeEnvironment: RuntimeEnvironmentForEnvRepo,
+  parentEnvironment?: RuntimeEnvironmentForEnvRepo
+) {
   let result: Array<EnvironmentVariable> = [
     {
       key: "TRIGGER_SECRET_KEY",
-      value: runtimeEnvironment.apiKey,
+      value: parentEnvironment?.apiKey ?? runtimeEnvironment.apiKey,
     },
     {
       key: "TRIGGER_API_URL",
