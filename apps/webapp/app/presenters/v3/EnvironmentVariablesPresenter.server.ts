@@ -112,7 +112,7 @@ export class EnvironmentVariablesPresenter {
               {
                 id: environmentVariable.id,
                 key: environmentVariable.key,
-                environment: { type: env.type, id: env.id },
+                environment: { type: env.type, id: env.id, branchName: env.branchName },
                 value: isSecret ? "" : val.value,
                 isSecret,
               },
