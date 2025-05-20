@@ -207,11 +207,24 @@ export default function Page() {
   ) => {
     setSelectedEnvironmentIds((prev) => {
       const newSet = new Set(prev);
+
       if (isChecked) {
-        newSet.add(environmentId);
+        if (environmentType === "PREVIEW") {
+          // If PREVIEW is checked, clear all other selections
+          newSet.clear();
+          newSet.add(environmentId);
+        } else {
+          // If a non-PREVIEW environment is checked, remove PREVIEW if it's selected
+          const previewEnv = environments.find((env) => env.type === "PREVIEW");
+          if (previewEnv) {
+            newSet.delete(previewEnv.id);
+          }
+          newSet.add(environmentId);
+        }
       } else {
         newSet.delete(environmentId);
       }
+
       return newSet;
     });
   };
