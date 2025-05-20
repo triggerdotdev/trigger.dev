@@ -512,14 +512,17 @@ export class EnvironmentVariablesRepository implements Repository {
 
   async getEnvironmentWithRedactedSecrets(
     projectId: string,
-    environmentId: string
+    environmentId: string,
+    parentEnvironmentId?: string
   ): Promise<EnvironmentVariableWithSecret[]> {
-    const variables = await this.getEnvironment(projectId, environmentId);
+    const variables = await this.getEnvironment(projectId, environmentId, parentEnvironmentId);
 
     // Get the keys of all secret variables
     const secretValues = await this.prismaClient.environmentVariableValue.findMany({
       where: {
-        environmentId,
+        environmentId: parentEnvironmentId
+          ? { in: [environmentId, parentEnvironmentId] }
+          : environmentId,
         isSecret: true,
       },
       select: {
@@ -532,7 +535,7 @@ export class EnvironmentVariablesRepository implements Repository {
     });
     const secretVarKeys = secretValues.map((r) => r.variable.key);
 
-    // Filter out secret variables if includeSecrets is false
+    // Filter out secret variables
     return variables.map((v) => {
       if (secretVarKeys.includes(v.key)) {
         return {
