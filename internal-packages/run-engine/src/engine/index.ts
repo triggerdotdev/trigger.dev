@@ -50,6 +50,7 @@ import { TtlSystem } from "./systems/ttlSystem.js";
 import { WaitpointSystem } from "./systems/waitpointSystem.js";
 import { EngineWorker, HeartbeatTimeouts, RunEngineOptions, TriggerParams } from "./types.js";
 import { workerCatalog } from "./workerCatalog.js";
+import { RaceSimulationSystem } from "./systems/raceSimulationSystem.js";
 
 export class RunEngine {
   private runLockRedis: Redis;
@@ -73,6 +74,7 @@ export class RunEngine {
   ttlSystem: TtlSystem;
   pendingVersionSystem: PendingVersionSystem;
   releaseConcurrencySystem: ReleaseConcurrencySystem;
+  raceSimulationSystem: RaceSimulationSystem = new RaceSimulationSystem();
 
   constructor(private readonly options: RunEngineOptions) {
     this.prisma = options.prisma;
@@ -194,6 +196,7 @@ export class RunEngine {
       tracer: this.tracer,
       runLock: this.runLock,
       runQueue: this.runQueue,
+      raceSimulationSystem: this.raceSimulationSystem,
     };
 
     this.releaseConcurrencySystem = new ReleaseConcurrencySystem({
@@ -522,6 +525,7 @@ export class RunEngine {
               runId: parentTaskRunId,
               waitpoints: associatedWaitpoint.id,
               projectId: associatedWaitpoint.projectId,
+              organizationId: environment.organization.id,
               batch,
               workerId,
               runnerId,
@@ -966,6 +970,7 @@ export class RunEngine {
     runId,
     waitpoints,
     projectId,
+    organizationId,
     releaseConcurrency,
     timeout,
     spanIdToComplete,
@@ -990,6 +995,7 @@ export class RunEngine {
       runId,
       waitpoints,
       projectId,
+      organizationId,
       releaseConcurrency,
       timeout,
       spanIdToComplete,
@@ -1138,6 +1144,10 @@ export class RunEngine {
       });
       return null;
     }
+  }
+
+  async registerRacepointForRun({ runId, waitInterval }: { runId: string; waitInterval: number }) {
+    return this.raceSimulationSystem.registerRacepointForRun({ runId, waitInterval });
   }
 
   async quit() {

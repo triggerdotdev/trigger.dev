@@ -116,7 +116,9 @@ export type MachineConfig = z.infer<typeof MachineConfig>;
 
 export const MachinePreset = z.object({
   name: MachinePresetName,
+  /** unit: vCPU */
   cpu: z.number(),
+  /** unit: GB */
   memory: z.number(),
   centsPerMs: z.number(),
 });

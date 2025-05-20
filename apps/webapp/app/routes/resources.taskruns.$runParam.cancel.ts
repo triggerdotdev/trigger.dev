@@ -32,7 +32,7 @@ export const action: ActionFunction = async ({ request, params }) => {
     });
 
     if (!taskRun) {
-      submission.error = { runParam: "Run not found" };
+      submission.error = { runParam: ["Run not found"] };
       return json(submission);
     }
 

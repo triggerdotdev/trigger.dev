@@ -145,7 +145,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     },
   });
   if (!project) {
-    submission.error.key = "Project not found";
+    submission.error.key = ["Project not found"];
     return json(submission);
   }
 
@@ -158,11 +158,11 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         const index = submission.value.variables.findIndex((v) => v.key === key);
 
         if (index !== -1) {
-          submission.error[`variables[${index}].key`] = error;
+          submission.error[`variables[${index}].key`] = [error];
         }
       }
     } else {
-      submission.error.variables = result.error;
+      submission.error.variables = [result.error];
     }
 
     return json(submission);

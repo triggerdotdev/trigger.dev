@@ -1,5 +1,8 @@
 name: "E2E"
 
+permissions:
+  contents: read
+
 on:
   workflow_call:
     inputs:

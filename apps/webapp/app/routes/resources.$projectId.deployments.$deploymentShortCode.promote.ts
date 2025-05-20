@@ -79,11 +79,11 @@ export const action: ActionFunction = async ({ request, params }) => {
           stack: error.stack,
         },
       });
-      submission.error = { runParam: error.message };
+      submission.error = { runParam: [error.message] };
       return json(submission);
     } else {
       logger.error("Failed to promote deployment", { error });
-      submission.error = { runParam: JSON.stringify(error) };
+      submission.error = { runParam: [JSON.stringify(error)] };
       return json(submission);
     }
   }

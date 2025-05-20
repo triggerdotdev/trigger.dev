@@ -9,6 +9,7 @@ import { type DequeuedMessage } from "@trigger.dev/core/v3";
 import {
   DockerResourceMonitor,
   KubernetesResourceMonitor,
+  NoopResourceMonitor,
   type ResourceMonitor,
 } from "./resourceMonitor.js";
 import { KubernetesWorkloadManager } from "./workloadManager/kubernetes.js";
@@ -33,7 +34,7 @@ class ManagedSupervisor {
   private readonly metricsServer?: HttpServer;
   private readonly workloadServer: WorkloadServer;
   private readonly workloadManager: WorkloadManager;
-  private readonly logger = new SimpleStructuredLogger("managed-worker");
+  private readonly logger = new SimpleStructuredLogger("managed-supervisor");
   private readonly resourceMonitor: ResourceMonitor;
   private readonly checkpointClient?: CheckpointClient;
 
@@ -47,11 +48,11 @@ class ManagedSupervisor {
     const { TRIGGER_WORKER_TOKEN, MANAGED_WORKER_SECRET, ...envWithoutSecrets } = env;
 
     if (env.DEBUG) {
-      console.debug("[ManagedSupervisor] Starting up", { envWithoutSecrets });
+      this.logger.debug("Starting up", { envWithoutSecrets });
     }
 
     if (this.warmStartUrl) {
-      this.logger.log("[ManagedWorker] 🔥 Warm starts enabled", {
+      this.logger.log("🔥 Warm starts enabled", {
         warmStartUrl: this.warmStartUrl,
       });
     }
@@ -69,9 +70,19 @@ class ManagedSupervisor {
       dockerAutoremove: env.RUNNER_DOCKER_AUTOREMOVE,
     } satisfies WorkloadManagerOptions;
 
+    this.resourceMonitor = env.RESOURCE_MONITOR_ENABLED
+      ? this.isKubernetes
+        ? new KubernetesResourceMonitor(createK8sApi(), env.TRIGGER_WORKER_INSTANCE_NAME)
+        : new DockerResourceMonitor(new Docker())
+      : new NoopResourceMonitor();
+
+    this.workloadManager = this.isKubernetes
+      ? new KubernetesWorkloadManager(workloadManagerOptions)
+      : new DockerWorkloadManager(workloadManagerOptions);
+
     if (this.isKubernetes) {
       if (env.POD_CLEANER_ENABLED) {
-        this.logger.log("[ManagedWorker] 🧹 Pod cleaner enabled", {
+        this.logger.log("🧹 Pod cleaner enabled", {
           namespace: env.KUBERNETES_NAMESPACE,
           batchSize: env.POD_CLEANER_BATCH_SIZE,
           intervalMs: env.POD_CLEANER_INTERVAL_MS,
@@ -83,11 +94,11 @@ class ManagedSupervisor {
           intervalMs: env.POD_CLEANER_INTERVAL_MS,
         });
       } else {
-        this.logger.warn("[ManagedWorker] Pod cleaner disabled");
+        this.logger.warn("Pod cleaner disabled");
       }
 
       if (env.FAILED_POD_HANDLER_ENABLED) {
-        this.logger.log("[ManagedWorker] 🔁 Failed pod handler enabled", {
+        this.logger.log("🔁 Failed pod handler enabled", {
           namespace: env.KUBERNETES_NAMESPACE,
           reconnectIntervalMs: env.FAILED_POD_HANDLER_RECONNECT_INTERVAL_MS,
         });
@@ -97,17 +108,14 @@ class ManagedSupervisor {
           reconnectIntervalMs: env.FAILED_POD_HANDLER_RECONNECT_INTERVAL_MS,
         });
       } else {
-        this.logger.warn("[ManagedWorker] Failed pod handler disabled");
+        this.logger.warn("Failed pod handler disabled");
       }
+    }
 
-      this.resourceMonitor = new KubernetesResourceMonitor(
-        createK8sApi(),
-        env.TRIGGER_WORKER_INSTANCE_NAME
+    if (env.TRIGGER_DEQUEUE_INTERVAL_MS > env.TRIGGER_DEQUEUE_IDLE_INTERVAL_MS) {
+      this.logger.warn(
+        `⚠️  TRIGGER_DEQUEUE_INTERVAL_MS (${env.TRIGGER_DEQUEUE_INTERVAL_MS}) is greater than TRIGGER_DEQUEUE_IDLE_INTERVAL_MS (${env.TRIGGER_DEQUEUE_IDLE_INTERVAL_MS}) - did you mix them up?`
       );
-      this.workloadManager = new KubernetesWorkloadManager(workloadManagerOptions);
-    } else {
-      this.resourceMonitor = new DockerResourceMonitor(new Docker());
-      this.workloadManager = new DockerWorkloadManager(workloadManagerOptions);
     }
 
     this.workerSession = new SupervisorSession({
@@ -123,12 +131,17 @@ class ManagedSupervisor {
       runNotificationsEnabled: env.TRIGGER_WORKLOAD_API_ENABLED,
       heartbeatIntervalSeconds: env.TRIGGER_WORKER_HEARTBEAT_INTERVAL_SECONDS,
       preDequeue: async () => {
+        if (!env.RESOURCE_MONITOR_ENABLED) {
+          return {};
+        }
+
         if (this.isKubernetes) {
           // Not used in k8s for now
           return {};
         }
 
         const resources = await this.resourceMonitor.getNodeResources();
+
         return {
           maxResources: {
             cpu: resources.cpuAvailable,
@@ -144,7 +157,7 @@ class ManagedSupervisor {
     });
 
     if (env.TRIGGER_CHECKPOINT_URL) {
-      this.logger.log("[ManagedWorker] 🥶 Checkpoints enabled", {
+      this.logger.log("🥶 Checkpoints enabled", {
         checkpointUrl: env.TRIGGER_CHECKPOINT_URL,
       });
 
@@ -155,43 +168,34 @@ class ManagedSupervisor {
       });
     }
 
-    // setInterval(async () => {
-    //   const resources = await this.resourceMonitor.getNodeResources(true);
-    //   this.logger.debug("[ManagedWorker] Current resources", { resources });
-    // }, 1000);
-
     this.workerSession.on("runNotification", async ({ time, run }) => {
-      this.logger.log("[ManagedWorker] runNotification", { time, run });
+      this.logger.log("runNotification", { time, run });
 
       this.workloadServer.notifyRun({ run });
     });
 
     this.workerSession.on("runQueueMessage", async ({ time, message }) => {
-      this.logger.log(
-        `[ManagedWorker] Received message with timestamp ${time.toLocaleString()}`,
-        message
-      );
+      this.logger.log(`Received message with timestamp ${time.toLocaleString()}`, message);
 
       if (message.completedWaitpoints.length > 0) {
-        this.logger.debug("[ManagedWorker] Run has completed waitpoints", {
+        this.logger.debug("Run has completed waitpoints", {
           runId: message.run.id,
           completedWaitpoints: message.completedWaitpoints.length,
         });
-        // TODO: Do something with them or if we don't need the data here, maybe we shouldn't even send it
       }
 
       if (!message.image) {
-        this.logger.error("[ManagedWorker] Run has no image", { runId: message.run.id });
+        this.logger.error("Run has no image", { runId: message.run.id });
         return;
       }
 
       const { checkpoint, ...rest } = message;
 
       if (checkpoint) {
-        this.logger.log("[ManagedWorker] Restoring run", { runId: message.run.id });
+        this.logger.log("Restoring run", { runId: message.run.id });
 
         if (!this.checkpointClient) {
-          this.logger.error("[ManagedWorker] No checkpoint client", { runId: message.run.id });
+          this.logger.error("No checkpoint client", { runId: message.run.id });
           return;
         }
 
@@ -206,23 +210,23 @@ class ManagedSupervisor {
           });
 
           if (didRestore) {
-            this.logger.log("[ManagedWorker] Restore successful", { runId: message.run.id });
+            this.logger.log("Restore successful", { runId: message.run.id });
           } else {
-            this.logger.error("[ManagedWorker] Restore failed", { runId: message.run.id });
+            this.logger.error("Restore failed", { runId: message.run.id });
           }
         } catch (error) {
-          this.logger.error("[ManagedWorker] Failed to restore run", { error });
+          this.logger.error("Failed to restore run", { error });
         }
 
         return;
       }
 
-      this.logger.log("[ManagedWorker] Scheduling run", { runId: message.run.id });
+      this.logger.log("Scheduling run", { runId: message.run.id });
 
       const didWarmStart = await this.tryWarmStart(message);
 
       if (didWarmStart) {
-        this.logger.log("[ManagedWorker] Warm start successful", { runId: message.run.id });
+        this.logger.log("Warm start successful", { runId: message.run.id });
         return;
       }
 
@@ -249,7 +253,7 @@ class ManagedSupervisor {
         //   memory: message.run.machine.memory,
         // });
       } catch (error) {
-        this.logger.error("[ManagedWorker] Failed to create workload", { error });
+        this.logger.error("Failed to create workload", { error });
       }
     });
 
@@ -277,12 +281,12 @@ class ManagedSupervisor {
   }
 
   async onRunConnected({ run }: { run: { friendlyId: string } }) {
-    this.logger.debug("[ManagedWorker] Run connected", { run });
+    this.logger.debug("Run connected", { run });
     this.workerSession.subscribeToRunNotifications([run.friendlyId]);
   }
 
   async onRunDisconnected({ run }: { run: { friendlyId: string } }) {
-    this.logger.debug("[ManagedWorker] Run disconnected", { run });
+    this.logger.debug("Run disconnected", { run });
     this.workerSession.unsubscribeFromRunNotifications([run.friendlyId]);
   }
 
@@ -303,7 +307,7 @@ class ManagedSupervisor {
       });
 
       if (!res.ok) {
-        this.logger.error("[ManagedWorker] Warm start failed", {
+        this.logger.error("Warm start failed", {
           runId: dequeuedMessage.run.id,
         });
         return false;
@@ -313,7 +317,7 @@ class ManagedSupervisor {
       const parsedData = z.object({ didWarmStart: z.boolean() }).safeParse(data);
 
       if (!parsedData.success) {
-        this.logger.error("[ManagedWorker] Warm start response invalid", {
+        this.logger.error("Warm start response invalid", {
           runId: dequeuedMessage.run.id,
           data,
         });
@@ -322,7 +326,7 @@ class ManagedSupervisor {
 
       return parsedData.data.didWarmStart;
     } catch (error) {
-      this.logger.error("[ManagedWorker] Warm start error", {
+      this.logger.error("Warm start error", {
         runId: dequeuedMessage.run.id,
         error,
       });
@@ -331,7 +335,7 @@ class ManagedSupervisor {
   }
 
   async start() {
-    this.logger.log("[ManagedWorker] Starting up");
+    this.logger.log("Starting up");
 
     // Optional services
     await this.podCleaner?.start();
@@ -339,21 +343,21 @@ class ManagedSupervisor {
     await this.metricsServer?.start();
 
     if (env.TRIGGER_WORKLOAD_API_ENABLED) {
-      this.logger.log("[ManagedWorker] Workload API enabled", {
+      this.logger.log("Workload API enabled", {
         protocol: env.TRIGGER_WORKLOAD_API_PROTOCOL,
         domain: env.TRIGGER_WORKLOAD_API_DOMAIN,
         port: env.TRIGGER_WORKLOAD_API_PORT_INTERNAL,
       });
       await this.workloadServer.start();
     } else {
-      this.logger.warn("[ManagedWorker] Workload API disabled");
+      this.logger.warn("Workload API disabled");
     }
 
     await this.workerSession.start();
   }
 
   async stop() {
-    this.logger.log("[ManagedWorker] Shutting down");
+    this.logger.log("Shutting down");
     await this.workerSession.stop();
 
     // Optional services

@@ -1,4 +1,7 @@
 import { z } from "zod";
+import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
+
+const logger = new SimpleStructuredLogger("env-util");
 
 export const BoolEnv = z.preprocess((val) => {
   if (typeof val !== "string") {
@@ -33,7 +36,7 @@ export const AdditionalEnvVars = z.preprocess((val) => {
     // Return undefined if no valid key-value pairs were found
     return Object.keys(result).length === 0 ? undefined : result;
   } catch (error) {
-    console.warn("Failed to parse additional env vars", { error, val });
+    logger.warn("Failed to parse additional env vars", { error, val });
     return undefined;
   }
 }, z.record(z.string(), z.string()).optional());

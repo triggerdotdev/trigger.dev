@@ -24,6 +24,7 @@ import { getDefaultWorkerHeaders } from "./util.js";
 import { wrapZodFetch } from "../../zodfetch.js";
 import { createHeaders } from "../util.js";
 import { WORKER_HEADERS } from "../consts.js";
+import { SimpleStructuredLogger } from "../../utils/structuredLogger.js";
 
 type SupervisorHttpClientOptions = SupervisorClientCommonOptions;
 
@@ -32,6 +33,8 @@ export class SupervisorHttpClient {
   private readonly workerToken: string;
   private readonly instanceName: string;
   private readonly defaultHeaders: Record<string, string>;
+
+  private readonly logger = new SimpleStructuredLogger("supervisor-http-client");
 
   constructor(opts: SupervisorHttpClientOptions) {
     this.apiUrl = opts.apiUrl.replace(/\/$/, "");
@@ -217,10 +220,10 @@ export class SupervisorHttpClient {
       );
 
       if (!res.success) {
-        console.error("Failed to send debug log", res);
+        this.logger.error("Failed to send debug log", { error: res.error });
       }
     } catch (error) {
-      console.error("Failed to send debug log", { error });
+      this.logger.error("Failed to send debug log (caught error)", { error });
     }
   }
 
