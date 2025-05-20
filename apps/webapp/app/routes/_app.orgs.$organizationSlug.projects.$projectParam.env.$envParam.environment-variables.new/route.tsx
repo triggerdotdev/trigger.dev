@@ -180,7 +180,6 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 export default function Page() {
   const [isOpen, setIsOpen] = useState(false);
   const { environments, hasStaging } = useTypedLoaderData<typeof loader>();
-  const [selectedEnvironmentIds, setSelectedEnvironmentIds] = useState<string[]>([]);
   const lastSubmission = useActionData();
   const navigation = useNavigation();
   const navigate = useNavigate();

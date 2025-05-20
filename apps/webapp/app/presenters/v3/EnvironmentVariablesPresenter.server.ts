@@ -83,6 +83,7 @@ export class EnvironmentVariablesPresenter {
         project: {
           slug: projectSlug,
         },
+        archivedAt: null,
       },
     });
 
