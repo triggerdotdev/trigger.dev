@@ -186,6 +186,7 @@ export default function Page() {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
+  const [selectedEnvironmentIds, setSelectedEnvironmentIds] = useState<Set<string>>(new Set());
 
   const isLoading = navigation.state !== "idle" && navigation.formMethod === "post";
 
@@ -198,6 +199,22 @@ export default function Page() {
     },
     shouldRevalidate: "onSubmit",
   });
+
+  const handleEnvironmentChange = (
+    environmentId: string,
+    isChecked: boolean,
+    environmentType?: string
+  ) => {
+    setSelectedEnvironmentIds((prev) => {
+      const newSet = new Set(prev);
+      if (isChecked) {
+        newSet.add(environmentId);
+      } else {
+        newSet.delete(environmentId);
+      }
+      return newSet;
+    });
+  };
 
   const [revealAll, setRevealAll] = useState(true);
 
@@ -229,7 +246,10 @@ export default function Page() {
                       id={environment.id}
                       value={environment.id}
                       name="environmentIds"
-                      type="radio"
+                      defaultChecked={selectedEnvironmentIds.has(environment.id)}
+                      onChange={(isChecked) =>
+                        handleEnvironmentChange(environment.id, isChecked, environment.type)
+                      }
                       label={<EnvironmentLabel environment={environment} className="text-sm" />}
                       variant="button"
                     />
