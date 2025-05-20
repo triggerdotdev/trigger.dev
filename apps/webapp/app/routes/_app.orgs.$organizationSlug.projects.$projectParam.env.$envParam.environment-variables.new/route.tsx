@@ -207,6 +207,9 @@ export default function Page() {
       return parse(formData, { schema });
     },
     shouldRevalidate: "onSubmit",
+    defaultValue: {
+      variables: [{ key: "", value: "" }],
+    },
   });
 
   const handleEnvironmentChange = (
@@ -245,7 +248,7 @@ export default function Page() {
       setSelectedBranchId(undefined);
     } else {
       setSelectedBranchId(branchId);
-      }
+    }
   };
 
   const [revealAll, setRevealAll] = useState(true);
@@ -273,8 +276,8 @@ export default function Page() {
                 <input type="hidden" name="environmentIds" value={selectedBranchId} />
               ) : (
                 Array.from(selectedEnvironmentIds).map((id) => (
-                    <input key={id} type="hidden" name="environmentIds" value={id} />
-                  ))
+                  <input key={id} type="hidden" name="environmentIds" value={id} />
+                ))
               )}
               <div className="flex items-center gap-2">
                 {nonBranchEnvironments.map((environment) => (
@@ -346,31 +349,31 @@ export default function Page() {
               <InputGroup fullWidth>
                 <Label>Select branch</Label>
                 <div className="flex items-center gap-1">
-                <Select
-                  variant="tertiary/medium"
+                  <Select
+                    variant="tertiary/medium"
                     value={selectedBranchId ?? "all"}
-                  setValue={handleBranchChange}
+                    setValue={handleBranchChange}
                     placeholder="All branches"
                     items={[{ id: "all", branchName: "All branches" }, ...branchEnvironments]}
                     className="w-fit min-w-52"
-                  filter={{
+                    filter={{
                       keys: [
                         (item) => item.branchName?.replace(/\//g, " ").replace(/_/g, " ") ?? "",
                       ],
-                  }}
+                    }}
                     text={(val) =>
                       val ? branchEnvironments.find((b) => b.id === val)?.branchName : null
-                  }
-                  dropdownIcon
-                >
-                  {(matches) =>
-                    matches?.map((env) => (
-                      <SelectItem key={env.id} value={env.id}>
-                        {env.branchName}
-                      </SelectItem>
-                    ))
-                  }
-                </Select>
+                    }
+                    dropdownIcon
+                  >
+                    {(matches) =>
+                      matches?.map((env) => (
+                        <SelectItem key={env.id} value={env.id}>
+                          {env.branchName}
+                        </SelectItem>
+                      ))
+                    }
+                  </Select>
                   {selectedBranchId !== "all" && selectedBranchId !== undefined && (
                     <Button
                       variant="minimal/medium"
@@ -585,27 +588,27 @@ function VariableField({
     <fieldset ref={ref}>
       <FieldLayout>
         <div className="space-y-2">
-        <Input
-          id={`${formId}-${baseFieldName}.key`}
-          name={`${baseFieldName}.key`}
-          placeholder="e.g. CLIENT_KEY"
-          value={value.key}
-          onChange={(e) => onChange({ ...value, key: e.currentTarget.value })}
-          autoFocus={index === 0}
-          onPaste={onPaste}
-        />
+          <Input
+            id={`${formId}-${baseFieldName}.key`}
+            name={`${baseFieldName}.key`}
+            placeholder="e.g. CLIENT_KEY"
+            value={value.key}
+            onChange={(e) => onChange({ ...value, key: e.currentTarget.value })}
+            autoFocus={index === 0}
+            onPaste={onPaste}
+          />
           <FormError id={fields.key.errorId}>{fields.key.error}</FormError>
         </div>
         <div className={cn("flex items-start gap-1")}>
           <div className="grow space-y-2">
-          <Input
-            id={`${formId}-${baseFieldName}.value`}
-            name={`${baseFieldName}.value`}
-            type={showValue ? "text" : "password"}
-            placeholder="Not set"
-            value={value.value}
-            onChange={(e) => onChange({ ...value, value: e.currentTarget.value })}
-          />
+            <Input
+              id={`${formId}-${baseFieldName}.value`}
+              name={`${baseFieldName}.value`}
+              type={showValue ? "text" : "password"}
+              placeholder="Not set"
+              value={value.value}
+              onChange={(e) => onChange({ ...value, value: e.currentTarget.value })}
+            />
             <FormError id={fields.value.errorId}>{fields.value.error}</FormError>
           </div>
           {showDeleteButton && (
