@@ -18,7 +18,7 @@ import {
   Squares2X2Icon,
   UsersIcon,
 } from "@heroicons/react/20/solid";
-import { useNavigation } from "@remix-run/react";
+import { useNavigation, useMatches } from "@remix-run/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import simplur from "simplur";
 import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
@@ -60,7 +60,6 @@ import {
   v3UsagePath,
   v3WaitpointTokensPath,
 } from "~/utils/pathBuilder";
-import { useKapaWidget } from "../../hooks/useKapaWidget";
 import { FreePlanUsage } from "../billing/FreePlanUsage";
 import { ConnectionIcon, DevPresencePanel, useDevPresence } from "../DevPresence";
 import { ImpersonationBanner } from "../ImpersonationBanner";
@@ -84,6 +83,10 @@ import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
 import { SideMenuSection } from "./SideMenuSection";
+import { useFeatures } from "~/hooks/useFeatures";
+import { useTypedMatchesData } from "~/hooks/useTypedMatchData";
+import { type loader } from "~/root";
+import { KapaChat } from "~/components/KapaChat";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 export type SideMenuProject = Pick<
@@ -570,29 +573,24 @@ function SelectorDivider() {
 }
 
 function HelpAndAI() {
-  const { isKapaEnabled, isKapaOpen, openKapa } = useKapaWidget();
+  const matches = useMatches();
+  const features = useFeatures();
+  const routeMatch = useTypedMatchesData<typeof loader>({
+    id: "root",
+    matches,
+  });
+  const isKapaEnabled = features.isManagedCloud && routeMatch?.kapa?.websiteId;
 
   return (
     <>
       <ShortcutsAutoOpen />
-      <HelpAndFeedback disableShortcut={isKapaOpen} />
-      {isKapaEnabled && (
+      <HelpAndFeedback />
+      {isKapaEnabled && routeMatch.kapa.websiteId && (
         <TooltipProvider disableHoverableContent>
           <Tooltip>
             <TooltipTrigger asChild>
               <div className="inline-flex">
-                <Button
-                  variant="small-menu-item"
-                  data-action="ask-ai"
-                  shortcut={{ modifiers: ["mod"], key: "/", enabledOnInputElements: true }}
-                  hideShortcutKey
-                  data-modal-override-open-class-ask-ai="true"
-                  onClick={() => {
-                    openKapa();
-                  }}
-                >
-                  <AISparkleIcon className="size-5" />
-                </Button>
+                <KapaChat websiteId={routeMatch.kapa.websiteId} />
               </div>
             </TooltipTrigger>
             <TooltipContent

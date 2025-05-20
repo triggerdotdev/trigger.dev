@@ -24,7 +24,7 @@ import { usePostHog } from "./hooks/usePostHog";
 import { useTypedMatchesData } from "./hooks/useTypedMatchData";
 import { getUser } from "./services/session.server";
 import { appEnvTitleTag } from "./utils";
-import { KapaScripts } from "./hooks/useKapaWidget";
+import { KapaChat } from "./components/KapaChat";
 
 export const links: LinksFunction = () => {
   return [{ rel: "stylesheet", href: tailwindStylesheetUrl }];
@@ -115,12 +115,12 @@ export default function App() {
         <head>
           <Meta />
           <Links />
-          <KapaScripts websiteId={kapa.websiteId} />
         </head>
         <body className="h-full overflow-hidden bg-background-dimmed">
           <ShortcutsProvider>
             <Outlet />
             <Toast />
+            {kapa.websiteId && <KapaChat websiteId={kapa.websiteId} />}
           </ShortcutsProvider>
           <ScrollRestoration />
           <ExternalScripts />
