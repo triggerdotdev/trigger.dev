@@ -273,13 +273,19 @@ export default function Page() {
           <Fieldset className="max-h-[70vh] overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
             <InputGroup fullWidth>
               <Label>Environments</Label>
+              {selectedBranchIds.length > 0
+                ? selectedBranchIds.map((id) => (
+                    <input key={id} type="hidden" name="environmentIds" value={id} />
+                  ))
+                : Array.from(selectedEnvironmentIds).map((id) => (
+                    <input key={id} type="hidden" name="environmentIds" value={id} />
+                  ))}
               <div className="flex items-center gap-2">
                 {nonBranchEnvironments.map((environment) => (
                   <CheckboxWithLabel
                     key={environment.id}
                     id={environment.id}
                     value={environment.id}
-                    name="environmentIds"
                     defaultChecked={selectedEnvironmentIds.has(environment.id)}
                     onChange={(isChecked) =>
                       handleEnvironmentChange(environment.id, isChecked, environment.type)
@@ -344,7 +350,6 @@ export default function Page() {
               <InputGroup fullWidth>
                 <Label>Preview branches</Label>
                 <Select
-                  name="environmentIds"
                   value={selectedBranchIds}
                   setValue={handleBranchChange}
                   placeholder="Default for Preview"
