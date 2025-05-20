@@ -602,16 +602,17 @@ export class EnvironmentVariablesRepository implements Repository {
     // Merge the secrets, we want child ones to override parent ones
     const mergedSecrets = new Map<string, string>();
     for (const secret of parentSecrets) {
-      mergedSecrets.set(secret.key, secret.value.secret);
+      const { key: parsedKey } = parseSecretKey(secret.key);
+      mergedSecrets.set(parsedKey, secret.value.secret);
     }
     for (const secret of childSecrets) {
-      mergedSecrets.set(secret.key, secret.value.secret);
+      const { key: parsedKey } = parseSecretKey(secret.key);
+      mergedSecrets.set(parsedKey, secret.value.secret);
     }
 
     return Array.from(mergedSecrets.entries()).map(([key, value]) => {
-      const { key: parsedKey } = parseSecretKey(key);
       return {
-        key: parsedKey,
+        key,
         value,
       };
     });
