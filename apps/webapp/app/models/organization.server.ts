@@ -11,7 +11,6 @@ import slug from "slug";
 import { prisma, type PrismaClientOrTransaction } from "~/db.server";
 import { env } from "~/env.server";
 import { featuresForUrl } from "~/features.server";
-import { type BranchGit } from "~/presenters/v3/BranchesPresenter.server";
 import { createApiKeyForEnv, createPkApiKeyForEnv, envSlug } from "./api-key.server";
 
 export type { Organization };

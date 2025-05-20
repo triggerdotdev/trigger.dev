@@ -230,6 +230,7 @@ export default function Page() {
             newSet.delete(previewEnv.id);
           }
           newSet.add(environmentId);
+          setSelectedBranchIds([]);
         }
       } else {
         newSet.delete(environmentId);
@@ -348,17 +349,25 @@ export default function Page() {
 
             {previewIsSelected && (
               <InputGroup fullWidth>
-                <Label>Preview branches</Label>
+                <Label>Preview branch override (optional)</Label>
                 <Select
+                  variant="tertiary/medium"
                   value={selectedBranchIds}
                   setValue={handleBranchChange}
-                  placeholder="Default for Preview"
+                  placeholder="No override"
                   items={branchEnvironments}
+                  className="w-fit"
+                  filter={{
+                    keys: [(item) => item.branchName?.replace(/\//g, " ").replace(/_/g, " ") ?? ""],
+                  }}
                   text={(vals) =>
-                    vals
-                      ?.map((env) => branchEnvironments.find((b) => b.id === env)?.branchName)
-                      .join(", ")
+                    vals.length > 0
+                      ? vals
+                          ?.map((env) => branchEnvironments.find((b) => b.id === env)?.branchName)
+                          .join(", ")
+                      : null
                   }
+                  dropdownIcon
                 >
                   {(matches) =>
                     matches?.map((env) => (
@@ -369,7 +378,10 @@ export default function Page() {
                   }
                 </Select>
                 <Hint>
-                  Select specific preview branches to apply these environment variables to.
+                  You can select branches to override variables.{" "}
+                  {selectedBranchIds.length > 0
+                    ? "The variables below will be overriden for runs on these branches."
+                    : "No overrides are currently set."}
                 </Hint>
               </InputGroup>
             )}
