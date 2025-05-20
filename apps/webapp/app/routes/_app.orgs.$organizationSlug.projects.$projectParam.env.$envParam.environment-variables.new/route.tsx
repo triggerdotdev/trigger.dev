@@ -584,6 +584,7 @@ function VariableField({
   return (
     <fieldset ref={ref}>
       <FieldLayout>
+        <div className="space-y-2">
         <Input
           id={`${formId}-${baseFieldName}.key`}
           name={`${baseFieldName}.key`}
@@ -593,7 +594,10 @@ function VariableField({
           autoFocus={index === 0}
           onPaste={onPaste}
         />
-        <div className={cn("flex items-center justify-between gap-1")}>
+          <FormError id={fields.key.errorId}>{fields.key.error}</FormError>
+        </div>
+        <div className={cn("flex items-start gap-1")}>
+          <div className="grow space-y-2">
           <Input
             id={`${formId}-${baseFieldName}.value`}
             name={`${baseFieldName}.value`}
@@ -602,6 +606,8 @@ function VariableField({
             value={value.value}
             onChange={(e) => onChange({ ...value, value: e.currentTarget.value })}
           />
+            <FormError id={fields.value.errorId}>{fields.value.error}</FormError>
+          </div>
           {showDeleteButton && (
             <Button
               variant="minimal/medium"
@@ -612,10 +618,6 @@ function VariableField({
           )}
         </div>
       </FieldLayout>
-      <div className="space-y-2">
-        <FormError id={fields.key.errorId}>{fields.key.error}</FormError>
-        <FormError id={fields.value.errorId}>{fields.value.error}</FormError>
-      </div>
     </fieldset>
   );
 }
