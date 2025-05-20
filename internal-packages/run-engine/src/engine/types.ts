@@ -47,6 +47,8 @@ export type RunEngineOptions = {
   releaseConcurrency?: {
     disabled?: boolean;
     maxTokensRatio?: number;
+    releasingsMaxAge?: number;
+    releasingsPollInterval?: number;
     redis?: Partial<RedisOptions>;
     maxRetries?: number;
     consumersCount?: number;

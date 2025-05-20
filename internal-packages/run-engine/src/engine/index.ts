@@ -201,6 +201,9 @@ export class RunEngine {
 
     this.releaseConcurrencySystem = new ReleaseConcurrencySystem({
       resources,
+      maxTokensRatio: options.releaseConcurrency?.maxTokensRatio,
+      releasingsMaxAge: options.releaseConcurrency?.releasingsMaxAge,
+      releasingsPollInterval: options.releaseConcurrency?.releasingsPollInterval,
       queueOptions:
         typeof options.releaseConcurrency?.disabled === "boolean" &&
         options.releaseConcurrency.disabled
@@ -223,33 +226,6 @@ export class RunEngine {
               consumersCount: options.releaseConcurrency?.consumersCount ?? 1,
               pollInterval: options.releaseConcurrency?.pollInterval ?? 1000,
               batchSize: options.releaseConcurrency?.batchSize ?? 10,
-              executor: async (descriptor, snapshotId) => {
-                return await this.releaseConcurrencySystem.executeReleaseConcurrencyForSnapshot(
-                  snapshotId
-                );
-              },
-              maxTokens: async (descriptor) => {
-                const environment = await this.prisma.runtimeEnvironment.findFirstOrThrow({
-                  where: { id: descriptor.envId },
-                  select: {
-                    maximumConcurrencyLimit: true,
-                  },
-                });
-
-                return (
-                  environment.maximumConcurrencyLimit *
-                  (options.releaseConcurrency?.maxTokensRatio ?? 1.0)
-                );
-              },
-              keys: {
-                fromDescriptor: (descriptor) =>
-                  `org:${descriptor.orgId}:proj:${descriptor.projectId}:env:${descriptor.envId}`,
-                toDescriptor: (name) => ({
-                  orgId: name.split(":")[1],
-                  projectId: name.split(":")[3],
-                  envId: name.split(":")[5],
-                }),
-              },
               tracer: this.tracer,
             },
     });

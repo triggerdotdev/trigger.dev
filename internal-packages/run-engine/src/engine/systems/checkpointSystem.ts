@@ -195,8 +195,14 @@ export class CheckpointSystem {
           checkpointId: taskRunCheckpoint.id,
         });
 
+        this.$.logger.debug("Refilling token bucket for release concurrency queue", {
+          snapshot,
+        });
+
         // Refill the token bucket for the release concurrency queue
-        await this.releaseConcurrencySystem.checkpointCreatedOnEnvironment(run.runtimeEnvironment);
+        await this.releaseConcurrencySystem.refillTokensForSnapshot(
+          snapshot.previousSnapshotId ?? snapshot.id
+        );
 
         return {
           ok: true as const,
@@ -227,8 +233,12 @@ export class CheckpointSystem {
           runnerId,
         });
 
+        this.$.logger.debug("Refilling token bucket for release concurrency queue", {
+          snapshot,
+        });
+
         // Refill the token bucket for the release concurrency queue
-        await this.releaseConcurrencySystem.checkpointCreatedOnEnvironment(run.runtimeEnvironment);
+        await this.releaseConcurrencySystem.refillTokensForSnapshot(snapshot.id);
 
         return {
           ok: true as const,

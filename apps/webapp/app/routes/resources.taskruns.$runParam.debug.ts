@@ -155,6 +155,10 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
         label: "Release concurrency metadata",
         key: releaseConcurrencyMetadataKey,
       },
+      {
+        label: "Release concurrency releasings",
+        key: "engine:release-concurrency:releasings",
+      },
     ];
 
     return typedjson({
