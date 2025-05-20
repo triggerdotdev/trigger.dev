@@ -6,6 +6,7 @@ import { audioWaveform } from "@trigger.dev/build/extensions/audioWaveform";
 import { additionalFiles, ffmpeg, syncEnvVars } from "@trigger.dev/build/extensions/core";
 import { puppeteer } from "@trigger.dev/build/extensions/puppeteer";
 import { playwright } from "@trigger.dev/build/extensions/playwright";
+import { lightpanda } from "@trigger.dev/build/extensions/lightpanda";
 import { prismaExtension } from "@trigger.dev/build/extensions/prisma";
 import { emitDecoratorMetadata } from "@trigger.dev/build/extensions/typescript";
 import { defineConfig } from "@trigger.dev/sdk/v3";
@@ -83,6 +84,7 @@ export default defineConfig({
       }),
       puppeteer(),
       playwright(),
+      lightpanda(),
     ],
     external: ["re2"],
   },
