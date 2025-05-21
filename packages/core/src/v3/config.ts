@@ -181,7 +181,7 @@ export type TriggerConfig = {
      *
      * @deprecated (experimental)
      */
-    autoDetectExternal?: boolean;
+    experimental_autoDetectExternal?: boolean;
 
     jsx?: {
       /**

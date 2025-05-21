@@ -163,7 +163,7 @@ function createExternalsCollector(
           logger.debug("[externals][onEnd] Collected externals", {
             externals,
             maybeExternals,
-            autoDetectExternal: !!resolvedConfig.build?.autoDetectExternal,
+            autoDetectExternal: !!resolvedConfig.build?.experimental_autoDetectExternal,
             packageJsonCache: packageJsonCache.size,
             isExternalCache: isExternalCache.size,
           });
@@ -265,7 +265,7 @@ function createExternalsCollector(
           });
         });
 
-        if (resolvedConfig.build?.autoDetectExternal) {
+        if (resolvedConfig.build?.experimental_autoDetectExternal) {
           build.onResolve(
             { filter: /.*/, namespace: "file" },
             async (args: esbuild.OnResolveArgs): Promise<esbuild.OnResolveResult | undefined> => {

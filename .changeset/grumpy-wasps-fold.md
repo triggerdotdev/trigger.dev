@@ -3,4 +3,4 @@
 "@trigger.dev/core": patch
 ---
 
-Add experimental `autoDetectExternal` trigger config option
+Add `experimental_autoDetectExternal` trigger config option

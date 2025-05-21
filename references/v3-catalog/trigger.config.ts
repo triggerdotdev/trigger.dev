@@ -31,7 +31,7 @@ export default defineConfig({
   logLevel: "info",
   build: {
     conditions: ["react-server"],
-    autoDetectExternal: true,
+    experimental_autoDetectExternal: true,
     extensions: [
       additionalFiles({
         files: ["./wrangler/wrangler.toml"],
