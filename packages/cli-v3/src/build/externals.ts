@@ -576,12 +576,31 @@ function isBuiltinModule(path: string): boolean {
   return builtinModules.includes(path.replace("node:", ""));
 }
 
-async function hasNoEsmTypeMarkers(filePath: string): Promise<boolean> {
+async function isMainPackageJson(filePath: string): Promise<boolean> {
   try {
     const packageJson = await readPackageJSON(filePath);
 
-    // Exclude esm type markers. They look like this: { "type": "module" }
-    return Object.keys(packageJson).length > 1 || !packageJson.type;
+    // Allowlist of non-informative fields that can appear with 'type: module | commonjs' in marker package.json files
+    const markerFields = new Set([
+      "type",
+      "sideEffects",
+      "browser",
+      "main",
+      "module",
+      "react-native",
+      "name",
+    ]);
+
+    if (!packageJson.type) {
+      return true;
+    }
+
+    const keys = Object.keys(packageJson);
+    if (keys.every((k) => markerFields.has(k))) {
+      return false; // type marker
+    }
+
+    return true;
   } catch (error) {
     if (!(error instanceof Error)) {
       logger.debug("[externals][containsEsmTypeMarkers] Unknown error", {
@@ -619,7 +638,7 @@ async function findNearestPackageJson(
 
   const [error, packageJsonPath] = await tryCatch(
     resolvePackageJSON(dirname(basePath), {
-      test: hasNoEsmTypeMarkers,
+      test: isMainPackageJson,
     })
   );
 
