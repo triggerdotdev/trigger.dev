@@ -6,12 +6,14 @@ import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { LoginPageLayout } from "~/components/LoginPageLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Fieldset } from "~/components/primitives/Fieldset";
+import { FormError } from "~/components/primitives/FormError";
 import { Header1 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { TextLink } from "~/components/primitives/TextLink";
 import { isGithubAuthSupported } from "~/services/auth.server";
 import { commitSession, setRedirectTo } from "~/services/redirectTo.server";
 import { getUserId } from "~/services/session.server";
+import { getUserSession } from "~/services/sessionStorage.server";
 import { requestUrl } from "~/utils/requestUrl.server";
 
 export const meta: MetaFunction = ({ matches }) => {
@@ -48,7 +50,11 @@ export async function loader({ request }: LoaderFunctionArgs) {
     const session = await setRedirectTo(request, redirectTo);
 
     return typedjson(
-      { redirectTo, showGithubAuth: isGithubAuthSupported },
+      {
+        redirectTo,
+        showGithubAuth: isGithubAuthSupported,
+        authError: null,
+      },
       {
         headers: {
           "Set-Cookie": await commitSession(session),
@@ -56,9 +62,22 @@ export async function loader({ request }: LoaderFunctionArgs) {
       }
     );
   } else {
+    const session = await getUserSession(request);
+    const error = session.get("auth:error");
+
+    let authError: string | undefined;
+    if (error) {
+      if ("message" in error) {
+        authError = error.message;
+      } else {
+        authError = JSON.stringify(error, null, 2);
+      }
+    }
+
     return typedjson({
       redirectTo: null,
       showGithubAuth: isGithubAuthSupported,
+      authError,
     });
   }
 }
@@ -81,7 +100,7 @@ export default function LoginPage() {
             Create an account or login
           </Paragraph>
           <Fieldset className="w-full">
-            <div className="flex flex-col gap-y-2">
+            <div className="flex flex-col items-center gap-y-2">
               {data.showGithubAuth && (
                 <Button
                   type="submit"
@@ -103,6 +122,7 @@ export default function LoginPage() {
                 <EnvelopeIcon className="mr-2 size-5 text-text-bright" />
                 Continue with Email
               </LinkButton>
+              {data.authError && <FormError>{data.authError}</FormError>}
             </div>
             <Paragraph variant="extra-small" className="mt-2 text-center">
               By signing up you agree to our{" "}
