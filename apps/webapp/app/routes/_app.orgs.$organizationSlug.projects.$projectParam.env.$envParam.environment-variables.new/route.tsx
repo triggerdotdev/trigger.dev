@@ -548,7 +548,7 @@ function VariableFields({
           type="button"
           onClick={() => {
             requestIntent(formRef.current ?? undefined, list.append(variablesFields.name));
-            list.append(variablesFields.name, { defaultValue: [{ key: "", value: "" }] });
+            append([{ key: "", value: "" }]);
           }}
           LeadingIcon={PlusIcon}
         >
