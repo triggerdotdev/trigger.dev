@@ -152,13 +152,28 @@ export async function generatePresignedRequest(
   envSlug: string,
   filename: string,
   method: "PUT" | "GET" = "PUT"
-) {
+): Promise<
+  | {
+      success: false;
+      error: string;
+    }
+  | {
+      success: true;
+      request: Request;
+    }
+> {
   if (!env.OBJECT_STORE_BASE_URL) {
-    return;
+    return {
+      success: false,
+      error: "Object store base URL is not set",
+    };
   }
 
   if (!r2) {
-    return;
+    return {
+      success: false,
+      error: "Object store client is not initialized",
+    };
   }
 
   const url = new URL(env.OBJECT_STORE_BASE_URL);
@@ -182,7 +197,10 @@ export async function generatePresignedRequest(
     filename,
   });
 
-  return signed;
+  return {
+    success: true,
+    request: signed,
+  };
 }
 
 export async function generatePresignedUrl(
@@ -190,8 +208,29 @@ export async function generatePresignedUrl(
   envSlug: string,
   filename: string,
   method: "PUT" | "GET" = "PUT"
-) {
+): Promise<
+  | {
+      success: false;
+      error: string;
+    }
+  | {
+      success: true;
+      url: string;
+    }
+> {
   const signed = await generatePresignedRequest(projectRef, envSlug, filename, method);
 
-  return signed?.url;
+  if (!signed.success) {
+    return {
+      success: false,
+      error: signed.error,
+    };
+  }
+
+  signed;
+
+  return {
+    success: true,
+    url: signed.request.url,
+  };
 }
