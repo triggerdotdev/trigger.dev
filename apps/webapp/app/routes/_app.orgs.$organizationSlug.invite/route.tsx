@@ -134,6 +134,9 @@ export default function Page() {
     onValidate({ formData }) {
       return parse(formData, { schema });
     },
+    defaultValue: {
+      emails: [""],
+    },
   });
 
   const fieldValues = useRef<string[]>([""]);
