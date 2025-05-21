@@ -1,5 +1,8 @@
 name: "🧪 Unit Tests"
 
+permissions:
+  contents: read
+
 on:
   workflow_call:
 

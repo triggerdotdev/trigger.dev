@@ -451,6 +451,10 @@ const EnvironmentSchema = z.object({
   RUN_ENGINE_TIMEOUT_PENDING_CANCEL: z.coerce.number().int().default(60_000),
   RUN_ENGINE_TIMEOUT_EXECUTING: z.coerce.number().int().default(60_000),
   RUN_ENGINE_TIMEOUT_EXECUTING_WITH_WAITPOINTS: z.coerce.number().int().default(60_000),
+  RUN_ENGINE_TIMEOUT_SUSPENDED: z.coerce
+    .number()
+    .int()
+    .default(60_000 * 10),
   RUN_ENGINE_DEBUG_WORKER_NOTIFICATIONS: z.coerce.boolean().default(false),
   RUN_ENGINE_PARENT_QUEUE_LIMIT: z.coerce.number().int().default(1000),
   RUN_ENGINE_CONCURRENCY_LIMIT_BIAS: z.coerce.number().default(0.75),
@@ -604,6 +608,11 @@ const EnvironmentSchema = z.object({
   RUN_ENGINE_RELEASE_CONCURRENCY_ENABLED: z.string().default("0"),
   RUN_ENGINE_RELEASE_CONCURRENCY_DISABLE_CONSUMERS: z.string().default("0"),
   RUN_ENGINE_RELEASE_CONCURRENCY_MAX_TOKENS_RATIO: z.coerce.number().default(1),
+  RUN_ENGINE_RELEASE_CONCURRENCY_RELEASINGS_MAX_AGE: z.coerce
+    .number()
+    .int()
+    .default(60_000 * 30),
+  RUN_ENGINE_RELEASE_CONCURRENCY_RELEASINGS_POLL_INTERVAL: z.coerce.number().int().default(60_000),
   RUN_ENGINE_RELEASE_CONCURRENCY_MAX_RETRIES: z.coerce.number().int().default(3),
   RUN_ENGINE_RELEASE_CONCURRENCY_CONSUMERS_COUNT: z.coerce.number().int().default(1),
   RUN_ENGINE_RELEASE_CONCURRENCY_POLL_INTERVAL: z.coerce.number().int().default(500),
@@ -769,7 +778,7 @@ const EnvironmentSchema = z.object({
   RUN_REPLICATION_LEADER_LOCK_RETRY_INTERVAL_MS: z.coerce.number().int().default(500),
   RUN_REPLICATION_WAIT_FOR_ASYNC_INSERT: z.string().default("0"),
   RUN_REPLICATION_KEEP_ALIVE_ENABLED: z.string().default("1"),
-  RUN_REPLICATION_KEEP_ALIVE_IDLE_SOCKET_TTL_MS: z.coerce.number().int().default(9_000),
+  RUN_REPLICATION_KEEP_ALIVE_IDLE_SOCKET_TTL_MS: z.coerce.number().int().optional(),
   RUN_REPLICATION_MAX_OPEN_CONNECTIONS: z.coerce.number().int().default(10),
 
   // Bootstrap

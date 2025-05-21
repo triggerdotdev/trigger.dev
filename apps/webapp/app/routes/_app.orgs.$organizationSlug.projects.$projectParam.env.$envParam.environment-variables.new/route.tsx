@@ -197,6 +197,9 @@ export default function Page() {
       return parse(formData, { schema });
     },
     shouldRevalidate: "onSubmit",
+    defaultValue: {
+      variables: [{ key: "", value: "" }],
+    },
   });
 
   const [revealAll, setRevealAll] = useState(true);

@@ -353,6 +353,7 @@ export class WaitpointSystem {
     runId,
     waitpoints,
     projectId,
+    organizationId,
     releaseConcurrency,
     timeout,
     spanIdToComplete,
@@ -364,6 +365,7 @@ export class WaitpointSystem {
     runId: string;
     waitpoints: string | string[];
     projectId: string;
+    organizationId: string;
     releaseConcurrency?: boolean;
     timeout?: Date;
     spanIdToComplete?: string;
@@ -373,6 +375,8 @@ export class WaitpointSystem {
     tx?: PrismaClientOrTransaction;
   }): Promise<TaskRunExecutionSnapshot> {
     const prisma = tx ?? this.$.prisma;
+
+    await this.$.raceSimulationSystem.waitForRacepoint({ runId });
 
     let $waitpoints = typeof waitpoints === "string" ? [waitpoints] : waitpoints;
 
@@ -439,7 +443,7 @@ export class WaitpointSystem {
           environmentId: snapshot.environmentId,
           environmentType: snapshot.environmentType,
           projectId: snapshot.projectId,
-          organizationId: snapshot.organizationId,
+          organizationId,
           // Do NOT carry over the batchId from the previous snapshot
           batchId: batch?.id,
           workerId,
@@ -486,7 +490,11 @@ export class WaitpointSystem {
     });
   }
 
-  public async continueRunIfUnblocked({ runId }: { runId: string }) {
+  public async continueRunIfUnblocked({
+    runId,
+  }: {
+    runId: string;
+  }): Promise<"blocked" | "unblocked" | "skipped"> {
     this.$.logger.debug(`continueRunIfUnblocked: start`, {
       runId,
     });
@@ -495,6 +503,7 @@ export class WaitpointSystem {
     const blockingWaitpoints = await this.$.prisma.taskRunWaitpoint.findMany({
       where: { taskRunId: runId },
       select: {
+        id: true,
         batchId: true,
         batchIndex: true,
         waitpoint: {
@@ -503,13 +512,15 @@ export class WaitpointSystem {
       },
     });
 
+    await this.$.raceSimulationSystem.waitForRacepoint({ runId });
+
     // 2. There are blockers still, so do nothing
     if (blockingWaitpoints.some((w) => w.waitpoint.status !== "COMPLETED")) {
       this.$.logger.debug(`continueRunIfUnblocked: blocking waitpoints still exist`, {
         runId,
         blockingWaitpoints,
       });
-      return;
+      return "blocked";
     }
 
     // 3. Get the run with environment
@@ -546,7 +557,7 @@ export class WaitpointSystem {
           runId,
           snapshot,
         });
-        return;
+        return "skipped";
       }
 
       //run is still executing, send a message to the worker
@@ -657,16 +668,21 @@ export class WaitpointSystem {
       }
     });
 
-    //5. Remove the blocking waitpoints
-    await this.$.prisma.taskRunWaitpoint.deleteMany({
-      where: {
-        taskRunId: runId,
-      },
-    });
+    if (blockingWaitpoints.length > 0) {
+      //5. Remove the blocking waitpoints
+      await this.$.prisma.taskRunWaitpoint.deleteMany({
+        where: {
+          taskRunId: runId,
+          id: { in: blockingWaitpoints.map((b) => b.id) },
+        },
+      });
 
-    this.$.logger.debug(`continueRunIfUnblocked: removed blocking waitpoints`, {
-      runId,
-    });
+      this.$.logger.debug(`continueRunIfUnblocked: removed blocking waitpoints`, {
+        runId,
+      });
+    }
+
+    return "unblocked";
   }
 
   public async createRunAssociatedWaitpoint(
