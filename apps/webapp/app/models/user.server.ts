@@ -38,31 +38,31 @@ export async function findOrCreateUser(input: FindOrCreateUser): Promise<LoggedI
   }
 }
 
-export async function findOrCreateMagicLinkUser(
-  input: FindOrCreateMagicLink
-): Promise<LoggedInUser> {
-  if (env.WHITELISTED_EMAILS && !new RegExp(env.WHITELISTED_EMAILS).test(input.email)) {
+export async function findOrCreateMagicLinkUser({
+  email,
+}: FindOrCreateMagicLink): Promise<LoggedInUser> {
+  if (env.WHITELISTED_EMAILS && !new RegExp(env.WHITELISTED_EMAILS).test(email)) {
     throw new Error("This email is unauthorized");
   }
 
   const existingUser = await prisma.user.findFirst({
     where: {
-      email: input.email,
+      email,
     },
   });
 
   const adminEmailRegex = env.ADMIN_EMAILS ? new RegExp(env.ADMIN_EMAILS) : undefined;
-  const makeAdmin = adminEmailRegex ? adminEmailRegex.test(input.email) : false;
+  const makeAdmin = adminEmailRegex ? adminEmailRegex.test(email) : false;
 
   const user = await prisma.user.upsert({
     where: {
-      email: input.email,
+      email,
     },
     update: {
-      email: input.email,
+      email,
     },
     create: {
-      email: input.email,
+      email,
       authenticationMethod: "MAGIC_LINK",
       admin: makeAdmin, // only on create, to prevent automatically removing existing admins
     },
@@ -79,6 +79,10 @@ export async function findOrCreateGithubUser({
   authenticationProfile,
   authenticationExtraParams,
 }: FindOrCreateGithub): Promise<LoggedInUser> {
+  if (env.WHITELISTED_EMAILS && !new RegExp(env.WHITELISTED_EMAILS).test(email)) {
+    throw new Error("This email is unauthorized");
+  }
+
   const name = authenticationProfile._json.name;
   let avatarUrl: string | undefined = undefined;
   if (authenticationProfile.photos[0]) {
