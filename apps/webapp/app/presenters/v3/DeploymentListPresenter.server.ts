@@ -1,9 +1,14 @@
-import { type WorkerDeploymentStatus, type WorkerInstanceGroupType } from "@trigger.dev/database";
+import {
+  Prisma,
+  type WorkerDeploymentStatus,
+  type WorkerInstanceGroupType,
+} from "@trigger.dev/database";
 import { sqlDatabaseSchema, type PrismaClient, prisma } from "~/db.server";
 import { type Organization } from "~/models/organization.server";
 import { type Project } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { type User } from "~/models/user.server";
+import { processGitMetadata } from "./BranchesPresenter.server";
 
 const pageSize = 20;
 
@@ -102,6 +107,7 @@ export class DeploymentListPresenter {
         userDisplayName: string | null;
         userAvatarUrl: string | null;
         type: WorkerInstanceGroupType;
+        git: Prisma.JsonValue | null;
       }[]
     >`
     SELECT
@@ -117,7 +123,8 @@ export class DeploymentListPresenter {
   u."avatarUrl" AS "userAvatarUrl",
   wd."builtAt",
   wd."deployedAt",
-  wd."type"
+  wd."type",
+  wd."git"
 FROM
   ${sqlDatabaseSchema}."WorkerDeployment" as wd
 INNER JOIN
@@ -164,6 +171,7 @@ LIMIT ${pageSize} OFFSET ${pageSize * (page - 1)};`;
                 avatarUrl: deployment.userAvatarUrl,
               }
             : undefined,
+          git: processGitMetadata(deployment.git),
         };
       }),
     };

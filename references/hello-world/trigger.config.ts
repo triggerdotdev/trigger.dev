@@ -15,7 +15,7 @@ export default defineConfig({
       randomize: true,
     },
   },
-  machine: "large-1x",
+  machine: "small-2x",
   build: {
     extensions: [
       {

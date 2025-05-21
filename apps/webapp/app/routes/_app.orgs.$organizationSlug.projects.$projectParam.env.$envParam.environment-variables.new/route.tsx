@@ -1,5 +1,5 @@
 import {
-  FieldConfig,
+  type FieldConfig,
   list,
   requestIntent,
   useFieldList,
@@ -9,9 +9,9 @@ import {
 import { parse } from "@conform-to/zod";
 import { LockClosedIcon, LockOpenIcon, PlusIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { Form, useActionData, useNavigate, useNavigation } from "@remix-run/react";
-import { ActionFunctionArgs, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
+import { type ActionFunctionArgs, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import dotenv from "dotenv";
-import { RefObject, useCallback, useEffect, useRef, useState } from "react";
+import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
@@ -51,6 +51,7 @@ import {
 } from "~/utils/pathBuilder";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import { EnvironmentVariableKey } from "~/v3/environmentVariables/repository";
+import { Select, SelectItem } from "~/components/primitives/Select";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -186,6 +187,15 @@ export default function Page() {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
+  const [selectedEnvironmentIds, setSelectedEnvironmentIds] = useState<Set<string>>(new Set());
+  const [selectedBranchId, setSelectedBranchId] = useState<string | undefined>(undefined);
+
+  const branchEnvironments = environments.filter((env) => env.branchName);
+  const nonBranchEnvironments = environments.filter((env) => !env.branchName);
+  const selectedEnvironments = environments.filter((env) => selectedEnvironmentIds.has(env.id));
+  const previewIsSelected = selectedEnvironments.some(
+    (env) => env.branchName !== null || env.type === "PREVIEW"
+  );
 
   const isLoading = navigation.state !== "idle" && navigation.formMethod === "post";
 
@@ -201,6 +211,45 @@ export default function Page() {
       variables: [{ key: "", value: "" }],
     },
   });
+
+  const handleEnvironmentChange = (
+    environmentId: string,
+    isChecked: boolean,
+    environmentType?: string
+  ) => {
+    setSelectedEnvironmentIds((prev) => {
+      const newSet = new Set(prev);
+
+      if (isChecked) {
+        if (environmentType === "PREVIEW") {
+          // If PREVIEW is checked, clear all other selections including branches
+          newSet.clear();
+
+          newSet.add(environmentId);
+        } else {
+          // If a non-PREVIEW environment is checked, remove PREVIEW if it's selected
+          const previewEnv = environments.find((env) => env.type === "PREVIEW");
+          if (previewEnv) {
+            newSet.delete(previewEnv.id);
+          }
+          newSet.add(environmentId);
+          setSelectedBranchId(undefined);
+        }
+      } else {
+        newSet.delete(environmentId);
+      }
+
+      return newSet;
+    });
+  };
+
+  const handleBranchChange = (branchId: string) => {
+    if (branchId === "all") {
+      setSelectedBranchId(undefined);
+    } else {
+      setSelectedBranchId(branchId);
+    }
+  };
 
   const [revealAll, setRevealAll] = useState(true);
 
@@ -223,36 +272,70 @@ export default function Page() {
           <Fieldset className="max-h-[70vh] overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
             <InputGroup fullWidth>
               <Label>Environments</Label>
+              {selectedBranchId ? (
+                <input type="hidden" name="environmentIds" value={selectedBranchId} />
+              ) : (
+                Array.from(selectedEnvironmentIds).map((id) => (
+                  <input key={id} type="hidden" name="environmentIds" value={id} />
+                ))
+              )}
               <div className="flex items-center gap-2">
-                {environments.map((environment) => (
+                {nonBranchEnvironments.map((environment) => (
                   <CheckboxWithLabel
                     key={environment.id}
                     id={environment.id}
                     value={environment.id}
-                    name="environmentIds"
-                    type="radio"
+                    defaultChecked={selectedEnvironmentIds.has(environment.id)}
+                    onChange={(isChecked) =>
+                      handleEnvironmentChange(environment.id, isChecked, environment.type)
+                    }
                     label={<EnvironmentLabel environment={environment} className="text-sm" />}
                     variant="button"
                   />
                 ))}
                 {!hasStaging && (
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger>
-                        <TextLink
-                          to={v3BillingPath(organization)}
-                          className="flex w-fit cursor-pointer items-center gap-2 rounded border border-dashed border-charcoal-600 py-2.5 pl-3 pr-4 transition hover:border-charcoal-500 hover:bg-charcoal-850"
-                        >
-                          <LockClosedIcon className="size-4 text-charcoal-500" />
-                          <EnvironmentLabel environment={{ type: "STAGING" }} className="text-sm" />
-                        </TextLink>
-                      </TooltipTrigger>
-                      <TooltipContent className="flex items-center gap-2">
-                        <LockOpenIcon className="size-4 text-indigo-500" />
-                        Upgrade your plan to add a Staging environment.
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
+                  <>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger>
+                          <TextLink
+                            to={v3BillingPath(organization)}
+                            className="flex w-fit cursor-pointer items-center gap-2 rounded border border-dashed border-charcoal-600 py-2.5 pl-3 pr-4 transition hover:border-charcoal-500 hover:bg-charcoal-850"
+                          >
+                            <LockClosedIcon className="size-4 text-charcoal-500" />
+                            <EnvironmentLabel
+                              environment={{ type: "STAGING" }}
+                              className="text-sm"
+                            />
+                          </TextLink>
+                        </TooltipTrigger>
+                        <TooltipContent className="flex items-center gap-2">
+                          <LockOpenIcon className="size-4 text-indigo-500" />
+                          Upgrade your plan to add a Staging environment.
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger>
+                          <TextLink
+                            to={v3BillingPath(organization)}
+                            className="flex w-fit cursor-pointer items-center gap-2 rounded border border-dashed border-charcoal-600 py-2.5 pl-3 pr-4 transition hover:border-charcoal-500 hover:bg-charcoal-850"
+                          >
+                            <LockClosedIcon className="size-4 text-charcoal-500" />
+                            <EnvironmentLabel
+                              environment={{ type: "PREVIEW" }}
+                              className="text-sm"
+                            />
+                          </TextLink>
+                        </TooltipTrigger>
+                        <TooltipContent className="flex items-center gap-2">
+                          <LockOpenIcon className="size-4 text-indigo-500" />
+                          Upgrade your plan to add Preview branches.
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </>
                 )}
               </div>
               <FormError id={environmentIds.errorId}>{environmentIds.error}</FormError>
@@ -261,6 +344,49 @@ export default function Page() {
                 file when running locally.
               </Hint>
             </InputGroup>
+
+            {previewIsSelected && (
+              <InputGroup fullWidth>
+                <Label>Select branch</Label>
+                <div className="flex items-center gap-1">
+                  <Select
+                    variant="tertiary/medium"
+                    value={selectedBranchId ?? "all"}
+                    setValue={handleBranchChange}
+                    placeholder="All branches"
+                    items={[{ id: "all", branchName: "All branches" }, ...branchEnvironments]}
+                    className="w-fit min-w-52"
+                    filter={{
+                      keys: [
+                        (item) => item.branchName?.replace(/\//g, " ").replace(/_/g, " ") ?? "",
+                      ],
+                    }}
+                    text={(val) =>
+                      val ? branchEnvironments.find((b) => b.id === val)?.branchName : null
+                    }
+                    dropdownIcon
+                  >
+                    {(matches) =>
+                      matches?.map((env) => (
+                        <SelectItem key={env.id} value={env.id}>
+                          {env.branchName}
+                        </SelectItem>
+                      ))
+                    }
+                  </Select>
+                  {selectedBranchId !== "all" && selectedBranchId !== undefined && (
+                    <Button
+                      variant="minimal/medium"
+                      type="button"
+                      onClick={() => setSelectedBranchId(undefined)}
+                      LeadingIcon={XMarkIcon}
+                    />
+                  )}
+                </div>
+                <Hint>Select a branch to override variables in the Preview environment.</Hint>
+              </InputGroup>
+            )}
+
             <InputGroup className="w-auto">
               <Switch
                 name="isSecret"
@@ -461,24 +587,30 @@ function VariableField({
   return (
     <fieldset ref={ref}>
       <FieldLayout>
-        <Input
-          id={`${formId}-${baseFieldName}.key`}
-          name={`${baseFieldName}.key`}
-          placeholder="e.g. CLIENT_KEY"
-          value={value.key}
-          onChange={(e) => onChange({ ...value, key: e.currentTarget.value })}
-          autoFocus={index === 0}
-          onPaste={onPaste}
-        />
-        <div className={cn("flex items-center justify-between gap-1")}>
+        <div className="space-y-2">
           <Input
-            id={`${formId}-${baseFieldName}.value`}
-            name={`${baseFieldName}.value`}
-            type={showValue ? "text" : "password"}
-            placeholder="Not set"
-            value={value.value}
-            onChange={(e) => onChange({ ...value, value: e.currentTarget.value })}
+            id={`${formId}-${baseFieldName}.key`}
+            name={`${baseFieldName}.key`}
+            placeholder="e.g. CLIENT_KEY"
+            value={value.key}
+            onChange={(e) => onChange({ ...value, key: e.currentTarget.value })}
+            autoFocus={index === 0}
+            onPaste={onPaste}
           />
+          <FormError id={fields.key.errorId}>{fields.key.error}</FormError>
+        </div>
+        <div className={cn("flex items-start gap-1")}>
+          <div className="grow space-y-2">
+            <Input
+              id={`${formId}-${baseFieldName}.value`}
+              name={`${baseFieldName}.value`}
+              type={showValue ? "text" : "password"}
+              placeholder="Not set"
+              value={value.value}
+              onChange={(e) => onChange({ ...value, value: e.currentTarget.value })}
+            />
+            <FormError id={fields.value.errorId}>{fields.value.error}</FormError>
+          </div>
           {showDeleteButton && (
             <Button
               variant="minimal/medium"
@@ -489,10 +621,6 @@ function VariableField({
           )}
         </div>
       </FieldLayout>
-      <div className="space-y-2">
-        <FormError id={fields.key.errorId}>{fields.key.error}</FormError>
-        <FormError id={fields.value.errorId}>{fields.value.error}</FormError>
-      </div>
     </fieldset>
   );
 }

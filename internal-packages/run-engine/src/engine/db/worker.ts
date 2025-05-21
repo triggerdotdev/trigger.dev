@@ -32,7 +32,8 @@ type RunWithBackgroundWorkerTasksResult =
         | "TASK_NOT_IN_LATEST"
         | "TASK_NEVER_REGISTERED"
         | "BACKGROUND_WORKER_MISMATCH"
-        | "QUEUE_NOT_FOUND";
+        | "QUEUE_NOT_FOUND"
+        | "RUN_ENVIRONMENT_ARCHIVED";
       message: string;
       run: RunWithMininimalEnvironment;
     }
@@ -69,6 +70,7 @@ export async function getRunWithBackgroundWorkerTasks(
         select: {
           id: true,
           type: true,
+          archivedAt: true,
         },
       },
       lockedToVersion: {
@@ -85,6 +87,15 @@ export async function getRunWithBackgroundWorkerTasks(
       success: false as const,
       code: "NO_RUN",
       message: `No run found with id: ${runId}`,
+    };
+  }
+
+  if (run.runtimeEnvironment.archivedAt) {
+    return {
+      success: false as const,
+      code: "RUN_ENVIRONMENT_ARCHIVED",
+      message: `Run is on an archived environment: ${run.id}`,
+      run,
     };
   }
 

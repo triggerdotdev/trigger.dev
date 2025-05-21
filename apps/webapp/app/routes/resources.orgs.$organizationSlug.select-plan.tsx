@@ -195,6 +195,10 @@ const pricingDefinitions = {
     content:
       "Realtime allows you to send the live status and data from your runs to your frontend. This is the number of simultaneous Realtime connections that can be made.",
   },
+  branches: {
+    title: "Branches",
+    content: "The number of preview branches that can be active (you can archive old ones).",
+  },
 };
 
 type PricingPlansProps = {
@@ -495,6 +499,7 @@ export function TierFree({
             </FeatureItem>
             <TeamMembers limits={plan.limits} />
             <Environments limits={plan.limits} />
+            <Branches limits={plan.limits} />
             <Schedules limits={plan.limits} />
             <LogRetention limits={plan.limits} />
             <SupportLevel limits={plan.limits} />
@@ -609,7 +614,9 @@ export function TierHobby({
             tasks
           </DefinitionTip>
         </FeatureItem>
-        <TeamMembers limits={plan.limits} /> <Environments limits={plan.limits} />
+        <TeamMembers limits={plan.limits} />
+        <Environments limits={plan.limits} />
+        <Branches limits={plan.limits} />
         <Schedules limits={plan.limits} />
         <LogRetention limits={plan.limits} />
         <SupportLevel limits={plan.limits} />
@@ -726,6 +733,7 @@ export function TierPro({
         </FeatureItem>
         <TeamMembers limits={plan.limits} />
         <Environments limits={plan.limits} />
+        <Branches limits={plan.limits} />
         <Schedules limits={plan.limits} />
         <LogRetention limits={plan.limits} />
         <SupportLevel limits={plan.limits} />
@@ -938,7 +946,7 @@ function TeamMembers({ limits }: { limits: Limits }) {
 function Environments({ limits }: { limits: Limits }) {
   return (
     <FeatureItem checked>
-      {limits.hasStagingEnvironment ? "Dev, Staging and Prod" : "Dev and Prod"}{" "}
+      {limits.hasStagingEnvironment ? "Dev, Preview and Prod" : "Dev and Prod"}{" "}
       <DefinitionTip
         title={pricingDefinitions.environment.title}
         content={pricingDefinitions.environment.content}
@@ -1014,6 +1022,21 @@ function RealtimeConnecurrency({ limits }: { limits: Limits }) {
         content={pricingDefinitions.realtime.content}
       >
         concurrent Realtime connections
+      </DefinitionTip>
+    </FeatureItem>
+  );
+}
+
+function Branches({ limits }: { limits: Limits }) {
+  return (
+    <FeatureItem checked={limits.branches.number > 0}>
+      {limits.branches.number}
+      {limits.branches.canExceed ? "+ " : " "}
+      <DefinitionTip
+        title={pricingDefinitions.branches.title}
+        content={pricingDefinitions.branches.content}
+      >
+        preview branches
       </DefinitionTip>
     </FeatureItem>
   );

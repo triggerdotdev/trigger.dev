@@ -523,12 +523,16 @@ export async function syncDeclarativeSchedules(
     );
 
     //this throws errors if the schedule is invalid
-    await checkSchedule.call(environment.projectId, {
-      cron: task.schedule.cron,
-      timezone: task.schedule.timezone,
-      taskIdentifier: task.id,
-      friendlyId: existingSchedule?.friendlyId,
-    });
+    await checkSchedule.call(
+      environment.projectId,
+      {
+        cron: task.schedule.cron,
+        timezone: task.schedule.timezone,
+        taskIdentifier: task.id,
+        friendlyId: existingSchedule?.friendlyId,
+      },
+      [environment.id]
+    );
 
     if (existingSchedule) {
       const schedule = await prisma.taskSchedule.update({

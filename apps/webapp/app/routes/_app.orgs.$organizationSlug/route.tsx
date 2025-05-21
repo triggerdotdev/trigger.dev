@@ -12,7 +12,6 @@ import { requireUser } from "~/services/session.server";
 import { telemetry } from "~/services/telemetry.server";
 import { organizationPath } from "~/utils/pathBuilder";
 import { isEnvironmentPauseResumeFormSubmission } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.queues/route";
-import { logger } from "~/services/logger.server";
 
 const ParamsSchema = z.object({
   organizationSlug: z.string(),

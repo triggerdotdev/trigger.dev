@@ -27,6 +27,10 @@ export class ReplayTaskRunService extends BaseService {
       return;
     }
 
+    if (authenticatedEnvironment.archivedAt) {
+      throw new Error("Can't replay a run on an archived environment");
+    }
+
     logger.info("Replaying task run", {
       taskRunId: existingTaskRun.id,
       taskRunFriendlyId: existingTaskRun.friendlyId,

@@ -21,7 +21,8 @@ import { Icon } from "../primitives/Icon";
 import { Paragraph } from "../primitives/Paragraph";
 import { Popover, PopoverContent, PopoverSideMenuTrigger } from "../primitives/Popover";
 import { StepNumber } from "../primitives/StepNumber";
-import { MenuCount, SideMenuItem } from "./SideMenuItem";
+import { SideMenuItem } from "./SideMenuItem";
+import { Badge } from "../primitives/Badge";
 
 export function HelpAndFeedback({ disableShortcut = false }: { disableShortcut?: boolean }) {
   const [isHelpMenuOpen, setHelpMenuOpen] = useState(false);
@@ -109,7 +110,9 @@ export function HelpAndFeedback({ disableShortcut = false }: { disableShortcut?:
                     >
                       <div className="flex w-full items-center justify-between">
                         <span className="text-text-bright">Join our Slack…</span>
-                        <MenuCount count="PRO" />
+                        <Badge variant="extra-small" className="uppercase">
+                          Pro
+                        </Badge>
                       </div>
                     </Button>
                   </DialogTrigger>

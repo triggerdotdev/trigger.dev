@@ -32,8 +32,8 @@ export const secretEnvVar = task({
 
     //get secret env var
     const secretEnvVar = vars.find((v) => v.isSecret);
-    assert.equal(secretEnvVar?.isSecret, true);
-    assert.equal(secretEnvVar?.value, "<redacted>");
+    assert.equal(secretEnvVar?.isSecret, true, "no secretEnvVar found");
+    assert.equal(secretEnvVar?.value, "<redacted>", "secretEnvVar value should be redacted");
 
     //retrieve the secret env var
     const retrievedSecret = await envvars.retrieve(

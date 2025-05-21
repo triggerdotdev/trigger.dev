@@ -299,9 +299,11 @@ export const Button = forwardRef<HTMLButtonElement, ButtonPropsType>(
     if (props.shortcut) {
       useShortcutKeys({
         shortcut: props.shortcut,
-        action: () => {
+        action: (e) => {
           if (innerRef.current) {
             innerRef.current.click();
+            e.preventDefault();
+            e.stopPropagation();
           }
         },
         disabled,

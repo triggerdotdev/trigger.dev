@@ -302,6 +302,32 @@ export const ExternalBuildData = z.object({
 
 export type ExternalBuildData = z.infer<typeof ExternalBuildData>;
 
+export const GitMeta = z.object({
+  commitAuthorName: z.string().optional(),
+  commitMessage: z.string().optional(),
+  commitRef: z.string().optional(),
+  commitSha: z.string().optional(),
+  dirty: z.boolean().optional(),
+  remoteUrl: z.string().optional(),
+  pullRequestNumber: z.number().optional(),
+});
+
+export type GitMeta = z.infer<typeof GitMeta>;
+
+export const UpsertBranchRequestBody = z.object({
+  git: GitMeta.optional(),
+  env: z.enum(["preview"]),
+  branch: z.string(),
+});
+
+export type UpsertBranchRequestBody = z.infer<typeof UpsertBranchRequestBody>;
+
+export const UpsertBranchResponseBody = z.object({
+  id: z.string(),
+});
+
+export type UpsertBranchResponseBody = z.infer<typeof UpsertBranchResponseBody>;
+
 export const InitializeDeploymentResponseBody = z.object({
   id: z.string(),
   contentHash: z.string(),
@@ -320,6 +346,7 @@ export const InitializeDeploymentRequestBody = z.object({
   registryHost: z.string().optional(),
   selfHosted: z.boolean().optional(),
   namespace: z.string().optional(),
+  gitMeta: GitMeta.optional(),
   type: z.enum(["MANAGED", "UNMANAGED", "V1"]).optional(),
 });
 

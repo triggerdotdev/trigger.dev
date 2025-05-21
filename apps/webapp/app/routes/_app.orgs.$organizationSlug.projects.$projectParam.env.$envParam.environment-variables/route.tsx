@@ -4,6 +4,7 @@ import {
   BookOpenIcon,
   InformationCircleIcon,
   LockClosedIcon,
+  MagnifyingGlassIcon,
   PencilSquareIcon,
   PlusIcon,
   TrashIcon,
@@ -18,7 +19,6 @@ import {
 import { useMemo, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
-import { InlineCode } from "~/components/code/InlineCode";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
@@ -34,6 +34,7 @@ import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
+import { Paragraph } from "~/components/primitives/Paragraph";
 import { Switch } from "~/components/primitives/Switch";
 import {
   Table,
@@ -47,6 +48,7 @@ import {
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { prisma } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
+import { useFuzzyFilter } from "~/hooks/useFuzzyFilter";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { redirectWithSuccessMessage } from "~/models/message.server";
@@ -67,6 +69,7 @@ import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/enviro
 import {
   DeleteEnvironmentVariableValue,
   EditEnvironmentVariableValue,
+  EnvironmentVariable,
 } from "~/v3/environmentVariables/repository";
 
 export const meta: MetaFunction = () => {
@@ -198,6 +201,11 @@ export default function Page() {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
+  const { filterText, setFilterText, filteredItems } =
+    useFuzzyFilter<EnvironmentVariableWithSetValues>({
+      items: environmentVariables,
+      keys: ["key", "value"],
+    });
 
   // Add isFirst and isLast to each environment variable
   // They're set based on if they're the first or last time that `key` has been seen in the list
@@ -206,7 +214,7 @@ export default function Page() {
     const keyOccurrences = new Map<string, number>();
 
     // First pass: count total occurrences of each key
-    environmentVariables.forEach((variable) => {
+    filteredItems.forEach((variable) => {
       keyOccurrences.set(variable.key, (keyOccurrences.get(variable.key) || 0) + 1);
     });
 
@@ -214,7 +222,7 @@ export default function Page() {
     const seenKeys = new Set<string>();
     const currentOccurrences = new Map<string, number>();
 
-    return environmentVariables.map((variable) => {
+    return filteredItems.map((variable) => {
       // Track current occurrence number for this key
       const currentCount = (currentOccurrences.get(variable.key) || 0) + 1;
       currentOccurrences.set(variable.key, currentCount);
@@ -234,7 +242,7 @@ export default function Page() {
         occurences: totalOccurrences,
       };
     });
-  }, [environmentVariables]);
+  }, [filteredItems]);
 
   return (
     <PageContainer>
@@ -253,24 +261,35 @@ export default function Page() {
       <PageBody scrollable={false}>
         <div className={cn("flex h-full flex-col")}>
           {environmentVariables.length > 0 && (
-            <div className="flex items-center justify-end gap-2 px-2 py-2">
-              <Switch
-                variant="small"
-                label="Reveal values"
-                checked={revealAll}
-                onCheckedChange={(e) => setRevealAll(e.valueOf())}
+            <div className="flex items-center justify-between gap-2 px-2 py-2">
+              <Input
+                placeholder="Search variables"
+                variant="tertiary"
+                icon={MagnifyingGlassIcon}
+                fullWidth={true}
+                value={filterText}
+                onChange={(e) => setFilterText(e.target.value)}
+                autoFocus
               />
-              <LinkButton
-                to={v3NewEnvironmentVariablesPath(organization, project, environment)}
-                variant="primary/small"
-                LeadingIcon={PlusIcon}
-                shortcut={{ key: "n" }}
-              >
-                Add new
-              </LinkButton>
+              <div className="flex items-center justify-end gap-2">
+                <Switch
+                  variant="small"
+                  label="Reveal values"
+                  checked={revealAll}
+                  onCheckedChange={(e) => setRevealAll(e.valueOf())}
+                />
+                <LinkButton
+                  to={v3NewEnvironmentVariablesPath(organization, project, environment)}
+                  variant="primary/small"
+                  LeadingIcon={PlusIcon}
+                  shortcut={{ key: "n" }}
+                >
+                  Add new
+                </LinkButton>
+              </div>
             </div>
           )}
-          <Table containerClassName={cn(environmentVariables.length === 0 && "border-t-0")}>
+          <Table containerClassName={cn(filteredItems.length === 0 && "border-t-0")}>
             <TableHeader>
               <TableRow>
                 <TableHeaderCell className="w-[25%]">Key</TableHeaderCell>
@@ -354,17 +373,23 @@ export default function Page() {
               ) : (
                 <TableRow>
                   <TableCell colSpan={4}>
-                    <div className="flex flex-col items-center justify-center gap-y-4 py-8">
-                      <Header2>You haven't set any environment variables yet.</Header2>
-                      <LinkButton
-                        to={v3NewEnvironmentVariablesPath(organization, project, environment)}
-                        variant="primary/medium"
-                        LeadingIcon={PlusIcon}
-                        shortcut={{ key: "n" }}
-                      >
-                        Add new
-                      </LinkButton>
-                    </div>
+                    {environmentVariables.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center gap-y-4 py-8">
+                        <Header2>You haven't set any environment variables yet.</Header2>
+                        <LinkButton
+                          to={v3NewEnvironmentVariablesPath(organization, project, environment)}
+                          variant="primary/medium"
+                          LeadingIcon={PlusIcon}
+                          shortcut={{ key: "n" }}
+                        >
+                          Add new
+                        </LinkButton>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center gap-y-4 py-8">
+                        <Paragraph>No variables match your search.</Paragraph>
+                      </div>
+                    )}
                   </TableCell>
                 </TableRow>
               )}

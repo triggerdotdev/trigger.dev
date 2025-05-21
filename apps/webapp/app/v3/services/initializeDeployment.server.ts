@@ -1,14 +1,14 @@
-import { InitializeDeploymentRequestBody } from "@trigger.dev/core/v3";
+import { type InitializeDeploymentRequestBody } from "@trigger.dev/core/v3";
+import { WorkerDeploymentType } from "@trigger.dev/database";
 import { customAlphabet } from "nanoid";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { env } from "~/env.server";
+import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { logger } from "~/services/logger.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { createRemoteImageBuild } from "../remoteImageBuilder.server";
 import { calculateNextBuildVersion } from "../utils/calculateNextBuildVersion";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
-import { env } from "~/env.server";
-import { WorkerDeploymentType } from "@trigger.dev/database";
-import { logger } from "~/services/logger.server";
 
 const nanoid = customAlphabet("1234567890abcdefghijklmnopqrstuvwxyz", 8);
 
@@ -107,6 +107,7 @@ export class InitializeDeploymentService extends BaseService {
           triggeredById: triggeredBy?.id,
           type: payload.type,
           imageReference: isManaged ? undefined : unmanagedImageTag,
+          git: payload.gitMeta ?? undefined,
         },
       });
 

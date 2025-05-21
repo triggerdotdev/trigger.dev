@@ -10,6 +10,7 @@ import { type Project } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { type User } from "~/models/user.server";
 import { getUsername } from "~/utils/username";
+import { processGitMetadata } from "./BranchesPresenter.server";
 
 export type ErrorData = {
   name: string;
@@ -98,6 +99,7 @@ export class DeploymentPresenter {
         builtAt: true,
         deployedAt: true,
         createdAt: true,
+        git: true,
         promotions: {
           select: {
             label: true,
@@ -162,6 +164,7 @@ export class DeploymentPresenter {
         errorData: DeploymentPresenter.prepareErrorData(deployment.errorData),
         isBuilt: !!deployment.builtAt,
         type: deployment.type,
+        git: processGitMetadata(deployment.git),
       },
     };
   }

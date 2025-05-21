@@ -53,6 +53,7 @@ import { createSearchParams } from "~/utils/searchParams";
 import { deploymentIndexingIsRetryable } from "~/v3/deploymentStatus";
 import { compareDeploymentVersions } from "~/v3/utils/deploymentVersions";
 import { useEffect } from "react";
+import { GitMetadata } from "~/components/GitMetadata";
 
 export const meta: MetaFunction = () => {
   return [
@@ -193,6 +194,7 @@ export default function Page() {
                       <TableHeaderCell>Tasks</TableHeaderCell>
                       <TableHeaderCell>Deployed at</TableHeaderCell>
                       <TableHeaderCell>Deployed by</TableHeaderCell>
+                      <TableHeaderCell>Git</TableHeaderCell>
                       <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
                     </TableRow>
                   </TableHeader>
@@ -255,6 +257,11 @@ export default function Page() {
                               ) : (
                                 "–"
                               )}
+                            </TableCell>
+                            <TableCell isSelected={isSelected}>
+                              <div className="-ml-1 flex items-center">
+                                <GitMetadata git={deployment.git} />
+                              </div>
                             </TableCell>
                             <DeploymentActionsCell
                               deployment={deployment}

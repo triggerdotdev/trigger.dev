@@ -1,23 +1,22 @@
 import { json } from "@remix-run/server-runtime";
-import { Prettify } from "@trigger.dev/core";
+import { type Prettify } from "@trigger.dev/core";
 import { SignJWT, errors, jwtVerify } from "jose";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { findProjectByRef } from "~/models/project.server";
 import {
-  RuntimeEnvironment,
   findEnvironmentByApiKey,
   findEnvironmentByPublicApiKey,
 } from "~/models/runtimeEnvironment.server";
+import { type RuntimeEnvironmentForEnvRepo } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import { logger } from "./logger.server";
 import {
-  PersonalAccessTokenAuthenticationResult,
+  type PersonalAccessTokenAuthenticationResult,
   authenticateApiRequestWithPersonalAccessToken,
   isPersonalAccessToken,
 } from "./personalAccessToken.server";
 import { isPublicJWT, validatePublicJwtKey } from "./realtime/jwtAuth.server";
-import { RuntimeEnvironmentForEnvRepo } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 
 const ClaimsSchema = z.object({
   scopes: z.array(z.string()).optional(),
@@ -57,13 +56,13 @@ export async function authenticateApiRequest(
   request: Request,
   options: { allowPublicKey?: boolean; allowJWT?: boolean } = {}
 ): Promise<ApiAuthenticationResultSuccess | undefined> {
-  const apiKey = getApiKeyFromRequest(request);
+  const { apiKey, branchName } = getApiKeyFromRequest(request);
 
   if (!apiKey) {
     return;
   }
 
-  const authentication = await authenticateApiKey(apiKey, options);
+  const authentication = await authenticateApiKey(apiKey, { ...options, branchName });
 
   return authentication;
 }
@@ -76,7 +75,7 @@ export async function authenticateApiRequestWithFailure(
   request: Request,
   options: { allowPublicKey?: boolean; allowJWT?: boolean } = {}
 ): Promise<ApiAuthenticationResult> {
-  const apiKey = getApiKeyFromRequest(request);
+  const { apiKey, branchName } = getApiKeyFromRequest(request);
 
   if (!apiKey) {
     return {
@@ -85,7 +84,7 @@ export async function authenticateApiRequestWithFailure(
     };
   }
 
-  const authentication = await authenticateApiKeyWithFailure(apiKey, options);
+  const authentication = await authenticateApiKeyWithFailure(apiKey, { ...options, branchName });
 
   return authentication;
 }
@@ -95,7 +94,7 @@ export async function authenticateApiRequestWithFailure(
  */
 export async function authenticateApiKey(
   apiKey: string,
-  options: { allowPublicKey?: boolean; allowJWT?: boolean } = {}
+  options: { allowPublicKey?: boolean; allowJWT?: boolean; branchName?: string } = {}
 ): Promise<ApiAuthenticationResultSuccess | undefined> {
   const result = getApiKeyResult(apiKey);
 
@@ -113,7 +112,7 @@ export async function authenticateApiKey(
 
   switch (result.type) {
     case "PUBLIC": {
-      const environment = await findEnvironmentByPublicApiKey(result.apiKey);
+      const environment = await findEnvironmentByPublicApiKey(result.apiKey, options.branchName);
       if (!environment) {
         return;
       }
@@ -125,7 +124,7 @@ export async function authenticateApiKey(
       };
     }
     case "PRIVATE": {
-      const environment = await findEnvironmentByApiKey(result.apiKey);
+      const environment = await findEnvironmentByApiKey(result.apiKey, options.branchName);
       if (!environment) {
         return;
       }
@@ -160,9 +159,9 @@ export async function authenticateApiKey(
  * This method is the same as `authenticateApiKey` but it returns a failure result instead of undefined.
  * It should be used from now on to ensure that the API key is always validated and provide a failure result.
  */
-export async function authenticateApiKeyWithFailure(
+async function authenticateApiKeyWithFailure(
   apiKey: string,
-  options: { allowPublicKey?: boolean; allowJWT?: boolean } = {}
+  options: { allowPublicKey?: boolean; allowJWT?: boolean; branchName?: string } = {}
 ): Promise<ApiAuthenticationResult> {
   const result = getApiKeyResult(apiKey);
 
@@ -189,7 +188,7 @@ export async function authenticateApiKeyWithFailure(
 
   switch (result.type) {
     case "PUBLIC": {
-      const environment = await findEnvironmentByPublicApiKey(result.apiKey);
+      const environment = await findEnvironmentByPublicApiKey(result.apiKey, options.branchName);
       if (!environment) {
         return {
           ok: false,
@@ -204,7 +203,7 @@ export async function authenticateApiKeyWithFailure(
       };
     }
     case "PRIVATE": {
-      const environment = await findEnvironmentByApiKey(result.apiKey);
+      const environment = await findEnvironmentByApiKey(result.apiKey, options.branchName);
       if (!environment) {
         return {
           ok: false,
@@ -254,19 +253,25 @@ export async function authenticateAuthorizationHeader(
   return authenticateApiKey(apiKey, { allowPublicKey, allowJWT });
 }
 
-export function isPublicApiKey(key: string) {
+function isPublicApiKey(key: string) {
   return key.startsWith("pk_");
 }
 
-export function isSecretApiKey(key: string) {
+function isSecretApiKey(key: string) {
   return key.startsWith("tr_");
 }
 
-export function getApiKeyFromRequest(request: Request) {
-  return getApiKeyFromHeader(request.headers.get("Authorization"));
+function getApiKeyFromRequest(request: Request): {
+  apiKey: string | undefined;
+  branchName: string | undefined;
+} {
+  const apiKey = getApiKeyFromHeader(request.headers.get("Authorization"));
+  const branchHeaderValue = request.headers.get("x-trigger-branch");
+
+  return { apiKey, branchName: branchHeaderValue ? branchHeaderValue : undefined };
 }
 
-export function getApiKeyFromHeader(authorization?: string | null) {
+function getApiKeyFromHeader(authorization?: string | null) {
   if (typeof authorization !== "string" || !authorization) {
     return;
   }
@@ -275,7 +280,7 @@ export function getApiKeyFromHeader(authorization?: string | null) {
   return apiKey;
 }
 
-export function getApiKeyResult(apiKey: string): {
+function getApiKeyResult(apiKey: string): {
   apiKey: string;
   type: "PUBLIC" | "PRIVATE" | "PUBLIC_JWT";
 } {
@@ -302,7 +307,7 @@ export type DualAuthenticationResult =
 export async function authenticateProjectApiKeyOrPersonalAccessToken(
   request: Request
 ): Promise<DualAuthenticationResult | undefined> {
-  const apiKey = getApiKeyFromRequest(request);
+  const { apiKey, branchName } = getApiKeyFromRequest(request);
   if (!apiKey) {
     return;
   }
@@ -320,7 +325,7 @@ export async function authenticateProjectApiKeyOrPersonalAccessToken(
     };
   }
 
-  const result = await authenticateApiKey(apiKey, { allowPublicKey: false });
+  const result = await authenticateApiKey(apiKey, { allowPublicKey: false, branchName });
 
   if (!result) {
     return;

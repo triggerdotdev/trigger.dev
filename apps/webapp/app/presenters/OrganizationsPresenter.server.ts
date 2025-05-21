@@ -1,4 +1,4 @@
-import { type PrismaClient } from "@trigger.dev/database";
+import { RuntimeEnvironment, type PrismaClient } from "@trigger.dev/database";
 import { redirect } from "remix-typedjson";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
@@ -76,6 +76,10 @@ export class OrganizationsPresenter {
             type: true,
             slug: true,
             paused: true,
+            isBranchableEnvironment: true,
+            branchName: true,
+            parentEnvironmentId: true,
+            archivedAt: true,
             orgMember: {
               select: {
                 userId: true,
@@ -172,7 +176,21 @@ export class OrganizationsPresenter {
     user: UserFromSession;
     projectId: string;
     environmentSlug: string | undefined;
-    environments: MinimumEnvironment[];
+    environments: (Pick<
+      RuntimeEnvironment,
+      | "id"
+      | "slug"
+      | "type"
+      | "branchName"
+      | "paused"
+      | "parentEnvironmentId"
+      | "isBranchableEnvironment"
+      | "archivedAt"
+    > & {
+      orgMember: null | {
+        userId: string | undefined;
+      };
+    })[];
   }) {
     if (environmentSlug) {
       const env = environments.find((e) => e.slug === environmentSlug);

@@ -59,6 +59,7 @@ function PopoverMenuItem({
   isSelected,
   variant = { variant: "small-menu-item" },
   leadingIconClassName,
+  className,
 }: {
   to: string;
   icon?: RenderIcon;
@@ -66,6 +67,7 @@ function PopoverMenuItem({
   isSelected?: boolean;
   variant?: ButtonContentPropsType;
   leadingIconClassName?: string;
+  className?: string;
 }) {
   return (
     <LinkButton
@@ -78,7 +80,8 @@ function PopoverMenuItem({
       TrailingIcon={isSelected ? CheckIcon : undefined}
       className={cn(
         "group-hover:bg-charcoal-700",
-        isSelected ? "bg-charcoal-750 group-hover:bg-charcoal-600/50" : undefined
+        isSelected ? "bg-charcoal-750 group-hover:bg-charcoal-600/50" : undefined,
+        className
       )}
     >
       {title}

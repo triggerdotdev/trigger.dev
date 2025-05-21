@@ -11,6 +11,8 @@ export type UseApiClientOptions = {
   accessToken?: string;
   /** Optional base URL for the API endpoints */
   baseURL?: string;
+  /** Optional preview branch name for preview environments */
+  previewBranch?: string;
   /** Optional additional request configuration */
   requestOptions?: ApiRequestOptions;
 
@@ -47,7 +49,7 @@ export function useApiClient(options?: UseApiClientOptions): ApiClient | undefin
 
   const baseUrl = options?.baseURL ?? auth?.baseURL ?? "https://api.trigger.dev";
   const accessToken = options?.accessToken ?? auth?.accessToken;
-
+  const previewBranch = options?.previewBranch ?? auth?.previewBranch;
   if (!accessToken) {
     if (options?.enabled === false) {
       return undefined;
@@ -61,5 +63,5 @@ export function useApiClient(options?: UseApiClientOptions): ApiClient | undefin
     ...options?.requestOptions,
   };
 
-  return new ApiClient(baseUrl, accessToken, requestOptions);
+  return new ApiClient(baseUrl, accessToken, previewBranch, requestOptions);
 }

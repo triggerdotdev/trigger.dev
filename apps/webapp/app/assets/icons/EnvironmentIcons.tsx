@@ -151,3 +151,28 @@ export function DeployedEnvironmentIconSmall({ className }: { className?: string
     </svg>
   );
 }
+
+export function PreviewEnvironmentIconSmall({ className }: { className?: string }) {
+  return <BranchEnvironmentIconSmall className={className} />;
+}
+
+export function BranchEnvironmentIconSmall({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path
+        d="M2.82278 6.95728C2.24851 6.95728 1.89881 6.32505 2.20461 5.83911L4.38235 2.38306C4.66862 1.92873 5.33142 1.92874 5.6177 2.38306L7.79543 5.83911C8.10121 6.32504 7.75153 6.95728 7.17727 6.95728L2.82278 6.95728Z"
+        fill="currentColor"
+      />
+      <path
+        d="M4 6H6V15C6 15.5523 5.55228 16 5 16V16C4.44772 16 4 15.5523 4 15V6Z"
+        fill="currentColor"
+      />
+      <path
+        d="M13 7.5V7.5C13 8.88071 11.8807 10 10.5 10H8C6.34315 10 5 11.3431 5 13V14.5"
+        stroke="currentColor"
+        strokeWidth="2"
+      />
+      <circle cx="13" cy="5" r="2" stroke="currentColor" strokeWidth="2" />
+    </svg>
+  );
+}

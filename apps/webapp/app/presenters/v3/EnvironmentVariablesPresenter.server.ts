@@ -71,6 +71,8 @@ export class EnvironmentVariablesPresenter {
       select: {
         id: true,
         type: true,
+        isBranchableEnvironment: true,
+        branchName: true,
         orgMember: {
           select: {
             userId: true,
@@ -81,6 +83,7 @@ export class EnvironmentVariablesPresenter {
         project: {
           slug: projectSlug,
         },
+        archivedAt: null,
       },
     });
 
@@ -109,7 +112,7 @@ export class EnvironmentVariablesPresenter {
               {
                 id: environmentVariable.id,
                 key: environmentVariable.key,
-                environment: { type: env.type, id: env.id },
+                environment: { type: env.type, id: env.id, branchName: env.branchName },
                 value: isSecret ? "" : val.value,
                 isSecret,
               },
@@ -120,6 +123,8 @@ export class EnvironmentVariablesPresenter {
       environments: sortedEnvironments.map((environment) => ({
         id: environment.id,
         type: environment.type,
+        isBranchableEnvironment: environment.isBranchableEnvironment,
+        branchName: environment.branchName,
       })),
       hasStaging: environments.some((environment) => environment.type === "STAGING"),
     };

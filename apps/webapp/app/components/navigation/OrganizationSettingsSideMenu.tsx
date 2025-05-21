@@ -21,6 +21,7 @@ import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 import { Paragraph } from "../primitives/Paragraph";
+import { Badge } from "../primitives/Badge";
 
 export function OrganizationSettingsSideMenu({
   organization,
@@ -69,9 +70,9 @@ export function OrganizationSettingsSideMenu({
               to={v3BillingPath(organization)}
               data-action="billing"
               badge={
-                currentPlan?.v3Subscription?.isPaying
-                  ? currentPlan?.v3Subscription?.plan?.title
-                  : undefined
+                currentPlan?.v3Subscription?.isPaying ? (
+                  <Badge variant="extra-small">{currentPlan?.v3Subscription?.plan?.title}</Badge>
+                ) : undefined
               }
             />
           )}

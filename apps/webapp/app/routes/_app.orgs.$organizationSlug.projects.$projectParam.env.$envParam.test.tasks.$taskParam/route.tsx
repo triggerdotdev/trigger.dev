@@ -115,6 +115,10 @@ export const action: ActionFunction = async ({ request, params }) => {
     return redirectBackWithErrorMessage(request, "Environment not found");
   }
 
+  if (environment.archivedAt) {
+    return redirectBackWithErrorMessage(request, "Can't run a test on an archived environment");
+  }
+
   const testService = new TestTaskService();
   try {
     const run = await testService.call(environment, submission.value);

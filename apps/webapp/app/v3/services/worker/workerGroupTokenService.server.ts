@@ -457,7 +457,11 @@ export class WorkerGroupTokenService extends WithRunEngine {
         },
         include: {
           deployment: true,
-          environment: true,
+          environment: {
+            include: {
+              parentEnvironment: true,
+            },
+          },
         },
       });
 
@@ -481,6 +485,10 @@ export class WorkerGroupTokenService extends WithRunEngine {
 export const WorkerInstanceEnv = z.enum(["dev", "staging", "prod"]).default("prod");
 export type WorkerInstanceEnv = z.infer<typeof WorkerInstanceEnv>;
 
+type EnvironmentWithParent = RuntimeEnvironment & {
+  parentEnvironment?: RuntimeEnvironment | null;
+};
+
 export type AuthenticatedWorkerInstanceOptions = WithRunEngineOptions<{
   type: WorkerInstanceGroupType;
   name: string;
@@ -491,7 +499,7 @@ export type AuthenticatedWorkerInstanceOptions = WithRunEngineOptions<{
   deploymentId?: string;
   backgroundWorkerId?: string;
   runnerId?: string;
-  environment: RuntimeEnvironment | null;
+  environment: EnvironmentWithParent | null;
 }>;
 
 export class AuthenticatedWorkerInstance extends WithRunEngine {
@@ -501,7 +509,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
   readonly workerInstanceId: string;
   readonly runnerId?: string;
   readonly masterQueue: string;
-  readonly environment: RuntimeEnvironment | null;
+  readonly environment: EnvironmentWithParent | null;
   readonly deploymentId?: string;
   readonly backgroundWorkerId?: string;
 
@@ -686,13 +694,17 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
         where: {
           id: engineResult.execution.environment.id,
         },
+        include: {
+          parentEnvironment: true,
+        },
       }));
 
     const envVars = environment
       ? await this.getEnvVars(
           environment,
           engineResult.run.id,
-          engineResult.execution.machine ?? defaultMachinePreset
+          engineResult.execution.machine ?? defaultMachinePreset,
+          environment.parentEnvironment ?? undefined
         )
       : {};
 
@@ -797,9 +809,10 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
   private async getEnvVars(
     environment: RuntimeEnvironment,
     runId: string,
-    machinePreset: MachinePreset
+    machinePreset: MachinePreset,
+    parentEnvironment?: RuntimeEnvironment
   ): Promise<Record<string, string>> {
-    const variables = await resolveVariablesForEnvironment(environment);
+    const variables = await resolveVariablesForEnvironment(environment, parentEnvironment);
 
     const jwt = await generateJWTTokenForEnvironment(environment, {
       run_id: runId,

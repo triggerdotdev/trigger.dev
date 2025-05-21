@@ -132,27 +132,50 @@ export default function Page() {
                 </TableRow>
               ))}
               {!hasStaging && (
-                <TableRow>
-                  <TableCell>
-                    <EnvironmentCombo environment={{ type: "STAGING" }} />
-                  </TableCell>
-                  <TableCell>
-                    <LinkButton
-                      to={v3BillingPath(
-                        organization,
-                        "Upgrade to unlock a Staging environment for your projects."
-                      )}
-                      variant="secondary/small"
-                      LeadingIcon={ArrowUpCircleIcon}
-                      leadingIconClassName="text-indigo-500"
-                    >
-                      Upgrade to get staging environment
-                    </LinkButton>
-                  </TableCell>
-                  <TableCell></TableCell>
-                  <TableCell></TableCell>
-                  <TableCell></TableCell>
-                </TableRow>
+                <>
+                  <TableRow>
+                    <TableCell>
+                      <EnvironmentCombo environment={{ type: "STAGING" }} />
+                    </TableCell>
+                    <TableCell>
+                      <LinkButton
+                        to={v3BillingPath(
+                          organization,
+                          "Upgrade to unlock a Staging environment for your projects."
+                        )}
+                        variant="secondary/small"
+                        LeadingIcon={ArrowUpCircleIcon}
+                        leadingIconClassName="text-indigo-500"
+                      >
+                        Upgrade to get staging environment
+                      </LinkButton>
+                    </TableCell>
+                    <TableCell></TableCell>
+                    <TableCell></TableCell>
+                    <TableCell></TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell>
+                      <EnvironmentCombo environment={{ type: "PREVIEW" }} />
+                    </TableCell>
+                    <TableCell>
+                      <LinkButton
+                        to={v3BillingPath(
+                          organization,
+                          "Upgrade to unlock Preview branches for your projects."
+                        )}
+                        variant="secondary/small"
+                        LeadingIcon={ArrowUpCircleIcon}
+                        leadingIconClassName="text-indigo-500"
+                      >
+                        Upgrade to get preview branches
+                      </LinkButton>
+                    </TableCell>
+                    <TableCell></TableCell>
+                    <TableCell></TableCell>
+                    <TableCell></TableCell>
+                  </TableRow>
+                </>
               )}
             </TableBody>
           </Table>

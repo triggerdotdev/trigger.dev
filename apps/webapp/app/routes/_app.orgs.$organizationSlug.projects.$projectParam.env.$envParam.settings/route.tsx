@@ -1,6 +1,6 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { FolderIcon } from "@heroicons/react/20/solid";
+import { ExclamationTriangleIcon, FolderIcon, TrashIcon } from "@heroicons/react/20/solid";
 import { Form, type MetaFunction, useActionData, useNavigation } from "@remix-run/react";
 import { type ActionFunction, json } from "@remix-run/server-runtime";
 import { z } from "zod";
@@ -272,7 +272,7 @@ export default function Page() {
                     <Input
                       {...conform.input(projectSlug, { type: "text" })}
                       placeholder="Your project slug"
-                      icon="warning"
+                      icon={ExclamationTriangleIcon}
                     />
                     <FormError id={projectSlug.errorId}>{projectSlug.error}</FormError>
                     <FormError>{deleteForm.error}</FormError>
@@ -287,7 +287,7 @@ export default function Page() {
                       <Button
                         type="submit"
                         variant={"danger/small"}
-                        LeadingIcon={isDeleteLoading ? "spinner-white" : "trash-can"}
+                        LeadingIcon={isDeleteLoading ? SpinnerWhite : TrashIcon}
                         leadingIconClassName="text-white"
                         disabled={isDeleteLoading}
                       >

@@ -3,6 +3,7 @@ import { CliApiClient } from "../apiClient.js";
 import { readAuthConfigProfile } from "./configFiles.js";
 import { getTracer } from "../telemetry/tracing.js";
 import { logger } from "./logger.js";
+import { GitMeta } from "@trigger.dev/core/v3";
 
 const tracer = getTracer();
 
@@ -94,6 +95,7 @@ export type GetEnvOptions = {
   apiUrl: string;
   projectRef: string;
   env: string;
+  branch?: string;
   profile: string;
 };
 
@@ -124,11 +126,36 @@ export async function getProjectClient(options: GetEnvOptions) {
     return;
   }
 
-  const client = new CliApiClient(projectEnv.data.apiUrl, projectEnv.data.apiKey);
+  const client = new CliApiClient(projectEnv.data.apiUrl, projectEnv.data.apiKey, options.branch);
 
   return {
     id: projectEnv.data.projectId,
     name: projectEnv.data.name,
     client,
   };
+}
+
+export type UpsertBranchOptions = {
+  accessToken: string;
+  apiUrl: string;
+  projectRef: string;
+  branch: string;
+  gitMeta: GitMeta | undefined;
+};
+
+export async function upsertBranch(options: UpsertBranchOptions) {
+  const apiClient = new CliApiClient(options.apiUrl, options.accessToken);
+
+  const branchEnv = await apiClient.upsertBranch(options.projectRef, {
+    env: "preview",
+    branch: options.branch,
+    git: options.gitMeta,
+  });
+
+  if (!branchEnv.success) {
+    logger.error(`Failed to upsert branch: ${branchEnv.error}`);
+    return;
+  }
+
+  return branchEnv.data;
 }

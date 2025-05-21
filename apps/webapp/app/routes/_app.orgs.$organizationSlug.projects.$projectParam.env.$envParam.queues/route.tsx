@@ -168,6 +168,10 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
   const redirectPath = `/orgs/${organizationSlug}/projects/${projectParam}/env/${envParam}/queues?page=${page}`;
 
+  if (environment.archivedAt) {
+    return redirectWithErrorMessage(redirectPath, request, "This branch is archived");
+  }
+
   switch (action) {
     case "environment-pause":
       const pauseService = new PauseEnvironmentService();
