@@ -279,6 +279,11 @@ function createExternalsCollector(
                 return;
               }
 
+              if (args.path === "_sentry-debug-id-injection-stub") {
+                // Ignore sentry stub
+                return;
+              }
+
               // Try to resolve the actual file path
               const [resolveError, resolvedPath] = await tryCatch(
                 resolveModule(args.path, args.resolveDir)
