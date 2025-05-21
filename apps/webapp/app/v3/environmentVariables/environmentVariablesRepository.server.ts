@@ -1,24 +1,19 @@
-import {
-  Prisma,
-  PrismaClient,
-  RuntimeEnvironment,
-  RuntimeEnvironmentType,
-} from "@trigger.dev/database";
+import { Prisma, type PrismaClient, type RuntimeEnvironmentType } from "@trigger.dev/database";
 import { z } from "zod";
-import { environmentFullTitle, environmentTitle } from "~/components/environments/EnvironmentLabel";
+import { environmentFullTitle } from "~/components/environments/EnvironmentLabel";
 import { $transaction, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import {
-  CreateResult,
-  DeleteEnvironmentVariable,
-  DeleteEnvironmentVariableValue,
-  EnvironmentVariable,
-  EnvironmentVariableWithSecret,
-  ProjectEnvironmentVariable,
-  Repository,
-  Result,
+  type CreateResult,
+  type DeleteEnvironmentVariable,
+  type DeleteEnvironmentVariableValue,
+  type EnvironmentVariable,
+  type EnvironmentVariableWithSecret,
+  type ProjectEnvironmentVariable,
+  type Repository,
+  type Result,
 } from "./repository";
 
 function secretKeyProjectPrefix(projectId: string) {
@@ -94,9 +89,7 @@ export class EnvironmentVariablesRepository implements Repository {
     }
 
     // Remove `TRIGGER_SECRET_KEY` or `TRIGGER_API_URL`
-    let values = options.variables.filter(
-      (v) => v.key !== "TRIGGER_SECRET_KEY" && v.key !== "TRIGGER_API_URL"
-    );
+    let values = removeBlacklistedVariables(options.variables);
 
     //get rid of empty variables
     values = values.filter((v) => v.key.trim() !== "" && v.value.trim() !== "");
@@ -610,12 +603,14 @@ export class EnvironmentVariablesRepository implements Repository {
       mergedSecrets.set(parsedKey, secret.value.secret);
     }
 
-    return Array.from(mergedSecrets.entries()).map(([key, value]) => {
+    const merged = Array.from(mergedSecrets.entries()).map(([key, value]) => {
       return {
         key,
         value,
       };
     });
+
+    return removeBlacklistedVariables(merged);
   }
 
   async getEnvironmentVariables(
@@ -833,7 +828,24 @@ export async function resolveVariablesForEnvironment(
       ? await resolveBuiltInDevVariables(runtimeEnvironment)
       : await resolveBuiltInProdVariables(runtimeEnvironment, parentEnvironment);
 
-  return [...overridableTriggerVariables, ...projectSecrets, ...builtInVariables];
+  return deduplicateVariableArray([
+    ...overridableTriggerVariables,
+    ...projectSecrets,
+    ...builtInVariables,
+  ]);
+}
+
+/** Later variables override earlier ones */
+export function deduplicateVariableArray(variables: EnvironmentVariable[]) {
+  const result: EnvironmentVariable[] = [];
+  // Process array in reverse order so later variables override earlier ones
+  for (const variable of [...variables].reverse()) {
+    if (!result.some((v) => v.key === variable.key)) {
+      result.push(variable);
+    }
+  }
+  // Reverse back to maintain original order but with later variables taking precedence
+  return result.reverse();
 }
 
 async function resolveOverridableTriggerVariables(
@@ -1019,4 +1031,43 @@ async function resolveCommonBuiltInVariables(
   runtimeEnvironment: RuntimeEnvironmentForEnvRepo
 ): Promise<Array<EnvironmentVariable>> {
   return [];
+}
+
+type VariableRule =
+  | { type: "exact"; key: string }
+  | { type: "prefix"; prefix: string }
+  | { type: "whitelist"; key: string };
+
+const blacklistedVariables: VariableRule[] = [
+  { type: "exact", key: "TRIGGER_SECRET_KEY" },
+  { type: "exact", key: "TRIGGER_API_URL" },
+  { type: "prefix", prefix: "OTEL_" },
+  { type: "whitelist", key: "OTEL_LOG_LEVEL" },
+];
+
+export function removeBlacklistedVariables(
+  variables: EnvironmentVariable[]
+): EnvironmentVariable[] {
+  return variables.filter((v) => {
+    const whitelisted = blacklistedVariables.find(
+      (bv) => bv.type === "whitelist" && bv.key === v.key
+    );
+    if (whitelisted) {
+      return true;
+    }
+
+    const exact = blacklistedVariables.find((bv) => bv.type === "exact" && bv.key === v.key);
+    if (exact) {
+      return false;
+    }
+
+    const prefix = blacklistedVariables.find(
+      (bv) => bv.type === "prefix" && v.key.startsWith(bv.prefix)
+    );
+    if (prefix) {
+      return false;
+    }
+
+    return true;
+  });
 }
