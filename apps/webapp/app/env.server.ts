@@ -379,7 +379,7 @@ const EnvironmentSchema = z.object({
   MAX_SEQUENTIAL_INDEX_FAILURE_COUNT: z.coerce.number().default(96),
 
   LOOPS_API_KEY: z.string().optional(),
-  MARQS_DISABLE_REBALANCING: z.coerce.boolean().default(false),
+  MARQS_DISABLE_REBALANCING: BoolEnv.default(false),
   MARQS_VISIBILITY_TIMEOUT_MS: z.coerce
     .number()
     .int()
@@ -457,7 +457,7 @@ const EnvironmentSchema = z.object({
     .number()
     .int()
     .default(60_000 * 10),
-  RUN_ENGINE_DEBUG_WORKER_NOTIFICATIONS: z.coerce.boolean().default(false),
+  RUN_ENGINE_DEBUG_WORKER_NOTIFICATIONS: BoolEnv.default(false),
   RUN_ENGINE_PARENT_QUEUE_LIMIT: z.coerce.number().int().default(1000),
   RUN_ENGINE_CONCURRENCY_LIMIT_BIAS: z.coerce.number().default(0.75),
   RUN_ENGINE_AVAILABLE_CAPACITY_BIAS: z.coerce.number().default(0.3),
