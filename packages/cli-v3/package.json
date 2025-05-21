@@ -96,6 +96,7 @@
     "@trigger.dev/build": "workspace:4.0.0-v4-beta.16",
     "@trigger.dev/core": "workspace:4.0.0-v4-beta.16",
     "ansi-escapes": "^7.0.0",
+    "braces": "^3.0.3",
     "c12": "^1.11.1",
     "chalk": "^5.2.0",
     "chokidar": "^3.6.0",

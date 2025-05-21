@@ -1,6 +1,6 @@
 import * as esbuild from "esbuild";
 import { makeRe } from "minimatch";
-import { mkdir, symlink } from "node:fs/promises";
+import { access, mkdir, symlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { readPackageJSON, resolvePackageJSON } from "pkg-types";
 import nodeResolve from "resolve";
@@ -14,6 +14,10 @@ import {
 import { logger } from "../utilities/logger.js";
 import { CliApiClient } from "../apiClient.js";
 import { resolvePathSync as esmResolveSync } from "mlly";
+import braces from "braces";
+import { builtinModules } from "node:module";
+import { tryCatch } from "@trigger.dev/core/v3";
+import { resolveModule } from "./resolveModule.js";
 
 /**
  * externals in dev might not be resolvable from the worker directory
@@ -140,6 +144,11 @@ function createExternalsCollector(
 
   const maybeExternals = discoverMaybeExternals(target, resolvedConfig, forcedExternal);
 
+  // Cache: resolvedPath (dir) -> packageJsonPath (null = failed to resolve)
+  const packageJsonCache = new Map<string, string | null>();
+  // Cache: packageRoot (dir) -> boolean (true = mark as external)
+  const isExternalCache = new Map<string, boolean>();
+
   return {
     externals,
     plugin: {
@@ -147,10 +156,17 @@ function createExternalsCollector(
       setup: (build) => {
         build.onStart(async () => {
           externals.splice(0);
+          isExternalCache.clear();
         });
 
         build.onEnd(async () => {
-          logger.debug("[externals][onEnd] Collected externals", { externals });
+          logger.debug("[externals][onEnd] Collected externals", {
+            externals,
+            maybeExternals,
+            autoDetectExternal: !!resolvedConfig.build?.experimental_autoDetectExternal,
+            packageJsonCache: packageJsonCache.size,
+            isExternalCache: isExternalCache.size,
+          });
         });
 
         maybeExternals.forEach((external) => {
@@ -248,6 +264,146 @@ function createExternalsCollector(
             }
           });
         });
+
+        if (resolvedConfig.build?.experimental_autoDetectExternal) {
+          build.onResolve(
+            { filter: /.*/, namespace: "file" },
+            async (args: esbuild.OnResolveArgs): Promise<esbuild.OnResolveResult | undefined> => {
+              if (!isBareModuleImport(args.path)) {
+                // Not an npm package
+                return;
+              }
+
+              if (isBuiltinModule(args.path)) {
+                // Builtin module
+                return;
+              }
+
+              if (args.path === "_sentry-debug-id-injection-stub") {
+                // Ignore sentry stub
+                return;
+              }
+
+              // Try to resolve the actual file path
+              const [resolveError, resolvedPath] = await tryCatch(
+                resolveModule(args.path, args.resolveDir)
+              );
+
+              if (resolveError) {
+                logger.debug("[externals][auto] Resolve module error", {
+                  path: args.path,
+                  resolveError,
+                });
+                return;
+              }
+
+              // Find nearest package.json
+              const packageJsonPath = await findNearestPackageJson(resolvedPath, packageJsonCache);
+
+              if (!packageJsonPath) {
+                logger.debug("[externals][auto] Failed to resolve package.json path", {
+                  path: args.path,
+                  resolvedPath,
+                });
+                return;
+              }
+
+              const packageRoot = dirname(packageJsonPath);
+
+              // Check cache first
+              if (isExternalCache.has(packageRoot)) {
+                const isExternal = isExternalCache.get(packageRoot);
+
+                if (isExternal) {
+                  return { path: args.path, external: true };
+                }
+
+                return;
+              }
+
+              const [readError, packageJson] = await tryCatch(readPackageJSON(packageRoot));
+
+              if (readError) {
+                logger.debug("[externals][auto] Unable to read package.json", {
+                  error: readError,
+                  packageRoot,
+                });
+
+                isExternalCache.set(packageRoot, false);
+                return;
+              }
+
+              const packageName = packageJson.name;
+              const packageVersion = packageJson.version;
+
+              if (!packageName || !packageVersion) {
+                logger.debug("[externals][auto] No package name or version found in package.json", {
+                  packageRoot,
+                  packageJson,
+                });
+
+                return;
+              }
+
+              const markExternal = (reason: string): esbuild.OnResolveResult => {
+                const detectedPackage = {
+                  name: packageName,
+                  path: packageRoot,
+                  version: packageVersion,
+                } satisfies CollectedExternal;
+
+                logger.debug(`[externals][auto] Marking as external - ${reason}`, {
+                  detectedPackage,
+                });
+
+                externals.push(detectedPackage);
+
+                // Cache the result
+                isExternalCache.set(packageRoot, true);
+
+                return { path: args.path, external: true };
+              };
+
+              // If the path ends with .wasm or .node, we should mark it as external
+              if (resolvedPath.endsWith(".wasm") || resolvedPath.endsWith(".node")) {
+                return markExternal("path ends with .wasm or .node");
+              }
+
+              // Check files, main, module fields for native files
+              const files = Array.isArray(packageJson.files) ? packageJson.files : [];
+              const fields = [packageJson.main, packageJson.module, packageJson.browser].filter(
+                (f): f is string => typeof f === "string"
+              );
+              const allFiles = files.concat(fields);
+
+              // We need to expand any braces in the files array, e.g. ["{js,ts}"] -> ["js", "ts"]
+              const allFilesExpanded = braces(allFiles, { expand: true });
+
+              // Use a regexp to match native-related extensions
+              const nativeExtRegexp = /\.(wasm|node|gyp|c|cc|cpp|cxx|h|hpp|hxx)$/;
+              const hasNativeFile = allFilesExpanded.some((file) => nativeExtRegexp.test(file));
+
+              if (hasNativeFile) {
+                return markExternal("has native file");
+              }
+
+              // Check if binding.gyp exists (native addon)
+              const bindingGypPath = join(packageRoot, "binding.gyp");
+
+              // If access succeeds, binding.gyp exists
+              const [accessError] = await tryCatch(access(bindingGypPath));
+
+              if (!accessError) {
+                return markExternal("binding.gyp exists");
+              }
+
+              // Cache the negative result
+              isExternalCache.set(packageRoot, false);
+
+              return undefined;
+            }
+          );
+        }
       },
     },
   };
@@ -409,4 +565,88 @@ function resolveSync(id: string, resolveDir: string) {
   } catch (error) {
     return esmResolveSync(id, { url: resolveDir });
   }
+}
+
+function isBareModuleImport(path: string): boolean {
+  const excludes = [".", "/", "~", "file:", "data:"];
+  return !excludes.some((exclude) => path.startsWith(exclude));
+}
+
+function isBuiltinModule(path: string): boolean {
+  return builtinModules.includes(path.replace("node:", ""));
+}
+
+async function isMainPackageJson(filePath: string): Promise<boolean> {
+  try {
+    const packageJson = await readPackageJSON(filePath);
+
+    // Allowlist of non-informative fields that can appear with 'type: module | commonjs' in marker package.json files
+    const markerFields = new Set([
+      "type",
+      "sideEffects",
+      "browser",
+      "main",
+      "module",
+      "react-native",
+      "name",
+    ]);
+
+    if (!packageJson.type) {
+      return true;
+    }
+
+    const keys = Object.keys(packageJson);
+    if (keys.every((k) => markerFields.has(k))) {
+      return false; // type marker
+    }
+
+    return true;
+  } catch (error) {
+    if (!(error instanceof Error)) {
+      logger.debug("[externals][containsEsmTypeMarkers] Unknown error", {
+        error,
+      });
+
+      return false;
+    }
+
+    if ("code" in error && error.code !== "ENOENT") {
+      logger.debug("[externals][containsEsmTypeMarkers] Error", {
+        error: error.message,
+      });
+    }
+
+    return false;
+  }
+}
+
+async function findNearestPackageJson(
+  basePath: string,
+  cache: Map<string, string | null>
+): Promise<string | null> {
+  const baseDir = dirname(basePath);
+
+  if (cache.has(baseDir)) {
+    const resolvedPath = cache.get(baseDir);
+
+    if (!resolvedPath) {
+      return null;
+    }
+
+    return resolvedPath;
+  }
+
+  const [error, packageJsonPath] = await tryCatch(
+    resolvePackageJSON(dirname(basePath), {
+      test: isMainPackageJson,
+    })
+  );
+
+  if (error) {
+    cache.set(baseDir, null);
+    return null;
+  }
+
+  cache.set(baseDir, packageJsonPath);
+  return packageJsonPath;
 }
