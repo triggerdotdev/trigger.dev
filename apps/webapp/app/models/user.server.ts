@@ -7,7 +7,7 @@ import {
   getDashboardPreferences,
 } from "~/services/dashboardPreferences.server";
 export type { User } from "@trigger.dev/database";
-
+import { assertEmailAllowed } from "~/utils/email";
 type FindOrCreateMagicLink = {
   authenticationMethod: "MAGIC_LINK";
   email: string;
@@ -41,9 +41,7 @@ export async function findOrCreateUser(input: FindOrCreateUser): Promise<LoggedI
 export async function findOrCreateMagicLinkUser({
   email,
 }: FindOrCreateMagicLink): Promise<LoggedInUser> {
-  if (env.WHITELISTED_EMAILS && !new RegExp(env.WHITELISTED_EMAILS).test(email)) {
-    throw new Error("This email is unauthorized");
-  }
+  assertEmailAllowed(email);
 
   const existingUser = await prisma.user.findFirst({
     where: {
@@ -79,9 +77,7 @@ export async function findOrCreateGithubUser({
   authenticationProfile,
   authenticationExtraParams,
 }: FindOrCreateGithub): Promise<LoggedInUser> {
-  if (env.WHITELISTED_EMAILS && !new RegExp(env.WHITELISTED_EMAILS).test(email)) {
-    throw new Error("This email is unauthorized");
-  }
+  assertEmailAllowed(email);
 
   const name = authenticationProfile._json.name;
   let avatarUrl: string | undefined = undefined;

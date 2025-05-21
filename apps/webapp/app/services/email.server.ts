@@ -3,11 +3,11 @@ import { EmailClient, MailTransportOptions } from "emails";
 import type { SendEmailOptions } from "remix-auth-email-link";
 import { redirect } from "remix-typedjson";
 import { env } from "~/env.server";
-import type { User } from "~/models/user.server";
 import type { AuthUser } from "./authUser";
 import { workerQueue } from "./worker.server";
 import { logger } from "./logger.server";
 import { singleton } from "~/utils/singleton";
+import { assertEmailAllowed } from "~/utils/email";
 
 const client = singleton(
   "email-client",
@@ -66,6 +66,8 @@ function buildTransportOptions(alerts?: boolean): MailTransportOptions {
 }
 
 export async function sendMagicLinkEmail(options: SendEmailOptions<AuthUser>): Promise<void> {
+  assertEmailAllowed(options.emailAddress);
+
   // Auto redirect when in development mode
   if (env.NODE_ENV === "development") {
     throw redirect(options.magicLink);
