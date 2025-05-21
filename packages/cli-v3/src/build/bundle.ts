@@ -43,6 +43,7 @@ export type BundleResult = {
   contentHash: string;
   files: TaskFile[];
   configPath: string;
+  metafile: esbuild.Metafile;
   loaderEntryPoint: string | undefined;
   runWorkerEntryPoint: string | undefined;
   runControllerEntryPoint: string | undefined;
@@ -297,6 +298,7 @@ export async function getBundleResultFromBuild(
     indexControllerEntryPoint,
     initEntryPoint,
     contentHash: hasher.digest("hex"),
+    metafile: result.metafile,
   };
 }
 

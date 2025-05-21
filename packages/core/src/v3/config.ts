@@ -170,6 +170,19 @@ export type TriggerConfig = {
      */
     external?: string[];
 
+    /**
+     * **WARNING: This is an experimental feature and might be removed in a future version.**
+     *
+     * Automatically detect dependencies that shouldn't be bundled and mark them as external. For example, native modules.
+     *
+     * Turning this on will not affect dependencies that were manually added to the `external` array.
+     *
+     * @default false
+     *
+     * @deprecated (experimental)
+     */
+    experimental_autoDetectExternal?: boolean;
+
     jsx?: {
       /**
        * @default "React.createElement"
