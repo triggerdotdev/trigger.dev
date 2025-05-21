@@ -79,6 +79,7 @@ import { GitMeta } from "@trigger.dev/core/v3";
 import { logger } from "~/services/logger.server";
 import { TextLink } from "~/components/primitives/TextLink";
 import { GitBranchIcon, GitCommitIcon, GitPullRequestIcon } from "lucide-react";
+import { GitMetadata } from "~/components/GitMetadata";
 
 export const BranchesOptions = z.object({
   search: z.string().optional(),
@@ -142,7 +143,9 @@ export async function action({ request }: ActionFunctionArgs) {
   if (result.success) {
     if (result.alreadyExisted) {
       submission.error = {
-        branchName: `Branch "${result.branch.branchName}" already exists. You can archive it and create a new one with the same name.`,
+        branchName: [
+          `Branch "${result.branch.branchName}" already exists. You can archive it and create a new one with the same name.`,
+        ],
       };
       return json(submission);
     }
@@ -154,7 +157,7 @@ export async function action({ request }: ActionFunctionArgs) {
     );
   }
 
-  submission.error = { branchName: result.error };
+  submission.error = { branchName: [result.error] };
   return json(submission);
 }
 
@@ -308,40 +311,10 @@ export default function Page() {
                               <DateTime date={branch.createdAt} />
                             </TableCell>
                             <TableCell className={cellClass}>
-                              <div className="-ml-2 flex items-center">
-                                {branch.git?.branchUrl && (
-                                  <LinkButton
-                                    variant="minimal/small"
-                                    LeadingIcon={<GitBranchIcon className="size-4" />}
-                                    iconSpacing="gap-x-1"
-                                    to={branch.git.branchUrl}
-                                  >
-                                    {branch.branchName}
-                                  </LinkButton>
-                                )}
-                                {branch.git?.shortSha && (
-                                  <LinkButton
-                                    variant="minimal/small"
-                                    to={branch.git.commitUrl}
-                                    LeadingIcon={<GitCommitIcon className="size-4" />}
-                                    iconSpacing="gap-x-1"
-                                  >
-                                    {`${branch.git.shortSha} / ${branch.git.commitMessage}`}
-                                  </LinkButton>
-                                )}
-                                {branch.git?.pullRequestUrl && (
-                                  <LinkButton
-                                    variant="minimal/small"
-                                    to={branch.git.pullRequestUrl}
-                                    LeadingIcon={<GitPullRequestIcon className="size-4" />}
-                                    iconSpacing="gap-x-1"
-                                  >
-                                    #{branch.git.pullRequestNumber}
-                                  </LinkButton>
-                                )}
+                              <div className="-ml-1 flex items-center">
+                                <GitMetadata git={branch.git} />
                               </div>
                             </TableCell>
-
                             <TableCell className={cellClass}>
                               {branch.archivedAt ? (
                                 <CheckIcon className="size-4 text-charcoal-400" />

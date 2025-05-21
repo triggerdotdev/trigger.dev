@@ -1,6 +1,6 @@
 import { GitMeta } from "@trigger.dev/core/v3";
 import { type z } from "zod";
-import { type PrismaClient, prisma } from "~/db.server";
+import { Prisma, type PrismaClient, prisma } from "~/db.server";
 import { type Project } from "~/models/project.server";
 import { type User } from "~/models/user.server";
 import { type BranchesOptions } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.branches/route";
@@ -13,7 +13,7 @@ const BRANCHES_PER_PAGE = 25;
 
 type Options = z.infer<typeof BranchesOptions>;
 
-type GitMetaLinks = {
+export type GitMetaLinks = {
   /** The cleaned repository URL without any username/password */
   repositoryUrl: string;
   /** The branch name */
@@ -170,13 +170,7 @@ export class BranchesPresenter {
           return [];
         }
 
-        let git: GitMetaLinks | null = null;
-        if (branch.git) {
-          const parsed = GitMeta.safeParse(branch.git);
-          if (parsed.success) {
-            git = this.processGitMeta(parsed.data);
-          }
-        }
+        const git = processGitMetadata(branch.git);
 
         return [
           {
@@ -190,48 +184,57 @@ export class BranchesPresenter {
       limits,
     };
   }
+}
 
-  private processGitMeta(gitMeta: GitMeta): GitMetaLinks | null {
-    if (!gitMeta || !gitMeta.remoteUrl) return null;
+export function processGitMetadata(data: Prisma.JsonValue): GitMetaLinks | null {
+  if (!data) return null;
 
-    // Clean the remote URL by removing any username/password and ensuring it's a proper GitHub URL
-    const cleanRemoteUrl = (() => {
-      try {
-        const url = new URL(gitMeta.remoteUrl);
-        // Remove any username/password from the URL
-        url.username = "";
-        url.password = "";
-        // Ensure we're using https
-        url.protocol = "https:";
-        // Remove any trailing .git
-        return url.toString().replace(/\.git$/, "");
-      } catch (e) {
-        // If URL parsing fails, try to clean it manually
-        return gitMeta.remoteUrl
-          .replace(/^git@github\.com:/, "https://github.com/")
-          .replace(/^https?:\/\/[^@]+@/, "https://")
-          .replace(/\.git$/, "");
-      }
-    })();
-
-    if (!gitMeta.commitRef || !gitMeta.commitSha) return null;
-
-    const shortSha = gitMeta.commitSha.slice(0, 7);
-
-    return {
-      repositoryUrl: cleanRemoteUrl,
-      branchName: gitMeta.commitRef,
-      branchUrl: `${cleanRemoteUrl}/tree/${gitMeta.commitRef}`,
-      commitUrl: `${cleanRemoteUrl}/commit/${gitMeta.commitSha}`,
-      pullRequestUrl: gitMeta.pullRequestNumber
-        ? `${cleanRemoteUrl}/pull/${gitMeta.pullRequestNumber}`
-        : undefined,
-      pullRequestNumber: gitMeta.pullRequestNumber,
-      compareUrl: `${cleanRemoteUrl}/compare/main...${gitMeta.commitRef}`,
-      shortSha,
-      isDirty: gitMeta.dirty ?? false,
-      commitMessage: gitMeta.commitMessage ?? "",
-      commitAuthor: gitMeta.commitAuthorName ?? "",
-    };
+  const parsed = GitMeta.safeParse(data);
+  if (!parsed.success) {
+    return null;
   }
+
+  if (!parsed.data.remoteUrl) {
+    return null;
+  }
+
+  // Clean the remote URL by removing any username/password and ensuring it's a proper GitHub URL
+  const cleanRemoteUrl = (() => {
+    try {
+      const url = new URL(parsed.data.remoteUrl);
+      // Remove any username/password from the URL
+      url.username = "";
+      url.password = "";
+      // Ensure we're using https
+      url.protocol = "https:";
+      // Remove any trailing .git
+      return url.toString().replace(/\.git$/, "");
+    } catch (e) {
+      // If URL parsing fails, try to clean it manually
+      return parsed.data.remoteUrl
+        .replace(/^git@github\.com:/, "https://github.com/")
+        .replace(/^https?:\/\/[^@]+@/, "https://")
+        .replace(/\.git$/, "");
+    }
+  })();
+
+  if (!parsed.data.commitRef || !parsed.data.commitSha) return null;
+
+  const shortSha = parsed.data.commitSha.slice(0, 7);
+
+  return {
+    repositoryUrl: cleanRemoteUrl,
+    branchName: parsed.data.commitRef,
+    branchUrl: `${cleanRemoteUrl}/tree/${parsed.data.commitRef}`,
+    commitUrl: `${cleanRemoteUrl}/commit/${parsed.data.commitSha}`,
+    pullRequestUrl: parsed.data.pullRequestNumber
+      ? `${cleanRemoteUrl}/pull/${parsed.data.pullRequestNumber}`
+      : undefined,
+    pullRequestNumber: parsed.data.pullRequestNumber,
+    compareUrl: `${cleanRemoteUrl}/compare/main...${parsed.data.commitRef}`,
+    shortSha,
+    isDirty: parsed.data.dirty ?? false,
+    commitMessage: parsed.data.commitMessage ?? "",
+    commitAuthor: parsed.data.commitAuthorName ?? "",
+  };
 }
