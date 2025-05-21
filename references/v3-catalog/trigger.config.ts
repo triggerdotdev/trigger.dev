@@ -3,7 +3,7 @@ import { sentryEsbuildPlugin } from "@sentry/esbuild-plugin";
 import { OpenAIInstrumentation } from "@traceloop/instrumentation-openai";
 import { esbuildPlugin } from "@trigger.dev/build";
 import { audioWaveform } from "@trigger.dev/build/extensions/audioWaveform";
-import { ffmpeg, syncEnvVars } from "@trigger.dev/build/extensions/core";
+import { additionalFiles, ffmpeg, syncEnvVars } from "@trigger.dev/build/extensions/core";
 import { puppeteer } from "@trigger.dev/build/extensions/puppeteer";
 import { playwright } from "@trigger.dev/build/extensions/playwright";
 import { prismaExtension } from "@trigger.dev/build/extensions/prisma";
@@ -15,7 +15,6 @@ export default defineConfig({
   project: "yubjwjsfkxnylobaqvqz",
   machine: "medium-1x",
   instrumentations: [new OpenAIInstrumentation()],
-  additionalFiles: ["wrangler/wrangler.toml"],
   maxDuration: 3600,
   dirs: ["./src/trigger"],
   retries: {
@@ -32,7 +31,11 @@ export default defineConfig({
   logLevel: "info",
   build: {
     conditions: ["react-server"],
+    experimental_autoDetectExternal: true,
     extensions: [
+      additionalFiles({
+        files: ["./wrangler/wrangler.toml"],
+      }),
       ffmpeg(),
       emitDecoratorMetadata(),
       audioWaveform(),
@@ -48,6 +51,7 @@ export default defineConfig({
           org: "triggerdev",
           project: "taskhero-examples-basic",
           authToken: process.env.SENTRY_AUTH_TOKEN,
+          telemetry: false,
         }),
         { placement: "last", target: "deploy" }
       ),
