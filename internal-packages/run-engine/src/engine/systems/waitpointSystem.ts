@@ -490,7 +490,11 @@ export class WaitpointSystem {
     });
   }
 
-  public async continueRunIfUnblocked({ runId }: { runId: string }) {
+  public async continueRunIfUnblocked({
+    runId,
+  }: {
+    runId: string;
+  }): Promise<"blocked" | "unblocked" | "skipped"> {
     this.$.logger.debug(`continueRunIfUnblocked: start`, {
       runId,
     });
@@ -516,7 +520,7 @@ export class WaitpointSystem {
         runId,
         blockingWaitpoints,
       });
-      return;
+      return "blocked";
     }
 
     // 3. Get the run with environment
@@ -553,7 +557,7 @@ export class WaitpointSystem {
           runId,
           snapshot,
         });
-        return;
+        return "skipped";
       }
 
       //run is still executing, send a message to the worker
@@ -677,6 +681,8 @@ export class WaitpointSystem {
         runId,
       });
     }
+
+    return "unblocked";
   }
 
   public async createRunAssociatedWaitpoint(

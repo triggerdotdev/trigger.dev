@@ -479,6 +479,149 @@ describe("RunEngine heartbeats", () => {
     }
   });
 
+  containerTest("Suspended", async ({ prisma, redisOptions }) => {
+    const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+    const heartbeatTimeout = 1000;
+
+    const engine = new RunEngine({
+      prisma,
+      worker: {
+        redis: redisOptions,
+        workers: 1,
+        tasksPerWorker: 10,
+        pollIntervalMs: 100,
+      },
+      queue: {
+        redis: redisOptions,
+      },
+      runLock: {
+        redis: redisOptions,
+      },
+      machines: {
+        defaultMachine: "small-1x",
+        machines: {
+          "small-1x": {
+            name: "small-1x" as const,
+            cpu: 0.5,
+            memory: 0.5,
+            centsPerMs: 0.0001,
+          },
+        },
+        baseCostInCents: 0.0001,
+      },
+      heartbeatTimeoutsMs: {
+        SUSPENDED: heartbeatTimeout,
+      },
+      tracer: trace.getTracer("test", "0.0.0"),
+    });
+
+    try {
+      const taskIdentifier = "test-task";
+
+      //create background worker
+      const backgroundWorker = await setupBackgroundWorker(
+        engine,
+        authenticatedEnvironment,
+        taskIdentifier
+      );
+
+      //trigger the run
+      const run = await engine.trigger(
+        {
+          number: 1,
+          friendlyId: "run_1234",
+          environment: authenticatedEnvironment,
+          taskIdentifier,
+          payload: "{}",
+          payloadType: "application/json",
+          context: {},
+          traceContext: {},
+          traceId: "t12345",
+          spanId: "s12345",
+          masterQueue: "main",
+          queue: "task/test-task",
+          isTest: false,
+          tags: [],
+        },
+        prisma
+      );
+
+      //dequeue the run
+      const dequeued = await engine.dequeueFromMasterQueue({
+        consumerId: "test_12345",
+        masterQueue: run.masterQueue,
+        maxRunCount: 10,
+      });
+
+      //create an attempt
+      await engine.startRunAttempt({
+        runId: dequeued[0].run.id,
+        snapshotId: dequeued[0].snapshot.id,
+      });
+
+      //cancel run
+      //create a manual waitpoint
+      const waitpointResult = await engine.createManualWaitpoint({
+        environmentId: authenticatedEnvironment.id,
+        projectId: authenticatedEnvironment.projectId,
+      });
+      expect(waitpointResult.waitpoint.status).toBe("PENDING");
+
+      //block the run
+      const blockedResult = await engine.blockRunWithWaitpoint({
+        runId: run.id,
+        waitpoints: waitpointResult.waitpoint.id,
+        projectId: authenticatedEnvironment.projectId,
+        organizationId: authenticatedEnvironment.organizationId,
+      });
+
+      const blockedExecutionData = await engine.getRunExecutionData({ runId: run.id });
+      expect(blockedExecutionData?.snapshot.executionStatus).toBe("EXECUTING_WITH_WAITPOINTS");
+
+      // Create a checkpoint
+      const checkpointResult = await engine.createCheckpoint({
+        runId: run.id,
+        snapshotId: blockedResult.id,
+        checkpoint: {
+          type: "DOCKER",
+          reason: "TEST_CHECKPOINT",
+          location: "test-location",
+          imageRef: "test-image-ref",
+        },
+      });
+
+      expect(checkpointResult.ok).toBe(true);
+
+      const snapshot = checkpointResult.ok ? checkpointResult.snapshot : null;
+
+      assertNonNullable(snapshot);
+
+      // Verify checkpoint creation
+      expect(snapshot.executionStatus).toBe("SUSPENDED");
+
+      // Now wait for the heartbeat to timeout, but it should retry later
+      await setTimeout(heartbeatTimeout * 1.5);
+
+      // Simulate a suspended run without any blocking waitpoints by deleting any blocking task run waitpoints
+      await prisma.taskRunWaitpoint.deleteMany({
+        where: {
+          taskRunId: run.id,
+        },
+      });
+
+      // Now wait for the heartbeat to timeout again
+      await setTimeout(heartbeatTimeout * 2);
+
+      // Expect the run to be queued
+      const executionData2 = await engine.getRunExecutionData({ runId: run.id });
+      assertNonNullable(executionData2);
+      expect(executionData2.snapshot.executionStatus).toBe("QUEUED");
+    } finally {
+      await engine.quit();
+    }
+  });
+
   containerTest("Heartbeat keeps run alive", async ({ prisma, redisOptions }) => {
     const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
