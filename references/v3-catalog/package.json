@@ -16,8 +16,9 @@
     "generate:prisma": "prisma generate --sql"
   },
   "dependencies": {
+    "@1password/sdk": "^0.3.0",
     "@effect/schema": "^0.75.5",
-    "@infisical/sdk": "^2.1.9",
+    "@infisical/sdk": "^2.3.5",
     "@opentelemetry/api": "1.4.1",
     "@prisma/client": "5.19.0",
     "@react-email/components": "0.0.24",
@@ -32,6 +33,8 @@
     "@typeschema/typebox": "^0.14.0",
     "ai": "^3.3.24",
     "arktype": "2.0.0-rc.17",
+    "bcrypt": "^6.0.0",
+    "canvas": "^3.1.0",
     "dotenv": "^16.4.5",
     "email-reply-parser": "^1.8.0",
     "execa": "^8.0.1",
@@ -39,6 +42,7 @@
     "header-generator": "^2.1.55",
     "kysely": "^0.27.4",
     "msw": "^2.2.1",
+    "mupdf": "^1.3.6",
     "openai": "^4.47.0",
     "pg": "^8.11.5",
     "playwright": "^1.50.1",
@@ -48,6 +52,8 @@
     "reflect-metadata": "^0.1.13",
     "runtypes": "^6.7.0",
     "server-only": "^0.0.1",
+    "sharp": "^0.34.2",
+    "sqlite3": "^5.1.7",
     "stripe": "^12.14.0",
     "superstruct": "^2.0.2",
     "typeorm": "^0.3.20",
@@ -55,6 +61,7 @@
     "wrangler": "3.70.0",
     "yt-dlp-wrap": "^2.3.12",
     "yup": "^1.4.0",
+    "zip-node-addon": "^0.0.11",
     "zod": "3.23.8"
   },
   "devDependencies": {
@@ -75,6 +82,7 @@
     "@opentelemetry/semantic-conventions": "^1.22.0",
     "@trigger.dev/build": "workspace:*",
     "@trigger.dev/python": "workspace:*",
+    "@types/bcrypt": "^5.0.2",
     "@types/email-reply-parser": "^1.4.2",
     "@types/fluent-ffmpeg": "^2.1.26",
     "@types/react": "^18.3.1",
