@@ -96,15 +96,3 @@ jobs:
         run: |
           package_version=$(echo '${{ steps.changesets.outputs.publishedPackages }}' | jq -r '.[0].version')
           echo "package_version=${package_version}" >> "$GITHUB_OUTPUT"
-
-  publish:
-    needs: release
-    uses: ./.github/workflows/publish.yml
-    permissions:
-      contents: read
-    secrets: inherit
-    # if: needs.release.outputs.published == 'true'
-    # disable automatic publishing for now
-    if: false
-    with:
-      image_tag: v${{ needs.release.outputs.published_package_version }}
