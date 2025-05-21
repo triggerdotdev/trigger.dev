@@ -117,9 +117,10 @@ interface Options {
 // Ambient type override for braces to allow string or string[] as pattern
 declare module "braces" {
   function braces(pattern: string | string[], options?: Options): string[];
+
   namespace braces {
-    function expand(pattern: string | string[]): string[];
+    function expand(pattern: string | string[], options?: Omit<Options, "expand">): string[];
   }
 
-  export = braces;
+  export default braces;
 }
