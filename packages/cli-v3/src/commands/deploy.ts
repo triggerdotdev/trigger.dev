@@ -179,21 +179,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   const cwd = process.cwd();
   const projectPath = resolve(cwd, dir);
 
-  if (dir !== "." && !isDirectory(projectPath)) {
-    if (dir === "staging" || dir === "prod") {
-      throw new Error(`To deploy to ${dir}, you need to pass "--env ${dir}", not just "${dir}".`);
-    }
-
-    if (dir === "production") {
-      throw new Error(`To deploy to production, you need to pass "--env prod", not "production".`);
-    }
-
-    if (dir === "stg") {
-      throw new Error(`To deploy to staging, you need to pass "--env staging", not "stg".`);
-    }
-
-    throw new Error(`Directory "${dir}" not found at ${projectPath}`);
-  }
+  verifyDirectory(dir, projectPath);
 
   const authorization = await login({
     embedded: true,
@@ -228,7 +214,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     options.env === "preview" ? getBranch({ specified: options.branch, gitMeta }) : undefined;
   if (options.env === "preview" && !branch) {
     throw new Error(
-      "You need to specify a preview branch when deploying to preview, pass --branch <branch>."
+      "Didn't auto-detect preview branch, so you need to specify one. Pass --branch <branch>."
     );
   }
 
@@ -706,5 +692,23 @@ async function failDeploy(
         break;
       }
     }
+  }
+}
+
+export function verifyDirectory(dir: string, projectPath: string) {
+  if (dir !== "." && !isDirectory(projectPath)) {
+    if (dir === "staging" || dir === "prod" || dir === "preview") {
+      throw new Error(`To deploy to ${dir}, you need to pass "--env ${dir}", not just "${dir}".`);
+    }
+
+    if (dir === "production") {
+      throw new Error(`To deploy to production, you need to pass "--env prod", not "production".`);
+    }
+
+    if (dir === "stg") {
+      throw new Error(`To deploy to staging, you need to pass "--env staging", not "stg".`);
+    }
+
+    throw new Error(`Directory "${dir}" not found at ${projectPath}`);
   }
 }
