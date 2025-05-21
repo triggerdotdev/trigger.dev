@@ -452,6 +452,10 @@ const EnvironmentSchema = z.object({
   RUN_ENGINE_TIMEOUT_PENDING_CANCEL: z.coerce.number().int().default(60_000),
   RUN_ENGINE_TIMEOUT_EXECUTING: z.coerce.number().int().default(60_000),
   RUN_ENGINE_TIMEOUT_EXECUTING_WITH_WAITPOINTS: z.coerce.number().int().default(60_000),
+  RUN_ENGINE_TIMEOUT_SUSPENDED: z.coerce
+    .number()
+    .int()
+    .default(60_000 * 10),
   RUN_ENGINE_DEBUG_WORKER_NOTIFICATIONS: z.coerce.boolean().default(false),
   RUN_ENGINE_PARENT_QUEUE_LIMIT: z.coerce.number().int().default(1000),
   RUN_ENGINE_CONCURRENCY_LIMIT_BIAS: z.coerce.number().default(0.75),

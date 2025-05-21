@@ -68,6 +68,7 @@ export type HeartbeatTimeouts = {
   PENDING_CANCEL: number;
   EXECUTING: number;
   EXECUTING_WITH_WAITPOINTS: number;
+  SUSPENDED: number;
 };
 
 export type TriggerParams = {

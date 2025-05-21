@@ -182,6 +182,7 @@ export class RunEngine {
       PENDING_CANCEL: 60_000,
       EXECUTING: 60_000,
       EXECUTING_WITH_WAITPOINTS: 60_000,
+      SUSPENDED: 60_000 * 10,
     };
     this.heartbeatTimeouts = {
       ...defaultHeartbeatTimeouts,
@@ -1274,9 +1275,29 @@ export class RunEngine {
           break;
         }
         case "SUSPENDED": {
-          //todo should we do a periodic check here for whether waitpoints are actually still blocking?
-          //we could at least log some things out if a run has been in this state for a long time
-          throw new NotImplementedError("Not implemented SUSPENDED");
+          const result = await this.waitpointSystem.continueRunIfUnblocked({ runId });
+
+          this.logger.info("handleStalledSnapshot SUSPENDED continueRunIfUnblocked", {
+            runId,
+            result,
+            snapshotId: latestSnapshot.id,
+          });
+
+          switch (result) {
+            case "blocked": {
+              // Reschedule the heartbeat
+              await this.executionSnapshotSystem.restartHeartbeatForRun({
+                runId,
+              });
+              break;
+            }
+            case "unblocked":
+            case "skipped": {
+              break;
+            }
+          }
+
+          break;
         }
         case "PENDING_CANCEL": {
           //if the run is waiting to cancel but the worker hasn't confirmed that,
