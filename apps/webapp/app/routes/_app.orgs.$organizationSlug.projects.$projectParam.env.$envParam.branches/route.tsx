@@ -556,7 +556,7 @@ export function NewBranchPanel({ parentEnvironment }: { parentEnvironment: { id:
                 <InlineCode variant="extra-small">?</InlineCode>{" "}
                 <InlineCode variant="extra-small">*</InlineCode>{" "}
                 <InlineCode variant="extra-small">{"["}</InlineCode>{" "}
-                <InlineCode variant="extra-small">\\</InlineCode>{" "}
+                <InlineCode variant="extra-small">\</InlineCode>{" "}
                 <InlineCode variant="extra-small">//</InlineCode>{" "}
                 <InlineCode variant="extra-small">..</InlineCode>{" "}
                 <InlineCode variant="extra-small">{"@{"}</InlineCode>{" "}
