@@ -360,7 +360,7 @@ function createExternalsCollector(
               };
 
               // If the path ends with .wasm or .node, we should mark it as external
-              if (args.path.endsWith(".wasm") || args.path.endsWith(".node")) {
+              if (resolvedPath.endsWith(".wasm") || resolvedPath.endsWith(".node")) {
                 return markExternal("path ends with .wasm or .node");
               }
 
