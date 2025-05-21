@@ -182,6 +182,21 @@ export class CliApiClient {
     );
   }
 
+  async archiveBranch(branch: string) {
+    if (!this.accessToken) {
+      throw new Error("archiveBranch: No access token");
+    }
+
+    return wrapZodFetch(
+      z.object({ success: z.boolean() }),
+      `${this.apiURL}/api/v1/branches/${branch}/archive`,
+      {
+        method: "POST",
+        headers: this.getHeaders(),
+      }
+    );
+  }
+
   async getEnvironmentVariables(projectRef: string) {
     if (!this.accessToken) {
       throw new Error("getEnvironmentVariables: No access token");
