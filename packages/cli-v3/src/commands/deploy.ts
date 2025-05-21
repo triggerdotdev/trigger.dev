@@ -1,5 +1,5 @@
 import { intro, log, outro } from "@clack/prompts";
-import { prepareDeploymentError } from "@trigger.dev/core/v3";
+import { prepareDeploymentError, tryCatch } from "@trigger.dev/core/v3";
 import { InitializeDeploymentResponseBody } from "@trigger.dev/core/v3/schemas";
 import { Command, Option as CommandOption } from "commander";
 import { resolve } from "node:path";
@@ -238,25 +238,32 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
 
   const { features } = resolvedConfig;
 
-  const buildManifest = await buildWorker({
-    target: "deploy",
-    environment: options.env,
-    destination: destination.path,
-    resolvedConfig,
-    rewritePaths: true,
-    envVars: serverEnvVars.success ? serverEnvVars.data.variables : {},
-    forcedExternals,
-    listener: {
-      onBundleStart() {
-        $buildSpinner.start("Building trigger code");
-      },
-      onBundleComplete(result) {
-        $buildSpinner.stop("Successfully built code");
+  const [error, buildManifest] = await tryCatch(
+    buildWorker({
+      target: "deploy",
+      environment: options.env,
+      destination: destination.path,
+      resolvedConfig,
+      rewritePaths: true,
+      envVars: serverEnvVars.success ? serverEnvVars.data.variables : {},
+      forcedExternals,
+      listener: {
+        onBundleStart() {
+          $buildSpinner.start("Building trigger code");
+        },
+        onBundleComplete(result) {
+          $buildSpinner.stop("Successfully built code");
 
-        logger.debug("Bundle result", result);
+          logger.debug("Bundle result", result);
+        },
       },
-    },
-  });
+    })
+  );
+
+  if (error) {
+    $buildSpinner.stop("Failed to build code");
+    throw error;
+  }
 
   logger.debug("Successfully built project to", destination.path);
 
