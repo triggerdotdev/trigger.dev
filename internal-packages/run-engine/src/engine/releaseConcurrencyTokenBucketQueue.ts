@@ -480,8 +480,8 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
       this.sweeper = new ReleaseConcurrencyReleasingsSweeper(
         this,
         this.options.validateReleaserId,
-        this.options.releasingsMaxAge ?? 60_000 * 30,
         this.options.releasingsPollInterval ?? 60_000,
+        this.options.releasingsMaxAge ?? 60_000 * 30,
         this.abortController.signal,
         this.logger
       );
