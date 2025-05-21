@@ -70,10 +70,6 @@ export class EditSchedulePresenter {
       throw new ServiceValidationError("No matching environment for project", 404);
     }
 
-    if (environment.archivedAt) {
-      throw new ServiceValidationError("This branch is archived", 400);
-    }
-
     //get the latest BackgroundWorker
     const latestWorker = await findCurrentWorkerFromEnvironment(environment, this.#prismaClient);
 

@@ -29,7 +29,7 @@ export class UpsertTaskScheduleService extends BaseService {
   public async call(projectId: string, schedule: UpsertTaskScheduleServiceOptions) {
     //this throws errors if the schedule is invalid
     const checkSchedule = new CheckScheduleService(this._prisma);
-    await checkSchedule.call(projectId, schedule);
+    await checkSchedule.call(projectId, schedule, schedule.environments);
 
     const deduplicationKey =
       typeof schedule.deduplicationKey === "string" && schedule.deduplicationKey !== ""
