@@ -17,6 +17,7 @@
     "@trigger.dev/sdk": "3.3.17"
   },
   "changesets": [
+    "big-carrots-fail",
     "blue-eyes-tickle",
     "breezy-turtles-talk",
     "cuddly-boats-press",

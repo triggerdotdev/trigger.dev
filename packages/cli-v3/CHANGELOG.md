@@ -1,5 +1,14 @@
 # trigger.dev
 
+## 4.0.0-v4-beta.18
+
+### Patch Changes
+
+- Fix dev runs ([#2094](https://github.com/triggerdotdev/trigger.dev/pull/2094))
+- Updated dependencies:
+  - `@trigger.dev/build@4.0.0-v4-beta.18`
+  - `@trigger.dev/core@4.0.0-v4-beta.18`
+
 ## 4.0.0-v4-beta.17
 
 ### Patch Changes
