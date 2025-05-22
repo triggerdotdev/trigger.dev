@@ -95,6 +95,7 @@ import {
 } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { SpanView } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.$runParam.spans.$spanParam/route";
+import { useSearchParams } from "~/hooks/useSearchParam";
 
 const resizableSettings = {
   parent: {
@@ -133,6 +134,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const impersonationId = await getImpersonationId(request);
   const { projectParam, organizationSlug, envParam, runParam } = v3RunParamsSchema.parse(params);
 
+  const url = new URL(request.url);
+  const showDebug = url.searchParams.get("showDebug") === "true";
+
   const presenter = new RunPresenter();
   const [error, result] = await tryCatch(
     presenter.call({
@@ -142,6 +146,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       projectSlug: projectParam,
       runFriendlyId: runParam,
       environmentSlug: envParam,
+      showDebug,
     })
   );
 
@@ -505,15 +510,18 @@ function TasksTreeView({
   const isAdmin = useHasAdminAccess();
   const [filterText, setFilterText] = useState("");
   const [errorsOnly, setErrorsOnly] = useState(false);
-  const [showDebug, setShowDebug] = useState(false);
   const [showDurations, setShowDurations] = useState(true);
   const [showQueueTime, setShowQueueTime] = useState(false);
   const [scale, setScale] = useState(0);
   const parentRef = useRef<HTMLDivElement>(null);
   const treeScrollRef = useRef<HTMLDivElement>(null);
   const timelineScrollRef = useRef<HTMLDivElement>(null);
+  const { value, replace } = useSearchParams();
 
-  const displayEvents = showDebug ? events : events.filter((event) => !event.data.isDebug);
+  const searchValue = value("showDebug");
+  const showDebug = searchValue !== undefined ? searchValue === "true" : false;
+
+  const displayEvents = events;
   const queuedTime = showQueueTime ? undefined : queuedDuration;
 
   const {
@@ -560,7 +568,11 @@ function TasksTreeView({
             label="Debug"
             shortcut={{ modifiers: ["shift"], key: "D" }}
             checked={showDebug}
-            onCheckedChange={(e) => setShowDebug(e.valueOf())}
+            onCheckedChange={(checked) => {
+              replace({
+                showDebug: checked ? "true" : "false",
+              });
+            }}
           />
         )}
         <Switch

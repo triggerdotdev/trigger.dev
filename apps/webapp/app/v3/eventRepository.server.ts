@@ -433,14 +433,16 @@ export class EventRepository {
     storeTable: TaskEventStoreTable,
     traceId: string,
     startCreatedAt: Date,
-    endCreatedAt?: Date
+    endCreatedAt?: Date,
+    options?: { includeDebugLogs?: boolean }
   ): Promise<TraceSummary | undefined> {
     return await startActiveSpan("getTraceSummary", async (span) => {
       const events = await this.taskEventStore.findTraceEvents(
         storeTable,
         traceId,
         startCreatedAt,
-        endCreatedAt
+        endCreatedAt,
+        { includeDebugLogs: options?.includeDebugLogs }
       );
 
       let preparedEvents: Array<PreparedEvent> = [];
