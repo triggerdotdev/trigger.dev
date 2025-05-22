@@ -289,7 +289,7 @@ export default function Page() {
                       </TableBlankRow>
                     ) : (
                       branches.map((branch) => {
-                        const path = v3EnvironmentPath(organization, project, branch);
+                        const path = branchesPath(organization, project, branch);
                         const cellClass = branch.archivedAt ? "opacity-50" : "";
                         const isSelected = branch.id === environment.id;
 
@@ -323,20 +323,29 @@ export default function Page() {
                               )}
                             </TableCell>
                             <TableCellMenu
+                              className="pl-32"
                               isSticky
-                              hiddenButtons={<PopoverMenuItem to={path} title="View branch" />}
+                              hiddenButtons={
+                                isSelected ? null : (
+                                  <PopoverMenuItem to={path} title="Switch to branch" />
+                                )
+                              }
                               popoverContent={
-                                <>
-                                  <PopoverMenuItem
-                                    to={path}
-                                    icon={ArrowRightIcon}
-                                    leadingIconClassName="text-blue-500"
-                                    title="View branch"
-                                  />
-                                  {!branch.archivedAt ? (
-                                    <ArchiveButton environment={branch} />
-                                  ) : null}
-                                </>
+                                !isSelected || !branch.archivedAt ? (
+                                  <>
+                                    {isSelected ? null : (
+                                      <PopoverMenuItem
+                                        to={path}
+                                        icon={ArrowRightIcon}
+                                        leadingIconClassName="text-blue-500"
+                                        title="Switch to branch"
+                                      />
+                                    )}
+                                    {!branch.archivedAt ? (
+                                      <ArchiveButton environment={branch} />
+                                    ) : null}
+                                  </>
+                                ) : null
                               }
                             />
                           </TableRow>
