@@ -1,5 +1,4 @@
 import {
-  isWaitpointOutputTimeout,
   type MachinePresetName,
   prettyPrintPacket,
   SemanticInternalAttributes,
@@ -423,7 +422,8 @@ export class SpanPresenter extends BasePresenter {
       spanId,
       traceId,
       createdAt,
-      completedAt ?? undefined
+      completedAt ?? undefined,
+      { includeDebugLogs: true }
     );
     if (!span) {
       return;
