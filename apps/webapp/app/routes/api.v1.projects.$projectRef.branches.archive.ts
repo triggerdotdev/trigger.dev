@@ -44,7 +44,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ error: parsed.error.message }, { status: 400 });
   }
 
-  const environment = await prisma.runtimeEnvironment.findFirst({
+  const environments = await prisma.runtimeEnvironment.findMany({
     select: {
       id: true,
       archivedAt: true,
@@ -64,11 +64,12 @@ export async function action({ request, params }: ActionFunctionArgs) {
     },
   });
 
-  if (!environment) {
+  if (environments.length === 0) {
     return json({ error: "Branch not found" }, { status: 404 });
   }
 
-  if (environment.archivedAt) {
+  const environment = environments.find((env) => env.archivedAt === null);
+  if (!environment) {
     return json({ error: "Branch already archived" }, { status: 400 });
   }
 
