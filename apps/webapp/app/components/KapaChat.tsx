@@ -108,6 +108,7 @@ export function KapaChat({ websiteId, onOpen, onClose }: KapaChatProps) {
           onAnswerGenerationCompleted: () => handleOpen(),
         },
       }}
+      botProtectionMechanism={undefined}
     >
       <div className="relative">
         <Button
