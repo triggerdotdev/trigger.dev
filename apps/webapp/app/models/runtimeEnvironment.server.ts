@@ -62,6 +62,7 @@ export async function findEnvironmentByApiKey(
   return environment;
 }
 
+/** @deprecated We don't use public api keys anymore */
 export async function findEnvironmentByPublicApiKey(
   apiKey: string,
   branchName: string | undefined
@@ -85,7 +86,9 @@ export async function findEnvironmentByPublicApiKey(
   return environment;
 }
 
-export async function findEnvironmentById(id: string): Promise<AuthenticatedEnvironment | null> {
+export async function findEnvironmentById(
+  id: string
+): Promise<(AuthenticatedEnvironment & { parentEnvironment: { apiKey: string } | null }) | null> {
   const environment = await prisma.runtimeEnvironment.findFirst({
     where: {
       id,
@@ -94,6 +97,11 @@ export async function findEnvironmentById(id: string): Promise<AuthenticatedEnvi
       project: true,
       organization: true,
       orgMember: true,
+      parentEnvironment: {
+        select: {
+          apiKey: true,
+        },
+      },
     },
   });
 
