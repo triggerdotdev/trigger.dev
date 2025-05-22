@@ -65,8 +65,7 @@
     "rimraf": "^5.0.7",
     "ts-essentials": "10.0.1",
     "tshy": "^3.0.2",
-    "tsx": "4.17.0",
-    "vitest": "^2.0.5"
+    "tsx": "4.17.0"
   },
   "scripts": {
     "clean": "rimraf dist .tshy .tshy-build .turbo",

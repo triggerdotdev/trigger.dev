@@ -37,8 +37,7 @@
     "@types/lodash.omit": "^4.5.7",
     "rimraf": "6.0.1",
     "tsup": "^8.4.0",
-    "tsx": "4.17.0",
-    "vitest": "^1.4.0"
+    "tsx": "4.17.0"
   },
   "engines": {
     "node": ">=18.20.0"
