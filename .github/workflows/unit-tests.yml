@@ -94,7 +94,13 @@ jobs:
       - name: 🧪 Run Internal Unit Tests
         run: pnpm run test:internal --reporter=default --reporter=blob --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
 
-      - name: Upload blob report to GitHub Actions Artifacts
+      - name: Gather all reports
+        run: |
+          mkdir -p .vitest-reports
+          find . -type f -path '*/.vitest-reports/blob-*.json' \
+            -exec bash -c 'src="$1"; basename=$(basename "$src"); pkg=$(dirname "$src" | sed "s|^\./||;s|/\.vitest-reports$||;s|/|_|g"); cp "$src" ".vitest-reports/${pkg}-${basename}"' _ {} \;
+
+      - name: Upload blob reports to GitHub Actions Artifacts
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
