@@ -13,7 +13,11 @@ const ParamsSchema = z.object({
 type ParamsSchema = z.infer<typeof ParamsSchema>;
 
 export async function action({ request, params }: ActionFunctionArgs) {
-  logger.info("projects get env", { url: request.url });
+  if (request.method !== "POST") {
+    return json({ error: "Method not allowed" }, { status: 405 });
+  }
+
+  logger.info("project upsert branch", { url: request.url });
 
   const authenticationResult = await authenticateApiRequestWithPersonalAccessToken(request);
   if (!authenticationResult) {

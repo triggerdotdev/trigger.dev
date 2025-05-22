@@ -1,63 +1,45 @@
-import { intro, log, outro } from "@clack/prompts";
-import { getBranch, prepareDeploymentError } from "@trigger.dev/core/v3";
-import { InitializeDeploymentResponseBody } from "@trigger.dev/core/v3/schemas";
-import { Command, Option as CommandOption } from "commander";
+import { intro } from "@clack/prompts";
+import { getBranch } from "@trigger.dev/core/v3";
+import { Command } from "commander";
 import { resolve } from "node:path";
-import { x } from "tinyexec";
 import { z } from "zod";
-import { isCI } from "std-env";
-import { CliApiClient } from "../apiClient.js";
-import { buildWorker } from "../build/buildWorker.js";
-import { resolveAlwaysExternal } from "../build/externals.js";
 import {
   CommonCommandOptions,
   commonOptions,
   handleTelemetry,
-  SkipLoggingError,
   wrapCommandAction,
 } from "../cli/common.js";
 import { loadConfig } from "../config.js";
-import { buildImage } from "../deploy/buildImage.js";
-import {
-  checkLogsForErrors,
-  checkLogsForWarnings,
-  printErrors,
-  printWarnings,
-  saveLogs,
-} from "../deploy/logs.js";
-import { chalkError, cliLink, isLinksSupported, prettyError } from "../utilities/cliOutput.js";
-import { loadDotEnvVars } from "../utilities/dotEnv.js";
+import { createGitMeta } from "../utilities/gitMeta.js";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { logger } from "../utilities/logger.js";
-import { getProjectClient, upsertBranch } from "../utilities/session.js";
-import { getTmpDir } from "../utilities/tempDirectories.js";
+import { getProjectClient } from "../utilities/session.js";
 import { spinner } from "../utilities/windows.js";
+import { verifyDirectory } from "./deploy.js";
 import { login } from "./login.js";
 import { updateTriggerPackages } from "./update.js";
-import { setGithubActionsOutputAndEnvVars } from "../utilities/githubActions.js";
-import { isDirectory } from "../utilities/fileSystem.js";
-import { createGitMeta } from "../utilities/gitMeta.js";
-import { verifyDirectory } from "./deploy.js";
+import { CliApiClient } from "../apiClient.js";
 
 const PreviewCommandOptions = CommonCommandOptions.extend({
   branch: z.string().optional(),
   config: z.string().optional(),
   projectRef: z.string().optional(),
   skipUpdateCheck: z.boolean().default(false),
-  envFile: z.string().optional(),
 });
 
 type PreviewCommandOptions = z.infer<typeof PreviewCommandOptions>;
 
-export function configureDeployCommand(program: Command) {
-  return commonOptions(
-    program
-      .command("preview archive")
+export function configurePreviewCommand(program: Command) {
+  const preview = program.command("preview").description("Modify preview branches");
+
+  commonOptions(
+    preview
+      .command("archive")
       .description("Archive a preview branch")
       .argument("[path]", "The path to the project", ".")
       .option(
         "-b, --branch <branch>",
-        "The preview branch to deploy to when passing --env preview. If not provided, we'll detect your local git branch."
+        "The preview branch to archive. If not provided, we'll detect your local git branch."
       )
       .option("--skip-update-check", "Skip checking for @trigger.dev package updates")
       .option("-c, --config <config file>", "The name of the config file, found at [path]")
@@ -137,23 +119,17 @@ async function _previewArchiveCommand(dir: string, options: PreviewCommandOption
     );
   }
 
-  const projectClient = await getProjectClient({
-    accessToken: authorization.auth.accessToken,
-    apiUrl: authorization.auth.apiUrl,
-    projectRef: resolvedConfig.project,
-    env: "preview",
-    branch,
-    profile: options.profile,
-  });
-
-  if (!projectClient) {
-    throw new Error("Failed to get project client");
-  }
+  const apiClient = new CliApiClient(authorization.auth.apiUrl, authorization.auth.accessToken);
 
   const $buildSpinner = spinner();
   $buildSpinner.start(`Archiving "${branch}"`);
 
-  const result = await projectClient.client.archiveBranch(branch);
+  const result = await apiClient.archiveBranch(resolvedConfig.project, branch);
 
-  $buildSpinner.stop(`Successfully archived ${branch}`);
+  if (result.success) {
+    $buildSpinner.stop(`Successfully archived "${branch}"`);
+  } else {
+    $buildSpinner.stop(`Failed to archive "${branch}".`);
+    logger.error(result.error);
+  }
 }

@@ -182,17 +182,18 @@ export class CliApiClient {
     );
   }
 
-  async archiveBranch(branch: string) {
+  async archiveBranch(projectRef: string, branch: string) {
     if (!this.accessToken) {
       throw new Error("archiveBranch: No access token");
     }
 
     return wrapZodFetch(
-      z.object({ success: z.boolean() }),
-      `${this.apiURL}/api/v1/branches/${branch}/archive`,
+      z.object({ branch: z.object({ id: z.string() }) }),
+      `${this.apiURL}/api/v1/projects/${projectRef}/branches/archive`,
       {
         method: "POST",
         headers: this.getHeaders(),
+        body: JSON.stringify({ branch }),
       }
     );
   }
