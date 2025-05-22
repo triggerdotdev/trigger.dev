@@ -1,6 +1,12 @@
 import { z } from "zod";
 import { DeserializedJsonSchema } from "../../schemas/json.js";
-import { FlushedRunMetadata, MachinePresetName, SerializedError, TaskRunError } from "./common.js";
+import {
+  FlushedRunMetadata,
+  GitMeta,
+  MachinePresetName,
+  SerializedError,
+  TaskRunError,
+} from "./common.js";
 import { BackgroundWorkerMetadata } from "./resources.js";
 import { DequeuedMessage, MachineResources } from "./runEngine.js";
 
@@ -301,18 +307,6 @@ export const ExternalBuildData = z.object({
 });
 
 export type ExternalBuildData = z.infer<typeof ExternalBuildData>;
-
-export const GitMeta = z.object({
-  commitAuthorName: z.string().optional(),
-  commitMessage: z.string().optional(),
-  commitRef: z.string().optional(),
-  commitSha: z.string().optional(),
-  dirty: z.boolean().optional(),
-  remoteUrl: z.string().optional(),
-  pullRequestNumber: z.number().optional(),
-});
-
-export type GitMeta = z.infer<typeof GitMeta>;
 
 export const UpsertBranchRequestBody = z.object({
   git: GitMeta.optional(),
