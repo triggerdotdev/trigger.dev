@@ -177,6 +177,7 @@ async function createBuildOptions(
   const conditions = [...customConditions, "trigger.dev", "module", "node"];
 
   const keepNames = options.resolvedConfig.build?.experimental_keepNames ?? false;
+  const minify = options.resolvedConfig.build?.experimental_minify ?? false;
 
   const $buildPlugins = await buildPlugins(options.target, options.resolvedConfig);
 
@@ -187,7 +188,7 @@ async function createBuildOptions(
     bundle: true,
     metafile: true,
     write: false,
-    minify: false,
+    minify,
     splitting: true,
     charset: "utf8",
     platform: "node",

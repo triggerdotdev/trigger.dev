@@ -196,6 +196,21 @@ export type TriggerConfig = {
      */
     experimental_keepNames?: boolean;
 
+    /**
+     * **WARNING: This is an experimental feature and might be removed in a future version.**
+     *
+     * "Minification is not safe for 100% of all JavaScript code" - esbuild docs
+     *
+     * Minify the generated code to help decrease bundle size. This may break stuff.
+     *
+     * @link https://esbuild.github.io/api/#minify
+     *
+     * @default false
+     *
+     * @deprecated (experimental)
+     */
+    experimental_minify?: boolean;
+
     jsx?: {
       /**
        * @default "React.createElement"
