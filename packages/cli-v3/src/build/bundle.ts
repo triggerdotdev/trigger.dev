@@ -174,8 +174,9 @@ async function createBuildOptions(
   options: BundleOptions & { entryPoints: string[]; buildResultPlugin?: esbuild.Plugin }
 ): Promise<esbuild.BuildOptions & { metafile: true }> {
   const customConditions = options.resolvedConfig.build?.conditions ?? [];
-
   const conditions = [...customConditions, "trigger.dev", "module", "node"];
+
+  const keepNames = options.resolvedConfig.build?.experimental_keepNames ?? false;
 
   const $buildPlugins = await buildPlugins(options.target, options.resolvedConfig);
 
@@ -193,6 +194,7 @@ async function createBuildOptions(
     sourcemap: true,
     sourcesContent: options.target === "dev",
     conditions,
+    keepNames,
     format: "esm",
     target: ["node20", "es2022"],
     loader: {
