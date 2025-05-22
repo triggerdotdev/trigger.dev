@@ -44,8 +44,8 @@ function ChatInterface({ onOpen, onClose }: { onOpen?: () => void; onClose?: () 
   };
 
   return (
-    <div className="flex h-full max-h-full flex-col overflow-y-auto bg-background-bright">
-      <div className="h-full overflow-y-auto p-4">
+    <div className="flex h-full max-h-full grow flex-col overflow-y-auto bg-background-bright">
+      <div className="flex-1 overflow-y-auto p-4">
         {conversation.map((qa) => (
           <div key={qa.id || `temp-${qa.question}`} className="mb-4">
             <div className="mb-2 font-medium text-text-bright">{qa.question}</div>
@@ -60,7 +60,7 @@ function ChatInterface({ onOpen, onClose }: { onOpen?: () => void; onClose?: () 
         )}
       </div>
 
-      <form onSubmit={handleSubmit} className="border-t border-grid-bright p-4">
+      <form onSubmit={handleSubmit} className="flex-shrink-0 border-t border-grid-bright p-4">
         <div className="flex gap-2">
           <input
             type="text"
@@ -122,7 +122,7 @@ export function KapaChat({ websiteId, onOpen, onClose }: KapaChatProps) {
         </Button>
 
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
-          <DialogContent className="flex max-h-[90vh] min-h-80 w-full max-w-prose flex-col justify-between px-0 pb-0 pt-3">
+          <DialogContent className="flex max-h-[90vh] min-h-80 w-full flex-col justify-between px-0 pb-0 pt-2.5 sm:max-w-prose">
             <DialogHeader className="pl-3">
               <div className="flex items-center gap-1">
                 <AISparkleIcon className="size-5" />
