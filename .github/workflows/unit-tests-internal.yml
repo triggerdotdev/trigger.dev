@@ -116,17 +116,14 @@ jobs:
         uses: buildjet/setup-node@v4
         with:
           node-version: 20.11.1
-          cache: "pnpm"
-
-      - name: 📥 Download deps
-        run: pnpm install --frozen-lockfile
+          # no cache enabled, we're not installing deps
 
       - name: Download blob reports from GitHub Actions Artifacts
         uses: actions/download-artifact@v4
         with:
           path: .vitest-reports
-          pattern: internal-blob-report-*
+          pattern: webapp-blob-report-*
           merge-multiple: true
 
       - name: Merge reports
-        run: npx vitest run --merge-reports
+        run: pnpm dlx vitest run --merge-reports
