@@ -9,11 +9,11 @@ on:
 
 jobs:
   webapp:
-    uses: ./.github/workflows/unit-tests/webapp.yml
+    uses: ./.github/workflows/unit-tests-webapp.yml
     secrets: inherit
   packages:
-    uses: ./.github/workflows/unit-tests/packages.yml
+    uses: ./.github/workflows/unit-tests-packages.yml
     secrets: inherit
   internal:
-    uses: ./.github/workflows/unit-tests/internal.yml
+    uses: ./.github/workflows/unit-tests-internal.yml
     secrets: inherit
