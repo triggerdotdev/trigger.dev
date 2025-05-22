@@ -80,7 +80,7 @@ jobs:
         run: pnpm run generate
 
       - name: 🧪 Run Webapp Unit Tests
-        run: pnpm run test:webapp --reporter=blob --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
+        run: pnpm run test:webapp --reporter=default --reporter=blob --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
           DIRECT_URL: postgresql://postgres:postgres@localhost:5432/postgres
@@ -89,10 +89,10 @@ jobs:
           ENCRYPTION_KEY: "secret"
 
       - name: 🧪 Run Package Unit Tests
-        run: pnpm run test:packages --reporter=blob --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
+        run: pnpm run test:packages --reporter=default --reporter=blob --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
 
       - name: 🧪 Run Internal Unit Tests
-        run: pnpm run test:internal --reporter=blob --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
+        run: pnpm run test:internal --reporter=default --reporter=blob --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
 
       - name: Upload blob report to GitHub Actions Artifacts
         if: ${{ !cancelled() }}
