@@ -93,7 +93,7 @@ jobs:
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: blob-report-${{ matrix.shardIndex }}
+          name: packages-blob-report-${{ matrix.shardIndex }}
           path: .vitest-reports/*
           include-hidden-files: true
           retention-days: 1
@@ -127,7 +127,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: .vitest-reports
-          pattern: blob-report-*
+          pattern: packages-blob-report-*
           merge-multiple: true
 
       - name: Merge reports
