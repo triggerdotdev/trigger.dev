@@ -16,6 +16,9 @@ function initializeR2() {
   return new AwsClient({
     accessKeyId: env.OBJECT_STORE_ACCESS_KEY_ID,
     secretAccessKey: env.OBJECT_STORE_SECRET_ACCESS_KEY,
+    // We now set the default value to "s3" in the schema to enhance interoperability with various S3-compatible services.
+    // Setting this env var to an empty string will restore the previous behavior of not setting a service.
+    service: env.OBJECT_STORE_SERVICE ? env.OBJECT_STORE_SERVICE : undefined,
   });
 }
 
