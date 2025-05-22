@@ -82,8 +82,6 @@ jobs:
         run: pnpm run test:packages --reporter=default --reporter=blob --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
 
       - name: Gather all reports
-        # disabled for now as we're not sharding package tests
-        if: false
         run: |
           mkdir -p .vitest-reports
           find . -type f -path '*/.vitest-reports/blob-*.json' \
