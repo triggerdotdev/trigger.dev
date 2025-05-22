@@ -123,7 +123,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: .vitest-reports
-          pattern: webapp-blob-report-*
+          pattern: internal-blob-report-*
           merge-multiple: true
 
       - name: Merge reports
