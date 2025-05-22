@@ -120,7 +120,6 @@ export default function App() {
           <ShortcutsProvider>
             <Outlet />
             <Toast />
-            {kapa.websiteId && <KapaChat websiteId={kapa.websiteId} />}
           </ShortcutsProvider>
           <ScrollRestoration />
           <ExternalScripts />
