@@ -1,14 +1,13 @@
-import { XMarkIcon } from "@heroicons/react/20/solid";
 import { ArrowUpIcon } from "@heroicons/react/24/solid";
 import { KapaProvider, useChat } from "@kapaai/react-sdk";
 import { useSearchParams } from "@remix-run/react";
 import { useCallback, useEffect, useState } from "react";
 import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
 import { Button } from "./primitives/Buttons";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./primitives/Dialog";
 import { Header2 } from "./primitives/Headers";
 import { Paragraph } from "./primitives/Paragraph";
 import { Spinner } from "./primitives/Spinner";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./primitives/Dialog";
 
 type KapaChatProps = {
   websiteId: string;
@@ -16,9 +15,11 @@ type KapaChatProps = {
   onClose?: () => void;
 };
 
-function ChatInterface({ onOpen, onClose }: { onOpen?: () => void; onClose?: () => void }) {
+function ChatInterface() {
   const [message, setMessage] = useState("");
-  const { conversation, submitQuery, isGeneratingAnswer, isPreparingAnswer } = useChat();
+  const [isStopping, setIsStopping] = useState(false);
+  const { conversation, submitQuery, isGeneratingAnswer, isPreparingAnswer, stopGeneration } =
+    useChat();
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Handle URL param functionality
@@ -48,8 +49,10 @@ function ChatInterface({ onOpen, onClose }: { onOpen?: () => void; onClose?: () 
       <div className="flex-1 overflow-y-auto p-4">
         {conversation.map((qa) => (
           <div key={qa.id || `temp-${qa.question}`} className="mb-4">
-            <div className="mb-2 font-medium text-text-bright">{qa.question}</div>
-            <div className="text-text-dimmed">{qa.answer}</div>
+            <Header2 spacing>{qa.question}</Header2>
+            <div className="prose prose-invert max-w-none text-text-dimmed">
+              <div>{qa.answer}</div>
+            </div>
           </div>
         ))}
         {isPreparingAnswer && (
@@ -58,10 +61,32 @@ function ChatInterface({ onOpen, onClose }: { onOpen?: () => void; onClose?: () 
             <Paragraph className="text-text-dimmed">Preparing answer…</Paragraph>
           </div>
         )}
+        {isGeneratingAnswer && (
+          <div className="flex items-center gap-2">
+            <Spinner className="size-4" />
+            <Paragraph className="text-text-dimmed">Generating answer…</Paragraph>
+            <Button
+              variant="tertiary/small"
+              onClick={() => {
+                setIsStopping(true);
+                stopGeneration();
+              }}
+              shortcut={{ key: "esc", enabledOnInputElements: true }}
+            >
+              Stop
+            </Button>
+          </div>
+        )}
+        {isStopping && (
+          <div className="flex items-center gap-2">
+            <Spinner className="size-4" />
+            <Paragraph className="text-text-dimmed">Stopping generation…</Paragraph>
+          </div>
+        )}
       </div>
 
       <form onSubmit={handleSubmit} className="flex-shrink-0 border-t border-grid-bright p-4">
-        <div className="flex gap-2">
+        <div className="flex gap-3">
           <input
             type="text"
             value={message}
@@ -91,11 +116,6 @@ export function KapaChat({ websiteId, onOpen, onClose }: KapaChatProps) {
     setIsOpen(true);
     onOpen?.();
   }, [onOpen]);
-
-  const handleClose = useCallback(() => {
-    setIsOpen(false);
-    onClose?.();
-  }, [onClose]);
 
   if (!websiteId) return null;
 
@@ -130,7 +150,7 @@ export function KapaChat({ websiteId, onOpen, onClose }: KapaChatProps) {
                 <DialogTitle className="text-sm font-medium text-text-bright">Ask AI</DialogTitle>
               </div>
             </DialogHeader>
-            <ChatInterface onOpen={handleOpen} onClose={handleClose} />
+            <ChatInterface />
           </DialogContent>
         </Dialog>
       </div>
