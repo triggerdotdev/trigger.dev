@@ -48,7 +48,7 @@ const Env = z.object({
   RESOURCE_MONITOR_OVERRIDE_MEMORY_TOTAL_GB: z.coerce.number().optional(),
 
   // Docker settings
-  DOCKER_ENFORCE_MACHINE_PRESETS: z.coerce.boolean().default(true),
+  DOCKER_ENFORCE_MACHINE_PRESETS: BoolEnv.default(true),
   DOCKER_AUTOREMOVE_EXITED_CONTAINERS: BoolEnv.default(true),
   /**
    * Network mode to use for all runners. Supported standard values are: `bridge`, `host`, `none`, and `container:<name|id>`.
