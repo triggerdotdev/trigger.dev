@@ -32,6 +32,7 @@ export class RunPresenter {
     environmentSlug,
     runFriendlyId,
     showDeletedLogs,
+    showDebug,
   }: {
     userId: string;
     projectSlug: string;
@@ -39,6 +40,7 @@ export class RunPresenter {
     environmentSlug: string;
     runFriendlyId: string;
     showDeletedLogs: boolean;
+    showDebug: boolean;
   }) {
     const run = await this.#prismaClient.taskRun.findFirstOrThrow({
       select: {
@@ -131,7 +133,8 @@ export class RunPresenter {
       getTaskEventStoreTableForRun(run),
       run.traceId,
       run.rootTaskRun?.createdAt ?? run.createdAt,
-      run.completedAt ?? undefined
+      run.completedAt ?? undefined,
+      { includeDebugLogs: showDebug }
     );
     if (!traceSummary) {
       return {

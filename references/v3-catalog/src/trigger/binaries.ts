@@ -43,13 +43,14 @@ function unzip(inputPath: string, outputPath: string) {
 
 import { createClient } from "@1password/sdk";
 
-// Creates an authenticated client.
-const client = await createClient({
-  auth: process.env.OP_SERVICE_ACCOUNT_TOKEN ?? "",
-  // Set the following to your own integration name and version.
-  integrationName: "My 1Password Integration",
-  integrationVersion: "v1.0.0",
-});
+function create1PasswordClient() {
+  return createClient({
+    auth: process.env.OP_SERVICE_ACCOUNT_TOKEN ?? "",
+    // Set the following to your own integration name and version.
+    integrationName: "My 1Password Integration",
+    integrationVersion: "v1.0.0",
+  });
+}
 
 // Fetches a secret.
 // const secret = await client.secrets.resolve("op://vault/item/field");

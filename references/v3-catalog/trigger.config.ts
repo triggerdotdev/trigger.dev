@@ -32,6 +32,8 @@ export default defineConfig({
   build: {
     conditions: ["react-server"],
     experimental_autoDetectExternal: true,
+    experimental_keepNames: true,
+    experimental_minify: true,
     extensions: [
       additionalFiles({
         files: ["./wrangler/wrangler.toml"],
