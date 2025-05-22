@@ -47,6 +47,9 @@ export class BackgroundWorker {
       throw new Error("Worker already initialized");
     }
 
+    // Write the build manifest to this.build.outputPath/build.json
+    await writeJSONFile(this.buildManifestPath, this.build, true);
+
     logger.debug("indexing worker manifest", { build: this.build, params: this.params });
 
     this.manifest = await indexWorkerManifest({

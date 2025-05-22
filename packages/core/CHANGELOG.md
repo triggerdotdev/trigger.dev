@@ -1,5 +1,17 @@
 # internal-platform
 
+## 4.0.0-v4-beta.18
+
+## 4.0.0-v4-beta.17
+
+### Patch Changes
+
+- Expose esbuild `keepNames` option (experimental) ([#2091](https://github.com/triggerdotdev/trigger.dev/pull/2091))
+- Add `experimental_autoDetectExternal` trigger config option ([#2083](https://github.com/triggerdotdev/trigger.dev/pull/2083))
+- Improve structured logs ([#2062](https://github.com/triggerdotdev/trigger.dev/pull/2062))
+- Add verbose structured log level ([#2062](https://github.com/triggerdotdev/trigger.dev/pull/2062))
+- Expose esbuild `minify` option (experimental) ([#2091](https://github.com/triggerdotdev/trigger.dev/pull/2091))
+
 ## 4.0.0-v4-beta.16
 
 ## 4.0.0-v4-beta.15
