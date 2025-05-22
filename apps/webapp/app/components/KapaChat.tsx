@@ -8,6 +8,7 @@ import { Button } from "./primitives/Buttons";
 import { Header2 } from "./primitives/Headers";
 import { Paragraph } from "./primitives/Paragraph";
 import { Spinner } from "./primitives/Spinner";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./primitives/Dialog";
 
 type KapaChatProps = {
   websiteId: string;
@@ -43,7 +44,7 @@ function ChatInterface({ onOpen, onClose }: { onOpen?: () => void; onClose?: () 
   };
 
   return (
-    <div className="grid grid-rows-[1fr_auto] bg-background-bright">
+    <div className="flex h-full max-h-full flex-col overflow-y-auto bg-background-bright">
       <div className="h-full overflow-y-auto p-4">
         {conversation.map((qa) => (
           <div key={qa.id || `temp-${qa.question}`} className="mb-4">
@@ -67,6 +68,7 @@ function ChatInterface({ onOpen, onClose }: { onOpen?: () => void; onClose?: () 
             onChange={(e) => setMessage(e.target.value)}
             placeholder="Ask a question..."
             disabled={isGeneratingAnswer}
+            autoFocus
             className="flex-1 rounded-md border border-grid-bright bg-background-dimmed px-3 py-2 text-text-bright placeholder:text-text-dimmed focus:border-indigo-500 focus:outline-none"
           />
           <Button
@@ -119,25 +121,17 @@ export function KapaChat({ websiteId, onOpen, onClose }: KapaChatProps) {
           <AISparkleIcon className="size-5" />
         </Button>
 
-        {isOpen && (
-          <div className="fixed left-1/2 top-1/3 z-50 grid max-h-[90vh] min-h-80 w-full max-w-prose -translate-x-1/2 -translate-y-1/2 grid-rows-[auto_1fr] overflow-hidden rounded-lg border border-grid-bright shadow-lg">
-            <div className="flex h-12 items-center justify-between border-b border-grid-bright bg-background-dimmed px-3">
+        <Dialog open={isOpen} onOpenChange={setIsOpen}>
+          <DialogContent className="flex max-h-[90vh] min-h-80 w-full max-w-prose flex-col justify-between px-0 pb-0 pt-3">
+            <DialogHeader className="pl-3">
               <div className="flex items-center gap-1">
                 <AISparkleIcon className="size-5" />
-                <Header2 className="text-sm font-medium text-text-bright">Ask AI</Header2>
+                <DialogTitle className="text-sm font-medium text-text-bright">Ask AI</DialogTitle>
               </div>
-              <Button
-                variant="minimal/small"
-                TrailingIcon={<XMarkIcon className="size-4" />}
-                className="pl-1 pr-1"
-                onClick={handleClose}
-                shortcut={{ key: "esc", enabledOnInputElements: true }}
-                shortcutPosition="before-trailing-icon"
-              />
-            </div>
+            </DialogHeader>
             <ChatInterface onOpen={handleOpen} onClose={handleClose} />
-          </div>
-        )}
+          </DialogContent>
+        </Dialog>
       </div>
     </KapaProvider>
   );
