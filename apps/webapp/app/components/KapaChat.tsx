@@ -1,6 +1,7 @@
 import { ArrowUpIcon } from "@heroicons/react/24/solid";
 import { KapaProvider, useChat } from "@kapaai/react-sdk";
 import { useSearchParams } from "@remix-run/react";
+import { motion } from "framer-motion";
 import { useCallback, useEffect, useState } from "react";
 import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
 import { Button } from "./primitives/Buttons";
@@ -8,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./primitives/D
 import { Header2 } from "./primitives/Headers";
 import { Paragraph } from "./primitives/Paragraph";
 import { Spinner } from "./primitives/Spinner";
+import { SparkleListIcon } from "~/assets/icons/SparkleListIcon";
 
 type KapaChatProps = {
   websiteId: string;
@@ -15,9 +17,81 @@ type KapaChatProps = {
   onClose?: () => void;
 };
 
+function ChatMessages({
+  conversation,
+  isPreparingAnswer,
+  isGeneratingAnswer,
+  isStopping,
+  onReset,
+  onExampleClick,
+}: {
+  conversation: any[];
+  isPreparingAnswer: boolean;
+  isGeneratingAnswer: boolean;
+  isStopping: boolean;
+  onReset: () => void;
+  onExampleClick: (question: string) => void;
+}) {
+  const exampleQuestions = [
+    "How do I handle errors in my task?",
+    "What are the different types of triggers?",
+    "How do I deploy my tasks?",
+  ];
+
+  return (
+    <div className="flex-1 overflow-y-auto p-4">
+      {conversation.length === 0 ? (
+        <div className="flex flex-col gap-2">
+          {exampleQuestions.map((question, index) => (
+            <button
+              key={index}
+              className="group flex w-fit items-center gap-2 rounded-full border border-dashed border-charcoal-600 px-4 py-2 transition hover:border-solid hover:border-indigo-500"
+              onClick={() => onExampleClick(question)}
+            >
+              <SparkleListIcon className="size-4 text-text-dimmed transition group-hover:text-indigo-500" />
+              <Paragraph variant="small" className="transition group-hover:text-text-bright">
+                {question}
+              </Paragraph>
+            </button>
+          ))}
+        </div>
+      ) : (
+        conversation.map((qa) => (
+          <div key={qa.id || `temp-${qa.question}`} className="mb-4">
+            <Header2 spacing>{qa.question}</Header2>
+            <div className="prose prose-invert max-w-none text-text-dimmed">{qa.answer}</div>
+          </div>
+        ))
+      )}
+      {isPreparingAnswer && (
+        <div className="flex items-center gap-2">
+          <Spinner className="size-4" />
+          <Paragraph className="text-text-dimmed">Preparing answer…</Paragraph>
+        </div>
+      )}
+      {isGeneratingAnswer && (
+        <div className="flex items-center gap-2">
+          <Spinner className="size-4" />
+          <Paragraph className="text-text-dimmed">Generating answer…</Paragraph>
+          <Button variant="tertiary/small" onClick={onReset}>
+            Reset
+          </Button>
+        </div>
+      )}
+      {isStopping && (
+        <div className="flex items-center gap-2">
+          <Spinner className="size-4" />
+          <Paragraph className="text-text-dimmed">Stopping generation…</Paragraph>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ChatInterface() {
   const [message, setMessage] = useState("");
   const [isStopping, setIsStopping] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
   const {
     conversation,
     submitQuery,
@@ -45,55 +119,32 @@ function ChatInterface() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (message.trim()) {
+      setIsExpanded(true);
       submitQuery(message);
       setMessage("");
     }
   };
 
-  return (
-    <div className="flex h-full max-h-full grow flex-col overflow-y-auto bg-background-bright">
-      <div className="flex-1 overflow-y-auto p-4">
-        {conversation.map((qa) => (
-          <div key={qa.id || `temp-${qa.question}`} className="mb-4">
-            <Header2 spacing>{qa.question}</Header2>
-            <div className="prose prose-invert max-w-none text-text-dimmed">
-              <div>{qa.answer}</div>
-            </div>
-          </div>
-        ))}
-        {isPreparingAnswer && (
-          <div className="flex items-center gap-2">
-            <Spinner className="size-4" />
-            <Paragraph className="text-text-dimmed">Preparing answer…</Paragraph>
-          </div>
-        )}
-        {isGeneratingAnswer && (
-          <div className="flex items-center gap-2">
-            <Spinner className="size-4" />
-            <Paragraph className="text-text-dimmed">Generating answer…</Paragraph>
-            <Button
-              variant="tertiary/small"
-              onClick={() => {
-                setIsStopping(true);
-                stopGeneration();
-              }}
-              shortcut={{ key: "esc", enabledOnInputElements: true }}
-            >
-              Stop
-            </Button>
-            <Button variant="tertiary/small" onClick={() => resetConversation()}>
-              Reset
-            </Button>
-          </div>
-        )}
-        {isStopping && (
-          <div className="flex items-center gap-2">
-            <Spinner className="size-4" />
-            <Paragraph className="text-text-dimmed">Stopping generation…</Paragraph>
-          </div>
-        )}
-      </div>
+  const handleExampleClick = (question: string) => {
+    setIsExpanded(true);
+    submitQuery(question);
+  };
 
+  return (
+    <motion.div
+      className="flex h-full max-h-full grow flex-col overflow-y-auto bg-background-bright"
+      animate={{ height: isExpanded ? "90vh" : "auto" }}
+      transition={{ duration: 0.2, ease: "easeInOut" }}
+      initial={{ height: "auto" }}
+    >
+      <ChatMessages
+        conversation={conversation}
+        isPreparingAnswer={isPreparingAnswer}
+        isGeneratingAnswer={isGeneratingAnswer}
+        isStopping={isStopping}
+        onReset={resetConversation}
+        onExampleClick={handleExampleClick}
+      />
       <form onSubmit={handleSubmit} className="flex-shrink-0 border-t border-grid-bright p-4">
         <div className="flex gap-3">
           <input
@@ -107,14 +158,14 @@ function ChatInterface() {
           />
           <Button
             type="submit"
-            disabled={isGeneratingAnswer || !message.trim()}
-            LeadingIcon={<ArrowUpIcon className="size-5" />}
+            disabled={!message.trim()}
+            LeadingIcon={<ArrowUpIcon className="size-5 text-text-bright" />}
             variant="primary/large"
             className="rounded-full"
           />
         </div>
       </form>
-    </div>
+    </motion.div>
   );
 }
 
@@ -152,7 +203,7 @@ export function KapaChat({ websiteId, onOpen, onClose }: KapaChatProps) {
         </Button>
 
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
-          <DialogContent className="flex max-h-[90vh] min-h-80 w-full flex-col justify-between px-0 pb-0 pt-2.5 sm:max-w-prose">
+          <DialogContent className="flex max-h-[90vh] min-h-fit w-full flex-col justify-between px-0 pb-0 pt-2.5 sm:max-w-prose">
             <DialogHeader className="pl-3">
               <div className="flex items-center gap-1">
                 <AISparkleIcon className="size-5" />
