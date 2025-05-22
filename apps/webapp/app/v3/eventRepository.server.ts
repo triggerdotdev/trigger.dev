@@ -576,10 +576,17 @@ export class EventRepository {
     spanId: string,
     traceId: string,
     startCreatedAt: Date,
-    endCreatedAt?: Date
+    endCreatedAt?: Date,
+    options?: { includeDebugLogs?: boolean }
   ) {
     return await startActiveSpan("getSpan", async (s) => {
-      const spanEvent = await this.#getSpanEvent(storeTable, spanId, startCreatedAt, endCreatedAt);
+      const spanEvent = await this.#getSpanEvent(
+        storeTable,
+        spanId,
+        startCreatedAt,
+        endCreatedAt,
+        options
+      );
 
       if (!spanEvent) {
         return;
@@ -786,7 +793,8 @@ export class EventRepository {
     storeTable: TaskEventStoreTable,
     spanId: string,
     startCreatedAt: Date,
-    endCreatedAt?: Date
+    endCreatedAt?: Date,
+    options?: { includeDebugLogs?: boolean }
   ) {
     return await startActiveSpan("getSpanEvent", async (s) => {
       const events = await this.taskEventStore.findMany(
@@ -797,7 +805,8 @@ export class EventRepository {
         undefined,
         {
           startTime: "asc",
-        }
+        },
+        options
       );
 
       let finalEvent: TaskEvent | undefined;

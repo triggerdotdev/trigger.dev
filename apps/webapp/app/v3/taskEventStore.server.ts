@@ -76,7 +76,8 @@ export class TaskEventStore {
     startCreatedAt: Date,
     endCreatedAt?: Date,
     select?: TSelect,
-    orderBy?: Prisma.TaskEventOrderByWithRelationInput
+    orderBy?: Prisma.TaskEventOrderByWithRelationInput,
+    options?: { includeDebugLogs?: boolean }
   ): Promise<Prisma.TaskEventGetPayload<{ select: TSelect }>[]> {
     let finalWhere: Prisma.TaskEventWhereInput = where;
 
@@ -99,13 +100,14 @@ export class TaskEventStore {
       };
     }
 
+    const filterDebug =
+      options?.includeDebugLogs === false || options?.includeDebugLogs === undefined;
+
     if (table === "taskEventPartitioned") {
       return (await this.readReplica.taskEventPartitioned.findMany({
         where: {
           ...(finalWhere as Prisma.TaskEventPartitionedWhereInput),
-          kind: {
-            not: "LOG",
-          },
+          ...(filterDebug ? { kind: { not: "LOG" } } : {}),
         },
         select,
         orderBy,
@@ -115,9 +117,7 @@ export class TaskEventStore {
       return (await this.readReplica.taskEvent.findMany({
         where: {
           ...(finalWhere as Prisma.TaskEventWhereInput),
-          kind: {
-            not: "LOG",
-          },
+          ...(filterDebug ? { kind: { not: "LOG" } } : {}),
         },
         select,
         orderBy,
