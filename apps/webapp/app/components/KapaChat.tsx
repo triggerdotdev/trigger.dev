@@ -18,8 +18,14 @@ type KapaChatProps = {
 function ChatInterface() {
   const [message, setMessage] = useState("");
   const [isStopping, setIsStopping] = useState(false);
-  const { conversation, submitQuery, isGeneratingAnswer, isPreparingAnswer, stopGeneration } =
-    useChat();
+  const {
+    conversation,
+    submitQuery,
+    isGeneratingAnswer,
+    isPreparingAnswer,
+    stopGeneration,
+    resetConversation,
+  } = useChat();
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Handle URL param functionality
@@ -74,6 +80,9 @@ function ChatInterface() {
               shortcut={{ key: "esc", enabledOnInputElements: true }}
             >
               Stop
+            </Button>
+            <Button variant="tertiary/small" onClick={() => resetConversation()}>
+              Reset
             </Button>
           </div>
         )}
