@@ -183,6 +183,34 @@ export type TriggerConfig = {
      */
     experimental_autoDetectExternal?: boolean;
 
+    /**
+     * **WARNING: This is an experimental feature and might be removed in a future version.**
+     *
+     * Preserve the original names of functions and classes in the bundle. This can fix issues with frameworks that rely on the original names for registration and binding, for example MikroORM.
+     *
+     * @link https://esbuild.github.io/api/#keep-names
+     *
+     * @default false
+     *
+     * @deprecated (experimental)
+     */
+    experimental_keepNames?: boolean;
+
+    /**
+     * **WARNING: This is an experimental feature and might be removed in a future version.**
+     *
+     * "Minification is not safe for 100% of all JavaScript code" - esbuild docs
+     *
+     * Minify the generated code to help decrease bundle size. This may break stuff.
+     *
+     * @link https://esbuild.github.io/api/#minify
+     *
+     * @default false
+     *
+     * @deprecated (experimental)
+     */
+    experimental_minify?: boolean;
+
     jsx?: {
       /**
        * @default "React.createElement"
