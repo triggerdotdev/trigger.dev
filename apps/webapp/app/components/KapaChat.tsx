@@ -1,4 +1,10 @@
-import { ArrowPathIcon, ArrowUpIcon, StopIcon } from "@heroicons/react/24/solid";
+import {
+  ArrowPathIcon,
+  ArrowUpIcon,
+  StopIcon,
+  HandThumbUpIcon,
+  HandThumbDownIcon,
+} from "@heroicons/react/24/solid";
 import { KapaProvider, useChat } from "@kapaai/react-sdk";
 import { useSearchParams } from "@remix-run/react";
 import { motion } from "framer-motion";
@@ -26,6 +32,7 @@ function ChatMessages({
   onReset,
   onExampleClick,
   error,
+  addFeedback,
 }: {
   conversation: any[];
   isPreparingAnswer: boolean;
@@ -33,6 +40,7 @@ function ChatMessages({
   onReset: () => void;
   onExampleClick: (question: string) => void;
   error: string | null;
+  addFeedback: (questionAnswerId: string, reaction: "upvote" | "downvote", comment?: any) => void;
 }) {
   const exampleQuestions = [
     "How do I handle errors in my task?",
@@ -106,6 +114,50 @@ function ChatMessages({
           </div>
         ))
       )}
+      {conversation.length > 0 && !isPreparingAnswer && !isGeneratingAnswer && !error && (
+        <div className="flex items-center justify-between border-t border-grid-bright pt-3">
+          <div className="flex items-center gap-2">
+            <Paragraph variant="small" className="text-text-dimmed">
+              Was this helpful?
+            </Paragraph>
+            <div className="flex items-center">
+              <Button
+                variant="minimal/small"
+                onClick={() => {
+                  const latestQA = conversation[conversation.length - 1];
+                  if (latestQA?.id) {
+                    addFeedback(latestQA.id, "upvote");
+                  }
+                }}
+                className="size-8 px-1.5"
+              >
+                <HandThumbUpIcon className="size-4 text-text-dimmed transition group-hover/button:text-success" />
+              </Button>
+              <Button
+                variant="minimal/small"
+                onClick={() => {
+                  const latestQA = conversation[conversation.length - 1];
+                  if (latestQA?.id) {
+                    addFeedback(latestQA.id, "downvote");
+                  }
+                }}
+                className="size-8 px-1.5"
+              >
+                <HandThumbDownIcon className="size-4 text-text-dimmed transition group-hover/button:text-error" />
+              </Button>
+            </div>
+          </div>
+          <Button
+            variant="minimal/small"
+            LeadingIcon={<ArrowPathIcon className="size-4" />}
+            onClick={onReset}
+            className="w-fit pl-1.5"
+            iconSpacing="gap-x-1.5"
+          >
+            Reset chat
+          </Button>
+        </div>
+      )}
       {isPreparingAnswer && (
         <div className="flex items-center gap-2">
           <Spinner className="size-4" />
@@ -126,6 +178,7 @@ function ChatMessages({
             LeadingIcon={<ArrowPathIcon className="size-4" />}
             onClick={onReset}
             className="w-fit pl-1.5"
+            iconSpacing="gap-x-1.5"
           >
             Reset chat
           </Button>
@@ -147,6 +200,7 @@ function ChatInterface({ initialQuery }: { initialQuery?: string }) {
     resetConversation,
     stopGeneration,
     error,
+    addFeedback,
   } = useChat();
 
   useEffect(() => {
@@ -171,6 +225,11 @@ function ChatInterface({ initialQuery }: { initialQuery?: string }) {
     submitQuery(question);
   };
 
+  const handleReset = () => {
+    resetConversation();
+    setIsExpanded(false);
+  };
+
   return (
     <motion.div
       className="flex h-full max-h-[90vh] grow flex-col overflow-y-auto bg-background-bright"
@@ -182,9 +241,10 @@ function ChatInterface({ initialQuery }: { initialQuery?: string }) {
         conversation={conversation}
         isPreparingAnswer={isPreparingAnswer}
         isGeneratingAnswer={isGeneratingAnswer}
-        onReset={resetConversation}
+        onReset={handleReset}
         onExampleClick={handleExampleClick}
         error={error}
+        addFeedback={addFeedback}
       />
       <form onSubmit={handleSubmit} className="flex-shrink-0 border-t border-grid-bright p-4">
         <div className="flex gap-3">
@@ -289,7 +349,7 @@ export function KapaChat({ websiteId, onOpen }: KapaChatProps) {
         </Button>
 
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
-          <DialogContent className="flex !max-h-[90vh] min-h-fit w-full flex-col justify-between px-0 pb-0 pt-2.5 sm:max-w-prose">
+          <DialogContent className="flex max-h-[90vh] min-h-fit w-full flex-col justify-between px-0 pb-0 pt-2.5 sm:max-w-prose">
             <DialogHeader className="pl-3">
               <div className="flex items-center gap-1">
                 <AISparkleIcon className="size-5" />
