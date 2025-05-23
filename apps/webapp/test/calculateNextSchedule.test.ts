@@ -389,7 +389,10 @@ describe("calculateNextScheduledTimestamp - Fuzzy Testing", () => {
         }
       } catch (error) {
         // Some complex expressions might not be supported, that's okay
-        if (!error.message.includes("not supported") && !error.message.includes("Invalid")) {
+        if (
+          !(error as Error).message.includes("not supported") &&
+          !(error as Error).message.includes("Invalid")
+        ) {
           console.error(`Unexpected error with schedule: ${schedule}`);
           throw error;
         }
