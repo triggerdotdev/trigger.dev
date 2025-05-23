@@ -272,6 +272,7 @@ export const GitMeta = z.object({
   remoteUrl: z.string().optional(),
   pullRequestNumber: z.number().optional(),
   pullRequestTitle: z.string().optional(),
+  pullRequestState: z.enum(["open", "closed", "merged"]).optional(),
 });
 
 export type GitMeta = z.infer<typeof GitMeta>;

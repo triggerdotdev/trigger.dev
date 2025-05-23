@@ -152,6 +152,7 @@ async function getGitHubActionsMeta(): Promise<GitMeta | undefined> {
   let commitMessage: string | undefined;
   let pullRequestNumber: number | undefined;
   let pullRequestTitle: string | undefined;
+  let pullRequestState: "open" | "closed" | "merged" | undefined;
   let commitSha = process.env.GITHUB_SHA;
 
   if (process.env.GITHUB_EVENT_PATH) {
@@ -168,6 +169,12 @@ async function getGitHubActionsMeta(): Promise<GitMeta | undefined> {
         commitRef = eventData.pull_request?.head?.ref;
         pullRequestNumber = eventData.pull_request?.number;
         commitSha = eventData.pull_request?.head?.sha;
+        pullRequestState = eventData.pull_request?.state as "open" | "closed";
+
+        // Check if PR was merged
+        if (pullRequestState === "closed" && eventData.pull_request?.merged === true) {
+          pullRequestState = "merged";
+        }
 
         await x("git", ["status"], {
           nodeOptions: {
@@ -201,6 +208,7 @@ async function getGitHubActionsMeta(): Promise<GitMeta | undefined> {
         ? parseInt(process.env.GITHUB_PULL_REQUEST_NUMBER)
         : undefined),
     pullRequestTitle,
+    pullRequestState,
   };
 }
 
