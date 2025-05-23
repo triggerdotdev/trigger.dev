@@ -3,6 +3,7 @@ import { KapaProvider, useChat } from "@kapaai/react-sdk";
 import { useSearchParams } from "@remix-run/react";
 import { motion } from "framer-motion";
 import { useCallback, useEffect, useState } from "react";
+import { marked } from "marked";
 import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
 import { SparkleListIcon } from "~/assets/icons/SparkleListIcon";
 import { Button } from "./primitives/Buttons";
@@ -87,7 +88,10 @@ function ChatMessages({
         conversation.map((qa) => (
           <div key={qa.id || `temp-${qa.question}`} className="mb-4">
             <Header2 spacing>{qa.question}</Header2>
-            <div className="prose prose-invert max-w-none text-text-dimmed">{qa.answer}</div>
+            <div
+              className="prose prose-invert max-w-none text-text-dimmed"
+              dangerouslySetInnerHTML={{ __html: marked(qa.answer) }}
+            />
           </div>
         ))
       )}
@@ -216,7 +220,8 @@ export function KapaChat({ websiteId, onOpen, onClose }: KapaChatProps) {
           onAnswerGenerationCompleted: () => handleOpen(),
         },
       }}
-      botProtectionMechanism={undefined}
+      botProtectionMechanism={"recaptcha"}
+      // hasConsentForCaptcha={false}
     >
       <div className="relative">
         <Button
