@@ -77,7 +77,7 @@ export function configureDeployCommand(program: Command) {
       )
       .option(
         "-b, --branch <branch>",
-        "The preview branch to deploy to when passing --env preview. If not provided, we'll detect your local git branch."
+        "The preview branch to deploy to when passing --env preview. If not provided, we'll detect your git branch."
       )
       .option("--skip-update-check", "Skip checking for @trigger.dev package updates")
       .option("-c, --config <config file>", "The name of the config file, found at [path]")
