@@ -150,7 +150,7 @@ function ChatInterface({ initialQuery }: { initialQuery?: string }) {
 
   return (
     <motion.div
-      className="flex h-full max-h-full grow flex-col overflow-y-auto bg-background-bright"
+      className="flex h-full max-h-[90vh] grow flex-col overflow-y-auto bg-background-bright"
       animate={{ height: isExpanded ? "90vh" : "auto" }}
       transition={{ type: "spring", damping: 25, stiffness: 300 }}
       initial={{ height: "auto" }}
