@@ -162,6 +162,7 @@ export async function createElectricContainer(
     .withNetwork(network)
     .withEnvironment({
       DATABASE_URL: databaseUrl,
+      ELECTRIC_INSECURE: "true",
     })
     .start();
 
