@@ -30,28 +30,14 @@ Please follow the best-practice of adding changesets in the same commit as the c
 
 ## Snapshot instructions
 
-!MAKE SURE TO UPDATE THE TAG IN THE INSTRUCTIONS BELOW!
+1. Delete the `.changeset/pre.json` file (if it exists)
 
-1. Add changesets as usual
+2. Do a temporary commit (do NOT push this, you should undo it after)
 
-```sh
-pnpm run changeset:add
-```
+3. Copy the `GITHUB_TOKEN` line from the .env file
 
-2. Create a snapshot version (replace "prerelease" with your tag)
+4. Run `GITHUB_TOKEN=github_pat_12345 ./scripts/publish-prerelease.sh re2`
 
-```sh
-pnpm exec changeset version --snapshot prerelease
-```
+Make sure to replace the token with yours. `re2` is the tag that will be used for the pre-release.
 
-3. Build the packages:
-
-```sh
-pnpm run build --filter "@trigger.dev/*" --filter "trigger.dev"
-```
-
-4. Publish the snapshot (replace "dev" with your tag)
-
-```sh
-pnpm exec changeset publish --no-git-tag --snapshot --tag prerelease
-```
+5. Undo the commit where you deleted the pre.json file.
