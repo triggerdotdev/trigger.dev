@@ -50,7 +50,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
   const envResult = await getEnvironmentFromEnv({
     projectId: project.id,
-    userId: env,
+    userId: authenticationResult.userId,
     env,
   });
 
