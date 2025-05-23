@@ -2,7 +2,7 @@ import { ClickHouseSettings } from "@clickhouse/client";
 import { ClickhouseClient } from "./client/client.js";
 import { ClickhouseReader, ClickhouseWriter } from "./client/types.js";
 import { NoopClient } from "./client/noop.js";
-import { insertTaskRuns, insertRawTaskRunPayloads } from "./taskRuns.js";
+import { insertTaskRuns, insertRawTaskRunPayloads, getTaskRunsQueryBuilder } from "./taskRuns.js";
 import { Logger, type LogLevel } from "@trigger.dev/core/logger";
 import type { Agent as HttpAgent } from "http";
 import type { Agent as HttpsAgent } from "https";
@@ -135,6 +135,7 @@ export class ClickHouse {
     return {
       insert: insertTaskRuns(this.writer),
       insertPayloads: insertRawTaskRunPayloads(this.writer),
+      queryBuilder: getTaskRunsQueryBuilder(this.reader),
     };
   }
 }

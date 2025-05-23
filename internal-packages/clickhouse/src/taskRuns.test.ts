@@ -1,7 +1,7 @@
 import { clickhouseTest } from "@internal/testcontainers";
 import { z } from "zod";
 import { ClickhouseClient } from "./client/client.js";
-import { insertRawTaskRunPayloads, insertTaskRuns } from "./taskRuns.js";
+import { getTaskRunsQueryBuilder, insertRawTaskRunPayloads, insertTaskRuns } from "./taskRuns.js";
 
 describe("Task Runs V2", () => {
   clickhouseTest("should be able to insert task runs", async ({ clickhouseContainer }) => {
@@ -250,4 +250,98 @@ describe("Task Runs V2", () => {
       ])
     );
   });
+
+  clickhouseTest(
+    "should be able to query task runs using the query builder",
+    async ({ clickhouseContainer }) => {
+      const client = new ClickhouseClient({
+        name: "test",
+        url: clickhouseContainer.getConnectionUrl(),
+      });
+
+      const insert = insertTaskRuns(client, {
+        async_insert: 0, // turn off async insert for this test
+      });
+
+      const [insertError, insertResult] = await insert([
+        {
+          environment_id: "cm9kddfcs01zqdy88ld9mmrli",
+          organization_id: "cm8zs78wb0002dy616dg75tv3",
+          project_id: "cm9kddfbz01zpdy88t9dstecu",
+          run_id: "cma45oli70002qrdy47w0j4n7",
+          environment_type: "PRODUCTION",
+          friendly_id: "run_cma45oli70002qrdy47w0j4n7",
+          attempt: 1,
+          engine: "V2",
+          status: "PENDING",
+          task_identifier: "retry-task",
+          queue: "task/retry-task",
+          schedule_id: "",
+          batch_id: "",
+          root_run_id: "",
+          parent_run_id: "",
+          depth: 0,
+          span_id: "538677637f937f54",
+          trace_id: "20a28486b0b9f50c647b35e8863e36a5",
+          idempotency_key: "",
+          created_at: new Date("2025-04-30 16:34:04.312").getTime(),
+          updated_at: new Date("2025-04-30 16:34:04.312").getTime(),
+          started_at: null,
+          executed_at: null,
+          completed_at: null,
+          delay_until: null,
+          queued_at: new Date("2025-04-30 16:34:04.311").getTime(),
+          expired_at: null,
+          expiration_ttl: "",
+          usage_duration_ms: 0,
+          cost_in_cents: 0,
+          base_cost_in_cents: 0,
+          output: null,
+          error: null,
+          tags: [],
+          task_version: "",
+          sdk_version: "",
+          cli_version: "",
+          machine_preset: "",
+          is_test: true,
+          _version: "1",
+        },
+      ]);
+
+      const queryBuilder = getTaskRunsQueryBuilder(client)();
+      queryBuilder.where("environment_id = {environmentId: String}", {
+        environmentId: "cm9kddfcs01zqdy88ld9mmrli",
+      });
+
+      expect(queryBuilder.build()).toMatchSnapshot();
+
+      const [queryError, result] = await queryBuilder.execute();
+
+      expect(queryError).toBeNull();
+      expect(result).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            run_id: "cma45oli70002qrdy47w0j4n7",
+          }),
+        ])
+      );
+
+      const queryBuilder2 = getTaskRunsQueryBuilder(client)();
+
+      queryBuilder2
+        .where("environment_id = {environmentId: String}", {
+          environmentId: "cm9kddfcs01zqdy88ld9mmrli",
+        })
+        .whereIf(true, "status = {status: String}", {
+          status: "COMPLETED_SUCCESSFULLY",
+        });
+
+      expect(queryBuilder2.build()).toMatchSnapshot();
+
+      const [queryError2, result2] = await queryBuilder2.execute();
+
+      expect(queryError2).toBeNull();
+      expect(result2).toEqual([]);
+    }
+  );
 });

@@ -111,6 +111,13 @@ const getUserId = tool({
 export const todoChat = schemaTask({
   id: "todo-chat",
   description: "Chat with the todo app",
+  retry: {
+    maxAttempts: 3,
+    maxTimeoutInMs: 10000,
+  },
+  queue: {
+    concurrencyLimit: 1,
+  },
   schema: z.object({
     input: z
       .string()

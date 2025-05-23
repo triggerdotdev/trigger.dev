@@ -11,6 +11,7 @@ import { z } from "zod";
 import { InsertError, QueryError } from "./errors.js";
 import type {
   ClickhouseInsertFunction,
+  ClickhouseQueryBuilderFunction,
   ClickhouseQueryFunction,
   ClickhouseReader,
   ClickhouseWriter,
@@ -19,6 +20,7 @@ import { generateErrorMessage } from "zod-error";
 import { Logger, type LogLevel } from "@trigger.dev/core/logger";
 import type { Agent as HttpAgent } from "http";
 import type { Agent as HttpsAgent } from "https";
+import { ClickhouseQueryBuilder } from "./queryBuilder.js";
 
 export type ClickhouseConfig = {
   name: string;
@@ -203,6 +205,19 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
         return [null, parsed.data];
       });
     };
+  }
+
+  public queryBuilder<TOut extends z.ZodSchema<any>>(req: {
+    name: string;
+    baseQuery: string;
+    schema: TOut;
+    settings?: ClickHouseSettings;
+  }): ClickhouseQueryBuilderFunction<z.input<TOut>> {
+    return (chSettings) =>
+      new ClickhouseQueryBuilder(req.name, req.baseQuery, this, req.schema, {
+        ...req.settings,
+        ...chSettings?.settings,
+      });
   }
 
   public insert<TSchema extends z.ZodSchema<any>>(req: {

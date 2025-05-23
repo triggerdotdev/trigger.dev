@@ -1,6 +1,6 @@
 import { ClickHouseSettings } from "@clickhouse/client";
 import { z } from "zod";
-import { ClickhouseWriter } from "./client/types.js";
+import { ClickhouseReader, ClickhouseWriter } from "./client/types.js";
 
 export const TaskRunV2 = z.object({
   environment_id: z.string(),
@@ -85,5 +85,20 @@ export function insertRawTaskRunPayloads(ch: ClickhouseWriter, settings?: ClickH
       enable_json_type: 1,
       ...settings,
     },
+  });
+}
+
+export const TaskRunV2QueryResult = z.object({
+  run_id: z.string(),
+});
+
+export type TaskRunV2QueryResult = z.infer<typeof TaskRunV2QueryResult>;
+
+export function getTaskRunsQueryBuilder(ch: ClickhouseReader, settings?: ClickHouseSettings) {
+  return ch.queryBuilder({
+    name: "getTaskRuns",
+    baseQuery: "SELECT run_id FROM trigger_dev.task_runs_v2",
+    schema: TaskRunV2QueryResult,
+    settings,
   });
 }
