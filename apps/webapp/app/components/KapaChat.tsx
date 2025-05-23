@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./primitives/D
 import { Header2 } from "./primitives/Headers";
 import { Paragraph } from "./primitives/Paragraph";
 import { Spinner } from "./primitives/Spinner";
+import { SimpleTooltip } from "./primitives/Tooltip";
 
 type KapaChatProps = {
   websiteId: string;
@@ -180,19 +181,38 @@ function ChatInterface({ initialQuery }: { initialQuery?: string }) {
             className="flex-1 rounded-md border border-grid-bright bg-background-dimmed px-3 py-2 text-text-bright placeholder:text-text-dimmed focus:border-indigo-500 focus:outline-none"
           />
           {isGeneratingAnswer ? (
-            <Button
-              onClick={() => stopGeneration()}
-              LeadingIcon={<StopIcon className="size-5 text-text-bright" />}
-              variant="tertiary/large"
-              className="rounded-full"
+            <SimpleTooltip
+              button={
+                <button
+                  onClick={() => stopGeneration()}
+                  className="group relative z-10 flex size-10 min-w-10 items-center justify-center"
+                >
+                  <StopIcon className="z-10 size-5 text-indigo-500 transition group-hover:text-indigo-400" />
+                  <GradientSpinnerBackground
+                    className="absolute inset-0 animate-spin"
+                    hoverEffect
+                  />
+                </button>
+              }
+              content="Stop generating"
             />
+          ) : isPreparingAnswer ? (
+            <GradientSpinnerBackground className="flex size-10 min-w-10 items-center justify-center">
+              <Spinner
+                color={{
+                  background: "rgba(99, 102, 241, 1)",
+                  foreground: "rgba(217, 70, 239, 1)",
+                }}
+                className="size-5"
+              />
+            </GradientSpinnerBackground>
           ) : (
             <Button
               type="submit"
               disabled={!message.trim()}
               LeadingIcon={<ArrowUpIcon className="size-5 text-text-bright" />}
               variant="primary/large"
-              className="rounded-full group-disabled/button:border-charcoal-550 group-disabled/button:bg-charcoal-600"
+              className="size-10 min-w-10 rounded-full group-disabled/button:border-charcoal-550 group-disabled/button:bg-charcoal-600"
             />
           )}
         </div>
@@ -264,5 +284,29 @@ export function KapaChat({ websiteId, onOpen }: KapaChatProps) {
         </Dialog>
       </div>
     </KapaProvider>
+  );
+}
+
+function GradientSpinnerBackground({
+  children,
+  className,
+  hoverEffect = false,
+}: {
+  children?: React.ReactNode;
+  className?: string;
+  hoverEffect?: boolean;
+}) {
+  return (
+    <div
+      className={`flex rounded-full bg-gradient-to-br from-indigo-500 via-purple-500 to-fuchsia-500 p-px ${className}`}
+    >
+      <div
+        className={`flex h-full w-full items-center justify-center rounded-full bg-charcoal-600 ${
+          hoverEffect ? "transition group-hover:bg-charcoal-550" : ""
+        }`}
+      >
+        {children}
+      </div>
+    </div>
   );
 }
