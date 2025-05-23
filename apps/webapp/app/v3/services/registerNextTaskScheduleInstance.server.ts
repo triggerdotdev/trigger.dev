@@ -28,6 +28,10 @@ export class RegisterNextTaskScheduleInstanceService extends BaseService {
           "task_schedule_generator_expression",
           instance.taskSchedule.generatorExpression
         );
+        span.setAttribute(
+          "last_scheduled_timestamp",
+          instance.lastScheduledTimestamp?.toISOString() ?? new Date().toISOString()
+        );
 
         return calculateNextScheduledTimestamp(
           instance.taskSchedule.generatorExpression,

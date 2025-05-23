@@ -5,10 +5,33 @@ export function calculateNextScheduledTimestamp(
   timezone: string | null,
   lastScheduledTimestamp: Date = new Date()
 ) {
+  const now = Date.now();
+
   let nextStep = calculateNextStep(schedule, timezone, lastScheduledTimestamp);
 
-  while (nextStep.getTime() < Date.now()) {
-    nextStep = calculateNextStep(schedule, timezone, nextStep);
+  // If the next step is still in the past, we might need to skip ahead
+  if (nextStep.getTime() <= now) {
+    // Calculate a second step to determine the interval
+    const secondStep = calculateNextStep(schedule, timezone, nextStep);
+    const interval = secondStep.getTime() - nextStep.getTime();
+
+    // If we have a consistent interval and it would take many iterations,
+    // skip ahead mathematically instead of iterating
+    if (interval > 0) {
+      const stepsNeeded = Math.floor((now - nextStep.getTime()) / interval);
+
+      // Only skip ahead if it would save us more than a few iterations
+      if (stepsNeeded > 10) {
+        // Skip ahead by calculating how many intervals to add
+        const skipAheadTime = nextStep.getTime() + stepsNeeded * interval;
+        nextStep = calculateNextStep(schedule, timezone, new Date(skipAheadTime));
+      }
+    }
+
+    // Use the normal iteration for the remaining steps (should be <= 10 now)
+    while (nextStep.getTime() <= now) {
+      nextStep = calculateNextStep(schedule, timezone, nextStep);
+    }
   }
 
   return nextStep;
