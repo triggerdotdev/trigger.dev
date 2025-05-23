@@ -13,7 +13,7 @@ import { loadConfig } from "../config.js";
 import { createGitMeta } from "../utilities/gitMeta.js";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { logger } from "../utilities/logger.js";
-import { getProjectClient } from "../utilities/session.js";
+import { getProjectClient, LoginResultOk } from "../utilities/session.js";
 import { spinner } from "../utilities/windows.js";
 import { verifyDirectory } from "./deploy.js";
 import { login } from "./login.js";
@@ -119,17 +119,28 @@ async function _previewArchiveCommand(dir: string, options: PreviewCommandOption
     );
   }
 
-  const apiClient = new CliApiClient(authorization.auth.apiUrl, authorization.auth.accessToken);
-
   const $buildSpinner = spinner();
   $buildSpinner.start(`Archiving "${branch}"`);
+  const result = await archivePreviewBranch(authorization, branch, resolvedConfig.project);
+  $buildSpinner.stop(
+    result ? `Successfully archived "${branch}"` : `Failed to archive "${branch}".`
+  );
+  return result;
+}
 
-  const result = await apiClient.archiveBranch(resolvedConfig.project, branch);
+export async function archivePreviewBranch(
+  authorization: LoginResultOk,
+  branch: string,
+  project: string
+) {
+  const apiClient = new CliApiClient(authorization.auth.apiUrl, authorization.auth.accessToken);
+
+  const result = await apiClient.archiveBranch(project, branch);
 
   if (result.success) {
-    $buildSpinner.stop(`Successfully archived "${branch}"`);
+    return true;
   } else {
-    $buildSpinner.stop(`Failed to archive "${branch}".`);
     logger.error(result.error);
+    return false;
   }
 }

@@ -37,6 +37,7 @@ import { updateTriggerPackages } from "./update.js";
 import { setGithubActionsOutputAndEnvVars } from "../utilities/githubActions.js";
 import { isDirectory } from "../utilities/fileSystem.js";
 import { createGitMeta } from "../utilities/gitMeta.js";
+import { archivePreviewBranch } from "./preview.js";
 
 const DeployCommandOptions = CommonCommandOptions.extend({
   dryRun: z.boolean().default(false),
@@ -219,6 +220,18 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   }
 
   if (options.env === "preview" && branch) {
+    //auto-archive a branch if the PR is merged or closed
+    if (gitMeta?.pullRequestState === "merged" || gitMeta?.pullRequestState === "closed") {
+      log.message(`Pull request ${gitMeta?.pullRequestNumber} is ${gitMeta?.pullRequestState}.`);
+      const $buildSpinner = spinner();
+      $buildSpinner.start(`Archiving preview branch: "${branch}"`);
+      const result = await archivePreviewBranch(authorization, branch, resolvedConfig.project);
+      $buildSpinner.stop(
+        result ? `Successfully archived "${branch}"` : `Failed to archive "${branch}".`
+      );
+      return;
+    }
+
     logger.debug("Upserting branch", { env: options.env, branch });
     const branchEnv = await upsertBranch({
       accessToken: authorization.auth.accessToken,
