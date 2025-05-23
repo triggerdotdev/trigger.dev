@@ -1,6 +1,6 @@
 import { ClickHouseSettings } from "@clickhouse/client";
 import { z } from "zod";
-import { ClickhouseWriter } from "./client/types.js";
+import { ClickhouseReader, ClickhouseWriter } from "./client/types.js";
 
 export const TaskRunV2 = z.object({
   environment_id: z.string(),
@@ -85,5 +85,138 @@ export function insertRawTaskRunPayloads(ch: ClickhouseWriter, settings?: ClickH
       enable_json_type: 1,
       ...settings,
     },
+  });
+}
+
+export const TaskRunV2QueryResult = z.object({
+  run_id: z.string(),
+});
+
+export type TaskRunV2QueryResult = z.infer<typeof TaskRunV2QueryResult>;
+
+export function getTaskRunsQueryBuilder(ch: ClickhouseReader, settings?: ClickHouseSettings) {
+  return ch.queryBuilder({
+    name: "getTaskRuns",
+    baseQuery: "SELECT run_id FROM trigger_dev.task_runs_v2",
+    schema: TaskRunV2QueryResult,
+    settings,
+  });
+}
+
+export const TaskActivityQueryResult = z.object({
+  task_identifier: z.string(),
+  status: z.string(),
+  day: z.string(),
+  count: z.number().int(),
+});
+
+export type TaskActivityQueryResult = z.infer<typeof TaskActivityQueryResult>;
+
+export const TaskActivityQueryParams = z.object({
+  environmentId: z.string(),
+  days: z.number().int(),
+});
+
+export function getTaskActivityQueryBuilder(ch: ClickhouseReader, settings?: ClickHouseSettings) {
+  return ch.query({
+    name: "getTaskActivity",
+    query: `
+      SELECT
+          task_identifier,
+          status,
+          toDate(created_at) as day,
+          count() as count
+      FROM trigger_dev.task_runs_v2 FINAL
+      WHERE
+          environment_id = {environmentId: String}
+          AND created_at >= today() - {days: Int64}
+          AND _is_deleted = 0
+      GROUP BY
+          task_identifier,
+          status,
+          day
+      ORDER BY
+          task_identifier ASC,
+          day ASC,
+          status ASC
+    `,
+    schema: TaskActivityQueryResult,
+    params: TaskActivityQueryParams,
+    settings,
+  });
+}
+
+export const CurrentRunningStatsQueryResult = z.object({
+  task_identifier: z.string(),
+  status: z.string(),
+  count: z.number().int(),
+});
+
+export type CurrentRunningStatsQueryResult = z.infer<typeof CurrentRunningStatsQueryResult>;
+
+export const CurrentRunningStatsQueryParams = z.object({
+  environmentId: z.string(),
+  days: z.number().int(),
+});
+
+export function getCurrentRunningStats(ch: ClickhouseReader, settings?: ClickHouseSettings) {
+  return ch.query({
+    name: "getCurrentRunningStats",
+    query: `
+    SELECT
+        task_identifier,
+        status,
+        count() as count
+    FROM trigger_dev.task_runs_v2 FINAL
+    WHERE
+        environment_id = {environmentId: String}
+        AND status IN ('PENDING', 'WAITING_FOR_DEPLOY', 'WAITING_TO_RESUME', 'QUEUED', 'EXECUTING')
+        AND _is_deleted = 0
+        AND created_at >= now() - INTERVAL {days: Int64} DAY
+    GROUP BY
+        task_identifier,
+        status
+    ORDER BY
+        task_identifier ASC
+    `,
+    schema: CurrentRunningStatsQueryResult,
+    params: CurrentRunningStatsQueryParams,
+    settings,
+  });
+}
+
+export const AverageDurationsQueryResult = z.object({
+  task_identifier: z.string(),
+  duration: z.number(),
+});
+
+export type AverageDurationsQueryResult = z.infer<typeof AverageDurationsQueryResult>;
+
+export const AverageDurationsQueryParams = z.object({
+  environmentId: z.string(),
+  days: z.number().int(),
+});
+
+export function getAverageDurations(ch: ClickhouseReader, settings?: ClickHouseSettings) {
+  return ch.query({
+    name: "getAverageDurations",
+    query: `
+    SELECT
+        task_identifier,
+        avg(toUnixTimestamp(completed_at) - toUnixTimestamp(started_at)) as duration
+    FROM trigger_dev.task_runs_v2 FINAL
+    WHERE
+        environment_id = {environmentId: String}
+        AND created_at >= today() - {days: Int64}
+        AND status IN ('COMPLETED_SUCCESSFULLY', 'COMPLETED_WITH_ERRORS')
+        AND started_at IS NOT NULL
+        AND completed_at IS NOT NULL
+        AND _is_deleted = 0
+    GROUP BY
+        task_identifier
+    `,
+    schema: AverageDurationsQueryResult,
+    params: AverageDurationsQueryParams,
+    settings,
   });
 }
