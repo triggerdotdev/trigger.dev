@@ -42,6 +42,19 @@ function ChatMessages({
   error: string | null;
   addFeedback: (questionAnswerId: string, reaction: "upvote" | "downvote", comment?: any) => void;
 }) {
+  const [feedbackGivenForQAs, setFeedbackGivenForQAs] = useState<Set<string>>(new Set());
+
+  // Reset feedback state when conversation is reset
+  useEffect(() => {
+    if (conversation.length === 0) {
+      setFeedbackGivenForQAs(new Set());
+    }
+  }, [conversation.length]);
+
+  // Check if feedback has been given for the latest QA
+  const latestQA = conversation[conversation.length - 1];
+  const hasFeedbackForLatestQA = latestQA?.id ? feedbackGivenForQAs.has(latestQA.id) : false;
+
   const exampleQuestions = [
     "How do I handle errors in my task?",
     "What are the different types of triggers?",
@@ -114,59 +127,97 @@ function ChatMessages({
           </div>
         ))
       )}
-      {conversation.length > 0 && !isPreparingAnswer && !isGeneratingAnswer && !error && (
-        <div className="flex items-center justify-between border-t border-grid-bright pt-3">
-          <div className="flex items-center gap-2">
+      {conversation.length > 0 &&
+        !isPreparingAnswer &&
+        !isGeneratingAnswer &&
+        !error &&
+        !latestQA?.id && (
+          <div className="flex items-center justify-between border-t border-grid-bright pt-3">
             <Paragraph variant="small" className="text-text-dimmed">
-              Was this helpful?
+              Answer generation was stopped
             </Paragraph>
-            <div className="flex items-center">
-              <Button
-                variant="minimal/small"
-                onClick={() => {
-                  const latestQA = conversation[conversation.length - 1];
-                  if (latestQA?.id) {
-                    addFeedback(latestQA.id, "upvote");
-                  }
-                }}
-                className="size-8 px-1.5"
-              >
-                <HandThumbUpIcon className="size-4 text-text-dimmed transition group-hover/button:text-success" />
-              </Button>
-              <Button
-                variant="minimal/small"
-                onClick={() => {
-                  const latestQA = conversation[conversation.length - 1];
-                  if (latestQA?.id) {
-                    addFeedback(latestQA.id, "downvote");
-                  }
-                }}
-                className="size-8 px-1.5"
-              >
-                <HandThumbDownIcon className="size-4 text-text-dimmed transition group-hover/button:text-error" />
-              </Button>
-            </div>
+            <Button
+              variant="minimal/small"
+              LeadingIcon={<ArrowPathIcon className="size-4" />}
+              onClick={onReset}
+              className="w-fit pl-1.5"
+              iconSpacing="gap-x-1.5"
+            >
+              Reset chat
+            </Button>
           </div>
-          <Button
-            variant="minimal/small"
-            LeadingIcon={<ArrowPathIcon className="size-4" />}
-            onClick={onReset}
-            className="w-fit pl-1.5"
-            iconSpacing="gap-x-1.5"
-          >
-            Reset chat
-          </Button>
-        </div>
-      )}
+        )}
+      {conversation.length > 0 &&
+        !isPreparingAnswer &&
+        !isGeneratingAnswer &&
+        !error &&
+        latestQA?.id && (
+          <div className="flex items-center justify-between border-t border-grid-bright pt-3">
+            {hasFeedbackForLatestQA ? (
+              <Paragraph variant="small" className="text-text-dimmed">
+                Thanks for your feedback
+              </Paragraph>
+            ) : (
+              <div className="flex items-center gap-2">
+                <Paragraph variant="small" className="text-text-dimmed">
+                  Was this helpful?
+                </Paragraph>
+                <div className="flex items-center">
+                  <Button
+                    variant="minimal/small"
+                    onClick={() => {
+                      const latestQA = conversation[conversation.length - 1];
+                      if (latestQA?.id) {
+                        addFeedback(latestQA.id, "upvote");
+                        setFeedbackGivenForQAs((prev) => new Set(prev).add(latestQA.id));
+                      }
+                    }}
+                    className="size-8 px-1.5"
+                  >
+                    <HandThumbUpIcon className="size-4 text-text-dimmed transition group-hover/button:text-success" />
+                  </Button>
+                  <Button
+                    variant="minimal/small"
+                    onClick={() => {
+                      const latestQA = conversation[conversation.length - 1];
+                      if (latestQA?.id) {
+                        addFeedback(latestQA.id, "downvote");
+                        setFeedbackGivenForQAs((prev) => new Set(prev).add(latestQA.id));
+                      }
+                    }}
+                    className="size-8 px-1.5"
+                  >
+                    <HandThumbDownIcon className="size-4 text-text-dimmed transition group-hover/button:text-error" />
+                  </Button>
+                </div>
+              </div>
+            )}
+            <Button
+              variant="minimal/small"
+              LeadingIcon={<ArrowPathIcon className="size-4" />}
+              onClick={onReset}
+              className="w-fit pl-1.5"
+              iconSpacing="gap-x-1.5"
+            >
+              Reset chat
+            </Button>
+          </div>
+        )}
       {isPreparingAnswer && (
         <div className="flex items-center gap-2">
-          <Spinner className="size-4" />
+          <Spinner
+            color={{
+              background: "rgba(99, 102, 241, 1)",
+              foreground: "rgba(217, 70, 239, 1)",
+            }}
+            className="size-4"
+          />
           <Paragraph className="text-text-dimmed">Preparing answer…</Paragraph>
         </div>
       )}
       {error && (
         <div className="flex flex-col">
-          <Paragraph spacing className="text-rose-500">
+          <Paragraph spacing className="text-error">
             Error generating answer
           </Paragraph>
           <Paragraph className="text-text-dimmed">{error}</Paragraph>
