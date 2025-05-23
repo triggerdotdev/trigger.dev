@@ -576,6 +576,13 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
 
     //triggered all the runs
     if (updatedBatch.processingJobsCount >= updatedBatch.runCount) {
+      logger.debug("[RunEngineBatchTrigger][processBatchTaskRun] All runs created", {
+        batchId: batch.friendlyId,
+        processingJobsCount: updatedBatch.processingJobsCount,
+        runCount: updatedBatch.runCount,
+        workingIndex,
+      });
+
       //if all the runs were idempotent, it's possible the batch is already completed
       await this._engine.tryCompleteBatch({ batchId: batch.id });
     }

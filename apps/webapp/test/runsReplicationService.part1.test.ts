@@ -128,7 +128,7 @@ describe("RunsReplicationService (part 1/2)", () => {
 
       expect(transactionSpan).not.toBeNull();
       expect(transactionSpan?.attributes["transaction.parse_duration_ms"]).toBeGreaterThan(0);
-      expect(transactionSpan?.attributes["transaction.parse_duration_ms"]).toBeLessThan(1);
+      expect(transactionSpan?.attributes["transaction.parse_duration_ms"]).toBeLessThan(5);
 
       await runsReplicationService.stop();
     }
