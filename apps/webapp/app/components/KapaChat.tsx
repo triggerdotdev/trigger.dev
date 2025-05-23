@@ -56,6 +56,9 @@ function ChatMessages({
             },
           }}
         >
+          <Paragraph className="mb-2 pl-1">
+            I'm trained on docs, examples, and other content. Ask me anything about Trigger.dev.
+          </Paragraph>
           {exampleQuestions.map((question, index) => (
             <motion.button
               key={index}
