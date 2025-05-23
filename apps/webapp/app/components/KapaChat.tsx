@@ -1,4 +1,4 @@
-import { ArrowUpIcon, StopIcon } from "@heroicons/react/24/solid";
+import { ArrowPathIcon, ArrowUpIcon, StopIcon } from "@heroicons/react/24/solid";
 import { KapaProvider, useChat } from "@kapaai/react-sdk";
 import { useSearchParams } from "@remix-run/react";
 import { motion } from "framer-motion";
@@ -25,12 +25,14 @@ function ChatMessages({
   isGeneratingAnswer,
   onReset,
   onExampleClick,
+  error,
 }: {
   conversation: any[];
   isPreparingAnswer: boolean;
   isGeneratingAnswer: boolean;
   onReset: () => void;
   onExampleClick: (question: string) => void;
+  error: string | null;
 }) {
   const exampleQuestions = [
     "How do I handle errors in my task?",
@@ -110,12 +112,22 @@ function ChatMessages({
           <Paragraph className="text-text-dimmed">Preparing answer…</Paragraph>
         </div>
       )}
-      {isGeneratingAnswer && (
-        <div className="flex items-center gap-2">
-          <Spinner className="size-4" />
-          <Paragraph className="text-text-dimmed">Generating answer…</Paragraph>
-          <Button variant="tertiary/small" onClick={onReset}>
-            Reset
+      {error && (
+        <div className="flex flex-col">
+          <Paragraph spacing className="text-rose-500">
+            Error generating answer
+          </Paragraph>
+          <Paragraph className="text-text-dimmed">{error}</Paragraph>
+          <Paragraph spacing>
+            Please try again. If the problem persists, please contact support.
+          </Paragraph>
+          <Button
+            variant="secondary/small"
+            LeadingIcon={<ArrowPathIcon className="size-4" />}
+            onClick={onReset}
+            className="w-fit pl-1.5"
+          >
+            Reset chat
           </Button>
         </div>
       )}
@@ -134,6 +146,7 @@ function ChatInterface({ initialQuery }: { initialQuery?: string }) {
     isPreparingAnswer,
     resetConversation,
     stopGeneration,
+    error,
   } = useChat();
 
   useEffect(() => {
@@ -171,6 +184,7 @@ function ChatInterface({ initialQuery }: { initialQuery?: string }) {
         isGeneratingAnswer={isGeneratingAnswer}
         onReset={resetConversation}
         onExampleClick={handleExampleClick}
+        error={error}
       />
       <form onSubmit={handleSubmit} className="flex-shrink-0 border-t border-grid-bright p-4">
         <div className="flex gap-3">
