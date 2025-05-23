@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
-import { calculateNextScheduledTimestamp } from "../app/v3/utils/calculateNextSchedule.server";
+import { calculateNextScheduledTimestampFromNow } from "../app/v3/utils/calculateNextSchedule.server";
 
-describe("calculateNextScheduledTimestamp", () => {
+describe("calculateNextScheduledTimestampFromNow", () => {
   beforeEach(() => {
     // Mock the current time to make tests deterministic
     vi.useFakeTimers();
@@ -16,7 +16,7 @@ describe("calculateNextScheduledTimestamp", () => {
     const schedule = "0 * * * *"; // Every hour
     const lastRun = new Date("2024-01-01T11:00:00.000Z"); // 1.5 hours ago
 
-    const nextRun = calculateNextScheduledTimestamp(schedule, null, lastRun);
+    const nextRun = calculateNextScheduledTimestampFromNow(schedule, null);
 
     // Should be 13:00 (next hour after current time 12:30)
     expect(nextRun).toEqual(new Date("2024-01-01T13:00:00.000Z"));
@@ -26,7 +26,7 @@ describe("calculateNextScheduledTimestamp", () => {
     const schedule = "0 * * * *"; // Every hour
     const lastRun = new Date("2024-01-01T11:00:00.000Z");
 
-    const nextRun = calculateNextScheduledTimestamp(schedule, "America/New_York", lastRun);
+    const nextRun = calculateNextScheduledTimestampFromNow(schedule, "America/New_York");
 
     // The exact time will depend on timezone calculation, but should be in the future
     expect(nextRun).toBeInstanceOf(Date);
@@ -38,7 +38,7 @@ describe("calculateNextScheduledTimestamp", () => {
     const veryOldTimestamp = new Date("2020-01-01T00:00:00.000Z"); // 4 years ago
 
     const startTime = performance.now();
-    const nextRun = calculateNextScheduledTimestamp(schedule, null, veryOldTimestamp);
+    const nextRun = calculateNextScheduledTimestampFromNow(schedule, null);
     const duration = performance.now() - startTime;
 
     // Should complete quickly (under 10ms) instead of iterating millions of times
@@ -55,7 +55,7 @@ describe("calculateNextScheduledTimestamp", () => {
     const schedule = "0 */2 * * *"; // Every 2 hours
     const recentTimestamp = new Date("2024-01-01T10:00:00.000Z"); // 2.5 hours ago
 
-    const nextRun = calculateNextScheduledTimestamp(schedule, null, recentTimestamp);
+    const nextRun = calculateNextScheduledTimestampFromNow(schedule, null);
 
     // Should properly iterate: 10:00 -> 12:00 -> 14:00 (since current time is 12:30)
     expect(nextRun).toEqual(new Date("2024-01-01T14:00:00.000Z"));
@@ -66,7 +66,7 @@ describe("calculateNextScheduledTimestamp", () => {
     const oldTimestamp = new Date("2023-12-01T00:00:00.000Z"); // Over a month ago
 
     const startTime = performance.now();
-    const nextRun = calculateNextScheduledTimestamp(schedule, null, oldTimestamp);
+    const nextRun = calculateNextScheduledTimestampFromNow(schedule, null);
     const duration = performance.now() - startTime;
 
     // Should be fast due to dynamic skip-ahead optimization
@@ -80,7 +80,7 @@ describe("calculateNextScheduledTimestamp", () => {
     const schedule = "0 9 * * MON"; // Every Monday at 9 AM
     const oldTimestamp = new Date("2022-01-01T00:00:00.000Z"); // Very old (beyond 1hr threshold)
 
-    const nextRun = calculateNextScheduledTimestamp(schedule, null, oldTimestamp);
+    const nextRun = calculateNextScheduledTimestampFromNow(schedule, null);
 
     // Should return a valid future Monday at 9 AM
     expect(nextRun.getHours()).toBe(9);
@@ -95,7 +95,7 @@ describe("calculateNextScheduledTimestamp", () => {
     const extremelyOldTimestamp = new Date("2000-01-01T00:00:00.000Z"); // 24 years ago
 
     const startTime = performance.now();
-    const nextRun = calculateNextScheduledTimestamp(schedule, null, extremelyOldTimestamp);
+    const nextRun = calculateNextScheduledTimestampFromNow(schedule, null);
     const duration = performance.now() - startTime;
 
     // Should complete extremely quickly due to dynamic skip-ahead
@@ -111,7 +111,7 @@ describe("calculateNextScheduledTimestamp", () => {
     const oldTimestamp = new Date("2023-12-31T12:31:00.000Z"); // 23h59m ago
 
     const startTime = performance.now();
-    const nextRun = calculateNextScheduledTimestamp(schedule, null, oldTimestamp);
+    const nextRun = calculateNextScheduledTimestampFromNow(schedule, null);
     const duration = performance.now() - startTime;
 
     // Should be fast due to dynamic skip-ahead (1439 steps > 10 threshold)
@@ -127,7 +127,7 @@ describe("calculateNextScheduledTimestamp", () => {
     const recentTimestamp = new Date("2024-01-01T12:00:00.000Z"); // 30 minutes ago (6 steps)
 
     const startTime = performance.now();
-    const nextRun = calculateNextScheduledTimestamp(schedule, null, recentTimestamp);
+    const nextRun = calculateNextScheduledTimestampFromNow(schedule, null);
     const duration = performance.now() - startTime;
 
     // Should still be reasonably fast with normal iteration
@@ -142,7 +142,7 @@ describe("calculateNextScheduledTimestamp", () => {
     const oldTimestamp = new Date("2023-12-25T09:00:00.000Z"); // Old Monday
 
     const startTime = performance.now();
-    const nextRun = calculateNextScheduledTimestamp(schedule, null, oldTimestamp);
+    const nextRun = calculateNextScheduledTimestampFromNow(schedule, null);
     const duration = performance.now() - startTime;
 
     // Should be fast and still calculate correctly from the old timestamp
@@ -160,7 +160,7 @@ describe("calculateNextScheduledTimestamp", () => {
     const schedule = "0 14 * * SUN"; // Every Sunday at 2 PM
     const twoHoursAgo = new Date("2024-01-01T10:30:00.000Z"); // 2 hours before current time (12:30)
 
-    const nextRun = calculateNextScheduledTimestamp(schedule, null, twoHoursAgo);
+    const nextRun = calculateNextScheduledTimestampFromNow(schedule, null);
 
     // Should properly calculate the next Sunday at 2 PM, not skip to "now"
     expect(nextRun.getHours()).toBe(14);
@@ -170,7 +170,7 @@ describe("calculateNextScheduledTimestamp", () => {
   });
 });
 
-describe("calculateNextScheduledTimestamp - Fuzzy Testing", () => {
+describe("calculateNextScheduledTimestampFromNow - Fuzzy Testing", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2024-01-15T12:30:00.000Z")); // Monday, mid-day
@@ -254,7 +254,7 @@ describe("calculateNextScheduledTimestamp - Fuzzy Testing", () => {
 
       try {
         const startTime = performance.now();
-        const nextRun = calculateNextScheduledTimestamp(schedule, timezone, lastTimestamp);
+        const nextRun = calculateNextScheduledTimestampFromNow(schedule, timezone);
         const duration = performance.now() - startTime;
 
         // Invariant 1: Result should always be a valid Date
@@ -270,7 +270,7 @@ describe("calculateNextScheduledTimestamp - Fuzzy Testing", () => {
         expect(duration).toBeLessThan(100); // Should complete within 100ms
 
         // Invariant 4: Function should be deterministic
-        const nextRun2 = calculateNextScheduledTimestamp(schedule, timezone, lastTimestamp);
+        const nextRun2 = calculateNextScheduledTimestampFromNow(schedule, timezone);
         expect(nextRun.getTime()).toBe(nextRun2.getTime());
       } catch (error) {
         // If there's an error, log the inputs for debugging
@@ -292,7 +292,7 @@ describe("calculateNextScheduledTimestamp - Fuzzy Testing", () => {
       const veryOldTimestamp = new Date(Date.now() - Math.random() * 5 * 365 * 24 * 60 * 60 * 1000);
 
       const startTime = performance.now();
-      const nextRun = calculateNextScheduledTimestamp(schedule, null, veryOldTimestamp);
+      const nextRun = calculateNextScheduledTimestampFromNow(schedule, null);
       const duration = performance.now() - startTime;
 
       // Should complete quickly even with very old timestamps
@@ -321,7 +321,7 @@ describe("calculateNextScheduledTimestamp - Fuzzy Testing", () => {
 
       const lastTimestamp = new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000);
 
-      const nextRun = calculateNextScheduledTimestamp(schedule, timezone, lastTimestamp);
+      const nextRun = calculateNextScheduledTimestampFromNow(schedule, timezone);
 
       // Should handle DST transitions gracefully
       expect(nextRun).toBeInstanceOf(Date);
@@ -354,8 +354,8 @@ describe("calculateNextScheduledTimestamp - Fuzzy Testing", () => {
       const beforeBoundary = new Date(Date.now() - 1000);
       const afterBoundary = new Date(Date.now() + 1000);
 
-      const nextRun1 = calculateNextScheduledTimestamp(test.schedule, null, beforeBoundary);
-      const nextRun2 = calculateNextScheduledTimestamp(test.schedule, null, afterBoundary);
+      const nextRun1 = calculateNextScheduledTimestampFromNow(test.schedule, null);
+      const nextRun2 = calculateNextScheduledTimestampFromNow(test.schedule, null);
 
       expect(nextRun1.getTime()).toBeGreaterThan(Date.now());
       expect(nextRun2.getTime()).toBeGreaterThan(Date.now());
@@ -378,7 +378,7 @@ describe("calculateNextScheduledTimestamp - Fuzzy Testing", () => {
 
       try {
         const startTime = performance.now();
-        const nextRun = calculateNextScheduledTimestamp(schedule, null, lastTimestamp);
+        const nextRun = calculateNextScheduledTimestampFromNow(schedule, null);
         const duration = performance.now() - startTime;
 
         expect(nextRun).toBeInstanceOf(Date);
@@ -409,7 +409,7 @@ describe("calculateNextScheduledTimestamp - Fuzzy Testing", () => {
 
       const results: Date[] = [];
       for (let j = 0; j < 5; j++) {
-        results.push(calculateNextScheduledTimestamp(schedule, timezone, lastTimestamp));
+        results.push(calculateNextScheduledTimestampFromNow(schedule, timezone));
       }
 
       // All results should be identical
@@ -436,7 +436,7 @@ describe("calculateNextScheduledTimestamp - Fuzzy Testing", () => {
       const lastTimestamp = new Date(Date.now() - testCase.minutesAgo * 60 * 1000);
 
       const startTime = performance.now();
-      const nextRun = calculateNextScheduledTimestamp(testCase.schedule, null, lastTimestamp);
+      const nextRun = calculateNextScheduledTimestampFromNow(testCase.schedule, null);
       const duration = performance.now() - startTime;
 
       // All cases should complete quickly and return valid results
