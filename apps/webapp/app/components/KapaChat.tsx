@@ -1,4 +1,4 @@
-import { ArrowUpIcon } from "@heroicons/react/24/solid";
+import { ArrowUpIcon, StopIcon } from "@heroicons/react/24/solid";
 import { KapaProvider, useChat } from "@kapaai/react-sdk";
 import { useSearchParams } from "@remix-run/react";
 import { motion } from "framer-motion";
@@ -123,8 +123,14 @@ function ChatInterface({ initialQuery }: { initialQuery?: string }) {
   const [message, setMessage] = useState("");
   const [isExpanded, setIsExpanded] = useState(false);
   const hasSubmittedInitialQuery = useRef(false);
-  const { conversation, submitQuery, isGeneratingAnswer, isPreparingAnswer, resetConversation } =
-    useChat();
+  const {
+    conversation,
+    submitQuery,
+    isGeneratingAnswer,
+    isPreparingAnswer,
+    resetConversation,
+    stopGeneration,
+  } = useChat();
 
   useEffect(() => {
     if (initialQuery && !hasSubmittedInitialQuery.current) {
@@ -173,13 +179,22 @@ function ChatInterface({ initialQuery }: { initialQuery?: string }) {
             autoFocus
             className="flex-1 rounded-md border border-grid-bright bg-background-dimmed px-3 py-2 text-text-bright placeholder:text-text-dimmed focus:border-indigo-500 focus:outline-none"
           />
-          <Button
-            type="submit"
-            disabled={!message.trim()}
-            LeadingIcon={<ArrowUpIcon className="size-5 text-text-bright" />}
-            variant="primary/large"
-            className="rounded-full"
-          />
+          {isGeneratingAnswer ? (
+            <Button
+              onClick={() => stopGeneration()}
+              LeadingIcon={<StopIcon className="size-5 text-text-bright" />}
+              variant="tertiary/large"
+              className="rounded-full"
+            />
+          ) : (
+            <Button
+              type="submit"
+              disabled={!message.trim()}
+              LeadingIcon={<ArrowUpIcon className="size-5 text-text-bright" />}
+              variant="primary/large"
+              className="rounded-full group-disabled/button:border-charcoal-550 group-disabled/button:bg-charcoal-600"
+            />
+          )}
         </div>
       </form>
     </motion.div>
