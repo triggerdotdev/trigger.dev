@@ -317,16 +317,16 @@ function ChatInterface({ initialQuery }: { initialQuery?: string }) {
           {isGeneratingAnswer ? (
             <SimpleTooltip
               button={
-                <button
+                <span
                   onClick={() => stopGeneration()}
-                  className="group relative z-10 flex size-10 min-w-10 items-center justify-center"
+                  className="group relative z-10 flex size-10 min-w-10 cursor-pointer items-center justify-center"
                 >
                   <StopIcon className="z-10 size-5 text-indigo-500 transition group-hover:text-indigo-400" />
                   <GradientSpinnerBackground
                     className="absolute inset-0 animate-spin"
                     hoverEffect
                   />
-                </button>
+                </span>
               }
               content="Stop generating"
             />
