@@ -2,8 +2,8 @@ import { ArrowUpIcon } from "@heroicons/react/24/solid";
 import { KapaProvider, useChat } from "@kapaai/react-sdk";
 import { useSearchParams } from "@remix-run/react";
 import { motion } from "framer-motion";
-import { useCallback, useEffect, useState, useRef } from "react";
 import { marked } from "marked";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
 import { SparkleListIcon } from "~/assets/icons/SparkleListIcon";
 import { Button } from "./primitives/Buttons";
@@ -38,7 +38,7 @@ function ChatMessages({
   ];
 
   return (
-    <div className="flex-1 overflow-y-auto p-4">
+    <div className="flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
       {conversation.length === 0 ? (
         <motion.div
           className="flex flex-col gap-2"
@@ -186,7 +186,7 @@ function ChatInterface({ initialQuery }: { initialQuery?: string }) {
   );
 }
 
-export function KapaChat({ websiteId, onOpen, onClose }: KapaChatProps) {
+export function KapaChat({ websiteId, onOpen }: KapaChatProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [initialQuery, setInitialQuery] = useState<string | undefined>();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -222,8 +222,7 @@ export function KapaChat({ websiteId, onOpen, onClose }: KapaChatProps) {
           onAnswerGenerationCompleted: () => handleOpen(),
         },
       }}
-      botProtectionMechanism={"recaptcha"}
-      // hasConsentForCaptcha={false}
+      botProtectionMechanism="recaptcha"
     >
       <div className="relative">
         <Button
@@ -238,7 +237,7 @@ export function KapaChat({ websiteId, onOpen, onClose }: KapaChatProps) {
         </Button>
 
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
-          <DialogContent className="flex max-h-[90vh] min-h-fit w-full flex-col justify-between px-0 pb-0 pt-2.5 sm:max-w-prose">
+          <DialogContent className="flex !max-h-[90vh] min-h-fit w-full flex-col justify-between px-0 pb-0 pt-2.5 sm:max-w-prose">
             <DialogHeader className="pl-3">
               <div className="flex items-center gap-1">
                 <AISparkleIcon className="size-5" />
