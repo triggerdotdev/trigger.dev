@@ -5,6 +5,12 @@
 @tailwind components;
 @tailwind utilities;
 
+@property --gradient-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
 @layer base {
   * {
     @apply border-grid-bright;
@@ -37,5 +43,41 @@
     --chart-3: 30 80% 55%;
     --chart-4: 280 65% 60%;
     --chart-5: 340 75% 55%;
+  }
+}
+
+@layer utilities {
+  .animated-gradient-glow {
+    position: relative;
+    overflow: visible;
+  }
+
+  .animated-gradient-glow::before {
+    content: "";
+    position: absolute;
+    inset: -5px;
+    z-index: -1;
+    background: conic-gradient(
+      from var(--gradient-angle),
+      rgb(99 102 241),
+      rgb(168 85 247),
+      rgb(217 70 239),
+      rgb(168 85 247),
+      rgb(99 102 241)
+    );
+    border-radius: inherit;
+    animation: gradient-rotation 8s linear infinite;
+    pointer-events: none;
+    filter: blur(0.5rem);
+    opacity: 0.1;
+  }
+}
+
+@keyframes gradient-rotation {
+  0% {
+    --gradient-angle: 0deg;
+  }
+  100% {
+    --gradient-angle: 360deg;
   }
 }

@@ -154,9 +154,15 @@ function ChatMessages({
         latestQA?.id && (
           <div className="flex items-center justify-between border-t border-grid-bright pt-3">
             {hasFeedbackForLatestQA ? (
-              <Paragraph variant="small" className="text-text-dimmed">
-                Thanks for your feedback
-              </Paragraph>
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.3 }}
+              >
+                <Paragraph variant="small" className="text-text-dimmed">
+                  Thanks for your feedback!
+                </Paragraph>
+              </motion.div>
             ) : (
               <div className="flex items-center gap-2">
                 <Paragraph variant="small" className="text-text-dimmed">
@@ -283,7 +289,7 @@ function ChatInterface({ initialQuery }: { initialQuery?: string }) {
 
   return (
     <motion.div
-      className="flex h-full max-h-[90vh] grow flex-col overflow-y-auto bg-background-bright"
+      className="flex h-full max-h-[90vh] grow flex-col overflow-y-auto rounded-b-md bg-background-bright"
       animate={{ height: isExpanded ? "90vh" : "auto" }}
       transition={{ type: "spring", damping: 25, stiffness: 300 }}
       initial={{ height: "auto" }}
@@ -400,8 +406,8 @@ export function KapaChat({ websiteId, onOpen }: KapaChatProps) {
         </Button>
 
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
-          <DialogContent className="flex max-h-[90vh] min-h-fit w-full flex-col justify-between px-0 pb-0 pt-2.5 sm:max-w-prose">
-            <DialogHeader className="pl-3">
+          <DialogContent className="animated-gradient-glow flex max-h-[90vh] min-h-fit w-full flex-col justify-between gap-0 px-0 pb-0 pt-0 sm:max-w-prose">
+            <DialogHeader className="flex h-[2.75rem] items-start justify-center rounded-t-md bg-background-bright pl-3">
               <div className="flex items-center gap-1">
                 <AISparkleIcon className="size-5" />
                 <DialogTitle className="text-sm font-medium text-text-bright">Ask AI</DialogTitle>
