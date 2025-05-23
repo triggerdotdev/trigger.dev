@@ -26,6 +26,8 @@ export type GitMetaLinks = {
   pullRequestUrl?: string;
   /** The pull request number (if available) */
   pullRequestNumber?: number;
+  /** The pull request title (if available) */
+  pullRequestTitle?: string;
   /** Link to compare this branch with main */
   compareUrl: string;
   /** Shortened commit SHA (first 7 characters) */
@@ -231,6 +233,7 @@ export function processGitMetadata(data: Prisma.JsonValue): GitMetaLinks | null 
       ? `${cleanRemoteUrl}/pull/${parsed.data.pullRequestNumber}`
       : undefined,
     pullRequestNumber: parsed.data.pullRequestNumber,
+    pullRequestTitle: parsed.data.pullRequestTitle,
     compareUrl: `${cleanRemoteUrl}/compare/main...${parsed.data.commitRef}`,
     shortSha,
     isDirty: parsed.data.dirty ?? false,

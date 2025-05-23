@@ -271,6 +271,7 @@ export const GitMeta = z.object({
   dirty: z.boolean().optional(),
   remoteUrl: z.string().optional(),
   pullRequestNumber: z.number().optional(),
+  pullRequestTitle: z.string().optional(),
 });
 
 export type GitMeta = z.infer<typeof GitMeta>;
