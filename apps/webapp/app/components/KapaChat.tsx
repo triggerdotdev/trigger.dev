@@ -2,7 +2,7 @@ import { ArrowUpIcon } from "@heroicons/react/24/solid";
 import { KapaProvider, useChat } from "@kapaai/react-sdk";
 import { useSearchParams } from "@remix-run/react";
 import { motion } from "framer-motion";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { marked } from "marked";
 import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
 import { SparkleListIcon } from "~/assets/icons/SparkleListIcon";
@@ -22,14 +22,12 @@ function ChatMessages({
   conversation,
   isPreparingAnswer,
   isGeneratingAnswer,
-  isStopping,
   onReset,
   onExampleClick,
 }: {
   conversation: any[];
   isPreparingAnswer: boolean;
   isGeneratingAnswer: boolean;
-  isStopping: boolean;
   onReset: () => void;
   onExampleClick: (question: string) => void;
 }) {
@@ -117,43 +115,24 @@ function ChatMessages({
           </Button>
         </div>
       )}
-      {isStopping && (
-        <div className="flex items-center gap-2">
-          <Spinner className="size-4" />
-          <Paragraph className="text-text-dimmed">Stopping generation…</Paragraph>
-        </div>
-      )}
     </div>
   );
 }
 
-function ChatInterface() {
+function ChatInterface({ initialQuery }: { initialQuery?: string }) {
   const [message, setMessage] = useState("");
-  const [isStopping, setIsStopping] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
-  const {
-    conversation,
-    submitQuery,
-    isGeneratingAnswer,
-    isPreparingAnswer,
-    stopGeneration,
-    resetConversation,
-  } = useChat();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const hasSubmittedInitialQuery = useRef(false);
+  const { conversation, submitQuery, isGeneratingAnswer, isPreparingAnswer, resetConversation } =
+    useChat();
 
-  // Handle URL param functionality
   useEffect(() => {
-    const aiHelp = searchParams.get("aiHelp");
-    if (aiHelp) {
-      setSearchParams((prev) => {
-        prev.delete("aiHelp");
-        return prev;
-      });
-
-      const decodedAiHelp = decodeURIComponent(aiHelp);
-      submitQuery(decodedAiHelp);
+    if (initialQuery && !hasSubmittedInitialQuery.current) {
+      hasSubmittedInitialQuery.current = true;
+      setIsExpanded(true);
+      submitQuery(initialQuery);
     }
-  }, [searchParams, setSearchParams, submitQuery]);
+  }, [initialQuery, submitQuery]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -180,7 +159,6 @@ function ChatInterface() {
         conversation={conversation}
         isPreparingAnswer={isPreparingAnswer}
         isGeneratingAnswer={isGeneratingAnswer}
-        isStopping={isStopping}
         onReset={resetConversation}
         onExampleClick={handleExampleClick}
       />
@@ -210,11 +188,28 @@ function ChatInterface() {
 
 export function KapaChat({ websiteId, onOpen, onClose }: KapaChatProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [initialQuery, setInitialQuery] = useState<string | undefined>();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const handleOpen = useCallback(() => {
     setIsOpen(true);
     onOpen?.();
   }, [onOpen]);
+
+  // Handle URL param functionality
+  useEffect(() => {
+    const aiHelp = searchParams.get("aiHelp");
+    if (aiHelp) {
+      setSearchParams((prev) => {
+        prev.delete("aiHelp");
+        return prev;
+      });
+
+      const decodedAiHelp = decodeURIComponent(aiHelp);
+      setInitialQuery(decodedAiHelp);
+      handleOpen();
+    }
+  }, [searchParams, setSearchParams, handleOpen]);
 
   if (!websiteId) return null;
 
@@ -250,7 +245,7 @@ export function KapaChat({ websiteId, onOpen, onClose }: KapaChatProps) {
                 <DialogTitle className="text-sm font-medium text-text-bright">Ask AI</DialogTitle>
               </div>
             </DialogHeader>
-            <ChatInterface />
+            <ChatInterface initialQuery={initialQuery} />
           </DialogContent>
         </Dialog>
       </div>
