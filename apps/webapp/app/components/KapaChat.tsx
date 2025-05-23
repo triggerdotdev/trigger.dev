@@ -60,7 +60,7 @@ function ChatMessages({
           {exampleQuestions.map((question, index) => (
             <motion.button
               key={index}
-              className="group flex w-fit items-center gap-2 rounded-full border border-dashed border-charcoal-600 px-4 py-2 transition hover:border-solid hover:border-indigo-500"
+              className="group flex w-fit items-center gap-2 rounded-full border border-dashed border-charcoal-600 px-4 py-2 transition-colors hover:border-solid hover:border-indigo-500"
               onClick={() => onExampleClick(question)}
               variants={{
                 hidden: {
@@ -71,8 +71,15 @@ function ChatMessages({
                   opacity: 1,
                   x: 0,
                   transition: {
-                    duration: 0.4,
-                    ease: [0.4, 0, 0.2, 1], // Custom cubic-bezier for smooth easing
+                    opacity: {
+                      duration: 0.5,
+                      ease: "linear",
+                    },
+                    x: {
+                      type: "spring",
+                      stiffness: 300,
+                      damping: 25,
+                    },
                   },
                 },
               }}
@@ -166,7 +173,7 @@ function ChatInterface() {
     <motion.div
       className="flex h-full max-h-full grow flex-col overflow-y-auto bg-background-bright"
       animate={{ height: isExpanded ? "90vh" : "auto" }}
-      transition={{ duration: 0.2, ease: "easeInOut" }}
+      transition={{ type: "spring", damping: 25, stiffness: 300 }}
       initial={{ height: "auto" }}
     >
       <ChatMessages
