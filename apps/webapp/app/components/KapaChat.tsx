@@ -4,12 +4,12 @@ import { useSearchParams } from "@remix-run/react";
 import { motion } from "framer-motion";
 import { useCallback, useEffect, useState } from "react";
 import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
+import { SparkleListIcon } from "~/assets/icons/SparkleListIcon";
 import { Button } from "./primitives/Buttons";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./primitives/Dialog";
 import { Header2 } from "./primitives/Headers";
 import { Paragraph } from "./primitives/Paragraph";
 import { Spinner } from "./primitives/Spinner";
-import { SparkleListIcon } from "~/assets/icons/SparkleListIcon";
 
 type KapaChatProps = {
   websiteId: string;
@@ -41,20 +41,48 @@ function ChatMessages({
   return (
     <div className="flex-1 overflow-y-auto p-4">
       {conversation.length === 0 ? (
-        <div className="flex flex-col gap-2">
+        <motion.div
+          className="flex flex-col gap-2"
+          initial="hidden"
+          animate="visible"
+          variants={{
+            hidden: { opacity: 0 },
+            visible: {
+              opacity: 1,
+              transition: {
+                staggerChildren: 0.1,
+                delayChildren: 0.2,
+              },
+            },
+          }}
+        >
           {exampleQuestions.map((question, index) => (
-            <button
+            <motion.button
               key={index}
               className="group flex w-fit items-center gap-2 rounded-full border border-dashed border-charcoal-600 px-4 py-2 transition hover:border-solid hover:border-indigo-500"
               onClick={() => onExampleClick(question)}
+              variants={{
+                hidden: {
+                  opacity: 0,
+                  x: 20,
+                },
+                visible: {
+                  opacity: 1,
+                  x: 0,
+                  transition: {
+                    duration: 0.4,
+                    ease: [0.4, 0, 0.2, 1], // Custom cubic-bezier for smooth easing
+                  },
+                },
+              }}
             >
               <SparkleListIcon className="size-4 text-text-dimmed transition group-hover:text-indigo-500" />
               <Paragraph variant="small" className="transition group-hover:text-text-bright">
                 {question}
               </Paragraph>
-            </button>
+            </motion.button>
           ))}
-        </div>
+        </motion.div>
       ) : (
         conversation.map((qa) => (
           <div key={qa.id || `temp-${qa.question}`} className="mb-4">
