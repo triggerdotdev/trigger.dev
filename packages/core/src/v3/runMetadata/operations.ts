@@ -182,32 +182,33 @@ export function collapseOperations(
   // Process operations in order
   for (const operation of operations) {
     switch (operation.type) {
-      case "increment":
+      case "increment": {
         const currentIncrement = incrementsByKey.get(operation.key) || 0;
         incrementsByKey.set(operation.key, currentIncrement + operation.value);
         break;
-
-      case "set":
+      }
+      case "set": {
         // Keep only the last set operation for each key
         setsByKey.set(operation.key, operation);
         break;
-
-      case "delete":
+      }
+      case "delete": {
         // Keep only one delete operation per key
         deletesByKey.add(operation.key);
         break;
-
+      }
       case "append":
       case "remove":
-      case "update":
+      case "update": {
         // Preserve these operations as-is to maintain correctness
         preservedOperations.push(operation);
         break;
-
-      default:
+      }
+      default: {
         // Handle any future operation types by preserving them
         preservedOperations.push(operation);
         break;
+      }
     }
   }
 

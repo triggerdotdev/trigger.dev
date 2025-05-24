@@ -12,7 +12,7 @@ const { action } = createActionApiRoute(
   {
     params: ParamsSchema,
     body: UpdateMetadataRequestBody,
-    maxContentLength: 1024 * 1024 * 2, // 3MB
+    maxContentLength: 1024 * 1024 * 2, // 2MB
     method: "PUT",
   },
   async ({ authentication, body, params }) => {
