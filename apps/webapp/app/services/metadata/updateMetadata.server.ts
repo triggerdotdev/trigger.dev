@@ -381,6 +381,7 @@ export class UpdateMetadataService extends BaseService {
           `[UpdateMetadataService][updateRunMetadataWithOperations] Updated metadata for run ${runId}`,
           {
             metadata: applyResults.newMetadata,
+            operations: operations,
           }
         );
       }

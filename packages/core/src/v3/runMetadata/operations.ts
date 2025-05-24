@@ -128,3 +128,110 @@ export function applyMetadataOperations(
 
   return { newMetadata, unappliedOperations };
 }
+
+/**
+ * Collapses metadata operations to reduce payload size and avoid 413 "Request Entity Too Large" errors.
+ *
+ * When there are many operations queued up (e.g., 10k increment operations), sending them all
+ * individually can result in request payloads exceeding the server's 1MB limit. This function
+ * intelligently combines operations where possible to reduce the payload size:
+ *
+ * - **Increment operations**: Multiple increments on the same key are summed into a single increment
+ *   - Example: increment("counter", 1) + increment("counter", 2) → increment("counter", 3)
+ *
+ * - **Set operations**: Multiple sets on the same key keep only the last one (since later sets override earlier ones)
+ *   - Example: set("status", "processing") + set("status", "done") → set("status", "done")
+ *
+ * - **Delete operations**: Multiple deletes on the same key keep only one (duplicates are redundant)
+ *   - Example: del("temp") + del("temp") → del("temp")
+ *
+ * - **Append, remove, and update operations**: Preserved as-is to maintain correctness since order matters
+ *
+ * @param operations Array of metadata change operations to collapse
+ * @returns Collapsed array with fewer operations that produce the same final result
+ *
+ * @example
+ * ```typescript
+ * const operations = [
+ *   { type: "increment", key: "counter", value: 1 },
+ *   { type: "increment", key: "counter", value: 2 },
+ *   { type: "set", key: "status", value: "processing" },
+ *   { type: "set", key: "status", value: "done" }
+ * ];
+ *
+ * const collapsed = collapseOperations(operations);
+ * // Result: [
+ * //   { type: "increment", key: "counter", value: 3 },
+ * //   { type: "set", key: "status", value: "done" }
+ * // ]
+ * ```
+ */
+export function collapseOperations(
+  operations: RunMetadataChangeOperation[]
+): RunMetadataChangeOperation[] {
+  if (operations.length === 0) {
+    return operations;
+  }
+
+  // Maps to track collapsible operations
+  const incrementsByKey = new Map<string, number>();
+  const setsByKey = new Map<string, RunMetadataChangeOperation>();
+  const deletesByKey = new Set<string>();
+  const preservedOperations: RunMetadataChangeOperation[] = [];
+
+  // Process operations in order
+  for (const operation of operations) {
+    switch (operation.type) {
+      case "increment": {
+        const currentIncrement = incrementsByKey.get(operation.key) || 0;
+        incrementsByKey.set(operation.key, currentIncrement + operation.value);
+        break;
+      }
+      case "set": {
+        // Keep only the last set operation for each key
+        setsByKey.set(operation.key, operation);
+        break;
+      }
+      case "delete": {
+        // Keep only one delete operation per key
+        deletesByKey.add(operation.key);
+        break;
+      }
+      case "append":
+      case "remove":
+      case "update": {
+        // Preserve these operations as-is to maintain correctness
+        preservedOperations.push(operation);
+        break;
+      }
+      default: {
+        // Handle any future operation types by preserving them
+        preservedOperations.push(operation);
+        break;
+      }
+    }
+  }
+
+  // Build the collapsed operations array
+  const collapsedOperations: RunMetadataChangeOperation[] = [];
+
+  // Add collapsed increment operations
+  for (const [key, value] of incrementsByKey) {
+    collapsedOperations.push({ type: "increment", key, value });
+  }
+
+  // Add collapsed set operations
+  for (const operation of setsByKey.values()) {
+    collapsedOperations.push(operation);
+  }
+
+  // Add collapsed delete operations
+  for (const key of deletesByKey) {
+    collapsedOperations.push({ type: "delete", key });
+  }
+
+  // Add preserved operations
+  collapsedOperations.push(...preservedOperations);
+
+  return collapsedOperations;
+}
