@@ -91,7 +91,17 @@ const SheetTitle = React.forwardRef<
   >
     {children}
     <SheetPrimitive.Close className="flex items-center gap-1 rounded-sm p-1 pl-0 transition hover:bg-charcoal-750 focus-visible:focus-custom disabled:pointer-events-none">
-      <ShortcutKey shortcut={{ key: "esc" }} variant="small" />
+      <ShortcutKey
+        shortcut={{
+          windows: {
+            key: "esc",
+          },
+          mac: {
+            key: "esc",
+          },
+        }}
+        variant="small"
+      />
       <XMarkIcon className="size-4 text-text-dimmed" />
       <span className="sr-only">Close</span>
     </SheetPrimitive.Close>

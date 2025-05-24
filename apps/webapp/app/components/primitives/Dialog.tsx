@@ -50,22 +50,20 @@ const DialogContent = React.forwardRef<
     >
       <hr className="absolute left-0 top-11 w-full" />
       {children}
-      <DialogPrimitive.Close className="data-[state=open]:bg-accent data-[state=open]:text-muted-foreground absolute right-3 top-2 rounded-sm py-1 pr-1 opacity-70 transition-opacity focus-custom hover:opacity-100 disabled:pointer-events-none">
-        <div className="flex gap-x-2">
-          <ShortcutKey
-            shortcut={{
-              windows: {
-                key: "esc",
-              },
-              mac: {
-                key: "esc",
-              },
-            }}
-            variant={"small"}
-          />
-          <XMarkIcon className="h-5 w-5" />
-          <span className="sr-only">Close</span>
-        </div>
+      <DialogPrimitive.Close className="data-[state=open]:bg-accent data-[state=open]:text-muted-foreground group absolute right-2 top-[0.5625rem] flex items-center gap-1 rounded-sm p-1 py-1 pl-0 pr-1 opacity-70 transition focus-custom hover:bg-charcoal-750 hover:opacity-100 focus-visible:focus-custom disabled:pointer-events-none">
+        <ShortcutKey
+          shortcut={{
+            windows: {
+              key: "esc",
+            },
+            mac: {
+              key: "esc",
+            },
+          }}
+          variant="medium"
+        />
+        <XMarkIcon className="size-4 text-text-dimmed transition group-hover:text-text-bright" />
+        <span className="sr-only">Close</span>
       </DialogPrimitive.Close>
     </DialogPrimitive.Content>
   </DialogPortal>
