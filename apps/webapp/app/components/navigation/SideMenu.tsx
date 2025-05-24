@@ -18,19 +18,22 @@ import {
   Squares2X2Icon,
   UsersIcon,
 } from "@heroicons/react/20/solid";
-import { useNavigation, useMatches } from "@remix-run/react";
+import { useMatches, useNavigation } from "@remix-run/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import simplur from "simplur";
-import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
 import { RunsIconExtraSmall } from "~/assets/icons/RunsIcon";
 import { TaskIconSmall } from "~/assets/icons/TaskIcon";
 import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
+import { KapaChat } from "~/components/KapaChat";
 import { Avatar } from "~/components/primitives/Avatar";
 import { type MatchedEnvironment } from "~/hooks/useEnvironment";
+import { useFeatures } from "~/hooks/useFeatures";
 import { type MatchedOrganization } from "~/hooks/useOrganizations";
 import { type MatchedProject } from "~/hooks/useProject";
+import { useTypedMatchesData } from "~/hooks/useTypedMatchData";
 import { useHasAdminAccess } from "~/hooks/useUser";
 import { type User } from "~/models/user.server";
+import { type loader } from "~/root";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 import { type FeedbackType } from "~/routes/resources.feedback";
 import { IncidentStatusPanel } from "~/routes/resources.incidents";
@@ -83,10 +86,6 @@ import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
 import { SideMenuSection } from "./SideMenuSection";
-import { useFeatures } from "~/hooks/useFeatures";
-import { useTypedMatchesData } from "~/hooks/useTypedMatchData";
-import { type loader } from "~/root";
-import { KapaChat } from "~/components/KapaChat";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 export type SideMenuProject = Pick<
