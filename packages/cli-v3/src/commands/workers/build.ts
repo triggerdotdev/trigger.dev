@@ -210,6 +210,7 @@ async function _workerBuildCommand(dir: string, options: WorkersBuildCommandOpti
   const buildManifest = await buildWorker({
     target: "unmanaged",
     environment: options.env,
+    branch,
     destination: destination.path,
     resolvedConfig,
     rewritePaths: true,

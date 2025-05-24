@@ -2010,6 +2010,9 @@ importers:
 
   references/hello-world:
     dependencies:
+      '@trigger.dev/build':
+        specifier: workspace:*
+        version: link:../../packages/build
       '@trigger.dev/sdk':
         specifier: workspace:*
         version: link:../../packages/trigger-sdk

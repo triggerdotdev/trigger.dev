@@ -339,6 +339,7 @@ export async function createBuildManifestFromBundle({
   resolvedConfig,
   workerDir,
   environment,
+  branch,
   target,
   envVars,
   sdkVersion,
@@ -348,6 +349,7 @@ export async function createBuildManifestFromBundle({
   resolvedConfig: ResolvedConfig;
   workerDir?: string;
   environment: string;
+  branch?: string;
   target: BuildTarget;
   envVars?: Record<string, string>;
   sdkVersion?: string;
@@ -356,6 +358,7 @@ export async function createBuildManifestFromBundle({
     contentHash: bundle.contentHash,
     runtime: resolvedConfig.runtime ?? DEFAULT_RUNTIME,
     environment: environment,
+    branch,
     packageVersion: sdkVersion ?? CORE_VERSION,
     cliPackageVersion: VERSION,
     target: target,

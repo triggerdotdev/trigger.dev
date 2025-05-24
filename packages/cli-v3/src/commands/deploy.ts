@@ -277,6 +277,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   const buildManifest = await buildWorker({
     target: "deploy",
     environment: options.env,
+    branch,
     destination: destination.path,
     resolvedConfig,
     rewritePaths: true,

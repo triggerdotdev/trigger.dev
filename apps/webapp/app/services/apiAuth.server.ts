@@ -17,6 +17,7 @@ import {
   isPersonalAccessToken,
 } from "./personalAccessToken.server";
 import { isPublicJWT, validatePublicJwtKey } from "./realtime/jwtAuth.server";
+import { sanitizeBranchName } from "./upsertBranch.server";
 
 const ClaimsSchema = z.object({
   scopes: z.array(z.string()).optional(),
@@ -261,14 +262,18 @@ function isSecretApiKey(key: string) {
   return key.startsWith("tr_");
 }
 
+export function branchNameFromRequest(request: Request): string | undefined {
+  return request.headers.get("x-trigger-branch") ?? undefined;
+}
+
 function getApiKeyFromRequest(request: Request): {
   apiKey: string | undefined;
   branchName: string | undefined;
 } {
   const apiKey = getApiKeyFromHeader(request.headers.get("Authorization"));
-  const branchHeaderValue = request.headers.get("x-trigger-branch");
+  const branchName = branchNameFromRequest(request);
 
-  return { apiKey, branchName: branchHeaderValue ? branchHeaderValue : undefined };
+  return { apiKey, branchName };
 }
 
 function getApiKeyFromHeader(authorization?: string | null) {
@@ -340,7 +345,8 @@ export async function authenticateProjectApiKeyOrPersonalAccessToken(
 export async function authenticatedEnvironmentForAuthentication(
   auth: DualAuthenticationResult,
   projectRef: string,
-  slug: string
+  slug: string,
+  branch?: string
 ): Promise<AuthenticatedEnvironment> {
   if (slug === "staging") {
     slug = "stg";
@@ -362,7 +368,7 @@ export async function authenticatedEnvironmentForAuthentication(
         );
       }
 
-      if (auth.result.environment.slug !== slug) {
+      if (auth.result.environment.slug !== slug && auth.result.environment.branchName !== branch) {
         throw json(
           {
             error:
@@ -391,22 +397,53 @@ export async function authenticatedEnvironmentForAuthentication(
         throw json({ error: "Project not found" }, { status: 404 });
       }
 
+      if (!branch) {
+        const environment = await prisma.runtimeEnvironment.findFirst({
+          where: {
+            projectId: project.id,
+            slug: slug,
+          },
+          include: {
+            project: true,
+            organization: true,
+          },
+        });
+
+        if (!environment) {
+          throw json({ error: "Environment not found" }, { status: 404 });
+        }
+
+        return environment;
+      }
+
       const environment = await prisma.runtimeEnvironment.findFirst({
         where: {
           projectId: project.id,
           slug: slug,
+          branchName: sanitizeBranchName(branch),
+          archivedAt: null,
         },
         include: {
           project: true,
           organization: true,
+          parentEnvironment: true,
         },
       });
 
       if (!environment) {
-        throw json({ error: "Environment not found" }, { status: 404 });
+        throw json({ error: "Branch not found" }, { status: 404 });
       }
 
-      return environment;
+      if (!environment.parentEnvironment) {
+        throw json({ error: "Branch not associated with a preview environment" }, { status: 400 });
+      }
+
+      return {
+        ...environment,
+        apiKey: environment.parentEnvironment.apiKey,
+        organization: environment.organization,
+        project: environment.project,
+      };
     }
   }
 }
