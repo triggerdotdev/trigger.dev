@@ -312,7 +312,7 @@ function ChatInterface({ initialQuery }: { initialQuery?: string }) {
             placeholder="Ask a question..."
             disabled={isGeneratingAnswer}
             autoFocus
-            className="flex-1 rounded-md border border-grid-bright bg-background-dimmed px-3 py-2 text-text-bright placeholder:text-text-dimmed focus:border-indigo-500 focus:outline-none"
+            className="flex-1 rounded-md border border-grid-bright bg-background-dimmed px-3 py-2 text-text-bright placeholder:text-text-dimmed focus-visible:focus-custom"
           />
           {isGeneratingAnswer ? (
             <SimpleTooltip
