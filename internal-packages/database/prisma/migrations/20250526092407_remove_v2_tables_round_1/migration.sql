@@ -70,7 +70,7 @@ DROP TABLE IF EXISTS "JobRunSubscription";
 DROP TABLE IF EXISTS "KeyValueItem";
 
 -- DropTable
-DROP TABLE IF EXISTS "MissingConnection";
+DROP TABLE IF EXISTS "MissingConnection" CASCADE;
 
 -- DropTable
 DROP TABLE IF EXISTS "TaskAttempt";
