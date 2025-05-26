@@ -257,7 +257,6 @@ model Integration {
 
   connections   IntegrationConnection[]
   sources       TriggerSource[]
-  webhooks      Webhook[]
   RunConnection RunConnection[]
 
   @@unique([organizationId, slug])
@@ -476,7 +475,6 @@ model Project {
   runs                   JobRun[]
   sources                TriggerSource[]
   httpEndpoints          TriggerHttpEndpoint[]
-  webhooks               Webhook[]
   backgroundWorkers      BackgroundWorker[]
   backgroundWorkerTasks  BackgroundWorkerTask[]
   taskRuns               TaskRun[]
@@ -668,8 +666,6 @@ model RunConnection {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tasks Task[]
-
   @@unique([runId, key])
 }
 
@@ -828,7 +824,6 @@ model JobRun {
 
   forceYieldImmediately Boolean @default(false)
 
-  tasks          Task[]
   runConnections RunConnection[]
 
   @@index([jobId, createdAt(sort: Desc)], map: "idx_jobrun_jobId_createdAt")
@@ -865,52 +860,6 @@ enum JobRunExecutionStatus {
   STARTED
   SUCCESS
   FAILURE
-}
-
-model Task {
-  id             String  @id
-  idempotencyKey String
-  displayKey     String?
-  name           String
-  icon           String?
-
-  status     TaskStatus @default(PENDING)
-  delayUntil DateTime?
-  noop       Boolean    @default(false)
-
-  description       String?
-  properties        Json?
-  outputProperties  Json?
-  params            Json?
-  output            Json?
-  outputIsUndefined Boolean @default(false)
-  context           Json?
-  error             String?
-  redact            Json?
-  style             Json?
-  operation         String?
-  callbackUrl       String?
-
-  startedAt   DateTime?
-  completedAt DateTime?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  run   JobRun @relation(fields: [runId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  runId String
-
-  parent   Task?   @relation("TaskParent", fields: [parentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  parentId String?
-
-  runConnection   RunConnection? @relation(fields: [runConnectionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  runConnectionId String?
-
-  children           Task[]                 @relation("TaskParent")
-  childExecutionMode TaskChildExecutionMode @default(SEQUENTIAL)
-
-  @@unique([runId, idempotencyKey])
-  @@index([parentId], map: "idx_task_parentId")
 }
 
 enum TaskStatus {
@@ -1017,29 +966,6 @@ enum TriggerChannel {
   SMTP
 }
 
-model Webhook {
-  id String @id @default(cuid())
-
-  active Boolean @default(false)
-
-  key    String
-  params Json?
-
-  httpEndpoint   TriggerHttpEndpoint @relation(fields: [httpEndpointId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  httpEndpointId String              @unique
-
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  projectId String
-
-  integration   Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  integrationId String
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([key, projectId])
-}
-
 model TriggerHttpEndpoint {
   id String @id @default(cuid())
 
@@ -1048,8 +974,6 @@ model TriggerHttpEndpoint {
   title      String?
   icon       String?
   properties Json?
-
-  webhook Webhook?
 
   secretReference   SecretReference @relation(fields: [secretReferenceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   secretReferenceId String
