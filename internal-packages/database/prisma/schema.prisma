@@ -155,22 +155,6 @@ model Organization {
   executionSnapshots       TaskRunExecutionSnapshot[]
 }
 
-enum IntegrationAuthSource {
-  HOSTED
-  LOCAL
-  RESOLVER
-}
-
-enum IntegrationSetupStatus {
-  MISSING_FIELDS
-  COMPLETE
-}
-
-enum ConnectionType {
-  EXTERNAL
-  DEVELOPER
-}
-
 model OrgMember {
   id String @id @default(cuid())
 
@@ -349,70 +333,6 @@ enum ProjectVersion {
   V3
 }
 
-enum JobVersionStatus {
-  ACTIVE
-  DISABLED
-}
-
-enum DynamicTriggerType {
-  EVENT
-  SCHEDULE
-}
-
-enum JobStartPosition {
-  INITIAL
-  LATEST
-}
-
-enum PayloadType {
-  JSON
-  REQUEST
-}
-
-enum JobRunStatus {
-  PENDING
-  QUEUED
-  WAITING_ON_CONNECTIONS
-  PREPROCESSING
-  STARTED
-  EXECUTING
-  WAITING_TO_CONTINUE
-  WAITING_TO_EXECUTE
-  SUCCESS
-  FAILURE
-  TIMED_OUT
-  ABORTED
-  CANCELED
-  UNRESOLVED_AUTH
-  INVALID_PAYLOAD
-}
-
-enum JobRunExecutionReason {
-  PREPROCESS
-  EXECUTE_JOB
-}
-
-enum JobRunExecutionStatus {
-  PENDING
-  STARTED
-  SUCCESS
-  FAILURE
-}
-
-enum TaskStatus {
-  PENDING
-  WAITING
-  RUNNING
-  COMPLETED
-  ERRORED
-  CANCELED
-}
-
-enum TaskChildExecutionMode {
-  SEQUENTIAL
-  PARALLEL
-}
-
 model SecretReference {
   id       String              @id @default(cuid())
   key      String              @unique
@@ -439,12 +359,6 @@ model SecretStore {
   updatedAt DateTime @updatedAt
 
   @@index([key(ops: raw("text_pattern_ops"))], type: BTree)
-}
-
-enum TriggerChannel {
-  HTTP
-  SQS
-  SMTP
 }
 
 model DataMigration {
