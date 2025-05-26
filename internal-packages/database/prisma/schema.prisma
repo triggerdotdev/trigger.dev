@@ -145,8 +145,6 @@ model Organization {
   endpoints    Endpoint[]
   jobs         Job[]
   jobVersions  JobVersion[]
-  events       EventRecord[]
-  jobRuns      JobRun[]
 
   apiRateLimiterConfig      Json?
   realtimeRateLimiterConfig Json?
@@ -175,10 +173,6 @@ model ExternalAccount {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  events          EventRecord[]
-  runs            JobRun[]
-  EventDispatcher EventDispatcher[]
 
   @@unique([environmentId, identifier])
 }
@@ -360,10 +354,7 @@ model RuntimeEnvironment {
 
   endpoints                  Endpoint[]
   jobVersions                JobVersion[]
-  events                     EventRecord[]
-  jobRuns                    JobRun[]
   JobQueue                   JobQueue[]
-  eventDispatchers           EventDispatcher[]
   ExternalAccount            ExternalAccount[]
   concurrencyLimitGroups     ConcurrencyLimitGroup[]
   backgroundWorkers          BackgroundWorker[]
@@ -432,8 +423,6 @@ model Project {
   endpoints              Endpoint[]
   jobs                   Job[]
   jobVersion             JobVersion[]
-  events                 EventRecord[]
-  runs                   JobRun[]
   httpEndpoints          TriggerHttpEndpoint[]
   backgroundWorkers      BackgroundWorker[]
   backgroundWorkerTasks  BackgroundWorkerTask[]
@@ -489,9 +478,7 @@ model Endpoint {
   beforeCompleteTaskThreshold Int @default(750)
   afterCompleteTaskThreshold  Int @default(750)
 
-  jobVersions     JobVersion[]
-  jobRuns         JobRun[]
-  dynamictriggers DynamicTrigger[]
+  jobVersions JobVersion[]
 
   @@unique([environmentId, slug])
 }
@@ -508,9 +495,7 @@ model Job {
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   projectId String
 
-  versions        JobVersion[]
-  runs            JobRun[]
-  dynamicTriggers DynamicTrigger[]
+  versions JobVersion[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
@@ -557,9 +542,6 @@ model JobVersion {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  runs            JobRun[]
-  dynamicTriggers DynamicTrigger[]
-
   status JobVersionStatus @default(ACTIVE)
 
   @@unique([jobId, version, environmentId])
@@ -600,26 +582,9 @@ model JobQueue {
   jobCount Int @default(0)
   maxJobs  Int @default(100)
 
-  runs       JobRun[]
   jobVersion JobVersion[]
 
   @@unique([environmentId, name])
-}
-
-model DynamicTrigger {
-  id   String             @id @default(cuid())
-  type DynamicTriggerType @default(EVENT)
-  slug String
-
-  endpoint   Endpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  endpointId String
-
-  jobs Job[]
-
-  sourceRegistrationJob   JobVersion? @relation(fields: [sourceRegistrationJobId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  sourceRegistrationJobId String?
-
-  @@unique([endpointId, slug, type])
 }
 
 enum DynamicTriggerType {
@@ -627,143 +592,14 @@ enum DynamicTriggerType {
   SCHEDULE
 }
 
-model EventDispatcher {
-  id            String   @id @default(cuid())
-  event         String[]
-  source        String
-  payloadFilter Json?
-  contextFilter Json?
-  manual        Boolean  @default(false)
-
-  dispatchableId String
-  dispatchable   Json
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  enabled Boolean @default(true)
-
-  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  environmentId String
-
-  externalAccount   ExternalAccount? @relation(fields: [externalAccountId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  externalAccountId String?
-
-  @@unique([dispatchableId, environmentId])
-}
-
 enum JobStartPosition {
   INITIAL
   LATEST
 }
 
-model EventRecord {
-  id            String      @id @default(cuid())
-  eventId       String
-  name          String
-  timestamp     DateTime    @default(now())
-  payload       Json
-  payloadType   PayloadType @default(JSON)
-  context       Json?
-  sourceContext Json?
-
-  source String @default("trigger.dev")
-
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  organizationId String
-
-  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  environmentId String
-
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  projectId String
-
-  externalAccount   ExternalAccount? @relation(fields: [externalAccountId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  externalAccountId String?
-
-  httpEndpoint   TriggerHttpEndpoint? @relation(fields: [httpEndpointId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  httpEndpointId String?
-
-  deliverAt   DateTime  @default(now())
-  deliveredAt DateTime?
-
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  cancelledAt DateTime?
-
-  isTest   Boolean  @default(false)
-  internal Boolean  @default(false)
-  runs     JobRun[]
-
-  @@unique([eventId, environmentId])
-}
-
 enum PayloadType {
   JSON
   REQUEST
-}
-
-model JobRun {
-  id       String  @id @default(cuid())
-  number   Int?
-  internal Boolean @default(false)
-
-  job   Job    @relation(fields: [jobId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  jobId String
-
-  version   JobVersion @relation(fields: [versionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  versionId String
-
-  event   EventRecord @relation(fields: [eventId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  eventId String
-
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  organizationId String
-
-  endpoint   Endpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  endpointId String
-
-  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  environmentId String
-
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  projectId String
-
-  queue   JobQueue? @relation(fields: [queueId], references: [id])
-  queueId String?
-
-  externalAccount   ExternalAccount? @relation(fields: [externalAccountId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  externalAccountId String?
-
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  queuedAt    DateTime?
-  startedAt   DateTime?
-  completedAt DateTime?
-
-  properties Json?
-
-  status JobRunStatus @default(PENDING)
-  output Json?
-
-  timedOutAt     DateTime?
-  timedOutReason String?
-
-  executionCount        Int @default(0)
-  executionFailureCount Int @default(0)
-  executionDuration     Int @default(0)
-
-  isTest     Boolean @default(false)
-  preprocess Boolean @default(false)
-
-  yieldedExecutions String[]
-
-  forceYieldImmediately Boolean @default(false)
-
-  @@index([jobId, createdAt(sort: Desc)], map: "idx_jobrun_jobId_createdAt")
-  @@index([organizationId, createdAt], map: "idx_jobrun_organizationId_createdAt")
-  @@index([versionId], map: "idx_jobrun_versionId")
-  @@index([eventId], map: "JobRun_eventId_idx")
 }
 
 enum JobRunStatus {
@@ -863,8 +699,6 @@ model TriggerHttpEndpoint {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  eventRecords EventRecord[]
 
   @@unique([key, projectId])
 }
