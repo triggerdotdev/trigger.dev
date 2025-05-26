@@ -405,7 +405,6 @@ model RuntimeEnvironment {
   sources                    TriggerSource[]
   eventDispatchers           EventDispatcher[]
   ExternalAccount            ExternalAccount[]
-  httpEndpointEnvironments   TriggerHttpEndpointEnvironment[]
   concurrencyLimitGroups     ConcurrencyLimitGroup[]
   backgroundWorkers          BackgroundWorker[]
   backgroundWorkerTasks      BackgroundWorkerTask[]
@@ -532,11 +531,10 @@ model Endpoint {
   beforeCompleteTaskThreshold Int @default(750)
   afterCompleteTaskThreshold  Int @default(750)
 
-  jobVersions              JobVersion[]
-  jobRuns                  JobRun[]
-  dynamictriggers          DynamicTrigger[]
-  sources                  TriggerSource[]
-  httpEndpointEnvironments TriggerHttpEndpointEnvironment[]
+  jobVersions     JobVersion[]
+  jobRuns         JobRun[]
+  dynamictriggers DynamicTrigger[]
+  sources         TriggerSource[]
 
   @@unique([environmentId, slug])
 }
@@ -753,9 +751,6 @@ model EventRecord {
 
   httpEndpoint   TriggerHttpEndpoint? @relation(fields: [httpEndpointId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   httpEndpointId String?
-
-  httpEndpointEnvironment   TriggerHttpEndpointEnvironment? @relation(fields: [httpEndpointEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  httpEndpointEnvironmentId String?
 
   deliverAt   DateTime  @default(now())
   deliveredAt DateTime?
@@ -1065,41 +1060,9 @@ model TriggerHttpEndpoint {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  httpEndpointEnvironments TriggerHttpEndpointEnvironment[]
-
   eventRecords EventRecord[]
 
   @@unique([key, projectId])
-}
-
-model TriggerHttpEndpointEnvironment {
-  id String @id @default(cuid())
-
-  active Boolean @default(false)
-
-  /// If this is set, requests will be tested against the filter and we'll call the user's server immediately
-  immediateResponseFilter Json?
-
-  skipTriggeringRuns Boolean @default(false)
-
-  source String
-
-  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  environmentId String
-
-  endpoint   Endpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  endpointId String
-
-  httpEndpoint   TriggerHttpEndpoint @relation(fields: [httpEndpointId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  httpEndpointId String
-
-  eventRecords EventRecord[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([environmentId, httpEndpointId])
-  @@unique([endpointId, httpEndpointId])
 }
 
 model DataMigration {
