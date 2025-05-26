@@ -5,6 +5,7 @@ export function syncVercelEnvVars(options?: {
   projectId?: string;
   vercelAccessToken?: string;
   vercelTeamId?: string;
+  branch?: string;
 }): BuildExtension {
   const sync = syncEnvVars(async (ctx) => {
     const projectId =
@@ -13,6 +14,17 @@ export function syncVercelEnvVars(options?: {
       options?.vercelAccessToken ?? process.env.VERCEL_ACCESS_TOKEN ?? ctx.env.VERCEL_ACCESS_TOKEN;
     const vercelTeamId =
       options?.vercelTeamId ?? process.env.VERCEL_TEAM_ID ?? ctx.env.VERCEL_TEAM_ID;
+    const branch =
+      options?.branch ??
+      process.env.VERCEL_PREVIEW_BRANCH ??
+      ctx.env.VERCEL_PREVIEW_BRANCH ??
+      ctx.branch;
+
+    console.debug("syncVercelEnvVars()", {
+      projectId,
+      vercelTeamId,
+      branch,
+    });
 
     if (!projectId) {
       throw new Error(
@@ -42,7 +54,7 @@ export function syncVercelEnvVars(options?: {
     }
     const params = new URLSearchParams({ decrypt: "true" });
     if (vercelTeamId) params.set("teamId", vercelTeamId);
-    if (ctx.branch) params.set("gitBranch", ctx.branch);
+    if (branch) params.set("gitBranch", branch);
     const vercelApiUrl = `https://api.vercel.com/v8/projects/${projectId}/env?${params}`;
 
     try {
