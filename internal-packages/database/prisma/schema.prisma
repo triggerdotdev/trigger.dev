@@ -181,7 +181,6 @@ model ExternalAccount {
   connections     IntegrationConnection[]
   events          EventRecord[]
   runs            JobRun[]
-  schedules       ScheduleSource[]
   triggerSources  TriggerSource[]
   EventDispatcher EventDispatcher[]
 
@@ -405,11 +404,9 @@ model RuntimeEnvironment {
   JobQueue                   JobQueue[]
   sources                    TriggerSource[]
   eventDispatchers           EventDispatcher[]
-  scheduleSources            ScheduleSource[]
   ExternalAccount            ExternalAccount[]
   httpEndpointEnvironments   TriggerHttpEndpointEnvironment[]
   concurrencyLimitGroups     ConcurrencyLimitGroup[]
-  webhookEnvironments        WebhookEnvironment[]
   backgroundWorkers          BackgroundWorker[]
   backgroundWorkerTasks      BackgroundWorkerTask[]
   taskRuns                   TaskRun[]
@@ -540,7 +537,6 @@ model Endpoint {
   dynamictriggers          DynamicTrigger[]
   sources                  TriggerSource[]
   httpEndpointEnvironments TriggerHttpEndpointEnvironment[]
-  webhookEnvironments      WebhookEnvironment[]
 
   @@unique([environmentId, slug])
 }
@@ -687,9 +683,8 @@ model DynamicTrigger {
   endpoint   Endpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   endpointId String
 
-  jobs            Job[]
-  sources         TriggerSource[]
-  scheduleSources ScheduleSource[]
+  jobs    Job[]
+  sources TriggerSource[]
 
   sourceRegistrationJob   JobVersion? @relation(fields: [sourceRegistrationJobId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   sourceRegistrationJobId String?
@@ -720,8 +715,6 @@ model EventDispatcher {
 
   environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   environmentId String
-
-  scheduleSources ScheduleSource[]
 
   externalAccount   ExternalAccount? @relation(fields: [externalAccountId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   externalAccountId String?
@@ -842,7 +835,6 @@ model JobRun {
 
   tasks          Task[]
   runConnections RunConnection[]
-  executions     JobRunExecution[]
 
   @@index([jobId, createdAt(sort: Desc)], map: "idx_jobrun_jobId_createdAt")
   @@index([organizationId, createdAt], map: "idx_jobrun_organizationId_createdAt")
@@ -866,34 +858,6 @@ enum JobRunStatus {
   CANCELED
   UNRESOLVED_AUTH
   INVALID_PAYLOAD
-}
-
-model JobRunExecution {
-  id String @id @default(cuid())
-
-  run   JobRun @relation(fields: [runId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  runId String
-
-  retryCount     Int @default(0)
-  retryLimit     Int @default(0)
-  retryDelayInMs Int @default(0)
-
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  startedAt   DateTime?
-  completedAt DateTime?
-
-  error String?
-
-  reason JobRunExecutionReason @default(EXECUTE_JOB)
-  status JobRunExecutionStatus @default(PENDING)
-
-  resumeTask   Task?   @relation(fields: [resumeTaskId], references: [id], onDelete: SetNull, onUpdate: Cascade)
-  resumeTaskId String?
-
-  graphileJobId String?
-
-  isRetry Boolean @default(false)
 }
 
 enum JobRunExecutionReason {
@@ -949,7 +913,6 @@ model Task {
 
   children           Task[]                 @relation("TaskParent")
   childExecutionMode TaskChildExecutionMode @default(SEQUENTIAL)
-  executions         JobRunExecution[]
 
   @@unique([runId, idempotencyKey])
   @@index([parentId], map: "idx_task_parentId")
@@ -1067,8 +1030,6 @@ model Webhook {
   key    String
   params Json?
 
-  webhookEnvironments WebhookEnvironment[]
-
   httpEndpoint   TriggerHttpEndpoint @relation(fields: [httpEndpointId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   httpEndpointId String              @unique
 
@@ -1082,62 +1043,6 @@ model Webhook {
   updatedAt DateTime @updatedAt
 
   @@unique([key, projectId])
-}
-
-model WebhookEnvironment {
-  id String @id @default(cuid())
-
-  active Boolean @default(false)
-
-  config        Json?
-  desiredConfig Json?
-
-  endpoint   Endpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  endpointId String
-
-  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  environmentId String
-
-  webhook   Webhook @relation(fields: [webhookId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  webhookId String
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([environmentId, webhookId])
-}
-
-model ScheduleSource {
-  id String @id @default(cuid())
-
-  key      String
-  schedule Json
-
-  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  environmentId String
-
-  dispatcher   EventDispatcher @relation(fields: [dispatcherId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  dispatcherId String
-
-  lastEventTimestamp DateTime?
-  nextEventTimestamp DateTime?
-
-  workerJobId String?
-
-  active Boolean @default(false)
-
-  metadata Json?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  dynamicTrigger   DynamicTrigger? @relation(fields: [dynamicTriggerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  dynamicTriggerId String?
-
-  externalAccount   ExternalAccount? @relation(fields: [externalAccountId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  externalAccountId String?
-
-  @@unique([key, environmentId])
 }
 
 model TriggerHttpEndpoint {
