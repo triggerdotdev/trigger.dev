@@ -149,100 +149,10 @@ model Organization {
   projects                 Project[]
   members                  OrgMember[]
   invites                  OrgMemberInvite[]
-  externalAccounts         ExternalAccount[]
-  integrations             Integration[]
   organizationIntegrations OrganizationIntegration[]
   workerGroups             WorkerInstanceGroup[]
   workerInstances          WorkerInstance[]
   executionSnapshots       TaskRunExecutionSnapshot[]
-}
-
-model ExternalAccount {
-  id         String @id @default(cuid())
-  identifier String
-  metadata   Json?
-
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  organizationId String
-
-  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  environmentId String
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([environmentId, identifier])
-}
-
-// This is a "global" table that store all the integration methods for all the integrations across all orgs
-model IntegrationAuthMethod {
-  id  String @id @default(cuid())
-  key String
-
-  name        String
-  description String
-  type        String
-
-  client Json?
-  config Json?
-  scopes Json?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  integrations Integration[]
-
-  definition   IntegrationDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  definitionId String
-
-  help Json?
-
-  @@unique([definitionId, key])
-}
-
-model IntegrationDefinition {
-  id           String  @id
-  name         String
-  instructions String?
-  description  String?
-  icon         String?
-  packageName  String  @default("")
-
-  authMethods IntegrationAuthMethod[]
-  Integration Integration[]
-}
-
-model Integration {
-  id String @id @default(cuid())
-
-  slug String
-
-  title       String?
-  description String?
-
-  setupStatus IntegrationSetupStatus @default(COMPLETE)
-  authSource  IntegrationAuthSource  @default(HOSTED)
-
-  definition   IntegrationDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  definitionId String
-
-  authMethod   IntegrationAuthMethod? @relation(fields: [authMethodId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  authMethodId String?
-
-  connectionType ConnectionType @default(DEVELOPER)
-
-  scopes String[]
-
-  customClientReference   SecretReference? @relation(fields: [customClientReferenceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  customClientReferenceId String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  organizationId String
-
-  @@unique([organizationId, slug])
 }
 
 enum IntegrationAuthSource {
@@ -349,7 +259,6 @@ model RuntimeEnvironment {
 
   tunnelId String?
 
-  ExternalAccount            ExternalAccount[]
   backgroundWorkers          BackgroundWorker[]
   backgroundWorkerTasks      BackgroundWorkerTask[]
   taskRuns                   TaskRun[]
@@ -509,7 +418,6 @@ model SecretReference {
   key      String              @unique
   provider SecretStoreProvider @default(DATABASE)
 
-  integrations              Integration[]
   environmentVariableValues EnvironmentVariableValue[]
 
   createdAt               DateTime                  @default(now())
