@@ -157,7 +157,6 @@ model Organization {
   invites                  OrgMemberInvite[]
   externalAccounts         ExternalAccount[]
   integrations             Integration[]
-  sources                  TriggerSource[]
   organizationIntegrations OrganizationIntegration[]
   workerGroups             WorkerInstanceGroup[]
   workerInstances          WorkerInstance[]
@@ -181,7 +180,6 @@ model ExternalAccount {
   connections     IntegrationConnection[]
   events          EventRecord[]
   runs            JobRun[]
-  triggerSources  TriggerSource[]
   EventDispatcher EventDispatcher[]
 
   @@unique([environmentId, identifier])
@@ -255,9 +253,7 @@ model Integration {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   organizationId String
 
-  connections   IntegrationConnection[]
-  sources       TriggerSource[]
-  RunConnection RunConnection[]
+  connections IntegrationConnection[]
 
   @@unique([organizationId, slug])
 }
@@ -299,8 +295,6 @@ model IntegrationConnection {
 
   /// If enabled is false, OAuth refreshing will not be attempted
   enabled Boolean @default(true)
-
-  runConnections RunConnection[]
 }
 
 enum ConnectionType {
@@ -401,7 +395,6 @@ model RuntimeEnvironment {
   events                     EventRecord[]
   jobRuns                    JobRun[]
   JobQueue                   JobQueue[]
-  sources                    TriggerSource[]
   eventDispatchers           EventDispatcher[]
   ExternalAccount            ExternalAccount[]
   concurrencyLimitGroups     ConcurrencyLimitGroup[]
@@ -473,7 +466,6 @@ model Project {
   jobVersion             JobVersion[]
   events                 EventRecord[]
   runs                   JobRun[]
-  sources                TriggerSource[]
   httpEndpoints          TriggerHttpEndpoint[]
   backgroundWorkers      BackgroundWorker[]
   backgroundWorkerTasks  BackgroundWorkerTask[]
@@ -532,7 +524,6 @@ model Endpoint {
   jobVersions     JobVersion[]
   jobRuns         JobRun[]
   dynamictriggers DynamicTrigger[]
-  sources         TriggerSource[]
 
   @@unique([environmentId, slug])
 }
@@ -600,7 +591,6 @@ model JobVersion {
 
   runs            JobRun[]
   dynamicTriggers DynamicTrigger[]
-  triggerSources  TriggerSource[]
 
   status JobVersionStatus @default(ACTIVE)
 
@@ -648,27 +638,6 @@ model JobQueue {
   @@unique([environmentId, name])
 }
 
-model RunConnection {
-  id  String @id @default(cuid())
-  key String
-
-  authSource IntegrationAuthSource @default(HOSTED)
-
-  run   JobRun @relation(fields: [runId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  runId String
-
-  connection   IntegrationConnection? @relation(fields: [connectionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  connectionId String?
-
-  integration   Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  integrationId String
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([runId, key])
-}
-
 model DynamicTrigger {
   id   String             @id @default(cuid())
   type DynamicTriggerType @default(EVENT)
@@ -677,8 +646,7 @@ model DynamicTrigger {
   endpoint   Endpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   endpointId String
 
-  jobs    Job[]
-  sources TriggerSource[]
+  jobs Job[]
 
   sourceRegistrationJob   JobVersion? @relation(fields: [sourceRegistrationJobId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   sourceRegistrationJobId String?
@@ -824,8 +792,6 @@ model JobRun {
 
   forceYieldImmediately Boolean @default(false)
 
-  runConnections RunConnection[]
-
   @@index([jobId, createdAt(sort: Desc)], map: "idx_jobrun_jobId_createdAt")
   @@index([organizationId, createdAt], map: "idx_jobrun_organizationId_createdAt")
   @@index([versionId], map: "idx_jobrun_versionId")
@@ -883,7 +849,6 @@ model SecretReference {
 
   connections               IntegrationConnection[]
   integrations              Integration[]
-  triggerSources            TriggerSource[]
   httpEndpoints             TriggerHttpEndpoint[]
   environmentVariableValues EnvironmentVariableValue[]
 
@@ -906,58 +871,6 @@ model SecretStore {
   updatedAt DateTime @updatedAt
 
   @@index([key(ops: raw("text_pattern_ops"))], type: BTree)
-}
-
-model TriggerSource {
-  id String @id @default(cuid())
-
-  key    String
-  params Json?
-
-  channel     TriggerChannel @default(HTTP)
-  channelData Json?
-
-  version String @default("1")
-
-  metadata Json?
-
-  secretReference   SecretReference @relation(fields: [secretReferenceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  secretReferenceId String
-
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  organizationId String
-
-  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  environmentId String
-
-  endpoint   Endpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  endpointId String
-
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  projectId String
-
-  integration   Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  integrationId String
-
-  dynamicTrigger   DynamicTrigger? @relation(fields: [dynamicTriggerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  dynamicTriggerId String?
-
-  externalAccount   ExternalAccount? @relation(fields: [externalAccountId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  externalAccountId String?
-
-  sourceRegistrationJob   JobVersion? @relation(fields: [sourceRegistrationJobId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  sourceRegistrationJobId String?
-
-  dynamicSourceId       String?
-  dynamicSourceMetadata Json?
-
-  active      Boolean @default(false)
-  interactive Boolean @default(false)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([key, environmentId])
 }
 
 enum TriggerChannel {
