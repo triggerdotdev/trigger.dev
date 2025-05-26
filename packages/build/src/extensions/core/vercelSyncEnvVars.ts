@@ -11,7 +11,10 @@ export function syncVercelEnvVars(options?: {
     const projectId =
       options?.projectId ?? process.env.VERCEL_PROJECT_ID ?? ctx.env.VERCEL_PROJECT_ID;
     const vercelAccessToken =
-      options?.vercelAccessToken ?? process.env.VERCEL_ACCESS_TOKEN ?? ctx.env.VERCEL_ACCESS_TOKEN;
+      options?.vercelAccessToken ??
+      process.env.VERCEL_ACCESS_TOKEN ??
+      ctx.env.VERCEL_ACCESS_TOKEN ??
+      process.env.VERCEL_TOKEN;
     const vercelTeamId =
       options?.vercelTeamId ?? process.env.VERCEL_TEAM_ID ?? ctx.env.VERCEL_TEAM_ID;
     const branch =
