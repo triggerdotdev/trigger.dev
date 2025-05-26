@@ -142,8 +142,6 @@ model Organization {
   hasRequestedV3 Boolean @default(false)
 
   environments RuntimeEnvironment[]
-  endpoints    Endpoint[]
-  jobs         Job[]
 
   apiRateLimiterConfig      Json?
   realtimeRateLimiterConfig Json?
@@ -351,10 +349,7 @@ model RuntimeEnvironment {
 
   tunnelId String?
 
-  endpoints                  Endpoint[]
-  JobQueue                   JobQueue[]
   ExternalAccount            ExternalAccount[]
-  concurrencyLimitGroups     ConcurrencyLimitGroup[]
   backgroundWorkers          BackgroundWorker[]
   backgroundWorkerTasks      BackgroundWorkerTask[]
   taskRuns                   TaskRun[]
@@ -418,8 +413,6 @@ model Project {
   defaultWorkerGroupId String?
 
   environments           RuntimeEnvironment[]
-  endpoints              Endpoint[]
-  jobs                   Job[]
   backgroundWorkers      BackgroundWorker[]
   backgroundWorkerTasks  BackgroundWorkerTask[]
   taskRuns               TaskRun[]
@@ -447,90 +440,9 @@ enum ProjectVersion {
   V3
 }
 
-model Endpoint {
-  id   String  @id @default(cuid())
-  slug String
-  url  String?
-
-  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  environmentId String
-
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  organizationId String
-
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  projectId String
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  indexingHookIdentifier String?
-  version                String  @default("unknown")
-  sdkVersion             String  @default("unknown")
-
-  runChunkExecutionLimit      Int @default(60000)
-  startTaskThreshold          Int @default(750)
-  beforeExecuteTaskThreshold  Int @default(1500)
-  beforeCompleteTaskThreshold Int @default(750)
-  afterCompleteTaskThreshold  Int @default(750)
-
-  @@unique([environmentId, slug])
-}
-
-model Job {
-  id       String  @id @default(cuid())
-  slug     String
-  title    String
-  internal Boolean @default(false)
-
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  organizationId String
-
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  projectId String
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now()) @updatedAt
-
-  deletedAt DateTime?
-
-  @@unique([projectId, slug])
-}
-
 enum JobVersionStatus {
   ACTIVE
   DISABLED
-}
-
-model ConcurrencyLimitGroup {
-  id   String @id @default(cuid())
-  name String
-
-  concurrencyLimit Int
-
-  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  environmentId String
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([environmentId, name])
-}
-
-model JobQueue {
-  id   String @id @default(cuid())
-  name String
-
-  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  environmentId String
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  jobCount Int @default(0)
-  maxJobs  Int @default(100)
-
-  @@unique([environmentId, name])
 }
 
 enum DynamicTriggerType {
