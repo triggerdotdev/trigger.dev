@@ -12,10 +12,16 @@ export function getBranch({
     return specified;
   }
 
-  // not specified, so detect from process.env
+  // not specified, so detect our variable from process.env
   const envVar = getEnvVar("TRIGGER_PREVIEW_BRANCH");
   if (envVar) {
     return envVar;
+  }
+
+  // detect the Vercel preview branch
+  const vercelPreviewBranch = getEnvVar("VERCEL_GIT_COMMIT_REF");
+  if (vercelPreviewBranch) {
+    return vercelPreviewBranch;
   }
 
   // not specified, so detect from git metadata
