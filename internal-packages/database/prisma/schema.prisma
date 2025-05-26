@@ -142,7 +142,6 @@ model Organization {
   hasRequestedV3 Boolean @default(false)
 
   environments RuntimeEnvironment[]
-  connections  IntegrationConnection[]
   endpoints    Endpoint[]
   jobs         Job[]
   jobVersions  JobVersion[]
@@ -177,7 +176,6 @@ model ExternalAccount {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  connections     IntegrationConnection[]
   events          EventRecord[]
   runs            JobRun[]
   EventDispatcher EventDispatcher[]
@@ -253,8 +251,6 @@ model Integration {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   organizationId String
 
-  connections IntegrationConnection[]
-
   @@unique([organizationId, slug])
 }
 
@@ -267,34 +263,6 @@ enum IntegrationAuthSource {
 enum IntegrationSetupStatus {
   MISSING_FIELDS
   COMPLETE
-}
-
-model IntegrationConnection {
-  id String @id @default(cuid())
-
-  connectionType ConnectionType @default(DEVELOPER)
-
-  expiresAt DateTime?
-  metadata  Json
-  scopes    String[]
-
-  dataReference   SecretReference @relation(fields: [dataReferenceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  dataReferenceId String
-
-  integration   Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  integrationId String
-
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  organizationId String
-
-  externalAccount   ExternalAccount? @relation(fields: [externalAccountId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  externalAccountId String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  /// If enabled is false, OAuth refreshing will not be attempted
-  enabled Boolean @default(true)
 }
 
 enum ConnectionType {
@@ -847,7 +815,6 @@ model SecretReference {
   key      String              @unique
   provider SecretStoreProvider @default(DATABASE)
 
-  connections               IntegrationConnection[]
   integrations              Integration[]
   httpEndpoints             TriggerHttpEndpoint[]
   environmentVariableValues EnvironmentVariableValue[]
