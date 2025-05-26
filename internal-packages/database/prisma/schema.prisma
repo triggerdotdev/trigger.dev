@@ -144,7 +144,6 @@ model Organization {
   environments RuntimeEnvironment[]
   endpoints    Endpoint[]
   jobs         Job[]
-  jobVersions  JobVersion[]
 
   apiRateLimiterConfig      Json?
   realtimeRateLimiterConfig Json?
@@ -337,7 +336,6 @@ model RuntimeEnvironment {
   tunnelId String?
 
   endpoints                  Endpoint[]
-  jobVersions                JobVersion[]
   JobQueue                   JobQueue[]
   ExternalAccount            ExternalAccount[]
   concurrencyLimitGroups     ConcurrencyLimitGroup[]
@@ -404,8 +402,6 @@ model Project {
   environments           RuntimeEnvironment[]
   endpoints              Endpoint[]
   jobs                   Job[]
-  jobVersion             JobVersion[]
-  httpEndpoints          TriggerHttpEndpoint[]
   backgroundWorkers      BackgroundWorker[]
   backgroundWorkerTasks  BackgroundWorkerTask[]
   taskRuns               TaskRun[]
@@ -460,8 +456,6 @@ model Endpoint {
   beforeCompleteTaskThreshold Int @default(750)
   afterCompleteTaskThreshold  Int @default(750)
 
-  jobVersions JobVersion[]
-
   @@unique([environmentId, slug])
 }
 
@@ -477,56 +471,12 @@ model Job {
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   projectId String
 
-  versions JobVersion[]
-
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 
   deletedAt DateTime?
 
   @@unique([projectId, slug])
-}
-
-model JobVersion {
-  id                 String @id @default(cuid())
-  version            String
-  eventSpecification Json
-
-  properties  Json?
-  triggerLink String?
-  triggerHelp Json?
-
-  job   Job    @relation(fields: [jobId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  jobId String
-
-  endpoint   Endpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  endpointId String
-
-  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  environmentId String
-
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  organizationId String
-
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  projectId String
-
-  queue   JobQueue? @relation(fields: [queueId], references: [id])
-  queueId String?
-
-  startPosition  JobStartPosition @default(INITIAL)
-  preprocessRuns Boolean          @default(false)
-
-  concurrencyLimit        Int?
-  concurrencyLimitGroup   ConcurrencyLimitGroup? @relation(fields: [concurrencyLimitGroupId], references: [id])
-  concurrencyLimitGroupId String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  status JobVersionStatus @default(ACTIVE)
-
-  @@unique([jobId, version, environmentId])
 }
 
 enum JobVersionStatus {
@@ -546,8 +496,6 @@ model ConcurrencyLimitGroup {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  jobVersion JobVersion[]
-
   @@unique([environmentId, name])
 }
 
@@ -563,8 +511,6 @@ model JobQueue {
 
   jobCount Int @default(0)
   maxJobs  Int @default(100)
-
-  jobVersion JobVersion[]
 
   @@unique([environmentId, name])
 }
@@ -634,7 +580,6 @@ model SecretReference {
   provider SecretStoreProvider @default(DATABASE)
 
   integrations              Integration[]
-  httpEndpoints             TriggerHttpEndpoint[]
   environmentVariableValues EnvironmentVariableValue[]
 
   createdAt               DateTime                  @default(now())
@@ -662,27 +607,6 @@ enum TriggerChannel {
   HTTP
   SQS
   SMTP
-}
-
-model TriggerHttpEndpoint {
-  id String @id @default(cuid())
-
-  key String
-
-  title      String?
-  icon       String?
-  properties Json?
-
-  secretReference   SecretReference @relation(fields: [secretReferenceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  secretReferenceId String
-
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  projectId String
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([key, projectId])
 }
 
 model DataMigration {
