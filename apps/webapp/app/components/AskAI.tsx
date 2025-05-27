@@ -357,7 +357,7 @@ function ChatMessages({
           <Callout variant="error" className="mb-4">
             <Paragraph className="font-semibold text-error">Error generating answer:</Paragraph>
             <Paragraph className="text-rose-300">
-              {error} Please try again. If the problem persists, please contact support.
+              {error} If the problem persists after retrying, please contact support.
             </Paragraph>
           </Callout>
           <div className="flex justify-end">
