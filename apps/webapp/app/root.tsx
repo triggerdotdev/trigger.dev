@@ -106,7 +106,6 @@ export default function App() {
         <head>
           <Meta />
           <Links />
-          {kapa.websiteId && <script src="https://js.hcaptcha.com/1/api.js"></script>}
         </head>
         <body className="h-full overflow-hidden bg-background-dimmed">
           <AskAIProvider websiteId={kapa.websiteId || null}>
