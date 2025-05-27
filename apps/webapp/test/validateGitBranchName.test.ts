@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sanitizeBranchName } from "../app/services/upsertBranch.server";
-import { isValidGitBranchName } from "~/v3/validGitBranch";
+import { isValidGitBranchName, sanitizeBranchName } from "~/v3/gitBranch";
 
 describe("isValidGitBranchName", () => {
   it("returns true for a valid branch name", async () => {
