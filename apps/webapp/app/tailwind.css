@@ -55,7 +55,7 @@
   .animated-gradient-glow::before {
     content: "";
     position: absolute;
-    inset: -5px;
+    inset: -8px;
     z-index: -1;
     background: conic-gradient(
       from var(--gradient-angle),
