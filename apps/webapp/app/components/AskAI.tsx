@@ -64,16 +64,16 @@ function ChatMessages({
   const hasFeedbackForLatestQA = latestQA?.id ? feedbackGivenForQAs.has(latestQA.id) : false;
 
   const exampleQuestions = [
-    "How do I handle errors in my task?",
-    "What are the different types of triggers?",
-    "How do I deploy my tasks?",
+    "How do I increase my concurrency limit?",
+    "How do I debug errors in my task?",
+    "How do I deploy my task?",
   ];
 
   return (
     <div className="flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
       {conversation.length === 0 ? (
         <motion.div
-          className="flex flex-col gap-2"
+          className="flex flex-col gap-2 pb-2"
           initial="hidden"
           animate="visible"
           variants={{
