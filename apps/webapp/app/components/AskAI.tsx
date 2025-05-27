@@ -9,7 +9,15 @@ import { KapaProvider, useChat } from "@kapaai/react-sdk";
 import { useSearchParams } from "@remix-run/react";
 import { motion } from "framer-motion";
 import { marked } from "marked";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  createContext,
+  useContext,
+  type ReactNode,
+} from "react";
 import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
 import { SparkleListIcon } from "~/assets/icons/SparkleListIcon";
 import { Button } from "./primitives/Buttons";
@@ -26,6 +34,123 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "./primitives/Tooltip";
+
+type AskAIContextType = {
+  isOpen: boolean;
+  openAskAI: (question?: string) => void;
+  closeAskAI: () => void;
+  websiteId: string | null;
+};
+
+const AskAIContext = createContext<AskAIContextType | null>(null);
+
+export function useAskAI() {
+  const context = useContext(AskAIContext);
+  if (!context) {
+    throw new Error("useAskAI must be used within an AskAIProvider");
+  }
+  return context;
+}
+
+type AskAIProviderProps = {
+  children: ReactNode;
+  websiteId: string | null;
+};
+
+export function AskAIProvider({ children, websiteId }: AskAIProviderProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [initialQuery, setInitialQuery] = useState<string | undefined>();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const openAskAI = useCallback((question?: string) => {
+    if (question) {
+      setInitialQuery(question);
+    } else {
+      setInitialQuery(undefined);
+    }
+    setIsOpen(true);
+  }, []);
+
+  const closeAskAI = useCallback(() => {
+    setIsOpen(false);
+    setInitialQuery(undefined);
+  }, []);
+
+  // Handle URL param functionality
+  useEffect(() => {
+    const aiHelp = searchParams.get("aiHelp");
+    if (aiHelp) {
+      setSearchParams((prev) => {
+        prev.delete("aiHelp");
+        return prev;
+      });
+
+      const decodedAiHelp = decodeURIComponent(aiHelp);
+      openAskAI(decodedAiHelp);
+    }
+  }, [searchParams, setSearchParams, openAskAI]);
+
+  const contextValue: AskAIContextType = {
+    isOpen,
+    openAskAI,
+    closeAskAI,
+    websiteId,
+  };
+
+  if (!websiteId) {
+    return <AskAIContext.Provider value={contextValue}>{children}</AskAIContext.Provider>;
+  }
+
+  return (
+    <AskAIContext.Provider value={contextValue}>
+      <KapaProvider
+        integrationId={websiteId}
+        callbacks={{
+          askAI: {
+            onQuerySubmit: () => openAskAI(),
+            onAnswerGenerationCompleted: () => openAskAI(),
+          },
+        }}
+        botProtectionMechanism="hcaptcha"
+      >
+        {children}
+        <AskAIDialog initialQuery={initialQuery} isOpen={isOpen} onOpenChange={setIsOpen} />
+      </KapaProvider>
+    </AskAIContext.Provider>
+  );
+}
+
+type AskAIDialogProps = {
+  initialQuery?: string;
+  isOpen: boolean;
+  onOpenChange: (open: boolean) => void;
+};
+
+function AskAIDialog({ initialQuery, isOpen, onOpenChange }: AskAIDialogProps) {
+  const { closeAskAI } = useAskAI();
+
+  const handleOpenChange = (open: boolean) => {
+    if (!open) {
+      closeAskAI();
+    } else {
+      onOpenChange(open);
+    }
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
+      <DialogContent className="animated-gradient-glow flex max-h-[90vh] min-h-fit w-full flex-col justify-between gap-0 px-0 pb-0 pt-0 sm:max-w-prose">
+        <DialogHeader className="flex h-[2.75rem] items-start justify-center rounded-t-md bg-background-bright pl-3">
+          <div className="flex items-center gap-1">
+            <AISparkleIcon className="size-5" />
+            <DialogTitle className="text-sm font-medium text-text-bright">Ask AI</DialogTitle>
+          </div>
+        </DialogHeader>
+        <ChatInterface initialQuery={initialQuery} />
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 type KapaChatProps = {
   websiteId: string;
@@ -400,7 +525,7 @@ export function AskAI({ websiteId, onOpen }: KapaChatProps) {
           onAnswerGenerationCompleted: () => handleOpen(),
         },
       }}
-      botProtectionMechanism="recaptcha"
+      botProtectionMechanism="hcaptcha"
     >
       <div className="relative">
         <TooltipProvider disableHoverableContent>
@@ -466,5 +591,31 @@ function GradientSpinnerBackground({
         {children}
       </div>
     </div>
+  );
+}
+
+export function AskAIButton({ question }: { question?: string }) {
+  const { openAskAI } = useAskAI();
+
+  return (
+    <TooltipProvider disableHoverableContent>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div className="inline-flex">
+            <Button
+              variant="minimal/small"
+              onClick={() => openAskAI(question)}
+              className="pl-0.5 pr-1"
+              data-action="ask-ai"
+            >
+              <AISparkleIcon className="size-5" />
+            </Button>
+          </div>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="flex items-center gap-1 px-2 py-1.5 text-xs">
+          Ask AI
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }

@@ -24,7 +24,7 @@ import simplur from "simplur";
 import { RunsIconExtraSmall } from "~/assets/icons/RunsIcon";
 import { TaskIconSmall } from "~/assets/icons/TaskIcon";
 import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
-import { AskAI } from "~/components/AskAI";
+import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
 import { Avatar } from "~/components/primitives/Avatar";
 import { type MatchedEnvironment } from "~/hooks/useEnvironment";
 import { useFeatures } from "~/hooks/useFeatures";
@@ -81,6 +81,7 @@ import { TextLink } from "../primitives/TextLink";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
 import { ShortcutsAutoOpen } from "../Shortcuts";
 import { UserProfilePhoto } from "../UserProfilePhoto";
+import { useAskAI } from "../AskAI";
 import { EnvironmentSelector } from "./EnvironmentSelector";
 import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { SideMenuHeader } from "./SideMenuHeader";
@@ -578,14 +579,39 @@ function HelpAndAI() {
     id: "root",
     matches,
   });
-  const isKapaEnabled = features.isManagedCloud && routeMatch?.kapa?.websiteId;
+  const { openAskAI, websiteId } = useAskAI();
+  const isKapaEnabled = features.isManagedCloud && websiteId;
 
   return (
     <>
       <ShortcutsAutoOpen />
       <HelpAndFeedback />
-      {isKapaEnabled && routeMatch.kapa.websiteId && (
-        <AskAI websiteId={routeMatch.kapa.websiteId} />
+      {isKapaEnabled && (
+        <TooltipProvider disableHoverableContent>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="inline-flex">
+                <Button
+                  variant="small-menu-item"
+                  data-action="ask-ai"
+                  shortcut={{ modifiers: ["mod"], key: "/", enabledOnInputElements: true }}
+                  hideShortcutKey
+                  data-modal-override-open-class-ask-ai="true"
+                  onClick={() => openAskAI()}
+                >
+                  <AISparkleIcon className="size-5" />
+                </Button>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent
+              side="top"
+              className="flex items-center gap-1 py-1.5 pl-2.5 pr-2 text-xs"
+            >
+              Ask AI
+              <ShortcutKey shortcut={{ modifiers: ["mod"], key: "/" }} variant="medium/bright" />
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       )}
     </>
   );

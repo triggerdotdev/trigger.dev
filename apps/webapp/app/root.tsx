@@ -6,6 +6,7 @@ import { ExternalScripts } from "remix-utils/external-scripts";
 import type { ToastMessage } from "~/models/message.server";
 import { commitSession, getSession } from "~/models/message.server";
 import tailwindStylesheetUrl from "~/tailwind.css";
+import { AskAIProvider } from "./components/AskAI";
 import { RouteErrorDisplay } from "./components/ErrorDisplay";
 import { AppContainer, MainCenteredContainer } from "./components/layout/AppLayout";
 import { ShortcutsProvider } from "./components/primitives/ShortcutsProvider";
@@ -96,7 +97,7 @@ export function ErrorBoundary() {
 }
 
 export default function App() {
-  const { posthogProjectKey } = useTypedLoaderData<typeof loader>();
+  const { posthogProjectKey, kapa } = useTypedLoaderData<typeof loader>();
   usePostHog(posthogProjectKey);
 
   return (
@@ -105,12 +106,15 @@ export default function App() {
         <head>
           <Meta />
           <Links />
+          {kapa.websiteId && <script src="https://js.hcaptcha.com/1/api.js"></script>}
         </head>
         <body className="h-full overflow-hidden bg-background-dimmed">
-          <ShortcutsProvider>
-            <Outlet />
-            <Toast />
-          </ShortcutsProvider>
+          <AskAIProvider websiteId={kapa.websiteId || null}>
+            <ShortcutsProvider>
+              <Outlet />
+              <Toast />
+            </ShortcutsProvider>
+          </AskAIProvider>
           <ScrollRestoration />
           <ExternalScripts />
           <Scripts />
