@@ -156,12 +156,6 @@ function AskAIDialog({ initialQuery, isOpen, onOpenChange }: AskAIDialogProps) {
   );
 }
 
-type KapaChatProps = {
-  websiteId: string;
-  onOpen?: () => void;
-  onClose?: () => void;
-};
-
 function ChatMessages({
   conversation,
   isPreparingAnswer,
@@ -490,87 +484,6 @@ function ChatInterface({ initialQuery }: { initialQuery?: string }) {
         </div>
       </form>
     </motion.div>
-  );
-}
-
-export function AskAI({ websiteId, onOpen }: KapaChatProps) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [initialQuery, setInitialQuery] = useState<string | undefined>();
-  const [searchParams, setSearchParams] = useSearchParams();
-
-  const handleOpen = useCallback(() => {
-    setIsOpen(true);
-    onOpen?.();
-  }, [onOpen]);
-
-  // Handle URL param functionality
-  useEffect(() => {
-    const aiHelp = searchParams.get("aiHelp");
-    if (aiHelp) {
-      setSearchParams((prev) => {
-        prev.delete("aiHelp");
-        return prev;
-      });
-
-      const decodedAiHelp = decodeURIComponent(aiHelp);
-      setInitialQuery(decodedAiHelp);
-      handleOpen();
-    }
-  }, [searchParams, setSearchParams, handleOpen]);
-
-  if (!websiteId) return null;
-
-  return (
-    <KapaProvider
-      integrationId={websiteId}
-      callbacks={{
-        askAI: {
-          onQuerySubmit: () => handleOpen(),
-          onAnswerGenerationCompleted: () => handleOpen(),
-        },
-      }}
-      botProtectionMechanism="hcaptcha"
-    >
-      <div className="relative">
-        <TooltipProvider disableHoverableContent>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div className="inline-flex">
-                <Button
-                  variant="small-menu-item"
-                  data-action="ask-ai"
-                  shortcut={{ modifiers: ["mod"], key: "/", enabledOnInputElements: true }}
-                  hideShortcutKey
-                  data-modal-override-open-class-ask-ai="true"
-                  onClick={handleOpen}
-                >
-                  <AISparkleIcon className="size-5" />
-                </Button>
-              </div>
-            </TooltipTrigger>
-            <TooltipContent
-              side="top"
-              className="flex items-center gap-1 py-1.5 pl-2.5 pr-2 text-xs"
-            >
-              Ask AI
-              <ShortcutKey shortcut={{ modifiers: ["mod"], key: "/" }} variant="medium/bright" />
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-
-        <Dialog open={isOpen} onOpenChange={setIsOpen}>
-          <DialogContent className="animated-gradient-glow flex max-h-[90vh] min-h-fit w-full flex-col justify-between gap-0 px-0 pb-0 pt-0 sm:max-w-prose">
-            <DialogHeader className="flex h-[2.75rem] items-start justify-center rounded-t-md bg-background-bright pl-3">
-              <div className="flex items-center gap-1">
-                <AISparkleIcon className="size-5" />
-                <DialogTitle className="text-sm font-medium text-text-bright">Ask AI</DialogTitle>
-              </div>
-            </DialogHeader>
-            <ChatInterface initialQuery={initialQuery} />
-          </DialogContent>
-        </Dialog>
-      </div>
-    </KapaProvider>
   );
 }
 
