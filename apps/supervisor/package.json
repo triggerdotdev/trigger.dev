@@ -22,7 +22,6 @@
     "zod": "3.23.8"
   },
   "devDependencies": {
-    "@types/dockerode": "^3.3.33",
-    "vitest": "^1.4.0"
+    "@types/dockerode": "^3.3.33"
   }
 }

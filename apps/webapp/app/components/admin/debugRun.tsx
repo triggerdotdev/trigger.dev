@@ -66,7 +66,15 @@ function DebugRunContent({ friendlyId }: { friendlyId: string }) {
   );
 }
 
-function DebugRunData({
+function DebugRunData(props: UseDataFunctionReturn<typeof loader>) {
+  if (props.engine === "V1") {
+    return <DebugRunDataEngineV1 {...props} />;
+  }
+
+  return <DebugRunDataEngineV2 {...props} />;
+}
+
+function DebugRunDataEngineV1({
   run,
   queueConcurrencyLimit,
   queueCurrentConcurrency,
@@ -335,6 +343,58 @@ function DebugRunData({
           />
         </Property.Value>
       </Property.Item>
+    </Property.Table>
+  );
+}
+
+function DebugRunDataEngineV2({
+  run,
+  queueConcurrencyLimit,
+  queueCurrentConcurrency,
+  envConcurrencyLimit,
+  envCurrentConcurrency,
+  keys,
+}: UseDataFunctionReturn<typeof loader>) {
+  return (
+    <Property.Table>
+      <Property.Item>
+        <Property.Label>ID</Property.Label>
+        <Property.Value className="flex items-center gap-2">
+          <ClipboardField value={run.id} variant="tertiary/small" iconButton />
+        </Property.Value>
+      </Property.Item>
+      <Property.Item>
+        <Property.Label>Queue current concurrency</Property.Label>
+        <Property.Value className="flex items-center gap-2">
+          <span>{queueCurrentConcurrency ?? "0"}</span>
+        </Property.Value>
+      </Property.Item>
+      <Property.Item>
+        <Property.Label>Queue concurrency limit</Property.Label>
+        <Property.Value className="flex items-center gap-2">
+          <span>{queueConcurrencyLimit ?? "Not set"}</span>
+        </Property.Value>
+      </Property.Item>
+      <Property.Item>
+        <Property.Label>Env current concurrency</Property.Label>
+        <Property.Value className="flex items-center gap-2">
+          <span>{envCurrentConcurrency ?? "0"}</span>
+        </Property.Value>
+      </Property.Item>
+      <Property.Item>
+        <Property.Label>Env concurrency limit</Property.Label>
+        <Property.Value className="flex items-center gap-2">
+          <span>{envConcurrencyLimit ?? "Not set"}</span>
+        </Property.Value>
+      </Property.Item>
+      {keys.map((key) => (
+        <Property.Item>
+          <Property.Label>{key.label}</Property.Label>
+          <Property.Value className="flex items-center gap-2">
+            <ClipboardField value={key.key} variant="tertiary/small" iconButton />
+          </Property.Value>
+        </Property.Item>
+      ))}
     </Property.Table>
   );
 }

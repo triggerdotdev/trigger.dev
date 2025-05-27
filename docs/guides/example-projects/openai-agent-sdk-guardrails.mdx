@@ -1,0 +1,63 @@
+---
+title: "OpenAI Agent SDK guardrails examples"
+sidebarTitle: "OpenAI Agent SDK guardrails"
+description: "This example project demonstrates how to implement different types of guardrails using the OpenAI Agent SDK with Trigger.dev for AI safety and control."
+---
+
+import RealtimeLearnMore from "/snippets/realtime-learn-more.mdx";
+
+<Info>The OpenAI Agent SDK is a Python library. </Info>
+
+## Overview
+
+This demo is a practical guide that demonstrates:
+
+- **Three types of AI guardrails**: Input validation, output checking, and real-time streaming monitoring
+- Integration of the [OpenAI Agent SDK](https://openai.github.io/openai-agents-python/) with [Trigger.dev](https://trigger.dev) for production AI workflows
+- **Educational examples** of implementing guardrails for AI safety and control mechanisms
+- Real-world scenarios like math tutoring agents with content validation and complexity monitoring
+
+Guardrails are safety mechanisms that run alongside AI agents to validate input, check output, monitor streaming content in real-time, and prevent unwanted or harmful behavior.
+
+## GitHub repo
+
+<Card
+  title="View the OpenAI Agent SDK Guardrails repo"
+  icon="GitHub"
+  href="https://github.com/triggerdotdev/examples/tree/main/openai-agent-sdk-guardrails-examples"
+>
+  Click here to view the full code for this project in our examples repository on GitHub. You can
+  fork it and use it as a starting point for your own project.
+</Card>
+
+## Video
+
+<video
+  controls
+  className="w-full aspect-video"
+  src="https://github.com/user-attachments/assets/9b1e55c7-467d-4aca-8b4a-a018014c0827"
+></video>
+
+## Relevant code
+
+### Trigger.dev Tasks
+
+- **[inputGuardrails.ts](https://github.com/triggerdotdev/examples/blob/main/openai-agent-sdk-guardrails-examples/src/trigger/inputGuardrails.ts)** - Passes user prompts to Python script and handles `InputGuardrailTripwireTriggered` exceptions
+- **[outputGuardrails.ts](https://github.com/triggerdotdev/examples/blob/main/openai-agent-sdk-guardrails-examples/src/trigger/outputGuardrails.ts)** - Runs agent generation and catches `OutputGuardrailTripwireTriggered` exceptions with detailed error info
+- **[streamingGuardrails.ts](https://github.com/triggerdotdev/examples/blob/main/openai-agent-sdk-guardrails-examples/src/trigger/streamingGuardrails.ts)** - Executes streaming Python script and parses JSON output containing guardrail metrics
+
+### Python Implementations
+
+- **[input-guardrails.py](https://github.com/triggerdotdev/examples/blob/main/openai-agent-sdk-guardrails-examples/src/python/input-guardrails.py)** - Agent with `@input_guardrail` decorator that validates user input before processing (example: math tutor that only responds to math questions)
+- **[output-guardrails.py](https://github.com/triggerdotdev/examples/blob/main/openai-agent-sdk-guardrails-examples/src/python/output-guardrails.py)** - Agent with `@output_guardrail` decorator that validates generated responses using a separate guardrail agent
+- **[streaming-guardrails.py](https://github.com/triggerdotdev/examples/blob/main/openai-agent-sdk-guardrails-examples/src/python/streaming-guardrails.py)** - Processes `ResponseTextDeltaEvent` streams with async guardrail checks at configurable intervals (example: stops streaming if language is too complex for a 10-year-old)
+
+### Configuration
+
+- **[trigger.config.ts](https://github.com/triggerdotdev/examples/blob/main/openai-agent-sdk-guardrails-examples/trigger.config.ts)** - Uses the Trigger.dev Python extension
+
+### Learn more
+
+- [OpenAI Agent SDK documentation](https://openai.github.io/openai-agents-python/)
+- [OpenAI Agent SDK guardrails](https://openai.github.io/openai-agents-python/guardrails/)
+- Our [Python build extension](/config/extensions/pythonExtension#python)

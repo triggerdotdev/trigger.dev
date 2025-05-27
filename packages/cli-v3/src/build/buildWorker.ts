@@ -88,7 +88,12 @@ export async function buildWorker(options: BuildWorkerOptions) {
       ? rewriteBuildManifestPaths(buildManifest, options.destination)
       : buildManifest;
 
-    await writeDeployFiles(buildManifest, resolvedConfig, options.destination);
+    await writeDeployFiles({
+      buildManifest,
+      resolvedConfig,
+      outputPath: options.destination,
+      bundleResult,
+    });
   }
 
   return buildManifest;
@@ -142,11 +147,17 @@ function rewriteOutputPath(destinationDir: string, filePath: string) {
   }
 }
 
-async function writeDeployFiles(
-  buildManifest: BuildManifest,
-  resolvedConfig: ResolvedConfig,
-  outputPath: string
-) {
+async function writeDeployFiles({
+  buildManifest,
+  resolvedConfig,
+  outputPath,
+  bundleResult,
+}: {
+  buildManifest: BuildManifest;
+  resolvedConfig: ResolvedConfig;
+  outputPath: string;
+  bundleResult: BundleResult;
+}) {
   // Step 1. Read the package.json file
   const packageJson = await readProjectPackageJson(resolvedConfig.packageJsonPath);
 
@@ -178,6 +189,7 @@ async function writeDeployFiles(
   });
 
   await writeJSONFile(join(outputPath, "build.json"), buildManifestToJSON(buildManifest));
+  await writeJSONFile(join(outputPath, "metafile.json"), bundleResult.metafile);
   await writeContainerfile(outputPath, buildManifest);
 }
 

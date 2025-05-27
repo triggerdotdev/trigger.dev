@@ -1,5 +1,26 @@
 # trigger.dev
 
+## 4.0.0-v4-beta.18
+
+### Patch Changes
+
+- Fix dev runs ([#2094](https://github.com/triggerdotdev/trigger.dev/pull/2094))
+- Updated dependencies:
+  - `@trigger.dev/build@4.0.0-v4-beta.18`
+  - `@trigger.dev/core@4.0.0-v4-beta.18`
+
+## 4.0.0-v4-beta.17
+
+### Patch Changes
+
+- Expose esbuild `keepNames` option (experimental) ([#2091](https://github.com/triggerdotdev/trigger.dev/pull/2091))
+- Add `experimental_autoDetectExternal` trigger config option ([#2083](https://github.com/triggerdotdev/trigger.dev/pull/2083))
+- Output esbuild metafile, can be inspected after `deploy --dry run` ([#2087](https://github.com/triggerdotdev/trigger.dev/pull/2087))
+- Expose esbuild `minify` option (experimental) ([#2091](https://github.com/triggerdotdev/trigger.dev/pull/2091))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.17`
+  - `@trigger.dev/build@4.0.0-v4-beta.17`
+
 ## 4.0.0-v4-beta.16
 
 ### Patch Changes

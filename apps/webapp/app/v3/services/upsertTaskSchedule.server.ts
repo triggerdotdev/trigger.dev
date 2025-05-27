@@ -4,7 +4,7 @@ import { nanoid } from "nanoid";
 import { $transaction } from "~/db.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { type UpsertSchedule } from "../schedules";
-import { calculateNextScheduledTimestamp } from "../utils/calculateNextSchedule.server";
+import { calculateNextScheduledTimestampFromNow } from "../utils/calculateNextSchedule.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { CheckScheduleService } from "./checkSchedule.server";
 import { RegisterNextTaskScheduleInstanceService } from "./registerNextTaskScheduleInstance.server";
@@ -262,7 +262,7 @@ export class UpsertTaskScheduleService extends BaseService {
       cron: taskSchedule.generatorExpression,
       cronDescription: taskSchedule.generatorDescription,
       timezone: taskSchedule.timezone,
-      nextRun: calculateNextScheduledTimestamp(
+      nextRun: calculateNextScheduledTimestampFromNow(
         taskSchedule.generatorExpression,
         taskSchedule.timezone
       ),

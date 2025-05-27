@@ -3,6 +3,7 @@ name: "🐳 Publish Webapp"
 permissions:
   contents: read
   packages: write
+  id-token: write
 
 on:
   workflow_call:

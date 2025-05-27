@@ -1,11 +1,11 @@
 import { intro, log, outro } from "@clack/prompts";
-import { getBranch, prepareDeploymentError } from "@trigger.dev/core/v3";
+import { getBranch, prepareDeploymentError, tryCatch } from "@trigger.dev/core/v3";
 import { InitializeDeploymentResponseBody } from "@trigger.dev/core/v3/schemas";
 import { Command, Option as CommandOption } from "commander";
 import { resolve } from "node:path";
+import { isCI } from "std-env";
 import { x } from "tinyexec";
 import { z } from "zod";
-import { isCI } from "std-env";
 import { CliApiClient } from "../apiClient.js";
 import { buildWorker } from "../build/buildWorker.js";
 import { resolveAlwaysExternal } from "../build/externals.js";
@@ -27,17 +27,18 @@ import {
 } from "../deploy/logs.js";
 import { chalkError, cliLink, isLinksSupported, prettyError } from "../utilities/cliOutput.js";
 import { loadDotEnvVars } from "../utilities/dotEnv.js";
+import { isDirectory } from "../utilities/fileSystem.js";
+import { setGithubActionsOutputAndEnvVars } from "../utilities/githubActions.js";
+import { createGitMeta } from "../utilities/gitMeta.js";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
+import { resolveLocalEnvVars } from "../utilities/localEnvVars.js";
 import { logger } from "../utilities/logger.js";
 import { getProjectClient, upsertBranch } from "../utilities/session.js";
 import { getTmpDir } from "../utilities/tempDirectories.js";
 import { spinner } from "../utilities/windows.js";
 import { login } from "./login.js";
-import { updateTriggerPackages } from "./update.js";
-import { setGithubActionsOutputAndEnvVars } from "../utilities/githubActions.js";
-import { isDirectory } from "../utilities/fileSystem.js";
-import { createGitMeta } from "../utilities/gitMeta.js";
 import { archivePreviewBranch } from "./preview.js";
+import { updateTriggerPackages } from "./update.js";
 
 const DeployCommandOptions = CommonCommandOptions.extend({
   dryRun: z.boolean().default(false),
@@ -200,9 +201,15 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     }
   }
 
+  const envVars = resolveLocalEnvVars(options.envFile);
+
+  if (envVars.TRIGGER_PROJECT_REF) {
+    logger.debug("Using project ref from env", { ref: envVars.TRIGGER_PROJECT_REF });
+  }
+
   const resolvedConfig = await loadConfig({
     cwd: projectPath,
-    overrides: { project: options.projectRef },
+    overrides: { project: options.projectRef ?? envVars.TRIGGER_PROJECT_REF },
     configFile: options.config,
   });
 
@@ -274,26 +281,33 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
 
   const { features } = resolvedConfig;
 
-  const buildManifest = await buildWorker({
-    target: "deploy",
-    environment: options.env,
-    branch,
-    destination: destination.path,
-    resolvedConfig,
-    rewritePaths: true,
-    envVars: serverEnvVars.success ? serverEnvVars.data.variables : {},
-    forcedExternals,
-    listener: {
-      onBundleStart() {
-        $buildSpinner.start("Building trigger code");
-      },
-      onBundleComplete(result) {
-        $buildSpinner.stop("Successfully built code");
+  const [error, buildManifest] = await tryCatch(
+    buildWorker({
+      target: "deploy",
+      environment: options.env,
+      branch,
+      destination: destination.path,
+      resolvedConfig,
+      rewritePaths: true,
+      envVars: serverEnvVars.success ? serverEnvVars.data.variables : {},
+      forcedExternals,
+      listener: {
+        onBundleStart() {
+          $buildSpinner.start("Building trigger code");
+        },
+        onBundleComplete(result) {
+          $buildSpinner.stop("Successfully built code");
 
-        logger.debug("Bundle result", result);
+          logger.debug("Bundle result", result);
+        },
       },
-    },
-  });
+    })
+  );
+
+  if (error) {
+    $buildSpinner.stop("Failed to build code");
+    throw error;
+  }
 
   logger.debug("Successfully built project to", destination.path);
 

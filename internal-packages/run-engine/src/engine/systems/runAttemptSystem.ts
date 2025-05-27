@@ -26,15 +26,15 @@ import { retryOutcomeFromCompletion } from "../retrying.js";
 import { isExecuting, isInitialState } from "../statuses.js";
 import { RunEngineOptions } from "../types.js";
 import { BatchSystem } from "./batchSystem.js";
+import { DelayedRunSystem } from "./delayedRunSystem.js";
 import {
   executionResultFromSnapshot,
   ExecutionSnapshotSystem,
   getLatestExecutionSnapshot,
 } from "./executionSnapshotSystem.js";
+import { ReleaseConcurrencySystem } from "./releaseConcurrencySystem.js";
 import { SystemResources } from "./systems.js";
 import { WaitpointSystem } from "./waitpointSystem.js";
-import { DelayedRunSystem } from "./delayedRunSystem.js";
-import { tryCatch } from "@trigger.dev/core";
 
 export type RunAttemptSystemOptions = {
   resources: SystemResources;
@@ -42,6 +42,7 @@ export type RunAttemptSystemOptions = {
   batchSystem: BatchSystem;
   waitpointSystem: WaitpointSystem;
   delayedRunSystem: DelayedRunSystem;
+  releaseConcurrencySystem: ReleaseConcurrencySystem;
   retryWarmStartThresholdMs?: number;
   machines: RunEngineOptions["machines"];
 };
@@ -52,6 +53,7 @@ export class RunAttemptSystem {
   private readonly batchSystem: BatchSystem;
   private readonly waitpointSystem: WaitpointSystem;
   private readonly delayedRunSystem: DelayedRunSystem;
+  private readonly releaseConcurrencySystem: ReleaseConcurrencySystem;
 
   constructor(private readonly options: RunAttemptSystemOptions) {
     this.$ = options.resources;
@@ -59,6 +61,7 @@ export class RunAttemptSystem {
     this.batchSystem = options.batchSystem;
     this.waitpointSystem = options.waitpointSystem;
     this.delayedRunSystem = options.delayedRunSystem;
+    this.releaseConcurrencySystem = options.releaseConcurrencySystem;
   }
 
   public async startRunAttempt({
@@ -1048,6 +1051,8 @@ export class RunAttemptSystem {
 
         //remove it from the queue and release concurrency
         await this.$.runQueue.acknowledgeMessage(run.runtimeEnvironment.organizationId, runId);
+
+        await this.releaseConcurrencySystem.refillTokensForSnapshot(latestSnapshot);
 
         //if executing, we need to message the worker to cancel the run and put it into `PENDING_CANCEL` status
         if (isExecuting(latestSnapshot.executionStatus)) {

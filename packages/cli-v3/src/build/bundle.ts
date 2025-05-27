@@ -43,6 +43,7 @@ export type BundleResult = {
   contentHash: string;
   files: TaskFile[];
   configPath: string;
+  metafile: esbuild.Metafile;
   loaderEntryPoint: string | undefined;
   runWorkerEntryPoint: string | undefined;
   runControllerEntryPoint: string | undefined;
@@ -173,8 +174,10 @@ async function createBuildOptions(
   options: BundleOptions & { entryPoints: string[]; buildResultPlugin?: esbuild.Plugin }
 ): Promise<esbuild.BuildOptions & { metafile: true }> {
   const customConditions = options.resolvedConfig.build?.conditions ?? [];
-
   const conditions = [...customConditions, "trigger.dev", "module", "node"];
+
+  const keepNames = options.resolvedConfig.build?.experimental_keepNames ?? false;
+  const minify = options.resolvedConfig.build?.experimental_minify ?? false;
 
   const $buildPlugins = await buildPlugins(options.target, options.resolvedConfig);
 
@@ -185,13 +188,14 @@ async function createBuildOptions(
     bundle: true,
     metafile: true,
     write: false,
-    minify: false,
+    minify,
     splitting: true,
     charset: "utf8",
     platform: "node",
     sourcemap: true,
     sourcesContent: options.target === "dev",
     conditions,
+    keepNames,
     format: "esm",
     target: ["node20", "es2022"],
     loader: {
@@ -297,6 +301,7 @@ export async function getBundleResultFromBuild(
     indexControllerEntryPoint,
     initEntryPoint,
     contentHash: hasher.digest("hex"),
+    metafile: result.metafile,
   };
 }
 

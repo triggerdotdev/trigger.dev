@@ -14,8 +14,7 @@
   },
   "devDependencies": {
     "@types/lodash.omit": "^4.5.7",
-    "@types/pg": "8.6.6",
-    "vitest": "^1.4.0"
+    "@types/pg": "8.6.6"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
