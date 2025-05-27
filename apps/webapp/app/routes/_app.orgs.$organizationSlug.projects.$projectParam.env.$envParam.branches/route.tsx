@@ -11,12 +11,14 @@ import { BookOpenIcon } from "@heroicons/react/24/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { Form, useActionData, useSearchParams } from "@remix-run/react";
 import { type ActionFunctionArgs, json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { GitMeta } from "@trigger.dev/core/v3";
 import { useCallback } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
 import { BranchesNoBranchableEnvironment, BranchesNoBranches } from "~/components/BlankStatePanels";
 import { Feedback } from "~/components/Feedback";
+import { GitMetadata } from "~/components/GitMetadata";
 import { V4Title } from "~/components/V4Badge";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { InlineCode } from "~/components/code/InlineCode";
@@ -63,23 +65,13 @@ import { useProject } from "~/hooks/useProject";
 import { useThrottle } from "~/hooks/useThrottle";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { BranchesPresenter } from "~/presenters/v3/BranchesPresenter.server";
+import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
 import { UpsertBranchService } from "~/services/upsertBranch.server";
 import { cn } from "~/utils/cn";
-import {
-  branchesPath,
-  docsPath,
-  ProjectParamSchema,
-  v3BillingPath,
-  v3EnvironmentPath,
-} from "~/utils/pathBuilder";
+import { branchesPath, docsPath, ProjectParamSchema, v3BillingPath } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { ArchiveButton } from "../resources.branches.archive";
-import { GitMeta } from "@trigger.dev/core/v3";
-import { logger } from "~/services/logger.server";
-import { TextLink } from "~/components/primitives/TextLink";
-import { GitBranchIcon, GitCommitIcon, GitPullRequestIcon } from "lucide-react";
-import { GitMetadata } from "~/components/GitMetadata";
 
 export const BranchesOptions = z.object({
   search: z.string().optional(),
@@ -214,7 +206,11 @@ export default function Page() {
             </Property.Table>
           </AdminDebugTooltip>
 
-          <LinkButton variant={"docs/small"} LeadingIcon={BookOpenIcon} to={docsPath("branches")}>
+          <LinkButton
+            variant={"docs/small"}
+            LeadingIcon={BookOpenIcon}
+            to={docsPath("deployment/preview-branches")}
+          >
             Branches docs
           </LinkButton>
 
