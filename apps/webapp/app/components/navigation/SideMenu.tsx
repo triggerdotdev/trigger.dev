@@ -24,7 +24,7 @@ import simplur from "simplur";
 import { RunsIconExtraSmall } from "~/assets/icons/RunsIcon";
 import { TaskIconSmall } from "~/assets/icons/TaskIcon";
 import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
-import { KapaChat } from "~/components/KapaChat";
+import { AskAI } from "~/components/AskAI";
 import { Avatar } from "~/components/primitives/Avatar";
 import { type MatchedEnvironment } from "~/hooks/useEnvironment";
 import { useFeatures } from "~/hooks/useFeatures";
@@ -585,22 +585,7 @@ function HelpAndAI() {
       <ShortcutsAutoOpen />
       <HelpAndFeedback />
       {isKapaEnabled && routeMatch.kapa.websiteId && (
-        <TooltipProvider disableHoverableContent>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div className="inline-flex">
-                <KapaChat websiteId={routeMatch.kapa.websiteId} />
-              </div>
-            </TooltipTrigger>
-            <TooltipContent
-              side="top"
-              className="flex items-center gap-1 py-1.5 pl-2.5 pr-2 text-xs"
-            >
-              Ask AI
-              <ShortcutKey shortcut={{ modifiers: ["mod"], key: "/" }} variant="medium/bright" />
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+        <AskAI websiteId={routeMatch.kapa.websiteId} />
       )}
     </>
   );

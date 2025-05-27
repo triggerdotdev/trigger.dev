@@ -16,8 +16,10 @@ import { Button } from "./primitives/Buttons";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./primitives/Dialog";
 import { Header2 } from "./primitives/Headers";
 import { Paragraph } from "./primitives/Paragraph";
+import { ShortcutKey } from "./primitives/ShortcutKey";
 import { Spinner } from "./primitives/Spinner";
 import { SimpleTooltip } from "./primitives/Tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./primitives/Tooltip";
 
 type KapaChatProps = {
   websiteId: string;
@@ -355,7 +357,7 @@ function ChatInterface({ initialQuery }: { initialQuery?: string }) {
   );
 }
 
-export function KapaChat({ websiteId, onOpen }: KapaChatProps) {
+export function AskAI({ websiteId, onOpen }: KapaChatProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [initialQuery, setInitialQuery] = useState<string | undefined>();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -394,16 +396,31 @@ export function KapaChat({ websiteId, onOpen }: KapaChatProps) {
       botProtectionMechanism="recaptcha"
     >
       <div className="relative">
-        <Button
-          variant="small-menu-item"
-          data-action="ask-ai"
-          shortcut={{ modifiers: ["mod"], key: "/", enabledOnInputElements: true }}
-          hideShortcutKey
-          data-modal-override-open-class-ask-ai="true"
-          onClick={handleOpen}
-        >
-          <AISparkleIcon className="size-5" />
-        </Button>
+        <TooltipProvider disableHoverableContent>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="inline-flex">
+                <Button
+                  variant="small-menu-item"
+                  data-action="ask-ai"
+                  shortcut={{ modifiers: ["mod"], key: "/", enabledOnInputElements: true }}
+                  hideShortcutKey
+                  data-modal-override-open-class-ask-ai="true"
+                  onClick={handleOpen}
+                >
+                  <AISparkleIcon className="size-5" />
+                </Button>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent
+              side="top"
+              className="flex items-center gap-1 py-1.5 pl-2.5 pr-2 text-xs"
+            >
+              Ask AI
+              <ShortcutKey shortcut={{ modifiers: ["mod"], key: "/" }} variant="medium/bright" />
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
 
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
           <DialogContent className="animated-gradient-glow flex max-h-[90vh] min-h-fit w-full flex-col justify-between gap-0 px-0 pb-0 pt-0 sm:max-w-prose">
