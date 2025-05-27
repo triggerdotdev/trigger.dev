@@ -25,6 +25,7 @@ import {
   WorkerServerToClientEvents,
 } from "@trigger.dev/core/v3/workers";
 import pLimit from "p-limit";
+import { resolveEnvVars } from "../utilities/envVars.js";
 
 export type WorkerRuntimeOptions = {
   name: string | undefined;
@@ -372,18 +373,15 @@ class DevSupervisor implements WorkerRuntime {
       this.options.config.project
     );
 
-    const processEnv = gatherProcessEnv();
-    const dotEnvVars = resolveDotEnvVars(undefined, this.options.args.envFile);
     const OTEL_IMPORT_HOOK_INCLUDES = (this.options.config.instrumentedPackageNames ?? []).join(
       ","
     );
 
     return {
-      ...sanitizeEnvVars(processEnv),
-      ...sanitizeEnvVars(
+      ...resolveEnvVars(
+        this.options.args.envFile,
         environmentVariablesResponse.success ? environmentVariablesResponse.data.variables : {}
       ),
-      ...sanitizeEnvVars(dotEnvVars),
       TRIGGER_API_URL: this.options.client.apiURL,
       TRIGGER_SECRET_KEY: this.options.client.accessToken!,
       OTEL_EXPORTER_OTLP_COMPRESSION: "none",
