@@ -4,7 +4,7 @@ import {
   HandThumbDownIcon,
   HandThumbUpIcon,
   StopIcon,
-} from "@heroicons/react/24/solid";
+} from "@heroicons/react/20/solid";
 import { KapaProvider, useChat } from "@kapaai/react-sdk";
 import { useSearchParams } from "@remix-run/react";
 import { motion } from "framer-motion";
@@ -87,7 +87,7 @@ function ChatMessages({
             },
           }}
         >
-          <Paragraph className="mb-2 pl-1">
+          <Paragraph className="mb-3 mt-1.5 pl-1">
             I'm trained on docs, examples, and other content. Ask me anything about Trigger.dev.
           </Paragraph>
           {exampleQuestions.map((question, index) => (
@@ -237,15 +237,17 @@ function ChatMessages({
               {error} Please try again. If the problem persists, please contact support.
             </Paragraph>
           </Callout>
-          <Button
-            variant="secondary/small"
-            LeadingIcon={<ArrowPathIcon className="size-4" />}
-            onClick={onReset}
-            className="w-fit pl-1.5"
-            iconSpacing="gap-x-1.5"
-          >
-            Reset chat
-          </Button>
+          <div className="flex justify-end">
+            <Button
+              variant="secondary/small"
+              LeadingIcon={<ArrowPathIcon className="size-4" />}
+              onClick={onReset}
+              className="w-fit pl-1.5"
+              iconSpacing="gap-x-1.5"
+            >
+              Reset chat
+            </Button>
+          </div>
         </div>
       )}
     </div>
