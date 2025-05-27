@@ -190,7 +190,7 @@ async function _workerBuildCommand(dir: string, options: WorkersBuildCommandOpti
     apiUrl: authorization.auth.apiUrl,
     projectRef: resolvedConfig.project,
     env: options.env,
-    branch: options.branch,
+    branch,
     profile: options.profile,
   });
 
