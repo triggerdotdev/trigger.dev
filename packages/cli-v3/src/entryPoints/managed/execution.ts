@@ -586,7 +586,10 @@ export class RunExecution {
 
     // To skip this step and eagerly create the task run process, run prepareForExecution first
     if (!this.taskRunProcess || !this.taskRunProcess.isPreparedForNextRun) {
-      this.taskRunProcess = this.createTaskRunProcess({ envVars, isWarmStart });
+      this.taskRunProcess = this.createTaskRunProcess({
+        envVars: { ...envVars, TRIGGER_PROJECT_REF: execution.project.ref },
+        isWarmStart,
+      });
     }
 
     this.sendDebugLog("executing task run process", { runId: execution.run.id });

@@ -612,6 +612,7 @@ export class DevRunController {
         ...sanitizeEnvVars(this.opts.worker.params.env),
         TRIGGER_WORKER_MANIFEST_PATH: join(this.opts.worker.build.outputPath, "index.json"),
         RUN_WORKER_SHOW_LOGS: this.opts.logLevel === "debug" ? "true" : "false",
+        TRIGGER_PROJECT_REF: execution.project.ref,
       },
       serverWorker: {
         id: "unmanaged",

@@ -36,6 +36,7 @@ import { login } from "./login.js";
 import { updateTriggerPackages } from "./update.js";
 import { setGithubActionsOutputAndEnvVars } from "../utilities/githubActions.js";
 import { isDirectory } from "../utilities/fileSystem.js";
+import { resolveLocalEnvVars } from "../utilities/localEnvVars.js";
 
 const DeployCommandOptions = CommonCommandOptions.extend({
   dryRun: z.boolean().default(false),
@@ -207,9 +208,15 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     }
   }
 
+  const envVars = resolveLocalEnvVars(options.envFile);
+
+  if (envVars.TRIGGER_PROJECT_REF) {
+    logger.debug("Using project ref from env", { ref: envVars.TRIGGER_PROJECT_REF });
+  }
+
   const resolvedConfig = await loadConfig({
     cwd: projectPath,
-    overrides: { project: options.projectRef },
+    overrides: { project: options.projectRef ?? envVars.TRIGGER_PROJECT_REF },
     configFile: options.config,
   });
 

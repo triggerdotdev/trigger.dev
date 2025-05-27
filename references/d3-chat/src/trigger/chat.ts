@@ -27,6 +27,8 @@ const queryApprovalTask = schemaTask({
     query: z.string().describe("The SQL query to execute"),
   }),
   run: async ({ userId, input, query }) => {
+    logger.info("queryApproval: starting", { projectRef: process.env.TRIGGER_PROJECT_REF });
+
     const token = await wait.createToken({
       tags: [`user:${userId}`, "approval"],
       timeout: "5m", // timeout in 5 minutes
