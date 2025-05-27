@@ -73,7 +73,7 @@ export class WorkerGroupTokenService extends WithRunEngine {
   }
 
   async rotateToken({ workerGroupId }: { workerGroupId: string }) {
-    const workerGroup = await this._prisma.workerInstanceGroup.findUnique({
+    const workerGroup = await this._prisma.workerInstanceGroup.findFirst({
       where: {
         id: workerGroupId,
       },
@@ -266,12 +266,10 @@ export class WorkerGroupTokenService extends WithRunEngine {
     return await $transaction(this._prisma, async (tx) => {
       const resourceIdentifier = deploymentId ? `${deploymentId}:${instanceName}` : instanceName;
 
-      const workerInstance = await tx.workerInstance.findUnique({
+      const workerInstance = await tx.workerInstance.findFirst({
         where: {
-          workerGroupId_resourceIdentifier: {
-            workerGroupId: workerGroup.id,
-            resourceIdentifier,
-          },
+          workerGroupId: workerGroup.id,
+          resourceIdentifier,
         },
         include: {
           deployment: true,
@@ -315,12 +313,10 @@ export class WorkerGroupTokenService extends WithRunEngine {
             // Unique constraint violation
             if (error.code === "P2002") {
               try {
-                const existingWorkerInstance = await tx.workerInstance.findUnique({
+                const existingWorkerInstance = await tx.workerInstance.findFirst({
                   where: {
-                    workerGroupId_resourceIdentifier: {
-                      workerGroupId: workerGroup.id,
-                      resourceIdentifier,
-                    },
+                    workerGroupId: workerGroup.id,
+                    resourceIdentifier,
                   },
                   include: {
                     deployment: true,
@@ -363,7 +359,7 @@ export class WorkerGroupTokenService extends WithRunEngine {
 
       // Unmanaged workers instances are locked to a specific deployment version
 
-      const deployment = await tx.workerDeployment.findUnique({
+      const deployment = await tx.workerDeployment.findFirst({
         where: {
           ...(deploymentId.startsWith("deployment_")
             ? {
@@ -690,7 +686,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
 
     const environment =
       this.environment ??
-      (await this._prisma.runtimeEnvironment.findUnique({
+      (await this._prisma.runtimeEnvironment.findFirst({
         where: {
           id: engineResult.execution.environment.id,
         },
