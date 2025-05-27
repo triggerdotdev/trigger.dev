@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { removeBlacklistedVariables } from "../app/v3/environmentVariables/environmentVariablesRepository.server";
 import type { EnvironmentVariable } from "../app/v3/environmentVariables/repository";
+import { removeBlacklistedVariables } from "~/v3/environmentVariableRules.server";
 
 describe("removeBlacklistedVariables", () => {
   it("should remove exact match blacklisted variables", () => {
