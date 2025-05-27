@@ -86,7 +86,11 @@ export function AskAIProvider({ children, websiteId }: AskAIProviderProps) {
       });
 
       const decodedAiHelp = decodeURIComponent(aiHelp);
-      openAskAI(decodedAiHelp);
+
+      // Add a delay to avoid triggering hCaptcha bot detection
+      setTimeout(() => {
+        openAskAI(decodedAiHelp);
+      }, 1000);
     }
   }, [searchParams, setSearchParams, openAskAI]);
 
