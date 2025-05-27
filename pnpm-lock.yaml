@@ -259,8 +259,8 @@ importers:
         specifier: ^3.5.1
         version: 3.5.1
       '@kapaai/react-sdk':
-        specifier: ^0.1.0
-        version: 0.1.0(react-dom@18.2.0)(react@18.2.0)
+        specifier: ^0.1.2
+        version: 0.1.2(react-dom@18.2.0)(react@18.2.0)
       '@lezer/highlight':
         specifier: ^1.1.6
         version: 1.1.6
@@ -7789,8 +7789,8 @@ packages:
     resolution: {integrity: sha512-Lg3PnLp0QXpxwLIAuuJboLeRaIhrgJjeuh797QADg3xz8wGLugQOS5DpsE8A6i6Adgzf+bacllkKZG3J0tGfDw==}
     dev: true
 
-  /@kapaai/react-sdk@0.1.0(react-dom@18.2.0)(react@18.2.0):
-    resolution: {integrity: sha512-eyEBG5wk1CnlziYFhPjWcn/Lg5+uVGZ8UbSDs7WXqh0Vwc4Ri+iGqVHgdZ3iHt4bLjzHQB5odftlWoRPzek0YA==}
+  /@kapaai/react-sdk@0.1.2(react-dom@18.2.0)(react@18.2.0):
+    resolution: {integrity: sha512-+FUNmg9sMMqKiNG8UX02C+rLTSFK4pR8Q6GSiBQcA7mtCwo/k1JFRn11eGQnlspGpuyMolmrfqpb0+bmDIGfUA==}
     peerDependencies:
       react: '>=17.0.0'
       react-dom: '>=17.0.0'
