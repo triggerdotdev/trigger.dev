@@ -1,9 +1,9 @@
 import {
   ArrowPathIcon,
   ArrowUpIcon,
-  StopIcon,
-  HandThumbUpIcon,
   HandThumbDownIcon,
+  HandThumbUpIcon,
+  StopIcon,
 } from "@heroicons/react/24/solid";
 import { KapaProvider, useChat } from "@kapaai/react-sdk";
 import { useSearchParams } from "@remix-run/react";
@@ -13,14 +13,19 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
 import { SparkleListIcon } from "~/assets/icons/SparkleListIcon";
 import { Button } from "./primitives/Buttons";
+import { Callout } from "./primitives/Callout";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./primitives/Dialog";
 import { Header2 } from "./primitives/Headers";
 import { Paragraph } from "./primitives/Paragraph";
 import { ShortcutKey } from "./primitives/ShortcutKey";
 import { Spinner } from "./primitives/Spinner";
-import { SimpleTooltip } from "./primitives/Tooltip";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./primitives/Tooltip";
-import { Callout } from "./primitives/Callout";
+import {
+  SimpleTooltip,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "./primitives/Tooltip";
 
 type KapaChatProps = {
   websiteId: string;
