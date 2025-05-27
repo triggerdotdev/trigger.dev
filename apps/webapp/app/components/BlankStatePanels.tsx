@@ -488,6 +488,7 @@ export function BranchesNoBranches({
   canUpgrade: boolean;
 }) {
   const organization = useOrganization();
+
   if (limits.used >= limits.limit) {
     return (
       <InfoPanel
@@ -523,8 +524,8 @@ export function BranchesNoBranches({
       iconClassName="text-preview"
       panelClassName="max-w-full"
       accessory={
-        <Dialog>
-          <DialogTrigger asChild>
+        <NewBranchPanel
+          button={
             <Button
               variant="primary/small"
               LeadingIcon={PlusIcon}
@@ -532,11 +533,9 @@ export function BranchesNoBranches({
             >
               New branch
             </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <NewBranchPanel parentEnvironment={parentEnvironment} />
-          </DialogContent>
-        </Dialog>
+          }
+          parentEnvironment={parentEnvironment}
+        />
       }
     >
       <Paragraph spacing variant="small">

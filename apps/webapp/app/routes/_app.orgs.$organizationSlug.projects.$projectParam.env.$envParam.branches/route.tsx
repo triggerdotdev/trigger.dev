@@ -9,10 +9,10 @@ import {
 } from "@heroicons/react/20/solid";
 import { BookOpenIcon } from "@heroicons/react/24/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
-import { Form, useActionData, useSearchParams } from "@remix-run/react";
+import { Form, useActionData, useLocation, useSearchParams } from "@remix-run/react";
 import { type ActionFunctionArgs, json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { GitMeta } from "@trigger.dev/core/v3";
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
@@ -143,7 +143,7 @@ export async function action({ request }: ActionFunctionArgs) {
     }
 
     return redirectWithSuccessMessage(
-      branchesPath(result.organization, result.project, result.branch),
+      `${branchesPath(result.organization, result.project, result.branch)}?dialogClosed=true`,
       request,
       `Branch "${result.branch.branchName}" created`
     );
@@ -217,8 +217,8 @@ export default function Page() {
           {limits.isAtLimit ? (
             <UpgradePanel limits={limits} canUpgrade={canUpgrade ?? false} />
           ) : (
-            <Dialog>
-              <DialogTrigger asChild>
+            <NewBranchPanel
+              button={
                 <Button
                   variant="primary/small"
                   shortcut={{ key: "n" }}
@@ -229,11 +229,9 @@ export default function Page() {
                 >
                   New branch
                 </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <NewBranchPanel parentEnvironment={branchableEnvironment} />
-              </DialogContent>
-            </Dialog>
+              }
+              parentEnvironment={branchableEnvironment}
+            />
           )}
         </PageAccessories>
       </NavBar>
@@ -528,8 +526,17 @@ function UpgradePanel({
   );
 }
 
-export function NewBranchPanel({ parentEnvironment }: { parentEnvironment: { id: string } }) {
+export function NewBranchPanel({
+  button,
+  parentEnvironment,
+}: {
+  button: React.ReactNode;
+  parentEnvironment: { id: string };
+}) {
   const lastSubmission = useActionData<typeof action>();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [isOpen, setIsOpen] = useState(false);
 
   const [form, { parentEnvironmentId, branchName, failurePath }] = useForm({
     id: "create-branch",
@@ -540,51 +547,67 @@ export function NewBranchPanel({ parentEnvironment }: { parentEnvironment: { id:
     shouldRevalidate: "onInput",
   });
 
+  useEffect(() => {
+    if (searchParams.has("dialogClosed")) {
+      setSearchParams((s) => {
+        s.delete("dialogClosed");
+        return s;
+      });
+      setIsOpen(false);
+    }
+  }, [searchParams, setSearchParams]);
+
   return (
-    <>
-      <DialogHeader>New branch</DialogHeader>
-      <div className="mt-2 flex flex-col gap-4">
-        <Form method="post" {...form.props} className="w-full">
-          <Fieldset className="max-w-full gap-y-3">
-            <input
-              value={parentEnvironment.id}
-              {...conform.input(parentEnvironmentId, { type: "hidden" })}
-            />
-            <input value={location.pathname} {...conform.input(failurePath, { type: "hidden" })} />
-            <InputGroup className="max-w-full">
-              <Label>Branch name</Label>
-              <Input {...conform.input(branchName)} />
-              <Hint>
-                Must not contain: spaces <InlineCode variant="extra-small">~</InlineCode>{" "}
-                <InlineCode variant="extra-small">^</InlineCode>{" "}
-                <InlineCode variant="extra-small">:</InlineCode>{" "}
-                <InlineCode variant="extra-small">?</InlineCode>{" "}
-                <InlineCode variant="extra-small">*</InlineCode>{" "}
-                <InlineCode variant="extra-small">{"["}</InlineCode>{" "}
-                <InlineCode variant="extra-small">\</InlineCode>{" "}
-                <InlineCode variant="extra-small">//</InlineCode>{" "}
-                <InlineCode variant="extra-small">..</InlineCode>{" "}
-                <InlineCode variant="extra-small">{"@{"}</InlineCode>{" "}
-                <InlineCode variant="extra-small">.lock</InlineCode>
-              </Hint>
-              <FormError id={branchName.errorId}>{branchName.error}</FormError>
-            </InputGroup>
-            <FormError>{form.error}</FormError>
-            <FormButtons
-              confirmButton={
-                <Button type="submit" variant="primary/medium">
-                  Create branch
-                </Button>
-              }
-              cancelButton={
-                <DialogClose asChild>
-                  <Button variant="tertiary/medium">Cancel</Button>
-                </DialogClose>
-              }
-            />
-          </Fieldset>
-        </Form>
-      </div>
-    </>
+    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+      <DialogTrigger asChild>{button}</DialogTrigger>
+      <DialogContent>
+        <DialogHeader>New branch</DialogHeader>
+        <div className="mt-2 flex flex-col gap-4">
+          <Form method="post" {...form.props} className="w-full">
+            <Fieldset className="max-w-full gap-y-3">
+              <input
+                value={parentEnvironment.id}
+                {...conform.input(parentEnvironmentId, { type: "hidden" })}
+              />
+              <input
+                value={location.pathname}
+                {...conform.input(failurePath, { type: "hidden" })}
+              />
+              <InputGroup className="max-w-full">
+                <Label>Branch name</Label>
+                <Input {...conform.input(branchName)} />
+                <Hint>
+                  Must not contain: spaces <InlineCode variant="extra-small">~</InlineCode>{" "}
+                  <InlineCode variant="extra-small">^</InlineCode>{" "}
+                  <InlineCode variant="extra-small">:</InlineCode>{" "}
+                  <InlineCode variant="extra-small">?</InlineCode>{" "}
+                  <InlineCode variant="extra-small">*</InlineCode>{" "}
+                  <InlineCode variant="extra-small">{"["}</InlineCode>{" "}
+                  <InlineCode variant="extra-small">\</InlineCode>{" "}
+                  <InlineCode variant="extra-small">//</InlineCode>{" "}
+                  <InlineCode variant="extra-small">..</InlineCode>{" "}
+                  <InlineCode variant="extra-small">{"@{"}</InlineCode>{" "}
+                  <InlineCode variant="extra-small">.lock</InlineCode>
+                </Hint>
+                <FormError id={branchName.errorId}>{branchName.error}</FormError>
+              </InputGroup>
+              <FormError>{form.error}</FormError>
+              <FormButtons
+                confirmButton={
+                  <Button type="submit" variant="primary/medium">
+                    Create branch
+                  </Button>
+                }
+                cancelButton={
+                  <DialogClose asChild>
+                    <Button variant="tertiary/medium">Cancel</Button>
+                  </DialogClose>
+                }
+              />
+            </Fieldset>
+          </Form>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
