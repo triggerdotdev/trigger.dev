@@ -6,7 +6,7 @@ import { watchConfig } from "../config.js";
 import { DevSessionInstance, startDevSession } from "../dev/devSession.js";
 import { createLockFile } from "../dev/lock.js";
 import { chalkError } from "../utilities/cliOutput.js";
-import { resolveEnvVars } from "../utilities/envVars.js";
+import { resolveLocalEnvVars } from "../utilities/localEnvVars.js";
 import { printDevBanner, printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { logger } from "../utilities/logger.js";
 import { runtimeChecks } from "../utilities/runtimeCheck.js";
@@ -128,7 +128,7 @@ async function startDev(options: StartDevOptions) {
 
     printDevBanner(displayedUpdateMessage);
 
-    const envVars = resolveEnvVars(options.envFile);
+    const envVars = resolveLocalEnvVars(options.envFile);
 
     if (envVars.TRIGGER_PROJECT_REF) {
       logger.debug("Using project ref from env", { ref: envVars.TRIGGER_PROJECT_REF });

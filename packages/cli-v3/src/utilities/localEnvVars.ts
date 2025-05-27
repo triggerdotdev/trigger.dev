@@ -1,7 +1,10 @@
 import { resolveDotEnvVars } from "./dotEnv.js";
 import { sanitizeEnvVars } from "./sanitizeEnvVars.js";
 
-export function resolveEnvVars(envFile?: string, additionalVariables?: Record<string, string>) {
+export function resolveLocalEnvVars(
+  envFile?: string,
+  additionalVariables?: Record<string, string>
+) {
   const processEnv = gatherProcessEnv();
   const dotEnvVars = resolveDotEnvVars(undefined, envFile);
 
@@ -15,7 +18,6 @@ export function resolveEnvVars(envFile?: string, additionalVariables?: Record<st
 function gatherProcessEnv() {
   const $env = {
     ...process.env,
-    NODE_ENV: "development",
   };
 
   // Filter out undefined values

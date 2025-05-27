@@ -10,7 +10,6 @@ import {
 import { ResolvedConfig } from "@trigger.dev/core/v3/build";
 import { CliApiClient } from "../apiClient.js";
 import { DevCommandOptions } from "../commands/dev.js";
-import { resolveDotEnvVars } from "../utilities/dotEnv.js";
 import { eventBus } from "../utilities/eventBus.js";
 import { logger } from "../utilities/logger.js";
 import { sanitizeEnvVars } from "../utilities/sanitizeEnvVars.js";
@@ -25,7 +24,7 @@ import {
   WorkerServerToClientEvents,
 } from "@trigger.dev/core/v3/workers";
 import pLimit from "p-limit";
-import { resolveEnvVars } from "../utilities/envVars.js";
+import { resolveLocalEnvVars } from "../utilities/localEnvVars.js";
 
 export type WorkerRuntimeOptions = {
   name: string | undefined;
@@ -378,10 +377,11 @@ class DevSupervisor implements WorkerRuntime {
     );
 
     return {
-      ...resolveEnvVars(
+      ...resolveLocalEnvVars(
         this.options.args.envFile,
         environmentVariablesResponse.success ? environmentVariablesResponse.data.variables : {}
       ),
+      NODE_ENV: "development",
       TRIGGER_API_URL: this.options.client.apiURL,
       TRIGGER_SECRET_KEY: this.options.client.accessToken!,
       OTEL_EXPORTER_OTLP_COMPRESSION: "none",
