@@ -579,16 +579,6 @@ class DevSupervisor implements WorkerRuntime {
   }
 }
 
-function gatherProcessEnv() {
-  const $env = {
-    ...process.env,
-    NODE_ENV: "development",
-  };
-
-  // Filter out undefined values
-  return Object.fromEntries(Object.entries($env).filter(([key, value]) => value !== undefined));
-}
-
 type ValidationIssue =
   | {
       type: "duplicateTaskId";
