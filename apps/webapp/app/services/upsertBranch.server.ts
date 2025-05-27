@@ -92,7 +92,7 @@ export class UpsertBranchService {
 
       const now = new Date();
 
-      const branch = await prisma.runtimeEnvironment.upsert({
+      const branch = await this.#prismaClient.runtimeEnvironment.upsert({
         where: {
           projectId_shortcode: {
             projectId: parentEnvironment.project.id,
