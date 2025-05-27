@@ -48,13 +48,15 @@ export function EnvironmentIcon({
 export function EnvironmentCombo({
   environment,
   className,
+  iconClassName,
 }: {
   environment: Environment;
   className?: string;
+  iconClassName?: string;
 }) {
   return (
     <span className={cn("flex items-center gap-1.5 text-sm text-text-bright", className)}>
-      <EnvironmentIcon environment={environment} className="size-[1.125rem]" />
+      <EnvironmentIcon environment={environment} className={cn("size-4.5", iconClassName)} />
       <EnvironmentLabel environment={environment} />
     </span>
   );

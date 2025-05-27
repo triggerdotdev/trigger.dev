@@ -551,7 +551,7 @@ export function BranchesNoBranches({
   );
 }
 
-function SwitcherPanel() {
+export function SwitcherPanel({ title = "Switch to a deployed environment" }: { title?: string }) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -559,7 +559,7 @@ function SwitcherPanel() {
   return (
     <div className="flex items-center rounded-md border border-grid-bright bg-background-bright p-3">
       <Paragraph variant="small" className="grow">
-        Switch to a deployed environment
+        {title}
       </Paragraph>
       <EnvironmentSelector
         organization={organization}
