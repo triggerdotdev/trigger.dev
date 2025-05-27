@@ -20,6 +20,7 @@ import { ShortcutKey } from "./primitives/ShortcutKey";
 import { Spinner } from "./primitives/Spinner";
 import { SimpleTooltip } from "./primitives/Tooltip";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./primitives/Tooltip";
+import { Callout } from "./primitives/Callout";
 
 type KapaChatProps = {
   websiteId: string;
@@ -225,13 +226,12 @@ function ChatMessages({
       )}
       {error && (
         <div className="flex flex-col">
-          <Paragraph spacing className="text-error">
-            Error generating answer
-          </Paragraph>
-          <Paragraph className="text-text-dimmed">{error}</Paragraph>
-          <Paragraph spacing>
-            Please try again. If the problem persists, please contact support.
-          </Paragraph>
+          <Callout variant="error" className="mb-4">
+            <Paragraph className="font-semibold text-error">Error generating answer:</Paragraph>
+            <Paragraph className="text-rose-300">
+              {error} Please try again. If the problem persists, please contact support.
+            </Paragraph>
+          </Callout>
           <Button
             variant="secondary/small"
             LeadingIcon={<ArrowPathIcon className="size-4" />}
