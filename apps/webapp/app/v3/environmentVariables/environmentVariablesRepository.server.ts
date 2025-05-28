@@ -92,7 +92,7 @@ export class EnvironmentVariablesRepository implements Repository {
 
     // Remove `TRIGGER_SECRET_KEY` or `TRIGGER_API_URL`
     let values = removeBlacklistedVariables(options.variables);
-    const removedDuplicates = values.length !== options.variables.length;
+    const removedBlacklisted = values.length !== options.variables.length;
 
     //get rid of empty variables
     values = values.filter((v) => v.key.trim() !== "" && v.value.trim() !== "");
@@ -100,7 +100,7 @@ export class EnvironmentVariablesRepository implements Repository {
       return {
         success: false as const,
         error: `You must set at least one valid variable.${
-          removedDuplicates ? " These were ignored because they're blacklisted." : ""
+          removedBlacklisted ? " All the variables submitted are not allowed." : ""
         }`,
       };
     }
