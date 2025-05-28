@@ -12,7 +12,6 @@ import { CliApiClient } from "../apiClient.js";
 import { DevCommandOptions } from "../commands/dev.js";
 import { eventBus } from "../utilities/eventBus.js";
 import { logger } from "../utilities/logger.js";
-import { sanitizeEnvVars } from "../utilities/sanitizeEnvVars.js";
 import { resolveSourceFiles } from "../utilities/sourceFiles.js";
 import { BackgroundWorker } from "./backgroundWorker.js";
 import { WorkerRuntime } from "./workerRuntime.js";
@@ -25,6 +24,7 @@ import {
 } from "@trigger.dev/core/v3/workers";
 import pLimit from "p-limit";
 import { resolveLocalEnvVars } from "../utilities/localEnvVars.js";
+import type { Metafile } from "esbuild";
 
 export type WorkerRuntimeOptions = {
   name: string | undefined;
@@ -113,7 +113,11 @@ class DevSupervisor implements WorkerRuntime {
     }
   }
 
-  async initializeWorker(manifest: BuildManifest, stop: () => void): Promise<void> {
+  async initializeWorker(
+    manifest: BuildManifest,
+    metafile: Metafile,
+    stop: () => void
+  ): Promise<void> {
     if (this.lastManifest && this.lastManifest.contentHash === manifest.contentHash) {
       logger.debug("worker skipped", { lastManifestContentHash: this.lastManifest?.contentHash });
       eventBus.emit("workerSkipped");
@@ -123,7 +127,7 @@ class DevSupervisor implements WorkerRuntime {
 
     const env = await this.#getEnvVars();
 
-    const backgroundWorker = new BackgroundWorker(manifest, {
+    const backgroundWorker = new BackgroundWorker(manifest, metafile, {
       env,
       cwd: this.options.config.workingDir,
       stop,
