@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { deduplicateVariableArray } from "../app/v3/environmentVariables/environmentVariablesRepository.server";
 import type { EnvironmentVariable } from "../app/v3/environmentVariables/repository";
+import { deduplicateVariableArray } from "~/v3/deduplicateVariableArray.server";
 
 describe("Deduplicate variables", () => {
   it("should keep later variables when there are duplicates", () => {
