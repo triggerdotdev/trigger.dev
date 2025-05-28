@@ -173,65 +173,68 @@ export function collapseOperations(
     return operations;
   }
 
-  // Maps to track collapsible operations
-  const incrementsByKey = new Map<string, number>();
-  const setsByKey = new Map<string, RunMetadataChangeOperation>();
-  const deletesByKey = new Set<string>();
-  const preservedOperations: RunMetadataChangeOperation[] = [];
-
-  // Process operations in order
-  for (const operation of operations) {
-    switch (operation.type) {
-      case "increment": {
-        const currentIncrement = incrementsByKey.get(operation.key) || 0;
-        incrementsByKey.set(operation.key, currentIncrement + operation.value);
-        break;
-      }
-      case "set": {
-        // Keep only the last set operation for each key
-        setsByKey.set(operation.key, operation);
-        break;
-      }
-      case "delete": {
-        // Keep only one delete operation per key
-        deletesByKey.add(operation.key);
-        break;
-      }
-      case "append":
-      case "remove":
-      case "update": {
-        // Preserve these operations as-is to maintain correctness
-        preservedOperations.push(operation);
-        break;
-      }
-      default: {
-        // Handle any future operation types by preserving them
-        preservedOperations.push(operation);
-        break;
-      }
+  const collapsed: RunMetadataChangeOperation[] = [];
+  let i = 0;
+  while (i < operations.length) {
+    const op = operations[i];
+    if (!op) {
+      i++;
+      continue;
     }
+
+    // Collapse consecutive increments on the same key
+    if (op.type === "increment") {
+      let sum = op.value;
+      let j = i + 1;
+      while (
+        j < operations.length &&
+        operations[j]?.type === "increment" &&
+        (operations[j] as typeof op)?.key === op.key
+      ) {
+        sum += (operations[j] as typeof op).value;
+        j++;
+      }
+      collapsed.push({ type: "increment", key: op.key, value: sum });
+      i = j;
+      continue;
+    }
+
+    // Collapse consecutive sets on the same key (keep only the last in the sequence)
+    if (op.type === "set") {
+      let last = op;
+      let j = i + 1;
+      while (
+        j < operations.length &&
+        operations[j]?.type === "set" &&
+        (operations[j] as typeof op)?.key === op.key
+      ) {
+        last = operations[j] as typeof op;
+        j++;
+      }
+      collapsed.push(last);
+      i = j;
+      continue;
+    }
+
+    // Collapse consecutive deletes on the same key (keep only one)
+    if (op.type === "delete") {
+      let j = i + 1;
+      while (
+        j < operations.length &&
+        operations[j]?.type === "delete" &&
+        (operations[j] as typeof op)?.key === op.key
+      ) {
+        j++;
+      }
+      collapsed.push(op);
+      i = j;
+      continue;
+    }
+
+    // For append, remove, update, and unknown types, preserve order and do not collapse
+    collapsed.push(op);
+    i++;
   }
 
-  // Build the collapsed operations array
-  const collapsedOperations: RunMetadataChangeOperation[] = [];
-
-  // Add collapsed increment operations
-  for (const [key, value] of incrementsByKey) {
-    collapsedOperations.push({ type: "increment", key, value });
-  }
-
-  // Add collapsed set operations
-  for (const operation of setsByKey.values()) {
-    collapsedOperations.push(operation);
-  }
-
-  // Add collapsed delete operations
-  for (const key of deletesByKey) {
-    collapsedOperations.push({ type: "delete", key });
-  }
-
-  // Add preserved operations
-  collapsedOperations.push(...preservedOperations);
-
-  return collapsedOperations;
+  return collapsed;
 }
