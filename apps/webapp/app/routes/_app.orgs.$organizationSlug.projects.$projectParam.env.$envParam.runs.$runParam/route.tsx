@@ -1189,12 +1189,12 @@ function ShowParentOrRootLinks({
         )}
         LeadingIcon={MoveToTopIcon}
         leadingIconClassName="gap-x-2"
-        shortcut={{ key: "t" }}
+        shortcut={{ key: "p" }}
         hideShortcutKey
         tooltip={
           <div className="-mr-1 flex items-center gap-1">
             <Paragraph variant="extra-small">Jump to root and parent run</Paragraph>
-            <ShortcutKey shortcut={{ key: "t" }} variant="small" />
+            <ShortcutKey shortcut={{ key: "p" }} variant="small" />
           </div>
         }
         className="text-xs"
