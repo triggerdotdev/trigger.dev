@@ -309,12 +309,9 @@ export function registerRunEngineEventBusHandlers() {
         run.completedAt ?? undefined
       );
 
-      await Promise.all(
-        inProgressEvents.map((event) => {
-          const error = createJsonErrorObject(run.error);
-          return eventRepository.cancelEvent(event, time, error.message);
-        })
-      );
+      const error = createJsonErrorObject(run.error);
+
+      await eventRepository.cancelEvents(inProgressEvents, time, error.message);
     } catch (error) {
       logger.error("[runCancelled] Failed to cancel event", {
         error: error instanceof Error ? error.message : error,
