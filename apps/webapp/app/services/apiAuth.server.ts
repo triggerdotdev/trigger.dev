@@ -17,7 +17,7 @@ import {
   isPersonalAccessToken,
 } from "./personalAccessToken.server";
 import { isPublicJWT, validatePublicJwtKey } from "./realtime/jwtAuth.server";
-import { sanitizeBranchName } from "./upsertBranch.server";
+import { sanitizeBranchName } from "~/v3/gitBranch";
 
 const ClaimsSchema = z.object({
   scopes: z.array(z.string()).optional(),
