@@ -6,6 +6,7 @@ import { configureLogoutCommand } from "../commands/logout.js";
 import { configureWhoamiCommand } from "../commands/whoami.js";
 import { COMMAND_NAME } from "../consts.js";
 import { configureListProfilesCommand } from "../commands/list-profiles.js";
+import { configureAnalyzeCommand } from "../commands/analyze.js";
 import { configureUpdateCommand } from "../commands/update.js";
 import { VERSION } from "../version.js";
 import { configureDeployCommand } from "../commands/deploy.js";
@@ -34,6 +35,7 @@ configureListProfilesCommand(program);
 configureSwitchProfilesCommand(program);
 configureUpdateCommand(program);
 configurePreviewCommand(program);
+configureAnalyzeCommand(program);
 // configureWorkersCommand(program);
 // configureTriggerTaskCommand(program);
 
