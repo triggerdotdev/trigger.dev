@@ -929,7 +929,7 @@ function FeatureItem({
           )}
         />
       ) : (
-        <XMarkIcon className="size-4 text-charcoal-500" />
+        <XMarkIcon className="mt-0.5 size-4 min-w-4 text-charcoal-500" />
       )}
       <div
         className={cn(
