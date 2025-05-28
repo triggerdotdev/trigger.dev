@@ -26,6 +26,7 @@ import { eventBus, EventBusEventArgs } from "../utilities/eventBus.js";
 import { logger } from "../utilities/logger.js";
 import { Socket } from "socket.io-client";
 import { BundleError } from "../build/bundle.js";
+import { analyzeWorker } from "../utilities/analyze.js";
 
 export type DevOutputOptions = {
   name: string | undefined;
@@ -71,6 +72,8 @@ export function startDevOutput(options: DevOutputOptions) {
   const backgroundWorkerInitialized = (
     ...[worker]: EventBusEventArgs<"backgroundWorkerInitialized">
   ) => {
+    analyzeWorker(worker, options.args.analyze, options.args.disableWarnings);
+
     const logParts: string[] = [];
 
     const testUrl = `${dashboardUrl}/projects/v3/${config.project}/test?environment=dev`;
