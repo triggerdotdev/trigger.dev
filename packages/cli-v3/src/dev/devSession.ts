@@ -24,7 +24,8 @@ import { clearTmpDirs, EphemeralDirectory, getTmpDir } from "../utilities/tempDi
 import { startDevOutput } from "./devOutput.js";
 import { startWorkerRuntime } from "./devSupervisor.js";
 import { startMcpServer, stopMcpServer } from "./mcpServer.js";
-import { aiHelpLink } from "../utilities/cliOutput.js";
+import { writeJSONFile } from "../utilities/fileSystem.js";
+import { join } from "node:path";
 
 export type DevSessionOptions = {
   name: string | undefined;
@@ -104,6 +105,11 @@ export async function startDevSession({
     });
 
     logger.debug("Created build manifest from bundle", { buildManifest });
+
+    await writeJSONFile(
+      join(workerDir?.path ?? destination.path, "metafile.json"),
+      bundle.metafile
+    );
 
     buildManifest = await notifyExtensionOnBuildComplete(buildContext, buildManifest);
 
