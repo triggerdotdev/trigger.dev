@@ -234,7 +234,7 @@ export class RunEngineTriggerTaskService {
         lockedQueueId,
       });
 
-      const masterQueue = await this.queueConcern.getMasterQueue(environment);
+      const masterQueue = await this.queueConcern.getWorkerQueue(environment);
 
       try {
         return await this.traceEventConcern.traceRun(triggerRequest, async (event) => {
@@ -271,7 +271,7 @@ export class RunEngineTriggerTaskService {
                   concurrencyKey: body.options?.concurrencyKey,
                   queue: queueName,
                   lockedQueueId,
-                  masterQueue: masterQueue,
+                  workerQueue: masterQueue,
                   isTest: body.options?.test ?? false,
                   delayUntil,
                   queuedAt: delayUntil ? undefined : new Date(),

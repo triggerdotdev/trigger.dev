@@ -196,7 +196,7 @@ export class DefaultQueueManager implements QueueManager {
     };
   }
 
-  async getMasterQueue(environment: AuthenticatedEnvironment): Promise<string | undefined> {
+  async getWorkerQueue(environment: AuthenticatedEnvironment): Promise<string | undefined> {
     if (environment.type === "DEVELOPMENT") {
       return;
     }

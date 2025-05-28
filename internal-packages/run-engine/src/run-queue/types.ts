@@ -16,10 +16,20 @@ export const InputPayload = z.object({
 });
 export type InputPayload = z.infer<typeof InputPayload>;
 
-export const OutputPayload = InputPayload.extend({
+export const OutputPayloadV1 = InputPayload.extend({
   version: z.literal("1"),
   masterQueues: z.string().array(),
 });
+export type OutputPayloadV1 = z.infer<typeof OutputPayloadV1>;
+
+export const OutputPayloadV2 = InputPayload.extend({
+  version: z.literal("2"),
+  workerQueue: z.string(),
+});
+export type OutputPayloadV2 = z.infer<typeof OutputPayloadV2>;
+
+export const OutputPayload = z.discriminatedUnion("version", [OutputPayloadV1, OutputPayloadV2]);
+
 export type OutputPayload = z.infer<typeof OutputPayload>;
 
 export type QueueDescriptor = {
@@ -46,6 +56,10 @@ export interface RunQueueKeyProducer {
     concurrencyKey?: string
   ): string;
   queueKey(env: MinimalAuthenticatedEnvironment, queue: string, concurrencyKey?: string): string;
+
+  masterQueueKeyForEnvironment(envId: string, shardCount: number): string;
+  masterQueueKeyForShard(shard: number): string;
+  workerQueueKey(workerQueue: string): string;
 
   envQueueKey(env: MinimalAuthenticatedEnvironment): string;
   envQueueKeyFromQueue(queue: string): string;
