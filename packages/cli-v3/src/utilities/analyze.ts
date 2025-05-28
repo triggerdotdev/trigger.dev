@@ -620,7 +620,7 @@ function printSlowImportTips() {
   console.log("");
 
   console.log("To see more details, run with the --analyze flag.");
-  console.log("To disable these warnings, run with the --no-warnings flag.");
+  console.log("To disable these warnings, run with the --disable-warnings flag.");
 
   console.log("");
 }
