@@ -116,7 +116,11 @@ export async function startDevSession({
     try {
       logger.debug("Updated bundle", { bundle, buildManifest });
 
-      await runtime.initializeWorker(buildManifest, workerDir?.remove ?? (() => {}));
+      await runtime.initializeWorker(
+        buildManifest,
+        bundle.metafile,
+        workerDir?.remove ?? (() => {})
+      );
     } catch (error) {
       if (error instanceof Error) {
         eventBus.emit("backgroundWorkerIndexingError", buildManifest, error);
