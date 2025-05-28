@@ -1085,13 +1085,17 @@ function RealtimeConcurrency({ limits, children }: { limits: Limits; children?: 
 function Branches({ limits }: { limits: Limits }) {
   return (
     <FeatureItem checked={limits.branches.number > 0}>
-      {limits.branches.number}
-      {limits.branches.canExceed ? "+ " : " "}
+      {limits.branches.number > 0 && (
+        <>
+          {limits.branches.number}
+          {limits.branches.canExceed ? "+ " : " "}
+        </>
+      )}
       <DefinitionTip
         title={pricingDefinitions.branches.title}
         content={pricingDefinitions.branches.content}
       >
-        preview branches
+        {limits.branches.number > 0 ? "preview" : "Preview"} branches
       </DefinitionTip>
     </FeatureItem>
   );
