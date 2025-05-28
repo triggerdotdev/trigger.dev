@@ -7,12 +7,11 @@ import {
   CreateCheckpointResult,
   DequeuedMessage,
   ExecutionResult,
-  MachineResources,
   RunExecutionData,
   StartRunAttemptResult,
   TaskRunExecutionResult,
 } from "@trigger.dev/core/v3";
-import { BatchId, RunId, WaitpointId } from "@trigger.dev/core/v3/isomorphic";
+import { RunId, WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import {
   Prisma,
   PrismaClient,
@@ -37,12 +36,13 @@ import { DelayedRunSystem } from "./systems/delayedRunSystem.js";
 import { DequeueSystem } from "./systems/dequeueSystem.js";
 import { EnqueueSystem } from "./systems/enqueueSystem.js";
 import {
-  ExecutionSnapshotSystem,
-  getLatestExecutionSnapshot,
-  getExecutionSnapshotsSince,
   executionDataFromSnapshot,
+  ExecutionSnapshotSystem,
+  getExecutionSnapshotsSince,
+  getLatestExecutionSnapshot,
 } from "./systems/executionSnapshotSystem.js";
 import { PendingVersionSystem } from "./systems/pendingVersionSystem.js";
+import { RaceSimulationSystem } from "./systems/raceSimulationSystem.js";
 import { ReleaseConcurrencySystem } from "./systems/releaseConcurrencySystem.js";
 import { RunAttemptSystem } from "./systems/runAttemptSystem.js";
 import { SystemResources } from "./systems/systems.js";
@@ -50,7 +50,6 @@ import { TtlSystem } from "./systems/ttlSystem.js";
 import { WaitpointSystem } from "./systems/waitpointSystem.js";
 import { EngineWorker, HeartbeatTimeouts, RunEngineOptions, TriggerParams } from "./types.js";
 import { workerCatalog } from "./workerCatalog.js";
-import { RaceSimulationSystem } from "./systems/raceSimulationSystem.js";
 
 export class RunEngine {
   private runLockRedis: Redis;
@@ -318,7 +317,7 @@ export class RunEngine {
       sdkVersion,
       cliVersion,
       concurrencyKey,
-      masterQueue,
+      workerQueue,
       queue,
       lockedQueueId,
       isTest,
@@ -359,22 +358,6 @@ export class RunEngine {
       async (span) => {
         const status = delayUntil ? "DELAYED" : "PENDING";
 
-        let secondaryMasterQueue: string | undefined = undefined;
-
-        if (environment.type === "DEVELOPMENT") {
-          // In dev we use the environment id as the master queue, or the locked worker id
-          masterQueue = this.#environmentMasterQueueKey(environment.id);
-          if (lockedToVersionId) {
-            masterQueue = this.#backgroundWorkerQueueKey(lockedToVersionId);
-          }
-        } else {
-          // For deployed runs, we add the env/worker id as the secondary master queue
-          secondaryMasterQueue = this.#environmentMasterQueueKey(environment.id);
-          if (lockedToVersionId) {
-            secondaryMasterQueue = this.#backgroundWorkerQueueKey(lockedToVersionId);
-          }
-        }
-
         //create run
         let taskRun: TaskRun;
         try {
@@ -406,8 +389,7 @@ export class RunEngine {
               concurrencyKey,
               queue,
               lockedQueueId,
-              masterQueue,
-              secondaryMasterQueue,
+              workerQueue,
               isTest,
               delayUntil,
               queuedAt,
@@ -557,45 +539,43 @@ export class RunEngine {
   /**
    * Gets a fairly selected run from the specified master queue, returning the information required to run it.
    * @param consumerId: The consumer that is pulling, allows multiple consumers to pull from the same queue
-   * @param masterQueue: The shared queue to pull from, can be an individual environment (for dev)
+   * @param workerQueue: The worker queue to pull from, can be an individual environment (for dev)
    * @returns
    */
-  async dequeueFromMasterQueue({
+  async dequeueFromWorkerQueue({
     consumerId,
-    masterQueue,
-    maxRunCount,
-    maxResources,
+    workerQueue,
     backgroundWorkerId,
     workerId,
     runnerId,
     tx,
   }: {
     consumerId: string;
-    masterQueue: string;
-    maxRunCount: number;
-    maxResources?: MachineResources;
+    workerQueue: string;
     backgroundWorkerId?: string;
     workerId?: string;
     runnerId?: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<DequeuedMessage[]> {
-    return this.dequeueSystem.dequeueFromMasterQueue({
+    const dequeuedMessage = await this.dequeueSystem.dequeueFromWorkerQueue({
       consumerId,
-      masterQueue,
-      maxRunCount,
-      maxResources,
+      workerQueue,
       backgroundWorkerId,
       workerId,
       runnerId,
       tx,
     });
+
+    if (!dequeuedMessage) {
+      return [];
+    }
+
+    return [dequeuedMessage];
   }
 
-  async dequeueFromEnvironmentMasterQueue({
+  async dequeueFromEnvironmentWorkerQueue({
     consumerId,
     environmentId,
-    maxRunCount,
-    maxResources,
     backgroundWorkerId,
     workerId,
     runnerId,
@@ -603,47 +583,14 @@ export class RunEngine {
   }: {
     consumerId: string;
     environmentId: string;
-    maxRunCount: number;
-    maxResources?: MachineResources;
     backgroundWorkerId?: string;
     workerId?: string;
     runnerId?: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<DequeuedMessage[]> {
-    return this.dequeueFromMasterQueue({
+    return this.dequeueFromWorkerQueue({
       consumerId,
-      masterQueue: this.#environmentMasterQueueKey(environmentId),
-      maxRunCount,
-      maxResources,
-      backgroundWorkerId,
-      workerId,
-      runnerId,
-      tx,
-    });
-  }
-
-  async dequeueFromBackgroundWorkerMasterQueue({
-    consumerId,
-    backgroundWorkerId,
-    maxRunCount,
-    maxResources,
-    workerId,
-    runnerId,
-    tx,
-  }: {
-    consumerId: string;
-    backgroundWorkerId: string;
-    maxRunCount: number;
-    maxResources?: MachineResources;
-    workerId?: string;
-    runnerId?: string;
-    tx?: PrismaClientOrTransaction;
-  }): Promise<DequeuedMessage[]> {
-    return this.dequeueFromMasterQueue({
-      consumerId,
-      masterQueue: this.#backgroundWorkerQueueKey(backgroundWorkerId),
-      maxRunCount,
-      maxResources,
+      workerQueue: environmentId,
       backgroundWorkerId,
       workerId,
       runnerId,
@@ -1317,13 +1264,5 @@ export class RunEngine {
         }
       }
     });
-  }
-
-  #environmentMasterQueueKey(environmentId: string) {
-    return `master-env:${environmentId}`;
-  }
-
-  #backgroundWorkerQueueKey(backgroundWorkerId: string) {
-    return `master-background-worker:${backgroundWorkerId}`;
   }
 }

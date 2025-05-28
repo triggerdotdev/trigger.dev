@@ -74,16 +74,14 @@ export class EnqueueSystem {
         runnerId,
       });
 
-      const masterQueues = [run.masterQueue];
-      if (run.secondaryMasterQueue) {
-        masterQueues.push(run.secondaryMasterQueue);
-      }
+      // Force development runs to use the environment id as the worker queue.
+      const workerQueue = env.type === "DEVELOPMENT" ? env.id : run.workerQueue;
 
       const timestamp = (run.queueTimestamp ?? run.createdAt).getTime() - run.priorityMs;
 
       await this.$.runQueue.enqueueMessage({
         env,
-        masterQueues,
+        workerQueue,
         message: {
           runId: run.id,
           taskIdentifier: run.taskIdentifier,

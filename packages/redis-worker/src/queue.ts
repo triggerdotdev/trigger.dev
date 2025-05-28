@@ -131,6 +131,48 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
     }
   }
 
+  async enqueueOnce({
+    id,
+    job,
+    item,
+    attempt,
+    availableAt,
+    visibilityTimeoutMs,
+  }: {
+    id: string;
+    job: MessageCatalogKey<TMessageCatalog>;
+    item: MessageCatalogValue<TMessageCatalog, MessageCatalogKey<TMessageCatalog>>;
+    attempt?: number;
+    availableAt?: Date;
+    visibilityTimeoutMs: number;
+  }): Promise<boolean> {
+    if (!id) {
+      throw new Error("enqueueOnce requires an id");
+    }
+    try {
+      const score = availableAt ? availableAt.getTime() : Date.now();
+      const deduplicationKey = nanoid();
+      const serializedItem = JSON.stringify({
+        job,
+        item,
+        visibilityTimeoutMs,
+        attempt,
+        deduplicationKey,
+      });
+      const result = await this.redis.enqueueItemOnce(`queue`, `items`, id, score, serializedItem);
+      // 1 if inserted, 0 if already exists
+      return result === 1;
+    } catch (e) {
+      this.logger.error(`SimpleQueue ${this.name}.enqueueOnce(): error enqueuing`, {
+        queue: this.name,
+        error: e,
+        id,
+        item,
+      });
+      throw e;
+    }
+  }
+
   async dequeue(count: number = 1): Promise<Array<QueueItem<TMessageCatalog>>> {
     const now = Date.now();
 
@@ -473,6 +515,26 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
         return 1
       `,
     });
+
+    this.redis.defineCommand("enqueueItemOnce", {
+      numberOfKeys: 2,
+      lua: `
+        local queue = KEYS[1]
+        local items = KEYS[2]
+        local id = ARGV[1]
+        local score = ARGV[2]
+        local serializedItem = ARGV[3]
+
+        -- Only add if not exists
+        local added = redis.call('HSETNX', items, id, serializedItem)
+        if added == 1 then
+          redis.call('ZADD', queue, 'NX', score, id)
+          return 1
+        else
+          return 0
+        end
+      `,
+    });
   }
 }
 
@@ -523,6 +585,15 @@ declare module "@internal/redis" {
       dlqItems: string,
       id: string,
       errorMessage: string,
+      callback?: Callback<number>
+    ): Result<number, Context>;
+
+    enqueueItemOnce(
+      queue: string,
+      items: string,
+      id: string,
+      score: number,
+      serializedItem: string,
       callback?: Callback<number>
     ): Result<number, Context>;
   }

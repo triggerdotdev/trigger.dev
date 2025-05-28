@@ -13,9 +13,25 @@ const constants = {
   TASK_PART: "task",
   MESSAGE_PART: "message",
   DEAD_LETTER_QUEUE_PART: "deadLetter",
+  MASTER_QUEUE_PART: "masterQueue",
+  WORKER_QUEUE_PART: "workerQueue",
 } as const;
 
 export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
+  masterQueueKeyForEnvironment(envId: string, shardCount: number): string {
+    const shard = jumpHash(murmur64(envId), shardCount);
+
+    return this.masterQueueKeyForShard(shard);
+  }
+
+  masterQueueKeyForShard(shard: number): string {
+    return [constants.MASTER_QUEUE_PART, "shard", shard.toString()].join(":");
+  }
+
+  workerQueueKey(workerQueue: string): string {
+    return [constants.WORKER_QUEUE_PART, workerQueue].join(":");
+  }
+
   queueConcurrencyLimitKey(env: MinimalAuthenticatedEnvironment, queue: string) {
     return [this.queueKey(env, queue), constants.CONCURRENCY_LIMIT_PART].join(":");
   }
@@ -233,4 +249,24 @@ export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
   private taskIdentifierSection(taskIdentifier: string) {
     return `${constants.TASK_PART}:${taskIdentifier}`;
   }
+}
+
+// tiny TypeScript helper (uses BigInt for the 64-bit math)
+export function jumpHash(key64: bigint, buckets: number): number {
+  let b = -1n,
+    j = 0n;
+  while (j < BigInt(buckets)) {
+    b = j;
+    key64 = key64 * 2862933555777941757n + 1n;
+    j = ((b + 1n) * 0x80000000n) / ((key64 >> 33n) + 1n); // 2^31
+  }
+  return Number(b);
+}
+
+function murmur64(str: string): bigint {
+  let h = 1n;
+  for (let i = 0; i < str.length; i++) {
+    h = (h * 31n + BigInt(str.charCodeAt(i))) % 0xffffffffffffffffn;
+  }
+  return h;
 }
