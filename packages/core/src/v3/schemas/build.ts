@@ -90,6 +90,7 @@ export const WorkerManifest = z.object({
   initEntryPoint: z.string().optional(), // Optional init.ts entry point
   runtime: BuildRuntime,
   customConditions: z.array(z.string()).optional(),
+  timings: z.record(z.number()).optional(),
   otelImportHook: z
     .object({
       include: z.array(z.string()).optional(),
