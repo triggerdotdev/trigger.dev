@@ -213,7 +213,8 @@ const pricingDefinitions = {
   },
   branches: {
     title: "Branches",
-    content: "The number of preview branches that can be active (you can archive old ones).",
+    content:
+      "Preview branches allow you to test changes before deploying to production. You can have a limited number active at once (but can archive old ones).",
   },
 };
 
