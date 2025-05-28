@@ -1,6 +1,8 @@
 import { BuildExtension } from "@trigger.dev/core/v3/build";
 import { syncEnvVars } from "../core.js";
 
+type EnvVar = { name: string; value: string; gitBranch?: string };
+
 export function syncVercelEnvVars(options?: {
   projectId?: string;
   vercelAccessToken?: string;
@@ -57,7 +59,7 @@ export function syncVercelEnvVars(options?: {
     }
     const params = new URLSearchParams({ decrypt: "true" });
     if (vercelTeamId) params.set("teamId", vercelTeamId);
-    if (branch) params.set("gitBranch", branch);
+    params.set("target", vercelEnvironment);
     const vercelApiUrl = `https://api.vercel.com/v8/projects/${projectId}/env?${params}`;
 
     try {
@@ -73,17 +75,37 @@ export function syncVercelEnvVars(options?: {
 
       const data = await response.json();
 
-      const filteredEnvs = data.envs
+      const filteredEnvs: EnvVar[] = data.envs
         .filter(
           (env: { type: string; value: string; target: string[] }) =>
             env.value && env.target.includes(vercelEnvironment)
         )
-        .map((env: { key: string; value: string }) => ({
+        .map((env: { key: string; value: string; gitBranch?: string }) => ({
           name: env.key,
           value: env.value,
+          gitBranch: env.gitBranch,
         }));
 
-      return filteredEnvs;
+      let envMap: Map<string, EnvVar> = new Map();
+
+      // if there's a branch we want to prefer branch values over base values
+      if (branch) {
+        for (const env of filteredEnvs) {
+          if (!envMap.has(env.name)) {
+            envMap.set(env.name, env);
+            continue;
+          }
+
+          //if there's a gitBranch we want to override any previous value
+          if (env.gitBranch === branch) {
+            envMap.set(env.name, env);
+          }
+        }
+      } else {
+        envMap = new Map(filteredEnvs.map((env) => [env.name, env]));
+      }
+
+      return Array.from(envMap.values());
     } catch (error) {
       console.error("Error fetching or processing Vercel environment variables:", error);
       throw error; // Re-throw the error to be handled by the caller
