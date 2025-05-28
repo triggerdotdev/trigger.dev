@@ -1,17 +1,15 @@
 import { parseExpression } from "cron-parser";
 
+export function calculateNextScheduledTimestampFromNow(schedule: string, timezone: string | null) {
+  return calculateNextScheduledTimestamp(schedule, timezone, new Date());
+}
+
 export function calculateNextScheduledTimestamp(
   schedule: string,
   timezone: string | null,
-  lastScheduledTimestamp: Date = new Date()
+  currentDate: Date = new Date()
 ) {
-  let nextStep = calculateNextStep(schedule, timezone, lastScheduledTimestamp);
-
-  while (nextStep.getTime() < Date.now()) {
-    nextStep = calculateNextStep(schedule, timezone, nextStep);
-  }
-
-  return nextStep;
+  return calculateNextStep(schedule, timezone, currentDate);
 }
 
 function calculateNextStep(schedule: string, timezone: string | null, currentDate: Date) {

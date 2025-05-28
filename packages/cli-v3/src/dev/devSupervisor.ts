@@ -10,7 +10,6 @@ import {
 import { ResolvedConfig } from "@trigger.dev/core/v3/build";
 import { CliApiClient } from "../apiClient.js";
 import { DevCommandOptions } from "../commands/dev.js";
-import { resolveDotEnvVars } from "../utilities/dotEnv.js";
 import { eventBus } from "../utilities/eventBus.js";
 import { logger } from "../utilities/logger.js";
 import { sanitizeEnvVars } from "../utilities/sanitizeEnvVars.js";
@@ -25,6 +24,7 @@ import {
   WorkerServerToClientEvents,
 } from "@trigger.dev/core/v3/workers";
 import pLimit from "p-limit";
+import { resolveLocalEnvVars } from "../utilities/localEnvVars.js";
 
 export type WorkerRuntimeOptions = {
   name: string | undefined;
@@ -372,18 +372,16 @@ class DevSupervisor implements WorkerRuntime {
       this.options.config.project
     );
 
-    const processEnv = gatherProcessEnv();
-    const dotEnvVars = resolveDotEnvVars(undefined, this.options.args.envFile);
     const OTEL_IMPORT_HOOK_INCLUDES = (this.options.config.instrumentedPackageNames ?? []).join(
       ","
     );
 
     return {
-      ...sanitizeEnvVars(processEnv),
-      ...sanitizeEnvVars(
+      ...resolveLocalEnvVars(
+        this.options.args.envFile,
         environmentVariablesResponse.success ? environmentVariablesResponse.data.variables : {}
       ),
-      ...sanitizeEnvVars(dotEnvVars),
+      NODE_ENV: "development",
       TRIGGER_API_URL: this.options.client.apiURL,
       TRIGGER_SECRET_KEY: this.options.client.accessToken!,
       OTEL_EXPORTER_OTLP_COMPRESSION: "none",
@@ -579,16 +577,6 @@ class DevSupervisor implements WorkerRuntime {
     worker.stop();
     this.workers.delete(friendlyId);
   }
-}
-
-function gatherProcessEnv() {
-  const $env = {
-    ...process.env,
-    NODE_ENV: "development",
-  };
-
-  // Filter out undefined values
-  return Object.fromEntries(Object.entries($env).filter(([key, value]) => value !== undefined));
 }
 
 type ValidationIssue =

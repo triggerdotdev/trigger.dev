@@ -35,9 +35,7 @@
   "devDependencies": {
     "@internal/testcontainers": "workspace:*",
     "@types/seedrandom": "^3.0.8",
-    "@vitest/coverage-v8": "^3.0.8",
-    "rimraf": "6.0.1",
-    "vitest": "^3.0.8"
+    "rimraf": "6.0.1"
   },
   "scripts": {
     "clean": "rimraf dist",

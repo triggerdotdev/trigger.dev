@@ -1,5 +1,5 @@
 import { intro, log, outro } from "@clack/prompts";
-import { prepareDeploymentError } from "@trigger.dev/core/v3";
+import { prepareDeploymentError, tryCatch } from "@trigger.dev/core/v3";
 import { InitializeDeploymentResponseBody } from "@trigger.dev/core/v3/schemas";
 import { Command, Option as CommandOption } from "commander";
 import { resolve } from "node:path";
@@ -36,6 +36,7 @@ import { login } from "./login.js";
 import { updateTriggerPackages } from "./update.js";
 import { setGithubActionsOutputAndEnvVars } from "../utilities/githubActions.js";
 import { isDirectory } from "../utilities/fileSystem.js";
+import { resolveLocalEnvVars } from "../utilities/localEnvVars.js";
 
 const DeployCommandOptions = CommonCommandOptions.extend({
   dryRun: z.boolean().default(false),
@@ -207,9 +208,15 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     }
   }
 
+  const envVars = resolveLocalEnvVars(options.envFile);
+
+  if (envVars.TRIGGER_PROJECT_REF) {
+    logger.debug("Using project ref from env", { ref: envVars.TRIGGER_PROJECT_REF });
+  }
+
   const resolvedConfig = await loadConfig({
     cwd: projectPath,
-    overrides: { project: options.projectRef },
+    overrides: { project: options.projectRef ?? envVars.TRIGGER_PROJECT_REF },
     configFile: options.config,
   });
 
@@ -238,25 +245,32 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
 
   const { features } = resolvedConfig;
 
-  const buildManifest = await buildWorker({
-    target: "deploy",
-    environment: options.env,
-    destination: destination.path,
-    resolvedConfig,
-    rewritePaths: true,
-    envVars: serverEnvVars.success ? serverEnvVars.data.variables : {},
-    forcedExternals,
-    listener: {
-      onBundleStart() {
-        $buildSpinner.start("Building trigger code");
-      },
-      onBundleComplete(result) {
-        $buildSpinner.stop("Successfully built code");
+  const [error, buildManifest] = await tryCatch(
+    buildWorker({
+      target: "deploy",
+      environment: options.env,
+      destination: destination.path,
+      resolvedConfig,
+      rewritePaths: true,
+      envVars: serverEnvVars.success ? serverEnvVars.data.variables : {},
+      forcedExternals,
+      listener: {
+        onBundleStart() {
+          $buildSpinner.start("Building trigger code");
+        },
+        onBundleComplete(result) {
+          $buildSpinner.stop("Successfully built code");
 
-        logger.debug("Bundle result", result);
+          logger.debug("Bundle result", result);
+        },
       },
-    },
-  });
+    })
+  );
+
+  if (error) {
+    $buildSpinner.stop("Failed to build code");
+    throw error;
+  }
 
   logger.debug("Successfully built project to", destination.path);
 

@@ -1,5 +1,8 @@
 name: 🦋 Changesets Release
 
+permissions:
+  contents: write
+
 on:
   push:
     branches:
@@ -18,6 +21,10 @@ jobs:
   release:
     name: 🦋 Changesets Release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+      pull-requests: write
     if: github.repository == 'triggerdotdev/trigger.dev'
     outputs:
       published: ${{ steps.changesets.outputs.published }}
@@ -89,13 +96,3 @@ jobs:
         run: |
           package_version=$(echo '${{ steps.changesets.outputs.publishedPackages }}' | jq -r '.[0].version')
           echo "package_version=${package_version}" >> "$GITHUB_OUTPUT"
-
-  publish:
-    needs: release
-    uses: ./.github/workflows/publish.yml
-    secrets: inherit
-    # if: needs.release.outputs.published == 'true'
-    # disable automatic publishing for now
-    if: false
-    with:
-      image_tag: v${{ needs.release.outputs.published_package_version }}

@@ -1,12 +1,12 @@
-import { RuntimeEnvironment, TaskRunExecutionSnapshot } from "@trigger.dev/database";
-import { SystemResources } from "./systems.js";
-import { getLatestExecutionSnapshot } from "./executionSnapshotSystem.js";
-import { canReleaseConcurrency } from "../statuses.js";
+import { TaskRunExecutionSnapshot } from "@trigger.dev/database";
 import { z } from "zod";
 import {
   ReleaseConcurrencyQueueOptions,
   ReleaseConcurrencyTokenBucketQueue,
 } from "../releaseConcurrencyTokenBucketQueue.js";
+import { canReleaseConcurrency } from "../statuses.js";
+import { getLatestExecutionSnapshot } from "./executionSnapshotSystem.js";
+import { SystemResources } from "./systems.js";
 
 const ReleaseConcurrencyMetadata = z.object({
   releaseConcurrency: z.boolean().optional(),
@@ -16,11 +16,17 @@ type ReleaseConcurrencyMetadata = z.infer<typeof ReleaseConcurrencyMetadata>;
 
 export type ReleaseConcurrencySystemOptions = {
   resources: SystemResources;
-  queueOptions?: ReleaseConcurrencyQueueOptions<{
-    orgId: string;
-    projectId: string;
-    envId: string;
-  }>;
+  maxTokensRatio?: number;
+  releasingsMaxAge?: number;
+  releasingsPollInterval?: number;
+  queueOptions?: Omit<
+    ReleaseConcurrencyQueueOptions<{
+      orgId: string;
+      projectId: string;
+      envId: string;
+    }>,
+    "executor" | "validateReleaserId" | "keys" | "maxTokens"
+  >;
 };
 
 export class ReleaseConcurrencySystem {
@@ -35,8 +41,77 @@ export class ReleaseConcurrencySystem {
     this.$ = options.resources;
 
     if (options.queueOptions) {
-      this.releaseConcurrencyQueue = new ReleaseConcurrencyTokenBucketQueue(options.queueOptions);
+      this.releaseConcurrencyQueue = new ReleaseConcurrencyTokenBucketQueue({
+        ...options.queueOptions,
+        releasingsMaxAge: this.options.releasingsMaxAge,
+        releasingsPollInterval: this.options.releasingsPollInterval,
+        executor: async (descriptor, snapshotId) => {
+          return await this.executeReleaseConcurrencyForSnapshot(snapshotId);
+        },
+        keys: {
+          fromDescriptor: (descriptor) =>
+            `org:${descriptor.orgId}:proj:${descriptor.projectId}:env:${descriptor.envId}`,
+          toDescriptor: (name) => ({
+            orgId: name.split(":")[1],
+            projectId: name.split(":")[3],
+            envId: name.split(":")[5],
+          }),
+        },
+        maxTokens: async (descriptor) => {
+          const environment = await this.$.prisma.runtimeEnvironment.findFirstOrThrow({
+            where: { id: descriptor.envId },
+            select: {
+              maximumConcurrencyLimit: true,
+            },
+          });
+
+          return environment.maximumConcurrencyLimit * (this.options.maxTokensRatio ?? 1.0);
+        },
+        validateReleaserId: async (releaserId) => {
+          return this.validateSnapshotShouldRefillToken(releaserId);
+        },
+      });
     }
+  }
+
+  async validateSnapshotShouldRefillToken(releaserId: string) {
+    const snapshot = await this.$.prisma.taskRunExecutionSnapshot.findFirst({
+      where: { id: releaserId },
+      select: {
+        id: true,
+        run: {
+          select: {
+            id: true,
+            status: true,
+          },
+        },
+        organizationId: true,
+        projectId: true,
+        environmentId: true,
+        executionStatus: true,
+      },
+    });
+
+    if (!snapshot) {
+      return;
+    }
+
+    const latestSnapshot = await getLatestExecutionSnapshot(this.$.prisma, snapshot.run.id);
+
+    this.$.logger.debug("Checking if snapshot should refill", {
+      snapshot,
+      latestSnapshot,
+    });
+
+    return {
+      releaseQueue: {
+        orgId: snapshot.organizationId,
+        projectId: snapshot.projectId,
+        envId: snapshot.environmentId,
+      },
+      releaserId: snapshot.id,
+      shouldRefill: latestSnapshot.id !== snapshot.id,
+    };
   }
 
   public async consumeToken(
@@ -50,6 +125,9 @@ export class ReleaseConcurrencySystem {
     await this.releaseConcurrencyQueue.consumeToken(descriptor, releaserId);
   }
 
+  /**
+   * This is used in tests only
+   */
   public async returnToken(
     descriptor: { orgId: string; projectId: string; envId: string },
     releaserId: string
@@ -105,28 +183,13 @@ export class ReleaseConcurrencySystem {
       return;
     }
 
-    await this.releaseConcurrencyQueue.refillTokenIfNotInQueue(
+    await this.releaseConcurrencyQueue.refillTokenIfInReleasings(
       {
         orgId: snapshot.organizationId,
         projectId: snapshot.projectId,
         envId: snapshot.environmentId,
       },
       snapshot.id
-    );
-  }
-
-  public async checkpointCreatedOnEnvironment(environment: RuntimeEnvironment) {
-    if (!this.releaseConcurrencyQueue) {
-      return;
-    }
-
-    await this.releaseConcurrencyQueue.refillTokens(
-      {
-        orgId: environment.organizationId,
-        projectId: environment.projectId,
-        envId: environment.id,
-      },
-      1
     );
   }
 

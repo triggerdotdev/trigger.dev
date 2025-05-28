@@ -364,7 +364,7 @@ export class ExecutionSnapshotSystem {
       return executionResultFromSnapshot(latestSnapshot);
     }
 
-    if (latestSnapshot.workerId !== workerId) {
+    if (latestSnapshot.workerId && latestSnapshot.workerId !== workerId) {
       this.$.logger.debug("heartbeatRun: worker ID does not match the latest snapshot", {
         runId,
         snapshotId,
@@ -394,6 +394,38 @@ export class ExecutionSnapshotSystem {
     return executionResultFromSnapshot(latestSnapshot);
   }
 
+  public async restartHeartbeatForRun({
+    runId,
+    tx,
+  }: {
+    runId: string;
+    tx?: PrismaClientOrTransaction;
+  }): Promise<ExecutionResult> {
+    const prisma = tx ?? this.$.prisma;
+
+    const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId);
+
+    //extending the heartbeat
+    const intervalMs = this.#getHeartbeatIntervalMs(latestSnapshot.executionStatus);
+
+    if (intervalMs !== null) {
+      this.$.logger.debug("restartHeartbeatForRun: enqueuing heartbeat", {
+        runId,
+        snapshotId: latestSnapshot.id,
+        intervalMs,
+      });
+
+      await this.$.worker.enqueue({
+        id: `heartbeatSnapshot.${runId}`,
+        job: "heartbeatSnapshot",
+        payload: { snapshotId: latestSnapshot.id, runId },
+        availableAt: new Date(Date.now() + intervalMs),
+      });
+    }
+
+    return executionResultFromSnapshot(latestSnapshot);
+  }
+
   #getHeartbeatIntervalMs(status: TaskRunExecutionStatus): number | null {
     switch (status) {
       case "PENDING_EXECUTING": {
@@ -407,6 +439,9 @@ export class ExecutionSnapshotSystem {
       }
       case "EXECUTING_WITH_WAITPOINTS": {
         return this.heartbeatTimeouts.EXECUTING_WITH_WAITPOINTS;
+      }
+      case "SUSPENDED": {
+        return this.heartbeatTimeouts.SUSPENDED;
       }
       default: {
         return null;

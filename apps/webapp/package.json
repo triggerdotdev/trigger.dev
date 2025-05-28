@@ -255,8 +255,7 @@
     "tailwindcss": "3.4.1",
     "ts-node": "^10.7.0",
     "tsconfig-paths": "^3.14.1",
-    "vite-tsconfig-paths": "^4.0.5",
-    "vitest": "^1.4.0"
+    "vite-tsconfig-paths": "^4.0.5"
   },
   "engines": {
     "node": ">=16.0.0"
