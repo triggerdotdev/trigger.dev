@@ -2,21 +2,8 @@
 ALTER TABLE "RuntimeEnvironment"
 ADD COLUMN IF NOT EXISTS "archivedAt" TIMESTAMP(3),
 ADD COLUMN IF NOT EXISTS "branchName" TEXT,
-ADD COLUMN IF NOT EXISTS "git" JSONB;
-
--- Add the parentEnvironmentId column
-DO $$ 
-BEGIN 
-    IF NOT EXISTS (
-        SELECT 1 
-        FROM information_schema.columns 
-        WHERE table_name = 'RuntimeEnvironment' 
-        AND column_name = 'parentEnvironmentId'
-    ) THEN 
-        ALTER TABLE "RuntimeEnvironment" 
-        ADD COLUMN "parentEnvironmentId" TEXT;
-    END IF;
-END $$;
+ADD COLUMN IF NOT EXISTS "git" JSONB,
+ADD COLUMN IF NOT EXISTS "parentEnvironmentId" TEXT;
 
 -- AddForeignKey
 DO $$ 

@@ -377,7 +377,7 @@ model RuntimeEnvironment {
   slug   String
   apiKey String @unique
 
-  /// Deprecated, was for v2
+  /// @deprecated was for v2
   pkApiKey String @unique
 
   type RuntimeEnvironmentType @default(DEVELOPMENT)
@@ -417,7 +417,7 @@ model RuntimeEnvironment {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  /// Deprecated (v2)
+  /// @deprecated (v2)
   tunnelId                 String?
   endpoints                Endpoint[]
   jobVersions              JobVersion[]
