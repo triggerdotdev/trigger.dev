@@ -160,8 +160,9 @@ export async function startDevSession({
         }
 
         if (!bundled) {
-          // First bundle, no need to update bundle
           bundled = true;
+          logger.debug("First bundle, no need to update bundle");
+          return;
         }
 
         const workerDir = getTmpDir(rawConfig.workingDir, "build", keepTmpFiles);
