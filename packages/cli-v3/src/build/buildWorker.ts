@@ -28,6 +28,7 @@ export type BuildWorkerOptions = {
   destination: string;
   target: BuildTarget;
   environment: string;
+  branch?: string;
   resolvedConfig: ResolvedConfig;
   listener?: BuildWorkerEventListener;
   envVars?: Record<string, string>;
@@ -75,6 +76,7 @@ export async function buildWorker(options: BuildWorkerOptions) {
     destination: options.destination,
     resolvedConfig,
     environment: options.environment,
+    branch: options.branch,
     target: options.target,
     envVars: options.envVars,
   });

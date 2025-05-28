@@ -2,6 +2,7 @@ import { Link, useLocation } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
+import { GitMetadata } from "~/components/GitMetadata";
 import { UserAvatar } from "~/components/UserProfilePhoto";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
@@ -196,6 +197,15 @@ export default function Page() {
                   ) : (
                     "–"
                   )}
+                </Property.Value>
+              </Property.Item>
+
+              <Property.Item>
+                <Property.Label>Git</Property.Label>
+                <Property.Value>
+                  <div className="-ml-1 mt-0.5 flex flex-col">
+                    <GitMetadata git={deployment.git} />
+                  </div>
                 </Property.Value>
               </Property.Item>
               <Property.Item>

@@ -77,7 +77,7 @@ export class TaskEventStore {
     endCreatedAt?: Date,
     select?: TSelect,
     orderBy?: Prisma.TaskEventOrderByWithRelationInput,
-    options?: { includeDebugLogs?: boolean }
+    options?: { includeDebugLogs?: boolean; limit?: number }
   ): Promise<Prisma.TaskEventGetPayload<{ select: TSelect }>[]> {
     let finalWhere: Prisma.TaskEventWhereInput = where;
 
@@ -111,6 +111,7 @@ export class TaskEventStore {
         },
         select,
         orderBy,
+        take: options?.limit,
       })) as Prisma.TaskEventGetPayload<{ select: TSelect }>[];
     } else {
       // When partitioning is not enabled, we ignore the createdAt range.
@@ -121,6 +122,7 @@ export class TaskEventStore {
         },
         select,
         orderBy,
+        take: options?.limit,
       })) as Prisma.TaskEventGetPayload<{ select: TSelect }>[];
     }
   }

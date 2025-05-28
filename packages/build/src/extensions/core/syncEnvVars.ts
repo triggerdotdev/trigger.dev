@@ -11,6 +11,7 @@ export type SyncEnvVarsResult =
 export type SyncEnvVarsParams = {
   projectRef: string;
   environment: string;
+  branch?: string;
   env: Record<string, string>;
 };
 
@@ -85,6 +86,7 @@ export function syncEnvVars(fn: SyncEnvVarsFunction, options?: SyncEnvVarsOption
         fn,
         manifest.deploy.env ?? {},
         manifest.environment,
+        manifest.branch,
         context
       );
 
@@ -138,6 +140,7 @@ async function callSyncEnvVarsFn(
   syncEnvVarsFn: SyncEnvVarsFunction | undefined,
   env: Record<string, string>,
   environment: string,
+  branch: string | undefined,
   context: BuildContext
 ): Promise<Record<string, string> | undefined> {
   if (syncEnvVarsFn && typeof syncEnvVarsFn === "function") {
@@ -149,6 +152,7 @@ async function callSyncEnvVarsFn(
         projectRef: context.config.project,
         environment,
         env,
+        branch,
       });
     } catch (error) {
       context.logger.warn("Error calling syncEnvVars function", error);

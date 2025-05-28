@@ -35,6 +35,7 @@ export type ScheduleListItem = {
     id: string;
     type: RuntimeEnvironmentType;
     userName?: string;
+    branchName?: string;
   }[];
 };
 export type ScheduleList = Awaited<ReturnType<ScheduleListPresenter["call"]>>;
@@ -67,6 +68,7 @@ export class ScheduleListPresenter extends BasePresenter {
             id: true,
             type: true,
             slug: true,
+            branchName: true,
             orgMember: {
               select: {
                 user: {
@@ -269,7 +271,10 @@ export class ScheduleListPresenter extends BasePresenter {
             );
           }
 
-          return displayableEnvironment(environment, userId);
+          return {
+            ...displayableEnvironment(environment, userId),
+            branchName: environment.branchName ?? undefined,
+          };
         }),
       };
     });

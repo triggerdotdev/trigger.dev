@@ -35,6 +35,7 @@ export interface BuildImageOptions {
   extraCACerts?: string;
   apiUrl: string;
   apiKey: string;
+  branchName?: string;
   buildEnvVars?: Record<string, string | undefined>;
   onLog?: (log: string) => void;
 
@@ -65,6 +66,7 @@ export async function buildImage(options: BuildImageOptions) {
     extraCACerts,
     apiUrl,
     apiKey,
+    branchName,
     buildEnvVars,
     network,
     onLog,
@@ -87,6 +89,7 @@ export async function buildImage(options: BuildImageOptions) {
       extraCACerts,
       apiUrl,
       apiKey,
+      branchName,
       buildEnvVars,
       network,
       onLog,
@@ -124,6 +127,7 @@ export async function buildImage(options: BuildImageOptions) {
     extraCACerts,
     apiUrl,
     apiKey,
+    branchName,
     buildEnvVars,
     onLog,
   });
@@ -145,6 +149,7 @@ export interface DepotBuildImageOptions {
   buildPlatform: string;
   apiUrl: string;
   apiKey: string;
+  branchName?: string;
   loadImage?: boolean;
   noCache?: boolean;
   extraCACerts?: string;
@@ -201,6 +206,8 @@ async function depotBuildImage(options: DepotBuildImageOptions): Promise<BuildIm
     `TRIGGER_PROJECT_REF=${options.projectRef}`,
     "--build-arg",
     `TRIGGER_API_URL=${options.apiUrl}`,
+    "--build-arg",
+    `TRIGGER_PREVIEW_BRANCH=${options.branchName ?? ""}`,
     "--build-arg",
     `TRIGGER_SECRET_KEY=${options.apiKey}`,
     ...(buildArgs || []),
@@ -292,6 +299,7 @@ interface SelfHostedBuildImageOptions {
   selfHostedRegistry: boolean;
   apiUrl: string;
   apiKey: string;
+  branchName?: string;
   noCache?: boolean;
   extraCACerts?: string;
   buildEnvVars?: Record<string, string | undefined>;
@@ -328,6 +336,8 @@ async function selfHostedBuildImage(
     `TRIGGER_PROJECT_REF=${options.projectRef}`,
     "--build-arg",
     `TRIGGER_API_URL=${normalizeApiUrlForBuild(options.apiUrl)}`,
+    "--build-arg",
+    `TRIGGER_PREVIEW_BRANCH=${options.branchName ?? ""}`,
     "--build-arg",
     `TRIGGER_SECRET_KEY=${options.apiKey}`,
     ...(buildArgs || []),
@@ -572,6 +582,7 @@ ARG TRIGGER_PROJECT_REF
 ARG NODE_EXTRA_CA_CERTS
 ARG TRIGGER_SECRET_KEY
 ARG TRIGGER_API_URL
+ARG TRIGGER_PREVIEW_BRANCH
 
 ENV TRIGGER_PROJECT_ID=\${TRIGGER_PROJECT_ID} \
     TRIGGER_DEPLOYMENT_ID=\${TRIGGER_DEPLOYMENT_ID} \
@@ -580,6 +591,7 @@ ENV TRIGGER_PROJECT_ID=\${TRIGGER_PROJECT_ID} \
     TRIGGER_CONTENT_HASH=\${TRIGGER_CONTENT_HASH} \
     TRIGGER_SECRET_KEY=\${TRIGGER_SECRET_KEY} \
     TRIGGER_API_URL=\${TRIGGER_API_URL} \
+    TRIGGER_PREVIEW_BRANCH=\${TRIGGER_PREVIEW_BRANCH} \
     NODE_EXTRA_CA_CERTS=\${NODE_EXTRA_CA_CERTS} \
     NODE_ENV=production
 
@@ -676,6 +688,7 @@ ARG TRIGGER_PROJECT_REF
 ARG NODE_EXTRA_CA_CERTS
 ARG TRIGGER_SECRET_KEY
 ARG TRIGGER_API_URL
+ARG TRIGGER_PREVIEW_BRANCH
 
 ENV TRIGGER_PROJECT_ID=\${TRIGGER_PROJECT_ID} \
     TRIGGER_DEPLOYMENT_ID=\${TRIGGER_DEPLOYMENT_ID} \
@@ -684,6 +697,7 @@ ENV TRIGGER_PROJECT_ID=\${TRIGGER_PROJECT_ID} \
     TRIGGER_CONTENT_HASH=\${TRIGGER_CONTENT_HASH} \
     TRIGGER_SECRET_KEY=\${TRIGGER_SECRET_KEY} \
     TRIGGER_API_URL=\${TRIGGER_API_URL} \
+    TRIGGER_PREVIEW_BRANCH=\${TRIGGER_PREVIEW_BRANCH} \
     TRIGGER_LOG_LEVEL=debug \
     NODE_EXTRA_CA_CERTS=\${NODE_EXTRA_CA_CERTS} \
     NODE_ENV=production \
