@@ -2,8 +2,8 @@ import type { AuthenticatedEnvironment } from "@internal/run-engine";
 import type { Prisma, PrismaClientOrTransaction, RuntimeEnvironment } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
-import { sanitizeBranchName } from "~/services/upsertBranch.server";
 import { getUsername } from "~/utils/username";
+import { sanitizeBranchName } from "~/v3/gitBranch";
 
 export type { RuntimeEnvironment };
 
