@@ -216,6 +216,10 @@ const pricingDefinitions = {
     content:
       "Preview branches allow you to test changes before deploying to production. You can have a limited number active at once (but can archive old ones).",
   },
+  additionalBranches: {
+    title: "Additional branches",
+    content: "Then $10/month per branch",
+  },
 };
 
 type PricingPlansProps = {
@@ -752,7 +756,7 @@ export function TierPro({
         </FeatureItem>
         <TeamMembers limits={plan.limits}>{pricingDefinitions.additionalSeats.content}</TeamMembers>
         <Environments limits={plan.limits} />
-        <Branches limits={plan.limits} />
+        <Branches limits={plan.limits}>{pricingDefinitions.additionalBranches.content}</Branches>
         <Schedules limits={plan.limits}>{pricingDefinitions.additionalSchedules.content}</Schedules>
         <LogRetention limits={plan.limits} />
         <SupportLevel limits={plan.limits} />
@@ -1083,21 +1087,26 @@ function RealtimeConcurrency({ limits, children }: { limits: Limits; children?: 
   );
 }
 
-function Branches({ limits }: { limits: Limits }) {
+function Branches({ limits, children }: { limits: Limits; children?: React.ReactNode }) {
   return (
     <FeatureItem checked={limits.branches.number > 0}>
-      {limits.branches.number > 0 && (
-        <>
-          {limits.branches.number}
-          {limits.branches.canExceed ? "+ " : " "}
-        </>
-      )}
-      <DefinitionTip
-        title={pricingDefinitions.branches.title}
-        content={pricingDefinitions.branches.content}
-      >
-        {limits.branches.number > 0 ? "preview" : "Preview"} branches
-      </DefinitionTip>
+      <div className="flex flex-col gap-y-0.5">
+        <div className="flex items-center gap-1">
+          {limits.branches.number > 0 && (
+            <>
+              {limits.branches.number}
+              {limits.branches.canExceed ? "+ " : " "}
+            </>
+          )}
+          <DefinitionTip
+            title={pricingDefinitions.branches.title}
+            content={pricingDefinitions.branches.content}
+          >
+            {limits.branches.number > 0 ? "preview" : "Preview"} branches
+          </DefinitionTip>
+        </div>
+        {children && <span className="text-xs text-text-dimmed">{children}</span>}
+      </div>
     </FeatureItem>
   );
 }
