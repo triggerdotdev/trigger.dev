@@ -33,7 +33,10 @@ export async function validatePublicJwtKey(token: string): Promise<ValidatePubli
     return { ok: false, error: "Invalid Public Access Token, environment not found." };
   }
 
-  const result = await validateJWT(token, environment.apiKey);
+  const result = await validateJWT(
+    token,
+    environment.parentEnvironment?.apiKey ?? environment.apiKey
+  );
 
   if (!result.ok) {
     switch (result.code) {

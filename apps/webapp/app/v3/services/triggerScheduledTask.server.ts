@@ -53,6 +53,16 @@ export class TriggerScheduledTaskService extends BaseService {
       return;
     }
 
+    if (instance.environment.archivedAt) {
+      logger.debug("Environment is archived, disabling schedule", {
+        instanceId,
+        scheduleId: instance.taskSchedule.friendlyId,
+        environmentId: instance.environment.id,
+      });
+
+      return;
+    }
+
     try {
       let shouldTrigger = true;
 

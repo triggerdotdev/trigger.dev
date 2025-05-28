@@ -53,6 +53,7 @@ export class ViewSchedulePresenter {
                     },
                   },
                 },
+                branchName: true,
               },
             },
           },
@@ -91,7 +92,10 @@ export class ViewSchedulePresenter {
         runs,
         environments: schedule.instances.map((instance) => {
           const environment = instance.environment;
-          return displayableEnvironment(environment, userId);
+          return {
+            ...displayableEnvironment(environment, userId),
+            branchName: environment.branchName ?? undefined,
+          };
         }),
       },
     };

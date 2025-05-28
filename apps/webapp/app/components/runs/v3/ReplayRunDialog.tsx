@@ -131,6 +131,12 @@ function ReplayForm({
           dropdownIcon
           variant="tertiary/medium"
           className="w-fit pl-1"
+          filter={{
+            keys: [
+              (item) => item.type.replace(/\//g, " ").replace(/_/g, " "),
+              (item) => item.branchName?.replace(/\//g, " ").replace(/_/g, " ") ?? "",
+            ],
+          }}
           text={(value) => {
             const env = environments.find((env) => env.id === value)!;
             return (

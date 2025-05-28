@@ -1,7 +1,5 @@
 import { type Path, useMatches } from "@remix-run/react";
-import { type MinimumEnvironment } from "~/presenters/SelectBestEnvironmentPresenter.server";
-import { useEnvironment } from "./useEnvironment";
-import { useEnvironments } from "./useEnvironments";
+import { type RuntimeEnvironment } from "@trigger.dev/database";
 import { useOptimisticLocation } from "./useOptimisticLocation";
 
 /**
@@ -12,7 +10,7 @@ export function useEnvironmentSwitcher() {
   const matches = useMatches();
   const location = useOptimisticLocation();
 
-  const urlForEnvironment = (newEnvironment: MinimumEnvironment) => {
+  const urlForEnvironment = (newEnvironment: Pick<RuntimeEnvironment, "id" | "slug">) => {
     return routeForEnvironmentSwitch({
       location,
       matchId: matches[matches.length - 1].id,
@@ -86,7 +84,8 @@ export function routeForEnvironmentSwitch({
  * Replace the /env/<slug>/ in the path so it's /env/<environmentSlug>
  */
 function replaceEnvInPath(path: string, environmentSlug: string) {
-  return path.replace(/env\/([a-z0-9-]+)/, `env/${environmentSlug}`);
+  //allow anything except /
+  return path.replace(/env\/([^/]+)/, `env/${environmentSlug}`);
 }
 
 function fullPath(location: Path) {

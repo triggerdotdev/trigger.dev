@@ -2,8 +2,8 @@ import { type RuntimeEnvironmentType } from "@trigger.dev/database";
 
 const environmentSortOrder: RuntimeEnvironmentType[] = [
   "DEVELOPMENT",
-  "PREVIEW",
   "STAGING",
+  "PREVIEW",
   "PRODUCTION",
 ];
 

@@ -198,6 +198,19 @@ export class DequeueSystem {
                       await this.$.runQueue.acknowledgeMessage(orgId, runId);
                       return null;
                     }
+                    case "RUN_ENVIRONMENT_ARCHIVED": {
+                      //this happens if the preview branch was archived
+                      this.$.logger.warn(
+                        "RunEngine.dequeueFromMasterQueue(): Run environment archived",
+                        {
+                          runId,
+                          latestSnapshot: snapshot.id,
+                          result,
+                        }
+                      );
+                      await this.$.runQueue.acknowledgeMessage(orgId, runId);
+                      return null;
+                    }
                     case "NO_WORKER":
                     case "TASK_NEVER_REGISTERED":
                     case "QUEUE_NOT_FOUND":

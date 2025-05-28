@@ -2,6 +2,7 @@ import { startSpan } from "@internal/tracing";
 import {
   CompleteRunAttemptResult,
   ExecutionResult,
+  GitMeta,
   StartRunAttemptResult,
   TaskRunError,
   TaskRunExecution,
@@ -25,15 +26,15 @@ import { retryOutcomeFromCompletion } from "../retrying.js";
 import { isExecuting, isInitialState } from "../statuses.js";
 import { RunEngineOptions } from "../types.js";
 import { BatchSystem } from "./batchSystem.js";
+import { DelayedRunSystem } from "./delayedRunSystem.js";
 import {
   executionResultFromSnapshot,
   ExecutionSnapshotSystem,
   getLatestExecutionSnapshot,
 } from "./executionSnapshotSystem.js";
+import { ReleaseConcurrencySystem } from "./releaseConcurrencySystem.js";
 import { SystemResources } from "./systems.js";
 import { WaitpointSystem } from "./waitpointSystem.js";
-import { DelayedRunSystem } from "./delayedRunSystem.js";
-import { ReleaseConcurrencySystem } from "./releaseConcurrencySystem.js";
 
 export type RunAttemptSystemOptions = {
   resources: SystemResources;
@@ -284,6 +285,14 @@ export class RunAttemptSystem {
             dataType: taskRun.metadataType,
           });
 
+          let git: GitMeta | undefined = undefined;
+          if (environment.git) {
+            const parsed = GitMeta.safeParse(environment.git);
+            if (parsed.success) {
+              git = parsed.data;
+            }
+          }
+
           const execution: TaskRunExecution = {
             task: {
               id: run.lockedBy!.slug,
@@ -334,6 +343,8 @@ export class RunAttemptSystem {
               id: environment.id,
               slug: environment.slug,
               type: environment.type,
+              branchName: environment.branchName ?? undefined,
+              git,
             },
             organization: {
               id: environment.organization.id,

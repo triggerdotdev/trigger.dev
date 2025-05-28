@@ -1,4 +1,5 @@
 import { defineConfig } from "@trigger.dev/sdk/v3";
+import { syncEnvVars } from "@trigger.dev/build/extensions/core";
 
 export default defineConfig({
   compatibilityFlags: ["run_engine_v2"],
@@ -15,9 +16,19 @@ export default defineConfig({
       randomize: true,
     },
   },
-  machine: "large-1x",
+  machine: "small-2x",
   build: {
     extensions: [
+      syncEnvVars(async (ctx) => {
+        console.log(ctx.environment);
+        console.log(ctx.branch);
+        return [
+          { name: "SYNC_ENV", value: ctx.environment },
+          { name: "BRANCH", value: ctx.branch ?? "–" },
+          { name: "SECRET_KEY", value: "secret-value" },
+          { name: "ANOTHER_SECRET", value: "another-secret-value" },
+        ];
+      }),
       {
         name: "npm-token",
         onBuildComplete: async (context, manifest) => {

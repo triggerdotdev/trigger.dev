@@ -50,6 +50,7 @@ export class EditSchedulePresenter {
                 },
               },
             },
+            branchName: true,
           },
         },
       },
@@ -85,11 +86,17 @@ export class EditSchedulePresenter {
         })
       : [];
 
-    const possibleEnvironments = filterOrphanedEnvironments(project.environments).map(
-      (environment) => {
-        return displayableEnvironment(environment, userId);
-      }
-    );
+    const possibleEnvironments = filterOrphanedEnvironments(project.environments)
+      .map((environment) => {
+        return {
+          ...displayableEnvironment(environment, userId),
+          branchName: environment.branchName ?? undefined,
+        };
+      })
+      .filter((env) => {
+        if (env.type === "PREVIEW" && !env.branchName) return false;
+        return true;
+      });
 
     return {
       possibleTasks: possibleTasks.map((task) => task.slug).sort(),

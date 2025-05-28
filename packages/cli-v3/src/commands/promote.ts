@@ -12,13 +12,16 @@ import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { logger } from "../utilities/logger.js";
 import { getProjectClient } from "../utilities/session.js";
 import { login } from "./login.js";
+import { createGitMeta } from "../utilities/gitMeta.js";
+import { getBranch } from "@trigger.dev/core/v3";
 
 const PromoteCommandOptions = CommonCommandOptions.extend({
   projectRef: z.string().optional(),
   apiUrl: z.string().optional(),
   skipUpdateCheck: z.boolean().default(false),
   config: z.string().optional(),
-  env: z.enum(["prod", "staging"]),
+  env: z.enum(["prod", "staging", "preview"]),
+  branch: z.string().optional(),
 });
 
 type PromoteCommandOptions = z.infer<typeof PromoteCommandOptions>;
@@ -34,6 +37,10 @@ export function configurePromoteCommand(program: Command) {
         "-e, --env <env>",
         "Deploy to a specific environment (currently only prod and staging are supported)",
         "prod"
+      )
+      .option(
+        "-b, --branch <branch>",
+        "The preview branch to promote when passing --env preview. If not provided, we'll detect your git branch."
       )
       .option("--skip-update-check", "Skip checking for @trigger.dev package updates")
       .option(
@@ -88,11 +95,23 @@ async function _promoteCommand(version: string, options: PromoteCommandOptions) 
 
   logger.debug("Resolved config", resolvedConfig);
 
+  const gitMeta = await createGitMeta(resolvedConfig.workspaceDir);
+  logger.debug("gitMeta", gitMeta);
+
+  const branch =
+    options.env === "preview" ? getBranch({ specified: options.branch, gitMeta }) : undefined;
+  if (options.env === "preview" && !branch) {
+    throw new Error(
+      "Didn't auto-detect preview branch, so you need to specify one. Pass --branch <branch>."
+    );
+  }
+
   const projectClient = await getProjectClient({
     accessToken: authorization.auth.accessToken,
     apiUrl: authorization.auth.apiUrl,
     projectRef: resolvedConfig.project,
     env: options.env,
+    branch,
     profile: options.profile,
   });
 
