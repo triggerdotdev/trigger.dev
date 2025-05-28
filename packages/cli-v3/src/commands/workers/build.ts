@@ -1,5 +1,5 @@
 import { intro, outro, log } from "@clack/prompts";
-import { parseDockerImageReference, prepareDeploymentError } from "@trigger.dev/core/v3";
+import { getBranch, parseDockerImageReference, prepareDeploymentError } from "@trigger.dev/core/v3";
 import { InitializeDeploymentResponseBody } from "@trigger.dev/core/v3/schemas";
 import { Command, Option as CommandOption } from "commander";
 import { resolve } from "node:path";
@@ -32,6 +32,7 @@ import { spinner } from "../../utilities/windows.js";
 import { login } from "../login.js";
 import { updateTriggerPackages } from "../update.js";
 import { resolveAlwaysExternal } from "../../build/externals.js";
+import { createGitMeta } from "../../utilities/gitMeta.js";
 
 const WorkersBuildCommandOptions = CommonCommandOptions.extend({
   // docker build options
@@ -45,7 +46,8 @@ const WorkersBuildCommandOptions = CommonCommandOptions.extend({
   local: z.boolean().default(false), // TODO: default to true when webapp has no remote build support
   dryRun: z.boolean().default(false),
   skipSyncEnvVars: z.boolean().default(false),
-  env: z.enum(["prod", "staging"]),
+  env: z.enum(["prod", "staging", "preview"]),
+  branch: z.string().optional(),
   config: z.string().optional(),
   projectRef: z.string().optional(),
   apiUrl: z.string().optional(),
@@ -68,6 +70,10 @@ export function configureWorkersBuildCommand(program: Command) {
         "-e, --env <env>",
         "Deploy to a specific environment (currently only prod and staging are supported)",
         "prod"
+      )
+      .option(
+        "-b, --branch <branch>",
+        "The branch to deploy to. If not provided, the branch will be detected from the current git branch."
       )
       .option("--skip-update-check", "Skip checking for @trigger.dev package updates")
       .option("-c, --config <config file>", "The name of the config file, found at [path]")
@@ -168,11 +174,23 @@ async function _workerBuildCommand(dir: string, options: WorkersBuildCommandOpti
 
   logger.debug("Resolved config", resolvedConfig);
 
+  const gitMeta = await createGitMeta(resolvedConfig.workspaceDir);
+  logger.debug("gitMeta", gitMeta);
+
+  const branch =
+    options.env === "preview" ? getBranch({ specified: options.branch, gitMeta }) : undefined;
+  if (options.env === "preview" && !branch) {
+    throw new Error(
+      "You need to specify a preview branch when deploying to preview, pass --branch <branch>."
+    );
+  }
+
   const projectClient = await getProjectClient({
     accessToken: authorization.auth.accessToken,
     apiUrl: authorization.auth.apiUrl,
     projectRef: resolvedConfig.project,
     env: options.env,
+    branch,
     profile: options.profile,
   });
 
@@ -192,6 +210,7 @@ async function _workerBuildCommand(dir: string, options: WorkersBuildCommandOpti
   const buildManifest = await buildWorker({
     target: "unmanaged",
     environment: options.env,
+    branch,
     destination: destination.path,
     resolvedConfig,
     rewritePaths: true,
@@ -327,6 +346,7 @@ async function _workerBuildCommand(dir: string, options: WorkersBuildCommandOpti
     projectRef: resolvedConfig.project,
     apiUrl: projectClient.client.apiURL,
     apiKey: projectClient.client.accessToken!,
+    branchName: branch,
     authAccessToken: authorization.auth.accessToken,
     compilationPath: destination.path,
     buildEnvVars: buildManifest.build.env,

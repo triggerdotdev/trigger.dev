@@ -326,6 +326,43 @@ export class EventRepository {
     });
   }
 
+  async cancelEvents(events: TaskEventRecord[], cancelledAt: Date, reason: string) {
+    const eventsToCancel = events.filter((event) => event.isPartial);
+
+    if (eventsToCancel.length === 0) {
+      return;
+    }
+
+    await this.insertMany(
+      eventsToCancel.map((event) => ({
+        ...omit(event, "id"),
+        isPartial: false,
+        isError: false,
+        isCancelled: true,
+        status: "ERROR",
+        links: event.links ?? [],
+        events: [
+          {
+            name: "cancellation",
+            time: cancelledAt,
+            properties: {
+              reason,
+            },
+          },
+          ...((event.events as any[]) ?? []),
+        ],
+        duration: calculateDurationFromStart(event.startTime, cancelledAt),
+        properties: event.properties as Attributes,
+        metadata: event.metadata as Attributes,
+        style: event.style as Attributes,
+        output: event.output as Attributes,
+        outputType: event.outputType,
+        payload: event.payload as Attributes,
+        payloadType: event.payloadType,
+      }))
+    );
+  }
+
   async crashEvent({
     event,
     crashedAt,
@@ -394,28 +431,35 @@ export class EventRepository {
       queryOptions,
       startCreatedAt,
       endCreatedAt,
-      { spanId: true, isPartial: true, isCancelled: true }
+      { spanId: true, isPartial: true, isCancelled: true },
+      undefined,
+      { limit: 500 }
     );
 
-    const filteredTaskEvents = taskEvents.filter((event) => {
-      // Event must be partial
-      if (!event.isPartial) return false;
+    // Optimize the filtering by pre-processing the data
+    const completeEventSpanIds = new Set<string>();
+    const incompleteEvents: Array<{ spanId: string }> = [];
 
-      // If the event is cancelled, it is not incomplete
-      if (event.isCancelled) return false;
-
-      if (allowCompleteDuplicate) {
-        return true;
+    // Single pass to categorize events and build lookup structures
+    for (const event of taskEvents) {
+      if (!event.isPartial && !event.isCancelled) {
+        // This is a complete event
+        completeEventSpanIds.add(event.spanId);
+      } else if (event.isPartial && !event.isCancelled) {
+        // This is a potentially incomplete event
+        incompleteEvents.push(event);
       }
+      // Skip cancelled events as they are not incomplete
+    }
 
-      // There must not be another complete event with the same spanId
-      const hasCompleteDuplicate = taskEvents.some(
-        (otherEvent) =>
-          otherEvent.spanId === event.spanId && !otherEvent.isPartial && !otherEvent.isCancelled
-      );
+    // Filter incomplete events, excluding those with complete duplicates
+    const filteredTaskEvents = allowCompleteDuplicate
+      ? incompleteEvents
+      : incompleteEvents.filter((event) => !completeEventSpanIds.has(event.spanId));
 
-      return !hasCompleteDuplicate;
-    });
+    if (filteredTaskEvents.length === 0) {
+      return [];
+    }
 
     return this.#queryEvents(
       storeTable,
@@ -433,14 +477,16 @@ export class EventRepository {
     storeTable: TaskEventStoreTable,
     traceId: string,
     startCreatedAt: Date,
-    endCreatedAt?: Date
+    endCreatedAt?: Date,
+    options?: { includeDebugLogs?: boolean }
   ): Promise<TraceSummary | undefined> {
     return await startActiveSpan("getTraceSummary", async (span) => {
       const events = await this.taskEventStore.findTraceEvents(
         storeTable,
         traceId,
         startCreatedAt,
-        endCreatedAt
+        endCreatedAt,
+        { includeDebugLogs: options?.includeDebugLogs }
       );
 
       let preparedEvents: Array<PreparedEvent> = [];
@@ -574,10 +620,17 @@ export class EventRepository {
     spanId: string,
     traceId: string,
     startCreatedAt: Date,
-    endCreatedAt?: Date
+    endCreatedAt?: Date,
+    options?: { includeDebugLogs?: boolean }
   ) {
     return await startActiveSpan("getSpan", async (s) => {
-      const spanEvent = await this.#getSpanEvent(storeTable, spanId, startCreatedAt, endCreatedAt);
+      const spanEvent = await this.#getSpanEvent(
+        storeTable,
+        spanId,
+        startCreatedAt,
+        endCreatedAt,
+        options
+      );
 
       if (!spanEvent) {
         return;
@@ -784,7 +837,8 @@ export class EventRepository {
     storeTable: TaskEventStoreTable,
     spanId: string,
     startCreatedAt: Date,
-    endCreatedAt?: Date
+    endCreatedAt?: Date,
+    options?: { includeDebugLogs?: boolean }
   ) {
     return await startActiveSpan("getSpanEvent", async (s) => {
       const events = await this.taskEventStore.findMany(
@@ -795,7 +849,8 @@ export class EventRepository {
         undefined,
         {
           startTime: "asc",
-        }
+        },
+        options
       );
 
       let finalEvent: TaskEvent | undefined;

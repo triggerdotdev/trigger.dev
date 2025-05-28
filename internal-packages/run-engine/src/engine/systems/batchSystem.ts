@@ -42,6 +42,8 @@ export class BatchSystem {
         select: {
           status: true,
           runtimeEnvironmentId: true,
+          processingJobsCount: true,
+          runCount: true,
         },
         where: {
           id: batchId,
@@ -55,6 +57,15 @@ export class BatchSystem {
 
       if (batch.status === "COMPLETED") {
         this.$.logger.debug("#tryCompleteBatch: Batch already completed", { batchId });
+        return;
+      }
+
+      if (batch.processingJobsCount < batch.runCount) {
+        this.$.logger.debug("#tryCompleteBatch: Not all runs are created yet", {
+          batchId,
+          processingJobsCount: batch.processingJobsCount,
+          runCount: batch.runCount,
+        });
         return;
       }
 

@@ -4,7 +4,7 @@ import { nanoid } from "nanoid";
 import { $transaction } from "~/db.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { type UpsertSchedule } from "../schedules";
-import { calculateNextScheduledTimestamp } from "../utils/calculateNextSchedule.server";
+import { calculateNextScheduledTimestampFromNow } from "../utils/calculateNextSchedule.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { CheckScheduleService } from "./checkSchedule.server";
 import { RegisterNextTaskScheduleInstanceService } from "./registerNextTaskScheduleInstance.server";
@@ -29,7 +29,7 @@ export class UpsertTaskScheduleService extends BaseService {
   public async call(projectId: string, schedule: UpsertTaskScheduleServiceOptions) {
     //this throws errors if the schedule is invalid
     const checkSchedule = new CheckScheduleService(this._prisma);
-    await checkSchedule.call(projectId, schedule);
+    await checkSchedule.call(projectId, schedule, schedule.environments);
 
     const deduplicationKey =
       typeof schedule.deduplicationKey === "string" && schedule.deduplicationKey !== ""
@@ -262,7 +262,7 @@ export class UpsertTaskScheduleService extends BaseService {
       cron: taskSchedule.generatorExpression,
       cronDescription: taskSchedule.generatorDescription,
       timezone: taskSchedule.timezone,
-      nextRun: calculateNextScheduledTimestamp(
+      nextRun: calculateNextScheduledTimestampFromNow(
         taskSchedule.generatorExpression,
         taskSchedule.timezone
       ),

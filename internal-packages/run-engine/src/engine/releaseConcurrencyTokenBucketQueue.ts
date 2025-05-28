@@ -14,12 +14,23 @@ export type ReleaseConcurrencyQueueRetryOptions = {
   };
 };
 
+export type ReleaseConcurrencyValidatorResult<T> = {
+  releaseQueue: T;
+  releaserId: string;
+  shouldRefill: boolean;
+};
+
 export type ReleaseConcurrencyQueueOptions<T> = {
   redis: RedisOptions;
   /**
    * @returns true if the run was successful, false if the token should be returned to the bucket
    */
   executor: (releaseQueue: T, releaserId: string) => Promise<boolean>;
+  validateReleaserId?: (
+    releaserId: string
+  ) => Promise<ReleaseConcurrencyValidatorResult<T> | undefined>;
+  releasingsMaxAge?: number;
+  releasingsPollInterval?: number;
   keys: {
     fromDescriptor: (releaseQueue: T) => string;
     toDescriptor: (releaseQueue: string) => T;
@@ -47,6 +58,7 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
   private logger: Logger;
   private abortController: AbortController;
   private consumers: ReleaseConcurrencyQueueConsumer<T>[];
+  private sweeper?: ReleaseConcurrencyReleasingsSweeper;
 
   private keyPrefix: string;
   private masterQueuesKey: string;
@@ -61,7 +73,7 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
   constructor(private readonly options: ReleaseConcurrencyQueueOptions<T>) {
     this.redis = createRedisClient(options.redis);
     this.keyPrefix = options.redis.keyPrefix ?? "re2:release-concurrency-queue:";
-    this.logger = options.logger ?? new Logger("ReleaseConcurrencyQueue");
+    this.logger = options.logger ?? new Logger("ReleaseConcurrencyQueue", "debug");
     this.abortController = new AbortController();
     this.consumers = [];
 
@@ -83,6 +95,7 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
     if (!options.disableConsumers) {
       this.#startConsumers();
       this.#startMetricsProducer();
+      this.#startReleasingsSweeper();
     }
   }
 
@@ -118,6 +131,7 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
       this.#bucketKey(releaseQueue),
       this.#queueKey(releaseQueue),
       this.#metadataKey(releaseQueue),
+      this.#releasingsKey(),
       releaseQueue,
       releaserId,
       String(maxTokens),
@@ -172,6 +186,7 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
       this.#bucketKey(releaseQueue),
       this.#queueKey(releaseQueue),
       this.#metadataKey(releaseQueue),
+      this.#releasingsKey(),
       releaseQueue,
       releaserId,
       String(maxTokens),
@@ -204,6 +219,7 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
       this.#bucketKey(releaseQueue),
       this.#queueKey(releaseQueue),
       this.#metadataKey(releaseQueue),
+      this.#releasingsKey(),
       releaseQueue,
       releaserId
     );
@@ -270,10 +286,10 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
   }
 
   /**
-   * Refill a token only if the releaserId is not in the release queue.
-   * Returns true if the token was refilled, false if the releaserId was found in the queue.
+   * Refill a token only if the releaserId is in the releasings set.
+   * Returns true if the token was refilled, false if the releaserId was not found in the releasings set.
    */
-  public async refillTokenIfNotInQueue(
+  public async refillTokenIfInReleasings(
     releaseQueueDescriptor: T,
     releaserId: string
   ): Promise<boolean> {
@@ -291,17 +307,18 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
       return false;
     }
 
-    const result = await this.redis.refillTokenIfNotInQueue(
+    const result = await this.redis.refillTokenIfInReleasings(
       this.masterQueuesKey,
       this.#bucketKey(releaseQueue),
       this.#queueKey(releaseQueue),
       this.#metadataKey(releaseQueue),
+      this.#releasingsKey(),
       releaseQueue,
       releaserId,
       String(maxTokens)
     );
 
-    this.logger.debug("Attempted to refill token if not in queue", {
+    this.logger.debug("Attempted to refill token if in releasings", {
       releaseQueueDescriptor,
       releaserId,
       maxTokens,
@@ -360,6 +377,7 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
           this.#bucketKey(releaseQueue),
           this.#queueKey(releaseQueue),
           this.#metadataKey(releaseQueue),
+          this.#releasingsKey(),
           releaseQueue,
           releaserId
         );
@@ -381,6 +399,7 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
           this.#bucketKey(releaseQueue),
           this.#queueKey(releaseQueue),
           this.#metadataKey(releaseQueue),
+          this.#releasingsKey(),
           releaseQueue,
           releaserId
         );
@@ -434,6 +453,10 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
     return `${releaseQueue}:metadata`;
   }
 
+  #releasingsKey() {
+    return "releasings";
+  }
+
   #startConsumers() {
     const consumerCount = this.consumersCount;
 
@@ -449,6 +472,20 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
       consumer.start().catch((error) => {
         this.logger.error("Consumer failed to start:", { error, consumerId: i });
       });
+    }
+  }
+
+  #startReleasingsSweeper() {
+    if (this.options.validateReleaserId) {
+      this.sweeper = new ReleaseConcurrencyReleasingsSweeper(
+        this,
+        this.options.validateReleaserId,
+        this.options.releasingsPollInterval ?? 60_000,
+        this.options.releasingsMaxAge ?? 60_000 * 30,
+        this.abortController.signal,
+        this.logger
+      );
+      this.sweeper.start();
     }
   }
 
@@ -615,14 +652,28 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
     return promise;
   }
 
+  async getReleasings(maxAge: number) {
+    const releasings = await this.redis.zrangebyscore(
+      this.#releasingsKey(),
+      0,
+      Date.now() - maxAge
+    );
+    return releasings;
+  }
+
+  async removeReleaserIdFromReleasings(releaserId: string) {
+    await this.redis.zrem(this.#releasingsKey(), releaserId);
+  }
+
   #registerCommands() {
     this.redis.defineCommand("consumeToken", {
-      numberOfKeys: 4,
+      numberOfKeys: 5,
       lua: `
 local masterQueuesKey = KEYS[1]
 local bucketKey = KEYS[2]
 local queueKey = KEYS[3]
 local metadataKey = KEYS[4]
+local releasingsKey = KEYS[5]
 
 local releaseQueue = ARGV[1]
 local releaserId = ARGV[2]
@@ -638,6 +689,7 @@ if currentTokens >= 1 then
 
   redis.call("SET", bucketKey, newCurrentTokens)
   redis.call("ZREM", queueKey, releaserId)
+  redis.call("ZADD", releasingsKey, score, releaserId)
 
   -- Clean up metadata when successfully consuming
   redis.call("HDEL", metadataKey, releaserId)
@@ -802,20 +854,27 @@ else
   redis.call("ZREM", masterQueuesKey, releaseQueue)
 end
 
-return true
+return redis.status_reply("true")
       `,
     });
 
     this.redis.defineCommand("returnTokenOnly", {
-      numberOfKeys: 4,
+      numberOfKeys: 5,
       lua: `
 local masterQueuesKey = KEYS[1]
 local bucketKey = KEYS[2]
 local queueKey = KEYS[3]
 local metadataKey = KEYS[4]
+local releasingsKey = KEYS[5]
 
 local releaseQueue = ARGV[1]
 local releaserId = ARGV[2]
+
+local removedFromReleasings = redis.call("ZREM", releasingsKey, releaserId)
+
+if removedFromReleasings == 0 then
+  return redis.status_reply("false")
+end
 
 -- Return the token to the bucket
 local currentTokens = tonumber(redis.call("GET", bucketKey))
@@ -833,26 +892,26 @@ else
   redis.call("ZREM", masterQueuesKey, releaseQueue)
 end
 
-return true
+return redis.status_reply("true")
       `,
     });
 
-    this.redis.defineCommand("refillTokenIfNotInQueue", {
-      numberOfKeys: 4,
+    this.redis.defineCommand("refillTokenIfInReleasings", {
+      numberOfKeys: 5,
       lua: `
 local masterQueuesKey = KEYS[1]
 local bucketKey = KEYS[2]
 local queueKey = KEYS[3]
 local metadataKey = KEYS[4]
+local releasingsKey = KEYS[5]
 
 local releaseQueue = ARGV[1]
 local releaserId = ARGV[2]
 local maxTokens = tonumber(ARGV[3])
 
--- Check if the releaserId is in the queue
-local score = redis.call("ZSCORE", queueKey, releaserId)
-if score then
-  -- Item is in queue, don't refill token
+local removedFromReleasings = redis.call("ZREM", releasingsKey, releaserId)
+
+if removedFromReleasings == 0 then
   return redis.status_reply("false")
 end
 
@@ -891,6 +950,7 @@ declare module "@internal/redis" {
       bucketKey: string,
       queueKey: string,
       metadataKey: string,
+      releasingsKey: string,
       releaseQueue: string,
       releaserId: string,
       maxTokens: string,
@@ -933,16 +993,18 @@ declare module "@internal/redis" {
       bucketKey: string,
       queueKey: string,
       metadataKey: string,
+      releasingsKey: string,
       releaseQueue: string,
       releaserId: string,
       callback?: Callback<void>
     ): Result<void, Context>;
 
-    refillTokenIfNotInQueue(
+    refillTokenIfInReleasings(
       masterQueuesKey: string,
       bucketKey: string,
       queueKey: string,
       metadataKey: string,
+      releasingsKey: string,
       releaseQueue: string,
       releaserId: string,
       maxTokens: string,
@@ -978,6 +1040,62 @@ class ReleaseConcurrencyQueueConsumer<T> {
     } catch (error) {
       if (error instanceof Error && error.name !== "AbortError") {
         this.logger.error("Consumer loop error:", { error });
+      }
+    }
+  }
+}
+
+class ReleaseConcurrencyReleasingsSweeper {
+  private readonly logger: Logger;
+
+  constructor(
+    private readonly queue: ReleaseConcurrencyTokenBucketQueue<any>,
+    private readonly validateReleaserId: (
+      releaserId: string
+    ) => Promise<ReleaseConcurrencyValidatorResult<any> | undefined>,
+    private readonly pollInterval: number,
+    private readonly maxAge: number,
+    private readonly signal: AbortSignal,
+    logger?: Logger
+  ) {
+    this.queue = queue;
+    this.logger = logger ?? new Logger("ReleaseConcurrencyReleasingsSweeper");
+  }
+
+  async start() {
+    try {
+      for await (const _ of setInterval(this.pollInterval, null, { signal: this.signal })) {
+        try {
+          await this.sweep();
+        } catch (error) {
+          this.logger.error("Error sweeping releasings:", { error });
+        }
+      }
+    } catch (error) {
+      if (error instanceof Error && error.name !== "AbortError") {
+        this.logger.error("Sweeper loop error:", { error });
+      }
+    }
+  }
+
+  private async sweep() {
+    const releasings = await this.queue.getReleasings(this.maxAge);
+
+    this.logger.debug("Sweeping releasings:", { releasings });
+
+    for (const releaserId of releasings) {
+      const result = await this.validateReleaserId(releaserId);
+
+      this.logger.debug("Validated releaserId:", { releaserId, result });
+
+      if (!result) {
+        // We need to remove the releaserId from the releasings set
+        await this.queue.removeReleaserIdFromReleasings(releaserId);
+        continue;
+      }
+
+      if (result.shouldRefill) {
+        await this.queue.refillTokenIfInReleasings(result.releaseQueue, result.releaserId);
       }
     }
   }

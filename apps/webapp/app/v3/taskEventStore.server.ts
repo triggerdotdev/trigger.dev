@@ -1,5 +1,5 @@
 // TaskEventStore.ts
-import type { Prisma, TaskEvent } from "@trigger.dev/database";
+import { Prisma, TaskEvent } from "@trigger.dev/database";
 import type { PrismaClient, PrismaReplicaClient } from "~/db.server";
 import { env } from "~/env.server";
 
@@ -76,7 +76,8 @@ export class TaskEventStore {
     startCreatedAt: Date,
     endCreatedAt?: Date,
     select?: TSelect,
-    orderBy?: Prisma.TaskEventOrderByWithRelationInput
+    orderBy?: Prisma.TaskEventOrderByWithRelationInput,
+    options?: { includeDebugLogs?: boolean; limit?: number }
   ): Promise<Prisma.TaskEventGetPayload<{ select: TSelect }>[]> {
     let finalWhere: Prisma.TaskEventWhereInput = where;
 
@@ -99,18 +100,29 @@ export class TaskEventStore {
       };
     }
 
+    const filterDebug =
+      options?.includeDebugLogs === false || options?.includeDebugLogs === undefined;
+
     if (table === "taskEventPartitioned") {
       return (await this.readReplica.taskEventPartitioned.findMany({
-        where: finalWhere as Prisma.TaskEventPartitionedWhereInput,
+        where: {
+          ...(finalWhere as Prisma.TaskEventPartitionedWhereInput),
+          ...(filterDebug ? { kind: { not: "LOG" } } : {}),
+        },
         select,
         orderBy,
+        take: options?.limit,
       })) as Prisma.TaskEventGetPayload<{ select: TSelect }>[];
     } else {
       // When partitioning is not enabled, we ignore the createdAt range.
       return (await this.readReplica.taskEvent.findMany({
-        where,
+        where: {
+          ...(finalWhere as Prisma.TaskEventWhereInput),
+          ...(filterDebug ? { kind: { not: "LOG" } } : {}),
+        },
         select,
         orderBy,
+        take: options?.limit,
       })) as Prisma.TaskEventGetPayload<{ select: TSelect }>[];
     }
   }
@@ -119,8 +131,12 @@ export class TaskEventStore {
     table: TaskEventStoreTable,
     traceId: string,
     startCreatedAt: Date,
-    endCreatedAt?: Date
+    endCreatedAt?: Date,
+    options?: { includeDebugLogs?: boolean }
   ) {
+    const filterDebug =
+      options?.includeDebugLogs === false || options?.includeDebugLogs === undefined;
+
     if (table === "taskEventPartitioned") {
       return await this.readReplica.$queryRaw<TraceEvent[]>`
         SELECT
@@ -147,6 +163,11 @@ export class TaskEventStore {
             ? new Date(endCreatedAt.getTime() + env.TASK_EVENT_PARTITIONED_WINDOW_IN_SECONDS * 1000)
             : new Date()
           ).toISOString()}::timestamp
+          ${
+            filterDebug
+              ? Prisma.sql`AND \"kind\" <> CAST('LOG'::text AS "public"."TaskEventKind")`
+              : Prisma.empty
+          }
         ORDER BY "startTime" ASC
         LIMIT ${env.MAXIMUM_TRACE_SUMMARY_VIEW_COUNT}
       `;
@@ -171,6 +192,11 @@ export class TaskEventStore {
           "kind"
         FROM "TaskEvent"
         WHERE "traceId" = ${traceId}
+          ${
+            filterDebug
+              ? Prisma.sql`AND \"kind\" <> CAST('LOG'::text AS "public"."TaskEventKind")`
+              : Prisma.empty
+          }
         ORDER BY "startTime" ASC
         LIMIT ${env.MAXIMUM_TRACE_SUMMARY_VIEW_COUNT}
       `;

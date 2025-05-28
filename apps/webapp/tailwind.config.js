@@ -149,8 +149,8 @@ const pending = colors.blue[500];
 const warning = colors.amber[500];
 const error = colors.rose[600];
 const devEnv = colors.pink[500];
-const stagingEnv = colors.amber[400];
-const previewEnv = colors.amber[400];
+const stagingEnv = colors.orange[400];
+const previewEnv = colors.yellow[400];
 const prodEnv = mint[500];
 
 /** Icon colors */
@@ -310,9 +310,14 @@ module.exports = {
       },
       width: {
         0.75: "0.1875rem",
+        4.5: "1.125rem",
       },
       height: {
         0.75: "0.1875rem",
+        4.5: "1.125rem",
+      },
+      size: {
+        4.5: "1.125rem",
       },
     },
   },

@@ -1,39 +1,37 @@
-import { z } from "zod";
-import { EventSource } from "eventsource";
 import {
   CreateAuthorizationCodeResponseSchema,
-  GetPersonalAccessTokenResponseSchema,
-  WhoAmIResponseSchema,
   CreateBackgroundWorkerRequestBody,
   CreateBackgroundWorkerResponse,
-  StartDeploymentIndexingResponseBody,
-  GetProjectEnvResponse,
-  GetEnvironmentVariablesResponseBody,
-  InitializeDeploymentResponseBody,
-  InitializeDeploymentRequestBody,
-  StartDeploymentIndexingRequestBody,
-  GetDeploymentResponseBody,
-  GetProjectsResponseBody,
-  GetProjectResponseBody,
-  ImportEnvironmentVariablesRequestBody,
-  EnvironmentVariableResponseBody,
-  TaskRunExecution,
-  FailDeploymentRequestBody,
-  FailDeploymentResponseBody,
-  FinalizeDeploymentRequestBody,
-  WorkersListResponseBody,
-  WorkersCreateResponseBody,
-  WorkersCreateRequestBody,
-  TriggerTaskRequestBody,
-  TriggerTaskResponse,
-  GetLatestDeploymentResponseBody,
   DevConfigResponseBody,
   DevDequeueRequestBody,
   DevDequeueResponseBody,
+  EnvironmentVariableResponseBody,
+  FailDeploymentRequestBody,
+  FailDeploymentResponseBody,
+  FinalizeDeploymentRequestBody,
+  GetDeploymentResponseBody,
+  GetEnvironmentVariablesResponseBody,
+  GetLatestDeploymentResponseBody,
+  GetPersonalAccessTokenResponseSchema,
+  GetProjectEnvResponse,
+  GetProjectResponseBody,
+  GetProjectsResponseBody,
+  ImportEnvironmentVariablesRequestBody,
+  InitializeDeploymentRequestBody,
+  InitializeDeploymentResponseBody,
   PromoteDeploymentResponseBody,
+  StartDeploymentIndexingRequestBody,
+  StartDeploymentIndexingResponseBody,
+  TaskRunExecution,
+  TriggerTaskRequestBody,
+  TriggerTaskResponse,
+  UpsertBranchRequestBody,
+  UpsertBranchResponseBody,
+  WhoAmIResponseSchema,
+  WorkersCreateRequestBody,
+  WorkersCreateResponseBody,
+  WorkersListResponseBody,
 } from "@trigger.dev/core/v3";
-import { ApiResult, wrapZodFetch, zodfetchSSE } from "@trigger.dev/core/v3/zodfetch";
-import { logger } from "./utilities/logger.js";
 import {
   WorkloadDebugLogRequestBody,
   WorkloadHeartbeatRequestBody,
@@ -43,6 +41,10 @@ import {
   WorkloadRunAttemptStartResponseBody,
   WorkloadRunLatestSnapshotResponseBody,
 } from "@trigger.dev/core/v3/workers";
+import { ApiResult, wrapZodFetch, zodfetchSSE } from "@trigger.dev/core/v3/zodfetch";
+import { EventSource } from "eventsource";
+import { z } from "zod";
+import { logger } from "./utilities/logger.js";
 
 export class CliApiClient {
   private engineURL: string;
@@ -50,10 +52,12 @@ export class CliApiClient {
   constructor(
     public readonly apiURL: string,
     // TODO: consider making this required
-    public readonly accessToken?: string
+    public readonly accessToken?: string,
+    public readonly branch?: string
   ) {
     this.apiURL = apiURL.replace(/\/$/, "");
     this.engineURL = this.apiURL;
+    this.branch = branch;
   }
 
   async createAuthorizationCode() {
@@ -136,29 +140,10 @@ export class CliApiClient {
       `${this.apiURL}/api/v1/projects/${projectRef}/background-workers`,
       {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${this.accessToken}`,
-          "Content-Type": "application/json",
-        },
+        headers: this.getHeaders(),
         body: JSON.stringify(body),
       }
     );
-  }
-
-  async createTaskRunAttempt(
-    runFriendlyId: string
-  ): Promise<ApiResult<z.infer<typeof TaskRunExecution>>> {
-    if (!this.accessToken) {
-      throw new Error("creatTaskRunAttempt: No access token");
-    }
-
-    return wrapZodFetch(TaskRunExecution, `${this.apiURL}/api/v1/runs/${runFriendlyId}/attempts`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${this.accessToken}`,
-        "Content-Type": "application/json",
-      },
-    });
   }
 
   async getProjectEnv({ projectRef, env }: { projectRef: string; env: string }) {
@@ -178,6 +163,41 @@ export class CliApiClient {
     );
   }
 
+  async upsertBranch(projectRef: string, body: UpsertBranchRequestBody) {
+    if (!this.accessToken) {
+      throw new Error("upsertBranch: No access token");
+    }
+
+    return wrapZodFetch(
+      UpsertBranchResponseBody,
+      `${this.apiURL}/api/v1/projects/${projectRef}/branches`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      }
+    );
+  }
+
+  async archiveBranch(projectRef: string, branch: string) {
+    if (!this.accessToken) {
+      throw new Error("archiveBranch: No access token");
+    }
+
+    return wrapZodFetch(
+      z.object({ branch: z.object({ id: z.string() }) }),
+      `${this.apiURL}/api/v1/projects/${projectRef}/branches/archive`,
+      {
+        method: "POST",
+        headers: this.getHeaders(),
+        body: JSON.stringify({ branch }),
+      }
+    );
+  }
+
   async getEnvironmentVariables(projectRef: string) {
     if (!this.accessToken) {
       throw new Error("getEnvironmentVariables: No access token");
@@ -187,10 +207,7 @@ export class CliApiClient {
       GetEnvironmentVariablesResponseBody,
       `${this.apiURL}/api/v1/projects/${projectRef}/envvars`,
       {
-        headers: {
-          Authorization: `Bearer ${this.accessToken}`,
-          "Content-Type": "application/json",
-        },
+        headers: this.getHeaders(),
       }
     );
   }
@@ -209,10 +226,7 @@ export class CliApiClient {
       `${this.apiURL}/api/v1/projects/${projectRef}/envvars/${slug}/import`,
       {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${this.accessToken}`,
-          "Content-Type": "application/json",
-        },
+        headers: this.getHeaders(),
         body: JSON.stringify(params),
       }
     );
@@ -225,10 +239,7 @@ export class CliApiClient {
 
     return wrapZodFetch(InitializeDeploymentResponseBody, `${this.apiURL}/api/v1/deployments`, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${this.accessToken}`,
-        "Content-Type": "application/json",
-      },
+      headers: this.getHeaders(),
       body: JSON.stringify(body),
     });
   }
@@ -246,10 +257,7 @@ export class CliApiClient {
       `${this.apiURL}/api/v1/deployments/${deploymentId}/background-workers`,
       {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${this.accessToken}`,
-          "Content-Type": "application/json",
-        },
+        headers: this.getHeaders(),
         body: JSON.stringify(body),
       }
     );
@@ -265,10 +273,7 @@ export class CliApiClient {
       `${this.apiURL}/api/v1/deployments/${id}/fail`,
       {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${this.accessToken}`,
-          "Content-Type": "application/json",
-        },
+        headers: this.getHeaders(),
         body: JSON.stringify(body),
       }
     );
@@ -295,10 +300,7 @@ export class CliApiClient {
       url: `${this.apiURL}/api/v3/deployments/${id}/finalize`,
       request: {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${this.accessToken}`,
-          "Content-Type": "application/json",
-        },
+        headers: this.getHeaders(),
         body: JSON.stringify(body),
       },
       messages: {
@@ -352,10 +354,7 @@ export class CliApiClient {
       `${this.apiURL}/api/v1/deployments/${version}/promote`,
       {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${this.accessToken}`,
-          "Content-Type": "application/json",
-        },
+        headers: this.getHeaders(),
       }
     );
   }
@@ -370,10 +369,7 @@ export class CliApiClient {
       `${this.apiURL}/api/v1/deployments/${deploymentId}/start-indexing`,
       {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${this.accessToken}`,
-          "Content-Type": "application/json",
-        },
+        headers: this.getHeaders(),
         body: JSON.stringify(body),
       }
     );
@@ -388,10 +384,7 @@ export class CliApiClient {
       GetDeploymentResponseBody,
       `${this.apiURL}/api/v1/deployments/${deploymentId}`,
       {
-        headers: {
-          Authorization: `Bearer ${this.accessToken}`,
-          Accept: "application/json",
-        },
+        headers: this.getHeaders(),
       }
     );
   }
@@ -403,10 +396,7 @@ export class CliApiClient {
 
     return wrapZodFetch(TriggerTaskResponse, `${this.apiURL}/api/v1/tasks/${taskId}/trigger`, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${this.accessToken}`,
-        Accept: "application/json",
-      },
+      headers: this.getHeaders(),
       body: JSON.stringify(body ?? {}),
     });
   }
@@ -449,10 +439,7 @@ export class CliApiClient {
       GetLatestDeploymentResponseBody,
       `${this.apiURL}/api/v1/deployments/latest`,
       {
-        headers: {
-          Authorization: `Bearer ${this.accessToken}`,
-          Accept: "application/json",
-        },
+        headers: this.getHeaders(),
       }
     );
   }
@@ -463,10 +450,7 @@ export class CliApiClient {
     }
 
     return wrapZodFetch(WorkersListResponseBody, `${this.apiURL}/api/v1/workers`, {
-      headers: {
-        Authorization: `Bearer ${this.accessToken}`,
-        Accept: "application/json",
-      },
+      headers: this.getHeaders(),
     });
   }
 
@@ -477,10 +461,7 @@ export class CliApiClient {
 
     return wrapZodFetch(WorkersCreateResponseBody, `${this.apiURL}/api/v1/workers`, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${this.accessToken}`,
-        Accept: "application/json",
-      },
+      headers: this.getHeaders(),
       body: JSON.stringify(options),
     });
   }
@@ -666,5 +647,18 @@ export class CliApiClient {
 
   private setEngineURL(engineURL: string) {
     this.engineURL = engineURL.replace(/\/$/, "");
+  }
+
+  private getHeaders() {
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${this.accessToken}`,
+      "Content-Type": "application/json",
+    };
+
+    if (this.branch) {
+      headers["x-trigger-branch"] = this.branch;
+    }
+
+    return headers;
   }
 }

@@ -1,13 +1,12 @@
-import { Prisma, type RuntimeEnvironmentType, type ScheduleType } from "@trigger.dev/database";
+import { type RuntimeEnvironmentType, type ScheduleType } from "@trigger.dev/database";
 import { type ScheduleListFilters } from "~/components/runs/v3/ScheduleFilters";
-import { sqlDatabaseSchema } from "~/db.server";
 import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { getLimit } from "~/services/platform.v3.server";
-import { CheckScheduleService } from "~/v3/services/checkSchedule.server";
-import { calculateNextScheduledTimestamp } from "~/v3/utils/calculateNextSchedule.server";
-import { BasePresenter } from "./basePresenter.server";
 import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
+import { CheckScheduleService } from "~/v3/services/checkSchedule.server";
+import { calculateNextScheduledTimestampFromNow } from "~/v3/utils/calculateNextSchedule.server";
+import { BasePresenter } from "./basePresenter.server";
 
 type ScheduleListOptions = {
   projectId: string;
@@ -36,6 +35,7 @@ export type ScheduleListItem = {
     id: string;
     type: RuntimeEnvironmentType;
     userName?: string;
+    branchName?: string;
   }[];
 };
 export type ScheduleList = Awaited<ReturnType<ScheduleListPresenter["call"]>>;
@@ -68,6 +68,7 @@ export class ScheduleListPresenter extends BasePresenter {
             id: true,
             type: true,
             slug: true,
+            branchName: true,
             orgMember: {
               select: {
                 user: {
@@ -258,7 +259,10 @@ export class ScheduleListPresenter extends BasePresenter {
         active: schedule.active,
         externalId: schedule.externalId,
         lastRun: schedule.lastRunTriggeredAt ?? undefined,
-        nextRun: calculateNextScheduledTimestamp(schedule.generatorExpression, schedule.timezone),
+        nextRun: calculateNextScheduledTimestampFromNow(
+          schedule.generatorExpression,
+          schedule.timezone
+        ),
         environments: schedule.instances.map((instance) => {
           const environment = project.environments.find((env) => env.id === instance.environmentId);
           if (!environment) {
@@ -267,7 +271,10 @@ export class ScheduleListPresenter extends BasePresenter {
             );
           }
 
-          return displayableEnvironment(environment, userId);
+          return {
+            ...displayableEnvironment(environment, userId),
+            branchName: environment.branchName ?? undefined,
+          };
         }),
       };
     });

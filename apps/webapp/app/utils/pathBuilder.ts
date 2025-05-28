@@ -415,6 +415,14 @@ export function v3DeploymentVersionPath(
   return `${v3DeploymentsPath(organization, project, environment)}?version=${version}`;
 }
 
+export function branchesPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath
+) {
+  return `${v3EnvironmentPath(organization, project, environment)}/branches`;
+}
+
 export function v3BillingPath(organization: OrgForPath, message?: string) {
   return `${organizationPath(organization)}/settings/billing${
     message ? `?message=${encodeURIComponent(message)}` : ""

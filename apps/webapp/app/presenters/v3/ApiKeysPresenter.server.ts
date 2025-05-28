@@ -1,7 +1,7 @@
+import { type RuntimeEnvironment } from "@trigger.dev/database";
 import { type PrismaClient, prisma } from "~/db.server";
 import { type Project } from "~/models/project.server";
 import { type User } from "~/models/user.server";
-import { sortEnvironments } from "~/utils/environmentSort";
 
 export class ApiKeysPresenter {
   #prismaClient: PrismaClient;
@@ -10,12 +10,19 @@ export class ApiKeysPresenter {
     this.#prismaClient = prismaClient;
   }
 
-  public async call({ userId, projectSlug }: { userId: User["id"]; projectSlug: Project["slug"] }) {
-    const environments = await this.#prismaClient.runtimeEnvironment.findMany({
+  public async call({
+    userId,
+    projectSlug,
+    environmentSlug,
+  }: {
+    userId: User["id"];
+    projectSlug: Project["slug"];
+    environmentSlug: RuntimeEnvironment["slug"];
+  }) {
+    const environment = await this.#prismaClient.runtimeEnvironment.findFirst({
       select: {
         id: true,
         apiKey: true,
-        pkApiKey: true,
         type: true,
         slug: true,
         updatedAt: true,
@@ -24,13 +31,11 @@ export class ApiKeysPresenter {
             userId: true,
           },
         },
-        backgroundWorkers: {
+        branchName: true,
+        parentEnvironment: {
           select: {
-            version: true,
-          },
-          take: 1,
-          orderBy: {
-            version: "desc",
+            id: true,
+            apiKey: true,
           },
         },
       },
@@ -45,30 +50,25 @@ export class ApiKeysPresenter {
             },
           },
         },
+        slug: environmentSlug,
+        orgMember:
+          environmentSlug === "dev"
+            ? {
+                userId,
+              }
+            : undefined,
       },
     });
 
-    //filter out environments the only development ones belong to the current user
-    const filtered = environments.filter((environment) => {
-      if (environment.type === "DEVELOPMENT") {
-        return environment.orgMember?.userId === userId;
-      }
-      return true;
-    });
+    if (!environment) {
+      throw new Error("Environment not found");
+    }
 
     return {
-      environments: sortEnvironments(
-        filtered.map((environment) => ({
-          id: environment.id,
-          apiKey: environment.apiKey,
-          pkApiKey: environment.pkApiKey,
-          type: environment.type,
-          slug: environment.slug,
-          updatedAt: environment.updatedAt,
-          latestVersion: environment.backgroundWorkers.at(0)?.version,
-        }))
-      ),
-      hasStaging: environments.some((environment) => environment.type === "STAGING"),
+      environment: {
+        ...environment,
+        apiKey: environment?.parentEnvironment?.apiKey ?? environment?.apiKey,
+      },
     };
   }
 }

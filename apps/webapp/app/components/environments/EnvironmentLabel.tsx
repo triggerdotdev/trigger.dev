@@ -1,4 +1,5 @@
 import {
+  BranchEnvironmentIconSmall,
   DeployedEnvironmentIconSmall,
   DevEnvironmentIconSmall,
   ProdEnvironmentIconSmall,
@@ -6,7 +7,7 @@ import {
 import type { RuntimeEnvironment } from "~/models/runtimeEnvironment.server";
 import { cn } from "~/utils/cn";
 
-type Environment = Pick<RuntimeEnvironment, "type">;
+type Environment = Pick<RuntimeEnvironment, "type"> & { branchName?: string | null };
 
 export function EnvironmentIcon({
   environment,
@@ -15,6 +16,14 @@ export function EnvironmentIcon({
   environment: Environment;
   className?: string;
 }) {
+  if (environment.branchName) {
+    return (
+      <BranchEnvironmentIconSmall
+        className={cn(environmentTextClassName(environment), className)}
+      />
+    );
+  }
+
   switch (environment.type) {
     case "DEVELOPMENT":
       return (
@@ -39,13 +48,15 @@ export function EnvironmentIcon({
 export function EnvironmentCombo({
   environment,
   className,
+  iconClassName,
 }: {
   environment: Environment;
   className?: string;
+  iconClassName?: string;
 }) {
   return (
     <span className={cn("flex items-center gap-1.5 text-sm text-text-bright", className)}>
-      <EnvironmentIcon environment={environment} className="size-[1.125rem]" />
+      <EnvironmentIcon environment={environment} className={cn("size-4.5", iconClassName)} />
       <EnvironmentLabel environment={environment} />
     </span>
   );
@@ -60,12 +71,16 @@ export function EnvironmentLabel({
 }) {
   return (
     <span className={cn(environmentTextClassName(environment), className)}>
-      {environmentFullTitle(environment)}
+      {environment.branchName ? environment.branchName : environmentFullTitle(environment)}
     </span>
   );
 }
 
 export function environmentTitle(environment: Environment, username?: string) {
+  if (environment.branchName) {
+    return environment.branchName;
+  }
+
   switch (environment.type) {
     case "PRODUCTION":
       return "Prod";
@@ -79,6 +94,10 @@ export function environmentTitle(environment: Environment, username?: string) {
 }
 
 export function environmentFullTitle(environment: Environment) {
+  if (environment.branchName) {
+    return environment.branchName;
+  }
+
   switch (environment.type) {
     case "PRODUCTION":
       return "Production";

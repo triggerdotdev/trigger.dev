@@ -5,7 +5,7 @@ import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 
 export default defineConfig({
-  project: "proj_cdmymsrobxmcgjqzhdkq",
+  project: process.env.TRIGGER_PROJECT_REF!,
   dirs: ["./src/trigger"],
   telemetry: {
     logExporters: [

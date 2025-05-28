@@ -11,9 +11,6 @@
     "@opentelemetry/semantic-conventions": "^1.27.0",
     "@trigger.dev/core": "workspace:*"
   },
-  "devDependencies": {
-    "vitest": "^1.4.0"
-  },
   "scripts": {
     "typecheck": "tsc --noEmit"
   }

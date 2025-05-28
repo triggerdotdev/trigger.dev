@@ -1,10 +1,11 @@
 import { Outlet } from "@remix-run/react";
-import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { redirect, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { prisma } from "~/db.server";
+import { redirectWithErrorMessage } from "~/models/message.server";
 import { updateCurrentProjectEnvironmentId } from "~/services/dashboardPreferences.server";
 import { logger } from "~/services/logger.server";
 import { requireUser } from "~/services/session.server";
-import { EnvironmentParamSchema } from "~/utils/pathBuilder";
+import { EnvironmentParamSchema, v3ProjectPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
@@ -47,10 +48,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const environments = project.environments.filter((env) => env.slug === envParam);
   if (environments.length === 0) {
-    throw new Response("Environment not Found", {
-      status: 404,
-      statusText: "Environment not found",
-    });
+    return redirect(v3ProjectPath({ slug: organizationSlug }, { slug: projectParam }));
   }
 
   let environmentId: string | undefined = undefined;

@@ -14,6 +14,7 @@ import { configureWorkersCommand } from "../commands/workers/index.js";
 import { configureSwitchProfilesCommand } from "../commands/switch.js";
 import { configureTriggerTaskCommand } from "../commands/trigger.js";
 import { configurePromoteCommand } from "../commands/promote.js";
+import { configurePreviewCommand } from "../commands/preview.js";
 
 export const program = new Command();
 
@@ -32,6 +33,7 @@ configureLogoutCommand(program);
 configureListProfilesCommand(program);
 configureSwitchProfilesCommand(program);
 configureUpdateCommand(program);
+configurePreviewCommand(program);
 // configureWorkersCommand(program);
 // configureTriggerTaskCommand(program);
 

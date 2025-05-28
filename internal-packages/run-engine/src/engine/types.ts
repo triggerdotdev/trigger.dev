@@ -47,6 +47,8 @@ export type RunEngineOptions = {
   releaseConcurrency?: {
     disabled?: boolean;
     maxTokensRatio?: number;
+    releasingsMaxAge?: number;
+    releasingsPollInterval?: number;
     redis?: Partial<RedisOptions>;
     maxRetries?: number;
     consumersCount?: number;
@@ -66,6 +68,7 @@ export type HeartbeatTimeouts = {
   PENDING_CANCEL: number;
   EXECUTING: number;
   EXECUTING_WITH_WAITPOINTS: number;
+  SUSPENDED: number;
 };
 
 export type TriggerParams = {

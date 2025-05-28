@@ -26,7 +26,11 @@ async function bootstrap() {
     process.exit(1);
   }
 
-  const cliApiClient = new CliApiClient(env.TRIGGER_API_URL, env.TRIGGER_SECRET_KEY);
+  const cliApiClient = new CliApiClient(
+    env.TRIGGER_API_URL,
+    env.TRIGGER_SECRET_KEY,
+    env.TRIGGER_PREVIEW_BRANCH
+  );
 
   if (!env.TRIGGER_PROJECT_REF) {
     console.error("TRIGGER_PROJECT_REF is not set");

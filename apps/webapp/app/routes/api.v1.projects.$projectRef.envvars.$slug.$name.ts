@@ -125,7 +125,8 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
 
   const variables = await repository.getEnvironmentWithRedactedSecrets(
     environment.project.id,
-    environment.id
+    environment.id,
+    environment.parentEnvironmentId ?? undefined
   );
 
   const environmentVariable = variables.find((v) => v.key === parsedParams.data.name);

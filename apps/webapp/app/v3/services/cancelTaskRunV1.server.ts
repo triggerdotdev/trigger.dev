@@ -95,13 +95,10 @@ export class CancelTaskRunServiceV1 extends BaseService {
 
     logger.debug("Cancelling in-progress events", {
       inProgressEvents: inProgressEvents.map((event) => event.id),
+      eventCount: inProgressEvents.length,
     });
 
-    await Promise.all(
-      inProgressEvents.map((event) => {
-        return eventRepository.cancelEvent(event, opts.cancelledAt, opts.reason);
-      })
-    );
+    await eventRepository.cancelEvents(inProgressEvents, opts.cancelledAt, opts.reason);
 
     // Cancel any in progress attempts
     if (opts.cancelAttempts) {

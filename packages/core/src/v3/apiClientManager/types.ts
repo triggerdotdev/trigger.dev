@@ -10,5 +10,9 @@ export type ApiClientConfiguration = {
    * The access token to authenticate with the Trigger API.
    */
   accessToken?: string;
+  /**
+   * The preview branch name (for preview environments)
+   */
+  previewBranch?: string;
   requestOptions?: ApiRequestOptions;
 };

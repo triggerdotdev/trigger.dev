@@ -7,16 +7,16 @@ import {
 } from "@heroicons/react/20/solid";
 import { ArrowDownCircleIcon, ArrowUpCircleIcon } from "@heroicons/react/24/outline";
 import { Form, useLocation, useNavigation } from "@remix-run/react";
-import { ActionFunctionArgs } from "@remix-run/server-runtime";
+import { type ActionFunctionArgs } from "@remix-run/server-runtime";
 import { uiComponent } from "@team-plain/typescript-sdk";
 import { GitHubLightIcon } from "@trigger.dev/companyicons";
 import {
-  FreePlanDefinition,
-  Limits,
-  PaidPlanDefinition,
-  Plans,
-  SetPlanBody,
-  SubscriptionResult,
+  type FreePlanDefinition,
+  type Limits,
+  type PaidPlanDefinition,
+  type Plans,
+  type SetPlanBody,
+  type SubscriptionResult,
 } from "@trigger.dev/platform/v3";
 import React, { useEffect, useState } from "react";
 import { z } from "zod";
@@ -210,6 +210,10 @@ const pricingDefinitions = {
   additionalSeats: {
     title: "Additional seats",
     content: "Then $20/month per seat",
+  },
+  branches: {
+    title: "Branches",
+    content: "The number of preview branches that can be active (you can archive old ones).",
   },
 };
 
@@ -511,6 +515,7 @@ export function TierFree({
             </FeatureItem>
             <TeamMembers limits={plan.limits} />
             <Environments limits={plan.limits} />
+            <Branches limits={plan.limits} />
             <Schedules limits={plan.limits} />
             <LogRetention limits={plan.limits} />
             <SupportLevel limits={plan.limits} />
@@ -625,7 +630,9 @@ export function TierHobby({
             tasks
           </DefinitionTip>
         </FeatureItem>
-        <TeamMembers limits={plan.limits} /> <Environments limits={plan.limits} />
+        <TeamMembers limits={plan.limits} />
+        <Environments limits={plan.limits} />
+        <Branches limits={plan.limits} />
         <Schedules limits={plan.limits} />
         <LogRetention limits={plan.limits} />
         <SupportLevel limits={plan.limits} />
@@ -744,6 +751,7 @@ export function TierPro({
         </FeatureItem>
         <TeamMembers limits={plan.limits}>{pricingDefinitions.additionalSeats.content}</TeamMembers>
         <Environments limits={plan.limits} />
+        <Branches limits={plan.limits} />
         <Schedules limits={plan.limits}>{pricingDefinitions.additionalSchedules.content}</Schedules>
         <LogRetention limits={plan.limits} />
         <SupportLevel limits={plan.limits} />
@@ -977,7 +985,7 @@ function TeamMembers({ limits, children }: { limits: Limits; children?: React.Re
 function Environments({ limits }: { limits: Limits }) {
   return (
     <FeatureItem checked>
-      {limits.hasStagingEnvironment ? "Dev, Staging and Prod" : "Dev and Prod"}{" "}
+      {limits.hasStagingEnvironment ? "Dev, Preview and Prod" : "Dev and Prod"}{" "}
       <DefinitionTip
         title={pricingDefinitions.environment.title}
         content={pricingDefinitions.environment.content}
@@ -1070,6 +1078,21 @@ function RealtimeConcurrency({ limits, children }: { limits: Limits; children?: 
         </div>
         {children && <span className="text-xs text-text-dimmed">{children}</span>}
       </div>
+    </FeatureItem>
+  );
+}
+
+function Branches({ limits }: { limits: Limits }) {
+  return (
+    <FeatureItem checked={limits.branches.number > 0}>
+      {limits.branches.number}
+      {limits.branches.canExceed ? "+ " : " "}
+      <DefinitionTip
+        title={pricingDefinitions.branches.title}
+        content={pricingDefinitions.branches.content}
+      >
+        preview branches
+      </DefinitionTip>
     </FeatureItem>
   );
 }
