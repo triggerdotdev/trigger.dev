@@ -1,5 +1,5 @@
 {
-  "include": ["src/**/*.test.ts"],
+  "include": ["src/**/*.test.ts", "src/engine/tests/utils/*.ts"],
   "references": [{ "path": "./tsconfig.src.json" }],
   "compilerOptions": {
     "composite": true,
