@@ -1,0 +1,73 @@
+---
+title: "Preview branches"
+description: "Create isolated environments for each branch of your code, allowing you to test changes in a dedicated preview environment before merging to production"
+---
+
+import UpgradeToV4Note from "/snippets/upgrade-to-v4-note.mdx";
+
+<UpgradeToV4Note />
+
+## How does it work?
+
+The "Preview" environment is a special environment where you can create "branches". Normally you would automatically create a preview branch that matches your git branch when a Pull Request is opened (and then archive it automatically when the PR is merged/closed).
+
+The process to use preview branches looks like this:
+
+1. Create a preview branch
+2. Deploy to the preview branch (1+ times)
+3. Trigger runs using the Preview API key and the branch name
+4. Archive the preview branch
+
+There are two main ways to do this:
+
+1. Automatically: using GitHub Actions (recommended)
+2. Manually: in the dashboard and/or using the CLI
+
+## Using preview branches using GitHub Actions
+
+```yml
+name: Deploy to Trigger.dev (preview branches)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed, merged]
+
+jobs:
+  deploy-preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js 20.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.x"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Deploy preview branch
+        run: npx trigger.dev@v4-beta deploy --env preview
+        env:
+          TRIGGER_ACCESS_TOKEN: ${{ secrets.TRIGGER_ACCESS_TOKEN }}
+```
+
+For this workflow to work, you need to set up the following secrets in your GitHub repository:
+
+- `TRIGGER_ACCESS_TOKEN`: Your Trigger.dev personal access token. View the instructions [here](/github-actions) to learn more.
+
+Notice that the deploy command has `--env preview` at the end. We automatically detect the preview branch from the GitHub actions env var.
+
+## Manually creating, deploying and archiving preview branches
+
+### Creating and archiving preview branches from the dashboard
+
+In the dashboard, you can
+
+## Automating using GitHub Actions
+
+## Limits
+
+## Triggering runs on preview branches
+
+When triggering runs for a preview branch you need to both set the `TRIGGER_SECRET_KEY` (to your Preview API key) and set `TRIGGER_PREVIEW_BRANCH` to the name of your branch.
