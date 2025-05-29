@@ -316,6 +316,9 @@ async function selfHostedBuildImage(
     .filter(([key, value]) => value)
     .flatMap(([key, value]) => ["--build-arg", `${key}=${value}`]);
 
+  const apiUrl = normalizeApiUrlForBuild(options.apiUrl);
+  const network = getNetworkArgs(apiUrl, options.network);
+
   const args = [
     "build",
     "-f",
@@ -323,7 +326,7 @@ async function selfHostedBuildImage(
     options.noCache ? "--no-cache" : undefined,
     "--platform",
     options.buildPlatform,
-    ...(options.network ? ["--network", options.network] : []),
+    ...network,
     "--build-arg",
     `TRIGGER_PROJECT_ID=${options.projectId}`,
     "--build-arg",
@@ -335,7 +338,7 @@ async function selfHostedBuildImage(
     "--build-arg",
     `TRIGGER_PROJECT_REF=${options.projectRef}`,
     "--build-arg",
-    `TRIGGER_API_URL=${normalizeApiUrlForBuild(options.apiUrl)}`,
+    `TRIGGER_API_URL=${apiUrl}`,
     "--build-arg",
     `TRIGGER_PREVIEW_BRANCH=${options.branchName ?? ""}`,
     "--build-arg",
@@ -740,10 +743,26 @@ CMD []
 
 // If apiUrl is something like http://localhost:3030, AND we are on macOS, we need to convert it to http://host.docker.internal:3030
 // this way the indexing will work because the docker image can reach the local server
-function normalizeApiUrlForBuild(apiUrl: string) {
+function normalizeApiUrlForBuild(apiUrl: string): string {
   if (process.platform === "darwin") {
     return apiUrl.replace("localhost", "host.docker.internal");
   }
 
   return apiUrl;
+}
+
+function getNetworkArgs(apiUrl: string, network?: string): string[] {
+  if (network) {
+    return [`--network`, network];
+  }
+
+  if (process.platform === "darwin") {
+    return [];
+  }
+
+  if (apiUrl.includes("localhost") || apiUrl.includes("127.0.0.1")) {
+    return ["--network", "host"];
+  }
+
+  return [];
 }
