@@ -88,11 +88,8 @@ const defaultRetrySettings = {
 const workerCatalog = {
   processQueueForWorkerQueue: {
     schema: z.object({
-      queue: z.string(),
-      concurrencyKey: z.string().optional(),
+      queueKey: z.string(),
       environmentId: z.string(),
-      projectId: z.string(),
-      orgId: z.string(),
     }),
     visibilityTimeoutMs: 30_000,
   },
@@ -148,13 +145,7 @@ export class RunQueue {
       logger: new Logger("RunQueueWorker", options.logLevel ?? "log"),
       jobs: {
         processQueueForWorkerQueue: async (job) => {
-          await this.#processQueueForWorkerQueue(
-            job.payload.queue,
-            job.payload.environmentId,
-            job.payload.projectId,
-            job.payload.orgId,
-            job.payload.concurrencyKey
-          );
+          await this.#processQueueForWorkerQueue(job.payload.queueKey, job.payload.environmentId);
         },
       },
     });
@@ -426,11 +417,8 @@ export class RunQueue {
             id: queueKey, // dedupe by environment, queue, and concurrency key
             job: "processQueueForWorkerQueue",
             payload: {
-              queue: message.queue,
-              concurrencyKey,
+              queueKey,
               environmentId: env.id,
-              orgId: env.organization.id,
-              projectId: env.project.id,
             },
             // Add a small delay to dedupe messages so at most one of these will processed,
             // every 500ms per queue, concurrency key, and environment
@@ -501,7 +489,11 @@ export class RunQueue {
    * This is done when the run is in a final state.
    * @param messageId
    */
-  public async acknowledgeMessage(orgId: string, messageId: string) {
+  public async acknowledgeMessage(
+    orgId: string,
+    messageId: string,
+    options?: { skipDequeueProcessing?: boolean }
+  ) {
     return this.#trace(
       "acknowledgeMessage",
       async (span) => {
@@ -518,6 +510,21 @@ export class RunQueue {
           [SemanticAttributes.RUN_ID]: messageId,
           [SemanticAttributes.CONCURRENCY_KEY]: message.concurrencyKey,
         });
+
+        if (!options?.skipDequeueProcessing) {
+          // This will move the message to the worker queue so it can be dequeued
+          await this.worker.enqueueOnce({
+            id: message.queue, // dedupe by environment, queue, and concurrency key
+            job: "processQueueForWorkerQueue",
+            payload: {
+              queueKey: message.queue,
+              environmentId: message.environmentId,
+            },
+            // Add a small delay to dedupe messages so at most one of these will processed,
+            // every 500ms per queue, concurrency key, and environment
+            availableAt: new Date(Date.now() + (this.options.processWorkerQueueDebounceMs ?? 500)), // 500ms from now
+          });
+        }
 
         await this.#callAcknowledgeMessage({
           message,
@@ -1035,15 +1042,7 @@ export class RunQueue {
     );
   }
 
-  async #processQueueForWorkerQueue(
-    queue: string,
-    environmentId: string,
-    projectId: string,
-    orgId: string,
-    concurrencyKey?: string
-  ) {
-    const queueKey = this.keys.queueKey(orgId, projectId, environmentId, queue, concurrencyKey);
-
+  async #processQueueForWorkerQueue(queueKey: string, environmentId: string) {
     const shard = this.keys.masterQueueShardForEnvironment(environmentId, this.shardCount);
 
     this.logger.debug("processQueueForWorkerQueue", {
