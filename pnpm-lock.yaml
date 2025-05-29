@@ -278,7 +278,7 @@ importers:
         version: 0.52.1(@opentelemetry/api@1.9.0)
       '@opentelemetry/instrumentation':
         specifier: 0.52.1
-        version: 0.52.1(@opentelemetry/api@1.9.0)(supports-color@10.0.0)
+        version: 0.52.1(@opentelemetry/api@1.9.0)
       '@opentelemetry/instrumentation-express':
         specifier: ^0.36.1
         version: 0.36.1(@opentelemetry/api@1.9.0)
@@ -293,7 +293,7 @@ importers:
         version: 0.52.1(@opentelemetry/api@1.9.0)
       '@opentelemetry/sdk-node':
         specifier: 0.52.1
-        version: 0.52.1(@opentelemetry/api@1.9.0)(supports-color@10.0.0)
+        version: 0.52.1(@opentelemetry/api@1.9.0)
       '@opentelemetry/sdk-trace-base':
         specifier: 1.25.1
         version: 1.25.1(@opentelemetry/api@1.9.0)
@@ -504,9 +504,6 @@ importers:
       jsonpointer:
         specifier: ^5.0.1
         version: 5.0.1
-      jwt-decode:
-        specifier: ^4.0.0
-        version: 4.0.0
       lodash.omit:
         specifier: ^4.5.0
         version: 4.5.0
@@ -684,7 +681,7 @@ importers:
         version: link:../../internal-packages/testcontainers
       '@remix-run/dev':
         specifier: 2.1.0
-        version: 2.1.0(@remix-run/serve@2.1.0)(@types/node@20.14.14)(ts-node@10.9.1)(typescript@5.5.4)
+        version: 2.1.0(@remix-run/serve@2.1.0)(@types/node@22.13.9)(ts-node@10.9.1)(typescript@5.5.4)
       '@remix-run/eslint-config':
         specifier: 2.1.0
         version: 2.1.0(eslint@8.31.0)(react@18.2.0)(typescript@5.5.4)
@@ -849,7 +846,7 @@ importers:
         version: 3.4.1(ts-node@10.9.1)
       ts-node:
         specifier: ^10.7.0
-        version: 10.9.1(@swc/core@1.3.26)(@types/node@20.14.14)(typescript@5.5.4)
+        version: 10.9.1(@swc/core@1.3.26)(@types/node@22.13.9)(typescript@5.5.4)
       tsconfig-paths:
         specifier: ^3.14.1
         version: 3.14.1
@@ -3839,7 +3836,7 @@ packages:
       '@babel/traverse': 7.24.7
       '@babel/types': 7.24.0
       convert-source-map: 1.9.0
-      debug: 4.4.0(supports-color@10.0.0)
+      debug: 4.4.0
       gensync: 1.0.0-beta.2
       json5: 2.2.3
       semver: 6.3.1
@@ -4419,7 +4416,7 @@ packages:
       '@babel/helper-split-export-declaration': 7.22.6
       '@babel/parser': 7.24.7
       '@babel/types': 7.24.0
-      debug: 4.4.0(supports-color@10.0.0)
+      debug: 4.4.0
       globals: 11.12.0
     transitivePeerDependencies:
       - supports-color
@@ -4437,7 +4434,7 @@ packages:
       '@babel/helper-split-export-declaration': 7.24.7
       '@babel/parser': 7.27.0
       '@babel/types': 7.27.0
-      debug: 4.4.0(supports-color@10.0.0)
+      debug: 4.4.0
       globals: 11.12.0
     transitivePeerDependencies:
       - supports-color
@@ -6944,7 +6941,7 @@ packages:
     engines: {node: ^12.22.0 || ^14.17.0 || >=16.0.0}
     dependencies:
       ajv: 6.12.6
-      debug: 4.4.0(supports-color@10.0.0)
+      debug: 4.4.0
       espree: 9.6.0
       globals: 13.19.0
       ignore: 5.2.4
@@ -7213,7 +7210,7 @@ packages:
     engines: {node: '>=10.10.0'}
     dependencies:
       '@humanwhocodes/object-schema': 1.2.1
-      debug: 4.4.0(supports-color@10.0.0)
+      debug: 4.4.0
       minimatch: 3.1.2
     transitivePeerDependencies:
       - supports-color
@@ -8970,7 +8967,7 @@ packages:
     dependencies:
       '@opentelemetry/api': 1.9.0
       '@opentelemetry/core': 1.25.1(@opentelemetry/api@1.9.0)
-      '@opentelemetry/instrumentation': 0.52.1(@opentelemetry/api@1.9.0)(supports-color@10.0.0)
+      '@opentelemetry/instrumentation': 0.52.1(@opentelemetry/api@1.9.0)
       '@opentelemetry/semantic-conventions': 1.25.1
       semver: 7.6.3
     transitivePeerDependencies:
@@ -9017,7 +9014,7 @@ packages:
       '@opentelemetry/api-logs': 0.49.1
       '@types/shimmer': 1.0.2
       import-in-the-middle: 1.7.1
-      require-in-the-middle: 7.1.1(supports-color@10.0.0)
+      require-in-the-middle: 7.1.1
       semver: 7.6.3
       shimmer: 1.2.1
     transitivePeerDependencies:
@@ -9034,7 +9031,7 @@ packages:
       '@opentelemetry/api-logs': 0.49.1
       '@types/shimmer': 1.0.2
       import-in-the-middle: 1.7.1
-      require-in-the-middle: 7.1.1(supports-color@10.0.0)
+      require-in-the-middle: 7.1.1
       semver: 7.6.3
       shimmer: 1.2.1
     transitivePeerDependencies:
@@ -9069,6 +9066,23 @@ packages:
       '@types/shimmer': 1.0.2
       import-in-the-middle: 1.11.0
       require-in-the-middle: 7.1.1(supports-color@10.0.0)
+      semver: 7.6.3
+      shimmer: 1.2.1
+    transitivePeerDependencies:
+      - supports-color
+    dev: false
+
+  /@opentelemetry/instrumentation@0.52.1(@opentelemetry/api@1.9.0):
+    resolution: {integrity: sha512-uXJbYU/5/MBHjMp1FqrILLRuiJCs3Ofk0MeRDk8g1S1gD47U8X3JnSwcMO1rtRo1x1a7zKaQHaoYu49p/4eSKw==}
+    engines: {node: '>=14'}
+    peerDependencies:
+      '@opentelemetry/api': ^1.3.0
+    dependencies:
+      '@opentelemetry/api': 1.9.0
+      '@opentelemetry/api-logs': 0.52.1
+      '@types/shimmer': 1.0.2
+      import-in-the-middle: 1.11.0
+      require-in-the-middle: 7.1.1
       semver: 7.6.3
       shimmer: 1.2.1
     transitivePeerDependencies:
@@ -9432,6 +9446,30 @@ packages:
     transitivePeerDependencies:
       - supports-color
     dev: true
+
+  /@opentelemetry/sdk-node@0.52.1(@opentelemetry/api@1.9.0):
+    resolution: {integrity: sha512-uEG+gtEr6eKd8CVWeKMhH2olcCHM9dEK68pe0qE0be32BcCRsvYURhHaD1Srngh1SQcnQzZ4TP324euxqtBOJA==}
+    engines: {node: '>=14'}
+    peerDependencies:
+      '@opentelemetry/api': '>=1.3.0 <1.10.0'
+    dependencies:
+      '@opentelemetry/api': 1.9.0
+      '@opentelemetry/api-logs': 0.52.1
+      '@opentelemetry/core': 1.25.1(@opentelemetry/api@1.9.0)
+      '@opentelemetry/exporter-trace-otlp-grpc': 0.52.1(@opentelemetry/api@1.9.0)
+      '@opentelemetry/exporter-trace-otlp-http': 0.52.1(@opentelemetry/api@1.9.0)
+      '@opentelemetry/exporter-trace-otlp-proto': 0.52.1(@opentelemetry/api@1.9.0)
+      '@opentelemetry/exporter-zipkin': 1.25.1(@opentelemetry/api@1.9.0)
+      '@opentelemetry/instrumentation': 0.52.1(@opentelemetry/api@1.9.0)
+      '@opentelemetry/resources': 1.25.1(@opentelemetry/api@1.9.0)
+      '@opentelemetry/sdk-logs': 0.52.1(@opentelemetry/api@1.9.0)
+      '@opentelemetry/sdk-metrics': 1.25.1(@opentelemetry/api@1.9.0)
+      '@opentelemetry/sdk-trace-base': 1.25.1(@opentelemetry/api@1.9.0)
+      '@opentelemetry/sdk-trace-node': 1.25.1(@opentelemetry/api@1.9.0)
+      '@opentelemetry/semantic-conventions': 1.25.1
+    transitivePeerDependencies:
+      - supports-color
+    dev: false
 
   /@opentelemetry/sdk-node@0.52.1(@opentelemetry/api@1.9.0)(supports-color@10.0.0):
     resolution: {integrity: sha512-uEG+gtEr6eKd8CVWeKMhH2olcCHM9dEK68pe0qE0be32BcCRsvYURhHaD1Srngh1SQcnQzZ4TP324euxqtBOJA==}
@@ -15363,7 +15401,7 @@ packages:
       - encoding
     dev: false
 
-  /@remix-run/dev@2.1.0(@remix-run/serve@2.1.0)(@types/node@20.14.14)(ts-node@10.9.1)(typescript@5.5.4):
+  /@remix-run/dev@2.1.0(@remix-run/serve@2.1.0)(@types/node@22.13.9)(ts-node@10.9.1)(typescript@5.5.4):
     resolution: {integrity: sha512-Hn5lw46F+a48dp5uHKe68ckaHgdStW4+PmLod+LMFEqrMbkF0j4XD1ousebxlv989o0Uy/OLgfRMgMy4cBOvHg==}
     engines: {node: '>=18.0.0'}
     hasBin: true
@@ -15388,7 +15426,7 @@ packages:
       '@remix-run/serve': 2.1.0(typescript@5.5.4)
       '@remix-run/server-runtime': 2.1.0(typescript@5.5.4)
       '@types/mdx': 2.0.5
-      '@vanilla-extract/integration': 6.2.1(@types/node@20.14.14)
+      '@vanilla-extract/integration': 6.2.1(@types/node@22.13.9)
       arg: 5.0.2
       cacache: 17.1.4
       chalk: 4.1.2
@@ -17817,7 +17855,6 @@ packages:
     resolution: {integrity: sha512-acBjXdRJ3A6Pb3tqnw9HZmyR3Fiol3aGxRCK1x3d+6CDAMjl7I649wpSd+yNURCjbOUGu9tqtLKnTGxmK6CyGw==}
     dependencies:
       undici-types: 6.20.0
-    dev: false
 
   /@types/nodemailer@6.4.17:
     resolution: {integrity: sha512-I9CCaIp6DTldEg7vyUTZi8+9Vo0hi1/T8gv3C89yk1rSAAzoKQ8H8ki/jBYJSFoH/BisgLP8tkZMlQ91CIquww==}
@@ -18185,7 +18222,7 @@ packages:
       '@typescript-eslint/scope-manager': 5.59.6
       '@typescript-eslint/types': 5.59.6
       '@typescript-eslint/typescript-estree': 5.59.6(typescript@5.5.4)
-      debug: 4.4.0(supports-color@10.0.0)
+      debug: 4.4.0
       eslint: 8.31.0
       typescript: 5.5.4
     transitivePeerDependencies:
@@ -18212,7 +18249,7 @@ packages:
     dependencies:
       '@typescript-eslint/typescript-estree': 5.59.6(typescript@5.5.4)
       '@typescript-eslint/utils': 5.59.6(eslint@8.31.0)(typescript@5.5.4)
-      debug: 4.4.0(supports-color@10.0.0)
+      debug: 4.4.0
       eslint: 8.31.0
       tsutils: 3.21.0(typescript@5.5.4)
       typescript: 5.5.4
@@ -18236,7 +18273,7 @@ packages:
     dependencies:
       '@typescript-eslint/types': 5.59.6
       '@typescript-eslint/visitor-keys': 5.59.6
-      debug: 4.4.0(supports-color@10.0.0)
+      debug: 4.4.0
       globby: 11.1.0
       is-glob: 4.0.3
       semver: 7.6.3
@@ -18411,7 +18448,7 @@ packages:
       outdent: 0.8.0
     dev: true
 
-  /@vanilla-extract/integration@6.2.1(@types/node@20.14.14):
+  /@vanilla-extract/integration@6.2.1(@types/node@22.13.9):
     resolution: {integrity: sha512-+xYJz07G7TFAMZGrOqArOsURG+xcYvqctujEkANjw2McCBvGEK505RxQqOuNiA9Mi9hgGdNp2JedSa94f3eoLg==}
     dependencies:
       '@babel/core': 7.22.17
@@ -18425,8 +18462,8 @@ packages:
       lodash: 4.17.21
       mlly: 1.7.1
       outdent: 0.8.0
-      vite: 4.4.9(@types/node@20.14.14)
-      vite-node: 0.28.5(@types/node@20.14.14)
+      vite: 4.4.9(@types/node@22.13.9)
+      vite-node: 0.28.5(@types/node@22.13.9)
     transitivePeerDependencies:
       - '@types/node'
       - less
@@ -21311,6 +21348,17 @@ packages:
       supports-color: 10.0.0
     dev: false
 
+  /debug@4.3.7:
+    resolution: {integrity: sha512-Er2nc/H7RrMXZBFCEim6TCmMk02Z8vLC2Rbi1KEBggpo0fS6l0S1nnapwmIi3yW/+GOJap1Krg4w0Hg80oCqgQ==}
+    engines: {node: '>=6.0'}
+    peerDependencies:
+      supports-color: '*'
+    peerDependenciesMeta:
+      supports-color:
+        optional: true
+    dependencies:
+      ms: 2.1.3
+
   /debug@4.3.7(supports-color@10.0.0):
     resolution: {integrity: sha512-Er2nc/H7RrMXZBFCEim6TCmMk02Z8vLC2Rbi1KEBggpo0fS6l0S1nnapwmIi3yW/+GOJap1Krg4w0Hg80oCqgQ==}
     engines: {node: '>=6.0'}
@@ -21322,6 +21370,18 @@ packages:
     dependencies:
       ms: 2.1.3
       supports-color: 10.0.0
+    dev: false
+
+  /debug@4.4.0:
+    resolution: {integrity: sha512-6WTZ/IxCY/T6BALoZHaE4ctp9xm+Z5kY/pzYaCHRFeyVhojxlrm+46y68HA6hr0TcwEssoxNiDEUJQjfPZ/RYA==}
+    engines: {node: '>=6.0'}
+    peerDependencies:
+      supports-color: '*'
+    peerDependenciesMeta:
+      supports-color:
+        optional: true
+    dependencies:
+      ms: 2.1.3
 
   /debug@4.4.0(supports-color@10.0.0):
     resolution: {integrity: sha512-6WTZ/IxCY/T6BALoZHaE4ctp9xm+Z5kY/pzYaCHRFeyVhojxlrm+46y68HA6hr0TcwEssoxNiDEUJQjfPZ/RYA==}
@@ -22636,7 +22696,7 @@ packages:
       eslint: '*'
       eslint-plugin-import: '*'
     dependencies:
-      debug: 4.4.0(supports-color@10.0.0)
+      debug: 4.4.0
       enhanced-resolve: 5.15.0
       eslint: 8.31.0
       eslint-module-utils: 2.7.4(@typescript-eslint/parser@5.59.6)(eslint-import-resolver-node@0.3.7)(eslint-import-resolver-typescript@3.5.5)(eslint@8.31.0)
@@ -24223,7 +24283,7 @@ packages:
       '@types/node': 20.14.14
       '@types/semver': 7.5.1
       chalk: 4.1.2
-      debug: 4.4.0(supports-color@10.0.0)
+      debug: 4.4.0
       interpret: 3.1.1
       semver: 7.6.3
       tslib: 2.6.2
@@ -24808,7 +24868,7 @@ packages:
     dependencies:
       '@ioredis/commands': 1.2.0
       cluster-key-slot: 1.1.2
-      debug: 4.3.7(supports-color@10.0.0)
+      debug: 4.3.7
       denque: 2.1.0
       lodash.defaults: 4.2.0
       lodash.isarguments: 3.1.0
@@ -25277,7 +25337,7 @@ packages:
     resolution: {integrity: sha512-7vuh85V5cdDofPyxn58nrPjBktZo0u9x1g8WtjQol+jZDaE+fhN+cIvTj11GndBnMnyfrUOG1sZQxCdjKh+DKg==}
     engines: {node: '>= 10.13.0'}
     dependencies:
-      '@types/node': 20.14.14
+      '@types/node': 22.13.9
       merge-stream: 2.0.0
       supports-color: 8.1.1
 
@@ -25507,11 +25567,6 @@ packages:
     resolution: {integrity: sha512-Qush0uP+G8ZScpGMZvHUiRfI0YBWuB3gVBYlI0v0vvOJt5FLicco+IkP0a50LqTTQhmts/m6tP5SWE+USyIvcQ==}
     engines: {node: '>=12.20'}
     dev: true
-
-  /jwt-decode@4.0.0:
-    resolution: {integrity: sha512-+KJGIyHgkGuIq3IEBNftfhW/LfWhXUIY6OmyVWjliu5KH1y0fw7VQ8YndE2O4qZdMSd9SqbnC8GOcZEy0Om7sA==}
-    engines: {node: '>=18'}
-    dev: false
 
   /keyv@3.1.0:
     resolution: {integrity: sha512-9ykJ/46SN/9KPM/sichzQ7OvXyGDYKGTaDlKMGCAlg2UK8KRy4jb0d8sFc+0Tt0YYnThq8X2RZgCg74RPxgcVA==}
@@ -26928,7 +26983,7 @@ packages:
     resolution: {integrity: sha512-6Mj0yHLdUZjHnOPgr5xfWIMqMWS12zDN6iws9SLuSz76W8jTtAv24MN4/CL7gJrl5vtxGInkkqDv/JIoRsQOvA==}
     dependencies:
       '@types/debug': 4.1.12
-      debug: 4.4.0(supports-color@10.0.0)
+      debug: 4.4.0
       decode-named-character-reference: 1.0.2
       micromark-core-commonmark: 1.0.6
       micromark-factory-space: 1.0.0
@@ -29039,7 +29094,7 @@ packages:
     dependencies:
       lilconfig: 2.1.0
       postcss: 8.4.29
-      ts-node: 10.9.1(@swc/core@1.3.26)(@types/node@20.14.14)(typescript@5.5.4)
+      ts-node: 10.9.1(@swc/core@1.3.26)(@types/node@22.13.9)(typescript@5.5.4)
       yaml: 2.3.1
     dev: true
 
@@ -29057,7 +29112,7 @@ packages:
     dependencies:
       lilconfig: 3.1.3
       postcss: 8.5.3
-      ts-node: 10.9.1(@swc/core@1.3.26)(@types/node@20.14.14)(typescript@5.5.4)
+      ts-node: 10.9.1(@swc/core@1.3.26)(@types/node@22.13.9)(typescript@5.5.4)
       yaml: 2.7.1
 
   /postcss-load-config@6.0.1(postcss@8.5.3)(tsx@4.17.0):
@@ -30791,7 +30846,7 @@ packages:
       remix-auth: ^3.6.0
     dependencies:
       '@remix-run/server-runtime': 2.1.0(typescript@5.5.4)
-      debug: 4.4.0(supports-color@10.0.0)
+      debug: 4.4.0
       remix-auth: 3.6.0(@remix-run/react@2.1.0)(@remix-run/server-runtime@2.1.0)
     transitivePeerDependencies:
       - supports-color
@@ -30913,6 +30968,17 @@ packages:
     resolution: {integrity: sha512-Xf0nWe6RseziFMu+Ap9biiUbmplq6S9/p+7w7YXP/JBHhrUDDUhwa+vANyubuqfZWTveU//DYVGsDG7RKL/vEw==}
     engines: {node: '>=0.10.0'}
     dev: true
+
+  /require-in-the-middle@7.1.1:
+    resolution: {integrity: sha512-OScOjQjrrjhAdFpQmnkE/qbIBGCRFhQB/YaJhcC3CPOlmhe7llnW46Ac1J5+EjcNXOTnDdpF96Erw/yedsGksQ==}
+    engines: {node: '>=8.6.0'}
+    dependencies:
+      debug: 4.4.0
+      module-details-from-path: 1.0.3
+      resolve: 1.22.8
+    transitivePeerDependencies:
+      - supports-color
+    dev: false
 
   /require-in-the-middle@7.1.1(supports-color@10.0.0):
     resolution: {integrity: sha512-OScOjQjrrjhAdFpQmnkE/qbIBGCRFhQB/YaJhcC3CPOlmhe7llnW46Ac1J5+EjcNXOTnDdpF96Erw/yedsGksQ==}
@@ -31695,7 +31761,7 @@ packages:
   /socket.io-adapter@2.5.4:
     resolution: {integrity: sha512-wDNHGXGewWAjQPt3pyeYBtpWSq9cLE5UW1ZUPL/2eGK9jtse/FpXib7epSTsz0Q0m+6sg6Y4KtcFTlah1bdOVg==}
     dependencies:
-      debug: 4.3.7(supports-color@10.0.0)
+      debug: 4.3.7
       ws: 8.11.0
     transitivePeerDependencies:
       - bufferutil
@@ -31729,6 +31795,16 @@ packages:
       - bufferutil
       - supports-color
       - utf-8-validate
+    dev: false
+
+  /socket.io-parser@4.2.4:
+    resolution: {integrity: sha512-/GbIKmo8ioc+NIWIhwdecY0ge+qVBSMdgxGygevmdHj24bsfgtCmcUUcQ5ZzcylGFHsN3k4HB4Cgkl96KVnuew==}
+    engines: {node: '>=10.0.0'}
+    dependencies:
+      '@socket.io/component-emitter': 3.1.0
+      debug: 4.3.7
+    transitivePeerDependencies:
+      - supports-color
     dev: false
 
   /socket.io-parser@4.2.4(supports-color@10.0.0):
@@ -31765,10 +31841,10 @@ packages:
       accepts: 1.3.8
       base64id: 2.0.0
       cors: 2.8.5
-      debug: 4.3.7(supports-color@10.0.0)
+      debug: 4.3.7
       engine.io: 6.5.4
       socket.io-adapter: 2.5.4
-      socket.io-parser: 4.2.4(supports-color@10.0.0)
+      socket.io-parser: 4.2.4
     transitivePeerDependencies:
       - bufferutil
       - supports-color
@@ -32394,7 +32470,7 @@ packages:
     dependencies:
       component-emitter: 1.3.1
       cookiejar: 2.1.4
-      debug: 4.4.0(supports-color@10.0.0)
+      debug: 4.4.0
       fast-safe-stringify: 2.1.1
       form-data: 4.0.0
       formidable: 3.5.1
@@ -33208,7 +33284,7 @@ packages:
   /ts-interface-checker@0.1.13:
     resolution: {integrity: sha512-Y/arvbn+rrz3JCKl9C4kVNfTfSm2/mEp5FSz5EsZSANGPSlQrpRI5M4PKF+mJnE52jOO90PnPSc3Ur3bTQw0gA==}
 
-  /ts-node@10.9.1(@swc/core@1.3.26)(@types/node@20.14.14)(typescript@5.5.4):
+  /ts-node@10.9.1(@swc/core@1.3.26)(@types/node@22.13.9)(typescript@5.5.4):
     resolution: {integrity: sha512-NtVysVPkxxrwFGUUxGYhfux8k78pQB3JqYBXlLRZgdGUqTO5wU/UyHop5p70iEbGhB7q5KmiZiU0Y3KlJrScEw==}
     hasBin: true
     peerDependencies:
@@ -33228,7 +33304,7 @@ packages:
       '@tsconfig/node12': 1.0.11
       '@tsconfig/node14': 1.0.3
       '@tsconfig/node16': 1.0.3
-      '@types/node': 20.14.14
+      '@types/node': 22.13.9
       acorn: 8.10.0
       acorn-walk: 8.2.0
       arg: 4.1.3
@@ -33847,7 +33923,6 @@ packages:
 
   /undici-types@6.20.0:
     resolution: {integrity: sha512-Ny6QZ2Nju20vw1SRHe3d9jVu6gJ+4e3+MMpqu7pqE5HT6WsTSlce++GQmK5UXS8mzV8DSYHrQH+Xrf2jVcuKNg==}
-    dev: false
 
   /undici@5.28.4:
     resolution: {integrity: sha512-72RFADWFqKmUb2hmmvNODKL3p9hcB6Gt2DOQMis1SEBaV6a4MH8soBvzg+95CYhCKPFedut2JY9bMfrDl9D23g==}
@@ -34411,19 +34486,19 @@ packages:
       d3-timer: 3.0.1
     dev: false
 
-  /vite-node@0.28.5(@types/node@20.14.14):
+  /vite-node@0.28.5(@types/node@22.13.9):
     resolution: {integrity: sha512-LmXb9saMGlrMZbXTvOveJKwMTBTNUH66c8rJnQ0ZPNX+myPEol64+szRzXtV5ORb0Hb/91yq+/D3oERoyAt6LA==}
     engines: {node: '>=v14.16.0'}
     hasBin: true
     dependencies:
       cac: 6.7.14
-      debug: 4.4.0(supports-color@10.0.0)
+      debug: 4.4.0
       mlly: 1.7.1
       pathe: 1.1.2
       picocolors: 1.1.1
       source-map: 0.6.1
       source-map-support: 0.5.21
-      vite: 4.4.9(@types/node@20.14.14)
+      vite: 4.4.9(@types/node@22.13.9)
     transitivePeerDependencies:
       - '@types/node'
       - less
@@ -34459,7 +34534,7 @@ packages:
   /vite-tsconfig-paths@4.0.5(typescript@5.5.4):
     resolution: {integrity: sha512-/L/eHwySFYjwxoYt1WRJniuK/jPv+WGwgRGBYx3leciR5wBeqntQpUE6Js6+TJemChc+ter7fDBKieyEWDx4yQ==}
     dependencies:
-      debug: 4.3.7(supports-color@10.0.0)
+      debug: 4.3.7
       globrex: 0.1.2
       tsconfck: 2.1.2(typescript@5.5.4)
     transitivePeerDependencies:
@@ -34501,7 +34576,7 @@ packages:
       fsevents: 2.3.3
     dev: true
 
-  /vite@4.4.9(@types/node@20.14.14):
+  /vite@4.4.9(@types/node@22.13.9):
     resolution: {integrity: sha512-2mbUn2LlUmNASWwSCNSJ/EG2HuSRTnVNaydp6vMCm5VIqJsjMfbIWtbH2kDuwUVW5mMUKKZvGPX/rqeqVvv1XA==}
     engines: {node: ^14.18.0 || >=16.0.0}
     hasBin: true
@@ -34529,7 +34604,7 @@ packages:
       terser:
         optional: true
     dependencies:
-      '@types/node': 20.14.14
+      '@types/node': 22.13.9
       esbuild: 0.18.11
       postcss: 8.5.3
       rollup: 3.29.1

@@ -2,7 +2,6 @@ import { FinalizeDeploymentRequestBody } from "@trigger.dev/core/v3/schemas";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { socketIo } from "../handleSocketIo.server";
-import { registryProxy } from "../registryProxy.server";
 import { updateEnvConcurrencyLimits } from "../runQueue.server";
 import { PerformDeploymentAlertsService } from "./alerts/performDeploymentAlerts.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
@@ -53,11 +52,7 @@ export class FinalizeDeploymentService extends BaseService {
       throw new ServiceValidationError("Worker deployment is not in DEPLOYING status");
     }
 
-    let imageReference = body.imageReference;
-
-    if (registryProxy && body.selfHosted !== true && body.skipRegistryProxy !== true) {
-      imageReference = registryProxy.rewriteImageReference(body.imageReference);
-    }
+    const imageReference = body.imageReference;
 
     // Link the deployment with the background worker
     const finalizedDeployment = await this._prisma.workerDeployment.update({

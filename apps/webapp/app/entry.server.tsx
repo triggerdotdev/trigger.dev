@@ -215,7 +215,6 @@ export { apiRateLimiter } from "./services/apiRateLimit.server";
 export { engineRateLimiter } from "./services/engineRateLimit.server";
 export { socketIo } from "./v3/handleSocketIo.server";
 export { wss } from "./v3/handleWebsockets.server";
-export { registryProxy } from "./v3/registryProxy.server";
 export { runWithHttpContext } from "./services/httpAsyncStorage.server";
 import { eventLoopMonitor } from "./eventLoopMonitor.server";
 import { env } from "./env.server";
