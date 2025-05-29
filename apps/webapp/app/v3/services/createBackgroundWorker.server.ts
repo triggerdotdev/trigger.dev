@@ -146,6 +146,11 @@ export class CreateBackgroundWorkerService extends BaseService {
           backgroundWorker,
           environment,
         });
+
+        if (schedulesError instanceof ServiceValidationError) {
+          throw schedulesError;
+        }
+
         throw new ServiceValidationError("Error syncing declarative schedules");
       }
 
