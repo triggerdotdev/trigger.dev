@@ -13,7 +13,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
     }
   }
 
-  const prismaMetrics = await prisma.$metrics.prometheus();
+  // We need to remove empty lines from the prisma metrics, grafana doesn't like them
+  const prismaMetrics = (await prisma.$metrics.prometheus()).replace(/^\s*[\r\n]/gm, "");
   const coreMetrics = await metricsRegister.metrics();
 
   // Order matters, core metrics end with `# EOF`, prisma metrics don't
