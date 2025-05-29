@@ -1764,7 +1764,8 @@ model TaskRun {
   lockedQueueId String?
 
   /// The main queue that this run is part of
-  masterQueue          String  @default("main")
+  workerQueue          String  @default("main") @map("masterQueue")
+  /// @deprecated
   secondaryMasterQueue String?
 
   /// From engine v2+ this will be defined after a run has been dequeued (starting at 1)

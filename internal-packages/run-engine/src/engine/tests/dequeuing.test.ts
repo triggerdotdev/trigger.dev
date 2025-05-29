@@ -7,6 +7,7 @@ import { MinimalAuthenticatedEnvironment } from "../../shared/index.js";
 import { RunEngine } from "../index.js";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
 import { DequeuedMessage } from "@trigger.dev/core/v3";
+import { setTimeout } from "timers/promises";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -24,6 +25,8 @@ describe("RunEngine dequeuing", () => {
       },
       queue: {
         redis: redisOptions,
+        masterQueueConsumersDisabled: true,
+        processWorkerQueueDebounceMs: 50,
       },
       runLock: {
         redis: redisOptions,
@@ -64,13 +67,13 @@ describe("RunEngine dequeuing", () => {
       expect(queueLength).toBe(10);
 
       //dequeue
+      await setTimeout(500);
       const dequeued: DequeuedMessage[] = [];
       for (let i = 0; i < 5; i++) {
         dequeued.push(
-          ...(await engine.dequeueFromMasterQueue({
+          ...(await engine.dequeueFromWorkerQueue({
             consumerId: "test_12345",
-            masterQueue: "main",
-            maxRunCount: 1,
+            workerQueue: "main",
           }))
         );
       }
@@ -97,6 +100,8 @@ describe("RunEngine dequeuing", () => {
         },
         queue: {
           redis: redisOptions,
+          masterQueueConsumersDisabled: true,
+          processWorkerQueueDebounceMs: 50,
         },
         runLock: {
           redis: redisOptions,
@@ -139,14 +144,10 @@ describe("RunEngine dequeuing", () => {
         expect(queueLength).toBe(20);
 
         //dequeue
-        const dequeued = await engine.dequeueFromMasterQueue({
+        await setTimeout(500);
+        const dequeued = await engine.dequeueFromWorkerQueue({
           consumerId: "test_12345",
-          masterQueue: "main",
-          maxRunCount: 5,
-          maxResources: {
-            cpu: 1.1,
-            memory: 3.8,
-          },
+          workerQueue: "main",
         });
         expect(dequeued.length).toBe(2);
 
@@ -154,14 +155,10 @@ describe("RunEngine dequeuing", () => {
         const queueLength2 = await engine.runQueue.lengthOfEnvQueue(authenticatedEnvironment);
         expect(queueLength2).toBe(18);
 
-        const dequeued2 = await engine.dequeueFromMasterQueue({
+        await setTimeout(500);
+        const dequeued2 = await engine.dequeueFromWorkerQueue({
           consumerId: "test_12345",
-          masterQueue: "main",
-          maxRunCount: 10,
-          maxResources: {
-            cpu: 4.7,
-            memory: 3.0,
-          },
+          workerQueue: "main",
         });
         expect(dequeued2.length).toBe(6);
 
@@ -202,7 +199,7 @@ async function triggerRuns({
         traceContext: {},
         traceId: "t12345",
         spanId: "s12345",
-        masterQueue: "main",
+        workerQueue: "main",
         queue: `task/${taskIdentifier}`,
         isTest: false,
         tags: [],

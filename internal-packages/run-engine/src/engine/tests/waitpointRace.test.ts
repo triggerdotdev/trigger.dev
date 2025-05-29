@@ -15,7 +15,11 @@ describe("RunEngine Waitpoints – race condition", () => {
       const engine = new RunEngine({
         prisma,
         worker: { redis: redisOptions, workers: 1, tasksPerWorker: 10, pollIntervalMs: 100 },
-        queue: { redis: redisOptions },
+        queue: {
+          redis: redisOptions,
+          masterQueueConsumersDisabled: true,
+          processWorkerQueueDebounceMs: 50,
+        },
         runLock: { redis: redisOptions },
         machines: {
           defaultMachine: "small-1x",
@@ -43,7 +47,7 @@ describe("RunEngine Waitpoints – race condition", () => {
             traceContext: {},
             traceId: "race-trace",
             spanId: "race-span",
-            masterQueue: "main",
+            workerQueue: "main",
             queue: "task/test-task",
             isTest: false,
             tags: [],
@@ -51,10 +55,10 @@ describe("RunEngine Waitpoints – race condition", () => {
           prisma
         );
 
-        const dequeued = await engine.dequeueFromMasterQueue({
+        await setTimeout(500);
+        const dequeued = await engine.dequeueFromWorkerQueue({
           consumerId: "test",
-          masterQueue: run.masterQueue,
-          maxRunCount: 10,
+          workerQueue: "main",
         });
         await engine.startRunAttempt({
           runId: dequeued[0].run.id,

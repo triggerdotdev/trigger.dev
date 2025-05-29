@@ -29,6 +29,9 @@ export type RunEngineOptions = {
   };
   queue: {
     redis: RedisOptions;
+    masterQueueConsumersDisabled?: boolean;
+    processWorkerQueueDebounceMs?: number;
+    workerOptions?: WorkerConcurrencyOptions;
     retryOptions?: RetryOptions;
     defaultEnvConcurrency?: number;
     queueSelectionStrategyOptions?: Pick<
@@ -90,7 +93,7 @@ export type TriggerParams = {
   sdkVersion?: string;
   cliVersion?: string;
   concurrencyKey?: string;
-  masterQueue?: string;
+  workerQueue?: string;
   queue: string;
   lockedQueueId?: string;
   isTest: boolean;

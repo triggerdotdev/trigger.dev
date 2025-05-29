@@ -24,6 +24,8 @@ describe("RunEngine pending version", () => {
         },
         queue: {
           redis: redisOptions,
+          processWorkerQueueDebounceMs: 50,
+          masterQueueConsumersDisabled: true,
         },
         runLock: {
           redis: redisOptions,
@@ -61,7 +63,6 @@ describe("RunEngine pending version", () => {
             traceContext: {},
             traceId: "t12345",
             spanId: "s12345",
-            masterQueue: "main",
             queue: "task/test-task",
             isTest: false,
             tags: [],
@@ -82,7 +83,6 @@ describe("RunEngine pending version", () => {
             traceContext: {},
             traceId: "t12346",
             spanId: "s12346",
-            masterQueue: "main",
             queue: "task/test-task",
             isTest: false,
             tags: [],
@@ -100,15 +100,14 @@ describe("RunEngine pending version", () => {
 
         await setupBackgroundWorker(engine, authenticatedEnvironment, ["test-task-other"]);
 
-        //dequeuing should fail
+        await setTimeout(500);
 
         const dequeued: DequeuedMessage[] = [];
         for (let i = 0; i < 2; i++) {
           dequeued.push(
-            ...(await engine.dequeueFromMasterQueue({
+            ...(await engine.dequeueFromWorkerQueue({
               consumerId: "test_12345",
-              masterQueue: "main",
-              maxRunCount: 1,
+              workerQueue: "main",
             }))
           );
         }
@@ -139,7 +138,7 @@ describe("RunEngine pending version", () => {
         );
 
         //it's async so we wait
-        await setTimeout(500);
+        await setTimeout(1000);
 
         //should now be queued
         const executionData3R1 = await engine.getRunExecutionData({ runId: run.id });
@@ -150,13 +149,6 @@ describe("RunEngine pending version", () => {
         expect(executionData3R2.snapshot.executionStatus).toBe("QUEUED");
         expect(executionData3R1.run.status).toBe("PENDING");
         expect(executionData3R2.run.status).toBe("PENDING");
-
-        //queue should be empty
-        const queueLength2 = await engine.runQueue.lengthOfQueue(
-          authenticatedEnvironment,
-          run.queue
-        );
-        expect(queueLength2).toBe(2);
       } finally {
         await engine.quit();
       }
@@ -179,6 +171,8 @@ describe("RunEngine pending version", () => {
         },
         queue: {
           redis: redisOptions,
+          processWorkerQueueDebounceMs: 50,
+          masterQueueConsumersDisabled: true,
         },
         runLock: {
           redis: redisOptions,
@@ -218,7 +212,6 @@ describe("RunEngine pending version", () => {
             traceContext: {},
             traceId: "t12345",
             spanId: "s12345",
-            masterQueue: "main",
             queue: "custom-queue",
             isTest: false,
             tags: [],
@@ -239,7 +232,6 @@ describe("RunEngine pending version", () => {
             traceContext: {},
             traceId: "t12346",
             spanId: "s12346",
-            masterQueue: "main",
             queue: "custom-queue-2",
             isTest: false,
             tags: [],
@@ -255,11 +247,12 @@ describe("RunEngine pending version", () => {
         expect(executionDataR1.snapshot.executionStatus).toBe("QUEUED");
         expect(executionDataR2.snapshot.executionStatus).toBe("QUEUED");
 
+        await setTimeout(500);
+
         //dequeuing should fail
-        const dequeued = await engine.dequeueFromMasterQueue({
+        const dequeued = await engine.dequeueFromWorkerQueue({
           consumerId: "test_12345",
-          masterQueue: run.masterQueue,
-          maxRunCount: 10,
+          workerQueue: "main",
         });
         expect(dequeued.length).toBe(0);
 
@@ -293,7 +286,7 @@ describe("RunEngine pending version", () => {
         );
 
         //it's async so we wait
-        await setTimeout(500);
+        await setTimeout(1000);
 
         //should now be queued
         const executionData3R1 = await engine.getRunExecutionData({ runId: run.id });
@@ -304,20 +297,6 @@ describe("RunEngine pending version", () => {
         expect(executionData3R2.snapshot.executionStatus).toBe("QUEUED");
         expect(executionData3R1.run.status).toBe("PENDING");
         expect(executionData3R2.run.status).toBe("PENDING");
-
-        // custom-queue should have 1 run
-        const queueLength2 = await engine.runQueue.lengthOfQueue(
-          authenticatedEnvironment,
-          "custom-queue"
-        );
-        expect(queueLength2).toBe(1);
-
-        // custom-queue-2 should have 1 run
-        const queueLength3 = await engine.runQueue.lengthOfQueue(
-          authenticatedEnvironment,
-          "custom-queue-2"
-        );
-        expect(queueLength3).toBe(1);
       } finally {
         await engine.quit();
       }

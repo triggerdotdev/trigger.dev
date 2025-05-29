@@ -23,6 +23,8 @@ describe("RunEngine batchTriggerAndWait", () => {
       },
       queue: {
         redis: redisOptions,
+        masterQueueConsumersDisabled: true,
+        processWorkerQueueDebounceMs: 50,
       },
       runLock: {
         redis: redisOptions,
@@ -70,7 +72,7 @@ describe("RunEngine batchTriggerAndWait", () => {
           traceContext: {},
           traceId: "t12345",
           spanId: "s12345",
-          masterQueue: "main",
+          workerQueue: "main",
           queue: `task/${parentTask}`,
           isTest: false,
           tags: [],
@@ -79,10 +81,10 @@ describe("RunEngine batchTriggerAndWait", () => {
       );
 
       //dequeue parent
-      const dequeued = await engine.dequeueFromMasterQueue({
+      await setTimeout(500);
+      const dequeued = await engine.dequeueFromWorkerQueue({
         consumerId: "test_12345",
-        masterQueue: parentRun.masterQueue,
-        maxRunCount: 10,
+        workerQueue: "main",
       });
 
       //create an attempt
@@ -118,7 +120,7 @@ describe("RunEngine batchTriggerAndWait", () => {
           traceContext: {},
           traceId: "t12345",
           spanId: "s12345",
-          masterQueue: "main",
+          workerQueue: "main",
           queue: `task/${childTask}`,
           isTest: false,
           tags: [],
@@ -145,7 +147,7 @@ describe("RunEngine batchTriggerAndWait", () => {
           traceContext: {},
           traceId: "t123456",
           spanId: "s123456",
-          masterQueue: "main",
+          workerQueue: "main",
           queue: `task/${childTask}`,
           isTest: false,
           tags: [],
@@ -192,10 +194,10 @@ describe("RunEngine batchTriggerAndWait", () => {
       expect(batchWaitpoint?.waitpoint.completedByBatchId).toBe(batch.id);
 
       //dequeue and start the 1st child
-      const dequeuedChild = await engine.dequeueFromMasterQueue({
+      await setTimeout(500);
+      const dequeuedChild = await engine.dequeueFromWorkerQueue({
         consumerId: "test_12345",
-        masterQueue: child1.masterQueue,
-        maxRunCount: 1,
+        workerQueue: "main",
       });
 
       expect(dequeuedChild.length).toBe(1);
@@ -256,13 +258,11 @@ describe("RunEngine batchTriggerAndWait", () => {
       expect(parentExecutionDataAfterFirstChildComplete.batch?.id).toBe(batch.id);
       expect(parentExecutionDataAfterFirstChildComplete.completedWaitpoints.length).toBe(0);
 
-      expect(await engine.runQueue.lengthOfEnvQueue(authenticatedEnvironment)).toBe(1);
-
       //dequeue and start the 2nd child
-      const dequeuedChild2 = await engine.dequeueFromMasterQueue({
+      await setTimeout(500);
+      const dequeuedChild2 = await engine.dequeueFromWorkerQueue({
         consumerId: "test_12345",
-        masterQueue: child2.masterQueue,
-        maxRunCount: 1,
+        workerQueue: "main",
       });
 
       expect(dequeuedChild2.length).toBe(1);
@@ -372,6 +372,8 @@ describe("RunEngine batchTriggerAndWait", () => {
         },
         queue: {
           redis: redisOptions,
+          masterQueueConsumersDisabled: true,
+          processWorkerQueueDebounceMs: 50,
         },
         runLock: {
           redis: redisOptions,
@@ -424,7 +426,7 @@ describe("RunEngine batchTriggerAndWait", () => {
             traceContext: {},
             traceId: "t12345",
             spanId: "s12345",
-            masterQueue: "main",
+            workerQueue: "main",
             queue: `task/${parentTask}`,
             isTest: false,
             tags: [],
@@ -433,10 +435,10 @@ describe("RunEngine batchTriggerAndWait", () => {
         );
 
         //dequeue parent
-        const dequeued = await engine.dequeueFromMasterQueue({
+        await setTimeout(500);
+        const dequeued = await engine.dequeueFromWorkerQueue({
           consumerId: "test_12345",
-          masterQueue: parentRun.masterQueue,
-          maxRunCount: 10,
+          workerQueue: "main",
         });
 
         //create an attempt
@@ -474,7 +476,7 @@ describe("RunEngine batchTriggerAndWait", () => {
             traceContext: {},
             traceId: "t12345",
             spanId: "s12345",
-            masterQueue: "main",
+            workerQueue: "main",
             queue: `task/${batchChildTask}`,
             isTest: false,
             tags: [],
@@ -491,10 +493,10 @@ describe("RunEngine batchTriggerAndWait", () => {
         expect(parentAfterBatchChild.batch?.id).toBe(batch.id);
 
         //dequeue and start the batch child
-        const dequeuedBatchChild = await engine.dequeueFromMasterQueue({
+        await setTimeout(500);
+        const dequeuedBatchChild = await engine.dequeueFromWorkerQueue({
           consumerId: "test_12345",
-          masterQueue: batchChild.masterQueue,
-          maxRunCount: 1,
+          workerQueue: "main",
         });
 
         expect(dequeuedBatchChild.length).toBe(1);
@@ -552,7 +554,7 @@ describe("RunEngine batchTriggerAndWait", () => {
             traceContext: {},
             traceId: "t123456",
             spanId: "s123456",
-            masterQueue: "main",
+            workerQueue: "main",
             queue: `task/${triggerAndWaitChildTask}`,
             isTest: false,
             tags: [],
