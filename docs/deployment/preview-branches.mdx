@@ -1,6 +1,6 @@
 ---
 title: "Preview branches"
-description: "Create isolated environments for each branch of your code, allowing you to test changes in a dedicated preview environment before merging to production"
+description: "Create isolated environments for each branch of your code, allowing you to test changes before merging to production. You can create preview branches manually or automatically with your git branches."
 ---
 
 import UpgradeToV4Note from "/snippets/upgrade-to-v4-note.mdx";
@@ -9,23 +9,41 @@ import UpgradeToV4Note from "/snippets/upgrade-to-v4-note.mdx";
 
 ## How does it work?
 
-The "Preview" environment is a special environment where you can create "branches". Normally you would automatically create a preview branch that matches your git branch when a Pull Request is opened (and then archive it automatically when the PR is merged/closed).
+The "Preview" environment is a special environment that you can create "branches" from. We recommend you automatically create a preview branch for each git branch when a Pull Request is opened and then archive it automatically when the PR is merged/closed.
 
 The process to use preview branches looks like this:
 
 1. Create a preview branch
 2. Deploy to the preview branch (1+ times)
-3. Trigger runs using the Preview API key and the branch name
-4. Archive the preview branch
+3. Trigger runs using your Preview API key (`TRIGGER_SECRET_KEY`) and the branch name (`TRIGGER_PREVIEW_BRANCH`).
+4. Archive the preview branch when the branch is done.
 
 There are two main ways to do this:
 
-1. Automatically: using GitHub Actions (recommended)
-2. Manually: in the dashboard and/or using the CLI
+1. Automatically: using GitHub Actions (recommended).
+2. Manually: in the dashboard and/or using the CLI.
 
-## Using preview branches using GitHub Actions
+### Limits on active preview branches
 
-```yml
+We restrict the number of active preview branches (per project). You can archive a preview branch at any time (automatically or manually) to unlock another slot.
+
+Once archived you can still view the dashboard for the branch but you can't trigger or execute runs (or other write operations).
+
+This limit exists because each branch has an independent concurrency limit. For the Cloud product these are the limits:
+
+| Plan  | Active preview branches |
+| ----- | ----------------------- |
+| Free  | 0                       |
+| Hobby | 5                       |
+| Pro   | 20 (then paid for more) |
+
+For full details see our [pricing page](https://trigger.dev/pricing).
+
+## Using preview branches using GitHub Actions (recommended)
+
+This GitHub Action
+
+```yml .github/workflows/trigger-preview-branches.yml
 name: Deploy to Trigger.dev (preview branches)
 
 on:
