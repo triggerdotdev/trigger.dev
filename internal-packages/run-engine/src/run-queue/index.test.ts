@@ -375,6 +375,113 @@ describe("RunQueue", () => {
     }
   );
 
+  redisTest(
+    "Dequeue a message when another message on the same queue is acked",
+    async ({ redisContainer }) => {
+      const queue = new RunQueue({
+        ...testOptions,
+        masterQueueConsumersDisabled: true,
+        processWorkerQueueDebounceMs: 50,
+        queueSelectionStrategy: new FairQueueSelectionStrategy({
+          redis: {
+            keyPrefix: "runqueue:test:",
+            host: redisContainer.getHost(),
+            port: redisContainer.getPort(),
+          },
+          keys: testOptions.keys,
+        }),
+        redis: {
+          keyPrefix: "runqueue:test:",
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+        },
+      });
+
+      try {
+        // Set queue concurrency limit to 1
+        await queue.updateQueueConcurrencyLimits(authenticatedEnvProd, messageProd.queue, 1);
+
+        //initial queue length
+        const result = await queue.lengthOfQueue(authenticatedEnvProd, messageProd.queue);
+        expect(result).toBe(0);
+        const envQueueLength = await queue.lengthOfEnvQueue(authenticatedEnvProd);
+        expect(envQueueLength).toBe(0);
+
+        //initial oldest message
+        const oldestScore = await queue.oldestMessageInQueue(
+          authenticatedEnvProd,
+          messageProd.queue
+        );
+        expect(oldestScore).toBe(undefined);
+
+        //enqueue message
+        await queue.enqueueMessage({
+          env: authenticatedEnvProd,
+          message: messageProd,
+          workerQueue: "main",
+          skipDequeueProcessing: true,
+        });
+
+        // Enqueue another message
+        await queue.enqueueMessage({
+          env: authenticatedEnvProd,
+          message: { ...messageProd, runId: "r4322" },
+          workerQueue: "main",
+          skipDequeueProcessing: true,
+        });
+
+        //queue length
+        const queueLength = await queue.lengthOfQueue(authenticatedEnvProd, messageProd.queue);
+        expect(queueLength).toBe(2);
+        const envLength = await queue.lengthOfEnvQueue(authenticatedEnvProd);
+        expect(envLength).toBe(2);
+
+        //oldest message
+        const oldestScore2 = await queue.oldestMessageInQueue(
+          authenticatedEnvProd,
+          messageProd.queue
+        );
+        expect(oldestScore2).toBe(messageProd.timestamp);
+
+        //concurrencies
+        const queueConcurrency = await queue.currentConcurrencyOfQueue(
+          authenticatedEnvProd,
+          messageProd.queue
+        );
+        expect(queueConcurrency).toBe(0);
+        const envConcurrency = await queue.currentConcurrencyOfEnvironment(authenticatedEnvProd);
+        expect(envConcurrency).toBe(0);
+
+        // Process the message so it can be dequeued
+        await queue.processMasterQueueForEnvironment(authenticatedEnvProd.id, 1);
+
+        //dequeue
+        const dequeued = await queue.dequeueMessageFromWorkerQueue("test_12345", "main");
+
+        assertNonNullable(dequeued);
+        expect(dequeued).toBeDefined();
+        expect(dequeued!.messageId).toEqual(messageProd.runId);
+        expect(dequeued!.message.orgId).toEqual(messageProd.orgId);
+        expect(dequeued!.message.version).toEqual("2");
+
+        // Now lets ack the message
+        await queue.acknowledgeMessage(messageProd.orgId, messageProd.runId);
+
+        await setTimeout(1000);
+
+        // Now we can dequeue the other message
+        const dequeued2 = await queue.dequeueMessageFromWorkerQueue("test_12345", "main");
+        assertNonNullable(dequeued2);
+        expect(dequeued2).toBeDefined();
+        expect(dequeued2!.messageId).toEqual("r4322");
+        expect(dequeued2!.message.orgId).toEqual(messageProd.orgId);
+        expect(dequeued2!.message.version).toEqual("2");
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
+
   redisTest("Enqueue/Dequeue a 8 shards", async ({ redisContainer }) => {
     const queue = new RunQueue({
       ...testOptions,

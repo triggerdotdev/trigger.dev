@@ -112,6 +112,13 @@ export class RunEngine {
       logger: new Logger("RunQueue", "debug"),
       redis: { ...options.queue.redis, keyPrefix: `${options.queue.redis.keyPrefix}runqueue:` },
       retryOptions: options.queue?.retryOptions,
+      workerOptions: {
+        disabled: options.worker.disabled,
+        concurrency: options.worker,
+        pollIntervalMs: options.worker.pollIntervalMs,
+        immediatePollIntervalMs: options.worker.immediatePollIntervalMs,
+        shutdownTimeoutMs: options.worker.shutdownTimeoutMs,
+      },
     });
 
     this.worker = new Worker({
