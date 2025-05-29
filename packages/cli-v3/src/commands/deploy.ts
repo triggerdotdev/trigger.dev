@@ -632,8 +632,6 @@ export async function syncEnvVarsWithServer(
     override: true,
   });
 
-  logger.debug("syncEnvVarsWithServer", uploadResult);
-
   return uploadResult.success;
 }
 
