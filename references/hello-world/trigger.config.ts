@@ -20,8 +20,7 @@ export default defineConfig({
   build: {
     extensions: [
       syncEnvVars(async (ctx) => {
-        console.log(ctx.environment);
-        console.log(ctx.branch);
+        console.log("syncEnvVars", { environment: ctx.environment, branch: ctx.branch });
         return [
           { name: "SYNC_ENV", value: ctx.environment },
           { name: "BRANCH", value: ctx.branch ?? "–" },
