@@ -84,6 +84,30 @@ You can manually specify the branch using `--branch <branch-name>` in the deploy
 
 ## Manually creating, deploying and archiving preview branches
 
+### Using the CLI
+
+Creating and deploying a preview branch manually is easy:
+
+```bash
+npx trigger.dev@v4-beta deploy --env preview
+```
+
+This will create and deploy a preview branch, automatically detecting the git branch. If for some reason the auto-detection doesn't work it will let you know and tell you do this:
+
+```bash
+npx trigger.dev@v4-beta deploy --env preview --branch <branch-name>
+```
+
+You can manually archive a preview branch with the CLI:
+
+```bash
+npx trigger.dev@v4-beta preview archive
+```
+
+Again we will try auto-detect the current branch. But you can specify the branch name with `--branch <branch-name>`.
+
+### In the dashboard
+
 ### Creating and archiving preview branches from the dashboard
 
 In the dashboard, you can
