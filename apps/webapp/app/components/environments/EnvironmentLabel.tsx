@@ -82,12 +82,6 @@ export function EnvironmentLabel({
     const checkTruncation = () => {
       if (spanRef.current) {
         const isTruncated = spanRef.current.scrollWidth > spanRef.current.clientWidth;
-        console.log(
-          "isTruncated",
-          isTruncated,
-          spanRef.current.scrollWidth,
-          spanRef.current.clientWidth
-        );
         setIsTruncated(isTruncated);
       }
     };
