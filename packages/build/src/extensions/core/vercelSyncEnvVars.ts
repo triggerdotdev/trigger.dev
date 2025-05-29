@@ -25,12 +25,6 @@ export function syncVercelEnvVars(options?: {
       ctx.env.VERCEL_PREVIEW_BRANCH ??
       ctx.branch;
 
-    console.debug("syncVercelEnvVars()", {
-      projectId,
-      vercelTeamId,
-      branch,
-    });
-
     if (!projectId) {
       throw new Error(
         "syncVercelEnvVars: you did not pass in a projectId or set the VERCEL_PROJECT_ID env var."
