@@ -62,7 +62,7 @@ describe("RunEngine Waitpoints", () => {
           traceContext: {},
           traceId: "t12345",
           spanId: "s12345",
-          masterQueue: "main",
+          workerQueue: "main",
           queue: "task/test-task",
           isTest: false,
           tags: [],
@@ -71,10 +71,10 @@ describe("RunEngine Waitpoints", () => {
       );
 
       //dequeue the run
-      const dequeued = await engine.dequeueFromMasterQueue({
+      await setTimeout(500);
+      const dequeued = await engine.dequeueFromWorkerQueue({
         consumerId: "test_12345",
-        masterQueue: run.masterQueue,
-        maxRunCount: 10,
+        workerQueue: "main",
       });
 
       //create an attempt
@@ -177,7 +177,7 @@ describe("RunEngine Waitpoints", () => {
           traceContext: {},
           traceId: "t12345",
           spanId: "s12345",
-          masterQueue: "main",
+          workerQueue: "main",
           queue: "task/test-task",
           isTest: false,
           tags: [],
@@ -186,10 +186,10 @@ describe("RunEngine Waitpoints", () => {
       );
 
       //dequeue the run
-      const dequeued = await engine.dequeueFromMasterQueue({
+      await setTimeout(500);
+      const dequeued = await engine.dequeueFromWorkerQueue({
         consumerId: "test_12345",
-        masterQueue: run.masterQueue,
-        maxRunCount: 10,
+        workerQueue: "main",
       });
 
       //create an attempt
@@ -319,7 +319,7 @@ describe("RunEngine Waitpoints", () => {
             traceContext: {},
             traceId: "t12345",
             spanId: "s12345",
-            masterQueue: "main",
+            workerQueue: "main",
             queue: "task/test-task",
             isTest: false,
             tags: [],
@@ -328,10 +328,10 @@ describe("RunEngine Waitpoints", () => {
         );
 
         //dequeue the run
-        const dequeued = await engine.dequeueFromMasterQueue({
+        await setTimeout(500);
+        const dequeued = await engine.dequeueFromWorkerQueue({
           consumerId: "test_12345",
-          masterQueue: run.masterQueue,
-          maxRunCount: 10,
+          workerQueue: "main",
         });
 
         //create an attempt
@@ -457,7 +457,7 @@ describe("RunEngine Waitpoints", () => {
           traceContext: {},
           traceId: "t12345",
           spanId: "s12345",
-          masterQueue: "main",
+          workerQueue: "main",
           queue: "task/test-task",
           isTest: false,
           tags: [],
@@ -466,10 +466,10 @@ describe("RunEngine Waitpoints", () => {
       );
 
       //dequeue the run
-      const dequeued = await engine.dequeueFromMasterQueue({
+      await setTimeout(500);
+      const dequeued = await engine.dequeueFromWorkerQueue({
         consumerId: "test_12345",
-        masterQueue: run.masterQueue,
-        maxRunCount: 10,
+        workerQueue: "main",
       });
 
       //create an attempt
@@ -574,7 +574,7 @@ describe("RunEngine Waitpoints", () => {
             traceContext: {},
             traceId: "t12345",
             spanId: "s12345",
-            masterQueue: "main",
+            workerQueue: "main",
             queue: "task/test-task",
             isTest: false,
             tags: [],
@@ -583,10 +583,10 @@ describe("RunEngine Waitpoints", () => {
         );
 
         //dequeue the run
-        const dequeued = await engine.dequeueFromMasterQueue({
+        await setTimeout(500);
+        const dequeued = await engine.dequeueFromWorkerQueue({
           consumerId: "test_12345",
-          masterQueue: run.masterQueue,
-          maxRunCount: 10,
+          workerQueue: "main",
         });
 
         //create an attempt
@@ -723,7 +723,7 @@ describe("RunEngine Waitpoints", () => {
             traceContext: {},
             traceId: "t12345",
             spanId: "s12345",
-            masterQueue: "main",
+            workerQueue: "main",
             queue: "task/test-task",
             isTest: false,
             tags: [],
@@ -732,10 +732,10 @@ describe("RunEngine Waitpoints", () => {
         );
 
         //dequeue the run
-        const dequeued = await engine.dequeueFromMasterQueue({
+        await setTimeout(500);
+        const dequeued = await engine.dequeueFromWorkerQueue({
           consumerId: "test_12345",
-          masterQueue: run.masterQueue,
-          maxRunCount: 10,
+          workerQueue: "main",
         });
 
         //create an attempt
@@ -871,7 +871,7 @@ describe("RunEngine Waitpoints", () => {
           traceContext: {},
           traceId: "t12345",
           spanId: "s12345",
-          masterQueue: "main",
+          workerQueue: "main",
           queue: "task/test-task",
           isTest: false,
           tags: [],
@@ -880,10 +880,10 @@ describe("RunEngine Waitpoints", () => {
       );
 
       //dequeue the run
-      const dequeued = await engine.dequeueFromMasterQueue({
+      await setTimeout(500);
+      const dequeued = await engine.dequeueFromWorkerQueue({
         consumerId: "test_12345",
-        masterQueue: run.masterQueue,
-        maxRunCount: 10,
+        workerQueue: "main",
       });
 
       //create an attempt
@@ -1022,7 +1022,7 @@ describe("RunEngine Waitpoints", () => {
           traceContext: {},
           traceId: "t12345",
           spanId: "s12345",
-          masterQueue: "main",
+          workerQueue: "main",
           queue: "task/test-task",
           isTest: false,
           tags: [],
@@ -1031,10 +1031,10 @@ describe("RunEngine Waitpoints", () => {
       );
 
       //dequeue the run
-      const dequeued = await engine.dequeueFromMasterQueue({
+      await setTimeout(500);
+      const dequeued = await engine.dequeueFromWorkerQueue({
         consumerId: "test_12345",
-        masterQueue: run.masterQueue,
-        maxRunCount: 10,
+        workerQueue: "main",
       });
 
       //create an attempt
@@ -1192,7 +1192,7 @@ describe("RunEngine Waitpoints", () => {
             traceContext: {},
             traceId: "t12345-first",
             spanId: "s12345-first",
-            masterQueue: "main",
+            workerQueue: "main",
             queue: "task/test-task",
             isTest: false,
             tags: [],
@@ -1201,10 +1201,10 @@ describe("RunEngine Waitpoints", () => {
         );
 
         // Dequeue and start the first run
-        const dequeuedFirst = await engine.dequeueFromMasterQueue({
+        await setTimeout(500);
+        const dequeuedFirst = await engine.dequeueFromWorkerQueue({
           consumerId: "test_12345",
-          masterQueue: firstRun.masterQueue,
-          maxRunCount: 10,
+          workerQueue: "main",
         });
 
         const firstAttempt = await engine.startRunAttempt({
@@ -1246,7 +1246,7 @@ describe("RunEngine Waitpoints", () => {
             traceContext: {},
             traceId: "t12345-second",
             spanId: "s12345-second",
-            masterQueue: "main",
+            workerQueue: "main",
             queue: "task/test-task",
             isTest: false,
             tags: [],
@@ -1255,10 +1255,10 @@ describe("RunEngine Waitpoints", () => {
         );
 
         // Dequeue and start the second run
-        const dequeuedSecond = await engine.dequeueFromMasterQueue({
+        await setTimeout(500);
+        const dequeuedSecond = await engine.dequeueFromWorkerQueue({
           consumerId: "test_12345",
-          masterQueue: secondRun.masterQueue,
-          maxRunCount: 10,
+          workerQueue: "main",
         });
 
         const secondAttempt = await engine.startRunAttempt({
@@ -1322,10 +1322,9 @@ describe("RunEngine Waitpoints", () => {
         });
 
         // Verify the first run is back in the queue
-        const queuedRun = await engine.dequeueFromMasterQueue({
+        const queuedRun = await engine.dequeueFromWorkerQueue({
           consumerId: "test_12345",
-          masterQueue: firstRun.masterQueue,
-          maxRunCount: 10,
+          workerQueue: "main",
         });
 
         expect(queuedRun.length).toBe(0);
@@ -1395,7 +1394,7 @@ describe("RunEngine Waitpoints", () => {
             traceContext: {},
             traceId: "t_snapshotsince",
             spanId: "s_snapshotsince",
-            masterQueue: "main",
+            workerQueue: "main",
             queue: "task/test-task",
             isTest: false,
             tags: [],
@@ -1404,10 +1403,10 @@ describe("RunEngine Waitpoints", () => {
         );
 
         // Dequeue and start the run (snapshot 1)
-        const dequeued = await engine.dequeueFromMasterQueue({
+        await setTimeout(500);
+        const dequeued = await engine.dequeueFromWorkerQueue({
           consumerId: "test_snapshotsince",
-          masterQueue: run.masterQueue,
-          maxRunCount: 10,
+          workerQueue: "main",
         });
         const attemptResult = await engine.startRunAttempt({
           runId: dequeued[0].run.id,

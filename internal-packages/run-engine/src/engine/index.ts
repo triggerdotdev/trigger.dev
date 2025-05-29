@@ -119,6 +119,8 @@ export class RunEngine {
         immediatePollIntervalMs: options.worker.immediatePollIntervalMs,
         shutdownTimeoutMs: options.worker.shutdownTimeoutMs,
       },
+      masterQueueConsumersDisabled: options.queue?.masterQueueConsumersDisabled,
+      processWorkerQueueDebounceMs: options.queue?.processWorkerQueueDebounceMs,
     });
 
     this.worker = new Worker({

@@ -25,6 +25,8 @@ describe("RunEngine cancelling", () => {
         },
         queue: {
           redis: redisOptions,
+          masterQueueConsumersDisabled: true,
+          processWorkerQueueDebounceMs: 50,
         },
         runLock: {
           redis: redisOptions,
@@ -64,7 +66,7 @@ describe("RunEngine cancelling", () => {
             traceContext: {},
             traceId: "t12345",
             spanId: "s12345",
-            masterQueue: "main",
+            workerQueue: "main",
             queue: `task/${parentTask}`,
             isTest: false,
             tags: [],
@@ -73,10 +75,10 @@ describe("RunEngine cancelling", () => {
         );
 
         //dequeue the run
-        const dequeued = await engine.dequeueFromMasterQueue({
+        await setTimeout(500);
+        const dequeued = await engine.dequeueFromWorkerQueue({
           consumerId: "test_12345",
-          masterQueue: parentRun.masterQueue,
-          maxRunCount: 10,
+          workerQueue: "main",
         });
 
         //create an attempt
@@ -99,7 +101,7 @@ describe("RunEngine cancelling", () => {
             traceContext: {},
             traceId: "t12345",
             spanId: "s12345",
-            masterQueue: "main",
+            workerQueue: "main",
             queue: `task/${childTask}`,
             isTest: false,
             tags: [],
@@ -110,10 +112,10 @@ describe("RunEngine cancelling", () => {
         );
 
         //dequeue the child run
-        const dequeuedChild = await engine.dequeueFromMasterQueue({
+        await setTimeout(500);
+        const dequeuedChild = await engine.dequeueFromWorkerQueue({
           consumerId: "test_12345",
-          masterQueue: childRun.masterQueue,
-          maxRunCount: 10,
+          workerQueue: "main",
         });
 
         //start the child run
@@ -239,6 +241,8 @@ describe("RunEngine cancelling", () => {
       },
       queue: {
         redis: redisOptions,
+        masterQueueConsumersDisabled: true,
+        processWorkerQueueDebounceMs: 50,
       },
       runLock: {
         redis: redisOptions,
@@ -277,7 +281,7 @@ describe("RunEngine cancelling", () => {
           traceContext: {},
           traceId: "t12345",
           spanId: "s12345",
-          masterQueue: "main",
+          workerQueue: "main",
           queue: `task/${parentTask}`,
           isTest: false,
           tags: [],
@@ -286,10 +290,10 @@ describe("RunEngine cancelling", () => {
       );
 
       //dequeue the run
-      const dequeued = await engine.dequeueFromMasterQueue({
+      await setTimeout(500);
+      const dequeued = await engine.dequeueFromWorkerQueue({
         consumerId: "test_12345",
-        masterQueue: parentRun.masterQueue,
-        maxRunCount: 10,
+        workerQueue: "main",
       });
 
       let cancelledEventData: EventBusEventArgs<"runCancelled">[0][] = [];

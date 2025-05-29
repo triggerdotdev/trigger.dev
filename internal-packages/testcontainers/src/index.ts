@@ -17,7 +17,7 @@ import { StartedClickHouseContainer } from "./clickhouse";
 import { ClickHouseClient, createClient } from "@clickhouse/client";
 
 export { assertNonNullable } from "./utils";
-export { StartedRedisContainer };
+export { logCleanup };
 
 type NetworkContext = { network: StartedNetwork };
 
@@ -35,14 +35,21 @@ type ElectricContext = {
   electricOrigin: string;
 };
 
-type ContainerContext = NetworkContext & PostgresContext & RedisContext & ClickhouseContext;
-type PostgresAndRedisContext = NetworkContext & PostgresContext & RedisContext;
-type ContainerWithElectricAndRedisContext = ContainerContext & ElectricContext;
-type ContainerWithElectricContext = NetworkContext & PostgresContext & ElectricContext;
+export type ContainerContext = NetworkContext & PostgresContext & RedisContext & ClickhouseContext;
+export type PostgresAndRedisContext = NetworkContext & PostgresContext & RedisContext;
+export type ContainerWithElectricAndRedisContext = ContainerContext & ElectricContext;
+export type ContainerWithElectricContext = NetworkContext & PostgresContext & ElectricContext;
+
+export type {
+  StartedNetwork,
+  StartedPostgreSqlContainer,
+  StartedRedisContainer,
+  StartedClickHouseContainer,
+};
 
 type Use<T> = (value: T) => Promise<void>;
 
-const network = async ({ task }: TaskContext, use: Use<StartedNetwork>) => {
+export const network = async ({ task }: TaskContext, use: Use<StartedNetwork>) => {
   const testName = task.name;
 
   logSetup("network: starting", { testName });
@@ -68,7 +75,7 @@ const network = async ({ task }: TaskContext, use: Use<StartedNetwork>) => {
   }
 };
 
-const postgresContainer = async (
+export const postgresContainer = async (
   { network, task }: { network: StartedNetwork } & TaskContext,
   use: Use<StartedPostgreSqlContainer>
 ) => {
@@ -81,7 +88,7 @@ const postgresContainer = async (
   await useContainer("postgresContainer", { container, task, use: () => use(container) });
 };
 
-const prisma = async (
+export const prisma = async (
   { postgresContainer, task }: { postgresContainer: StartedPostgreSqlContainer } & TaskContext,
   use: Use<PrismaClient>
 ) => {
@@ -106,7 +113,7 @@ const prisma = async (
 
 export const postgresTest = test.extend<PostgresContext>({ network, postgresContainer, prisma });
 
-const redisContainer = async (
+export const redisContainer = async (
   { network, task }: { network: StartedNetwork } & TaskContext,
   use: Use<StartedRedisContainer>
 ) => {
@@ -122,7 +129,7 @@ const redisContainer = async (
   await useContainer("redisContainer", { container, task, use: () => use(container) });
 };
 
-const redisOptions = async (
+export const redisOptions = async (
   { redisContainer }: { redisContainer: StartedRedisContainer },
   use: Use<RedisOptions>
 ) => {

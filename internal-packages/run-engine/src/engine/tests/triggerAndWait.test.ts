@@ -22,6 +22,8 @@ describe("RunEngine triggerAndWait", () => {
       },
       queue: {
         redis: redisOptions,
+        masterQueueConsumersDisabled: true,
+        processWorkerQueueDebounceMs: 50,
       },
       runLock: {
         redis: redisOptions,
@@ -61,19 +63,19 @@ describe("RunEngine triggerAndWait", () => {
           traceContext: {},
           traceId: "t12345",
           spanId: "s12345",
-          masterQueue: "main",
           queue: `task/${parentTask}`,
           isTest: false,
           tags: [],
+          workerQueue: "main",
         },
         prisma
       );
 
       //dequeue parent
-      const dequeued = await engine.dequeueFromMasterQueue({
+      await setTimeout(500);
+      const dequeued = await engine.dequeueFromWorkerQueue({
         consumerId: "test_12345",
-        masterQueue: parentRun.masterQueue,
-        maxRunCount: 10,
+        workerQueue: "main",
       });
 
       //create an attempt
@@ -96,12 +98,12 @@ describe("RunEngine triggerAndWait", () => {
           traceContext: {},
           traceId: "t12345",
           spanId: "s12345",
-          masterQueue: "main",
           queue: `task/${childTask}`,
           isTest: false,
           tags: [],
           resumeParentOnCompletion: true,
           parentTaskRunId: parentRun.id,
+          workerQueue: "main",
         },
         prisma
       );
@@ -128,10 +130,10 @@ describe("RunEngine triggerAndWait", () => {
       expect(runWaitpoint.waitpoint.completedByTaskRunId).toBe(childRun.id);
 
       //dequeue the child run
-      const dequeuedChild = await engine.dequeueFromMasterQueue({
+      await setTimeout(500);
+      const dequeuedChild = await engine.dequeueFromWorkerQueue({
         consumerId: "test_12345",
-        masterQueue: childRun.masterQueue,
-        maxRunCount: 10,
+        workerQueue: "main",
       });
 
       //start the child run
@@ -210,6 +212,8 @@ describe("RunEngine triggerAndWait", () => {
         },
         queue: {
           redis: redisOptions,
+          masterQueueConsumersDisabled: true,
+          processWorkerQueueDebounceMs: 50,
         },
         runLock: {
           redis: redisOptions,
@@ -249,19 +253,19 @@ describe("RunEngine triggerAndWait", () => {
             traceContext: {},
             traceId: "t12345",
             spanId: "s12345",
-            masterQueue: "main",
             queue: `task/${parentTask}`,
             isTest: false,
             tags: [],
+            workerQueue: "main",
           },
           prisma
         );
 
         //dequeue parent and create the attempt
-        const dequeued = await engine.dequeueFromMasterQueue({
+        await setTimeout(500);
+        const dequeued = await engine.dequeueFromWorkerQueue({
           consumerId: "test_12345",
-          masterQueue: parentRun1.masterQueue,
-          maxRunCount: 10,
+          workerQueue: "main",
         });
         const attemptResult = await engine.startRunAttempt({
           runId: parentRun1.id,
@@ -281,12 +285,12 @@ describe("RunEngine triggerAndWait", () => {
             traceContext: {},
             traceId: "t12345",
             spanId: "s12345",
-            masterQueue: "main",
             queue: `task/${childTask}`,
             isTest: false,
             tags: [],
             resumeParentOnCompletion: true,
             parentTaskRunId: parentRun1.id,
+            workerQueue: "main",
           },
           prisma
         );
@@ -313,10 +317,10 @@ describe("RunEngine triggerAndWait", () => {
         expect(runWaitpoint.waitpoint.completedByTaskRunId).toBe(childRun.id);
 
         //dequeue the child run
-        const dequeuedChild = await engine.dequeueFromMasterQueue({
+        await setTimeout(500);
+        const dequeuedChild = await engine.dequeueFromWorkerQueue({
           consumerId: "test_12345",
-          masterQueue: childRun.masterQueue,
-          maxRunCount: 10,
+          workerQueue: "main",
         });
 
         //start the child run
@@ -338,18 +342,18 @@ describe("RunEngine triggerAndWait", () => {
             traceContext: {},
             traceId: "t12346",
             spanId: "s12346",
-            masterQueue: "main",
             queue: `task/${parentTask}`,
             isTest: false,
             tags: [],
+            workerQueue: "main",
           },
           prisma
         );
         //dequeue 2nd parent
-        const dequeued2 = await engine.dequeueFromMasterQueue({
+        await setTimeout(500);
+        const dequeued2 = await engine.dequeueFromWorkerQueue({
           consumerId: "test_12345",
-          masterQueue: parentRun2.masterQueue,
-          maxRunCount: 10,
+          workerQueue: "main",
         });
 
         //create the 2nd parent attempt
