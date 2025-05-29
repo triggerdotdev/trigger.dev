@@ -23,6 +23,8 @@ describe("RunEngine ttl", () => {
       },
       queue: {
         redis: redisOptions,
+        processWorkerQueueDebounceMs: 50,
+        masterQueueConsumersDisabled: true,
       },
       runLock: {
         redis: redisOptions,
@@ -65,7 +67,7 @@ describe("RunEngine ttl", () => {
           traceContext: {},
           traceId: "t12345",
           spanId: "s12345",
-          masterQueue: "main",
+          workerQueue: "main",
           queue: "task/test-task",
           isTest: false,
           tags: [],

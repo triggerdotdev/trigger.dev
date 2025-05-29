@@ -64,7 +64,7 @@ describe("RunEngine delays", () => {
           traceContext: {},
           traceId: "t12345",
           spanId: "s12345",
-          masterQueue: "main",
+          workerQueue: "main",
           queue: "task/test-task",
           isTest: false,
           tags: [],
@@ -146,7 +146,7 @@ describe("RunEngine delays", () => {
           traceContext: {},
           traceId: "t12345",
           spanId: "s12345",
-          masterQueue: "main",
+          workerQueue: "main",
           queue: "task/test-task",
           isTest: false,
           tags: [],
@@ -243,7 +243,7 @@ describe("RunEngine delays", () => {
           traceContext: {},
           traceId: "t12345",
           spanId: "s12345",
-          masterQueue: "main",
+          workerQueue: "main",
           queue: "task/test-task",
           isTest: false,
           tags: [],
@@ -347,7 +347,7 @@ describe("RunEngine delays", () => {
           traceContext: {},
           traceId: "t12345",
           spanId: "s12345",
-          masterQueue: "main",
+          workerQueue: "main",
           queue: "task/test-task",
           isTest: false,
           tags: [],
@@ -384,10 +384,10 @@ describe("RunEngine delays", () => {
       expect(executionData3.run.status).toBe("CANCELED");
 
       //attempt to dequeue - should get nothing
-      const dequeued = await engine.dequeueFromMasterQueue({
+      await setTimeout(500);
+      const dequeued = await engine.dequeueFromWorkerQueue({
         consumerId: "test_12345",
-        masterQueue: run.masterQueue,
-        maxRunCount: 10,
+        workerQueue: "main",
       });
 
       expect(dequeued.length).toBe(0);

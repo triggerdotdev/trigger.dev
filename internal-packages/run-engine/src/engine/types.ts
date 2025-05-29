@@ -29,6 +29,8 @@ export type RunEngineOptions = {
   };
   queue: {
     redis: RedisOptions;
+    masterQueueConsumersDisabled?: boolean;
+    processWorkerQueueDebounceMs?: number;
     workerOptions?: WorkerConcurrencyOptions;
     retryOptions?: RetryOptions;
     defaultEnvConcurrency?: number;

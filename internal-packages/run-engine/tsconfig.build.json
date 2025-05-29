@@ -1,6 +1,6 @@
 {
   "include": ["src/**/*.ts"],
-  "exclude": ["src/**/*.test.ts"],
+  "exclude": ["src/**/*.test.ts", "src/engine/tests/utils/*.ts"],
   "compilerOptions": {
     "composite": true,
     "target": "ES2020",

@@ -197,7 +197,7 @@ export class DequeueSystem {
                       latestSnapshot: snapshot.id,
                     });
                     await this.$.runQueue.acknowledgeMessage(orgId, runId);
-                    return null;
+                    return;
                   }
                   case "RUN_ENVIRONMENT_ARCHIVED": {
                     //this happens if the preview branch was archived
@@ -210,18 +210,6 @@ export class DequeueSystem {
                       }
                     );
                     await this.$.runQueue.acknowledgeMessage(orgId, runId);
-                    return null;
-                  }
-                  case "NO_WORKER":
-                  case "TASK_NEVER_REGISTERED":
-                  case "QUEUE_NOT_FOUND":
-                  case "TASK_NOT_IN_LATEST": {
-                    this.$.logger.warn(`RunEngine.dequeueFromMasterQueue(): ${result.code}`, {
-                      runId,
-                      latestSnapshot: snapshot.id,
-                      result,
-                    });
-
                     return;
                   }
                   case "NO_WORKER":
