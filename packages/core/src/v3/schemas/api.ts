@@ -293,6 +293,7 @@ export type StartDeploymentIndexingResponseBody = z.infer<
 
 export const FinalizeDeploymentRequestBody = z.object({
   imageReference: z.string(),
+  /** @deprecated This is now determined by the webapp */
   selfHosted: z.boolean().optional(),
   skipRegistryProxy: z.boolean().optional(),
   skipPromotion: z.boolean().optional(),
@@ -338,6 +339,7 @@ export const InitializeDeploymentRequestBody = z.object({
   contentHash: z.string(),
   userId: z.string().optional(),
   registryHost: z.string().optional(),
+  /** @deprecated This is now determined by the webapp */
   selfHosted: z.boolean().optional(),
   namespace: z.string().optional(),
   gitMeta: GitMeta.optional(),

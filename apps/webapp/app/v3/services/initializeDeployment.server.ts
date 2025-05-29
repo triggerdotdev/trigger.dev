@@ -5,7 +5,7 @@ import { env } from "~/env.server";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
-import { createRemoteImageBuild } from "../remoteImageBuilder.server";
+import { createRemoteImageBuild, remoteBuildsEnabled } from "../remoteImageBuilder.server";
 import { calculateNextBuildVersion } from "../utils/calculateNextBuildVersion";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
@@ -46,13 +46,17 @@ export class InitializeDeploymentService extends BaseService {
 
       const nextVersion = calculateNextBuildVersion(latestDeployment?.version);
 
+      if (payload.selfHosted && remoteBuildsEnabled()) {
+        throw new ServiceValidationError(
+          "Self-hosted deployments are not supported on this instance"
+        );
+      }
+
       // Try and create a depot build and get back the external build data
-      const externalBuildData = payload.selfHosted
-        ? undefined
-        : await createRemoteImageBuild(environment.project);
+      const externalBuildData = await createRemoteImageBuild(environment.project);
 
       const triggeredBy = payload.userId
-        ? await this._prisma.user.findUnique({
+        ? await this._prisma.user.findFirst({
             where: {
               id: payload.userId,
               orgMemberships: {

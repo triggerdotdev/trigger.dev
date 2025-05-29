@@ -48,7 +48,6 @@ const DeployCommandOptions = CommonCommandOptions.extend({
   loadImage: z.boolean().default(false),
   buildPlatform: z.enum(["linux/amd64", "linux/arm64"]).default("linux/amd64"),
   namespace: z.string().optional(),
-  selfHosted: z.boolean().default(false),
   registry: z.string().optional(),
   push: z.boolean().default(false),
   config: z.string().optional(),
@@ -103,12 +102,6 @@ export function configureDeployCommand(program: Command) {
         "Skip promoting the deployment to the current deployment for the environment."
       )
   )
-    .addOption(
-      new CommandOption(
-        "--self-hosted",
-        "Build and load the image using your local Docker. Use the --registry option to specify the registry to push the image to when using --self-hosted, or just use --push to push to the default registry."
-      ).hideHelp()
-    )
     .addOption(
       new CommandOption(
         "--no-cache",
@@ -319,7 +312,6 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   const deploymentResponse = await projectClient.client.initializeDeployment({
     contentHash: buildManifest.contentHash,
     userId: authorization.userId,
-    selfHosted: options.selfHosted,
     registryHost: options.registry,
     namespace: options.namespace,
     gitMeta,
@@ -331,16 +323,10 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   }
 
   const deployment = deploymentResponse.data;
+  const isLocalBuild = !deployment.externalBuildData;
 
-  // If the deployment doesn't have any externalBuildData, then we can't use the remote image builder
-  // TODO: handle this and allow the user to the build and push the image themselves
-  if (!deployment.externalBuildData && !options.selfHosted) {
-    throw new Error(
-      `Failed to start deployment, as your instance of trigger.dev does not support hosting. To deploy this project, you must use the --self-hosted flag to build and push the image yourself.`
-    );
-  }
-
-  if (options.selfHosted) {
+  // Fail fast if we know local builds will fail
+  if (isLocalBuild) {
     const result = await x("docker", ["buildx", "version"]);
 
     if (result.exitCode !== 0) {
@@ -416,7 +402,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   const registryHost = selfHostedRegistryHost ?? "registry.trigger.dev";
 
   const buildResult = await buildImage({
-    selfHosted: options.selfHosted,
+    selfHosted: isLocalBuild,
     buildPlatform: options.buildPlatform,
     noCache: options.noCache,
     push: options.push,
@@ -512,7 +498,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     throw new SkipLoggingError("Failed to get deployment with worker");
   }
 
-  const imageReference = options.selfHosted
+  const imageReference = isLocalBuild
     ? `${selfHostedRegistryHost ? `${selfHostedRegistryHost}/` : ""}${buildResult.image}${
         buildResult.digest ? `@${buildResult.digest}` : ""
       }`
@@ -532,7 +518,6 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     deployment.id,
     {
       imageReference,
-      selfHosted: options.selfHosted,
       skipPromotion: options.skipPromotion,
     },
     (logMessage) => {

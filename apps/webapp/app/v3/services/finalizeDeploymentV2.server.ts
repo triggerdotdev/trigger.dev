@@ -8,6 +8,7 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { env } from "~/env.server";
 import { depot as execDepot } from "@depot/cli";
 import { FinalizeDeploymentService } from "./finalizeDeployment.server";
+import { remoteBuildsEnabled } from "../remoteImageBuilder.server";
 
 export class FinalizeDeploymentV2Service extends BaseService {
   public async call(
@@ -16,10 +17,9 @@ export class FinalizeDeploymentV2Service extends BaseService {
     body: FinalizeDeploymentRequestBody,
     writer?: WritableStreamDefaultWriter
   ) {
-    // if it's self hosted, lets just use the v1 finalize deployment service
-    if (body.selfHosted) {
+    // If remote builds are not enabled, lets just use the v1 finalize deployment service
+    if (!remoteBuildsEnabled()) {
       const finalizeService = new FinalizeDeploymentService();
-
       return finalizeService.call(authenticatedEnv, id, body);
     }
 
