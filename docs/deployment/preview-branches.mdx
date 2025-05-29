@@ -41,14 +41,18 @@ For full details see our [pricing page](https://trigger.dev/pricing).
 
 ## Using preview branches using GitHub Actions (recommended)
 
-This GitHub Action
+This GitHub Action will:
+
+1. Automatically create a preview branch for your Pull Request (if the branch doesn't already exist).
+2. Deploy the preview branch.
+3. Archive the preview branch when the Pull Request is merged/closed.
 
 ```yml .github/workflows/trigger-preview-branches.yml
 name: Deploy to Trigger.dev (preview branches)
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, closed, merged]
+    types: [opened, synchronize, reopened, closed]
 
 jobs:
   deploy-preview:
@@ -70,11 +74,13 @@ jobs:
           TRIGGER_ACCESS_TOKEN: ${{ secrets.TRIGGER_ACCESS_TOKEN }}
 ```
 
-For this workflow to work, you need to set up the following secrets in your GitHub repository:
+For this workflow to work, you need to set the following secrets in your GitHub repository:
 
-- `TRIGGER_ACCESS_TOKEN`: Your Trigger.dev personal access token. View the instructions [here](/github-actions) to learn more.
+- `TRIGGER_ACCESS_TOKEN`: Your Trigger.dev personal access token. View the instructions [here](/github-actions) to learn how.
 
 Notice that the deploy command has `--env preview` at the end. We automatically detect the preview branch from the GitHub actions env var.
+
+You can manually specify the branch using `--branch <branch-name>` in the deploy command, but this isn't required.
 
 ## Manually creating, deploying and archiving preview branches
 
