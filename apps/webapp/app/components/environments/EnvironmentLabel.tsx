@@ -56,7 +56,10 @@ export function EnvironmentCombo({
 }) {
   return (
     <span className={cn("flex items-center gap-1.5 text-sm text-text-bright", className)}>
-      <EnvironmentIcon environment={environment} className={cn("size-4.5", iconClassName)} />
+      <EnvironmentIcon
+        environment={environment}
+        className={cn("size-4.5 shrink-0", iconClassName)}
+      />
       <EnvironmentLabel environment={environment} />
     </span>
   );
@@ -70,7 +73,7 @@ export function EnvironmentLabel({
   className?: string;
 }) {
   return (
-    <span className={cn(environmentTextClassName(environment), className)}>
+    <span className={cn("truncate text-left", environmentTextClassName(environment), className)}>
       {environment.branchName ? environment.branchName : environmentFullTitle(environment)}
     </span>
   );
