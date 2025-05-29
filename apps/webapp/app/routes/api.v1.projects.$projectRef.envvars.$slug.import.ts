@@ -60,7 +60,7 @@ export async function action({ params, request }: ActionFunctionArgs) {
     let childFailure = !result.success ? result : undefined;
     let parentFailure = !parentResult.success ? parentResult : undefined;
 
-    if (result.success && parentResult.success) {
+    if (result.success || parentResult.success) {
       return json({ success: true });
     } else {
       return json(
