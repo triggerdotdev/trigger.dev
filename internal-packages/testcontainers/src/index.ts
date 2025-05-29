@@ -152,6 +152,8 @@ const redisOptions = async (
     showFriendlyErrorStack: true,
   };
 
+  console.log("Redis options", options);
+
   await use(options);
 };
 

@@ -9,7 +9,7 @@ import {
   SEMATTRS_MESSAGING_OPERATION,
   SEMATTRS_MESSAGING_SYSTEM,
 } from "@internal/tracing";
-import { Logger } from "@trigger.dev/core/logger";
+import { Logger, LogLevel } from "@trigger.dev/core/logger";
 import { calculateNextRetryDelay, flattenAttributes } from "@trigger.dev/core/v3";
 import { type RetryOptions } from "@trigger.dev/core/v3/schemas";
 import {
@@ -32,8 +32,10 @@ import {
 } from "@internal/redis";
 import { MessageNotFoundError } from "./errors.js";
 import { tryCatch } from "@trigger.dev/core";
-import { setInterval } from "timers/promises";
+import { setInterval } from "node:timers/promises";
 import { nanoid } from "nanoid";
+import { Worker, type WorkerConcurrencyOptions } from "@trigger.dev/redis-worker";
+import { z } from "zod";
 
 const SemanticAttributes = {
   QUEUE: "runqueue.queue",
@@ -55,9 +57,18 @@ export type RunQueueOptions = {
   queueSelectionStrategy: RunQueueSelectionStrategy;
   verbose?: boolean;
   logger?: Logger;
+  logLevel?: LogLevel;
   retryOptions?: RetryOptions;
   shardCount?: number;
   masterQueueConsumersDisabled?: boolean;
+  processWorkerQueueDebounceMs?: number;
+  workerOptions?: {
+    pollIntervalMs?: number;
+    immediatePollIntervalMs?: number;
+    shutdownTimeoutMs?: number;
+    concurrency?: WorkerConcurrencyOptions;
+    disabled?: boolean;
+  };
 };
 
 type DequeuedMessage = {
@@ -74,21 +85,36 @@ const defaultRetrySettings = {
   randomize: true,
 };
 
+const workerCatalog = {
+  processQueueForWorkerQueue: {
+    schema: z.object({
+      queue: z.string(),
+      concurrencyKey: z.string().optional(),
+      environmentId: z.string(),
+      projectId: z.string(),
+      orgId: z.string(),
+    }),
+    visibilityTimeoutMs: 30_000,
+  },
+};
+
 /**
  * RunQueue – the queue that's used to process runs
  */
 export class RunQueue {
   private retryOptions: RetryOptions;
   private subscriber: Redis;
+  private luaDebugSubscriber: Redis;
   private logger: Logger;
   private redis: Redis;
   public keys: RunQueueKeyProducer;
   private queueSelectionStrategy: RunQueueSelectionStrategy;
   private shardCount: number;
   private abortController: AbortController;
+  private worker: Worker<typeof workerCatalog>;
 
   constructor(private readonly options: RunQueueOptions) {
-    this.shardCount = options.shardCount ?? 1;
+    this.shardCount = options.shardCount ?? 2;
     this.retryOptions = options.retryOptions ?? defaultRetrySettings;
     this.redis = createRedisClient(options.redis, {
       onError: (error) => {
@@ -98,23 +124,47 @@ export class RunQueue {
         });
       },
     });
-    this.logger = options.logger ?? new Logger("RunQueue", "warn");
+    this.logger = options.logger ?? new Logger("RunQueue", options.logLevel ?? "warn");
 
     this.abortController = new AbortController();
 
     this.keys = options.keys;
     this.queueSelectionStrategy = options.queueSelectionStrategy;
 
-    this.subscriber = createRedisClient(options.redis, {
-      onError: (error) => {
-        this.logger.error(`RunQueue subscriber redis client error:`, {
-          error,
-          keyPrefix: options.redis.keyPrefix,
-        });
+    this.subscriber = this.redis.duplicate();
+    this.luaDebugSubscriber = this.redis.duplicate();
+
+    this.worker = new Worker({
+      name: "run-queue-worker",
+      redisOptions: {
+        ...options.redis,
+        keyPrefix: `${options.redis.keyPrefix}:worker`,
+      },
+      catalog: workerCatalog,
+      concurrency: options.workerOptions?.concurrency,
+      pollIntervalMs: options.workerOptions?.pollIntervalMs ?? 1000,
+      immediatePollIntervalMs: options.workerOptions?.immediatePollIntervalMs ?? 100,
+      shutdownTimeoutMs: options.workerOptions?.shutdownTimeoutMs ?? 10_000,
+      logger: new Logger("RunQueueWorker", options.logLevel ?? "log"),
+      jobs: {
+        processQueueForWorkerQueue: async (job) => {
+          await this.#processQueueForWorkerQueue(
+            job.payload.queue,
+            job.payload.environmentId,
+            job.payload.projectId,
+            job.payload.orgId,
+            job.payload.concurrencyKey
+          );
+        },
       },
     });
 
+    if (!options.workerOptions?.disabled) {
+      this.worker.start();
+    }
+
     this.#setupSubscriber();
+    this.#setupLuaLogSubscriber();
     this.#startMasterQueueConsumers();
     this.#registerCommands();
   }
@@ -209,7 +259,9 @@ export class RunQueue {
       return;
     }
 
-    return Number(result[1]);
+    const score = Number(result[1]);
+
+    return score;
   }
 
   public async currentConcurrencyOfQueue(
@@ -337,22 +389,24 @@ export class RunQueue {
     env,
     message,
     workerQueue,
+    skipDequeueProcessing = false,
   }: {
     env: MinimalAuthenticatedEnvironment;
     message: InputPayload;
     workerQueue: string;
+    skipDequeueProcessing?: boolean;
   }) {
     return await this.#trace(
       "enqueueMessage",
       async (span) => {
         const { runId, concurrencyKey } = message;
 
-        const queue = this.keys.queueKey(env, message.queue, concurrencyKey);
+        const queueKey = this.keys.queueKey(env, message.queue, concurrencyKey);
 
         propagation.inject(context.active(), message);
 
         span.setAttributes({
-          [SemanticAttributes.QUEUE]: queue,
+          [SemanticAttributes.QUEUE]: queueKey,
           [SemanticAttributes.RUN_ID]: runId,
           [SemanticAttributes.CONCURRENCY_KEY]: concurrencyKey,
           [SemanticAttributes.WORKER_QUEUE]: workerQueue,
@@ -361,10 +415,28 @@ export class RunQueue {
         const messagePayload: OutputPayloadV2 = {
           ...message,
           version: "2",
-          queue,
+          queue: queueKey,
           workerQueue,
           attempt: 0,
         };
+
+        if (!skipDequeueProcessing) {
+          // This will move the message to the worker queue so it can be dequeued
+          await this.worker.enqueueOnce({
+            id: queueKey, // dedupe by environment, queue, and concurrency key
+            job: "processQueueForWorkerQueue",
+            payload: {
+              queue: message.queue,
+              concurrencyKey,
+              environmentId: env.id,
+              orgId: env.organization.id,
+              projectId: env.project.id,
+            },
+            // Add a small delay to dedupe messages so at most one of these will processed,
+            // every 500ms per queue, concurrency key, and environment
+            availableAt: new Date(Date.now() + (this.options.processWorkerQueueDebounceMs ?? 500)), // 500ms from now
+          });
+        }
 
         return await this.#callEnqueueMessage(messagePayload);
       },
@@ -681,8 +753,15 @@ export class RunQueue {
 
   async quit() {
     this.abortController.abort();
-    await this.subscriber.unsubscribe();
-    await this.subscriber.quit();
+
+    await Promise.all([
+      this.subscriber.unsubscribe(),
+      this.luaDebugSubscriber.unsubscribe(),
+      this.subscriber.quit(),
+      this.luaDebugSubscriber.quit(),
+      this.worker.stop(),
+    ]);
+
     await this.redis.quit();
   }
 
@@ -794,17 +873,45 @@ export class RunQueue {
     this.subscriber.on("message", this.handleRedriveMessage.bind(this));
   }
 
+  /**
+   * Debug lua scripts by publishing to this channel
+   *
+   * @example
+   *
+   * ```lua
+   * redis.call("PUBLISH", "runqueue:lua:debug", "workerQueueKey: " .. workerQueueKey .. " messageKeyValue -> " .. tostring(messageKeyValue))
+   * ```
+   */
+  async #setupLuaLogSubscriber() {
+    this.luaDebugSubscriber.subscribe("runqueue:lua:debug", (err) => {
+      if (err) {
+        this.logger.error(`Failed to subscribe to runqueue:lua:debug`, { error: err });
+      } else {
+        this.logger.log(`Subscribed to runqueue:lua:debug`);
+      }
+    });
+
+    this.luaDebugSubscriber.on("message", (_channel, msg) => {
+      this.logger.debug("runqueue lua debug", { msg });
+    });
+  }
+
   #startMasterQueueConsumers() {
     if (this.options.masterQueueConsumersDisabled) {
+      this.logger.debug("Master queue consumers disabled");
+
       return;
     }
 
     for (let i = 0; i < this.shardCount; i++) {
+      this.logger.debug(`Starting master queue consumer ${i}`);
       // We will start a consumer for each shard
       this.#startMasterQueueConsumer(i).catch((err) => {
         this.logger.error(`Failed to start master queue consumer ${i}`, { error: err });
       });
     }
+
+    this.logger.debug(`Started ${this.shardCount} master queue consumers`);
   }
 
   async #startMasterQueueConsumer(shard: number) {
@@ -847,8 +954,7 @@ export class RunQueue {
         throw error;
       }
 
-      this.logger.error(`Master queue consumer ${shard} stopped`, {
-        error,
+      this.logger.debug(`Master queue consumer ${shard} stopped`, {
         service: this.name,
         shard,
         processedCount,
@@ -857,7 +963,14 @@ export class RunQueue {
     }
   }
 
-  async #processMasterQueueShard(shard: number, consumerId: string) {
+  // This is used for test purposes only
+  async processMasterQueueForEnvironment(environmentId: string, maxCount: number = 10) {
+    const shard = this.keys.masterQueueShardForEnvironment(environmentId, this.shardCount);
+
+    return this.#processMasterQueueShard(shard, environmentId, maxCount);
+  }
+
+  async #processMasterQueueShard(shard: number, consumerId: string, maxCount: number = 10) {
     return this.#trace(
       "processMasterQueueShard",
       async (span) => {
@@ -889,7 +1002,7 @@ export class RunQueue {
                 messageQueue: queue,
                 shard,
                 // TODO: make this configurable
-                maxCount: 10,
+                maxCount,
               })
             );
 
@@ -922,17 +1035,60 @@ export class RunQueue {
     );
   }
 
+  async #processQueueForWorkerQueue(
+    queue: string,
+    environmentId: string,
+    projectId: string,
+    orgId: string,
+    concurrencyKey?: string
+  ) {
+    const queueKey = this.keys.queueKey(orgId, projectId, environmentId, queue, concurrencyKey);
+
+    const shard = this.keys.masterQueueShardForEnvironment(environmentId, this.shardCount);
+
+    this.logger.debug("processQueueForWorkerQueue", {
+      queueKey,
+      shard,
+      service: this.name,
+    });
+
+    const messages = await this.#callDequeueMessagesFromQueue({
+      messageQueue: queueKey,
+      shard,
+      maxCount: 10,
+    });
+
+    await this.#enqueueMessagesToWorkerQueues(messages);
+  }
+
   async #enqueueMessagesToWorkerQueues(messages: DequeuedMessage[]) {
     await this.#trace("enqueueMessagesToWorkerQueues", async (span) => {
       span.setAttribute("message_count", messages.length);
 
       const pipeline = this.redis.pipeline();
 
-      for (const message of messages) {
-        const workerQueue = this.#getWorkerQueueFromMessage(message.message);
+      const workerQueueKeys = new Set<string>();
 
-        pipeline.rpush(workerQueue, message.messageId);
+      for (const message of messages) {
+        const workerQueueKey = this.keys.workerQueueKey(
+          this.#getWorkerQueueFromMessage(message.message)
+        );
+
+        workerQueueKeys.add(workerQueueKey);
+
+        const messageKeyValue = this.keys.messageKey(message.message.orgId, message.messageId);
+
+        pipeline.rpush(workerQueueKey, messageKeyValue);
       }
+
+      span.setAttribute("worker_queue_count", workerQueueKeys.size);
+      span.setAttribute("worker_queue_keys", Array.from(workerQueueKeys));
+
+      this.logger.debug("enqueueMessagesToWorkerQueues pipeline", {
+        service: this.name,
+        messages,
+        workerQueueKeys: Array.from(workerQueueKeys),
+      });
 
       await pipeline.exec();
     });
@@ -1034,12 +1190,17 @@ export class RunQueue {
       return [];
     }
 
-    this.logger.debug("Dequeue message result", {
+    this.logger.debug("dequeueMessagesFromQueue raw result", {
       result,
       service: this.name,
     });
 
-    const messages = result.map(([messageId, messageScore, rawMessage]) => {
+    const messages = [];
+    for (let i = 0; i < result.length; i += 3) {
+      const messageId = result[i];
+      const messageScore = result[i + 1];
+      const rawMessage = result[i + 2];
+
       //read message
       const parsedMessage = OutputPayload.safeParse(JSON.parse(rawMessage));
       if (!parsedMessage.success) {
@@ -1049,16 +1210,21 @@ export class RunQueue {
           service: this.name,
         });
 
-        return;
+        continue;
       }
 
       const message = parsedMessage.data;
 
-      return {
+      messages.push({
         messageId,
         messageScore,
         message,
-      };
+      });
+    }
+
+    this.logger.debug("dequeueMessagesFromQueue parsed result", {
+      messages,
+      service: this.name,
     });
 
     return messages.filter(Boolean) as DequeuedMessage[];
@@ -1076,7 +1242,17 @@ export class RunQueue {
       workerQueueKey,
     });
 
-    const blockingClient = this.redis.duplicate();
+    if (this.abortController.signal.aborted) {
+      return;
+    }
+
+    const blockingClient = this.#createBlockingDequeueClient();
+
+    async function cleanup() {
+      await blockingClient.quit();
+    }
+
+    this.abortController.signal.addEventListener("abort", cleanup);
 
     const result = await blockingClient.dequeueMessageFromWorkerQueue(
       //keys
@@ -1084,19 +1260,32 @@ export class RunQueue {
       //args
       this.options.redis.keyPrefix ?? "",
       // TODO: make this configurable
-      String(20)
+      String(10)
     );
+
+    this.abortController.signal.removeEventListener("abort", cleanup);
+
+    await cleanup();
 
     if (!result) {
       return;
     }
 
-    this.logger.debug("Dequeue message from worker queue result", {
+    this.logger.debug("dequeueMessageFromWorkerQueue raw result", {
       result,
       service: this.name,
     });
 
     if (result.length !== 2) {
+      this.logger.error("Invalid dequeue message from worker queue result", {
+        result,
+        service: this.name,
+      });
+      return;
+    }
+
+    // Make sure they are both strings
+    if (typeof result[0] !== "string" || typeof result[1] !== "string") {
       this.logger.error("Invalid dequeue message from worker queue result", {
         result,
         service: this.name,
@@ -1260,6 +1449,51 @@ export class RunQueue {
     return message.masterQueues[0];
   }
 
+  #createBlockingDequeueClient() {
+    const blockingClient = this.redis.duplicate();
+
+    blockingClient.defineCommand("dequeueMessageFromWorkerQueue", {
+      numberOfKeys: 1,
+      lua: `
+local workerQueueKey = KEYS[1]
+
+local keyPrefix = ARGV[1]
+local timeoutInSeconds = tonumber(ARGV[2])
+
+-- Attempt to dequeue using BLPOP
+-- result is either nil or [queueName, messageId]
+local result = redis.call('BLPOP', workerQueueKey, timeoutInSeconds)
+
+if not result or type(result) ~= "table" then
+    return nil
+end
+
+local messageKeyValue = result[2]
+
+-- Get the message payload
+local messageKey = keyPrefix .. messageKeyValue
+
+local messagePayload = redis.call('GET', messageKey)
+
+-- if the messagePayload is nil, then the message is not in the queue
+if not messagePayload then
+    return nil
+end
+
+-- messageKeyValue is {org:<orgId>}:message:<messageId> and we want to extract the messageId
+local messageId = messageKeyValue:match("([^:]+)$")
+
+if not messageId then
+    return nil
+end
+
+return {messageId, messagePayload} -- Return message details
+      `,
+    });
+
+    return blockingClient;
+  }
+
   #registerCommands() {
     this.redis.defineCommand("enqueueMessage", {
       numberOfKeys: 6,
@@ -1392,29 +1626,6 @@ end
 
 -- Return results as a flat array: [messageId1, messageScore1, messagePayload1, messageId2, messageScore2, messagePayload2, ...]
 return results
-      `,
-    });
-
-    this.redis.defineCommand("dequeueMessageFromWorkerQueue", {
-      numberOfKeys: 1,
-      lua: `
-local workerQueueKey = KEYS[1]
-
-local keyPrefix = ARGV[1]
-local timeoutInSeconds = ARGV[2]
-
--- Attempt to dequeue using BLPOP
-local messageId = redis.call('BLPOP', workerQueueKey, timeoutInSeconds)
-
-if messageId == nil then
-    return nil
-end
-
--- Get the message payload
-local messageKey = keyPrefix .. messageId
-local messagePayload = redis.call('GET', messageKey)
-
-return {messageId, messagePayload} -- Return message details
       `,
     });
 
@@ -1658,8 +1869,8 @@ declare module "@internal/redis" {
       defaultEnvConcurrencyLimit: string,
       keyPrefix: string,
       maxCount: string,
-      callback?: Callback<[string, string, string][]>
-    ): Result<[string, string, string][], Context>;
+      callback?: Callback<string[]>
+    ): Result<string[], Context>;
 
     dequeueMessageFromWorkerQueue(
       // keys
