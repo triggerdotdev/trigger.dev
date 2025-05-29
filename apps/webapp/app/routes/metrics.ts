@@ -16,7 +16,10 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const prismaMetrics = await prisma.$metrics.prometheus();
   const coreMetrics = await metricsRegister.metrics();
 
-  return new Response(coreMetrics + prismaMetrics, {
+  // Order matters, core metrics end with `# EOF`, prisma metrics don't
+  const metrics = prismaMetrics + coreMetrics;
+
+  return new Response(metrics, {
     headers: {
       "Content-Type": metricsRegister.contentType,
     },
