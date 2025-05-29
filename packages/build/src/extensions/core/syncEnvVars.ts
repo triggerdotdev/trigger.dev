@@ -114,12 +114,6 @@ export function syncEnvVars(fn: SyncEnvVarsFunction, options?: SyncEnvVarsOption
         $spinner.stop(`Found ${numberOfEnvVars} env vars to sync`);
       }
 
-      context.logger.debug("syncEnvVars", {
-        env,
-        parentEnv,
-        numberOfEnvVars,
-      });
-
       context.addLayer({
         id: "sync-env-vars",
         deploy: {
