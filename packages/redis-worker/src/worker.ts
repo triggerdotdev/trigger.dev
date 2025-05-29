@@ -256,6 +256,66 @@ class Worker<TCatalog extends WorkerCatalog> {
   }
 
   /**
+   * Enqueues a job for processing once. If the job is already in the queue, it will be ignored.
+   * @param options - The enqueue options.
+   * @param options.id - Required unique identifier for the job.
+   * @param options.job - The job type from the worker catalog.
+   * @param options.payload - The job payload that matches the schema defined in the catalog.
+   * @param options.visibilityTimeoutMs - Optional visibility timeout in milliseconds. Defaults to value from catalog.
+   * @param options.availableAt - Optional date when the job should become available for processing. Defaults to now.
+   * @returns A promise that resolves when the job is enqueued.
+   */
+  enqueueOnce<K extends keyof TCatalog>({
+    id,
+    job,
+    payload,
+    visibilityTimeoutMs,
+    availableAt,
+  }: {
+    id: string;
+    job: K;
+    payload: z.infer<TCatalog[K]["schema"]>;
+    visibilityTimeoutMs?: number;
+    availableAt?: Date;
+  }) {
+    return startSpan(
+      this.tracer,
+      "enqueueOnce",
+      async (span) => {
+        const timeout = visibilityTimeoutMs ?? this.options.catalog[job]?.visibilityTimeoutMs;
+
+        if (!timeout) {
+          throw new Error(`No visibility timeout found for job ${String(job)} with id ${id}`);
+        }
+
+        span.setAttribute("job_visibility_timeout_ms", timeout);
+
+        return this.withHistogram(
+          this.metrics.enqueueDuration,
+          this.queue.enqueueOnce({
+            id,
+            job,
+            item: payload,
+            visibilityTimeoutMs: timeout,
+            availableAt,
+          }),
+          {
+            job_type: String(job),
+            has_available_at: availableAt ? "true" : "false",
+          }
+        );
+      },
+      {
+        kind: SpanKind.PRODUCER,
+        attributes: {
+          job_type: String(job),
+          job_id: id,
+        },
+      }
+    );
+  }
+
+  /**
    * Reschedules an existing job to a new available date.
    * If the job isn't in the queue, it will be ignored.
    */

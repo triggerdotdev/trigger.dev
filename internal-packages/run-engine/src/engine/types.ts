@@ -29,6 +29,7 @@ export type RunEngineOptions = {
   };
   queue: {
     redis: RedisOptions;
+    workerOptions?: WorkerConcurrencyOptions;
     retryOptions?: RetryOptions;
     defaultEnvConcurrency?: number;
     queueSelectionStrategyOptions?: Pick<

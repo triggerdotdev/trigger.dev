@@ -59,6 +59,7 @@ export interface RunQueueKeyProducer {
 
   masterQueueKeyForEnvironment(envId: string, shardCount: number): string;
   masterQueueKeyForShard(shard: number): string;
+  masterQueueShardForEnvironment(envId: string, shardCount: number): number;
   workerQueueKey(workerQueue: string): string;
 
   envQueueKey(env: MinimalAuthenticatedEnvironment): string;
