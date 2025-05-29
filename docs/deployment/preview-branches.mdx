@@ -82,9 +82,9 @@ Notice that the deploy command has `--env preview` at the end. We automatically 
 
 You can manually specify the branch using `--branch <branch-name>` in the deploy command, but this isn't required.
 
-## Manually creating, deploying and archiving preview branches
+## Using the CLI to create, deploy and archive preview branches
 
-### Using the CLI
+### Deploying a preview branch
 
 Creating and deploying a preview branch manually is easy:
 
@@ -98,6 +98,8 @@ This will create and deploy a preview branch, automatically detecting the git br
 npx trigger.dev@v4-beta deploy --env preview --branch <branch-name>
 ```
 
+### Archiving a preview branch
+
 You can manually archive a preview branch with the CLI:
 
 ```bash
@@ -106,16 +108,13 @@ npx trigger.dev@v4-beta preview archive
 
 Again we will try auto-detect the current branch. But you can specify the branch name with `--branch <branch-name>`.
 
-### In the dashboard
+## Creating and archiving preview branches from the dashboard
 
-### Creating and archiving preview branches from the dashboard
+From the "Preview branches" page you can create a branch:
 
-In the dashboard, you can
+![Preview branches page](/deployment/preview-branches.png)
+![Create preview branch](/deployment/preview-branches-new.png)
 
-## Automating using GitHub Actions
+You can also archive a branch:
 
-## Limits
-
-## Triggering runs on preview branches
-
-When triggering runs for a preview branch you need to both set the `TRIGGER_SECRET_KEY` (to your Preview API key) and set `TRIGGER_PREVIEW_BRANCH` to the name of your branch.
+![Archive preview branch](/deployment/preview-branches-archive.png)
