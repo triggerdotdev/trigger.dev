@@ -4,6 +4,7 @@ import ProjectRefOption from "/snippets/cli-options-project-ref.mdx";
 import EnvFileOption from "/snippets/cli-options-env-file.mdx";
 import ConfigFileOption from "/snippets/cli-options-config-file.mdx";
 import SkipUpdateCheckOption from "/snippets/cli-options-skip-update-check.mdx";
+import BranchOption from "/snippets/cli-options-branch.mdx";
 
 Run the command like this:
 
@@ -56,8 +57,11 @@ npx trigger.dev@latest deploy [path]
 <SkipUpdateCheckOption />
 
 <ParamField body="Environment" type="--env | -e">
-  Defaults to `prod` but you can specify `staging`.
+  Defaults to `prod` but you can specify `staging` or `preview`. If you specify `preview` we will
+  try and automatically detect the branch name from git.
 </ParamField>
+
+<BranchOption />
 
 <ParamField body="Dry run" type="--dry-run">
   Create a deployable build but don't deploy it. Prints out the build path so you can inspect it.
