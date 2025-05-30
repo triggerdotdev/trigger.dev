@@ -270,7 +270,7 @@ const EnvironmentSchema = z.object({
   DEPLOY_REGISTRY_USERNAME: z.string().optional(),
   DEPLOY_REGISTRY_PASSWORD: z.string().optional(),
   DEPLOY_REGISTRY_NAMESPACE: z.string().default("trigger"),
-  DEPLOY_BUILD_PLATFORM: z.string().default("linux/amd64"),
+  DEPLOY_IMAGE_PLATFORM: z.string().default("linux/amd64"),
   DEPLOY_TIMEOUT_MS: z.coerce
     .number()
     .int()

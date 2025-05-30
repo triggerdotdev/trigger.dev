@@ -104,7 +104,7 @@ export class InitializeDeploymentService extends BaseService {
           triggeredById: triggeredBy?.id,
           type: payload.type,
           imageReference: imageRef,
-          imagePlatform: env.DEPLOY_BUILD_PLATFORM,
+          imagePlatform: env.DEPLOY_IMAGE_PLATFORM,
           git: payload.gitMeta ?? undefined,
         },
       });
