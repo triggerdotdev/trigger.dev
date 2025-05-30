@@ -1016,10 +1016,14 @@ export class ApiClient {
   }
 
   #getRealtimeHeaders() {
-    const headers: Record<string, string> = {
+    let headers: Record<string, string> = {
       Authorization: `Bearer ${this.accessToken}`,
       "trigger-version": VERSION,
     };
+
+    if (this.previewBranch) {
+      headers["x-trigger-branch"] = this.previewBranch;
+    }
 
     return headers;
   }
