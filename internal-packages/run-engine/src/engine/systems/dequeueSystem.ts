@@ -99,6 +99,20 @@ export class DequeueSystem {
                 const snapshot = await getLatestExecutionSnapshot(prisma, runId);
 
                 if (!isDequeueableExecutionStatus(snapshot.executionStatus)) {
+                  // If it's pending executing it will be picked up by the stalled system if there's an issue
+                  if (snapshot.executionStatus === "PENDING_EXECUTING") {
+                    this.$.logger.error(
+                      "RunEngine.dequeueFromMasterQueue(): Run is already PENDING_EXECUTING, removing from queue",
+                      {
+                        runId,
+                        orgId,
+                      }
+                    );
+                    // remove the run from the queue
+                    await this.$.runQueue.acknowledgeMessage(orgId, runId);
+                    return null;
+                  }
+
                   //create a failed snapshot
                   await this.executionSnapshotSystem.createExecutionSnapshot(prisma, {
                     run: {
