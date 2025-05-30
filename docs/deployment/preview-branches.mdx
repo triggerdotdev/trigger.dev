@@ -1,6 +1,6 @@
 ---
 title: "Preview branches"
-description: "Create isolated environments for each branch of your code, allowing you to test changes before merging to production. You can create preview branches manually or automatically with your git branches."
+description: "Create isolated environments for each branch of your code, allowing you to test changes before merging to production. You can create preview branches manually or automatically from your git branches."
 ---
 
 import UpgradeToV4Note from "/snippets/upgrade-to-v4-note.mdx";
@@ -9,7 +9,7 @@ import UpgradeToV4Note from "/snippets/upgrade-to-v4-note.mdx";
 
 ## How does it work?
 
-The "Preview" environment is a special environment that you can create "branches" from. We recommend you automatically create a preview branch for each git branch when a Pull Request is opened and then archive it automatically when the PR is merged/closed.
+The Preview environment is special – you create branches from it. We recommend you automatically create a preview branch for each git branch when a Pull Request is opened and then archive it automatically when the PR is merged/closed.
 
 The process to use preview branches looks like this:
 
@@ -39,7 +39,34 @@ This limit exists because each branch has an independent concurrency limit. For 
 
 For full details see our [pricing page](https://trigger.dev/pricing).
 
-## Using preview branches using GitHub Actions (recommended)
+## Triggering runs and using the SDK
+
+Before we talk about how to deploy to preview branches, one important thing to understand is that you must set the `TRIGGER_PREVIEW_BRANCH` environment variable as well as the `TRIGGER_SECRET_KEY` environment variable.
+
+When deploying to somewhere that supports `process.env` (like Node.js runtimes) you can just set the environment variables:
+
+```bash
+TRIGGER_SECRET_KEY="tr_preview_1234567890"
+TRIGGER_PREVIEW_BRANCH="your-branch-name"
+```
+
+If you're deploying somewhere that doesn't support `process.env` (like some edge runtimes) you can manually configure the SDK:
+
+```ts
+import { configure } from "@trigger.dev/sdk";
+import { myTask } from "./trigger/myTasks";
+
+configure({
+  secretKey: "tr_preview_1234567890", // WARNING: Never actually hardcode your secret key like this
+  previewBranch: "your-branch-name",
+});
+
+async function triggerTask() {
+  await myTask.trigger({ userId: "1234" }); // Trigger a run in your-branch-name
+}
+```
+
+## Preview branches with GitHub Actions (recommended)
 
 This GitHub Action will:
 
@@ -76,13 +103,13 @@ jobs:
 
 For this workflow to work, you need to set the following secrets in your GitHub repository:
 
-- `TRIGGER_ACCESS_TOKEN`: Your Trigger.dev personal access token. View the instructions [here](/github-actions) to learn how.
+- `TRIGGER_ACCESS_TOKEN`: A Trigger.dev personal access token (they start with `tr_pat_`). [Learn how to create one and set it in GitHub](/github-actions#creating-a-personal-access-token).
 
 Notice that the deploy command has `--env preview` at the end. We automatically detect the preview branch from the GitHub actions env var.
 
 You can manually specify the branch using `--branch <branch-name>` in the deploy command, but this isn't required.
 
-## Using the CLI to create, deploy and archive preview branches
+## Preview branches with the CLI (manual)
 
 ### Deploying a preview branch
 
@@ -95,7 +122,7 @@ npx trigger.dev@v4-beta deploy --env preview
 This will create and deploy a preview branch, automatically detecting the git branch. If for some reason the auto-detection doesn't work it will let you know and tell you do this:
 
 ```bash
-npx trigger.dev@v4-beta deploy --env preview --branch <branch-name>
+npx trigger.dev@v4-beta deploy --env preview --branch your-branch-name
 ```
 
 ### Archiving a preview branch
