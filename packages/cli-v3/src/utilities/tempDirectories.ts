@@ -37,7 +37,7 @@ export function getTmpDir(
       // This sometimes fails on Windows with EBUSY
     }
   };
-  const removeExitListener = keep ? () => {} : onExit(removeDir);
+  const removeExitListener = keep || process.env.KEEP_TMP_DIRS ? () => {} : onExit(removeDir);
 
   return {
     path: tmpDir,
