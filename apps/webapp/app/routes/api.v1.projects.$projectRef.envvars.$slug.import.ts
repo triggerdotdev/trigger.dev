@@ -47,6 +47,7 @@ export async function action({ params, request }: ActionFunctionArgs) {
     })),
   });
 
+  // Only sync parent variables if this is a branch environment
   if (environment.parentEnvironmentId && body.parentVariables) {
     const parentResult = await repository.create(environment.project.id, {
       override: typeof body.override === "boolean" ? body.override : false,
