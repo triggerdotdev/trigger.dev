@@ -16,11 +16,11 @@ function initializeRunsReplicationInstance() {
   invariant(typeof DATABASE_URL === "string", "DATABASE_URL env var not set");
 
   if (!env.RUN_REPLICATION_CLICKHOUSE_URL) {
-    console.log("🗃️ Runs replication service not enabled");
+    console.log("🗃️  Runs replication service not enabled");
     return;
   }
 
-  console.log("🗃️ Runs replication service enabled");
+  console.log("🗃️  Runs replication service enabled");
 
   const clickhouse = new ClickHouse({
     url: env.RUN_REPLICATION_CLICKHOUSE_URL,

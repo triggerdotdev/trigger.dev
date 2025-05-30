@@ -9,8 +9,9 @@ import {
   syncDeclarativeSchedules,
 } from "./createBackgroundWorker.server";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
+import { env } from "~/env.server";
 
-export class CreateDeploymentBackgroundWorkerService extends BaseService {
+export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
   public async call(
     environment: AuthenticatedEnvironment,
     deploymentId: string,
@@ -18,6 +19,15 @@ export class CreateDeploymentBackgroundWorkerService extends BaseService {
   ): Promise<BackgroundWorker | undefined> {
     return this.traceWithEnv("call", environment, async (span) => {
       span.setAttribute("deploymentId", deploymentId);
+
+      const { buildPlatform, targetPlatform } = body;
+
+      if (buildPlatform) {
+        span.setAttribute("buildPlatform", buildPlatform);
+      }
+      if (targetPlatform) {
+        span.setAttribute("targetPlatform", targetPlatform);
+      }
 
       const deployment = await this._prisma.workerDeployment.findFirst({
         where: {
@@ -27,6 +37,22 @@ export class CreateDeploymentBackgroundWorkerService extends BaseService {
 
       if (!deployment) {
         return;
+      }
+
+      // Handle multi-platform builds
+      const deploymentPlatforms = deployment.imagePlatform?.split(",") ?? [];
+      if (deploymentPlatforms.length > 1) {
+        span.setAttribute("deploymentPlatforms", deploymentPlatforms.join(","));
+
+        // We will only create a background worker for the first platform
+        const firstPlatform = deploymentPlatforms[0];
+
+        if (targetPlatform && firstPlatform !== targetPlatform) {
+          throw new ServiceValidationError(
+            `Ignoring target platform ${targetPlatform} for multi-platform deployment ${deployment.imagePlatform}`,
+            400
+          );
+        }
       }
 
       if (deployment.status !== "BUILDING") {
@@ -134,7 +160,13 @@ export class CreateDeploymentBackgroundWorkerService extends BaseService {
         },
       });
 
-      await TimeoutDeploymentService.dequeue(deployment.id, this._prisma);
+      await TimeoutDeploymentService.enqueue(
+        deployment.id,
+        "DEPLOYING",
+        "Indexing timed out",
+        new Date(Date.now() + env.DEPLOY_TIMEOUT_MS),
+        this._prisma
+      );
 
       return backgroundWorker;
     });

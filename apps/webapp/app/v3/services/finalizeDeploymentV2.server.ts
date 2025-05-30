@@ -87,7 +87,7 @@ export class FinalizeDeploymentV2Service extends BaseService {
       throw new ServiceValidationError("Missing depot token");
     }
 
-    const digest = extractImageDigest(body.imageReference);
+    const digest = body.imageDigest;
 
     logger.debug("Pushing image to registry", {
       id,
@@ -121,38 +121,22 @@ export class FinalizeDeploymentV2Service extends BaseService {
       throw new ServiceValidationError(pushResult.error);
     }
 
-    const fullImage = digest ? `${pushResult.image}@${digest}` : pushResult.image;
-
     logger.debug("Image pushed to registry", {
       id,
       deployment,
       body,
-      fullImage,
+      pushedImage: pushResult.image,
     });
 
     const finalizeService = new FinalizeDeploymentService();
 
     const finalizedDeployment = await finalizeService.call(authenticatedEnv, id, {
-      imageReference: fullImage,
-      skipRegistryProxy: true,
       skipPromotion: body.skipPromotion,
+      imageDigest: digest,
     });
 
     return finalizedDeployment;
   }
-}
-
-// Extracts the sha256 digest from an image reference
-// For example the image ref "registry.depot.dev/gn57tl6chn:8qfjm8w83w@sha256:aa6fd2bdcbbd611556747e72d0b57797f03aa9b39dc910befc83eea2b08a5b85"
-// would return "sha256:aa6fd2bdcbbd611556747e72d0b57797f03aa9b39dc910befc83eea2b08a5b85"
-function extractImageDigest(image: string) {
-  const digestIndex = image.lastIndexOf("@");
-
-  if (digestIndex === -1) {
-    return;
-  }
-
-  return image.substring(digestIndex + 1);
 }
 
 type ExecutePushToRegistryOptions = {

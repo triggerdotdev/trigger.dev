@@ -68,25 +68,19 @@ export class InitializeDeploymentService extends BaseService {
           })
         : undefined;
 
-      const sharedImageTag = `${payload.namespace ?? env.DEPLOY_REGISTRY_NAMESPACE}/${
-        environment.project.externalRef
-      }:${nextVersion}.${environment.slug}`;
+      const imageRefParts = [
+        env.DEPLOY_REGISTRY_NAMESPACE,
+        `${environment.project.externalRef}:${nextVersion}.${environment.slug}`,
+      ];
 
-      const unmanagedImageParts = [];
+      const isLocalBuild = !externalBuildData;
 
-      if (payload.registryHost) {
-        unmanagedImageParts.push(payload.registryHost);
+      // Local builds require the registry host to be able to push the image
+      if (isLocalBuild) {
+        imageRefParts.unshift(env.DEPLOY_REGISTRY_HOST);
       }
-      if (payload.namespace) {
-        unmanagedImageParts.push(payload.namespace);
-      }
-      unmanagedImageParts.push(
-        `${environment.project.externalRef}:${nextVersion}.${environment.slug}`
-      );
 
-      const unmanagedImageTag = unmanagedImageParts.join("/");
-
-      const isManaged = payload.type === WorkerDeploymentType.MANAGED;
+      const imageRef = imageRefParts.join("/");
 
       logger.debug("Creating deployment", {
         environmentId: environment.id,
@@ -94,8 +88,7 @@ export class InitializeDeploymentService extends BaseService {
         version: nextVersion,
         triggeredById: triggeredBy?.id,
         type: payload.type,
-        imageTag: isManaged ? sharedImageTag : unmanagedImageTag,
-        imageReference: isManaged ? undefined : unmanagedImageTag,
+        imageRef,
       });
 
       const deployment = await this._prisma.workerDeployment.create({
@@ -110,7 +103,8 @@ export class InitializeDeploymentService extends BaseService {
           externalBuildData,
           triggeredById: triggeredBy?.id,
           type: payload.type,
-          imageReference: isManaged ? undefined : unmanagedImageTag,
+          imageReference: imageRef,
+          imagePlatform: env.DEPLOY_BUILD_PLATFORM,
           git: payload.gitMeta ?? undefined,
         },
       });
@@ -124,7 +118,7 @@ export class InitializeDeploymentService extends BaseService {
 
       return {
         deployment,
-        imageTag: isManaged ? sharedImageTag : unmanagedImageTag,
+        imageRef,
       };
     });
   }

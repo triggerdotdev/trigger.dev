@@ -18,7 +18,7 @@ export class FailDeploymentService extends BaseService {
     id: string,
     params: FailDeploymentRequestBody
   ) {
-    const deployment = await this._prisma.workerDeployment.findUnique({
+    const deployment = await this._prisma.workerDeployment.findFirst({
       where: {
         friendlyId: id,
         environmentId: authenticatedEnv.id,

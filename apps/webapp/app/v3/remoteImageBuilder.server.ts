@@ -59,5 +59,5 @@ async function createBuilderProjectIfNotExists(project: Project) {
 }
 
 export function remoteBuildsEnabled() {
-  return env.DEPOT_TOKEN && env.DEPOT_PROJECT_ID && env.DEPOT_ORG_ID && env.DEPOT_REGION;
+  return env.DEPOT_TOKEN && env.DEPOT_ORG_ID && env.DEPOT_REGION;
 }

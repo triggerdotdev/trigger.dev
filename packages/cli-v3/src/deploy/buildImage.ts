@@ -1,26 +1,22 @@
-import { join } from "node:path";
-import { createTempDir, writeJSONFile } from "../utilities/fileSystem.js";
 import { logger } from "../utilities/logger.js";
 import { depot } from "@depot/cli";
 import { x } from "tinyexec";
 import { BuildManifest, BuildRuntime } from "@trigger.dev/core/v3/schemas";
+import { networkInterfaces } from "os";
 
 export interface BuildImageOptions {
   // Common options
-  selfHosted: boolean;
-  buildPlatform: string;
+  isLocalBuild: boolean;
+  imagePlatform: string;
   noCache?: boolean;
-
-  // Self-hosted specific options
-  push: boolean;
-  registry?: string;
-  network?: string;
-
-  // Non-self-hosted specific options
   loadImage?: boolean;
 
+  // Local build options
+  push: boolean;
+  network?: string;
+  builder: string;
+
   // Flattened properties from nested structures
-  registryHost?: string;
   authAccessToken: string;
   imageTag: string;
   deploymentId: string;
@@ -43,15 +39,13 @@ export interface BuildImageOptions {
   deploymentSpinner?: any; // Replace 'any' with the actual type if known
 }
 
-export async function buildImage(options: BuildImageOptions) {
+export async function buildImage(options: BuildImageOptions): Promise<BuildImageResults> {
   const {
-    selfHosted,
-    buildPlatform,
+    isLocalBuild,
+    imagePlatform,
     noCache,
     push,
-    registry,
     loadImage,
-    registryHost,
     authAccessToken,
     imageTag,
     deploymentId,
@@ -69,22 +63,22 @@ export async function buildImage(options: BuildImageOptions) {
     branchName,
     buildEnvVars,
     network,
+    builder,
     onLog,
   } = options;
 
-  if (selfHosted) {
-    return selfHostedBuildImage({
-      registryHost,
+  if (isLocalBuild) {
+    return localBuildImage({
       imageTag,
+      imagePlatform,
       cwd: compilationPath,
       projectId,
       deploymentId,
       deploymentVersion,
       contentHash,
       projectRef,
-      buildPlatform: buildPlatform,
-      pushImage: push,
-      selfHostedRegistry: !!registry,
+      push,
+      loadImage,
       noCache,
       extraCACerts,
       apiUrl,
@@ -92,6 +86,7 @@ export async function buildImage(options: BuildImageOptions) {
       branchName,
       buildEnvVars,
       network,
+      builder,
       onLog,
     });
   }
@@ -102,16 +97,8 @@ export async function buildImage(options: BuildImageOptions) {
     );
   }
 
-  if (!registryHost) {
-    throw new Error(
-      "Failed to initialize deployment. The deployment does not have a registry host. To deploy this project, you must use the --self-hosted or --local flag to build and push the image yourself."
-    );
-  }
-
-  return depotBuildImage({
-    registryHost,
+  return remoteBuildImage({
     auth: authAccessToken,
-    imageTag,
     buildId: externalBuildId,
     buildToken: externalBuildToken,
     buildProjectId: externalBuildProjectId,
@@ -122,7 +109,7 @@ export async function buildImage(options: BuildImageOptions) {
     contentHash,
     projectRef,
     loadImage,
-    buildPlatform,
+    imagePlatform,
     noCache,
     extraCACerts,
     apiUrl,
@@ -134,9 +121,7 @@ export async function buildImage(options: BuildImageOptions) {
 }
 
 export interface DepotBuildImageOptions {
-  registryHost: string;
   auth: string;
-  imageTag: string;
   buildId: string;
   buildToken: string;
   buildProjectId: string;
@@ -146,7 +131,7 @@ export interface DepotBuildImageOptions {
   deploymentVersion: string;
   contentHash: string;
   projectRef: string;
-  buildPlatform: string;
+  imagePlatform: string;
   apiUrl: string;
   apiKey: string;
   branchName?: string;
@@ -159,7 +144,6 @@ export interface DepotBuildImageOptions {
 
 type BuildImageSuccess = {
   ok: true;
-  image: string;
   imageSizeBytes: number;
   logs: string;
   digest?: string;
@@ -173,14 +157,7 @@ type BuildImageFailure = {
 
 type BuildImageResults = BuildImageSuccess | BuildImageFailure;
 
-async function depotBuildImage(options: DepotBuildImageOptions): Promise<BuildImageResults> {
-  // Step 3: Ensure we are "logged in" to our registry by writing to $HOME/.docker/config.json
-  // TODO: make sure this works on windows
-  const dockerConfigDir = await ensureLoggedIntoDockerRegistry(options.registryHost, {
-    username: "trigger",
-    password: options.auth,
-  });
-
+async function remoteBuildImage(options: DepotBuildImageOptions): Promise<BuildImageResults> {
   const buildArgs = Object.entries(options.buildEnvVars || {})
     .filter(([key, value]) => value)
     .flatMap(([key, value]) => ["--build-arg", `${key}=${value}`]);
@@ -191,7 +168,7 @@ async function depotBuildImage(options: DepotBuildImageOptions): Promise<BuildIm
     "Containerfile",
     options.noCache ? "--no-cache" : undefined,
     "--platform",
-    options.buildPlatform,
+    options.imagePlatform,
     "--provenance",
     "false",
     "--build-arg",
@@ -230,7 +207,6 @@ async function depotBuildImage(options: DepotBuildImageOptions): Promise<BuildIm
       DEPOT_PROJECT_ID: options.buildProjectId,
       DEPOT_NO_SUMMARY_LINK: "1",
       DEPOT_NO_UPDATE_NOTIFIER: "1",
-      DOCKER_CONFIG: dockerConfigDir,
     },
   });
 
@@ -271,7 +247,6 @@ async function depotBuildImage(options: DepotBuildImageOptions): Promise<BuildIm
 
     return {
       ok: true as const,
-      image: `registry.depot.dev/${options.buildProjectId}:${options.buildId}`,
       imageSizeBytes: 0,
       logs,
       digest,
@@ -286,7 +261,6 @@ async function depotBuildImage(options: DepotBuildImageOptions): Promise<BuildIm
 }
 
 interface SelfHostedBuildImageOptions {
-  registryHost?: string;
   imageTag: string;
   cwd: string;
   projectId: string;
@@ -294,9 +268,8 @@ interface SelfHostedBuildImageOptions {
   deploymentVersion: string;
   contentHash: string;
   projectRef: string;
-  buildPlatform: string;
-  pushImage: boolean;
-  selfHostedRegistry: boolean;
+  imagePlatform: string;
+  push: boolean;
   apiUrl: string;
   apiKey: string;
   branchName?: string;
@@ -304,29 +277,141 @@ interface SelfHostedBuildImageOptions {
   extraCACerts?: string;
   buildEnvVars?: Record<string, string | undefined>;
   network?: string;
+  builder: string;
+  loadImage?: boolean;
   onLog?: (log: string) => void;
 }
 
-async function selfHostedBuildImage(
-  options: SelfHostedBuildImageOptions
-): Promise<BuildImageResults> {
-  const imageRef = `${options.registryHost ? `${options.registryHost}/` : ""}${options.imageTag}`;
+async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<BuildImageResults> {
+  const { builder, imageTag } = options;
+
+  // Ensure multi-platform build is supported on the local machine
+  let builderExists = false;
+  const lsLogs: string[] = [];
+
+  // List existing builders
+  const lsProcess = x("docker", ["buildx", "ls"]);
+  for await (const line of lsProcess) {
+    lsLogs.push(line);
+    logger.debug(line);
+    options.onLog?.(line);
+
+    if (line.startsWith(builder + " ")) {
+      builderExists = true;
+    }
+  }
+  if (lsProcess.exitCode !== 0) {
+    return {
+      ok: false as const,
+      error: `Failed to list buildx builders`,
+      logs: lsLogs.join("\n"),
+    };
+  }
+
+  if (builderExists && options.network) {
+    // We need to ensure the current builder network matches
+    const inspectProcess = x("docker", ["buildx", "inspect", builder]);
+    const inspectLogs: string[] = [];
+
+    let hasCorrectNetwork = false;
+    for await (const line of inspectProcess) {
+      inspectLogs.push(line);
+
+      if (line.match(/Driver Options:\s+network="([^"]+)"/)?.at(1) === options.network) {
+        hasCorrectNetwork = true;
+      }
+    }
+
+    if (inspectProcess.exitCode !== 0) {
+      return {
+        ok: false as const,
+        error: `Failed to inspect buildx builder '${builder}'`,
+        logs: inspectLogs.join("\n"),
+      };
+    }
+
+    if (!hasCorrectNetwork) {
+      // Delete the existing builder and signal to create a new one
+      const deleteProcess = x("docker", ["buildx", "rm", builder]);
+      const deleteLogs: string[] = [];
+
+      for await (const line of deleteProcess) {
+        deleteLogs.push(line);
+      }
+
+      if (deleteProcess.exitCode !== 0) {
+        return {
+          ok: false as const,
+          error: `Failed to delete buildx builder '${builder}'`,
+          logs: deleteLogs.join("\n"),
+        };
+      }
+
+      builderExists = false;
+    }
+  }
+
+  // If the builder does not exist, create it and is compatible with multi-platform builds
+  if (!builderExists) {
+    const createLogs: string[] = [];
+
+    const args = (
+      [
+        "buildx",
+        "create",
+        "--name",
+        builder,
+        "--driver",
+        "docker-container",
+        options.network ? `--driver-opt=network=${options.network}` : undefined,
+      ] satisfies (string | undefined)[]
+    ).filter(Boolean) as string[];
+
+    const createProcess = x("docker", args);
+    for await (const line of createProcess) {
+      createLogs.push(line);
+      logger.debug(line);
+      options.onLog?.(line);
+    }
+    if (createProcess.exitCode !== 0) {
+      return {
+        ok: false as const,
+        error: `Failed to create buildx builder '${builder}'`,
+        logs: [...lsLogs, ...createLogs].join("\n"),
+      };
+    }
+  }
 
   const buildArgs = Object.entries(options.buildEnvVars || {})
     .filter(([key, value]) => value)
     .flatMap(([key, value]) => ["--build-arg", `${key}=${value}`]);
 
   const apiUrl = normalizeApiUrlForBuild(options.apiUrl);
-  const network = getNetworkArgs(apiUrl, options.network);
+  const addHost = getAddHost(apiUrl);
+
+  // Don't push if the image tag is a local address, unless the user explicitly wants to push
+  const shouldPush = options.push
+    ? true
+    : imageTag.startsWith("localhost") ||
+      imageTag.startsWith("127.0.0.1") ||
+      imageTag.startsWith("0.0.0.0")
+    ? false
+    : true;
 
   const args = [
+    "buildx",
     "build",
+    "--builder",
+    builder,
     "-f",
     "Containerfile",
     options.noCache ? "--no-cache" : undefined,
     "--platform",
-    options.buildPlatform,
-    ...network,
+    options.imagePlatform,
+    options.network ? `--network=${options.network}` : undefined,
+    addHost ? `--add-host=${addHost}` : undefined,
+    shouldPush ? "--push" : undefined,
+    options.loadImage ? "--load" : undefined,
     "--build-arg",
     `TRIGGER_PROJECT_ID=${options.projectId}`,
     "--build-arg",
@@ -348,7 +433,7 @@ async function selfHostedBuildImage(
     "--progress",
     "plain",
     "-t",
-    imageRef,
+    options.imageTag,
     ".", // The build context
   ].filter(Boolean) as string[];
 
@@ -357,7 +442,6 @@ async function selfHostedBuildImage(
   });
 
   const errors: string[] = [];
-  let digest: string | undefined;
 
   // Build the image
   const buildProcess = x("docker", args, {
@@ -379,10 +463,10 @@ async function selfHostedBuildImage(
     };
   }
 
-  digest = extractImageDigest(errors);
+  const digest = extractImageDigest(errors);
 
   // Get the image size
-  const sizeProcess = x("docker", ["image", "inspect", imageRef, "--format={{.Size}}"], {
+  const sizeProcess = x("docker", ["image", "inspect", options.imageTag, "--format={{.Size}}"], {
     nodeOptions: { cwd: options.cwd },
   });
 
@@ -401,58 +485,12 @@ async function selfHostedBuildImage(
     options.onLog?.(`Image size: ${(imageSizeBytes / (1024 * 1024)).toFixed(2)} MB`);
   }
 
-  if (options.selfHostedRegistry || options.pushImage) {
-    const pushArgs = ["push", imageRef].filter(Boolean) as string[];
-
-    logger.debug(`docker ${pushArgs.join(" ")}`);
-
-    // Push the image
-    const pushProcess = x("docker", pushArgs, {
-      nodeOptions: { cwd: options.cwd },
-    });
-
-    for await (const line of pushProcess) {
-      logger.debug(line);
-      errors.push(line);
-    }
-
-    if (pushProcess.exitCode !== 0) {
-      return {
-        ok: false as const,
-        error: "Error pushing image",
-        logs: extractLogs(errors),
-      };
-    }
-  }
-
   return {
     ok: true as const,
-    image: options.imageTag,
     imageSizeBytes,
     digest,
     logs: extractLogs(errors),
   };
-}
-
-async function ensureLoggedIntoDockerRegistry(
-  registryHost: string,
-  auth: { username: string; password: string }
-) {
-  const tmpDir = await createTempDir();
-  // Read the current docker config
-  const dockerConfigPath = join(tmpDir, "config.json");
-
-  await writeJSONFile(dockerConfigPath, {
-    auths: {
-      [registryHost]: {
-        auth: Buffer.from(`${auth.username}:${auth.password}`).toString("base64"),
-      },
-    },
-  });
-
-  logger.debug(`Writing docker config to ${dockerConfigPath}`);
-
-  return tmpDir;
 }
 
 function extractLogs(outputs: string[]) {
@@ -462,7 +500,7 @@ function extractLogs(outputs: string[]) {
   return cleanedOutputs.map((line) => line.trim()).join("\n");
 }
 
-function extractImageDigest(outputs: string[]) {
+function extractImageDigest(outputs: string[]): string | undefined {
   const imageDigestRegex = /pushing manifest for .+(?<digest>sha256:[a-f0-9]{64})/;
 
   for (const line of outputs) {
@@ -598,6 +636,10 @@ ENV TRIGGER_PROJECT_ID=\${TRIGGER_PROJECT_ID} \
     NODE_EXTRA_CA_CERTS=\${NODE_EXTRA_CA_CERTS} \
     NODE_ENV=production
 
+ARG TARGETPLATFORM
+ARG BUILDPLATFORM
+ENV BUILDPLATFORM=$BUILDPLATFORM TARGETPLATFORM=$TARGETPLATFORM
+
 # Run the indexer
 RUN bun run ${options.indexScript}
 
@@ -706,6 +748,10 @@ ENV TRIGGER_PROJECT_ID=\${TRIGGER_PROJECT_ID} \
     NODE_ENV=production \
     NODE_OPTIONS="--max_old_space_size=8192"
 
+ARG TARGETPLATFORM
+ARG BUILDPLATFORM
+ENV BUILDPLATFORM=$BUILDPLATFORM TARGETPLATFORM=$TARGETPLATFORM
+
 # Run the indexer
 RUN node ${options.indexScript}
 
@@ -741,28 +787,35 @@ CMD []
   `;
 }
 
-// If apiUrl is something like http://localhost:3030, AND we are on macOS, we need to convert it to http://host.docker.internal:3030
+// If apiUrl is something like http://localhost:3030, we need to convert it to http://host.docker.internal:3030
 // this way the indexing will work because the docker image can reach the local server
 function normalizeApiUrlForBuild(apiUrl: string): string {
-  if (process.platform === "darwin") {
-    return apiUrl.replace("localhost", "host.docker.internal");
-  }
-
-  return apiUrl;
+  return apiUrl.replace("localhost", "host.docker.internal");
 }
 
-function getNetworkArgs(apiUrl: string, network?: string): string[] {
-  if (network) {
-    return [`--network`, network];
+function getHostIP() {
+  const interfaces = networkInterfaces();
+
+  for (const [name, iface] of Object.entries(interfaces)) {
+    if (!iface) {
+      continue;
+    }
+
+    for (const net of iface) {
+      // Skip internal/loopback and non-IPv4 addresses
+      if (!net.internal && net.family === "IPv4") {
+        return net.address;
+      }
+    }
   }
 
-  if (process.platform === "darwin") {
-    return [];
+  return "127.0.0.1";
+}
+
+function getAddHost(apiUrl: string) {
+  if (apiUrl.includes("host.docker.internal")) {
+    return `host.docker.internal:${getHostIP()}`;
   }
 
-  if (apiUrl.includes("localhost") || apiUrl.includes("127.0.0.1")) {
-    return ["--network", "host"];
-  }
-
-  return [];
+  return;
 }

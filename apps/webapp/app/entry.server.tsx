@@ -221,7 +221,14 @@ import { env } from "./env.server";
 import { logger } from "./services/logger.server";
 import { Prisma } from "./db.server";
 import { registerRunEngineEventBusHandlers } from "./v3/runEngineHandlers.server";
+import { remoteBuildsEnabled } from "./v3/remoteImageBuilder.server";
 
 if (env.EVENT_LOOP_MONITOR_ENABLED === "1") {
   eventLoopMonitor.enable();
+}
+
+if (remoteBuildsEnabled()) {
+  console.log("🏗️  Remote builds enabled");
+} else {
+  console.log("🏗️  Local builds enabled");
 }

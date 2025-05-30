@@ -12,7 +12,13 @@ import { projectPubSub } from "./projectPubSub.server";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
 import { CURRENT_DEPLOYMENT_LABEL, BackgroundWorkerId } from "@trigger.dev/core/v3/isomorphic";
 
-export class CreateDeployedBackgroundWorkerService extends BaseService {
+/**
+ * This service was only used before the new build system was introduced in v3.
+ * It's now replaced by the CreateDeploymentBackgroundWorkerServiceV4.
+ *
+ * @deprecated
+ */
+export class CreateDeploymentBackgroundWorkerServiceV3 extends BaseService {
   public async call(
     projectRef: string,
     environment: AuthenticatedEnvironment,

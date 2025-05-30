@@ -91,6 +91,10 @@ export default function Page() {
                 <Property.Value>{deployment.imageReference}</Property.Value>
               </Property.Item>
             )}
+            <Property.Item>
+              <Property.Label>Platform</Property.Label>
+              <Property.Value>{deployment.imagePlatform}</Property.Value>
+            </Property.Item>
             {deployment.externalBuildData && (
               <Property.Item>
                 <Property.Label>Build Server</Property.Label>

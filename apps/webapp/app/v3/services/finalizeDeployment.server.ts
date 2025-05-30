@@ -7,6 +7,8 @@ import { PerformDeploymentAlertsService } from "./alerts/performDeploymentAlerts
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { ChangeCurrentDeploymentService } from "./changeCurrentDeployment.server";
 import { projectPubSub } from "./projectPubSub.server";
+import { FailDeploymentService } from "./failDeployment.server";
+import { TimeoutDeploymentService } from "./timeoutDeployment.server";
 
 export class FinalizeDeploymentService extends BaseService {
   public async call(
@@ -36,7 +38,13 @@ export class FinalizeDeploymentService extends BaseService {
     if (!deployment.worker) {
       logger.error("Worker deployment does not have a worker", { id });
 
-      // TODO: We need to fail the deployment here because it's not possible to deploy a worker without a worker
+      const failService = new FailDeploymentService();
+      await failService.call(authenticatedEnv, deployment.id, {
+        error: {
+          name: "MissingWorker",
+          message: "Deployment does not have a worker",
+        },
+      });
 
       throw new ServiceValidationError("Worker deployment does not have a worker");
     }
@@ -52,8 +60,6 @@ export class FinalizeDeploymentService extends BaseService {
       throw new ServiceValidationError("Worker deployment is not in DEPLOYING status");
     }
 
-    const imageReference = body.imageReference;
-
     // Link the deployment with the background worker
     const finalizedDeployment = await this._prisma.workerDeployment.update({
       where: {
@@ -62,9 +68,14 @@ export class FinalizeDeploymentService extends BaseService {
       data: {
         status: "DEPLOYED",
         deployedAt: new Date(),
-        imageReference,
+        // Only add the digest, if any
+        imageReference: body.imageDigest
+          ? `${deployment.imageReference}@${body.imageDigest}`
+          : undefined,
       },
     });
+
+    await TimeoutDeploymentService.dequeue(deployment.id, this._prisma);
 
     if (typeof body.skipPromotion === "undefined" || !body.skipPromotion) {
       const promotionService = new ChangeCurrentDeploymentService();

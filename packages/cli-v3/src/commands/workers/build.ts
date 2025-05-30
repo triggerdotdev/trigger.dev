@@ -37,7 +37,6 @@ import { createGitMeta } from "../../utilities/gitMeta.js";
 const WorkersBuildCommandOptions = CommonCommandOptions.extend({
   // docker build options
   load: z.boolean().default(false),
-  platform: z.enum(["linux/amd64", "linux/arm64"]).default("linux/amd64"),
   network: z.enum(["default", "none", "host"]).optional(),
   tag: z.string().optional(),
   push: z.boolean().default(false),
@@ -328,12 +327,10 @@ async function _workerBuildCommand(dir: string, options: WorkersBuildCommandOpti
   }
 
   const buildResult = await buildImage({
-    selfHosted: local,
-    buildPlatform: options.platform,
+    isLocalBuild: local,
+    imagePlatform: deployment.imagePlatform,
     noCache: options.noCache,
     push: options.push,
-    registryHost: registry,
-    registry: registry,
     deploymentId: deployment.id,
     deploymentVersion: deployment.version,
     imageTag: deployment.imageTag,
@@ -351,6 +348,7 @@ async function _workerBuildCommand(dir: string, options: WorkersBuildCommandOpti
     compilationPath: destination.path,
     buildEnvVars: buildManifest.build.env,
     network: options.network,
+    builder: "trigger",
   });
 
   logger.debug("Build result", buildResult);
@@ -446,7 +444,7 @@ async function _workerBuildCommand(dir: string, options: WorkersBuildCommandOpti
   }
 
   outro(
-    `Version ${version} built and ready to deploy: ${buildResult.image} ${
+    `Version ${version} built and ready to deploy: ${deployment.imageTag} ${
       isLinksSupported ? `| ${deploymentLink} | ${testLink}` : ""
     }`
   );

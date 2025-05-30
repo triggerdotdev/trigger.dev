@@ -54,6 +54,8 @@ export const CreateBackgroundWorkerRequestBody = z.object({
   metadata: BackgroundWorkerMetadata,
   engine: RunEngineVersion.optional(),
   supportsLazyAttempts: z.boolean().optional(),
+  buildPlatform: z.string().optional(),
+  targetPlatform: z.string().optional(),
 });
 
 export type CreateBackgroundWorkerRequestBody = z.infer<typeof CreateBackgroundWorkerRequestBody>;
@@ -292,11 +294,8 @@ export type StartDeploymentIndexingResponseBody = z.infer<
 >;
 
 export const FinalizeDeploymentRequestBody = z.object({
-  imageReference: z.string(),
-  /** @deprecated This is now determined by the webapp */
-  selfHosted: z.boolean().optional(),
-  skipRegistryProxy: z.boolean().optional(),
   skipPromotion: z.boolean().optional(),
+  imageDigest: z.string().optional(),
 });
 
 export type FinalizeDeploymentRequestBody = z.infer<typeof FinalizeDeploymentRequestBody>;
@@ -329,8 +328,8 @@ export const InitializeDeploymentResponseBody = z.object({
   shortCode: z.string(),
   version: z.string(),
   imageTag: z.string(),
+  imagePlatform: z.string(),
   externalBuildData: ExternalBuildData.optional().nullable(),
-  registryHost: z.string().optional(),
 });
 
 export type InitializeDeploymentResponseBody = z.infer<typeof InitializeDeploymentResponseBody>;
@@ -338,9 +337,11 @@ export type InitializeDeploymentResponseBody = z.infer<typeof InitializeDeployme
 export const InitializeDeploymentRequestBody = z.object({
   contentHash: z.string(),
   userId: z.string().optional(),
+  /** @deprecated This is now determined by the webapp */
   registryHost: z.string().optional(),
   /** @deprecated This is now determined by the webapp */
   selfHosted: z.boolean().optional(),
+  /** @deprecated This is now determined by the webapp */
   namespace: z.string().optional(),
   gitMeta: GitMeta.optional(),
   type: z.enum(["MANAGED", "UNMANAGED", "V1"]).optional(),
