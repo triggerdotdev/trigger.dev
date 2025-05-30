@@ -1,5 +1,13 @@
 # internal-platform
 
+## 4.0.0-v4-beta.19
+
+### Patch Changes
+
+- Add supervisor http client option to disable debug logs ([#2116](https://github.com/triggerdotdev/trigger.dev/pull/2116))
+- Add import timings and bundle size analysis, the dev command will now warn about slow imports ([#2114](https://github.com/triggerdotdev/trigger.dev/pull/2114))
+- Improve metadata flushing efficiency by collapsing operations ([#2106](https://github.com/triggerdotdev/trigger.dev/pull/2106))
+
 ## 4.0.0-v4-beta.18
 
 ## 4.0.0-v4-beta.17
