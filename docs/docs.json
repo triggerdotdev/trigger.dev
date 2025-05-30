@@ -145,6 +145,7 @@
                   "cli-dev-commands",
                   "cli-deploy-commands",
                   "cli-promote-commands",
+                  "cli-preview-archive",
                   "cli-whoami-commands",
                   "cli-logout-commands",
                   "cli-list-profiles-commands",
