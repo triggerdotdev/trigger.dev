@@ -52,6 +52,7 @@ export const BuildManifest = z.object({
     sync: z
       .object({
         env: z.record(z.string()).optional(),
+        parentEnv: z.record(z.string()).optional(),
       })
       .optional(),
   }),

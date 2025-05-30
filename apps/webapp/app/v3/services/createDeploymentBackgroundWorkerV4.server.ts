@@ -140,7 +140,10 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
           error: schedulesError,
         });
 
-        const serviceError = new ServiceValidationError("Error syncing declarative schedules");
+        const serviceError =
+          schedulesError instanceof ServiceValidationError
+            ? schedulesError
+            : new ServiceValidationError("Error syncing declarative schedules");
 
         await this.#failBackgroundWorkerDeployment(deployment, serviceError);
 

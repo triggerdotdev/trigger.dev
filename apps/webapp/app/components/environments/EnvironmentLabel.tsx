@@ -6,6 +6,8 @@ import {
 } from "~/assets/icons/EnvironmentIcons";
 import type { RuntimeEnvironment } from "~/models/runtimeEnvironment.server";
 import { cn } from "~/utils/cn";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
+import { useEffect, useRef, useState } from "react";
 
 type Environment = Pick<RuntimeEnvironment, "type"> & { branchName?: string | null };
 
@@ -56,7 +58,10 @@ export function EnvironmentCombo({
 }) {
   return (
     <span className={cn("flex items-center gap-1.5 text-sm text-text-bright", className)}>
-      <EnvironmentIcon environment={environment} className={cn("size-4.5", iconClassName)} />
+      <EnvironmentIcon
+        environment={environment}
+        className={cn("size-4.5 shrink-0", iconClassName)}
+      />
       <EnvironmentLabel environment={environment} />
     </span>
   );
@@ -69,11 +74,55 @@ export function EnvironmentLabel({
   environment: Environment;
   className?: string;
 }) {
-  return (
-    <span className={cn(environmentTextClassName(environment), className)}>
-      {environment.branchName ? environment.branchName : environmentFullTitle(environment)}
+  const spanRef = useRef<HTMLSpanElement>(null);
+  const [isTruncated, setIsTruncated] = useState(false);
+  const text = environment.branchName ? environment.branchName : environmentFullTitle(environment);
+
+  useEffect(() => {
+    const checkTruncation = () => {
+      if (spanRef.current) {
+        const isTruncated = spanRef.current.scrollWidth > spanRef.current.clientWidth;
+        setIsTruncated(isTruncated);
+      }
+    };
+
+    checkTruncation();
+    // Add resize observer to recheck on window resize
+    const resizeObserver = new ResizeObserver(checkTruncation);
+    if (spanRef.current) {
+      resizeObserver.observe(spanRef.current);
+    }
+
+    return () => resizeObserver.disconnect();
+  }, [text]);
+
+  const content = (
+    <span
+      ref={spanRef}
+      className={cn("truncate text-left", environmentTextClassName(environment), className)}
+    >
+      {text}
     </span>
   );
+
+  if (isTruncated) {
+    return (
+      <SimpleTooltip
+        asChild
+        button={content}
+        content={
+          <span ref={spanRef} className={cn("text-left", environmentTextClassName(environment))}>
+            {text}
+          </span>
+        }
+        side="right"
+        variant="dark"
+        sideOffset={34}
+      />
+    );
+  }
+
+  return content;
 }
 
 export function environmentTitle(environment: Environment, username?: string) {

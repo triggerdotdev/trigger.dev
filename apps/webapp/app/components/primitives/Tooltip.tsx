@@ -62,6 +62,7 @@ function SimpleTooltip({
   className,
   buttonClassName,
   asChild = false,
+  sideOffset,
 }: {
   button: React.ReactNode;
   content: React.ReactNode;
@@ -72,6 +73,7 @@ function SimpleTooltip({
   className?: string;
   buttonClassName?: string;
   asChild?: boolean;
+  sideOffset?: number;
 }) {
   return (
     <TooltipProvider disableHoverableContent={disableHoverableContent}>
@@ -82,6 +84,7 @@ function SimpleTooltip({
         <TooltipContent
           side={side}
           hidden={hidden}
+          sideOffset={sideOffset}
           className={cn("text-xs", className)}
           variant={variant}
         >

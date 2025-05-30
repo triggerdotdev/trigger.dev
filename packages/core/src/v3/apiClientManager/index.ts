@@ -46,7 +46,11 @@ export class APIClientManagerAPI {
 
   get branchName(): string | undefined {
     const config = this.#getConfig();
-    const value = config?.previewBranch ?? getEnvVar("TRIGGER_PREVIEW_BRANCH") ?? undefined;
+    const value =
+      config?.previewBranch ??
+      getEnvVar("TRIGGER_PREVIEW_BRANCH") ??
+      getEnvVar("VERCEL_GIT_COMMIT_REF") ??
+      undefined;
     return value ? value : undefined;
   }
 

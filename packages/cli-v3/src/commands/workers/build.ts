@@ -280,7 +280,8 @@ async function _workerBuildCommand(dir: string, options: WorkersBuildCommandOpti
         projectClient.client,
         resolvedConfig.project,
         options.env,
-        buildManifest.deploy.sync.env
+        buildManifest.deploy.sync.env,
+        buildManifest.deploy.sync.parentEnv
       );
 
       if (!success) {
@@ -454,10 +455,12 @@ export async function syncEnvVarsWithServer(
   apiClient: CliApiClient,
   projectRef: string,
   environmentSlug: string,
-  envVars: Record<string, string>
+  envVars: Record<string, string>,
+  parentEnvVars?: Record<string, string>
 ) {
   const uploadResult = await apiClient.importEnvVars(projectRef, environmentSlug, {
     variables: envVars,
+    parentVariables: parentEnvVars,
     override: true,
   });
 

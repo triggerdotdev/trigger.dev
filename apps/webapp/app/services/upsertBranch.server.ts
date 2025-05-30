@@ -76,7 +76,8 @@ export class UpsertBranchService {
       const limits = await checkBranchLimit(
         this.#prismaClient,
         parentEnvironment.organization.id,
-        parentEnvironment.project.id
+        parentEnvironment.project.id,
+        sanitizedBranchName
       );
 
       if (limits.isAtLimit) {
@@ -148,9 +149,10 @@ export class UpsertBranchService {
 export async function checkBranchLimit(
   prisma: PrismaClientOrTransaction,
   organizationId: string,
-  projectId: string
+  projectId: string,
+  newBranchName?: string
 ) {
-  const used = await prisma.runtimeEnvironment.count({
+  const usedEnvs = await prisma.runtimeEnvironment.findMany({
     where: {
       projectId,
       branchName: {
@@ -159,11 +161,15 @@ export async function checkBranchLimit(
       archivedAt: null,
     },
   });
+
+  const count = newBranchName
+    ? usedEnvs.filter((env) => env.branchName !== newBranchName).length
+    : usedEnvs.length;
   const limit = await getLimit(organizationId, "branches", 50);
 
   return {
-    used,
+    used: count,
     limit,
-    isAtLimit: used >= limit,
+    isAtLimit: count >= limit,
   };
 }

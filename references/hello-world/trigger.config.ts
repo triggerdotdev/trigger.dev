@@ -23,7 +23,8 @@ export default defineConfig({
         console.log("syncEnvVars", { environment: ctx.environment, branch: ctx.branch });
         return [
           { name: "SYNC_ENV", value: ctx.environment },
-          { name: "BRANCH", value: ctx.branch ?? "–" },
+          { name: "BRANCH", value: ctx.branch ?? "NO_BRANCH" },
+          { name: "BRANCH", value: "PARENT", isParentEnv: true },
           { name: "SECRET_KEY", value: "secret-value" },
           { name: "ANOTHER_SECRET", value: "another-secret-value" },
         ];
