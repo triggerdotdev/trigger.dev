@@ -230,7 +230,9 @@ export default function Page() {
             </Property.Table>
           </div>
 
-          {deployment.tasks ? (
+          {deployment.errorData && <DeploymentError errorData={deployment.errorData} />}
+
+          {deployment.tasks && (
             <div className="divide-y divide-charcoal-800 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
               <Table variant="bright">
                 <TableHeader>
@@ -260,9 +262,7 @@ export default function Page() {
                 </TableBody>
               </Table>
             </div>
-          ) : deployment.errorData ? (
-            <DeploymentError errorData={deployment.errorData} />
-          ) : null}
+          )}
         </div>
       </div>
     </div>
