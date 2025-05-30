@@ -351,12 +351,17 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     }
   }
 
-  if (
+  const hasVarsToSync =
     buildManifest.deploy.sync &&
-    buildManifest.deploy.sync.env &&
-    Object.keys(buildManifest.deploy.sync.env).length > 0
-  ) {
-    const numberOfEnvVars = Object.keys(buildManifest.deploy.sync.env).length;
+    ((buildManifest.deploy.sync.env && Object.keys(buildManifest.deploy.sync.env).length > 0) ||
+      (buildManifest.deploy.sync.parentEnv &&
+        Object.keys(buildManifest.deploy.sync.parentEnv).length > 0));
+
+  if (hasVarsToSync) {
+    const childVars = buildManifest.deploy.sync?.env ?? {};
+    const parentVars = buildManifest.deploy.sync?.parentEnv ?? {};
+
+    const numberOfEnvVars = Object.keys(childVars).length + Object.keys(parentVars).length;
     const vars = numberOfEnvVars === 1 ? "var" : "vars";
 
     if (!options.skipSyncEnvVars) {
@@ -366,7 +371,8 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
         projectClient.client,
         resolvedConfig.project,
         options.env,
-        buildManifest.deploy.sync.env
+        childVars,
+        parentVars
       );
 
       if (!success) {
@@ -495,21 +501,28 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
       $spinner
     );
 
-    throw new SkipLoggingError("Failed to get deployment with worker");
+    throw new SkipLoggingError(getDeploymentResponse.error);
   }
 
   const deploymentWithWorker = getDeploymentResponse.data;
 
   if (!deploymentWithWorker.worker) {
+    const errorData = deploymentWithWorker.errorData
+      ? prepareDeploymentError(deploymentWithWorker.errorData)
+      : undefined;
+
     await failDeploy(
       projectClient.client,
       deployment,
-      { name: "DeploymentError", message: "Failed to get deployment with worker" },
+      {
+        name: "DeploymentError",
+        message: errorData?.message ?? "Failed to get deployment with worker",
+      },
       buildResult.logs,
       $spinner
     );
 
-    throw new SkipLoggingError("Failed to get deployment with worker");
+    throw new SkipLoggingError(errorData?.message ?? "Failed to get deployment with worker");
   }
 
   const imageReference = options.selfHosted
@@ -610,10 +623,12 @@ export async function syncEnvVarsWithServer(
   apiClient: CliApiClient,
   projectRef: string,
   environmentSlug: string,
-  envVars: Record<string, string>
+  envVars: Record<string, string>,
+  parentEnvVars?: Record<string, string>
 ) {
   const uploadResult = await apiClient.importEnvVars(projectRef, environmentSlug, {
     variables: envVars,
+    parentVariables: parentEnvVars,
     override: true,
   });
 
@@ -629,6 +644,8 @@ async function failDeploy(
   warnings?: string[],
   errors?: string[]
 ) {
+  logger.debug("failDeploy", { error, logs, warnings, errors });
+
   $spinner.stop(`Failed to deploy project`);
 
   const doOutputLogs = async (prefix: string = "Error") => {
@@ -688,7 +705,7 @@ async function failDeploy(
           : undefined;
 
         if (errorData) {
-          prettyError(errorData.name, errorData.stack, errorData.stderr);
+          prettyError(errorData.message, errorData.stack, errorData.stderr);
 
           if (logs.trim() !== "") {
             const logPath = await saveLogs(deployment.shortCode, logs);

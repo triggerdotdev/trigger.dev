@@ -69,6 +69,7 @@ export class ScheduleListPresenter extends BasePresenter {
             type: true,
             slug: true,
             branchName: true,
+            archivedAt: true,
             orgMember: {
               select: {
                 user: {

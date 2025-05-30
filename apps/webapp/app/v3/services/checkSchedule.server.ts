@@ -108,9 +108,11 @@ export class CheckScheduleService extends BaseService {
     environments,
   }: {
     prisma: PrismaClientOrTransaction;
-    environments: { id: string; type: RuntimeEnvironmentType }[];
+    environments: { id: string; type: RuntimeEnvironmentType; archivedAt: Date | null }[];
   }) {
-    const deployedEnvironments = environments.filter((env) => env.type !== "DEVELOPMENT");
+    const deployedEnvironments = environments.filter(
+      (env) => env.type !== "DEVELOPMENT" && !env.archivedAt
+    );
     const schedulesCount = await prisma.taskScheduleInstance.count({
       where: {
         environmentId: {

@@ -33,6 +33,7 @@ export class SupervisorHttpClient {
   private readonly workerToken: string;
   private readonly instanceName: string;
   private readonly defaultHeaders: Record<string, string>;
+  private readonly sendRunDebugLogs: boolean;
 
   private readonly logger = new SimpleStructuredLogger("supervisor-http-client");
 
@@ -41,6 +42,7 @@ export class SupervisorHttpClient {
     this.workerToken = opts.workerToken;
     this.instanceName = opts.instanceName;
     this.defaultHeaders = getDefaultWorkerHeaders(opts);
+    this.sendRunDebugLogs = opts.sendRunDebugLogs ?? false;
 
     if (!this.apiUrl) {
       throw new Error("apiURL is required and needs to be a non-empty string");
@@ -204,6 +206,10 @@ export class SupervisorHttpClient {
   }
 
   async sendDebugLog(runId: string, body: WorkerApiDebugLogBody, runnerId?: string): Promise<void> {
+    if (!this.sendRunDebugLogs) {
+      return;
+    }
+
     try {
       const res = await wrapZodFetch(
         z.unknown(),
