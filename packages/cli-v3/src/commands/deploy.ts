@@ -220,6 +220,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
 
   const branch =
     options.env === "preview" ? getBranch({ specified: options.branch, gitMeta }) : undefined;
+
   if (options.env === "preview" && !branch) {
     throw new Error(
       "Didn't auto-detect preview branch, so you need to specify one. Pass --branch <branch>."
@@ -352,10 +353,9 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   }
 
   const hasVarsToSync =
-    buildManifest.deploy.sync &&
-    ((buildManifest.deploy.sync.env && Object.keys(buildManifest.deploy.sync.env).length > 0) ||
-      (buildManifest.deploy.sync.parentEnv &&
-        Object.keys(buildManifest.deploy.sync.parentEnv).length > 0));
+    Object.keys(buildManifest.deploy.sync?.env || {}).length > 0 ||
+    // Only sync parent variables if this is a branch environment
+    (branch && Object.keys(buildManifest.deploy.sync?.parentEnv || {}).length > 0);
 
   if (hasVarsToSync) {
     const childVars = buildManifest.deploy.sync?.env ?? {};
@@ -367,7 +367,8 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     if (!options.skipSyncEnvVars) {
       const $spinner = spinner();
       $spinner.start(`Syncing ${numberOfEnvVars} env ${vars} with the server`);
-      const success = await syncEnvVarsWithServer(
+
+      const uploadResult = await syncEnvVarsWithServer(
         projectClient.client,
         resolvedConfig.project,
         options.env,
@@ -375,13 +376,13 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
         parentVars
       );
 
-      if (!success) {
+      if (!uploadResult.success) {
         await failDeploy(
           projectClient.client,
           deployment,
           {
             name: "SyncEnvVarsError",
-            message: `Failed to sync ${numberOfEnvVars} env ${vars} with the server`,
+            message: `Failed to sync ${numberOfEnvVars} env ${vars} with the server: ${uploadResult.error}`,
           },
           "",
           $spinner
@@ -626,13 +627,11 @@ export async function syncEnvVarsWithServer(
   envVars: Record<string, string>,
   parentEnvVars?: Record<string, string>
 ) {
-  const uploadResult = await apiClient.importEnvVars(projectRef, environmentSlug, {
+  return await apiClient.importEnvVars(projectRef, environmentSlug, {
     variables: envVars,
     parentVariables: parentEnvVars,
     override: true,
   });
-
-  return uploadResult.success;
 }
 
 async function failDeploy(
@@ -663,7 +662,7 @@ async function failDeploy(
         }. Full build logs have been saved to ${logPath}`
       );
     } else {
-      outro(`${chalkError(`${prefix}:`)} ${error.message}.`);
+      outro(`${chalkError(`${prefix}:`)} ${error.message}`);
     }
   };
 
