@@ -45,7 +45,7 @@ const DeployCommandOptions = CommonCommandOptions.extend({
   skipSyncEnvVars: z.boolean().default(false),
   env: z.enum(["prod", "staging", "preview"]),
   branch: z.string().optional(),
-  load: z.boolean().default(false),
+  load: z.boolean().optional(),
   config: z.string().optional(),
   projectRef: z.string().optional(),
   saveLogs: z.boolean().default(false),
@@ -55,7 +55,7 @@ const DeployCommandOptions = CommonCommandOptions.extend({
   envFile: z.string().optional(),
   // Local build options
   network: z.enum(["default", "none", "host"]).optional(),
-  push: z.boolean().default(false),
+  push: z.boolean().optional(),
   builder: z.string().default("trigger"),
 });
 
@@ -113,12 +113,21 @@ export function configureDeployCommand(program: Command) {
       )
       .addOption(
         new CommandOption(
+          "--no-load",
+          "Do not load the built image into your local docker"
+        ).hideHelp()
+      )
+      .addOption(
+        new CommandOption(
           "--save-logs",
           "If provided, will save logs even for successful builds"
         ).hideHelp()
       )
       // Local build options
       .addOption(new CommandOption("--push", "Push the image after local builds").hideHelp())
+      .addOption(
+        new CommandOption("--no-push", "Do not push the image after local builds").hideHelp()
+      )
       .addOption(
         new CommandOption(
           "--network <mode>",
@@ -392,7 +401,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     deploymentVersion: deployment.version,
     imageTag: deployment.imageTag,
     imagePlatform: deployment.imagePlatform,
-    loadImage: options.load,
+    load: options.load,
     contentHash: deployment.contentHash,
     externalBuildId: deployment.externalBuildData?.buildId,
     externalBuildToken: deployment.externalBuildData?.buildToken,

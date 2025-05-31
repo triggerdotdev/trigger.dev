@@ -8,16 +8,17 @@ import { safeReadJSONFile } from "../utilities/fileSystem.js";
 import { readFileSync } from "fs";
 import { isLinux } from "std-env";
 import { z } from "zod";
+import { assertExhaustive } from "../utilities/assertExhaustive.js";
 
 export interface BuildImageOptions {
   // Common options
   isLocalBuild: boolean;
   imagePlatform: string;
   noCache?: boolean;
-  loadImage?: boolean;
+  load?: boolean;
 
   // Local build options
-  push: boolean;
+  push?: boolean;
   network?: string;
   builder: string;
 
@@ -50,7 +51,7 @@ export async function buildImage(options: BuildImageOptions): Promise<BuildImage
     imagePlatform,
     noCache,
     push,
-    loadImage,
+    load,
     authAccessToken,
     imageTag,
     deploymentId,
@@ -83,7 +84,7 @@ export async function buildImage(options: BuildImageOptions): Promise<BuildImage
       contentHash,
       projectRef,
       push,
-      loadImage,
+      load,
       noCache,
       extraCACerts,
       apiUrl,
@@ -113,7 +114,7 @@ export async function buildImage(options: BuildImageOptions): Promise<BuildImage
     deploymentVersion,
     contentHash,
     projectRef,
-    loadImage,
+    load,
     imagePlatform,
     noCache,
     extraCACerts,
@@ -140,7 +141,7 @@ export interface DepotBuildImageOptions {
   apiUrl: string;
   apiKey: string;
   branchName?: string;
-  loadImage?: boolean;
+  load?: boolean;
   noCache?: boolean;
   extraCACerts?: string;
   buildEnvVars?: Record<string, string | undefined>;
@@ -174,6 +175,7 @@ async function remoteBuildImage(options: DepotBuildImageOptions): Promise<BuildI
     options.noCache ? "--no-cache" : undefined,
     "--platform",
     options.imagePlatform,
+    options.load ? "--load" : undefined,
     "--provenance",
     "false",
     "--metadata-file",
@@ -200,7 +202,6 @@ async function remoteBuildImage(options: DepotBuildImageOptions): Promise<BuildI
     "plain",
     ".",
     "--save",
-    options.loadImage ? "--load" : undefined,
   ].filter(Boolean) as string[];
 
   logger.debug(`depot ${args.join(" ")}`, { cwd: options.cwd });
@@ -290,7 +291,7 @@ interface SelfHostedBuildImageOptions {
   contentHash: string;
   projectRef: string;
   imagePlatform: string;
-  push: boolean;
+  push?: boolean;
   apiUrl: string;
   apiKey: string;
   branchName?: string;
@@ -299,7 +300,7 @@ interface SelfHostedBuildImageOptions {
   buildEnvVars?: Record<string, string | undefined>;
   network?: string;
   builder: string;
-  loadImage?: boolean;
+  load?: boolean;
   onLog?: (log: string) => void;
 }
 
@@ -408,15 +409,13 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
 
   const apiUrl = normalizeApiUrlForBuild(options.apiUrl);
   const addHost = getAddHost(apiUrl);
+  const push = shouldPush(options.imageTag, options.push);
+  const load = shouldLoad(options.load, push);
 
-  // Don't push if the image tag is a local address, unless the user explicitly wants to push
-  const shouldPush = options.push
-    ? true
-    : imageTag.startsWith("localhost") ||
-      imageTag.startsWith("127.0.0.1") ||
-      imageTag.startsWith("0.0.0.0")
-    ? false
-    : true;
+  console.log("imageTag", options.imageTag);
+  console.log("apiUrl", apiUrl);
+  console.log("push", push);
+  console.log("load", load);
 
   await ensureQemuRegistered(options.imagePlatform);
 
@@ -432,8 +431,8 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
     options.imagePlatform,
     options.network ? `--network=${options.network}` : undefined,
     addHost ? `--add-host=${addHost}` : undefined,
-    shouldPush ? "--push" : undefined,
-    options.loadImage ? "--load" : undefined,
+    push ? "--push" : undefined,
+    load ? "--load" : undefined,
     "--provenance",
     "false",
     "--metadata-file",
@@ -897,3 +896,43 @@ const BuildKitMetadata = z.object({
   "containerimage.digest": z.string().optional(),
   "image.name": z.string().optional(),
 });
+
+// Don't push if the image tag is a local address, unless the user explicitly wants to push
+function shouldPush(imageTag: string, push?: boolean) {
+  switch (push) {
+    case true: {
+      return true;
+    }
+    case false: {
+      return false;
+    }
+    case undefined: {
+      return imageTag.startsWith("localhost") ||
+        imageTag.startsWith("127.0.0.1") ||
+        imageTag.startsWith("0.0.0.0")
+        ? false
+        : true;
+    }
+    default: {
+      assertExhaustive(push);
+    }
+  }
+}
+
+// Don't load if we're pushing, unless the user explicitly wants to load
+function shouldLoad(load?: boolean, push?: boolean) {
+  switch (load) {
+    case true: {
+      return true;
+    }
+    case false: {
+      return false;
+    }
+    case undefined: {
+      return push ? false : true;
+    }
+    default: {
+      assertExhaustive(load);
+    }
+  }
+}

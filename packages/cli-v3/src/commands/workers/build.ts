@@ -335,7 +335,7 @@ async function _workerBuildCommand(dir: string, options: WorkersBuildCommandOpti
     deploymentId: deployment.id,
     deploymentVersion: deployment.version,
     imageTag: deployment.imageTag,
-    loadImage: options.load,
+    load: options.load,
     contentHash: deployment.contentHash,
     externalBuildId: deployment.externalBuildData?.buildId,
     externalBuildToken: deployment.externalBuildData?.buildToken,
