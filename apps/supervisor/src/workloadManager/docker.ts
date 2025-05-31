@@ -14,9 +14,13 @@ export class DockerWorkloadManager implements WorkloadManager {
   private readonly docker: Docker;
 
   private readonly runnerNetworks: string[];
+  private readonly auth?: Docker.AuthConfig;
+  private readonly platform?: string;
 
   constructor(private opts: WorkloadManagerOptions) {
-    this.docker = new Docker();
+    this.docker = new Docker({
+      version: env.DOCKER_API_VERSION,
+    });
 
     if (opts.workloadApiDomain) {
       this.logger.warn("⚠️ Custom workload API domain", {
@@ -25,6 +29,29 @@ export class DockerWorkloadManager implements WorkloadManager {
     }
 
     this.runnerNetworks = env.RUNNER_DOCKER_NETWORKS.split(",");
+
+    this.platform = env.DOCKER_PLATFORM;
+    if (this.platform) {
+      this.logger.info("🖥️  Platform override", {
+        targetPlatform: this.platform,
+        hostPlatform: process.arch,
+      });
+    }
+
+    if (env.DOCKER_REGISTRY_USERNAME && env.DOCKER_REGISTRY_PASSWORD && env.DOCKER_REGISTRY_URL) {
+      this.logger.info("🐋 Using Docker registry credentials", {
+        username: env.DOCKER_REGISTRY_USERNAME,
+        url: env.DOCKER_REGISTRY_URL,
+      });
+
+      this.auth = {
+        username: env.DOCKER_REGISTRY_USERNAME,
+        password: env.DOCKER_REGISTRY_PASSWORD,
+        serveraddress: env.DOCKER_REGISTRY_URL,
+      };
+    } else {
+      this.logger.warn("🐋 No Docker registry credentials provided, skipping auth");
+    }
   }
 
   async create(opts: WorkloadManagerCreateOptions) {
@@ -91,7 +118,6 @@ export class DockerWorkloadManager implements WorkloadManager {
     }
 
     const containerCreateOpts: Docker.ContainerCreateOptions = {
-      Env: envVars,
       name: runnerId,
       Hostname: runnerId,
       HostConfig: hostConfig,
@@ -101,30 +127,63 @@ export class DockerWorkloadManager implements WorkloadManager {
       AttachStdin: false,
     };
 
-    try {
-      // Create container
-      const container = await this.docker.createContainer(containerCreateOpts);
-
-      // If there are multiple networks to attach to we need to attach the remaining ones after creation
-      if (remainingNetworks.length > 0) {
-        await this.attachContainerToNetworks({
-          containerId: container.id,
-          networkNames: remainingNetworks,
-        });
-      }
-
-      // Start container
-      const startResult = await container.start();
-
-      this.logger.debug("create succeeded", {
-        opts,
-        startResult,
-        containerId: container.id,
-        containerCreateOpts,
-      });
-    } catch (error) {
-      this.logger.error("create failed:", { opts, error, containerCreateOpts });
+    if (this.platform) {
+      containerCreateOpts.platform = this.platform;
     }
+
+    const logger = this.logger.child({ opts, containerCreateOpts });
+
+    // Ensure the image is present
+    const [createImageError, imageResponseReader] = await tryCatch(
+      this.docker.createImage(this.auth, {
+        fromImage: opts.image,
+        ...(this.platform ? { platform: this.platform } : {}),
+      })
+    );
+    if (createImageError) {
+      logger.error("Failed to pull image", { error: createImageError });
+      return;
+    }
+
+    const [imageReadError, imageResponse] = await tryCatch(readAllChunks(imageResponseReader));
+    if (imageReadError) {
+      logger.error("failed to read image response", { error: imageReadError });
+      return;
+    }
+
+    logger.debug("pulled image", { image: opts.image, imageResponse });
+
+    // Create container
+    const [createContainerError, container] = await tryCatch(
+      this.docker.createContainer({
+        ...containerCreateOpts,
+        // Add env vars here so they're not logged
+        Env: envVars,
+      })
+    );
+
+    if (createContainerError) {
+      logger.error("Failed to create container", { error: createContainerError });
+      return;
+    }
+
+    // If there are multiple networks to attach to we need to attach the remaining ones after creation
+    if (remainingNetworks.length > 0) {
+      await this.attachContainerToNetworks({
+        containerId: container.id,
+        networkNames: remainingNetworks,
+      });
+    }
+
+    // Start container
+    const [startError, startResult] = await tryCatch(container.start());
+
+    if (startError) {
+      logger.error("Failed to start container", { error: startError, containerId: container.id });
+      return;
+    }
+
+    logger.debug("create succeeded", { startResult, containerId: container.id });
   }
 
   private async attachContainerToNetworks({
@@ -172,4 +231,12 @@ export class DockerWorkloadManager implements WorkloadManager {
       results,
     });
   }
+}
+
+async function readAllChunks(reader: NodeJS.ReadableStream) {
+  const chunks = [];
+  for await (const chunk of reader) {
+    chunks.push(chunk.toString());
+  }
+  return chunks;
 }

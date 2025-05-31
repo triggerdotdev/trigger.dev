@@ -41,6 +41,13 @@ const Env = z.object({
    */
   RUNNER_DOCKER_NETWORKS: z.string().default("host"),
 
+  // Docker settings
+  DOCKER_API_VERSION: z.string().default("v1.41"),
+  DOCKER_PLATFORM: z.string().optional(), // e.g. linux/amd64, linux/arm64
+  DOCKER_REGISTRY_USERNAME: z.string().optional(),
+  DOCKER_REGISTRY_PASSWORD: z.string().optional(),
+  DOCKER_REGISTRY_URL: z.string().optional(), // e.g. https://index.docker.io/v1
+
   // Dequeue settings (provider mode)
   TRIGGER_DEQUEUE_ENABLED: BoolEnv.default("true"),
   TRIGGER_DEQUEUE_INTERVAL_MS: z.coerce.number().int().default(250),
