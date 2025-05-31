@@ -34,6 +34,7 @@ export class FinalizeDeploymentV2Service extends BaseService {
         version: true,
         externalBuildData: true,
         environment: true,
+        imageReference: true,
         worker: {
           select: {
             project: true,
@@ -87,13 +88,12 @@ export class FinalizeDeploymentV2Service extends BaseService {
       throw new ServiceValidationError("Missing depot token");
     }
 
-    const digest = body.imageDigest;
+    // All new deployments will set the image reference at creation time
+    if (!deployment.imageReference) {
+      throw new ServiceValidationError("Missing image reference");
+    }
 
-    logger.debug("Pushing image to registry", {
-      id,
-      deployment,
-      digest,
-    });
+    logger.debug("Pushing image to registry", { id, deployment, body });
 
     const pushResult = await executePushToRegistry(
       {
@@ -112,6 +112,7 @@ export class FinalizeDeploymentV2Service extends BaseService {
           version: deployment.version,
           environmentSlug: deployment.environment.slug,
           projectExternalRef: deployment.worker.project.externalRef,
+          imageReference: deployment.imageReference,
         },
       },
       writer
@@ -129,11 +130,7 @@ export class FinalizeDeploymentV2Service extends BaseService {
     });
 
     const finalizeService = new FinalizeDeploymentService();
-
-    const finalizedDeployment = await finalizeService.call(authenticatedEnv, id, {
-      skipPromotion: body.skipPromotion,
-      imageDigest: digest,
-    });
+    const finalizedDeployment = await finalizeService.call(authenticatedEnv, id, body);
 
     return finalizedDeployment;
   }
@@ -155,6 +152,7 @@ type ExecutePushToRegistryOptions = {
     version: string;
     environmentSlug: string;
     projectExternalRef: string;
+    imageReference: string;
   };
 };
 
@@ -180,11 +178,9 @@ async function executePushToRegistry(
     password: registry.password,
   });
 
-  const imageTag = `${registry.host}/${registry.namespace}/${deployment.projectExternalRef}:${deployment.version}.${deployment.environmentSlug}`;
+  const imageTag = deployment.imageReference;
 
   // Step 2: We need to run the depot push command
-  // DEPOT_TOKEN="<org token>" DEPOT_PROJECT_ID="<project id>" depot push <build id> -t registry.digitalocean.com/trigger-failover/proj_bzhdaqhlymtuhlrcgbqy:20250124.54.prod
-  // Step 4: Build and push the image
   const childProcess = execDepot(["push", depot.buildId, "-t", imageTag, "--progress", "plain"], {
     env: {
       NODE_ENV: process.env.NODE_ENV,
@@ -208,10 +204,7 @@ async function executePushToRegistry(
         const lines = text.split("\n").filter(Boolean);
 
         errors.push(...lines);
-        logger.debug(text, {
-          imageTag,
-          deployment,
-        });
+        logger.debug(text, { deployment });
 
         // Now we can write strings directly
         if (writer) {

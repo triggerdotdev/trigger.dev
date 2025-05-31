@@ -60,6 +60,8 @@ export class FinalizeDeploymentService extends BaseService {
       throw new ServiceValidationError("Worker deployment is not in DEPLOYING status");
     }
 
+    const imageDigest = validatedImageDigest(body.imageDigest);
+
     // Link the deployment with the background worker
     const finalizedDeployment = await this._prisma.workerDeployment.update({
       where: {
@@ -69,9 +71,7 @@ export class FinalizeDeploymentService extends BaseService {
         status: "DEPLOYED",
         deployedAt: new Date(),
         // Only add the digest, if any
-        imageReference: body.imageDigest
-          ? `${deployment.imageReference}@${body.imageDigest}`
-          : undefined,
+        imageReference: imageDigest ? `${deployment.imageReference}@${imageDigest}` : undefined,
       },
     });
 
@@ -120,4 +120,17 @@ export class FinalizeDeploymentService extends BaseService {
 
     return finalizedDeployment;
   }
+}
+
+function validatedImageDigest(imageDigest?: string): string | undefined {
+  if (!imageDigest) {
+    return;
+  }
+
+  if (!/^sha256:[a-f0-9]{64}$/.test(imageDigest.trim())) {
+    logger.error("Invalid image digest", { imageDigest });
+    return;
+  }
+
+  return imageDigest.trim();
 }

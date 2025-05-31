@@ -68,19 +68,11 @@ export class InitializeDeploymentService extends BaseService {
           })
         : undefined;
 
-      const imageRefParts = [
+      const imageRef = [
+        env.DEPLOY_REGISTRY_HOST,
         env.DEPLOY_REGISTRY_NAMESPACE,
         `${environment.project.externalRef}:${nextVersion}.${environment.slug}`,
-      ];
-
-      const isLocalBuild = !externalBuildData;
-
-      // Local builds require the registry host to be able to push the image
-      if (isLocalBuild) {
-        imageRefParts.unshift(env.DEPLOY_REGISTRY_HOST);
-      }
-
-      const imageRef = imageRefParts.join("/");
+      ].join("/");
 
       logger.debug("Creating deployment", {
         environmentId: environment.id,
