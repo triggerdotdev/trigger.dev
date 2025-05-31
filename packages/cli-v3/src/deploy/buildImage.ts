@@ -3,6 +3,11 @@ import { depot } from "@depot/cli";
 import { x } from "tinyexec";
 import { BuildManifest, BuildRuntime } from "@trigger.dev/core/v3/schemas";
 import { networkInterfaces } from "os";
+import { join } from "path";
+import { safeReadJSONFile } from "../utilities/fileSystem.js";
+import { readFileSync } from "fs";
+import { isLinux } from "std-env";
+import { z } from "zod";
 
 export interface BuildImageOptions {
   // Common options
@@ -171,6 +176,8 @@ async function remoteBuildImage(options: DepotBuildImageOptions): Promise<BuildI
     options.imagePlatform,
     "--provenance",
     "false",
+    "--metadata-file",
+    "metadata.json",
     "--build-arg",
     `TRIGGER_PROJECT_ID=${options.projectId}`,
     "--build-arg",
@@ -196,7 +203,7 @@ async function remoteBuildImage(options: DepotBuildImageOptions): Promise<BuildI
     options.loadImage ? "--load" : undefined,
   ].filter(Boolean) as string[];
 
-  logger.debug(`depot ${args.join(" ")}`);
+  logger.debug(`depot ${args.join(" ")}`, { cwd: options.cwd });
 
   // Step 4: Build and push the image
   const childProcess = depot(args, {
@@ -243,7 +250,21 @@ async function remoteBuildImage(options: DepotBuildImageOptions): Promise<BuildI
       };
     }
 
-    const digest = extractImageDigest(errors);
+    const metadataPath = join(options.cwd, "metadata.json");
+    const rawMetadata = await safeReadJSONFile(metadataPath);
+
+    const meta = BuildKitMetadata.safeParse(rawMetadata);
+
+    let digest: string | undefined;
+    if (!meta.success) {
+      logger.error("Failed to parse metadata.json", {
+        errors: meta.error.message,
+        path: metadataPath,
+      });
+    } else {
+      logger.debug("Parsed metadata.json", { metadata: meta.data, path: metadataPath });
+      digest = meta.data["containerimage.digest"];
+    }
 
     return {
       ok: true as const,
@@ -290,13 +311,12 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
   const lsLogs: string[] = [];
 
   // List existing builders
-  const lsProcess = x("docker", ["buildx", "ls"]);
+  const lsProcess = x("docker", ["buildx", "ls", "--format", "{{.Name}}"]);
   for await (const line of lsProcess) {
     lsLogs.push(line);
     logger.debug(line);
-    options.onLog?.(line);
 
-    if (line.startsWith(builder + " ")) {
+    if (line === builder) {
       builderExists = true;
     }
   }
@@ -398,6 +418,8 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
     ? false
     : true;
 
+  await ensureQemuRegistered(options.imagePlatform);
+
   const args = [
     "buildx",
     "build",
@@ -412,6 +434,10 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
     addHost ? `--add-host=${addHost}` : undefined,
     shouldPush ? "--push" : undefined,
     options.loadImage ? "--load" : undefined,
+    "--provenance",
+    "false",
+    "--metadata-file",
+    "metadata.json",
     "--build-arg",
     `TRIGGER_PROJECT_ID=${options.projectId}`,
     "--build-arg",
@@ -437,9 +463,7 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
     ".", // The build context
   ].filter(Boolean) as string[];
 
-  logger.debug(`docker ${args.join(" ")}`, {
-    cwd: options.cwd,
-  });
+  logger.debug(`docker ${args.join(" ")}`, { cwd: options.cwd });
 
   const errors: string[] = [];
 
@@ -463,7 +487,21 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
     };
   }
 
-  const digest = extractImageDigest(errors);
+  const metadataPath = join(options.cwd, "metadata.json");
+  const rawMetadata = await safeReadJSONFile(metadataPath);
+
+  const meta = BuildKitMetadata.safeParse(rawMetadata);
+
+  let digest: string | undefined;
+  if (!meta.success) {
+    logger.error("Failed to parse metadata.json", {
+      errors: meta.error.message,
+      path: metadataPath,
+    });
+  } else {
+    logger.debug("Parsed metadata.json", { metadata: meta.data, path: metadataPath });
+    digest = meta.data["containerimage.digest"];
+  }
 
   // Get the image size
   const sizeProcess = x("docker", ["image", "inspect", options.imageTag, "--format={{.Size}}"], {
@@ -498,22 +536,6 @@ function extractLogs(outputs: string[]) {
   const cleanedOutputs = outputs.map((line) => line.trim()).filter((line) => line !== "");
 
   return cleanedOutputs.map((line) => line.trim()).join("\n");
-}
-
-function extractImageDigest(outputs: string[]): string | undefined {
-  const imageDigestRegex = /pushing manifest for .+(?<digest>sha256:[a-f0-9]{64})/;
-
-  for (const line of outputs) {
-    const imageDigestMatch = line.match(imageDigestRegex);
-
-    const digest = imageDigestMatch?.groups?.digest;
-
-    if (digest) {
-      return digest;
-    }
-  }
-
-  return;
 }
 
 export type GenerateContainerfileOptions = {
@@ -819,3 +841,59 @@ function getAddHost(apiUrl: string) {
 
   return;
 }
+
+function isQemuRegistered() {
+  try {
+    // Check a single QEMU handler
+    const binfmt = readFileSync("/proc/sys/fs/binfmt_misc/qemu-aarch64", "utf8");
+    return binfmt.includes("enabled");
+  } catch (e) {
+    return false;
+  }
+}
+
+function isMultiPlatform(imagePlatform: string) {
+  return imagePlatform.split(",").length > 1;
+}
+
+async function ensureQemuRegistered(imagePlatform: string) {
+  if (isLinux && isMultiPlatform(imagePlatform) && !isQemuRegistered()) {
+    logger.debug("Registering QEMU for multi-platform build...");
+
+    const ensureQemuProcess = x("docker", [
+      "run",
+      "--rm",
+      "--privileged",
+      "multiarch/qemu-user-static",
+      "--reset",
+      "-p",
+      "yes",
+    ]);
+
+    const logs: string[] = [];
+    for await (const line of ensureQemuProcess) {
+      logger.debug(line);
+      logs.push(line);
+    }
+
+    if (ensureQemuProcess.exitCode !== 0) {
+      logger.error("Failed to register QEMU for multi-platform build", {
+        exitCode: ensureQemuProcess.exitCode,
+        logs: logs.join("\n"),
+      });
+    }
+  }
+}
+
+const BuildKitMetadata = z.object({
+  "buildx.build.ref": z.string().optional(),
+  "containerimage.descriptor": z
+    .object({
+      mediaType: z.string(),
+      digest: z.string(),
+      size: z.number(),
+    })
+    .optional(),
+  "containerimage.digest": z.string().optional(),
+  "image.name": z.string().optional(),
+});

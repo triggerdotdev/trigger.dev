@@ -45,7 +45,7 @@ const DeployCommandOptions = CommonCommandOptions.extend({
   skipSyncEnvVars: z.boolean().default(false),
   env: z.enum(["prod", "staging", "preview"]),
   branch: z.string().optional(),
-  loadImage: z.boolean().default(false),
+  load: z.boolean().default(false),
   config: z.string().optional(),
   projectRef: z.string().optional(),
   saveLogs: z.boolean().default(false),
@@ -109,7 +109,7 @@ export function configureDeployCommand(program: Command) {
         ).hideHelp()
       )
       .addOption(
-        new CommandOption("--load-image", "Load the built image into your local docker").hideHelp()
+        new CommandOption("--load", "Load the built image into your local docker").hideHelp()
       )
       .addOption(
         new CommandOption(
@@ -392,7 +392,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     deploymentVersion: deployment.version,
     imageTag: deployment.imageTag,
     imagePlatform: deployment.imagePlatform,
-    loadImage: options.loadImage,
+    loadImage: options.load,
     contentHash: deployment.contentHash,
     externalBuildId: deployment.externalBuildData?.buildId,
     externalBuildToken: deployment.externalBuildData?.buildToken,
