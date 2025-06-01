@@ -182,7 +182,7 @@ export class PrismaExtension implements BuildExtension {
       commands.push(
         `${binaryForRuntime(
           manifest.runtime
-        )} node_modules/prisma/build/index.js generate --schema ./prisma ${generatorFlags.join(" ")}` // Don't add the --schema flag or this will fail
+        )} node_modules/prisma/build/index.js generate --schema ./prisma ${generatorFlags.join(" ")}`
       );
     } else {
       // Now we need to add a layer that:
