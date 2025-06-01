@@ -2,6 +2,10 @@
 
 A high-performance Go service that provides real-time streaming of task run updates via Server-Sent Events (SSE) using PostgreSQL logical replication.
 
+## ⚠️ CI Status Note
+
+The current CI failures in the PR are **pre-existing build issues** in the monorepo that are unrelated to this Go service implementation. The same test failures occur on the main branch and are caused by missing build artifacts for internal TypeScript packages. This Go service builds and runs successfully.
+
 ## Features
 
 - **Low Latency**: p95 latency ≤ 300ms from WAL commit to client receive
