@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Realtime Service Test Client</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .controls { margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; }
+        .events { height: 400px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; background: #f9f9f9; }
+        .event { margin-bottom: 10px; padding: 5px; border-left: 3px solid #007cba; background: white; }
+        .event.initial { border-left-color: #28a745; }
+        .event.delta { border-left-color: #007cba; }
+        .event.keepalive { border-left-color: #6c757d; }
+        input, button { margin: 5px; padding: 8px; }
+        .status { padding: 10px; margin: 10px 0; border-radius: 4px; }
+        .status.connected { background: #d4edda; color: #155724; }
+        .status.disconnected { background: #f8d7da; color: #721c24; }
+        .status.connecting { background: #fff3cd; color: #856404; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Trigger.dev Realtime Service Test Client</h1>
+        
+        <div class="controls">
+            <h3>Connection Controls</h3>
+            <div>
+                <label>Server URL:</label>
+                <input type="text" id="serverUrl" value="http://localhost:8080" style="width: 200px;">
+            </div>
+            <div>
+                <label>Filter (JSON):</label>
+                <input type="text" id="filter" placeholder='{"env_id": "uuid"}' style="width: 300px;">
+            </div>
+            <div>
+                <button onclick="connect()">Connect</button>
+                <button onclick="disconnect()">Disconnect</button>
+                <button onclick="clearEvents()">Clear Events</button>
+            </div>
+        </div>
+
+        <div id="status" class="status disconnected">Disconnected</div>
+
+        <div class="controls">
+            <h3>Statistics</h3>
+            <div>Events received: <span id="eventCount">0</span></div>
+            <div>Connection time: <span id="connectionTime">-</span></div>
+            <div>Last event: <span id="lastEvent">-</span></div>
+        </div>
+
+        <h3>Events</h3>
+        <div id="events" class="events"></div>
+    </div>
+
+    <script>
+        let eventSource = null;
+        let eventCount = 0;
+        let connectionStartTime = null;
+
+        function updateStatus(status, message) {
+            const statusEl = document.getElementById('status');
+            statusEl.className = `status ${status}`;
+            statusEl.textContent = message;
+        }
+
+        function addEvent(type, data, id) {
+            eventCount++;
+            const eventsEl = document.getElementById('events');
+            const eventEl = document.createElement('div');
+            eventEl.className = `event ${type}`;
+            
+            const timestamp = new Date().toLocaleTimeString();
+            eventEl.innerHTML = `
+                <strong>[${timestamp}] ${type.toUpperCase()}</strong>
+                ${id ? `<br>ID: ${id}` : ''}
+                <br><pre>${JSON.stringify(data, null, 2)}</pre>
+            `;
+            
+            eventsEl.appendChild(eventEl);
+            eventsEl.scrollTop = eventsEl.scrollHeight;
+            
+            document.getElementById('eventCount').textContent = eventCount;
+            document.getElementById('lastEvent').textContent = timestamp;
+        }
+
+        function connect() {
+            if (eventSource) {
+                disconnect();
+            }
+
+            const serverUrl = document.getElementById('serverUrl').value;
+            const filter = document.getElementById('filter').value;
+            
+            let url = `${serverUrl}/v1/runs/stream`;
+            if (filter.trim()) {
+                try {
+                    JSON.parse(filter);
+                    url += `?filter=${encodeURIComponent(filter)}`;
+                } catch (e) {
+                    alert('Invalid JSON filter');
+                    return;
+                }
+            }
+
+            updateStatus('connecting', 'Connecting...');
+            connectionStartTime = Date.now();
+
+            eventSource = new EventSource(url);
+
+            eventSource.onopen = function() {
+                updateStatus('connected', 'Connected');
+                updateConnectionTime();
+            };
+
+            eventSource.onmessage = function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    addEvent('message', data, event.lastEventId);
+                } catch (e) {
+                    addEvent('message', event.data, event.lastEventId);
+                }
+            };
+
+            eventSource.addEventListener('initial', function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    addEvent('initial', data, event.lastEventId);
+                } catch (e) {
+                    addEvent('initial', event.data, event.lastEventId);
+                }
+            });
+
+            eventSource.addEventListener('delta', function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    addEvent('delta', data, event.lastEventId);
+                } catch (e) {
+                    addEvent('delta', event.data, event.lastEventId);
+                }
+            });
+
+            eventSource.addEventListener('keepalive', function(event) {
+                addEvent('keepalive', 'keepalive', event.lastEventId);
+            });
+
+            eventSource.onerror = function(event) {
+                updateStatus('disconnected', 'Connection error');
+                addEvent('error', 'Connection error occurred', null);
+            };
+        }
+
+        function disconnect() {
+            if (eventSource) {
+                eventSource.close();
+                eventSource = null;
+                updateStatus('disconnected', 'Disconnected');
+            }
+        }
+
+        function clearEvents() {
+            document.getElementById('events').innerHTML = '';
+            eventCount = 0;
+            document.getElementById('eventCount').textContent = '0';
+            document.getElementById('lastEvent').textContent = '-';
+        }
+
+        function updateConnectionTime() {
+            if (connectionStartTime) {
+                const elapsed = Math.floor((Date.now() - connectionStartTime) / 1000);
+                document.getElementById('connectionTime').textContent = `${elapsed}s`;
+            }
+            
+            if (eventSource && eventSource.readyState === EventSource.OPEN) {
+                setTimeout(updateConnectionTime, 1000);
+            }
+        }
+
+        window.addEventListener('beforeunload', function() {
+            disconnect();
+        });
+    </script>
+</body>
+</html>
