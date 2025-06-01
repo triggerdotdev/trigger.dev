@@ -42,7 +42,7 @@ export default defineConfig({
       emitDecoratorMetadata(),
       audioWaveform(),
       prismaExtension({
-        schema: "prisma/schema/schema.prisma",
+        schema: "prisma",
         migrate: true,
         directUrlEnvVarName: "DATABASE_URL_UNPOOLED",
         clientGenerator: "client",
