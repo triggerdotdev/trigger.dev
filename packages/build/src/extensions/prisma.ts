@@ -1,7 +1,7 @@
 import { BuildManifest, BuildTarget } from "@trigger.dev/core/v3";
 import { binaryForRuntime, BuildContext, BuildExtension } from "@trigger.dev/core/v3/build";
 import assert from "node:assert";
-import { glob } from 'fast-glob';
+import { glob } from 'tinyglobby';
 import { existsSync } from "node:fs";
 import { cp, readdir } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
@@ -162,7 +162,7 @@ export class PrismaExtension implements BuildExtension {
       context.logger.debug(`Using the schema folder: ${this._resolvedSchemaPath}`);
 
       // Find all the files in schemaDir that end with .prisma (excluding the schema.prisma file)
-      const prismaFiles = await glob("**/*.prisma", {
+      const prismaFiles = await glob(["**/*.prisma"], {
         cwd: this._resolvedSchemaPath
       })
 
