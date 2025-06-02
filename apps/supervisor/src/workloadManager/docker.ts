@@ -15,7 +15,7 @@ export class DockerWorkloadManager implements WorkloadManager {
 
   private readonly runnerNetworks: string[];
   private readonly auth?: Docker.AuthConfig;
-  private readonly platform?: string;
+  private readonly platformOverride?: string;
 
   constructor(private opts: WorkloadManagerOptions) {
     this.docker = new Docker({
@@ -30,10 +30,10 @@ export class DockerWorkloadManager implements WorkloadManager {
 
     this.runnerNetworks = env.RUNNER_DOCKER_NETWORKS.split(",");
 
-    this.platform = env.DOCKER_PLATFORM;
-    if (this.platform) {
+    this.platformOverride = env.DOCKER_PLATFORM;
+    if (this.platformOverride) {
       this.logger.info("🖥️  Platform override", {
-        targetPlatform: this.platform,
+        targetPlatform: this.platformOverride,
         hostPlatform: process.arch,
       });
     }
@@ -133,26 +133,38 @@ export class DockerWorkloadManager implements WorkloadManager {
       AttachStdin: false,
     };
 
-    if (this.platform) {
-      containerCreateOpts.platform = this.platform;
+    if (this.platformOverride) {
+      containerCreateOpts.platform = this.platformOverride;
     }
 
     const logger = this.logger.child({ opts, containerCreateOpts });
 
-    const [inspectError] = await tryCatch(this.docker.getImage(imageRef).inspect());
+    const [inspectError, inspectResult] = await tryCatch(this.docker.getImage(imageRef).inspect());
+
+    let shouldPull = !!inspectError;
+    if (this.platformOverride) {
+      const imageArchitecture = inspectResult?.Architecture;
+
+      // When the image architecture doesn't match the platform, we need to pull the image
+      if (imageArchitecture && !this.platformOverride.includes(imageArchitecture)) {
+        shouldPull = true;
+      }
+    }
 
     // If the image is not present, try to pull it
-    if (inspectError) {
-      logger.error("Failed to inspect image, trying to pull", {
+    if (shouldPull) {
+      logger.error("Pulling image", {
         error: inspectError,
         image: opts.image,
+        targetPlatform: this.platformOverride,
+        imageArchitecture: inspectResult?.Architecture,
       });
 
       // Ensure the image is present
       const [createImageError, imageResponseReader] = await tryCatch(
         this.docker.createImage(this.auth, {
           fromImage: imageRef,
-          ...(this.platform ? { platform: this.platform } : {}),
+          ...(this.platformOverride ? { platform: this.platformOverride } : {}),
         })
       );
       if (createImageError) {
