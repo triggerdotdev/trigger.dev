@@ -412,11 +412,6 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
   const push = shouldPush(options.imageTag, options.push);
   const load = shouldLoad(options.load, push);
 
-  console.log("imageTag", options.imageTag);
-  console.log("apiUrl", apiUrl);
-  console.log("push", push);
-  console.log("load", load);
-
   await ensureQemuRegistered(options.imagePlatform);
 
   const args = [
