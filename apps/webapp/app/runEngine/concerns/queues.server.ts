@@ -198,7 +198,7 @@ export class DefaultQueueManager implements QueueManager {
 
   async getWorkerQueue(environment: AuthenticatedEnvironment): Promise<string | undefined> {
     if (environment.type === "DEVELOPMENT") {
-      return;
+      return environment.id;
     }
 
     const workerGroupService = new WorkerGroupService({

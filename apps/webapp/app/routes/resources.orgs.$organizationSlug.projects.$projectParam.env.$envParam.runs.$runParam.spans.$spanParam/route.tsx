@@ -700,12 +700,8 @@ function RunBody({
                 {isAdmin && (
                   <>
                     <Property.Item>
-                      <Property.Label>Primary master queue</Property.Label>
-                      <Property.Value>{run.masterQueue}</Property.Value>
-                    </Property.Item>
-                    <Property.Item>
-                      <Property.Label>Secondary master queue</Property.Label>
-                      <Property.Value>{run.secondaryMasterQueue ?? "–"}</Property.Value>
+                      <Property.Label>Worker queue</Property.Label>
+                      <Property.Value>{run.workerQueue}</Property.Value>
                     </Property.Item>
                   </>
                 )}

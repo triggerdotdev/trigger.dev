@@ -19,6 +19,10 @@ const constants = {
 } as const;
 
 export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
+  legacyMasterQueueKey(masterQueueName: string): string {
+    return masterQueueName;
+  }
+
   masterQueueKeyForEnvironment(envId: string, shardCount: number): string {
     const shard = this.masterQueueShardForEnvironment(envId, shardCount);
 

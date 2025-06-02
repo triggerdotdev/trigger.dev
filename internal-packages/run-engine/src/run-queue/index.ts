@@ -970,6 +970,58 @@ export class RunQueue {
     }
   }
 
+  async migrateLegacyMasterQueue(legacyMasterQueue: string) {
+    const legacyMasterQueueKey = this.keys.legacyMasterQueueKey(legacyMasterQueue);
+
+    this.logger.debug("Migrating legacy master queue", {
+      legacyMasterQueueKey,
+      service: this.name,
+    });
+
+    // Get all items from the legacy master queue
+    const queueNames = await this.redis.zrange(legacyMasterQueueKey, 0, -1);
+
+    this.logger.debug("Found items in legacy master queue", {
+      queueNames,
+      service: this.name,
+    });
+
+    // We need to group the items by the new masterQueueKey, so we need to extract out the environmentId from the queue name and calculate the shard
+    const queuesByMasterQueueKey = new Map<string, string[]>();
+
+    for (const queueName of queueNames) {
+      const environmentId = this.keys.envIdFromQueue(queueName);
+      const shard = this.keys.masterQueueShardForEnvironment(environmentId, this.shardCount);
+      const masterQueueKey = this.keys.masterQueueKeyForShard(shard);
+      queuesByMasterQueueKey.set(masterQueueKey, [
+        ...(queuesByMasterQueueKey.get(masterQueueKey) ?? []),
+        queueName,
+      ]);
+    }
+
+    this.logger.debug("Grouping items by new master queue key", {
+      queuesByMasterQueueKey: Object.fromEntries(queuesByMasterQueueKey.entries()),
+      service: this.name,
+    });
+
+    const pipeline = this.redis.pipeline();
+
+    for (const [masterQueueKey, queueNames] of queuesByMasterQueueKey) {
+      pipeline.migrateLegacyMasterQueues(
+        masterQueueKey,
+        this.options.redis.keyPrefix ?? "",
+        ...queueNames
+      );
+    }
+
+    await pipeline.exec();
+
+    this.logger.debug("Migrated legacy master queue", {
+      legacyMasterQueueKey,
+      service: this.name,
+    });
+  }
+
   // This is used for test purposes only
   async processMasterQueueForEnvironment(environmentId: string, maxCount: number = 10) {
     const shard = this.keys.masterQueueShardForEnvironment(environmentId, this.shardCount);
@@ -1494,6 +1546,29 @@ return {messageId, messagePayload} -- Return message details
   }
 
   #registerCommands() {
+    this.redis.defineCommand("migrateLegacyMasterQueues", {
+      numberOfKeys: 1,
+      lua: `
+local masterQueueKey = KEYS[1]
+
+local keyPrefix = ARGV[1]
+
+for i = 2, #ARGV do
+  local queueName = ARGV[i]
+  local queueKey = keyPrefix .. queueName
+  
+  -- Rebalance the parent queues
+  local earliestMessage = redis.call('ZRANGE', queueKey, 0, 0, 'WITHSCORES')
+
+  if #earliestMessage == 0 then
+    redis.call('ZREM', masterQueueKey, queueName)
+  else
+    redis.call('ZADD', masterQueueKey, earliestMessage[2], queueName)
+  end
+end
+      `,
+    });
+
     this.redis.defineCommand("enqueueMessage", {
       numberOfKeys: 6,
       lua: `
@@ -1946,6 +2021,12 @@ declare module "@internal/redis" {
       envConcurrencyLimitKey: string,
       envConcurrencyLimit: string,
       callback?: Callback<void>
+    ): Result<void, Context>;
+
+    migrateLegacyMasterQueues(
+      masterQueueKey: string,
+      keyPrefix: string,
+      ...queueNames: string[]
     ): Result<void, Context>;
   }
 }

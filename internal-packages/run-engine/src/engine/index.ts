@@ -1084,6 +1084,39 @@ export class RunEngine {
     return this.raceSimulationSystem.registerRacepointForRun({ runId, waitInterval });
   }
 
+  async migrateLegacyMasterQueues() {
+    const workerGroups = await this.prisma.workerInstanceGroup.findMany({
+      where: {
+        type: "MANAGED",
+      },
+      select: {
+        id: true,
+        name: true,
+        masterQueue: true,
+      },
+    });
+
+    this.logger.info("Migrating legacy master queues", {
+      workerGroups,
+    });
+
+    for (const workerGroup of workerGroups) {
+      this.logger.info("Migrating legacy master queue", {
+        workerGroupId: workerGroup.id,
+        workerGroupName: workerGroup.name,
+        workerGroupMasterQueue: workerGroup.masterQueue,
+      });
+
+      await this.runQueue.migrateLegacyMasterQueue(workerGroup.masterQueue);
+
+      this.logger.info("Migrated legacy master queue", {
+        workerGroupId: workerGroup.id,
+        workerGroupName: workerGroup.name,
+        workerGroupMasterQueue: workerGroup.masterQueue,
+      });
+    }
+  }
+
   async quit() {
     try {
       //stop the run queue
