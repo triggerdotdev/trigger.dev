@@ -44,6 +44,7 @@ const Env = z.object({
   // Docker settings
   DOCKER_API_VERSION: z.string().default("v1.41"),
   DOCKER_PLATFORM: z.string().optional(), // e.g. linux/amd64, linux/arm64
+  DOCKER_STRIP_IMAGE_DIGEST: BoolEnv.default(true),
   DOCKER_REGISTRY_USERNAME: z.string().optional(),
   DOCKER_REGISTRY_PASSWORD: z.string().optional(),
   DOCKER_REGISTRY_URL: z.string().optional(), // e.g. https://index.docker.io/v1

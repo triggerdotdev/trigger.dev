@@ -117,11 +117,17 @@ export class DockerWorkloadManager implements WorkloadManager {
       hostConfig.Memory = opts.machine.memory * 1024 * 1024 * 1024;
     }
 
+    let imageRef = opts.image;
+
+    if (env.DOCKER_STRIP_IMAGE_DIGEST) {
+      imageRef = opts.image.split("@")[0]!;
+    }
+
     const containerCreateOpts: Docker.ContainerCreateOptions = {
       name: runnerId,
       Hostname: runnerId,
       HostConfig: hostConfig,
-      Image: opts.image,
+      Image: imageRef,
       AttachStdout: false,
       AttachStderr: false,
       AttachStdin: false,
@@ -133,25 +139,37 @@ export class DockerWorkloadManager implements WorkloadManager {
 
     const logger = this.logger.child({ opts, containerCreateOpts });
 
-    // Ensure the image is present
-    const [createImageError, imageResponseReader] = await tryCatch(
-      this.docker.createImage(this.auth, {
-        fromImage: opts.image,
-        ...(this.platform ? { platform: this.platform } : {}),
-      })
-    );
-    if (createImageError) {
-      logger.error("Failed to pull image", { error: createImageError });
-      return;
-    }
+    const [inspectError] = await tryCatch(this.docker.getImage(imageRef).inspect());
 
-    const [imageReadError, imageResponse] = await tryCatch(readAllChunks(imageResponseReader));
-    if (imageReadError) {
-      logger.error("failed to read image response", { error: imageReadError });
-      return;
-    }
+    // If the image is not present, try to pull it
+    if (inspectError) {
+      logger.error("Failed to inspect image, trying to pull", {
+        error: inspectError,
+        image: opts.image,
+      });
 
-    logger.debug("pulled image", { image: opts.image, imageResponse });
+      // Ensure the image is present
+      const [createImageError, imageResponseReader] = await tryCatch(
+        this.docker.createImage(this.auth, {
+          fromImage: imageRef,
+          ...(this.platform ? { platform: this.platform } : {}),
+        })
+      );
+      if (createImageError) {
+        logger.error("Failed to pull image", { error: createImageError });
+        return;
+      }
+
+      const [imageReadError, imageResponse] = await tryCatch(readAllChunks(imageResponseReader));
+      if (imageReadError) {
+        logger.error("failed to read image response", { error: imageReadError });
+        return;
+      }
+
+      logger.debug("pulled image", { image: opts.image, imageResponse });
+    } else {
+      // Image is present, so we can use it to create the container
+    }
 
     // Create container
     const [createContainerError, container] = await tryCatch(

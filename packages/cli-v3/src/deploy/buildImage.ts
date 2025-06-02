@@ -499,6 +499,8 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
     });
   } else {
     logger.debug("Parsed metadata.json", { metadata: meta.data, path: metadataPath });
+
+    // Always use the manifest (list) digest
     digest = meta.data["containerimage.digest"];
   }
 
@@ -894,6 +896,7 @@ const BuildKitMetadata = z.object({
     })
     .optional(),
   "containerimage.digest": z.string().optional(),
+  "containerimage.config.digest": z.string().optional(),
   "image.name": z.string().optional(),
 });
 
