@@ -43,7 +43,7 @@ import { updateTriggerPackages } from "./update.js";
 const DeployCommandOptions = CommonCommandOptions.extend({
   dryRun: z.boolean().default(false),
   skipSyncEnvVars: z.boolean().default(false),
-  env: z.enum(["prod", "staging", "preview"]),
+  env: z.enum(["prod", "staging", "preview", "production"]),
   branch: z.string().optional(),
   loadImage: z.boolean().default(false),
   buildPlatform: z.enum(["linux/amd64", "linux/arm64"]).default("linux/amd64"),
@@ -199,6 +199,11 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
         `You must login first. Use the \`login\` CLI command.\n\n${authorization.error}`
       );
     }
+  }
+
+  //coerce env from production to prod
+  if (options.env === "production") {
+    options.env = "prod";
   }
 
   const envVars = resolveLocalEnvVars(options.envFile);
