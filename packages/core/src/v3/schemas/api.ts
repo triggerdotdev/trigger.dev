@@ -337,12 +337,8 @@ export type InitializeDeploymentResponseBody = z.infer<typeof InitializeDeployme
 export const InitializeDeploymentRequestBody = z.object({
   contentHash: z.string(),
   userId: z.string().optional(),
-  /** @deprecated This is now determined by the webapp */
-  registryHost: z.string().optional(),
-  /** @deprecated This is now determined by the webapp */
+  /** @deprecated This is now determined by the webapp. This is only used to warn users with old CLI versions. */
   selfHosted: z.boolean().optional(),
-  /** @deprecated This is now determined by the webapp */
-  namespace: z.string().optional(),
   gitMeta: GitMeta.optional(),
   type: z.enum(["MANAGED", "UNMANAGED", "V1"]).optional(),
 });

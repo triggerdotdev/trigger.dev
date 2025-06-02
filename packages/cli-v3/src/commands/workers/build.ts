@@ -234,18 +234,10 @@ async function _workerBuildCommand(dir: string, options: WorkersBuildCommandOpti
     return;
   }
 
-  const tagParts = parseDockerImageReference(options.tag ?? "");
-
-  // Account for empty strings to preserve existing behavior
-  const registry = tagParts.registry ? tagParts.registry : undefined;
-  const namespace = tagParts.repo ? tagParts.repo : undefined;
-
   const deploymentResponse = await projectClient.client.initializeDeployment({
     contentHash: buildManifest.contentHash,
     userId: authorization.userId,
     selfHosted: options.local,
-    registryHost: registry,
-    namespace: namespace,
     type: "UNMANAGED",
   });
 
