@@ -50,9 +50,9 @@ const FormSchema = z
       .min(1)
       .or(z.enum(["TASK_RUN", "DEPLOYMENT_FAILURE", "DEPLOYMENT_SUCCESS"])),
     environmentTypes: z
-      .array(z.enum(["STAGING", "PRODUCTION"]))
+      .array(z.enum(["STAGING", "PRODUCTION", "PREVIEW"]))
       .min(1)
-      .or(z.enum(["STAGING", "PRODUCTION"])),
+      .or(z.enum(["STAGING", "PRODUCTION", "PREVIEW"])),
     type: z.enum(["WEBHOOK", "SLACK", "EMAIL"]).default("EMAIL"),
     channelValue: z.string().nonempty(),
     integrationId: z.string().optional(),
