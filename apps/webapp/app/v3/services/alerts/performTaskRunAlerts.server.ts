@@ -16,7 +16,11 @@ export class PerformTaskRunAlertsService extends BaseService {
       where: { id: runId },
       include: {
         lockedBy: true,
-        runtimeEnvironment: true,
+        runtimeEnvironment: {
+          include: {
+            parentEnvironment: true,
+          },
+        },
       },
     });
 
@@ -32,7 +36,7 @@ export class PerformTaskRunAlertsService extends BaseService {
           has: "TASK_RUN",
         },
         environmentTypes: {
-          has: run.runtimeEnvironment.type,
+          has: run.runtimeEnvironment.parentEnvironment?.type ?? run.runtimeEnvironment.type,
         },
         enabled: true,
       },
