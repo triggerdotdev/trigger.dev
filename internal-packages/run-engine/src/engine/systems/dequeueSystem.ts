@@ -484,6 +484,7 @@ export class DequeueSystem {
                   deployment: {
                     id: result.deployment?.id,
                     friendlyId: result.deployment?.friendlyId,
+                    imagePlatform: result.deployment?.imagePlatform,
                   },
                   run: {
                     id: lockedTaskRun.id,
