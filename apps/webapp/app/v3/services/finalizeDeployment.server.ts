@@ -39,7 +39,7 @@ export class FinalizeDeploymentService extends BaseService {
       logger.error("Worker deployment does not have a worker", { id });
 
       const failService = new FailDeploymentService();
-      await failService.call(authenticatedEnv, deployment.id, {
+      await failService.call(authenticatedEnv, deployment.friendlyId, {
         error: {
           name: "MissingWorker",
           message: "Deployment does not have a worker",
