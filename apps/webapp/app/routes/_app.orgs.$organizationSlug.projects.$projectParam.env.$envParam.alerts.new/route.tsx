@@ -441,7 +441,7 @@ export default function Page() {
             <InputGroup>
               <Label>Environment</Label>
               <input type="hidden" name={environmentTypes.name} value={environment.type} />
-              <EnvironmentCombo environment={environment} />
+              <EnvironmentCombo environment={{ type: environment.type }} />
               <FormError id={environmentTypes.errorId}>{environmentTypes.error}</FormError>
             </InputGroup>
             <FormError>{form.error}</FormError>
