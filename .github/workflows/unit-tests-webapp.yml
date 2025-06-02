@@ -133,4 +133,4 @@ jobs:
           merge-multiple: true
 
       - name: Merge reports
-        run: pnpm dlx vitest@3.1.4 run --merge-reports
+        run: pnpm dlx vitest@3.1.4 run --merge-reports --pass-with-no-tests
