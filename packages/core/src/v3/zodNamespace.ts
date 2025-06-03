@@ -15,7 +15,7 @@ import { SimpleStructuredLogger, StructuredLogger } from "./utils/structuredLogg
 type AssertNoCallbackSchemas<T extends ZodSocketMessageCatalogSchema> = [
   GetSocketMessagesWithCallback<T>,
 ] extends [never]
-  ? {}
+  ? Record<string, never>
   : { __error__: GetSocketMessagesWithCallback<T> };
 
 interface ExtendedError extends Error {
