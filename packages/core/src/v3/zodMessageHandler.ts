@@ -179,12 +179,19 @@ export class ZodMessageHandler<TMessageCatalog extends ZodMessageCatalogSchema> 
 
         let ack: Awaited<ReturnType<ZodMessageHandler<TMessageCatalog>["handleMessage"]>>;
 
-        // FIXME: this only works if the message doesn't have genuine payload prop
-        if ("payload" in message) {
-          ack = await this.handleMessage({ type: eventName, ...message });
+        // Use runtime validation to detect payload presence
+        const hasPayload =
+          typeof message === "object" &&
+          message !== null &&
+          z.object({ payload: z.unknown() }).passthrough().safeParse(message).success;
+
+        if (hasPayload) {
+          ack = await this.handleMessage({ type: eventName, ...(message as any) });
         } else {
           // Handle messages not sent by ZodMessageSender
-          const { version, ...payload } = message;
+          const messageObj =
+            typeof message === "object" && message !== null ? (message as any) : {};
+          const { version, ...payload } = messageObj;
           ack = await this.handleMessage({ type: eventName, version, payload });
         }
 
