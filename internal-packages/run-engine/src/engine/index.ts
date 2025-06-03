@@ -97,6 +97,7 @@ export class RunEngine {
       redis: this.runLockRedis,
       logger: this.logger,
       tracer: trace.getTracer("RunLocker"),
+      meter: options.meter,
     });
 
     const keys = new RunQueueFullKeyProducer();

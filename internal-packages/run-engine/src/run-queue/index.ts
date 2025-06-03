@@ -45,6 +45,7 @@ import { z } from "zod";
 const SemanticAttributes = {
   QUEUE: "runqueue.queue",
   WORKER_QUEUE: "runqueue.workerQueue",
+  MASTER_QUEUE_SHARD: "runqueue.masterQueueShard",
   CONSUMER_ID: "runqueue.consumerId",
   RUN_ID: "runqueue.runId",
   RESULT_COUNT: "runqueue.resultCount",
@@ -141,7 +142,17 @@ export class RunQueue {
       }
     );
 
+    const masterQueueObservableGauge = this._meter.createObservableGauge(
+      "runqueue.masterQueue.length",
+      {
+        description: "The number of queues in the master queue shard",
+        unit: "1",
+        valueType: ValueType.INT,
+      }
+    );
+
     workerQueueObservableGauge.addCallback(this.#updateWorkerQueueLength.bind(this));
+    masterQueueObservableGauge.addCallback(this.#updateMasterQueueLength.bind(this));
 
     this.abortController = new AbortController();
 
@@ -202,6 +213,17 @@ export class RunQueue {
 
       observableResult.observe(workerQueueLength, {
         [SemanticAttributes.WORKER_QUEUE]: workerQueue,
+      });
+    }
+  }
+
+  async #updateMasterQueueLength(observableResult: ObservableResult<Attributes>) {
+    for (let shard = 0; shard < this.shardCount; shard++) {
+      const masterQueueKey = this.keys.masterQueueKeyForShard(shard);
+      const masterQueueLength = await this.redis.zcard(masterQueueKey);
+
+      observableResult.observe(masterQueueLength, {
+        [SemanticAttributes.MASTER_QUEUE_SHARD]: shard.toString(),
       });
     }
   }
