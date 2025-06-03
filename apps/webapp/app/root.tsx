@@ -1,19 +1,12 @@
 import type { LinksFunction, LoaderFunctionArgs, MetaFunction } from "@remix-run/node";
 import type { ShouldRevalidateFunction } from "@remix-run/react";
-import {
-  Links,
-  LiveReload,
-  Meta,
-  Outlet,
-  Scripts,
-  ScrollRestoration,
-  useMatches,
-} from "@remix-run/react";
+import { Links, LiveReload, Meta, Outlet, Scripts, ScrollRestoration } from "@remix-run/react";
 import { type UseDataFunctionReturn, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { ExternalScripts } from "remix-utils/external-scripts";
 import type { ToastMessage } from "~/models/message.server";
 import { commitSession, getSession } from "~/models/message.server";
 import tailwindStylesheetUrl from "~/tailwind.css";
+import { AskAIProvider } from "./components/AskAI";
 import { RouteErrorDisplay } from "./components/ErrorDisplay";
 import { AppContainer, MainCenteredContainer } from "./components/layout/AppLayout";
 import { ShortcutsProvider } from "./components/primitives/ShortcutsProvider";
@@ -21,10 +14,8 @@ import { Toast } from "./components/primitives/Toast";
 import { env } from "./env.server";
 import { featuresForRequest } from "./features.server";
 import { usePostHog } from "./hooks/usePostHog";
-import { useTypedMatchesData } from "./hooks/useTypedMatchData";
 import { getUser } from "./services/session.server";
 import { appEnvTitleTag } from "./utils";
-import { KapaScripts } from "./hooks/useKapaWidget";
 
 export const links: LinksFunction = () => {
   return [{ rel: "stylesheet", href: tailwindStylesheetUrl }];
@@ -115,13 +106,14 @@ export default function App() {
         <head>
           <Meta />
           <Links />
-          <KapaScripts websiteId={kapa.websiteId} />
         </head>
         <body className="h-full overflow-hidden bg-background-dimmed">
-          <ShortcutsProvider>
-            <Outlet />
-            <Toast />
-          </ShortcutsProvider>
+          <AskAIProvider websiteId={kapa.websiteId || null}>
+            <ShortcutsProvider>
+              <Outlet />
+              <Toast />
+            </ShortcutsProvider>
+          </AskAIProvider>
           <ScrollRestoration />
           <ExternalScripts />
           <Scripts />

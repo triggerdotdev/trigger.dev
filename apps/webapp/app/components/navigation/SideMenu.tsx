@@ -18,19 +18,22 @@ import {
   Squares2X2Icon,
   UsersIcon,
 } from "@heroicons/react/20/solid";
-import { useNavigation } from "@remix-run/react";
+import { useMatches, useNavigation } from "@remix-run/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import simplur from "simplur";
-import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
 import { RunsIconExtraSmall } from "~/assets/icons/RunsIcon";
 import { TaskIconSmall } from "~/assets/icons/TaskIcon";
 import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
+import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
 import { Avatar } from "~/components/primitives/Avatar";
 import { type MatchedEnvironment } from "~/hooks/useEnvironment";
+import { useFeatures } from "~/hooks/useFeatures";
 import { type MatchedOrganization } from "~/hooks/useOrganizations";
 import { type MatchedProject } from "~/hooks/useProject";
+import { useTypedMatchesData } from "~/hooks/useTypedMatchData";
 import { useHasAdminAccess } from "~/hooks/useUser";
 import { type User } from "~/models/user.server";
+import { type loader } from "~/root";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 import { type FeedbackType } from "~/routes/resources.feedback";
 import { IncidentStatusPanel } from "~/routes/resources.incidents";
@@ -61,7 +64,6 @@ import {
   v3UsagePath,
   v3WaitpointTokensPath,
 } from "~/utils/pathBuilder";
-import { useKapaWidget } from "../../hooks/useKapaWidget";
 import { FreePlanUsage } from "../billing/FreePlanUsage";
 import { ConnectionIcon, DevPresencePanel, useDevPresence } from "../DevPresence";
 import { ImpersonationBanner } from "../ImpersonationBanner";
@@ -80,6 +82,7 @@ import { TextLink } from "../primitives/TextLink";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
 import { ShortcutsAutoOpen } from "../Shortcuts";
 import { UserProfilePhoto } from "../UserProfilePhoto";
+import { useAskAI } from "../AskAI";
 import { EnvironmentSelector } from "./EnvironmentSelector";
 import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { SideMenuHeader } from "./SideMenuHeader";
@@ -582,12 +585,19 @@ function SelectorDivider() {
 }
 
 function HelpAndAI() {
-  const { isKapaEnabled, isKapaOpen, openKapa } = useKapaWidget();
+  const matches = useMatches();
+  const features = useFeatures();
+  const routeMatch = useTypedMatchesData<typeof loader>({
+    id: "root",
+    matches,
+  });
+  const { openAskAI, websiteId } = useAskAI();
+  const isKapaEnabled = features.isManagedCloud && websiteId;
 
   return (
     <>
       <ShortcutsAutoOpen />
-      <HelpAndFeedback disableShortcut={isKapaOpen} />
+      <HelpAndFeedback />
       {isKapaEnabled && (
         <TooltipProvider disableHoverableContent>
           <Tooltip>
@@ -599,9 +609,7 @@ function HelpAndAI() {
                   shortcut={{ modifiers: ["mod"], key: "/", enabledOnInputElements: true }}
                   hideShortcutKey
                   data-modal-override-open-class-ask-ai="true"
-                  onClick={() => {
-                    openKapa();
-                  }}
+                  onClick={() => openAskAI()}
                 >
                   <AISparkleIcon className="size-5" />
                 </Button>
