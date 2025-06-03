@@ -22,16 +22,26 @@ import { SideMenuItem } from "./SideMenuItem";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 import { Paragraph } from "../primitives/Paragraph";
 import { Badge } from "../primitives/Badge";
+import { useHasAdminAccess } from "~/hooks/useUser";
+
+export type BuildInfo = {
+  appVersion: string | undefined;
+  packageVersion: string;
+  buildTimestampSeonds: string | undefined;
+  gitSha: string | undefined;
+  gitRefName: string | undefined;
+};
 
 export function OrganizationSettingsSideMenu({
   organization,
-  version,
+  buildInfo,
 }: {
   organization: MatchedOrganization;
-  version: string;
+  buildInfo: BuildInfo;
 }) {
   const { isManagedCloud } = useFeatures();
   const currentPlan = useCurrentPlan();
+  const isAdmin = useHasAdminAccess();
 
   return (
     <div
@@ -94,9 +104,33 @@ export function OrganizationSettingsSideMenu({
         <div className="flex flex-col gap-1">
           <SideMenuHeader title="App version" />
           <Paragraph variant="extra-small" className="px-2 text-text-dimmed">
-            v{version}
+            {buildInfo.appVersion || `v${buildInfo.packageVersion}`}
           </Paragraph>
         </div>
+        {isAdmin && buildInfo.buildTimestampSeonds && (
+          <div className="flex flex-col gap-1">
+            <SideMenuHeader title="Build timestamp" />
+            <Paragraph variant="extra-small" className="px-2 text-text-dimmed">
+              {new Date(Number(buildInfo.buildTimestampSeonds) * 1000).toISOString()}
+            </Paragraph>
+          </div>
+        )}
+        {isAdmin && buildInfo.gitRefName && (
+          <div className="flex flex-col gap-1">
+            <SideMenuHeader title="Git ref" />
+            <Paragraph variant="extra-small" className="px-2 text-text-dimmed">
+              {buildInfo.gitRefName}
+            </Paragraph>
+          </div>
+        )}
+        {isAdmin && buildInfo.gitSha && (
+          <div className="flex flex-col gap-1">
+            <SideMenuHeader title="Git sha" />
+            <Paragraph variant="extra-small" className="px-2 text-text-dimmed">
+              {buildInfo.gitSha.slice(0, 9)}
+            </Paragraph>
+          </div>
+        )}
       </div>
       <div className="flex flex-col gap-1 border-t border-grid-bright p-1">
         <HelpAndFeedback />
