@@ -5,11 +5,18 @@ import {
   ZodSocketMessageCatalogSchema,
   ZodSocketMessageHandler,
   ZodSocketMessageHandlers,
+  GetSocketMessagesWithCallback,
 } from "./zodSocket.js";
 // @ts-ignore
 import type { DefaultEventsMap, EventsMap } from "socket.io/dist/typed-events";
 import { z } from "zod";
 import { SimpleStructuredLogger, StructuredLogger } from "./utils/structuredLogger.js";
+
+type AssertNoCallbackSchemas<T extends ZodSocketMessageCatalogSchema> = [
+  GetSocketMessagesWithCallback<T>,
+] extends [never]
+  ? {}
+  : { __error__: GetSocketMessagesWithCallback<T> };
 
 interface ExtendedError extends Error {
   data?: any;
@@ -32,7 +39,7 @@ interface ZodNamespaceOptions<
   TServerMessages extends ZodSocketMessageCatalogSchema,
   TServerSideEvents extends EventsMap = DefaultEventsMap,
   TSocketData extends z.ZodObject<any, any, any> = any,
-> {
+> extends AssertNoCallbackSchemas<TServerMessages> {
   io: Server;
   name: string;
   clientMessages: TClientMessages;
@@ -108,7 +115,16 @@ export class ZodNamespace<
 
     this.namespace = this.io.of(opts.name);
 
-    // FIXME: There's a bug here, this sender should not accept Socket schemas with callbacks
+    const invalidMessages = Object.entries(opts.serverMessages)
+      .filter(([, value]) => "callback" in value && value.callback)
+      .map(([key]) => key);
+
+    if (invalidMessages.length > 0) {
+      throw new Error(
+        `serverMessages with callbacks are not supported: ${invalidMessages.join(", ")}`
+      );
+    }
+
     this.sender = new ZodMessageSender({
       schema: opts.serverMessages,
       sender: async (message) => {
