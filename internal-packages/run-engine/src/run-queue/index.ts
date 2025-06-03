@@ -8,6 +8,11 @@ import {
   SEMATTRS_MESSAGE_ID,
   SEMATTRS_MESSAGING_OPERATION,
   SEMATTRS_MESSAGING_SYSTEM,
+  Meter,
+  getMeter,
+  ValueType,
+  ObservableResult,
+  Attributes,
 } from "@internal/tracing";
 import { Logger, LogLevel } from "@trigger.dev/core/logger";
 import { calculateNextRetryDelay, flattenAttributes } from "@trigger.dev/core/v3";
@@ -69,6 +74,7 @@ export type RunQueueOptions = {
     concurrency?: WorkerConcurrencyOptions;
     disabled?: boolean;
   };
+  meter?: Meter;
 };
 
 type DequeuedMessage = {
@@ -109,6 +115,8 @@ export class RunQueue {
   private shardCount: number;
   private abortController: AbortController;
   private worker: Worker<typeof workerCatalog>;
+  private _observableWorkerQueues: Set<string> = new Set();
+  private _meter: Meter;
 
   constructor(private readonly options: RunQueueOptions) {
     this.shardCount = options.shardCount ?? 2;
@@ -121,7 +129,19 @@ export class RunQueue {
         });
       },
     });
-    this.logger = options.logger ?? new Logger("RunQueue", options.logLevel ?? "warn");
+    this.logger = options.logger ?? new Logger("RunQueue", options.logLevel ?? "info");
+    this._meter = options.meter ?? getMeter("run-queue");
+
+    const workerQueueObservableGauge = this._meter.createObservableGauge(
+      "runqueue.workerQueue.length",
+      {
+        description: "The number of messages in the worker queue",
+        unit: "1",
+        valueType: ValueType.INT,
+      }
+    );
+
+    workerQueueObservableGauge.addCallback(this.#updateWorkerQueueLength.bind(this));
 
     this.abortController = new AbortController();
 
@@ -166,6 +186,24 @@ export class RunQueue {
 
   get tracer() {
     return this.options.tracer;
+  }
+
+  get meter() {
+    return this._meter;
+  }
+
+  public async registerObservableWorkerQueue(workerQueue: string) {
+    this._observableWorkerQueues.add(workerQueue);
+  }
+
+  async #updateWorkerQueueLength(observableResult: ObservableResult<Attributes>) {
+    for (const workerQueue of this._observableWorkerQueues) {
+      const workerQueueLength = await this.redis.llen(this.keys.workerQueueKey(workerQueue));
+
+      observableResult.observe(workerQueueLength, {
+        [SemanticAttributes.WORKER_QUEUE]: workerQueue,
+      });
+    }
   }
 
   public async updateQueueConcurrencyLimits(
@@ -929,7 +967,7 @@ export class RunQueue {
 
     try {
       for await (const _ of setInterval(500, null, { signal: this.abortController.signal })) {
-        this.logger.debug(`Processing master queue shard ${shard}`, {
+        this.logger.verbose(`Processing master queue shard ${shard}`, {
           processedCount,
           lastProcessedAt,
           service: this.name,
@@ -943,7 +981,7 @@ export class RunQueue {
 
         const duration = performance.now() - now;
 
-        this.logger.debug(`Processed master queue shard ${shard} in ${duration}ms`, {
+        this.logger.verbose(`Processed master queue shard ${shard} in ${duration}ms`, {
           processedCount,
           lastProcessedAt,
           service: this.name,

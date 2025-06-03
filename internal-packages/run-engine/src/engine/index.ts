@@ -1,5 +1,5 @@
 import { createRedisClient, Redis } from "@internal/redis";
-import { startSpan, trace, Tracer } from "@internal/tracing";
+import { getMeter, Meter, startSpan, trace, Tracer } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
 import {
   CheckpointInput,
@@ -55,8 +55,9 @@ export class RunEngine {
   private runLockRedis: Redis;
   private runLock: RunLocker;
   private worker: EngineWorker;
-  private logger = new Logger("RunEngine", "debug");
+  private logger: Logger;
   private tracer: Tracer;
+  private meter: Meter;
   private heartbeatTimeouts: HeartbeatTimeouts;
 
   prisma: PrismaClient;
@@ -76,6 +77,7 @@ export class RunEngine {
   raceSimulationSystem: RaceSimulationSystem = new RaceSimulationSystem();
 
   constructor(private readonly options: RunEngineOptions) {
+    this.logger = options.logger ?? new Logger("RunEngine", this.options.logLevel ?? "info");
     this.prisma = options.prisma;
     this.runLockRedis = createRedisClient(
       {
@@ -109,7 +111,7 @@ export class RunEngine {
         defaultEnvConcurrencyLimit: options.queue?.defaultEnvConcurrency ?? 10,
       }),
       defaultEnvConcurrency: options.queue?.defaultEnvConcurrency ?? 10,
-      logger: new Logger("RunQueue", "debug"),
+      logger: new Logger("RunQueue", this.options.logLevel ?? "info"),
       redis: { ...options.queue.redis, keyPrefix: `${options.queue.redis.keyPrefix}runqueue:` },
       retryOptions: options.queue?.retryOptions,
       workerOptions: {
@@ -121,6 +123,7 @@ export class RunEngine {
       },
       masterQueueConsumersDisabled: options.queue?.masterQueueConsumersDisabled,
       processWorkerQueueDebounceMs: options.queue?.processWorkerQueueDebounceMs,
+      meter: options.meter,
     });
 
     this.worker = new Worker({
@@ -184,6 +187,7 @@ export class RunEngine {
     }
 
     this.tracer = options.tracer;
+    this.meter = options.meter ?? getMeter("run-engine");
 
     const defaultHeartbeatTimeouts: HeartbeatTimeouts = {
       PENDING_EXECUTING: 60_000,
@@ -203,6 +207,7 @@ export class RunEngine {
       eventBus: this.eventBus,
       logger: this.logger,
       tracer: this.tracer,
+      meter: this.meter,
       runLock: this.runLock,
       runQueue: this.runQueue,
       raceSimulationSystem: this.raceSimulationSystem,
@@ -566,6 +571,9 @@ export class RunEngine {
     runnerId?: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<DequeuedMessage[]> {
+    // We only do this with "prod" worker queues because we don't want to observe dev (e.g. environment) worker queues
+    this.runQueue.registerObservableWorkerQueue(workerQueue);
+
     const dequeuedMessage = await this.dequeueSystem.dequeueFromWorkerQueue({
       consumerId,
       workerQueue,

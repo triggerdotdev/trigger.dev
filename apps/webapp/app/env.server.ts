@@ -324,6 +324,10 @@ const EnvironmentSchema = z.object({
   INTERNAL_OTEL_TRACE_DISABLED: z.string().default("0"),
 
   INTERNAL_OTEL_LOG_EXPORTER_URL: z.string().optional(),
+  INTERNAL_OTEL_METRIC_EXPORTER_URL: z.string().optional(),
+  INTERNAL_OTEL_METRIC_EXPORTER_AUTH_HEADERS: z.string().optional(),
+  INTERNAL_OTEL_METRIC_EXPORTER_DISABLED: z.string().default("0"),
+  INTERNAL_OTEL_METRIC_EXPORTER_INTERVAL: z.coerce.number().int().default(30_000),
 
   ORG_SLACK_INTEGRATION_CLIENT_ID: z.string().optional(),
   ORG_SLACK_INTEGRATION_CLIENT_SECRET: z.string().optional(),
@@ -617,6 +621,7 @@ const EnvironmentSchema = z.object({
   RUN_ENGINE_RELEASE_CONCURRENCY_BATCH_SIZE: z.coerce.number().int().default(10),
 
   RUN_ENGINE_WORKER_ENABLED: z.string().default("1"),
+  RUN_ENGINE_WORKER_LOG_LEVEL: z.enum(["log", "error", "warn", "info", "debug"]).default("info"),
 
   /** How long should the presence ttl last */
   DEV_PRESENCE_SSE_TIMEOUT: z.coerce.number().int().default(30_000),
