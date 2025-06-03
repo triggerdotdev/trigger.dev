@@ -242,6 +242,7 @@ export class RunEngine {
               pollInterval: options.releaseConcurrency?.pollInterval ?? 1000,
               batchSize: options.releaseConcurrency?.batchSize ?? 10,
               tracer: this.tracer,
+              meter: this.meter,
             },
     });
 

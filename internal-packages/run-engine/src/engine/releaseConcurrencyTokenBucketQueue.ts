@@ -1,5 +1,5 @@
 import { Callback, createRedisClient, Redis, Result, type RedisOptions } from "@internal/redis";
-import { startSpan, Tracer } from "@internal/tracing";
+import { startSpan, Tracer, Meter, getMeter, ValueType, ObservableResult, Attributes } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
 import { z } from "zod";
 import { setInterval } from "node:timers/promises";
@@ -39,6 +39,7 @@ export type ReleaseConcurrencyQueueOptions<T> = {
   consumersCount?: number;
   masterQueuesKey?: string;
   tracer?: Tracer;
+  meter?: Meter;
   logger?: Logger;
   pollInterval?: number;
   batchSize?: number;
@@ -56,6 +57,7 @@ type QueueItemMetadata = z.infer<typeof QueueItemMetadata>;
 export class ReleaseConcurrencyTokenBucketQueue<T> {
   private redis: Redis;
   private logger: Logger;
+  private meter: Meter;
   private abortController: AbortController;
   private consumers: ReleaseConcurrencyQueueConsumer<T>[];
   private sweeper?: ReleaseConcurrencyReleasingsSweeper;
@@ -69,11 +71,14 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
   private batchSize: number;
   private maxRetries: number;
   private backoff: NonNullable<Required<ReleaseConcurrencyQueueRetryOptions["backoff"]>>;
+  private _lastReleasingsLength: number = 0;
+  private _lastMasterQueueLength: number = 0;
 
   constructor(private readonly options: ReleaseConcurrencyQueueOptions<T>) {
     this.redis = createRedisClient(options.redis);
     this.keyPrefix = options.redis.keyPrefix ?? "re2:release-concurrency-queue:";
     this.logger = options.logger ?? new Logger("ReleaseConcurrencyQueue", "debug");
+    this.meter = options.meter ?? getMeter("release-concurrency");
     this.abortController = new AbortController();
     this.consumers = [];
 
@@ -90,6 +95,28 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
       factor: options.retry?.backoff?.factor ?? 2,
     };
 
+    // Set up OpenTelemetry metrics
+    const releasingsLengthGauge = this.meter.createObservableGauge(
+      "release_concurrency.releasings.length",
+      {
+        description: "Number of items in the releasings sorted set",
+        unit: "1",
+        valueType: ValueType.INT,
+      }
+    );
+
+    const masterQueueLengthGauge = this.meter.createObservableGauge(
+      "release_concurrency.master_queue.length",
+      {
+        description: "Number of queues in the master queue sorted set",
+        unit: "1",
+        valueType: ValueType.INT,
+      }
+    );
+
+    releasingsLengthGauge.addCallback(this.#updateReleasingsLength.bind(this));
+    masterQueueLengthGauge.addCallback(this.#updateMasterQueueLength.bind(this));
+
     this.#registerCommands();
 
     if (!options.disableConsumers) {
@@ -102,6 +129,14 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
   public async quit() {
     this.abortController.abort();
     await this.redis.quit();
+  }
+
+  async #updateReleasingsLength(observableResult: ObservableResult<Attributes>) {
+    observableResult.observe(this._lastReleasingsLength);
+  }
+
+  async #updateMasterQueueLength(observableResult: ObservableResult<Attributes>) {
+    observableResult.observe(this._lastMasterQueueLength);
   }
 
   /**
@@ -496,6 +531,10 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
         const metrics = await this.getQueueMetrics();
         this.logger.info("Queue metrics:", { metrics });
 
+        // Update cached values for OpenTelemetry observable gauges
+        this._lastReleasingsLength = await this.redis.zcard(this.#releasingsKey());
+        this._lastMasterQueueLength = await this.redis.zcard(this.masterQueuesKey);
+
         await startSpan(
           this.options.tracer,
           "ReleaseConcurrencyTokenBucketQueue.metrics",
@@ -503,6 +542,8 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
           {
             attributes: {
               ...flattenAttributes(metrics, "queues"),
+              releasingsLength: this._lastReleasingsLength,
+              masterQueueLength: this._lastMasterQueueLength,
               forceRecording: true,
             },
           }
