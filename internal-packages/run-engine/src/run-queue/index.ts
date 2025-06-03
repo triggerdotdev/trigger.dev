@@ -786,10 +786,13 @@ export class RunQueue {
   }
 
   public async removeEnvironmentQueuesFromMasterQueue(
-    masterQueue: string,
+    runtimeEnvironmentId: string,
     organizationId: string,
     projectId: string
   ) {
+    // Calculate the master queue shard for this environment
+    const masterQueue = this.keys.masterQueueKeyForEnvironment(runtimeEnvironmentId, this.shardCount);
+    
     // Use scanStream to find all matching members
     const stream = this.redis.zscanStream(masterQueue, {
       match: this.keys.queueKey(organizationId, projectId, "*", "*"),

@@ -745,16 +745,16 @@ export class RunEngine {
   }
 
   async removeEnvironmentQueuesFromMasterQueue({
-    masterQueue,
+    runtimeEnvironmentId,
     organizationId,
     projectId,
   }: {
-    masterQueue: string;
+    runtimeEnvironmentId: string;
     organizationId: string;
     projectId: string;
   }) {
     return this.runQueue.removeEnvironmentQueuesFromMasterQueue(
-      masterQueue,
+      runtimeEnvironmentId,
       organizationId,
       projectId
     );
