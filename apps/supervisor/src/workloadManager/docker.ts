@@ -72,6 +72,7 @@ export class DockerWorkloadManager implements WorkloadManager {
       `TRIGGER_WORKER_INSTANCE_NAME=${env.TRIGGER_WORKER_INSTANCE_NAME}`,
       `OTEL_EXPORTER_OTLP_ENDPOINT=${env.OTEL_EXPORTER_OTLP_ENDPOINT}`,
       `TRIGGER_RUNNER_ID=${runnerId}`,
+      `PRETTY_LOGS=${env.RUNNER_PRETTY_LOGS}`,
     ];
 
     if (this.opts.warmStartUrl) {

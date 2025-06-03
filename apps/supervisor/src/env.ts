@@ -28,6 +28,7 @@ const Env = z.object({
   RUNNER_HEARTBEAT_INTERVAL_SECONDS: z.coerce.number().optional(),
   RUNNER_SNAPSHOT_POLL_INTERVAL_SECONDS: z.coerce.number().optional(),
   RUNNER_ADDITIONAL_ENV_VARS: AdditionalEnvVars, // optional (csv)
+  RUNNER_PRETTY_LOGS: BoolEnv.default(false),
   RUNNER_DOCKER_AUTOREMOVE: BoolEnv.default(true),
   /**
    * Network mode to use for all runners. Supported standard values are: `bridge`, `host`, `none`, and `container:<name|id>`.
