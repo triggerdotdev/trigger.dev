@@ -3,6 +3,14 @@ import { syncEnvVars } from "../core.js";
 
 type EnvVar = { name: string; value: string; isParentEnv?: boolean };
 
+type VercelEnvVar = {
+  key: string;
+  value: string;
+  type: string;
+  target: string[];
+  gitBranch?: string;
+};
+
 export function syncVercelEnvVars(options?: {
   projectId?: string;
   vercelAccessToken?: string;
@@ -72,11 +80,13 @@ export function syncVercelEnvVars(options?: {
       const isBranchable = ctx.environment === "preview";
 
       const filteredEnvs: EnvVar[] = data.envs
-        .filter(
-          (env: { type: string; value: string; target: string[] }) =>
-            env.value && env.target.includes(vercelEnvironment)
-        )
-        .map((env: { key: string; value: string; gitBranch?: string }) => {
+        .filter((env: VercelEnvVar) => {
+          if (!env.value) return false;
+          if (!env.target.includes(vercelEnvironment)) return false;
+          if (isBranchable && env.gitBranch && env.gitBranch !== branch) return false;
+          return true;
+        })
+        .map((env: VercelEnvVar) => {
           return {
             name: env.key,
             value: env.value,
