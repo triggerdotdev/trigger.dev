@@ -42,6 +42,7 @@ export function OrganizationSettingsSideMenu({
   const { isManagedCloud } = useFeatures();
   const currentPlan = useCurrentPlan();
   const isAdmin = useHasAdminAccess();
+  const showBuildInfo = isAdmin || !isManagedCloud;
 
   return (
     <div
@@ -107,7 +108,7 @@ export function OrganizationSettingsSideMenu({
             {buildInfo.appVersion || `v${buildInfo.packageVersion}`}
           </Paragraph>
         </div>
-        {isAdmin && buildInfo.buildTimestampSeonds && (
+        {showBuildInfo && buildInfo.buildTimestampSeonds && (
           <div className="flex flex-col gap-1">
             <SideMenuHeader title="Build timestamp" />
             <Paragraph variant="extra-small" className="px-2 text-text-dimmed">
@@ -115,7 +116,7 @@ export function OrganizationSettingsSideMenu({
             </Paragraph>
           </div>
         )}
-        {isAdmin && buildInfo.gitRefName && (
+        {showBuildInfo && buildInfo.gitRefName && (
           <div className="flex flex-col gap-1">
             <SideMenuHeader title="Git ref" />
             <Paragraph variant="extra-small" className="px-2 text-text-dimmed">
@@ -123,7 +124,7 @@ export function OrganizationSettingsSideMenu({
             </Paragraph>
           </div>
         )}
-        {isAdmin && buildInfo.gitSha && (
+        {showBuildInfo && buildInfo.gitSha && (
           <div className="flex flex-col gap-1">
             <SideMenuHeader title="Git sha" />
             <Paragraph variant="extra-small" className="px-2 text-text-dimmed">
