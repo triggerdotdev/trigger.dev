@@ -56,6 +56,8 @@ const AlertWebhookRunFailedObject = z.object({
     type: RuntimeEnvironmentTypeSchema,
     /** Environment slug */
     slug: z.string(),
+    /** Environment branch name */
+    branchName: z.string().optional(),
   }),
   /** Organization information */
   organization: z.object({
@@ -99,6 +101,8 @@ const deploymentCommonProperties = {
     id: z.string(),
     type: RuntimeEnvironmentTypeSchema,
     slug: z.string(),
+    /** Environment branch name */
+    branchName: z.string().optional(),
   }),
   /** Organization information */
   organization: z.object({

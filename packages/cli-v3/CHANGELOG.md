@@ -1,5 +1,18 @@
 # trigger.dev
 
+## 4.0.0-v4-beta.19
+
+### Patch Changes
+
+- Add import timings and bundle size analysis, the dev command will now warn about slow imports ([#2114](https://github.com/triggerdotdev/trigger.dev/pull/2114))
+- Fix metadata collapsing correctness ([#2115](https://github.com/triggerdotdev/trigger.dev/pull/2115))
+- Added support for Preview branches in v4 projects ([#2086](https://github.com/triggerdotdev/trigger.dev/pull/2086))
+- Can now set project ref using the TRIGGER_PROJECT_REF env var ([#2109](https://github.com/triggerdotdev/trigger.dev/pull/2109))
+- Fix `syncEnvVars` for non-preview deployments ([#2131](https://github.com/triggerdotdev/trigger.dev/pull/2131))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.19`
+  - `@trigger.dev/build@4.0.0-v4-beta.19`
+
 ## 4.0.0-v4-beta.18
 
 ### Patch Changes
