@@ -154,7 +154,7 @@ export class DockerWorkloadManager implements WorkloadManager {
 
     // If the image is not present, try to pull it
     if (shouldPull) {
-      logger.error("Pulling image", {
+      logger.info("Pulling image", {
         error: inspectError,
         image: opts.image,
         targetPlatform: this.platformOverride,
