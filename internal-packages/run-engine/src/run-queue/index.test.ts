@@ -482,7 +482,7 @@ describe("RunQueue", () => {
     }
   );
 
-  redisTest("Enqueue/Dequeue a 8 shards", async ({ redisContainer }) => {
+  redisTest("Enqueue/Dequeue with 8 shards", async ({ redisContainer }) => {
     const queue = new RunQueue({
       ...testOptions,
       shardCount: 8,
@@ -715,6 +715,98 @@ describe("RunQueue", () => {
       await queue.quit();
     }
   });
+
+  redisTest(
+    "Ack after moving to workerQueue with removeFromWorkerQueue = undefined",
+    { timeout: 5_000 },
+    async ({ redisContainer }) => {
+      const queue = new RunQueue({
+        ...testOptions,
+        queueSelectionStrategy: new FairQueueSelectionStrategy({
+          redis: {
+            keyPrefix: "runqueue:test:",
+            host: redisContainer.getHost(),
+            port: redisContainer.getPort(),
+          },
+          keys: testOptions.keys,
+        }),
+        redis: {
+          keyPrefix: "runqueue:test:",
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+        },
+      });
+
+      try {
+        await queue.enqueueMessage({
+          env: authenticatedEnvProd,
+          message: messageProd,
+          workerQueue: "main",
+        });
+
+        const queueLength = await queue.lengthOfQueue(authenticatedEnvProd, messageProd.queue);
+        expect(queueLength).toBe(1);
+        const envQueueLength = await queue.lengthOfEnvQueue(authenticatedEnvProd);
+        expect(envQueueLength).toBe(1);
+
+        await setTimeout(1000);
+
+        await queue.acknowledgeMessage(messageProd.orgId, messageProd.runId);
+
+        const messages = await queue.peekAllOnWorkerQueue("main");
+        expect(messages.length).toEqual(1);
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
+
+  redisTest(
+    "Ack after moving to workerQueue with removeFromWorkerQueue = true",
+    { timeout: 5_000 },
+    async ({ redisContainer }) => {
+      const queue = new RunQueue({
+        ...testOptions,
+        queueSelectionStrategy: new FairQueueSelectionStrategy({
+          redis: {
+            keyPrefix: "runqueue:test:",
+            host: redisContainer.getHost(),
+            port: redisContainer.getPort(),
+          },
+          keys: testOptions.keys,
+        }),
+        redis: {
+          keyPrefix: "runqueue:test:",
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+        },
+      });
+
+      try {
+        await queue.enqueueMessage({
+          env: authenticatedEnvProd,
+          message: messageProd,
+          workerQueue: "main",
+        });
+
+        const queueLength = await queue.lengthOfQueue(authenticatedEnvProd, messageProd.queue);
+        expect(queueLength).toBe(1);
+        const envQueueLength = await queue.lengthOfEnvQueue(authenticatedEnvProd);
+        expect(envQueueLength).toBe(1);
+
+        await setTimeout(1000);
+
+        await queue.acknowledgeMessage(messageProd.orgId, messageProd.runId, {
+          removeFromWorkerQueue: true,
+        });
+
+        const messages = await queue.peekAllOnWorkerQueue("main");
+        expect(messages.length).toEqual(0);
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
 
   redisTest("Nacking", { timeout: 15_000 }, async ({ redisContainer, redisOptions }) => {
     const queue = new RunQueue({

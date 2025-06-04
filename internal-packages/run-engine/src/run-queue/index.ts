@@ -550,7 +550,7 @@ export class RunQueue {
   public async acknowledgeMessage(
     orgId: string,
     messageId: string,
-    options?: { skipDequeueProcessing?: boolean }
+    options?: { skipDequeueProcessing?: boolean; removeFromWorkerQueue?: boolean }
   ) {
     return this.#trace(
       "acknowledgeMessage",
@@ -586,6 +586,7 @@ export class RunQueue {
 
         await this.#callAcknowledgeMessage({
           message,
+          removeFromWorkerQueue: options?.removeFromWorkerQueue,
         });
       },
       {
@@ -834,6 +835,14 @@ export class RunQueue {
     ]);
 
     await this.redis.quit();
+  }
+
+  /**
+   * Peek all messages on a worker queue (useful for tests or debugging)
+   */
+  async peekAllOnWorkerQueue(workerQueue: string) {
+    const workerQueueKey = this.keys.workerQueueKey(workerQueue);
+    return await this.redis.lrange(workerQueueKey, 0, -1);
   }
 
   private async handleRedriveMessage(channel: string, message: string) {
@@ -1430,7 +1439,13 @@ export class RunQueue {
     };
   }
 
-  async #callAcknowledgeMessage({ message }: { message: OutputPayload }) {
+  async #callAcknowledgeMessage({
+    message,
+    removeFromWorkerQueue,
+  }: {
+    message: OutputPayload;
+    removeFromWorkerQueue?: boolean;
+  }) {
     const messageId = message.runId;
     const messageKey = this.keys.messageKey(message.orgId, messageId);
     const messageQueue = message.queue;
@@ -1441,6 +1456,9 @@ export class RunQueue {
       message.environmentId,
       this.shardCount
     );
+    const workerQueue = this.#getWorkerQueueFromMessage(message);
+    const workerQueueKey = this.keys.workerQueueKey(workerQueue);
+    const messageKeyValue = this.keys.messageKey(message.orgId, messageId);
 
     this.logger.debug("Calling acknowledgeMessage", {
       messageKey,
@@ -1450,6 +1468,10 @@ export class RunQueue {
       envQueueKey,
       messageId,
       masterQueueKey,
+      workerQueue,
+      workerQueueKey,
+      removeFromWorkerQueue,
+      messageKeyValue,
       service: this.name,
     });
 
@@ -1460,8 +1482,11 @@ export class RunQueue {
       queueCurrentConcurrencyKey,
       envCurrentConcurrencyKey,
       envQueueKey,
+      workerQueueKey,
       messageId,
-      messageQueue
+      messageQueue,
+      messageKeyValue,
+      removeFromWorkerQueue ? "1" : "0"
     );
   }
 
@@ -1767,7 +1792,7 @@ return results
     });
 
     this.redis.defineCommand("acknowledgeMessage", {
-      numberOfKeys: 6,
+      numberOfKeys: 7,
       lua: `
 -- Keys:
 local masterQueueKey = KEYS[1]
@@ -1776,10 +1801,13 @@ local messageQueueKey = KEYS[3]
 local queueCurrentConcurrencyKey = KEYS[4]
 local envCurrentConcurrencyKey = KEYS[5]
 local envQueueKey = KEYS[6]
+local workerQueueKey = KEYS[7]
 
 -- Args:
 local messageId = ARGV[1]
 local messageQueueName = ARGV[2]
+local messageKeyValue = ARGV[3]
+local removeFromWorkerQueue = ARGV[4]
 
 -- Remove the message from the message key
 redis.call('DEL', messageKey)
@@ -1799,6 +1827,11 @@ end
 -- Update the concurrency keys
 redis.call('SREM', queueCurrentConcurrencyKey, messageId)
 redis.call('SREM', envCurrentConcurrencyKey, messageId)
+
+-- Remove the message from the worker queue
+if removeFromWorkerQueue == '1' then
+  redis.call('LREM', workerQueueKey, 0, messageKeyValue)
+end
 `,
     });
 
@@ -2025,8 +2058,11 @@ declare module "@internal/redis" {
       concurrencyKey: string,
       envConcurrencyKey: string,
       envQueueKey: string,
+      workerQueueKey: string,
       messageId: string,
       messageQueueName: string,
+      messageKeyValue: string,
+      removeFromWorkerQueue: string,
       callback?: Callback<void>
     ): Result<void, Context>;
 

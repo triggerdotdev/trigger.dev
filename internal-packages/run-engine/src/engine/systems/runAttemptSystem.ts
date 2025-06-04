@@ -1050,7 +1050,9 @@ export class RunAttemptSystem {
         }
 
         //remove it from the queue and release concurrency
-        await this.$.runQueue.acknowledgeMessage(run.runtimeEnvironment.organizationId, runId);
+        await this.$.runQueue.acknowledgeMessage(run.runtimeEnvironment.organizationId, runId, {
+          removeFromWorkerQueue: true,
+        });
 
         await this.releaseConcurrencySystem.refillTokensForSnapshot(latestSnapshot);
 
@@ -1233,7 +1235,9 @@ export class RunAttemptSystem {
         throw new ServiceValidationError("No associated waitpoint found", 400);
       }
 
-      await this.$.runQueue.acknowledgeMessage(run.runtimeEnvironment.organizationId, runId);
+      await this.$.runQueue.acknowledgeMessage(run.runtimeEnvironment.organizationId, runId, {
+        removeFromWorkerQueue: true,
+      });
 
       await this.waitpointSystem.completeWaitpoint({
         id: run.associatedWaitpoint.id,

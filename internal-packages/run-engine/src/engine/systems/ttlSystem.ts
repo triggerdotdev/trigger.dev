@@ -106,7 +106,13 @@ export class TtlSystem {
         },
       });
 
-      await this.$.runQueue.acknowledgeMessage(updatedRun.runtimeEnvironment.organizationId, runId);
+      await this.$.runQueue.acknowledgeMessage(
+        updatedRun.runtimeEnvironment.organizationId,
+        runId,
+        {
+          removeFromWorkerQueue: true,
+        }
+      );
 
       if (!updatedRun.associatedWaitpoint) {
         throw new ServiceValidationError("No associated waitpoint found", 400);
