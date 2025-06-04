@@ -20,6 +20,10 @@ export function getWorkerToken() {
     return token;
   } catch (error) {
     console.error(`Failed to read worker token from file: ${tokenPath}`, error);
-    throw new Error(`Unable to read worker token from file: ${error.message}`);
+    throw new Error(
+      `Unable to read worker token from file: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`
+    );
   }
 }
