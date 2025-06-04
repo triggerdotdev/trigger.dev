@@ -27,7 +27,7 @@ import { useHasAdminAccess } from "~/hooks/useUser";
 export type BuildInfo = {
   appVersion: string | undefined;
   packageVersion: string;
-  buildTimestampSeonds: string | undefined;
+  buildTimestampSeconds: string | undefined;
   gitSha: string | undefined;
   gitRefName: string | undefined;
 };
