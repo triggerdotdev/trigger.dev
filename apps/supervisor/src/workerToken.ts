@@ -15,7 +15,11 @@ export function getWorkerToken() {
     })
   );
 
-  const token = readFileSync(tokenPath, "utf8");
-
-  return token;
+  try {
+    const token = readFileSync(tokenPath, "utf8").trim();
+    return token;
+  } catch (error) {
+    console.error(`Failed to read worker token from file: ${tokenPath}`, error);
+    throw new Error(`Unable to read worker token from file: ${error.message}`);
+  }
 }
