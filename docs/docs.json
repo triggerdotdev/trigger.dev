@@ -78,6 +78,7 @@
                       "config/extensions/pythonExtension",
                       "config/extensions/playwright",
                       "config/extensions/puppeteer",
+                      "config/extensions/lightpanda",
                       "config/extensions/ffmpeg",
                       "config/extensions/aptGet",
                       "config/extensions/additionalFiles",
