@@ -770,11 +770,8 @@ describe("RunEngine attempt failures", () => {
       expect(executionData.run.attemptNumber).toBe(1);
       expect(executionData.run.status).toBe("RETRYING_AFTER_FAILURE");
 
-      //wait for 1s
-      await setTimeout(5_000);
+      await engine.runQueue.processMasterQueueForEnvironment(authenticatedEnvironment.id);
 
-      //dequeue again
-      await setTimeout(500);
       const dequeued2 = await engine.dequeueFromWorkerQueue({
         consumerId: "test_12345",
         workerQueue: "main",
