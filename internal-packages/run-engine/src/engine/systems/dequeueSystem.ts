@@ -542,84 +542,84 @@ export class DequeueSystem {
   }) {
     const prisma = tx ?? this.$.prisma;
 
-    return startSpan(
-      this.$.tracer,
-      "#pendingVersion",
-      async (span) => {
-        return this.$.runLock.lock("pendingVersion", [runId], 5_000, async (signal) => {
-          //mark run as waiting for deploy
-          const run = await prisma.taskRun.update({
-            where: { id: runId },
-            data: {
-              status: "PENDING_VERSION",
-              statusReason,
-            },
+    this.$.logger.debug("RunEngine.dequeueFromWorkerQueue(): Pending version", {
+      runId,
+      reason,
+      statusReason,
+    });
+
+    return this.$.runLock.lock("pendingVersion", [runId], 5_000, async (signal) => {
+      this.$.logger.debug("RunEngine.dequeueFromWorkerQueue(): Pending version lock acquired", {
+        runId,
+        reason,
+        statusReason,
+      });
+
+      //mark run as waiting for deploy
+      const run = await prisma.taskRun.update({
+        where: { id: runId },
+        data: {
+          status: "PENDING_VERSION",
+          statusReason,
+        },
+        select: {
+          id: true,
+          status: true,
+          attemptNumber: true,
+          updatedAt: true,
+          createdAt: true,
+          runtimeEnvironment: {
             select: {
               id: true,
-              status: true,
-              attemptNumber: true,
-              updatedAt: true,
-              createdAt: true,
-              runtimeEnvironment: {
-                select: {
-                  id: true,
-                  type: true,
-                  projectId: true,
-                  project: { select: { id: true, organizationId: true } },
-                },
-              },
+              type: true,
+              projectId: true,
+              project: { select: { id: true, organizationId: true } },
             },
-          });
-
-          this.$.logger.debug("RunEngine.dequeueFromWorkerQueue(): Pending version", {
-            runId,
-            run,
-          });
-
-          await this.executionSnapshotSystem.createExecutionSnapshot(prisma, {
-            run,
-            snapshot: {
-              executionStatus: "RUN_CREATED",
-              description:
-                reason ??
-                "The run doesn't have a background worker, so we're going to ack it for now.",
-            },
-            environmentId: run.runtimeEnvironment.id,
-            environmentType: run.runtimeEnvironment.type,
-            projectId: run.runtimeEnvironment.projectId,
-            organizationId: run.runtimeEnvironment.project.organizationId,
-            workerId,
-            runnerId,
-          });
-
-          //we ack because when it's deployed it will be requeued
-          await this.$.runQueue.acknowledgeMessage(orgId, runId);
-
-          this.$.eventBus.emit("runStatusChanged", {
-            time: new Date(),
-            run: {
-              id: runId,
-              status: run.status,
-              updatedAt: run.updatedAt,
-              createdAt: run.createdAt,
-            },
-            organization: {
-              id: run.runtimeEnvironment.project.organizationId,
-            },
-            project: {
-              id: run.runtimeEnvironment.projectId,
-            },
-            environment: {
-              id: run.runtimeEnvironment.id,
-            },
-          });
-        });
-      },
-      {
-        attributes: {
-          runId,
+          },
         },
-      }
-    );
+      });
+
+      this.$.logger.debug("RunEngine.dequeueFromWorkerQueue(): Pending version", {
+        runId,
+        run,
+      });
+
+      await this.executionSnapshotSystem.createExecutionSnapshot(prisma, {
+        run,
+        snapshot: {
+          executionStatus: "RUN_CREATED",
+          description:
+            reason ?? "The run doesn't have a background worker, so we're going to ack it for now.",
+        },
+        environmentId: run.runtimeEnvironment.id,
+        environmentType: run.runtimeEnvironment.type,
+        projectId: run.runtimeEnvironment.projectId,
+        organizationId: run.runtimeEnvironment.project.organizationId,
+        workerId,
+        runnerId,
+      });
+
+      //we ack because when it's deployed it will be requeued
+      await this.$.runQueue.acknowledgeMessage(orgId, runId);
+
+      this.$.eventBus.emit("runStatusChanged", {
+        time: new Date(),
+        run: {
+          id: runId,
+          status: run.status,
+          updatedAt: run.updatedAt,
+          createdAt: run.createdAt,
+        },
+        organization: {
+          id: run.runtimeEnvironment.project.organizationId,
+        },
+        project: {
+          id: run.runtimeEnvironment.projectId,
+        },
+        environment: {
+          id: run.runtimeEnvironment.id,
+        },
+      });
+    });
   }
 }

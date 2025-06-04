@@ -192,6 +192,7 @@ describe("RunEngine pending version", () => {
         //set this so we have to requeue the runs in two batches
         queueRunsWaitingForWorkerBatchSize: 1,
         tracer: trace.getTracer("test", "0.0.0"),
+        logLevel: "debug",
       });
 
       try {
@@ -247,7 +248,7 @@ describe("RunEngine pending version", () => {
         expect(executionDataR1.snapshot.executionStatus).toBe("QUEUED");
         expect(executionDataR2.snapshot.executionStatus).toBe("QUEUED");
 
-        await setTimeout(500);
+        await engine.runQueue.processMasterQueueForEnvironment(authenticatedEnvironment.id);
 
         //dequeuing should fail
         const dequeued = await engine.dequeueFromWorkerQueue({
@@ -255,6 +256,12 @@ describe("RunEngine pending version", () => {
           workerQueue: "main",
         });
         expect(dequeued.length).toBe(0);
+
+        const dequeued2 = await engine.dequeueFromWorkerQueue({
+          consumerId: "test_12345",
+          workerQueue: "main",
+        });
+        expect(dequeued2.length).toBe(0);
 
         //queue should be empty
         const queueLength = await engine.runQueue.lengthOfQueue(

@@ -350,7 +350,7 @@ describe("RunEngine heartbeats", () => {
         assertNonNullable(executionData2);
         expect(executionData2.snapshot.executionStatus).toBe("QUEUED");
 
-        await setTimeout(1_000);
+        await engine.runQueue.processMasterQueueForEnvironment(authenticatedEnvironment.id);
 
         //have to dequeue again
         const dequeued2 = await engine.dequeueFromWorkerQueue({
