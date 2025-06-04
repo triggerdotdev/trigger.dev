@@ -124,6 +124,7 @@ export class RunEngine {
       },
       shardCount: options.queue?.shardCount,
       masterQueueConsumersDisabled: options.worker.disabled,
+      masterQueueConsumersIntervalMs: options.queue?.masterQueueConsumersIntervalMs,
       processWorkerQueueDebounceMs: options.queue?.processWorkerQueueDebounceMs,
       dequeueBlockingTimeoutSeconds: options.queue?.dequeueBlockingTimeoutSeconds,
       meter: options.meter,

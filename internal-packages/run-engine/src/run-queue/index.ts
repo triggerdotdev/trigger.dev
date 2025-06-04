@@ -67,6 +67,7 @@ export type RunQueueOptions = {
   retryOptions?: RetryOptions;
   shardCount?: number;
   masterQueueConsumersDisabled?: boolean;
+  masterQueueConsumersIntervalMs?: number;
   processWorkerQueueDebounceMs?: number;
   workerOptions?: {
     pollIntervalMs?: number;
@@ -1001,7 +1002,9 @@ export class RunQueue {
     const consumerId = nanoid();
 
     try {
-      for await (const _ of setInterval(500, null, { signal: this.abortController.signal })) {
+      for await (const _ of setInterval(this.options.masterQueueConsumersIntervalMs ?? 500, null, {
+        signal: this.abortController.signal,
+      })) {
         this.logger.verbose(`Processing master queue shard ${shard}`, {
           processedCount,
           lastProcessedAt,
@@ -1012,7 +1015,18 @@ export class RunQueue {
 
         const now = performance.now();
 
-        const results = await this.#processMasterQueueShard(shard, consumerId);
+        const [error, results] = await tryCatch(this.#processMasterQueueShard(shard, consumerId));
+
+        if (error) {
+          this.logger.error(`Failed to process master queue shard ${shard}`, {
+            error,
+            service: this.name,
+            shard,
+            consumerId,
+          });
+
+          continue;
+        }
 
         const duration = performance.now() - now;
 
