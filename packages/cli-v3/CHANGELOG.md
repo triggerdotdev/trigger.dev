@@ -1,5 +1,13 @@
 # trigger.dev
 
+## 4.0.0-v4-beta.20
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/build@4.0.0-v4-beta.20`
+  - `@trigger.dev/core@4.0.0-v4-beta.20`
+
 ## 4.0.0-v4-beta.19
 
 ### Patch Changes
