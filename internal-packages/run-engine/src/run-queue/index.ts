@@ -1140,7 +1140,7 @@ export class RunQueue {
 
             if (error) {
               this.logger.error(
-                `[dequeueMessageInSharedQueue][${this.name}] Failed to dequeue from queue ${queue}`,
+                `[processMasterQueueShard][${this.name}] Failed to dequeue from queue ${queue}`,
                 {
                   error,
                 }
