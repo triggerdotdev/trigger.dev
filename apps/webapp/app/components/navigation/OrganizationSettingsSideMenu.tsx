@@ -108,11 +108,11 @@ export function OrganizationSettingsSideMenu({
             {buildInfo.appVersion || `v${buildInfo.packageVersion}`}
           </Paragraph>
         </div>
-        {showBuildInfo && buildInfo.buildTimestampSeonds && (
+        {showBuildInfo && buildInfo.buildTimestampSeconds && (
           <div className="flex flex-col gap-1">
             <SideMenuHeader title="Build timestamp" />
             <Paragraph variant="extra-small" className="px-2 text-text-dimmed">
-              {new Date(Number(buildInfo.buildTimestampSeonds) * 1000).toISOString()}
+              {new Date(Number(buildInfo.buildTimestampSeconds) * 1000).toISOString()}
             </Paragraph>
           </div>
         )}
