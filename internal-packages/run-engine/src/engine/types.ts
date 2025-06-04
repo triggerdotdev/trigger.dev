@@ -31,6 +31,7 @@ export type RunEngineOptions = {
   queue: {
     redis: RedisOptions;
     shardCount?: number;
+    masterQueueConsumersDisabled?: boolean;
     processWorkerQueueDebounceMs?: number;
     masterQueueConsumersIntervalMs?: number;
     workerOptions?: WorkerConcurrencyOptions;

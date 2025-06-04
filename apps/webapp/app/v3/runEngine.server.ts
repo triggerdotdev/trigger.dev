@@ -63,6 +63,7 @@ function createRunEngine() {
       processWorkerQueueDebounceMs: env.RUN_ENGINE_PROCESS_WORKER_QUEUE_DEBOUNCE_MS,
       dequeueBlockingTimeoutSeconds: env.RUN_ENGINE_DEQUEUE_BLOCKING_TIMEOUT_SECONDS,
       masterQueueConsumersIntervalMs: env.RUN_ENGINE_MASTER_QUEUE_CONSUMERS_INTERVAL_MS,
+      masterQueueConsumersDisabled: env.RUN_ENGINE_WORKER_ENABLED === "0",
     },
     runLock: {
       redis: {

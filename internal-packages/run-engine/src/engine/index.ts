@@ -123,7 +123,7 @@ export class RunEngine {
         shutdownTimeoutMs: options.worker.shutdownTimeoutMs,
       },
       shardCount: options.queue?.shardCount,
-      masterQueueConsumersDisabled: options.worker.disabled,
+      masterQueueConsumersDisabled: options.queue?.masterQueueConsumersDisabled,
       masterQueueConsumersIntervalMs: options.queue?.masterQueueConsumersIntervalMs,
       processWorkerQueueDebounceMs: options.queue?.processWorkerQueueDebounceMs,
       dequeueBlockingTimeoutSeconds: options.queue?.dequeueBlockingTimeoutSeconds,
