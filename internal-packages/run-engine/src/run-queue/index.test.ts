@@ -578,7 +578,7 @@ describe("RunQueue", () => {
     }
   });
 
-  redisTest("Acking", { timeout: 5_000 }, async ({ redisContainer, redisOptions }) => {
+  redisTest("Acking", async ({ redisContainer, redisOptions }) => {
     const queue = new RunQueue({
       ...testOptions,
       queueSelectionStrategy: new FairQueueSelectionStrategy({
@@ -659,7 +659,7 @@ describe("RunQueue", () => {
     }
   });
 
-  redisTest("Ack (before dequeue)", { timeout: 5_000 }, async ({ redisContainer }) => {
+  redisTest("Ack (before dequeue)", async ({ redisContainer }) => {
     const queue = new RunQueue({
       ...testOptions,
       queueSelectionStrategy: new FairQueueSelectionStrategy({
@@ -718,7 +718,6 @@ describe("RunQueue", () => {
 
   redisTest(
     "Ack after moving to workerQueue with removeFromWorkerQueue = undefined",
-    { timeout: 5_000 },
     async ({ redisContainer }) => {
       const queue = new RunQueue({
         ...testOptions,
@@ -763,7 +762,6 @@ describe("RunQueue", () => {
 
   redisTest(
     "Ack after moving to workerQueue with removeFromWorkerQueue = true",
-    { timeout: 5_000 },
     async ({ redisContainer }) => {
       const queue = new RunQueue({
         ...testOptions,
@@ -808,7 +806,7 @@ describe("RunQueue", () => {
     }
   );
 
-  redisTest("Nacking", { timeout: 15_000 }, async ({ redisContainer, redisOptions }) => {
+  redisTest("Nacking", async ({ redisContainer, redisOptions }) => {
     const queue = new RunQueue({
       ...testOptions,
       queueSelectionStrategy: new FairQueueSelectionStrategy({
