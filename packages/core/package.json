@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/core",
-  "version": "4.0.0-v4-beta.16",
+  "version": "4.0.0-v4-beta.20",
   "description": "Core code used across the Trigger.dev SDK and platform",
   "license": "MIT",
   "publishConfig": {
@@ -212,8 +212,7 @@
     "rimraf": "^3.0.2",
     "ts-essentials": "10.0.1",
     "tshy": "^3.0.2",
-    "tsx": "4.17.0",
-    "vitest": "^1.6.0"
+    "tsx": "4.17.0"
   },
   "engines": {
     "node": ">=18.20.0"

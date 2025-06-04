@@ -5,6 +5,7 @@ import { indexWorkerManifest } from "../indexing/indexWorkerManifest.js";
 import { prettyError } from "../utilities/cliOutput.js";
 import { writeJSONFile } from "../utilities/fileSystem.js";
 import { logger } from "../utilities/logger.js";
+import type { Metafile } from "esbuild";
 
 export type BackgroundWorkerOptions = {
   env: Record<string, string>;
@@ -19,6 +20,7 @@ export class BackgroundWorker {
 
   constructor(
     public build: BuildManifest,
+    public metafile: Metafile,
     public params: BackgroundWorkerOptions
   ) {}
 
@@ -46,6 +48,9 @@ export class BackgroundWorker {
     if (this.manifest) {
       throw new Error("Worker already initialized");
     }
+
+    // Write the build manifest to this.build.outputPath/build.json
+    await writeJSONFile(this.buildManifestPath, this.build, true);
 
     logger.debug("indexing worker manifest", { build: this.build, params: this.params });
 

@@ -7,7 +7,7 @@ import { type TaskRunStatus } from "@trigger.dev/database";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { JSONEditor } from "~/components/code/JSONEditor";
-import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
+import { EnvironmentCombo, EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { Button } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { DateField } from "~/components/primitives/DateField";
@@ -113,6 +113,10 @@ export const action: ActionFunction = async ({ request, params }) => {
 
   if (!environment) {
     return redirectBackWithErrorMessage(request, "Environment not found");
+  }
+
+  if (environment.archivedAt) {
+    return redirectBackWithErrorMessage(request, "Can't run a test on an archived environment");
   }
 
   const testService = new TestTaskService();
@@ -336,7 +340,7 @@ function StandardTaskForm({ task, runs }: { task: TestTask["task"]; runs: Standa
           <Paragraph variant="small" className="whitespace-nowrap">
             This test will run in
           </Paragraph>
-          <EnvironmentLabel environment={environment} className="text-sm" />
+          <EnvironmentCombo environment={environment} className="gap-0.5" />
         </div>
         <Button
           type="submit"
@@ -536,7 +540,7 @@ function ScheduledTaskForm({
           <Paragraph variant="small" className="whitespace-nowrap">
             This test will run in
           </Paragraph>
-          <EnvironmentLabel environment={environment} className="text-sm" />
+          <EnvironmentCombo environment={environment} className="gap-0.5" />
         </div>
         <Button
           type="submit"

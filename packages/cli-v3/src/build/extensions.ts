@@ -143,6 +143,7 @@ function applyLayerToManifest(layer: BuildLayer, manifest: BuildManifest): Build
     $manifest.deploy.env ??= {};
     $manifest.deploy.sync ??= {};
     $manifest.deploy.sync.env ??= {};
+    $manifest.deploy.sync.parentEnv ??= {};
 
     for (const [key, value] of Object.entries(layer.deploy.env)) {
       if (!value) {
@@ -154,6 +155,26 @@ function applyLayerToManifest(layer: BuildLayer, manifest: BuildManifest): Build
 
         if (existingValue !== value) {
           $manifest.deploy.sync.env[key] = value;
+        }
+      }
+    }
+  }
+
+  if (layer.deploy?.parentEnv) {
+    $manifest.deploy.env ??= {};
+    $manifest.deploy.sync ??= {};
+    $manifest.deploy.sync.parentEnv ??= {};
+
+    for (const [key, value] of Object.entries(layer.deploy.parentEnv)) {
+      if (!value) {
+        continue;
+      }
+
+      if (layer.deploy.override || $manifest.deploy.env[key] === undefined) {
+        const existingValue = $manifest.deploy.env[key];
+
+        if (existingValue !== value) {
+          $manifest.deploy.sync.parentEnv[key] = value;
         }
       }
     }

@@ -6,12 +6,12 @@ import type {
   User,
 } from "@trigger.dev/database";
 import { customAlphabet } from "nanoid";
-import slug from "slug";
-import { prisma, PrismaClientOrTransaction } from "~/db.server";
 import { generate } from "random-words";
-import { createApiKeyForEnv, createPkApiKeyForEnv, envSlug } from "./api-key.server";
+import slug from "slug";
+import { prisma, type PrismaClientOrTransaction } from "~/db.server";
 import { env } from "~/env.server";
 import { featuresForUrl } from "~/features.server";
+import { createApiKeyForEnv, createPkApiKeyForEnv, envSlug } from "./api-key.server";
 
 export type { Organization };
 
@@ -76,13 +76,21 @@ export async function createOrganization(
   return { ...organization };
 }
 
-export async function createEnvironment(
-  organization: Pick<Organization, "id" | "maximumConcurrencyLimit">,
-  project: Pick<Project, "id">,
-  type: RuntimeEnvironment["type"],
-  member?: OrgMember,
-  prismaClient: PrismaClientOrTransaction = prisma
-) {
+export async function createEnvironment({
+  organization,
+  project,
+  type,
+  isBranchableEnvironment = false,
+  member,
+  prismaClient = prisma,
+}: {
+  organization: Pick<Organization, "id" | "maximumConcurrencyLimit">;
+  project: Pick<Project, "id">;
+  type: RuntimeEnvironment["type"];
+  isBranchableEnvironment?: boolean;
+  member?: OrgMember;
+  prismaClient?: PrismaClientOrTransaction;
+}) {
   const slug = envSlug(type);
   const apiKey = createApiKeyForEnv(type);
   const pkApiKey = createPkApiKeyForEnv(type);
@@ -108,6 +116,7 @@ export async function createEnvironment(
       },
       orgMember: member ? { connect: { id: member.id } } : undefined,
       type,
+      isBranchableEnvironment,
     },
   });
 }

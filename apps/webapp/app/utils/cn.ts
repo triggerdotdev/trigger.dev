@@ -10,6 +10,7 @@ const customTwMerge = extendTailwindMerge({
           "xs",
           "sm",
           "2sm",
+          "base",
           "md",
           "lg",
           "xl",

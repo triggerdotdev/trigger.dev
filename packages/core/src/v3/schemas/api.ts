@@ -1,6 +1,12 @@
 import { z } from "zod";
 import { DeserializedJsonSchema } from "../../schemas/json.js";
-import { FlushedRunMetadata, MachinePresetName, SerializedError, TaskRunError } from "./common.js";
+import {
+  FlushedRunMetadata,
+  GitMeta,
+  MachinePresetName,
+  SerializedError,
+  TaskRunError,
+} from "./common.js";
 import { BackgroundWorkerMetadata } from "./resources.js";
 import { DequeuedMessage, MachineResources } from "./runEngine.js";
 
@@ -302,6 +308,20 @@ export const ExternalBuildData = z.object({
 
 export type ExternalBuildData = z.infer<typeof ExternalBuildData>;
 
+export const UpsertBranchRequestBody = z.object({
+  git: GitMeta.optional(),
+  env: z.enum(["preview"]),
+  branch: z.string(),
+});
+
+export type UpsertBranchRequestBody = z.infer<typeof UpsertBranchRequestBody>;
+
+export const UpsertBranchResponseBody = z.object({
+  id: z.string(),
+});
+
+export type UpsertBranchResponseBody = z.infer<typeof UpsertBranchResponseBody>;
+
 export const InitializeDeploymentResponseBody = z.object({
   id: z.string(),
   contentHash: z.string(),
@@ -320,6 +340,7 @@ export const InitializeDeploymentRequestBody = z.object({
   registryHost: z.string().optional(),
   selfHosted: z.boolean().optional(),
   namespace: z.string().optional(),
+  gitMeta: GitMeta.optional(),
   type: z.enum(["MANAGED", "UNMANAGED", "V1"]).optional(),
 });
 
@@ -784,6 +805,7 @@ export type UpdateEnvironmentVariableRequestBody = z.infer<
 
 export const ImportEnvironmentVariablesRequestBody = z.object({
   variables: z.record(z.string()),
+  parentVariables: z.record(z.string()).optional(),
   override: z.boolean().optional(),
 });
 

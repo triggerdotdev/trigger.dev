@@ -32,6 +32,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
               id: true,
               type: true,
               slug: true,
+              branchName: true,
               orgMember: {
                 select: {
                   user: true,
@@ -39,6 +40,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
               },
             },
             where: {
+              archivedAt: null,
               OR: [
                 {
                   type: {
@@ -72,10 +74,21 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   return typedjson({
     payload: await prettyPrintPacket(run.payload, run.payloadType),
     payloadType: run.payloadType,
-    environment: displayableEnvironment(environment, userId),
+    environment: {
+      ...displayableEnvironment(environment, userId),
+      branchName: environment.branchName ?? undefined,
+    },
     environments: sortEnvironments(
-      run.project.environments.map((environment) => displayableEnvironment(environment, userId))
-    ),
+      run.project.environments.map((environment) => {
+        return {
+          ...displayableEnvironment(environment, userId),
+          branchName: environment.branchName ?? undefined,
+        };
+      })
+    ).filter((env) => {
+      if (env.type === "PREVIEW" && !env.branchName) return false;
+      return true;
+    }),
   });
 }
 

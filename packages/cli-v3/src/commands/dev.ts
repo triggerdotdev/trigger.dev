@@ -1,23 +1,18 @@
 import { ResolvedConfig } from "@trigger.dev/core/v3/build";
-import { Command } from "commander";
+import { Command, Option as CommandOption } from "commander";
 import { z } from "zod";
-import {
-  CommonCommandOptions,
-  commonOptions,
-  SkipLoggingError,
-  wrapCommandAction,
-} from "../cli/common.js";
+import { CommonCommandOptions, commonOptions, wrapCommandAction } from "../cli/common.js";
 import { watchConfig } from "../config.js";
 import { DevSessionInstance, startDevSession } from "../dev/devSession.js";
+import { createLockFile } from "../dev/lock.js";
 import { chalkError } from "../utilities/cliOutput.js";
+import { resolveLocalEnvVars } from "../utilities/localEnvVars.js";
 import { printDevBanner, printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { logger } from "../utilities/logger.js";
 import { runtimeChecks } from "../utilities/runtimeCheck.js";
 import { getProjectClient, LoginResultOk } from "../utilities/session.js";
 import { login } from "./login.js";
 import { updateTriggerPackages } from "./update.js";
-import { createLockFile } from "../dev/lock.js";
-import { BundleError } from "../build/bundle.js";
 
 const DevCommandOptions = CommonCommandOptions.extend({
   debugOtel: z.boolean().default(false),
@@ -29,6 +24,8 @@ const DevCommandOptions = CommonCommandOptions.extend({
   maxConcurrentRuns: z.coerce.number().optional(),
   mcp: z.boolean().default(false),
   mcpPort: z.coerce.number().optional().default(3333),
+  analyze: z.boolean().default(false),
+  disableWarnings: z.boolean().default(false),
 });
 
 export type DevCommandOptions = z.infer<typeof DevCommandOptions>;
@@ -59,6 +56,10 @@ export function configureDevCommand(program: Command) {
       )
       .option("--mcp", "Start the MCP server")
       .option("--mcp-port", "The port to run the MCP server on", "3333")
+      .addOption(
+        new CommandOption("--analyze", "Analyze the build output and import timings").hideHelp()
+      )
+      .addOption(new CommandOption("--disable-warnings", "Suppress warnings output").hideHelp())
   ).action(async (options) => {
     wrapCommandAction("dev", DevCommandOptions, options, async (opts) => {
       await devCommand(opts);
@@ -133,6 +134,12 @@ async function startDev(options: StartDevOptions) {
 
     printDevBanner(displayedUpdateMessage);
 
+    const envVars = resolveLocalEnvVars(options.envFile);
+
+    if (envVars.TRIGGER_PROJECT_REF) {
+      logger.debug("Using project ref from env", { ref: envVars.TRIGGER_PROJECT_REF });
+    }
+
     watcher = await watchConfig({
       cwd: options.cwd,
       async onUpdate(config) {
@@ -145,7 +152,7 @@ async function startDev(options: StartDevOptions) {
         devInstance = await bootDevSession(config);
       },
       overrides: {
-        project: options.projectRef,
+        project: options.projectRef ?? envVars.TRIGGER_PROJECT_REF,
       },
       configFile: options.config,
     });

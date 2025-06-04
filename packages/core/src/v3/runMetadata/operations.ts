@@ -128,3 +128,113 @@ export function applyMetadataOperations(
 
   return { newMetadata, unappliedOperations };
 }
+
+/**
+ * Collapses metadata operations to reduce payload size and avoid 413 "Request Entity Too Large" errors.
+ *
+ * When there are many operations queued up (e.g., 10k increment operations), sending them all
+ * individually can result in request payloads exceeding the server's 1MB limit. This function
+ * intelligently combines operations where possible to reduce the payload size:
+ *
+ * - **Increment operations**: Multiple increments on the same key are summed into a single increment
+ *   - Example: increment("counter", 1) + increment("counter", 2) → increment("counter", 3)
+ *
+ * - **Set operations**: Multiple sets on the same key keep only the last one (since later sets override earlier ones)
+ *   - Example: set("status", "processing") + set("status", "done") → set("status", "done")
+ *
+ * - **Delete operations**: Multiple deletes on the same key keep only one (duplicates are redundant)
+ *   - Example: del("temp") + del("temp") → del("temp")
+ *
+ * - **Append, remove, and update operations**: Preserved as-is to maintain correctness since order matters
+ *
+ * @param operations Array of metadata change operations to collapse
+ * @returns Collapsed array with fewer operations that produce the same final result
+ *
+ * @example
+ * ```typescript
+ * const operations = [
+ *   { type: "increment", key: "counter", value: 1 },
+ *   { type: "increment", key: "counter", value: 2 },
+ *   { type: "set", key: "status", value: "processing" },
+ *   { type: "set", key: "status", value: "done" }
+ * ];
+ *
+ * const collapsed = collapseOperations(operations);
+ * // Result: [
+ * //   { type: "increment", key: "counter", value: 3 },
+ * //   { type: "set", key: "status", value: "done" }
+ * // ]
+ * ```
+ */
+export function collapseOperations(
+  operations: RunMetadataChangeOperation[]
+): RunMetadataChangeOperation[] {
+  if (operations.length === 0) {
+    return operations;
+  }
+
+  const collapsed: RunMetadataChangeOperation[] = [];
+  let i = 0;
+  while (i < operations.length) {
+    const op = operations[i];
+    if (!op) {
+      i++;
+      continue;
+    }
+
+    // Collapse consecutive increments on the same key
+    if (op.type === "increment") {
+      let sum = op.value;
+      let j = i + 1;
+      while (
+        j < operations.length &&
+        operations[j]?.type === "increment" &&
+        (operations[j] as typeof op)?.key === op.key
+      ) {
+        sum += (operations[j] as typeof op).value;
+        j++;
+      }
+      collapsed.push({ type: "increment", key: op.key, value: sum });
+      i = j;
+      continue;
+    }
+
+    // Collapse consecutive sets on the same key (keep only the last in the sequence)
+    if (op.type === "set") {
+      let last = op;
+      let j = i + 1;
+      while (
+        j < operations.length &&
+        operations[j]?.type === "set" &&
+        (operations[j] as typeof op)?.key === op.key
+      ) {
+        last = operations[j] as typeof op;
+        j++;
+      }
+      collapsed.push(last);
+      i = j;
+      continue;
+    }
+
+    // Collapse consecutive deletes on the same key (keep only one)
+    if (op.type === "delete") {
+      let j = i + 1;
+      while (
+        j < operations.length &&
+        operations[j]?.type === "delete" &&
+        (operations[j] as typeof op)?.key === op.key
+      ) {
+        j++;
+      }
+      collapsed.push(op);
+      i = j;
+      continue;
+    }
+
+    // For append, remove, update, and unknown types, preserve order and do not collapse
+    collapsed.push(op);
+    i++;
+  }
+
+  return collapsed;
+}

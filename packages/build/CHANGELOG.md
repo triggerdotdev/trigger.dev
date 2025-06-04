@@ -1,5 +1,34 @@
 # @trigger.dev/build
 
+## 4.0.0-v4-beta.20
+
+### Patch Changes
+
+- syncVercelEnvVars() fix for syncing the wrong preview branch env vars ([#2141](https://github.com/triggerdotdev/trigger.dev/pull/2141))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.20`
+
+## 4.0.0-v4-beta.19
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.19`
+
+## 4.0.0-v4-beta.18
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.18`
+
+## 4.0.0-v4-beta.17
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.17`
+
 ## 4.0.0-v4-beta.16
 
 ### Patch Changes

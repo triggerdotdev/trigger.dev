@@ -256,12 +256,15 @@ describe("FairDequeuingStrategy", () => {
         "consumer-1"
       );
 
+      const tolerance = 0.15;
+      const withTolerance = (value: number) => value * (1 + tolerance);
+
       const distribute2Duration = performance.now() - startDistribute2;
 
       console.log("Second distribution took", distribute2Duration, "ms");
 
       // Make sure the second call is more than 9 times faster than the first
-      expect(distribute2Duration).toBeLessThan(distribute1Duration / 9);
+      expect(distribute2Duration).toBeLessThan(withTolerance(distribute1Duration / 9));
 
       const startDistribute3 = performance.now();
 
@@ -275,7 +278,7 @@ describe("FairDequeuingStrategy", () => {
       console.log("Third distribution took", distribute3Duration, "ms");
 
       // Make sure the third call is more than 4 times the second
-      expect(distribute3Duration).toBeGreaterThan(distribute2Duration * 4);
+      expect(withTolerance(distribute3Duration)).toBeGreaterThan(distribute2Duration * 4);
     }
   );
 

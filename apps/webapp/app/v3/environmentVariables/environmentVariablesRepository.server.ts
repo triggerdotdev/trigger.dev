@@ -1,25 +1,22 @@
-import {
-  Prisma,
-  PrismaClient,
-  RuntimeEnvironment,
-  RuntimeEnvironmentType,
-} from "@trigger.dev/database";
+import { Prisma, type PrismaClient, type RuntimeEnvironmentType } from "@trigger.dev/database";
 import { z } from "zod";
-import { environmentFullTitle, environmentTitle } from "~/components/environments/EnvironmentLabel";
+import { environmentFullTitle } from "~/components/environments/EnvironmentLabel";
 import { $transaction, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import {
-  CreateResult,
-  DeleteEnvironmentVariable,
-  DeleteEnvironmentVariableValue,
-  EnvironmentVariable,
-  EnvironmentVariableWithSecret,
-  ProjectEnvironmentVariable,
-  Repository,
-  Result,
+  type CreateResult,
+  type DeleteEnvironmentVariable,
+  type DeleteEnvironmentVariableValue,
+  type EnvironmentVariable,
+  type EnvironmentVariableWithSecret,
+  type ProjectEnvironmentVariable,
+  type Repository,
+  type Result,
 } from "./repository";
+import { removeBlacklistedVariables } from "../environmentVariableRules.server";
+import { deduplicateVariableArray } from "../deduplicateVariableArray.server";
 
 function secretKeyProjectPrefix(projectId: string) {
   return `environmentvariable:${projectId}:`;
@@ -94,14 +91,18 @@ export class EnvironmentVariablesRepository implements Repository {
     }
 
     // Remove `TRIGGER_SECRET_KEY` or `TRIGGER_API_URL`
-    let values = options.variables.filter(
-      (v) => v.key !== "TRIGGER_SECRET_KEY" && v.key !== "TRIGGER_API_URL"
-    );
+    let values = removeBlacklistedVariables(options.variables);
+    const removedBlacklisted = values.length !== options.variables.length;
 
     //get rid of empty variables
     values = values.filter((v) => v.key.trim() !== "" && v.value.trim() !== "");
     if (values.length === 0) {
-      return { success: false as const, error: `You must set at least one value` };
+      return {
+        success: false as const,
+        error: `You must set at least one valid variable.${
+          removedBlacklisted ? " All the variables submitted are not allowed." : ""
+        }`,
+      };
     }
 
     //check if any of them exist in an environment we're setting
@@ -512,14 +513,17 @@ export class EnvironmentVariablesRepository implements Repository {
 
   async getEnvironmentWithRedactedSecrets(
     projectId: string,
-    environmentId: string
+    environmentId: string,
+    parentEnvironmentId?: string
   ): Promise<EnvironmentVariableWithSecret[]> {
-    const variables = await this.getEnvironment(projectId, environmentId);
+    const variables = await this.getEnvironment(projectId, environmentId, parentEnvironmentId);
 
     // Get the keys of all secret variables
     const secretValues = await this.prismaClient.environmentVariableValue.findMany({
       where: {
-        environmentId,
+        environmentId: parentEnvironmentId
+          ? { in: [environmentId, parentEnvironmentId] }
+          : environmentId,
         isSecret: true,
       },
       select: {
@@ -532,7 +536,7 @@ export class EnvironmentVariablesRepository implements Repository {
     });
     const secretVarKeys = secretValues.map((r) => r.variable.key);
 
-    // Filter out secret variables if includeSecrets is false
+    // Filter out secret variables
     return variables.map((v) => {
       if (secretVarKeys.includes(v.key)) {
         return {
@@ -546,7 +550,11 @@ export class EnvironmentVariablesRepository implements Repository {
     });
   }
 
-  async getEnvironment(projectId: string, environmentId: string): Promise<EnvironmentVariable[]> {
+  async getEnvironment(
+    projectId: string,
+    environmentId: string,
+    parentEnvironmentId?: string
+  ): Promise<EnvironmentVariable[]> {
     const project = await this.prismaClient.project.findFirst({
       where: {
         id: projectId,
@@ -568,36 +576,57 @@ export class EnvironmentVariablesRepository implements Repository {
       return [];
     }
 
-    return this.getEnvironmentVariables(projectId, environmentId);
+    return this.getEnvironmentVariables(projectId, environmentId, parentEnvironmentId);
   }
 
   async #getSecretEnvironmentVariables(
     projectId: string,
-    environmentId: string
+    environmentId: string,
+    parentEnvironmentId?: string
   ): Promise<EnvironmentVariable[]> {
     const secretStore = getSecretStore("DATABASE", {
       prismaClient: this.prismaClient,
     });
 
-    const secrets = await secretStore.getSecrets(
+    const parentSecrets = parentEnvironmentId
+      ? await secretStore.getSecrets(
+          SecretValue,
+          secretKeyEnvironmentPrefix(projectId, parentEnvironmentId)
+        )
+      : [];
+
+    const childSecrets = await secretStore.getSecrets(
       SecretValue,
       secretKeyEnvironmentPrefix(projectId, environmentId)
     );
 
-    return secrets.map((secret) => {
-      const { key } = parseSecretKey(secret.key);
+    // Merge the secrets, we want child ones to override parent ones
+    const mergedSecrets = new Map<string, string>();
+    for (const secret of parentSecrets) {
+      const { key: parsedKey } = parseSecretKey(secret.key);
+      mergedSecrets.set(parsedKey, secret.value.secret);
+    }
+    for (const secret of childSecrets) {
+      const { key: parsedKey } = parseSecretKey(secret.key);
+      mergedSecrets.set(parsedKey, secret.value.secret);
+    }
+
+    const merged = Array.from(mergedSecrets.entries()).map(([key, value]) => {
       return {
         key,
-        value: secret.value.secret,
+        value,
       };
     });
+
+    return removeBlacklistedVariables(merged);
   }
 
   async getEnvironmentVariables(
     projectId: string,
-    environmentId: string
+    environmentId: string,
+    parentEnvironmentId?: string
   ): Promise<EnvironmentVariable[]> {
-    return this.#getSecretEnvironmentVariables(projectId, environmentId);
+    return this.#getSecretEnvironmentVariables(projectId, environmentId, parentEnvironmentId);
   }
 
   async delete(projectId: string, options: DeleteEnvironmentVariable): Promise<Result> {
@@ -780,6 +809,7 @@ export const RuntimeEnvironmentForEnvRepoPayload = {
     projectId: true,
     apiKey: true,
     organizationId: true,
+    branchName: true,
   },
 } as const;
 
@@ -790,11 +820,13 @@ export type RuntimeEnvironmentForEnvRepo = Prisma.RuntimeEnvironmentGetPayload<
 export const environmentVariablesRepository = new EnvironmentVariablesRepository();
 
 export async function resolveVariablesForEnvironment(
-  runtimeEnvironment: RuntimeEnvironmentForEnvRepo
+  runtimeEnvironment: RuntimeEnvironmentForEnvRepo,
+  parentEnvironment?: RuntimeEnvironmentForEnvRepo
 ) {
   const projectSecrets = await environmentVariablesRepository.getEnvironmentVariables(
     runtimeEnvironment.projectId,
-    runtimeEnvironment.id
+    runtimeEnvironment.id,
+    parentEnvironment?.id
   );
 
   const overridableTriggerVariables = await resolveOverridableTriggerVariables(runtimeEnvironment);
@@ -802,9 +834,13 @@ export async function resolveVariablesForEnvironment(
   const builtInVariables =
     runtimeEnvironment.type === "DEVELOPMENT"
       ? await resolveBuiltInDevVariables(runtimeEnvironment)
-      : await resolveBuiltInProdVariables(runtimeEnvironment);
+      : await resolveBuiltInProdVariables(runtimeEnvironment, parentEnvironment);
 
-  return [...overridableTriggerVariables, ...projectSecrets, ...builtInVariables];
+  return deduplicateVariableArray([
+    ...overridableTriggerVariables,
+    ...projectSecrets,
+    ...builtInVariables,
+  ]);
 }
 
 async function resolveOverridableTriggerVariables(
@@ -882,11 +918,14 @@ async function resolveBuiltInDevVariables(runtimeEnvironment: RuntimeEnvironment
   return [...result, ...commonVariables];
 }
 
-async function resolveBuiltInProdVariables(runtimeEnvironment: RuntimeEnvironmentForEnvRepo) {
+async function resolveBuiltInProdVariables(
+  runtimeEnvironment: RuntimeEnvironmentForEnvRepo,
+  parentEnvironment?: RuntimeEnvironmentForEnvRepo
+) {
   let result: Array<EnvironmentVariable> = [
     {
       key: "TRIGGER_SECRET_KEY",
-      value: runtimeEnvironment.apiKey,
+      value: parentEnvironment?.apiKey ?? runtimeEnvironment.apiKey,
     },
     {
       key: "TRIGGER_API_URL",
@@ -905,6 +944,15 @@ async function resolveBuiltInProdVariables(runtimeEnvironment: RuntimeEnvironmen
       value: runtimeEnvironment.organizationId,
     },
   ];
+
+  if (runtimeEnvironment.branchName) {
+    result = result.concat([
+      {
+        key: "TRIGGER_PREVIEW_BRANCH",
+        value: runtimeEnvironment.branchName,
+      },
+    ]);
+  }
 
   if (env.PROD_OTEL_BATCH_PROCESSING_ENABLED === "1") {
     result = result.concat([

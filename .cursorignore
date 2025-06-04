@@ -5,3 +5,4 @@ apps/coordinator/
 packages/rsc/
 .changeset
 .zed
+.env

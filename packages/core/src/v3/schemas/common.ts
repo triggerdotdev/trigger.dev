@@ -263,12 +263,28 @@ export const TaskRunExecutionAttempt = z.object({
   status: z.string(),
 });
 
+export const GitMeta = z.object({
+  commitAuthorName: z.string().optional(),
+  commitMessage: z.string().optional(),
+  commitRef: z.string().optional(),
+  commitSha: z.string().optional(),
+  dirty: z.boolean().optional(),
+  remoteUrl: z.string().optional(),
+  pullRequestNumber: z.number().optional(),
+  pullRequestTitle: z.string().optional(),
+  pullRequestState: z.enum(["open", "closed", "merged"]).optional(),
+});
+
+export type GitMeta = z.infer<typeof GitMeta>;
+
 export type TaskRunExecutionAttempt = z.infer<typeof TaskRunExecutionAttempt>;
 
 export const TaskRunExecutionEnvironment = z.object({
   id: z.string(),
   slug: z.string(),
   type: z.enum(["PRODUCTION", "STAGING", "DEVELOPMENT", "PREVIEW"]),
+  branchName: z.string().optional(),
+  git: GitMeta.optional(),
 });
 
 export type TaskRunExecutionEnvironment = z.infer<typeof TaskRunExecutionEnvironment>;

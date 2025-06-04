@@ -1,12 +1,15 @@
 import {
+  BranchEnvironmentIconSmall,
   DeployedEnvironmentIconSmall,
   DevEnvironmentIconSmall,
   ProdEnvironmentIconSmall,
 } from "~/assets/icons/EnvironmentIcons";
 import type { RuntimeEnvironment } from "~/models/runtimeEnvironment.server";
 import { cn } from "~/utils/cn";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
+import { useEffect, useRef, useState } from "react";
 
-type Environment = Pick<RuntimeEnvironment, "type">;
+type Environment = Pick<RuntimeEnvironment, "type"> & { branchName?: string | null };
 
 export function EnvironmentIcon({
   environment,
@@ -15,6 +18,14 @@ export function EnvironmentIcon({
   environment: Environment;
   className?: string;
 }) {
+  if (environment.branchName) {
+    return (
+      <BranchEnvironmentIconSmall
+        className={cn(environmentTextClassName(environment), className)}
+      />
+    );
+  }
+
   switch (environment.type) {
     case "DEVELOPMENT":
       return (
@@ -39,13 +50,18 @@ export function EnvironmentIcon({
 export function EnvironmentCombo({
   environment,
   className,
+  iconClassName,
 }: {
   environment: Environment;
   className?: string;
+  iconClassName?: string;
 }) {
   return (
     <span className={cn("flex items-center gap-1.5 text-sm text-text-bright", className)}>
-      <EnvironmentIcon environment={environment} className="size-[1.125rem]" />
+      <EnvironmentIcon
+        environment={environment}
+        className={cn("size-4.5 shrink-0", iconClassName)}
+      />
       <EnvironmentLabel environment={environment} />
     </span>
   );
@@ -58,14 +74,62 @@ export function EnvironmentLabel({
   environment: Environment;
   className?: string;
 }) {
-  return (
-    <span className={cn(environmentTextClassName(environment), className)}>
-      {environmentFullTitle(environment)}
+  const spanRef = useRef<HTMLSpanElement>(null);
+  const [isTruncated, setIsTruncated] = useState(false);
+  const text = environment.branchName ? environment.branchName : environmentFullTitle(environment);
+
+  useEffect(() => {
+    const checkTruncation = () => {
+      if (spanRef.current) {
+        const isTruncated = spanRef.current.scrollWidth > spanRef.current.clientWidth;
+        setIsTruncated(isTruncated);
+      }
+    };
+
+    checkTruncation();
+    // Add resize observer to recheck on window resize
+    const resizeObserver = new ResizeObserver(checkTruncation);
+    if (spanRef.current) {
+      resizeObserver.observe(spanRef.current);
+    }
+
+    return () => resizeObserver.disconnect();
+  }, [text]);
+
+  const content = (
+    <span
+      ref={spanRef}
+      className={cn("truncate text-left", environmentTextClassName(environment), className)}
+    >
+      {text}
     </span>
   );
+
+  if (isTruncated) {
+    return (
+      <SimpleTooltip
+        asChild
+        button={content}
+        content={
+          <span ref={spanRef} className={cn("text-left", environmentTextClassName(environment))}>
+            {text}
+          </span>
+        }
+        side="right"
+        variant="dark"
+        sideOffset={34}
+      />
+    );
+  }
+
+  return content;
 }
 
 export function environmentTitle(environment: Environment, username?: string) {
+  if (environment.branchName) {
+    return environment.branchName;
+  }
+
   switch (environment.type) {
     case "PRODUCTION":
       return "Prod";
@@ -79,6 +143,10 @@ export function environmentTitle(environment: Environment, username?: string) {
 }
 
 export function environmentFullTitle(environment: Environment) {
+  if (environment.branchName) {
+    return environment.branchName;
+  }
+
   switch (environment.type) {
     case "PRODUCTION":
       return "Production";

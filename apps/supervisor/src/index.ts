@@ -131,6 +131,7 @@ class ManagedSupervisor {
       maxConsumerCount: env.TRIGGER_DEQUEUE_MAX_CONSUMER_COUNT,
       runNotificationsEnabled: env.TRIGGER_WORKLOAD_API_ENABLED,
       heartbeatIntervalSeconds: env.TRIGGER_WORKER_HEARTBEAT_INTERVAL_SECONDS,
+      sendRunDebugLogs: env.SEND_RUN_DEBUG_LOGS,
       preDequeue: async () => {
         if (!env.RESOURCE_MONITOR_ENABLED) {
           return {};

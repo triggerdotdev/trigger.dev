@@ -87,6 +87,7 @@ const Env = z.object({
 
   // Debug
   DEBUG: BoolEnv.default(false),
+  SEND_RUN_DEBUG_LOGS: BoolEnv.default(false),
 });
 
 export const env = Env.parse(stdEnv);

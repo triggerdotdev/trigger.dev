@@ -14,7 +14,7 @@ type Schedule = {
 };
 
 export class CheckScheduleService extends BaseService {
-  public async call(projectId: string, schedule: Schedule) {
+  public async call(projectId: string, schedule: Schedule, environmentIds: string[]) {
     //validate the cron expression
     try {
       CronPattern.parse(schedule.cron);
@@ -61,28 +61,34 @@ export class CheckScheduleService extends BaseService {
       );
     }
 
-    //if creating a schedule, check they're under the limits
-    if (!schedule.friendlyId) {
-      //check they're within their limit
-      const project = await this._prisma.project.findFirst({
-        where: {
-          id: projectId,
-        },
-        select: {
-          organizationId: true,
-          environments: {
-            select: {
-              id: true,
-              type: true,
-            },
+    //check they're within their limit
+    const project = await this._prisma.project.findFirst({
+      where: {
+        id: projectId,
+      },
+      select: {
+        organizationId: true,
+        environments: {
+          select: {
+            id: true,
+            type: true,
+            archivedAt: true,
           },
         },
-      });
+      },
+    });
 
-      if (!project) {
-        throw new ServiceValidationError("Project not found");
-      }
+    if (!project) {
+      throw new ServiceValidationError("Project not found");
+    }
 
+    const environments = project.environments.filter((env) => environmentIds.includes(env.id));
+    if (environments.some((env) => env.archivedAt)) {
+      throw new ServiceValidationError("Can't add or edit a schedule for an archived branch");
+    }
+
+    //if creating a schedule, check they're under the limits
+    if (!schedule.friendlyId) {
       const limit = await getLimit(project.organizationId, "schedules", 100_000_000);
       const schedulesCount = await CheckScheduleService.getUsedSchedulesCount({
         prisma: this._prisma,
@@ -102,9 +108,11 @@ export class CheckScheduleService extends BaseService {
     environments,
   }: {
     prisma: PrismaClientOrTransaction;
-    environments: { id: string; type: RuntimeEnvironmentType }[];
+    environments: { id: string; type: RuntimeEnvironmentType; archivedAt: Date | null }[];
   }) {
-    const deployedEnvironments = environments.filter((env) => env.type !== "DEVELOPMENT");
+    const deployedEnvironments = environments.filter(
+      (env) => env.type !== "DEVELOPMENT" && !env.archivedAt
+    );
     const schedulesCount = await prisma.taskScheduleInstance.count({
       where: {
         environmentId: {

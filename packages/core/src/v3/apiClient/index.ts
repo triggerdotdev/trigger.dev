@@ -128,17 +128,26 @@ export type {
   TaskRunShape,
 };
 
+export * from "./getBranch.js";
+
 /**
  * Trigger.dev v3 API client
  */
 export class ApiClient {
   public readonly baseUrl: string;
   public readonly accessToken: string;
+  public readonly previewBranch?: string;
   private readonly defaultRequestOptions: ZodFetchOptions;
 
-  constructor(baseUrl: string, accessToken: string, requestOptions: ApiRequestOptions = {}) {
+  constructor(
+    baseUrl: string,
+    accessToken: string,
+    previewBranch?: string,
+    requestOptions: ApiRequestOptions = {}
+  ) {
     this.accessToken = accessToken;
     this.baseUrl = baseUrl.replace(/\/$/, "");
+    this.previewBranch = previewBranch;
     this.defaultRequestOptions = mergeRequestOptions(DEFAULT_ZOD_FETCH_OPTIONS, requestOptions);
   }
 
@@ -984,6 +993,10 @@ export class ApiClient {
       ),
     };
 
+    if (this.previewBranch) {
+      headers["x-trigger-branch"] = this.previewBranch;
+    }
+
     // Only inject the context if we are inside a task
     if (taskContext.isInsideTask) {
       headers["x-trigger-worker"] = "true";
@@ -1003,10 +1016,14 @@ export class ApiClient {
   }
 
   #getRealtimeHeaders() {
-    const headers: Record<string, string> = {
+    let headers: Record<string, string> = {
       Authorization: `Bearer ${this.accessToken}`,
       "trigger-version": VERSION,
     };
+
+    if (this.previewBranch) {
+      headers["x-trigger-branch"] = this.previewBranch;
+    }
 
     return headers;
   }

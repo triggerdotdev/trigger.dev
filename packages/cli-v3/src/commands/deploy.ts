@@ -1,11 +1,11 @@
 import { intro, log, outro } from "@clack/prompts";
-import { prepareDeploymentError, tryCatch } from "@trigger.dev/core/v3";
+import { getBranch, prepareDeploymentError, tryCatch } from "@trigger.dev/core/v3";
 import { InitializeDeploymentResponseBody } from "@trigger.dev/core/v3/schemas";
 import { Command, Option as CommandOption } from "commander";
 import { resolve } from "node:path";
+import { isCI } from "std-env";
 import { x } from "tinyexec";
 import { z } from "zod";
-import { isCI } from "std-env";
 import { CliApiClient } from "../apiClient.js";
 import { buildWorker } from "../build/buildWorker.js";
 import { resolveAlwaysExternal } from "../build/externals.js";
@@ -27,20 +27,24 @@ import {
 } from "../deploy/logs.js";
 import { chalkError, cliLink, isLinksSupported, prettyError } from "../utilities/cliOutput.js";
 import { loadDotEnvVars } from "../utilities/dotEnv.js";
+import { isDirectory } from "../utilities/fileSystem.js";
+import { setGithubActionsOutputAndEnvVars } from "../utilities/githubActions.js";
+import { createGitMeta } from "../utilities/gitMeta.js";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
+import { resolveLocalEnvVars } from "../utilities/localEnvVars.js";
 import { logger } from "../utilities/logger.js";
-import { getProjectClient } from "../utilities/session.js";
+import { getProjectClient, upsertBranch } from "../utilities/session.js";
 import { getTmpDir } from "../utilities/tempDirectories.js";
 import { spinner } from "../utilities/windows.js";
 import { login } from "./login.js";
+import { archivePreviewBranch } from "./preview.js";
 import { updateTriggerPackages } from "./update.js";
-import { setGithubActionsOutputAndEnvVars } from "../utilities/githubActions.js";
-import { isDirectory } from "../utilities/fileSystem.js";
 
 const DeployCommandOptions = CommonCommandOptions.extend({
   dryRun: z.boolean().default(false),
   skipSyncEnvVars: z.boolean().default(false),
-  env: z.enum(["prod", "staging"]),
+  env: z.enum(["prod", "staging", "preview", "production"]),
+  branch: z.string().optional(),
   loadImage: z.boolean().default(false),
   buildPlatform: z.enum(["linux/amd64", "linux/arm64"]).default("linux/amd64"),
   namespace: z.string().optional(),
@@ -71,6 +75,10 @@ export function configureDeployCommand(program: Command) {
         "-e, --env <env>",
         "Deploy to a specific environment (currently only prod and staging are supported)",
         "prod"
+      )
+      .option(
+        "-b, --branch <branch>",
+        "The preview branch to deploy to when passing --env preview. If not provided, we'll detect your git branch."
       )
       .option("--skip-update-check", "Skip checking for @trigger.dev package updates")
       .option("-c, --config <config file>", "The name of the config file, found at [path]")
@@ -173,21 +181,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   const cwd = process.cwd();
   const projectPath = resolve(cwd, dir);
 
-  if (dir !== "." && !isDirectory(projectPath)) {
-    if (dir === "staging" || dir === "prod") {
-      throw new Error(`To deploy to ${dir}, you need to pass "--env ${dir}", not just "${dir}".`);
-    }
-
-    if (dir === "production") {
-      throw new Error(`To deploy to production, you need to pass "--env prod", not "production".`);
-    }
-
-    if (dir === "stg") {
-      throw new Error(`To deploy to staging, you need to pass "--env staging", not "stg".`);
-    }
-
-    throw new Error(`Directory "${dir}" not found at ${projectPath}`);
-  }
+  verifyDirectory(dir, projectPath);
 
   const authorization = await login({
     embedded: true,
@@ -207,19 +201,74 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     }
   }
 
+  //coerce env from production to prod
+  if (options.env === "production") {
+    options.env = "prod";
+  }
+
+  const envVars = resolveLocalEnvVars(options.envFile);
+
+  if (envVars.TRIGGER_PROJECT_REF) {
+    logger.debug("Using project ref from env", { ref: envVars.TRIGGER_PROJECT_REF });
+  }
+
   const resolvedConfig = await loadConfig({
     cwd: projectPath,
-    overrides: { project: options.projectRef },
+    overrides: { project: options.projectRef ?? envVars.TRIGGER_PROJECT_REF },
     configFile: options.config,
   });
 
   logger.debug("Resolved config", resolvedConfig);
+
+  const gitMeta = await createGitMeta(resolvedConfig.workspaceDir);
+  logger.debug("gitMeta", gitMeta);
+
+  const branch =
+    options.env === "preview" ? getBranch({ specified: options.branch, gitMeta }) : undefined;
+
+  if (options.env === "preview" && !branch) {
+    throw new Error(
+      "Didn't auto-detect preview branch, so you need to specify one. Pass --branch <branch>."
+    );
+  }
+
+  if (options.env === "preview" && branch) {
+    //auto-archive a branch if the PR is merged or closed
+    if (gitMeta?.pullRequestState === "merged" || gitMeta?.pullRequestState === "closed") {
+      log.message(`Pull request ${gitMeta?.pullRequestNumber} is ${gitMeta?.pullRequestState}.`);
+      const $buildSpinner = spinner();
+      $buildSpinner.start(`Archiving preview branch: "${branch}"`);
+      const result = await archivePreviewBranch(authorization, branch, resolvedConfig.project);
+      $buildSpinner.stop(
+        result ? `Successfully archived "${branch}"` : `Failed to archive "${branch}".`
+      );
+      return;
+    }
+
+    logger.debug("Upserting branch", { env: options.env, branch });
+    const branchEnv = await upsertBranch({
+      accessToken: authorization.auth.accessToken,
+      apiUrl: authorization.auth.apiUrl,
+      projectRef: resolvedConfig.project,
+      branch,
+      gitMeta,
+    });
+
+    logger.debug("Upserted branch env", branchEnv);
+
+    log.success(`Using preview branch "${branch}"`);
+
+    if (!branchEnv) {
+      throw new Error(`Failed to create branch "${branch}"`);
+    }
+  }
 
   const projectClient = await getProjectClient({
     accessToken: authorization.auth.accessToken,
     apiUrl: authorization.auth.apiUrl,
     projectRef: resolvedConfig.project,
     env: options.env,
+    branch,
     profile: options.profile,
   });
 
@@ -242,6 +291,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     buildWorker({
       target: "deploy",
       environment: options.env,
+      branch,
       destination: destination.path,
       resolvedConfig,
       rewritePaths: true,
@@ -278,6 +328,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     selfHosted: options.selfHosted,
     registryHost: options.registry,
     namespace: options.namespace,
+    gitMeta,
     type: features.run_engine_v2 ? "MANAGED" : "V1",
   });
 
@@ -306,31 +357,37 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     }
   }
 
-  if (
-    buildManifest.deploy.sync &&
-    buildManifest.deploy.sync.env &&
-    Object.keys(buildManifest.deploy.sync.env).length > 0
-  ) {
-    const numberOfEnvVars = Object.keys(buildManifest.deploy.sync.env).length;
+  const hasVarsToSync =
+    Object.keys(buildManifest.deploy.sync?.env || {}).length > 0 ||
+    // Only sync parent variables if this is a branch environment
+    (branch && Object.keys(buildManifest.deploy.sync?.parentEnv || {}).length > 0);
+
+  if (hasVarsToSync) {
+    const childVars = buildManifest.deploy.sync?.env ?? {};
+    const parentVars = buildManifest.deploy.sync?.parentEnv ?? {};
+
+    const numberOfEnvVars = Object.keys(childVars).length + Object.keys(parentVars).length;
     const vars = numberOfEnvVars === 1 ? "var" : "vars";
 
     if (!options.skipSyncEnvVars) {
       const $spinner = spinner();
       $spinner.start(`Syncing ${numberOfEnvVars} env ${vars} with the server`);
-      const success = await syncEnvVarsWithServer(
+
+      const uploadResult = await syncEnvVarsWithServer(
         projectClient.client,
         resolvedConfig.project,
         options.env,
-        buildManifest.deploy.sync.env
+        childVars,
+        parentVars
       );
 
-      if (!success) {
+      if (!uploadResult.success) {
         await failDeploy(
           projectClient.client,
           deployment,
           {
             name: "SyncEnvVarsError",
-            message: `Failed to sync ${numberOfEnvVars} env ${vars} with the server`,
+            message: `Failed to sync ${numberOfEnvVars} env ${vars} with the server: ${uploadResult.error}`,
           },
           "",
           $spinner
@@ -389,6 +446,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     projectRef: resolvedConfig.project,
     apiUrl: projectClient.client.apiURL,
     apiKey: projectClient.client.accessToken!,
+    branchName: branch,
     authAccessToken: authorization.auth.accessToken,
     compilationPath: destination.path,
     buildEnvVars: buildManifest.build.env,
@@ -449,21 +507,28 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
       $spinner
     );
 
-    throw new SkipLoggingError("Failed to get deployment with worker");
+    throw new SkipLoggingError(getDeploymentResponse.error);
   }
 
   const deploymentWithWorker = getDeploymentResponse.data;
 
   if (!deploymentWithWorker.worker) {
+    const errorData = deploymentWithWorker.errorData
+      ? prepareDeploymentError(deploymentWithWorker.errorData)
+      : undefined;
+
     await failDeploy(
       projectClient.client,
       deployment,
-      { name: "DeploymentError", message: "Failed to get deployment with worker" },
+      {
+        name: "DeploymentError",
+        message: errorData?.message ?? "Failed to get deployment with worker",
+      },
       buildResult.logs,
       $spinner
     );
 
-    throw new SkipLoggingError("Failed to get deployment with worker");
+    throw new SkipLoggingError(errorData?.message ?? "Failed to get deployment with worker");
   }
 
   const imageReference = options.selfHosted
@@ -564,14 +629,14 @@ export async function syncEnvVarsWithServer(
   apiClient: CliApiClient,
   projectRef: string,
   environmentSlug: string,
-  envVars: Record<string, string>
+  envVars: Record<string, string>,
+  parentEnvVars?: Record<string, string>
 ) {
-  const uploadResult = await apiClient.importEnvVars(projectRef, environmentSlug, {
+  return await apiClient.importEnvVars(projectRef, environmentSlug, {
     variables: envVars,
+    parentVariables: parentEnvVars,
     override: true,
   });
-
-  return uploadResult.success;
 }
 
 async function failDeploy(
@@ -583,6 +648,8 @@ async function failDeploy(
   warnings?: string[],
   errors?: string[]
 ) {
+  logger.debug("failDeploy", { error, logs, warnings, errors });
+
   $spinner.stop(`Failed to deploy project`);
 
   const doOutputLogs = async (prefix: string = "Error") => {
@@ -600,7 +667,7 @@ async function failDeploy(
         }. Full build logs have been saved to ${logPath}`
       );
     } else {
-      outro(`${chalkError(`${prefix}:`)} ${error.message}.`);
+      outro(`${chalkError(`${prefix}:`)} ${error.message}`);
     }
   };
 
@@ -642,7 +709,7 @@ async function failDeploy(
           : undefined;
 
         if (errorData) {
-          prettyError(errorData.name, errorData.stack, errorData.stderr);
+          prettyError(errorData.message, errorData.stack, errorData.stderr);
 
           if (logs.trim() !== "") {
             const logPath = await saveLogs(deployment.shortCode, logs);
@@ -674,5 +741,23 @@ async function failDeploy(
         break;
       }
     }
+  }
+}
+
+export function verifyDirectory(dir: string, projectPath: string) {
+  if (dir !== "." && !isDirectory(projectPath)) {
+    if (dir === "staging" || dir === "prod" || dir === "preview") {
+      throw new Error(`To deploy to ${dir}, you need to pass "--env ${dir}", not just "${dir}".`);
+    }
+
+    if (dir === "production") {
+      throw new Error(`To deploy to production, you need to pass "--env prod", not "production".`);
+    }
+
+    if (dir === "stg") {
+      throw new Error(`To deploy to staging, you need to pass "--env staging", not "stg".`);
+    }
+
+    throw new Error(`Directory "${dir}" not found at ${projectPath}`);
   }
 }

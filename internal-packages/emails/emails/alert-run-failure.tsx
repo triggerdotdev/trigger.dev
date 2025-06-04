@@ -21,7 +21,6 @@ export const AlertRunEmailSchema = z.object({
   project: z.string(),
   taskIdentifier: z.string(),
   fileName: z.string(),
-  exportName: z.string(),
   version: z.string(),
   environment: z.string(),
   error: z.object({
@@ -41,7 +40,6 @@ const previewDefaults: AlertRunEmailProps = {
   project: "my-project",
   taskIdentifier: "my-task",
   fileName: "other.ts",
-  exportName: "myTask",
   version: "20240101.1",
   environment: "prod",
   error: {
@@ -59,7 +57,6 @@ export default function Email(props: AlertRunEmailProps) {
     project,
     taskIdentifier,
     fileName,
-    exportName,
     version,
     environment,
     error,
@@ -81,7 +78,6 @@ export default function Email(props: AlertRunEmailProps) {
           <Text style={paragraphTight}>Project: {project}</Text>
           <Text style={paragraphTight}>Task ID: {taskIdentifier}</Text>
           <Text style={paragraphTight}>Filename: {fileName}</Text>
-          <Text style={paragraphTight}>Function: {exportName}()</Text>
           <Text style={paragraphTight}>Version: {version}</Text>
           <Text style={paragraphTight}>Environment: {environment}</Text>
 

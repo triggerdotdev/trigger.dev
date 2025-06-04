@@ -1,5 +1,5 @@
 import { startActiveSpan } from "../tracer.server";
-import { calculateNextScheduledTimestamp } from "../utils/calculateNextSchedule.server";
+import { calculateNextScheduledTimestampFromNow } from "../utils/calculateNextSchedule.server";
 import { BaseService } from "./baseService.server";
 import { TriggerScheduledTaskService } from "./triggerScheduledTask.server";
 
@@ -28,11 +28,14 @@ export class RegisterNextTaskScheduleInstanceService extends BaseService {
           "task_schedule_generator_expression",
           instance.taskSchedule.generatorExpression
         );
+        span.setAttribute(
+          "last_scheduled_timestamp",
+          instance.lastScheduledTimestamp?.toISOString() ?? new Date().toISOString()
+        );
 
-        return calculateNextScheduledTimestamp(
+        return calculateNextScheduledTimestampFromNow(
           instance.taskSchedule.generatorExpression,
-          instance.taskSchedule.timezone,
-          instance.lastScheduledTimestamp ?? new Date()
+          instance.taskSchedule.timezone
         );
       }
     );

@@ -73,7 +73,7 @@ export class WorkerGroupTokenService extends WithRunEngine {
   }
 
   async rotateToken({ workerGroupId }: { workerGroupId: string }) {
-    const workerGroup = await this._prisma.workerInstanceGroup.findUnique({
+    const workerGroup = await this._prisma.workerInstanceGroup.findFirst({
       where: {
         id: workerGroupId,
       },
@@ -266,12 +266,10 @@ export class WorkerGroupTokenService extends WithRunEngine {
     return await $transaction(this._prisma, async (tx) => {
       const resourceIdentifier = deploymentId ? `${deploymentId}:${instanceName}` : instanceName;
 
-      const workerInstance = await tx.workerInstance.findUnique({
+      const workerInstance = await tx.workerInstance.findFirst({
         where: {
-          workerGroupId_resourceIdentifier: {
-            workerGroupId: workerGroup.id,
-            resourceIdentifier,
-          },
+          workerGroupId: workerGroup.id,
+          resourceIdentifier,
         },
         include: {
           deployment: true,
@@ -315,12 +313,10 @@ export class WorkerGroupTokenService extends WithRunEngine {
             // Unique constraint violation
             if (error.code === "P2002") {
               try {
-                const existingWorkerInstance = await tx.workerInstance.findUnique({
+                const existingWorkerInstance = await tx.workerInstance.findFirst({
                   where: {
-                    workerGroupId_resourceIdentifier: {
-                      workerGroupId: workerGroup.id,
-                      resourceIdentifier,
-                    },
+                    workerGroupId: workerGroup.id,
+                    resourceIdentifier,
                   },
                   include: {
                     deployment: true,
@@ -363,7 +359,7 @@ export class WorkerGroupTokenService extends WithRunEngine {
 
       // Unmanaged workers instances are locked to a specific deployment version
 
-      const deployment = await tx.workerDeployment.findUnique({
+      const deployment = await tx.workerDeployment.findFirst({
         where: {
           ...(deploymentId.startsWith("deployment_")
             ? {
@@ -457,7 +453,11 @@ export class WorkerGroupTokenService extends WithRunEngine {
         },
         include: {
           deployment: true,
-          environment: true,
+          environment: {
+            include: {
+              parentEnvironment: true,
+            },
+          },
         },
       });
 
@@ -481,6 +481,10 @@ export class WorkerGroupTokenService extends WithRunEngine {
 export const WorkerInstanceEnv = z.enum(["dev", "staging", "prod"]).default("prod");
 export type WorkerInstanceEnv = z.infer<typeof WorkerInstanceEnv>;
 
+type EnvironmentWithParent = RuntimeEnvironment & {
+  parentEnvironment?: RuntimeEnvironment | null;
+};
+
 export type AuthenticatedWorkerInstanceOptions = WithRunEngineOptions<{
   type: WorkerInstanceGroupType;
   name: string;
@@ -491,7 +495,7 @@ export type AuthenticatedWorkerInstanceOptions = WithRunEngineOptions<{
   deploymentId?: string;
   backgroundWorkerId?: string;
   runnerId?: string;
-  environment: RuntimeEnvironment | null;
+  environment: EnvironmentWithParent | null;
 }>;
 
 export class AuthenticatedWorkerInstance extends WithRunEngine {
@@ -501,7 +505,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
   readonly workerInstanceId: string;
   readonly runnerId?: string;
   readonly masterQueue: string;
-  readonly environment: RuntimeEnvironment | null;
+  readonly environment: EnvironmentWithParent | null;
   readonly deploymentId?: string;
   readonly backgroundWorkerId?: string;
 
@@ -682,9 +686,12 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
 
     const environment =
       this.environment ??
-      (await this._prisma.runtimeEnvironment.findUnique({
+      (await this._prisma.runtimeEnvironment.findFirst({
         where: {
           id: engineResult.execution.environment.id,
+        },
+        include: {
+          parentEnvironment: true,
         },
       }));
 
@@ -692,7 +699,8 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       ? await this.getEnvVars(
           environment,
           engineResult.run.id,
-          engineResult.execution.machine ?? defaultMachinePreset
+          engineResult.execution.machine ?? defaultMachinePreset,
+          environment.parentEnvironment ?? undefined
         )
       : {};
 
@@ -797,9 +805,10 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
   private async getEnvVars(
     environment: RuntimeEnvironment,
     runId: string,
-    machinePreset: MachinePreset
+    machinePreset: MachinePreset,
+    parentEnvironment?: RuntimeEnvironment
   ): Promise<Record<string, string>> {
-    const variables = await resolveVariablesForEnvironment(environment);
+    const variables = await resolveVariablesForEnvironment(environment, parentEnvironment);
 
     const jwt = await generateJWTTokenForEnvironment(environment, {
       run_id: runId,

@@ -1,12 +1,15 @@
 import type { AuthenticatedEnvironment } from "@internal/run-engine";
 import type { Prisma, PrismaClientOrTransaction, RuntimeEnvironment } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
+import { logger } from "~/services/logger.server";
 import { getUsername } from "~/utils/username";
+import { sanitizeBranchName } from "~/v3/gitBranch";
 
 export type { RuntimeEnvironment };
 
 export async function findEnvironmentByApiKey(
-  apiKey: string
+  apiKey: string,
+  branchName: string | undefined
 ): Promise<AuthenticatedEnvironment | null> {
   const environment = await prisma.runtimeEnvironment.findFirst({
     where: {
@@ -16,6 +19,14 @@ export async function findEnvironmentByApiKey(
       project: true,
       organization: true,
       orgMember: true,
+      childEnvironments: branchName
+        ? {
+            where: {
+              branchName: sanitizeBranchName(branchName),
+              archivedAt: null,
+            },
+          }
+        : undefined,
     },
   });
 
@@ -24,11 +35,37 @@ export async function findEnvironmentByApiKey(
     return null;
   }
 
+  if (environment.type === "PREVIEW") {
+    if (!branchName) {
+      logger.error("findEnvironmentByApiKey(): Preview env with no branch name provided", {
+        environmentId: environment.id,
+      });
+      return null;
+    }
+
+    const childEnvironment = environment?.childEnvironments.at(0);
+
+    if (childEnvironment) {
+      return {
+        ...childEnvironment,
+        apiKey: environment.apiKey,
+        orgMember: environment.orgMember,
+        organization: environment.organization,
+        project: environment.project,
+      };
+    }
+
+    //A branch was specified but no child environment was found
+    return null;
+  }
+
   return environment;
 }
 
+/** @deprecated We don't use public api keys anymore */
 export async function findEnvironmentByPublicApiKey(
-  apiKey: string
+  apiKey: string,
+  branchName: string | undefined
 ): Promise<AuthenticatedEnvironment | null> {
   const environment = await prisma.runtimeEnvironment.findFirst({
     where: {
@@ -49,7 +86,9 @@ export async function findEnvironmentByPublicApiKey(
   return environment;
 }
 
-export async function findEnvironmentById(id: string): Promise<AuthenticatedEnvironment | null> {
+export async function findEnvironmentById(
+  id: string
+): Promise<(AuthenticatedEnvironment & { parentEnvironment: { apiKey: string } | null }) | null> {
   const environment = await prisma.runtimeEnvironment.findFirst({
     where: {
       id,
@@ -58,6 +97,11 @@ export async function findEnvironmentById(id: string): Promise<AuthenticatedEnvi
       project: true,
       organization: true,
       orgMember: true,
+      parentEnvironment: {
+        select: {
+          apiKey: true,
+        },
+      },
     },
   });
 

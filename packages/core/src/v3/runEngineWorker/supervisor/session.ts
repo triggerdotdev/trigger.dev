@@ -21,6 +21,7 @@ type SupervisorSessionOptions = SupervisorClientCommonOptions & {
   preSkip?: PreSkipFn;
   maxRunCount?: number;
   maxConsumerCount?: number;
+  sendRunDebugLogs?: boolean;
 };
 
 export class SupervisorSession extends EventEmitter<WorkerEvents> {

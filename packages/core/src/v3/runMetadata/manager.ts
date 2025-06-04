@@ -4,7 +4,7 @@ import { ApiClient } from "../apiClient/index.js";
 import { FlushedRunMetadata, RunMetadataChangeOperation } from "../schemas/common.js";
 import { ApiRequestOptions } from "../zodfetch.js";
 import { MetadataStream } from "./metadataStream.js";
-import { applyMetadataOperations } from "./operations.js";
+import { applyMetadataOperations, collapseOperations } from "./operations.js";
 import { RunMetadataManager, RunMetadataUpdater } from "./types.js";
 import { AsyncIterableStream } from "../streams/asyncIterableStream.js";
 
@@ -33,7 +33,7 @@ export class StandardMetadataManager implements RunMetadataManager {
   get parent(): RunMetadataUpdater {
     // Store a reference to 'this' to ensure proper context
     const self = this;
-    
+
     // Create the updater object and store it in a local variable
     const parentUpdater: RunMetadataUpdater = {
       set: (key, value) => {
@@ -66,14 +66,14 @@ export class StandardMetadataManager implements RunMetadataManager {
       },
       stream: (key, value, signal) => self.doStream(key, value, "parent", parentUpdater, signal),
     };
-    
+
     return parentUpdater;
   }
 
   get root(): RunMetadataUpdater {
     // Store a reference to 'this' to ensure proper context
     const self = this;
-    
+
     // Create the updater object and store it in a local variable
     const rootUpdater: RunMetadataUpdater = {
       set: (key, value) => {
@@ -106,7 +106,7 @@ export class StandardMetadataManager implements RunMetadataManager {
       },
       stream: (key, value, signal) => self.doStream(key, value, "root", rootUpdater, signal),
     };
-    
+
     return rootUpdater;
   }
 
@@ -353,9 +353,17 @@ export class StandardMetadataManager implements RunMetadataManager {
     this.queuedRootOperations.clear();
 
     try {
+      const collapsedOperations = collapseOperations(operations);
+      const collapsedParentOperations = collapseOperations(parentOperations);
+      const collapsedRootOperations = collapseOperations(rootOperations);
+
       const response = await this.apiClient.updateRunMetadata(
         this.runId,
-        { operations, parentOperations, rootOperations },
+        {
+          operations: collapsedOperations,
+          parentOperations: collapsedParentOperations,
+          rootOperations: collapsedRootOperations,
+        },
         requestOptions
       );
 
@@ -406,10 +414,14 @@ export class StandardMetadataManager implements RunMetadataManager {
       return;
     }
 
+    const operations = Array.from(this.queuedOperations);
+    const parentOperations = Array.from(this.queuedParentOperations);
+    const rootOperations = Array.from(this.queuedRootOperations);
+
     return {
-      operations: Array.from(this.queuedOperations),
-      parentOperations: Array.from(this.queuedParentOperations),
-      rootOperations: Array.from(this.queuedRootOperations),
+      operations: collapseOperations(operations),
+      parentOperations: collapseOperations(parentOperations),
+      rootOperations: collapseOperations(rootOperations),
     };
   }
 

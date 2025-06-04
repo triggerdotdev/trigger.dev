@@ -1,5 +1,27 @@
 # internal-platform
 
+## 4.0.0-v4-beta.20
+
+## 4.0.0-v4-beta.19
+
+### Patch Changes
+
+- Add supervisor http client option to disable debug logs ([#2116](https://github.com/triggerdotdev/trigger.dev/pull/2116))
+- Add import timings and bundle size analysis, the dev command will now warn about slow imports ([#2114](https://github.com/triggerdotdev/trigger.dev/pull/2114))
+- Improve metadata flushing efficiency by collapsing operations ([#2106](https://github.com/triggerdotdev/trigger.dev/pull/2106))
+
+## 4.0.0-v4-beta.18
+
+## 4.0.0-v4-beta.17
+
+### Patch Changes
+
+- Expose esbuild `keepNames` option (experimental) ([#2091](https://github.com/triggerdotdev/trigger.dev/pull/2091))
+- Add `experimental_autoDetectExternal` trigger config option ([#2083](https://github.com/triggerdotdev/trigger.dev/pull/2083))
+- Improve structured logs ([#2062](https://github.com/triggerdotdev/trigger.dev/pull/2062))
+- Add verbose structured log level ([#2062](https://github.com/triggerdotdev/trigger.dev/pull/2062))
+- Expose esbuild `minify` option (experimental) ([#2091](https://github.com/triggerdotdev/trigger.dev/pull/2091))
+
 ## 4.0.0-v4-beta.16
 
 ## 4.0.0-v4-beta.15

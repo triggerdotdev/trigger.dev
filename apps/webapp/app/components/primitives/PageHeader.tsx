@@ -5,7 +5,7 @@ import { UpgradePrompt, useShowUpgradePrompt } from "../billing/UpgradePrompt";
 import { BreadcrumbIcon } from "./BreadcrumbIcon";
 import { Header2 } from "./Headers";
 import { LoadingBarDivider } from "./LoadingBarDivider";
-import { EnvironmentPausedBanner } from "../navigation/EnvironmentPausedBanner";
+import { EnvironmentBanner } from "../navigation/EnvironmentBanner";
 
 type WithChildren = {
   children: React.ReactNode;
@@ -25,11 +25,7 @@ export function NavBar({ children }: WithChildren) {
         <div className="flex w-full items-center justify-between pl-3 pr-2">{children}</div>
         <LoadingBarDivider isLoading={isLoading} />
       </div>
-      {showUpgradePrompt.shouldShow && organization ? (
-        <UpgradePrompt />
-      ) : (
-        <EnvironmentPausedBanner />
-      )}
+      {showUpgradePrompt.shouldShow && organization ? <UpgradePrompt /> : <EnvironmentBanner />}
     </div>
   );
 }

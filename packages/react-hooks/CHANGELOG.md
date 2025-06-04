@@ -1,5 +1,33 @@
 # @trigger.dev/react-hooks
 
+## 4.0.0-v4-beta.20
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.20`
+
+## 4.0.0-v4-beta.19
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.19`
+
+## 4.0.0-v4-beta.18
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.18`
+
+## 4.0.0-v4-beta.17
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.17`
+
 ## 4.0.0-v4-beta.16
 
 ### Patch Changes

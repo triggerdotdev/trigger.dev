@@ -1,0 +1,62 @@
+---
+title: "CLI preview archive command"
+sidebarTitle: "preview archive"
+description: "The `trigger.dev preview archive` command can be used to archive a preview branch."
+---
+
+import UpgradeToV4Note from "/snippets/upgrade-to-v4-note.mdx";
+import ProjectPathArg from "/snippets/cli-args-project-path.mdx";
+import CommonOptions from "/snippets/cli-options-common.mdx";
+import ProjectRefOption from "/snippets/cli-options-project-ref.mdx";
+import EnvFileOption from "/snippets/cli-options-env-file.mdx";
+import ConfigFileOption from "/snippets/cli-options-config-file.mdx";
+import SkipUpdateCheckOption from "/snippets/cli-options-skip-update-check.mdx";
+import BranchOption from "/snippets/cli-options-branch.mdx";
+
+<UpgradeToV4Note />
+
+Run the command like this:
+
+<CodeGroup>
+
+```bash npm
+npx trigger.dev@v4-beta preview archive
+```
+
+```bash pnpm
+pnpm dlx trigger.dev@v4-beta preview archive
+```
+
+```bash yarn
+yarn dlx trigger.dev@v4-beta preview archive
+```
+
+</CodeGroup>
+
+It will archive the preview branch, automatically detecting the branch name from git. You can manually specify the branch using the `--branch` option.
+
+## Arguments
+
+```
+npx trigger.dev@v4-beta preview archive [path]
+```
+
+<ProjectPathArg />
+
+## Options
+
+<BranchOption />
+
+<ConfigFileOption />
+
+<ProjectRefOption />
+
+<EnvFileOption />
+
+<SkipUpdateCheckOption />
+
+### Common options
+
+These options are available on most commands.
+
+<CommonOptions />

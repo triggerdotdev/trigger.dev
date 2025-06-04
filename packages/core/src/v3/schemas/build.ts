@@ -24,6 +24,7 @@ export const BuildManifest = z.object({
   contentHash: z.string(),
   runtime: BuildRuntime,
   environment: z.string(),
+  branch: z.string().optional(),
   config: ConfigManifest,
   files: z.array(TaskFile),
   sources: z.record(
@@ -51,6 +52,7 @@ export const BuildManifest = z.object({
     sync: z
       .object({
         env: z.record(z.string()).optional(),
+        parentEnv: z.record(z.string()).optional(),
       })
       .optional(),
   }),
@@ -89,6 +91,7 @@ export const WorkerManifest = z.object({
   initEntryPoint: z.string().optional(), // Optional init.ts entry point
   runtime: BuildRuntime,
   customConditions: z.array(z.string()).optional(),
+  timings: z.record(z.number()).optional(),
   otelImportHook: z
     .object({
       include: z.array(z.string()).optional(),

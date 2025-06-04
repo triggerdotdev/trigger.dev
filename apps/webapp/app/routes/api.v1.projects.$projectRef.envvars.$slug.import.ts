@@ -5,6 +5,7 @@ import { z } from "zod";
 import {
   authenticateProjectApiKeyOrPersonalAccessToken,
   authenticatedEnvironmentForAuthentication,
+  branchNameFromRequest,
 } from "~/services/apiAuth.server";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 
@@ -29,7 +30,8 @@ export async function action({ params, request }: ActionFunctionArgs) {
   const environment = await authenticatedEnvironmentForAuthentication(
     authenticationResult,
     parsedParams.data.projectRef,
-    parsedParams.data.slug
+    parsedParams.data.slug,
+    branchNameFromRequest(request)
   );
 
   const repository = new EnvironmentVariablesRepository();
@@ -44,6 +46,33 @@ export async function action({ params, request }: ActionFunctionArgs) {
       value,
     })),
   });
+
+  // Only sync parent variables if this is a branch environment
+  if (environment.parentEnvironmentId && body.parentVariables) {
+    const parentResult = await repository.create(environment.project.id, {
+      override: typeof body.override === "boolean" ? body.override : false,
+      environmentIds: [environment.parentEnvironmentId],
+      variables: Object.entries(body.parentVariables).map(([key, value]) => ({
+        key,
+        value,
+      })),
+    });
+
+    let childFailure = !result.success ? result : undefined;
+    let parentFailure = !parentResult.success ? parentResult : undefined;
+
+    if (result.success || parentResult.success) {
+      return json({ success: true });
+    } else {
+      return json(
+        {
+          error: childFailure?.error || parentFailure?.error || "Unknown error",
+          variableErrors: childFailure?.variableErrors || parentFailure?.variableErrors,
+        },
+        { status: 400 }
+      );
+    }
+  }
 
   if (result.success) {
     return json({ success: true });
