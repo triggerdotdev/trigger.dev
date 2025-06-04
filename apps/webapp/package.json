@@ -137,7 +137,6 @@
     "isbot": "^3.6.5",
     "jose": "^5.4.0",
     "jsonpointer": "^5.0.1",
-    "jwt-decode": "^4.0.0",
     "lodash.omit": "^4.5.0",
     "lucide-react": "^0.229.0",
     "marked": "^4.0.18",

@@ -37,7 +37,6 @@ import { createGitMeta } from "../../utilities/gitMeta.js";
 const WorkersBuildCommandOptions = CommonCommandOptions.extend({
   // docker build options
   load: z.boolean().default(false),
-  platform: z.enum(["linux/amd64", "linux/arm64"]).default("linux/amd64"),
   network: z.enum(["default", "none", "host"]).optional(),
   tag: z.string().optional(),
   push: z.boolean().default(false),
@@ -235,18 +234,10 @@ async function _workerBuildCommand(dir: string, options: WorkersBuildCommandOpti
     return;
   }
 
-  const tagParts = parseDockerImageReference(options.tag ?? "");
-
-  // Account for empty strings to preserve existing behavior
-  const registry = tagParts.registry ? tagParts.registry : undefined;
-  const namespace = tagParts.repo ? tagParts.repo : undefined;
-
   const deploymentResponse = await projectClient.client.initializeDeployment({
     contentHash: buildManifest.contentHash,
     userId: authorization.userId,
     selfHosted: options.local,
-    registryHost: registry,
-    namespace: namespace,
     type: "UNMANAGED",
   });
 
@@ -329,16 +320,14 @@ async function _workerBuildCommand(dir: string, options: WorkersBuildCommandOpti
   }
 
   const buildResult = await buildImage({
-    selfHosted: local,
-    buildPlatform: options.platform,
+    isLocalBuild: local,
+    imagePlatform: deployment.imagePlatform,
     noCache: options.noCache,
     push: options.push,
-    registryHost: registry,
-    registry: registry,
     deploymentId: deployment.id,
     deploymentVersion: deployment.version,
     imageTag: deployment.imageTag,
-    loadImage: options.load,
+    load: options.load,
     contentHash: deployment.contentHash,
     externalBuildId: deployment.externalBuildData?.buildId,
     externalBuildToken: deployment.externalBuildData?.buildToken,
@@ -352,6 +341,7 @@ async function _workerBuildCommand(dir: string, options: WorkersBuildCommandOpti
     compilationPath: destination.path,
     buildEnvVars: buildManifest.build.env,
     network: options.network,
+    builder: "trigger",
   });
 
   logger.debug("Build result", buildResult);
@@ -447,7 +437,7 @@ async function _workerBuildCommand(dir: string, options: WorkersBuildCommandOpti
   }
 
   outro(
-    `Version ${version} built and ready to deploy: ${buildResult.image} ${
+    `Version ${version} built and ready to deploy: ${deployment.imageTag} ${
       isLinksSupported ? `| ${deploymentLink} | ${testLink}` : ""
     }`
   );

@@ -74,6 +74,7 @@ export class DeploymentPresenter {
         version: true,
         errorData: true,
         imageReference: true,
+        imagePlatform: true,
         externalBuildData: true,
         projectId: true,
         type: true,
@@ -157,6 +158,7 @@ export class DeploymentPresenter {
         sdkVersion: deployment.worker?.sdkVersion,
         cliVersion: deployment.worker?.cliVersion,
         imageReference: deployment.imageReference,
+        imagePlatform: deployment.imagePlatform,
         externalBuildData:
           externalBuildData && externalBuildData.success ? externalBuildData.data : undefined,
         projectId: deployment.projectId,

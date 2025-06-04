@@ -2858,6 +2858,7 @@ model WorkerDeployment {
   version     String
 
   imageReference String?
+  imagePlatform  String  @default("linux/amd64")
 
   externalBuildData Json?
 

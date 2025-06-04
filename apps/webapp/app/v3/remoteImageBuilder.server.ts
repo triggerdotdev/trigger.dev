@@ -4,7 +4,7 @@ import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 
 export async function createRemoteImageBuild(project: Project) {
-  if (!env.DEPOT_TOKEN || !env.DEPOT_PROJECT_ID) {
+  if (!remoteBuildsEnabled()) {
     return;
   }
 
@@ -56,4 +56,8 @@ async function createBuilderProjectIfNotExists(project: Project) {
   });
 
   return result.project.projectId;
+}
+
+export function remoteBuildsEnabled() {
+  return env.DEPOT_TOKEN && env.DEPOT_ORG_ID && env.DEPOT_REGION;
 }

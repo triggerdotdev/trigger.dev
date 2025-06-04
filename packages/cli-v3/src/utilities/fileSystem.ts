@@ -56,6 +56,20 @@ export async function readJSONFile(path: string) {
   return JSON.parse(fileContents);
 }
 
+export async function safeReadJSONFile(path: string) {
+  try {
+    const fileExists = await pathExists(path);
+
+    if (!fileExists) return;
+
+    const fileContents = await readFile(path);
+
+    return JSON.parse(fileContents);
+  } catch {
+    return;
+  }
+}
+
 export async function writeJSONFile(path: string, json: any, pretty = false) {
   await writeFile(path, JSON.stringify(json, undefined, pretty ? 2 : undefined), "utf8");
 }

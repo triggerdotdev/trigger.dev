@@ -29,8 +29,9 @@ const Env = z.object({
   RUNNER_HEARTBEAT_INTERVAL_SECONDS: z.coerce.number().optional(),
   RUNNER_SNAPSHOT_POLL_INTERVAL_SECONDS: z.coerce.number().optional(),
   RUNNER_ADDITIONAL_ENV_VARS: AdditionalEnvVars, // optional (csv)
+  RUNNER_PRETTY_LOGS: BoolEnv.default(false),
 
-  // Dequeue settings
+  // Dequeue settings (provider mode)
   TRIGGER_DEQUEUE_ENABLED: BoolEnv.default("true"),
   TRIGGER_DEQUEUE_INTERVAL_MS: z.coerce.number().int().default(250),
   TRIGGER_DEQUEUE_IDLE_INTERVAL_MS: z.coerce.number().int().default(1000),
@@ -48,6 +49,12 @@ const Env = z.object({
   RESOURCE_MONITOR_OVERRIDE_MEMORY_TOTAL_GB: z.coerce.number().optional(),
 
   // Docker settings
+  DOCKER_API_VERSION: z.string().default("v1.41"),
+  DOCKER_PLATFORM: z.string().optional(), // e.g. linux/amd64, linux/arm64
+  DOCKER_STRIP_IMAGE_DIGEST: BoolEnv.default(true),
+  DOCKER_REGISTRY_USERNAME: z.string().optional(),
+  DOCKER_REGISTRY_PASSWORD: z.string().optional(),
+  DOCKER_REGISTRY_URL: z.string().optional(), // e.g. https://index.docker.io/v1
   DOCKER_ENFORCE_MACHINE_PRESETS: BoolEnv.default(true),
   DOCKER_AUTOREMOVE_EXITED_CONTAINERS: BoolEnv.default(true),
   /**

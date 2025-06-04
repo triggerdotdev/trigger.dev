@@ -46,12 +46,13 @@ export class TimeoutDeploymentService extends BaseService {
     deploymentId: string,
     fromStatus: string,
     errorMessage: string,
-    runAt: Date
+    runAt: Date,
+    tx?: PrismaClientOrTransaction
   ) {
     await workerQueue.enqueue(
       "v3.timeoutDeployment",
       {
-        deploymentId: deploymentId,
+        deploymentId,
         fromStatus,
         errorMessage,
       },
@@ -59,6 +60,7 @@ export class TimeoutDeploymentService extends BaseService {
         runAt,
         jobKey: `timeoutDeployment:${deploymentId}`,
         jobKeyMode: "replace",
+        tx,
       }
     );
   }

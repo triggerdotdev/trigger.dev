@@ -8,8 +8,8 @@ export function GitMetadata({ git }: { git?: GitMetaLinks | null }) {
   return (
     <>
       {git.pullRequestUrl && git.pullRequestNumber && <GitMetadataPullRequest git={git} />}
-      {git.shortSha && <GitMetadataCommit git={git} />}
       {git.branchUrl && <GitMetadataBranch git={git} />}
+      {git.shortSha && <GitMetadataCommit git={git} />}
     </>
   );
 }

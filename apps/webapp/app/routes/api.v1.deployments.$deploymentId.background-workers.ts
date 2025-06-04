@@ -5,7 +5,7 @@ import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { CreateDeclarativeScheduleError } from "~/v3/services/createBackgroundWorker.server";
-import { CreateDeploymentBackgroundWorkerService } from "~/v3/services/createDeploymentBackgroundWorker.server";
+import { CreateDeploymentBackgroundWorkerServiceV4 } from "~/v3/services/createDeploymentBackgroundWorkerV4.server";
 
 const ParamsSchema = z.object({
   deploymentId: z.string(),
@@ -42,7 +42,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ error: "Invalid body", issues: body.error.issues }, { status: 400 });
   }
 
-  const service = new CreateDeploymentBackgroundWorkerService();
+  const service = new CreateDeploymentBackgroundWorkerServiceV4();
 
   try {
     const backgroundWorker = await service.call(authenticatedEnv, deploymentId, body.data);
@@ -63,7 +63,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     logger.error("Failed to create background worker", { error: e });
 
     if (e instanceof ServiceValidationError) {
-      return json({ error: e.message }, { status: 400 });
+      return json({ error: e.message }, { status: e.status ?? 400 });
     } else if (e instanceof CreateDeclarativeScheduleError) {
       return json({ error: e.message }, { status: 400 });
     }

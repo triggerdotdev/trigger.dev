@@ -3,7 +3,6 @@ import {
   InitializeDeploymentRequestBody,
   InitializeDeploymentResponseBody,
 } from "@trigger.dev/core/v3";
-import { env } from "~/env.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
@@ -35,7 +34,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const service = new InitializeDeploymentService();
 
   try {
-    const { deployment, imageTag } = await service.call(authenticatedEnv, body.data);
+    const { deployment, imageRef } = await service.call(authenticatedEnv, body.data);
 
     const responseBody: InitializeDeploymentResponseBody = {
       id: deployment.friendlyId,
@@ -44,8 +43,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
       version: deployment.version,
       externalBuildData:
         deployment.externalBuildData as InitializeDeploymentResponseBody["externalBuildData"],
-      imageTag,
-      registryHost: body.data.registryHost ?? env.DEPLOY_REGISTRY_HOST,
+      imageTag: imageRef,
+      imagePlatform: deployment.imagePlatform,
     };
 
     return json(responseBody, { status: 200 });
