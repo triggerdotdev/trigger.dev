@@ -16,7 +16,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       packageVersion: coreVersion,
       gitSha: process.env.BUILD_GIT_SHA,
       gitRefName: process.env.BUILD_GIT_REF_NAME,
-      buildTimestampSeonds: process.env.BUILD_TIMESTAMP_SECONDS,
+      buildTimestampSeconds: process.env.BUILD_TIMESTAMP_SECONDS,
     } satisfies BuildInfo,
   });
 };
