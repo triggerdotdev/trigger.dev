@@ -96,7 +96,7 @@ export class DequeueSystem {
                   );
                   // remove the run from the queue
                   await this.$.runQueue.acknowledgeMessage(orgId, runId);
-                  return null;
+                  return;
                 }
 
                 //create a failed snapshot
