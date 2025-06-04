@@ -76,6 +76,7 @@ export type RunQueueOptions = {
     disabled?: boolean;
   };
   meter?: Meter;
+  dequeueBlockingTimeoutSeconds?: number;
 };
 
 type DequeuedMessage = {
@@ -510,9 +511,6 @@ export class RunQueue {
     return this.#trace(
       "dequeueMessageFromWorkerQueue",
       async (span) => {
-        // TODO: this is where we read from the worker queue, which is a list of message IDs
-        // We'll perform a BLPOP on the worker list, and then read the message from the message list
-        // We'll then return the message
         const dequeuedMessage = await this.#callDequeueMessageFromWorkerQueue({
           workerQueue,
         });
@@ -1376,8 +1374,7 @@ export class RunQueue {
       workerQueueKey,
       //args
       this.options.redis.keyPrefix ?? "",
-      // TODO: make this configurable
-      String(10)
+      String(this.options.dequeueBlockingTimeoutSeconds ?? 10)
     );
 
     this.abortController.signal.removeEventListener("abort", cleanup);

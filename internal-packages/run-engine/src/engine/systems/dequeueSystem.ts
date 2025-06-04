@@ -78,7 +78,7 @@ export class DequeueSystem {
         //lock the run so nothing else can modify it
         try {
           const dequeuedRun = await this.$.runLock.lock(
-            "dequeueFromMasterQueue",
+            "dequeueFromWorkerQueue",
             [runId],
             5000,
             async (signal) => {
@@ -135,7 +135,7 @@ export class DequeueSystem {
                   tx: prisma,
                 });
                 this.$.logger.error(
-                  `RunEngine.dequeueFromMasterQueue(): Run is not in a valid state to be dequeued: ${runId}\n ${snapshot.id}:${snapshot.executionStatus}`
+                  `RunEngine.dequeueFromWorkerQueue(): Run is not in a valid state to be dequeued: ${runId}\n ${snapshot.id}:${snapshot.executionStatus}`
                 );
 
                 return;
@@ -192,7 +192,7 @@ export class DequeueSystem {
                 switch (result.code) {
                   case "NO_RUN": {
                     //this should not happen, the run is unrecoverable so we'll ack it
-                    this.$.logger.error("RunEngine.dequeueFromMasterQueue(): No run found", {
+                    this.$.logger.error("RunEngine.dequeueFromWorkerQueue(): No run found", {
                       runId,
                       latestSnapshot: snapshot.id,
                     });
@@ -202,7 +202,7 @@ export class DequeueSystem {
                   case "RUN_ENVIRONMENT_ARCHIVED": {
                     //this happens if the preview branch was archived
                     this.$.logger.warn(
-                      "RunEngine.dequeueFromMasterQueue(): Run environment archived",
+                      "RunEngine.dequeueFromWorkerQueue(): Run environment archived",
                       {
                         runId,
                         latestSnapshot: snapshot.id,
@@ -216,7 +216,7 @@ export class DequeueSystem {
                   case "TASK_NEVER_REGISTERED":
                   case "QUEUE_NOT_FOUND":
                   case "TASK_NOT_IN_LATEST": {
-                    this.$.logger.warn(`RunEngine.dequeueFromMasterQueue(): ${result.code}`, {
+                    this.$.logger.warn(`RunEngine.dequeueFromWorkerQueue(): ${result.code}`, {
                       runId,
                       latestSnapshot: snapshot.id,
                       result,
@@ -234,7 +234,7 @@ export class DequeueSystem {
                   }
                   case "BACKGROUND_WORKER_MISMATCH": {
                     this.$.logger.warn(
-                      "RunEngine.dequeueFromMasterQueue(): Background worker mismatch",
+                      "RunEngine.dequeueFromWorkerQueue(): Background worker mismatch",
                       {
                         runId,
                         latestSnapshot: snapshot.id,
@@ -256,7 +256,7 @@ export class DequeueSystem {
               //check for a valid deployment if it's not a development environment
               if (result.run.runtimeEnvironment.type !== "DEVELOPMENT") {
                 if (!result.deployment || !result.deployment.imageReference) {
-                  this.$.logger.warn("RunEngine.dequeueFromMasterQueue(): No deployment found", {
+                  this.$.logger.warn("RunEngine.dequeueFromWorkerQueue(): No deployment found", {
                     runId,
                     latestSnapshot: snapshot.id,
                     result,
@@ -289,7 +289,7 @@ export class DequeueSystem {
                 const retryConfig = result.task.retryConfig;
 
                 this.$.logger.debug(
-                  "RunEngine.dequeueFromMasterQueue(): maxAttempts not set, using task's retry config",
+                  "RunEngine.dequeueFromWorkerQueue(): maxAttempts not set, using task's retry config",
                   {
                     runId,
                     task: result.task.id,
@@ -300,7 +300,7 @@ export class DequeueSystem {
                 const parsedConfig = RetryOptions.nullable().safeParse(retryConfig);
 
                 if (!parsedConfig.success) {
-                  this.$.logger.error("RunEngine.dequeueFromMasterQueue(): Invalid retry config", {
+                  this.$.logger.error("RunEngine.dequeueFromWorkerQueue(): Invalid retry config", {
                     runId,
                     task: result.task.id,
                     rawRetryConfig: retryConfig,
@@ -373,7 +373,7 @@ export class DequeueSystem {
               });
 
               if (!lockedTaskRun) {
-                this.$.logger.error("RunEngine.dequeueFromMasterQueue(): Failed to lock task run", {
+                this.$.logger.error("RunEngine.dequeueFromWorkerQueue(): Failed to lock task run", {
                   taskRun: result.run.id,
                   taskIdentifier: result.run.taskIdentifier,
                   deployment: result.deployment?.id,
@@ -465,7 +465,7 @@ export class DequeueSystem {
           return dequeuedRun;
         } catch (error) {
           this.$.logger.error(
-            "RunEngine.dequeueFromMasterQueue(): Thrown error while preparing run to be run",
+            "RunEngine.dequeueFromWorkerQueue(): Thrown error while preparing run to be run",
             {
               error,
               runId,
@@ -482,7 +482,7 @@ export class DequeueSystem {
           if (!run) {
             //this isn't ideal because we're not creating a snapshot… but we can't do much else
             this.$.logger.error(
-              "RunEngine.dequeueFromMasterQueue(): Thrown error, then run not found. Nacking.",
+              "RunEngine.dequeueFromWorkerQueue(): Thrown error, then run not found. Nacking.",
               {
                 runId,
                 orgId,
@@ -508,7 +508,7 @@ export class DequeueSystem {
           });
 
           if (!gotRequeued) {
-            this.$.logger.error("RunEngine.dequeueFromMasterQueue(): Failed to requeue run", {
+            this.$.logger.error("RunEngine.dequeueFromWorkerQueue(): Failed to requeue run", {
               runId,
               orgId,
             });
@@ -571,7 +571,7 @@ export class DequeueSystem {
             },
           });
 
-          this.$.logger.debug("RunEngine.dequeueFromMasterQueue(): Pending version", {
+          this.$.logger.debug("RunEngine.dequeueFromWorkerQueue(): Pending version", {
             runId,
             run,
           });

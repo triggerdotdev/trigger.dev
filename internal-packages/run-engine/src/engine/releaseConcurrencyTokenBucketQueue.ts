@@ -79,8 +79,6 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
   private batchSize: number;
   private maxRetries: number;
   private backoff: NonNullable<Required<ReleaseConcurrencyQueueRetryOptions["backoff"]>>;
-  private _lastReleasingsLength: number = 0;
-  private _lastMasterQueueLength: number = 0;
 
   constructor(private readonly options: ReleaseConcurrencyQueueOptions<T>) {
     this.redis = createRedisClient(options.redis);
@@ -129,7 +127,6 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
 
     if (!options.disableConsumers) {
       this.#startConsumers();
-      this.#startMetricsProducer();
       this.#startReleasingsSweeper();
     }
   }
@@ -140,11 +137,13 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
   }
 
   async #updateReleasingsLength(observableResult: ObservableResult<Attributes>) {
-    observableResult.observe(this._lastReleasingsLength);
+    const releasingsLength = await this.redis.zcard(this.#releasingsKey());
+    observableResult.observe(releasingsLength);
   }
 
   async #updateMasterQueueLength(observableResult: ObservableResult<Attributes>) {
-    observableResult.observe(this._lastMasterQueueLength);
+    const masterQueueLength = await this.redis.zcard(this.masterQueuesKey);
+    observableResult.observe(masterQueueLength);
   }
 
   /**
@@ -529,36 +528,6 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
         this.logger
       );
       this.sweeper.start();
-    }
-  }
-
-  async #startMetricsProducer() {
-    try {
-      // Produce metrics every 60 seconds, using a tracer span
-      for await (const _ of setInterval(60_000)) {
-        const metrics = await this.getQueueMetrics();
-        this.logger.info("Queue metrics:", { metrics });
-
-        // Update cached values for OpenTelemetry observable gauges
-        this._lastReleasingsLength = await this.redis.zcard(this.#releasingsKey());
-        this._lastMasterQueueLength = await this.redis.zcard(this.masterQueuesKey);
-
-        await startSpan(
-          this.options.tracer,
-          "ReleaseConcurrencyTokenBucketQueue.metrics",
-          async (span) => {},
-          {
-            attributes: {
-              ...flattenAttributes(metrics, "queues"),
-              releasingsLength: this._lastReleasingsLength,
-              masterQueueLength: this._lastMasterQueueLength,
-              forceRecording: true,
-            },
-          }
-        );
-      }
-    } catch (error) {
-      this.logger.error("Error starting metrics producer:", { error });
     }
   }
 

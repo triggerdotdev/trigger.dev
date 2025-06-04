@@ -39,6 +39,7 @@ export type RunEngineOptions = {
       FairQueueSelectionStrategyOptions,
       "parentQueueLimit" | "tracer" | "biases" | "reuseSnapshotCount" | "maximumEnvCount"
     >;
+    dequeueBlockingTimeoutSeconds?: number;
   };
   runLock: {
     redis: RedisOptions;

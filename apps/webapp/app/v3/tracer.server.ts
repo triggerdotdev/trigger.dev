@@ -344,21 +344,15 @@ function configurePrismaMetrics(meter: Meter) {
     return { total, busy, free };
   }
 
-  // Register callbacks (one scrape == one DB call) --------------------------
-  totalGauge.addCallback(async (res) => {
-    const { total } = await readPoolCounters();
-    res.observe(total);
-  });
-
-  busyGauge.addCallback(async (res) => {
-    const { busy } = await readPoolCounters();
-    res.observe(busy);
-  });
-
-  freeGauge.addCallback(async (res) => {
-    const { free } = await readPoolCounters();
-    res.observe(free);
-  });
+  meter.addBatchObservableCallback(
+    async (res) => {
+      const { total, busy, free } = await readPoolCounters();
+      res.observe(totalGauge, total);
+      res.observe(busyGauge, busy);
+      res.observe(freeGauge, free);
+    },
+    [totalGauge, busyGauge, freeGauge]
+  );
 }
 
 const SemanticEnvResources = {

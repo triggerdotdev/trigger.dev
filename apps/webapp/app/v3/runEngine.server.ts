@@ -61,6 +61,7 @@ function createRunEngine() {
       },
       shardCount: env.RUN_ENGINE_RUN_QUEUE_SHARD_COUNT,
       processWorkerQueueDebounceMs: env.RUN_ENGINE_PROCESS_WORKER_QUEUE_DEBOUNCE_MS,
+      dequeueBlockingTimeoutSeconds: env.RUN_ENGINE_DEQUEUE_BLOCKING_TIMEOUT_SECONDS,
     },
     runLock: {
       redis: {
