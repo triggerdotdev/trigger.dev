@@ -1,4 +1,16 @@
-import { SpanKind, startSpan, trace, Tracer } from "@internal/tracing";
+import {
+  Attributes,
+  Histogram,
+  Meter,
+  metrics,
+  ObservableResult,
+  SemanticAttributes,
+  SpanKind,
+  startSpan,
+  trace,
+  Tracer,
+  ValueType,
+} from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
 import { calculateNextRetryDelay } from "@trigger.dev/core/v3";
 import { type RetryOptions } from "@trigger.dev/core/v3/schemas";
@@ -9,7 +21,6 @@ import { nanoid } from "nanoid";
 import pLimit from "p-limit";
 import { createRedisClient } from "@internal/redis";
 import { shutdownManager } from "@trigger.dev/core/v3/serverOnly";
-import { Registry, Histogram } from "prom-client";
 
 export type WorkerCatalog = {
   [key: string]: {
@@ -50,9 +61,7 @@ type WorkerOptions<TCatalog extends WorkerCatalog> = {
   shutdownTimeoutMs?: number;
   logger?: Logger;
   tracer?: Tracer;
-  metrics?: {
-    register: Registry;
-  };
+  meter?: Meter;
 };
 
 // This results in attempt 12 being a delay of 1 hour
@@ -69,9 +78,9 @@ const defaultRetrySettings = {
 class Worker<TCatalog extends WorkerCatalog> {
   private subscriber: Redis | undefined;
   private tracer: Tracer;
+  private meter: Meter;
 
   private metrics: {
-    register?: Registry;
     enqueueDuration?: Histogram;
     dequeueDuration?: Histogram;
     jobDuration?: Histogram;
@@ -94,6 +103,7 @@ class Worker<TCatalog extends WorkerCatalog> {
   constructor(private options: WorkerOptions<TCatalog>) {
     this.logger = options.logger ?? new Logger("Worker", "debug");
     this.tracer = options.tracer ?? trace.getTracer(options.name);
+    this.meter = options.meter ?? metrics.getMeter(options.name);
 
     this.shutdownTimeoutMs = options.shutdownTimeoutMs ?? 60_000;
 
@@ -116,59 +126,76 @@ class Worker<TCatalog extends WorkerCatalog> {
     // Create a p-limit instance using this limit.
     this.limiter = pLimit(this.concurrency.limit);
 
-    this.metrics.register = options.metrics?.register;
-
-    if (!this.metrics.register) {
-      return;
-    }
-
-    this.metrics.enqueueDuration = new Histogram({
-      name: "redis_worker_enqueue_duration_seconds",
-      help: "The duration of enqueue operations",
-      labelNames: ["worker_name", "job_type", "has_available_at"],
-      buckets: [0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1],
-      registers: [this.metrics.register],
+    const masterQueueObservableGauge = this.meter.createObservableGauge("redis_worker.queue.size", {
+      description: "The number of items in the queue",
+      unit: "items",
+      valueType: ValueType.INT,
     });
 
-    this.metrics.dequeueDuration = new Histogram({
-      name: "redis_worker_dequeue_duration_seconds",
-      help: "The duration of dequeue operations",
-      labelNames: ["worker_name", "worker_id", "task_count"],
-      buckets: [0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1],
-      registers: [this.metrics.register],
-    });
+    masterQueueObservableGauge.addCallback(this.#updateQueueSizeMetric.bind(this));
 
-    this.metrics.jobDuration = new Histogram({
-      name: "redis_worker_job_duration_seconds",
-      help: "The duration of job operations",
-      labelNames: ["worker_name", "worker_id", "batch_size", "job_type", "attempt"],
-      // use different buckets here as jobs can take a while to run
-      buckets: [0.1, 0.25, 0.5, 1, 2.5, 5, 10, 20, 30, 45, 60],
-      registers: [this.metrics.register],
-    });
+    const deadLetterQueueObservableGauge = this.meter.createObservableGauge(
+      "redis_worker.queue.dead_letter_size",
+      {
+        description: "The number of items in the dead letter queue",
+        unit: "items",
+        valueType: ValueType.INT,
+      }
+    );
 
-    this.metrics.ackDuration = new Histogram({
-      name: "redis_worker_ack_duration_seconds",
-      help: "The duration of ack operations",
-      labelNames: ["worker_name"],
-      buckets: [0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1],
-      registers: [this.metrics.register],
-    });
+    deadLetterQueueObservableGauge.addCallback(this.#updateDeadLetterQueueSizeMetric.bind(this));
 
-    this.metrics.redriveDuration = new Histogram({
-      name: "redis_worker_redrive_duration_seconds",
-      help: "The duration of redrive operations",
-      labelNames: ["worker_name"],
-      buckets: [0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1],
-      registers: [this.metrics.register],
-    });
+    const concurrencyLimitActiveObservableGauge = this.meter.createObservableGauge(
+      "redis_worker.concurrency.active",
+      {
+        description: "The number of active workers",
+        unit: "workers",
+        valueType: ValueType.INT,
+      }
+    );
 
-    this.metrics.rescheduleDuration = new Histogram({
-      name: "redis_worker_reschedule_duration_seconds",
-      help: "The duration of reschedule operations",
-      labelNames: ["worker_name"],
-      buckets: [0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1],
-      registers: [this.metrics.register],
+    concurrencyLimitActiveObservableGauge.addCallback(
+      this.#updateConcurrencyLimitActiveMetric.bind(this)
+    );
+
+    const concurrencyLimitPendingObservableGauge = this.meter.createObservableGauge(
+      "redis_worker.concurrency.pending",
+      {
+        description: "The number of pending workers",
+        unit: "workers",
+        valueType: ValueType.INT,
+      }
+    );
+
+    concurrencyLimitPendingObservableGauge.addCallback(
+      this.#updateConcurrencyLimitPendingMetric.bind(this)
+    );
+  }
+
+  async #updateQueueSizeMetric(observableResult: ObservableResult<Attributes>) {
+    const queueSize = await this.queue.size();
+
+    observableResult.observe(queueSize, {
+      worker_name: this.options.name,
+    });
+  }
+
+  async #updateDeadLetterQueueSizeMetric(observableResult: ObservableResult<Attributes>) {
+    const deadLetterQueueSize = await this.queue.sizeOfDeadLetterQueue();
+    observableResult.observe(deadLetterQueueSize, {
+      worker_name: this.options.name,
+    });
+  }
+
+  async #updateConcurrencyLimitActiveMetric(observableResult: ObservableResult<Attributes>) {
+    observableResult.observe(this.limiter.activeCount, {
+      worker_name: this.options.name,
+    });
+  }
+
+  async #updateConcurrencyLimitPendingMetric(observableResult: ObservableResult<Attributes>) {
+    observableResult.observe(this.limiter.pendingCount, {
+      worker_name: this.options.name,
     });
   }
 
@@ -233,6 +260,66 @@ class Worker<TCatalog extends WorkerCatalog> {
         return this.withHistogram(
           this.metrics.enqueueDuration,
           this.queue.enqueue({
+            id,
+            job,
+            item: payload,
+            visibilityTimeoutMs: timeout,
+            availableAt,
+          }),
+          {
+            job_type: String(job),
+            has_available_at: availableAt ? "true" : "false",
+          }
+        );
+      },
+      {
+        kind: SpanKind.PRODUCER,
+        attributes: {
+          job_type: String(job),
+          job_id: id,
+        },
+      }
+    );
+  }
+
+  /**
+   * Enqueues a job for processing once. If the job is already in the queue, it will be ignored.
+   * @param options - The enqueue options.
+   * @param options.id - Required unique identifier for the job.
+   * @param options.job - The job type from the worker catalog.
+   * @param options.payload - The job payload that matches the schema defined in the catalog.
+   * @param options.visibilityTimeoutMs - Optional visibility timeout in milliseconds. Defaults to value from catalog.
+   * @param options.availableAt - Optional date when the job should become available for processing. Defaults to now.
+   * @returns A promise that resolves when the job is enqueued.
+   */
+  enqueueOnce<K extends keyof TCatalog>({
+    id,
+    job,
+    payload,
+    visibilityTimeoutMs,
+    availableAt,
+  }: {
+    id: string;
+    job: K;
+    payload: z.infer<TCatalog[K]["schema"]>;
+    visibilityTimeoutMs?: number;
+    availableAt?: Date;
+  }) {
+    return startSpan(
+      this.tracer,
+      "enqueueOnce",
+      async (span) => {
+        const timeout = visibilityTimeoutMs ?? this.options.catalog[job]?.visibilityTimeoutMs;
+
+        if (!timeout) {
+          throw new Error(`No visibility timeout found for job ${String(job)} with id ${id}`);
+        }
+
+        span.setAttribute("job_visibility_timeout_ms", timeout);
+
+        return this.withHistogram(
+          this.metrics.enqueueDuration,
+          this.queue.enqueueOnce({
             id,
             job,
             item: payload,
@@ -461,19 +548,20 @@ class Worker<TCatalog extends WorkerCatalog> {
   }
 
   private async withHistogram<T>(
-    histogram: Histogram<string> | undefined,
+    histogram: Histogram | undefined,
     promise: Promise<T>,
     labels?: Record<string, string | number>
   ): Promise<T> {
-    if (!histogram || !this.metrics.register) {
+    if (!histogram) {
       return promise;
     }
 
-    const end = histogram.startTimer({ worker_name: this.options.name, ...labels });
+    const start = Date.now();
     try {
       return await promise;
     } finally {
-      end();
+      const duration = (Date.now() - start) / 1000; // Convert to seconds
+      histogram.record(duration, { worker_name: this.options.name, ...labels });
     }
   }
 

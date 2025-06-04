@@ -32,6 +32,7 @@ import {
   ValidationResult,
 } from "~/runEngine/types";
 import { RunEngineTriggerTaskService } from "../../app/runEngine/services/triggerTask.server";
+import { setTimeout } from "node:timers/promises";
 
 vi.setConfig({ testTimeout: 30_000 }); // 30 seconds timeout
 
@@ -490,6 +491,8 @@ describe("RunEngineTriggerTaskService", () => {
         },
         queue: {
           redis: redisOptions,
+          masterQueueConsumersDisabled: true,
+          processWorkerQueueDebounceMs: 100,
         },
         runLock: {
           redis: redisOptions,
@@ -569,11 +572,12 @@ describe("RunEngineTriggerTaskService", () => {
       );
       expect(queueLength).toBe(1);
 
+      await setTimeout(500);
+
       // Now we need to dequeue the run so so we can trigger a subtask
-      const dequeued = await engine.dequeueFromMasterQueue({
+      const dequeued = await engine.dequeueFromWorkerQueue({
         consumerId: "test_12345",
-        masterQueue: result?.run.masterQueue!,
-        maxRunCount: 1,
+        workerQueue: result?.run.workerQueue!,
       });
 
       expect(dequeued.length).toBe(1);
@@ -606,11 +610,12 @@ describe("RunEngineTriggerTaskService", () => {
         },
       });
 
+      await setTimeout(500);
+
       // Okay, now lets dequeue the subtask
-      const dequeuedSubtask = await engine.dequeueFromMasterQueue({
+      const dequeuedSubtask = await engine.dequeueFromWorkerQueue({
         consumerId: "test_12345",
-        masterQueue: subtaskResult?.run.masterQueue!,
-        maxRunCount: 1,
+        workerQueue: subtaskResult?.run.workerQueue!,
       });
 
       expect(dequeuedSubtask.length).toBe(1);
@@ -649,6 +654,8 @@ describe("RunEngineTriggerTaskService", () => {
         },
         queue: {
           redis: redisOptions,
+          masterQueueConsumersDisabled: true,
+          processWorkerQueueDebounceMs: 100,
         },
         runLock: {
           redis: redisOptions,
@@ -722,11 +729,12 @@ describe("RunEngineTriggerTaskService", () => {
       expect(parentResult?.run.queue).toBe(`task/${taskIdentifier1}`);
       expect(parentResult?.run.lockedQueueId).toBeDefined();
 
+      await setTimeout(500);
+
       // Dequeue the parent run to simulate it running
-      const dequeued = await engine.dequeueFromMasterQueue({
+      const dequeued = await engine.dequeueFromWorkerQueue({
         consumerId: "test_12345",
-        masterQueue: parentResult?.run.masterQueue!,
-        maxRunCount: 1,
+        workerQueue: parentResult?.run.workerQueue!,
       });
 
       expect(dequeued.length).toBe(1);
@@ -923,11 +931,12 @@ describe("RunEngineTriggerTaskService", () => {
       expect(parentResult?.run.queue).toBe(`task/${taskIdentifier1}`);
       expect(parentResult?.run.lockedQueueId).toBeDefined();
 
+      await setTimeout(500);
+
       // Dequeue the parent run to simulate it running
-      const dequeued = await engine.dequeueFromMasterQueue({
+      const dequeued = await engine.dequeueFromWorkerQueue({
         consumerId: "test_12345",
-        masterQueue: parentResult?.run.masterQueue!,
-        maxRunCount: 1,
+        workerQueue: parentResult?.run.workerQueue!,
       });
 
       expect(dequeued.length).toBe(1);
@@ -980,6 +989,8 @@ describe("RunEngineTriggerTaskService", () => {
         },
         queue: {
           redis: redisOptions,
+          masterQueueConsumersDisabled: true,
+          processWorkerQueueDebounceMs: 100,
         },
         runLock: {
           redis: redisOptions,
@@ -1053,11 +1064,12 @@ describe("RunEngineTriggerTaskService", () => {
       expect(parentResult?.run.queue).toBe(`task/${taskIdentifier1}`);
       expect(parentResult?.run.lockedQueueId).toBeDefined();
 
+      await setTimeout(500);
+
       // Dequeue the parent run to simulate it running
-      const dequeued = await engine.dequeueFromMasterQueue({
+      const dequeued = await engine.dequeueFromWorkerQueue({
         consumerId: "test_12345",
-        masterQueue: parentResult?.run.masterQueue!,
-        maxRunCount: 1,
+        workerQueue: parentResult?.run.workerQueue!,
       });
 
       expect(dequeued.length).toBe(1);
@@ -1109,6 +1121,8 @@ describe("RunEngineTriggerTaskService", () => {
         },
         queue: {
           redis: redisOptions,
+          masterQueueConsumersDisabled: true,
+          processWorkerQueueDebounceMs: 100,
         },
         runLock: {
           redis: redisOptions,
@@ -1186,11 +1200,12 @@ describe("RunEngineTriggerTaskService", () => {
       );
       expect(queueLength).toBe(1);
 
+      await setTimeout(500);
+
       // Now we need to dequeue the run so so we can trigger a subtask
-      const dequeued = await engine.dequeueFromMasterQueue({
+      const dequeued = await engine.dequeueFromWorkerQueue({
         consumerId: "test_12345",
-        masterQueue: result?.run.masterQueue!,
-        maxRunCount: 1,
+        workerQueue: result?.run.workerQueue!,
       });
 
       expect(dequeued.length).toBe(1);
@@ -1223,11 +1238,12 @@ describe("RunEngineTriggerTaskService", () => {
         },
       });
 
+      await setTimeout(500);
+
       // Okay, now lets dequeue the subtask
-      const dequeuedSubtask = await engine.dequeueFromMasterQueue({
+      const dequeuedSubtask = await engine.dequeueFromWorkerQueue({
         consumerId: "test_12345",
-        masterQueue: subtaskResult?.run.masterQueue!,
-        maxRunCount: 1,
+        workerQueue: subtaskResult?.run.workerQueue!,
       });
 
       expect(dequeuedSubtask.length).toBe(1);

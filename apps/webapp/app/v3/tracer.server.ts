@@ -11,6 +11,8 @@ import {
   Tracer,
   diag,
   trace,
+  metrics,
+  Meter,
 } from "@opentelemetry/api";
 import { logs, SeverityNumber } from "@opentelemetry/api-logs";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
@@ -19,6 +21,12 @@ import { BatchLogRecordProcessor, LoggerProvider } from "@opentelemetry/sdk-logs
 import { type Instrumentation, registerInstrumentations } from "@opentelemetry/instrumentation";
 import { ExpressInstrumentation } from "@opentelemetry/instrumentation-express";
 import { HttpInstrumentation } from "@opentelemetry/instrumentation-http";
+import {
+  MeterProvider,
+  ConsoleMetricExporter,
+  PeriodicExportingMetricReader,
+} from "@opentelemetry/sdk-metrics";
+import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-proto";
 import { Resource } from "@opentelemetry/resources";
 import {
   BatchSpanProcessor,
@@ -30,7 +38,10 @@ import {
   TraceIdRatioBasedSampler,
 } from "@opentelemetry/sdk-trace-base";
 import { NodeTracerProvider } from "@opentelemetry/sdk-trace-node";
-import { SEMRESATTRS_SERVICE_NAME } from "@opentelemetry/semantic-conventions";
+import {
+  SEMRESATTRS_SERVICE_INSTANCE_ID,
+  SEMRESATTRS_SERVICE_NAME,
+} from "@opentelemetry/semantic-conventions";
 import { PrismaInstrumentation } from "@prisma/instrumentation";
 import { env } from "~/env.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
@@ -38,8 +49,12 @@ import { singleton } from "~/utils/singleton";
 import { LoggerSpanExporter } from "./telemetry/loggerExporter.server";
 import { logger } from "~/services/logger.server";
 import { flattenAttributes } from "@trigger.dev/core/v3";
+import { randomUUID } from "node:crypto";
+import { prisma } from "~/db.server";
 
 export const SEMINTATTRS_FORCE_RECORDING = "forceRecording";
+
+const SERVICE_INSTANCE_ID = randomUUID();
 
 class CustomWebappSampler implements Sampler {
   constructor(private readonly _baseSampler: Sampler) {}
@@ -83,7 +98,12 @@ class CustomWebappSampler implements Sampler {
   }
 }
 
-export const { tracer, logger: otelLogger, provider } = singleton("tracer", getTracer);
+export const {
+  tracer,
+  logger: otelLogger,
+  provider,
+  meter,
+} = singleton("opentelemetry", setupTelemetry);
 
 export async function startActiveSpan<T>(
   name: string,
@@ -148,7 +168,7 @@ export async function emitWarnLog(message: string, params: Record<string, unknow
   });
 }
 
-function getTracer() {
+function setupTelemetry() {
   if (env.INTERNAL_OTEL_TRACE_DISABLED === "1") {
     console.log(`🔦 Tracer disabled, returning a noop tracer`);
 
@@ -156,6 +176,7 @@ function getTracer() {
       tracer: trace.getTracer("trigger.dev", "3.3.12"),
       logger: logs.getLogger("trigger.dev", "3.3.12"),
       provider: new NodeTracerProvider(),
+      meter: setupMetrics(),
     };
   }
 
@@ -167,6 +188,7 @@ function getTracer() {
     forceFlushTimeoutMillis: 15_000,
     resource: new Resource({
       [SEMRESATTRS_SERVICE_NAME]: env.SERVICE_NAME,
+      [SEMRESATTRS_SERVICE_INSTANCE_ID]: SERVICE_INSTANCE_ID,
     }),
     sampler: new ParentBasedSampler({
       root: new CustomWebappSampler(new TraceIdRatioBasedSampler(samplingRate)),
@@ -261,8 +283,76 @@ function getTracer() {
   return {
     tracer: provider.getTracer("trigger.dev", "3.3.12"),
     logger: logs.getLogger("trigger.dev", "3.3.12"),
+    meter: setupMetrics(),
     provider,
   };
+}
+
+function setupMetrics() {
+  if (env.INTERNAL_OTEL_METRIC_EXPORTER_ENABLED === "0") {
+    return metrics.getMeter("trigger.dev", "3.3.12");
+  }
+
+  const exporter = createMetricsExporter();
+
+  const meterProvider = new MeterProvider({
+    resource: new Resource({
+      [SEMRESATTRS_SERVICE_NAME]: env.SERVICE_NAME,
+      [SEMRESATTRS_SERVICE_INSTANCE_ID]: SERVICE_INSTANCE_ID,
+    }),
+    readers: [
+      new PeriodicExportingMetricReader({
+        exporter,
+        exportIntervalMillis: env.INTERNAL_OTEL_METRIC_EXPORTER_INTERVAL_MS,
+        exportTimeoutMillis: env.INTERNAL_OTEL_METRIC_EXPORTER_INTERVAL_MS,
+      }),
+    ],
+  });
+
+  metrics.setGlobalMeterProvider(meterProvider);
+
+  const meter = meterProvider.getMeter("trigger.dev", "3.3.12");
+
+  configurePrismaMetrics(meter);
+
+  return meter;
+}
+
+function configurePrismaMetrics(meter: Meter) {
+  const totalGauge = meter.createObservableGauge("db.pool.connections.total", {
+    description: "Open Prisma-pool connections",
+    unit: "connections",
+  });
+  const busyGauge = meter.createObservableGauge("db.pool.connections.busy", {
+    description: "Connections currently executing queries",
+    unit: "connections",
+  });
+  const freeGauge = meter.createObservableGauge("db.pool.connections.free", {
+    description: "Idle (free) connections in the pool",
+    unit: "connections",
+  });
+
+  // Single helper so we hit Prisma only once per scrape ---------------------
+  async function readPoolCounters() {
+    const { gauges } = await prisma.$metrics.json();
+
+    const busy = gauges.find((g) => g.key === "prisma_pool_connections_busy")?.value ?? 0;
+    const free = gauges.find((g) => g.key === "prisma_pool_connections_idle")?.value ?? 0;
+    const total =
+      gauges.find((g) => g.key === "prisma_pool_connections_open")?.value ?? busy + free; // fallback compute
+
+    return { total, busy, free };
+  }
+
+  meter.addBatchObservableCallback(
+    async (res) => {
+      const { total, busy, free } = await readPoolCounters();
+      res.observe(totalGauge, total);
+      res.observe(busyGauge, busy);
+      res.observe(freeGauge, free);
+    },
+    [totalGauge, busyGauge, freeGauge]
+  );
 }
 
 const SemanticEnvResources = {
@@ -298,5 +388,35 @@ function parseInternalTraceHeaders(): Record<string, string> | undefined {
       : undefined;
   } catch {
     return;
+  }
+}
+
+function parseInternalMetricsHeaders(): Record<string, string> | undefined {
+  try {
+    return env.INTERNAL_OTEL_METRIC_EXPORTER_AUTH_HEADERS
+      ? (JSON.parse(env.INTERNAL_OTEL_METRIC_EXPORTER_AUTH_HEADERS) as Record<string, string>)
+      : undefined;
+  } catch {
+    return;
+  }
+}
+
+function createMetricsExporter() {
+  if (env.INTERNAL_OTEL_METRIC_EXPORTER_URL) {
+    const headers = parseInternalMetricsHeaders() ?? {};
+
+    console.log(
+      `🔦 Tracer: OTLP metric exporter enabled to ${
+        env.INTERNAL_OTEL_METRIC_EXPORTER_URL
+      } with headers: ${Object.keys(headers)}`
+    );
+
+    return new OTLPMetricExporter({
+      url: env.INTERNAL_OTEL_METRIC_EXPORTER_URL,
+      timeoutMillis: 30_000,
+      headers,
+    });
+  } else {
+    return new ConsoleMetricExporter();
   }
 }

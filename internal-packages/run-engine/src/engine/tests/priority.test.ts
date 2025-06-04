@@ -27,6 +27,8 @@ describe("RunEngine priority", () => {
         },
         queue: {
           redis: redisOptions,
+          processWorkerQueueDebounceMs: 50,
+          masterQueueConsumersDisabled: true,
         },
         runLock: {
           redis: redisOptions,
@@ -71,23 +73,31 @@ describe("RunEngine priority", () => {
             priorityMs: priority,
           })),
         });
+
         expect(runs.length).toBe(priorities.length);
 
-        //check the queue length
-        const queueLength = await engine.runQueue.lengthOfEnvQueue(authenticatedEnvironment);
-        expect(queueLength).toBe(priorities.length);
+        await engine.runQueue.processMasterQueueForEnvironment(authenticatedEnvironment.id, 5);
 
         //dequeue 4 times, in order
         const dequeue: DequeuedMessage[] = [];
         for (let i = 0; i < 4; i++) {
-          const items = await engine.dequeueFromMasterQueue({
+          const items = await engine.dequeueFromWorkerQueue({
             consumerId: "test_12345",
-            masterQueue: "main",
-            maxRunCount: 1,
+            workerQueue: "main",
           });
           dequeue.push(...items);
         }
         expect(dequeue.length).toBe(4);
+
+        console.log(
+          "runs",
+          runs.map((r) => r.friendlyId)
+        );
+        console.log(
+          "dequeued run IDs",
+          dequeue.map((d) => d.run.friendlyId)
+        );
+
         expect(dequeue[0].run.friendlyId).toBe(runs[4].friendlyId);
         expect(dequeue[1].run.friendlyId).toBe(runs[3].friendlyId);
         expect(dequeue[2].run.friendlyId).toBe(runs[1].friendlyId);
@@ -95,10 +105,12 @@ describe("RunEngine priority", () => {
 
         //wait 2 seconds (because of the negative priority)
         await setTimeout(2_000);
-        const dequeue2 = await engine.dequeueFromMasterQueue({
+
+        await engine.runQueue.processMasterQueueForEnvironment(authenticatedEnvironment.id, 1);
+
+        const dequeue2 = await engine.dequeueFromWorkerQueue({
           consumerId: "test_12345",
-          masterQueue: "main",
-          maxRunCount: 20,
+          workerQueue: "main",
         });
         expect(dequeue2.length).toBe(1);
         expect(dequeue2[0].run.friendlyId).toBe(runs[2].friendlyId);
@@ -175,18 +187,15 @@ describe("RunEngine priority", () => {
         });
         expect(runs.length).toBe(queueTimestamps.length);
 
-        //check the queue length
-        const queueLength = await engine.runQueue.lengthOfEnvQueue(authenticatedEnvironment);
-        expect(queueLength).toBe(queueTimestamps.length);
+        await setTimeout(500);
 
         //dequeue (expect 4 items because of the negative priority)
         const dequeue: DequeuedMessage[] = [];
         for (let i = 0; i < 5; i++) {
           dequeue.push(
-            ...(await engine.dequeueFromMasterQueue({
+            ...(await engine.dequeueFromWorkerQueue({
               consumerId: "test_12345",
-              masterQueue: "main",
-              maxRunCount: 1,
+              workerQueue: "main",
             }))
           );
         }
@@ -235,7 +244,7 @@ async function triggerRuns({
           traceContext: {},
           traceId: "t12345",
           spanId: "s12345",
-          masterQueue: "main",
+          workerQueue: "main",
           queue: `task/${taskIdentifier}`,
           isTest: false,
           tags: [],

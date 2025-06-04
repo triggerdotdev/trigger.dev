@@ -1,5 +1,6 @@
 import { MinimalAuthenticatedEnvironment } from "../shared/index.js";
 import { EnvDescriptor, QueueDescriptor, RunQueueKeyProducer } from "./types.js";
+import { jumpHash } from "@trigger.dev/core/v3/serverOnly";
 
 const constants = {
   CURRENT_CONCURRENCY_PART: "currentConcurrency",
@@ -13,9 +14,33 @@ const constants = {
   TASK_PART: "task",
   MESSAGE_PART: "message",
   DEAD_LETTER_QUEUE_PART: "deadLetter",
+  MASTER_QUEUE_PART: "masterQueue",
+  WORKER_QUEUE_PART: "workerQueue",
 } as const;
 
 export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
+  legacyMasterQueueKey(masterQueueName: string): string {
+    return masterQueueName;
+  }
+
+  masterQueueKeyForEnvironment(envId: string, shardCount: number): string {
+    const shard = this.masterQueueShardForEnvironment(envId, shardCount);
+
+    return this.masterQueueKeyForShard(shard);
+  }
+
+  masterQueueKeyForShard(shard: number): string {
+    return [constants.MASTER_QUEUE_PART, "shard", shard.toString()].join(":");
+  }
+
+  masterQueueShardForEnvironment(envId: string, shardCount: number): number {
+    return jumpHash(envId, shardCount);
+  }
+
+  workerQueueKey(workerQueue: string): string {
+    return [constants.WORKER_QUEUE_PART, workerQueue].join(":");
+  }
+
   queueConcurrencyLimitKey(env: MinimalAuthenticatedEnvironment, queue: string) {
     return [this.queueKey(env, queue), constants.CONCURRENCY_LIMIT_PART].join(":");
   }

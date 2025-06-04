@@ -4,7 +4,7 @@ import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { singleton } from "~/utils/singleton";
 import { allMachines } from "./machinePresets.server";
-import { tracer } from "./tracer.server";
+import { tracer, meter } from "./tracer.server";
 
 export const engine = singleton("RunEngine", createRunEngine);
 
@@ -13,6 +13,7 @@ export type { RunEngine };
 function createRunEngine() {
   const engine = new RunEngine({
     prisma,
+    logLevel: env.RUN_ENGINE_WORKER_LOG_LEVEL,
     worker: {
       disabled: env.RUN_ENGINE_WORKER_ENABLED === "0",
       workers: env.RUN_ENGINE_WORKER_COUNT,
@@ -58,6 +59,11 @@ function createRunEngine() {
         maximumEnvCount: env.RUN_ENGINE_MAXIMUM_ENV_COUNT,
         tracer,
       },
+      shardCount: env.RUN_ENGINE_RUN_QUEUE_SHARD_COUNT,
+      processWorkerQueueDebounceMs: env.RUN_ENGINE_PROCESS_WORKER_QUEUE_DEBOUNCE_MS,
+      dequeueBlockingTimeoutSeconds: env.RUN_ENGINE_DEQUEUE_BLOCKING_TIMEOUT_SECONDS,
+      masterQueueConsumersIntervalMs: env.RUN_ENGINE_MASTER_QUEUE_CONSUMERS_INTERVAL_MS,
+      masterQueueConsumersDisabled: env.RUN_ENGINE_WORKER_ENABLED === "0",
     },
     runLock: {
       redis: {
@@ -71,6 +77,7 @@ function createRunEngine() {
       },
     },
     tracer,
+    meter,
     heartbeatTimeoutsMs: {
       PENDING_EXECUTING: env.RUN_ENGINE_TIMEOUT_PENDING_EXECUTING,
       PENDING_CANCEL: env.RUN_ENGINE_TIMEOUT_PENDING_CANCEL,

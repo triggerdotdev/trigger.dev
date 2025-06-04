@@ -1,6 +1,6 @@
 import { type RedisOptions } from "@internal/redis";
 import { Worker, type WorkerConcurrencyOptions } from "@trigger.dev/redis-worker";
-import { Tracer } from "@internal/tracing";
+import { Meter, Tracer } from "@internal/tracing";
 import {
   MachinePreset,
   MachinePresetName,
@@ -12,6 +12,7 @@ import { PrismaClient } from "@trigger.dev/database";
 import { FairQueueSelectionStrategyOptions } from "../run-queue/fairQueueSelectionStrategy.js";
 import { MinimalAuthenticatedEnvironment } from "../shared/index.js";
 import { workerCatalog } from "./workerCatalog.js";
+import { Logger, LogLevel } from "@trigger.dev/core/logger";
 
 export type RunEngineOptions = {
   prisma: PrismaClient;
@@ -29,12 +30,18 @@ export type RunEngineOptions = {
   };
   queue: {
     redis: RedisOptions;
+    shardCount?: number;
+    masterQueueConsumersDisabled?: boolean;
+    processWorkerQueueDebounceMs?: number;
+    masterQueueConsumersIntervalMs?: number;
+    workerOptions?: WorkerConcurrencyOptions;
     retryOptions?: RetryOptions;
     defaultEnvConcurrency?: number;
     queueSelectionStrategyOptions?: Pick<
       FairQueueSelectionStrategyOptions,
       "parentQueueLimit" | "tracer" | "biases" | "reuseSnapshotCount" | "maximumEnvCount"
     >;
+    dequeueBlockingTimeoutSeconds?: number;
   };
   runLock: {
     redis: RedisOptions;
@@ -44,6 +51,9 @@ export type RunEngineOptions = {
   heartbeatTimeoutsMs?: Partial<HeartbeatTimeouts>;
   queueRunsWaitingForWorkerBatchSize?: number;
   tracer: Tracer;
+  meter?: Meter;
+  logger?: Logger;
+  logLevel?: LogLevel;
   releaseConcurrency?: {
     disabled?: boolean;
     maxTokensRatio?: number;
@@ -90,7 +100,7 @@ export type TriggerParams = {
   sdkVersion?: string;
   cliVersion?: string;
   concurrencyKey?: string;
-  masterQueue?: string;
+  workerQueue?: string;
   queue: string;
   lockedQueueId?: string;
   isTest: boolean;

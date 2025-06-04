@@ -324,6 +324,10 @@ const EnvironmentSchema = z.object({
   INTERNAL_OTEL_TRACE_DISABLED: z.string().default("0"),
 
   INTERNAL_OTEL_LOG_EXPORTER_URL: z.string().optional(),
+  INTERNAL_OTEL_METRIC_EXPORTER_URL: z.string().optional(),
+  INTERNAL_OTEL_METRIC_EXPORTER_AUTH_HEADERS: z.string().optional(),
+  INTERNAL_OTEL_METRIC_EXPORTER_ENABLED: z.string().default("0"),
+  INTERNAL_OTEL_METRIC_EXPORTER_INTERVAL_MS: z.coerce.number().int().default(30_000),
 
   ORG_SLACK_INTEGRATION_CLIENT_ID: z.string().optional(),
   ORG_SLACK_INTEGRATION_CLIENT_SECRET: z.string().optional(),
@@ -460,8 +464,12 @@ const EnvironmentSchema = z.object({
   RUN_ENGINE_QUEUE_AGE_RANDOMIZATION_BIAS: z.coerce.number().default(0.25),
   RUN_ENGINE_REUSE_SNAPSHOT_COUNT: z.coerce.number().int().default(0),
   RUN_ENGINE_MAXIMUM_ENV_COUNT: z.coerce.number().int().optional(),
+  RUN_ENGINE_RUN_QUEUE_SHARD_COUNT: z.coerce.number().int().default(4),
   RUN_ENGINE_WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().default(60_000),
   RUN_ENGINE_RETRY_WARM_START_THRESHOLD_MS: z.coerce.number().int().default(30_000),
+  RUN_ENGINE_PROCESS_WORKER_QUEUE_DEBOUNCE_MS: z.coerce.number().int().default(200),
+  RUN_ENGINE_DEQUEUE_BLOCKING_TIMEOUT_SECONDS: z.coerce.number().int().default(10),
+  RUN_ENGINE_MASTER_QUEUE_CONSUMERS_INTERVAL_MS: z.coerce.number().int().default(500),
 
   RUN_ENGINE_WORKER_REDIS_HOST: z
     .string()
@@ -617,6 +625,7 @@ const EnvironmentSchema = z.object({
   RUN_ENGINE_RELEASE_CONCURRENCY_BATCH_SIZE: z.coerce.number().int().default(10),
 
   RUN_ENGINE_WORKER_ENABLED: z.string().default("1"),
+  RUN_ENGINE_WORKER_LOG_LEVEL: z.enum(["log", "error", "warn", "info", "debug"]).default("info"),
 
   /** How long should the presence ttl last */
   DEV_PRESENCE_SSE_TIMEOUT: z.coerce.number().int().default(30_000),

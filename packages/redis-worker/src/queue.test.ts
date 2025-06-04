@@ -423,4 +423,64 @@ describe("SimpleQueue", () => {
       await queue.close();
     }
   });
+
+  redisTest(
+    "enqueueOnce only enqueues the first message with a given ID",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const queue = new SimpleQueue({
+        name: "test-once",
+        schema: {
+          test: z.object({
+            value: z.number(),
+          }),
+        },
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        logger: new Logger("test", "log"),
+      });
+
+      try {
+        const now = Date.now();
+        const availableAt1 = new Date(now + 1000);
+        const availableAt2 = new Date(now + 5000);
+
+        // First enqueueOnce should succeed
+        const first = await queue.enqueueOnce({
+          id: "unique-id",
+          job: "test",
+          item: { value: 1 },
+          visibilityTimeoutMs: 2000,
+          availableAt: availableAt1,
+        });
+        expect(first).toBe(true);
+        expect(await queue.size({ includeFuture: true })).toBe(1);
+
+        // Second enqueueOnce with same ID but different value and availableAt should do nothing
+        const second = await queue.enqueueOnce({
+          id: "unique-id",
+          job: "test",
+          item: { value: 999 },
+          visibilityTimeoutMs: 2000,
+          availableAt: availableAt2,
+        });
+        expect(second).toBe(false);
+        expect(await queue.size({ includeFuture: true })).toBe(1);
+
+        // Dequeue after 1s should get the original item, not the second
+        await new Promise((resolve) => setTimeout(resolve, 1100));
+        const [item] = await queue.dequeue(1);
+        expect(item).toBeDefined();
+        expect(item?.id).toBe("unique-id");
+        expect(item?.item).toEqual({ value: 1 });
+        // Should not be the second value
+        expect(item?.item).not.toEqual({ value: 999 });
+      } finally {
+        await queue.close();
+      }
+    }
+  );
 });

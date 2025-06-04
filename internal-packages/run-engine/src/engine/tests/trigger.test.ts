@@ -4,6 +4,7 @@ import { expect } from "vitest";
 import { EventBusEventArgs } from "../eventBus.js";
 import { RunEngine } from "../index.js";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
+import { setTimeout } from "node:timers/promises";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -22,6 +23,8 @@ describe("RunEngine trigger()", () => {
       },
       queue: {
         redis: redisOptions,
+        masterQueueConsumersDisabled: true,
+        processWorkerQueueDebounceMs: 50,
       },
       runLock: {
         redis: redisOptions,
@@ -64,7 +67,7 @@ describe("RunEngine trigger()", () => {
           traceContext: {},
           traceId: "t12345",
           spanId: "s12345",
-          masterQueue: "main",
+          workerQueue: "main",
           queue: "task/test-task",
           isTest: false,
           tags: [],
@@ -106,11 +109,12 @@ describe("RunEngine trigger()", () => {
       );
       expect(envConcurrencyBefore).toBe(0);
 
+      await setTimeout(500);
+
       //dequeue the run
-      const dequeued = await engine.dequeueFromMasterQueue({
+      const dequeued = await engine.dequeueFromWorkerQueue({
         consumerId: "test_12345",
-        masterQueue: run.masterQueue,
-        maxRunCount: 10,
+        workerQueue: "main",
       });
       expect(dequeued.length).toBe(1);
       expect(dequeued[0].run.id).toBe(run.id);
@@ -215,6 +219,8 @@ describe("RunEngine trigger()", () => {
         pollIntervalMs: 100,
       },
       queue: {
+        masterQueueConsumersDisabled: true,
+        processWorkerQueueDebounceMs: 50,
         redis: redisOptions,
       },
       runLock: {
@@ -258,7 +264,7 @@ describe("RunEngine trigger()", () => {
           traceContext: {},
           traceId: "t12345",
           spanId: "s12345",
-          masterQueue: "main",
+          workerQueue: "main",
           queue: "task/test-task",
           isTest: false,
           tags: [],
@@ -266,11 +272,12 @@ describe("RunEngine trigger()", () => {
         prisma
       );
 
+      await setTimeout(500);
+
       //dequeue the run
-      const dequeued = await engine.dequeueFromMasterQueue({
+      const dequeued = await engine.dequeueFromWorkerQueue({
         consumerId: "test_12345",
-        masterQueue: run.masterQueue,
-        maxRunCount: 10,
+        workerQueue: "main",
       });
 
       //create an attempt
