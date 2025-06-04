@@ -168,7 +168,7 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
 
     if (!connect.success) {
       this.logger.error("Failed to connect", { error: connect.error });
-      throw new Error("[SupervisorSession]Failed to connect");
+      throw new Error("[SupervisorSession] Failed to connect");
     }
 
     const { workerGroup } = connect.data;

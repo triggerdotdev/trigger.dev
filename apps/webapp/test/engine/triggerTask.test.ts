@@ -5,9 +5,13 @@ vi.mock("~/db.server", () => ({
   prisma: {},
 }));
 
-vi.mock("~/services/platform.v3.server", () => ({
-  getEntitlement: vi.fn(),
-}));
+vi.mock("~/services/platform.v3.server", async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, unknown>;
+  return {
+    ...actual,
+    getEntitlement: vi.fn(),
+  };
+});
 
 import { RunEngine } from "@internal/run-engine";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "@internal/run-engine/tests";

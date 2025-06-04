@@ -214,8 +214,8 @@ const EnvironmentSchema = z.object({
   PUBSUB_REDIS_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
   PUBSUB_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
 
-  DEFAULT_ENV_EXECUTION_CONCURRENCY_LIMIT: z.coerce.number().int().default(10),
-  DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT: z.coerce.number().int().default(10),
+  DEFAULT_ENV_EXECUTION_CONCURRENCY_LIMIT: z.coerce.number().int().default(100),
+  DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT: z.coerce.number().int().default(100),
   DEFAULT_DEV_ENV_EXECUTION_ATTEMPTS: z.coerce.number().int().positive().default(1),
 
   TUNNEL_HOST: z.string().optional(),
@@ -260,7 +260,6 @@ const EnvironmentSchema = z.object({
   INGEST_EVENT_RATE_LIMIT_MAX: z.coerce.number().int().optional(),
 
   //v3
-  V3_ENABLED: z.string().default("false"),
   PROVIDER_SECRET: z.string().default("provider-secret"),
   COORDINATOR_SECRET: z.string().default("coordinator-secret"),
   DEPOT_TOKEN: z.string().optional(),
@@ -278,6 +277,8 @@ const EnvironmentSchema = z.object({
   OBJECT_STORE_BASE_URL: z.string().optional(),
   OBJECT_STORE_ACCESS_KEY_ID: z.string().optional(),
   OBJECT_STORE_SECRET_ACCESS_KEY: z.string().optional(),
+  OBJECT_STORE_REGION: z.string().optional(),
+  OBJECT_STORE_SERVICE: z.string().default("s3"),
   EVENTS_BATCH_SIZE: z.coerce.number().int().default(100),
   EVENTS_BATCH_INTERVAL: z.coerce.number().int().default(1000),
   EVENTS_DEFAULT_LOG_RETENTION: z.coerce.number().int().default(7),
@@ -787,6 +788,14 @@ const EnvironmentSchema = z.object({
   RUN_REPLICATION_KEEP_ALIVE_ENABLED: z.string().default("1"),
   RUN_REPLICATION_KEEP_ALIVE_IDLE_SOCKET_TTL_MS: z.coerce.number().int().optional(),
   RUN_REPLICATION_MAX_OPEN_CONNECTIONS: z.coerce.number().int().default(10),
+
+  // Bootstrap
+  TRIGGER_BOOTSTRAP_ENABLED: z.string().default("0"),
+  TRIGGER_BOOTSTRAP_WORKER_GROUP_NAME: z.string().optional(),
+  TRIGGER_BOOTSTRAP_WORKER_TOKEN_PATH: z.string().optional(),
+
+  // Machine presets
+  MACHINE_PRESETS_OVERRIDE_PATH: z.string().optional(),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

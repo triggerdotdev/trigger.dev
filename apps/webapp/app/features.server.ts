@@ -1,9 +1,7 @@
-import { env } from "./env.server";
 import { requestUrl } from "./utils/requestUrl.server";
 
 export type TriggerFeatures = {
   isManagedCloud: boolean;
-  v3Enabled: boolean;
 };
 
 function isManagedCloud(host: string): boolean {
@@ -18,7 +16,6 @@ function isManagedCloud(host: string): boolean {
 function featuresForHost(host: string): TriggerFeatures {
   return {
     isManagedCloud: isManagedCloud(host),
-    v3Enabled: env.V3_ENABLED === "true",
   };
 }
 

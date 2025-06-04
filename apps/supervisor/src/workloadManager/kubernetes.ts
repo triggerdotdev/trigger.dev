@@ -236,13 +236,13 @@ export class KubernetesWorkloadManager implements WorkloadManager {
 
   get #defaultResourceRequests(): ResourceQuantities {
     return {
-      "ephemeral-storage": env.EPHEMERAL_STORAGE_SIZE_REQUEST,
+      "ephemeral-storage": env.KUBERNETES_EPHEMERAL_STORAGE_SIZE_REQUEST,
     };
   }
 
   get #defaultResourceLimits(): ResourceQuantities {
     return {
-      "ephemeral-storage": env.EPHEMERAL_STORAGE_SIZE_LIMIT,
+      "ephemeral-storage": env.KUBERNETES_EPHEMERAL_STORAGE_SIZE_LIMIT,
     };
   }
 

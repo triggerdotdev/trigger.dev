@@ -10,8 +10,9 @@ const Env = z.object({
 
   // Required settings
   TRIGGER_API_URL: z.string().url(),
-  TRIGGER_WORKER_TOKEN: z.string(),
+  TRIGGER_WORKER_TOKEN: z.string(), // accepts file:// path to read from a file
   MANAGED_WORKER_SECRET: z.string(),
+  OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url(), // set on the runners
 
   // Workload API settings (coordinator mode) - the workload API is what the run controller connects to
   TRIGGER_WORKLOAD_API_ENABLED: BoolEnv.default("true"),
@@ -29,26 +30,6 @@ const Env = z.object({
   RUNNER_SNAPSHOT_POLL_INTERVAL_SECONDS: z.coerce.number().optional(),
   RUNNER_ADDITIONAL_ENV_VARS: AdditionalEnvVars, // optional (csv)
   RUNNER_PRETTY_LOGS: BoolEnv.default(false),
-  RUNNER_DOCKER_AUTOREMOVE: BoolEnv.default(true),
-  /**
-   * Network mode to use for all runners. Supported standard values are: `bridge`, `host`, `none`, and `container:<name|id>`.
-   * Any other value is taken as a custom network's name to which all runners should connect to.
-   *
-   * Accepts a list of comma-separated values to attach to multiple networks. Additional networks are interpreted as network names and will be attached after container creation.
-   *
-   * **WARNING**: Specifying multiple networks will slightly increase startup times.
-   *
-   * @default "host"
-   */
-  RUNNER_DOCKER_NETWORKS: z.string().default("host"),
-
-  // Docker settings
-  DOCKER_API_VERSION: z.string().default("v1.41"),
-  DOCKER_PLATFORM: z.string().optional(), // e.g. linux/amd64, linux/arm64
-  DOCKER_STRIP_IMAGE_DIGEST: BoolEnv.default(true),
-  DOCKER_REGISTRY_USERNAME: z.string().optional(),
-  DOCKER_REGISTRY_PASSWORD: z.string().optional(),
-  DOCKER_REGISTRY_URL: z.string().optional(), // e.g. https://index.docker.io/v1
 
   // Dequeue settings (provider mode)
   TRIGGER_DEQUEUE_ENABLED: BoolEnv.default("true"),
@@ -62,22 +43,39 @@ const Env = z.object({
   TRIGGER_CHECKPOINT_URL: z.string().optional(),
   TRIGGER_METADATA_URL: z.string().optional(),
 
-  // Used by the workload manager, e.g docker/k8s
-  OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url(),
-  ENFORCE_MACHINE_PRESETS: z.coerce.boolean().default(false),
-  KUBERNETES_IMAGE_PULL_SECRETS: z.string().optional(), // csv
-
   // Used by the resource monitor
   RESOURCE_MONITOR_ENABLED: BoolEnv.default(false),
   RESOURCE_MONITOR_OVERRIDE_CPU_TOTAL: z.coerce.number().optional(),
   RESOURCE_MONITOR_OVERRIDE_MEMORY_TOTAL_GB: z.coerce.number().optional(),
 
-  // Kubernetes specific settings
+  // Docker settings
+  DOCKER_API_VERSION: z.string().default("v1.41"),
+  DOCKER_PLATFORM: z.string().optional(), // e.g. linux/amd64, linux/arm64
+  DOCKER_STRIP_IMAGE_DIGEST: BoolEnv.default(true),
+  DOCKER_REGISTRY_USERNAME: z.string().optional(),
+  DOCKER_REGISTRY_PASSWORD: z.string().optional(),
+  DOCKER_REGISTRY_URL: z.string().optional(), // e.g. https://index.docker.io/v1
+  DOCKER_ENFORCE_MACHINE_PRESETS: BoolEnv.default(true),
+  DOCKER_AUTOREMOVE_EXITED_CONTAINERS: BoolEnv.default(true),
+  /**
+   * Network mode to use for all runners. Supported standard values are: `bridge`, `host`, `none`, and `container:<name|id>`.
+   * Any other value is taken as a custom network's name to which all runners should connect to.
+   *
+   * Accepts a list of comma-separated values to attach to multiple networks. Additional networks are interpreted as network names and will be attached after container creation.
+   *
+   * **WARNING**: Specifying multiple networks will slightly increase startup times.
+   *
+   * @default "host"
+   */
+  DOCKER_RUNNER_NETWORKS: z.string().default("host"),
+
+  // Kubernetes settings
   KUBERNETES_FORCE_ENABLED: BoolEnv.default(false),
   KUBERNETES_NAMESPACE: z.string().default("default"),
   KUBERNETES_WORKER_NODETYPE_LABEL: z.string().default("v4-worker"),
-  EPHEMERAL_STORAGE_SIZE_LIMIT: z.string().default("10Gi"),
-  EPHEMERAL_STORAGE_SIZE_REQUEST: z.string().default("2Gi"),
+  KUBERNETES_IMAGE_PULL_SECRETS: z.string().optional(), // csv
+  KUBERNETES_EPHEMERAL_STORAGE_SIZE_LIMIT: z.string().default("10Gi"),
+  KUBERNETES_EPHEMERAL_STORAGE_SIZE_REQUEST: z.string().default("2Gi"),
 
   // Metrics
   METRICS_ENABLED: BoolEnv.default(true),

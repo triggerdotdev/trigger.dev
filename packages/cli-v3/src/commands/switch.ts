@@ -84,7 +84,7 @@ export async function switchProfiles(profile: string | undefined, options: Switc
   }
 
   const profileSelection = await select({
-    message: "Please select a new profile",
+    message: "Select a new default profile",
     initialValue: authConfig.currentProfile,
     options: profileNames.map((profile) => ({
       value: profile,

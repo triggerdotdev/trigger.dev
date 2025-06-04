@@ -26,7 +26,7 @@ WORKDIR /triggerdotdev
 # Corepack is used to install pnpm
 RUN corepack enable
 ENV NODE_ENV development
-RUN pnpm install --ignore-scripts --no-frozen-lockfile
+RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store pnpm install --ignore-scripts --no-frozen-lockfile
 
 ## Production deps
 FROM base AS production-deps
@@ -34,11 +34,11 @@ WORKDIR /triggerdotdev
 # Corepack is used to install pnpm
 RUN corepack enable
 ENV NODE_ENV production
-RUN pnpm install --prod --no-frozen-lockfile
+RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store pnpm install --prod --no-frozen-lockfile
 COPY --from=pruner --chown=node:node /triggerdotdev/internal-packages/database/prisma/schema.prisma /triggerdotdev/internal-packages/database/prisma/schema.prisma
 # RUN pnpm add @prisma/client@5.1.1 -w
 ENV NPM_CONFIG_IGNORE_WORKSPACE_ROOT_CHECK true
-RUN pnpx prisma@5.4.1 generate --schema /triggerdotdev/internal-packages/database/prisma/schema.prisma
+RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store pnpx prisma@5.4.1 generate --schema /triggerdotdev/internal-packages/database/prisma/schema.prisma
 
 ## Builder (builds the webapp)
 FROM base AS builder

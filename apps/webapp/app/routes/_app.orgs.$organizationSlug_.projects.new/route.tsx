@@ -17,7 +17,6 @@ import { FormTitle } from "~/components/primitives/FormTitle";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
-import { Select, SelectItem } from "~/components/primitives/Select";
 import { ButtonSpinner } from "~/components/primitives/Spinner";
 import { prisma } from "~/db.server";
 import { featuresForRequest } from "~/features.server";
@@ -61,8 +60,8 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
   }
 
   //if you don't have v3 access, you must select a plan
-  const { isManagedCloud, v3Enabled } = featuresForRequest(request);
-  if (isManagedCloud && v3Enabled && !organization.v3Enabled) {
+  const { isManagedCloud } = featuresForRequest(request);
+  if (isManagedCloud && !organization.v3Enabled) {
     return redirect(selectPlanPath({ slug: organizationSlug }));
   }
 
@@ -123,10 +122,8 @@ export const action: ActionFunction = async ({ request, params }) => {
 export default function Page() {
   const { organization, message } = useTypedLoaderData<typeof loader>();
   const lastSubmission = useActionData();
-  const { v3Enabled, isManagedCloud } = useFeatures();
 
-  const canCreateV3Projects = organization.v3Enabled && v3Enabled;
-  const canCreateV2Projects = organization.v2Enabled || !isManagedCloud;
+  const canCreateV3Projects = organization.v3Enabled;
 
   const [form, { projectName, projectVersion }] = useForm({
     id: "create-project",
@@ -165,30 +162,7 @@ export default function Page() {
               />
               <FormError id={projectName.errorId}>{projectName.error}</FormError>
             </InputGroup>
-            {canCreateV2Projects && canCreateV3Projects ? (
-              <InputGroup>
-                <Label htmlFor={projectVersion.id}>Project version</Label>
-                <Select
-                  {...conform.select(projectVersion)}
-                  defaultValue={undefined}
-                  variant="tertiary/medium"
-                  placeholder="Select version"
-                  dropdownIcon
-                  text={(value) => {
-                    switch (value) {
-                      case "v2":
-                        return "Version 2";
-                      case "v3":
-                        return "Version 3";
-                    }
-                  }}
-                >
-                  <SelectItem value="v2">Version 2</SelectItem>
-                  <SelectItem value="v3">Version 3 (Developer Preview)</SelectItem>
-                </Select>
-                <FormError id={projectVersion.errorId}>{projectVersion.error}</FormError>
-              </InputGroup>
-            ) : canCreateV3Projects ? (
+            {canCreateV3Projects ? (
               <input {...conform.input(projectVersion, { type: "hidden" })} value={"v3"} />
             ) : (
               <input {...conform.input(projectVersion, { type: "hidden" })} value={"v2"} />

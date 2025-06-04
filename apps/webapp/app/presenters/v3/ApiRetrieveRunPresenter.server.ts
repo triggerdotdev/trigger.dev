@@ -117,12 +117,21 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
         payloadPacket.dataType === "application/store" &&
         typeof payloadPacket.data === "string"
       ) {
-        $payloadPresignedUrl = await generatePresignedUrl(
+        const signed = await generatePresignedUrl(
           env.project.externalRef,
           env.slug,
           payloadPacket.data,
           "GET"
         );
+
+        if (signed.success) {
+          $payloadPresignedUrl = signed.url;
+        } else {
+          logger.error(`Failed to generate presigned URL for payload: ${signed.error}`, {
+            taskRunId: taskRun.id,
+            payload: payloadPacket.data,
+          });
+        }
       } else {
         $payload = await parsePacket(payloadPacket);
       }
@@ -137,12 +146,21 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
           outputPacket.dataType === "application/store" &&
           typeof outputPacket.data === "string"
         ) {
-          $outputPresignedUrl = await generatePresignedUrl(
+          const signed = await generatePresignedUrl(
             env.project.externalRef,
             env.slug,
             outputPacket.data,
             "GET"
           );
+
+          if (signed.success) {
+            $outputPresignedUrl = signed.url;
+          } else {
+            logger.error(`Failed to generate presigned URL for output: ${signed.error}`, {
+              taskRunId: taskRun.id,
+              output: outputPacket.data,
+            });
+          }
         } else {
           $output = await parsePacket(outputPacket);
         }
