@@ -82,6 +82,16 @@ COPY --from=builder --chown=node:node /triggerdotdev/scripts ./scripts
 COPY --from=builder /usr/local/bin/goose /usr/local/bin/goose
 COPY --from=builder --chown=node:node /triggerdotdev/internal-packages/clickhouse/schema /triggerdotdev/internal-packages/clickhouse/schema
 
+# Build info
+ARG BUILD_APP_VERSION
+ARG BUILD_GIT_SHA
+ARG BUILD_GIT_REF_NAME
+ARG BUILD_TIMESTAMP_SECONDS
+ENV BUILD_APP_VERSION=${BUILD_APP_VERSION} \
+    BUILD_GIT_SHA=${BUILD_GIT_SHA} \
+    BUILD_GIT_REF_NAME=${BUILD_GIT_REF_NAME} \
+    BUILD_TIMESTAMP_SECONDS=${BUILD_TIMESTAMP_SECONDS}
+
 EXPOSE 3000
 
 USER node
