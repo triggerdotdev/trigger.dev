@@ -350,6 +350,8 @@ describe("RunEngine heartbeats", () => {
         assertNonNullable(executionData2);
         expect(executionData2.snapshot.executionStatus).toBe("QUEUED");
 
+        await setTimeout(1_000);
+
         //have to dequeue again
         const dequeued2 = await engine.dequeueFromWorkerQueue({
           consumerId: "test_12345",

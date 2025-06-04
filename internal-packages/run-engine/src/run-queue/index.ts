@@ -610,11 +610,13 @@ export class RunQueue {
     messageId,
     retryAt,
     incrementAttemptCount = true,
+    skipDequeueProcessing = false,
   }: {
     orgId: string;
     messageId: string;
     retryAt?: number;
     incrementAttemptCount?: boolean;
+    skipDequeueProcessing?: boolean;
   }) {
     return this.#trace(
       "nackMessage",
@@ -646,6 +648,21 @@ export class RunQueue {
             await this.#callMoveToDeadLetterQueue({ message });
             return false;
           }
+        }
+
+        if (!skipDequeueProcessing) {
+          // This will move the message to the worker queue so it can be dequeued
+          await this.worker.enqueueOnce({
+            id: message.queue, // dedupe by environment, queue, and concurrency key
+            job: "processQueueForWorkerQueue",
+            payload: {
+              queueKey: message.queue,
+              environmentId: message.environmentId,
+            },
+            // Add a small delay to dedupe messages so at most one of these will processed,
+            // every 500ms per queue, concurrency key, and environment
+            availableAt: new Date(Date.now() + (this.options.processWorkerQueueDebounceMs ?? 500)), // 500ms from now
+          });
         }
 
         await this.#callNackMessage({ message, retryAt });
