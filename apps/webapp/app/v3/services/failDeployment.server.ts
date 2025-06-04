@@ -15,24 +15,25 @@ const FINAL_DEPLOYMENT_STATUSES: WorkerDeploymentStatus[] = [
 export class FailDeploymentService extends BaseService {
   public async call(
     authenticatedEnv: AuthenticatedEnvironment,
-    id: string,
+    friendlyId: string,
     params: FailDeploymentRequestBody
   ) {
-    const deployment = await this._prisma.workerDeployment.findUnique({
+    const deployment = await this._prisma.workerDeployment.findFirst({
       where: {
-        friendlyId: id,
+        friendlyId,
         environmentId: authenticatedEnv.id,
       },
     });
 
     if (!deployment) {
-      logger.error("Worker deployment not found", { id });
+      logger.error("Worker deployment not found", { friendlyId });
       return;
     }
 
     if (FINAL_DEPLOYMENT_STATUSES.includes(deployment.status)) {
       logger.error("Worker deployment already in final state", {
         id: deployment.id,
+        friendlyId,
         status: deployment.status,
       });
       return;

@@ -289,11 +289,9 @@ export class CliApiClient {
     }
 
     let resolvePromise: (value: ApiResult<FailDeploymentResponseBody>) => void;
-    let rejectPromise: (reason: any) => void;
 
-    const promise = new Promise<ApiResult<FailDeploymentResponseBody>>((resolve, reject) => {
+    const promise = new Promise<ApiResult<FailDeploymentResponseBody>>((resolve) => {
       resolvePromise = resolve;
-      rejectPromise = reject;
     });
 
     const source = zodfetchSSE({
@@ -311,9 +309,15 @@ export class CliApiClient {
     });
 
     source.onConnectionError((error) => {
-      rejectPromise({
+      let message = error.message ?? "Unknown error";
+
+      if (error.status !== undefined) {
+        message = `HTTP ${error.status} ${message}`;
+      }
+
+      resolvePromise({
         success: false,
-        error,
+        error: message,
       });
     });
 
@@ -325,7 +329,7 @@ export class CliApiClient {
     });
 
     source.onMessage("error", ({ error }) => {
-      rejectPromise({
+      resolvePromise({
         success: false,
         error,
       });

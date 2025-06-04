@@ -28,6 +28,7 @@ const Env = z.object({
   RUNNER_HEARTBEAT_INTERVAL_SECONDS: z.coerce.number().optional(),
   RUNNER_SNAPSHOT_POLL_INTERVAL_SECONDS: z.coerce.number().optional(),
   RUNNER_ADDITIONAL_ENV_VARS: AdditionalEnvVars, // optional (csv)
+  RUNNER_PRETTY_LOGS: BoolEnv.default(false),
   RUNNER_DOCKER_AUTOREMOVE: BoolEnv.default(true),
   /**
    * Network mode to use for all runners. Supported standard values are: `bridge`, `host`, `none`, and `container:<name|id>`.
@@ -40,6 +41,14 @@ const Env = z.object({
    * @default "host"
    */
   RUNNER_DOCKER_NETWORKS: z.string().default("host"),
+
+  // Docker settings
+  DOCKER_API_VERSION: z.string().default("v1.41"),
+  DOCKER_PLATFORM: z.string().optional(), // e.g. linux/amd64, linux/arm64
+  DOCKER_STRIP_IMAGE_DIGEST: BoolEnv.default(true),
+  DOCKER_REGISTRY_USERNAME: z.string().optional(),
+  DOCKER_REGISTRY_PASSWORD: z.string().optional(),
+  DOCKER_REGISTRY_URL: z.string().optional(), // e.g. https://index.docker.io/v1
 
   // Dequeue settings (provider mode)
   TRIGGER_DEQUEUE_ENABLED: BoolEnv.default("true"),
