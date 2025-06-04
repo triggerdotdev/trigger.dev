@@ -1,5 +1,13 @@
 import { Callback, createRedisClient, Redis, Result, type RedisOptions } from "@internal/redis";
-import { startSpan, Tracer, Meter, getMeter, ValueType, ObservableResult, Attributes } from "@internal/tracing";
+import {
+  startSpan,
+  Tracer,
+  Meter,
+  getMeter,
+  ValueType,
+  ObservableResult,
+  Attributes,
+} from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
 import { z } from "zod";
 import { setInterval } from "node:timers/promises";
@@ -100,7 +108,7 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
       "release_concurrency.releasings.length",
       {
         description: "Number of items in the releasings sorted set",
-        unit: "1",
+        unit: "items",
         valueType: ValueType.INT,
       }
     );
@@ -108,8 +116,8 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
     const masterQueueLengthGauge = this.meter.createObservableGauge(
       "release_concurrency.master_queue.length",
       {
-        description: "Number of queues in the master queue sorted set",
-        unit: "1",
+        description: "Number of items in the master queue sorted set",
+        unit: "items",
         valueType: ValueType.INT,
       }
     );

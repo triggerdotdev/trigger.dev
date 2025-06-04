@@ -5,7 +5,16 @@ import { Redis } from "@internal/redis";
 import * as redlock from "redlock";
 import { tryCatch } from "@trigger.dev/core";
 import { Logger } from "@trigger.dev/core/logger";
-import { startSpan, Tracer, Meter, getMeter, ValueType, ObservableResult, Attributes, Histogram } from "@internal/tracing";
+import {
+  startSpan,
+  Tracer,
+  Meter,
+  getMeter,
+  ValueType,
+  ObservableResult,
+  Attributes,
+  Histogram,
+} from "@internal/tracing";
 
 const SemanticAttributes = {
   LOCK_TYPE: "run_engine.lock.type",
@@ -41,23 +50,17 @@ export class RunLocker {
     this.tracer = options.tracer;
     this.meter = options.meter ?? getMeter("run-engine");
 
-    const activeLocksObservableGauge = this.meter.createObservableGauge(
-      "run_engine.locks.active",
-      {
-        description: "The number of active locks by type",
-        unit: "1",
-        valueType: ValueType.INT,
-      }
-    );
+    const activeLocksObservableGauge = this.meter.createObservableGauge("run_engine.locks.active", {
+      description: "The number of active locks by type",
+      unit: "locks",
+      valueType: ValueType.INT,
+    });
 
-    const lockDurationHistogram = this.meter.createHistogram(
-      "run_engine.lock.duration",
-      {
-        description: "The duration of lock operations",
-        unit: "ms",
-        valueType: ValueType.DOUBLE,
-      }
-    );
+    const lockDurationHistogram = this.meter.createHistogram("run_engine.lock.duration", {
+      description: "The duration of lock operations",
+      unit: "ms",
+      valueType: ValueType.DOUBLE,
+    });
 
     activeLocksObservableGauge.addCallback(this.#updateActiveLocksCount.bind(this));
     this.lockDurationHistogram = lockDurationHistogram;
@@ -108,10 +111,10 @@ export class RunLocker {
 
         const [error, result] = await tryCatch(
           this.redlock.using(resources, duration, async (signal) => {
-            const newContext: LockContext = { 
-              resources: joinedResources, 
+            const newContext: LockContext = {
+              resources: joinedResources,
               signal,
-              lockType: name
+              lockType: name,
             };
 
             // Track active lock

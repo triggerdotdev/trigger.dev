@@ -61,7 +61,7 @@
     "@opentelemetry/core": "1.25.1",
     "@opentelemetry/exporter-logs-otlp-http": "0.52.1",
     "@opentelemetry/exporter-trace-otlp-http": "0.52.1",
-    "@opentelemetry/exporter-metrics-otlp-http": "0.52.1",
+    "@opentelemetry/exporter-metrics-otlp-proto": "0.52.1",
     "@opentelemetry/instrumentation": "0.52.1",
     "@opentelemetry/instrumentation-express": "^0.36.1",
     "@opentelemetry/instrumentation-http": "0.52.1",

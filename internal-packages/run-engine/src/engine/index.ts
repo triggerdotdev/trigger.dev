@@ -122,13 +122,14 @@ export class RunEngine {
         immediatePollIntervalMs: options.worker.immediatePollIntervalMs,
         shutdownTimeoutMs: options.worker.shutdownTimeoutMs,
       },
-      masterQueueConsumersDisabled: options.queue?.masterQueueConsumersDisabled,
+      shardCount: options.queue?.shardCount,
+      masterQueueConsumersDisabled: options.worker.disabled,
       processWorkerQueueDebounceMs: options.queue?.processWorkerQueueDebounceMs,
       meter: options.meter,
     });
 
     this.worker = new Worker({
-      name: "worker",
+      name: "run-engine-worker",
       redisOptions: {
         ...options.worker.redis,
         keyPrefix: `${options.worker.redis.keyPrefix}worker:`,

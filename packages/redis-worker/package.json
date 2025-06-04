@@ -27,7 +27,6 @@
     "lodash.omit": "^4.5.0",
     "nanoid": "^5.0.7",
     "p-limit": "^6.2.0",
-    "prom-client": "^15.1.0",
     "zod": "3.23.8"
   },
   "devDependencies": {

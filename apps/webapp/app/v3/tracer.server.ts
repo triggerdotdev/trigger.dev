@@ -26,7 +26,7 @@ import {
   ConsoleMetricExporter,
   PeriodicExportingMetricReader,
 } from "@opentelemetry/sdk-metrics";
-import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
+import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-proto";
 import { Resource } from "@opentelemetry/resources";
 import {
   BatchSpanProcessor,
@@ -289,17 +289,11 @@ function setupTelemetry() {
 }
 
 function setupMetrics() {
-  if (env.INTERNAL_OTEL_METRIC_EXPORTER_DISABLED === "1") {
+  if (env.INTERNAL_OTEL_METRIC_EXPORTER_ENABLED === "0") {
     return metrics.getMeter("trigger.dev", "3.3.12");
   }
 
-  const exporter = env.INTERNAL_OTEL_METRIC_EXPORTER_URL
-    ? new OTLPMetricExporter({
-        url: env.INTERNAL_OTEL_METRIC_EXPORTER_URL,
-        timeoutMillis: 30_000,
-        headers: parseInternalMetricsHeaders() ?? {},
-      })
-    : new ConsoleMetricExporter();
+  const exporter = createMetricsExporter();
 
   const meterProvider = new MeterProvider({
     resource: new Resource({
@@ -309,8 +303,8 @@ function setupMetrics() {
     readers: [
       new PeriodicExportingMetricReader({
         exporter,
-        exportIntervalMillis: env.INTERNAL_OTEL_METRIC_EXPORTER_INTERVAL,
-        exportTimeoutMillis: 30_000,
+        exportIntervalMillis: env.INTERNAL_OTEL_METRIC_EXPORTER_INTERVAL_MS,
+        exportTimeoutMillis: env.INTERNAL_OTEL_METRIC_EXPORTER_INTERVAL_MS,
       }),
     ],
   });
@@ -410,5 +404,25 @@ function parseInternalMetricsHeaders(): Record<string, string> | undefined {
       : undefined;
   } catch {
     return;
+  }
+}
+
+function createMetricsExporter() {
+  if (env.INTERNAL_OTEL_METRIC_EXPORTER_URL) {
+    const headers = parseInternalMetricsHeaders() ?? {};
+
+    console.log(
+      `🔦 Tracer: OTLP metric exporter enabled to ${
+        env.INTERNAL_OTEL_METRIC_EXPORTER_URL
+      } with headers: ${Object.keys(headers)}`
+    );
+
+    return new OTLPMetricExporter({
+      url: env.INTERNAL_OTEL_METRIC_EXPORTER_URL,
+      timeoutMillis: 30_000,
+      headers,
+    });
+  } else {
+    return new ConsoleMetricExporter();
   }
 }

@@ -137,7 +137,7 @@ export class RunQueue {
       "runqueue.workerQueue.length",
       {
         description: "The number of messages in the worker queue",
-        unit: "1",
+        unit: "messages",
         valueType: ValueType.INT,
       }
     );
@@ -146,7 +146,7 @@ export class RunQueue {
       "runqueue.masterQueue.length",
       {
         description: "The number of queues in the master queue shard",
-        unit: "1",
+        unit: "queues",
         valueType: ValueType.INT,
       }
     );
@@ -791,8 +791,11 @@ export class RunQueue {
     projectId: string
   ) {
     // Calculate the master queue shard for this environment
-    const masterQueue = this.keys.masterQueueKeyForEnvironment(runtimeEnvironmentId, this.shardCount);
-    
+    const masterQueue = this.keys.masterQueueKeyForEnvironment(
+      runtimeEnvironmentId,
+      this.shardCount
+    );
+
     // Use scanStream to find all matching members
     const stream = this.redis.zscanStream(masterQueue, {
       match: this.keys.queueKey(organizationId, projectId, "*", "*"),

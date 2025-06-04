@@ -30,7 +30,7 @@ export type RunEngineOptions = {
   };
   queue: {
     redis: RedisOptions;
-    masterQueueConsumersDisabled?: boolean;
+    shardCount?: number;
     processWorkerQueueDebounceMs?: number;
     workerOptions?: WorkerConcurrencyOptions;
     retryOptions?: RetryOptions;

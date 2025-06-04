@@ -59,6 +59,8 @@ function createRunEngine() {
         maximumEnvCount: env.RUN_ENGINE_MAXIMUM_ENV_COUNT,
         tracer,
       },
+      shardCount: env.RUN_ENGINE_RUN_QUEUE_SHARD_COUNT,
+      processWorkerQueueDebounceMs: env.RUN_ENGINE_PROCESS_WORKER_QUEUE_DEBOUNCE_MS,
     },
     runLock: {
       redis: {
