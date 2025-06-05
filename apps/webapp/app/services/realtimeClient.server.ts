@@ -7,6 +7,9 @@ import { createRedisClient, RedisClient, RedisWithClusterOptions } from "~/redis
 import { longPollingFetch } from "~/utils/longPollingFetch";
 import { logger } from "./logger.server";
 import { jumpHash } from "@trigger.dev/core/v3/serverOnly";
+import { Cache, createCache, DefaultStatefulContext, Namespace } from "@unkey/cache";
+import { MemoryStore } from "@unkey/cache/stores";
+import { RedisCacheStore } from "./unkey/redisCacheStore.server";
 
 export interface CachedLimitProvider {
   getCachedLimit: (organizationId: string, defaultValue: number) => Promise<number | undefined>;
@@ -67,12 +70,38 @@ export class RealtimeClient {
   private redis: RedisClient;
   private expiryTimeInSeconds: number;
   private cachedLimitProvider: CachedLimitProvider;
+  private cache: Cache<{ createdAtFilter: string }>;
 
   constructor(private options: RealtimeClientOptions) {
     this.redis = createRedisClient("trigger:realtime", options.redis);
     this.expiryTimeInSeconds = options.expiryTimeInSeconds ?? 60 * 5; // default to 5 minutes
     this.cachedLimitProvider = options.cachedLimitProvider;
     this.#registerCommands();
+
+    const ctx = new DefaultStatefulContext();
+    const memory = new MemoryStore({ persistentMap: new Map() });
+    const redisCacheStore = new RedisCacheStore({
+      connection: {
+        keyPrefix: "tr:cache:realtime",
+        port: options.redis.port,
+        host: options.redis.host,
+        username: options.redis.username,
+        password: options.redis.password,
+        tlsDisabled: options.redis.tlsDisabled,
+        clusterMode: options.redis.clusterMode,
+      },
+    });
+
+    // This cache holds the limits fetched from the platform service
+    const cache = createCache({
+      createdAtFilter: new Namespace<string>(ctx, {
+        stores: [memory, redisCacheStore],
+        fresh: 60_000 * 60 * 24 * 7, // 1 week
+        stale: 60_000 * 60 * 24 * 14, // 2 weeks
+      }),
+    });
+
+    this.cache = cache;
   }
 
   async streamChunks(
@@ -196,14 +225,22 @@ export class RealtimeClient {
   }
 
   async #getCreatedAtFilter(shapeId: string) {
-    // TODO: replace this with unkey cache so we can use in memory
-    const createdAtFilterRawValue = await this.redis.get(`shapes:${shapeId}:filters:createdAt`);
+    const createdAtFilterCacheResult = await this.cache.createdAtFilter.get(shapeId);
 
-    if (!createdAtFilterRawValue) {
+    if (createdAtFilterCacheResult.err) {
+      logger.error("[realtimeClient] Failed to get createdAt filter", {
+        shapeId,
+        error: createdAtFilterCacheResult.err,
+      });
+
       return;
     }
 
-    return new Date(createdAtFilterRawValue);
+    if (!createdAtFilterCacheResult.val) {
+      return;
+    }
+
+    return new Date(createdAtFilterCacheResult.val);
   }
 
   async #setCreatedAtFilterFromResponse(response: Response, createdAtFilter: Date) {
@@ -213,7 +250,7 @@ export class RealtimeClient {
       return;
     }
 
-    await this.redis.set(`shapes:${shapeId}:filters:createdAt`, createdAtFilter.toISOString());
+    await this.cache.createdAtFilter.set(shapeId, createdAtFilter.toISOString());
   }
 
   async #streamRunsWhere(

@@ -21,7 +21,7 @@ export const realtimeByTagsTask = task({
 
     for await (const run of runs.subscribeToRunsWithTag(
       "hello-world",
-      { createdAt: "10s", skipColumns: ["payload", "output", "number"] },
+      { createdAt: "2m", skipColumns: ["payload", "output", "number"] },
       { signal: $signal }
     )) {
       logger.info("run", { run });
