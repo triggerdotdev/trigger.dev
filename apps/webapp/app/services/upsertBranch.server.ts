@@ -165,7 +165,7 @@ export async function checkBranchLimit(
   const count = newBranchName
     ? usedEnvs.filter((env) => env.branchName !== newBranchName).length
     : usedEnvs.length;
-  const limit = await getLimit(organizationId, "branches", 50);
+  const limit = await getLimit(organizationId, "branches", 100_000_000);
 
   return {
     used: count,
