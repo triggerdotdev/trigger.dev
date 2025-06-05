@@ -56,7 +56,6 @@ const EnvironmentSchema = z.object({
   WORKER_CONCURRENCY: z.coerce.number().int().default(10),
   WORKER_POLL_INTERVAL: z.coerce.number().int().default(1000),
   WORKER_ENABLED: z.string().default("true"),
-  EXECUTION_WORKER_ENABLED: z.string().default("true"),
   GRACEFUL_SHUTDOWN_TIMEOUT: z.coerce.number().int().default(60000),
   DISABLE_SSE: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
