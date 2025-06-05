@@ -682,12 +682,9 @@ model TaskRun {
   @@index([projectId, taskIdentifier, status])
   //Schedules
   @@index([scheduleId])
-  @@index([scheduleInstanceId])
   // Run page inspector
   @@index([spanId])
   @@index([parentSpanId])
-  // Finding completed runs
-  @@index([completedAt])
   // Schedule list page
   @@index([scheduleId, createdAt(sort: Desc)])
   // Finding runs in a batch
