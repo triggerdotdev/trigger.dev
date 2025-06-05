@@ -220,10 +220,10 @@ const EnvironmentSchema = z.object({
   DEPOT_TOKEN: z.string().optional(),
   DEPOT_ORG_ID: z.string().optional(),
   DEPOT_REGION: z.string().default("us-east-1"),
-  DEPLOY_REGISTRY_HOST: z.string(),
+  DEPLOY_REGISTRY_HOST: z.string().min(1),
   DEPLOY_REGISTRY_USERNAME: z.string().optional(),
   DEPLOY_REGISTRY_PASSWORD: z.string().optional(),
-  DEPLOY_REGISTRY_NAMESPACE: z.string().default("trigger"),
+  DEPLOY_REGISTRY_NAMESPACE: z.string().min(1).default("trigger"),
   DEPLOY_IMAGE_PLATFORM: z.string().default("linux/amd64"),
   DEPLOY_TIMEOUT_MS: z.coerce
     .number()
