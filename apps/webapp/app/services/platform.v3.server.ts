@@ -193,15 +193,6 @@ export async function getCurrentPlan(orgId: string) {
     firstDayOfNextMonth.setUTCMonth(firstDayOfNextMonth.getUTCMonth() + 1);
     firstDayOfNextMonth.setUTCHours(0, 0, 0, 0);
 
-    const currentRunCount = await $replica.jobRun.count({
-      where: {
-        organizationId: orgId,
-        createdAt: {
-          gte: firstDayOfMonth,
-        },
-      },
-    });
-
     if (!result.success) {
       logger.error("Error getting current plan", { orgId, error: result.error });
       return undefined;
@@ -212,11 +203,6 @@ export async function getCurrentPlan(orgId: string) {
     const periodRemainingDuration = periodEnd.getTime() - new Date().getTime();
 
     const usage = {
-      currentRunCount,
-      runCountCap: result.subscription?.plan.runs?.freeAllowance,
-      exceededRunCount: result.subscription?.plan.runs?.freeAllowance
-        ? currentRunCount > result.subscription?.plan.runs?.freeAllowance
-        : false,
       periodStart,
       periodEnd,
       periodRemainingDuration,

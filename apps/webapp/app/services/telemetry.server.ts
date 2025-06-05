@@ -1,4 +1,3 @@
-import { Job } from "@trigger.dev/database";
 import { PostHog } from "posthog-node";
 import { env } from "~/env.server";
 import { MatchedOrganization } from "~/hooks/useOrganizations";
@@ -145,7 +144,6 @@ class Telemetry {
         },
       });
     },
-    deletedJob: ({ job }: { job: Job }) => {},
   };
 
   #capture(event: CaptureEvent) {
