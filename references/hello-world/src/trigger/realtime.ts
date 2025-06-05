@@ -5,7 +5,7 @@ export const realtimeByTagsTask = task({
   id: "realtime-by-tags",
   run: async (payload: any, { ctx, signal }) => {
     await helloWorldTask.trigger(
-      {},
+      { hello: "world" },
       {
         tags: ["hello-world", "realtime"],
       }
@@ -21,7 +21,7 @@ export const realtimeByTagsTask = task({
 
     for await (const run of runs.subscribeToRunsWithTag(
       "hello-world",
-      { createdAt: "10s" },
+      { createdAt: "10s", skipColumns: ["payload", "output", "number"] },
       { signal: $signal }
     )) {
       logger.info("run", { run });

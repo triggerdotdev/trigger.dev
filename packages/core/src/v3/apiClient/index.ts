@@ -66,6 +66,7 @@ import {
   SSEStreamSubscriptionFactory,
   TaskRunShape,
   runShapeStream,
+  RealtimeRunSkipColumns,
 } from "./runStream.js";
 import {
   CreateEnvironmentVariableParams,
@@ -88,6 +89,7 @@ export type {
   ImportEnvironmentVariablesParams,
   SubscribeToRunsQueryParams,
   UpdateEnvironmentVariableParams,
+  RealtimeRunSkipColumns,
 };
 
 export type ClientTriggerOptions = {
@@ -890,26 +892,37 @@ export class ApiClient {
       signal?: AbortSignal;
       closeOnComplete?: boolean;
       onFetchError?: (error: Error) => void;
+      skipColumns?: string[];
     }
   ) {
-    return runShapeStream<TRunTypes>(`${this.baseUrl}/realtime/v1/runs/${runId}`, {
-      closeOnComplete:
-        typeof options?.closeOnComplete === "boolean" ? options.closeOnComplete : true,
-      headers: this.#getRealtimeHeaders(),
-      client: this,
-      signal: options?.signal,
-      onFetchError: options?.onFetchError,
-    });
+    const queryParams = new URLSearchParams();
+
+    if (options?.skipColumns) {
+      queryParams.append("skipColumns", options.skipColumns.join(","));
+    }
+
+    return runShapeStream<TRunTypes>(
+      `${this.baseUrl}/realtime/v1/runs/${runId}${queryParams ? `?${queryParams}` : ""}`,
+      {
+        closeOnComplete:
+          typeof options?.closeOnComplete === "boolean" ? options.closeOnComplete : true,
+        headers: this.#getRealtimeHeaders(),
+        client: this,
+        signal: options?.signal,
+        onFetchError: options?.onFetchError,
+      }
+    );
   }
 
   subscribeToRunsWithTag<TRunTypes extends AnyRunTypes>(
     tag: string | string[],
-    filters?: { createdAt?: string },
+    filters?: { createdAt?: string; skipColumns?: string[] },
     options?: { signal?: AbortSignal; onFetchError?: (error: Error) => void }
   ) {
     const searchParams = createSearchQueryForSubscribeToRuns({
       tags: tag,
       ...(filters ? { createdAt: filters.createdAt } : {}),
+      ...(filters?.skipColumns ? { skipColumns: filters.skipColumns } : {}),
     });
 
     return runShapeStream<TRunTypes>(
@@ -926,15 +939,28 @@ export class ApiClient {
 
   subscribeToBatch<TRunTypes extends AnyRunTypes>(
     batchId: string,
-    options?: { signal?: AbortSignal; onFetchError?: (error: Error) => void }
+    options?: {
+      signal?: AbortSignal;
+      onFetchError?: (error: Error) => void;
+      skipColumns?: string[];
+    }
   ) {
-    return runShapeStream<TRunTypes>(`${this.baseUrl}/realtime/v1/batches/${batchId}`, {
-      closeOnComplete: false,
-      headers: this.#getRealtimeHeaders(),
-      client: this,
-      signal: options?.signal,
-      onFetchError: options?.onFetchError,
-    });
+    const queryParams = new URLSearchParams();
+
+    if (options?.skipColumns) {
+      queryParams.append("skipColumns", options.skipColumns.join(","));
+    }
+
+    return runShapeStream<TRunTypes>(
+      `${this.baseUrl}/realtime/v1/batches/${batchId}${queryParams ? `?${queryParams}` : ""}`,
+      {
+        closeOnComplete: false,
+        headers: this.#getRealtimeHeaders(),
+        client: this,
+        signal: options?.signal,
+        onFetchError: options?.onFetchError,
+      }
+    );
   }
 
   async fetchStream<T>(
@@ -1048,6 +1074,10 @@ function createSearchQueryForSubscribeToRuns(query?: SubscribeToRunsQueryParams)
 
     if (query.createdAt) {
       searchParams.append("createdAt", query.createdAt);
+    }
+
+    if (query.skipColumns) {
+      searchParams.append("skipColumns", query.skipColumns.join(","));
     }
   }
 

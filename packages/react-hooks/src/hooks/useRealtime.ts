@@ -1,6 +1,12 @@
 "use client";
 
-import { AnyTask, ApiClient, InferRunTypes, RealtimeRun } from "@trigger.dev/core/v3";
+import {
+  AnyTask,
+  ApiClient,
+  InferRunTypes,
+  RealtimeRun,
+  RealtimeRunSkipColumns,
+} from "@trigger.dev/core/v3";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { KeyedMutator, useSWR } from "../utils/trigger-swr.js";
 import { useApiClient, UseApiClientOptions } from "./useApiClient.js";
@@ -29,6 +35,13 @@ export type UseRealtimeSingleRunOptions<TTask extends AnyTask = AnyTask> = UseRe
    * Set this to false if you are making updates to the run metadata after completion through child runs
    */
   stopOnCompletion?: boolean;
+
+  /**
+   * Skip columns from the subscription.
+   *
+   * @default []
+   */
+  skipColumns?: RealtimeRunSkipColumns;
 };
 
 export type UseRealtimeRunInstance<TTask extends AnyTask = AnyTask> = {
@@ -101,6 +114,7 @@ export function useRealtimeRun<TTask extends AnyTask>(
 
       await processRealtimeRun(
         runId,
+        { skipColumns: options?.skipColumns },
         apiClient,
         mutateRun,
         setError,
@@ -261,6 +275,7 @@ export function useRealtimeRunWithStreams<
 
       await processRealtimeRunWithStreams(
         runId,
+        { skipColumns: options?.skipColumns },
         apiClient,
         mutateRun,
         mutateStreams,
@@ -351,6 +366,13 @@ export type UseRealtimeRunsWithTagOptions = UseRealtimeRunOptions & {
    *
    */
   createdAt?: string;
+
+  /**
+   * Skip columns from the subscription.
+   *
+   * @default []
+   */
+  skipColumns?: RealtimeRunSkipColumns;
 };
 
 /**
@@ -417,7 +439,7 @@ export function useRealtimeRunsWithTag<TTask extends AnyTask>(
 
       await processRealtimeRunsWithTag(
         tag,
-        { createdAt: options?.createdAt },
+        { createdAt: options?.createdAt, skipColumns: options?.skipColumns },
         apiClient,
         mutateRuns,
         runsRef,
@@ -590,7 +612,7 @@ function insertRunShapeInOrder<TTask extends AnyTask>(
 
 async function processRealtimeRunsWithTag<TTask extends AnyTask = AnyTask>(
   tag: string | string[],
-  filters: { createdAt?: string },
+  filters: { createdAt?: string; skipColumns?: RealtimeRunSkipColumns },
   apiClient: ApiClient,
   mutateRunsData: KeyedMutator<RealtimeRun<TTask>[]>,
   existingRunsRef: React.MutableRefObject<RealtimeRun<TTask>[]>,
@@ -633,6 +655,7 @@ async function processRealtimeRunWithStreams<
   TStreams extends Record<string, any> = Record<string, any>,
 >(
   runId: string,
+  filters: { skipColumns?: RealtimeRunSkipColumns },
   apiClient: ApiClient,
   mutateRunData: KeyedMutator<RealtimeRun<TTask>>,
   mutateStreamData: KeyedMutator<StreamResults<TStreams>>,
@@ -646,6 +669,7 @@ async function processRealtimeRunWithStreams<
     signal: abortControllerRef.current?.signal,
     closeOnComplete: stopOnCompletion,
     onFetchError: onError,
+    skipColumns: filters.skipColumns,
   });
 
   type StreamUpdate = {
@@ -692,6 +716,7 @@ async function processRealtimeRunWithStreams<
 
 async function processRealtimeRun<TTask extends AnyTask = AnyTask>(
   runId: string,
+  filters: { skipColumns?: RealtimeRunSkipColumns },
   apiClient: ApiClient,
   mutateRunData: KeyedMutator<RealtimeRun<TTask>>,
   onError: (e: Error) => void,
@@ -702,6 +727,7 @@ async function processRealtimeRun<TTask extends AnyTask = AnyTask>(
     signal: abortControllerRef.current?.signal,
     closeOnComplete: stopOnCompletion,
     onFetchError: onError,
+    skipColumns: filters.skipColumns,
   });
 
   for await (const part of subscription) {

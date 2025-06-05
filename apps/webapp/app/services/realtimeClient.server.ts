@@ -13,6 +13,37 @@ export interface CachedLimitProvider {
 
 const MAXIMUM_CREATED_AT_FILTER_AGE_IN_MS = 7 * 24 * 60 * 60 * 1000;
 
+const DEFAULT_ELECTRIC_COLUMNS = [
+  "id",
+  "taskIdentifier",
+  "createdAt",
+  "updatedAt",
+  "startedAt",
+  "delayUntil",
+  "queuedAt",
+  "expiredAt",
+  "completedAt",
+  "friendlyId",
+  "number",
+  "isTest",
+  "status",
+  "usageDurationMs",
+  "costInCents",
+  "baseCostInCents",
+  "ttl",
+  "payload",
+  "payloadType",
+  "metadata",
+  "metadataType",
+  "output",
+  "outputType",
+  "runTags",
+  "error",
+];
+
+const RESERVED_COLUMNS = ["id", "taskIdentifier", "friendlyId", "status", "createdAt"];
+const RESERVED_SEARCH_PARAMS = ["createdAt", "tags", "skipColumns"];
+
 export type RealtimeClientOptions = {
   electricOrigin: string;
   redis: RedisWithClusterOptions;
@@ -202,6 +233,10 @@ export class RealtimeClient {
 
     // Copy over all the url search params to the electric url
     $url.searchParams.forEach((value, key) => {
+      if (RESERVED_SEARCH_PARAMS.includes(key)) {
+        return;
+      }
+
       electricUrl.searchParams.set(key, value);
     });
 
@@ -212,6 +247,27 @@ export class RealtimeClient {
       // If the client version is not provided, that means we're using an older client
       // This means the client will be sending shape_id instead of handle
       electricUrl.searchParams.set("handle", electricUrl.searchParams.get("shape_id") ?? "");
+    }
+
+    const skipColumnsRaw = $url.searchParams.get("skipColumns");
+
+    if (skipColumnsRaw) {
+      const skipColumns = skipColumnsRaw
+        .split(",")
+        .map((c) => c.trim())
+        .filter((c) => c !== "" && !RESERVED_COLUMNS.includes(c));
+
+      electricUrl.searchParams.set(
+        "columns",
+        DEFAULT_ELECTRIC_COLUMNS.filter((c) => !skipColumns.includes(c))
+          .map((c) => `"${c}"`)
+          .join(",")
+      );
+    } else {
+      electricUrl.searchParams.set(
+        "columns",
+        DEFAULT_ELECTRIC_COLUMNS.map((c) => `"${c}"`).join(",")
+      );
     }
 
     return electricUrl;

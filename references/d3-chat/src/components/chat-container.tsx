@@ -97,6 +97,7 @@ export function useTodoChat({ accessToken }: { accessToken: string }) {
   const triggerInstance = useRealtimeTaskTriggerWithStreams<typeof todoChat, STREAMS>("todo-chat", {
     accessToken,
     baseURL: process.env.NEXT_PUBLIC_TRIGGER_API_URL,
+    skipColumns: ["isTest"],
   });
 
   const messages = triggerInstance.run
