@@ -35,6 +35,9 @@ const EnvironmentSchema = z.object({
   API_ORIGIN: z.string().optional(),
   STREAM_ORIGIN: z.string().optional(),
   ELECTRIC_ORIGIN: z.string().default("http://localhost:3060"),
+  // A comma separated list of electric origins to shard into different electric instances by environmentId
+  // example: "http://localhost:3060,http://localhost:3061,http://localhost:3062"
+  ELECTRIC_ORIGIN_SHARDS: z.string().optional(),
   APP_ENV: z.string().default(process.env.NODE_ENV),
   SERVICE_NAME: z.string().default("trigger.dev webapp"),
   POSTHOG_PROJECT_KEY: z.string().default("phc_LFH7kJiGhdIlnO22hTAKgHpaKhpM8gkzWAFvHmf5vfS"),

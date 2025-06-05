@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import { createRedisClient, RedisClient, RedisWithClusterOptions } from "~/redis.server";
 import { longPollingFetch } from "~/utils/longPollingFetch";
 import { logger } from "./logger.server";
+import { jumpHash } from "@trigger.dev/core/v3/serverOnly";
 
 export interface CachedLimitProvider {
   getCachedLimit: (organizationId: string, defaultValue: number) => Promise<number | undefined>;
@@ -45,7 +46,7 @@ const RESERVED_COLUMNS = ["id", "taskIdentifier", "friendlyId", "status", "creat
 const RESERVED_SEARCH_PARAMS = ["createdAt", "tags", "skipColumns"];
 
 export type RealtimeClientOptions = {
-  electricOrigin: string;
+  electricOrigin: string | string[];
   redis: RedisWithClusterOptions;
   cachedLimitProvider: CachedLimitProvider;
   keyPrefix: string;
@@ -221,15 +222,26 @@ export class RealtimeClient {
     whereClause: string,
     clientVersion?: string
   ) {
-    const electricUrl = this.#constructRunsElectricUrl(url, whereClause, clientVersion);
+    const electricUrl = this.#constructRunsElectricUrl(
+      url,
+      environment,
+      whereClause,
+      clientVersion
+    );
 
     return this.#performElectricRequest(electricUrl, environment, undefined, clientVersion);
   }
 
-  #constructRunsElectricUrl(url: URL | string, whereClause: string, clientVersion?: string): URL {
+  #constructRunsElectricUrl(
+    url: URL | string,
+    environment: RealtimeEnvironment,
+    whereClause: string,
+    clientVersion?: string
+  ): URL {
     const $url = new URL(url.toString());
 
-    const electricUrl = new URL(`${this.options.electricOrigin}/v1/shape`);
+    const electricOrigin = this.#resolveElectricOrigin(environment.id);
+    const electricUrl = new URL(`${electricOrigin}/v1/shape`);
 
     // Copy over all the url search params to the electric url
     $url.searchParams.forEach((value, key) => {
@@ -426,6 +438,16 @@ export class RealtimeClient {
 
   #getKey(environmentId: string): string {
     return `${this.options.keyPrefix}:${environmentId}`;
+  }
+
+  #resolveElectricOrigin(environmentId: string) {
+    if (typeof this.options.electricOrigin === "string") {
+      return this.options.electricOrigin;
+    }
+
+    const index = jumpHash(environmentId, this.options.electricOrigin.length);
+
+    return this.options.electricOrigin[index] ?? this.options.electricOrigin[0];
   }
 
   #registerCommands() {
