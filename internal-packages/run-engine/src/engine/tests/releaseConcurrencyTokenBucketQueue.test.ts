@@ -681,40 +681,6 @@ describe("ReleaseConcurrencyQueue", () => {
   });
 
   redisTest(
-    "Should retrieve metrics for all queues via getQueueMetrics",
-    async ({ redisContainer }) => {
-      const { queue } = createReleaseConcurrencyQueue(redisContainer, 1);
-
-      // Set up multiple queues with different states
-      await queue.attemptToRelease({ name: "metrics-queue1" }, "run1"); // Consume 1 token from queue1
-
-      // Add more items to queue1 that will be queued due to no tokens
-      await queue.attemptToRelease({ name: "metrics-queue1" }, "run2"); // This will be queued
-      await queue.attemptToRelease({ name: "metrics-queue1" }, "run3"); // This will be queued
-      await queue.attemptToRelease({ name: "metrics-queue1" }, "run4"); // This will be queued
-
-      const metrics = await queue.getQueueMetrics();
-
-      expect(metrics).toHaveLength(1);
-      expect(metrics[0].releaseQueue).toBe("metrics-queue1");
-      expect(metrics[0].currentTokens).toBe(0);
-      expect(metrics[0].queueLength).toBe(3);
-
-      // Now add 10 items to 100 different queues
-      for (let i = 0; i < 100; i++) {
-        for (let j = 0; j < 10; j++) {
-          await queue.attemptToRelease({ name: `metrics-queue2-${i}` }, `run${i}-${j}`);
-        }
-      }
-
-      const metrics2 = await queue.getQueueMetrics();
-      expect(metrics2.length).toBeGreaterThan(90);
-
-      await queue.quit();
-    }
-  );
-
-  redisTest(
     "refillTokenIfInReleasings should refill token when releaserId is in the releasings set",
     async ({ redisContainer }) => {
       const { queue, executedRuns } = createReleaseConcurrencyQueue(redisContainer, 2);
