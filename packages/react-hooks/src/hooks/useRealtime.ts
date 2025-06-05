@@ -334,6 +334,25 @@ export type UseRealtimeRunsInstance<TTask extends AnyTask = AnyTask> = {
   stop: () => void;
 };
 
+export type UseRealtimeRunsWithTagOptions = UseRealtimeRunOptions & {
+  /**
+   * Filter runs by the time they were created. You must specify the duration string like "1h", "10s", "30m", etc.
+   *
+   * @example
+   * "1h" - 1 hour ago
+   * "10s" - 10 seconds ago
+   * "30m" - 30 minutes ago
+   * "1d" - 1 day ago
+   * "1w" - 1 week ago
+   *
+   * The maximum duration is 1 week
+   *
+   * @note The timestamp will be calculated on the server side when you first subscribe to the runs.
+   *
+   */
+  createdAt?: string;
+};
+
 /**
  * Hook to subscribe to realtime updates of task runs filtered by tag(s).
  *
@@ -348,11 +367,13 @@ export type UseRealtimeRunsInstance<TTask extends AnyTask = AnyTask> = {
  * const { runs, error } = useRealtimeRunsWithTag<typeof myTask>('my-tag');
  * // Or with multiple tags
  * const { runs, error } = useRealtimeRunsWithTag<typeof myTask>(['tag1', 'tag2']);
+ * // Or with a createdAt filter
+ * const { runs, error } = useRealtimeRunsWithTag<typeof myTask>('my-tag', { createdAt: '1h' });
  * ```
  */
 export function useRealtimeRunsWithTag<TTask extends AnyTask>(
   tag: string | string[],
-  options?: UseRealtimeRunOptions
+  options?: UseRealtimeRunsWithTagOptions
 ): UseRealtimeRunsInstance<TTask> {
   const hookId = useId();
   const idKey = options?.id ?? hookId;
@@ -396,6 +417,7 @@ export function useRealtimeRunsWithTag<TTask extends AnyTask>(
 
       await processRealtimeRunsWithTag(
         tag,
+        { createdAt: options?.createdAt },
         apiClient,
         mutateRuns,
         runsRef,
@@ -568,13 +590,14 @@ function insertRunShapeInOrder<TTask extends AnyTask>(
 
 async function processRealtimeRunsWithTag<TTask extends AnyTask = AnyTask>(
   tag: string | string[],
+  filters: { createdAt?: string },
   apiClient: ApiClient,
   mutateRunsData: KeyedMutator<RealtimeRun<TTask>[]>,
   existingRunsRef: React.MutableRefObject<RealtimeRun<TTask>[]>,
   onError: (e: Error) => void,
   abortControllerRef: React.MutableRefObject<AbortController | null>
 ) {
-  const subscription = apiClient.subscribeToRunsWithTag<InferRunTypes<TTask>>(tag, {
+  const subscription = apiClient.subscribeToRunsWithTag<InferRunTypes<TTask>>(tag, filters, {
     signal: abortControllerRef.current?.signal,
     onFetchError: onError,
   });
