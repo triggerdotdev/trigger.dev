@@ -15,6 +15,7 @@ import type {
   AnyBatchedRunHandle,
   AsyncIterableStream,
   ApiPromise,
+  RealtimeRunSkipColumns,
 } from "@trigger.dev/core/v3";
 import {
   CanceledRunResponse,
@@ -345,6 +346,18 @@ export type SubscribeToRunOptions = {
    * Set this to false if you are making updates to the run metadata after completion through child runs
    */
   stopOnCompletion?: boolean;
+
+  /**
+   * Skip columns from the subscription.
+   *
+   * @default []
+   *
+   * @example
+   * ```ts
+   * runs.subscribeToRun("123", { skipColumns: ["payload", "output"] });
+   * ```
+   */
+  skipColumns?: RealtimeRunSkipColumns;
 };
 
 /**
@@ -389,6 +402,7 @@ function subscribeToRun<TRunId extends AnyRunHandle | AnyTask | string>(
   return apiClient.subscribeToRun($runId, {
     closeOnComplete:
       typeof options?.stopOnCompletion === "boolean" ? options.stopOnCompletion : true,
+    skipColumns: options?.skipColumns,
   });
 }
 
@@ -409,6 +423,13 @@ export type SubscribeToRunsFilterOptions = {
    *
    */
   createdAt?: string;
+
+  /**
+   * Skip columns from the subscription.
+   *
+   * @default []
+   */
+  skipColumns?: RealtimeRunSkipColumns;
 };
 
 /**

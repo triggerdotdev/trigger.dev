@@ -102,19 +102,16 @@ class ReadableShapeStream<T extends Row<unknown> = Row> {
     // Create the source stream that will receive messages
     const source = new ReadableStream<Message<T>[]>({
       start: (controller) => {
-        this.#unsubscribe = this.#stream.subscribe(
-          (messages) => {
-            if (!this.#isStreamClosed) {
-              controller.enqueue(messages);
-            }
-          },
-          this.#handleError.bind(this)
-        );
+        this.#unsubscribe = this.#stream.subscribe((messages) => {
+          if (!this.#isStreamClosed) {
+            controller.enqueue(messages);
+          }
+        }, this.#handleError.bind(this));
       },
       cancel: () => {
         this.#isStreamClosed = true;
         this.#unsubscribe?.();
-      }
+      },
     });
 
     // Create the transformed stream that processes messages and emits complete rows
