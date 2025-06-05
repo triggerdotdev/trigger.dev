@@ -9,6 +9,7 @@ const SearchParamsSchema = z.object({
     .transform((value) => {
       return value ? value.split(",") : undefined;
     }),
+  createdAt: z.string().optional(),
 });
 
 export const loader = createLoaderApiRoute(

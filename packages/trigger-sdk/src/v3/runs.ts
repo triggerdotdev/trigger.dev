@@ -392,6 +392,25 @@ function subscribeToRun<TRunId extends AnyRunHandle | AnyTask | string>(
   });
 }
 
+export type SubscribeToRunsFilterOptions = {
+  /**
+   * Filter runs by the time they were created. You must specify the duration string like "1h", "10s", "30m", etc.
+   *
+   * @example
+   * "1h" - 1 hour ago
+   * "10s" - 10 seconds ago
+   * "30m" - 30 minutes ago
+   * "1d" - 1 day ago
+   * "1w" - 1 week ago
+   *
+   * The maximum duration is 1 week
+   *
+   * @note The timestamp will be calculated on the server side when you first subscribe to the runs.
+   *
+   */
+  createdAt?: string;
+};
+
 /**
  * Subscribes to real-time updates for all runs that have specific tags.
  *
@@ -423,11 +442,15 @@ function subscribeToRun<TRunId extends AnyRunHandle | AnyTask | string>(
  * ```
  */
 function subscribeToRunsWithTag<TTasks extends AnyTask>(
-  tag: string | string[]
+  tag: string | string[],
+  filters?: SubscribeToRunsFilterOptions,
+  options?: { signal?: AbortSignal }
 ): RunSubscription<InferRunTypes<TTasks>> {
   const apiClient = apiClientManager.clientOrThrow();
 
-  return apiClient.subscribeToRunsWithTag<InferRunTypes<TTasks>>(tag);
+  return apiClient.subscribeToRunsWithTag<InferRunTypes<TTasks>>(tag, filters, {
+    ...(options ? { signal: options.signal } : {}),
+  });
 }
 
 /**

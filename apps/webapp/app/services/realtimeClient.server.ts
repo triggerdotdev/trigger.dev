@@ -1,13 +1,17 @@
 import { json } from "@remix-run/server-runtime";
-import Redis, { Callback, Result, type RedisOptions } from "ioredis";
+import { tryCatch } from "@trigger.dev/core/utils";
+import { safeParseNaturalLanguageDurationAgo } from "@trigger.dev/core/v3/isomorphic";
+import { Callback, Result } from "ioredis";
 import { randomUUID } from "node:crypto";
+import { createRedisClient, RedisClient, RedisWithClusterOptions } from "~/redis.server";
 import { longPollingFetch } from "~/utils/longPollingFetch";
 import { logger } from "./logger.server";
-import { createRedisClient, RedisClient, RedisWithClusterOptions } from "~/redis.server";
 
 export interface CachedLimitProvider {
   getCachedLimit: (organizationId: string, defaultValue: number) => Promise<number | undefined>;
 }
+
+const MAXIMUM_CREATED_AT_FILTER_AGE_IN_MS = 7 * 24 * 60 * 60 * 1000;
 
 export type RealtimeClientOptions = {
   electricOrigin: string;
@@ -24,6 +28,7 @@ export type RealtimeEnvironment = {
 
 export type RealtimeRunsParams = {
   tags?: string[];
+  createdAt?: string;
 };
 
 export class RealtimeClient {
@@ -92,9 +97,91 @@ export class RealtimeClient {
       whereClauses.push(`"runTags" @> ARRAY[${params.tags.map((t) => `'${t}'`).join(",")}]`);
     }
 
+    const createdAtFilter = await this.#calculateCreatedAtFilter(url, params.createdAt);
+
+    if (createdAtFilter) {
+      whereClauses.push(`"createdAt" > '${createdAtFilter.toISOString()}'`);
+    }
+
     const whereClause = whereClauses.join(" AND ");
 
-    return this.#streamRunsWhere(url, environment, whereClause, clientVersion);
+    const response = await this.#streamRunsWhere(url, environment, whereClause, clientVersion);
+
+    if (createdAtFilter) {
+      const [setCreatedAtFilterError] = await tryCatch(
+        this.#setCreatedAtFilterFromResponse(response, createdAtFilter)
+      );
+
+      if (setCreatedAtFilterError) {
+        logger.error("[realtimeClient] Failed to set createdAt filter", {
+          error: setCreatedAtFilterError,
+          createdAtFilter,
+          responseHeaders: Object.fromEntries(response.headers.entries()),
+          responseStatus: response.status,
+        });
+      }
+    }
+
+    return response;
+  }
+
+  async #calculateCreatedAtFilter(url: URL | string, createdAt?: string) {
+    const duration = createdAt ?? "24h";
+    const $url = new URL(url.toString());
+    const shapeId = extractShapeId($url);
+
+    if (!shapeId) {
+      // This means we need to calculate the createdAt filter and store it in redis after we get back the response
+      const createdAtFilter = safeParseNaturalLanguageDurationAgo(duration);
+
+      // Validate that the createdAt filter is in the past, and not more than 1 week in the past.
+      // if it's more than 1 week in the past, just return 1 week ago Date
+      if (
+        createdAtFilter &&
+        createdAtFilter < new Date(Date.now() - MAXIMUM_CREATED_AT_FILTER_AGE_IN_MS)
+      ) {
+        return new Date(Date.now() - MAXIMUM_CREATED_AT_FILTER_AGE_IN_MS);
+      }
+
+      return createdAtFilter;
+    } else {
+      // We need to get the createdAt filter value from redis, if there is none we need to return undefined
+      const [createdAtFilterError, createdAtFilter] = await tryCatch(
+        this.#getCreatedAtFilter(shapeId)
+      );
+
+      if (createdAtFilterError) {
+        logger.error("[realtimeClient] Failed to get createdAt filter", {
+          shapeId,
+          error: createdAtFilterError,
+        });
+
+        return;
+      }
+
+      return createdAtFilter;
+    }
+  }
+
+  async #getCreatedAtFilter(shapeId: string) {
+    // TODO: replace this with unkey cache so we can use in memory
+    const createdAtFilterRawValue = await this.redis.get(`shapes:${shapeId}:filters:createdAt`);
+
+    if (!createdAtFilterRawValue) {
+      return;
+    }
+
+    return new Date(createdAtFilterRawValue);
+  }
+
+  async #setCreatedAtFilterFromResponse(response: Response, createdAtFilter: Date) {
+    const shapeId = extractShapeIdFromResponse(response);
+
+    if (!shapeId) {
+      return;
+    }
+
+    await this.redis.set(`shapes:${shapeId}:filters:createdAt`, createdAtFilter.toISOString());
   }
 
   async #streamRunsWhere(
@@ -172,6 +259,8 @@ export class RealtimeClient {
   ) {
     const shapeId = extractShapeId(url);
 
+    url = await this.#handleCreatedAtFilter(url, shapeId);
+
     logger.debug("[realtimeClient] request", {
       url: url.toString(),
     });
@@ -232,6 +321,10 @@ export class RealtimeClient {
       // ... (rest of your existing code for the long polling request)
       const response = await longPollingFetch(url.toString(), { signal }, rewriteResponseHeaders);
 
+      // If this is the initial request, the response.headers['electric-handle'] will be the shapeId
+      // And we may need to set the "createdAt" filter timestamp keyed by the shapeId
+      // Then in the next request, we will get the createdAt timestamp value via the shapeId and use it to filter the results
+
       // Decrement the counter after the long polling request is complete
       await this.#decrementConcurrency(environment.id, requestId);
 
@@ -242,6 +335,10 @@ export class RealtimeClient {
 
       throw error;
     }
+  }
+
+  async #handleCreatedAtFilter(url: URL, shapeId?: string | null) {
+    return url;
   }
 
   async #incrementAndCheck(environmentId: string, requestId: string, limit: number) {
@@ -314,7 +411,11 @@ export class RealtimeClient {
 }
 
 function extractShapeId(url: URL) {
-  return url.searchParams.get("handle");
+  return url.searchParams.get("handle") ?? url.searchParams.get("shape_id");
+}
+
+function extractShapeIdFromResponse(response: Response) {
+  return response.headers.get("electric-handle");
 }
 
 function isLiveRequestUrl(url: URL) {

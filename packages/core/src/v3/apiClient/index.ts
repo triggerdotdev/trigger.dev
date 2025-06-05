@@ -904,10 +904,12 @@ export class ApiClient {
 
   subscribeToRunsWithTag<TRunTypes extends AnyRunTypes>(
     tag: string | string[],
+    filters?: { createdAt?: string },
     options?: { signal?: AbortSignal; onFetchError?: (error: Error) => void }
   ) {
     const searchParams = createSearchQueryForSubscribeToRuns({
       tags: tag,
+      ...(filters ? { createdAt: filters.createdAt } : {}),
     });
 
     return runShapeStream<TRunTypes>(
@@ -1042,6 +1044,10 @@ function createSearchQueryForSubscribeToRuns(query?: SubscribeToRunsQueryParams)
 
     if (query.tags) {
       searchParams.append("tags", Array.isArray(query.tags) ? query.tags.join(",") : query.tags);
+    }
+
+    if (query.createdAt) {
+      searchParams.append("createdAt", query.createdAt);
     }
   }
 
