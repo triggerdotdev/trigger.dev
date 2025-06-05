@@ -113,7 +113,13 @@ export async function updateTriggerPackages(
     }
 
     const isDowngrade = mismatches.some((dep) => {
-      return semver.gt(dep.version, targetVersion);
+      const depMinVersion = semver.minVersion(dep.version);
+
+      if (!depMinVersion) {
+        return false;
+      }
+
+      return semver.gt(depMinVersion, targetVersion);
     });
 
     return {
