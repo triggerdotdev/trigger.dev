@@ -6,7 +6,17 @@
 
 */
 -- AlterTable
-ALTER TABLE "EventRecord" DROP COLUMN IF EXISTS "httpEndpointEnvironmentId" CASCADE;
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 
+        FROM information_schema.tables 
+        WHERE table_name = 'EventRecord'
+    ) THEN
+        ALTER TABLE "EventRecord" DROP COLUMN IF EXISTS "httpEndpointEnvironmentId" CASCADE;
+    END IF;
+END $$;
+
 
 -- DropTable
 DROP TABLE IF EXISTS "TriggerHttpEndpointEnvironment" CASCADE;
