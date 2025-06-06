@@ -182,7 +182,9 @@
                 "tag": "v4"
               },
               "open-source-self-hosting"
-            ]
+            ],
+            "tags": ["v4"],
+            "tag": "v4"
           },
           {
             "group": "Open source",
