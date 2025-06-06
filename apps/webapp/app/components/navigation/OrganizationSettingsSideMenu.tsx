@@ -66,13 +66,15 @@ export function OrganizationSettingsSideMenu({
           <div className="mb-1">
             <SideMenuHeader title="Organization" />
           </div>
-          <SideMenuItem
-            name="Usage"
-            icon={ChartBarIcon}
-            activeIconColor="text-indigo-500"
-            to={v3UsagePath(organization)}
-            data-action="usage"
-          />
+          {isManagedCloud && (
+            <SideMenuItem
+              name="Usage"
+              icon={ChartBarIcon}
+              activeIconColor="text-indigo-500"
+              to={v3UsagePath(organization)}
+              data-action="usage"
+            />
+          )}
           {isManagedCloud && (
             <SideMenuItem
               name="Billing"
