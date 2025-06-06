@@ -1,5 +1,22 @@
 # trigger.dev
 
+## 4.0.0-v4-beta.21
+
+### Patch Changes
+
+- Runtime agnostic SDK config via env vars ([#2132](https://github.com/triggerdotdev/trigger.dev/pull/2132))
+- Fix update command version range handling ([#2153](https://github.com/triggerdotdev/trigger.dev/pull/2153))
+- - Resolve issue where CLI could get stuck during deploy finalization ([#2138](https://github.com/triggerdotdev/trigger.dev/pull/2138))
+  - Unify local and remote build logic, with multi-platform build support
+  - Improve switch command; now accepts profile name as an argument
+  - Registry configuration is now fully managed by the webapp
+  - The deploy `--self-hosted` flag is no longer required
+  - Enhance deployment error reporting and image digest retrieval
+- Update profile switcher ([#2150](https://github.com/triggerdotdev/trigger.dev/pull/2150))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.21`
+  - `@trigger.dev/build@4.0.0-v4-beta.21`
+
 ## 4.0.0-v4-beta.20
 
 ### Patch Changes
