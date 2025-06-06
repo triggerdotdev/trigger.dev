@@ -58,9 +58,32 @@ Most of the [limits](/limits) are configurable when self-hosting, with some hard
 | Team members      | ❌           | 100M            |
 | Preview branches  | ❌           | 100M            |
 
-{/* TODO: Maybe clarify re OFFLOAD_IO_PACKET_LENGTH_LIMIT */}
+### Machine overrides
 
-{/* TODO: add machine overrides section */}
+You can override the machine type for a task by setting the `MACHINE_PRESETS_OVERRIDE_PATH` environment variable to a JSON file with the following structure.
+
+```json
+{
+  "defaultMachine": "small-1x",
+  "machines": {
+    "micro": { "cpu": 0.25, "memory": 0.25 },
+    "small-1x": { "cpu": 0.5, "memory": 0.5 },
+    "small-2x": { "cpu": 1, "memory": 1 }
+    // ...etc
+  }
+}
+```
+
+All fields are optional. Partial overrides are supported:
+
+```json
+{
+  "defaultMachine": "small-2x",
+  "machines": {
+    "small-1x": { "memory": 2 }
+  }
+}
+```
 
 ## Community support
 
