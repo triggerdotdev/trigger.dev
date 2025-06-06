@@ -1,0 +1,75 @@
+---
+title: "Supervisor"
+description: "Environment variables for the supervisor container."
+sidebarTitle: "Supervisor"
+tag: "v4"
+mode: "wide"
+---
+
+| Name                                        | Required | Default     | Description                                                 |
+| :------------------------------------------ | :------- | :---------- | :---------------------------------------------------------- |
+| **Required settings**                       |          |             |                                                             |
+| `TRIGGER_API_URL`                           | Yes      | —           | Trigger.dev API URL. Should point at the webapp.            |
+| `TRIGGER_WORKER_TOKEN`                      | Yes      | —           | Worker token (can be a file path with file://).             |
+| `MANAGED_WORKER_SECRET`                     | Yes      | —           | Managed worker secret. Needs to match webapp value.         |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`               | Yes      | —           | OTel exporter endpoint. Point at: `<webapp-url>/otel`       |
+| **Worker instance**                         |          |             |                                                             |
+| `TRIGGER_WORKER_INSTANCE_NAME`              | No       | random UUID | Worker instance name. Set to `spec.nodeName` on k8s.        |
+| `TRIGGER_WORKER_HEARTBEAT_INTERVAL_SECONDS` | No       | 30          | Worker heartbeat interval (seconds).                        |
+| **Workload API settings**                   |          |             |                                                             |
+| `TRIGGER_WORKLOAD_API_ENABLED`              | No       | true        | Enable workload API. Runs use this to perform actions.      |
+| `TRIGGER_WORKLOAD_API_PROTOCOL`             | No       | http        | Workload API protocol (http/https).                         |
+| `TRIGGER_WORKLOAD_API_DOMAIN`               | No       | —           | Workload API domain. Keep empty for auto-detection.         |
+| `TRIGGER_WORKLOAD_API_HOST_INTERNAL`        | No       | 0.0.0.0     | Workload API internal host.                                 |
+| `TRIGGER_WORKLOAD_API_PORT_INTERNAL`        | No       | 8020        | Workload API internal port.                                 |
+| `TRIGGER_WORKLOAD_API_PORT_EXTERNAL`        | No       | 8020        | Workload API external port.                                 |
+| **Runner settings**                         |          |             |                                                             |
+| `RUNNER_HEARTBEAT_INTERVAL_SECONDS`         | No       | —           | Runner heartbeat interval (seconds).                        |
+| `RUNNER_SNAPSHOT_POLL_INTERVAL_SECONDS`     | No       | —           | Runner snapshot poll interval (seconds).                    |
+| `RUNNER_ADDITIONAL_ENV_VARS`                | No       | —           | Additional runner env vars (CSV).                           |
+| `RUNNER_PRETTY_LOGS`                        | No       | false       | Pretty logs for runner.                                     |
+| **Dequeue settings**                        |          |             |                                                             |
+| `TRIGGER_DEQUEUE_ENABLED`                   | No       | true        | Enable dequeue to pull runs from the queue.                 |
+| `TRIGGER_DEQUEUE_INTERVAL_MS`               | No       | 250         | Dequeue interval (ms).                                      |
+| `TRIGGER_DEQUEUE_IDLE_INTERVAL_MS`          | No       | 1000 (1s)   | Dequeue idle interval (ms).                                 |
+| `TRIGGER_DEQUEUE_MAX_RUN_COUNT`             | No       | 10          | Max dequeue run count.                                      |
+| `TRIGGER_DEQUEUE_MAX_CONSUMER_COUNT`        | No       | 1           | Max dequeue consumer count.                                 |
+| **Docker settings**                         |          |             |                                                             |
+| `DOCKER_API_VERSION`                        | No       | v1.41       | Docker API version. You should probably not touch this.     |
+| `DOCKER_STRIP_IMAGE_DIGEST`                 | No       | true        | Strip image digest in Docker. Turning off can cause issues. |
+| `DOCKER_ENFORCE_MACHINE_PRESETS`            | No       | true        | Enforce Docker machine cpu and memory limits.               |
+| `DOCKER_AUTOREMOVE_EXITED_CONTAINERS`       | No       | true        | Auto-remove exited containers.                              |
+| `DOCKER_RUNNER_NETWORKS`                    | No       | host        | Docker runner networks (CSV).                               |
+| **Registry auth**                           |          |             |                                                             |
+| `DOCKER_REGISTRY_URL`                       | No       | —           | Docker registry URL, e.g. `docker.io`.                      |
+| `DOCKER_REGISTRY_USERNAME`                  | No       | —           | Docker registry username.                                   |
+| `DOCKER_REGISTRY_PASSWORD`                  | No       | —           | Docker registry password.                                   |
+| **Kubernetes settings**                     |          |             |                                                             |
+| `KUBERNETES_FORCE_ENABLED`                  | No       | false       | Force Kubernetes mode.                                      |
+| `KUBERNETES_NAMESPACE`                      | No       | default     | The namespace that runs should be in.                       |
+| `KUBERNETES_WORKER_NODETYPE_LABEL`          | No       | v4-worker   | Nodes for runs need this label, e.g. `nodetype=v4-worker`.  |
+| `KUBERNETES_IMAGE_PULL_SECRETS`             | No       | —           | Image pull secrets (CSV).                                   |
+| `KUBERNETES_EPHEMERAL_STORAGE_SIZE_LIMIT`   | No       | 10Gi        | Ephemeral storage size limit. Applies to all runs.          |
+| `KUBERNETES_EPHEMERAL_STORAGE_SIZE_REQUEST` | No       | 2Gi         | Ephemeral storage size request. Applies to all runs.        |
+| **Metrics**                                 |          |             |                                                             |
+| `METRICS_ENABLED`                           | No       | true        | Enable metrics.                                             |
+| `METRICS_COLLECT_DEFAULTS`                  | No       | true        | Collect default metrics.                                    |
+| `METRICS_HOST`                              | No       | 127.0.0.1   | Metrics host.                                               |
+| `METRICS_PORT`                              | No       | 9090        | Metrics port.                                               |
+| **Pod cleaner**                             |          |             |                                                             |
+| `POD_CLEANER_ENABLED`                       | No       | true        | Enable pod cleaner.                                         |
+| `POD_CLEANER_INTERVAL_MS`                   | No       | 10000 (10s) | Pod cleaner interval (ms). Best not to touch this.          |
+| `POD_CLEANER_BATCH_SIZE`                    | No       | 500         | Pod cleaner batch size.                                     |
+| **Failed pod handler**                      |          |             |                                                             |
+| `FAILED_POD_HANDLER_ENABLED`                | No       | true        | Enable failed pod handler.                                  |
+| `FAILED_POD_HANDLER_RECONNECT_INTERVAL_MS`  | No       | 1000 (1s)   | Failed pod handler reconnect interval (ms).                 |
+| **Debug**                                   |          |             |                                                             |
+| `DEBUG`                                     | No       | false       | Enable debug logs.                                          |
+| `SEND_RUN_DEBUG_LOGS`                       | No       | false       | Send run debug logs to the platform.                        |
+| **Not used for self-hosting**               |          |             |                                                             |
+| `TRIGGER_WARM_START_URL`                    | No       | —           | Warm start URL.                                             |
+| `TRIGGER_CHECKPOINT_URL`                    | No       | —           | Checkpoint URL.                                             |
+| `TRIGGER_METADATA_URL`                      | No       | —           | Metadata URL.                                               |
+| `RESOURCE_MONITOR_ENABLED`                  | No       | false       | Enable resource monitor.                                    |
+| `RESOURCE_MONITOR_OVERRIDE_CPU_TOTAL`       | No       | —           | Override CPU total for resource monitor.                    |
+| `RESOURCE_MONITOR_OVERRIDE_MEMORY_TOTAL_GB` | No       | —           | Override memory total (GB) for resource monitor.            |
