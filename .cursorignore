@@ -6,3 +6,4 @@ packages/rsc/
 .changeset
 .zed
 .env
+!.env.example

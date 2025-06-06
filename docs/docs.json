@@ -171,14 +171,25 @@
             ]
           },
           {
-            "group": "Open source",
+            "group": "Self-hosting",
             "pages": [
-              "open-source-self-hosting",
-              "open-source-contributing",
-              "github-repo",
-              "changelog",
-              "roadmap"
-            ]
+              "self-hosting/overview",
+              "self-hosting/docker",
+              {
+                "group": "Environment variables",
+                "pages": ["self-hosting/env/webapp", "self-hosting/env/supervisor"]
+              }
+            ],
+            "tags": ["v4"],
+            "tag": "v4"
+          },
+          {
+            "group": "Self-hosting",
+            "pages": ["open-source-self-hosting"]
+          },
+          {
+            "group": "Open source",
+            "pages": ["open-source-contributing", "github-repo", "changelog", "roadmap"]
           },
           {
             "group": "Help",

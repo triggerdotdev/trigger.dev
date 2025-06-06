@@ -1,0 +1,21 @@
+<clickhouse>
+    <logger>
+        <!-- Possible levels [1]:
+
+          - none (turns off logging)
+          - fatal
+          - critical
+          - error
+          - warning
+          - notice
+          - information
+          - debug
+          - trace
+          - test (not for production usage)
+
+            [1]: https://github.com/pocoproject/poco/blob/poco-1.9.4-release/Foundation/include/Poco/Logger.h#L105-L114
+        -->
+        <level>warning</level>
+    </logger>
+    <!-- Add other overrides here as needed -->
+</clickhouse>
