@@ -2,7 +2,7 @@ name: trigger
 
 services:
   webapp:
-    image: ghcr.io/triggerdotdev/trigger.dev:${TRIGGER_IMAGE_TAG:-main}
+    image: ghcr.io/triggerdotdev/trigger.dev:${WEBAPP_IMAGE_TAG:-v4-beta}
     restart: ${RESTART_POLICY:-unless-stopped}
     ports:
       - ${WEBAPP_PUBLISH_IP:-0.0.0.0}:8030:3000
@@ -14,7 +14,9 @@ services:
       - supervisor
     volumes:
       - shared:/home/node/shared
+    # Only needed for bootstrap
     user: root
+    # Only needed for bootstrap
     command: sh -c "chown -R node:node /home/node/shared && exec ./scripts/entrypoint.sh"
     healthcheck:
       test: ["CMD", "node", "-e", "http.get('http://localhost:3000/healthcheck', res => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
@@ -23,7 +25,8 @@ services:
       retries: 5
       start_period: 10s
     environment:
-      APP_ORIGIN: http://localhost:8030
+      APP_ORIGIN: ${APP_ORIGIN:-http://localhost:8030}
+      LOGIN_ORIGIN: ${LOGIN_ORIGIN:-http://localhost:8030}
       ELECTRIC_ORIGIN: http://electric:3000
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/main?schema=public&sslmode=disable
       DIRECT_URL: postgresql://postgres:postgres@postgres:5432/main?schema=public&sslmode=disable
@@ -36,14 +39,16 @@ services:
       REDIS_TLS_DISABLED: true
       APP_LOG_LEVEL: info
       DEV_OTEL_EXPORTER_OTLP_ENDPOINT: http://localhost:8030/otel
-      TRIGGER_BOOTSTRAP_ENABLED: 1
-      TRIGGER_BOOTSTRAP_WORKER_GROUP_NAME: bootstrap-3
-      TRIGGER_BOOTSTRAP_WORKER_TOKEN_PATH: /home/node/shared/worker_token
-      DEPLOY_REGISTRY_HOST: localhost:5000
+      DEPLOY_REGISTRY_HOST: ${DEPLOY_REGISTRY_HOST:-localhost:5000}
       OBJECT_STORE_BASE_URL: http://minio:9000
       OBJECT_STORE_ACCESS_KEY_ID: ${OBJECT_STORE_ACCESS_KEY_ID}
       OBJECT_STORE_SECRET_ACCESS_KEY: ${OBJECT_STORE_SECRET_ACCESS_KEY}
       GRACEFUL_SHUTDOWN_TIMEOUT: 1000
+      # Bootstrap - this will automatically set up a worker group for you
+      # This will NOT work for split deployments
+      TRIGGER_BOOTSTRAP_ENABLED: 1
+      TRIGGER_BOOTSTRAP_WORKER_GROUP_NAME: bootstrap
+      TRIGGER_BOOTSTRAP_WORKER_TOKEN_PATH: /home/node/shared/worker_token
       # Limits
       # TASK_PAYLOAD_OFFLOAD_THRESHOLD: 524288 # 512KB
       # TASK_PAYLOAD_MAXIMUM_SIZE: 3145728 # 3MB
@@ -65,9 +70,9 @@ services:
       - -c
       - wal_level=logical
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: postgres
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "postgres"]
       interval: 10s
@@ -119,7 +124,7 @@ services:
       CLICKHOUSE_ADMIN_PASSWORD: password
     volumes:
       - clickhouse:/bitnami/clickhouse
-      - ./clickhouse/override.xml:/bitnami/clickhouse/etc/config.d/override.xml:ro
+      - ../clickhouse/override.xml:/bitnami/clickhouse/etc/config.d/override.xml:ro
     networks:
       - webapp
     healthcheck:
@@ -138,18 +143,17 @@ services:
       - webapp
     volumes:
       # registry-user:very-secure-indeed
-      - ./registry/auth.htpasswd:/auth/htpasswd:ro
+      - ../registry/auth.htpasswd:/auth/htpasswd:ro
     environment:
       REGISTRY_AUTH: htpasswd
       REGISTRY_AUTH_HTPASSWD_REALM: Registry Realm
       REGISTRY_AUTH_HTPASSWD_PATH: /auth/htpasswd
-    # This won't work with auth enabled
-    # healthcheck:
-    #   test: ["CMD", "wget", "--spider", "-q", "http://localhost:5000/v2/"]
-    #   interval: 10s
-    #   timeout: 5s
-    #   retries: 5
-    #   start_period: 10s
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:5000/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   minio:
     image: minio/minio:${MINIO_IMAGE_TAG:-latest}

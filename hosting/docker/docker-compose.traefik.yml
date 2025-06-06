@@ -35,9 +35,9 @@ services:
     image: traefik:${TRAEFIK_IMAGE_TAG:-v3.4}
     restart: ${RESTART_POLICY:-unless-stopped}
     ports:
-      - "80:80"
-      - "443:443"
-      - "8080:8080" # Traefik dashboard
+      - "${TRAEFIK_HTTP_PUBLISH_IP:-0.0.0.0}:80:80"
+      - "${TRAEFIK_HTTPS_PUBLISH_IP:-0.0.0.0}:443:443"
+      - "${TRAEFIK_DASHBOARD_PUBLISH_IP:-127.0.0.1}:8080:8080" # dashboard
     networks:
       - traefik
     command:

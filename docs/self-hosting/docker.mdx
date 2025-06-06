@@ -82,19 +82,20 @@ cp .env.example .env
 3. Start the webapp
 
 ```bash
-docker compose -f docker-compose.webapp.yml up -d
+cd webapp
+docker compose up -d
 ```
 
 4. Optional: Add traefik as a reverse proxy
 
 ```bash
-docker compose -f docker-compose.webapp.yml -f docker-compose.traefik.yml up -d
+docker compose -f ../docker-compose.traefik.yml up -d
 ```
 
 Configure the webapp as needed using the [environment variables](/self-hosting/env/webapp) and apply the changes:
 
 ```bash
-docker compose -f docker-compose.webapp.yml up -d
+docker compose up -d
 ```
 
 ### Worker
@@ -115,13 +116,14 @@ cp .env.example .env
 3. Start the worker
 
 ```bash
-docker compose -f docker-compose.worker.yml up -d
+cd worker
+docker compose up -d
 ```
 
 Configure the supervisor as needed using the [environment variables](/self-hosting/env/supervisor) and apply the changes:
 
 ```bash
-docker compose -f docker-compose.worker.yml up -d
+docker compose up -d
 ```
 
 Repeat as needed for additional workers.
@@ -131,12 +133,14 @@ Repeat as needed for additional workers.
 If you want to run the webapp and worker on the same machine, just replace the `up` command with the following:
 
 ```bash
+# Run this from the /hosting/docker directory
 docker compose -f docker-compose.webapp.yml -f docker-compose.worker.yml up -d
 ```
 
 And optionally add traefik as a reverse proxy:
 
 ```bash
+# Run this from the /hosting/docker directory
 docker compose -f docker-compose.webapp.yml -f docker-compose.worker.yml -f docker-compose.traefik.yml up -d
 ```
 
@@ -217,6 +221,22 @@ WHITELISTED_EMAILS="authorized@yahoo\.com|authorized@gmail\.com"
 ```
 
 This will apply to all auth methods.
+
+## Troubleshooting
+
+- **Deployment fails at the push step.** The machine running `deploy` needs registry access:
+
+```bash
+docker login -u <username> <registry>
+# this should now succeed
+npx trigger.dev@v4-beta deploy
+```
+
+This needs to match the registry credentials. Defaults for the `localhost:5000` registry are `registry-user` and `very-safe-password`. You should change these.
+
+- **Magic links don't arrive.** The webapp container needs to be able to send emails. You probably need to set up an email transport. See the [authentication](#authentication) section for more details.
+
+You should check the logs of the webapp container to see the magic link: `docker logs -f trigger-webapp-1`
 
 ## CLI usage
 

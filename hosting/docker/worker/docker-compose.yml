@@ -2,7 +2,7 @@ name: trigger
 
 services:
   supervisor:
-    image: ghcr.io/triggerdotdev/supervisor:${TRIGGER_IMAGE_TAG:-main}
+    image: ghcr.io/triggerdotdev/supervisor:${SUPERVISOR_IMAGE_TAG:-v4-beta}
     restart: ${RESTART_POLICY:-unless-stopped}
     depends_on:
       - docker-proxy
@@ -11,7 +11,9 @@ services:
       - docker-proxy
     volumes:
       - shared:/home/node/shared
+    # Only needed for bootstrap
     user: root
+    # Only needed for bootstrap
     command: sh -c "chown -R node:node /home/node/shared && exec /usr/bin/dumb-init -- pnpm run --filter supervisor start"
     environment:
       # This needs to match the token of the worker group you want to connect to
