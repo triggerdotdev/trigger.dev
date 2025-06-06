@@ -143,12 +143,13 @@ services:
       REGISTRY_AUTH: htpasswd
       REGISTRY_AUTH_HTPASSWD_REALM: Registry Realm
       REGISTRY_AUTH_HTPASSWD_PATH: /auth/htpasswd
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:5000/v2/"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
+    # This won't work with auth enabled
+    # healthcheck:
+    #   test: ["CMD", "wget", "--spider", "-q", "http://localhost:5000/v2/"]
+    #   interval: 10s
+    #   timeout: 5s
+    #   retries: 5
+    #   start_period: 10s
 
   minio:
     image: minio/minio:${MINIO_IMAGE_TAG:-latest}
@@ -161,8 +162,8 @@ services:
     volumes:
       - minio:/data
     environment:
-      MINIO_ROOT_USER: admin
-      MINIO_ROOT_PASSWORD: very-safe-password
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-very-safe-password}
     command: server --console-address ":9001" /data
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]

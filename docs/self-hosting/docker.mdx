@@ -137,7 +137,7 @@ docker compose -f docker-compose.webapp.yml -f docker-compose.worker.yml up -d
 And optionally add traefik as a reverse proxy:
 
 ```bash
-docker compose -f docker-compose.webapp.yml -f docker-compose.worker.yml up -f docker-compose.traefik.yml up -d
+docker compose -f docker-compose.webapp.yml -f docker-compose.worker.yml -f docker-compose.traefik.yml up -d
 ```
 
 ## Version locking
