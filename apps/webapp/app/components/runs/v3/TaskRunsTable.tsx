@@ -539,7 +539,7 @@ function BlankState({ isLoading, filters }: Pick<RunsTableProps, "isLoading" | "
   const environment = useEnvironment();
   if (isLoading) return <TableBlankRow colSpan={15}></TableBlankRow>;
 
-  const { environments, tasks, from, to, ...otherFilters } = filters;
+  const { tasks, from, to, ...otherFilters } = filters;
 
   if (
     filters.tasks.length === 1 &&

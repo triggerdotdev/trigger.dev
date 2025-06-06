@@ -120,7 +120,6 @@ export default function Page() {
               tasks: [],
               versions: [],
               statuses: [],
-              environments: [],
               from: undefined,
               to: undefined,
             }}

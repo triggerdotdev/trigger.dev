@@ -8,6 +8,7 @@ type ViewScheduleOptions = {
   userId?: string;
   projectId: string;
   friendlyId: string;
+  environmentId: string;
 };
 
 export class ViewSchedulePresenter {
@@ -17,7 +18,7 @@ export class ViewSchedulePresenter {
     this.#prismaClient = prismaClient;
   }
 
-  public async call({ userId, projectId, friendlyId }: ViewScheduleOptions) {
+  public async call({ userId, projectId, friendlyId, environmentId }: ViewScheduleOptions) {
     const schedule = await this.#prismaClient.taskSchedule.findFirst({
       select: {
         id: true,
@@ -76,7 +77,7 @@ export class ViewSchedulePresenter {
 
     const runPresenter = new RunListPresenter(this.#prismaClient);
 
-    const { runs } = await runPresenter.call({
+    const { runs } = await runPresenter.call(environmentId, {
       projectId: schedule.project.id,
       scheduleId: schedule.id,
       pageSize: 5,

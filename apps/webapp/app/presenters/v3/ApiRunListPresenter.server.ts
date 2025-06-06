@@ -12,6 +12,7 @@ import { CoercedDate } from "~/utils/zod";
 import { ApiRetrieveRunPresenter } from "./ApiRetrieveRunPresenter.server";
 import { type RunListOptions, RunListPresenter } from "./RunListPresenter.server";
 import { BasePresenter } from "./basePresenter.server";
+import { ServiceValidationError } from "~/v3/services/baseService.server";
 
 export const ApiRunListSearchParams = z.object({
   "page[size]": z.coerce.number().int().positive().min(1).max(100).optional(),
@@ -134,9 +135,11 @@ export class ApiRunListPresenter extends BasePresenter {
         options.direction = "backward";
       }
 
+      let environmentId: string | undefined;
+
       // filters
       if (environment) {
-        options.environments = [environment.id];
+        environmentId = environment.id;
       } else {
         if (searchParams["filter[env]"]) {
           const environments = await this._prisma.runtimeEnvironment.findMany({
@@ -148,8 +151,12 @@ export class ApiRunListPresenter extends BasePresenter {
             },
           });
 
-          options.environments = environments.map((env) => env.id);
+          environmentId = environments.at(0)?.id;
         }
+      }
+
+      if (!environmentId) {
+        throw new ServiceValidationError("No environment found");
       }
 
       if (searchParams["filter[status]"]) {
@@ -202,7 +209,7 @@ export class ApiRunListPresenter extends BasePresenter {
 
       logger.debug("Calling RunListPresenter", { options });
 
-      const results = await presenter.call(options);
+      const results = await presenter.call(environmentId, options);
 
       logger.debug("RunListPresenter results", { results });
 

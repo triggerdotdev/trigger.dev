@@ -140,6 +140,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   const result = await presenter.call({
     projectId: authenticationResult.environment.projectId,
     friendlyId: parsedParams.data.scheduleId,
+    environmentId: authenticationResult.environment.id,
   });
 
   if (!result) {
