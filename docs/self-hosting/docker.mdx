@@ -92,10 +92,18 @@ docker compose up -d
 docker compose -f ../docker-compose.traefik.yml up -d
 ```
 
-Configure the webapp as needed using the [environment variables](/self-hosting/env/webapp) and apply the changes:
+5. Configure the webapp as needed using the [environment variables](/self-hosting/env/webapp) and apply the changes:
 
 ```bash
 docker compose up -d
+```
+
+6. You should now be able to access the webapp at `http://localhost:8030`. When logging in, check the container logs for the magic link: `docker compose logs -f webapp`
+
+7. Optional: To initialize a new project, run the following command:
+
+```bash
+npx trigger.dev@v4-beta init -p <project-ref> -a http://localhost:8030
 ```
 
 ### Worker
