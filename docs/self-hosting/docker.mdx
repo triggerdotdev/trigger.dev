@@ -4,38 +4,142 @@ description: "You can self-host Trigger.dev on your own infrastructure using Doc
 tag: "v4"
 ---
 
-## Introduction
-
-This guide will use docker compose to spin up a Trigger.dev instance. Make sure to read the [overview](/self-hosting/overview) first.
-
-We've split the compose files into Webapp and Worker components so you can easily run them independently. This will also allow you to scale your workers as needed.
-
-**Warning:** This guide alone is unlikely to result in a production-ready deployment. Security, scaling, and reliability concerns are not fully addressed here.
-
-## Caveats
+The following instructions will use docker compose to spin up a Trigger.dev instance. Make sure to read the self-hosting [overview](/self-hosting/overview) first.
 
 As self-hosted deployments tend to have unique requirements and configurations, we don't provide specific advice for securing your deployment, scaling up, or improving reliability.
 
 Should the burden ever get too much, we'd be happy to see you on [Trigger.dev cloud](https://trigger.dev/pricing) where we deal with these concerns for you.
 
-## Comparison with v3
+**Warning:** This guide alone is unlikely to result in a production-ready deployment. Security, scaling, and reliability concerns are not fully addressed here.
 
-We made quite a few changes:
+## What's new?
+
+Goodbye v3, hello v4! We made quite a few changes:
+- **Much simpler setup.** Provider + coordinator = supervisor. No more startup scripts. Just `docker compose up`.
 - **Support for multiple worker machines.** This is a big one, and we're very excited about it! You can now scale your workers horizontally as needed.
-- **Resource limits enforced by default.** This means that tasks will be limited to the total CPU and RAM of the machine, preventing noisy neighbours.
-- **No direct Docker socket access.** The compose file now comes with [Docker Socket Proxy](https://github.com/Tecnativa/docker-socket-proxy) by default.
+- **Resource limits enforced by default.** This means that tasks will be limited to the total CPU and RAM of the machine preset, preventing noisy neighbours.
+- **No direct Docker socket access.** The compose file now comes with [Docker Socket Proxy](https://github.com/Tecnativa/docker-socket-proxy) by default. Yes, you want this.
 - **No host networking.** All containers are now running with network isolation, using only the network access they need.
-- **No checkpoint support.** This was only ever an experimental feature and not recommended, it caused a bunch of issues. We decided to focus on the core features and remove it.
+- **No checkpoint support.** This was only ever an experimental self-hosting feature and not recommended. It caused a bunch of issues. We decided to focus on the core features instead.
 - **Built-in container registry and object storage.** You can now deploy and execute tasks without needing third party services for this.
 - **Improved CLI commands.** You don't need any additional flags to deploy anymore, and there's a new `switch` command to easily switch between profiles.
+- **Whitelisting for GitHub OAuth.** Any whitelisted email addresses will now also apply to sign ins via GitHub, unlike v3 where they only applied to magic links.
 
-{/* TODO: requirements */}
+## Requirements
 
-{/* TODO: setup */}
+These are the minimum requirements for running the webapp and worker components. They can run on the same, or on separate machines.
 
-{/* TODO: multiple workers */}
+It's fine to run everything on the same machine for testing. To be able to scale your workers, you will want to run them separately.
 
-{/* TODO: Upgrading from v3 */}
+### Prerequisites
+
+To run the webapp and worker components, you will need:
+
+- [Docker](https://docs.docker.com/get-docker/) 20.10.0+
+- [Docker Compose](https://docs.docker.com/compose/install/) 2.20.0+
+
+### Webapp
+
+This will host the webapp, postgres, redis, and related services.
+
+- 2+ vCPU
+- 4+ GB RAM
+
+### Worker
+
+This will host the supervisor and all of the runs.
+
+- 2+ vCPU
+- 4+ GB RAM
+
+How many workers and resources you need will depend on your workloads and concurrency requirements.
+
+For example:
+
+- 10 concurrency x `small-1x` (0.5 vCPU, 0.5 GB RAM) = 5 vCPU and 5 GB RAM
+- 20 concurrency x `small-1x` (0.5 vCPU, 0.5 GB RAM) = 10 vCPU and 10 GB RAM
+- 100 concurrency x `small-1x` (0.5 vCPU, 0.5 GB RAM) = 50 vCPU and 50 GB RAM
+- 100 concurrency x `small-2x` (1 vCPU, 1 GB RAM) = 100 vCPU and 100 GB RAM
+
+You may need to spin up multiple workers to handle peak concurrency. The good news is you don't have to know the exact numbers upfront. You can start with a single worker and add more as needed.
+
+## Setup
+
+### Webapp
+
+1. Clone the repository
+
+```bash
+git clone https://github.com/triggerdotdev/trigger.dev
+cd trigger.dev/hosting/docker
+```
+
+2. Create a `.env` file
+
+```bash
+cp .env.example .env
+```
+
+3. Start the webapp
+
+```bash
+docker compose -f docker-compose.webapp.yml up -d
+```
+
+4. Optional: Add traefik as a reverse proxy
+
+```bash
+docker compose -f docker-compose.webapp.yml -f docker-compose.traefik.yml up -d
+```
+
+Configure the webapp as needed using the [environment variables](/self-hosting/env/webapp) and apply the changes:
+
+```bash
+docker compose -f docker-compose.webapp.yml up -d
+```
+
+### Worker
+
+1. Clone the repository
+
+```bash
+git clone https://github.com/triggerdotdev/trigger.dev
+cd trigger.dev/hosting/docker
+```
+
+2. Create a `.env` file
+
+```bash
+cp .env.example .env
+```
+
+3. Start the worker
+
+```bash
+docker compose -f docker-compose.worker.yml up -d
+```
+
+Configure the supervisor as needed using the [environment variables](/self-hosting/env/supervisor) and apply the changes:
+
+```bash
+docker compose -f docker-compose.worker.yml up -d
+```
+
+Repeat as needed for additional workers.
+
+### Combined
+
+If you want to run the webapp and worker on the same machine, just replace the `up` command with the following:
+
+```bash
+docker compose -f docker-compose.webapp.yml -f docker-compose.worker.yml up -d
+```
+
+And optionally add traefik as a reverse proxy:
+
+```bash
+docker compose -f docker-compose.webapp.yml -f docker-compose.worker.yml up -f docker-compose.traefik.yml up -d
+```
 
 ## Version locking
 
