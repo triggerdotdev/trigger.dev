@@ -11,3 +11,186 @@ This guide will use docker compose to spin up a Trigger.dev instance. Make sure 
 We've split the compose files into Webapp and Worker components so you can easily run them independently. This will also allow you to scale your workers as needed.
 
 **Warning:** This guide alone is unlikely to result in a production-ready deployment. Security, scaling, and reliability concerns are not fully addressed here.
+
+## Caveats
+
+As self-hosted deployments tend to have unique requirements and configurations, we don't provide specific advice for securing your deployment, scaling up, or improving reliability.
+
+Should the burden ever get too much, we'd be happy to see you on [Trigger.dev cloud](https://trigger.dev/pricing) where we deal with these concerns for you.
+
+## Comparison with v3
+
+We made quite a few changes:
+- **Support for multiple worker machines.** This is a big one, and we're very excited about it! You can now scale your workers horizontally as needed.
+- **Resource limits enforced by default.** This means that tasks will be limited to the total CPU and RAM of the machine, preventing noisy neighbours.
+- **No direct Docker socket access.** The compose file now comes with [Docker Socket Proxy](https://github.com/Tecnativa/docker-socket-proxy) by default.
+- **No host networking.** All containers are now running with network isolation, using only the network access they need.
+- **No checkpoint support.** This was only ever an experimental feature and not recommended, it caused a bunch of issues. We decided to focus on the core features and remove it.
+- **Built-in container registry and object storage.** You can now deploy and execute tasks without needing third party services for this.
+- **Improved CLI commands.** You don't need any additional flags to deploy anymore, and there's a new `switch` command to easily switch between profiles.
+
+{/* TODO: requirements */}
+
+{/* TODO: setup */}
+
+{/* TODO: multiple workers */}
+
+{/* TODO: Upgrading from v3 */}
+
+## Version locking
+
+There are several reasons to lock the version of your Docker images:
+- **Backwards compatibility.** We try our best to maintain compatibility with older CLI versions, but it's not always possible. If you don't want to update your CLI, you can lock your Docker images to that specific version.
+- **Ensuring full feature support.** Sometimes, new CLI releases will also require new or updated platform features. Running unlocked images can make any issues difficult to debug. Using a specific tag can help here as well.
+
+By default, the images will point at the latest versioned release via the `v4-beta` tag. You can override this by specifying a different tag in your `.env` file. For example:
+
+```bash
+TRIGGER_IMAGE_TAG=v4.0.0-v4-beta.21
+```
+
+## Authentication
+
+### Magic link
+
+By default, magic link auth is the only login option. If the `EMAIL_TRANSPORT` env var is not set, the magic links will be logged by the webapp container and not sent via email.
+
+The specific set of variables required will depend on your choice of email transport.
+
+#### Resend
+
+```bash
+EMAIL_TRANSPORT=resend
+FROM_EMAIL=
+REPLY_TO_EMAIL=
+RESEND_API_KEY=<your_resend_api_key>
+```
+
+#### SMTP
+
+Note that setting `SMTP_SECURE=false` does _not_ mean the email is sent insecurely.
+This simply means that the connection is secured using the modern STARTTLS protocol command instead of implicit TLS.
+You should only set this to true when the SMTP server host directs you to do so (generally when using port 465)
+
+```bash
+EMAIL_TRANSPORT=smtp
+FROM_EMAIL=
+REPLY_TO_EMAIL=
+SMTP_HOST=<your_smtp_server>
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=<your_smtp_username>
+SMTP_PASSWORD=<your_smtp_password>
+```
+
+#### AWS SES
+
+Credentials are to be supplied as with any other program using the AWS SDK.
+
+In this scenario, you would likely either supply the additional environment variables `AWS_REGION`, `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` or, when running on AWS, use credentials supplied by the EC2 IMDS.
+
+```bash
+EMAIL_TRANSPORT=aws-ses
+FROM_EMAIL=
+REPLY_TO_EMAIL=
+```
+
+### GitHub OAuth
+
+To authenticate with GitHub, you will need to set up a GitHub OAuth app. It needs a callback URL `https://<your_webapp_domain>/auth/github/callback` and you will have to set the following env vars:
+
+```bash
+AUTH_GITHUB_CLIENT_ID=<your_client_id>
+AUTH_GITHUB_CLIENT_SECRET=<your_client_secret>
+```
+
+### Restricting access
+
+All email addresses can sign up and log in this way. If you would like to restrict this, you can use the `WHITELISTED_EMAILS` env var. For example:
+
+```bash
+# every email that does not match this regex will be rejected
+WHITELISTED_EMAILS="authorized@yahoo\.com|authorized@gmail\.com"
+```
+
+This will apply to all auth methods.
+
+## CLI usage
+
+This section highlights some of the CLI commands and options that are useful when self-hosting. Please check the [CLI reference](/cli-introduction) for more in-depth documentation.
+
+### Login
+
+To avoid being redirected to [Trigger.dev Cloud](https://cloud.trigger.dev) when using the CLI, you need to specify the URL of your self-hosted instance with the `--api-url` or `-a` flag. For example:
+
+```bash
+npx trigger.dev@v4-beta login -a http://trigger.example.com
+```
+
+Once you've logged in, you shouldn't have to specify the URL again with other commands.
+
+#### Profiles
+
+You can specify a profile when logging in. This allows you to easily use the CLI with multiple instances of Trigger.dev. For example:
+
+```bash
+npx trigger.dev@v4-beta login -a http://trigger.example.com \
+    --profile self-hosted
+```
+
+Logging in with a new profile will also make it the new default profile.
+
+To use a specific profile, you can use the `--profile` flag with other commands:
+
+```bash
+npx trigger.dev@v4-beta dev --profile self-hosted
+```
+
+To list all your profiles, use the `list-profiles` command:
+
+```bash
+npx trigger.dev@v4-beta list-profiles
+```
+
+To remove a profile, use the `logout` command:
+
+```bash
+npx trigger.dev@v4-beta logout --profile self-hosted
+```
+
+To switch to a different profile, use the `switch` command:
+
+```bash
+# To run interactively
+npx trigger.dev@v4-beta switch
+
+# To switch to a specific profile
+npx trigger.dev@v4-beta switch self-hosted
+```
+
+#### Whoami
+
+It can be useful to check you are logged into the correct instance. Running this will also show the API URL:
+
+```bash
+npx trigger.dev@v4-beta whoami
+```
+
+### CI / GitHub Actions
+
+When running the CLI in a CI environment, your login profiles won't be available. Instead, you can use the `TRIGGER_API_URL` and `TRIGGER_ACCESS_TOKEN` environment 
+variables to point at your self-hosted instance and authenticate.
+
+For more detailed instructions, see the [GitHub Actions guide](/github-actions).
+
+## Telemetry
+
+By default, the Trigger.dev webapp sends telemetry data to our servers. This data is used to improve the product and is not shared with third parties. If you would like to opt-out of this, you can set the `TRIGGER_TELEMETRY_DISABLED` environment variable on the webapp container. The value doesn't matter, it just can't be empty. For example:
+
+```yaml
+services:
+  webapp:
+    ...
+    environment:
+      TRIGGER_TELEMETRY_DISABLED: 1
+```
