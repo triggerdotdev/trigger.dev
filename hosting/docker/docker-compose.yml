@@ -1,0 +1,283 @@
+name: trigger
+
+services:
+  webapp:
+    image: ghcr.io/triggerdotdev/trigger.dev:${TRIGGER_IMAGE_TAG:-main}
+    restart: ${RESTART_POLICY:-unless-stopped}
+    ports:
+      - ${WEBAPP_PUBLISH_IP:-0.0.0.0}:8030:3000
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - webapp
+      - supervisor
+      - traefik
+    volumes:
+      - shared:/home/node/shared
+    user: root
+    command: sh -c "chown -R node:node /home/node/shared && exec ./scripts/entrypoint.sh"
+    healthcheck:
+      test: ["CMD", "node", "-e", "http.get('http://localhost:3000/healthcheck', res => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+    environment:
+      APP_ORIGIN: http://localhost:8030
+      ELECTRIC_ORIGIN: http://electric:3000
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/main?schema=public&sslmode=disable
+      DIRECT_URL: postgresql://postgres:postgres@postgres:5432/main?schema=public&sslmode=disable
+      SESSION_SECRET: ${SESSION_SECRET}
+      MAGIC_LINK_SECRET: ${MAGIC_LINK_SECRET}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      MANAGED_WORKER_SECRET: ${MANAGED_WORKER_SECRET}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_TLS_DISABLED: true
+      APP_LOG_LEVEL: info
+      DEV_OTEL_EXPORTER_OTLP_ENDPOINT: http://localhost:8030/otel
+      TRIGGER_BOOTSTRAP_ENABLED: 1
+      TRIGGER_BOOTSTRAP_WORKER_GROUP_NAME: bootstrap-3
+      TRIGGER_BOOTSTRAP_WORKER_TOKEN_PATH: /home/node/shared/worker_token
+      DEPLOY_REGISTRY_HOST: localhost:5000
+      OBJECT_STORE_BASE_URL: http://minio:9000
+      OBJECT_STORE_ACCESS_KEY_ID: BlJ2Hcd6Cgsz3ITBWy4p
+      OBJECT_STORE_SECRET_ACCESS_KEY: RskeTL9VAQ7saSSI2hK1MUMaaAIavf7vyQyVPiDu
+      GRACEFUL_SHUTDOWN_TIMEOUT: 1000
+      # Limits
+      # TASK_PAYLOAD_OFFLOAD_THRESHOLD: 524288 # 512KB
+      # TASK_PAYLOAD_MAXIMUM_SIZE: 3145728 # 3MB
+      # BATCH_TASK_PAYLOAD_MAXIMUM_SIZE: 1000000 # 1MB
+      # TASK_RUN_METADATA_MAXIMUM_SIZE: 262144 # 256KB
+      # DEFAULT_ENV_EXECUTION_CONCURRENCY_LIMIT: 100
+      # DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT: 100
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.webapp.rule=Host(`webapp.localhost`)"
+      - "traefik.http.routers.webapp.entrypoints=${TRAEFIK_ENTRYPOINT:-web}"
+      # - "traefik.http.routers.webapp.tls.certresolver=letsencrypt"
+      - "traefik.http.services.webapp.loadbalancer.server.port=3000"
+
+  supervisor:
+    image: ghcr.io/triggerdotdev/supervisor:${TRIGGER_IMAGE_TAG:-main}
+    restart: ${RESTART_POLICY:-unless-stopped}
+    depends_on:
+      - webapp
+      - docker-proxy
+    networks:
+      - supervisor
+      - docker-proxy
+    volumes:
+      - shared:/home/node/shared
+    user: root
+    command: sh -c "chown -R node:node /home/node/shared && exec /usr/bin/dumb-init -- pnpm run --filter supervisor start"
+    environment:
+      # This needs to match the token of the worker group you want to connect to
+      # TRIGGER_WORKER_TOKEN: ${TRIGGER_WORKER_TOKEN}
+      TRIGGER_WORKER_TOKEN: file:///home/node/shared/worker_token
+      MANAGED_WORKER_SECRET: ${MANAGED_WORKER_SECRET}
+      # Point this at the webapp in prod
+      TRIGGER_API_URL: http://webapp:3000
+      # Point this at the OTel collector or the webapp in prod
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://webapp:3000/otel
+      TRIGGER_WORKLOAD_API_DOMAIN: supervisor
+      TRIGGER_WORKLOAD_API_PORT_EXTERNAL: 8020
+      # Optional settings
+      DEBUG: 1
+      ENFORCE_MACHINE_PRESETS: 1
+      TRIGGER_DEQUEUE_INTERVAL_MS: 1000
+      DOCKER_HOST: tcp://docker-proxy:2375
+      DOCKER_RUNNER_NETWORKS: webapp,supervisor
+      DOCKER_REGISTRY_URL: ${DOCKER_REGISTRY_URL:-localhost:5000}
+      DOCKER_REGISTRY_USERNAME: ${DOCKER_REGISTRY_USERNAME:-}
+      DOCKER_REGISTRY_PASSWORD: ${DOCKER_REGISTRY_PASSWORD:-}
+      DOCKER_AUTOREMOVE_EXITED_CONTAINERS: 0
+    healthcheck:
+      test: ["CMD", "node", "-e", "http.get('http://localhost:8020/health', res => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+  docker-proxy:
+    image: tecnativa/docker-socket-proxy:${DOCKER_PROXY_IMAGE_TAG:-latest}
+    restart: ${RESTART_POLICY:-unless-stopped}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - docker-proxy
+    environment:
+      - LOG_LEVEL=info
+      - POST=1
+      - CONTAINERS=1
+      - IMAGES=1
+      - INFO=1
+      - NETWORKS=1
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "2375"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  postgres:
+    image: postgres:${POSTGRES_IMAGE_TAG:-14}
+    restart: ${RESTART_POLICY:-unless-stopped}
+    ports:
+      - ${POSTGRES_PUBLISH_IP:-127.0.0.1}:5433:5432
+    volumes:
+      - postgres:/var/lib/postgresql/data/
+    networks:
+      - webapp
+    command:
+      - -c
+      - wal_level=logical
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  redis:
+    image: redis:${REDIS_IMAGE_TAG:-7}
+    restart: ${RESTART_POLICY:-unless-stopped}
+    ports:
+      - ${REDIS_PUBLISH_IP:-127.0.0.1}:6389:6379
+    volumes:
+      - redis:/data
+    networks:
+      - webapp
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  electric:
+    image: electricsql/electric:${ELECTRIC_IMAGE_TAG:-1.0.13}
+    restart: ${RESTART_POLICY:-unless-stopped}
+    depends_on:
+      - postgres
+    networks:
+      - webapp
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/main?schema=public&sslmode=disable
+      ELECTRIC_INSECURE: true
+      ELECTRIC_USAGE_REPORTING: false
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  clickhouse:
+    image: bitnami/clickhouse:${CLICKHOUSE_IMAGE_TAG:-latest}
+    restart: ${RESTART_POLICY:-unless-stopped}
+    ports:
+      - ${CLICKHOUSE_PUBLISH_IP:-127.0.0.1}:9090:9000
+    environment:
+      CLICKHOUSE_ADMIN_USER: default
+      CLICKHOUSE_ADMIN_PASSWORD: password
+    volumes:
+      - clickhouse:/bitnami/clickhouse
+      - ./clickhouse/override.xml:/bitnami/clickhouse/etc/config.d/override.xml:ro
+    networks:
+      - webapp
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--host", "localhost", "--port", "9000", "--user", "default", "--password", "password", "--query", "SELECT 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  registry:
+    image: registry:${REGISTRY_IMAGE_TAG:-2}
+    restart: ${RESTART_POLICY:-unless-stopped}
+    ports:
+      - ${REGISTRY_PUBLISH_IP:-127.0.0.1}:5000:5000
+    networks:
+      - webapp
+    volumes:
+      # registry-user:very-secure-indeed
+      - ./registry/auth.htpasswd:/auth/htpasswd:ro
+    environment:
+      REGISTRY_AUTH: htpasswd
+      REGISTRY_AUTH_HTPASSWD_REALM: Registry Realm
+      REGISTRY_AUTH_HTPASSWD_PATH: /auth/htpasswd
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:5000/v2/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  minio:
+    image: minio/minio:${MINIO_IMAGE_TAG:-latest}
+    restart: ${RESTART_POLICY:-unless-stopped}
+    ports:
+      - ${MINIO_PUBLISH_IP:-127.0.0.1}:9000:9000
+      - ${MINIO_PUBLISH_IP:-127.0.0.1}:9001:9001
+    networks:
+      - webapp
+    volumes:
+      - minio:/data
+    environment:
+      MINIO_ROOT_USER: admin
+      MINIO_ROOT_PASSWORD: very-safe-password
+    command: server --console-address ":9001" /data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+  traefik:
+    image: traefik:${TRAEFIK_IMAGE_TAG:-v3.4}
+    restart: ${RESTART_POLICY:-unless-stopped}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080" # Traefik dashboard
+    networks:
+      - traefik
+    command:
+      - --api.insecure=true
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.network=traefik
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      # - --certificatesresolvers.letsencrypt.acme.tlschallenge=true
+      # - --certificatesresolvers.letsencrypt.acme.email=local@foo.bar
+      # - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+      - --log.level=DEBUG
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik-letsencrypt:/letsencrypt
+
+volumes:
+  clickhouse:
+  postgres:
+  redis:
+  shared:
+  minio:
+  traefik-letsencrypt:
+
+networks:
+  traefik:
+    name: traefik
+  docker-proxy:
+    name: docker-proxy
+  supervisor:
+    name: supervisor
+  webapp:
+    name: webapp
