@@ -140,16 +140,17 @@
               {
                 "group": "Commands",
                 "pages": [
-                  "cli-login-commands",
-                  "cli-init-commands",
-                  "cli-dev-commands",
                   "cli-deploy-commands",
-                  "cli-promote-commands",
-                  "cli-preview-archive",
-                  "cli-whoami-commands",
-                  "cli-logout-commands",
+                  "cli-dev-commands",
+                  "cli-init-commands",
                   "cli-list-profiles-commands",
-                  "cli-update-commands"
+                  "cli-login-commands",
+                  "cli-logout-commands",
+                  "cli-preview-archive",
+                  "cli-promote-commands",
+                  "cli-switch",
+                  "cli-update-commands",
+                  "cli-whoami-commands"
                 ]
               }
             ]
