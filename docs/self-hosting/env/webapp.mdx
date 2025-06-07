@@ -126,7 +126,7 @@ mode: "wide"
 | `RUN_ENGINE_RATE_LIMIT_LIMITER_LOGS_ENABLED`   | No       | 0                     | Run engine rate limit limiter logs.                                                                       |
 | **Misc**                                       |          |                       |                                                                                                           |
 | `TRIGGER_TELEMETRY_DISABLED`                   | No       | —                     | Disable telemetry.                                                                                        |
-| `NODE_MAX_OLD_SPACE_SIZE`                      | No       | —                     | Maximum memory allocation for Node.js heap (e.g. "4096" for 4GB).                                         |
+| `NODE_MAX_OLD_SPACE_SIZE`                      | No       | 8192                  | Maximum memory allocation for Node.js heap in MiB (e.g. "4096" for 4GB).                                  |
 | `OPENAI_API_KEY`                               | No       | —                     | OpenAI API key.                                                                                           |
 | `MACHINE_PRESETS_OVERRIDE_PATH`                | No       | —                     | Path to machine presets override file. See [machine overrides](/self-hosting/overview#machine-overrides). |
 | `APP_ENV`                                      | No       | `NODE_ENV`            | App environment. Used for things like the title tag.                                                      |

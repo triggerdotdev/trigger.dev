@@ -14,14 +14,15 @@ Should the burden ever get too much, we'd be happy to see you on [Trigger.dev cl
 ## What's new?
 
 Goodbye v3, hello v4! We made quite a few changes:
-- **Much simpler setup.** Provider + coordinator = supervisor. No more startup scripts. Just `docker compose up`.
+- **Much simpler setup.** The provider and coordinator are now combined into a single supervisor. No more startup scripts, just `docker compose up`.
+- **Automatic container cleanup.** The supervisor will automatically clean up containers that are no longer needed.
 - **Support for multiple worker machines.** This is a big one, and we're very excited about it! You can now scale your workers horizontally as needed.
 - **Resource limits enforced by default.** This means that tasks will be limited to the total CPU and RAM of the machine preset, preventing noisy neighbours.
 - **No direct Docker socket access.** The compose file now comes with [Docker Socket Proxy](https://github.com/Tecnativa/docker-socket-proxy) by default. Yes, you want this.
 - **No host networking.** All containers are now running with network isolation, using only the network access they need.
-- **No checkpoint support.** This was only ever an experimental self-hosting feature and not recommended. It caused a bunch of issues. We decided to focus on the core features instead.
+- **No checkpoint support.** This was only ever experimental when self-hosting and not recommended. It caused a bunch of issues. We decided to focus on the core features instead.
 - **Built-in container registry and object storage.** You can now deploy and execute tasks without needing third party services for this.
-- **Improved CLI commands.** You don't need any additional flags to deploy anymore, and there's a new `switch` command to easily switch between profiles.
+- **Improved CLI commands.** You don't need any additional flags to deploy anymore, and there's a new command to easily `switch` between profiles.
 - **Whitelisting for GitHub OAuth.** Any whitelisted email addresses will now also apply to sign ins via GitHub, unlike v3 where they only applied to magic links.
 
 ## Requirements
@@ -39,14 +40,14 @@ To run the webapp and worker components, you will need:
 
 ### Webapp
 
-This will host the webapp, postgres, redis, and related services.
+This machine will host the webapp, postgres, redis, and related services.
 
 - 2+ vCPU
 - 4+ GB RAM
 
 ### Worker
 
-This will host the supervisor and all of the runs.
+This machine will host the supervisor and all of the runs.
 
 - 2+ vCPU
 - 4+ GB RAM
@@ -86,25 +87,29 @@ cd webapp
 docker compose up -d
 ```
 
-4. Optional: Add traefik as a reverse proxy
-
-```bash
-docker compose -f ../docker-compose.traefik.yml up -d
-```
-
-5. Configure the webapp as needed using the [environment variables](/self-hosting/env/webapp) and apply the changes:
+4. Configure the webapp using the [environment variables](/self-hosting/env/webapp) in your `.env` file, then apply the changes:
 
 ```bash
 docker compose up -d
 ```
 
-6. You should now be able to access the webapp at `http://localhost:8030`. When logging in, check the container logs for the magic link: `docker compose logs -f webapp`
+5. You should now be able to access the webapp at `http://localhost:8030`. When logging in, check the container logs for the magic link:
 
-7. Optional: To initialize a new project, run the following command:
+```bash
+docker compose logs -f webapp
+```
+
+6. (optional) To initialize a new project, run the following command:
 
 ```bash
 npx trigger.dev@v4-beta init -p <project-ref> -a http://localhost:8030
 ```
+
+{/* 7. Bonus: Add traefik as a reverse proxy
+
+```bash
+docker compose -f docker-compose.yml -f ../docker-compose.traefik.yml up -d
+``` */}
 
 ### Worker
 
@@ -128,13 +133,15 @@ cd worker
 docker compose up -d
 ```
 
-Configure the supervisor as needed using the [environment variables](/self-hosting/env/supervisor) and apply the changes:
+4. Configure the supervisor using the [environment variables](/self-hosting/env/supervisor) in your `.env` file, including the [worker token](#worker-token).
+
+5. Apply the changes:
 
 ```bash
 docker compose up -d
 ```
 
-Repeat as needed for additional workers.
+6. Repeat as needed for additional workers.
 
 ### Combined
 
@@ -142,35 +149,108 @@ If you want to run the webapp and worker on the same machine, just replace the `
 
 ```bash
 # Run this from the /hosting/docker directory
-docker compose -f docker-compose.webapp.yml -f docker-compose.worker.yml up -d
+docker compose -f webapp/docker-compose.yml -f worker/docker-compose.yml up -d
 ```
 
-And optionally add traefik as a reverse proxy:
+{/* And optionally add traefik as a reverse proxy:
 
 ```bash
 # Run this from the /hosting/docker directory
-docker compose -f docker-compose.webapp.yml -f docker-compose.worker.yml -f docker-compose.traefik.yml up -d
-```
+docker compose -f webapp/docker-compose.yml -f worker/docker-compose.yml -f docker-compose.traefik.yml up -d
+``` */}
 
-## Version locking
+## Worker token
 
-There are several reasons to lock the version of your Docker images:
-- **Backwards compatibility.** We try our best to maintain compatibility with older CLI versions, but it's not always possible. If you don't want to update your CLI, you can lock your Docker images to that specific version.
-- **Ensuring full feature support.** Sometimes, new CLI releases will also require new or updated platform features. Running unlocked images can make any issues difficult to debug. Using a specific tag can help here as well.
+When running the combined stack, worker bootstrap is handled automatically. When running the webapp and worker separately, you will need to manually set the worker token.
 
-By default, the images will point at the latest versioned release via the `v4-beta` tag. You can override this by specifying a different tag in your `.env` file. For example:
+On the first run, the webapp will generate a worker token and store it in a shared volume. It will also print the token to the console. It should look something like this:
 
 ```bash
-TRIGGER_IMAGE_TAG=v4.0.0-v4-beta.21
+==========================
+Trigger.dev Bootstrap - Worker Token
+
+WARNING: This will only be shown once. Save it now!
+
+Worker group:
+bootstrap
+
+Token:
+tr_wgt_fgfAEjsTmvl4lowBLTbP7Xo563UlnVa206mr9uW6
+
+If using docker compose, set:
+TRIGGER_WORKER_TOKEN=tr_wgt_fgfAEjsTmvl4lowBLTbP7Xo563UlnVa206mr9uW6
+
+Or, if using a file:
+TRIGGER_WORKER_TOKEN=file:///home/node/shared/worker_token
+
+==========================
 ```
 
+You can then uncomment and set the `TRIGGER_WORKER_TOKEN` environment variable in your `.env` file.
+
+Don't forget to restart the worker container for the changes to take effect:
+
+```bash
+# Run this from the /hosting/docker/worker directory
+docker compose down
+docker compose up -d
+```
+
+## Registry setup
+
+The registry is used to store and pull deployment images. When testing the stack locally, the defaults should work out of the box.
+
+When deploying to production, you will need to set the correct URL and generate secure credentials for the registry.
+
+### Default settings
+
+The default settings for the registry are:
+
+- Registry: `localhost:5000`
+- Username: `registry-user`
+- Password: `very-secure-indeed`
+
+You should change these before deploying to production, especially the password. You can find more information about how to do this in the official [registry docs](https://github.com/distribution/distribution/blob/735c161b53e7faf81a21ba94c55ac9edee081cd9/docs/deploying.md#native-basic-auth).
+
+### Logging in
+
+When self-hosting, builds run locally. You will have to login to the registry on every machine that runs the `deploy` command. You should only have to do this once:
+
+```bash
+docker login -u <username> <registry>
+```
+
+This will prompt for the password. Afterwards, the deploy command should work as expected.
+
+## Object storage
+
+This is mainly used for large payloads and outputs. There are a few simple steps to follow to get started.
+
+### Default settings
+
+The default settings for the object storage are:
+
+- Endpoint: `http://localhost:9000`
+- Username: `admin`
+- Password: `very-safe-password`
+
+You should change these before deploying to production, especially the password.
+
+### Setup
+
+1. Login to the dashboard: `http://localhost:9001`
+
+2. Create a bucket named `packets`.
+
+3. For production, you will want to set up a dedicated user and not use the root credentials above.
+
 ## Authentication
+
+The specific set of variables required will depend on your choice of email transport or alternative login methods like GitHub OAuth.
 
 ### Magic link
 
 By default, magic link auth is the only login option. If the `EMAIL_TRANSPORT` env var is not set, the magic links will be logged by the webapp container and not sent via email.
-
-The specific set of variables required will depend on your choice of email transport.
 
 #### Resend
 
@@ -228,23 +308,32 @@ All email addresses can sign up and log in this way. If you would like to restri
 WHITELISTED_EMAILS="authorized@yahoo\.com|authorized@gmail\.com"
 ```
 
-This will apply to all auth methods.
+This will apply to all auth methods including magic link and GitHub OAuth.
+
+## Version locking
+
+There are several reasons to lock the version of your Docker images:
+- **Backwards compatibility.** We try our best to maintain compatibility with older CLI versions, but it's not always possible. If you don't want to update your CLI, you can lock your Docker images to that specific version.
+- **Ensuring full feature support.** Sometimes, new CLI releases will also require new or updated platform features. Running unlocked images can make any issues difficult to debug. Using a specific tag can help here as well.
+
+By default, the images will point at the latest versioned release via the `v4-beta` tag. You can override this by specifying a different tag in your `.env` file. For example:
+
+```bash
+TRIGGER_IMAGE_TAG=v4.0.0-v4-beta.21
+```
 
 ## Troubleshooting
 
-- **Deployment fails at the push step.** The machine running `deploy` needs registry access:
-
-```bash
-docker login -u <username> <registry>
-# this should now succeed
-npx trigger.dev@v4-beta deploy
-```
-
-This needs to match the registry credentials. Defaults for the `localhost:5000` registry are `registry-user` and `very-safe-password`. You should change these.
+- **Deployment fails at the push step.** The machine running `deploy` needs registry access. See the [registry setup](#registry-setup) section for more details.
 
 - **Magic links don't arrive.** The webapp container needs to be able to send emails. You probably need to set up an email transport. See the [authentication](#authentication) section for more details.
 
-You should check the logs of the webapp container to see the magic link: `docker logs -f trigger-webapp-1`
+  You should check the logs of the webapp container to see the magic link:
+
+  ```bash
+  # Run this from the /hosting/docker/webapp directory
+  docker compose logs -f webapp
+  ```
 
 ## CLI usage
 
@@ -260,7 +349,7 @@ npx trigger.dev@v4-beta login -a http://trigger.example.com
 
 Once you've logged in, you shouldn't have to specify the URL again with other commands.
 
-#### Profiles
+### Profiles
 
 You can specify a profile when logging in. This allows you to easily use the CLI with multiple instances of Trigger.dev. For example:
 
@@ -299,7 +388,7 @@ npx trigger.dev@v4-beta switch
 npx trigger.dev@v4-beta switch self-hosted
 ```
 
-#### Whoami
+### Whoami
 
 It can be useful to check you are logged into the correct instance. Running this will also show the API URL:
 
@@ -307,7 +396,7 @@ It can be useful to check you are logged into the correct instance. Running this
 npx trigger.dev@v4-beta whoami
 ```
 
-### CI / GitHub Actions
+## CI / GitHub Actions
 
 When running the CLI in a CI environment, your login profiles won't be available. Instead, you can use the `TRIGGER_API_URL` and `TRIGGER_ACCESS_TOKEN` environment 
 variables to point at your self-hosted instance and authenticate.
