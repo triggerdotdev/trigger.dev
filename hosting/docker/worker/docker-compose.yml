@@ -2,13 +2,14 @@ name: trigger
 
 services:
   supervisor:
-    image: ghcr.io/triggerdotdev/supervisor:${SUPERVISOR_IMAGE_TAG:-v4-beta}
+    image: ghcr.io/triggerdotdev/supervisor:${TRIGGER_IMAGE_TAG:-v4-beta}
     restart: ${RESTART_POLICY:-unless-stopped}
     depends_on:
       - docker-proxy
     networks:
       - supervisor
       - docker-proxy
+      - webapp
     volumes:
       - shared:/home/node/shared
     # Only needed for bootstrap
@@ -18,6 +19,7 @@ services:
     environment:
       # This needs to match the token of the worker group you want to connect to
       # TRIGGER_WORKER_TOKEN: ${TRIGGER_WORKER_TOKEN}
+      # Use the bootstrap token created by the webapp
       TRIGGER_WORKER_TOKEN: file:///home/node/shared/worker_token
       MANAGED_WORKER_SECRET: ${MANAGED_WORKER_SECRET}
       # Point this at the webapp in prod
@@ -72,3 +74,5 @@ networks:
     name: docker-proxy
   supervisor:
     name: supervisor
+  webapp:
+    name: webapp

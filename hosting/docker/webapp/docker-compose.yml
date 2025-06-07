@@ -2,7 +2,7 @@ name: trigger
 
 services:
   webapp:
-    image: ghcr.io/triggerdotdev/trigger.dev:${WEBAPP_IMAGE_TAG:-v4-beta}
+    image: ghcr.io/triggerdotdev/trigger.dev:${TRIGGER_IMAGE_TAG:-v4-beta}
     restart: ${RESTART_POLICY:-unless-stopped}
     ports:
       - ${WEBAPP_PUBLISH_IP:-0.0.0.0}:8030:3000
@@ -27,9 +27,10 @@ services:
     environment:
       APP_ORIGIN: ${APP_ORIGIN:-http://localhost:8030}
       LOGIN_ORIGIN: ${LOGIN_ORIGIN:-http://localhost:8030}
+      API_ORIGIN: ${API_ORIGIN:-http://localhost:8030}
       ELECTRIC_ORIGIN: http://electric:3000
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/main?schema=public&sslmode=disable
-      DIRECT_URL: postgresql://postgres:postgres@postgres:5432/main?schema=public&sslmode=disable
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/main?schema=public&sslmode=disable}
+      DIRECT_URL: ${DIRECT_URL:-postgresql://postgres:postgres@postgres:5432/main?schema=public&sslmode=disable}
       SESSION_SECRET: ${SESSION_SECRET}
       MAGIC_LINK_SECRET: ${MAGIC_LINK_SECRET}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY}
@@ -39,8 +40,8 @@ services:
       REDIS_TLS_DISABLED: true
       APP_LOG_LEVEL: info
       DEV_OTEL_EXPORTER_OTLP_ENDPOINT: http://localhost:8030/otel
-      DEPLOY_REGISTRY_HOST: ${DEPLOY_REGISTRY_HOST:-localhost:5000}
-      OBJECT_STORE_BASE_URL: http://minio:9000
+      DEPLOY_REGISTRY_HOST: ${DOCKER_REGISTRY_URL:-localhost:5000}
+      OBJECT_STORE_BASE_URL: ${OBJECT_STORE_BASE_URL:-http://minio:9000}
       OBJECT_STORE_ACCESS_KEY_ID: ${OBJECT_STORE_ACCESS_KEY_ID}
       OBJECT_STORE_SECRET_ACCESS_KEY: ${OBJECT_STORE_SECRET_ACCESS_KEY}
       GRACEFUL_SHUTDOWN_TIMEOUT: 1000

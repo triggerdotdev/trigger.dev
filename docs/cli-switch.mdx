@@ -1,0 +1,47 @@
+---
+title: "CLI switch command"
+sidebarTitle: "switch"
+description: "The `trigger.dev switch` command can be used to switch between profiles."
+tag: "v4"
+---
+
+import UpgradeToV4Note from "/snippets/upgrade-to-v4-note.mdx";
+import ProjectPathArg from "/snippets/cli-args-project-path.mdx";
+import CommonOptions from "/snippets/cli-options-common.mdx";
+import ProjectRefOption from "/snippets/cli-options-project-ref.mdx";
+import EnvFileOption from "/snippets/cli-options-env-file.mdx";
+import ConfigFileOption from "/snippets/cli-options-config-file.mdx";
+import SkipUpdateCheckOption from "/snippets/cli-options-skip-update-check.mdx";
+import BranchOption from "/snippets/cli-options-branch.mdx";
+
+<UpgradeToV4Note />
+
+Run the command like this:
+
+<CodeGroup>
+
+```bash npm
+npx trigger.dev@v4-beta switch [profile]
+```
+
+```bash pnpm
+pnpm dlx trigger.dev@v4-beta switch [profile]
+```
+
+```bash yarn
+yarn dlx trigger.dev@v4-beta switch [profile]
+```
+
+</CodeGroup>
+
+It will switch to the specified profile. If no profile is specified, it will list all available profiles and run interactively.
+
+## Arguments
+
+```
+npx trigger.dev@v4-beta switch [profile]
+```
+
+<ParamField body="Profile" type="[profile]">
+  The profile to switch to. If not specified, it will list all available profiles and run interactively.
+</ParamField>
