@@ -682,6 +682,7 @@ model TaskRun {
   // Finding runs in a batch
   @@index([runtimeEnvironmentId, batchId])
   @@index([runtimeEnvironmentId, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([runTags(ops: ArrayOps)], type: Gin)
 }
 
 enum TaskRunStatus {
