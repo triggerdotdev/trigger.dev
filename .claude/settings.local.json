@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep:*)",
+      "Bash(rg:*)",
+      "Bash(find:*)",
+      "Bash(/Users/eric/.claude/local/node_modules/@anthropic-ai/claude-code/vendor/ripgrep/arm64-darwin/rg \"\\.findFirst|\\.findMany|\\.findUnique|\\.create|\\.update|\\.delete|\\.upsert|\\.count|\\.aggregate\" --type ts -A 3 -B 1)",
+      "Bash(/Users/eric/.claude/local/node_modules/@anthropic-ai/claude-code/vendor/ripgrep/arm64-darwin/rg \"taskRun\\.\" --type ts -B 2 -A 2)",
+      "WebFetch(domain:clickhouse.com)"
+    ],
+    "deny": []
+  }
+}

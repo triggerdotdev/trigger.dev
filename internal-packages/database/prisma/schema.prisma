@@ -672,14 +672,6 @@ model TaskRun {
   @@index([parentTaskRunId])
   // Finding ancestor runs
   @@index([rootTaskRunId])
-  // Task activity graph
-  @@index([projectId, createdAt, taskIdentifier])
-  //Runs list
-  @@index([projectId])
-  @@index([projectId, id(sort: Desc)])
-  @@index([projectId, taskIdentifier])
-  @@index([projectId, status])
-  @@index([projectId, taskIdentifier, status])
   //Schedules
   @@index([scheduleId])
   // Run page inspector
