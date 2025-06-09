@@ -681,6 +681,7 @@ model TaskRun {
   @@index([scheduleId, createdAt(sort: Desc)])
   // Finding runs in a batch
   @@index([runtimeEnvironmentId, batchId])
+  @@index([runtimeEnvironmentId, createdAt(sort: Desc), id(sort: Desc)])
 }
 
 enum TaskRunStatus {
