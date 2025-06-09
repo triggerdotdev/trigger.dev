@@ -83,6 +83,29 @@ export default defineConfig({
 
 If you see this error, add pino (and any other associated packages) to your `external` build settings in your `trigger.config.ts` file. Learn more about the `external` setting in the [config docs](/config/config-file#external).
 
+### `reactDOMServer.renderToPipeableStream is not a function` when using react-email
+
+If you see this error when using `@react-email/render`:
+
+```
+TypeError: reactDOMServer.renderToPipeableStream is not a function
+    at __spreadValues.selectors (file:///node_modules/.pnpm/@react-email+render@1.0.6_react-dom@19.0.0_react@19.0.0/node_modules/@react-email/render/dist/node/index.mjs:162:37)
+```
+
+This happens because react-email packages have bundling conflicts with our build process. To fix this, add the react-email packages to your `external` build settings in your `trigger.config.ts` file:
+
+```ts trigger.config.ts
+import { defineConfig } from "@trigger.dev/sdk/v3";
+
+export default defineConfig({
+  project: "<project ref>",
+  // Your other config settings...
+  build: {
+    external: ["react", "react-dom", "@react-email/render", "@react-email/components"],
+  },
+});
+```
+
 <CorepackError />
 
 
