@@ -126,7 +126,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   try {
     const { tasks, activity, runningStats, durations } = await taskListPresenter.call({
       environmentId: environment.id,
-      projectId: project.id,
+      environmentType: environment.type,
     });
 
     const usefulLinksPreference = await getUsefulLinksPreference(request);
