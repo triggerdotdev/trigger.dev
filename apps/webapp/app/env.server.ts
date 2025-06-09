@@ -741,6 +741,14 @@ const EnvironmentSchema = z.object({
   RUN_REPLICATION_KEEP_ALIVE_IDLE_SOCKET_TTL_MS: z.coerce.number().int().optional(),
   RUN_REPLICATION_MAX_OPEN_CONNECTIONS: z.coerce.number().int().default(10),
 
+  // Clickhouse
+  CLICKHOUSE_URL: z.string().optional(),
+  CLICKHOUSE_KEEP_ALIVE_ENABLED: z.string().default("1"),
+  CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS: z.coerce.number().int().optional(),
+  CLICKHOUSE_MAX_OPEN_CONNECTIONS: z.coerce.number().int().default(10),
+  CLICKHOUSE_LOG_LEVEL: z.enum(["log", "error", "warn", "info", "debug"]).default("info"),
+  CLICKHOUSE_COMPRESSION_REQUEST: z.string().default("1"),
+
   // Bootstrap
   TRIGGER_BOOTSTRAP_ENABLED: z.string().default("0"),
   TRIGGER_BOOTSTRAP_WORKER_GROUP_NAME: z.string().optional(),
