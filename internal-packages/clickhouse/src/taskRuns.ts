@@ -220,3 +220,49 @@ export function getAverageDurations(ch: ClickhouseReader, settings?: ClickHouseS
     settings,
   });
 }
+
+export const TaskUsageByOrganizationQueryResult = z.object({
+  task_identifier: z.string(),
+  run_count: z.number(),
+  average_duration: z.number(),
+  total_duration: z.number(),
+  average_cost: z.number(),
+  total_cost: z.number(),
+  total_base_cost: z.number(),
+});
+
+export const TaskUsageByOrganizationQueryParams = z.object({
+  startTime: z.number().int(),
+  endTime: z.number().int(),
+  organizationId: z.string(),
+});
+
+export function getTaskUsageByOrganization(ch: ClickhouseReader, settings?: ClickHouseSettings) {
+  return ch.query({
+    name: "getTaskUsageByOrganization",
+    query: `
+      SELECT
+      task_identifier,
+      count() AS run_count,
+      avg(usage_duration_ms) AS average_duration,
+      sum(usage_duration_ms) AS total_duration,
+      avg(cost_in_cents) / 100.0 AS average_cost,
+      sum(cost_in_cents) / 100.0 AS total_cost,
+      sum(base_cost_in_cents) / 100.0 AS total_base_cost
+  FROM trigger_dev.task_runs_v2 FINAL
+  WHERE
+      environment_type != 'DEVELOPMENT'
+      AND created_at >= fromUnixTimestamp64Milli({startTime: Int64})
+      AND created_at < fromUnixTimestamp64Milli({endTime: Int64})
+      AND organization_id = {organizationId: String}
+      AND _is_deleted = 0
+  GROUP BY
+      task_identifier
+  ORDER BY
+      total_cost DESC
+    `,
+    schema: TaskUsageByOrganizationQueryResult,
+    params: TaskUsageByOrganizationQueryParams,
+    settings,
+  });
+}
