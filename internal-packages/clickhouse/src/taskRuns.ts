@@ -97,7 +97,7 @@ export type TaskRunV2QueryResult = z.infer<typeof TaskRunV2QueryResult>;
 export function getTaskRunsQueryBuilder(ch: ClickhouseReader, settings?: ClickHouseSettings) {
   return ch.queryBuilder({
     name: "getTaskRuns",
-    baseQuery: "SELECT run_id FROM trigger_dev.task_runs_v2",
+    baseQuery: "SELECT run_id FROM trigger_dev.task_runs_v2 FINAL",
     schema: TaskRunV2QueryResult,
     settings,
   });

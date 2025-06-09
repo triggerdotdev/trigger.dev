@@ -4,7 +4,7 @@ import { Logger, LogLevel } from "@trigger.dev/core/logger";
 import { TaskRunStatus } from "@trigger.dev/database";
 import { PrismaClient } from "~/db.server";
 
-export type RunsRepositorySOptions = {
+export type RunsRepositoryOptions = {
   clickhouse: ClickHouse;
   prisma: PrismaClient;
   logger?: Logger;
@@ -21,7 +21,7 @@ export type ListRunsOptions = {
   statuses?: TaskRunStatus[];
   tags?: string[];
   scheduleId?: string;
-  period?: string;
+  period?: number;
   from?: number;
   to?: number;
   isTest?: boolean;
@@ -38,7 +38,7 @@ export type ListRunsOptions = {
 };
 
 export class RunsRepository {
-  constructor(private readonly options: RunsRepositorySOptions) {}
+  constructor(private readonly options: RunsRepositoryOptions) {}
 
   async listRuns(options: ListRunsOptions) {
     const queryBuilder = this.options.clickhouse.taskRuns.queryBuilder();
@@ -50,21 +50,21 @@ export class RunsRepository {
         projectId: options.projectId,
       });
 
-    if (options.tasks) {
+    if (options.tasks && options.tasks.length > 0) {
       queryBuilder.where("task_identifier IN {tasks: Array(String)}", { tasks: options.tasks });
     }
 
-    if (options.versions) {
+    if (options.versions && options.versions.length > 0) {
       queryBuilder.where("task_version IN {versions: Array(String)}", {
         versions: options.versions,
       });
     }
 
-    if (options.statuses) {
+    if (options.statuses && options.statuses.length > 0) {
       queryBuilder.where("status IN {statuses: Array(String)}", { statuses: options.statuses });
     }
 
-    if (options.tags) {
+    if (options.tags && options.tags.length > 0) {
       queryBuilder.where("hasAny(tags, {tags: Array(String)})", { tags: options.tags });
     }
 
@@ -72,16 +72,21 @@ export class RunsRepository {
       queryBuilder.where("schedule_id = {scheduleId: String}", { scheduleId: options.scheduleId });
     }
 
+    // Period is a number of milliseconds duration
     if (options.period) {
-      queryBuilder.where("period = {period: String}", { period: options.period });
+      queryBuilder.where("created_at >= fromUnixTimestamp64Milli({period: Int64})", {
+        period: new Date(Date.now() - options.period).getTime(),
+      });
     }
 
     if (options.from) {
-      queryBuilder.where("created_at >= {from: DateTime}", { from: options.from });
+      queryBuilder.where("created_at >= fromUnixTimestamp64Milli({from: Int64})", {
+        from: options.from,
+      });
     }
 
     if (options.to) {
-      queryBuilder.where("created_at <= {to: DateTime}", { to: options.to });
+      queryBuilder.where("created_at <= fromUnixTimestamp64Milli({to: Int64})", { to: options.to });
     }
 
     if (typeof options.isTest === "boolean") {
@@ -96,28 +101,31 @@ export class RunsRepository {
       queryBuilder.where("batch_id = {batchId: String}", { batchId: options.batchId });
     }
 
-    if (options.runFriendlyIds) {
+    if (options.runFriendlyIds && options.runFriendlyIds.length > 0) {
       queryBuilder.where("friendly_id IN {runFriendlyIds: Array(String)}", {
         runFriendlyIds: options.runFriendlyIds,
       });
     }
 
-    if (options.runIds) {
+    if (options.runIds && options.runIds.length > 0) {
       queryBuilder.where("run_id IN {runIds: Array(String)}", { runIds: options.runIds });
     }
 
     if (options.page.cursor) {
       if (options.page.direction === "forward") {
         queryBuilder
-          .where("run_id > {runId: String}", { runId: options.page.cursor })
+          .where("run_id < {runId: String}", { runId: options.page.cursor })
           .orderBy("run_id DESC")
           .limit(options.page.size + 1);
       } else {
         queryBuilder
-          .where("run_id < {runId: String}", { runId: options.page.cursor })
-          .orderBy("run_id ASC")
+          .where("run_id > {runId: String}", { runId: options.page.cursor })
+          .orderBy("run_id DESC")
           .limit(options.page.size + 1);
       }
+    } else {
+      // Initial page - no cursor provided
+      queryBuilder.orderBy("run_id DESC").limit(options.page.size + 1);
     }
 
     const [queryError, result] = await queryBuilder.execute();
@@ -135,22 +143,35 @@ export class RunsRepository {
     let previousCursor: string | null = null;
 
     //get cursors for next and previous pages
-    switch (options.page.direction) {
-      case "forward":
-        previousCursor = options.page.cursor ? runIds.at(0) ?? null : null;
-        if (hasMore) {
-          nextCursor = runIds[options.page.size];
-        }
-        break;
-      case "backward":
-        runIds.reverse();
-        if (hasMore) {
-          previousCursor = runIds[1];
-          nextCursor = runIds[options.page.size];
-        } else {
-          nextCursor = runIds[options.page.size - 1];
-        }
-        break;
+    if (options.page.cursor) {
+      switch (options.page.direction) {
+        case "forward":
+          previousCursor = runIds.at(0) ?? null;
+          if (hasMore) {
+            // The next cursor should be the last run ID from this page
+            nextCursor = runIds[options.page.size - 1];
+          }
+          break;
+        case "backward":
+          // No need to reverse since we're using DESC ordering consistently
+          if (hasMore) {
+            previousCursor = runIds[options.page.size - 1];
+          }
+          nextCursor = runIds.at(0) ?? null;
+          break;
+        default:
+          // This shouldn't happen if cursor is provided, but handle it
+          if (hasMore) {
+            nextCursor = runIds[options.page.size - 1];
+          }
+          break;
+      }
+    } else {
+      // Initial page - no cursor
+      if (hasMore) {
+        // The next cursor should be the last run ID from this page
+        nextCursor = runIds[options.page.size - 1];
+      }
     }
 
     const runIdsToReturn = hasMore ? runIds.slice(0, -1) : runIds;

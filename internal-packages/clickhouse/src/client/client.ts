@@ -104,6 +104,14 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
   }): ClickhouseQueryFunction<z.input<TIn>, z.output<TOut>> {
     return async (params, options) => {
       return await startSpan(this.tracer, "query", async (span) => {
+        this.logger.debug("Querying clickhouse", {
+          name: req.name,
+          query: req.query.replace(/\s+/g, " "),
+          params,
+          settings: req.settings,
+          attributes: options?.attributes,
+        });
+
         span.setAttributes({
           "clickhouse.clientName": this.name,
           "clickhouse.operationName": req.name,
