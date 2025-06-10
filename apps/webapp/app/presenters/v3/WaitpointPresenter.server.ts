@@ -78,9 +78,8 @@ export class WaitpointPresenter extends BasePresenter {
 
     if (connectedRunIds.length > 0) {
       const runPresenter = new RunListPresenter();
-      const { runs } = await runPresenter.call({
+      const { runs } = await runPresenter.call(environmentId, {
         projectId: projectId,
-        environments: [environmentId],
         runIds: connectedRunIds,
         pageSize: 5,
       });

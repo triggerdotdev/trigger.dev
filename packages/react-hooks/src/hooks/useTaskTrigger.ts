@@ -9,6 +9,7 @@ import {
   RunHandleFromTypes,
   stringifyIO,
   type TriggerOptions,
+  type RealtimeRunSkipColumns,
 } from "@trigger.dev/core/v3";
 import useSWRMutation from "swr/mutation";
 import { useApiClient, UseApiClientOptions } from "./useApiClient.js";
@@ -113,6 +114,13 @@ export type UseRealtimeTaskTriggerOptions = UseTaskTriggerOptions & {
   enabled?: boolean;
   /** Optional throttle time in milliseconds for stream updates */
   experimental_throttleInMs?: number;
+
+  /**
+   * Skip columns from the subscription.
+   *
+   * @default []
+   */
+  skipColumns?: RealtimeRunSkipColumns;
 };
 
 export type RealtimeTriggerInstanceWithStreams<

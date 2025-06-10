@@ -7,7 +7,7 @@ import { PrismaClientOrTransaction, sqlDatabaseSchema } from "~/db.server";
  * It has indexes for fast performance.
  * It does NOT care about versions, so includes all tasks ever created.
  */
-export function getAllTaskIdentifiers(prisma: PrismaClientOrTransaction, projectId: string) {
+export function getAllTaskIdentifiers(prisma: PrismaClientOrTransaction, environmentId: string) {
   return prisma.$queryRaw<
     {
       slug: string;
@@ -16,6 +16,6 @@ export function getAllTaskIdentifiers(prisma: PrismaClientOrTransaction, project
   >`
     SELECT DISTINCT(slug), "triggerSource"
     FROM ${sqlDatabaseSchema}."BackgroundWorkerTask"
-    WHERE "projectId" = ${projectId}
+    WHERE "runtimeEnvironmentId" = ${environmentId}
     ORDER BY slug ASC;`;
 }

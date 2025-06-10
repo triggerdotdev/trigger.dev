@@ -672,26 +672,17 @@ model TaskRun {
   @@index([parentTaskRunId])
   // Finding ancestor runs
   @@index([rootTaskRunId])
-  // Task activity graph
-  @@index([projectId, createdAt, taskIdentifier])
-  //Runs list
-  @@index([projectId])
-  @@index([projectId, id(sort: Desc)])
-  @@index([projectId, taskIdentifier])
-  @@index([projectId, status])
-  @@index([projectId, taskIdentifier, status])
   //Schedules
   @@index([scheduleId])
-  @@index([scheduleInstanceId])
   // Run page inspector
   @@index([spanId])
   @@index([parentSpanId])
-  // Finding completed runs
-  @@index([completedAt])
   // Schedule list page
   @@index([scheduleId, createdAt(sort: Desc)])
   // Finding runs in a batch
   @@index([runtimeEnvironmentId, batchId])
+  @@index([runtimeEnvironmentId, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([runTags(ops: ArrayOps)], type: Gin)
 }
 
 enum TaskRunStatus {

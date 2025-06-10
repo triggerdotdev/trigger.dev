@@ -75,6 +75,7 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
   type TaskActivity,
   type TaskListItem,
+  taskListPresenter,
   TaskListPresenter,
 } from "~/presenters/v3/TaskListPresenter.server";
 import {
@@ -123,10 +124,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 
   try {
-    const presenter = new TaskListPresenter();
-    const { tasks, activity, runningStats, durations } = await presenter.call({
+    const { tasks, activity, runningStats, durations } = await taskListPresenter.call({
       environmentId: environment.id,
-      projectId: project.id,
+      environmentType: environment.type,
     });
 
     const usefulLinksPreference = await getUsefulLinksPreference(request);

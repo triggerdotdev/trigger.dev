@@ -35,6 +35,9 @@ const EnvironmentSchema = z.object({
   API_ORIGIN: z.string().optional(),
   STREAM_ORIGIN: z.string().optional(),
   ELECTRIC_ORIGIN: z.string().default("http://localhost:3060"),
+  // A comma separated list of electric origins to shard into different electric instances by environmentId
+  // example: "http://localhost:3060,http://localhost:3061,http://localhost:3062"
+  ELECTRIC_ORIGIN_SHARDS: z.string().optional(),
   APP_ENV: z.string().default(process.env.NODE_ENV),
   SERVICE_NAME: z.string().default("trigger.dev webapp"),
   POSTHOG_PROJECT_KEY: z.string().default("phc_LFH7kJiGhdIlnO22hTAKgHpaKhpM8gkzWAFvHmf5vfS"),
@@ -160,6 +163,11 @@ const EnvironmentSchema = z.object({
     .string()
     .default(process.env.REDIS_TLS_DISABLED ?? "false"),
   REALTIME_STREAMS_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
+
+  REALTIME_MAXIMUM_CREATED_AT_FILTER_AGE_IN_MS: z.coerce
+    .number()
+    .int()
+    .default(24 * 60 * 60 * 1000), // 1 day in milliseconds
 
   PUBSUB_REDIS_HOST: z
     .string()
@@ -737,6 +745,14 @@ const EnvironmentSchema = z.object({
   RUN_REPLICATION_KEEP_ALIVE_ENABLED: z.string().default("1"),
   RUN_REPLICATION_KEEP_ALIVE_IDLE_SOCKET_TTL_MS: z.coerce.number().int().optional(),
   RUN_REPLICATION_MAX_OPEN_CONNECTIONS: z.coerce.number().int().default(10),
+
+  // Clickhouse
+  CLICKHOUSE_URL: z.string().optional(),
+  CLICKHOUSE_KEEP_ALIVE_ENABLED: z.string().default("1"),
+  CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS: z.coerce.number().int().optional(),
+  CLICKHOUSE_MAX_OPEN_CONNECTIONS: z.coerce.number().int().default(10),
+  CLICKHOUSE_LOG_LEVEL: z.enum(["log", "error", "warn", "info", "debug"]).default("info"),
+  CLICKHOUSE_COMPRESSION_REQUEST: z.string().default("1"),
 
   // Bootstrap
   TRIGGER_BOOTSTRAP_ENABLED: z.string().default("0"),

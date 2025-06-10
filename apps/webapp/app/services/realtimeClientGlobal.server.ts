@@ -4,8 +4,10 @@ import { RealtimeClient } from "./realtimeClient.server";
 import { getCachedLimit } from "./platform.v3.server";
 
 function initializeRealtimeClient() {
+  const electricOrigin = env.ELECTRIC_ORIGIN_SHARDS?.split(",") ?? env.ELECTRIC_ORIGIN;
+
   return new RealtimeClient({
-    electricOrigin: env.ELECTRIC_ORIGIN,
+    electricOrigin: electricOrigin,
     keyPrefix: "tr:realtime:concurrency",
     redis: {
       port: env.RATE_LIMIT_REDIS_PORT,

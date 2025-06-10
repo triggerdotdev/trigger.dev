@@ -1,0 +1,20 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`Task Runs V2 > should be able to query task runs using the query builder 1`] = `
+{
+  "params": {
+    "environmentId": "cm9kddfcs01zqdy88ld9mmrli",
+  },
+  "query": "SELECT run_id FROM trigger_dev.task_runs_v2 FINAL WHERE environment_id = {environmentId: String}",
+}
+`;
+
+exports[`Task Runs V2 > should be able to query task runs using the query builder 2`] = `
+{
+  "params": {
+    "environmentId": "cm9kddfcs01zqdy88ld9mmrli",
+    "status": "COMPLETED_SUCCESSFULLY",
+  },
+  "query": "SELECT run_id FROM trigger_dev.task_runs_v2 FINAL WHERE environment_id = {environmentId: String} AND status = {status: String}",
+}
+`;

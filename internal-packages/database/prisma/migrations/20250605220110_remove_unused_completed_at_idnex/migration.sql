@@ -1,0 +1,1 @@
+DROP INDEX CONCURRENTLY IF EXISTS "TaskRun_completedAt_idx";
