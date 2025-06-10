@@ -1,4 +1,9 @@
 export function parseNaturalLanguageDuration(duration: string): Date | undefined {
+  // Handle Code scanning alert #44 (https://github.com/triggerdotdev/trigger.dev/security/code-scanning/44) by limiting the length of the input string
+  if (duration.length > 100) {
+    return undefined;
+  }
+
   // More flexible regex that captures all units individually regardless of order
   const weekMatch = duration.match(/(\d+)w/);
   const dayMatch = duration.match(/(\d+)d/);
@@ -73,6 +78,11 @@ export function safeParseNaturalLanguageDuration(duration: string): Date | undef
 // ... existing code ...
 
 export function parseNaturalLanguageDurationAgo(duration: string): Date | undefined {
+  // Handle Code scanning alert #44 (https://github.com/triggerdotdev/trigger.dev/security/code-scanning/44) by limiting the length of the input string
+  if (duration.length > 100) {
+    return undefined;
+  }
+
   // More flexible regex that captures all units individually regardless of order
   const weekMatch = duration.match(/(\d+)w/);
   const dayMatch = duration.match(/(\d+)d/);
