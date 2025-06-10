@@ -17,6 +17,12 @@ import RealtimeLearnMore from "/snippets/realtime-learn-more.mdx";
 
 This full-stack project is an intelligent deep research agent that autonomously conducts multi-layered web research, generating comprehensive reports which are then converted to PDF and uploaded to storage.
 
+<video
+  controls
+  className="w-full aspect-video"
+  src="https://github.com/user-attachments/assets/aa86d2b2-7aa7-4948-82ff-5e1e80cf8e37"
+></video>
+
 **Tech stack:**
 
 - **[Next.js](https://nextjs.org/)** for the web app
@@ -98,28 +104,28 @@ Level 0 (Initial Query): "AI safety in autonomous vehicles"
 5. **Recursive deepening**: Follow-up questions become new queries for the next depth level
 6. **Accumulation**: All learnings, sources, and queries are accumulated across recursion levels
 
-### Trigger.dev Realtime progress updates
+### Using Trigger.dev Realtime to trigger and subscribe to the deep research task
 
-As each task is completed, the metadata is set and the frontend is updated:
+We use the [`useRealtimeTaskTrigger`](/frontend/react-hooks/triggering#userealtimetasktrigger) React hook to trigger the `deep-research` task and subscribe to it's updates.
 
-**Task metadata**:
-
-```typescript
-metadata.set("status", {
-  progress: 25,
-  label: `Searching the web for: "${query}"`,
-});
-```
-
-**Frontend (React hook)**:
-
-We use the [`useRealtimeTaskTrigger`](https://trigger.dev/docs/frontend/react-hooks/triggering#userealtimetasktrigger) hook to get the task metadata and update the frontend in real-time.
+**Frontend (React Hook)**:
 
 ```typescript
 const triggerInstance = useRealtimeTaskTrigger<typeof deepResearchOrchestrator>("deep-research", {
   accessToken: triggerToken,
 });
 const { progress, label } = parseStatus(triggerInstance.run?.metadata);
+```
+
+As the research progresses, the metadata is set within the tasks and the frontend is kept updated with every new status:
+
+**Task Metadata**:
+
+```typescript
+metadata.set("status", {
+  progress: 25,
+  label: `Searching the web for: "${query}"`,
+});
 ```
 
 ## Relevant code
