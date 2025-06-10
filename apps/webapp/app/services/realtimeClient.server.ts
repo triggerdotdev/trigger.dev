@@ -364,8 +364,6 @@ export class RealtimeClient {
   ) {
     const shapeId = extractShapeId(url);
 
-    url = await this.#handleCreatedAtFilter(url, shapeId);
-
     logger.debug("[realtimeClient] request", {
       url: url.toString(),
     });
@@ -440,10 +438,6 @@ export class RealtimeClient {
 
       throw error;
     }
-  }
-
-  async #handleCreatedAtFilter(url: URL, shapeId?: string | null) {
-    return url;
   }
 
   async #incrementAndCheck(environmentId: string, requestId: string, limit: number) {
