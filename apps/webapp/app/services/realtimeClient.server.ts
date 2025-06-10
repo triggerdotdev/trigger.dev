@@ -10,12 +10,11 @@ import { jumpHash } from "@trigger.dev/core/v3/serverOnly";
 import { Cache, createCache, DefaultStatefulContext, Namespace } from "@unkey/cache";
 import { MemoryStore } from "@unkey/cache/stores";
 import { RedisCacheStore } from "./unkey/redisCacheStore.server";
+import { env } from "~/env.server";
 
 export interface CachedLimitProvider {
   getCachedLimit: (organizationId: string, defaultValue: number) => Promise<number | undefined>;
 }
-
-const MAXIMUM_CREATED_AT_FILTER_AGE_IN_MS = 7 * 24 * 60 * 60 * 1000;
 
 const DEFAULT_ELECTRIC_COLUMNS = [
   "id",
@@ -195,13 +194,13 @@ export class RealtimeClient {
       // This means we need to calculate the createdAt filter and store it in redis after we get back the response
       const createdAtFilter = safeParseNaturalLanguageDurationAgo(duration);
 
-      // Validate that the createdAt filter is in the past, and not more than 1 week in the past.
-      // if it's more than 1 week in the past, just return 1 week ago Date
+      // Validate that the createdAt filter is in the past, and not more than the maximum age in the past.
+      // if it's more than the maximum age in the past, just return the maximum age in the past Date
       if (
         createdAtFilter &&
-        createdAtFilter < new Date(Date.now() - MAXIMUM_CREATED_AT_FILTER_AGE_IN_MS)
+        createdAtFilter < new Date(Date.now() - env.REALTIME_MAXIMUM_CREATED_AT_FILTER_AGE_IN_MS)
       ) {
-        return new Date(Date.now() - MAXIMUM_CREATED_AT_FILTER_AGE_IN_MS);
+        return new Date(Date.now() - env.REALTIME_MAXIMUM_CREATED_AT_FILTER_AGE_IN_MS);
       }
 
       return createdAtFilter;

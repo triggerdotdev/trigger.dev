@@ -164,6 +164,11 @@ const EnvironmentSchema = z.object({
     .default(process.env.REDIS_TLS_DISABLED ?? "false"),
   REALTIME_STREAMS_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
 
+  REALTIME_MAXIMUM_CREATED_AT_FILTER_AGE_IN_MS: z.coerce
+    .number()
+    .int()
+    .default(24 * 60 * 60 * 1000), // 1 day in milliseconds
+
   PUBSUB_REDIS_HOST: z
     .string()
     .optional()
