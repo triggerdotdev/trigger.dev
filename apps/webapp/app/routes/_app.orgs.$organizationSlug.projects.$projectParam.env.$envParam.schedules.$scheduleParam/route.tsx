@@ -72,7 +72,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const environment = await findEnvironmentBySlug(project.id, envParam, userId);
   if (!environment) {
-    throw new Error("Environment not found");
+    return redirectWithErrorMessage("/", request, "Environment not found");
   }
 
   const presenter = new ViewSchedulePresenter();
