@@ -211,7 +211,7 @@ export class ApiRunListPresenter extends BasePresenter {
 
       const results = await presenter.call(environmentId, options);
 
-      logger.debug("RunListPresenter results", { results });
+      logger.debug("RunListPresenter results", { runs: results.runs.length });
 
       const data: ListRunResponseItem[] = await Promise.all(
         results.runs.map(async (run) => {
