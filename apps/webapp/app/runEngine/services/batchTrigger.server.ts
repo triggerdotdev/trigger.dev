@@ -273,15 +273,18 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
 
         switch (this._batchProcessingStrategy) {
           case "sequential": {
-            await this.#enqueueBatchTaskRun({
-              batchId: batch.id,
-              processingId: batchId,
-              range: { start: 0, count: PROCESSING_BATCH_SIZE },
-              attemptCount: 0,
-              strategy: this._batchProcessingStrategy,
-              parentRunId: body.parentRunId,
-              resumeParentOnCompletion: body.resumeParentOnCompletion,
-            });
+            await this.#enqueueBatchTaskRun(
+              {
+                batchId: batch.id,
+                processingId: batchId,
+                range: { start: 0, count: PROCESSING_BATCH_SIZE },
+                attemptCount: 0,
+                strategy: this._batchProcessingStrategy,
+                parentRunId: body.parentRunId,
+                resumeParentOnCompletion: body.resumeParentOnCompletion,
+              },
+              tx
+            );
 
             break;
           }
