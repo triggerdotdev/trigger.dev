@@ -1273,8 +1273,8 @@ describe("RunsRepository", () => {
         page: { size: 10 },
         projectId: project.id,
         environmentId: runtimeEnvironment.id,
-        from: Math.floor(yesterday.getTime() / 1000),
-        to: Math.floor(now.getTime() / 1000),
+        from: yesterday.getTime(),
+        to: now.getTime(),
       });
 
       expect(runs).toHaveLength(2);
