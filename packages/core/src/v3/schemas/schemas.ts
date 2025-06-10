@@ -176,6 +176,7 @@ export type QueueManifest = z.infer<typeof QueueManifest>;
 export const ScheduleMetadata = z.object({
   cron: z.string(),
   timezone: z.string(),
+  environments: z.array(EnvironmentType).optional(),
 });
 
 const taskMetadata = {
