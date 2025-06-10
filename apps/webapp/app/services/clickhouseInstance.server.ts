@@ -10,10 +10,15 @@ function initializeClickhouseClient() {
     return;
   }
 
-  console.log("🗃️  Clickhouse service enabled");
+  const url = new URL(env.CLICKHOUSE_URL);
+
+  // Remove secure param
+  url.searchParams.delete("secure");
+
+  console.log(`🗃️  Clickhouse service enabled to host ${url.host}`);
 
   const clickhouse = new ClickHouse({
-    url: env.CLICKHOUSE_URL,
+    url: url.toString(),
     name: "clickhouse-instance",
     keepAlive: {
       enabled: env.CLICKHOUSE_KEEP_ALIVE_ENABLED === "1",
