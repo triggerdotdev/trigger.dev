@@ -5,7 +5,7 @@ exports[`Task Runs V2 > should be able to query task runs using the query builde
   "params": {
     "environmentId": "cm9kddfcs01zqdy88ld9mmrli",
   },
-  "query": "SELECT run_id FROM trigger_dev.task_runs_v2 WHERE environment_id = {environmentId: String}",
+  "query": "SELECT run_id FROM trigger_dev.task_runs_v2 FINAL WHERE environment_id = {environmentId: String}",
 }
 `;
 
@@ -15,6 +15,6 @@ exports[`Task Runs V2 > should be able to query task runs using the query builde
     "environmentId": "cm9kddfcs01zqdy88ld9mmrli",
     "status": "COMPLETED_SUCCESSFULLY",
   },
-  "query": "SELECT run_id FROM trigger_dev.task_runs_v2 WHERE environment_id = {environmentId: String} AND status = {status: String}",
+  "query": "SELECT run_id FROM trigger_dev.task_runs_v2 FINAL WHERE environment_id = {environmentId: String} AND status = {status: String}",
 }
 `;
