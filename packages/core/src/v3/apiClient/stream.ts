@@ -126,11 +126,7 @@ class ReadableShapeStream<T extends Row<unknown> = Row> {
         try {
           let isUpToDate = false;
 
-          console.log(`Processing ${messages.length} messages`);
-
           for (const message of messages) {
-            console.log("shape message", message);
-
             if (isChangeMessage(message)) {
               const key = message.key;
               switch (message.headers.operation) {
@@ -154,7 +150,6 @@ class ReadableShapeStream<T extends Row<unknown> = Row> {
                 this.#currentState.clear();
                 this.#error = false;
               } else if (message.headers.control === "up-to-date") {
-                console.log("Setting isUpToDate to true");
                 isUpToDate = true;
               }
             }
@@ -166,14 +161,11 @@ class ReadableShapeStream<T extends Row<unknown> = Row> {
             for (const key of updatedKeys) {
               const finalRow = this.#currentState.get(key);
               if (finalRow) {
-                console.log("enqueueing finalRow", finalRow);
                 controller.enqueue(finalRow);
               }
             }
 
             updatedKeys.clear();
-          } else {
-            console.log("Not enqueuing any rows because the stream is not up to date");
           }
         } catch (error) {
           console.error("Error processing stream messages:", error);
