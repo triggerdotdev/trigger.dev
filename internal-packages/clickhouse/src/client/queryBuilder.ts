@@ -79,11 +79,11 @@ export class ClickhouseQueryBuilder<TOutput> {
     if (this.whereClauses.length > 0) {
       query += " WHERE " + this.whereClauses.join(" AND ");
     }
-    if (this.orderByClause) {
-      query += ` ORDER BY ${this.orderByClause}`;
-    }
     if (this.groupByClause) {
       query += ` GROUP BY ${this.groupByClause}`;
+    }
+    if (this.orderByClause) {
+      query += ` ORDER BY ${this.orderByClause}`;
     }
     if (this.limitClause) {
       query += ` ${this.limitClause}`;
