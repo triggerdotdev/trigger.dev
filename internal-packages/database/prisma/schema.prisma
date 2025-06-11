@@ -680,9 +680,12 @@ model TaskRun {
   // Schedule list page
   @@index([scheduleId, createdAt(sort: Desc)])
   // Finding runs in a batch
-  @@index([runtimeEnvironmentId, batchId])
-  @@index([runtimeEnvironmentId, createdAt(sort: Desc), id(sort: Desc)])
   @@index([runTags(ops: ArrayOps)], type: Gin)
+  @@index([runtimeEnvironmentId, batchId])
+  // This will include the createdAt index to help speed up the run list page
+  @@index([runtimeEnvironmentId, id(sort: Desc)])
+  @@index([runtimeEnvironmentId, createdAt(sort: Desc)])
+  @@index([createdAt], type: Brin)
 }
 
 enum TaskRunStatus {
