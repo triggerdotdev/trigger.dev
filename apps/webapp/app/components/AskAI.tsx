@@ -5,18 +5,18 @@ import {
   HandThumbUpIcon,
   StopIcon,
 } from "@heroicons/react/20/solid";
-import { FeedbackComment, KapaProvider, QA, useChat } from "@kapaai/react-sdk";
+import { type FeedbackComment, KapaProvider, type QA, useChat } from "@kapaai/react-sdk";
 import { useSearchParams } from "@remix-run/react";
 import { motion } from "framer-motion";
 import { marked } from "marked";
 import {
+  createContext,
+  type ReactNode,
   useCallback,
+  useContext,
   useEffect,
   useRef,
   useState,
-  createContext,
-  useContext,
-  type ReactNode,
 } from "react";
 import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
 import { SparkleListIcon } from "~/assets/icons/SparkleListIcon";
@@ -25,7 +25,6 @@ import { Callout } from "./primitives/Callout";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./primitives/Dialog";
 import { Header2 } from "./primitives/Headers";
 import { Paragraph } from "./primitives/Paragraph";
-import { ShortcutKey } from "./primitives/ShortcutKey";
 import { Spinner } from "./primitives/Spinner";
 import {
   SimpleTooltip,
@@ -34,6 +33,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "./primitives/Tooltip";
+import DOMPurify from "dompurify";
 
 type AskAIContextType = {
   isOpen: boolean;
@@ -257,7 +257,7 @@ function ChatMessages({
             <Header2 spacing>{qa.question}</Header2>
             <div
               className="prose prose-invert max-w-none text-text-dimmed"
-              dangerouslySetInnerHTML={{ __html: marked(qa.answer) }}
+              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(marked(qa.answer)) }}
             />
           </div>
         ))
