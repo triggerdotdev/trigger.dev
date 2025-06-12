@@ -224,6 +224,10 @@ function getWorkerQueue() {
         handler: async (payload, job) => {
           const service = new TriggerScheduledTaskService();
 
+          // NOTE: This graphile worker job is now part of a graceful migration to Redis workers.
+          // When this job runs, it will execute the current schedule and automatically
+          // enqueue the next execution in the new Redis-based schedule worker with
+          // distributed timing. Eventually this graphile job will be removed.
           return await service.call(payload.instanceId, job.attempts === job.max_attempts);
         },
       },
