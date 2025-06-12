@@ -80,21 +80,19 @@ export function AskAIProvider({ children, websiteId }: AskAIProviderProps) {
   useEffect(() => {
     const aiHelp = searchParams.get("aiHelp");
     if (aiHelp) {
-      setSearchParams((prev) => {
-        prev.delete("aiHelp");
-        return prev;
-      });
-
       const decodedAiHelp = decodeURIComponent(aiHelp);
 
-      // Add a delay to avoid triggering hCaptcha bot detection
-      setTimeout(() => {
-        openAskAI(decodedAiHelp);
-      }, 1000);
-    }
-  }, [searchParams, setSearchParams, openAskAI]);
+      // Delay to avoid hCaptcha bot detection
+      const timeoutId = window.setTimeout(() => openAskAI(decodedAiHelp), 1000);
 
-  const contextValue: AskAIContextType = {
+      // Clone instead of mutating in place
+      const next = new URLSearchParams(searchParams);
+      next.delete("aiHelp");
+      setSearchParams(next);
+
+      return () => clearTimeout(timeoutId);
+    }
+  }, [searchParams.toString(), openAskAI]);
     isOpen,
     openAskAI,
     closeAskAI,
