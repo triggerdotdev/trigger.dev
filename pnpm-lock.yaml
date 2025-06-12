@@ -260,6 +260,9 @@ importers:
       '@internationalized/date':
         specifier: ^3.5.1
         version: 3.5.1
+      '@kapaai/react-sdk':
+        specifier: ^0.1.2
+        version: 0.1.2(react-dom@18.2.0)(react@18.2.0)
       '@lezer/highlight':
         specifier: ^1.1.6
         version: 1.1.6
@@ -470,6 +473,9 @@ importers:
       cuid:
         specifier: ^2.1.8
         version: 2.1.8
+      dompurify:
+        specifier: ^3.2.6
+        version: 3.2.6
       dotenv:
         specifier: ^16.4.5
         version: 16.4.5
@@ -720,6 +726,9 @@ importers:
       '@types/cookie':
         specifier: ^0.6.0
         version: 0.6.0
+      '@types/dompurify':
+        specifier: ^3.2.0
+        version: 3.2.0
       '@types/eslint':
         specifier: ^8.4.6
         version: 8.4.10
@@ -7009,6 +7018,27 @@ packages:
     resolution: {integrity: sha512-JUFJad5lv7jxj926GPgymrWQxxjPYuJNiNjNMzqT+HiuP6Vl3dk5xzG+8sTX96np0ZAluvaMzPsjhHZ5rNuNQQ==}
     engines: {node: '>=14'}
 
+  /@fingerprintjs/fingerprintjs-pro-react@2.6.3:
+    resolution: {integrity: sha512-/axCq/cfjZkIM+WFZM/05FQvqtNfdKbIFKU6b2yrwPKlgT8BqWkAq8XvFX6JCPlq8/udVLJjFEDCK+1JQh1L6g==}
+    requiresBuild: true
+    dependencies:
+      '@fingerprintjs/fingerprintjs-pro-spa': 1.3.2
+      fast-deep-equal: 3.1.3
+    dev: false
+
+  /@fingerprintjs/fingerprintjs-pro-spa@1.3.2:
+    resolution: {integrity: sha512-s1YGsx1XQLmjU+av4UrUHNxyzwPHyZRB0GXJQFOJK8ZHCYc2SNukxnJmZA++bNBa8twU3wW+QgSJhA4Prjnd0g==}
+    dependencies:
+      '@fingerprintjs/fingerprintjs-pro': 3.11.9
+      tslib: 2.8.1
+    dev: false
+
+  /@fingerprintjs/fingerprintjs-pro@3.11.9:
+    resolution: {integrity: sha512-GTow49I86tBlV/U+edBTLA2dPCDXrfHVsNuTV7a5nZjWFV3Q44Tj6yb5O0GcGT/EHwbSy3UmCO9+PS1ERR+b2g==}
+    dependencies:
+      tslib: 2.8.1
+    dev: false
+
   /@floating-ui/core@0.7.3:
     resolution: {integrity: sha512-buc8BXHmG9l82+OQXOFU3Kr2XQx9ys01U/Q9HMIrZ300iLc8HLMgh7dcCqgYzAzf4BkoQvDcXf5Y+CuEZ5JBYg==}
     dev: false
@@ -7194,6 +7224,22 @@ packages:
       '@hapi/boom': 10.0.1
       '@hapi/bourne': 3.0.0
       '@hapi/hoek': 11.0.2
+    dev: false
+
+  /@hcaptcha/loader@2.0.0:
+    resolution: {integrity: sha512-fFQH6ApU/zCCl6Y1bnbsxsp1Er/lKX+qlgljrpWDeFcenpEtoP68hExlKSXECospzKLeSWcr06cbTjlR/x3IJA==}
+    dev: false
+
+  /@hcaptcha/react-hcaptcha@1.12.0(react-dom@18.2.0)(react@18.2.0):
+    resolution: {integrity: sha512-QiHnQQ52k8SJJSHkc3cq4TlYzag7oPd4f5ZqnjVSe4fJDSlZaOQFtu5F5AYisVslwaitdDELPVLRsRJxiiI0Aw==}
+    peerDependencies:
+      react: '>= 16.3.0'
+      react-dom: '>= 16.3.0'
+    dependencies:
+      '@babel/runtime': 7.27.0
+      '@hcaptcha/loader': 2.0.0
+      react: 18.2.0
+      react-dom: 18.2.0(react@18.2.0)
     dev: false
 
   /@headlessui/react@1.7.8(react-dom@18.2.0)(react@18.2.0):
@@ -7967,6 +8013,21 @@ packages:
   /@jspm/core@2.0.1:
     resolution: {integrity: sha512-Lg3PnLp0QXpxwLIAuuJboLeRaIhrgJjeuh797QADg3xz8wGLugQOS5DpsE8A6i6Adgzf+bacllkKZG3J0tGfDw==}
     dev: true
+
+  /@kapaai/react-sdk@0.1.2(react-dom@18.2.0)(react@18.2.0):
+    resolution: {integrity: sha512-+FUNmg9sMMqKiNG8UX02C+rLTSFK4pR8Q6GSiBQcA7mtCwo/k1JFRn11eGQnlspGpuyMolmrfqpb0+bmDIGfUA==}
+    peerDependencies:
+      react: '>=17.0.0'
+      react-dom: '>=17.0.0'
+    dependencies:
+      '@fingerprintjs/fingerprintjs-pro-react': 2.6.3
+      '@hcaptcha/react-hcaptcha': 1.12.0(react-dom@18.2.0)(react@18.2.0)
+      '@tanstack/react-query': 5.76.1(react@18.2.0)
+      js-cookie: 3.0.5
+      react: 18.2.0
+      react-dom: 18.2.0(react@18.2.0)
+      tldts: 7.0.7
+    dev: false
 
   /@kubernetes/client-node@0.20.0:
     resolution: {integrity: sha512-xxlv5GLX4FVR/dDKEsmi4SPeuB49aRc35stndyxcC73XnUEEwF39vXbROpHOirmDse8WE9vxOjABnSVS+jb7EA==}
@@ -17335,6 +17396,19 @@ packages:
       tailwindcss: 4.0.17
     dev: true
 
+  /@tanstack/query-core@5.76.0:
+    resolution: {integrity: sha512-FN375hb8ctzfNAlex5gHI6+WDXTNpe0nbxp/d2YJtnP+IBM6OUm7zcaoCW6T63BawGOYZBbKC0iPvr41TteNVg==}
+    dev: false
+
+  /@tanstack/react-query@5.76.1(react@18.2.0):
+    resolution: {integrity: sha512-YxdLZVGN4QkT5YT1HKZQWiIlcgauIXEIsMOTSjvyD5wLYK8YVvKZUPAysMqossFJJfDpJW3pFn7WNZuPOqq+fw==}
+    peerDependencies:
+      react: ^18 || ^19
+    dependencies:
+      '@tanstack/query-core': 5.76.0
+      react: 18.2.0
+    dev: false
+
   /@tanstack/react-virtual@3.0.4(react-dom@18.2.0)(react@18.2.0):
     resolution: {integrity: sha512-tiqKW/e2MJVCr7/pRUXulpkyxllaOclkHNfhKTo4pmHjJIqnhMfwIjc1Q1R0Un3PI3kQywywu/791c8z9u0qeA==}
     peerDependencies:
@@ -17615,6 +17689,13 @@ packages:
       '@types/ssh2': 1.15.1
     dev: true
 
+  /@types/dompurify@3.2.0:
+    resolution: {integrity: sha512-Fgg31wv9QbLDA0SpTOXO3MaxySc4DKGLi8sna4/Utjo4r3ZRPdCt4UQee8BWr+Q5z21yifghREPJGYaEOEIACg==}
+    deprecated: This is a stub types definition. dompurify provides its own type definitions, so you do not need this installed.
+    dependencies:
+      dompurify: 3.2.6
+    dev: true
+
   /@types/email-reply-parser@1.4.2:
     resolution: {integrity: sha512-kmMoK9WMX4zXf3c0D3tkWHDl0E50V2dv6fVirdTQd/mkvE/Jixh0DZAh3kBgpltr1eaWM3W+kAf4A2c2Z2iU2A==}
     dev: true
@@ -17656,6 +17737,7 @@ packages:
 
   /@types/estree@1.0.6:
     resolution: {integrity: sha512-AYnb1nQyY49te+VRAVgmzfcgjYS91mY5P0TKUDCLEM+gNnA+3T6rWITXRLYCpahpqSQbN5cE+gHpnPyXjHWxcw==}
+    dev: true
 
   /@types/estree@1.0.7:
     resolution: {integrity: sha512-w28IoSUCJpidD/TGviZwwMJckNESJZXFu7NBZ5YJ4mEUnNraUn9Pm8HSZm/jDF1pDWYKspWE7oVphigUPRakIQ==}
@@ -18124,6 +18206,11 @@ packages:
   /@types/trouter@3.1.4:
     resolution: {integrity: sha512-4YIL/2AvvZqKBWenjvEpxpblT2KGO6793ipr5QS7/6DpQ3O3SwZGgNGWezxf3pzeYZc24a2pJIrR/+Jxh/wYNQ==}
     dev: true
+
+  /@types/trusted-types@2.0.7:
+    resolution: {integrity: sha512-ScaPdn1dQczgbl0QFTeTOmVHFULt394XJgOQNoyVhZ6r2vLnMLJfBPd53SB52T/3G36VI1/g2MZaX0cwDuXsfw==}
+    requiresBuild: true
+    optional: true
 
   /@types/unist@2.0.6:
     resolution: {integrity: sha512-PBjIUxZHOuj0R15/xuwJYjFi+KZdNFrehocChv4g5hu6aFroHue8m0lBP0POdK2nKzbw0cgV1mws8+V/JAcEkQ==}
@@ -21693,6 +21780,11 @@ packages:
       domelementtype: 2.3.0
     dev: false
 
+  /dompurify@3.2.6:
+    resolution: {integrity: sha512-/2GogDQlohXPZe6D6NOgQvXLPSYBqIWMnZ8zzOhn09REE4eyAzb+Hed3jhoM9OkuaJ8P6ZGTTVWQKAi8ieIzfQ==}
+    optionalDependencies:
+      '@types/trusted-types': 2.0.7
+
   /domutils@3.0.1:
     resolution: {integrity: sha512-z08c1l761iKhDFtfXO04C7kTdPBLi41zwOZl00WS8b5eiaebNpY00HKbztwBq+e3vyqWNwWF3mP9YLUeqIrF+Q==}
     dependencies:
@@ -24413,7 +24505,7 @@ packages:
   /hast-util-to-jsx-runtime@2.3.6:
     resolution: {integrity: sha512-zl6s8LwNyo1P9uw+XJGvZtdFF1GdAkOg8ujOw+4Pyb76874fLps4ueHXDhXWdk6YHQ6OgUtinliG7RsYvCbbBg==}
     dependencies:
-      '@types/estree': 1.0.6
+      '@types/estree': 1.0.7
       '@types/hast': 3.0.4
       '@types/unist': 3.0.3
       comma-separated-tokens: 2.0.3
@@ -33098,6 +33190,17 @@ packages:
     resolution: {integrity: sha512-n1cw8k1k0x4pgA2+9XrOkFydTerNcJ1zWCO5Nn9scWHTD+5tp8dghT2x1uduQePZTZgd3Tupf+x9BxJjeJi77Q==}
     engines: {node: '>=14.0.0'}
     dev: true
+
+  /tldts-core@7.0.7:
+    resolution: {integrity: sha512-ECqb8imSroX1UmUuhRBNPkkmtZ8mHEenieim80UVxG0M5wXVjY2Fp2tYXCPvk+nLy1geOhFpeD5YQhM/gF63Jg==}
+    dev: false
+
+  /tldts@7.0.7:
+    resolution: {integrity: sha512-ETNXj36ql5BXDa4VVJk3wgqansg8TI1Yqo217twSAPjyDnh/b2T+XzrI0ftn6EnzVPbXpMTZHOWj5s3a8/uGPA==}
+    hasBin: true
+    dependencies:
+      tldts-core: 7.0.7
+    dev: false
 
   /tmp-promise@3.0.3:
     resolution: {integrity: sha512-RwM7MoPojPxsOBYnyd2hy0bxtIlVrihNs9pj5SUvY8Zz1sQcQG2tG1hSr8PDxfgEB8RNKDhqbIlroIarSNDNsQ==}

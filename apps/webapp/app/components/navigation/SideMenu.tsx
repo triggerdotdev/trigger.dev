@@ -22,11 +22,13 @@ import { useNavigation } from "@remix-run/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import simplur from "simplur";
 import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
+import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
 import { RunsIconExtraSmall } from "~/assets/icons/RunsIcon";
 import { TaskIconSmall } from "~/assets/icons/TaskIcon";
 import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
 import { Avatar } from "~/components/primitives/Avatar";
 import { type MatchedEnvironment } from "~/hooks/useEnvironment";
+import { useFeatures } from "~/hooks/useFeatures";
 import { type MatchedOrganization } from "~/hooks/useOrganizations";
 import { type MatchedProject } from "~/hooks/useProject";
 import { useHasAdminAccess } from "~/hooks/useUser";
@@ -61,7 +63,7 @@ import {
   v3UsagePath,
   v3WaitpointTokensPath,
 } from "~/utils/pathBuilder";
-import { useKapaWidget } from "../../hooks/useKapaWidget";
+import { useAskAI } from "../AskAI";
 import { FreePlanUsage } from "../billing/FreePlanUsage";
 import { ConnectionIcon, DevPresencePanel, useDevPresence } from "../DevPresence";
 import { ImpersonationBanner } from "../ImpersonationBanner";
@@ -80,14 +82,12 @@ import { TextLink } from "../primitives/TextLink";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
 import { ShortcutsAutoOpen } from "../Shortcuts";
 import { UserProfilePhoto } from "../UserProfilePhoto";
+import { V4Badge } from "../V4Badge";
 import { EnvironmentSelector } from "./EnvironmentSelector";
 import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
 import { SideMenuSection } from "./SideMenuSection";
-import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
-import { V4Badge } from "../V4Badge";
-import { useFeatures } from "~/hooks/useFeatures";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 export type SideMenuProject = Pick<
@@ -586,12 +586,14 @@ function SelectorDivider() {
 }
 
 function HelpAndAI() {
-  const { isKapaEnabled, isKapaOpen, openKapa } = useKapaWidget();
+  const features = useFeatures();
+  const { openAskAI, websiteId } = useAskAI();
+  const isKapaEnabled = features.isManagedCloud && websiteId;
 
   return (
     <>
       <ShortcutsAutoOpen />
-      <HelpAndFeedback disableShortcut={isKapaOpen} />
+      <HelpAndFeedback />
       {isKapaEnabled && (
         <TooltipProvider disableHoverableContent>
           <Tooltip>
@@ -603,9 +605,7 @@ function HelpAndAI() {
                   shortcut={{ modifiers: ["mod"], key: "/", enabledOnInputElements: true }}
                   hideShortcutKey
                   data-modal-override-open-class-ask-ai="true"
-                  onClick={() => {
-                    openKapa();
-                  }}
+                  onClick={() => openAskAI()}
                 >
                   <AISparkleIcon className="size-5" />
                 </Button>
