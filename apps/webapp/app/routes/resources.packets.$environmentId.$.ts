@@ -41,12 +41,12 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     "GET"
   );
 
-  if (!signed) {
-    return new Response("Failed to generate presigned URL", { status: 500 });
+  if (!signed.success) {
+    return new Response(`Failed to generate presigned URL: ${signed.error}`, { status: 500 });
   }
 
-  const response = await fetch(signed.url, {
-    headers: signed.headers,
+  const response = await fetch(signed.request.url, {
+    headers: signed.request.headers,
   });
 
   return new Response(response.body, {

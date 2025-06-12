@@ -41,6 +41,8 @@ export interface ListProjectRunsQueryParams extends CursorPageParams, ListRunsQu
 export interface SubscribeToRunsQueryParams {
   tasks?: Array<string> | string;
   tags?: Array<string> | string;
+  createdAt?: string;
+  skipColumns?: string[];
 }
 
 export interface ListWaitpointTokensQueryParams extends CursorPageParams {

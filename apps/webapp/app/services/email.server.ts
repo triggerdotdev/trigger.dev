@@ -27,7 +27,8 @@ const alertsClient = singleton(
       transport: buildTransportOptions(true),
       imagesBaseUrl: env.APP_ORIGIN,
       from: env.ALERT_FROM_EMAIL ?? "noreply@alerts.trigger.dev",
-      replyTo: env.REPLY_TO_EMAIL ?? "help@email.trigger.dev",
+      // Fallback to `REPLY_TO_EMAIL` for backwards compat
+      replyTo: env.ALERT_REPLY_TO_EMAIL ?? env.REPLY_TO_EMAIL ?? "help@email.trigger.dev",
     })
 );
 

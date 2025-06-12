@@ -40,6 +40,7 @@ import { type ProjectAlertChannelType, type ProjectAlertType } from "@trigger.de
 import { alertsRateLimiter } from "~/v3/alertsRateLimiter.server";
 import { v3RunPath } from "~/utils/pathBuilder";
 import { ApiRetrieveRunPresenter } from "~/presenters/v3/ApiRetrieveRunPresenter.server";
+import { environmentTitle } from "~/components/environments/EnvironmentLabel";
 
 type FoundAlert = Prisma.Result<
   typeof prisma.projectAlert,
@@ -56,6 +57,12 @@ type FoundAlert = Prisma.Result<
         include: {
           lockedBy: true;
           lockedToVersion: true;
+          runtimeEnvironment: {
+            select: {
+              type: true;
+              branchName: true;
+            };
+          };
         };
       };
       workerDeployment: {
@@ -63,6 +70,12 @@ type FoundAlert = Prisma.Result<
           worker: {
             include: {
               tasks: true;
+            };
+          };
+          environment: {
+            select: {
+              type: true;
+              branchName: true;
             };
           };
         };
@@ -90,6 +103,12 @@ export class DeliverAlertService extends BaseService {
           include: {
             lockedBy: true,
             lockedToVersion: true,
+            runtimeEnvironment: {
+              select: {
+                type: true,
+                branchName: true,
+              },
+            },
           },
         },
         workerDeployment: {
@@ -97,6 +116,12 @@ export class DeliverAlertService extends BaseService {
             worker: {
               include: {
                 tasks: true,
+              },
+            },
+            environment: {
+              select: {
+                type: true,
+                branchName: true,
               },
             },
           },
@@ -177,10 +202,9 @@ export class DeliverAlertService extends BaseService {
             runId: alert.taskRun.friendlyId,
             taskIdentifier: alert.taskRun.taskIdentifier,
             fileName: alert.taskRun.lockedBy?.filePath ?? "Unknown",
-            exportName: alert.taskRun.lockedBy?.exportName ?? "Unknown",
             version: alert.taskRun.lockedToVersion?.version ?? "Unknown",
             project: alert.project.name,
-            environment: alert.environment.slug,
+            environment: environmentTitle(alert.taskRun.runtimeEnvironment),
             error: createJsonErrorObject(taskRunError),
             runLink: `${env.APP_ORIGIN}/projects/v3/${alert.project.externalRef}/runs/${alert.taskRun.friendlyId}`,
             organization: alert.project.organization.title,
@@ -211,7 +235,7 @@ export class DeliverAlertService extends BaseService {
             email: "alert-deployment-failure",
             to: emailProperties.data.email,
             version: alert.workerDeployment.version,
-            environment: alert.environment.slug,
+            environment: environmentTitle(alert.workerDeployment.environment),
             shortCode: alert.workerDeployment.shortCode,
             failedAt: alert.workerDeployment.failedAt ?? new Date(),
             error: preparedError,
@@ -232,7 +256,7 @@ export class DeliverAlertService extends BaseService {
             email: "alert-deployment-success",
             to: emailProperties.data.email,
             version: alert.workerDeployment.version,
-            environment: alert.environment.slug,
+            environment: environmentTitle(alert.workerDeployment.environment),
             shortCode: alert.workerDeployment.shortCode,
             deployedAt: alert.workerDeployment.deployedAt ?? new Date(),
             deploymentLink: `${env.APP_ORIGIN}/projects/v3/${alert.project.externalRef}/deployments/${alert.workerDeployment.shortCode}`,
@@ -292,6 +316,7 @@ export class DeliverAlertService extends BaseService {
                   id: alert.environment.id,
                   type: alert.environment.type,
                   slug: alert.environment.slug,
+                  branchName: alert.environment.branchName ?? undefined,
                 },
                 organization: {
                   id: alert.project.organizationId,
@@ -349,6 +374,7 @@ export class DeliverAlertService extends BaseService {
                     id: alert.environment.id,
                     type: alert.environment.type,
                     slug: alert.environment.slug,
+                    branchName: alert.environment.branchName ?? undefined,
                   },
                   organization: {
                     id: alert.project.organizationId,
@@ -648,9 +674,8 @@ export class DeliverAlertService extends BaseService {
           const taskRunError = this.#getRunError(alert);
           const error = createJsonErrorObject(taskRunError);
 
-          const exportName = alert.taskRun.lockedBy?.exportName ?? "Unknown";
           const version = alert.taskRun.lockedToVersion?.version ?? "Unknown";
-          const environment = alert.environment.slug;
+          const environment = environmentTitle(alert.taskRun.runtimeEnvironment);
           const taskIdentifier = alert.taskRun.taskIdentifier;
           const timestamp = alert.taskRun.completedAt ?? new Date();
           const runId = alert.taskRun.friendlyId;
@@ -664,7 +689,7 @@ export class DeliverAlertService extends BaseService {
                 type: "section",
                 text: {
                   type: "mrkdwn",
-                  text: `:rotating_light: Error in *${exportName}* _<!date^${Math.round(
+                  text: `:rotating_light: Error in *${taskIdentifier}* _<!date^${Math.round(
                     timestamp.getTime() / 1000
                   )}^at {date_num} {time_secs}|${timestamp.toLocaleString()}>_`,
                 },

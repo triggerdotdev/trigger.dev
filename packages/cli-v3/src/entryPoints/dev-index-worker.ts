@@ -86,17 +86,18 @@ async function bootstrap() {
     forceFlushTimeoutMillis: 30_000,
   });
 
-  const importErrors = await registerResources(buildManifest);
+  const { importErrors, timings } = await registerResources(buildManifest);
 
   return {
     tracingSDK,
     config,
     buildManifest,
     importErrors,
+    timings,
   };
 }
 
-const { buildManifest, importErrors, config } = await bootstrap();
+const { buildManifest, importErrors, config, timings } = await bootstrap();
 
 let tasks = resourceCatalog.listTaskManifests();
 
@@ -158,6 +159,7 @@ await sendMessageInCatalog(
       loaderEntryPoint: buildManifest.loaderEntryPoint,
       customConditions: buildManifest.customConditions,
       initEntryPoint: buildManifest.initEntryPoint,
+      timings,
     },
     importErrors,
   },

@@ -28,7 +28,7 @@ Trigger tasks **from inside a another task**:
 
 ## Triggering from your backend
 
-When you trigger a task from your backend code, you need to set the `TRIGGER_SECRET_KEY` environment variable. You can find the value on the API keys page in the Trigger.dev dashboard. [More info on API keys](/apikeys).
+When you trigger a task from your backend code, you need to set the `TRIGGER_SECRET_KEY` environment variable. If you're [using a preview branch](/deployment/preview-branches), you also need to set the `TRIGGER_PREVIEW_BRANCH` environment variable. You can find the value on the API keys page in the Trigger.dev dashboard. [More info on API keys](/apikeys).
 
 <Note>
   If you are using Next.js Server Actions [you'll need to be careful with

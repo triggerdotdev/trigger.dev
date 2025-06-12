@@ -6,6 +6,7 @@ export type SupervisorClientCommonOptions = {
   instanceName: string;
   deploymentId?: string;
   managedWorkerSecret?: string;
+  sendRunDebugLogs?: boolean;
 };
 
 export type PreDequeueFn = () => Promise<{

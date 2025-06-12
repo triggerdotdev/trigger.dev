@@ -2,12 +2,13 @@ import { FinalizeDeploymentRequestBody } from "@trigger.dev/core/v3/schemas";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { socketIo } from "../handleSocketIo.server";
-import { registryProxy } from "../registryProxy.server";
 import { updateEnvConcurrencyLimits } from "../runQueue.server";
 import { PerformDeploymentAlertsService } from "./alerts/performDeploymentAlerts.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { ChangeCurrentDeploymentService } from "./changeCurrentDeployment.server";
 import { projectPubSub } from "./projectPubSub.server";
+import { FailDeploymentService } from "./failDeployment.server";
+import { TimeoutDeploymentService } from "./timeoutDeployment.server";
 
 export class FinalizeDeploymentService extends BaseService {
   public async call(
@@ -37,7 +38,13 @@ export class FinalizeDeploymentService extends BaseService {
     if (!deployment.worker) {
       logger.error("Worker deployment does not have a worker", { id });
 
-      // TODO: We need to fail the deployment here because it's not possible to deploy a worker without a worker
+      const failService = new FailDeploymentService();
+      await failService.call(authenticatedEnv, deployment.friendlyId, {
+        error: {
+          name: "MissingWorker",
+          message: "Deployment does not have a worker",
+        },
+      });
 
       throw new ServiceValidationError("Worker deployment does not have a worker");
     }
@@ -53,11 +60,7 @@ export class FinalizeDeploymentService extends BaseService {
       throw new ServiceValidationError("Worker deployment is not in DEPLOYING status");
     }
 
-    let imageReference = body.imageReference;
-
-    if (registryProxy && body.selfHosted !== true && body.skipRegistryProxy !== true) {
-      imageReference = registryProxy.rewriteImageReference(body.imageReference);
-    }
+    const imageDigest = validatedImageDigest(body.imageDigest);
 
     // Link the deployment with the background worker
     const finalizedDeployment = await this._prisma.workerDeployment.update({
@@ -67,9 +70,12 @@ export class FinalizeDeploymentService extends BaseService {
       data: {
         status: "DEPLOYED",
         deployedAt: new Date(),
-        imageReference,
+        // Only add the digest, if any
+        imageReference: imageDigest ? `${deployment.imageReference}@${imageDigest}` : undefined,
       },
     });
+
+    await TimeoutDeploymentService.dequeue(deployment.id, this._prisma);
 
     if (typeof body.skipPromotion === "undefined" || !body.skipPromotion) {
       const promotionService = new ChangeCurrentDeploymentService();
@@ -114,4 +120,17 @@ export class FinalizeDeploymentService extends BaseService {
 
     return finalizedDeployment;
   }
+}
+
+function validatedImageDigest(imageDigest?: string): string | undefined {
+  if (!imageDigest) {
+    return;
+  }
+
+  if (!/^sha256:[a-f0-9]{64}$/.test(imageDigest.trim())) {
+    logger.error("Invalid image digest", { imageDigest });
+    return;
+  }
+
+  return imageDigest.trim();
 }

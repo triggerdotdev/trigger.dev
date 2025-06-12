@@ -56,7 +56,7 @@ export async function readJSONFile(path: string) {
   return JSON.parse(fileContents);
 }
 
-export async function safeFeadJSONFile(path: string) {
+export async function safeReadJSONFile(path: string) {
   try {
     const fileExists = await pathExists(path);
 

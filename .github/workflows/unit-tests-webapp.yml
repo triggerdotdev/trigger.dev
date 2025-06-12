@@ -86,6 +86,7 @@ jobs:
           SESSION_SECRET: "secret"
           MAGIC_LINK_SECRET: "secret"
           ENCRYPTION_KEY: "secret"
+          DEPLOY_REGISTRY_HOST: "docker.io"
 
       - name: Gather all reports
         if: ${{ !cancelled() }}
@@ -133,4 +134,4 @@ jobs:
           merge-multiple: true
 
       - name: Merge reports
-        run: pnpm dlx vitest run --merge-reports
+        run: pnpm dlx vitest@3.1.4 run --merge-reports --pass-with-no-tests

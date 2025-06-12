@@ -9,6 +9,9 @@
     "dark": "#A8FF53"
   },
   "favicon": "/images/favicon.png",
+  "contextual": {
+    "options": ["copy", "view", "claude"]
+  },
   "navigation": {
     "dropdowns": [
       {
@@ -100,6 +103,7 @@
               "deployment/overview",
               "deploy-environment-variables",
               "github-actions",
+              "deployment/preview-branches",
               "deployment/atomic-deployment",
               {
                 "group": "Deployment integrations",
@@ -139,15 +143,17 @@
               {
                 "group": "Commands",
                 "pages": [
-                  "cli-login-commands",
-                  "cli-init-commands",
-                  "cli-dev-commands",
                   "cli-deploy-commands",
-                  "cli-promote-commands",
-                  "cli-whoami-commands",
-                  "cli-logout-commands",
+                  "cli-dev-commands",
+                  "cli-init-commands",
                   "cli-list-profiles-commands",
-                  "cli-update-commands"
+                  "cli-login-commands",
+                  "cli-logout-commands",
+                  "cli-preview-archive",
+                  "cli-promote-commands",
+                  "cli-switch",
+                  "cli-update-commands",
+                  "cli-whoami-commands"
                 ]
               }
             ]
@@ -162,21 +168,31 @@
               "troubleshooting",
               "troubleshooting-debugging-in-vscode",
               "upgrading-packages",
-
               "troubleshooting-uptime-status",
               "troubleshooting-github-issues",
               "request-feature"
             ]
           },
           {
-            "group": "Open source",
+            "group": "Self-hosting",
             "pages": [
-              "open-source-self-hosting",
-              "open-source-contributing",
-              "github-repo",
-              "changelog",
-              "roadmap"
-            ]
+              "self-hosting/overview",
+              "self-hosting/docker",
+              {
+                "group": "Environment variables",
+                "pages": ["self-hosting/env/webapp", "self-hosting/env/supervisor"]
+              }
+            ],
+            "tags": ["v4"],
+            "tag": "v4"
+          },
+          {
+            "group": "Self-hosting",
+            "pages": ["open-source-self-hosting"]
+          },
+          {
+            "group": "Open source",
+            "pages": ["open-source-contributing", "github-repo", "changelog", "roadmap"]
           },
           {
             "group": "Help",
@@ -329,6 +345,7 @@
               "guides/example-projects/realtime-csv-importer",
               "guides/example-projects/realtime-fal-ai",
               "guides/example-projects/turborepo-monorepo-prisma",
+              "guides/example-projects/vercel-ai-sdk-deep-research",
               "guides/example-projects/vercel-ai-sdk-image-generator"
             ]
           },

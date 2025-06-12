@@ -1,5 +1,27 @@
 # internal-platform
 
+## 4.0.0-v4-beta.21
+
+### Patch Changes
+
+- Runtime agnostic SDK config via env vars ([#2132](https://github.com/triggerdotdev/trigger.dev/pull/2132))
+- - Resolve issue where CLI could get stuck during deploy finalization ([#2138](https://github.com/triggerdotdev/trigger.dev/pull/2138))
+  - Unify local and remote build logic, with multi-platform build support
+  - Improve switch command; now accepts profile name as an argument
+  - Registry configuration is now fully managed by the webapp
+  - The deploy `--self-hosted` flag is no longer required
+  - Enhance deployment error reporting and image digest retrieval
+
+## 4.0.0-v4-beta.20
+
+## 4.0.0-v4-beta.19
+
+### Patch Changes
+
+- Add supervisor http client option to disable debug logs ([#2116](https://github.com/triggerdotdev/trigger.dev/pull/2116))
+- Add import timings and bundle size analysis, the dev command will now warn about slow imports ([#2114](https://github.com/triggerdotdev/trigger.dev/pull/2114))
+- Improve metadata flushing efficiency by collapsing operations ([#2106](https://github.com/triggerdotdev/trigger.dev/pull/2106))
+
 ## 4.0.0-v4-beta.18
 
 ## 4.0.0-v4-beta.17

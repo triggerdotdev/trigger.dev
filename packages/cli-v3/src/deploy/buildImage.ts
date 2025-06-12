@@ -1,26 +1,28 @@
-import { join } from "node:path";
-import { createTempDir, writeJSONFile } from "../utilities/fileSystem.js";
 import { logger } from "../utilities/logger.js";
 import { depot } from "@depot/cli";
 import { x } from "tinyexec";
 import { BuildManifest, BuildRuntime } from "@trigger.dev/core/v3/schemas";
+import { networkInterfaces } from "os";
+import { join } from "path";
+import { safeReadJSONFile } from "../utilities/fileSystem.js";
+import { readFileSync } from "fs";
+import { isLinux } from "std-env";
+import { z } from "zod";
+import { assertExhaustive } from "../utilities/assertExhaustive.js";
 
 export interface BuildImageOptions {
   // Common options
-  selfHosted: boolean;
-  buildPlatform: string;
+  isLocalBuild: boolean;
+  imagePlatform: string;
   noCache?: boolean;
+  load?: boolean;
 
-  // Self-hosted specific options
-  push: boolean;
-  registry?: string;
+  // Local build options
+  push?: boolean;
   network?: string;
-
-  // Non-self-hosted specific options
-  loadImage?: boolean;
+  builder: string;
 
   // Flattened properties from nested structures
-  registryHost?: string;
   authAccessToken: string;
   imageTag: string;
   deploymentId: string;
@@ -43,15 +45,13 @@ export interface BuildImageOptions {
   deploymentSpinner?: any; // Replace 'any' with the actual type if known
 }
 
-export async function buildImage(options: BuildImageOptions) {
+export async function buildImage(options: BuildImageOptions): Promise<BuildImageResults> {
   const {
-    selfHosted,
-    buildPlatform,
+    isLocalBuild,
+    imagePlatform,
     noCache,
     push,
-    registry,
-    loadImage,
-    registryHost,
+    load,
     authAccessToken,
     imageTag,
     deploymentId,
@@ -69,22 +69,22 @@ export async function buildImage(options: BuildImageOptions) {
     branchName,
     buildEnvVars,
     network,
+    builder,
     onLog,
   } = options;
 
-  if (selfHosted) {
-    return selfHostedBuildImage({
-      registryHost,
+  if (isLocalBuild) {
+    return localBuildImage({
       imageTag,
+      imagePlatform,
       cwd: compilationPath,
       projectId,
       deploymentId,
       deploymentVersion,
       contentHash,
       projectRef,
-      buildPlatform: buildPlatform,
-      pushImage: push,
-      selfHostedRegistry: !!registry,
+      push,
+      load,
       noCache,
       extraCACerts,
       apiUrl,
@@ -92,6 +92,7 @@ export async function buildImage(options: BuildImageOptions) {
       branchName,
       buildEnvVars,
       network,
+      builder,
       onLog,
     });
   }
@@ -102,16 +103,8 @@ export async function buildImage(options: BuildImageOptions) {
     );
   }
 
-  if (!registryHost) {
-    throw new Error(
-      "Failed to initialize deployment. The deployment does not have a registry host. To deploy this project, you must use the --self-hosted or --local flag to build and push the image yourself."
-    );
-  }
-
-  return depotBuildImage({
-    registryHost,
+  return remoteBuildImage({
     auth: authAccessToken,
-    imageTag,
     buildId: externalBuildId,
     buildToken: externalBuildToken,
     buildProjectId: externalBuildProjectId,
@@ -121,8 +114,8 @@ export async function buildImage(options: BuildImageOptions) {
     deploymentVersion,
     contentHash,
     projectRef,
-    loadImage,
-    buildPlatform,
+    load,
+    imagePlatform,
     noCache,
     extraCACerts,
     apiUrl,
@@ -134,9 +127,7 @@ export async function buildImage(options: BuildImageOptions) {
 }
 
 export interface DepotBuildImageOptions {
-  registryHost: string;
   auth: string;
-  imageTag: string;
   buildId: string;
   buildToken: string;
   buildProjectId: string;
@@ -146,11 +137,11 @@ export interface DepotBuildImageOptions {
   deploymentVersion: string;
   contentHash: string;
   projectRef: string;
-  buildPlatform: string;
+  imagePlatform: string;
   apiUrl: string;
   apiKey: string;
   branchName?: string;
-  loadImage?: boolean;
+  load?: boolean;
   noCache?: boolean;
   extraCACerts?: string;
   buildEnvVars?: Record<string, string | undefined>;
@@ -159,7 +150,6 @@ export interface DepotBuildImageOptions {
 
 type BuildImageSuccess = {
   ok: true;
-  image: string;
   imageSizeBytes: number;
   logs: string;
   digest?: string;
@@ -173,14 +163,7 @@ type BuildImageFailure = {
 
 type BuildImageResults = BuildImageSuccess | BuildImageFailure;
 
-async function depotBuildImage(options: DepotBuildImageOptions): Promise<BuildImageResults> {
-  // Step 3: Ensure we are "logged in" to our registry by writing to $HOME/.docker/config.json
-  // TODO: make sure this works on windows
-  const dockerConfigDir = await ensureLoggedIntoDockerRegistry(options.registryHost, {
-    username: "trigger",
-    password: options.auth,
-  });
-
+async function remoteBuildImage(options: DepotBuildImageOptions): Promise<BuildImageResults> {
   const buildArgs = Object.entries(options.buildEnvVars || {})
     .filter(([key, value]) => value)
     .flatMap(([key, value]) => ["--build-arg", `${key}=${value}`]);
@@ -191,9 +174,12 @@ async function depotBuildImage(options: DepotBuildImageOptions): Promise<BuildIm
     "Containerfile",
     options.noCache ? "--no-cache" : undefined,
     "--platform",
-    options.buildPlatform,
+    options.imagePlatform,
+    options.load ? "--load" : undefined,
     "--provenance",
     "false",
+    "--metadata-file",
+    "metadata.json",
     "--build-arg",
     `TRIGGER_PROJECT_ID=${options.projectId}`,
     "--build-arg",
@@ -216,10 +202,9 @@ async function depotBuildImage(options: DepotBuildImageOptions): Promise<BuildIm
     "plain",
     ".",
     "--save",
-    options.loadImage ? "--load" : undefined,
   ].filter(Boolean) as string[];
 
-  logger.debug(`depot ${args.join(" ")}`);
+  logger.debug(`depot ${args.join(" ")}`, { cwd: options.cwd });
 
   // Step 4: Build and push the image
   const childProcess = depot(args, {
@@ -230,7 +215,6 @@ async function depotBuildImage(options: DepotBuildImageOptions): Promise<BuildIm
       DEPOT_PROJECT_ID: options.buildProjectId,
       DEPOT_NO_SUMMARY_LINK: "1",
       DEPOT_NO_UPDATE_NOTIFIER: "1",
-      DOCKER_CONFIG: dockerConfigDir,
     },
   });
 
@@ -267,11 +251,24 @@ async function depotBuildImage(options: DepotBuildImageOptions): Promise<BuildIm
       };
     }
 
-    const digest = extractImageDigest(errors);
+    const metadataPath = join(options.cwd, "metadata.json");
+    const rawMetadata = await safeReadJSONFile(metadataPath);
+
+    const meta = BuildKitMetadata.safeParse(rawMetadata);
+
+    let digest: string | undefined;
+    if (!meta.success) {
+      logger.error("Failed to parse metadata.json", {
+        errors: meta.error.message,
+        path: metadataPath,
+      });
+    } else {
+      logger.debug("Parsed metadata.json", { metadata: meta.data, path: metadataPath });
+      digest = meta.data["containerimage.digest"];
+    }
 
     return {
       ok: true as const,
-      image: `registry.depot.dev/${options.buildProjectId}:${options.buildId}`,
       imageSizeBytes: 0,
       logs,
       digest,
@@ -286,7 +283,6 @@ async function depotBuildImage(options: DepotBuildImageOptions): Promise<BuildIm
 }
 
 interface SelfHostedBuildImageOptions {
-  registryHost?: string;
   imageTag: string;
   cwd: string;
   projectId: string;
@@ -294,9 +290,8 @@ interface SelfHostedBuildImageOptions {
   deploymentVersion: string;
   contentHash: string;
   projectRef: string;
-  buildPlatform: string;
-  pushImage: boolean;
-  selfHostedRegistry: boolean;
+  imagePlatform: string;
+  push?: boolean;
   apiUrl: string;
   apiKey: string;
   branchName?: string;
@@ -304,26 +299,139 @@ interface SelfHostedBuildImageOptions {
   extraCACerts?: string;
   buildEnvVars?: Record<string, string | undefined>;
   network?: string;
+  builder: string;
+  load?: boolean;
   onLog?: (log: string) => void;
 }
 
-async function selfHostedBuildImage(
-  options: SelfHostedBuildImageOptions
-): Promise<BuildImageResults> {
-  const imageRef = `${options.registryHost ? `${options.registryHost}/` : ""}${options.imageTag}`;
+async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<BuildImageResults> {
+  const { builder, imageTag } = options;
+
+  // Ensure multi-platform build is supported on the local machine
+  let builderExists = false;
+  const lsLogs: string[] = [];
+
+  // List existing builders
+  const lsProcess = x("docker", ["buildx", "ls", "--format", "{{.Name}}"]);
+  for await (const line of lsProcess) {
+    lsLogs.push(line);
+    logger.debug(line);
+
+    if (line === builder) {
+      builderExists = true;
+    }
+  }
+  if (lsProcess.exitCode !== 0) {
+    return {
+      ok: false as const,
+      error: `Failed to list buildx builders`,
+      logs: lsLogs.join("\n"),
+    };
+  }
+
+  if (builderExists && options.network) {
+    // We need to ensure the current builder network matches
+    const inspectProcess = x("docker", ["buildx", "inspect", builder]);
+    const inspectLogs: string[] = [];
+
+    let hasCorrectNetwork = false;
+    for await (const line of inspectProcess) {
+      inspectLogs.push(line);
+
+      if (line.match(/Driver Options:\s+network="([^"]+)"/)?.at(1) === options.network) {
+        hasCorrectNetwork = true;
+      }
+    }
+
+    if (inspectProcess.exitCode !== 0) {
+      return {
+        ok: false as const,
+        error: `Failed to inspect buildx builder '${builder}'`,
+        logs: inspectLogs.join("\n"),
+      };
+    }
+
+    if (!hasCorrectNetwork) {
+      // Delete the existing builder and signal to create a new one
+      const deleteProcess = x("docker", ["buildx", "rm", builder]);
+      const deleteLogs: string[] = [];
+
+      for await (const line of deleteProcess) {
+        deleteLogs.push(line);
+      }
+
+      if (deleteProcess.exitCode !== 0) {
+        return {
+          ok: false as const,
+          error: `Failed to delete buildx builder '${builder}'`,
+          logs: deleteLogs.join("\n"),
+        };
+      }
+
+      builderExists = false;
+    }
+  }
+
+  // If the builder does not exist, create it and is compatible with multi-platform builds
+  if (!builderExists) {
+    const createLogs: string[] = [];
+
+    const args = (
+      [
+        "buildx",
+        "create",
+        "--name",
+        builder,
+        "--driver",
+        "docker-container",
+        options.network ? `--driver-opt=network=${options.network}` : undefined,
+      ] satisfies (string | undefined)[]
+    ).filter(Boolean) as string[];
+
+    const createProcess = x("docker", args);
+    for await (const line of createProcess) {
+      createLogs.push(line);
+      logger.debug(line);
+      options.onLog?.(line);
+    }
+    if (createProcess.exitCode !== 0) {
+      return {
+        ok: false as const,
+        error: `Failed to create buildx builder '${builder}'`,
+        logs: [...lsLogs, ...createLogs].join("\n"),
+      };
+    }
+  }
 
   const buildArgs = Object.entries(options.buildEnvVars || {})
     .filter(([key, value]) => value)
     .flatMap(([key, value]) => ["--build-arg", `${key}=${value}`]);
 
+  const apiUrl = normalizeApiUrlForBuild(options.apiUrl);
+  const addHost = getAddHost(apiUrl);
+  const push = shouldPush(options.imageTag, options.push);
+  const load = shouldLoad(options.load, push);
+
+  await ensureQemuRegistered(options.imagePlatform);
+
   const args = [
+    "buildx",
     "build",
+    "--builder",
+    builder,
     "-f",
     "Containerfile",
     options.noCache ? "--no-cache" : undefined,
     "--platform",
-    options.buildPlatform,
-    ...(options.network ? ["--network", options.network] : []),
+    options.imagePlatform,
+    options.network ? `--network=${options.network}` : undefined,
+    addHost ? `--add-host=${addHost}` : undefined,
+    push ? "--push" : undefined,
+    load ? "--load" : undefined,
+    "--provenance",
+    "false",
+    "--metadata-file",
+    "metadata.json",
     "--build-arg",
     `TRIGGER_PROJECT_ID=${options.projectId}`,
     "--build-arg",
@@ -335,7 +443,7 @@ async function selfHostedBuildImage(
     "--build-arg",
     `TRIGGER_PROJECT_REF=${options.projectRef}`,
     "--build-arg",
-    `TRIGGER_API_URL=${normalizeApiUrlForBuild(options.apiUrl)}`,
+    `TRIGGER_API_URL=${apiUrl}`,
     "--build-arg",
     `TRIGGER_PREVIEW_BRANCH=${options.branchName ?? ""}`,
     "--build-arg",
@@ -345,16 +453,13 @@ async function selfHostedBuildImage(
     "--progress",
     "plain",
     "-t",
-    imageRef,
+    options.imageTag,
     ".", // The build context
   ].filter(Boolean) as string[];
 
-  logger.debug(`docker ${args.join(" ")}`, {
-    cwd: options.cwd,
-  });
+  logger.debug(`docker ${args.join(" ")}`, { cwd: options.cwd });
 
   const errors: string[] = [];
-  let digest: string | undefined;
 
   // Build the image
   const buildProcess = x("docker", args, {
@@ -376,10 +481,26 @@ async function selfHostedBuildImage(
     };
   }
 
-  digest = extractImageDigest(errors);
+  const metadataPath = join(options.cwd, "metadata.json");
+  const rawMetadata = await safeReadJSONFile(metadataPath);
+
+  const meta = BuildKitMetadata.safeParse(rawMetadata);
+
+  let digest: string | undefined;
+  if (!meta.success) {
+    logger.error("Failed to parse metadata.json", {
+      errors: meta.error.message,
+      path: metadataPath,
+    });
+  } else {
+    logger.debug("Parsed metadata.json", { metadata: meta.data, path: metadataPath });
+
+    // Always use the manifest (list) digest
+    digest = meta.data["containerimage.digest"];
+  }
 
   // Get the image size
-  const sizeProcess = x("docker", ["image", "inspect", imageRef, "--format={{.Size}}"], {
+  const sizeProcess = x("docker", ["image", "inspect", options.imageTag, "--format={{.Size}}"], {
     nodeOptions: { cwd: options.cwd },
   });
 
@@ -398,58 +519,12 @@ async function selfHostedBuildImage(
     options.onLog?.(`Image size: ${(imageSizeBytes / (1024 * 1024)).toFixed(2)} MB`);
   }
 
-  if (options.selfHostedRegistry || options.pushImage) {
-    const pushArgs = ["push", imageRef].filter(Boolean) as string[];
-
-    logger.debug(`docker ${pushArgs.join(" ")}`);
-
-    // Push the image
-    const pushProcess = x("docker", pushArgs, {
-      nodeOptions: { cwd: options.cwd },
-    });
-
-    for await (const line of pushProcess) {
-      logger.debug(line);
-      errors.push(line);
-    }
-
-    if (pushProcess.exitCode !== 0) {
-      return {
-        ok: false as const,
-        error: "Error pushing image",
-        logs: extractLogs(errors),
-      };
-    }
-  }
-
   return {
     ok: true as const,
-    image: options.imageTag,
     imageSizeBytes,
     digest,
     logs: extractLogs(errors),
   };
-}
-
-async function ensureLoggedIntoDockerRegistry(
-  registryHost: string,
-  auth: { username: string; password: string }
-) {
-  const tmpDir = await createTempDir();
-  // Read the current docker config
-  const dockerConfigPath = join(tmpDir, "config.json");
-
-  await writeJSONFile(dockerConfigPath, {
-    auths: {
-      [registryHost]: {
-        auth: Buffer.from(`${auth.username}:${auth.password}`).toString("base64"),
-      },
-    },
-  });
-
-  logger.debug(`Writing docker config to ${dockerConfigPath}`);
-
-  return tmpDir;
 }
 
 function extractLogs(outputs: string[]) {
@@ -457,22 +532,6 @@ function extractLogs(outputs: string[]) {
   const cleanedOutputs = outputs.map((line) => line.trim()).filter((line) => line !== "");
 
   return cleanedOutputs.map((line) => line.trim()).join("\n");
-}
-
-function extractImageDigest(outputs: string[]) {
-  const imageDigestRegex = /pushing manifest for .+(?<digest>sha256:[a-f0-9]{64})/;
-
-  for (const line of outputs) {
-    const imageDigestMatch = line.match(imageDigestRegex);
-
-    const digest = imageDigestMatch?.groups?.digest;
-
-    if (digest) {
-      return digest;
-    }
-  }
-
-  return;
 }
 
 export type GenerateContainerfileOptions = {
@@ -595,6 +654,10 @@ ENV TRIGGER_PROJECT_ID=\${TRIGGER_PROJECT_ID} \
     NODE_EXTRA_CA_CERTS=\${NODE_EXTRA_CA_CERTS} \
     NODE_ENV=production
 
+ARG TARGETPLATFORM
+ARG BUILDPLATFORM
+ENV BUILDPLATFORM=$BUILDPLATFORM TARGETPLATFORM=$TARGETPLATFORM
+
 # Run the indexer
 RUN bun run ${options.indexScript}
 
@@ -703,6 +766,10 @@ ENV TRIGGER_PROJECT_ID=\${TRIGGER_PROJECT_ID} \
     NODE_ENV=production \
     NODE_OPTIONS="--max_old_space_size=8192"
 
+ARG TARGETPLATFORM
+ARG BUILDPLATFORM
+ENV BUILDPLATFORM=$BUILDPLATFORM TARGETPLATFORM=$TARGETPLATFORM
+
 # Run the indexer
 RUN node ${options.indexScript}
 
@@ -738,12 +805,132 @@ CMD []
   `;
 }
 
-// If apiUrl is something like http://localhost:3030, AND we are on macOS, we need to convert it to http://host.docker.internal:3030
+// If apiUrl is something like http://localhost:3030, we need to convert it to http://host.docker.internal:3030
 // this way the indexing will work because the docker image can reach the local server
-function normalizeApiUrlForBuild(apiUrl: string) {
-  if (process.platform === "darwin") {
-    return apiUrl.replace("localhost", "host.docker.internal");
+function normalizeApiUrlForBuild(apiUrl: string): string {
+  return apiUrl.replace("localhost", "host.docker.internal");
+}
+
+function getHostIP() {
+  const interfaces = networkInterfaces();
+
+  for (const [name, iface] of Object.entries(interfaces)) {
+    if (!iface) {
+      continue;
+    }
+
+    for (const net of iface) {
+      // Skip internal/loopback and non-IPv4 addresses
+      if (!net.internal && net.family === "IPv4") {
+        return net.address;
+      }
+    }
   }
 
-  return apiUrl;
+  return "127.0.0.1";
+}
+
+function getAddHost(apiUrl: string) {
+  if (apiUrl.includes("host.docker.internal")) {
+    return `host.docker.internal:${getHostIP()}`;
+  }
+
+  return;
+}
+
+function isQemuRegistered() {
+  try {
+    // Check a single QEMU handler
+    const binfmt = readFileSync("/proc/sys/fs/binfmt_misc/qemu-aarch64", "utf8");
+    return binfmt.includes("enabled");
+  } catch (e) {
+    return false;
+  }
+}
+
+function isMultiPlatform(imagePlatform: string) {
+  return imagePlatform.split(",").length > 1;
+}
+
+async function ensureQemuRegistered(imagePlatform: string) {
+  if (isLinux && isMultiPlatform(imagePlatform) && !isQemuRegistered()) {
+    logger.debug("Registering QEMU for multi-platform build...");
+
+    const ensureQemuProcess = x("docker", [
+      "run",
+      "--rm",
+      "--privileged",
+      "multiarch/qemu-user-static",
+      "--reset",
+      "-p",
+      "yes",
+    ]);
+
+    const logs: string[] = [];
+    for await (const line of ensureQemuProcess) {
+      logger.debug(line);
+      logs.push(line);
+    }
+
+    if (ensureQemuProcess.exitCode !== 0) {
+      logger.error("Failed to register QEMU for multi-platform build", {
+        exitCode: ensureQemuProcess.exitCode,
+        logs: logs.join("\n"),
+      });
+    }
+  }
+}
+
+const BuildKitMetadata = z.object({
+  "buildx.build.ref": z.string().optional(),
+  "containerimage.descriptor": z
+    .object({
+      mediaType: z.string(),
+      digest: z.string(),
+      size: z.number(),
+    })
+    .optional(),
+  "containerimage.digest": z.string().optional(),
+  "containerimage.config.digest": z.string().optional(),
+  "image.name": z.string().optional(),
+});
+
+// Don't push if the image tag is a local address, unless the user explicitly wants to push
+function shouldPush(imageTag: string, push?: boolean) {
+  switch (push) {
+    case true: {
+      return true;
+    }
+    case false: {
+      return false;
+    }
+    case undefined: {
+      return imageTag.startsWith("localhost") ||
+        imageTag.startsWith("127.0.0.1") ||
+        imageTag.startsWith("0.0.0.0")
+        ? false
+        : true;
+    }
+    default: {
+      assertExhaustive(push);
+    }
+  }
+}
+
+// Don't load if we're pushing, unless the user explicitly wants to load
+function shouldLoad(load?: boolean, push?: boolean) {
+  switch (load) {
+    case true: {
+      return true;
+    }
+    case false: {
+      return false;
+    }
+    case undefined: {
+      return push ? false : true;
+    }
+    default: {
+      assertExhaustive(load);
+    }
+  }
 }

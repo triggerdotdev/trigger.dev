@@ -55,6 +55,27 @@ export type TaskRunShape<TTask extends AnyTask> = RunShape<InferRunTypes<TTask>>
 export type RealtimeRun<TTask extends AnyTask> = TaskRunShape<TTask>;
 export type AnyRealtimeRun = RealtimeRun<AnyTask>;
 
+export type RealtimeRunSkipColumns = Array<
+  | "startedAt"
+  | "delayUntil"
+  | "queuedAt"
+  | "expiredAt"
+  | "completedAt"
+  | "number"
+  | "isTest"
+  | "usageDurationMs"
+  | "costInCents"
+  | "baseCostInCents"
+  | "ttl"
+  | "payload"
+  | "payloadType"
+  | "metadata"
+  | "output"
+  | "outputType"
+  | "runTags"
+  | "error"
+>;
+
 export type RunStreamCallback<TRunTypes extends AnyRunTypes> = (
   run: RunShape<TRunTypes>
 ) => void | Promise<void>;
@@ -395,16 +416,16 @@ export class RunSubscription<TRunTypes extends AnyRunTypes> {
 
     return {
       id: row.friendlyId,
-      payload,
-      output,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
       taskIdentifier: row.taskIdentifier,
-      number: row.number,
       status: apiStatusFromRunStatus(row.status),
-      durationMs: row.usageDurationMs,
-      costInCents: row.costInCents,
-      baseCostInCents: row.baseCostInCents,
+      payload,
+      output,
+      number: row.number ?? 0,
+      durationMs: row.usageDurationMs ?? 0,
+      costInCents: row.costInCents ?? 0,
+      baseCostInCents: row.baseCostInCents ?? 0,
       tags: row.runTags ?? [],
       idempotencyKey: row.idempotencyKey ?? undefined,
       expiredAt: row.expiredAt ?? undefined,
@@ -413,7 +434,7 @@ export class RunSubscription<TRunTypes extends AnyRunTypes> {
       delayedUntil: row.delayUntil ?? undefined,
       queuedAt: row.queuedAt ?? undefined,
       error: row.error ? createJsonErrorObject(row.error) : undefined,
-      isTest: row.isTest,
+      isTest: row.isTest ?? false,
       metadata,
     } as RunShape<TRunTypes>;
   }

@@ -26,6 +26,8 @@ describe("RunEngine heartbeats", () => {
         retryOptions: {
           maxTimeoutInMs: 50,
         },
+        masterQueueConsumersDisabled: true,
+        processWorkerQueueDebounceMs: 50,
       },
       runLock: {
         redis: redisOptions,
@@ -71,7 +73,7 @@ describe("RunEngine heartbeats", () => {
           traceContext: {},
           traceId: "t12345",
           spanId: "s12345",
-          masterQueue: "main",
+          workerQueue: "main",
           queue: "task/test-task",
           isTest: false,
           tags: [],
@@ -79,11 +81,12 @@ describe("RunEngine heartbeats", () => {
         prisma
       );
 
+      await setTimeout(500);
+
       //dequeue the run
-      const dequeued = await engine.dequeueFromMasterQueue({
+      const dequeued = await engine.dequeueFromWorkerQueue({
         consumerId: "test_12345",
-        masterQueue: run.masterQueue,
-        maxRunCount: 10,
+        workerQueue: "main",
       });
 
       //expect it to be pending with 0 consecutiveFailures
@@ -101,10 +104,9 @@ describe("RunEngine heartbeats", () => {
       await setTimeout(1_000);
 
       //have to dequeue again
-      const dequeued2 = await engine.dequeueFromMasterQueue({
+      const dequeued2 = await engine.dequeueFromWorkerQueue({
         consumerId: "test_12345",
-        masterQueue: run.masterQueue,
-        maxRunCount: 10,
+        workerQueue: "main",
       });
       expect(dequeued2.length).toBe(1);
 
@@ -142,6 +144,8 @@ describe("RunEngine heartbeats", () => {
           minTimeoutInMs: 50,
           maxTimeoutInMs: 50,
         },
+        masterQueueConsumersDisabled: true,
+        processWorkerQueueDebounceMs: 50,
       },
       runLock: {
         redis: redisOptions,
@@ -188,7 +192,7 @@ describe("RunEngine heartbeats", () => {
           traceContext: {},
           traceId: "t12345",
           spanId: "s12345",
-          masterQueue: "main",
+          workerQueue: "main",
           queue: "task/test-task",
           isTest: false,
           tags: [],
@@ -196,11 +200,12 @@ describe("RunEngine heartbeats", () => {
         prisma
       );
 
+      await setTimeout(500);
+
       //dequeue the run
-      const dequeued = await engine.dequeueFromMasterQueue({
+      const dequeued = await engine.dequeueFromWorkerQueue({
         consumerId: "test_12345",
-        masterQueue: run.masterQueue,
-        maxRunCount: 10,
+        workerQueue: "main",
       });
 
       //expect it to be pending
@@ -216,10 +221,9 @@ describe("RunEngine heartbeats", () => {
       expect(executionData2.snapshot.executionStatus).toBe("QUEUED");
 
       //have to dequeue again
-      const dequeued2 = await engine.dequeueFromMasterQueue({
+      const dequeued2 = await engine.dequeueFromWorkerQueue({
         consumerId: "test_12345",
-        masterQueue: run.masterQueue,
-        maxRunCount: 10,
+        workerQueue: "main",
       });
       expect(dequeued2.length).toBe(1);
 
@@ -263,6 +267,8 @@ describe("RunEngine heartbeats", () => {
             minTimeoutInMs: 50,
             maxTimeoutInMs: 50,
           },
+          masterQueueConsumersDisabled: true,
+          processWorkerQueueDebounceMs: 50,
         },
         runLock: {
           redis: redisOptions,
@@ -308,7 +314,7 @@ describe("RunEngine heartbeats", () => {
             traceContext: {},
             traceId: "t12345",
             spanId: "s12345",
-            masterQueue: "main",
+            workerQueue: "main",
             queue: "task/test-task",
             isTest: false,
             tags: [],
@@ -316,11 +322,12 @@ describe("RunEngine heartbeats", () => {
           prisma
         );
 
+        await setTimeout(500);
+
         //dequeue the run
-        const dequeued = await engine.dequeueFromMasterQueue({
+        const dequeued = await engine.dequeueFromWorkerQueue({
           consumerId: "test_12345",
-          masterQueue: run.masterQueue,
-          maxRunCount: 10,
+          workerQueue: "main",
         });
 
         //create an attempt
@@ -343,11 +350,12 @@ describe("RunEngine heartbeats", () => {
         assertNonNullable(executionData2);
         expect(executionData2.snapshot.executionStatus).toBe("QUEUED");
 
+        await engine.runQueue.processMasterQueueForEnvironment(authenticatedEnvironment.id);
+
         //have to dequeue again
-        const dequeued2 = await engine.dequeueFromMasterQueue({
+        const dequeued2 = await engine.dequeueFromWorkerQueue({
           consumerId: "test_12345",
-          masterQueue: run.masterQueue,
-          maxRunCount: 10,
+          workerQueue: "main",
         });
         expect(dequeued2.length).toBe(1);
 
@@ -392,6 +400,8 @@ describe("RunEngine heartbeats", () => {
       },
       queue: {
         redis: redisOptions,
+        masterQueueConsumersDisabled: true,
+        processWorkerQueueDebounceMs: 50,
       },
       runLock: {
         redis: redisOptions,
@@ -437,7 +447,7 @@ describe("RunEngine heartbeats", () => {
           traceContext: {},
           traceId: "t12345",
           spanId: "s12345",
-          masterQueue: "main",
+          workerQueue: "main",
           queue: "task/test-task",
           isTest: false,
           tags: [],
@@ -445,11 +455,12 @@ describe("RunEngine heartbeats", () => {
         prisma
       );
 
+      await setTimeout(500);
+
       //dequeue the run
-      const dequeued = await engine.dequeueFromMasterQueue({
+      const dequeued = await engine.dequeueFromWorkerQueue({
         consumerId: "test_12345",
-        masterQueue: run.masterQueue,
-        maxRunCount: 10,
+        workerQueue: "main",
       });
 
       //create an attempt
@@ -494,6 +505,8 @@ describe("RunEngine heartbeats", () => {
       },
       queue: {
         redis: redisOptions,
+        masterQueueConsumersDisabled: true,
+        processWorkerQueueDebounceMs: 50,
       },
       runLock: {
         redis: redisOptions,
@@ -539,7 +552,7 @@ describe("RunEngine heartbeats", () => {
           traceContext: {},
           traceId: "t12345",
           spanId: "s12345",
-          masterQueue: "main",
+          workerQueue: "main",
           queue: "task/test-task",
           isTest: false,
           tags: [],
@@ -547,11 +560,12 @@ describe("RunEngine heartbeats", () => {
         prisma
       );
 
+      await setTimeout(500);
+
       //dequeue the run
-      const dequeued = await engine.dequeueFromMasterQueue({
+      const dequeued = await engine.dequeueFromWorkerQueue({
         consumerId: "test_12345",
-        masterQueue: run.masterQueue,
-        maxRunCount: 10,
+        workerQueue: "main",
       });
 
       //create an attempt
@@ -637,6 +651,8 @@ describe("RunEngine heartbeats", () => {
       },
       queue: {
         redis: redisOptions,
+        masterQueueConsumersDisabled: true,
+        processWorkerQueueDebounceMs: 50,
       },
       runLock: {
         redis: redisOptions,
@@ -682,7 +698,7 @@ describe("RunEngine heartbeats", () => {
           traceContext: {},
           traceId: "t12345",
           spanId: "s12345",
-          masterQueue: "main",
+          workerQueue: "main",
           queue: "task/test-task",
           isTest: false,
           tags: [],
@@ -690,11 +706,12 @@ describe("RunEngine heartbeats", () => {
         prisma
       );
 
+      await setTimeout(500);
+
       //dequeue the run
-      const dequeued = await engine.dequeueFromMasterQueue({
+      const dequeued = await engine.dequeueFromWorkerQueue({
         consumerId: "test_12345",
-        masterQueue: run.masterQueue,
-        maxRunCount: 10,
+        workerQueue: "main",
       });
 
       //create an attempt

@@ -239,6 +239,7 @@ export const DequeuedMessage = z.object({
   deployment: z.object({
     id: z.string().optional(),
     friendlyId: z.string().optional(),
+    imagePlatform: z.string().optional(),
   }),
   run: z.object({
     id: z.string(),

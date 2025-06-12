@@ -1,5 +1,13 @@
 import { Callback, createRedisClient, Redis, Result, type RedisOptions } from "@internal/redis";
-import { startSpan, Tracer } from "@internal/tracing";
+import {
+  startSpan,
+  Tracer,
+  Meter,
+  getMeter,
+  ValueType,
+  ObservableResult,
+  Attributes,
+} from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
 import { z } from "zod";
 import { setInterval } from "node:timers/promises";
@@ -39,6 +47,7 @@ export type ReleaseConcurrencyQueueOptions<T> = {
   consumersCount?: number;
   masterQueuesKey?: string;
   tracer?: Tracer;
+  meter?: Meter;
   logger?: Logger;
   pollInterval?: number;
   batchSize?: number;
@@ -56,6 +65,7 @@ type QueueItemMetadata = z.infer<typeof QueueItemMetadata>;
 export class ReleaseConcurrencyTokenBucketQueue<T> {
   private redis: Redis;
   private logger: Logger;
+  private meter: Meter;
   private abortController: AbortController;
   private consumers: ReleaseConcurrencyQueueConsumer<T>[];
   private sweeper?: ReleaseConcurrencyReleasingsSweeper;
@@ -74,6 +84,7 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
     this.redis = createRedisClient(options.redis);
     this.keyPrefix = options.redis.keyPrefix ?? "re2:release-concurrency-queue:";
     this.logger = options.logger ?? new Logger("ReleaseConcurrencyQueue", "debug");
+    this.meter = options.meter ?? getMeter("release-concurrency");
     this.abortController = new AbortController();
     this.consumers = [];
 
@@ -90,11 +101,32 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
       factor: options.retry?.backoff?.factor ?? 2,
     };
 
+    // Set up OpenTelemetry metrics
+    const releasingsLengthGauge = this.meter.createObservableGauge(
+      "release_concurrency.releasings.length",
+      {
+        description: "Number of items in the releasings sorted set",
+        unit: "items",
+        valueType: ValueType.INT,
+      }
+    );
+
+    const masterQueueLengthGauge = this.meter.createObservableGauge(
+      "release_concurrency.master_queue.length",
+      {
+        description: "Number of items in the master queue sorted set",
+        unit: "items",
+        valueType: ValueType.INT,
+      }
+    );
+
+    releasingsLengthGauge.addCallback(this.#updateReleasingsLength.bind(this));
+    masterQueueLengthGauge.addCallback(this.#updateMasterQueueLength.bind(this));
+
     this.#registerCommands();
 
     if (!options.disableConsumers) {
       this.#startConsumers();
-      this.#startMetricsProducer();
       this.#startReleasingsSweeper();
     }
   }
@@ -102,6 +134,16 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
   public async quit() {
     this.abortController.abort();
     await this.redis.quit();
+  }
+
+  async #updateReleasingsLength(observableResult: ObservableResult<Attributes>) {
+    const releasingsLength = await this.redis.zcard(this.#releasingsKey());
+    observableResult.observe(releasingsLength);
+  }
+
+  async #updateMasterQueueLength(observableResult: ObservableResult<Attributes>) {
+    const masterQueueLength = await this.redis.zcard(this.masterQueuesKey);
+    observableResult.observe(masterQueueLength);
   }
 
   /**
@@ -486,30 +528,6 @@ export class ReleaseConcurrencyTokenBucketQueue<T> {
         this.logger
       );
       this.sweeper.start();
-    }
-  }
-
-  async #startMetricsProducer() {
-    try {
-      // Produce metrics every 60 seconds, using a tracer span
-      for await (const _ of setInterval(60_000)) {
-        const metrics = await this.getQueueMetrics();
-        this.logger.info("Queue metrics:", { metrics });
-
-        await startSpan(
-          this.options.tracer,
-          "ReleaseConcurrencyTokenBucketQueue.metrics",
-          async (span) => {},
-          {
-            attributes: {
-              ...flattenAttributes(metrics, "queues"),
-              forceRecording: true,
-            },
-          }
-        );
-      }
-    } catch (error) {
-      this.logger.error("Error starting metrics producer:", { error });
     }
   }
 

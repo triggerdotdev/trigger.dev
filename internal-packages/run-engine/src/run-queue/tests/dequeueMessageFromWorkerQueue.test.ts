@@ -1,10 +1,11 @@
-import { redisTest } from "@internal/testcontainers";
+import { assertNonNullable, redisTest } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
 import { describe } from "node:test";
 import { FairQueueSelectionStrategy } from "../fairQueueSelectionStrategy.js";
 import { RunQueue } from "../index.js";
 import { RunQueueFullKeyProducer } from "../keyProducer.js";
 import { InputPayload } from "../types.js";
+import { setTimeout } from "node:timers/promises";
 
 const testOptions = {
   name: "rq",
@@ -43,8 +44,8 @@ const messageDev: InputPayload = {
 
 vi.setConfig({ testTimeout: 60_000 });
 
-describe("RunQueue.dequeueMessageFromMasterQueue", () => {
-  redisTest("dequeuing a message from a master queue", async ({ redisContainer }) => {
+describe("RunQueue.dequeueMessageFromWorkerQueue", () => {
+  redisTest("dequeuing a message from a worker queue", async ({ redisContainer }) => {
     const queue = new RunQueue({
       ...testOptions,
       queueSelectionStrategy: new FairQueueSelectionStrategy({
@@ -73,13 +74,11 @@ describe("RunQueue.dequeueMessageFromMasterQueue", () => {
       const oldestScore = await queue.oldestMessageInQueue(authenticatedEnvDev, messageDev.queue);
       expect(oldestScore).toBe(undefined);
 
-      const envMasterQueue = `env:${authenticatedEnvDev.id}`;
-
       //enqueue message
       await queue.enqueueMessage({
         env: authenticatedEnvDev,
         message: messageDev,
-        masterQueues: ["main", envMasterQueue],
+        workerQueue: "main",
       });
 
       //queue length
@@ -103,12 +102,18 @@ describe("RunQueue.dequeueMessageFromMasterQueue", () => {
       const envConcurrency = await queue.currentConcurrencyOfEnvironment(authenticatedEnvDev);
       expect(envConcurrency).toBe(0);
 
-      const dequeued = await queue.dequeueMessageFromMasterQueue("test_12345", envMasterQueue, 10);
-      expect(dequeued.length).toBe(1);
-      expect(dequeued[0].messageId).toEqual(messageDev.runId);
-      expect(dequeued[0].message.orgId).toEqual(messageDev.orgId);
-      expect(dequeued[0].message.version).toEqual("1");
-      expect(dequeued[0].message.masterQueues).toEqual(["main", envMasterQueue]);
+      await setTimeout(1000);
+
+      const dequeued = await queue.dequeueMessageFromWorkerQueue("test_12345", "main");
+      expect(dequeued).toBeDefined();
+      assertNonNullable(dequeued);
+      expect(dequeued.messageId).toEqual(messageDev.runId);
+      expect(dequeued.message.orgId).toEqual(messageDev.orgId);
+      expect(dequeued.message.version).toEqual("2");
+
+      const workerQueue =
+        dequeued.message.version === "2" ? dequeued.message.workerQueue : undefined;
+      expect(workerQueue).toEqual("main");
 
       //concurrencies
       const queueConcurrencyAfter = await queue.currentConcurrencyOfQueue(
@@ -157,37 +162,31 @@ describe("RunQueue.dequeueMessageFromMasterQueue", () => {
           maximumConcurrencyLimit: 1,
         });
 
-        const envMasterQueue = `env:${authenticatedEnvDev.id}`;
-
         // Enqueue first message
         await queue.enqueueMessage({
           env: authenticatedEnvDev,
           message: messageDev,
-          masterQueues: ["main", envMasterQueue],
+          workerQueue: "main",
         });
 
         // Dequeue first message to occupy the concurrency
-        const dequeued1 = await queue.dequeueMessageFromMasterQueue(
-          "test_12345",
-          envMasterQueue,
-          10
-        );
-        expect(dequeued1.length).toBe(1);
+        await setTimeout(1000);
+
+        const dequeued1 = await queue.dequeueMessageFromWorkerQueue("test_12345", "main");
+        assertNonNullable(dequeued1);
 
         // Enqueue second message
         await queue.enqueueMessage({
           env: authenticatedEnvDev,
           message: { ...messageDev, runId: "r4322" },
-          masterQueues: ["main", envMasterQueue],
+          workerQueue: "main",
         });
 
+        await setTimeout(1000);
+
         // Try to dequeue second message
-        const dequeued2 = await queue.dequeueMessageFromMasterQueue(
-          "test_12345",
-          envMasterQueue,
-          10
-        );
-        expect(dequeued2.length).toBe(0);
+        const dequeued2 = await queue.dequeueMessageFromWorkerQueue("test_12345", "main");
+        expect(dequeued2).toBeUndefined();
 
         const envConcurrency = await queue.currentConcurrencyOfEnvironment(authenticatedEnvDev);
         expect(envConcurrency).toBe(1);
@@ -221,36 +220,29 @@ describe("RunQueue.dequeueMessageFromMasterQueue", () => {
         // Set queue concurrency limit to 1
         await queue.updateQueueConcurrencyLimits(authenticatedEnvDev, messageDev.queue, 1);
 
-        const envMasterQueue = `env:${authenticatedEnvDev.id}`;
-
         // Enqueue two messages
         await queue.enqueueMessage({
           env: authenticatedEnvDev,
           message: messageDev,
-          masterQueues: ["main", envMasterQueue],
+          workerQueue: "main",
         });
 
         await queue.enqueueMessage({
           env: authenticatedEnvDev,
           message: { ...messageDev, runId: "r4322" },
-          masterQueues: ["main", envMasterQueue],
+          workerQueue: "main",
         });
 
+        await setTimeout(1000);
+
         // Dequeue first message
-        const dequeued1 = await queue.dequeueMessageFromMasterQueue(
-          "test_12345",
-          envMasterQueue,
-          10
-        );
-        expect(dequeued1.length).toBe(1);
+        const dequeued1 = await queue.dequeueMessageFromWorkerQueue("test_12345", "main");
+        expect(dequeued1).toBeDefined();
+        assertNonNullable(dequeued1);
 
         // Try to dequeue second message
-        const dequeued2 = await queue.dequeueMessageFromMasterQueue(
-          "test_12345",
-          envMasterQueue,
-          10
-        );
-        expect(dequeued2.length).toBe(0);
+        const dequeued2 = await queue.dequeueMessageFromWorkerQueue("test_12345", "main");
+        expect(dequeued2).toBeUndefined();
 
         const queueConcurrency = await queue.currentConcurrencyOfQueue(
           authenticatedEnvDev,

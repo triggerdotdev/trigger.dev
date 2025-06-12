@@ -343,6 +343,7 @@ function ProjectSelector({
   const currentPlan = useCurrentPlan();
   const [isOrgMenuOpen, setOrgMenuOpen] = useState(false);
   const navigation = useNavigation();
+  const { isManagedCloud } = useFeatures();
 
   let plan: string | undefined = undefined;
   if (currentPlan?.v3Subscription?.isPaying === false) {
@@ -411,16 +412,18 @@ function ProjectSelector({
               <CogIcon className="size-4 text-text-dimmed" />
               <span className="text-text-bright">Settings</span>
             </LinkButton>
-            <LinkButton
-              variant="secondary/small"
-              to={v3UsagePath(organization)}
-              fullWidth
-              iconSpacing="gap-1.5"
-              className="group-hover/button:border-charcoal-500"
-            >
-              <ChartBarIcon className="size-4 text-text-dimmed" />
-              <span className="text-text-bright">Usage</span>
-            </LinkButton>
+            {isManagedCloud && (
+              <LinkButton
+                variant="secondary/small"
+                to={v3UsagePath(organization)}
+                fullWidth
+                iconSpacing="gap-1.5"
+                className="group-hover/button:border-charcoal-500"
+              >
+                <ChartBarIcon className="size-4 text-text-dimmed" />
+                <span className="text-text-bright">Usage</span>
+              </LinkButton>
+            )}
           </div>
         </div>
         <div className="flex flex-col gap-1 p-1">

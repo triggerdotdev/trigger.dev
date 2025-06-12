@@ -34,12 +34,14 @@ import { TextLink } from "~/components/primitives/TextLink";
 import { RunsFilters, TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
 import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { BULK_ACTION_RUN_LIMIT } from "~/consts";
+import { $replica } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
-import { RunListPresenter } from "~/presenters/v3/RunListPresenter.server";
+import { NextRunListPresenter } from "~/presenters/v3/NextRunListPresenter.server";
+import { clickhouseClient } from "~/services/clickhouseInstance.server";
 import {
   getRootOnlyFilterPreference,
   setRootOnlyFilterPreference,
@@ -121,14 +123,17 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     scheduleId,
   } = TaskRunListSearchFilters.parse(s);
 
-  const presenter = new RunListPresenter();
-  const list = presenter.call({
+  if (!clickhouseClient) {
+    throw new Error("Clickhouse is not supported yet");
+  }
+
+  const presenter = new NextRunListPresenter($replica, clickhouseClient);
+  const list = presenter.call(environment.id, {
     userId,
     projectId: project.id,
     tasks,
     versions,
     statuses,
-    environments,
     tags,
     period,
     bulkId,

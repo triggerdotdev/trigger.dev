@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/redis-worker",
-  "version": "4.0.0-v4-beta.18",
+  "version": "4.0.0-v4-beta.21",
   "description": "Redis worker for trigger.dev",
   "license": "MIT",
   "publishConfig": {
@@ -23,11 +23,10 @@
     "test": "vitest --sequence.concurrent=false --no-file-parallelism"
   },
   "dependencies": {
-    "@trigger.dev/core": "workspace:4.0.0-v4-beta.18",
+    "@trigger.dev/core": "workspace:4.0.0-v4-beta.21",
     "lodash.omit": "^4.5.0",
     "nanoid": "^5.0.7",
     "p-limit": "^6.2.0",
-    "prom-client": "^15.1.0",
     "zod": "3.23.8"
   },
   "devDependencies": {

@@ -43,14 +43,9 @@ import { updateTriggerPackages } from "./update.js";
 const DeployCommandOptions = CommonCommandOptions.extend({
   dryRun: z.boolean().default(false),
   skipSyncEnvVars: z.boolean().default(false),
-  env: z.enum(["prod", "staging", "preview"]),
+  env: z.enum(["prod", "staging", "preview", "production"]),
   branch: z.string().optional(),
-  loadImage: z.boolean().default(false),
-  buildPlatform: z.enum(["linux/amd64", "linux/arm64"]).default("linux/amd64"),
-  namespace: z.string().optional(),
-  selfHosted: z.boolean().default(false),
-  registry: z.string().optional(),
-  push: z.boolean().default(false),
+  load: z.boolean().optional(),
   config: z.string().optional(),
   projectRef: z.string().optional(),
   saveLogs: z.boolean().default(false),
@@ -58,7 +53,10 @@ const DeployCommandOptions = CommonCommandOptions.extend({
   skipPromotion: z.boolean().default(false),
   noCache: z.boolean().default(false),
   envFile: z.string().optional(),
+  // Local build options
   network: z.enum(["default", "none", "host"]).optional(),
+  push: z.boolean().optional(),
+  builder: z.string().default("trigger"),
 });
 
 type DeployCommandOptions = z.infer<typeof DeployCommandOptions>;
@@ -66,103 +64,89 @@ type DeployCommandOptions = z.infer<typeof DeployCommandOptions>;
 type Deployment = InitializeDeploymentResponseBody;
 
 export function configureDeployCommand(program: Command) {
-  return commonOptions(
-    program
-      .command("deploy")
-      .description("Deploy your Trigger.dev v3 project to the cloud.")
-      .argument("[path]", "The path to the project", ".")
-      .option(
-        "-e, --env <env>",
-        "Deploy to a specific environment (currently only prod and staging are supported)",
-        "prod"
+  return (
+    commonOptions(
+      program
+        .command("deploy")
+        .description("Deploy your Trigger.dev v3 project to the cloud.")
+        .argument("[path]", "The path to the project", ".")
+        .option(
+          "-e, --env <env>",
+          "Deploy to a specific environment (currently only prod and staging are supported)",
+          "prod"
+        )
+        .option(
+          "-b, --branch <branch>",
+          "The preview branch to deploy to when passing --env preview. If not provided, we'll detect your git branch."
+        )
+        .option("--skip-update-check", "Skip checking for @trigger.dev package updates")
+        .option("-c, --config <config file>", "The name of the config file, found at [path]")
+        .option(
+          "-p, --project-ref <project ref>",
+          "The project ref. Required if there is no config file. This will override the project specified in the config file."
+        )
+        .option(
+          "--dry-run",
+          "Do a dry run of the deployment. This will not actually deploy the project, but will show you what would be deployed."
+        )
+        .option(
+          "--skip-sync-env-vars",
+          "Skip syncing environment variables when using the syncEnvVars extension."
+        )
+        .option(
+          "--env-file <env file>",
+          "Path to the .env file to load into the CLI process. Defaults to .env in the project directory."
+        )
+        .option(
+          "--skip-promotion",
+          "Skip promoting the deployment to the current deployment for the environment."
+        )
+    )
+      .addOption(
+        new CommandOption(
+          "--no-cache",
+          "Do not use the cache when building the image. This will slow down the build process but can be useful if you are experiencing issues with the cache."
+        ).hideHelp()
       )
-      .option(
-        "-b, --branch <branch>",
-        "The preview branch to deploy to when passing --env preview. If not provided, we'll detect your git branch."
+      .addOption(
+        new CommandOption("--load", "Load the built image into your local docker").hideHelp()
       )
-      .option("--skip-update-check", "Skip checking for @trigger.dev package updates")
-      .option("-c, --config <config file>", "The name of the config file, found at [path]")
-      .option(
-        "-p, --project-ref <project ref>",
-        "The project ref. Required if there is no config file. This will override the project specified in the config file."
+      .addOption(
+        new CommandOption(
+          "--no-load",
+          "Do not load the built image into your local docker"
+        ).hideHelp()
       )
-      .option(
-        "--dry-run",
-        "Do a dry run of the deployment. This will not actually deploy the project, but will show you what would be deployed."
+      .addOption(
+        new CommandOption(
+          "--save-logs",
+          "If provided, will save logs even for successful builds"
+        ).hideHelp()
       )
-      .option(
-        "--skip-sync-env-vars",
-        "Skip syncing environment variables when using the syncEnvVars extension."
+      // Local build options
+      .addOption(new CommandOption("--push", "Push the image after local builds").hideHelp())
+      .addOption(
+        new CommandOption("--no-push", "Do not push the image after local builds").hideHelp()
       )
-      .option(
-        "--env-file <env file>",
-        "Path to the .env file to load into the CLI process. Defaults to .env in the project directory."
+      .addOption(
+        new CommandOption(
+          "--network <mode>",
+          "The networking mode for RUN instructions when building locally"
+        ).hideHelp()
       )
-      .option(
-        "--skip-promotion",
-        "Skip promoting the deployment to the current deployment for the environment."
+      .addOption(
+        new CommandOption(
+          "--builder <builder>",
+          "The builder to use when building locally"
+        ).hideHelp()
       )
-  )
-    .addOption(
-      new CommandOption(
-        "--self-hosted",
-        "Build and load the image using your local Docker. Use the --registry option to specify the registry to push the image to when using --self-hosted, or just use --push to push to the default registry."
-      ).hideHelp()
-    )
-    .addOption(
-      new CommandOption(
-        "--no-cache",
-        "Do not use the cache when building the image. This will slow down the build process but can be useful if you are experiencing issues with the cache."
-      ).hideHelp()
-    )
-    .addOption(
-      new CommandOption(
-        "--push",
-        "When using the --self-hosted flag, push the image to the default registry. (defaults to false when not using --registry)"
-      ).hideHelp()
-    )
-    .addOption(
-      new CommandOption(
-        "--registry <registry>",
-        "The registry to push the image to when using --self-hosted"
-      ).hideHelp()
-    )
-    .addOption(
-      new CommandOption(
-        "--tag <tag>",
-        "(Coming soon) Specify the tag to use when pushing the image to the registry"
-      ).hideHelp()
-    )
-    .addOption(
-      new CommandOption(
-        "--namespace <namespace>",
-        "Specify the namespace to use when pushing the image to the registry"
-      ).hideHelp()
-    )
-    .addOption(
-      new CommandOption("--load-image", "Load the built image into your local docker").hideHelp()
-    )
-    .addOption(
-      new CommandOption(
-        "--build-platform <platform>",
-        "The platform to build the deployment image for"
-      )
-        .default("linux/amd64")
-        .hideHelp()
-    )
-    .addOption(
-      new CommandOption(
-        "--save-logs",
-        "If provided, will save logs even for successful builds"
-      ).hideHelp()
-    )
-    .option("--network <mode>", "The networking mode for RUN instructions when using --self-hosted")
-    .action(async (path, options) => {
-      await handleTelemetry(async () => {
-        await printStandloneInitialBanner(true);
-        await deployCommand(path, options);
-      });
-    });
+      .action(async (path, options) => {
+        await handleTelemetry(async () => {
+          await printStandloneInitialBanner(true);
+          await deployCommand(path, options);
+        });
+      })
+  );
 }
 
 export async function deployCommand(dir: string, options: unknown) {
@@ -201,6 +185,11 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     }
   }
 
+  //coerce env from production to prod
+  if (options.env === "production") {
+    options.env = "prod";
+  }
+
   const envVars = resolveLocalEnvVars(options.envFile);
 
   if (envVars.TRIGGER_PROJECT_REF) {
@@ -220,6 +209,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
 
   const branch =
     options.env === "preview" ? getBranch({ specified: options.branch, gitMeta }) : undefined;
+
   if (options.env === "preview" && !branch) {
     throw new Error(
       "Didn't auto-detect preview branch, so you need to specify one. Pass --branch <branch>."
@@ -319,9 +309,6 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   const deploymentResponse = await projectClient.client.initializeDeployment({
     contentHash: buildManifest.contentHash,
     userId: authorization.userId,
-    selfHosted: options.selfHosted,
-    registryHost: options.registry,
-    namespace: options.namespace,
     gitMeta,
     type: features.run_engine_v2 ? "MANAGED" : "V1",
   });
@@ -331,16 +318,10 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   }
 
   const deployment = deploymentResponse.data;
+  const isLocalBuild = !deployment.externalBuildData;
 
-  // If the deployment doesn't have any externalBuildData, then we can't use the remote image builder
-  // TODO: handle this and allow the user to the build and push the image themselves
-  if (!deployment.externalBuildData && !options.selfHosted) {
-    throw new Error(
-      `Failed to start deployment, as your instance of trigger.dev does not support hosting. To deploy this project, you must use the --self-hosted flag to build and push the image yourself.`
-    );
-  }
-
-  if (options.selfHosted) {
+  // Fail fast if we know local builds will fail
+  if (isLocalBuild) {
     const result = await x("docker", ["buildx", "version"]);
 
     if (result.exitCode !== 0) {
@@ -351,31 +332,37 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     }
   }
 
-  if (
-    buildManifest.deploy.sync &&
-    buildManifest.deploy.sync.env &&
-    Object.keys(buildManifest.deploy.sync.env).length > 0
-  ) {
-    const numberOfEnvVars = Object.keys(buildManifest.deploy.sync.env).length;
+  const hasVarsToSync =
+    Object.keys(buildManifest.deploy.sync?.env || {}).length > 0 ||
+    // Only sync parent variables if this is a branch environment
+    (branch && Object.keys(buildManifest.deploy.sync?.parentEnv || {}).length > 0);
+
+  if (hasVarsToSync) {
+    const childVars = buildManifest.deploy.sync?.env ?? {};
+    const parentVars = buildManifest.deploy.sync?.parentEnv ?? {};
+
+    const numberOfEnvVars = Object.keys(childVars).length + Object.keys(parentVars).length;
     const vars = numberOfEnvVars === 1 ? "var" : "vars";
 
     if (!options.skipSyncEnvVars) {
       const $spinner = spinner();
       $spinner.start(`Syncing ${numberOfEnvVars} env ${vars} with the server`);
-      const success = await syncEnvVarsWithServer(
+
+      const uploadResult = await syncEnvVarsWithServer(
         projectClient.client,
         resolvedConfig.project,
         options.env,
-        buildManifest.deploy.sync.env
+        childVars,
+        parentVars
       );
 
-      if (!success) {
+      if (!uploadResult.success) {
         await failDeploy(
           projectClient.client,
           deployment,
           {
             name: "SyncEnvVarsError",
-            message: `Failed to sync ${numberOfEnvVars} env ${vars} with the server`,
+            message: `Failed to sync ${numberOfEnvVars} env ${vars} with the server: ${uploadResult.error}`,
           },
           "",
           $spinner
@@ -412,20 +399,14 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     }
   }
 
-  const selfHostedRegistryHost = deployment.registryHost ?? options.registry;
-  const registryHost = selfHostedRegistryHost ?? "registry.trigger.dev";
-
   const buildResult = await buildImage({
-    selfHosted: options.selfHosted,
-    buildPlatform: options.buildPlatform,
+    isLocalBuild,
     noCache: options.noCache,
-    push: options.push,
-    registryHost,
-    registry: options.registry,
     deploymentId: deployment.id,
     deploymentVersion: deployment.version,
     imageTag: deployment.imageTag,
-    loadImage: options.loadImage,
+    imagePlatform: deployment.imagePlatform,
+    load: options.load,
     contentHash: deployment.contentHash,
     externalBuildId: deployment.externalBuildData?.buildId,
     externalBuildToken: deployment.externalBuildData?.buildToken,
@@ -438,7 +419,6 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     authAccessToken: authorization.auth.accessToken,
     compilationPath: destination.path,
     buildEnvVars: buildManifest.build.env,
-    network: options.network,
     onLog: (logMessage) => {
       if (isCI) {
         console.log(logMessage);
@@ -451,6 +431,10 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
         $spinner.message(`Building version ${version}: ${logMessage}`);
       }
     },
+    // Local build options
+    network: options.network,
+    builder: options.builder,
+    push: options.push,
   });
 
   logger.debug("Build result", buildResult);
@@ -495,28 +479,29 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
       $spinner
     );
 
-    throw new SkipLoggingError("Failed to get deployment with worker");
+    throw new SkipLoggingError(getDeploymentResponse.error);
   }
 
   const deploymentWithWorker = getDeploymentResponse.data;
 
   if (!deploymentWithWorker.worker) {
+    const errorData = deploymentWithWorker.errorData
+      ? prepareDeploymentError(deploymentWithWorker.errorData)
+      : undefined;
+
     await failDeploy(
       projectClient.client,
       deployment,
-      { name: "DeploymentError", message: "Failed to get deployment with worker" },
+      {
+        name: "DeploymentError",
+        message: errorData?.message ?? "Failed to get deployment with worker",
+      },
       buildResult.logs,
       $spinner
     );
 
-    throw new SkipLoggingError("Failed to get deployment with worker");
+    throw new SkipLoggingError(errorData?.message ?? "Failed to get deployment with worker");
   }
-
-  const imageReference = options.selfHosted
-    ? `${selfHostedRegistryHost ? `${selfHostedRegistryHost}/` : ""}${buildResult.image}${
-        buildResult.digest ? `@${buildResult.digest}` : ""
-      }`
-    : `${buildResult.image}${buildResult.digest ? `@${buildResult.digest}` : ""}`;
 
   if (isCI) {
     log.step(`Deploying version ${version}\n`);
@@ -531,8 +516,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   const finalizeResponse = await projectClient.client.finalizeDeployment(
     deployment.id,
     {
-      imageReference,
-      selfHosted: options.selfHosted,
+      imageDigest: buildResult.digest,
       skipPromotion: options.skipPromotion,
     },
     (logMessage) => {
@@ -583,6 +567,11 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     console.log(rawTestLink);
   }
 
+  if (options.saveLogs) {
+    const logPath = await saveLogs(deployment.shortCode, buildResult.logs);
+    console.log(`Full build logs have been saved to ${logPath}`);
+  }
+
   setGithubActionsOutputAndEnvVars({
     envVars: {
       TRIGGER_DEPLOYMENT_VERSION: version,
@@ -610,14 +599,14 @@ export async function syncEnvVarsWithServer(
   apiClient: CliApiClient,
   projectRef: string,
   environmentSlug: string,
-  envVars: Record<string, string>
+  envVars: Record<string, string>,
+  parentEnvVars?: Record<string, string>
 ) {
-  const uploadResult = await apiClient.importEnvVars(projectRef, environmentSlug, {
+  return await apiClient.importEnvVars(projectRef, environmentSlug, {
     variables: envVars,
+    parentVariables: parentEnvVars,
     override: true,
   });
-
-  return uploadResult.success;
 }
 
 async function failDeploy(
@@ -629,6 +618,8 @@ async function failDeploy(
   warnings?: string[],
   errors?: string[]
 ) {
+  logger.debug("failDeploy", { error, logs, warnings, errors });
+
   $spinner.stop(`Failed to deploy project`);
 
   const doOutputLogs = async (prefix: string = "Error") => {
@@ -645,8 +636,21 @@ async function failDeploy(
           error.message
         }. Full build logs have been saved to ${logPath}`
       );
+
+      // Display the last few lines of the logs, remove #-prefixed ones
+      const lastFewLines = logs
+        .split("\n")
+        .filter((line) => !line.startsWith("#"))
+        .filter((line) => line.trim() !== "")
+        .slice(-5)
+        .join("\n");
+
+      if (lastFewLines.trim() !== "") {
+        console.log("Last few lines of logs:\n");
+        console.log(lastFewLines);
+      }
     } else {
-      outro(`${chalkError(`${prefix}:`)} ${error.message}.`);
+      outro(`${chalkError(`${prefix}:`)} ${error.message}`);
     }
   };
 
@@ -688,7 +692,7 @@ async function failDeploy(
           : undefined;
 
         if (errorData) {
-          prettyError(errorData.name, errorData.stack, errorData.stderr);
+          prettyError(errorData.message, errorData.stack, errorData.stderr);
 
           if (logs.trim() !== "") {
             const logPath = await saveLogs(deployment.shortCode, logs);

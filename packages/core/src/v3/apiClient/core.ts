@@ -17,7 +17,7 @@ import {
   OffsetLimitPageParams,
   OffsetLimitPageResponse,
 } from "./pagination.js";
-import { EventSource } from "eventsource";
+import { EventSource, type ErrorEvent } from "eventsource";
 
 export const defaultRetryOptions = {
   maxAttempts: 3,
@@ -665,7 +665,7 @@ export class ZodFetchSSEResult<TMessageCatalog extends ZodFetchSSEMessageCatalog
     });
   }
 
-  public onConnectionError(handler: (error: Event) => void) {
+  public onConnectionError(handler: (error: ErrorEvent) => void) {
     this._eventSource.onerror = handler;
   }
 

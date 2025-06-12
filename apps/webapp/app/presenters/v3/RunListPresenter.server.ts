@@ -1,12 +1,13 @@
 import { Prisma, type TaskRunStatus } from "@trigger.dev/database";
 import parse from "parse-duration";
-import { sqlDatabaseSchema } from "~/db.server";
-import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
-import { isCancellableRunStatus, isFinalRunStatus, isPendingRunStatus } from "~/v3/taskStatus";
-import { BasePresenter } from "./basePresenter.server";
-import { getAllTaskIdentifiers } from "~/models/task.server";
 import { type Direction } from "~/components/ListPagination";
 import { timeFilters } from "~/components/runs/v3/SharedFilters";
+import { sqlDatabaseSchema } from "~/db.server";
+import { findDisplayableEnvironment } from "~/models/runtimeEnvironment.server";
+import { getAllTaskIdentifiers } from "~/models/task.server";
+import { isCancellableRunStatus, isFinalRunStatus, isPendingRunStatus } from "~/v3/taskStatus";
+import { BasePresenter } from "./basePresenter.server";
+import { ServiceValidationError } from "~/v3/services/baseService.server";
 
 export type RunListOptions = {
   userId?: string;
@@ -15,7 +16,6 @@ export type RunListOptions = {
   tasks?: string[];
   versions?: string[];
   statuses?: TaskRunStatus[];
-  environments?: string[];
   tags?: string[];
   scheduleId?: string;
   period?: string;
@@ -39,27 +39,29 @@ export type RunListItem = RunList["runs"][0];
 export type RunListAppliedFilters = RunList["filters"];
 
 export class RunListPresenter extends BasePresenter {
-  public async call({
-    userId,
-    projectId,
-    tasks,
-    versions,
-    statuses,
-    environments,
-    tags,
-    scheduleId,
-    period,
-    bulkId,
-    isTest,
-    rootOnly,
-    batchId,
-    runIds,
-    from,
-    to,
-    direction = "forward",
-    cursor,
-    pageSize = DEFAULT_PAGE_SIZE,
-  }: RunListOptions) {
+  public async call(
+    environmentId: string,
+    {
+      userId,
+      projectId,
+      tasks,
+      versions,
+      statuses,
+      tags,
+      scheduleId,
+      period,
+      bulkId,
+      isTest,
+      rootOnly,
+      batchId,
+      runIds,
+      from,
+      to,
+      direction = "forward",
+      cursor,
+      pageSize = DEFAULT_PAGE_SIZE,
+    }: RunListOptions
+  ) {
     //get the time values from the raw values (including a default period)
     const time = timeFilters({
       period,
@@ -82,38 +84,11 @@ export class RunListPresenter extends BasePresenter {
       rootOnly === true ||
       !time.isDefault;
 
-    // Find the project scoped to the organization
-    const project = await this._replica.project.findFirstOrThrow({
-      select: {
-        id: true,
-        environments: {
-          select: {
-            id: true,
-            type: true,
-            slug: true,
-            orgMember: {
-              select: {
-                user: {
-                  select: {
-                    id: true,
-                    name: true,
-                    displayName: true,
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-      where: {
-        id: projectId,
-      },
-    });
-
     //get all possible tasks
-    const possibleTasksAsync = getAllTaskIdentifiers(this._replica, project.id);
+    const possibleTasksAsync = getAllTaskIdentifiers(this._replica, environmentId);
 
     //get possible bulk actions
+    // TODO: we should replace this with the new bulk stuff and make it environment scoped
     const bulkActionsAsync = this._replica.bulkActionGroup.findMany({
       select: {
         friendlyId: true,
@@ -121,7 +96,7 @@ export class RunListPresenter extends BasePresenter {
         createdAt: true,
       },
       where: {
-        projectId: project.id,
+        projectId: projectId,
       },
       orderBy: {
         createdAt: "desc",
@@ -129,7 +104,15 @@ export class RunListPresenter extends BasePresenter {
       take: 20,
     });
 
-    const [possibleTasks, bulkActions] = await Promise.all([possibleTasksAsync, bulkActionsAsync]);
+    const [possibleTasks, bulkActions, displayableEnvironment] = await Promise.all([
+      possibleTasksAsync,
+      bulkActionsAsync,
+      findDisplayableEnvironment(environmentId, userId),
+    ]);
+
+    if (!displayableEnvironment) {
+      throw new ServiceValidationError("No environment found");
+    }
 
     //we can restrict to specific runs using bulkId, or batchId
     let restrictToRunIds: undefined | string[] = undefined;
@@ -163,6 +146,7 @@ export class RunListPresenter extends BasePresenter {
         },
         where: {
           friendlyId: batchId,
+          runtimeEnvironmentId: environmentId,
         },
       });
 
@@ -179,6 +163,7 @@ export class RunListPresenter extends BasePresenter {
         },
         where: {
           friendlyId: scheduleId,
+          projectId: projectId,
         },
       });
 
@@ -202,7 +187,6 @@ export class RunListPresenter extends BasePresenter {
         runFriendlyId: string;
         taskIdentifier: string;
         version: string | null;
-        runtimeEnvironmentId: string;
         status: TaskRunStatus;
         createdAt: Date;
         startedAt: Date | null;
@@ -231,8 +215,7 @@ export class RunListPresenter extends BasePresenter {
     tr.number,
     tr."friendlyId" AS "runFriendlyId",
     tr."taskIdentifier" AS "taskIdentifier",
-    bw.version AS version,
-    tr."runtimeEnvironmentId" AS "runtimeEnvironmentId",
+    tr."taskVersion" AS version,
     tr.status AS status,
     tr."createdAt" AS "createdAt",
     tr."startedAt" AS "startedAt",
@@ -255,11 +238,9 @@ export class RunListPresenter extends BasePresenter {
     tr."metadataType" AS "metadataType"
 FROM
     ${sqlDatabaseSchema}."TaskRun" tr
-LEFT JOIN
-    ${sqlDatabaseSchema}."BackgroundWorker" bw ON tr."lockedToVersionId" = bw.id
 WHERE
     -- project
-    tr."projectId" = ${project.id}
+    tr."runtimeEnvironmentId" = ${environmentId}
     -- cursor
     ${
       cursor
@@ -288,11 +269,6 @@ WHERE
         ? Prisma.sql`AND tr.status = ANY(ARRAY[${Prisma.join(statuses)}]::"TaskRunStatus"[])`
         : Prisma.empty
     }
-    ${
-      environments && environments.length > 0
-        ? Prisma.sql`AND tr."runtimeEnvironmentId" IN (${Prisma.join(environments)})`
-        : Prisma.empty
-    }
     ${scheduleId ? Prisma.sql`AND tr."scheduleId" = ${scheduleId}` : Prisma.empty}
     ${typeof isTest === "boolean" ? Prisma.sql`AND tr."isTest" = ${isTest}` : Prisma.empty}
     ${
@@ -314,8 +290,6 @@ WHERE
         : Prisma.empty
     }
     ${rootOnly === true ? Prisma.sql`AND tr."rootTaskRunId" IS NULL` : Prisma.empty}
-    GROUP BY
-      tr.id, bw.version
     ORDER BY
         ${direction === "forward" ? Prisma.sql`tr.id DESC` : Prisma.sql`tr.id ASC`}
     LIMIT ${pageSize + 1}`;
@@ -350,12 +324,7 @@ WHERE
     if (!hasAnyRuns) {
       const firstRun = await this._replica.taskRun.findFirst({
         where: {
-          projectId: project.id,
-          runtimeEnvironmentId: environments
-            ? {
-                in: environments,
-              }
-            : undefined,
+          runtimeEnvironmentId: environmentId,
         },
       });
 
@@ -366,12 +335,6 @@ WHERE
 
     return {
       runs: runsToReturn.map((run) => {
-        const environment = project.environments.find((env) => env.id === run.runtimeEnvironmentId);
-
-        if (!environment) {
-          throw new Error(`Environment not found for TaskRun ${run.id}`);
-        }
-
         const hasFinished = isFinalRunStatus(run.status);
 
         const startedAt = run.startedAt ?? run.lockedAt;
@@ -396,7 +359,7 @@ WHERE
           isReplayable: true,
           isCancellable: isCancellableRunStatus(run.status),
           isPending: isPendingRunStatus(run.status),
-          environment: displayableEnvironment(environment, userId),
+          environment: displayableEnvironment,
           idempotencyKey: run.idempotencyKey ? run.idempotencyKey : undefined,
           ttl: run.ttl ? run.ttl : undefined,
           expiredAt: run.expiredAt ? run.expiredAt.toISOString() : undefined,
@@ -428,7 +391,6 @@ WHERE
         tasks: tasks || [],
         versions: versions || [],
         statuses: statuses || [],
-        environments: environments || [],
         from: time.from,
         to: time.to,
       },

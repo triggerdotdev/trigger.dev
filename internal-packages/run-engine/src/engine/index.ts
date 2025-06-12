@@ -1,5 +1,5 @@
 import { createRedisClient, Redis } from "@internal/redis";
-import { startSpan, trace, Tracer } from "@internal/tracing";
+import { getMeter, Meter, startSpan, trace, Tracer } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
 import {
   CheckpointInput,
@@ -7,12 +7,11 @@ import {
   CreateCheckpointResult,
   DequeuedMessage,
   ExecutionResult,
-  MachineResources,
   RunExecutionData,
   StartRunAttemptResult,
   TaskRunExecutionResult,
 } from "@trigger.dev/core/v3";
-import { BatchId, RunId, WaitpointId } from "@trigger.dev/core/v3/isomorphic";
+import { RunId, WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import {
   Prisma,
   PrismaClient,
@@ -37,12 +36,13 @@ import { DelayedRunSystem } from "./systems/delayedRunSystem.js";
 import { DequeueSystem } from "./systems/dequeueSystem.js";
 import { EnqueueSystem } from "./systems/enqueueSystem.js";
 import {
-  ExecutionSnapshotSystem,
-  getLatestExecutionSnapshot,
-  getExecutionSnapshotsSince,
   executionDataFromSnapshot,
+  ExecutionSnapshotSystem,
+  getExecutionSnapshotsSince,
+  getLatestExecutionSnapshot,
 } from "./systems/executionSnapshotSystem.js";
 import { PendingVersionSystem } from "./systems/pendingVersionSystem.js";
+import { RaceSimulationSystem } from "./systems/raceSimulationSystem.js";
 import { ReleaseConcurrencySystem } from "./systems/releaseConcurrencySystem.js";
 import { RunAttemptSystem } from "./systems/runAttemptSystem.js";
 import { SystemResources } from "./systems/systems.js";
@@ -50,14 +50,14 @@ import { TtlSystem } from "./systems/ttlSystem.js";
 import { WaitpointSystem } from "./systems/waitpointSystem.js";
 import { EngineWorker, HeartbeatTimeouts, RunEngineOptions, TriggerParams } from "./types.js";
 import { workerCatalog } from "./workerCatalog.js";
-import { RaceSimulationSystem } from "./systems/raceSimulationSystem.js";
 
 export class RunEngine {
   private runLockRedis: Redis;
   private runLock: RunLocker;
   private worker: EngineWorker;
-  private logger = new Logger("RunEngine", "debug");
+  private logger: Logger;
   private tracer: Tracer;
+  private meter: Meter;
   private heartbeatTimeouts: HeartbeatTimeouts;
 
   prisma: PrismaClient;
@@ -77,6 +77,7 @@ export class RunEngine {
   raceSimulationSystem: RaceSimulationSystem = new RaceSimulationSystem();
 
   constructor(private readonly options: RunEngineOptions) {
+    this.logger = options.logger ?? new Logger("RunEngine", this.options.logLevel ?? "info");
     this.prisma = options.prisma;
     this.runLockRedis = createRedisClient(
       {
@@ -96,6 +97,7 @@ export class RunEngine {
       redis: this.runLockRedis,
       logger: this.logger,
       tracer: trace.getTracer("RunLocker"),
+      meter: options.meter,
     });
 
     const keys = new RunQueueFullKeyProducer();
@@ -110,13 +112,26 @@ export class RunEngine {
         defaultEnvConcurrencyLimit: options.queue?.defaultEnvConcurrency ?? 10,
       }),
       defaultEnvConcurrency: options.queue?.defaultEnvConcurrency ?? 10,
-      logger: new Logger("RunQueue", "debug"),
+      logger: new Logger("RunQueue", this.options.logLevel ?? "info"),
       redis: { ...options.queue.redis, keyPrefix: `${options.queue.redis.keyPrefix}runqueue:` },
       retryOptions: options.queue?.retryOptions,
+      workerOptions: {
+        disabled: options.worker.disabled,
+        concurrency: options.worker,
+        pollIntervalMs: options.worker.pollIntervalMs,
+        immediatePollIntervalMs: options.worker.immediatePollIntervalMs,
+        shutdownTimeoutMs: options.worker.shutdownTimeoutMs,
+      },
+      shardCount: options.queue?.shardCount,
+      masterQueueConsumersDisabled: options.queue?.masterQueueConsumersDisabled,
+      masterQueueConsumersIntervalMs: options.queue?.masterQueueConsumersIntervalMs,
+      processWorkerQueueDebounceMs: options.queue?.processWorkerQueueDebounceMs,
+      dequeueBlockingTimeoutSeconds: options.queue?.dequeueBlockingTimeoutSeconds,
+      meter: options.meter,
     });
 
     this.worker = new Worker({
-      name: "worker",
+      name: "run-engine-worker",
       redisOptions: {
         ...options.worker.redis,
         keyPrefix: `${options.worker.redis.keyPrefix}worker:`,
@@ -176,6 +191,7 @@ export class RunEngine {
     }
 
     this.tracer = options.tracer;
+    this.meter = options.meter ?? getMeter("run-engine");
 
     const defaultHeartbeatTimeouts: HeartbeatTimeouts = {
       PENDING_EXECUTING: 60_000,
@@ -195,6 +211,7 @@ export class RunEngine {
       eventBus: this.eventBus,
       logger: this.logger,
       tracer: this.tracer,
+      meter: this.meter,
       runLock: this.runLock,
       runQueue: this.runQueue,
       raceSimulationSystem: this.raceSimulationSystem,
@@ -228,6 +245,7 @@ export class RunEngine {
               pollInterval: options.releaseConcurrency?.pollInterval ?? 1000,
               batchSize: options.releaseConcurrency?.batchSize ?? 10,
               tracer: this.tracer,
+              meter: this.meter,
             },
     });
 
@@ -318,7 +336,7 @@ export class RunEngine {
       sdkVersion,
       cliVersion,
       concurrencyKey,
-      masterQueue,
+      workerQueue,
       queue,
       lockedQueueId,
       isTest,
@@ -359,22 +377,6 @@ export class RunEngine {
       async (span) => {
         const status = delayUntil ? "DELAYED" : "PENDING";
 
-        let secondaryMasterQueue: string | undefined = undefined;
-
-        if (environment.type === "DEVELOPMENT") {
-          // In dev we use the environment id as the master queue, or the locked worker id
-          masterQueue = this.#environmentMasterQueueKey(environment.id);
-          if (lockedToVersionId) {
-            masterQueue = this.#backgroundWorkerQueueKey(lockedToVersionId);
-          }
-        } else {
-          // For deployed runs, we add the env/worker id as the secondary master queue
-          secondaryMasterQueue = this.#environmentMasterQueueKey(environment.id);
-          if (lockedToVersionId) {
-            secondaryMasterQueue = this.#backgroundWorkerQueueKey(lockedToVersionId);
-          }
-        }
-
         //create run
         let taskRun: TaskRun;
         try {
@@ -406,8 +408,7 @@ export class RunEngine {
               concurrencyKey,
               queue,
               lockedQueueId,
-              masterQueue,
-              secondaryMasterQueue,
+              workerQueue,
               isTest,
               delayUntil,
               queuedAt,
@@ -557,45 +558,46 @@ export class RunEngine {
   /**
    * Gets a fairly selected run from the specified master queue, returning the information required to run it.
    * @param consumerId: The consumer that is pulling, allows multiple consumers to pull from the same queue
-   * @param masterQueue: The shared queue to pull from, can be an individual environment (for dev)
+   * @param workerQueue: The worker queue to pull from, can be an individual environment (for dev)
    * @returns
    */
-  async dequeueFromMasterQueue({
+  async dequeueFromWorkerQueue({
     consumerId,
-    masterQueue,
-    maxRunCount,
-    maxResources,
+    workerQueue,
     backgroundWorkerId,
     workerId,
     runnerId,
     tx,
   }: {
     consumerId: string;
-    masterQueue: string;
-    maxRunCount: number;
-    maxResources?: MachineResources;
+    workerQueue: string;
     backgroundWorkerId?: string;
     workerId?: string;
     runnerId?: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<DequeuedMessage[]> {
-    return this.dequeueSystem.dequeueFromMasterQueue({
+    // We only do this with "prod" worker queues because we don't want to observe dev (e.g. environment) worker queues
+    this.runQueue.registerObservableWorkerQueue(workerQueue);
+
+    const dequeuedMessage = await this.dequeueSystem.dequeueFromWorkerQueue({
       consumerId,
-      masterQueue,
-      maxRunCount,
-      maxResources,
+      workerQueue,
       backgroundWorkerId,
       workerId,
       runnerId,
       tx,
     });
+
+    if (!dequeuedMessage) {
+      return [];
+    }
+
+    return [dequeuedMessage];
   }
 
-  async dequeueFromEnvironmentMasterQueue({
+  async dequeueFromEnvironmentWorkerQueue({
     consumerId,
     environmentId,
-    maxRunCount,
-    maxResources,
     backgroundWorkerId,
     workerId,
     runnerId,
@@ -603,47 +605,14 @@ export class RunEngine {
   }: {
     consumerId: string;
     environmentId: string;
-    maxRunCount: number;
-    maxResources?: MachineResources;
     backgroundWorkerId?: string;
     workerId?: string;
     runnerId?: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<DequeuedMessage[]> {
-    return this.dequeueFromMasterQueue({
+    return this.dequeueFromWorkerQueue({
       consumerId,
-      masterQueue: this.#environmentMasterQueueKey(environmentId),
-      maxRunCount,
-      maxResources,
-      backgroundWorkerId,
-      workerId,
-      runnerId,
-      tx,
-    });
-  }
-
-  async dequeueFromBackgroundWorkerMasterQueue({
-    consumerId,
-    backgroundWorkerId,
-    maxRunCount,
-    maxResources,
-    workerId,
-    runnerId,
-    tx,
-  }: {
-    consumerId: string;
-    backgroundWorkerId: string;
-    maxRunCount: number;
-    maxResources?: MachineResources;
-    workerId?: string;
-    runnerId?: string;
-    tx?: PrismaClientOrTransaction;
-  }): Promise<DequeuedMessage[]> {
-    return this.dequeueFromMasterQueue({
-      consumerId,
-      masterQueue: this.#backgroundWorkerQueueKey(backgroundWorkerId),
-      maxRunCount,
-      maxResources,
+      workerQueue: environmentId,
       backgroundWorkerId,
       workerId,
       runnerId,
@@ -779,16 +748,16 @@ export class RunEngine {
   }
 
   async removeEnvironmentQueuesFromMasterQueue({
-    masterQueue,
+    runtimeEnvironmentId,
     organizationId,
     projectId,
   }: {
-    masterQueue: string;
+    runtimeEnvironmentId: string;
     organizationId: string;
     projectId: string;
   }) {
     return this.runQueue.removeEnvironmentQueuesFromMasterQueue(
-      masterQueue,
+      runtimeEnvironmentId,
       organizationId,
       projectId
     );
@@ -1128,6 +1097,39 @@ export class RunEngine {
     return this.raceSimulationSystem.registerRacepointForRun({ runId, waitInterval });
   }
 
+  async migrateLegacyMasterQueues() {
+    const workerGroups = await this.prisma.workerInstanceGroup.findMany({
+      where: {
+        type: "MANAGED",
+      },
+      select: {
+        id: true,
+        name: true,
+        masterQueue: true,
+      },
+    });
+
+    this.logger.info("Migrating legacy master queues", {
+      workerGroups,
+    });
+
+    for (const workerGroup of workerGroups) {
+      this.logger.info("Migrating legacy master queue", {
+        workerGroupId: workerGroup.id,
+        workerGroupName: workerGroup.name,
+        workerGroupMasterQueue: workerGroup.masterQueue,
+      });
+
+      await this.runQueue.migrateLegacyMasterQueue(workerGroup.masterQueue);
+
+      this.logger.info("Migrated legacy master queue", {
+        workerGroupId: workerGroup.id,
+        workerGroupName: workerGroup.name,
+        workerGroupMasterQueue: workerGroup.masterQueue,
+      });
+    }
+  }
+
   async quit() {
     try {
       //stop the run queue
@@ -1317,13 +1319,5 @@ export class RunEngine {
         }
       }
     });
-  }
-
-  #environmentMasterQueueKey(environmentId: string) {
-    return `master-env:${environmentId}`;
-  }
-
-  #backgroundWorkerQueueKey(backgroundWorkerId: string) {
-    return `master-background-worker:${backgroundWorkerId}`;
   }
 }

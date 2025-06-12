@@ -12,9 +12,9 @@ import { env } from "node:process";
 import { Buffer } from "node:buffer";
 import { trace, context } from "@opentelemetry/api";
 
-export type LogLevel = "log" | "error" | "warn" | "info" | "debug";
+export type LogLevel = "log" | "error" | "warn" | "info" | "debug" | "verbose";
 
-const logLevels: Array<LogLevel> = ["log", "error", "warn", "info", "debug"];
+const logLevels: Array<LogLevel> = ["log", "error", "warn", "info", "debug", "verbose"];
 
 export class Logger {
   #name: string;
@@ -85,6 +85,12 @@ export class Logger {
     if (this.#level < 4) return;
 
     this.#structuredLog(console.debug, message, "debug", ...args);
+  }
+
+  verbose(message: string, ...args: Array<Record<string, unknown> | undefined>) {
+    if (this.#level < 5) return;
+
+    this.#structuredLog(console.log, message, "verbose", ...args);
   }
 
   #structuredLog(

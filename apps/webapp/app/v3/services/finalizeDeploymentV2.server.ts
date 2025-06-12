@@ -8,6 +8,7 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { env } from "~/env.server";
 import { depot as execDepot } from "@depot/cli";
 import { FinalizeDeploymentService } from "./finalizeDeployment.server";
+import { remoteBuildsEnabled } from "../remoteImageBuilder.server";
 
 export class FinalizeDeploymentV2Service extends BaseService {
   public async call(
@@ -16,10 +17,9 @@ export class FinalizeDeploymentV2Service extends BaseService {
     body: FinalizeDeploymentRequestBody,
     writer?: WritableStreamDefaultWriter
   ) {
-    // if it's self hosted, lets just use the v1 finalize deployment service
-    if (body.selfHosted) {
+    // If remote builds are not enabled, lets just use the v1 finalize deployment service
+    if (!remoteBuildsEnabled()) {
       const finalizeService = new FinalizeDeploymentService();
-
       return finalizeService.call(authenticatedEnv, id, body);
     }
 
@@ -34,6 +34,7 @@ export class FinalizeDeploymentV2Service extends BaseService {
         version: true,
         externalBuildData: true,
         environment: true,
+        imageReference: true,
         worker: {
           select: {
             project: true,
@@ -87,13 +88,12 @@ export class FinalizeDeploymentV2Service extends BaseService {
       throw new ServiceValidationError("Missing depot token");
     }
 
-    const digest = extractImageDigest(body.imageReference);
+    // All new deployments will set the image reference at creation time
+    if (!deployment.imageReference) {
+      throw new ServiceValidationError("Missing image reference");
+    }
 
-    logger.debug("Pushing image to registry", {
-      id,
-      deployment,
-      digest,
-    });
+    logger.debug("Pushing image to registry", { id, deployment, body });
 
     const pushResult = await executePushToRegistry(
       {
@@ -112,6 +112,7 @@ export class FinalizeDeploymentV2Service extends BaseService {
           version: deployment.version,
           environmentSlug: deployment.environment.slug,
           projectExternalRef: deployment.worker.project.externalRef,
+          imageReference: deployment.imageReference,
         },
       },
       writer
@@ -121,38 +122,18 @@ export class FinalizeDeploymentV2Service extends BaseService {
       throw new ServiceValidationError(pushResult.error);
     }
 
-    const fullImage = digest ? `${pushResult.image}@${digest}` : pushResult.image;
-
     logger.debug("Image pushed to registry", {
       id,
       deployment,
       body,
-      fullImage,
+      pushedImage: pushResult.image,
     });
 
     const finalizeService = new FinalizeDeploymentService();
-
-    const finalizedDeployment = await finalizeService.call(authenticatedEnv, id, {
-      imageReference: fullImage,
-      skipRegistryProxy: true,
-      skipPromotion: body.skipPromotion,
-    });
+    const finalizedDeployment = await finalizeService.call(authenticatedEnv, id, body);
 
     return finalizedDeployment;
   }
-}
-
-// Extracts the sha256 digest from an image reference
-// For example the image ref "registry.depot.dev/gn57tl6chn:8qfjm8w83w@sha256:aa6fd2bdcbbd611556747e72d0b57797f03aa9b39dc910befc83eea2b08a5b85"
-// would return "sha256:aa6fd2bdcbbd611556747e72d0b57797f03aa9b39dc910befc83eea2b08a5b85"
-function extractImageDigest(image: string) {
-  const digestIndex = image.lastIndexOf("@");
-
-  if (digestIndex === -1) {
-    return;
-  }
-
-  return image.substring(digestIndex + 1);
 }
 
 type ExecutePushToRegistryOptions = {
@@ -171,6 +152,7 @@ type ExecutePushToRegistryOptions = {
     version: string;
     environmentSlug: string;
     projectExternalRef: string;
+    imageReference: string;
   };
 };
 
@@ -196,11 +178,9 @@ async function executePushToRegistry(
     password: registry.password,
   });
 
-  const imageTag = `${registry.host}/${registry.namespace}/${deployment.projectExternalRef}:${deployment.version}.${deployment.environmentSlug}`;
+  const imageTag = deployment.imageReference;
 
   // Step 2: We need to run the depot push command
-  // DEPOT_TOKEN="<org token>" DEPOT_PROJECT_ID="<project id>" depot push <build id> -t registry.digitalocean.com/trigger-failover/proj_bzhdaqhlymtuhlrcgbqy:20250124.54.prod
-  // Step 4: Build and push the image
   const childProcess = execDepot(["push", depot.buildId, "-t", imageTag, "--progress", "plain"], {
     env: {
       NODE_ENV: process.env.NODE_ENV,
@@ -224,10 +204,7 @@ async function executePushToRegistry(
         const lines = text.split("\n").filter(Boolean);
 
         errors.push(...lines);
-        logger.debug(text, {
-          imageTag,
-          deployment,
-        });
+        logger.debug(text, { deployment });
 
         // Now we can write strings directly
         if (writer) {

@@ -122,13 +122,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   } = TaskRunListSearchFilters.parse(s);
 
   const presenter = new RunListPresenter();
-  const list = presenter.call({
+  const list = presenter.call(environment.id, {
     userId,
     projectId: project.id,
     tasks,
     versions,
     statuses,
-    environments,
     tags,
     period,
     bulkId,

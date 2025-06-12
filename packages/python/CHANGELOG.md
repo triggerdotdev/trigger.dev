@@ -1,5 +1,32 @@
 # @trigger.dev/python
 
+## 4.0.0-v4-beta.21
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.21`
+  - `@trigger.dev/build@4.0.0-v4-beta.21`
+  - `@trigger.dev/sdk@4.0.0-v4-beta.21`
+
+## 4.0.0-v4-beta.20
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/build@4.0.0-v4-beta.20`
+  - `@trigger.dev/core@4.0.0-v4-beta.20`
+  - `@trigger.dev/sdk@4.0.0-v4-beta.20`
+
+## 4.0.0-v4-beta.19
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.19`
+  - `@trigger.dev/sdk@4.0.0-v4-beta.19`
+  - `@trigger.dev/build@4.0.0-v4-beta.19`
+
 ## 4.0.0-v4-beta.18
 
 ### Patch Changes

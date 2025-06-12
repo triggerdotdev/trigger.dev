@@ -1,6 +1,8 @@
 import { BuildContext, BuildExtension } from "@trigger.dev/core/v3/build";
 
-export type SyncEnvVarsBody = Record<string, string> | Array<{ name: string; value: string }>;
+export type SyncEnvVarsBody =
+  | Record<string, string>
+  | Array<{ name: string; value: string; isParentEnv?: boolean }>;
 
 export type SyncEnvVarsResult =
   | SyncEnvVarsBody
@@ -96,24 +98,11 @@ export function syncEnvVars(fn: SyncEnvVarsFunction, options?: SyncEnvVarsOption
         return;
       }
 
-      const env = Object.entries(result).reduce(
-        (acc, [key, value]) => {
-          if (UNSYNCABLE_ENV_VARS.includes(key)) {
-            return acc;
-          }
+      const env = stripUnsyncableEnvVars(result.env);
+      const parentEnv = result.parentEnv ? stripUnsyncableEnvVars(result.parentEnv) : undefined;
 
-          // Strip out any TRIGGER_ prefix env vars
-          if (UNSYNCABLE_ENV_VARS_PREFIXES.some((prefix) => key.startsWith(prefix))) {
-            return acc;
-          }
-
-          acc[key] = value;
-          return acc;
-        },
-        {} as Record<string, string>
-      );
-
-      const numberOfEnvVars = Object.keys(env).length;
+      const numberOfEnvVars =
+        Object.keys(env).length + (parentEnv ? Object.keys(parentEnv).length : 0);
 
       if (numberOfEnvVars === 0) {
         $spinner.stop("No env vars detected");
@@ -129,11 +118,31 @@ export function syncEnvVars(fn: SyncEnvVarsFunction, options?: SyncEnvVarsOption
         id: "sync-env-vars",
         deploy: {
           env,
+          parentEnv,
           override: options?.override ?? true,
         },
       });
     },
   };
+}
+
+function stripUnsyncableEnvVars(env: Record<string, string>): Record<string, string> {
+  return Object.entries(env).reduce(
+    (acc, [key, value]) => {
+      if (UNSYNCABLE_ENV_VARS.includes(key)) {
+        return acc;
+      }
+
+      // Strip out any TRIGGER_ prefix env vars
+      if (UNSYNCABLE_ENV_VARS_PREFIXES.some((prefix) => key.startsWith(prefix))) {
+        return acc;
+      }
+
+      acc[key] = value;
+      return acc;
+    },
+    {} as Record<string, string>
+  );
 }
 
 async function callSyncEnvVarsFn(
@@ -142,9 +151,11 @@ async function callSyncEnvVarsFn(
   environment: string,
   branch: string | undefined,
   context: BuildContext
-): Promise<Record<string, string> | undefined> {
+): Promise<{ env: Record<string, string>; parentEnv?: Record<string, string> } | undefined> {
   if (syncEnvVarsFn && typeof syncEnvVarsFn === "function") {
-    let resolvedEnvVars: Record<string, string> = {};
+    let resolvedEnvVars: { env: Record<string, string>; parentEnv?: Record<string, string> } = {
+      env: {},
+    };
     let result;
 
     try {
@@ -172,11 +183,18 @@ async function callSyncEnvVarsFn(
           typeof item.name === "string" &&
           typeof item.value === "string"
         ) {
-          resolvedEnvVars[item.name] = item.value;
+          if (item.isParentEnv) {
+            if (!resolvedEnvVars.parentEnv) {
+              resolvedEnvVars.parentEnv = {};
+            }
+            resolvedEnvVars.parentEnv[item.name] = item.value;
+          } else {
+            resolvedEnvVars.env[item.name] = item.value;
+          }
         }
       }
     } else if (result) {
-      resolvedEnvVars = result;
+      resolvedEnvVars.env = result;
     }
 
     return resolvedEnvVars;

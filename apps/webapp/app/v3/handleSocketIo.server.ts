@@ -28,7 +28,7 @@ import { engine } from "./runEngine.server";
 import { CompleteAttemptService } from "./services/completeAttempt.server";
 import { CrashTaskRunService } from "./services/crashTaskRun.server";
 import { CreateCheckpointService } from "./services/createCheckpoint.server";
-import { CreateDeployedBackgroundWorkerService } from "./services/createDeployedBackgroundWorker.server";
+import { CreateDeploymentBackgroundWorkerServiceV3 } from "./services/createDeploymentBackgroundWorkerV3.server";
 import { CreateTaskRunAttemptService } from "./services/createTaskRunAttempt.server";
 import { DeploymentIndexFailed } from "./services/deploymentIndexFailed.server";
 import { ResumeAttemptService } from "./services/resumeAttempt.server";
@@ -245,7 +245,7 @@ function createCoordinatorNamespace(io: Server) {
             return { success: false };
           }
 
-          const service = new CreateDeployedBackgroundWorkerService();
+          const service = new CreateDeploymentBackgroundWorkerServiceV3();
           const worker = await service.call(message.projectRef, environment, message.deploymentId, {
             localOnly: false,
             metadata: message.metadata,

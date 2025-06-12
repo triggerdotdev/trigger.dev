@@ -58,7 +58,10 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
   ) {
     super({ prisma });
 
-    this._batchProcessingStrategy = batchProcessingStrategy ?? "parallel";
+    // Eric note: We need to force sequential processing because when doing parallel, we end up with high-contention on the parent run lock
+    // becuase we are triggering a lot of runs at once, and each one is trying to lock the parent run.
+    // by forcing sequential, we are only ever locking the parent run for a single run at a time.
+    this._batchProcessingStrategy = "sequential";
   }
 
   public async call(
@@ -270,15 +273,18 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
 
         switch (this._batchProcessingStrategy) {
           case "sequential": {
-            await this.#enqueueBatchTaskRun({
-              batchId: batch.id,
-              processingId: batchId,
-              range: { start: 0, count: PROCESSING_BATCH_SIZE },
-              attemptCount: 0,
-              strategy: this._batchProcessingStrategy,
-              parentRunId: body.parentRunId,
-              resumeParentOnCompletion: body.resumeParentOnCompletion,
-            });
+            await this.#enqueueBatchTaskRun(
+              {
+                batchId: batch.id,
+                processingId: batchId,
+                range: { start: 0, count: PROCESSING_BATCH_SIZE },
+                attemptCount: 0,
+                strategy: this._batchProcessingStrategy,
+                parentRunId: body.parentRunId,
+                resumeParentOnCompletion: body.resumeParentOnCompletion,
+              },
+              tx
+            );
 
             break;
           }
@@ -316,6 +322,14 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
     }
   }
 
+  async #enqueueBatchTaskRun(options: BatchProcessingOptions, tx?: PrismaClientOrTransaction) {
+    await workerQueue.enqueue("runengine.processBatchTaskRun", options, {
+      tx,
+      jobKey: `RunEngineBatchTriggerService.process:${options.batchId}:${options.processingId}`,
+    });
+  }
+
+  // This is the function that the worker will call
   async processBatchTaskRun(options: BatchProcessingOptions) {
     logger.debug("[RunEngineBatchTrigger][processBatchTaskRun] Processing batch", {
       options,
@@ -646,13 +660,6 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
           friendlyId: result.run.friendlyId,
         }
       : undefined;
-  }
-
-  async #enqueueBatchTaskRun(options: BatchProcessingOptions, tx?: PrismaClientOrTransaction) {
-    await workerQueue.enqueue("runengine.processBatchTaskRun", options, {
-      tx,
-      jobKey: `RunEngineBatchTriggerService.process:${options.batchId}:${options.processingId}`,
-    });
   }
 
   async #handlePayloadPacket(

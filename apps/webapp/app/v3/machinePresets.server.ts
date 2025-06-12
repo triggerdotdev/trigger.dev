@@ -1,5 +1,5 @@
 import { MachineConfig, MachinePreset, MachinePresetName } from "@trigger.dev/core/v3";
-import { defaultMachine, machines } from "@trigger.dev/platform/v3";
+import { defaultMachine, machines } from "~/services/platform.v3.server";
 import { logger } from "~/services/logger.server";
 
 export function machinePresetFromConfig(config: unknown): MachinePreset {

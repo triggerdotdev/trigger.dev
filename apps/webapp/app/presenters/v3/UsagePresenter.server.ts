@@ -1,9 +1,10 @@
-import { sqlDatabaseSchema } from "~/db.server";
+import { PrismaClientOrTransaction, sqlDatabaseSchema } from "~/db.server";
 import { env } from "~/env.server";
 import { getUsage, getUsageSeries } from "~/services/platform.v3.server";
 import { createTimeSeriesData } from "~/utils/graphs";
 import { BasePresenter } from "./basePresenter.server";
 import { DataPoint, linear } from "regression";
+import { clickhouseClient } from "~/services/clickhouseInstance.server";
 
 type Options = {
   organizationId: string;
@@ -103,27 +104,69 @@ export class UsagePresenter extends BasePresenter {
     });
 
     //usage by task
-    const tasks = this._replica.$queryRaw<TaskUsageItem[]>`
+    const tasks = await getTaskUsageByOrganization(
+      organizationId,
+      startOfMonth,
+      endOfMonth,
+      this._replica
+    );
+
+    return {
+      usage,
+      tasks,
+    };
+  }
+}
+
+async function getTaskUsageByOrganization(
+  organizationId: string,
+  startOfMonth: Date,
+  endOfMonth: Date,
+  replica: PrismaClientOrTransaction
+) {
+  if (clickhouseClient) {
+    const [queryError, tasks] = await clickhouseClient.taskRuns.getTaskUsageByOrganization({
+      startTime: startOfMonth.getTime(),
+      endTime: endOfMonth.getTime(),
+      organizationId,
+    });
+
+    if (queryError) {
+      throw queryError;
+    }
+
+    return tasks
+      .map((task) => ({
+        taskIdentifier: task.task_identifier,
+        runCount: Number(task.run_count),
+        averageDuration: Number(task.average_duration),
+        averageCost: Number(task.average_cost) + env.CENTS_PER_RUN / 100,
+        totalDuration: Number(task.total_duration),
+        totalCost: Number(task.total_cost) + Number(task.total_base_cost),
+      }))
+      .sort((a, b) => b.totalCost - a.totalCost);
+  } else {
+    return replica.$queryRaw<TaskUsageItem[]>`
     SELECT
-    tr."taskIdentifier",
-    COUNT(*) AS "runCount",
-    AVG(tr."usageDurationMs") AS "averageDuration",
-    SUM(tr."usageDurationMs") AS "totalDuration",
-    AVG(tr."costInCents") / 100.0 AS "averageCost",
-    SUM(tr."costInCents") / 100.0 AS "totalCost",
-    SUM(tr."baseCostInCents") / 100.0 AS "totalBaseCost"
-  FROM
-      ${sqlDatabaseSchema}."TaskRun" tr
-      JOIN ${sqlDatabaseSchema}."Project" pr ON pr.id = tr."projectId"
-      JOIN ${sqlDatabaseSchema}."Organization" org ON org.id = pr."organizationId"
-      JOIN ${sqlDatabaseSchema}."RuntimeEnvironment" env ON env."id" = tr."runtimeEnvironmentId"
-  WHERE
-      env.type <> 'DEVELOPMENT'
-      AND tr."createdAt" > ${startOfMonth}
-      AND tr."createdAt" < ${endOfMonth}
-      AND org.id = ${organizationId}
-  GROUP BY
-      tr."taskIdentifier";
+      tr."taskIdentifier",
+      COUNT(*) AS "runCount",
+      AVG(tr."usageDurationMs") AS "averageDuration",
+      SUM(tr."usageDurationMs") AS "totalDuration",
+      AVG(tr."costInCents") / 100.0 AS "averageCost",
+      SUM(tr."costInCents") / 100.0 AS "totalCost",
+      SUM(tr."baseCostInCents") / 100.0 AS "totalBaseCost"
+    FROM
+        ${sqlDatabaseSchema}."TaskRun" tr
+        JOIN ${sqlDatabaseSchema}."Project" pr ON pr.id = tr."projectId"
+        JOIN ${sqlDatabaseSchema}."Organization" org ON org.id = pr."organizationId"
+        JOIN ${sqlDatabaseSchema}."RuntimeEnvironment" env ON env."id" = tr."runtimeEnvironmentId"
+    WHERE
+        env.type <> 'DEVELOPMENT'
+        AND tr."createdAt" > ${startOfMonth}
+        AND tr."createdAt" < ${endOfMonth}
+        AND org.id = ${organizationId}
+    GROUP BY
+        tr."taskIdentifier";
   `.then((data) => {
       return data
         .map((item) => ({
@@ -136,10 +179,5 @@ export class UsagePresenter extends BasePresenter {
         }))
         .sort((a, b) => b.totalCost - a.totalCost);
     });
-
-    return {
-      usage,
-      tasks,
-    };
   }
 }

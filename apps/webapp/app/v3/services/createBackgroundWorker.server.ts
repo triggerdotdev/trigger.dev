@@ -146,6 +146,11 @@ export class CreateBackgroundWorkerService extends BaseService {
           backgroundWorker,
           environment,
         });
+
+        if (schedulesError instanceof ServiceValidationError) {
+          throw schedulesError;
+        }
+
         throw new ServiceValidationError("Error syncing declarative schedules");
       }
 
@@ -515,6 +520,18 @@ export async function syncDeclarativeSchedules(
   //create/update schedules (+ instances)
   for (const task of tasksWithDeclarativeSchedules) {
     if (task.schedule === undefined) continue;
+
+    // Check if this schedule should be created in the current environment
+    if (task.schedule.environments && task.schedule.environments.length > 0) {
+      if (!task.schedule.environments.includes(environment.type)) {
+        logger.debug("Skipping schedule creation due to environment filter", {
+          taskId: task.id,
+          environmentType: environment.type,
+          allowedEnvironments: task.schedule.environments,
+        });
+        continue;
+      }
+    }
 
     const existingSchedule = existingDeclarativeSchedules.find(
       (schedule) =>

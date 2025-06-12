@@ -1,6 +1,12 @@
 "use client";
 
-import { AnyTask, ApiClient, InferRunTypes, RealtimeRun } from "@trigger.dev/core/v3";
+import {
+  AnyTask,
+  ApiClient,
+  InferRunTypes,
+  RealtimeRun,
+  RealtimeRunSkipColumns,
+} from "@trigger.dev/core/v3";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { KeyedMutator, useSWR } from "../utils/trigger-swr.js";
 import { useApiClient, UseApiClientOptions } from "./useApiClient.js";
@@ -29,6 +35,13 @@ export type UseRealtimeSingleRunOptions<TTask extends AnyTask = AnyTask> = UseRe
    * Set this to false if you are making updates to the run metadata after completion through child runs
    */
   stopOnCompletion?: boolean;
+
+  /**
+   * Skip columns from the subscription.
+   *
+   * @default []
+   */
+  skipColumns?: RealtimeRunSkipColumns;
 };
 
 export type UseRealtimeRunInstance<TTask extends AnyTask = AnyTask> = {
@@ -101,6 +114,7 @@ export function useRealtimeRun<TTask extends AnyTask>(
 
       await processRealtimeRun(
         runId,
+        { skipColumns: options?.skipColumns },
         apiClient,
         mutateRun,
         setError,
@@ -261,6 +275,7 @@ export function useRealtimeRunWithStreams<
 
       await processRealtimeRunWithStreams(
         runId,
+        { skipColumns: options?.skipColumns },
         apiClient,
         mutateRun,
         mutateStreams,
@@ -334,6 +349,32 @@ export type UseRealtimeRunsInstance<TTask extends AnyTask = AnyTask> = {
   stop: () => void;
 };
 
+export type UseRealtimeRunsWithTagOptions = UseRealtimeRunOptions & {
+  /**
+   * Filter runs by the time they were created. You must specify the duration string like "1h", "10s", "30m", etc.
+   *
+   * @example
+   * "1h" - 1 hour ago
+   * "10s" - 10 seconds ago
+   * "30m" - 30 minutes ago
+   * "1d" - 1 day ago
+   * "1w" - 1 week ago
+   *
+   * The maximum duration is 1 week
+   *
+   * @note The timestamp will be calculated on the server side when you first subscribe to the runs.
+   *
+   */
+  createdAt?: string;
+
+  /**
+   * Skip columns from the subscription.
+   *
+   * @default []
+   */
+  skipColumns?: RealtimeRunSkipColumns;
+};
+
 /**
  * Hook to subscribe to realtime updates of task runs filtered by tag(s).
  *
@@ -348,11 +389,13 @@ export type UseRealtimeRunsInstance<TTask extends AnyTask = AnyTask> = {
  * const { runs, error } = useRealtimeRunsWithTag<typeof myTask>('my-tag');
  * // Or with multiple tags
  * const { runs, error } = useRealtimeRunsWithTag<typeof myTask>(['tag1', 'tag2']);
+ * // Or with a createdAt filter
+ * const { runs, error } = useRealtimeRunsWithTag<typeof myTask>('my-tag', { createdAt: '1h' });
  * ```
  */
 export function useRealtimeRunsWithTag<TTask extends AnyTask>(
   tag: string | string[],
-  options?: UseRealtimeRunOptions
+  options?: UseRealtimeRunsWithTagOptions
 ): UseRealtimeRunsInstance<TTask> {
   const hookId = useId();
   const idKey = options?.id ?? hookId;
@@ -396,6 +439,7 @@ export function useRealtimeRunsWithTag<TTask extends AnyTask>(
 
       await processRealtimeRunsWithTag(
         tag,
+        { createdAt: options?.createdAt, skipColumns: options?.skipColumns },
         apiClient,
         mutateRuns,
         runsRef,
@@ -568,13 +612,14 @@ function insertRunShapeInOrder<TTask extends AnyTask>(
 
 async function processRealtimeRunsWithTag<TTask extends AnyTask = AnyTask>(
   tag: string | string[],
+  filters: { createdAt?: string; skipColumns?: RealtimeRunSkipColumns },
   apiClient: ApiClient,
   mutateRunsData: KeyedMutator<RealtimeRun<TTask>[]>,
   existingRunsRef: React.MutableRefObject<RealtimeRun<TTask>[]>,
   onError: (e: Error) => void,
   abortControllerRef: React.MutableRefObject<AbortController | null>
 ) {
-  const subscription = apiClient.subscribeToRunsWithTag<InferRunTypes<TTask>>(tag, {
+  const subscription = apiClient.subscribeToRunsWithTag<InferRunTypes<TTask>>(tag, filters, {
     signal: abortControllerRef.current?.signal,
     onFetchError: onError,
   });
@@ -610,6 +655,7 @@ async function processRealtimeRunWithStreams<
   TStreams extends Record<string, any> = Record<string, any>,
 >(
   runId: string,
+  filters: { skipColumns?: RealtimeRunSkipColumns },
   apiClient: ApiClient,
   mutateRunData: KeyedMutator<RealtimeRun<TTask>>,
   mutateStreamData: KeyedMutator<StreamResults<TStreams>>,
@@ -623,6 +669,7 @@ async function processRealtimeRunWithStreams<
     signal: abortControllerRef.current?.signal,
     closeOnComplete: stopOnCompletion,
     onFetchError: onError,
+    skipColumns: filters.skipColumns,
   });
 
   type StreamUpdate = {
@@ -669,6 +716,7 @@ async function processRealtimeRunWithStreams<
 
 async function processRealtimeRun<TTask extends AnyTask = AnyTask>(
   runId: string,
+  filters: { skipColumns?: RealtimeRunSkipColumns },
   apiClient: ApiClient,
   mutateRunData: KeyedMutator<RealtimeRun<TTask>>,
   onError: (e: Error) => void,
@@ -679,6 +727,7 @@ async function processRealtimeRun<TTask extends AnyTask = AnyTask>(
     signal: abortControllerRef.current?.signal,
     closeOnComplete: stopOnCompletion,
     onFetchError: onError,
+    skipColumns: filters.skipColumns,
   });
 
   for await (const part of subscription) {

@@ -5,6 +5,7 @@ import {
 } from "@trigger.dev/core/v3/runEngineWorker";
 import { RunnerEnv } from "./env.js";
 import { flattenAttributes } from "@trigger.dev/core/v3";
+import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
 
 export type SendDebugLogOptions = {
   runId?: string;
@@ -26,10 +27,12 @@ export type RunLoggerOptions = {
 export class ManagedRunLogger implements RunLogger {
   private readonly httpClient: WorkloadHttpClient;
   private readonly env: RunnerEnv;
+  private readonly logger: SimpleStructuredLogger;
 
   constructor(opts: RunLoggerOptions) {
     this.httpClient = opts.httpClient;
     this.env = opts.env;
+    this.logger = new SimpleStructuredLogger("managed-run-logger");
   }
 
   sendDebugLog({ runId, message, date, properties, print = true }: SendDebugLogOptions) {
@@ -49,7 +52,7 @@ export class ManagedRunLogger implements RunLogger {
     };
 
     if (print) {
-      console.log(message, mergedProperties);
+      this.logger.log(message, mergedProperties);
     }
 
     const flattenedProperties = flattenAttributes(

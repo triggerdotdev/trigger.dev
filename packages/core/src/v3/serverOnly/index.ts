@@ -4,3 +4,4 @@ export * from "./httpServer.js";
 export * from "./singleton.js";
 export * from "./shutdownManager.js";
 export * from "./k8s.js";
+export * from "./jumpHash.js";

@@ -1,5 +1,5 @@
 import { ResolvedConfig } from "@trigger.dev/core/v3/build";
-import { Command } from "commander";
+import { Command, Option as CommandOption } from "commander";
 import { z } from "zod";
 import { CommonCommandOptions, commonOptions, wrapCommandAction } from "../cli/common.js";
 import { watchConfig } from "../config.js";
@@ -24,6 +24,8 @@ const DevCommandOptions = CommonCommandOptions.extend({
   maxConcurrentRuns: z.coerce.number().optional(),
   mcp: z.boolean().default(false),
   mcpPort: z.coerce.number().optional().default(3333),
+  analyze: z.boolean().default(false),
+  disableWarnings: z.boolean().default(false),
 });
 
 export type DevCommandOptions = z.infer<typeof DevCommandOptions>;
@@ -54,6 +56,10 @@ export function configureDevCommand(program: Command) {
       )
       .option("--mcp", "Start the MCP server")
       .option("--mcp-port", "The port to run the MCP server on", "3333")
+      .addOption(
+        new CommandOption("--analyze", "Analyze the build output and import timings").hideHelp()
+      )
+      .addOption(new CommandOption("--disable-warnings", "Suppress warnings output").hideHelp())
   ).action(async (options) => {
     wrapCommandAction("dev", DevCommandOptions, options, async (opts) => {
       await devCommand(opts);

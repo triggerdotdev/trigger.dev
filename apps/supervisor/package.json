@@ -15,7 +15,7 @@
   "dependencies": {
     "@kubernetes/client-node": "^1.0.0",
     "@trigger.dev/core": "workspace:*",
-    "dockerode": "^4.0.3",
+    "dockerode": "^4.0.6",
     "prom-client": "^15.1.0",
     "socket.io": "4.7.4",
     "std-env": "^3.8.0",

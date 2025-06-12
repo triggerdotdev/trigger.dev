@@ -1,13 +1,24 @@
 import { Result } from "@trigger.dev/core/v3";
 import { InsertError, QueryError } from "./errors.js";
-import { ClickhouseWriter } from "./types.js";
+import { ClickhouseQueryBuilderFunction, ClickhouseWriter } from "./types.js";
 import { ClickhouseReader } from "./types.js";
 import { z } from "zod";
 import { ClickHouseSettings, InsertResult } from "@clickhouse/client";
+import { ClickhouseQueryBuilder } from "./queryBuilder.js";
 
 export class NoopClient implements ClickhouseReader, ClickhouseWriter {
   public async close() {
     return;
+  }
+
+  public queryBuilder<TOut extends z.ZodSchema<any>>(req: {
+    name: string;
+    baseQuery: string;
+    schema: TOut;
+    settings?: ClickHouseSettings;
+  }): ClickhouseQueryBuilderFunction<z.input<TOut>> {
+    return () =>
+      new ClickhouseQueryBuilder(req.name, req.baseQuery, this, req.schema, req.settings);
   }
 
   public query<TIn extends z.ZodSchema<any>, TOut extends z.ZodSchema<any>>(req: {

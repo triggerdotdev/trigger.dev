@@ -25,19 +25,19 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const parsedParams = ParamsSchema.parse(params);
   const filename = parsedParams["*"];
 
-  const presignedUrl = await generatePresignedUrl(
+  const signed = await generatePresignedUrl(
     authenticationResult.environment.project.externalRef,
     authenticationResult.environment.slug,
     filename,
     "PUT"
   );
 
-  if (!presignedUrl) {
-    return json({ error: "Failed to generate presigned URL" }, { status: 500 });
+  if (!signed.success) {
+    return json({ error: `Failed to generate presigned URL: ${signed.error}` }, { status: 500 });
   }
 
   // Caller can now use this URL to upload to that object.
-  return json({ presignedUrl });
+  return json({ presignedUrl: signed.url });
 }
 
 export const loader = createLoaderApiRoute(
@@ -50,18 +50,18 @@ export const loader = createLoaderApiRoute(
   async ({ params, authentication }) => {
     const filename = params["*"];
 
-    const presignedUrl = await generatePresignedUrl(
+    const signed = await generatePresignedUrl(
       authentication.environment.project.externalRef,
       authentication.environment.slug,
       filename,
       "GET"
     );
 
-    if (!presignedUrl) {
-      return json({ error: "Failed to generate presigned URL" }, { status: 500 });
+    if (!signed.success) {
+      return json({ error: `Failed to generate presigned URL: ${signed.error}` }, { status: 500 });
     }
 
     // Caller can now use this URL to fetch that object.
-    return json({ presignedUrl });
+    return json({ presignedUrl: signed.url });
   }
 );

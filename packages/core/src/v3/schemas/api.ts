@@ -54,6 +54,8 @@ export const CreateBackgroundWorkerRequestBody = z.object({
   metadata: BackgroundWorkerMetadata,
   engine: RunEngineVersion.optional(),
   supportsLazyAttempts: z.boolean().optional(),
+  buildPlatform: z.string().optional(),
+  targetPlatform: z.string().optional(),
 });
 
 export type CreateBackgroundWorkerRequestBody = z.infer<typeof CreateBackgroundWorkerRequestBody>;
@@ -292,10 +294,8 @@ export type StartDeploymentIndexingResponseBody = z.infer<
 >;
 
 export const FinalizeDeploymentRequestBody = z.object({
-  imageReference: z.string(),
-  selfHosted: z.boolean().optional(),
-  skipRegistryProxy: z.boolean().optional(),
   skipPromotion: z.boolean().optional(),
+  imageDigest: z.string().optional(),
 });
 
 export type FinalizeDeploymentRequestBody = z.infer<typeof FinalizeDeploymentRequestBody>;
@@ -328,8 +328,8 @@ export const InitializeDeploymentResponseBody = z.object({
   shortCode: z.string(),
   version: z.string(),
   imageTag: z.string(),
+  imagePlatform: z.string(),
   externalBuildData: ExternalBuildData.optional().nullable(),
-  registryHost: z.string().optional(),
 });
 
 export type InitializeDeploymentResponseBody = z.infer<typeof InitializeDeploymentResponseBody>;
@@ -337,9 +337,8 @@ export type InitializeDeploymentResponseBody = z.infer<typeof InitializeDeployme
 export const InitializeDeploymentRequestBody = z.object({
   contentHash: z.string(),
   userId: z.string().optional(),
-  registryHost: z.string().optional(),
+  /** @deprecated This is now determined by the webapp. This is only used to warn users with old CLI versions. */
   selfHosted: z.boolean().optional(),
-  namespace: z.string().optional(),
   gitMeta: GitMeta.optional(),
   type: z.enum(["MANAGED", "UNMANAGED", "V1"]).optional(),
 });
@@ -805,6 +804,7 @@ export type UpdateEnvironmentVariableRequestBody = z.infer<
 
 export const ImportEnvironmentVariablesRequestBody = z.object({
   variables: z.record(z.string()),
+  parentVariables: z.record(z.string()).optional(),
   override: z.boolean().optional(),
 });
 
@@ -870,7 +870,9 @@ const RawOptionalShapeDate = z
 
 export const SubscribeRunRawShape = z.object({
   id: z.string(),
-  idempotencyKey: z.string().nullish(),
+  taskIdentifier: z.string(),
+  friendlyId: z.string(),
+  status: z.string(),
   createdAt: RawShapeDate,
   updatedAt: RawShapeDate,
   startedAt: RawOptionalShapeDate,
@@ -878,14 +880,12 @@ export const SubscribeRunRawShape = z.object({
   queuedAt: RawOptionalShapeDate,
   expiredAt: RawOptionalShapeDate,
   completedAt: RawOptionalShapeDate,
-  taskIdentifier: z.string(),
-  friendlyId: z.string(),
-  number: z.number(),
-  isTest: z.boolean(),
-  status: z.string(),
-  usageDurationMs: z.number(),
-  costInCents: z.number(),
-  baseCostInCents: z.number(),
+  idempotencyKey: z.string().nullish(),
+  number: z.number().default(0),
+  isTest: z.boolean().default(false),
+  usageDurationMs: z.number().default(0),
+  costInCents: z.number().default(0),
+  baseCostInCents: z.number().default(0),
   ttl: z.string().nullish(),
   payload: z.string().nullish(),
   payloadType: z.string().nullish(),

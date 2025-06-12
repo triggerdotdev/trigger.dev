@@ -1,6 +1,16 @@
 import { BuildExtension } from "@trigger.dev/core/v3/build";
 import { syncEnvVars } from "../core.js";
 
+type EnvVar = { name: string; value: string; isParentEnv?: boolean };
+
+type VercelEnvVar = {
+  key: string;
+  value: string;
+  type: string;
+  target: string[];
+  gitBranch?: string;
+};
+
 export function syncVercelEnvVars(options?: {
   projectId?: string;
   vercelAccessToken?: string;
@@ -22,12 +32,6 @@ export function syncVercelEnvVars(options?: {
       process.env.VERCEL_PREVIEW_BRANCH ??
       ctx.env.VERCEL_PREVIEW_BRANCH ??
       ctx.branch;
-
-    console.debug("syncVercelEnvVars()", {
-      projectId,
-      vercelTeamId,
-      branch,
-    });
 
     if (!projectId) {
       throw new Error(
@@ -57,7 +61,7 @@ export function syncVercelEnvVars(options?: {
     }
     const params = new URLSearchParams({ decrypt: "true" });
     if (vercelTeamId) params.set("teamId", vercelTeamId);
-    if (branch) params.set("gitBranch", branch);
+    params.set("target", vercelEnvironment);
     const vercelApiUrl = `https://api.vercel.com/v8/projects/${projectId}/env?${params}`;
 
     try {
@@ -73,15 +77,22 @@ export function syncVercelEnvVars(options?: {
 
       const data = await response.json();
 
-      const filteredEnvs = data.envs
-        .filter(
-          (env: { type: string; value: string; target: string[] }) =>
-            env.value && env.target.includes(vercelEnvironment)
-        )
-        .map((env: { key: string; value: string }) => ({
-          name: env.key,
-          value: env.value,
-        }));
+      const isBranchable = ctx.environment === "preview";
+
+      const filteredEnvs: EnvVar[] = data.envs
+        .filter((env: VercelEnvVar) => {
+          if (!env.value) return false;
+          if (!env.target.includes(vercelEnvironment)) return false;
+          if (isBranchable && env.gitBranch && env.gitBranch !== branch) return false;
+          return true;
+        })
+        .map((env: VercelEnvVar) => {
+          return {
+            name: env.key,
+            value: env.value,
+            isParentEnv: isBranchable && !env.gitBranch,
+          };
+        });
 
       return filteredEnvs;
     } catch (error) {

@@ -10,7 +10,6 @@ import type { Server as IoServer } from "socket.io";
 import { WebSocketServer } from "ws";
 import { RateLimitMiddleware } from "~/services/apiRateLimit.server";
 import { type RunWithHttpContextFunction } from "~/services/httpAsyncStorage.server";
-import { RegistryProxy } from "~/v3/registryProxy.server";
 
 const app = express();
 
@@ -41,24 +40,9 @@ const port = process.env.REMIX_APP_PORT || process.env.PORT || 3000;
 if (process.env.HTTP_SERVER_DISABLED !== "true") {
   const socketIo: { io: IoServer } | undefined = build.entry.module.socketIo;
   const wss: WebSocketServer | undefined = build.entry.module.wss;
-  const registryProxy: RegistryProxy | undefined = build.entry.module.registryProxy;
   const apiRateLimiter: RateLimitMiddleware = build.entry.module.apiRateLimiter;
   const engineRateLimiter: RateLimitMiddleware = build.entry.module.engineRateLimiter;
   const runWithHttpContext: RunWithHttpContextFunction = build.entry.module.runWithHttpContext;
-
-  if (registryProxy && process.env.ENABLE_REGISTRY_PROXY === "true") {
-    console.log(`🐳 Enabling container registry proxy to ${registryProxy.origin}`);
-
-    // Adjusted to match /v2 and any subpath under /v2
-    app.all("/v2/*", async (req, res) => {
-      await registryProxy.call(req, res);
-    });
-
-    // This might also be necessary if you need to explicitly match /v2 as well
-    app.all("/v2", async (req, res) => {
-      await registryProxy.call(req, res);
-    });
-  }
 
   app.use((req, res, next) => {
     // helpful headers:
