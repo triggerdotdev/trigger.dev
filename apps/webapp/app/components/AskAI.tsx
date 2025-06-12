@@ -5,7 +5,7 @@ import {
   HandThumbUpIcon,
   StopIcon,
 } from "@heroicons/react/20/solid";
-import { KapaProvider, QA, useChat } from "@kapaai/react-sdk";
+import { FeedbackComment, KapaProvider, QA, useChat } from "@kapaai/react-sdk";
 import { useSearchParams } from "@remix-run/react";
 import { motion } from "framer-motion";
 import { marked } from "marked";
@@ -171,7 +171,11 @@ function ChatMessages({
   onReset: () => void;
   onExampleClick: (question: string) => void;
   error: string | null;
-  addFeedback: (questionAnswerId: string, reaction: "upvote" | "downvote", comment?: any) => void;
+  addFeedback: (
+    questionAnswerId: string,
+    reaction: "upvote" | "downvote",
+    comment?: FeedbackComment
+  ) => void;
 }) {
   const [feedbackGivenForQAs, setFeedbackGivenForQAs] = useState<Set<string>>(new Set());
 
