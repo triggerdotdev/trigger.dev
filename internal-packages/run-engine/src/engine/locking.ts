@@ -165,12 +165,199 @@ export class RunLocker {
     );
   }
 
+  /** Manual lock acquisition with custom retry logic */
+  async #acquireAndExecute<T>(
+    name: string,
+    resources: string[],
+    duration: number,
+    routine: (signal: redlock.RedlockAbortSignal) => Promise<T>,
+    lockId: string,
+    lockStartTime: number
+  ): Promise<T> {
+    const joinedResources = resources.sort().join(",");
+
+    // Custom retry settings
+    const maxRetries = 10;
+    const baseDelay = 200;
+    const jitter = 200;
+
+    // Retry the lock acquisition specifically using tryCatch
+    let lock: redlock.Lock;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      const [error, acquiredLock] = await tryCatch(this.redlock.acquire(resources, duration));
+
+      if (!error && acquiredLock) {
+        lock = acquiredLock;
+        break;
+      }
+
+      // If this is the last attempt, throw the error
+      if (attempt === maxRetries) {
+        throw error || new Error("Failed to acquire lock after maximum retries");
+      }
+
+      // If it's a ResourceLockedError, we should retry
+      if (error && error.name === "ResourceLockedError") {
+        // Calculate delay with jitter
+        const delay = baseDelay + Math.floor((Math.random() * 2 - 1) * jitter);
+        await new Promise((resolve) => setTimeout(resolve, Math.max(0, delay)));
+        continue;
+      }
+
+      // For other errors, throw immediately
+      throw error || new Error("Unknown error during lock acquisition");
+    }
+
+    // Create an AbortController for our signal
+    const controller = new AbortController();
+    const signal = controller.signal as redlock.RedlockAbortSignal;
+
+    const manualContext: ManualLockContext = {
+      lock: lock!,
+      timeout: undefined,
+      extension: undefined,
+    };
+
+    // Set up auto-extension starting from when lock was actually acquired
+    this.#setupAutoExtension(manualContext, duration, signal, controller);
+
+    try {
+      const newContext: LockContext = {
+        resources: joinedResources,
+        signal,
+        lockType: name,
+      };
+
+      // Track active lock
+      this.activeLocks.set(lockId, {
+        lockType: name,
+        resources: resources,
+      });
+
+      let lockSuccess = true;
+      try {
+        const result = await this.asyncLocalStorage.run(newContext, async () => {
+          return routine(signal);
+        });
+
+        return result;
+      } catch (lockError) {
+        lockSuccess = false;
+        throw lockError;
+      } finally {
+        // Record lock duration
+        const lockDuration = performance.now() - lockStartTime;
+        this.lockDurationHistogram.record(lockDuration, {
+          [SemanticAttributes.LOCK_TYPE]: name,
+          [SemanticAttributes.LOCK_SUCCESS]: lockSuccess.toString(),
+        });
+
+        // Remove from active locks when done
+        this.activeLocks.delete(lockId);
+      }
+    } finally {
+      // Clean up extension mechanism - this ensures auto extension stops after routine finishes
+      this.#cleanupExtension(manualContext);
+
+      // Release the lock using tryCatch
+      const [releaseError] = await tryCatch(lock!.release());
+      if (releaseError) {
+        this.logger.warn("[RunLocker] Error releasing lock", {
+          error: releaseError,
+          resources,
+          lockValue: lock!.value,
+        });
+      }
+    }
+  }
+
+  /** Set up automatic lock extension */
+  #setupAutoExtension(
+    context: ManualLockContext,
+    duration: number,
+    signal: redlock.RedlockAbortSignal,
+    controller: AbortController
+  ): void {
+    const automaticExtensionThreshold = 500; // Same as redlock default
+
+    if (automaticExtensionThreshold > duration - 100) {
+      // Don't set up auto-extension if duration is too short
+      return;
+    }
+
+    const scheduleExtension = (): void => {
+      const timeUntilExtension = context.lock.expiration - Date.now() - automaticExtensionThreshold;
+
+      if (timeUntilExtension > 0) {
+        context.timeout = setTimeout(() => {
+          context.extension = this.#extendLock(
+            context,
+            duration,
+            signal,
+            controller,
+            scheduleExtension
+          );
+        }, timeUntilExtension);
+      }
+    };
+
+    scheduleExtension();
+  }
+
+  /** Extend a lock */
+  async #extendLock(
+    context: ManualLockContext,
+    duration: number,
+    signal: redlock.RedlockAbortSignal,
+    controller: AbortController,
+    scheduleNext: () => void
+  ): Promise<void> {
+    context.timeout = undefined;
+
+    const [error, newLock] = await tryCatch(context.lock.extend(duration));
+
+    if (!error && newLock) {
+      context.lock = newLock;
+      // Only schedule next extension if we haven't been cleaned up
+      if (context.timeout !== null) {
+        scheduleNext();
+      }
+    } else {
+      if (context.lock.expiration > Date.now()) {
+        // If lock hasn't expired yet, try again (but only if not cleaned up)
+        if (context.timeout !== null) {
+          return this.#extendLock(context, duration, signal, controller, scheduleNext);
+        }
+      } else {
+        // Lock has expired, abort the signal
+        signal.error = error instanceof Error ? error : new Error(String(error));
+        controller.abort();
+      }
+    }
+  }
+
+  /** Clean up extension mechanism */
+  #cleanupExtension(context: ManualLockContext): void {
+    // Signal that we're cleaning up by setting timeout to null
+    if (context.timeout) {
+      clearTimeout(context.timeout);
+    }
+    context.timeout = null;
+
+    // Wait for any in-flight extension to complete
+    if (context.extension) {
+      context.extension.catch(() => {
+        // Ignore errors during cleanup
+      });
+    }
+  }
+
   async lockIf<T>(
     condition: boolean,
     name: string,
     resources: string[],
     duration: number,
-    routine: () => Promise<T>
+    routine: (signal?: redlock.RedlockAbortSignal) => Promise<T>
   ): Promise<T> {
     if (condition) {
       return this.lock(name, resources, duration, routine);
