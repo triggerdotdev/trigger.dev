@@ -165,6 +165,20 @@ export class RunLocker {
     );
   }
 
+  async lockIf<T>(
+    condition: boolean,
+    name: string,
+    resources: string[],
+    duration: number,
+    routine: () => Promise<T>
+  ): Promise<T> {
+    if (condition) {
+      return this.lock(name, resources, duration, routine);
+    } else {
+      return routine();
+    }
+  }
+
   isInsideLock(): boolean {
     return !!this.asyncLocalStorage.getStore();
   }
