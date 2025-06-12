@@ -686,6 +686,7 @@ model TaskRun {
   @@index([runtimeEnvironmentId, id(sort: Desc)])
   @@index([runtimeEnvironmentId, createdAt(sort: Desc)])
   @@index([createdAt], type: Brin)
+  @@index([status, runtimeEnvironmentId, createdAt, id(sort: Desc)])
 }
 
 enum TaskRunStatus {
