@@ -585,12 +585,7 @@ function SelectorDivider() {
 }
 
 function HelpAndAI() {
-  const matches = useMatches();
   const features = useFeatures();
-  const routeMatch = useTypedMatchesData<typeof loader>({
-    id: "root",
-    matches,
-  });
   const { openAskAI, websiteId } = useAskAI();
   const isKapaEnabled = features.isManagedCloud && websiteId;
 
