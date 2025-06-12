@@ -7,24 +7,21 @@ import {
 } from "@heroicons/react/20/solid";
 import { type FeedbackComment, KapaProvider, type QA, useChat } from "@kapaai/react-sdk";
 import { useSearchParams } from "@remix-run/react";
+import DOMPurify from "dompurify";
 import { motion } from "framer-motion";
 import { marked } from "marked";
-import {
-  createContext,
-  type ReactNode,
-  useCallback,
-  useContext,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useTypedRouteLoaderData } from "remix-typedjson";
 import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
 import { SparkleListIcon } from "~/assets/icons/SparkleListIcon";
+import { useFeatures } from "~/hooks/useFeatures";
+import { type loader } from "~/root";
 import { Button } from "./primitives/Buttons";
 import { Callout } from "./primitives/Callout";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./primitives/Dialog";
 import { Header2 } from "./primitives/Headers";
 import { Paragraph } from "./primitives/Paragraph";
+import { ShortcutKey } from "./primitives/ShortcutKey";
 import { Spinner } from "./primitives/Spinner";
 import {
   SimpleTooltip,
@@ -33,31 +30,45 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "./primitives/Tooltip";
-import DOMPurify from "dompurify";
+import { ClientOnly } from "remix-utils/client-only";
 
-type AskAIContextType = {
-  isOpen: boolean;
-  openAskAI: (question?: string) => void;
-  closeAskAI: () => void;
-  websiteId: string | null;
-};
+function useKapaWebsiteId() {
+  const routeMatch = useTypedRouteLoaderData<typeof loader>("root");
+  return routeMatch?.kapa.websiteId;
+}
 
-const AskAIContext = createContext<AskAIContextType | null>(null);
+export function AskAI() {
+  const { isManagedCloud } = useFeatures();
+  const websiteId = useKapaWebsiteId();
 
-export function useAskAI() {
-  const context = useContext(AskAIContext);
-  if (!context) {
-    throw new Error("useAskAI must be used within an AskAIProvider");
+  if (!isManagedCloud || !websiteId) {
+    return null;
   }
-  return context;
+
+  return (
+    <ClientOnly
+      fallback={
+        <Button
+          variant="small-menu-item"
+          data-action="ask-ai"
+          hideShortcutKey
+          data-modal-override-open-class-ask-ai="true"
+          disabled
+        >
+          <AISparkleIcon className="size-5" />
+        </Button>
+      }
+    >
+      {() => <AskAIProvider websiteId={websiteId} />}
+    </ClientOnly>
+  );
 }
 
 type AskAIProviderProps = {
-  children: ReactNode;
-  websiteId: string | null;
+  websiteId: string;
 };
 
-export function AskAIProvider({ children, websiteId }: AskAIProviderProps) {
+function AskAIProvider({ websiteId }: AskAIProviderProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [initialQuery, setInitialQuery] = useState<string | undefined>();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -80,47 +91,56 @@ export function AskAIProvider({ children, websiteId }: AskAIProviderProps) {
   useEffect(() => {
     const aiHelp = searchParams.get("aiHelp");
     if (aiHelp) {
-      const decodedAiHelp = decodeURIComponent(aiHelp);
-
       // Delay to avoid hCaptcha bot detection
-      const timeoutId = window.setTimeout(() => openAskAI(decodedAiHelp), 1000);
+      window.setTimeout(() => openAskAI(aiHelp), 1000);
 
       // Clone instead of mutating in place
       const next = new URLSearchParams(searchParams);
       next.delete("aiHelp");
       setSearchParams(next);
-
-      return () => clearTimeout(timeoutId);
     }
-  }, [searchParams.toString(), openAskAI]);
-
-  const contextValue: AskAIContextType = {
-    isOpen,
-    openAskAI,
-    closeAskAI,
-    websiteId,
-  };
-
-  if (!websiteId) {
-    return <AskAIContext.Provider value={contextValue}>{children}</AskAIContext.Provider>;
-  }
+  }, [searchParams, openAskAI]);
 
   return (
-    <AskAIContext.Provider value={contextValue}>
-      <KapaProvider
-        integrationId={websiteId}
-        callbacks={{
-          askAI: {
-            onQuerySubmit: () => openAskAI(),
-            onAnswerGenerationCompleted: () => openAskAI(),
-          },
-        }}
-        botProtectionMechanism="hcaptcha"
-      >
-        {children}
-        <AskAIDialog initialQuery={initialQuery} isOpen={isOpen} onOpenChange={setIsOpen} />
-      </KapaProvider>
-    </AskAIContext.Provider>
+    <KapaProvider
+      integrationId={websiteId}
+      callbacks={{
+        askAI: {
+          onQuerySubmit: () => openAskAI(),
+          onAnswerGenerationCompleted: () => openAskAI(),
+        },
+      }}
+      botProtectionMechanism="hcaptcha"
+    >
+      <TooltipProvider disableHoverableContent>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="inline-flex">
+              <Button
+                variant="small-menu-item"
+                data-action="ask-ai"
+                shortcut={{ modifiers: ["mod"], key: "/", enabledOnInputElements: true }}
+                hideShortcutKey
+                data-modal-override-open-class-ask-ai="true"
+                onClick={() => openAskAI()}
+              >
+                <AISparkleIcon className="size-5" />
+              </Button>
+            </div>
+          </TooltipTrigger>
+          <TooltipContent side="top" className="flex items-center gap-1 py-1.5 pl-2.5 pr-2 text-xs">
+            Ask AI
+            <ShortcutKey shortcut={{ modifiers: ["mod"], key: "/" }} variant="medium/bright" />
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+      <AskAIDialog
+        initialQuery={initialQuery}
+        isOpen={isOpen}
+        onOpenChange={setIsOpen}
+        closeAskAI={closeAskAI}
+      />
+    </KapaProvider>
   );
 }
 
@@ -128,11 +148,10 @@ type AskAIDialogProps = {
   initialQuery?: string;
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
+  closeAskAI: () => void;
 };
 
-function AskAIDialog({ initialQuery, isOpen, onOpenChange }: AskAIDialogProps) {
-  const { closeAskAI } = useAskAI();
-
+function AskAIDialog({ initialQuery, isOpen, onOpenChange, closeAskAI }: AskAIDialogProps) {
   const handleOpenChange = (open: boolean) => {
     if (!open) {
       closeAskAI();
@@ -512,31 +531,5 @@ function GradientSpinnerBackground({
         {children}
       </div>
     </div>
-  );
-}
-
-export function AskAIButton({ question }: { question?: string }) {
-  const { openAskAI } = useAskAI();
-
-  return (
-    <TooltipProvider disableHoverableContent>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <div className="inline-flex">
-            <Button
-              variant="minimal/small"
-              onClick={() => openAskAI(question)}
-              className="pl-0.5 pr-1"
-              data-action="ask-ai"
-            >
-              <AISparkleIcon className="size-5" />
-            </Button>
-          </div>
-        </TooltipTrigger>
-        <TooltipContent side="top" className="flex items-center gap-1 px-2 py-1.5 text-xs">
-          Ask AI
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
   );
 }

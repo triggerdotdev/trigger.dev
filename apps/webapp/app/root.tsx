@@ -6,7 +6,6 @@ import { ExternalScripts } from "remix-utils/external-scripts";
 import type { ToastMessage } from "~/models/message.server";
 import { commitSession, getSession } from "~/models/message.server";
 import tailwindStylesheetUrl from "~/tailwind.css";
-import { AskAIProvider } from "./components/AskAI";
 import { RouteErrorDisplay } from "./components/ErrorDisplay";
 import { AppContainer, MainCenteredContainer } from "./components/layout/AppLayout";
 import { ShortcutsProvider } from "./components/primitives/ShortcutsProvider";
@@ -108,12 +107,10 @@ export default function App() {
           <Links />
         </head>
         <body className="h-full overflow-hidden bg-background-dimmed">
-          <AskAIProvider websiteId={kapa.websiteId || null}>
-            <ShortcutsProvider>
-              <Outlet />
-              <Toast />
-            </ShortcutsProvider>
-          </AskAIProvider>
+          <ShortcutsProvider>
+            <Outlet />
+            <Toast />
+          </ShortcutsProvider>
           <ScrollRestoration />
           <ExternalScripts />
           <Scripts />
