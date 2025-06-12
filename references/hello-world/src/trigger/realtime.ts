@@ -1,5 +1,6 @@
 import { logger, runs, task } from "@trigger.dev/sdk";
 import { helloWorldTask } from "./example.js";
+import { setTimeout } from "timers/promises";
 
 export const realtimeByTagsTask = task({
   id: "realtime-by-tags",
@@ -24,6 +25,32 @@ export const realtimeByTagsTask = task({
       { createdAt: "2m", skipColumns: ["payload", "output", "number"] },
       { signal: $signal }
     )) {
+      logger.info("run", { run });
+    }
+
+    return {
+      message: "Hello, world!",
+    };
+  },
+});
+
+export const realtimeUpToDateTask = task({
+  id: "realtime-up-to-date",
+  run: async ({ runId }: { runId?: string }) => {
+    if (!runId) {
+      const handle = await helloWorldTask.trigger(
+        { hello: "world" },
+        {
+          tags: ["hello-world", "realtime"],
+        }
+      );
+
+      runId = handle.id;
+    }
+
+    logger.info("runId", { runId });
+
+    for await (const run of runs.subscribeToRun(runId, { stopOnCompletion: true })) {
       logger.info("run", { run });
     }
 

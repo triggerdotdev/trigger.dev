@@ -114,6 +114,8 @@ class ReadableShapeStream<T extends Row<unknown> = Row> {
       },
     });
 
+    let updatedKeys = new Set<string>();
+
     // Create the transformed stream that processes messages and emits complete rows
     this.#changeStream = createAsyncIterableStream(source, {
       transform: (messages, controller) => {
@@ -122,7 +124,7 @@ class ReadableShapeStream<T extends Row<unknown> = Row> {
         }
 
         try {
-          const updatedKeys = new Set<string>();
+          let isUpToDate = false;
 
           for (const message of messages) {
             if (isChangeMessage(message)) {
@@ -147,18 +149,23 @@ class ReadableShapeStream<T extends Row<unknown> = Row> {
               if (message.headers.control === "must-refetch") {
                 this.#currentState.clear();
                 this.#error = false;
+              } else if (message.headers.control === "up-to-date") {
+                isUpToDate = true;
               }
             }
           }
 
           // Now enqueue only one updated row per key, after all messages have been processed.
-          if (!this.#isStreamClosed) {
+          // If the stream is not up to date, we don't want to enqueue any rows.
+          if (!this.#isStreamClosed && isUpToDate) {
             for (const key of updatedKeys) {
               const finalRow = this.#currentState.get(key);
               if (finalRow) {
                 controller.enqueue(finalRow);
               }
             }
+
+            updatedKeys.clear();
           }
         } catch (error) {
           console.error("Error processing stream messages:", error);
