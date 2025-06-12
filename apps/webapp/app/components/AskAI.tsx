@@ -93,6 +93,8 @@ export function AskAIProvider({ children, websiteId }: AskAIProviderProps) {
       return () => clearTimeout(timeoutId);
     }
   }, [searchParams.toString(), openAskAI]);
+
+  const contextValue: AskAIContextType = {
     isOpen,
     openAskAI,
     closeAskAI,
