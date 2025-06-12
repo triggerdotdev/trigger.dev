@@ -91,19 +91,15 @@ function AskAIProvider({ websiteId }: AskAIProviderProps) {
   useEffect(() => {
     const aiHelp = searchParams.get("aiHelp");
     if (aiHelp) {
-      const decodedAiHelp = decodeURIComponent(aiHelp);
-
       // Delay to avoid hCaptcha bot detection
-      const timeoutId = window.setTimeout(() => openAskAI(decodedAiHelp), 1000);
+      window.setTimeout(() => openAskAI(aiHelp), 1000);
 
       // Clone instead of mutating in place
       const next = new URLSearchParams(searchParams);
       next.delete("aiHelp");
       setSearchParams(next);
-
-      return () => clearTimeout(timeoutId);
     }
-  }, [searchParams.toString(), openAskAI]);
+  }, [searchParams, openAskAI]);
 
   return (
     <KapaProvider
