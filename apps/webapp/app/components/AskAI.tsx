@@ -5,7 +5,7 @@ import {
   HandThumbUpIcon,
   StopIcon,
 } from "@heroicons/react/20/solid";
-import { KapaProvider, useChat } from "@kapaai/react-sdk";
+import { KapaProvider, QA, useChat } from "@kapaai/react-sdk";
 import { useSearchParams } from "@remix-run/react";
 import { motion } from "framer-motion";
 import { marked } from "marked";
@@ -165,7 +165,7 @@ function ChatMessages({
   error,
   addFeedback,
 }: {
-  conversation: any[];
+  conversation: QA[];
   isPreparingAnswer: boolean;
   isGeneratingAnswer: boolean;
   onReset: () => void;
