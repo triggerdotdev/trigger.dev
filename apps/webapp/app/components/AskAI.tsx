@@ -30,6 +30,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "./primitives/Tooltip";
+import { ClientOnly } from "remix-utils/client-only";
 
 function useKapaWebsiteId() {
   const routeMatch = useTypedRouteLoaderData<typeof loader>("root");
@@ -44,7 +45,23 @@ export function AskAI() {
     return null;
   }
 
-  return <AskAIProvider websiteId={websiteId} />;
+  return (
+    <ClientOnly
+      fallback={
+        <Button
+          variant="small-menu-item"
+          data-action="ask-ai"
+          hideShortcutKey
+          data-modal-override-open-class-ask-ai="true"
+          disabled
+        >
+          <AISparkleIcon className="size-5" />
+        </Button>
+      }
+    >
+      {() => <AskAIProvider websiteId={websiteId} />}
+    </ClientOnly>
+  );
 }
 
 type AskAIProviderProps = {
