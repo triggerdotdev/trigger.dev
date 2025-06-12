@@ -53,12 +53,7 @@ const DialogContent = React.forwardRef<
       <DialogPrimitive.Close className="data-[state=open]:bg-accent data-[state=open]:text-muted-foreground group absolute right-2 top-[0.5625rem] flex items-center gap-1 rounded-sm p-1 py-1 pl-0 pr-1 opacity-70 transition focus-custom hover:bg-charcoal-750 hover:opacity-100 focus-visible:focus-custom disabled:pointer-events-none">
         <ShortcutKey
           shortcut={{
-            windows: {
-              key: "esc",
-            },
-            mac: {
-              key: "esc",
-            },
+            key: "esc",
           }}
           variant="medium"
         />
