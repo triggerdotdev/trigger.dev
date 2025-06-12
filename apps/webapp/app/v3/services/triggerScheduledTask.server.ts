@@ -8,9 +8,10 @@ import { nextScheduledTimestamps } from "../utils/calculateNextSchedule.server";
 import { BaseService } from "./baseService.server";
 import { RegisterNextTaskScheduleInstanceService } from "./registerNextTaskScheduleInstance.server";
 import { TriggerTaskService } from "./triggerTask.server";
+import { enqueueScheduledTask } from "../scheduleWorker.server";
 
 export class TriggerScheduledTaskService extends BaseService {
-  public async call(instanceId: string, finalAttempt: boolean) {
+  public async call(instanceId: string, finalAttempt: boolean, exactScheduleTime?: Date) {
     const registerNextService = new RegisterNextTaskScheduleInstanceService();
 
     const instance = await this._prisma.taskScheduleInstance.findFirst({
@@ -131,17 +132,19 @@ export class TriggerScheduledTaskService extends BaseService {
         // Enqueue triggering the task
         const triggerTask = new TriggerTaskService();
 
+        const scheduleTimestamp = exactScheduleTime ?? instance.nextScheduledTimestamp;
+
         const payload = {
           scheduleId: instance.taskSchedule.friendlyId,
           type: instance.taskSchedule.type,
-          timestamp: instance.nextScheduledTimestamp,
+          timestamp: scheduleTimestamp,
           lastTimestamp: instance.lastScheduledTimestamp ?? undefined,
           externalId: instance.taskSchedule.externalId ?? undefined,
           timezone: instance.taskSchedule.timezone,
           upcoming: nextScheduledTimestamps(
             instance.taskSchedule.generatorExpression,
             instance.taskSchedule.timezone,
-            instance.nextScheduledTimestamp!,
+            scheduleTimestamp!,
             10
           ),
         };
@@ -161,6 +164,7 @@ export class TriggerScheduledTaskService extends BaseService {
             customIcon: "scheduled",
             scheduleId: instance.taskSchedule.id,
             scheduleInstanceId: instance.id,
+            queueTimestamp: exactScheduleTime ?? instance.nextScheduledTimestamp ?? undefined,
           }
         );
 
@@ -191,7 +195,16 @@ export class TriggerScheduledTaskService extends BaseService {
         },
       });
 
-      await registerNextService.call(instanceId);
+      // For migration: after handling current execution, schedule the next run in Redis worker
+      try {
+        await registerNextService.call(instanceId);
+      } catch (nextRunError) {
+        logger.error("Failed to schedule next run in Redis worker after successful execution", {
+          instanceId,
+          error: nextRunError,
+        });
+        // Don't fail the current execution due to next run scheduling issues
+      }
     } catch (e) {
       if (finalAttempt) {
         logger.error("Failed to trigger scheduled task, rescheduling the next run", {
@@ -199,18 +212,22 @@ export class TriggerScheduledTaskService extends BaseService {
           error: e,
         });
 
-        await registerNextService.call(instanceId);
+        try {
+          await registerNextService.call(instanceId);
+        } catch (nextRunError) {
+          logger.error("Failed to schedule next run in Redis worker after failed execution", {
+            instanceId,
+            originalError: e,
+            nextRunError,
+          });
+        }
       } else {
         throw e;
       }
     }
   }
 
-  public static async enqueue(instanceId: string, runAt: Date, tx?: PrismaClientOrTransaction) {
-    return await workerQueue.enqueue(
-      "v3.triggerScheduledTask",
-      { instanceId },
-      { tx, jobKey: `scheduled-task-instance:${instanceId}`, runAt }
-    );
+  public static async enqueue(instanceId: string, runAt: Date) {
+    return await enqueueScheduledTask(instanceId, runAt);
   }
 }

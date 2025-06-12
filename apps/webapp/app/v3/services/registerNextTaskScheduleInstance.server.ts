@@ -49,7 +49,7 @@ export class RegisterNextTaskScheduleInstanceService extends BaseService {
       },
     });
 
-    // Enqueue triggering the task at the next scheduled timestamp
+    // Enqueue triggering the task at the next scheduled timestamp in the new Redis worker
     await TriggerScheduledTaskService.enqueue(instanceId, nextScheduledTimestamp);
   }
 }

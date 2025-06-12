@@ -364,6 +364,7 @@ export class TriggerTaskServiceV1 extends BaseService {
                   : 0;
 
                 const queueTimestamp =
+                  options.queueTimestamp ??
                   dependentAttempt?.taskRun.queueTimestamp ??
                   dependentBatchRun?.dependentTaskAttempt?.taskRun.queueTimestamp ??
                   delayUntil ??
