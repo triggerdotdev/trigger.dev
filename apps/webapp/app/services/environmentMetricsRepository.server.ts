@@ -10,18 +10,24 @@ export type AverageDurations = Record<string, number>;
 
 export interface EnvironmentMetricsRepository {
   getDailyTaskActivity(options: {
+    organizationId: string;
+    projectId: string;
     environmentId: string;
     days: number;
     tasks: string[];
   }): Promise<DailyTaskActivity>;
 
   getCurrentRunningStats(options: {
+    organizationId: string;
+    projectId: string;
     environmentId: string;
     days: number;
     tasks: string[];
   }): Promise<CurrentRunningStats>;
 
   getAverageDurations(options: {
+    organizationId: string;
+    projectId: string;
     environmentId: string;
     days: number;
     tasks: string[];
@@ -177,10 +183,14 @@ export class ClickHouseEnvironmentMetricsRepository implements EnvironmentMetric
   constructor(private readonly options: ClickHouseEnvironmentMetricsRepositoryOptions) {}
 
   public async getDailyTaskActivity({
+    organizationId,
+    projectId,
     environmentId,
     days,
     tasks,
   }: {
+    organizationId: string;
+    projectId: string;
     environmentId: string;
     days: number;
     tasks: string[];
@@ -190,6 +200,8 @@ export class ClickHouseEnvironmentMetricsRepository implements EnvironmentMetric
     }
 
     const [queryError, activity] = await this.options.clickhouse.taskRuns.getTaskActivity({
+      organizationId,
+      projectId,
       environmentId,
       days,
     });
@@ -210,10 +222,14 @@ export class ClickHouseEnvironmentMetricsRepository implements EnvironmentMetric
   }
 
   public async getCurrentRunningStats({
+    organizationId,
+    projectId,
     environmentId,
     days,
     tasks,
   }: {
+    organizationId: string;
+    projectId: string;
     environmentId: string;
     days: number;
     tasks: string[];
@@ -223,6 +239,8 @@ export class ClickHouseEnvironmentMetricsRepository implements EnvironmentMetric
     }
 
     const [queryError, stats] = await this.options.clickhouse.taskRuns.getCurrentRunningStats({
+      organizationId,
+      projectId,
       environmentId,
       days,
     });
@@ -242,10 +260,14 @@ export class ClickHouseEnvironmentMetricsRepository implements EnvironmentMetric
   }
 
   public async getAverageDurations({
+    organizationId,
+    projectId,
     environmentId,
     days,
     tasks,
   }: {
+    organizationId: string;
+    projectId: string;
     environmentId: string;
     days: number;
     tasks: string[];
@@ -255,6 +277,8 @@ export class ClickHouseEnvironmentMetricsRepository implements EnvironmentMetric
     }
 
     const [queryError, durations] = await this.options.clickhouse.taskRuns.getAverageDurations({
+      organizationId,
+      projectId,
       environmentId,
       days,
     });

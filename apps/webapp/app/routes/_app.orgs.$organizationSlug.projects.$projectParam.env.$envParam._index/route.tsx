@@ -125,6 +125,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   try {
     const { tasks, activity, runningStats, durations } = await taskListPresenter.call({
+      organizationId: project.organizationId,
+      projectId: project.id,
       environmentId: environment.id,
       environmentType: environment.type,
     });
