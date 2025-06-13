@@ -1,5 +1,5 @@
 import { PrismaClientOrTransaction } from "~/db.server";
-import { workerQueue } from "~/services/worker.server";
+import { commonWorker } from "../commonWorker.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { BaseService } from "./baseService.server";
 import { logger } from "~/services/logger.server";
@@ -334,17 +334,14 @@ export class ResumeBatchRunService extends BaseService {
     tx: PrismaClientOrTransaction,
     runAt?: Date
   ) {
-    return await workerQueue.enqueue(
-      "v3.resumeBatchRun",
-      {
+    return await commonWorker.enqueue({
+      id: skipJobKey ? undefined : `resumeBatchRun-${batchRunId}`,
+      job: "v3.resumeBatchRun",
+      payload: {
         batchRunId,
       },
-      {
-        tx,
-        runAt,
-        jobKey: skipJobKey ? undefined : `resumeBatchRun-${batchRunId}`,
-      }
-    );
+      availableAt: runAt,
+    });
   }
 }
 

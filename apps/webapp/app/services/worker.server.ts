@@ -3,10 +3,16 @@ import { DeliverEmailSchema } from "emails";
 import { z } from "zod";
 import { $replica, prisma } from "~/db.server";
 import { env } from "~/env.server";
+import {
+  BatchProcessingOptions as RunEngineBatchProcessingOptions,
+  RunEngineBatchTriggerService,
+} from "~/runEngine/services/batchTrigger.server";
 import { MarqsConcurrencyMonitor } from "~/v3/marqs/concurrencyMonitor.server";
+import { scheduleEngine } from "~/v3/scheduleEngine.server";
 import { DeliverAlertService } from "~/v3/services/alerts/deliverAlert.server";
 import { PerformDeploymentAlertsService } from "~/v3/services/alerts/performDeploymentAlerts.server";
 import { PerformTaskRunAlertsService } from "~/v3/services/alerts/performTaskRunAlerts.server";
+import { BatchProcessingOptions, BatchTriggerV3Service } from "~/v3/services/batchTriggerV3.server";
 import { PerformBulkActionService } from "~/v3/services/bulk/performBulkAction.server";
 import {
   CancelDevSessionRunsService,
@@ -24,48 +30,51 @@ import { RetryAttemptService } from "~/v3/services/retryAttempt.server";
 import { TimeoutDeploymentService } from "~/v3/services/timeoutDeployment.server";
 import { GraphileMigrationHelperService } from "./db/graphileMigrationHelper.server";
 import { sendEmail } from "./email.server";
-import { reportInvocationUsage } from "./platform.v3.server";
 import { logger } from "./logger.server";
-import { BatchProcessingOptions, BatchTriggerV3Service } from "~/v3/services/batchTriggerV3.server";
-import {
-  BatchProcessingOptions as RunEngineBatchProcessingOptions,
-  RunEngineBatchTriggerService,
-} from "~/runEngine/services/batchTrigger.server";
-import { scheduleEngine } from "~/v3/scheduleEngine.server";
 
 const workerCatalog = {
+  // @deprecated, moved to commonWorker.server.ts
   scheduleEmail: DeliverEmailSchema,
   // v3 tasks
   "v3.indexDeployment": z.object({
     id: z.string(),
   }),
+  // @deprecated, moved to commonWorker.server.ts
   "v3.resumeTaskRunDependencies": z.object({
     attemptId: z.string(),
   }),
+  // @deprecated, moved to commonWorker.server.ts
   "v3.resumeBatchRun": z.object({
     batchRunId: z.string(),
   }),
+  // @deprecated, moved to commonWorker.server.ts
   "v3.resumeTaskDependency": z.object({
     dependencyId: z.string(),
     sourceTaskAttemptId: z.string(),
   }),
+  // @deprecated, moved to commonWorker.server.ts
   "v3.timeoutDeployment": z.object({
     deploymentId: z.string(),
     fromStatus: z.string(),
     errorMessage: z.string(),
   }),
+  // @deprecated, moved to commonWorker.server.ts
   "v3.executeTasksWaitingForDeploy": z.object({
     backgroundWorkerId: z.string(),
   }),
+  // @deprecated, moved to ScheduleEngine
   "v3.triggerScheduledTask": z.object({
     instanceId: z.string(),
   }),
+  // @deprecated, moved to commonWorker.server.ts
   "v3.performTaskRunAlerts": z.object({
     runId: z.string(),
   }),
+  // @deprecated, moved to commonWorker.server.ts
   "v3.deliverAlert": z.object({
     alertId: z.string(),
   }),
+  // @deprecated, moved to commonWorker.server.ts
   "v3.performDeploymentAlerts": z.object({
     deploymentId: z.string(),
   }),
@@ -75,30 +84,31 @@ const workerCatalog = {
   "v3.performBulkActionItem": z.object({
     bulkActionItemId: z.string(),
   }),
+  // @deprecated, moved to legacyRunEngineWorker.server.ts
   "v3.requeueTaskRun": z.object({
     runId: z.string(),
   }),
+  // @deprecated, moved to commonWorker.server.ts
   "v3.retryAttempt": z.object({
     runId: z.string(),
   }),
-  "v3.reportUsage": z.object({
-    orgId: z.string(),
-    data: z.object({
-      costInCents: z.string(),
-    }),
-    additionalData: z.record(z.any()).optional(),
-  }),
+  // @deprecated, moved to commonWorker.server.ts
   "v3.enqueueDelayedRun": z.object({
     runId: z.string(),
   }),
+  // @deprecated, moved to commonWorker.server.ts
   "v3.expireRun": z.object({
     runId: z.string(),
   }),
+  // @deprecated, moved to commonWorker.server.ts
   "v3.cancelTaskAttemptDependencies": z.object({
     attemptId: z.string(),
   }),
+  // @deprecated, moved to commonWorker.server.ts
   "v3.cancelDevSessionRuns": CancelDevSessionRunsServiceOptions,
+  // @deprecated, moved to commonWorker.server.ts
   "v3.processBatchTaskRun": BatchProcessingOptions,
+  // @deprecated, moved to commonWorker.server.ts
   "runengine.processBatchTaskRun": RunEngineBatchProcessingOptions,
 };
 
@@ -156,6 +166,7 @@ function getWorkerQueue() {
       },
     },
     tasks: {
+      // @deprecated, moved to commonWorker.server.ts
       scheduleEmail: {
         priority: 0,
         maxAttempts: 3,
@@ -173,6 +184,7 @@ function getWorkerQueue() {
           return await service.call(payload.id);
         },
       },
+      // @deprecated, moved to commonWorker.server.ts
       "v3.resumeTaskRunDependencies": {
         priority: 0,
         maxAttempts: 5,
@@ -182,6 +194,7 @@ function getWorkerQueue() {
           return await service.call(payload.attemptId);
         },
       },
+      // @deprecated, moved to commonWorker.server.ts
       "v3.resumeBatchRun": {
         priority: 0,
         maxAttempts: 5,
@@ -191,6 +204,7 @@ function getWorkerQueue() {
           await service.call(payload.batchRunId);
         },
       },
+      // @deprecated, moved to commonWorker.server.ts
       "v3.resumeTaskDependency": {
         priority: 0,
         maxAttempts: 5,
@@ -200,6 +214,7 @@ function getWorkerQueue() {
           return await service.call(payload.dependencyId, payload.sourceTaskAttemptId);
         },
       },
+      // @deprecated, moved to commonWorker.server.ts
       "v3.timeoutDeployment": {
         priority: 0,
         maxAttempts: 5,
@@ -209,6 +224,7 @@ function getWorkerQueue() {
           return await service.call(payload.deploymentId, payload.fromStatus, payload.errorMessage);
         },
       },
+      // @deprecated, moved to commonWorker.server.ts
       "v3.executeTasksWaitingForDeploy": {
         priority: 0,
         maxAttempts: 5,
@@ -218,6 +234,7 @@ function getWorkerQueue() {
           return await service.call(payload.backgroundWorkerId);
         },
       },
+      // @deprecated, moved to ScheduleEngine
       "v3.triggerScheduledTask": {
         priority: 0,
         maxAttempts: 3, // total delay of 30 seconds
@@ -228,6 +245,7 @@ function getWorkerQueue() {
           });
         },
       },
+      // @deprecated, moved to commonWorker.server.ts
       "v3.performTaskRunAlerts": {
         priority: 0,
         maxAttempts: 3,
@@ -236,6 +254,7 @@ function getWorkerQueue() {
           return await service.call(payload.runId);
         },
       },
+      // @deprecated, moved to commonWorker.server.ts
       "v3.deliverAlert": {
         priority: 0,
         maxAttempts: 8,
@@ -245,6 +264,7 @@ function getWorkerQueue() {
           return await service.call(payload.alertId);
         },
       },
+      // @deprecated, moved to commonWorker.server.ts
       "v3.performDeploymentAlerts": {
         priority: 0,
         maxAttempts: 3,
@@ -277,6 +297,7 @@ function getWorkerQueue() {
         maxAttempts: 3,
         handler: async (payload, job) => {}, // This is now handled by redisWorker
       },
+      // @deprecated, moved to commonWorker.server.ts
       "v3.retryAttempt": {
         priority: 0,
         maxAttempts: 3,
@@ -286,17 +307,7 @@ function getWorkerQueue() {
           return await service.call(payload.runId);
         },
       },
-      "v3.reportUsage": {
-        priority: 0,
-        maxAttempts: 8,
-        handler: async (payload, job) => {
-          await reportInvocationUsage(
-            payload.orgId,
-            Number(payload.data.costInCents),
-            payload.additionalData
-          );
-        },
-      },
+      // @deprecated, moved to commonWorker.server.ts
       "v3.enqueueDelayedRun": {
         priority: 0,
         maxAttempts: 8,
@@ -306,6 +317,7 @@ function getWorkerQueue() {
           return await service.call(payload.runId);
         },
       },
+      // @deprecated, moved to commonWorker.server.ts
       "v3.expireRun": {
         priority: 0,
         maxAttempts: 8,
@@ -315,6 +327,7 @@ function getWorkerQueue() {
           return await service.call(payload.runId);
         },
       },
+      // @deprecated, moved to commonWorker.server.ts
       "v3.cancelTaskAttemptDependencies": {
         priority: 0,
         maxAttempts: 8,
@@ -324,6 +337,7 @@ function getWorkerQueue() {
           return await service.call(payload.attemptId);
         },
       },
+      // @deprecated, moved to commonWorker.server.ts
       "v3.cancelDevSessionRuns": {
         priority: 0,
         maxAttempts: 5,
@@ -333,6 +347,7 @@ function getWorkerQueue() {
           return await service.call(payload);
         },
       },
+      // @deprecated, moved to commonWorker.server.ts
       "v3.processBatchTaskRun": {
         priority: 0,
         maxAttempts: 5,
@@ -342,6 +357,7 @@ function getWorkerQueue() {
           await service.processBatchTaskRun(payload);
         },
       },
+      // @deprecated, moved to commonWorker.server.ts
       "runengine.processBatchTaskRun": {
         priority: 0,
         maxAttempts: 5,

@@ -5,7 +5,7 @@ import {
   TaskRunDependency,
 } from "@trigger.dev/database";
 import { $transaction, PrismaClientOrTransaction } from "~/db.server";
-import { workerQueue } from "~/services/worker.server";
+import { commonWorker } from "../commonWorker.server";
 import { BaseService } from "./baseService.server";
 import { ResumeBatchRunService } from "./resumeBatchRun.server";
 import { ResumeTaskDependencyService } from "./resumeTaskDependency.server";
@@ -98,16 +98,13 @@ export class ResumeTaskRunDependenciesService extends BaseService {
   }
 
   static async enqueue(attemptId: string, tx: PrismaClientOrTransaction, runAt?: Date) {
-    return await workerQueue.enqueue(
-      "v3.resumeTaskRunDependencies",
-      {
+    return await commonWorker.enqueue({
+      id: `resumeTaskRunDependencies:${attemptId}`,
+      job: "v3.resumeTaskRunDependencies",
+      payload: {
         attemptId,
       },
-      {
-        tx,
-        runAt,
-        jobKey: `resumeTaskRunDependencies:${attemptId}`,
-      }
-    );
+      availableAt: runAt,
+    });
   }
 }
