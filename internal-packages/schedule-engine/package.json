@@ -1,0 +1,39 @@
+{
+  "name": "@internal/schedule-engine",
+  "private": true,
+  "version": "0.0.1",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "type": "module",
+  "exports": {
+    ".": {
+      "@triggerdotdev/source": "./src/index.ts",
+      "import": "./dist/src/index.js",
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    }
+  },
+  "dependencies": {
+    "@internal/redis": "workspace:*",
+    "@trigger.dev/redis-worker": "workspace:*",
+    "@internal/tracing": "workspace:*",
+    "@trigger.dev/core": "workspace:*",
+    "@trigger.dev/database": "workspace:*",
+    "cron-parser": "^4.9.0",
+    "cronstrue": "^2.50.0",
+    "nanoid": "3.3.8",
+    "zod": "3.23.8"
+  },
+  "devDependencies": {
+    "@internal/testcontainers": "workspace:*",
+    "rimraf": "6.0.1"
+  },
+  "scripts": {
+    "clean": "rimraf dist",
+    "typecheck": "tsc --noEmit -p tsconfig.build.json",
+    "test": "vitest --sequence.concurrent=false --no-file-parallelism",
+    "test:coverage": "vitest --sequence.concurrent=false --no-file-parallelism --coverage.enabled",
+    "build": "pnpm run clean && tsc -p tsconfig.build.json",
+    "dev": "tsc --watch  -p tsconfig.build.json"
+  }
+}

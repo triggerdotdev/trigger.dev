@@ -52,6 +52,7 @@
     "@heroicons/react": "^2.0.12",
     "@internal/redis": "workspace:*",
     "@internal/run-engine": "workspace:*",
+    "@internal/schedule-engine": "workspace:*",
     "@internal/tracing": "workspace:*",
     "@internal/zod-worker": "workspace:*",
     "@internationalized/date": "^3.5.1",

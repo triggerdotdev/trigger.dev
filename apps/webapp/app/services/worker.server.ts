@@ -22,7 +22,6 @@ import { ResumeTaskDependencyService } from "~/v3/services/resumeTaskDependency.
 import { ResumeTaskRunDependenciesService } from "~/v3/services/resumeTaskRunDependencies.server";
 import { RetryAttemptService } from "~/v3/services/retryAttempt.server";
 import { TimeoutDeploymentService } from "~/v3/services/timeoutDeployment.server";
-import { TriggerScheduledTaskService } from "~/v3/services/triggerScheduledTask.server";
 import { GraphileMigrationHelperService } from "./db/graphileMigrationHelper.server";
 import { sendEmail } from "./email.server";
 import { reportInvocationUsage } from "./platform.v3.server";
@@ -32,6 +31,7 @@ import {
   BatchProcessingOptions as RunEngineBatchProcessingOptions,
   RunEngineBatchTriggerService,
 } from "~/runEngine/services/batchTrigger.server";
+import { scheduleEngine } from "~/v3/scheduleEngine.server";
 
 const workerCatalog = {
   scheduleEmail: DeliverEmailSchema,
@@ -222,13 +222,10 @@ function getWorkerQueue() {
         priority: 0,
         maxAttempts: 3, // total delay of 30 seconds
         handler: async (payload, job) => {
-          const service = new TriggerScheduledTaskService();
-
-          // NOTE: This graphile worker job is now part of a graceful migration to Redis workers.
-          // When this job runs, it will execute the current schedule and automatically
-          // enqueue the next execution in the new Redis-based schedule worker with
-          // distributed timing. Eventually this graphile job will be removed.
-          return await service.call(payload.instanceId, job.attempts === job.max_attempts);
+          await scheduleEngine.triggerScheduledTask({
+            instanceId: payload.instanceId,
+            finalAttempt: job.attempts === job.max_attempts,
+          });
         },
       },
       "v3.performTaskRunAlerts": {
