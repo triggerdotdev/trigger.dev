@@ -8,14 +8,14 @@ import { Logger } from "@trigger.dev/core/logger";
 describe("RunLocker", () => {
   redisTest("Test acquiring a lock works", { timeout: 15_000 }, async ({ redisOptions }) => {
     const redis = createRedisClient(redisOptions);
-    try {
-      const logger = new Logger("RunLockTest", "debug");
-      const runLock = new RunLocker({
-        redis,
-        logger,
-        tracer: trace.getTracer("RunLockTest"),
-      });
+    const logger = new Logger("RunLockTest", "debug");
+    const runLock = new RunLocker({
+      redis,
+      logger,
+      tracer: trace.getTracer("RunLockTest"),
+    });
 
+    try {
       expect(runLock.isInsideLock()).toBe(false);
 
       await runLock.lock("test-lock", ["test-1"], 5000, async (signal) => {
@@ -25,16 +25,16 @@ describe("RunLocker", () => {
 
       expect(runLock.isInsideLock()).toBe(false);
     } finally {
-      await redis.quit();
+      await runLock.quit();
     }
   });
 
   redisTest("Test double locking works", { timeout: 15_000 }, async ({ redisOptions }) => {
     const redis = createRedisClient(redisOptions);
-    try {
-      const logger = new Logger("RunLockTest", "debug");
-      const runLock = new RunLocker({ redis, logger, tracer: trace.getTracer("RunLockTest") });
+    const logger = new Logger("RunLockTest", "debug");
+    const runLock = new RunLocker({ redis, logger, tracer: trace.getTracer("RunLockTest") });
 
+    try {
       expect(runLock.isInsideLock()).toBe(false);
 
       await runLock.lock("test-lock", ["test-1"], 5000, async (signal) => {
@@ -50,7 +50,7 @@ describe("RunLocker", () => {
 
       expect(runLock.isInsideLock()).toBe(false);
     } finally {
-      await redis.quit();
+      await runLock.quit();
     }
   });
 
@@ -59,10 +59,10 @@ describe("RunLocker", () => {
     { timeout: 15_000 },
     async ({ redisOptions }) => {
       const redis = createRedisClient(redisOptions);
-      try {
-        const logger = new Logger("RunLockTest", "debug");
-        const runLock = new RunLocker({ redis, logger, tracer: trace.getTracer("RunLockTest") });
+      const logger = new Logger("RunLockTest", "debug");
+      const runLock = new RunLocker({ redis, logger, tracer: trace.getTracer("RunLockTest") });
 
+      try {
         expect(runLock.isInsideLock()).toBe(false);
 
         await expect(
@@ -74,7 +74,7 @@ describe("RunLocker", () => {
         // Verify the lock was released
         expect(runLock.isInsideLock()).toBe(false);
       } finally {
-        await redis.quit();
+        await runLock.quit();
       }
     }
   );
@@ -84,10 +84,10 @@ describe("RunLocker", () => {
     { timeout: 15_000 },
     async ({ redisOptions }) => {
       const redis = createRedisClient(redisOptions);
-      try {
-        const logger = new Logger("RunLockTest", "debug");
-        const runLock = new RunLocker({ redis, logger, tracer: trace.getTracer("RunLockTest") });
+      const logger = new Logger("RunLockTest", "debug");
+      const runLock = new RunLocker({ redis, logger, tracer: trace.getTracer("RunLockTest") });
 
+      try {
         expect(runLock.isInsideLock()).toBe(false);
 
         await expect(
@@ -105,17 +105,17 @@ describe("RunLocker", () => {
         // Verify all locks were released
         expect(runLock.isInsideLock()).toBe(false);
       } finally {
-        await redis.quit();
+        await runLock.quit();
       }
     }
   );
 
   redisTest("Test lock throws when it times out", { timeout: 15_000 }, async ({ redisOptions }) => {
     const redis = createRedisClient(redisOptions);
-    try {
-      const logger = new Logger("RunLockTest", "debug");
-      const runLock = new RunLocker({ redis, logger, tracer: trace.getTracer("RunLockTest") });
+    const logger = new Logger("RunLockTest", "debug");
+    const runLock = new RunLocker({ redis, logger, tracer: trace.getTracer("RunLockTest") });
 
+    try {
       // First, ensure we can acquire the lock normally
       let firstLockAcquired = false;
       await runLock.lock("test-lock", ["test-1"], 5000, async () => {
@@ -147,7 +147,7 @@ describe("RunLocker", () => {
       // Verify final state
       expect(runLock.isInsideLock()).toBe(false);
     } finally {
-      await redis.quit();
+      await runLock.quit();
     }
   });
 
@@ -156,10 +156,10 @@ describe("RunLocker", () => {
     { timeout: 15_000 },
     async ({ redisOptions }) => {
       const redis = createRedisClient(redisOptions);
-      try {
-        const logger = new Logger("RunLockTest", "debug");
-        const runLock = new RunLocker({ redis, logger, tracer: trace.getTracer("RunLockTest") });
+      const logger = new Logger("RunLockTest", "debug");
+      const runLock = new RunLocker({ redis, logger, tracer: trace.getTracer("RunLockTest") });
 
+      try {
         await runLock.lock("test-lock", ["test-1"], 5000, async () => {
           // First lock acquired
           expect(runLock.isInsideLock()).toBe(true);
@@ -176,7 +176,7 @@ describe("RunLocker", () => {
         // Verify final state
         expect(runLock.isInsideLock()).toBe(false);
       } finally {
-        await redis.quit();
+        await runLock.quit();
       }
     }
   );
@@ -186,10 +186,10 @@ describe("RunLocker", () => {
     { timeout: 15_000 },
     async ({ redisOptions }) => {
       const redis = createRedisClient(redisOptions);
-      try {
-        const logger = new Logger("RunLockTest", "debug");
-        const runLock = new RunLocker({ redis, logger, tracer: trace.getTracer("RunLockTest") });
+      const logger = new Logger("RunLockTest", "debug");
+      const runLock = new RunLocker({ redis, logger, tracer: trace.getTracer("RunLockTest") });
 
+      try {
         // First verify we can acquire the lock normally
         let firstLockAcquired = false;
         await runLock.lock("test-lock", ["test-1"], 5000, async () => {
@@ -225,7 +225,7 @@ describe("RunLocker", () => {
         expect(innerLockExecuted).toBe(true);
         expect(runLock.isInsideLock()).toBe(false);
       } finally {
-        await redis.quit();
+        await runLock.quit();
       }
     }
   );
