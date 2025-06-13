@@ -439,6 +439,7 @@ export class TriggerTaskServiceV1 extends BaseService {
                     machinePreset: body.options?.machine,
                     scheduleId: options.scheduleId,
                     scheduleInstanceId: options.scheduleInstanceId,
+                    createdAt: options.overrideCreatedAt,
                   },
                 });
 

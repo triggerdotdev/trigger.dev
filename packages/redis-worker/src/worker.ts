@@ -34,13 +34,17 @@ type QueueCatalogFromWorkerCatalog<Catalog extends WorkerCatalog> = {
   [K in keyof Catalog]: Catalog[K]["schema"];
 };
 
-type JobHandler<Catalog extends WorkerCatalog, K extends keyof Catalog> = (params: {
+export type JobHandlerParams<Catalog extends WorkerCatalog, K extends keyof Catalog> = {
   id: string;
   payload: z.infer<Catalog[K]["schema"]>;
   visibilityTimeoutMs: number;
   attempt: number;
   deduplicationKey?: string;
-}) => Promise<void>;
+};
+
+export type JobHandler<Catalog extends WorkerCatalog, K extends keyof Catalog> = (
+  params: JobHandlerParams<Catalog, K>
+) => Promise<void>;
 
 export type WorkerConcurrencyOptions = {
   workers?: number;

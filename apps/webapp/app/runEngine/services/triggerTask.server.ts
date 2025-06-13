@@ -308,6 +308,7 @@ export class RunEngineTriggerTaskService {
                   runChainState,
                   scheduleId: options.scheduleId,
                   scheduleInstanceId: options.scheduleInstanceId,
+                  createdAt: options.overrideCreatedAt,
                 },
                 this.prisma
               );

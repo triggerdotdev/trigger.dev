@@ -7,9 +7,16 @@ export function calculateNextScheduledTimestampFromNow(schedule: string, timezon
 export function calculateNextScheduledTimestamp(
   schedule: string,
   timezone: string | null,
-  currentDate: Date = new Date()
+  lastScheduledTimestamp: Date = new Date()
 ) {
-  return calculateNextStep(schedule, timezone, currentDate);
+  const nextStep = calculateNextStep(schedule, timezone, lastScheduledTimestamp);
+
+  if (nextStep.getTime() < Date.now()) {
+    // If the next step is in the past, we just need to calculate the next step from now
+    return calculateNextStep(schedule, timezone, new Date());
+  }
+
+  return nextStep;
 }
 
 function calculateNextStep(schedule: string, timezone: string | null, currentDate: Date) {

@@ -32,6 +32,7 @@ export type TriggerTaskServiceOptions = {
   scheduleId?: string;
   scheduleInstanceId?: string;
   queueTimestamp?: Date;
+  overrideCreatedAt?: Date;
 };
 
 export class OutOfEntitlementError extends Error {
