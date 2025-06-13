@@ -1,8 +1,8 @@
-import { ClickHouse } from "@internal/clickhouse";
-import { Tracer } from "@internal/tracing";
-import { Logger, LogLevel } from "@trigger.dev/core/logger";
-import { TaskRunStatus } from "@trigger.dev/database";
-import { PrismaClient } from "~/db.server";
+import { type ClickHouse } from "@internal/clickhouse";
+import { type Tracer } from "@internal/tracing";
+import { type Logger, type LogLevel } from "@trigger.dev/core/logger";
+import { type TaskRunStatus } from "@trigger.dev/database";
+import { type PrismaClient } from "~/db.server";
 
 export type RunsRepositoryOptions = {
   clickhouse: ClickHouse;
@@ -13,6 +13,7 @@ export type RunsRepositoryOptions = {
 };
 
 export type ListRunsOptions = {
+  organizationId: string;
   projectId: string;
   environmentId: string;
   //filters
@@ -43,11 +44,14 @@ export class RunsRepository {
   async listRuns(options: ListRunsOptions) {
     const queryBuilder = this.options.clickhouse.taskRuns.queryBuilder();
     queryBuilder
-      .where("environment_id = {environmentId: String}", {
-        environmentId: options.environmentId,
+      .where("organization_id = {organizationId: String}", {
+        organizationId: options.organizationId,
       })
       .where("project_id = {projectId: String}", {
         projectId: options.projectId,
+      })
+      .where("environment_id = {environmentId: String}", {
+        environmentId: options.environmentId,
       });
 
     if (options.tasks && options.tasks.length > 0) {
@@ -115,17 +119,17 @@ export class RunsRepository {
       if (options.page.direction === "forward") {
         queryBuilder
           .where("run_id < {runId: String}", { runId: options.page.cursor })
-          .orderBy("run_id DESC")
+          .orderBy("created_at DESC, run_id DESC")
           .limit(options.page.size + 1);
       } else {
         queryBuilder
           .where("run_id > {runId: String}", { runId: options.page.cursor })
-          .orderBy("run_id DESC")
+          .orderBy("created_at DESC, run_id DESC")
           .limit(options.page.size + 1);
       }
     } else {
       // Initial page - no cursor provided
-      queryBuilder.orderBy("run_id DESC").limit(options.page.size + 1);
+      queryBuilder.orderBy("created_at DESC, run_id DESC").limit(options.page.size + 1);
     }
 
     const [queryError, result] = await queryBuilder.execute();
