@@ -28,6 +28,12 @@ interface LockContext {
   lockType: string;
 }
 
+interface ManualLockContext {
+  lock: redlock.Lock;
+  timeout: NodeJS.Timeout | null | undefined;
+  extension: Promise<void> | undefined;
+}
+
 export class RunLocker {
   private redlock: InstanceType<typeof redlock.default>;
   private asyncLocalStorage: AsyncLocalStorage<LockContext>;
@@ -35,6 +41,7 @@ export class RunLocker {
   private tracer: Tracer;
   private meter: Meter;
   private activeLocks: Map<string, { lockType: string; resources: string[] }> = new Map();
+  private activeManualContexts: Map<string, ManualLockContext> = new Map();
   private lockDurationHistogram: Histogram;
 
   constructor(options: { redis: Redis; logger: Logger; tracer: Tracer; meter?: Meter }) {
@@ -110,39 +117,7 @@ export class RunLocker {
         const lockStartTime = performance.now();
 
         const [error, result] = await tryCatch(
-          this.redlock.using(resources, duration, async (signal) => {
-            const newContext: LockContext = {
-              resources: joinedResources,
-              signal,
-              lockType: name,
-            };
-
-            // Track active lock
-            this.activeLocks.set(lockId, {
-              lockType: name,
-              resources: resources,
-            });
-
-            let lockSuccess = true;
-            try {
-              return this.asyncLocalStorage.run(newContext, async () => {
-                return routine(signal);
-              });
-            } catch (lockError) {
-              lockSuccess = false;
-              throw lockError;
-            } finally {
-              // Record lock duration
-              const lockDuration = performance.now() - lockStartTime;
-              this.lockDurationHistogram.record(lockDuration, {
-                [SemanticAttributes.LOCK_TYPE]: name,
-                [SemanticAttributes.LOCK_SUCCESS]: lockSuccess.toString(),
-              });
-
-              // Remove from active locks when done
-              this.activeLocks.delete(lockId);
-            }
-          })
+          this.#acquireAndExecute(name, resources, duration, routine, lockId, lockStartTime)
         );
 
         if (error) {
@@ -218,6 +193,9 @@ export class RunLocker {
       extension: undefined,
     };
 
+    // Track the manual context for cleanup
+    this.activeManualContexts.set(lockId, manualContext);
+
     // Set up auto-extension starting from when lock was actually acquired
     this.#setupAutoExtension(manualContext, duration, signal, controller);
 
@@ -256,6 +234,9 @@ export class RunLocker {
         this.activeLocks.delete(lockId);
       }
     } finally {
+      // Remove from active manual contexts
+      this.activeManualContexts.delete(lockId);
+
       // Clean up extension mechanism - this ensures auto extension stops after routine finishes
       this.#cleanupExtension(manualContext);
 
@@ -375,6 +356,24 @@ export class RunLocker {
   }
 
   async quit() {
+    // Clean up all active manual contexts
+    for (const [lockId, context] of this.activeManualContexts) {
+      this.#cleanupExtension(context);
+
+      // Try to release any remaining locks
+      const [releaseError] = await tryCatch(context.lock.release());
+      if (releaseError) {
+        this.logger.warn("[RunLocker] Error releasing lock during quit", {
+          error: releaseError,
+          lockId,
+          lockValue: context.lock.value,
+        });
+      }
+    }
+
+    this.activeManualContexts.clear();
+    this.activeLocks.clear();
+
     await this.redlock.quit();
   }
 }
