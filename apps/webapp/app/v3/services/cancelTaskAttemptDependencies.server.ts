@@ -1,5 +1,5 @@
 import { PrismaClientOrTransaction } from "~/db.server";
-import { workerQueue } from "~/services/worker.server";
+import { commonWorker } from "../commonWorker.server";
 import { BaseService } from "./baseService.server";
 import { logger } from "~/services/logger.server";
 import { CancelTaskRunService } from "./cancelTaskRun.server";
@@ -58,16 +58,13 @@ export class CancelTaskAttemptDependenciesService extends BaseService {
   }
 
   static async enqueue(attemptId: string, tx: PrismaClientOrTransaction, runAt?: Date) {
-    return await workerQueue.enqueue(
-      "v3.cancelTaskAttemptDependencies",
-      {
+    return await commonWorker.enqueue({
+      id: `cancelTaskAttemptDependencies:${attemptId}`,
+      job: "v3.cancelTaskAttemptDependencies",
+      payload: {
         attemptId,
       },
-      {
-        tx,
-        runAt,
-        jobKey: `cancelTaskAttemptDependencies:${attemptId}`,
-      }
-    );
+      availableAt: runAt,
+    });
   }
 }
