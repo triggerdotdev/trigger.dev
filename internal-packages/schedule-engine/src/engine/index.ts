@@ -1,20 +1,13 @@
-import {
-  Counter,
-  getMeter,
-  Histogram,
-  Meter,
-  startSpan,
-  Tracer,
-  UpDownCounter,
-} from "@internal/tracing";
+import { Counter, getMeter, Histogram, Meter, startSpan, Tracer } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
 import { PrismaClient } from "@trigger.dev/database";
-import { Worker } from "@trigger.dev/redis-worker";
+import { Worker, type JobHandlerParams } from "@trigger.dev/redis-worker";
 import { calculateDistributedExecutionTime } from "./distributedScheduling.js";
 import { calculateNextScheduledTimestamp, nextScheduledTimestamps } from "./scheduleCalculation.js";
 import {
   RegisterScheduleInstanceParams,
   ScheduleEngineOptions,
+  TriggerScheduledTaskCallback,
   TriggerScheduleParams,
 } from "./types.js";
 import { scheduleWorkerCatalog } from "./workerCatalog.js";
@@ -37,11 +30,14 @@ export class ScheduleEngine {
 
   prisma: PrismaClient;
 
+  private onTriggerScheduledTask: TriggerScheduledTaskCallback;
+
   constructor(private readonly options: ScheduleEngineOptions) {
     this.logger =
       options.logger ?? new Logger("ScheduleEngine", (this.options.logLevel ?? "info") as any);
     this.prisma = options.prisma;
     this.distributionWindowSeconds = options.distributionWindow?.seconds ?? 30;
+    this.onTriggerScheduledTask = options.onTriggerScheduledTask;
 
     this.tracer = options.tracer ?? (startSpan as any).tracer;
     this.meter = options.meter ?? getMeter("schedule-engine");
@@ -93,13 +89,7 @@ export class ScheduleEngine {
       shutdownTimeoutMs: options.worker.shutdownTimeoutMs,
       logger: new Logger("ScheduleEngineWorker", "debug"),
       jobs: {
-        "schedule.triggerScheduledTask": async ({ payload }) => {
-          await this.triggerScheduledTask({
-            instanceId: payload.instanceId,
-            finalAttempt: false, // TODO: implement retry logic
-            exactScheduleTime: payload.exactScheduleTime,
-          });
-        },
+        "schedule.triggerScheduledTask": this.#handleTriggerScheduledTaskJob.bind(this),
       },
     });
 
@@ -221,6 +211,16 @@ export class ScheduleEngine {
 
         throw error;
       }
+    });
+  }
+
+  async #handleTriggerScheduledTaskJob({
+    payload,
+  }: JobHandlerParams<typeof scheduleWorkerCatalog, "schedule.triggerScheduledTask">) {
+    await this.triggerScheduledTask({
+      instanceId: payload.instanceId,
+      finalAttempt: false, // TODO: implement retry logic
+      exactScheduleTime: payload.exactScheduleTime,
     });
   }
 
@@ -410,7 +410,7 @@ export class ScheduleEngine {
 
           // Rewritten try/catch to use tryCatch utility
           const [triggerError, result] = await tryCatch(
-            this.options.onTriggerScheduledTask({
+            this.onTriggerScheduledTask({
               taskIdentifier: instance.taskSchedule.taskIdentifier,
               environment: instance.environment,
               payload,

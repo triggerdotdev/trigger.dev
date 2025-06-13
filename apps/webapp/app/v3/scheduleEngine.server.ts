@@ -12,50 +12,6 @@ export const scheduleEngine = singleton("ScheduleEngine", createScheduleEngine);
 
 export type { ScheduleEngine };
 
-const triggerScheduledTaskCallback: TriggerScheduledTaskCallback = async ({
-  taskIdentifier,
-  environment,
-  payload,
-  scheduleInstanceId,
-  scheduleId,
-  exactScheduleTime,
-}) => {
-  try {
-    // Use TriggerTaskServiceV1 for now (can be updated to use TriggerTaskService when ready)
-    const triggerService = new TriggerTaskService();
-
-    const payloadPacket = await stringifyIO(payload);
-
-    logger.debug("Triggering scheduled task", {
-      taskIdentifier,
-      environment,
-      payload,
-      scheduleInstanceId,
-      scheduleId,
-      exactScheduleTime,
-    });
-
-    const result = await triggerService.call(
-      taskIdentifier,
-      environment,
-      { payload: payloadPacket.data, options: { payloadType: payloadPacket.dataType } },
-      {
-        customIcon: "scheduled",
-        scheduleId,
-        scheduleInstanceId,
-        queueTimestamp: exactScheduleTime,
-      }
-    );
-
-    return { success: !!result };
-  } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : String(error),
-    };
-  }
-};
-
 async function isDevEnvironmentConnectedHandler(environmentId: string) {
   const environment = await prisma.runtimeEnvironment.findFirst({
     where: {
@@ -114,7 +70,50 @@ function createScheduleEngine() {
     },
     tracer,
     meter,
-    onTriggerScheduledTask: triggerScheduledTaskCallback,
+    onTriggerScheduledTask: async ({
+      taskIdentifier,
+      environment,
+      payload,
+      scheduleInstanceId,
+      scheduleId,
+      exactScheduleTime,
+    }) => {
+      try {
+        // Use TriggerTaskServiceV1 for now (can be updated to use TriggerTaskService when ready)
+        const triggerService = new TriggerTaskService();
+
+        const payloadPacket = await stringifyIO(payload);
+
+        logger.debug("Triggering scheduled task", {
+          taskIdentifier,
+          environment,
+          payload,
+          scheduleInstanceId,
+          scheduleId,
+          exactScheduleTime,
+        });
+
+        const result = await triggerService.call(
+          taskIdentifier,
+          environment,
+          { payload: payloadPacket.data, options: { payloadType: payloadPacket.dataType } },
+          {
+            customIcon: "scheduled",
+            scheduleId,
+            scheduleInstanceId,
+            queueTimestamp: exactScheduleTime,
+            overrideCreatedAt: exactScheduleTime,
+          }
+        );
+
+        return { success: !!result };
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
+    },
     isDevEnvironmentConnectedHandler: isDevEnvironmentConnectedHandler,
   });
 
