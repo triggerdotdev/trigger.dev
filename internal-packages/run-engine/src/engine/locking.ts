@@ -418,15 +418,18 @@ export class RunLocker {
         context.lock.expiration - Date.now() - this.automaticExtensionThreshold;
 
       if (timeUntilExtension > 0) {
-        context.timeout = setTimeout(() => {
-          context.extension = this.#extendLock(
-            context,
-            duration,
-            signal,
-            controller,
-            scheduleExtension
-          );
-        }, timeUntilExtension);
+        // Check for cleanup immediately before scheduling to prevent race condition
+        if (context.timeout !== null) {
+          context.timeout = setTimeout(() => {
+            context.extension = this.#extendLock(
+              context,
+              duration,
+              signal,
+              controller,
+              scheduleExtension
+            );
+          }, timeUntilExtension);
+        }
       }
     };
 
@@ -452,10 +455,8 @@ export class RunLocker {
 
     if (!error && newLock) {
       context.lock = newLock;
-      // Only schedule next extension if we haven't been cleaned up
-      if (context.timeout !== null) {
-        scheduleNext();
-      }
+      // Schedule next extension (cleanup check is now inside scheduleNext)
+      scheduleNext();
     } else {
       if (context.lock.expiration > Date.now()) {
         // If lock hasn't expired yet, schedule a retry instead of recursing
