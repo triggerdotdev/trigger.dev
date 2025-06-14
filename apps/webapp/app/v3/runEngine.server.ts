@@ -78,7 +78,7 @@ function createRunEngine() {
       duration: env.RUN_ENGINE_RUN_LOCK_DURATION,
       automaticExtensionThreshold: env.RUN_ENGINE_RUN_LOCK_AUTOMATIC_EXTENSION_THRESHOLD,
       retryConfig: {
-        maxRetries: env.RUN_ENGINE_RUN_LOCK_MAX_RETRIES,
+        maxAttempts: env.RUN_ENGINE_RUN_LOCK_MAX_RETRIES,
         baseDelay: env.RUN_ENGINE_RUN_LOCK_BASE_DELAY,
         maxDelay: env.RUN_ENGINE_RUN_LOCK_MAX_DELAY,
         backoffMultiplier: env.RUN_ENGINE_RUN_LOCK_BACKOFF_MULTIPLIER,
