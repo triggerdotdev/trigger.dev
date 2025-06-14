@@ -175,7 +175,7 @@ export class RunLocker {
     routine?: (signal: redlock.RedlockAbortSignal) => Promise<T>
   ): Promise<T> {
     const currentContext = this.asyncLocalStorage.getStore();
-    const joinedResources = resources.sort().join(",");
+    const joinedResources = [...resources].sort().join(",");
 
     // Handle overloaded parameters
     let actualDuration: number;
@@ -251,7 +251,9 @@ export class RunLocker {
     lockId: string,
     lockStartTime: number
   ): Promise<T> {
-    const joinedResources = resources.sort().join(",");
+    // Sort resources to ensure consistent lock acquisition order and prevent deadlocks
+    const sortedResources = [...resources].sort();
+    const joinedResources = sortedResources.join(",");
 
     // Use configured retry settings with exponential backoff
     const { maxRetries, baseDelay, maxDelay, backoffMultiplier, jitterFactor, maxTotalWaitTime } =
@@ -266,14 +268,14 @@ export class RunLocker {
     let lastError: Error | undefined;
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      const [error, acquiredLock] = await tryCatch(this.redlock.acquire(resources, duration));
+      const [error, acquiredLock] = await tryCatch(this.redlock.acquire(sortedResources, duration));
 
       if (!error && acquiredLock) {
         lock = acquiredLock;
         if (attempt > 0) {
           this.logger.debug("[RunLocker] Lock acquired after retries", {
             name,
-            resources,
+            resources: sortedResources,
             attempts: attempt + 1,
             totalWaitTime: Math.round(totalWaitTime),
           });
@@ -287,16 +289,16 @@ export class RunLocker {
       if (totalWaitTime >= maxTotalWaitTime) {
         this.logger.warn("[RunLocker] Lock acquisition exceeded total wait time limit", {
           name,
-          resources,
+          resources: sortedResources,
           attempts: attempt + 1,
           totalWaitTime: Math.round(totalWaitTime),
           maxTotalWaitTime,
         });
         throw new LockAcquisitionTimeoutError(
-          resources,
+          sortedResources,
           Math.round(totalWaitTime),
           attempt + 1,
-          `Lock acquisition on resources [${resources.join(
+          `Lock acquisition on resources [${sortedResources.join(
             ", "
           )}] exceeded total wait time limit of ${maxTotalWaitTime}ms`
         );
@@ -306,16 +308,16 @@ export class RunLocker {
       if (attempt === maxRetries) {
         this.logger.warn("[RunLocker] Lock acquisition exhausted all retries", {
           name,
-          resources,
+          resources: sortedResources,
           attempts: attempt + 1,
           totalWaitTime: Math.round(totalWaitTime),
           lastError: lastError.message,
         });
         throw new LockAcquisitionTimeoutError(
-          resources,
+          sortedResources,
           Math.round(totalWaitTime),
           attempt + 1,
-          `Lock acquisition on resources [${resources.join(", ")}] failed after ${
+          `Lock acquisition on resources [${sortedResources.join(", ")}] failed after ${
             attempt + 1
           } attempts`
         );
@@ -334,14 +336,14 @@ export class RunLocker {
           maxDelay
         );
         const jitter = exponentialDelay * jitterFactor * (Math.random() * 2 - 1); // ±jitterFactor% jitter
-        const delay = Math.max(0, Math.round(exponentialDelay + jitter));
+        const delay = Math.min(maxDelay, Math.max(0, Math.round(exponentialDelay + jitter)));
 
         // Update total wait time before delay
         totalWaitTime += delay;
 
         this.logger.debug("[RunLocker] Lock acquisition failed, retrying with backoff", {
           name,
-          resources,
+          resources: sortedResources,
           attempt: attempt + 1,
           delay,
           totalWaitTime: Math.round(totalWaitTime),
@@ -356,7 +358,7 @@ export class RunLocker {
       // For other errors (non-retryable), throw immediately
       this.logger.error("[RunLocker] Lock acquisition failed with non-retryable error", {
         name,
-        resources,
+        resources: sortedResources,
         attempt: attempt + 1,
         error: lastError.message,
         errorName: lastError.name,
@@ -390,7 +392,7 @@ export class RunLocker {
       // Track active lock
       this.activeLocks.set(lockId, {
         lockType: name,
-        resources: resources,
+        resources: sortedResources,
       });
 
       let lockSuccess = true;
@@ -426,7 +428,7 @@ export class RunLocker {
       if (releaseError) {
         this.logger.warn("[RunLocker] Error releasing lock", {
           error: releaseError,
-          resources,
+          resources: sortedResources,
           lockValue: lock!.value,
         });
       }
