@@ -578,6 +578,176 @@ describe("RunLocker", () => {
     }
   );
 
+  redisTest(
+    "Test default duration configuration",
+    { timeout: 15_000 },
+    async ({ redisOptions }) => {
+      const redis = createRedisClient(redisOptions);
+      const logger = new Logger("RunLockTest", "debug");
+
+      // Test with custom default duration
+      const runLock = new RunLocker({
+        redis,
+        logger,
+        tracer: trace.getTracer("RunLockTest"),
+        defaultDuration: 8000,
+      });
+
+      try {
+        // Test that the default duration is set correctly
+        expect(runLock.getDefaultDuration()).toBe(8000);
+
+        // Test lock without specifying duration (should use default)
+        const startTime = Date.now();
+        await runLock.lock("test-lock", ["default-duration-test"], async () => {
+          expect(runLock.isInsideLock()).toBe(true);
+          // Sleep for a bit to ensure the lock is working
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        });
+        const elapsed = Date.now() - startTime;
+        expect(elapsed).toBeGreaterThan(90); // Should have completed successfully
+
+        // Test lock with explicit duration (should override default)
+        await runLock.lock("test-lock", ["explicit-duration-test"], 2000, async () => {
+          expect(runLock.isInsideLock()).toBe(true);
+        });
+
+        // Test lockIf without duration (should use default)
+        await runLock.lockIf(true, "test-lock", ["lockif-default"], async () => {
+          expect(runLock.isInsideLock()).toBe(true);
+        });
+
+        // Test lockIf with explicit duration
+        await runLock.lockIf(true, "test-lock", ["lockif-explicit"], 3000, async () => {
+          expect(runLock.isInsideLock()).toBe(true);
+        });
+      } finally {
+        await runLock.quit();
+      }
+    }
+  );
+
+  redisTest(
+    "Test automatic extension threshold configuration",
+    { timeout: 15_000 },
+    async ({ redisOptions }) => {
+      const redis = createRedisClient(redisOptions);
+      const logger = new Logger("RunLockTest", "debug");
+
+      // Test with custom automatic extension threshold
+      const runLock = new RunLocker({
+        redis,
+        logger,
+        tracer: trace.getTracer("RunLockTest"),
+        automaticExtensionThreshold: 200, // Custom threshold
+      });
+
+      try {
+        // Test that the threshold is set correctly
+        expect(runLock.getAutomaticExtensionThreshold()).toBe(200);
+        expect(runLock.getDefaultDuration()).toBe(5000); // Should use default
+
+        // Test lock extension with custom threshold
+        // Use a short lock duration but longer operation to trigger extension
+        await runLock.lock("test-lock", ["extension-threshold-test"], 800, async () => {
+          expect(runLock.isInsideLock()).toBe(true);
+          // Sleep longer than lock duration to ensure extension works
+          await new Promise((resolve) => setTimeout(resolve, 1200));
+        });
+      } finally {
+        await runLock.quit();
+      }
+    }
+  );
+
+  redisTest("Test Redlock retry configuration", { timeout: 10_000 }, async ({ redisOptions }) => {
+    const redis = createRedisClient(redisOptions);
+    const logger = new Logger("RunLockTest", "debug");
+
+    // Test that we can configure all settings
+    const runLock = new RunLocker({
+      redis,
+      logger,
+      tracer: trace.getTracer("RunLockTest"),
+      defaultDuration: 3000,
+      automaticExtensionThreshold: 300,
+      retryConfig: {
+        maxRetries: 5,
+        baseDelay: 150,
+      },
+    });
+
+    try {
+      // Verify all configurations are set
+      expect(runLock.getDefaultDuration()).toBe(3000);
+      expect(runLock.getAutomaticExtensionThreshold()).toBe(300);
+
+      const retryConfig = runLock.getRetryConfig();
+      expect(retryConfig.maxRetries).toBe(5);
+      expect(retryConfig.baseDelay).toBe(150);
+
+      // Test basic functionality with all custom configs
+      await runLock.lock("test-lock", ["all-config-test"], async () => {
+        expect(runLock.isInsideLock()).toBe(true);
+      });
+    } finally {
+      await runLock.quit();
+    }
+  });
+
+  redisTest(
+    "Test production-optimized configuration",
+    { timeout: 15_000 },
+    async ({ redisOptions }) => {
+      const redis = createRedisClient(redisOptions);
+      const logger = new Logger("RunLockTest", "debug");
+
+      // Test with production-optimized settings (similar to RunEngine)
+      const runLock = new RunLocker({
+        redis,
+        logger,
+        tracer: trace.getTracer("RunLockTest"),
+        defaultDuration: 10000,
+        automaticExtensionThreshold: 2000,
+        retryConfig: {
+          maxRetries: 15,
+          baseDelay: 100,
+          maxDelay: 3000,
+          backoffMultiplier: 1.8,
+          jitterFactor: 0.15,
+          maxTotalWaitTime: 25000,
+        },
+      });
+
+      try {
+        // Verify production configuration
+        expect(runLock.getDefaultDuration()).toBe(10000);
+        expect(runLock.getAutomaticExtensionThreshold()).toBe(2000);
+
+        const retryConfig = runLock.getRetryConfig();
+        expect(retryConfig.maxRetries).toBe(15);
+        expect(retryConfig.baseDelay).toBe(100);
+        expect(retryConfig.maxDelay).toBe(3000);
+        expect(retryConfig.backoffMultiplier).toBe(1.8);
+        expect(retryConfig.jitterFactor).toBe(0.15);
+        expect(retryConfig.maxTotalWaitTime).toBe(25000);
+
+        // Test lock with default duration (should use 10 seconds)
+        const startTime = Date.now();
+        await runLock.lock("test-lock", ["production-config"], async () => {
+          expect(runLock.isInsideLock()).toBe(true);
+          // Simulate a typical operation duration
+          await new Promise((resolve) => setTimeout(resolve, 200));
+        });
+        const elapsed = Date.now() - startTime;
+        expect(elapsed).toBeGreaterThan(190);
+        expect(elapsed).toBeLessThan(1000); // Should complete quickly for successful operation
+      } finally {
+        await runLock.quit();
+      }
+    }
+  );
+
   redisTest("Test configuration edge cases", { timeout: 15_000 }, async ({ redisOptions }) => {
     const logger = new Logger("RunLockTest", "debug");
 

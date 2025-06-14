@@ -429,6 +429,15 @@ const EnvironmentSchema = z.object({
   RUN_ENGINE_DEQUEUE_BLOCKING_TIMEOUT_SECONDS: z.coerce.number().int().default(10),
   RUN_ENGINE_MASTER_QUEUE_CONSUMERS_INTERVAL_MS: z.coerce.number().int().default(500),
 
+  RUN_ENGINE_RUN_LOCK_DURATION: z.coerce.number().int().default(5000),
+  RUN_ENGINE_RUN_LOCK_AUTOMATIC_EXTENSION_THRESHOLD: z.coerce.number().int().default(1000),
+  RUN_ENGINE_RUN_LOCK_MAX_RETRIES: z.coerce.number().int().default(10),
+  RUN_ENGINE_RUN_LOCK_BASE_DELAY: z.coerce.number().int().default(100),
+  RUN_ENGINE_RUN_LOCK_MAX_DELAY: z.coerce.number().int().default(3000),
+  RUN_ENGINE_RUN_LOCK_BACKOFF_MULTIPLIER: z.coerce.number().default(1.8),
+  RUN_ENGINE_RUN_LOCK_JITTER_FACTOR: z.coerce.number().default(0.15),
+  RUN_ENGINE_RUN_LOCK_MAX_TOTAL_WAIT_TIME: z.coerce.number().int().default(15000),
+
   RUN_ENGINE_WORKER_REDIS_HOST: z
     .string()
     .optional()

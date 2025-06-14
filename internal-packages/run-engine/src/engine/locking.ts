@@ -51,7 +51,7 @@ interface ManualLockContext {
   extension: Promise<void> | undefined;
 }
 
-interface RetryConfig {
+export interface LockRetryConfig {
   /** Maximum number of retry attempts (default: 10) */
   maxRetries?: number;
   /** Initial delay in milliseconds (default: 200) */
@@ -66,6 +66,15 @@ interface RetryConfig {
   maxTotalWaitTime?: number;
 }
 
+interface LockOptions {
+  /** Default lock duration in milliseconds (default: 5000) */
+  defaultDuration?: number;
+  /** Automatic extension threshold in milliseconds - how early to extend locks before expiration (default: 500) */
+  automaticExtensionThreshold?: number;
+  /** Retry configuration for lock acquisition */
+  retryConfig?: LockRetryConfig;
+}
+
 export class RunLocker {
   private redlock: InstanceType<typeof redlock.default>;
   private asyncLocalStorage: AsyncLocalStorage<LockContext>;
@@ -75,21 +84,29 @@ export class RunLocker {
   private activeLocks: Map<string, { lockType: string; resources: string[] }> = new Map();
   private activeManualContexts: Map<string, ManualLockContext> = new Map();
   private lockDurationHistogram: Histogram;
-  private retryConfig: Required<RetryConfig>;
+  private retryConfig: Required<LockRetryConfig>;
+  private defaultDuration: number;
+  private automaticExtensionThreshold: number;
 
   constructor(options: {
     redis: Redis;
     logger: Logger;
     tracer: Tracer;
     meter?: Meter;
-    retryConfig?: RetryConfig;
+    defaultDuration?: number;
+    automaticExtensionThreshold?: number;
+    retryConfig?: LockRetryConfig;
   }) {
+    // Initialize configuration values
+    this.defaultDuration = options.defaultDuration ?? 5000;
+    this.automaticExtensionThreshold = options.automaticExtensionThreshold ?? 500;
+
     this.redlock = new Redlock([options.redis], {
       driftFactor: 0.01,
-      retryCount: 10,
-      retryDelay: 200, // time in ms
-      retryJitter: 200, // time in ms
-      automaticExtensionThreshold: 500, // time in ms
+      retryCount: 0, // Disable Redlock's internal retrying - we handle retries ourselves
+      retryDelay: 200, // Not used since retryCount = 0
+      retryJitter: 200, // Not used since retryCount = 0
+      automaticExtensionThreshold: this.automaticExtensionThreshold,
     });
     this.asyncLocalStorage = new AsyncLocalStorage<LockContext>();
     this.logger = options.logger;
@@ -143,11 +160,36 @@ export class RunLocker {
   async lock<T>(
     name: string,
     resources: string[],
-    duration: number,
+    duration: number | undefined,
     routine: (signal: redlock.RedlockAbortSignal) => Promise<T>
+  ): Promise<T>;
+  async lock<T>(
+    name: string,
+    resources: string[],
+    routine: (signal: redlock.RedlockAbortSignal) => Promise<T>
+  ): Promise<T>;
+  async lock<T>(
+    name: string,
+    resources: string[],
+    durationOrRoutine: number | undefined | ((signal: redlock.RedlockAbortSignal) => Promise<T>),
+    routine?: (signal: redlock.RedlockAbortSignal) => Promise<T>
   ): Promise<T> {
     const currentContext = this.asyncLocalStorage.getStore();
     const joinedResources = resources.sort().join(",");
+
+    // Handle overloaded parameters
+    let actualDuration: number;
+    let actualRoutine: (signal: redlock.RedlockAbortSignal) => Promise<T>;
+
+    if (typeof durationOrRoutine === "function") {
+      // Called as lock(name, resources, routine) - use default duration
+      actualDuration = this.defaultDuration;
+      actualRoutine = durationOrRoutine;
+    } else {
+      // Called as lock(name, resources, duration, routine) - use provided duration
+      actualDuration = durationOrRoutine ?? this.defaultDuration;
+      actualRoutine = routine!;
+    }
 
     return startSpan(
       this.tracer,
@@ -156,7 +198,7 @@ export class RunLocker {
         if (currentContext && currentContext.resources === joinedResources) {
           span.setAttribute("nested", true);
           // We're already inside a lock with the same resources, just run the routine
-          return routine(currentContext.signal);
+          return actualRoutine(currentContext.signal);
         }
 
         span.setAttribute("nested", false);
@@ -166,7 +208,14 @@ export class RunLocker {
         const lockStartTime = performance.now();
 
         const [error, result] = await tryCatch(
-          this.#acquireAndExecute(name, resources, duration, routine, lockId, lockStartTime)
+          this.#acquireAndExecute(
+            name,
+            resources,
+            actualDuration,
+            actualRoutine,
+            lockId,
+            lockStartTime
+          )
         );
 
         if (error) {
@@ -177,14 +226,18 @@ export class RunLocker {
             [SemanticAttributes.LOCK_SUCCESS]: "false",
           });
 
-          this.logger.error("[RunLocker] Error locking resources", { error, resources, duration });
+          this.logger.error("[RunLocker] Error locking resources", {
+            error,
+            resources,
+            duration: actualDuration,
+          });
           throw error;
         }
 
         return result;
       },
       {
-        attributes: { name, resources, timeout: duration },
+        attributes: { name, resources, timeout: actualDuration },
       }
     );
   }
@@ -387,15 +440,14 @@ export class RunLocker {
     signal: redlock.RedlockAbortSignal,
     controller: AbortController
   ): void {
-    const automaticExtensionThreshold = 500; // Same as redlock default
-
-    if (automaticExtensionThreshold > duration - 100) {
+    if (this.automaticExtensionThreshold > duration - 100) {
       // Don't set up auto-extension if duration is too short
       return;
     }
 
     const scheduleExtension = (): void => {
-      const timeUntilExtension = context.lock.expiration - Date.now() - automaticExtensionThreshold;
+      const timeUntilExtension =
+        context.lock.expiration - Date.now() - this.automaticExtensionThreshold;
 
       if (timeUntilExtension > 0) {
         context.timeout = setTimeout(() => {
@@ -475,13 +527,47 @@ export class RunLocker {
     condition: boolean,
     name: string,
     resources: string[],
-    duration: number,
+    duration: number | undefined,
     routine: (signal?: redlock.RedlockAbortSignal) => Promise<T>
+  ): Promise<T>;
+  async lockIf<T>(
+    condition: boolean,
+    name: string,
+    resources: string[],
+    routine: (signal?: redlock.RedlockAbortSignal) => Promise<T>
+  ): Promise<T>;
+  async lockIf<T>(
+    condition: boolean,
+    name: string,
+    resources: string[],
+    durationOrRoutine: number | undefined | ((signal?: redlock.RedlockAbortSignal) => Promise<T>),
+    routine?: (signal?: redlock.RedlockAbortSignal) => Promise<T>
   ): Promise<T> {
     if (condition) {
-      return this.lock(name, resources, duration, routine);
+      // Handle overloaded parameters
+      if (typeof durationOrRoutine === "function") {
+        // Called as lockIf(condition, name, resources, routine) - use default duration
+        return this.lock(
+          name,
+          resources,
+          durationOrRoutine as (signal: redlock.RedlockAbortSignal) => Promise<T>
+        );
+      } else {
+        // Called as lockIf(condition, name, resources, duration, routine) - use provided duration
+        return this.lock(
+          name,
+          resources,
+          durationOrRoutine,
+          routine! as (signal: redlock.RedlockAbortSignal) => Promise<T>
+        );
+      }
     } else {
-      return routine();
+      // Handle overloaded parameters for non-lock case
+      if (typeof durationOrRoutine === "function") {
+        return durationOrRoutine();
+      } else {
+        return routine!();
+      }
     }
   }
 
@@ -493,8 +579,16 @@ export class RunLocker {
     return this.asyncLocalStorage.getStore()?.resources;
   }
 
-  getRetryConfig(): Readonly<Required<RetryConfig>> {
+  getRetryConfig(): Readonly<Required<LockRetryConfig>> {
     return { ...this.retryConfig };
+  }
+
+  getDefaultDuration(): number {
+    return this.defaultDuration;
+  }
+
+  getAutomaticExtensionThreshold(): number {
+    return this.automaticExtensionThreshold;
   }
 
   async quit() {
