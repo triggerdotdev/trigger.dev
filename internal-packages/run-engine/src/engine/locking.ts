@@ -93,11 +93,7 @@ export class RunLocker {
     this.automaticExtensionThreshold = options.automaticExtensionThreshold ?? 500;
 
     this.redlock = new Redlock([options.redis], {
-      driftFactor: 0.01,
       retryCount: 0, // Disable Redlock's internal retrying - we handle retries ourselves
-      retryDelay: 200, // Not used since retryCount = 0
-      retryJitter: 200, // Not used since retryCount = 0
-      automaticExtensionThreshold: this.automaticExtensionThreshold,
     });
     this.asyncLocalStorage = new AsyncLocalStorage<LockContext>();
     this.logger = options.logger;
@@ -428,6 +424,11 @@ export class RunLocker {
     controller: AbortController,
     scheduleNext: () => void
   ): Promise<void> {
+    // Check if cleanup has started before proceeding
+    if (context.timeout === null) {
+      return;
+    }
+
     context.timeout = undefined;
 
     const [error, newLock] = await tryCatch(context.lock.extend(duration));
