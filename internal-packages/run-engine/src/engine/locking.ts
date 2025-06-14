@@ -52,8 +52,8 @@ interface ManualLockContext {
 }
 
 export interface LockRetryConfig {
-  /** Maximum number of retry attempts (default: 10) */
-  maxRetries?: number;
+  /** Maximum number of locking attempts (default: 10) */
+  maxAttempts?: number;
   /** Initial delay in milliseconds (default: 200) */
   baseDelay?: number;
   /** Maximum delay cap in milliseconds (default: 5000) */
@@ -102,7 +102,7 @@ export class RunLocker {
 
     // Initialize retry configuration with defaults
     this.retryConfig = {
-      maxRetries: options.retryConfig?.maxRetries ?? 10,
+      maxAttempts: options.retryConfig?.maxAttempts ?? 10,
       baseDelay: options.retryConfig?.baseDelay ?? 200,
       maxDelay: options.retryConfig?.maxDelay ?? 5000,
       backoffMultiplier: options.retryConfig?.backoffMultiplier ?? 1.5,
@@ -206,7 +206,7 @@ export class RunLocker {
     const joinedResources = sortedResources.join(",");
 
     // Use configured retry settings with exponential backoff
-    const { maxRetries, baseDelay, maxDelay, backoffMultiplier, jitterFactor, maxTotalWaitTime } =
+    const { maxAttempts, baseDelay, maxDelay, backoffMultiplier, jitterFactor, maxTotalWaitTime } =
       this.retryConfig;
 
     // Track timing for total wait time limit
@@ -216,7 +216,7 @@ export class RunLocker {
     let lock: redlock.Lock | undefined;
     let lastError: Error | undefined;
 
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    for (let attempt = 0; attempt <= maxAttempts; attempt++) {
       const [error, acquiredLock] = await tryCatch(this.redlock.acquire(sortedResources, duration));
 
       if (!error && acquiredLock) {
@@ -254,7 +254,7 @@ export class RunLocker {
       }
 
       // If this is the last attempt, throw timeout error
-      if (attempt === maxRetries) {
+      if (attempt === maxAttempts) {
         this.logger.warn("[RunLocker] Lock acquisition exhausted all retries", {
           name,
           resources: sortedResources,
@@ -320,14 +320,14 @@ export class RunLocker {
       this.logger.error("[RunLocker] Lock was not acquired despite completing retry loop", {
         name,
         resources: sortedResources,
-        maxRetries,
+        maxAttempts,
         totalWaitTime: Math.round(totalWaitTime),
         lastError: lastError?.message,
       });
       throw new LockAcquisitionTimeoutError(
         sortedResources,
         Math.round(totalWaitTime),
-        maxRetries + 1,
+        maxAttempts + 1,
         `Lock acquisition on resources [${sortedResources.join(", ")}] failed unexpectedly`
       );
     }

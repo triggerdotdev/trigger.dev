@@ -115,7 +115,7 @@ describe("RunLocker", () => {
       logger,
       tracer: trace.getTracer("RunLockTest"),
       retryConfig: {
-        maxRetries: 3,
+        maxAttempts: 3,
         baseDelay: 100,
         maxTotalWaitTime: 2000, // 2 second timeout for faster test
       },
@@ -246,7 +246,7 @@ describe("RunLocker", () => {
         logger,
         tracer: trace.getTracer("RunLockTest"),
         retryConfig: {
-          maxRetries: 2,
+          maxAttempts: 2,
           baseDelay: 50,
           maxDelay: 200,
           backoffMultiplier: 2.0,
@@ -258,7 +258,7 @@ describe("RunLocker", () => {
       try {
         // Verify configuration is set correctly
         const config = runLock.getRetryConfig();
-        expect(config.maxRetries).toBe(2);
+        expect(config.maxAttempts).toBe(2);
         expect(config.baseDelay).toBe(50);
         expect(config.maxDelay).toBe(200);
         expect(config.backoffMultiplier).toBe(2.0);
@@ -288,7 +288,7 @@ describe("RunLocker", () => {
         logger,
         tracer: trace.getTracer("RunLockTest"),
         retryConfig: {
-          maxRetries: 2,
+          maxAttempts: 2,
           baseDelay: 50,
           maxTotalWaitTime: 500, // Shorter timeout to ensure failure
         },
@@ -315,7 +315,7 @@ describe("RunLocker", () => {
           if (error instanceof LockAcquisitionTimeoutError) {
             expect(error.resources).toEqual(["test-error"]);
             expect(error.attempts).toBeGreaterThan(0);
-            expect(error.attempts).toBeLessThanOrEqual(3); // maxRetries + 1
+            expect(error.attempts).toBeLessThanOrEqual(3); // maxAttempts + 1
             expect(error.totalWaitTime).toBeGreaterThan(0);
             expect(error.totalWaitTime).toBeLessThanOrEqual(800); // Some tolerance
             expect(error.name).toBe("LockAcquisitionTimeoutError");
@@ -344,7 +344,7 @@ describe("RunLocker", () => {
 
     try {
       const config = runLock.getRetryConfig();
-      expect(config.maxRetries).toBe(10);
+      expect(config.maxAttempts).toBe(10);
       expect(config.baseDelay).toBe(200);
       expect(config.maxDelay).toBe(5000);
       expect(config.backoffMultiplier).toBe(1.5);
@@ -371,7 +371,7 @@ describe("RunLocker", () => {
         logger,
         tracer: trace.getTracer("RunLockTest"),
         retryConfig: {
-          maxRetries: 5,
+          maxAttempts: 5,
           maxTotalWaitTime: 10000,
           // Other values should use defaults
         },
@@ -379,7 +379,7 @@ describe("RunLocker", () => {
 
       try {
         const config = runLock.getRetryConfig();
-        expect(config.maxRetries).toBe(5); // Overridden
+        expect(config.maxAttempts).toBe(5); // Overridden
         expect(config.maxTotalWaitTime).toBe(10000); // Overridden
         expect(config.baseDelay).toBe(200); // Default
         expect(config.maxDelay).toBe(5000); // Default
@@ -643,7 +643,7 @@ describe("RunLocker", () => {
       duration: 3000,
       automaticExtensionThreshold: 300,
       retryConfig: {
-        maxRetries: 5,
+        maxAttempts: 5,
         baseDelay: 150,
       },
     });
@@ -654,7 +654,7 @@ describe("RunLocker", () => {
       expect(runLock.getAutomaticExtensionThreshold()).toBe(300);
 
       const retryConfig = runLock.getRetryConfig();
-      expect(retryConfig.maxRetries).toBe(5);
+      expect(retryConfig.maxAttempts).toBe(5);
       expect(retryConfig.baseDelay).toBe(150);
 
       // Test basic functionality with all custom configs
@@ -681,7 +681,7 @@ describe("RunLocker", () => {
         duration: 10000,
         automaticExtensionThreshold: 2000,
         retryConfig: {
-          maxRetries: 15,
+          maxAttempts: 15,
           baseDelay: 100,
           maxDelay: 3000,
           backoffMultiplier: 1.8,
@@ -696,7 +696,7 @@ describe("RunLocker", () => {
         expect(runLock.getAutomaticExtensionThreshold()).toBe(2000);
 
         const retryConfig = runLock.getRetryConfig();
-        expect(retryConfig.maxRetries).toBe(15);
+        expect(retryConfig.maxAttempts).toBe(15);
         expect(retryConfig.baseDelay).toBe(100);
         expect(retryConfig.maxDelay).toBe(3000);
         expect(retryConfig.backoffMultiplier).toBe(1.8);
@@ -722,14 +722,14 @@ describe("RunLocker", () => {
   redisTest("Test configuration edge cases", { timeout: 15_000 }, async ({ redisOptions }) => {
     const logger = new Logger("RunLockTest", "debug");
 
-    // Test with maxRetries = 0
+    // Test with maxAttempts = 0
     const redis1 = createRedisClient(redisOptions);
     const runLock1 = new RunLocker({
       redis: redis1,
       logger,
       tracer: trace.getTracer("RunLockTest"),
       retryConfig: {
-        maxRetries: 0,
+        maxAttempts: 0,
         baseDelay: 100,
         maxTotalWaitTime: 1000,
       },
@@ -737,7 +737,7 @@ describe("RunLocker", () => {
 
     try {
       const config = runLock1.getRetryConfig();
-      expect(config.maxRetries).toBe(0);
+      expect(config.maxAttempts).toBe(0);
 
       // Should work for successful acquisitions
       await runLock1.lock("test-lock", ["test-edge"], async () => {
@@ -754,7 +754,7 @@ describe("RunLocker", () => {
       logger,
       tracer: trace.getTracer("RunLockTest"),
       retryConfig: {
-        maxRetries: 2,
+        maxAttempts: 2,
         baseDelay: 1,
         maxDelay: 10,
         backoffMultiplier: 2.0,
@@ -785,7 +785,7 @@ describe("RunLocker", () => {
       logger,
       tracer: trace.getTracer("RunLockTest"),
       retryConfig: {
-        maxRetries: 100, // High retry count
+        maxAttempts: 100, // High retry count
         baseDelay: 100,
         maxTotalWaitTime: 500, // But low total wait time
       },
@@ -794,7 +794,7 @@ describe("RunLocker", () => {
     try {
       // Test that total wait time configuration is properly applied
       const config = runLock.getRetryConfig();
-      expect(config.maxRetries).toBe(100);
+      expect(config.maxAttempts).toBe(100);
       expect(config.maxTotalWaitTime).toBe(500);
       expect(config.baseDelay).toBe(100);
 
@@ -946,7 +946,7 @@ describe("RunLocker", () => {
         tracer: trace.getTracer("RunLockTest"),
         duration: 30000,
         retryConfig: {
-          maxRetries: 3,
+          maxAttempts: 3,
           baseDelay: 100,
           maxDelay: 500,
           backoffMultiplier: 2.0,
