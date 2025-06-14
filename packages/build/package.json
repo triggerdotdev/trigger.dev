@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/build",
-  "version": "4.0.0-v4-beta.21",
+  "version": "4.0.0-v4-beta.22",
   "description": "trigger.dev build extensions",
   "license": "MIT",
   "publishConfig": {
@@ -73,7 +73,7 @@
     "check-exports": "attw --pack ."
   },
   "dependencies": {
-    "@trigger.dev/core": "workspace:4.0.0-v4-beta.21",
+    "@trigger.dev/core": "workspace:4.0.0-v4-beta.22",
     "pkg-types": "^1.1.3",
     "tinyglobby": "^0.2.2",
     "tsconfck": "3.1.3"
