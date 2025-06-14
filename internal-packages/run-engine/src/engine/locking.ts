@@ -213,7 +213,7 @@ export class RunLocker {
     let totalWaitTime = 0;
 
     // Retry the lock acquisition with exponential backoff
-    let lock: redlock.Lock;
+    let lock: redlock.Lock | undefined;
     let lastError: Error | undefined;
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -313,6 +313,23 @@ export class RunLocker {
         errorName: lastError.name,
       });
       throw lastError;
+    }
+
+    // Safety guard: ensure lock was successfully acquired
+    if (!lock) {
+      this.logger.error("[RunLocker] Lock was not acquired despite completing retry loop", {
+        name,
+        resources: sortedResources,
+        maxRetries,
+        totalWaitTime: Math.round(totalWaitTime),
+        lastError: lastError?.message,
+      });
+      throw new LockAcquisitionTimeoutError(
+        sortedResources,
+        Math.round(totalWaitTime),
+        maxRetries + 1,
+        `Lock acquisition on resources [${sortedResources.join(", ")}] failed unexpectedly`
+      );
     }
 
     // Create an AbortController for our signal
