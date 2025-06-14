@@ -53,7 +53,7 @@ export class CheckpointSystem {
   }): Promise<CreateCheckpointResult> {
     const prisma = tx ?? this.$.prisma;
 
-    return await this.$.runLock.lock("createCheckpoint", [runId], 5_000, async () => {
+    return await this.$.runLock.lock("createCheckpoint", [runId], async () => {
       const snapshot = await getLatestExecutionSnapshot(prisma, runId);
 
       const isValidSnapshot =
@@ -267,7 +267,7 @@ export class CheckpointSystem {
   }): Promise<ExecutionResult> {
     const prisma = tx ?? this.$.prisma;
 
-    return await this.$.runLock.lock("continueRunExecution", [runId], 5_000, async () => {
+    return await this.$.runLock.lock("continueRunExecution", [runId], async () => {
       const snapshot = await getLatestExecutionSnapshot(prisma, runId);
 
       if (snapshot.id !== snapshotId) {
