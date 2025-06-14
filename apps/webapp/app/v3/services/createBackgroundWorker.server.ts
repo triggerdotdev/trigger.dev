@@ -23,9 +23,9 @@ import { clampMaxDuration } from "../utils/maxDuration";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { CheckScheduleService } from "./checkSchedule.server";
 import { projectPubSub } from "./projectPubSub.server";
-import { RegisterNextTaskScheduleInstanceService } from "./registerNextTaskScheduleInstance.server";
 import { tryCatch } from "@trigger.dev/core/v3";
 import { engine } from "../runEngine.server";
+import { scheduleEngine } from "../scheduleEngine.server";
 
 export class CreateBackgroundWorkerService extends BaseService {
   public async call(
@@ -510,7 +510,6 @@ export async function syncDeclarativeSchedules(
   });
 
   const checkSchedule = new CheckScheduleService(prisma);
-  const registerNextService = new RegisterNextTaskScheduleInstanceService(prisma);
 
   //start out by assuming they're all missing
   const missingSchedules = new Set<string>(
@@ -569,7 +568,7 @@ export async function syncDeclarativeSchedules(
       missingSchedules.delete(existingSchedule.id);
       const instance = schedule.instances.at(0);
       if (instance) {
-        await registerNextService.call(instance.id);
+        await scheduleEngine.registerNextTaskScheduleInstance({ instanceId: instance.id });
       } else {
         throw new CreateDeclarativeScheduleError(
           `Missing instance for declarative schedule ${schedule.id}`
@@ -601,7 +600,7 @@ export async function syncDeclarativeSchedules(
       const instance = newSchedule.instances.at(0);
 
       if (instance) {
-        await registerNextService.call(instance.id);
+        await scheduleEngine.registerNextTaskScheduleInstance({ instanceId: instance.id });
       } else {
         throw new CreateDeclarativeScheduleError(
           `Missing instance for declarative schedule ${newSchedule.id}`
