@@ -22,6 +22,23 @@ const SemanticAttributes = {
   LOCK_SUCCESS: "run_engine.lock.success",
 };
 
+export class LockAcquisitionTimeoutError extends Error {
+  constructor(
+    public readonly resources: string[],
+    public readonly totalWaitTime: number,
+    public readonly attempts: number,
+    message?: string
+  ) {
+    super(
+      message ||
+        `Failed to acquire lock on resources [${resources.join(
+          ", "
+        )}] after ${totalWaitTime}ms and ${attempts} attempts`
+    );
+    this.name = "LockAcquisitionTimeoutError";
+  }
+}
+
 interface LockContext {
   resources: string;
   signal: redlock.RedlockAbortSignal;
@@ -34,6 +51,21 @@ interface ManualLockContext {
   extension: Promise<void> | undefined;
 }
 
+interface RetryConfig {
+  /** Maximum number of retry attempts (default: 10) */
+  maxRetries?: number;
+  /** Initial delay in milliseconds (default: 200) */
+  baseDelay?: number;
+  /** Maximum delay cap in milliseconds (default: 5000) */
+  maxDelay?: number;
+  /** Exponential backoff multiplier (default: 1.5) */
+  backoffMultiplier?: number;
+  /** Jitter factor as percentage (default: 0.1 for 10%) */
+  jitterFactor?: number;
+  /** Maximum total wait time in milliseconds (default: 30000) */
+  maxTotalWaitTime?: number;
+}
+
 export class RunLocker {
   private redlock: InstanceType<typeof redlock.default>;
   private asyncLocalStorage: AsyncLocalStorage<LockContext>;
@@ -43,8 +75,15 @@ export class RunLocker {
   private activeLocks: Map<string, { lockType: string; resources: string[] }> = new Map();
   private activeManualContexts: Map<string, ManualLockContext> = new Map();
   private lockDurationHistogram: Histogram;
+  private retryConfig: Required<RetryConfig>;
 
-  constructor(options: { redis: Redis; logger: Logger; tracer: Tracer; meter?: Meter }) {
+  constructor(options: {
+    redis: Redis;
+    logger: Logger;
+    tracer: Tracer;
+    meter?: Meter;
+    retryConfig?: RetryConfig;
+  }) {
     this.redlock = new Redlock([options.redis], {
       driftFactor: 0.01,
       retryCount: 10,
@@ -56,6 +95,16 @@ export class RunLocker {
     this.logger = options.logger;
     this.tracer = options.tracer;
     this.meter = options.meter ?? getMeter("run-engine");
+
+    // Initialize retry configuration with defaults
+    this.retryConfig = {
+      maxRetries: options.retryConfig?.maxRetries ?? 10,
+      baseDelay: options.retryConfig?.baseDelay ?? 200,
+      maxDelay: options.retryConfig?.maxDelay ?? 5000,
+      backoffMultiplier: options.retryConfig?.backoffMultiplier ?? 1.5,
+      jitterFactor: options.retryConfig?.jitterFactor ?? 0.1,
+      maxTotalWaitTime: options.retryConfig?.maxTotalWaitTime ?? 30000,
+    };
 
     const activeLocksObservableGauge = this.meter.createObservableGauge("run_engine.locks.active", {
       description: "The number of active locks by type",
@@ -140,7 +189,7 @@ export class RunLocker {
     );
   }
 
-  /** Manual lock acquisition with custom retry logic */
+  /** Manual lock acquisition with exponential backoff retry logic */
   async #acquireAndExecute<T>(
     name: string,
     resources: string[],
@@ -151,36 +200,115 @@ export class RunLocker {
   ): Promise<T> {
     const joinedResources = resources.sort().join(",");
 
-    // Custom retry settings
-    const maxRetries = 10;
-    const baseDelay = 200;
-    const jitter = 200;
+    // Use configured retry settings with exponential backoff
+    const { maxRetries, baseDelay, maxDelay, backoffMultiplier, jitterFactor, maxTotalWaitTime } =
+      this.retryConfig;
 
-    // Retry the lock acquisition specifically using tryCatch
+    // Track timing for total wait time limit
+    const retryStartTime = performance.now();
+    let totalWaitTime = 0;
+
+    // Retry the lock acquisition with exponential backoff
     let lock: redlock.Lock;
+    let lastError: Error | undefined;
+
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       const [error, acquiredLock] = await tryCatch(this.redlock.acquire(resources, duration));
 
       if (!error && acquiredLock) {
         lock = acquiredLock;
+        if (attempt > 0) {
+          this.logger.debug("[RunLocker] Lock acquired after retries", {
+            name,
+            resources,
+            attempts: attempt + 1,
+            totalWaitTime: Math.round(totalWaitTime),
+          });
+        }
         break;
       }
 
-      // If this is the last attempt, throw the error
-      if (attempt === maxRetries) {
-        throw error || new Error("Failed to acquire lock after maximum retries");
+      lastError = error instanceof Error ? error : new Error(String(error));
+
+      // Check if we've exceeded total wait time limit
+      if (totalWaitTime >= maxTotalWaitTime) {
+        this.logger.warn("[RunLocker] Lock acquisition exceeded total wait time limit", {
+          name,
+          resources,
+          attempts: attempt + 1,
+          totalWaitTime: Math.round(totalWaitTime),
+          maxTotalWaitTime,
+        });
+        throw new LockAcquisitionTimeoutError(
+          resources,
+          Math.round(totalWaitTime),
+          attempt + 1,
+          `Lock acquisition on resources [${resources.join(
+            ", "
+          )}] exceeded total wait time limit of ${maxTotalWaitTime}ms`
+        );
       }
 
-      // If it's a ResourceLockedError, we should retry
-      if (error && error.name === "ResourceLockedError") {
-        // Calculate delay with jitter
-        const delay = baseDelay + Math.floor((Math.random() * 2 - 1) * jitter);
-        await new Promise((resolve) => setTimeout(resolve, Math.max(0, delay)));
+      // If this is the last attempt, throw timeout error
+      if (attempt === maxRetries) {
+        this.logger.warn("[RunLocker] Lock acquisition exhausted all retries", {
+          name,
+          resources,
+          attempts: attempt + 1,
+          totalWaitTime: Math.round(totalWaitTime),
+          lastError: lastError.message,
+        });
+        throw new LockAcquisitionTimeoutError(
+          resources,
+          Math.round(totalWaitTime),
+          attempt + 1,
+          `Lock acquisition on resources [${resources.join(", ")}] failed after ${
+            attempt + 1
+          } attempts`
+        );
+      }
+
+      // Check if it's a retryable error (lock contention)
+      // ExecutionError: General redlock failure (including lock contention)
+      // ResourceLockedError: Specific lock contention error (if thrown)
+      const isRetryableError =
+        error && (error.name === "ResourceLockedError" || error.name === "ExecutionError");
+
+      if (isRetryableError) {
+        // Calculate exponential backoff delay with jitter and cap
+        const exponentialDelay = Math.min(
+          baseDelay * Math.pow(backoffMultiplier, attempt),
+          maxDelay
+        );
+        const jitter = exponentialDelay * jitterFactor * (Math.random() * 2 - 1); // ±jitterFactor% jitter
+        const delay = Math.max(0, Math.round(exponentialDelay + jitter));
+
+        // Update total wait time before delay
+        totalWaitTime += delay;
+
+        this.logger.debug("[RunLocker] Lock acquisition failed, retrying with backoff", {
+          name,
+          resources,
+          attempt: attempt + 1,
+          delay,
+          totalWaitTime: Math.round(totalWaitTime),
+          error: error.message,
+          errorName: error.name,
+        });
+
+        await new Promise((resolve) => setTimeout(resolve, delay));
         continue;
       }
 
-      // For other errors, throw immediately
-      throw error || new Error("Unknown error during lock acquisition");
+      // For other errors (non-retryable), throw immediately
+      this.logger.error("[RunLocker] Lock acquisition failed with non-retryable error", {
+        name,
+        resources,
+        attempt: attempt + 1,
+        error: lastError.message,
+        errorName: lastError.name,
+      });
+      throw lastError;
     }
 
     // Create an AbortController for our signal
@@ -305,9 +433,19 @@ export class RunLocker {
       }
     } else {
       if (context.lock.expiration > Date.now()) {
-        // If lock hasn't expired yet, try again (but only if not cleaned up)
+        // If lock hasn't expired yet, schedule a retry instead of recursing
+        // This prevents stack overflow from repeated extension failures
         if (context.timeout !== null) {
-          return this.#extendLock(context, duration, signal, controller, scheduleNext);
+          const retryDelay = 100; // Short delay before retry
+          context.timeout = setTimeout(() => {
+            context.extension = this.#extendLock(
+              context,
+              duration,
+              signal,
+              controller,
+              scheduleNext
+            );
+          }, retryDelay);
         }
       } else {
         // Lock has expired, abort the signal
@@ -353,6 +491,10 @@ export class RunLocker {
 
   getCurrentResources(): string | undefined {
     return this.asyncLocalStorage.getStore()?.resources;
+  }
+
+  getRetryConfig(): Readonly<Required<RetryConfig>> {
+    return { ...this.retryConfig };
   }
 
   async quit() {
