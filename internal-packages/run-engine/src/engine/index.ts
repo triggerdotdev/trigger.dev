@@ -98,6 +98,17 @@ export class RunEngine {
       logger: this.logger,
       tracer: trace.getTracer("RunLocker"),
       meter: options.meter,
+      defaultDuration: options.runLock.duration ?? 5000,
+      automaticExtensionThreshold: options.runLock.automaticExtensionThreshold ?? 1000,
+      retryConfig: {
+        maxRetries: 10,
+        baseDelay: 100,
+        maxDelay: 3000,
+        backoffMultiplier: 1.8,
+        jitterFactor: 0.15,
+        maxTotalWaitTime: 15000,
+        ...options.runLock.retryConfig,
+      },
     });
 
     const keys = new RunQueueFullKeyProducer();
