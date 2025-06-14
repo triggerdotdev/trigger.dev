@@ -1,16 +1,16 @@
 import {
-  PrismaClientOrTransaction,
-  RuntimeEnvironmentType,
+  type PrismaClientOrTransaction,
+  type RuntimeEnvironmentType,
   type TaskTriggerSource,
 } from "@trigger.dev/database";
 import { $replica } from "~/db.server";
 import { clickhouseClient } from "~/services/clickhouseInstance.server";
 import {
-  AverageDurations,
+  type AverageDurations,
   ClickHouseEnvironmentMetricsRepository,
-  CurrentRunningStats,
-  DailyTaskActivity,
-  EnvironmentMetricsRepository,
+  type CurrentRunningStats,
+  type DailyTaskActivity,
+  type EnvironmentMetricsRepository,
   PostgrestEnvironmentMetricsRepository,
 } from "~/services/environmentMetricsRepository.server";
 import { singleton } from "~/utils/singleton";
@@ -32,9 +32,13 @@ export class TaskListPresenter {
   ) {}
 
   public async call({
+    organizationId,
+    projectId,
     environmentId,
     environmentType,
   }: {
+    organizationId: string;
+    projectId: string;
     environmentId: string;
     environmentType: RuntimeEnvironmentType;
   }) {
@@ -76,18 +80,24 @@ export class TaskListPresenter {
     // IMPORTANT: Don't await these, we want to return the promises
     // so we can defer the loading of the data
     const activity = this.environmentMetricsRepository.getDailyTaskActivity({
+      organizationId,
+      projectId,
       environmentId,
       days: 6, // This actually means 7 days, because we want to show the current day too
       tasks: slugs,
     });
 
     const runningStats = this.environmentMetricsRepository.getCurrentRunningStats({
+      organizationId,
+      projectId,
       environmentId,
       days: 6,
       tasks: slugs,
     });
 
     const durations = this.environmentMetricsRepository.getAverageDurations({
+      organizationId,
+      projectId,
       environmentId,
       days: 6,
       tasks: slugs,

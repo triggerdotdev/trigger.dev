@@ -72,6 +72,7 @@ describe("RunsRepository", () => {
         page: { size: 10 },
         projectId: project.id,
         environmentId: runtimeEnvironment.id,
+        organizationId: organization.id,
       });
 
       expect(runs).toHaveLength(1);
@@ -180,6 +181,7 @@ describe("RunsRepository", () => {
         page: { size: 10 },
         projectId: project.id,
         environmentId: runtimeEnvironment.id,
+        organizationId: organization.id,
         tasks: ["task-1", "task-2"],
       });
 
@@ -290,6 +292,7 @@ describe("RunsRepository", () => {
         page: { size: 10 },
         projectId: project.id,
         environmentId: runtimeEnvironment.id,
+        organizationId: organization.id,
         versions: ["1.0.0", "3.0.0"],
       });
 
@@ -400,6 +403,7 @@ describe("RunsRepository", () => {
         page: { size: 10 },
         projectId: project.id,
         environmentId: runtimeEnvironment.id,
+        organizationId: organization.id,
         statuses: ["PENDING", "COMPLETED_SUCCESSFULLY"],
       });
 
@@ -510,6 +514,7 @@ describe("RunsRepository", () => {
         page: { size: 10 },
         projectId: project.id,
         environmentId: runtimeEnvironment.id,
+        organizationId: organization.id,
         tags: ["urgent"],
       });
 
@@ -619,6 +624,7 @@ describe("RunsRepository", () => {
         page: { size: 10 },
         projectId: project.id,
         environmentId: runtimeEnvironment.id,
+        organizationId: organization.id,
         scheduleId: "schedule_1",
       });
 
@@ -712,6 +718,7 @@ describe("RunsRepository", () => {
         page: { size: 10 },
         projectId: project.id,
         environmentId: runtimeEnvironment.id,
+        organizationId: organization.id,
         isTest: true,
       });
 
@@ -723,6 +730,7 @@ describe("RunsRepository", () => {
         page: { size: 10 },
         projectId: project.id,
         environmentId: runtimeEnvironment.id,
+        organizationId: organization.id,
         isTest: false,
       });
 
@@ -816,6 +824,7 @@ describe("RunsRepository", () => {
         page: { size: 10 },
         projectId: project.id,
         environmentId: runtimeEnvironment.id,
+        organizationId: organization.id,
         rootOnly: true,
       });
 
@@ -945,6 +954,7 @@ describe("RunsRepository", () => {
         page: { size: 10 },
         projectId: project.id,
         environmentId: runtimeEnvironment.id,
+        organizationId: organization.id,
         batchId: batchRun1.id,
       });
 
@@ -1052,6 +1062,7 @@ describe("RunsRepository", () => {
         page: { size: 10 },
         projectId: project.id,
         environmentId: runtimeEnvironment.id,
+        organizationId: organization.id,
         runFriendlyIds: ["run_abc", "run_xyz"],
       });
 
@@ -1159,6 +1170,7 @@ describe("RunsRepository", () => {
         page: { size: 10 },
         projectId: project.id,
         environmentId: runtimeEnvironment.id,
+        organizationId: organization.id,
         runIds: [run1.id, run3.id],
       });
 
@@ -1273,6 +1285,7 @@ describe("RunsRepository", () => {
         page: { size: 10 },
         projectId: project.id,
         environmentId: runtimeEnvironment.id,
+        organizationId: organization.id,
         from: yesterday.getTime(),
         to: now.getTime(),
       });
@@ -1393,6 +1406,7 @@ describe("RunsRepository", () => {
         page: { size: 10 },
         projectId: project.id,
         environmentId: runtimeEnvironment.id,
+        organizationId: organization.id,
         tasks: ["task-1"],
         versions: ["1.0.0"],
         statuses: ["COMPLETED_SUCCESSFULLY"],
@@ -1476,6 +1490,7 @@ describe("RunsRepository", () => {
         page: { size: 2 },
         projectId: project.id,
         environmentId: runtimeEnvironment.id,
+        organizationId: organization.id,
       });
 
       expect(firstPage.runs).toHaveLength(2);
@@ -1491,6 +1506,7 @@ describe("RunsRepository", () => {
         },
         projectId: project.id,
         environmentId: runtimeEnvironment.id,
+        organizationId: organization.id,
       });
 
       expect(secondPage.runs).toHaveLength(2);

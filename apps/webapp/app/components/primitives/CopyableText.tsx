@@ -4,9 +4,17 @@ import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { useCopy } from "~/hooks/useCopy";
 import { cn } from "~/utils/cn";
 
-export function CopyableText({ value, className }: { value: string; className?: string }) {
+export function CopyableText({
+  value,
+  copyValue,
+  className,
+}: {
+  value: string;
+  copyValue?: string;
+  className?: string;
+}) {
   const [isHovered, setIsHovered] = useState(false);
-  const { copy, copied } = useCopy(value);
+  const { copy, copied } = useCopy(copyValue ?? value);
 
   return (
     <span

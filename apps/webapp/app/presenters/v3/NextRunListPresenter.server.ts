@@ -45,6 +45,7 @@ export class NextRunListPresenter {
   ) {}
 
   public async call(
+    organizationId: string,
     environmentId: string,
     {
       userId,
@@ -190,6 +191,7 @@ export class NextRunListPresenter {
     });
 
     const { runs, pagination } = await runsRepository.listRuns({
+      organizationId,
       environmentId,
       projectId,
       tasks,

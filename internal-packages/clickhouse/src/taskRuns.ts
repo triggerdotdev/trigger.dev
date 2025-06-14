@@ -113,6 +113,8 @@ export const TaskActivityQueryResult = z.object({
 export type TaskActivityQueryResult = z.infer<typeof TaskActivityQueryResult>;
 
 export const TaskActivityQueryParams = z.object({
+  organizationId: z.string(),
+  projectId: z.string(),
   environmentId: z.string(),
   days: z.number().int(),
 });
@@ -128,7 +130,9 @@ export function getTaskActivityQueryBuilder(ch: ClickhouseReader, settings?: Cli
           count() as count
       FROM trigger_dev.task_runs_v2 FINAL
       WHERE
-          environment_id = {environmentId: String}
+          organization_id = {organizationId: String}
+          AND project_id = {projectId: String}
+          AND environment_id = {environmentId: String}
           AND created_at >= today() - {days: Int64}
           AND _is_deleted = 0
       GROUP BY
@@ -155,6 +159,8 @@ export const CurrentRunningStatsQueryResult = z.object({
 export type CurrentRunningStatsQueryResult = z.infer<typeof CurrentRunningStatsQueryResult>;
 
 export const CurrentRunningStatsQueryParams = z.object({
+  organizationId: z.string(),
+  projectId: z.string(),
   environmentId: z.string(),
   days: z.number().int(),
 });
@@ -169,7 +175,9 @@ export function getCurrentRunningStats(ch: ClickhouseReader, settings?: ClickHou
         count() as count
     FROM trigger_dev.task_runs_v2 FINAL
     WHERE
-        environment_id = {environmentId: String}
+        organization_id = {organizationId: String}
+        AND project_id = {projectId: String}
+        AND environment_id = {environmentId: String}
         AND status IN ('PENDING', 'WAITING_FOR_DEPLOY', 'WAITING_TO_RESUME', 'QUEUED', 'EXECUTING')
         AND _is_deleted = 0
         AND created_at >= now() - INTERVAL {days: Int64} DAY
@@ -193,6 +201,8 @@ export const AverageDurationsQueryResult = z.object({
 export type AverageDurationsQueryResult = z.infer<typeof AverageDurationsQueryResult>;
 
 export const AverageDurationsQueryParams = z.object({
+  organizationId: z.string(),
+  projectId: z.string(),
   environmentId: z.string(),
   days: z.number().int(),
 });
@@ -206,7 +216,9 @@ export function getAverageDurations(ch: ClickhouseReader, settings?: ClickHouseS
         avg(toUnixTimestamp(completed_at) - toUnixTimestamp(started_at)) as duration
     FROM trigger_dev.task_runs_v2 FINAL
     WHERE
-        environment_id = {environmentId: String}
+        organization_id = {organizationId: String}
+        AND project_id = {projectId: String}
+        AND environment_id = {environmentId: String}
         AND created_at >= today() - {days: Int64}
         AND status IN ('COMPLETED_SUCCESSFULLY', 'COMPLETED_WITH_ERRORS')
         AND started_at IS NOT NULL
