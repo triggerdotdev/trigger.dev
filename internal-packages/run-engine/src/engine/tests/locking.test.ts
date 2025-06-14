@@ -4,7 +4,6 @@ import { expect } from "vitest";
 import { RunLocker, LockAcquisitionTimeoutError } from "../locking.js";
 import { trace } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
-import * as redlock from "redlock";
 
 describe("RunLocker", () => {
   redisTest("Test acquiring a lock works", { timeout: 15_000 }, async ({ redisOptions }) => {
@@ -19,8 +18,7 @@ describe("RunLocker", () => {
     try {
       expect(runLock.isInsideLock()).toBe(false);
 
-      await runLock.lock("test-lock", ["test-1"], 5000, async (signal) => {
-        expect(signal).toBeDefined();
+      await runLock.lock("test-lock", ["test-1"], async () => {
         expect(runLock.isInsideLock()).toBe(true);
       });
 
@@ -38,13 +36,11 @@ describe("RunLocker", () => {
     try {
       expect(runLock.isInsideLock()).toBe(false);
 
-      await runLock.lock("test-lock", ["test-1"], 5000, async (signal) => {
-        expect(signal).toBeDefined();
+      await runLock.lock("test-lock", ["test-1"], async () => {
         expect(runLock.isInsideLock()).toBe(true);
 
         //should be able to "lock it again"
-        await runLock.lock("test-lock", ["test-1"], 5000, async (signal) => {
-          expect(signal).toBeDefined();
+        await runLock.lock("test-lock", ["test-1"], async () => {
           expect(runLock.isInsideLock()).toBe(true);
         });
       });
@@ -67,7 +63,7 @@ describe("RunLocker", () => {
         expect(runLock.isInsideLock()).toBe(false);
 
         await expect(
-          runLock.lock("test-lock", ["test-1"], 5000, async () => {
+          runLock.lock("test-lock", ["test-1"], async () => {
             throw new Error("Test error");
           })
         ).rejects.toThrow("Test error");
@@ -92,11 +88,11 @@ describe("RunLocker", () => {
         expect(runLock.isInsideLock()).toBe(false);
 
         await expect(
-          runLock.lock("test-lock", ["test-1"], 5000, async () => {
+          runLock.lock("test-lock", ["test-1"], async () => {
             expect(runLock.isInsideLock()).toBe(true);
 
             // Nested lock with same resource
-            await runLock.lock("test-lock", ["test-1"], 5000, async () => {
+            await runLock.lock("test-lock", ["test-1"], async () => {
               expect(runLock.isInsideLock()).toBe(true);
               throw new Error("Inner lock error");
             });
@@ -128,7 +124,7 @@ describe("RunLocker", () => {
     try {
       // First, ensure we can acquire the lock normally
       let firstLockAcquired = false;
-      await runLock.lock("test-lock", ["test-1"], 5000, async () => {
+      await runLock.lock("test-lock", ["test-1"], async () => {
         firstLockAcquired = true;
       });
       //wait for 20ms
@@ -137,14 +133,14 @@ describe("RunLocker", () => {
       expect(firstLockAcquired).toBe(true);
 
       // Now create a long-running lock
-      const lockPromise1 = runLock.lock("test-lock", ["test-1"], 5000, async () => {
+      const lockPromise1 = runLock.lock("test-lock", ["test-1"], async () => {
         // Hold the lock longer than the retry timeout
         await new Promise((resolve) => setTimeout(resolve, 10000));
       });
 
       // Try to acquire same lock immediately - should timeout with LockAcquisitionTimeoutError
       await expect(
-        runLock.lock("test-lock", ["test-1"], 5000, async () => {
+        runLock.lock("test-lock", ["test-1"], async () => {
           // This should never execute
           expect(true).toBe(false);
         })
@@ -169,13 +165,13 @@ describe("RunLocker", () => {
       const runLock = new RunLocker({ redis, logger, tracer: trace.getTracer("RunLockTest") });
 
       try {
-        await runLock.lock("test-lock", ["test-1"], 5000, async () => {
+        await runLock.lock("test-lock", ["test-1"], async () => {
           // First lock acquired
           expect(runLock.isInsideLock()).toBe(true);
 
           // Try to acquire the same resource with a very short timeout
           // This should work because we already hold the lock
-          await runLock.lock("test-lock", ["test-1"], 100, async () => {
+          await runLock.lock("test-lock", ["test-1"], async () => {
             expect(runLock.isInsideLock()).toBe(true);
             // Wait longer than the timeout to prove it doesn't matter
             await new Promise((resolve) => setTimeout(resolve, 500));
@@ -201,7 +197,7 @@ describe("RunLocker", () => {
       try {
         // First verify we can acquire the lock normally
         let firstLockAcquired = false;
-        await runLock.lock("test-lock", ["test-1"], 5000, async () => {
+        await runLock.lock("test-lock", ["test-1"], async () => {
           firstLockAcquired = true;
         });
         expect(firstLockAcquired).toBe(true);
@@ -210,7 +206,7 @@ describe("RunLocker", () => {
         let outerLockExecuted = false;
         let innerLockExecuted = false;
 
-        await runLock.lock("test-lock", ["test-1"], 5000, async () => {
+        await runLock.lock("test-lock", ["test-1"], async () => {
           outerLockExecuted = true;
           expect(runLock.isInsideLock()).toBe(true);
           expect(runLock.getCurrentResources()).toBe("test-1");
@@ -218,7 +214,7 @@ describe("RunLocker", () => {
           // Try to acquire the same resource in a nested lock
           // This should work immediately without any retries
           // because we already hold the lock
-          await runLock.lock("test-lock", ["test-1"], 5000, async () => {
+          await runLock.lock("test-lock", ["test-1"], async () => {
             innerLockExecuted = true;
             expect(runLock.isInsideLock()).toBe(true);
             expect(runLock.getCurrentResources()).toBe("test-1");
@@ -270,8 +266,7 @@ describe("RunLocker", () => {
         expect(config.maxTotalWaitTime).toBe(1000);
 
         // Test that the lock still works normally
-        await runLock.lock("test-lock", ["test-config"], 5000, async (signal) => {
-          expect(signal).toBeDefined();
+        await runLock.lock("test-lock", ["test-config"], async () => {
           expect(runLock.isInsideLock()).toBe(true);
         });
 
@@ -301,7 +296,7 @@ describe("RunLocker", () => {
 
       try {
         // Create a long-running lock that will definitely outlast the retry timeout
-        const lockPromise = runLock.lock("test-lock", ["test-error"], 10000, async () => {
+        const lockPromise = runLock.lock("test-lock", ["test-error"], async () => {
           await new Promise((resolve) => setTimeout(resolve, 15000)); // Hold for 15 seconds
         });
 
@@ -310,7 +305,7 @@ describe("RunLocker", () => {
 
         // Try to acquire same lock and capture the timeout error
         try {
-          await runLock.lock("test-lock", ["test-error"], 5000, async () => {
+          await runLock.lock("test-lock", ["test-error"], async () => {
             expect(true).toBe(false); // Should never execute
           });
           expect(true).toBe(false); // Should not reach here
@@ -357,7 +352,7 @@ describe("RunLocker", () => {
       expect(config.maxTotalWaitTime).toBe(30000);
 
       // Test that it still works
-      await runLock.lock("test-lock", ["test-default"], 5000, async () => {
+      await runLock.lock("test-lock", ["test-default"], async () => {
         expect(runLock.isInsideLock()).toBe(true);
       });
     } finally {
@@ -408,26 +403,22 @@ describe("RunLocker", () => {
     try {
       let executedWithLock = false;
       let executedWithoutLock = false;
-      let signalReceived: any = null;
 
       // Test with condition = true (should acquire lock)
-      await runLock.lockIf(true, "test-lock", ["test-lockif"], 5000, async (signal) => {
+      await runLock.lockIf(true, "test-lock", ["test-lockif"], async () => {
         executedWithLock = true;
-        signalReceived = signal;
         expect(runLock.isInsideLock()).toBe(true);
         expect(runLock.getCurrentResources()).toBe("test-lockif");
       });
 
       expect(executedWithLock).toBe(true);
-      expect(signalReceived).toBeDefined();
       expect(runLock.isInsideLock()).toBe(false);
 
       // Test with condition = false (should not acquire lock)
-      await runLock.lockIf(false, "test-lock", ["test-lockif"], 5000, async (signal) => {
+      await runLock.lockIf(false, "test-lock", ["test-lockif"], async () => {
         executedWithoutLock = true;
         expect(runLock.isInsideLock()).toBe(false);
         expect(runLock.getCurrentResources()).toBeUndefined();
-        expect(signal).toBeUndefined(); // No signal when not locked
       });
 
       expect(executedWithoutLock).toBe(true);
@@ -452,21 +443,21 @@ describe("RunLocker", () => {
         const results: string[] = [];
 
         // Start multiple concurrent locks on different resources
-        const lock1Promise = runLock.lock("test-lock", ["resource-1"], 5000, async () => {
+        const lock1Promise = runLock.lock("test-lock", ["resource-1"], async () => {
           results.push("lock1-start");
           await new Promise((resolve) => setTimeout(resolve, 100));
           results.push("lock1-end");
           return "result1";
         });
 
-        const lock2Promise = runLock.lock("test-lock", ["resource-2"], 5000, async () => {
+        const lock2Promise = runLock.lock("test-lock", ["resource-2"], async () => {
           results.push("lock2-start");
           await new Promise((resolve) => setTimeout(resolve, 100));
           results.push("lock2-end");
           return "result2";
         });
 
-        const lock3Promise = runLock.lock("test-lock", ["resource-3"], 5000, async () => {
+        const lock3Promise = runLock.lock("test-lock", ["resource-3"], async () => {
           results.push("lock3-start");
           await new Promise((resolve) => setTimeout(resolve, 100));
           results.push("lock3-end");
@@ -509,27 +500,16 @@ describe("RunLocker", () => {
       });
 
       try {
-        await runLock.lock(
-          "test-lock",
-          ["resource-a", "resource-b", "resource-c"],
-          5000,
-          async (signal) => {
-            expect(signal).toBeDefined();
-            expect(runLock.isInsideLock()).toBe(true);
-            // Resources should be sorted and joined
-            expect(runLock.getCurrentResources()).toBe("resource-a,resource-b,resource-c");
-          }
-        );
+        await runLock.lock("test-lock", ["resource-a", "resource-b", "resource-c"], async () => {
+          expect(runLock.isInsideLock()).toBe(true);
+          // Resources should be sorted and joined
+          expect(runLock.getCurrentResources()).toBe("resource-a,resource-b,resource-c");
+        });
 
         // Test that resource order doesn't matter (should be normalized)
-        await runLock.lock(
-          "test-lock",
-          ["resource-c", "resource-a", "resource-b"],
-          5000,
-          async () => {
-            expect(runLock.getCurrentResources()).toBe("resource-a,resource-b,resource-c");
-          }
-        );
+        await runLock.lock("test-lock", ["resource-c", "resource-a", "resource-b"], async () => {
+          expect(runLock.getCurrentResources()).toBe("resource-a,resource-b,resource-c");
+        });
       } finally {
         await runLock.quit();
       }
@@ -553,13 +533,13 @@ describe("RunLocker", () => {
 
         // These should be able to run concurrently despite same resources
         // because they have different lock names
-        const promise1 = runLock.lock("lock-type-1", ["shared-resource"], 5000, async () => {
+        const promise1 = runLock.lock("lock-type-1", ["shared-resource"], async () => {
           results.push("type1-start");
           await new Promise((resolve) => setTimeout(resolve, 200));
           results.push("type1-end");
         });
 
-        const promise2 = runLock.lock("lock-type-2", ["shared-resource"], 5000, async () => {
+        const promise2 = runLock.lock("lock-type-2", ["shared-resource"], async () => {
           results.push("type2-start");
           await new Promise((resolve) => setTimeout(resolve, 200));
           results.push("type2-end");
@@ -590,12 +570,12 @@ describe("RunLocker", () => {
         redis,
         logger,
         tracer: trace.getTracer("RunLockTest"),
-        defaultDuration: 8000,
+        duration: 8000,
       });
 
       try {
         // Test that the default duration is set correctly
-        expect(runLock.getDefaultDuration()).toBe(8000);
+        expect(runLock.getDuration()).toBe(8000);
 
         // Test lock without specifying duration (should use default)
         const startTime = Date.now();
@@ -607,18 +587,8 @@ describe("RunLocker", () => {
         const elapsed = Date.now() - startTime;
         expect(elapsed).toBeGreaterThan(90); // Should have completed successfully
 
-        // Test lock with explicit duration (should override default)
-        await runLock.lock("test-lock", ["explicit-duration-test"], 2000, async () => {
-          expect(runLock.isInsideLock()).toBe(true);
-        });
-
         // Test lockIf without duration (should use default)
         await runLock.lockIf(true, "test-lock", ["lockif-default"], async () => {
-          expect(runLock.isInsideLock()).toBe(true);
-        });
-
-        // Test lockIf with explicit duration
-        await runLock.lockIf(true, "test-lock", ["lockif-explicit"], 3000, async () => {
           expect(runLock.isInsideLock()).toBe(true);
         });
       } finally {
@@ -640,16 +610,17 @@ describe("RunLocker", () => {
         logger,
         tracer: trace.getTracer("RunLockTest"),
         automaticExtensionThreshold: 200, // Custom threshold
+        duration: 800,
       });
 
       try {
         // Test that the threshold is set correctly
         expect(runLock.getAutomaticExtensionThreshold()).toBe(200);
-        expect(runLock.getDefaultDuration()).toBe(5000); // Should use default
+        expect(runLock.getDuration()).toBe(800); // Should use configured value
 
         // Test lock extension with custom threshold
         // Use a short lock duration but longer operation to trigger extension
-        await runLock.lock("test-lock", ["extension-threshold-test"], 800, async () => {
+        await runLock.lock("test-lock", ["extension-threshold-test"], async () => {
           expect(runLock.isInsideLock()).toBe(true);
           // Sleep longer than lock duration to ensure extension works
           await new Promise((resolve) => setTimeout(resolve, 1200));
@@ -669,7 +640,7 @@ describe("RunLocker", () => {
       redis,
       logger,
       tracer: trace.getTracer("RunLockTest"),
-      defaultDuration: 3000,
+      duration: 3000,
       automaticExtensionThreshold: 300,
       retryConfig: {
         maxRetries: 5,
@@ -679,7 +650,7 @@ describe("RunLocker", () => {
 
     try {
       // Verify all configurations are set
-      expect(runLock.getDefaultDuration()).toBe(3000);
+      expect(runLock.getDuration()).toBe(3000);
       expect(runLock.getAutomaticExtensionThreshold()).toBe(300);
 
       const retryConfig = runLock.getRetryConfig();
@@ -707,7 +678,7 @@ describe("RunLocker", () => {
         redis,
         logger,
         tracer: trace.getTracer("RunLockTest"),
-        defaultDuration: 10000,
+        duration: 10000,
         automaticExtensionThreshold: 2000,
         retryConfig: {
           maxRetries: 15,
@@ -721,7 +692,7 @@ describe("RunLocker", () => {
 
       try {
         // Verify production configuration
-        expect(runLock.getDefaultDuration()).toBe(10000);
+        expect(runLock.getDuration()).toBe(10000);
         expect(runLock.getAutomaticExtensionThreshold()).toBe(2000);
 
         const retryConfig = runLock.getRetryConfig();
@@ -769,7 +740,7 @@ describe("RunLocker", () => {
       expect(config.maxRetries).toBe(0);
 
       // Should work for successful acquisitions
-      await runLock1.lock("test-lock", ["test-edge"], 5000, async () => {
+      await runLock1.lock("test-lock", ["test-edge"], async () => {
         expect(runLock1.isInsideLock()).toBe(true);
       });
     } finally {
@@ -798,7 +769,7 @@ describe("RunLocker", () => {
       expect(config.maxDelay).toBe(10);
       expect(config.jitterFactor).toBe(0.5);
 
-      await runLock2.lock("test-lock", ["test-small"], 5000, async () => {
+      await runLock2.lock("test-lock", ["test-small"], async () => {
         expect(runLock2.isInsideLock()).toBe(true);
       });
     } finally {
@@ -828,7 +799,7 @@ describe("RunLocker", () => {
       expect(config.baseDelay).toBe(100);
 
       // Basic functionality test with the configuration
-      await runLock.lock("test-lock", ["test-timing-config"], 5000, async () => {
+      await runLock.lock("test-lock", ["test-timing-config"], async () => {
         expect(runLock.isInsideLock()).toBe(true);
       });
 
@@ -851,12 +822,12 @@ describe("RunLocker", () => {
       });
 
       // Acquire some locks to create state
-      await runLock.lock("test-lock", ["quit-test-1"], 5000, async () => {
+      await runLock.lock("test-lock", ["quit-test-1"], async () => {
         expect(runLock.isInsideLock()).toBe(true);
       });
 
       // Verify we can still acquire locks
-      await runLock.lock("test-lock", ["quit-test-2"], 5000, async () => {
+      await runLock.lock("test-lock", ["quit-test-2"], async () => {
         expect(runLock.isInsideLock()).toBe(true);
       });
 
@@ -872,7 +843,7 @@ describe("RunLocker", () => {
       });
 
       try {
-        await newRunLock.lock("test-lock", ["quit-test-1"], 5000, async () => {
+        await newRunLock.lock("test-lock", ["quit-test-1"], async () => {
           expect(newRunLock.isInsideLock()).toBe(true);
         });
       } finally {
@@ -891,6 +862,7 @@ describe("RunLocker", () => {
         redis,
         logger,
         tracer: trace.getTracer("RunLockTest"),
+        duration: 1000,
       });
 
       try {
@@ -898,9 +870,7 @@ describe("RunLocker", () => {
         const startTime = Date.now();
 
         // Acquire lock with short duration but long operation
-        await runLock.lock("test-lock", ["extension-test"], 1000, async (signal) => {
-          expect(signal).toBeDefined();
-
+        await runLock.lock("test-lock", ["extension-test"], async () => {
           // Operation longer than lock duration - should trigger extension
           await new Promise((resolve) => setTimeout(resolve, 2500));
 
@@ -935,12 +905,12 @@ describe("RunLocker", () => {
         expect(runLock.getCurrentResources()).toBeUndefined();
         expect(runLock.isInsideLock()).toBe(false);
 
-        await runLock.lock("test-lock", ["resource-x", "resource-y"], 5000, async () => {
+        await runLock.lock("test-lock", ["resource-x", "resource-y"], async () => {
           // Inside lock
           expect(runLock.getCurrentResources()).toBe("resource-x,resource-y");
           expect(runLock.isInsideLock()).toBe(true);
 
-          await runLock.lock("test-lock", ["resource-x", "resource-y"], 5000, async () => {
+          await runLock.lock("test-lock", ["resource-x", "resource-y"], async () => {
             // Nested lock with same resources
             expect(runLock.getCurrentResources()).toBe("resource-x,resource-y");
             expect(runLock.isInsideLock()).toBe(true);
@@ -950,40 +920,6 @@ describe("RunLocker", () => {
         // Outside lock again
         expect(runLock.getCurrentResources()).toBeUndefined();
         expect(runLock.isInsideLock()).toBe(false);
-      } finally {
-        await runLock.quit();
-      }
-    }
-  );
-
-  redisTest(
-    "Test signal properties and behavior",
-    { timeout: 15_000 },
-    async ({ redisOptions }) => {
-      const redis = createRedisClient(redisOptions);
-      const logger = new Logger("RunLockTest", "debug");
-      const runLock = new RunLocker({
-        redis,
-        logger,
-        tracer: trace.getTracer("RunLockTest"),
-      });
-
-      try {
-        let signalReceived: redlock.RedlockAbortSignal | undefined;
-
-        await runLock.lock("test-lock", ["signal-test"], 5000, async (signal) => {
-          signalReceived = signal;
-
-          expect(signal).toBeDefined();
-          expect(typeof signal.aborted).toBe("boolean");
-          expect(signal.aborted).toBe(false);
-
-          // Signal should have event listener capabilities
-          expect(typeof signal.addEventListener).toBe("function");
-          expect(typeof signal.removeEventListener).toBe("function");
-        });
-
-        expect(signalReceived).toBeDefined();
       } finally {
         await runLock.quit();
       }
@@ -1008,6 +944,7 @@ describe("RunLocker", () => {
         redis: redis2,
         logger,
         tracer: trace.getTracer("RunLockTest"),
+        duration: 30000,
         retryConfig: {
           maxRetries: 3,
           baseDelay: 100,
@@ -1020,7 +957,7 @@ describe("RunLocker", () => {
 
       try {
         // Create blocking lock with first instance - make it last much longer than retry logic
-        const blockingPromise = runLock1.lock("test-lock", ["timing-test"], 30000, async () => {
+        const blockingPromise = runLock1.lock("test-lock", ["timing-test"], async () => {
           await new Promise((resolve) => setTimeout(resolve, 15000));
         });
 
@@ -1028,7 +965,7 @@ describe("RunLocker", () => {
 
         const startTime = Date.now();
         try {
-          await runLock2.lock("test-lock", ["timing-test"], 5000, async () => {
+          await runLock2.lock("test-lock", ["timing-test"], async () => {
             expect(true).toBe(false);
           });
           expect(true).toBe(false); // Should not reach here

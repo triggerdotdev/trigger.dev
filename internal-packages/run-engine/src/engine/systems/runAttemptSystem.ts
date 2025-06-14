@@ -85,7 +85,7 @@ export class RunAttemptSystem {
       this.$.tracer,
       "startRunAttempt",
       async (span) => {
-        return this.$.runLock.lock("startRunAttempt", [runId], 5000, async () => {
+        return this.$.runLock.lock("startRunAttempt", [runId], async () => {
           const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId);
 
           if (latestSnapshot.id !== snapshotId) {
@@ -441,7 +441,7 @@ export class RunAttemptSystem {
       this.$.tracer,
       "#completeRunAttemptSuccess",
       async (span) => {
-        return this.$.runLock.lock("attemptSucceeded", [runId], 5_000, async (signal) => {
+        return this.$.runLock.lock("attemptSucceeded", [runId], async () => {
           const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId);
 
           if (latestSnapshot.id !== snapshotId) {
@@ -594,7 +594,7 @@ export class RunAttemptSystem {
       this.$.tracer,
       "completeRunAttemptFailure",
       async (span) => {
-        return this.$.runLock.lock("attemptFailed", [runId], 5_000, async (signal) => {
+        return this.$.runLock.lock("attemptFailed", [runId], async () => {
           const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId);
 
           if (latestSnapshot.id !== snapshotId) {
@@ -905,7 +905,7 @@ export class RunAttemptSystem {
   }): Promise<{ wasRequeued: boolean } & ExecutionResult> {
     const prisma = tx ?? this.$.prisma;
 
-    return await this.$.runLock.lock("tryNackAndRequeue", [run.id], 5000, async (signal) => {
+    return await this.$.runLock.lock("tryNackAndRequeue", [run.id], async () => {
       //we nack the message, this allows another work to pick up the run
       const gotRequeued = await this.$.runQueue.nackMessage({
         orgId,
@@ -982,7 +982,7 @@ export class RunAttemptSystem {
     reason = reason ?? "Cancelled by user";
 
     return startSpan(this.$.tracer, "cancelRun", async (span) => {
-      return this.$.runLock.lock("cancelRun", [runId], 5_000, async (signal) => {
+      return this.$.runLock.lock("cancelRun", [runId], async () => {
         const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId);
 
         //already finished, do nothing
