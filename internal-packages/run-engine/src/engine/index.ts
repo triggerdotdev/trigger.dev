@@ -98,7 +98,7 @@ export class RunEngine {
       logger: this.logger,
       tracer: trace.getTracer("RunLocker"),
       meter: options.meter,
-      defaultDuration: options.runLock.duration ?? 5000,
+      duration: options.runLock.duration ?? 5000,
       automaticExtensionThreshold: options.runLock.automaticExtensionThreshold ?? 1000,
       retryConfig: {
         maxRetries: 10,
@@ -1162,7 +1162,7 @@ export class RunEngine {
     tx?: PrismaClientOrTransaction;
   }) {
     const prisma = tx ?? this.prisma;
-    return await this.runLock.lock("handleStalledSnapshot", [runId], 5_000, async () => {
+    return await this.runLock.lock("handleStalledSnapshot", [runId], async () => {
       const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId);
       if (latestSnapshot.id !== snapshotId) {
         this.logger.log(

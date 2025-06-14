@@ -66,15 +66,6 @@ export interface LockRetryConfig {
   maxTotalWaitTime?: number;
 }
 
-interface LockOptions {
-  /** Default lock duration in milliseconds (default: 5000) */
-  defaultDuration?: number;
-  /** Automatic extension threshold in milliseconds - how early to extend locks before expiration (default: 500) */
-  automaticExtensionThreshold?: number;
-  /** Retry configuration for lock acquisition */
-  retryConfig?: LockRetryConfig;
-}
-
 export class RunLocker {
   private redlock: InstanceType<typeof redlock.default>;
   private asyncLocalStorage: AsyncLocalStorage<LockContext>;
@@ -85,7 +76,7 @@ export class RunLocker {
   private activeManualContexts: Map<string, ManualLockContext> = new Map();
   private lockDurationHistogram: Histogram;
   private retryConfig: Required<LockRetryConfig>;
-  private defaultDuration: number;
+  private duration: number;
   private automaticExtensionThreshold: number;
 
   constructor(options: {
@@ -93,12 +84,12 @@ export class RunLocker {
     logger: Logger;
     tracer: Tracer;
     meter?: Meter;
-    defaultDuration?: number;
+    duration?: number;
     automaticExtensionThreshold?: number;
     retryConfig?: LockRetryConfig;
   }) {
     // Initialize configuration values
-    this.defaultDuration = options.defaultDuration ?? 5000;
+    this.duration = options.duration ?? 5000;
     this.automaticExtensionThreshold = options.automaticExtensionThreshold ?? 500;
 
     this.redlock = new Redlock([options.redis], {
@@ -157,39 +148,9 @@ export class RunLocker {
   }
 
   /** Locks resources using RedLock. It won't lock again if we're already inside a lock with the same resources. */
-  async lock<T>(
-    name: string,
-    resources: string[],
-    duration: number | undefined,
-    routine: (signal: redlock.RedlockAbortSignal) => Promise<T>
-  ): Promise<T>;
-  async lock<T>(
-    name: string,
-    resources: string[],
-    routine: (signal: redlock.RedlockAbortSignal) => Promise<T>
-  ): Promise<T>;
-  async lock<T>(
-    name: string,
-    resources: string[],
-    durationOrRoutine: number | undefined | ((signal: redlock.RedlockAbortSignal) => Promise<T>),
-    routine?: (signal: redlock.RedlockAbortSignal) => Promise<T>
-  ): Promise<T> {
+  async lock<T>(name: string, resources: string[], routine: () => Promise<T>): Promise<T> {
     const currentContext = this.asyncLocalStorage.getStore();
     const joinedResources = [...resources].sort().join(",");
-
-    // Handle overloaded parameters
-    let actualDuration: number;
-    let actualRoutine: (signal: redlock.RedlockAbortSignal) => Promise<T>;
-
-    if (typeof durationOrRoutine === "function") {
-      // Called as lock(name, resources, routine) - use default duration
-      actualDuration = this.defaultDuration;
-      actualRoutine = durationOrRoutine;
-    } else {
-      // Called as lock(name, resources, duration, routine) - use provided duration
-      actualDuration = durationOrRoutine ?? this.defaultDuration;
-      actualRoutine = routine!;
-    }
 
     return startSpan(
       this.tracer,
@@ -198,7 +159,7 @@ export class RunLocker {
         if (currentContext && currentContext.resources === joinedResources) {
           span.setAttribute("nested", true);
           // We're already inside a lock with the same resources, just run the routine
-          return actualRoutine(currentContext.signal);
+          return routine();
         }
 
         span.setAttribute("nested", false);
@@ -208,14 +169,7 @@ export class RunLocker {
         const lockStartTime = performance.now();
 
         const [error, result] = await tryCatch(
-          this.#acquireAndExecute(
-            name,
-            resources,
-            actualDuration,
-            actualRoutine,
-            lockId,
-            lockStartTime
-          )
+          this.#acquireAndExecute(name, resources, this.duration, routine, lockId, lockStartTime)
         );
 
         if (error) {
@@ -229,7 +183,7 @@ export class RunLocker {
           this.logger.error("[RunLocker] Error locking resources", {
             error,
             resources,
-            duration: actualDuration,
+            duration: this.duration,
           });
           throw error;
         }
@@ -237,7 +191,7 @@ export class RunLocker {
         return result;
       },
       {
-        attributes: { name, resources, timeout: actualDuration },
+        attributes: { name, resources, timeout: this.duration },
       }
     );
   }
@@ -247,7 +201,7 @@ export class RunLocker {
     name: string,
     resources: string[],
     duration: number,
-    routine: (signal: redlock.RedlockAbortSignal) => Promise<T>,
+    routine: () => Promise<T>,
     lockId: string,
     lockStartTime: number
   ): Promise<T> {
@@ -260,7 +214,6 @@ export class RunLocker {
       this.retryConfig;
 
     // Track timing for total wait time limit
-    const retryStartTime = performance.now();
     let totalWaitTime = 0;
 
     // Retry the lock acquisition with exponential backoff
@@ -398,7 +351,7 @@ export class RunLocker {
       let lockSuccess = true;
       try {
         const result = await this.asyncLocalStorage.run(newContext, async () => {
-          return routine(signal);
+          return routine();
         });
 
         return result;
@@ -529,47 +482,12 @@ export class RunLocker {
     condition: boolean,
     name: string,
     resources: string[],
-    duration: number | undefined,
-    routine: (signal?: redlock.RedlockAbortSignal) => Promise<T>
-  ): Promise<T>;
-  async lockIf<T>(
-    condition: boolean,
-    name: string,
-    resources: string[],
-    routine: (signal?: redlock.RedlockAbortSignal) => Promise<T>
-  ): Promise<T>;
-  async lockIf<T>(
-    condition: boolean,
-    name: string,
-    resources: string[],
-    durationOrRoutine: number | undefined | ((signal?: redlock.RedlockAbortSignal) => Promise<T>),
-    routine?: (signal?: redlock.RedlockAbortSignal) => Promise<T>
+    routine: () => Promise<T>
   ): Promise<T> {
     if (condition) {
-      // Handle overloaded parameters
-      if (typeof durationOrRoutine === "function") {
-        // Called as lockIf(condition, name, resources, routine) - use default duration
-        return this.lock(
-          name,
-          resources,
-          durationOrRoutine as (signal: redlock.RedlockAbortSignal) => Promise<T>
-        );
-      } else {
-        // Called as lockIf(condition, name, resources, duration, routine) - use provided duration
-        return this.lock(
-          name,
-          resources,
-          durationOrRoutine,
-          routine! as (signal: redlock.RedlockAbortSignal) => Promise<T>
-        );
-      }
+      return this.lock(name, resources, routine);
     } else {
-      // Handle overloaded parameters for non-lock case
-      if (typeof durationOrRoutine === "function") {
-        return durationOrRoutine();
-      } else {
-        return routine!();
-      }
+      return routine();
     }
   }
 
@@ -585,8 +503,8 @@ export class RunLocker {
     return { ...this.retryConfig };
   }
 
-  getDefaultDuration(): number {
-    return this.defaultDuration;
+  getDuration(): number {
+    return this.duration;
   }
 
   getAutomaticExtensionThreshold(): number {

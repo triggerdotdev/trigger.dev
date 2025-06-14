@@ -380,7 +380,7 @@ export class WaitpointSystem {
 
     let $waitpoints = typeof waitpoints === "string" ? [waitpoints] : waitpoints;
 
-    return await this.$.runLock.lock("blockRunWithWaitpoint", [runId], 5000, async () => {
+    return await this.$.runLock.lock("blockRunWithWaitpoint", [runId], async () => {
       let snapshot: TaskRunExecutionSnapshot = await getLatestExecutionSnapshot(prisma, runId);
 
       //block the run with the waitpoints, returning how many waitpoints are pending
@@ -549,7 +549,7 @@ export class WaitpointSystem {
     }
 
     //4. Continue the run whether it's executing or not
-    await this.$.runLock.lock("continueRunIfUnblocked", [runId], 5000, async () => {
+    await this.$.runLock.lock("continueRunIfUnblocked", [runId], async () => {
       const snapshot = await getLatestExecutionSnapshot(this.$.prisma, runId);
 
       if (isFinishedOrPendingFinished(snapshot.executionStatus)) {
