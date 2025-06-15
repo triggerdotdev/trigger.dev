@@ -3,21 +3,15 @@ import { Worker as RedisWorker } from "@trigger.dev/redis-worker";
 import { DeliverEmailSchema } from "emails";
 import { z } from "zod";
 import { env } from "~/env.server";
-import {
-  BatchProcessingOptions as RunEngineBatchProcessingOptions,
-  RunEngineBatchTriggerService,
-} from "~/runEngine/services/batchTrigger.server";
+import { RunEngineBatchTriggerService } from "~/runEngine/services/batchTrigger.server";
 import { sendEmail } from "~/services/email.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
 import { DeliverAlertService } from "./services/alerts/deliverAlert.server";
 import { PerformDeploymentAlertsService } from "./services/alerts/performDeploymentAlerts.server";
 import { PerformTaskRunAlertsService } from "./services/alerts/performTaskRunAlerts.server";
-import { BatchProcessingOptions, BatchTriggerV3Service } from "./services/batchTriggerV3.server";
-import {
-  CancelDevSessionRunsService,
-  CancelDevSessionRunsServiceOptions,
-} from "./services/cancelDevSessionRuns.server";
+import { BatchTriggerV3Service } from "./services/batchTriggerV3.server";
+import { CancelDevSessionRunsService } from "./services/cancelDevSessionRuns.server";
 import { CancelTaskAttemptDependenciesService } from "./services/cancelTaskAttemptDependencies.server";
 import { EnqueueDelayedRunService } from "./services/enqueueDelayedRun.server";
 import { ExecuteTasksWaitingForDeployService } from "./services/executeTasksWaitingForDeploy";
@@ -119,21 +113,40 @@ function initializeWorker() {
         },
       },
       "v3.cancelDevSessionRuns": {
-        schema: CancelDevSessionRunsServiceOptions,
+        schema: z.object({
+          runIds: z.array(z.string()),
+          cancelledAt: z.coerce.date(),
+          reason: z.string(),
+          cancelledSessionId: z.string().optional(),
+        }),
         visibilityTimeoutMs: 60_000,
         retry: {
           maxAttempts: 5,
         },
       },
       "v3.processBatchTaskRun": {
-        schema: BatchProcessingOptions,
+        schema: z.object({
+          batchId: z.string(),
+          processingId: z.string(),
+          range: z.object({ start: z.number().int(), count: z.number().int() }),
+          attemptCount: z.number().int(),
+          strategy: z.enum(["sequential", "parallel"]),
+        }),
         visibilityTimeoutMs: 60_000,
         retry: {
           maxAttempts: 5,
         },
       },
       "runengine.processBatchTaskRun": {
-        schema: RunEngineBatchProcessingOptions,
+        schema: z.object({
+          batchId: z.string(),
+          processingId: z.string(),
+          range: z.object({ start: z.number().int(), count: z.number().int() }),
+          attemptCount: z.number().int(),
+          strategy: z.enum(["sequential", "parallel"]),
+          parentRunId: z.string().optional(),
+          resumeParentOnCompletion: z.boolean().optional(),
+        }),
         visibilityTimeoutMs: 60_000,
         retry: {
           maxAttempts: 5,
