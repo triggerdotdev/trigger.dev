@@ -216,7 +216,7 @@ export class RunLocker {
     let lock: redlock.Lock | undefined;
     let lastError: Error | undefined;
 
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    for (let attempt = 0; attempt <= maxAttempts; attempt++) {
       const [error, acquiredLock] = await tryCatch(this.redlock.acquire(sortedResources, duration));
 
       if (!error && acquiredLock) {
