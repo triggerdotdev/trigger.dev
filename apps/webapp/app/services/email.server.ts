@@ -4,7 +4,7 @@ import type { SendEmailOptions } from "remix-auth-email-link";
 import { redirect } from "remix-typedjson";
 import { env } from "~/env.server";
 import type { AuthUser } from "./authUser";
-import { workerQueue } from "./worker.server";
+import { commonWorker } from "~/v3/commonWorker.server";
 import { logger } from "./logger.server";
 import { singleton } from "~/utils/singleton";
 import { assertEmailAllowed } from "~/utils/email";
@@ -93,8 +93,12 @@ export async function sendPlainTextEmail(options: SendPlainTextOptions) {
 }
 
 export async function scheduleEmail(data: DeliverEmail, delay?: { seconds: number }) {
-  const runAt = delay ? new Date(Date.now() + delay.seconds * 1000) : undefined;
-  await workerQueue.enqueue("scheduleEmail", data, { runAt });
+  const availableAt = delay ? new Date(Date.now() + delay.seconds * 1000) : undefined;
+  await commonWorker.enqueue({
+    job: "scheduleEmail",
+    payload: data,
+    availableAt,
+  });
 }
 
 export async function sendEmail(data: DeliverEmail) {

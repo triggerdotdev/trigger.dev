@@ -301,12 +301,14 @@ export class RunEngineTriggerTaskService {
                   priorityMs: body.options?.priority ? body.options.priority * 1_000 : undefined,
                   releaseConcurrency: body.options?.releaseConcurrency,
                   queueTimestamp:
-                    parentRun && body.options?.resumeParentOnCompletion
+                    options.queueTimestamp ??
+                    (parentRun && body.options?.resumeParentOnCompletion
                       ? parentRun.queueTimestamp ?? undefined
-                      : undefined,
+                      : undefined),
                   runChainState,
                   scheduleId: options.scheduleId,
                   scheduleInstanceId: options.scheduleInstanceId,
+                  createdAt: options.overrideCreatedAt,
                 },
                 this.prisma
               );

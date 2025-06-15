@@ -1,7 +1,7 @@
 import { PrismaClientOrTransaction } from "~/db.server";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
-import { workerQueue } from "~/services/worker.server";
+import { commonWorker } from "../commonWorker.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { BaseService } from "./baseService.server";
 
@@ -99,22 +99,19 @@ export class ExecuteTasksWaitingForDeployService extends BaseService {
     if (runsWaitingForDeploy.length > maxCount) {
       await ExecuteTasksWaitingForDeployService.enqueue(
         backgroundWorkerId,
-        this._prisma,
         new Date(Date.now() + env.LEGACY_RUN_ENGINE_WAITING_FOR_DEPLOY_BATCH_STAGGER_MS)
       );
     }
   }
 
-  static async enqueue(backgroundWorkerId: string, tx: PrismaClientOrTransaction, runAt?: Date) {
-    return await workerQueue.enqueue(
-      "v3.executeTasksWaitingForDeploy",
-      {
+  static async enqueue(backgroundWorkerId: string, runAt?: Date) {
+    return await commonWorker.enqueue({
+      id: `v3.executeTasksWaitingForDeploy:${backgroundWorkerId}`,
+      job: "v3.executeTasksWaitingForDeploy",
+      payload: {
         backgroundWorkerId,
       },
-      {
-        tx,
-        runAt,
-      }
-    );
+      availableAt: runAt,
+    });
   }
 }

@@ -203,6 +203,7 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
             item: parsedItem,
             job: parsedItem.job,
             timestamp,
+            availableJobs: Object.keys(this.schema),
           });
           continue;
         }

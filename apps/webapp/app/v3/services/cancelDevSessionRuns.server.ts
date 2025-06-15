@@ -1,4 +1,4 @@
-import { workerQueue } from "~/services/worker.server";
+import { commonWorker } from "../commonWorker.server";
 import { BaseService } from "./baseService.server";
 import { PrismaClientOrTransaction } from "~/db.server";
 import { z } from "zod";
@@ -95,9 +95,13 @@ export class CancelDevSessionRunsService extends BaseService {
     runAt?: Date,
     tx?: PrismaClientOrTransaction
   ) {
-    return await workerQueue.enqueue("v3.cancelDevSessionRuns", options, {
-      tx,
-      runAt: runAt,
+    return await commonWorker.enqueue({
+      id: options.cancelledSessionId
+        ? `cancelDevSessionRuns:${options.cancelledSessionId}`
+        : undefined,
+      job: "v3.cancelDevSessionRuns",
+      payload: options,
+      availableAt: runAt,
     });
   }
 }

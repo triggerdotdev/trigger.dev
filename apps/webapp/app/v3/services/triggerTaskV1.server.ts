@@ -364,6 +364,7 @@ export class TriggerTaskServiceV1 extends BaseService {
                   : 0;
 
                 const queueTimestamp =
+                  options.queueTimestamp ??
                   dependentAttempt?.taskRun.queueTimestamp ??
                   dependentBatchRun?.dependentTaskAttempt?.taskRun.queueTimestamp ??
                   delayUntil ??
@@ -438,6 +439,7 @@ export class TriggerTaskServiceV1 extends BaseService {
                     machinePreset: body.options?.machine,
                     scheduleId: options.scheduleId,
                     scheduleInstanceId: options.scheduleInstanceId,
+                    createdAt: options.overrideCreatedAt,
                   },
                 });
 

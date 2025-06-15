@@ -190,6 +190,11 @@ export class NextRunListPresenter {
       prisma: this.replica as PrismaClient,
     });
 
+    function clampToNow(date: Date): Date {
+      const now = new Date();
+      return date > now ? now : date;
+    }
+
     const { runs, pagination } = await runsRepository.listRuns({
       organizationId,
       environmentId,
@@ -200,8 +205,8 @@ export class NextRunListPresenter {
       tags,
       scheduleId,
       period: periodMs ?? undefined,
-      from,
-      to,
+      from: time.from ? time.from.getTime() : undefined,
+      to: time.to ? clampToNow(time.to).getTime() : undefined,
       isTest,
       rootOnly,
       batchId,

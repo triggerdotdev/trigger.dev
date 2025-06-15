@@ -251,6 +251,9 @@ importers:
       '@internal/run-engine':
         specifier: workspace:*
         version: link:../../internal-packages/run-engine
+      '@internal/schedule-engine':
+        specifier: workspace:*
+        version: link:../../internal-packages/schedule-engine
       '@internal/tracing':
         specifier: workspace:*
         version: link:../../internal-packages/tracing
@@ -1046,6 +1049,43 @@ importers:
       '@types/seedrandom':
         specifier: ^3.0.8
         version: 3.0.8
+      rimraf:
+        specifier: 6.0.1
+        version: 6.0.1
+
+  internal-packages/schedule-engine:
+    dependencies:
+      '@internal/redis':
+        specifier: workspace:*
+        version: link:../redis
+      '@internal/tracing':
+        specifier: workspace:*
+        version: link:../tracing
+      '@trigger.dev/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@trigger.dev/database':
+        specifier: workspace:*
+        version: link:../database
+      '@trigger.dev/redis-worker':
+        specifier: workspace:*
+        version: link:../../packages/redis-worker
+      cron-parser:
+        specifier: ^4.9.0
+        version: 4.9.0
+      cronstrue:
+        specifier: ^2.50.0
+        version: 2.61.0
+      nanoid:
+        specifier: 3.3.8
+        version: 3.3.8
+      zod:
+        specifier: 3.23.8
+        version: 3.23.8
+    devDependencies:
+      '@internal/testcontainers':
+        specifier: workspace:*
+        version: link:../testcontainers
       rimraf:
         specifier: 6.0.1
         version: 6.0.1
@@ -10715,7 +10755,7 @@ packages:
       '@types/react-dom':
         optional: true
     dependencies:
-      '@babel/runtime': 7.27.4
+      '@babel/runtime': 7.27.0
       '@radix-ui/primitive': 1.0.1
       '@radix-ui/react-compose-refs': 1.0.1(@types/react@18.2.69)(react@18.2.0)
       '@radix-ui/react-primitive': 1.0.3(@types/react-dom@18.2.7)(@types/react@18.2.69)(react-dom@18.2.0)(react@18.2.0)
@@ -10795,7 +10835,7 @@ packages:
       '@types/react':
         optional: true
     dependencies:
-      '@babel/runtime': 7.27.4
+      '@babel/runtime': 7.27.0
       '@types/react': 18.2.69
       react: 18.2.0
     dev: false
@@ -11152,7 +11192,7 @@ packages:
       '@types/react-dom':
         optional: true
     dependencies:
-      '@babel/runtime': 7.27.4
+      '@babel/runtime': 7.27.0
       '@radix-ui/react-primitive': 1.0.3(@types/react-dom@18.2.7)(@types/react@18.2.69)(react-dom@18.2.0)(react@18.2.0)
       '@types/react': 18.2.69
       '@types/react-dom': 18.2.7
@@ -21098,6 +21138,11 @@ packages:
 
   /cronstrue@2.21.0:
     resolution: {integrity: sha512-YxabE1ZSHA1zJZMPCTSEbc0u4cRRenjqqTgCwJT7OvkspPSvfYFITuPFtsT+VkBuavJtFv2kJXT+mKSnlUJxfg==}
+    hasBin: true
+    dev: false
+
+  /cronstrue@2.61.0:
+    resolution: {integrity: sha512-ootN5bvXbIQI9rW94+QsXN5eROtXWwew6NkdGxIRpS/UFWRggL0G5Al7a9GTBFEsuvVhJ2K3CntIIVt7L2ILhA==}
     hasBin: true
     dev: false
 

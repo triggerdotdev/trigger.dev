@@ -179,6 +179,12 @@ export class RunListPresenter extends BasePresenter {
 
     const periodMs = time.period ? parse(time.period) : undefined;
 
+    function clampToNow(date: Date): Date {
+      const now = new Date();
+
+      return date > now ? now : date;
+    }
+
     //get the runs
     const runs = await this._replica.$queryRaw<
       {
@@ -282,7 +288,9 @@ WHERE
         : Prisma.empty
     }
     ${
-      time.to ? Prisma.sql`AND tr."createdAt" <= ${time.to.toISOString()}::timestamp` : Prisma.empty
+      time.to
+        ? Prisma.sql`AND tr."createdAt" <= ${clampToNow(time.to).toISOString()}::timestamp`
+        : Prisma.sql`AND tr."createdAt" <= CURRENT_TIMESTAMP`
     }
     ${
       tags && tags.length > 0
