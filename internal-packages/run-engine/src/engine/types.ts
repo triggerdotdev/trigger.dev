@@ -13,6 +13,7 @@ import { FairQueueSelectionStrategyOptions } from "../run-queue/fairQueueSelecti
 import { MinimalAuthenticatedEnvironment } from "../shared/index.js";
 import { workerCatalog } from "./workerCatalog.js";
 import { Logger, LogLevel } from "@trigger.dev/core/logger";
+import { LockRetryConfig } from "./locking.js";
 
 export type RunEngineOptions = {
   prisma: PrismaClient;
@@ -45,6 +46,9 @@ export type RunEngineOptions = {
   };
   runLock: {
     redis: RedisOptions;
+    duration?: number;
+    automaticExtensionThreshold?: number;
+    retryConfig?: LockRetryConfig;
   };
   /** If not set then checkpoints won't ever be used */
   retryWarmStartThresholdMs?: number;

@@ -23,7 +23,7 @@ export class TtlSystem {
 
   async expireRun({ runId, tx }: { runId: string; tx?: PrismaClientOrTransaction }) {
     const prisma = tx ?? this.$.prisma;
-    await this.$.runLock.lock("expireRun", [runId], 5_000, async () => {
+    await this.$.runLock.lock("expireRun", [runId], async () => {
       const snapshot = await getLatestExecutionSnapshot(prisma, runId);
 
       //if we're executing then we won't expire the run

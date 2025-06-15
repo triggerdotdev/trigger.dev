@@ -263,7 +263,6 @@ export class ReleaseConcurrencySystem {
     return await this.$.runLock.lock(
       "executeReleaseConcurrencyForSnapshot",
       [snapshot.runId],
-      5_000,
       async () => {
         const latestSnapshot = await getLatestExecutionSnapshot(this.$.prisma, snapshot.runId);
 

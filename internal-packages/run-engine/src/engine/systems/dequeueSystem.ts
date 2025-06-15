@@ -80,8 +80,7 @@ export class DequeueSystem {
           const dequeuedRun = await this.$.runLock.lock(
             "dequeueFromWorkerQueue",
             [runId],
-            5000,
-            async (signal) => {
+            async () => {
               const snapshot = await getLatestExecutionSnapshot(prisma, runId);
 
               if (!isDequeueableExecutionStatus(snapshot.executionStatus)) {
@@ -548,7 +547,7 @@ export class DequeueSystem {
       statusReason,
     });
 
-    return this.$.runLock.lock("pendingVersion", [runId], 5_000, async (signal) => {
+    return this.$.runLock.lock("pendingVersion", [runId], async () => {
       this.$.logger.debug("RunEngine.dequeueFromWorkerQueue(): Pending version lock acquired", {
         runId,
         reason,

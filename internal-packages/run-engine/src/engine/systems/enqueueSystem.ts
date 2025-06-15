@@ -33,6 +33,7 @@ export class EnqueueSystem {
     completedWaitpoints,
     workerId,
     runnerId,
+    skipRunLock,
   }: {
     run: TaskRun;
     env: MinimalAuthenticatedEnvironment;
@@ -51,10 +52,11 @@ export class EnqueueSystem {
     }[];
     workerId?: string;
     runnerId?: string;
+    skipRunLock?: boolean;
   }) {
     const prisma = tx ?? this.$.prisma;
 
-    return await this.$.runLock.lock("enqueueRun", [run.id], 5000, async () => {
+    return await this.$.runLock.lockIf(!skipRunLock, "enqueueRun", [run.id], async () => {
       const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(prisma, {
         run: run,
         snapshot: {
