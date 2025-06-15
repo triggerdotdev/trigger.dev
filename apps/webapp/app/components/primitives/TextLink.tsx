@@ -1,6 +1,10 @@
 import { Link } from "@remix-run/react";
 import { cn } from "~/utils/cn";
 import { Icon, type RenderIcon } from "./Icon";
+import { useRef } from "react";
+import { type ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
+import { ShortcutKey } from "./ShortcutKey";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./Tooltip";
 
 const variations = {
   primary:
@@ -17,6 +21,9 @@ type TextLinkProps = {
   trailingIconClassName?: string;
   variant?: keyof typeof variations;
   children: React.ReactNode;
+  shortcut?: ShortcutDefinition;
+  hideShortcutKey?: boolean;
+  tooltip?: React.ReactNode;
 } & React.AnchorHTMLAttributes<HTMLAnchorElement>;
 
 export function TextLink({
@@ -27,20 +34,61 @@ export function TextLink({
   trailingIcon,
   trailingIconClassName,
   variant = "primary",
+  shortcut,
+  hideShortcutKey,
+  tooltip,
   ...props
 }: TextLinkProps) {
+  const innerRef = useRef<HTMLAnchorElement>(null);
   const classes = variations[variant];
-  return to ? (
-    <Link to={to} className={cn(classes, className)} {...props}>
+
+  if (shortcut) {
+    useShortcutKeys({
+      shortcut: shortcut,
+      action: () => {
+        if (innerRef.current) {
+          innerRef.current.click();
+        }
+      },
+    });
+  }
+
+  const renderShortcutKey = () =>
+    shortcut &&
+    !hideShortcutKey && <ShortcutKey className="ml-1.5" shortcut={shortcut} variant="small" />;
+
+  const linkContent = (
+    <>
       {children}{" "}
       {trailingIcon && <Icon icon={trailingIcon} className={cn("size-4", trailingIconClassName)} />}
+      {shortcut && !tooltip && renderShortcutKey()}
+    </>
+  );
+
+  const linkElement = to ? (
+    <Link ref={innerRef} to={to} className={cn(classes, className)} {...props}>
+      {linkContent}
     </Link>
   ) : href ? (
-    <a href={href} className={cn(classes, className)} {...props}>
-      {children}{" "}
-      {trailingIcon && <Icon icon={trailingIcon} className={cn("size-4", trailingIconClassName)} />}
+    <a ref={innerRef} href={href} className={cn(classes, className)} {...props}>
+      {linkContent}
     </a>
   ) : (
     <span>Need to define a path or href</span>
   );
+
+  if (tooltip) {
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>{linkElement}</TooltipTrigger>
+          <TooltipContent className="text-dimmed flex items-center gap-3 py-1.5 pl-2.5 pr-3 text-xs">
+            {tooltip} {shortcut && renderShortcutKey()}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
+
+  return linkElement;
 }
