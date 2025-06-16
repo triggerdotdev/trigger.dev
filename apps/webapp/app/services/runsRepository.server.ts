@@ -1,8 +1,8 @@
-import { ClickHouse } from "@internal/clickhouse";
-import { Tracer } from "@internal/tracing";
-import { Logger, LogLevel } from "@trigger.dev/core/logger";
-import { TaskRunStatus } from "@trigger.dev/database";
-import { PrismaClient } from "~/db.server";
+import { type ClickHouse } from "@internal/clickhouse";
+import { type Tracer } from "@internal/tracing";
+import { type Logger, type LogLevel } from "@trigger.dev/core/logger";
+import { type TaskRunStatus } from "@trigger.dev/database";
+import { type PrismaClient } from "~/db.server";
 
 export type RunsRepositoryOptions = {
   clickhouse: ClickHouse;
@@ -13,6 +13,7 @@ export type RunsRepositoryOptions = {
 };
 
 export type ListRunsOptions = {
+  organizationId: string;
   projectId: string;
   environmentId: string;
   //filters
@@ -43,11 +44,14 @@ export class RunsRepository {
   async listRuns(options: ListRunsOptions) {
     const queryBuilder = this.options.clickhouse.taskRuns.queryBuilder();
     queryBuilder
-      .where("environment_id = {environmentId: String}", {
-        environmentId: options.environmentId,
+      .where("organization_id = {organizationId: String}", {
+        organizationId: options.organizationId,
       })
       .where("project_id = {projectId: String}", {
         projectId: options.projectId,
+      })
+      .where("environment_id = {environmentId: String}", {
+        environmentId: options.environmentId,
       });
 
     if (options.tasks && options.tasks.length > 0) {
@@ -115,17 +119,17 @@ export class RunsRepository {
       if (options.page.direction === "forward") {
         queryBuilder
           .where("run_id < {runId: String}", { runId: options.page.cursor })
-          .orderBy("run_id DESC")
+          .orderBy("created_at DESC, run_id DESC")
           .limit(options.page.size + 1);
       } else {
         queryBuilder
           .where("run_id > {runId: String}", { runId: options.page.cursor })
-          .orderBy("run_id DESC")
+          .orderBy("created_at ASC, run_id ASC")
           .limit(options.page.size + 1);
       }
     } else {
       // Initial page - no cursor provided
-      queryBuilder.orderBy("run_id DESC").limit(options.page.size + 1);
+      queryBuilder.orderBy("created_at DESC, run_id DESC").limit(options.page.size + 1);
     }
 
     const [queryError, result] = await queryBuilder.execute();
@@ -143,38 +147,33 @@ export class RunsRepository {
     let previousCursor: string | null = null;
 
     //get cursors for next and previous pages
-    if (options.page.cursor) {
-      switch (options.page.direction) {
-        case "forward":
-          previousCursor = runIds.at(0) ?? null;
-          if (hasMore) {
-            // The next cursor should be the last run ID from this page
-            nextCursor = runIds[options.page.size - 1];
-          }
-          break;
-        case "backward":
-          // No need to reverse since we're using DESC ordering consistently
-          if (hasMore) {
-            previousCursor = runIds[options.page.size - 1];
-          }
-          nextCursor = runIds.at(0) ?? null;
-          break;
-        default:
-          // This shouldn't happen if cursor is provided, but handle it
-          if (hasMore) {
-            nextCursor = runIds[options.page.size - 1];
-          }
-          break;
+    const direction = options.page.direction ?? "forward";
+    switch (direction) {
+      case "forward": {
+        previousCursor = options.page.cursor ? runIds.at(0) ?? null : null;
+        if (hasMore) {
+          // The next cursor should be the last run ID from this page
+          nextCursor = runIds[options.page.size - 1];
+        }
+        break;
       }
-    } else {
-      // Initial page - no cursor
-      if (hasMore) {
-        // The next cursor should be the last run ID from this page
-        nextCursor = runIds[options.page.size - 1];
+      case "backward": {
+        const reversedRunIds = [...runIds].reverse();
+        if (hasMore) {
+          previousCursor = reversedRunIds.at(1) ?? null;
+          nextCursor = reversedRunIds.at(options.page.size) ?? null;
+        } else {
+          nextCursor = reversedRunIds.at(options.page.size - 1) ?? null;
+        }
+
+        break;
       }
     }
 
-    const runIdsToReturn = hasMore ? runIds.slice(0, -1) : runIds;
+    const runIdsToReturn =
+      options.page.direction === "backward" && hasMore
+        ? runIds.slice(1, options.page.size + 1)
+        : runIds.slice(0, options.page.size);
 
     const runs = await this.options.prisma.taskRun.findMany({
       where: {

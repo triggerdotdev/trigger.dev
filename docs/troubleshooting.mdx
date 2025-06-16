@@ -59,6 +59,16 @@ Here are some common problems and their solutions:
 
 There should be a link below the error message to the full build logs on your machine. Take a look at these to see what went wrong. Join [our Discord](https://trigger.dev/discord) and you share it privately with us if you can't figure out what's going wrong. Do NOT share these publicly as the verbose logs might reveal private information about your project.
 
+### `Error: failed to solve: failed to resolve source metadata for docker.io/docker/dockerfile:1`
+
+If you see this error after uninstalling Docker Desktop:
+
+```
+Error: failed to solve: failed to resolve source metadata for docker.io/docker/dockerfile:1: error getting credentials - err: exec: "docker-credential-desktop": executable file not found in $PATH
+```
+
+This happens because Docker Desktop left behind a config file that's still trying to use its credential store. To fix this, remove or update the `~/.docker/config.json` file. You don't need Docker Desktop installed to use Trigger.dev.
+
 ### `Deployment encountered an error`
 
 Usually there will be some useful guidance below this message. If you can't figure out what's going wrong then join [our Discord](https://trigger.dev/discord) and create a Help forum post with a link to your deployment.

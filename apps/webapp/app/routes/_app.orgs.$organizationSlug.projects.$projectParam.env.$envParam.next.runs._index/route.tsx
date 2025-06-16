@@ -128,7 +128,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 
   const presenter = new NextRunListPresenter($replica, clickhouseClient);
-  const list = presenter.call(environment.id, {
+  const list = presenter.call(project.organizationId, environment.id, {
     userId,
     projectId: project.id,
     tasks,
