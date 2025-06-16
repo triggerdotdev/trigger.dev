@@ -1,10 +1,10 @@
+import { createRedisClient, Redis, type RedisOptions } from "@internal/redis";
 import {
   Attributes,
   Histogram,
   Meter,
   metrics,
   ObservableResult,
-  SemanticAttributes,
   SpanKind,
   startSpan,
   trace,
@@ -14,13 +14,11 @@ import {
 import { Logger } from "@trigger.dev/core/logger";
 import { calculateNextRetryDelay } from "@trigger.dev/core/v3";
 import { type RetryOptions } from "@trigger.dev/core/v3/schemas";
-import { Redis, type RedisOptions } from "@internal/redis";
-import { z } from "zod";
-import { AnyQueueItem, SimpleQueue } from "./queue.js";
+import { shutdownManager } from "@trigger.dev/core/v3/serverOnly";
 import { nanoid } from "nanoid";
 import pLimit from "p-limit";
-import { createRedisClient } from "@internal/redis";
-import { shutdownManager } from "@trigger.dev/core/v3/serverOnly";
+import { z } from "zod";
+import { AnyQueueItem, SimpleQueue } from "./queue.js";
 
 export type WorkerCatalog = {
   [key: string]: {

@@ -25,7 +25,6 @@ import { ExpireEnqueuedRunService } from "~/v3/services/expireEnqueuedRun.server
 import { IndexDeploymentService } from "~/v3/services/indexDeployment.server";
 import { ResumeBatchRunService } from "~/v3/services/resumeBatchRun.server";
 import { ResumeTaskDependencyService } from "~/v3/services/resumeTaskDependency.server";
-import { ResumeTaskRunDependenciesService } from "~/v3/services/resumeTaskRunDependencies.server";
 import { RetryAttemptService } from "~/v3/services/retryAttempt.server";
 import { TimeoutDeploymentService } from "~/v3/services/timeoutDeployment.server";
 import { GraphileMigrationHelperService } from "./db/graphileMigrationHelper.server";
@@ -38,10 +37,6 @@ const workerCatalog = {
   // v3 tasks
   "v3.indexDeployment": z.object({
     id: z.string(),
-  }),
-  // @deprecated, moved to commonWorker.server.ts
-  "v3.resumeTaskRunDependencies": z.object({
-    attemptId: z.string(),
   }),
   // @deprecated, moved to commonWorker.server.ts
   "v3.resumeBatchRun": z.object({
@@ -182,16 +177,6 @@ function getWorkerQueue() {
           const service = new IndexDeploymentService();
 
           return await service.call(payload.id);
-        },
-      },
-      // @deprecated, moved to commonWorker.server.ts
-      "v3.resumeTaskRunDependencies": {
-        priority: 0,
-        maxAttempts: 5,
-        handler: async (payload, job) => {
-          const service = new ResumeTaskRunDependenciesService();
-
-          return await service.call(payload.attemptId);
         },
       },
       // @deprecated, moved to commonWorker.server.ts

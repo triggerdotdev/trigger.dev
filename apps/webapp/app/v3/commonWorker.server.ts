@@ -18,7 +18,6 @@ import { ExecuteTasksWaitingForDeployService } from "./services/executeTasksWait
 import { ExpireEnqueuedRunService } from "./services/expireEnqueuedRun.server";
 import { ResumeBatchRunService } from "./services/resumeBatchRun.server";
 import { ResumeTaskDependencyService } from "./services/resumeTaskDependency.server";
-import { ResumeTaskRunDependenciesService } from "./services/resumeTaskRunDependencies.server";
 import { RetryAttemptService } from "./services/retryAttempt.server";
 import { TimeoutDeploymentService } from "./services/timeoutDeployment.server";
 
@@ -44,15 +43,6 @@ function initializeWorker() {
         visibilityTimeoutMs: 60_000,
         retry: {
           maxAttempts: 3,
-        },
-      },
-      "v3.resumeTaskRunDependencies": {
-        schema: z.object({
-          attemptId: z.string(),
-        }),
-        visibilityTimeoutMs: 60_000,
-        retry: {
-          maxAttempts: 5,
         },
       },
       "v3.resumeBatchRun": {
@@ -210,10 +200,6 @@ function initializeWorker() {
     jobs: {
       scheduleEmail: async ({ payload }) => {
         await sendEmail(payload);
-      },
-      "v3.resumeTaskRunDependencies": async ({ payload }) => {
-        const service = new ResumeTaskRunDependenciesService();
-        await service.call(payload.attemptId);
       },
       "v3.resumeBatchRun": async ({ payload }) => {
         const service = new ResumeBatchRunService();
