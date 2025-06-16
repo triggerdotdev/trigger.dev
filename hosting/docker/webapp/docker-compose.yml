@@ -105,7 +105,7 @@ services:
     networks:
       - webapp
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/main?schema=public&sslmode=disable
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/main?schema=public&sslmode=disable}
       ELECTRIC_INSECURE: true
       ELECTRIC_USAGE_REPORTING: false
     healthcheck:
