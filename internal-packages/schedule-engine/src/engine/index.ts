@@ -509,7 +509,6 @@ export class ScheduleEngine {
           });
 
           this.scheduleExecutionCounter.add(1, {
-            task_identifier: taskIdentifier ?? "unknown",
             environment_type: environmentType ?? "unknown",
             schedule_type: scheduleType ?? "unknown",
             status: "skipped",
