@@ -178,7 +178,7 @@ export function getCurrentRunningStats(ch: ClickhouseReader, settings?: ClickHou
         organization_id = {organizationId: String}
         AND project_id = {projectId: String}
         AND environment_id = {environmentId: String}
-        AND status IN ('PENDING', 'WAITING_FOR_DEPLOY', 'WAITING_TO_RESUME', 'QUEUED', 'EXECUTING')
+        AND status IN ('PENDING', 'WAITING_FOR_DEPLOY', 'WAITING_TO_RESUME', 'QUEUED', 'EXECUTING', 'DELAYED')
         AND _is_deleted = 0
         AND created_at >= now() - INTERVAL {days: Int64} DAY
     GROUP BY
