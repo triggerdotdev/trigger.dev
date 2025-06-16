@@ -503,6 +503,7 @@ function TaskActivityGraph({ activity }: { activity: TaskActivity }) {
           barSize={10}
           isAnimationActive={false}
         />
+        <Bar dataKey="DELAYED" fill="#5F6570" stackId="a" strokeWidth={0} barSize={10} />
         <Bar dataKey="PENDING" fill="#5F6570" stackId="a" strokeWidth={0} barSize={10} />
         <Bar dataKey="PENDING_VERSION" fill="#F59E0B" stackId="a" strokeWidth={0} barSize={10} />
         <Bar dataKey="EXECUTING" fill="#3B82F6" stackId="a" strokeWidth={0} barSize={10} />
@@ -533,7 +534,7 @@ function TaskActivityGraph({ activity }: { activity: TaskActivity }) {
         <Bar dataKey="SYSTEM_FAILURE" fill="#F43F5E" stackId="a" strokeWidth={0} barSize={10} />
         <Bar dataKey="PAUSED" fill="#FCD34D" stackId="a" strokeWidth={0} barSize={10} />
         <Bar dataKey="CRASHED" fill="#F43F5E" stackId="a" strokeWidth={0} barSize={10} />
-        <Bar dataKey="EXPIRED" fill="#F43F5E" stackId="a" strokeWidth={0} barSize={10} />
+        <Bar dataKey="EXPIRED" fill="#5F6570" stackId="a" strokeWidth={0} barSize={10} />
         <Bar dataKey="TIMED_OUT" fill="#F43F5E" stackId="a" strokeWidth={0} barSize={10} />
       </BarChart>
     </ResponsiveContainer>
