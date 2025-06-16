@@ -337,7 +337,7 @@ export class RunLocker {
     const signal = controller.signal as redlock.RedlockAbortSignal;
 
     const manualContext: ManualLockContext = {
-      lock: lock!,
+      lock,
       timeout: undefined,
       extension: undefined,
     };
@@ -390,12 +390,12 @@ export class RunLocker {
       this.#cleanupExtension(manualContext);
 
       // Release the lock using tryCatch
-      const [releaseError] = await tryCatch(lock!.release());
+      const [releaseError] = await tryCatch(lock.release());
       if (releaseError) {
         this.logger.warn("[RunLocker] Error releasing lock", {
           error: releaseError,
           resources: sortedResources,
-          lockValue: lock!.value,
+          lockValue: lock.value,
         });
       }
     }
