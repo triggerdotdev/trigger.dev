@@ -1,9 +1,8 @@
-import { PrismaClientOrTransaction } from "~/db.server";
-import { logger } from "~/services/logger.server";
-import { commonWorker } from "../commonWorker.server";
-import { marqs } from "~/v3/marqs/index.server";
-import { BaseService } from "./baseService.server";
 import { TaskRunDependency } from "@trigger.dev/database";
+import { logger } from "~/services/logger.server";
+import { marqs } from "~/v3/marqs/index.server";
+import { commonWorker } from "../commonWorker.server";
+import { BaseService } from "./baseService.server";
 
 export class ResumeTaskDependencyService extends BaseService {
   public async call(dependencyId: string, sourceTaskAttemptId: string) {
@@ -154,12 +153,7 @@ export class ResumeTaskDependencyService extends BaseService {
     }
   }
 
-  static async enqueue(
-    dependencyId: string,
-    sourceTaskAttemptId: string,
-    tx: PrismaClientOrTransaction,
-    runAt?: Date
-  ) {
+  static async enqueue(dependencyId: string, sourceTaskAttemptId: string, runAt?: Date) {
     return await commonWorker.enqueue({
       job: "v3.resumeTaskDependency",
       payload: {

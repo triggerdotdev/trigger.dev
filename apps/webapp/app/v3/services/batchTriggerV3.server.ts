@@ -891,7 +891,7 @@ export class BatchTriggerV3Service extends BaseService {
     return false;
   }
 
-  async #enqueueBatchTaskRun(options: BatchProcessingOptions, tx?: PrismaClientOrTransaction) {
+  async #enqueueBatchTaskRun(options: BatchProcessingOptions) {
     await commonWorker.enqueue({
       id: `BatchTriggerV2Service.process:${options.batchId}:${options.processingId}`,
       job: "v3.processBatchTaskRun",

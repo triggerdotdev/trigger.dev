@@ -47,8 +47,7 @@ export class TimeoutDeploymentService extends BaseService {
     deploymentId: string,
     fromStatus: string,
     errorMessage: string,
-    runAt: Date,
-    tx?: PrismaClientOrTransaction
+    runAt: Date
   ) {
     await commonWorker.enqueue({
       id: `timeoutDeployment:${deploymentId}`,

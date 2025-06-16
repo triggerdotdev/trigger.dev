@@ -313,7 +313,7 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
     }
   }
 
-  async #enqueueBatchTaskRun(options: BatchProcessingOptions, tx?: PrismaClientOrTransaction) {
+  async #enqueueBatchTaskRun(options: BatchProcessingOptions) {
     await commonWorker.enqueue({
       id: `RunEngineBatchTriggerService.process:${options.batchId}:${options.processingId}`,
       job: "runengine.processBatchTaskRun",

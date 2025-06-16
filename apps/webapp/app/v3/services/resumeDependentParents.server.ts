@@ -180,7 +180,7 @@ export class ResumeDependentParentsService extends BaseService {
     }
 
     //resume the dependent task
-    await ResumeTaskDependencyService.enqueue(dependency.id, lastAttempt.id, this._prisma);
+    await ResumeTaskDependencyService.enqueue(dependency.id, lastAttempt.id);
     return {
       success: true,
       action: "resume-scheduled",

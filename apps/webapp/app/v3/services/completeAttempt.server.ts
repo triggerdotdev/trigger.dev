@@ -482,7 +482,7 @@ export class CompleteAttemptService extends BaseService {
 
     const retryDirectly = () => {
       logger.debug("[CompleteAttemptService] Retrying attempt directly", { runId: run.id });
-      return RetryAttemptService.enqueue(run.id, this._prisma, new Date(executionRetry.timestamp));
+      return RetryAttemptService.enqueue(run.id, new Date(executionRetry.timestamp));
     };
 
     // There's a checkpoint, so we need to go through the queue
