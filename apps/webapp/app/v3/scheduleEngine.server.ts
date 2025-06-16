@@ -79,7 +79,7 @@ function createScheduleEngine() {
       exactScheduleTime,
     }) => {
       try {
-        // Use TriggerTaskServiceV1 for now (can be updated to use TriggerTaskService when ready)
+        // This will trigger either v1 or v2 depending on the engine of the project
         const triggerService = new TriggerTaskService();
 
         const payloadPacket = await stringifyIO(payload);
