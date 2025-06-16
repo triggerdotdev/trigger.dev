@@ -1,4 +1,12 @@
-import { Counter, getMeter, Histogram, Meter, startSpan, Tracer } from "@internal/tracing";
+import {
+  Counter,
+  getMeter,
+  getTracer,
+  Histogram,
+  Meter,
+  startSpan,
+  Tracer,
+} from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
 import { PrismaClient } from "@trigger.dev/database";
 import { Worker, type JobHandlerParams } from "@trigger.dev/redis-worker";
@@ -39,7 +47,7 @@ export class ScheduleEngine {
     this.distributionWindowSeconds = options.distributionWindow?.seconds ?? 30;
     this.onTriggerScheduledTask = options.onTriggerScheduledTask;
 
-    this.tracer = options.tracer ?? (startSpan as any).tracer;
+    this.tracer = options.tracer ?? getTracer("schedule-engine");
     this.meter = options.meter ?? getMeter("schedule-engine");
 
     // Initialize metrics
@@ -258,6 +266,7 @@ export class ScheduleEngine {
               include: {
                 project: true,
                 organization: true,
+                orgMember: true,
               },
             },
           },

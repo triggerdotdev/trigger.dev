@@ -1,4 +1,4 @@
-import { ScheduleEngine, TriggerScheduledTaskCallback } from "@internal/schedule-engine";
+import { ScheduleEngine } from "@internal/schedule-engine";
 import { stringifyIO } from "@trigger.dev/core/v3";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
