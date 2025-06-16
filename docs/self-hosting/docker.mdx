@@ -49,8 +49,8 @@ This machine will host the webapp, postgres, redis, and related services.
 
 This machine will host the supervisor and all of the runs.
 
-- 2+ vCPU
-- 4+ GB RAM
+- 4+ vCPU
+- 8+ GB RAM
 
 How many workers and resources you need will depend on your workloads and concurrency requirements.
 
@@ -70,7 +70,7 @@ You may need to spin up multiple workers to handle peak concurrency. The good ne
 1. Clone the repository
 
 ```bash
-git clone https://github.com/triggerdotdev/trigger.dev
+git clone --depth=1 https://github.com/triggerdotdev/trigger.dev
 cd trigger.dev/hosting/docker
 ```
 
@@ -116,7 +116,7 @@ docker compose -f docker-compose.yml -f ../docker-compose.traefik.yml up -d
 1. Clone the repository
 
 ```bash
-git clone https://github.com/triggerdotdev/trigger.dev
+git clone --depth=1 https://github.com/triggerdotdev/trigger.dev
 cd trigger.dev/hosting/docker
 ```
 
@@ -211,6 +211,8 @@ The default settings for the registry are:
 - Password: `very-secure-indeed`
 
 You should change these before deploying to production, especially the password. You can find more information about how to do this in the official [registry docs](https://github.com/distribution/distribution/blob/735c161b53e7faf81a21ba94c55ac9edee081cd9/docs/deploying.md#native-basic-auth).
+
+**Note:** This will require modifying the default `.htpasswd` file located at `./hosting/docker/registry/auth.htpasswd` of the repo root.
 
 ### Logging in
 
