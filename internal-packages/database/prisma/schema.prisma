@@ -1966,6 +1966,7 @@ enum BulkActionStatus {
 model BulkActionItem {
   id String @id @default(cuid())
 
+  /// @deprecated not used in new BulkActions
   friendlyId String?
 
   group   BulkActionGroup @relation(fields: [groupId], references: [id], onDelete: Cascade, onUpdate: Cascade)
