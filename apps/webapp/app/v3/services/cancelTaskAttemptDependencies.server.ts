@@ -57,7 +57,7 @@ export class CancelTaskAttemptDependenciesService extends BaseService {
     }
   }
 
-  static async enqueue(attemptId: string, tx: PrismaClientOrTransaction, runAt?: Date) {
+  static async enqueue(attemptId: string, runAt?: Date) {
     return await commonWorker.enqueue({
       id: `cancelTaskAttemptDependencies:${attemptId}`,
       job: "v3.cancelTaskAttemptDependencies",

@@ -116,7 +116,7 @@ export class CancelTaskRunServiceV1 extends BaseService {
     attempts: ExtendedTaskRunAttempt[]
   ) {
     for (const attempt of attempts) {
-      await CancelTaskAttemptDependenciesService.enqueue(attempt.id, this._prisma);
+      await CancelTaskAttemptDependenciesService.enqueue(attempt.id);
 
       if (run.runtimeEnvironment.type === "DEVELOPMENT") {
         // Signal the task run attempt to stop
