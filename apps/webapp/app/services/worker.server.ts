@@ -22,7 +22,6 @@ import { CancelTaskAttemptDependenciesService } from "~/v3/services/cancelTaskAt
 import { EnqueueDelayedRunService } from "~/v3/services/enqueueDelayedRun.server";
 import { ExecuteTasksWaitingForDeployService } from "~/v3/services/executeTasksWaitingForDeploy";
 import { ExpireEnqueuedRunService } from "~/v3/services/expireEnqueuedRun.server";
-import { IndexDeploymentService } from "~/v3/services/indexDeployment.server";
 import { ResumeBatchRunService } from "~/v3/services/resumeBatchRun.server";
 import { ResumeTaskDependencyService } from "~/v3/services/resumeTaskDependency.server";
 import { RetryAttemptService } from "~/v3/services/retryAttempt.server";
@@ -34,10 +33,6 @@ import { logger } from "./logger.server";
 const workerCatalog = {
   // @deprecated, moved to commonWorker.server.ts
   scheduleEmail: DeliverEmailSchema,
-  // v3 tasks
-  "v3.indexDeployment": z.object({
-    id: z.string(),
-  }),
   // @deprecated, moved to commonWorker.server.ts
   "v3.resumeBatchRun": z.object({
     batchRunId: z.string(),
@@ -167,16 +162,6 @@ function getWorkerQueue() {
         maxAttempts: 3,
         handler: async (payload, job) => {
           await sendEmail(payload);
-        },
-      },
-      // v3 tasks
-      "v3.indexDeployment": {
-        priority: 0,
-        maxAttempts: 5,
-        handler: async (payload, job) => {
-          const service = new IndexDeploymentService();
-
-          return await service.call(payload.id);
         },
       },
       // @deprecated, moved to commonWorker.server.ts
