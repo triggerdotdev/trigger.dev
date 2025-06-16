@@ -1,9 +1,17 @@
 name: trigger
 
+x-logging: &logging-config
+  driver: ${LOGGING_DRIVER:-local}
+  options:
+    max-size: ${LOGGING_MAX_SIZE:-20m}
+    max-file: ${LOGGING_MAX_FILES:-5}
+    compress: ${LOGGING_COMPRESS:-true}
+
 services:
   supervisor:
     image: ghcr.io/triggerdotdev/supervisor:${TRIGGER_IMAGE_TAG:-v4-beta}
     restart: ${RESTART_POLICY:-unless-stopped}
+    logging: *logging-config
     depends_on:
       - docker-proxy
     networks:
@@ -48,6 +56,7 @@ services:
   docker-proxy:
     image: tecnativa/docker-socket-proxy:${DOCKER_PROXY_IMAGE_TAG:-latest}
     restart: ${RESTART_POLICY:-unless-stopped}
+    logging: *logging-config
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:

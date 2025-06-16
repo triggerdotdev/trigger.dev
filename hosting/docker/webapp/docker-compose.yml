@@ -1,9 +1,17 @@
 name: trigger
 
+x-logging: &logging-config
+  driver: ${LOGGING_DRIVER:-local}
+  options:
+    max-size: ${LOGGING_MAX_SIZE:-20m}
+    max-file: ${LOGGING_MAX_FILES:-5}
+    compress: ${LOGGING_COMPRESS:-true}
+
 services:
   webapp:
     image: ghcr.io/triggerdotdev/trigger.dev:${TRIGGER_IMAGE_TAG:-v4-beta}
     restart: ${RESTART_POLICY:-unless-stopped}
+    logging: *logging-config
     ports:
       - ${WEBAPP_PUBLISH_IP:-0.0.0.0}:8030:3000
     depends_on:
@@ -61,6 +69,7 @@ services:
   postgres:
     image: postgres:${POSTGRES_IMAGE_TAG:-14}
     restart: ${RESTART_POLICY:-unless-stopped}
+    logging: *logging-config
     ports:
       - ${POSTGRES_PUBLISH_IP:-127.0.0.1}:5433:5432
     volumes:
@@ -84,6 +93,7 @@ services:
   redis:
     image: redis:${REDIS_IMAGE_TAG:-7}
     restart: ${RESTART_POLICY:-unless-stopped}
+    logging: *logging-config
     ports:
       - ${REDIS_PUBLISH_IP:-127.0.0.1}:6389:6379
     volumes:
@@ -100,6 +110,7 @@ services:
   electric:
     image: electricsql/electric:${ELECTRIC_IMAGE_TAG:-1.0.13}
     restart: ${RESTART_POLICY:-unless-stopped}
+    logging: *logging-config
     depends_on:
       - postgres
     networks:
@@ -118,6 +129,7 @@ services:
   clickhouse:
     image: bitnami/clickhouse:${CLICKHOUSE_IMAGE_TAG:-latest}
     restart: ${RESTART_POLICY:-unless-stopped}
+    logging: *logging-config
     ports:
       - ${CLICKHOUSE_PUBLISH_IP:-127.0.0.1}:9090:9000
     environment:
@@ -138,6 +150,7 @@ services:
   registry:
     image: registry:${REGISTRY_IMAGE_TAG:-2}
     restart: ${RESTART_POLICY:-unless-stopped}
+    logging: *logging-config
     ports:
       - ${REGISTRY_PUBLISH_IP:-127.0.0.1}:5000:5000
     networks:
@@ -159,6 +172,7 @@ services:
   minio:
     image: minio/minio:${MINIO_IMAGE_TAG:-latest}
     restart: ${RESTART_POLICY:-unless-stopped}
+    logging: *logging-config
     ports:
       - ${MINIO_PUBLISH_IP:-127.0.0.1}:9000:9000
       - ${MINIO_PUBLISH_IP:-127.0.0.1}:9001:9001
