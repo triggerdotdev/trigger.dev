@@ -1945,9 +1945,8 @@ model BulkActionGroup {
   /// Why the user did the bulk action
   reason String?
 
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
-  runtimeEnvironmentId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 enum BulkActionType {
