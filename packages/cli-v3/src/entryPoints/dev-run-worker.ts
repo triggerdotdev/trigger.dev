@@ -101,6 +101,10 @@ process.on("uncaughtException", function (error, origin) {
   }
 });
 
+process.title = `trigger-dev-run-worker (${
+  getEnvVar("TRIGGER_WORKER_VERSION") ?? "unknown version"
+})`;
+
 const heartbeatIntervalMs = getEnvVar("HEARTBEAT_INTERVAL_MS");
 
 const standardLocalsManager = new StandardLocalsManager();
@@ -604,8 +608,6 @@ async function flushMetadata(timeoutInMs: number = 10_000) {
 
 const sharedWorkerRuntime = new SharedRuntimeManager(zodIpc, showInternalLogs);
 runtime.setGlobalRuntimeManager(sharedWorkerRuntime);
-
-process.title = "trigger-managed-worker";
 
 const heartbeatInterval = parseInt(heartbeatIntervalMs ?? "30000", 10);
 

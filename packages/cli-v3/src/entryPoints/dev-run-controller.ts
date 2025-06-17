@@ -620,6 +620,7 @@ export class DevRunController {
       {
         TRIGGER_WORKER_MANIFEST_PATH: join(this.opts.worker.build.outputPath, "index.json"),
         RUN_WORKER_SHOW_LOGS: this.opts.logLevel === "debug" ? "true" : "false",
+        TRIGGER_WORKER_VERSION: this.opts.worker.serverWorker?.version,
       }
     );
 
@@ -653,7 +654,8 @@ export class DevRunController {
 
     // Return process to pool instead of killing it
     try {
-      await this.opts.taskRunProcessPool.returnProcess(this.taskRunProcess);
+      const version = this.opts.worker.serverWorker?.version || "unknown";
+      await this.opts.taskRunProcessPool.returnProcess(this.taskRunProcess, version);
       this.taskRunProcess = undefined;
     } catch (error) {
       logger.debug("Failed to return task run process to pool, submitting completion anyway", {
@@ -774,7 +776,8 @@ export class DevRunController {
     // Return the process to the pool instead of killing it directly
     if (this.taskRunProcess) {
       try {
-        await this.opts.taskRunProcessPool.returnProcess(this.taskRunProcess);
+        const version = this.opts.worker.serverWorker?.version || "unknown";
+        await this.opts.taskRunProcessPool.returnProcess(this.taskRunProcess, version);
         this.taskRunProcess = undefined;
       } catch (error) {
         logger.debug("Failed to return task run process to pool during runFinished", { error });
@@ -810,7 +813,8 @@ export class DevRunController {
 
     if (this.taskRunProcess && !this.taskRunProcess.isBeingKilled) {
       try {
-        await this.opts.taskRunProcessPool.returnProcess(this.taskRunProcess);
+        const version = this.opts.worker.serverWorker?.version || "unknown";
+        await this.opts.taskRunProcessPool.returnProcess(this.taskRunProcess, version);
         this.taskRunProcess = undefined;
       } catch (error) {
         logger.debug("Failed to return task run process to pool during stop", { error });
