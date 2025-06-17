@@ -137,6 +137,7 @@ export type TriggerParams = {
   runChainState?: RunChainState;
   scheduleId?: string;
   scheduleInstanceId?: string;
+  createdAt?: Date;
 };
 
 export type EngineWorker = Worker<typeof workerCatalog>;

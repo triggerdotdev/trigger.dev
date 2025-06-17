@@ -167,8 +167,7 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
         deployment.id,
         "DEPLOYING",
         "Indexing timed out",
-        new Date(Date.now() + env.DEPLOY_TIMEOUT_MS),
-        this._prisma
+        new Date(Date.now() + env.DEPLOY_TIMEOUT_MS)
       );
 
       return backgroundWorker;

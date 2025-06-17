@@ -20,7 +20,7 @@ import { batchTaskRunItemStatusForRunStatus } from "~/models/taskRun.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { getEntitlement } from "~/services/platform.v3.server";
-import { workerQueue } from "~/services/worker.server";
+import { commonWorker } from "../commonWorker.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { legacyRunEngineWorker } from "../legacyRunEngineWorker.server";
 import { marqs } from "../marqs/index.server";
@@ -477,75 +477,67 @@ export class BatchTriggerV3Service extends BaseService {
 
       return batch;
     } else {
-      return await $transaction(this._prisma, "create batch run", async (tx) => {
-        const batch = await tx.batchTaskRun.create({
-          data: {
-            friendlyId: batchId,
-            runtimeEnvironmentId: environment.id,
-            idempotencyKey: options.idempotencyKey,
-            idempotencyKeyExpiresAt: options.idempotencyKeyExpiresAt,
-            dependentTaskAttemptId: dependentAttempt?.id,
-            runCount: body.items.length,
-            runIds: runs.map((r) => r.id),
-            payload: payloadPacket.data,
-            payloadType: payloadPacket.dataType,
-            options,
-            batchVersion: "v3",
-            oneTimeUseToken: options.oneTimeUseToken,
-          },
-        });
+      const batch = await this._prisma.batchTaskRun.create({
+        data: {
+          friendlyId: batchId,
+          runtimeEnvironmentId: environment.id,
+          idempotencyKey: options.idempotencyKey,
+          idempotencyKeyExpiresAt: options.idempotencyKeyExpiresAt,
+          dependentTaskAttemptId: dependentAttempt?.id,
+          runCount: body.items.length,
+          runIds: runs.map((r) => r.id),
+          payload: payloadPacket.data,
+          payloadType: payloadPacket.dataType,
+          options,
+          batchVersion: "v3",
+          oneTimeUseToken: options.oneTimeUseToken,
+        },
+      });
 
-        switch (this._batchProcessingStrategy) {
-          case "sequential": {
-            await this.#enqueueBatchTaskRun(
-              {
+      switch (this._batchProcessingStrategy) {
+        case "sequential": {
+          await this.#enqueueBatchTaskRun({
+            batchId: batch.id,
+            processingId: batchId,
+            range: { start: 0, count: PROCESSING_BATCH_SIZE },
+            attemptCount: 0,
+            strategy: this._batchProcessingStrategy,
+          });
+
+          break;
+        }
+        case "parallel": {
+          const ranges = Array.from({
+            length: Math.ceil(newRunCount / PROCESSING_BATCH_SIZE),
+          }).map((_, index) => ({
+            start: index * PROCESSING_BATCH_SIZE,
+            count: PROCESSING_BATCH_SIZE,
+          }));
+
+          await this._prisma.batchTaskRun.update({
+            where: { id: batch.id },
+            data: {
+              processingJobsExpectedCount: ranges.length,
+            },
+          });
+
+          await Promise.all(
+            ranges.map((range, index) =>
+              this.#enqueueBatchTaskRun({
                 batchId: batch.id,
-                processingId: batchId,
-                range: { start: 0, count: PROCESSING_BATCH_SIZE },
+                processingId: `${index}`,
+                range,
                 attemptCount: 0,
                 strategy: this._batchProcessingStrategy,
-              },
-              tx
-            );
+              })
+            )
+          );
 
-            break;
-          }
-          case "parallel": {
-            const ranges = Array.from({
-              length: Math.ceil(newRunCount / PROCESSING_BATCH_SIZE),
-            }).map((_, index) => ({
-              start: index * PROCESSING_BATCH_SIZE,
-              count: PROCESSING_BATCH_SIZE,
-            }));
-
-            await tx.batchTaskRun.update({
-              where: { id: batch.id },
-              data: {
-                processingJobsExpectedCount: ranges.length,
-              },
-            });
-
-            await Promise.all(
-              ranges.map((range, index) =>
-                this.#enqueueBatchTaskRun(
-                  {
-                    batchId: batch.id,
-                    processingId: `${index}`,
-                    range,
-                    attemptCount: 0,
-                    strategy: this._batchProcessingStrategy,
-                  },
-                  tx
-                )
-              )
-            );
-
-            break;
-          }
+          break;
         }
+      }
 
-        return batch;
-      });
+      return batch;
     }
   }
 
@@ -899,10 +891,11 @@ export class BatchTriggerV3Service extends BaseService {
     return false;
   }
 
-  async #enqueueBatchTaskRun(options: BatchProcessingOptions, tx?: PrismaClientOrTransaction) {
-    await workerQueue.enqueue("v3.processBatchTaskRun", options, {
-      tx,
-      jobKey: `BatchTriggerV2Service.process:${options.batchId}:${options.processingId}`,
+  async #enqueueBatchTaskRun(options: BatchProcessingOptions) {
+    await commonWorker.enqueue({
+      id: `BatchTriggerV2Service.process:${options.batchId}:${options.processingId}`,
+      job: "v3.processBatchTaskRun",
+      payload: options,
     });
   }
 

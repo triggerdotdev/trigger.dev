@@ -91,6 +91,10 @@ export class RunsRepository {
 
     if (options.to) {
       queryBuilder.where("created_at <= fromUnixTimestamp64Milli({to: Int64})", { to: options.to });
+    } else {
+      queryBuilder.where("created_at <= fromUnixTimestamp64Milli({to: Int64})", {
+        to: Date.now(),
+      });
     }
 
     if (typeof options.isTest === "boolean") {

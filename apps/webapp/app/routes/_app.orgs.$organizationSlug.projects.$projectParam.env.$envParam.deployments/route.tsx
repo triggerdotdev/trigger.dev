@@ -1,10 +1,12 @@
-import { ArrowPathIcon, ArrowUturnLeftIcon, BookOpenIcon } from "@heroicons/react/20/solid";
-import { type MetaFunction, Outlet, useLocation, useParams, useNavigate } from "@remix-run/react";
+import { ArrowUturnLeftIcon, BookOpenIcon } from "@heroicons/react/20/solid";
+import { type MetaFunction, Outlet, useLocation, useNavigate, useParams } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { useEffect } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { PromoteIcon } from "~/assets/icons/PromoteIcon";
 import { DeploymentsNone, DeploymentsNoneDev } from "~/components/BlankStatePanels";
+import { GitMetadata } from "~/components/GitMetadata";
 import { UserAvatar } from "~/components/UserProfilePhoto";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
@@ -34,7 +36,6 @@ import {
   deploymentStatusDescription,
   deploymentStatuses,
 } from "~/components/runs/v3/DeploymentStatus";
-import { RetryDeploymentIndexingDialog } from "~/components/runs/v3/RetryDeploymentIndexingDialog";
 import {
   PromoteDeploymentDialog,
   RollbackDeploymentDialog,
@@ -52,8 +53,6 @@ import { EnvironmentParamSchema, docsPath, v3DeploymentPath } from "~/utils/path
 import { createSearchParams } from "~/utils/searchParams";
 import { deploymentIndexingIsRetryable } from "~/v3/deploymentStatus";
 import { compareDeploymentVersions } from "~/v3/utils/deploymentVersions";
-import { useEffect } from "react";
-import { GitMetadata } from "~/components/GitMetadata";
 
 export const meta: MetaFunction = () => {
   return [
@@ -382,26 +381,6 @@ function DeploymentActionsCell({
                 </Button>
               </DialogTrigger>
               <PromoteDeploymentDialog
-                projectId={project.id}
-                deploymentShortCode={deployment.shortCode}
-                redirectPath={`${location.pathname}${location.search}`}
-              />
-            </Dialog>
-          )}
-          {canRetryIndexing && (
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button
-                  variant="small-menu-item"
-                  LeadingIcon={ArrowPathIcon}
-                  leadingIconClassName="text-blue-500"
-                  fullWidth
-                  textAlignLeft
-                >
-                  Retry indexing…
-                </Button>
-              </DialogTrigger>
-              <RetryDeploymentIndexingDialog
                 projectId={project.id}
                 deploymentShortCode={deployment.shortCode}
                 redirectPath={`${location.pathname}${location.search}`}

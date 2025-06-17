@@ -692,6 +692,46 @@ const EnvironmentSchema = z.object({
   COMMON_WORKER_REDIS_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
   COMMON_WORKER_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
 
+  SCHEDULE_ENGINE_LOG_LEVEL: z.enum(["log", "error", "warn", "info", "debug"]).default("info"),
+  SCHEDULE_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
+  SCHEDULE_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(1),
+  SCHEDULE_WORKER_CONCURRENCY_TASKS_PER_WORKER: z.coerce.number().int().default(1),
+  SCHEDULE_WORKER_POLL_INTERVAL: z.coerce.number().int().default(1000),
+  SCHEDULE_WORKER_IMMEDIATE_POLL_INTERVAL: z.coerce.number().int().default(50),
+  SCHEDULE_WORKER_CONCURRENCY_LIMIT: z.coerce.number().int().default(50),
+  SCHEDULE_WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().default(30_000),
+  SCHEDULE_WORKER_DISTRIBUTION_WINDOW_SECONDS: z.coerce.number().int().default(30),
+
+  SCHEDULE_WORKER_REDIS_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_HOST),
+  SCHEDULE_WORKER_REDIS_READER_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_READER_HOST),
+  SCHEDULE_WORKER_REDIS_READER_PORT: z.coerce
+    .number()
+    .optional()
+    .transform(
+      (v) =>
+        v ?? (process.env.REDIS_READER_PORT ? parseInt(process.env.REDIS_READER_PORT) : undefined)
+    ),
+  SCHEDULE_WORKER_REDIS_PORT: z.coerce
+    .number()
+    .optional()
+    .transform((v) => v ?? (process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined)),
+  SCHEDULE_WORKER_REDIS_USERNAME: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_USERNAME),
+  SCHEDULE_WORKER_REDIS_PASSWORD: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_PASSWORD),
+  SCHEDULE_WORKER_REDIS_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
+  SCHEDULE_WORKER_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
+
   TASK_EVENT_PARTITIONING_ENABLED: z.string().default("0"),
   TASK_EVENT_PARTITIONED_WINDOW_IN_SECONDS: z.coerce.number().int().default(60), // 1 minute
 

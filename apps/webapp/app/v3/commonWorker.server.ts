@@ -1,14 +1,25 @@
-import { Worker as RedisWorker } from "@trigger.dev/redis-worker";
 import { Logger } from "@trigger.dev/core/logger";
+import { Worker as RedisWorker } from "@trigger.dev/redis-worker";
+import { DeliverEmailSchema } from "emails";
 import { z } from "zod";
 import { env } from "~/env.server";
+import { RunEngineBatchTriggerService } from "~/runEngine/services/batchTrigger.server";
+import { sendEmail } from "~/services/email.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
 import { DeliverAlertService } from "./services/alerts/deliverAlert.server";
 import { PerformDeploymentAlertsService } from "./services/alerts/performDeploymentAlerts.server";
 import { PerformTaskRunAlertsService } from "./services/alerts/performTaskRunAlerts.server";
-import { ExpireEnqueuedRunService } from "./services/expireEnqueuedRun.server";
+import { BatchTriggerV3Service } from "./services/batchTriggerV3.server";
+import { CancelDevSessionRunsService } from "./services/cancelDevSessionRuns.server";
+import { CancelTaskAttemptDependenciesService } from "./services/cancelTaskAttemptDependencies.server";
 import { EnqueueDelayedRunService } from "./services/enqueueDelayedRun.server";
+import { ExecuteTasksWaitingForDeployService } from "./services/executeTasksWaitingForDeploy";
+import { ExpireEnqueuedRunService } from "./services/expireEnqueuedRun.server";
+import { ResumeBatchRunService } from "./services/resumeBatchRun.server";
+import { ResumeTaskDependencyService } from "./services/resumeTaskDependency.server";
+import { RetryAttemptService } from "./services/retryAttempt.server";
+import { TimeoutDeploymentService } from "./services/timeoutDeployment.server";
 
 function initializeWorker() {
   const redisOptions = {
@@ -27,6 +38,110 @@ function initializeWorker() {
     name: "common-worker",
     redisOptions,
     catalog: {
+      scheduleEmail: {
+        schema: DeliverEmailSchema,
+        visibilityTimeoutMs: 60_000,
+        retry: {
+          maxAttempts: 3,
+        },
+      },
+      "v3.resumeBatchRun": {
+        schema: z.object({
+          batchRunId: z.string(),
+        }),
+        visibilityTimeoutMs: 60_000,
+        retry: {
+          maxAttempts: 5,
+        },
+      },
+      "v3.resumeTaskDependency": {
+        schema: z.object({
+          dependencyId: z.string(),
+          sourceTaskAttemptId: z.string(),
+        }),
+        visibilityTimeoutMs: 60_000,
+        retry: {
+          maxAttempts: 5,
+        },
+      },
+      "v3.timeoutDeployment": {
+        schema: z.object({
+          deploymentId: z.string(),
+          fromStatus: z.string(),
+          errorMessage: z.string(),
+        }),
+        visibilityTimeoutMs: 60_000,
+        retry: {
+          maxAttempts: 5,
+        },
+      },
+      "v3.executeTasksWaitingForDeploy": {
+        schema: z.object({
+          backgroundWorkerId: z.string(),
+        }),
+        visibilityTimeoutMs: 60_000,
+        retry: {
+          maxAttempts: 5,
+        },
+      },
+      "v3.retryAttempt": {
+        schema: z.object({
+          runId: z.string(),
+        }),
+        visibilityTimeoutMs: 60_000,
+        retry: {
+          maxAttempts: 3,
+        },
+      },
+      "v3.cancelTaskAttemptDependencies": {
+        schema: z.object({
+          attemptId: z.string(),
+        }),
+        visibilityTimeoutMs: 60_000,
+        retry: {
+          maxAttempts: 8,
+        },
+      },
+      "v3.cancelDevSessionRuns": {
+        schema: z.object({
+          runIds: z.array(z.string()),
+          cancelledAt: z.coerce.date(),
+          reason: z.string(),
+          cancelledSessionId: z.string().optional(),
+        }),
+        visibilityTimeoutMs: 60_000,
+        retry: {
+          maxAttempts: 5,
+        },
+      },
+      "v3.processBatchTaskRun": {
+        schema: z.object({
+          batchId: z.string(),
+          processingId: z.string(),
+          range: z.object({ start: z.number().int(), count: z.number().int() }),
+          attemptCount: z.number().int(),
+          strategy: z.enum(["sequential", "parallel"]),
+        }),
+        visibilityTimeoutMs: 60_000,
+        retry: {
+          maxAttempts: 5,
+        },
+      },
+      "runengine.processBatchTaskRun": {
+        schema: z.object({
+          batchId: z.string(),
+          processingId: z.string(),
+          range: z.object({ start: z.number().int(), count: z.number().int() }),
+          attemptCount: z.number().int(),
+          strategy: z.enum(["sequential", "parallel"]),
+          parentRunId: z.string().optional(),
+          resumeParentOnCompletion: z.boolean().optional(),
+        }),
+        visibilityTimeoutMs: 60_000,
+        retry: {
+          maxAttempts: 5,
+        },
+      },
       "v3.performTaskRunAlerts": {
         schema: z.object({
           runId: z.string(),
@@ -83,6 +198,45 @@ function initializeWorker() {
     shutdownTimeoutMs: env.COMMON_WORKER_SHUTDOWN_TIMEOUT_MS,
     logger: new Logger("CommonWorker", "debug"),
     jobs: {
+      scheduleEmail: async ({ payload }) => {
+        await sendEmail(payload);
+      },
+      "v3.resumeBatchRun": async ({ payload }) => {
+        const service = new ResumeBatchRunService();
+        await service.call(payload.batchRunId);
+      },
+      "v3.resumeTaskDependency": async ({ payload }) => {
+        const service = new ResumeTaskDependencyService();
+        await service.call(payload.dependencyId, payload.sourceTaskAttemptId);
+      },
+      "v3.timeoutDeployment": async ({ payload }) => {
+        const service = new TimeoutDeploymentService();
+        await service.call(payload.deploymentId, payload.fromStatus, payload.errorMessage);
+      },
+      "v3.executeTasksWaitingForDeploy": async ({ payload }) => {
+        const service = new ExecuteTasksWaitingForDeployService();
+        await service.call(payload.backgroundWorkerId);
+      },
+      "v3.retryAttempt": async ({ payload }) => {
+        const service = new RetryAttemptService();
+        await service.call(payload.runId);
+      },
+      "v3.cancelTaskAttemptDependencies": async ({ payload }) => {
+        const service = new CancelTaskAttemptDependenciesService();
+        await service.call(payload.attemptId);
+      },
+      "v3.cancelDevSessionRuns": async ({ payload }) => {
+        const service = new CancelDevSessionRunsService();
+        await service.call(payload);
+      },
+      "v3.processBatchTaskRun": async ({ payload }) => {
+        const service = new BatchTriggerV3Service(payload.strategy);
+        await service.processBatchTaskRun(payload);
+      },
+      "runengine.processBatchTaskRun": async ({ payload }) => {
+        const service = new RunEngineBatchTriggerService(payload.strategy);
+        await service.processBatchTaskRun(payload);
+      },
       "v3.deliverAlert": async ({ payload }) => {
         const service = new DeliverAlertService();
 

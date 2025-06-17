@@ -1,8 +1,7 @@
-import { BaseService } from "./baseService.server";
 import { logger } from "~/services/logger.server";
+import { commonWorker } from "../commonWorker.server";
 import { socketIo } from "../handleSocketIo.server";
-import { PrismaClientOrTransaction } from "~/db.server";
-import { workerQueue } from "~/services/worker.server";
+import { BaseService } from "./baseService.server";
 
 export class RetryAttemptService extends BaseService {
   public async call(runId: string) {
@@ -23,17 +22,14 @@ export class RetryAttemptService extends BaseService {
     });
   }
 
-  static async enqueue(runId: string, tx: PrismaClientOrTransaction, runAt?: Date) {
-    return await workerQueue.enqueue(
-      "v3.retryAttempt",
-      {
+  static async enqueue(runId: string, runAt?: Date) {
+    return await commonWorker.enqueue({
+      id: `retryAttempt:${runId}`,
+      job: "v3.retryAttempt",
+      payload: {
         runId,
       },
-      {
-        tx,
-        runAt,
-        jobKey: `retryAttempt:${runId}`,
-      }
-    );
+      availableAt: runAt,
+    });
   }
 }
