@@ -22,6 +22,7 @@ import { randomBytes } from "node:crypto";
 import { SnapshotManager, SnapshotState } from "./snapshot.js";
 import type { SupervisorSocket } from "./controller.js";
 import { RunNotifier } from "./notifier.js";
+import { TaskRunProcessProvider } from "./taskRunProcessProvider.js";
 
 class ExecutionAbortError extends Error {
   constructor(message: string) {
@@ -36,6 +37,7 @@ type RunExecutionOptions = {
   httpClient: WorkloadHttpClient;
   logger: RunLogger;
   supervisorSocket: SupervisorSocket;
+  taskRunProcessProvider: TaskRunProcessProvider;
 };
 
 type RunExecutionPrepareOptions = {
@@ -77,6 +79,7 @@ export class RunExecution {
   private supervisorSocket: SupervisorSocket;
   private notifier?: RunNotifier;
   private metadataClient?: MetadataClient;
+  private taskRunProcessProvider: TaskRunProcessProvider;
 
   constructor(opts: RunExecutionOptions) {
     this.id = randomBytes(4).toString("hex");
@@ -85,6 +88,7 @@ export class RunExecution {
     this.httpClient = opts.httpClient;
     this.logger = opts.logger;
     this.supervisorSocket = opts.supervisorSocket;
+    this.taskRunProcessProvider = opts.taskRunProcessProvider;
 
     this.restoreCount = 0;
     this.executionAbortController = new AbortController();
@@ -131,40 +135,21 @@ export class RunExecution {
       throw new Error("prepareForExecution called after process was already created");
     }
 
-    this.taskRunProcess = this.createTaskRunProcess({
-      envVars: opts.taskRunEnv,
+    this.taskRunProcess = this.taskRunProcessProvider.getProcess({
+      taskRunEnv: opts.taskRunEnv,
       isWarmStart: true,
     });
+
+    // Attach event handlers to the process
+    this.attachTaskRunProcessHandlers(this.taskRunProcess);
 
     return this;
   }
 
-  private createTaskRunProcess({
-    envVars,
-    isWarmStart,
-  }: {
-    envVars: Record<string, string>;
-    isWarmStart?: boolean;
-  }) {
-    const taskRunProcess = new TaskRunProcess({
-      workerManifest: this.workerManifest,
-      env: {
-        ...envVars,
-        ...this.env.gatherProcessEnv(),
-        HEARTBEAT_INTERVAL_MS: String(this.env.TRIGGER_HEARTBEAT_INTERVAL_SECONDS * 1000),
-      },
-      serverWorker: {
-        id: "managed",
-        contentHash: this.env.TRIGGER_CONTENT_HASH,
-        version: this.env.TRIGGER_DEPLOYMENT_VERSION,
-        engine: "V2",
-      },
-      machineResources: {
-        cpu: Number(this.env.TRIGGER_MACHINE_CPU),
-        memory: Number(this.env.TRIGGER_MACHINE_MEMORY),
-      },
-      isWarmStart,
-    }).initialize();
+  private attachTaskRunProcessHandlers(taskRunProcess: TaskRunProcess): void {
+    taskRunProcess.onTaskRunHeartbeat.detach();
+    taskRunProcess.onSendDebugLog.detach();
+    taskRunProcess.onSetSuspendable.detach();
 
     taskRunProcess.onTaskRunHeartbeat.attach(async (runId) => {
       if (!this.runFriendlyId) {
@@ -194,8 +179,6 @@ export class RunExecution {
     taskRunProcess.onSetSuspendable.attach(async ({ suspendable }) => {
       this.suspendable = suspendable;
     });
-
-    return taskRunProcess;
   }
 
   /**
@@ -586,10 +569,11 @@ export class RunExecution {
 
     // To skip this step and eagerly create the task run process, run prepareForExecution first
     if (!this.taskRunProcess || !this.taskRunProcess.isPreparedForNextRun) {
-      this.taskRunProcess = this.createTaskRunProcess({
-        envVars: { ...envVars, TRIGGER_PROJECT_REF: execution.project.ref },
+      this.taskRunProcess = this.taskRunProcessProvider.getProcess({
+        taskRunEnv: { ...envVars, TRIGGER_PROJECT_REF: execution.project.ref },
         isWarmStart,
       });
+      this.attachTaskRunProcessHandlers(this.taskRunProcess);
     }
 
     this.sendDebugLog("executing task run process", { runId: execution.run.id });
@@ -619,7 +603,10 @@ export class RunExecution {
     // If we get here, the task completed normally
     this.sendDebugLog("completed run attempt", { attemptSuccess: completion.ok });
 
-    // The execution has finished, so we can cleanup the task run process. Killing it should be safe.
+    // Return the process to the provider for potential reuse
+    this.taskRunProcessProvider.returnProcess(this.taskRunProcess);
+
+    // The execution has finished, so we can cleanup the task run process if not being reused
     const [error] = await tryCatch(this.taskRunProcess.cleanup(true));
 
     if (error) {
