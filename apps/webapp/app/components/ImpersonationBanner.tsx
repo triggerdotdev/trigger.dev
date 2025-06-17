@@ -9,7 +9,7 @@ export function ImpersonationBanner() {
       <Form action="/resources/impersonation" method="delete" reloadDocument>
         <TooltipProvider disableHoverableContent={true}>
           <Tooltip>
-            <TooltipTrigger>
+            <TooltipTrigger asChild>
               <Button
                 type="submit"
                 variant="small-menu-item"

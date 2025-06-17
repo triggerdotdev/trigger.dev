@@ -584,8 +584,6 @@ function SelectorDivider() {
 }
 
 function HelpAndAI() {
-  const features = useFeatures();
-
   return (
     <>
       <ShortcutsAutoOpen />
