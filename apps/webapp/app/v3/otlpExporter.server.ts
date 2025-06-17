@@ -286,10 +286,7 @@ function convertLogsToCreateableEvents(resourceLog: ResourceLogs): Array<Creatab
 function convertSpansToCreateableEvents(resourceSpan: ResourceSpans): Array<CreatableEvent> {
   const resourceAttributes = resourceSpan.resource?.attributes ?? [];
 
-  const resourceProperties = extractEventProperties(
-    resourceAttributes,
-    SemanticInternalAttributes.METADATA
-  );
+  const resourceProperties = extractEventProperties(resourceAttributes);
 
   return resourceSpan.scopeSpans.flatMap((scopeSpan) => {
     return scopeSpan.spans
