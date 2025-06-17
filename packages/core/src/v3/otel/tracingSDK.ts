@@ -57,6 +57,10 @@ class AsyncResourceDetector implements DetectorSync {
     });
   }
 
+  get isResolved() {
+    return this._resolved;
+  }
+
   detect(_config?: ResourceDetectionConfig): Resource {
     return new Resource({}, this._promise);
   }
@@ -69,6 +73,8 @@ class AsyncResourceDetector implements DetectorSync {
     if (this._resolved) {
       return;
     }
+
+    console.log("resolving async resource detector", attributes);
 
     this._resolved = true;
     this._resolver(attributes);
@@ -114,7 +120,7 @@ export class TracingSDK {
       : {};
 
     const commonResources = detectResourcesSync({
-      detectors: [processDetectorSync],
+      detectors: [this.asyncResourceDetector, processDetectorSync],
     })
       .merge(
         new Resource({
