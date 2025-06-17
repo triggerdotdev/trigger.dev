@@ -608,7 +608,7 @@ export class DevRunController {
     this.snapshotPoller.start();
 
     // Get process from pool instead of creating new one
-    this.taskRunProcess = await this.opts.taskRunProcessPool.getProcess(
+    const { taskRunProcess, isReused } = await this.opts.taskRunProcessPool.getProcess(
       this.opts.worker.manifest,
       {
         id: "unmanaged",
@@ -623,6 +623,8 @@ export class DevRunController {
       }
     );
 
+    this.taskRunProcess = taskRunProcess;
+
     // Update the process environment for this specific run
     // Note: We may need to enhance TaskRunProcess to support updating env vars
     logger.debug("executing task run process from pool", {
@@ -630,19 +632,22 @@ export class DevRunController {
       runId: execution.run.id,
     });
 
-    const completion = await this.taskRunProcess.execute({
-      payload: {
-        execution,
-        traceContext: execution.run.traceContext ?? {},
-        metrics,
+    const completion = await this.taskRunProcess.execute(
+      {
+        payload: {
+          execution,
+          traceContext: execution.run.traceContext ?? {},
+          metrics,
+        },
+        messageId: run.friendlyId,
+        env: {
+          ...sanitizeEnvVars(envVars ?? {}),
+          ...sanitizeEnvVars(this.opts.worker.params.env),
+          TRIGGER_PROJECT_REF: execution.project.ref,
+        },
       },
-      messageId: run.friendlyId,
-      env: {
-        ...sanitizeEnvVars(envVars ?? {}),
-        ...sanitizeEnvVars(this.opts.worker.params.env),
-        TRIGGER_PROJECT_REF: execution.project.ref,
-      },
-    });
+      isReused
+    );
 
     logger.debug("Completed run", completion);
 

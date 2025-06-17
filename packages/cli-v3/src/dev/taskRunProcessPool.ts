@@ -32,7 +32,7 @@ export class TaskRunProcessPool {
     serverWorker: ServerBackgroundWorker,
     machineResources: MachinePresetResources,
     env?: Record<string, string>
-  ): Promise<TaskRunProcess> {
+  ): Promise<{ taskRunProcess: TaskRunProcess; isReused: boolean }> {
     // Try to reuse an existing process if enabled
     if (this.options.enableProcessReuse) {
       const reusableProcess = this.findReusableProcess();
@@ -44,7 +44,7 @@ export class TaskRunProcessPool {
 
         this.availableProcesses = this.availableProcesses.filter((p) => p !== reusableProcess);
         this.busyProcesses.add(reusableProcess);
-        return reusableProcess;
+        return { taskRunProcess: reusableProcess, isReused: true };
       } else {
         logger.debug("[TaskRunProcessPool] No reusable process found", {
           availableCount: this.availableProcesses.length,
@@ -71,7 +71,7 @@ export class TaskRunProcessPool {
     }).initialize();
 
     this.busyProcesses.add(newProcess);
-    return newProcess;
+    return { taskRunProcess: newProcess, isReused: false };
   }
 
   async returnProcess(process: TaskRunProcess): Promise<void> {
