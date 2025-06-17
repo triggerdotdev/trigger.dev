@@ -30,6 +30,11 @@ export class StandardRunTimelineMetricsManager implements RunTimelineMetricsMana
     }
   }
 
+  reset(): void {
+    this._metrics = [];
+  }
+
+  // TODO: handle this when processKeepAlive is enabled
   #seedMetricsFromEnvironment() {
     const forkStartTime = getEnvVar("TRIGGER_PROCESS_FORK_START_TIME");
     const warmStart = getEnvVar("TRIGGER_WARM_START");

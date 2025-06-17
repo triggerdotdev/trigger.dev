@@ -19,6 +19,7 @@ import {
   runMetadata,
   runtime,
   runTimelineMetrics,
+  taskContext,
   TaskRunErrorCodes,
   TaskRunExecution,
   timeout,
@@ -58,6 +59,7 @@ import sourceMapSupport from "source-map-support";
 import { env } from "std-env";
 import { normalizeImportPath } from "../utilities/normalizeImportPath.js";
 import { VERSION } from "../version.js";
+import { promiseWithResolvers } from "@trigger.dev/core/utils";
 
 sourceMapSupport.install({
   handleUncaughtExceptions: false,
@@ -112,8 +114,12 @@ runTimelineMetrics.setGlobalManager(standardRunTimelineMetricsManager);
 
 const devUsageManager = new DevUsageManager();
 usage.setGlobalUsageManager(devUsageManager);
-timeout.setGlobalManager(new UsageTimeoutManager(devUsageManager));
-resourceCatalog.setGlobalResourceCatalog(new StandardResourceCatalog());
+
+const usageTimeoutManager = new UsageTimeoutManager(devUsageManager);
+timeout.setGlobalManager(usageTimeoutManager);
+
+const standardResourceCatalog = new StandardResourceCatalog();
+resourceCatalog.setGlobalResourceCatalog(standardResourceCatalog);
 
 const durableClock = new DurableClock();
 clock.setGlobalClock(durableClock);
@@ -238,7 +244,29 @@ let _isRunning = false;
 let _isCancelled = false;
 let _tracingSDK: TracingSDK | undefined;
 let _executionMeasurement: UsageMeasurement | undefined;
-const cancelController = new AbortController();
+let _cancelController = new AbortController();
+let _lastFlushPromise: Promise<void> | undefined;
+
+function resetExecutionEnvironment() {
+  _execution = undefined;
+  _isRunning = false;
+  _isCancelled = false;
+  _executionMeasurement = undefined;
+  _cancelController = new AbortController();
+
+  standardLocalsManager.reset();
+  standardLifecycleHooksManager.reset();
+  standardRunTimelineMetricsManager.reset();
+  devUsageManager.reset();
+  usageTimeoutManager.reset();
+  runMetadataManager.reset();
+  waitUntilManager.reset();
+  sharedWorkerRuntime.reset();
+  durableClock.reset();
+  taskContext.disable();
+
+  log(`[${new Date().toISOString()}] Reset execution environment`);
+}
 
 const zodIpc = new ZodIpcConnection({
   listenSchema: WorkerToExecutorMessageCatalog,
@@ -253,6 +281,18 @@ const zodIpc = new ZodIpcConnection({
       }
 
       log(`[${new Date().toISOString()}] Received EXECUTE_TASK_RUN`, execution);
+
+      if (_lastFlushPromise) {
+        const now = performance.now();
+
+        await _lastFlushPromise;
+
+        const duration = performance.now() - now;
+
+        log(`[${new Date().toISOString()}] Awaited last flush in ${duration}ms`);
+      }
+
+      resetExecutionEnvironment();
 
       standardRunTimelineMetricsManager.registerMetricsFromExecution(metrics);
 
@@ -365,8 +405,6 @@ const zodIpc = new ZodIpcConnection({
           return;
         }
 
-        process.title = `trigger-dev-worker: ${execution.task.id} ${execution.run.id}`;
-
         // Import the task module
         const task = resourceCatalog.getTask(execution.task.id);
 
@@ -413,7 +451,7 @@ const zodIpc = new ZodIpcConnection({
 
           const timeoutController = timeout.abortAfterTimeout(execution.run.maxDuration);
 
-          const signal = AbortSignal.any([cancelController.signal, timeoutController.signal]);
+          const signal = AbortSignal.any([_cancelController.signal, timeoutController.signal]);
 
           const { result } = await executor.execute(execution, metadata, traceContext, signal);
 
@@ -432,8 +470,7 @@ const zodIpc = new ZodIpcConnection({
             });
           }
         } finally {
-          _execution = undefined;
-          _isRunning = false;
+          log(`[${new Date().toISOString()}] Task run completed`);
         }
       } catch (err) {
         logError("Failed to execute task", err);
@@ -459,7 +496,7 @@ const zodIpc = new ZodIpcConnection({
     },
     CANCEL: async ({ timeoutInMs }) => {
       _isCancelled = true;
-      cancelController.abort("run cancelled");
+      _cancelController.abort("run cancelled");
       await callCancelHooks(timeoutInMs);
       if (_executionMeasurement) {
         usage.stop(_executionMeasurement);
@@ -489,6 +526,10 @@ async function callCancelHooks(timeoutInMs: number = 10_000) {
 
 async function flushAll(timeoutInMs: number = 10_000) {
   const now = performance.now();
+
+  const { promise, resolve } = promiseWithResolvers<void>();
+
+  _lastFlushPromise = promise;
 
   const results = await Promise.allSettled([
     flushTracingSDK(timeoutInMs),
@@ -522,6 +563,9 @@ async function flushAll(timeoutInMs: number = 10_000) {
   const duration = performance.now() - now;
 
   log(`Flushed all in ${duration}ms`);
+
+  // Resolve the last flush promise
+  resolve();
 }
 
 async function flushTracingSDK(timeoutInMs: number = 10_000) {
