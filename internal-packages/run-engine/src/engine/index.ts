@@ -98,6 +98,17 @@ export class RunEngine {
       logger: this.logger,
       tracer: trace.getTracer("RunLocker"),
       meter: options.meter,
+      duration: options.runLock.duration ?? 5000,
+      automaticExtensionThreshold: options.runLock.automaticExtensionThreshold ?? 1000,
+      retryConfig: {
+        maxAttempts: 10,
+        baseDelay: 100,
+        maxDelay: 3000,
+        backoffMultiplier: 1.8,
+        jitterFactor: 0.15,
+        maxTotalWaitTime: 15000,
+        ...options.runLock.retryConfig,
+      },
     });
 
     const keys = new RunQueueFullKeyProducer();
@@ -486,56 +497,52 @@ export class RunEngine {
 
         span.setAttribute("runId", taskRun.id);
 
-        await this.runLock.lock("trigger", [taskRun.id], 5000, async (signal) => {
-          //create associated waitpoint (this completes when the run completes)
-          const associatedWaitpoint = await this.waitpointSystem.createRunAssociatedWaitpoint(
-            prisma,
-            {
-              projectId: environment.project.id,
-              environmentId: environment.id,
-              completedByTaskRunId: taskRun.id,
-            }
-          );
+        //create associated waitpoint (this completes when the run completes)
+        const associatedWaitpoint = await this.waitpointSystem.createRunAssociatedWaitpoint(
+          prisma,
+          {
+            projectId: environment.project.id,
+            environmentId: environment.id,
+            completedByTaskRunId: taskRun.id,
+          }
+        );
 
-          //triggerAndWait or batchTriggerAndWait
-          if (resumeParentOnCompletion && parentTaskRunId) {
-            //this will block the parent run from continuing until this waitpoint is completed (and removed)
-            await this.waitpointSystem.blockRunWithWaitpoint({
-              runId: parentTaskRunId,
-              waitpoints: associatedWaitpoint.id,
-              projectId: associatedWaitpoint.projectId,
-              organizationId: environment.organization.id,
-              batch,
-              workerId,
-              runnerId,
-              tx: prisma,
-              releaseConcurrency,
-            });
+        //triggerAndWait or batchTriggerAndWait
+        if (resumeParentOnCompletion && parentTaskRunId) {
+          //this will block the parent run from continuing until this waitpoint is completed (and removed)
+          await this.waitpointSystem.blockRunWithWaitpoint({
+            runId: parentTaskRunId,
+            waitpoints: associatedWaitpoint.id,
+            projectId: associatedWaitpoint.projectId,
+            organizationId: environment.organization.id,
+            batch,
+            workerId,
+            runnerId,
+            tx: prisma,
+            releaseConcurrency,
+          });
+        }
+
+        if (taskRun.delayUntil) {
+          // Schedule the run to be enqueued at the delayUntil time
+          await this.delayedRunSystem.scheduleDelayedRunEnqueuing({
+            runId: taskRun.id,
+            delayUntil: taskRun.delayUntil,
+          });
+        } else {
+          if (taskRun.ttl) {
+            await this.ttlSystem.scheduleExpireRun({ runId: taskRun.id, ttl: taskRun.ttl });
           }
 
-          //Make sure lock extension succeeded
-          signal.throwIfAborted();
-
-          if (taskRun.delayUntil) {
-            // Schedule the run to be enqueued at the delayUntil time
-            await this.delayedRunSystem.scheduleDelayedRunEnqueuing({
-              runId: taskRun.id,
-              delayUntil: taskRun.delayUntil,
-            });
-          } else {
-            await this.enqueueSystem.enqueueRun({
-              run: taskRun,
-              env: environment,
-              workerId,
-              runnerId,
-              tx: prisma,
-            });
-
-            if (taskRun.ttl) {
-              await this.ttlSystem.scheduleExpireRun({ runId: taskRun.id, ttl: taskRun.ttl });
-            }
-          }
-        });
+          await this.enqueueSystem.enqueueRun({
+            run: taskRun,
+            env: environment,
+            workerId,
+            runnerId,
+            tx: prisma,
+            skipRunLock: true,
+          });
+        }
 
         this.eventBus.emit("runCreated", {
           time: new Date(),
@@ -1155,7 +1162,7 @@ export class RunEngine {
     tx?: PrismaClientOrTransaction;
   }) {
     const prisma = tx ?? this.prisma;
-    return await this.runLock.lock("handleStalledSnapshot", [runId], 5_000, async () => {
+    return await this.runLock.lock("handleStalledSnapshot", [runId], async () => {
       const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId);
       if (latestSnapshot.id !== snapshotId) {
         this.logger.log(
