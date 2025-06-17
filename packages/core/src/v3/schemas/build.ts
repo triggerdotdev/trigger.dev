@@ -92,6 +92,13 @@ export const WorkerManifest = z.object({
   runtime: BuildRuntime,
   customConditions: z.array(z.string()).optional(),
   timings: z.record(z.number()).optional(),
+  processKeepAlive: z
+    .object({
+      enabled: z.boolean(),
+      maxExecutionsPerProcess: z.number().optional(),
+    })
+    .optional(),
+
   otelImportHook: z
     .object({
       include: z.array(z.string()).optional(),
