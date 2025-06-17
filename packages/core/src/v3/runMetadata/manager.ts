@@ -30,6 +30,17 @@ export class StandardMetadataManager implements RunMetadataManager {
     private streamsVersion: "v1" | "v2" = "v1"
   ) {}
 
+  reset(): void {
+    this.queuedOperations.clear();
+    this.queuedParentOperations.clear();
+    this.queuedRootOperations.clear();
+    this.activeStreams.clear();
+    this.store = undefined;
+    this.runId = undefined;
+    this.flushTimeoutId = null;
+    this.isFlushing = false;
+  }
+
   get parent(): RunMetadataUpdater {
     // Store a reference to 'this' to ensure proper context
     const self = this;
