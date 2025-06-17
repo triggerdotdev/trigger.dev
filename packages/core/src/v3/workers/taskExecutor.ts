@@ -112,11 +112,9 @@ export class TaskExecutor {
       runMetadata.enterWithMetadata(execution.run.metadata);
     }
 
-    this._tracingSDK.asyncResourceDetector.resolveWithAttributes({
-      ...taskContext.attributes,
-      [SemanticInternalAttributes.SDK_VERSION]: VERSION,
-      [SemanticInternalAttributes.SDK_LANGUAGE]: "typescript",
-    });
+    // this._tracingSDK.asyncResourceDetector.resolveWithAttributes({
+    //   ...taskContext.attributes,
+    // });
 
     const result = await this._tracer.startActiveSpan(
       attemptMessage,
