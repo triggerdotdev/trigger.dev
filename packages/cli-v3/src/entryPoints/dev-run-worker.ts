@@ -273,7 +273,10 @@ const zodIpc = new ZodIpcConnection({
   emitSchema: ExecutorToWorkerMessageCatalog,
   process,
   handlers: {
-    EXECUTE_TASK_RUN: async ({ execution, traceContext, metadata, metrics, env }, sender) => {
+    EXECUTE_TASK_RUN: async (
+      { execution, traceContext, metadata, metrics, env, isWarmStart },
+      sender
+    ) => {
       if (env) {
         populateEnv(env, {
           override: true,
@@ -294,7 +297,7 @@ const zodIpc = new ZodIpcConnection({
 
       resetExecutionEnvironment();
 
-      standardRunTimelineMetricsManager.registerMetricsFromExecution(metrics);
+      standardRunTimelineMetricsManager.registerMetricsFromExecution(metrics, isWarmStart);
 
       if (_isRunning) {
         logError("Worker is already running a task");
@@ -437,6 +440,7 @@ const zodIpc = new ZodIpcConnection({
           tracingSDK,
           consoleInterceptor,
           retries: config.retries,
+          isWarmStart,
         });
 
         try {

@@ -74,8 +74,6 @@ class AsyncResourceDetector implements DetectorSync {
       return;
     }
 
-    console.log("resolving async resource detector", attributes);
-
     this._resolved = true;
     this._resolver(attributes);
   }
