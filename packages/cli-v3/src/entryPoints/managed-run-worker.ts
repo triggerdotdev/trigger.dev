@@ -259,7 +259,7 @@ const zodIpc = new ZodIpcConnection({
         triggerJWT: getEnvVar("TRIGGER_JWT"),
       });
 
-      standardRunTimelineMetricsManager.registerMetricsFromExecution(metrics);
+      standardRunTimelineMetricsManager.registerMetricsFromExecution(metrics, isWarmStart);
 
       console.log(`[${new Date().toISOString()}] Received EXECUTE_TASK_RUN`, execution);
 
