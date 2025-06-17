@@ -13,8 +13,11 @@ export class StandardRunTimelineMetricsManager implements RunTimelineMetricsMana
     return this._metrics;
   }
 
-  registerMetricsFromExecution(metrics?: TaskRunExecutionMetrics): void {
-    this.#seedMetricsFromEnvironment();
+  registerMetricsFromExecution(
+    metrics?: TaskRunExecutionMetrics,
+    isWarmStartOverride?: boolean
+  ): void {
+    this.#seedMetricsFromEnvironment(isWarmStartOverride);
 
     if (metrics) {
       metrics.forEach((metric) => {
@@ -35,10 +38,11 @@ export class StandardRunTimelineMetricsManager implements RunTimelineMetricsMana
   }
 
   // TODO: handle this when processKeepAlive is enabled
-  #seedMetricsFromEnvironment() {
+  #seedMetricsFromEnvironment(isWarmStartOverride?: boolean) {
     const forkStartTime = getEnvVar("TRIGGER_PROCESS_FORK_START_TIME");
     const warmStart = getEnvVar("TRIGGER_WARM_START");
-    const isWarmStart = warmStart === "true";
+    const isWarmStart =
+      typeof isWarmStartOverride === "boolean" ? isWarmStartOverride : warmStart === "true";
 
     if (typeof forkStartTime === "string" && !isWarmStart) {
       const forkStartTimeMs = parseInt(forkStartTime, 10);
