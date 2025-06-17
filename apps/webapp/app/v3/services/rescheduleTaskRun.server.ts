@@ -22,6 +22,7 @@ export class RescheduleTaskRunService extends BaseService {
       },
       data: {
         delayUntil: delay,
+        queueTimestamp: delay,
       },
     });
 
