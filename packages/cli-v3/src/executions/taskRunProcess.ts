@@ -150,6 +150,7 @@ export class TaskRunProcess {
       PATH: process.env.PATH,
       TRIGGER_PROCESS_FORK_START_TIME: String(Date.now()),
       TRIGGER_WARM_START: this.options.isWarmStart ? "true" : "false",
+      TRIGGER: "1",
     };
 
     logger.debug(`initializing task run process`, {
@@ -284,6 +285,10 @@ export class TaskRunProcess {
     this._isPreparedForNextAttempt = true;
 
     return result;
+  }
+
+  isExecuting() {
+    return this._currentExecution !== undefined;
   }
 
   waitpointCompleted(waitpoint: CompletedWaitpoint) {

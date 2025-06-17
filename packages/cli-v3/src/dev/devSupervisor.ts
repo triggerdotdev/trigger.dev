@@ -117,9 +117,17 @@ class DevSupervisor implements WorkerRuntime {
       enableProcessReuse:
         typeof this.options.config.experimental_processKeepAlive === "boolean"
           ? this.options.config.experimental_processKeepAlive
+          : typeof this.options.config.experimental_processKeepAlive === "object"
+          ? this.options.config.experimental_processKeepAlive.enabled
           : false,
-      maxPoolSize: 3,
-      maxExecutionsPerProcess: 50,
+      maxPoolSize:
+        typeof this.options.config.experimental_processKeepAlive === "object"
+          ? this.options.config.experimental_processKeepAlive.devMaxPoolSize ?? 25
+          : 25,
+      maxExecutionsPerProcess:
+        typeof this.options.config.experimental_processKeepAlive === "object"
+          ? this.options.config.experimental_processKeepAlive.maxExecutionsPerProcess ?? 50
+          : 50,
     });
 
     this.socket = this.#createSocket();
@@ -613,6 +621,10 @@ class DevSupervisor implements WorkerRuntime {
     const worker = this.workers.get(friendlyId);
     if (!worker) {
       return;
+    }
+
+    if (worker.serverWorker?.version) {
+      this.taskRunProcessPool?.deprecateVersion(worker.serverWorker?.version);
     }
 
     if (this.#workerHasInProgressRuns(friendlyId)) {
