@@ -114,7 +114,7 @@ export class TracingSDK {
       : {};
 
     const commonResources = detectResourcesSync({
-      detectors: [this.asyncResourceDetector, processDetectorSync],
+      detectors: [processDetectorSync],
     })
       .merge(
         new Resource({
@@ -123,6 +123,8 @@ export class TracingSDK {
             getEnvVar("OTEL_SERVICE_NAME") ?? "trigger.dev",
           [SemanticInternalAttributes.TRIGGER]: true,
           [SemanticInternalAttributes.CLI_VERSION]: VERSION,
+          [SemanticInternalAttributes.SDK_VERSION]: VERSION,
+          [SemanticInternalAttributes.SDK_LANGUAGE]: "typescript",
         })
       )
       .merge(config.resource ?? new Resource({}))

@@ -25,6 +25,7 @@ import {
 import pLimit from "p-limit";
 import { resolveLocalEnvVars } from "../utilities/localEnvVars.js";
 import type { Metafile } from "esbuild";
+import { TaskRunProcessPool } from "./taskRunProcessPool.js";
 
 export type WorkerRuntimeOptions = {
   name: string | undefined;
@@ -67,6 +68,7 @@ class DevSupervisor implements WorkerRuntime {
   private socketConnections = new Set<string>();
 
   private runLimiter?: ReturnType<typeof pLimit>;
+  private taskRunProcessPool?: TaskRunProcessPool;
 
   constructor(public readonly options: WorkerRuntimeOptions) {}
 
@@ -95,6 +97,31 @@ class DevSupervisor implements WorkerRuntime {
 
     this.runLimiter = pLimit(maxConcurrentRuns);
 
+    // Initialize the task run process pool
+    const env = await this.#getEnvVars();
+
+    const enableProcessReuse =
+      typeof this.options.config.experimental_processKeepAlive === "boolean"
+        ? this.options.config.experimental_processKeepAlive
+        : false;
+
+    if (enableProcessReuse) {
+      logger.debug("[DevSupervisor] Enabling process reuse", {
+        enableProcessReuse,
+      });
+    }
+
+    this.taskRunProcessPool = new TaskRunProcessPool({
+      env,
+      cwd: this.options.config.workingDir,
+      enableProcessReuse:
+        typeof this.options.config.experimental_processKeepAlive === "boolean"
+          ? this.options.config.experimental_processKeepAlive
+          : false,
+      maxPoolSize: 3,
+      maxExecutionsPerProcess: 50,
+    });
+
     this.socket = this.#createSocket();
 
     //start an SSE connection for presence
@@ -110,6 +137,11 @@ class DevSupervisor implements WorkerRuntime {
       this.socket?.close();
     } catch (error) {
       logger.debug("[DevSupervisor] shutdown, socket failed to close", { error });
+    }
+
+    // Shutdown the task run process pool
+    if (this.taskRunProcessPool) {
+      await this.taskRunProcessPool.shutdown();
     }
   }
 
@@ -293,12 +325,21 @@ class DevSupervisor implements WorkerRuntime {
           continue;
         }
 
+        if (!this.taskRunProcessPool) {
+          logger.debug(`[DevSupervisor] dequeueRuns. No task run process pool`, {
+            run: message.run.friendlyId,
+            worker,
+          });
+          continue;
+        }
+
         //new run
         runController = new DevRunController({
           runFriendlyId: message.run.friendlyId,
           worker: worker,
           httpClient: this.options.client,
           logLevel: this.options.args.logLevel,
+          taskRunProcessPool: this.taskRunProcessPool,
           onFinished: () => {
             logger.debug("[DevSupervisor] Run finished", { runId: message.run.friendlyId });
 

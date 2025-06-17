@@ -21,6 +21,7 @@ export class TaskContextSpanProcessor implements SpanProcessor {
       span.setAttributes(
         flattenAttributes(
           {
+            ...taskContext.attributes,
             [SemanticInternalAttributes.ATTEMPT_ID]: taskContext.ctx.attempt.id,
             [SemanticInternalAttributes.ATTEMPT_NUMBER]: taskContext.ctx.attempt.number,
           },
@@ -109,6 +110,7 @@ export class TaskContextLogProcessor implements LogRecordProcessor {
       logRecord.setAttributes(
         flattenAttributes(
           {
+            ...taskContext.attributes,
             [SemanticInternalAttributes.ATTEMPT_ID]: taskContext.ctx.attempt.id,
             [SemanticInternalAttributes.ATTEMPT_NUMBER]: taskContext.ctx.attempt.number,
           },
