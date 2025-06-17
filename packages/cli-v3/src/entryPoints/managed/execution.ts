@@ -115,7 +115,9 @@ export class RunExecution {
    * Kills the current execution.
    */
   public async kill({ exitExecution = true }: { exitExecution?: boolean } = {}) {
-    await this.taskRunProcess?.kill("SIGKILL");
+    if (this.taskRunProcess) {
+      await this.taskRunProcessProvider.handleProcessAbort(this.taskRunProcess);
+    }
 
     if (exitExecution) {
       this.shutdown("kill");
@@ -135,13 +137,9 @@ export class RunExecution {
       throw new Error("prepareForExecution called after process was already created");
     }
 
-    this.taskRunProcess = this.taskRunProcessProvider.getProcess({
-      taskRunEnv: opts.taskRunEnv,
-      isWarmStart: true,
-    });
-
-    // Attach event handlers to the process
-    this.attachTaskRunProcessHandlers(this.taskRunProcess);
+    // Store the environment for later use, don't create process yet
+    // The process will be created when needed in executeRun
+    this.currentTaskRunEnv = opts.taskRunEnv;
 
     return this;
   }
@@ -182,7 +180,7 @@ export class RunExecution {
   }
 
   /**
-   * Returns true if no run has been started yet and the process is prepared for the next run.
+   * Returns true if no run has been started yet and we're prepared for the next run.
    */
   get canExecute(): boolean {
     // If we've ever had a run ID, this execution can't be reused
@@ -190,7 +188,8 @@ export class RunExecution {
       return false;
     }
 
-    return !!this.taskRunProcess?.isPreparedForNextRun;
+    // We can execute if we have the task run environment ready
+    return !!this.currentTaskRunEnv;
   }
 
   /**
@@ -557,35 +556,35 @@ export class RunExecution {
     metrics: TaskRunExecutionMetrics;
     isWarmStart?: boolean;
   }) {
-    // For immediate retries, we need to ensure the task run process is prepared for the next attempt
-    if (
-      this.runFriendlyId &&
-      this.taskRunProcess &&
-      !this.taskRunProcess.isPreparedForNextAttempt
-    ) {
-      this.sendDebugLog("killing existing task run process before executing next attempt");
-      await this.kill({ exitExecution: false }).catch(() => {});
+    const isImmediateRetry = !!this.runFriendlyId;
+
+    if (isImmediateRetry) {
+      await this.taskRunProcessProvider.handleImmediateRetry();
     }
 
-    // To skip this step and eagerly create the task run process, run prepareForExecution first
-    if (!this.taskRunProcess || !this.taskRunProcess.isPreparedForNextRun) {
-      this.taskRunProcess = this.taskRunProcessProvider.getProcess({
-        taskRunEnv: { ...envVars, TRIGGER_PROJECT_REF: execution.project.ref },
-        isWarmStart,
-      });
-      this.attachTaskRunProcessHandlers(this.taskRunProcess);
-    }
+    const taskRunEnv = this.currentTaskRunEnv ?? envVars;
+
+    this.taskRunProcess = await this.taskRunProcessProvider.getProcess({
+      taskRunEnv: { ...taskRunEnv, TRIGGER_PROJECT_REF: execution.project.ref },
+      isWarmStart,
+    });
+
+    this.attachTaskRunProcessHandlers(this.taskRunProcess);
 
     this.sendDebugLog("executing task run process", { runId: execution.run.id });
 
-    // Set up an abort handler that will cleanup the task run process
-    this.executionAbortController.signal.addEventListener("abort", async () => {
+    const abortHandler = async () => {
       this.sendDebugLog("execution aborted during task run, cleaning up process", {
         runId: execution.run.id,
       });
 
-      await this.taskRunProcess?.cleanup(true);
-    });
+      if (this.taskRunProcess) {
+        await this.taskRunProcessProvider.handleProcessAbort(this.taskRunProcess);
+      }
+    };
+
+    // Set up an abort handler that will cleanup the task run process
+    this.executionAbortController.signal.addEventListener("abort", abortHandler);
 
     const completion = await this.taskRunProcess.execute(
       {
@@ -600,18 +599,19 @@ export class RunExecution {
       isWarmStart
     );
 
+    this.executionAbortController.signal.removeEventListener("abort", abortHandler);
+
     // If we get here, the task completed normally
     this.sendDebugLog("completed run attempt", { attemptSuccess: completion.ok });
 
-    // Return the process to the provider for potential reuse
-    this.taskRunProcessProvider.returnProcess(this.taskRunProcess);
+    // Return the process to the provider - this handles all cleanup logic
+    const [returnError] = await tryCatch(
+      this.taskRunProcessProvider.returnProcess(this.taskRunProcess)
+    );
 
-    // The execution has finished, so we can cleanup the task run process if not being reused
-    const [error] = await tryCatch(this.taskRunProcess.cleanup(true));
-
-    if (error) {
-      this.sendDebugLog("failed to cleanup task run process, submitting completion anyway", {
-        error: error.message,
+    if (returnError) {
+      this.sendDebugLog("failed to return task run process, submitting completion anyway", {
+        error: returnError.message,
       });
     }
 
