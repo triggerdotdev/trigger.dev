@@ -162,11 +162,11 @@ export class TaskRunProcessProvider {
   /**
    * Forces cleanup of any persistent process
    */
-  cleanup(): void {
+  async cleanup() {
     if (this.persistentProcess) {
       this.sendDebugLog("cleanup() called");
 
-      this.cleanupProcess(this.persistentProcess);
+      await this.cleanupProcess(this.persistentProcess);
     }
   }
 
