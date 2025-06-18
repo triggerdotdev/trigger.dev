@@ -3,8 +3,8 @@ import { isMacOS, isWindows } from "std-env";
 export function normalizeDockerHostUrl(url: string) {
   const $url = new URL(url);
 
-  if ($url.host === "localhost") {
-    $url.host = getDockerHostDomain();
+  if ($url.hostname === "localhost") {
+    $url.hostname = getDockerHostDomain();
   }
 
   return $url.toString();
