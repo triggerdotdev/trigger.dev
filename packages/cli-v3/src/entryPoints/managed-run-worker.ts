@@ -18,6 +18,7 @@ import {
   runMetadata,
   runtime,
   runTimelineMetrics,
+  taskContext,
   TaskRunErrorCodes,
   TaskRunExecution,
   timeout,
@@ -58,6 +59,7 @@ import sourceMapSupport from "source-map-support";
 import { env } from "std-env";
 import { normalizeImportPath } from "../utilities/normalizeImportPath.js";
 import { VERSION } from "../version.js";
+import { promiseWithResolvers } from "@trigger.dev/core/utils";
 
 sourceMapSupport.install({
   handleUncaughtExceptions: false,
@@ -110,15 +112,18 @@ lifecycleHooks.setGlobalLifecycleHooksManager(standardLifecycleHooksManager);
 const standardRunTimelineMetricsManager = new StandardRunTimelineMetricsManager();
 runTimelineMetrics.setGlobalManager(standardRunTimelineMetricsManager);
 
-resourceCatalog.setGlobalResourceCatalog(new StandardResourceCatalog());
+const standardResourceCatalog = new StandardResourceCatalog();
+resourceCatalog.setGlobalResourceCatalog(standardResourceCatalog);
 
 const durableClock = new DurableClock();
 clock.setGlobalClock(durableClock);
+
 const runMetadataManager = new StandardMetadataManager(
   apiClientManager.clientOrThrow(),
   getEnvVar("TRIGGER_STREAM_URL", getEnvVar("TRIGGER_API_URL")) ?? "https://api.trigger.dev"
 );
 runMetadata.setGlobalManager(runMetadataManager);
+
 const waitUntilManager = new StandardWaitUntilManager();
 waitUntil.setGlobalManager(waitUntilManager);
 // Wait for all streams to finish before completing the run
@@ -236,7 +241,30 @@ let _isRunning = false;
 let _isCancelled = false;
 let _tracingSDK: TracingSDK | undefined;
 let _executionMeasurement: UsageMeasurement | undefined;
-const cancelController = new AbortController();
+let _cancelController = new AbortController();
+let _lastFlushPromise: Promise<void> | undefined;
+let _sharedWorkerRuntime: SharedRuntimeManager | undefined;
+
+function resetExecutionEnvironment() {
+  _execution = undefined;
+  _isRunning = false;
+  _isCancelled = false;
+  _executionMeasurement = undefined;
+  _cancelController = new AbortController();
+
+  standardLocalsManager.reset();
+  standardLifecycleHooksManager.reset();
+  standardRunTimelineMetricsManager.reset();
+  usage.reset();
+  timeout.reset();
+  runMetadataManager.reset();
+  waitUntilManager.reset();
+  _sharedWorkerRuntime?.reset();
+  durableClock.reset();
+  taskContext.disable();
+
+  console.log(`[${new Date().toISOString()}] Reset execution environment`);
+}
 
 const zodIpc = new ZodIpcConnection({
   listenSchema: WorkerToExecutorMessageCatalog,
@@ -252,6 +280,22 @@ const zodIpc = new ZodIpcConnection({
           override: true,
         });
       }
+
+      console.log(
+        `[${new Date().toISOString()}] Received EXECUTE_TASK_RUN isWarmStart ${String(isWarmStart)}`
+      );
+
+      if (_lastFlushPromise) {
+        const now = performance.now();
+
+        await _lastFlushPromise;
+
+        const duration = performance.now() - now;
+
+        console.log(`[${new Date().toISOString()}] Awaited last flush in ${duration}ms`);
+      }
+
+      resetExecutionEnvironment();
 
       initializeUsageManager({
         usageIntervalMs: getEnvVar("USAGE_HEARTBEAT_INTERVAL_MS"),
@@ -421,7 +465,7 @@ const zodIpc = new ZodIpcConnection({
 
           const timeoutController = timeout.abortAfterTimeout(execution.run.maxDuration);
 
-          const signal = AbortSignal.any([cancelController.signal, timeoutController.signal]);
+          const signal = AbortSignal.any([_cancelController.signal, timeoutController.signal]);
 
           const { result } = await executor.execute(execution, metadata, traceContext, signal);
 
@@ -442,6 +486,8 @@ const zodIpc = new ZodIpcConnection({
         } finally {
           _execution = undefined;
           _isRunning = false;
+
+          console.log(`[${new Date().toISOString()}] Task run completed`);
         }
       } catch (err) {
         console.error("Failed to execute task", err);
@@ -467,7 +513,7 @@ const zodIpc = new ZodIpcConnection({
     },
     CANCEL: async ({ timeoutInMs }) => {
       _isCancelled = true;
-      cancelController.abort("run cancelled");
+      _cancelController.abort("run cancelled");
       await callCancelHooks(timeoutInMs);
       if (_executionMeasurement) {
         usage.stop(_executionMeasurement);
@@ -478,7 +524,7 @@ const zodIpc = new ZodIpcConnection({
       await flushAll(timeoutInMs);
     },
     RESOLVE_WAITPOINT: async ({ waitpoint }) => {
-      sharedWorkerRuntime.resolveWaitpoints([waitpoint]);
+      _sharedWorkerRuntime?.resolveWaitpoints([waitpoint]);
     },
   },
 });
@@ -497,6 +543,10 @@ async function callCancelHooks(timeoutInMs: number = 10_000) {
 
 async function flushAll(timeoutInMs: number = 10_000) {
   const now = performance.now();
+
+  const { promise, resolve } = promiseWithResolvers<void>();
+
+  _lastFlushPromise = promise;
 
   const results = await Promise.allSettled([
     flushUsage(timeoutInMs),
@@ -530,6 +580,9 @@ async function flushAll(timeoutInMs: number = 10_000) {
   const duration = performance.now() - now;
 
   console.log(`Flushed all in ${duration}ms`);
+
+  // Resolve the last flush promise
+  resolve();
 }
 
 async function flushUsage(timeoutInMs: number = 10_000) {
@@ -597,9 +650,8 @@ function initializeUsageManager({
   timeout.setGlobalManager(new UsageTimeoutManager(devUsageManager));
 }
 
-const sharedWorkerRuntime = new SharedRuntimeManager(zodIpc, true);
-
-runtime.setGlobalRuntimeManager(sharedWorkerRuntime);
+_sharedWorkerRuntime = new SharedRuntimeManager(zodIpc, true);
+runtime.setGlobalRuntimeManager(_sharedWorkerRuntime);
 
 process.title = "trigger-managed-worker";
 

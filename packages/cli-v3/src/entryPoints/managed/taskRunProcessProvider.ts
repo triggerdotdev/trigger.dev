@@ -35,6 +35,10 @@ export class TaskRunProcessProvider {
     this.processKeepAliveMaxExecutionCount = opts.processKeepAliveMaxExecutionCount;
   }
 
+  get hasPersistentProcess(): boolean {
+    return !!this.persistentProcess;
+  }
+
   async handleImmediateRetry(): Promise<void> {
     if (!this.processKeepAliveEnabled) {
       // For immediate retries, we need to ensure we have a clean process

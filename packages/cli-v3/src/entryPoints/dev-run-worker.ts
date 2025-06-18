@@ -250,6 +250,7 @@ let _tracingSDK: TracingSDK | undefined;
 let _executionMeasurement: UsageMeasurement | undefined;
 let _cancelController = new AbortController();
 let _lastFlushPromise: Promise<void> | undefined;
+let _sharedWorkerRuntime: SharedRuntimeManager | undefined;
 
 function resetExecutionEnvironment() {
   _execution = undefined;
@@ -265,7 +266,7 @@ function resetExecutionEnvironment() {
   usageTimeoutManager.reset();
   runMetadataManager.reset();
   waitUntilManager.reset();
-  sharedWorkerRuntime.reset();
+  _sharedWorkerRuntime?.reset();
   durableClock.reset();
   taskContext.disable();
 
@@ -478,6 +479,8 @@ const zodIpc = new ZodIpcConnection({
             });
           }
         } finally {
+          _execution = undefined;
+          _isRunning = false;
           log(`[${new Date().toISOString()}] Task run completed`);
         }
       } catch (err) {
@@ -515,7 +518,7 @@ const zodIpc = new ZodIpcConnection({
       await flushAll(timeoutInMs);
     },
     RESOLVE_WAITPOINT: async ({ waitpoint }) => {
-      sharedWorkerRuntime.resolveWaitpoints([waitpoint]);
+      _sharedWorkerRuntime?.resolveWaitpoints([waitpoint]);
     },
   },
 });
@@ -606,8 +609,8 @@ async function flushMetadata(timeoutInMs: number = 10_000) {
   };
 }
 
-const sharedWorkerRuntime = new SharedRuntimeManager(zodIpc, showInternalLogs);
-runtime.setGlobalRuntimeManager(sharedWorkerRuntime);
+_sharedWorkerRuntime = new SharedRuntimeManager(zodIpc, showInternalLogs);
+runtime.setGlobalRuntimeManager(_sharedWorkerRuntime);
 
 const heartbeatInterval = parseInt(heartbeatIntervalMs ?? "30000", 10);
 

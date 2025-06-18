@@ -318,7 +318,9 @@ export class ManagedRunController {
           logger: this.logger,
           supervisorSocket: this.socket,
           taskRunProcessProvider: this.taskRunProcessProvider,
-        }).prepareForExecution({
+        });
+
+        await this.currentExecution.prepareForExecution({
           taskRunEnv: previousTaskRunEnv,
         });
       }

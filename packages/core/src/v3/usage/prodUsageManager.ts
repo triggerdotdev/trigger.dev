@@ -27,6 +27,14 @@ export class ProdUsageManager implements UsageManager {
     return typeof this._usageClient !== "undefined";
   }
 
+  reset(): void {
+    this.delegageUsageManager.reset();
+    this._abortController = new AbortController();
+    this._usageClient = undefined;
+    this._measurement = undefined;
+    this._lastSample = undefined;
+  }
+
   disable(): void {
     this.delegageUsageManager.disable();
     this._abortController?.abort();
