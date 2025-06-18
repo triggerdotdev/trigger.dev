@@ -26,6 +26,7 @@ import pLimit from "p-limit";
 import { resolveLocalEnvVars } from "../utilities/localEnvVars.js";
 import type { Metafile } from "esbuild";
 import { TaskRunProcessPool } from "./taskRunProcessPool.js";
+import { tryCatch } from "@trigger.dev/core/utils";
 
 export type WorkerRuntimeOptions = {
   name: string | undefined;
@@ -149,7 +150,13 @@ class DevSupervisor implements WorkerRuntime {
 
     // Shutdown the task run process pool
     if (this.taskRunProcessPool) {
-      await this.taskRunProcessPool.shutdown();
+      const [shutdownError] = await tryCatch(this.taskRunProcessPool.shutdown());
+
+      if (shutdownError) {
+        logger.debug("[DevSupervisor] shutdown, task run process pool failed to shutdown", {
+          error: shutdownError,
+        });
+      }
     }
   }
 
