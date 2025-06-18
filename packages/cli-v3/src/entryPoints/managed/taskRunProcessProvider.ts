@@ -90,13 +90,17 @@ export class TaskRunProcessProvider {
         : "keep-alive disabled",
     });
 
+    const existingPersistentProcess = this.persistentProcess;
+
     // Clean up old persistent process if it exists
-    if (this.persistentProcess) {
-      await this.cleanupPersistentProcess();
+    if (existingPersistentProcess) {
+      await this.cleanupProcess(existingPersistentProcess);
     }
 
-    const newProcess = this.createTaskRunProcess(opts);
-    return newProcess;
+    this.persistentProcess = this.createTaskRunProcess(opts);
+    this.executionCount = 0;
+
+    return this.persistentProcess;
   }
 
   /**
@@ -160,7 +164,9 @@ export class TaskRunProcessProvider {
    */
   cleanup(): void {
     if (this.persistentProcess) {
-      this.cleanupPersistentProcess();
+      this.sendDebugLog("cleanup() called");
+
+      this.cleanupProcess(this.persistentProcess);
     }
   }
 
@@ -227,14 +233,11 @@ export class TaskRunProcessProvider {
     return process.isPreparedForNextRun || process.isPreparedForNextAttempt;
   }
 
-  private async cleanupPersistentProcess(): Promise<void> {
-    if (this.persistentProcess) {
-      this.sendDebugLog("Cleaning up persistent TaskRunProcess");
+  private async cleanupProcess(taskRunProcess: TaskRunProcess): Promise<void> {
+    if (taskRunProcess) {
+      this.sendDebugLog("Cleaning up TaskRunProcess", { pid: taskRunProcess.pid });
 
-      // Don't await this - let it cleanup in the background
-      await this.persistentProcess.kill("SIGKILL").catch(() => {});
-      this.persistentProcess = null;
-      this.executionCount = 0;
+      await taskRunProcess.kill("SIGKILL").catch(() => {});
     }
   }
 
