@@ -57,7 +57,7 @@ export function populateEnv(
   if (previousEnv) {
     // if there are any keys in previousEnv that are not in envObject, remove them from process.env
     for (const key of Object.keys(previousEnv)) {
-      if (!envObject[key]) {
+      if (!Object.prototype.hasOwnProperty.call(envObject, key)) {
         delete process.env[key];
       }
     }
