@@ -62,6 +62,7 @@ export type TaskExecutorOptions = {
     default?: RetryOptions;
   };
   isWarmStart?: boolean;
+  executionCount?: number;
 };
 
 export class TaskExecutor {
@@ -75,6 +76,7 @@ export class TaskExecutor {
       }
     | undefined;
   private _isWarmStart: boolean | undefined;
+  private _executionCount: number | undefined;
 
   constructor(
     public task: TaskMetadataWithFunctions,
@@ -85,6 +87,7 @@ export class TaskExecutor {
     this._consoleInterceptor = options.consoleInterceptor;
     this._retries = options.retries;
     this._isWarmStart = options.isWarmStart;
+    this._executionCount = options.executionCount;
   }
 
   async execute(
@@ -351,11 +354,16 @@ export class TaskExecutor {
           ...(execution.attempt.number === 1
             ? runTimelineMetrics.convertMetricsToSpanAttributes()
             : {}),
-          ...(execution.environment.type !== "DEVELOPMENT"
+          ...(typeof this._isWarmStart === "boolean"
             ? {
                 [SemanticInternalAttributes.STYLE_VARIANT]: this._isWarmStart
                   ? WARM_VARIANT
                   : COLD_VARIANT,
+              }
+            : {}),
+          ...(typeof this._executionCount === "number"
+            ? {
+                [SemanticInternalAttributes.ATTEMPT_EXECUTION_COUNT]: this._executionCount,
               }
             : {}),
         },
