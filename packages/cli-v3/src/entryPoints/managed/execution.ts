@@ -489,9 +489,11 @@ export class RunExecution {
     execution,
     metrics,
     isWarmStart,
+    isImmediateRetry,
   }: WorkloadRunAttemptStartResponseBody & {
     metrics: TaskRunExecutionMetrics;
     isWarmStart?: boolean;
+    isImmediateRetry?: boolean;
   }) {
     this.currentTaskRunEnv = envVars;
 
@@ -503,6 +505,7 @@ export class RunExecution {
         execution,
         metrics,
         isWarmStart,
+        isImmediateRetry,
       })
     );
 
@@ -557,12 +560,12 @@ export class RunExecution {
     execution,
     metrics,
     isWarmStart,
+    isImmediateRetry,
   }: WorkloadRunAttemptStartResponseBody & {
     metrics: TaskRunExecutionMetrics;
     isWarmStart?: boolean;
+    isImmediateRetry?: boolean;
   }) {
-    const isImmediateRetry = !!this.runFriendlyId;
-
     if (isImmediateRetry) {
       await this.taskRunProcessProvider.handleImmediateRetry();
     }
@@ -781,7 +784,9 @@ export class RunExecution {
       return;
     }
 
-    const [executeError] = await tryCatch(this.executeRunWrapper({ ...start, isWarmStart: true }));
+    const [executeError] = await tryCatch(
+      this.executeRunWrapper({ ...start, isWarmStart: true, isImmediateRetry: true })
+    );
 
     if (executeError) {
       this.sendDebugLog("failed to execute run for retry", { error: executeError.message });
