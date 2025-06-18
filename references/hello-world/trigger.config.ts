@@ -6,7 +6,7 @@ export default defineConfig({
   project: "proj_rrkpdguyagvsoktglnod",
   experimental_processKeepAlive: {
     enabled: true,
-    maxExecutionsPerProcess: 3,
+    maxExecutionsPerProcess: 20,
   },
   logLevel: "log",
   maxDuration: 60,
