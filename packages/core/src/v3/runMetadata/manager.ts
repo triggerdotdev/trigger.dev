@@ -37,7 +37,12 @@ export class StandardMetadataManager implements RunMetadataManager {
     this.activeStreams.clear();
     this.store = undefined;
     this.runId = undefined;
-    this.flushTimeoutId = null;
+
+    if (this.flushTimeoutId) {
+      clearTimeout(this.flushTimeoutId);
+      this.flushTimeoutId = null;
+    }
+
     this.isFlushing = false;
   }
 
