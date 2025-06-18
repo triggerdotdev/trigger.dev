@@ -128,7 +128,7 @@ export class RunExecution {
    * Prepares the execution with task run environment variables.
    * This should be called before executing, typically after a successful run to prepare for the next one.
    */
-  public prepareForExecution(opts: RunExecutionPrepareOptions): this {
+  public async prepareForExecution(opts: RunExecutionPrepareOptions) {
     if (this.isShuttingDown) {
       throw new Error("prepareForExecution called after execution shut down");
     }
@@ -137,11 +137,10 @@ export class RunExecution {
       throw new Error("prepareForExecution called after process was already created");
     }
 
-    // Store the environment for later use, don't create process yet
-    // The process will be created when needed in executeRun
-    this.currentTaskRunEnv = opts.taskRunEnv;
-
-    return this;
+    this.taskRunProcess = await this.taskRunProcessProvider.getProcess({
+      taskRunEnv: opts.taskRunEnv,
+      isWarmStart: true,
+    });
   }
 
   private attachTaskRunProcessHandlers(taskRunProcess: TaskRunProcess): void {
@@ -183,6 +182,10 @@ export class RunExecution {
    * Returns true if no run has been started yet and we're prepared for the next run.
    */
   get canExecute(): boolean {
+    if (this.taskRunProcessProvider.hasPersistentProcess) {
+      return true;
+    }
+
     // If we've ever had a run ID, this execution can't be reused
     if (this._runFriendlyId) {
       return false;
@@ -359,7 +362,7 @@ export class RunExecution {
       throw new Error("Cannot start attempt: missing run or snapshot manager");
     }
 
-    this.sendDebugLog("starting attempt");
+    this.sendDebugLog("starting attempt", { isWarmStart: String(isWarmStart) });
 
     const attemptStartedAt = Date.now();
 
@@ -404,7 +407,7 @@ export class RunExecution {
       podScheduledAt: this.podScheduledAt?.getTime(),
     });
 
-    this.sendDebugLog("started attempt");
+    this.sendDebugLog("started attempt", { start: start.data });
 
     return { ...start.data, metrics };
   }
@@ -464,7 +467,9 @@ export class RunExecution {
       return;
     }
 
-    const [executeError] = await tryCatch(this.executeRunWrapper(start));
+    const [executeError] = await tryCatch(
+      this.executeRunWrapper({ ...start, isWarmStart: runOpts.isWarmStart })
+    );
 
     if (executeError) {
       this.sendDebugLog("failed to execute run", { error: executeError.message });

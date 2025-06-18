@@ -7,6 +7,8 @@ class NoopTimeoutManager implements TimeoutManager {
   abortAfterTimeout(timeoutInSeconds?: number): AbortController {
     return new AbortController();
   }
+
+  reset() {}
 }
 
 const NOOP_TIMEOUT_MANAGER = new NoopTimeoutManager();
@@ -38,6 +40,11 @@ export class TimeoutAPI implements TimeoutManager {
 
   public disable() {
     unregisterGlobal(API_NAME);
+  }
+
+  public reset() {
+    this.#getManager().reset();
+    this.disable();
   }
 
   #getManager(): TimeoutManager {
