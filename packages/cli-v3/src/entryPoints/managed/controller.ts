@@ -417,7 +417,7 @@ export class ManagedRunController {
     });
 
     this.currentExecution?.kill().catch(() => {});
-    this.taskRunProcessProvider.cleanup();
+    this.taskRunProcessProvider.cleanup().catch(() => {});
 
     process.exit(code);
   }
@@ -558,7 +558,15 @@ export class ManagedRunController {
     }
 
     // Cleanup the task run process provider
-    this.taskRunProcessProvider.cleanup();
+    const [cleanupError] = await tryCatch(this.taskRunProcessProvider.cleanup());
+
+    if (cleanupError) {
+      this.sendDebugLog({
+        runId: this.runFriendlyId,
+        message: "Error during task run process provider cleanup",
+        properties: { error: String(cleanupError) },
+      });
+    }
 
     // Close the socket
     this.socket.close();
