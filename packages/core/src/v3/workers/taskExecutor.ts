@@ -354,13 +354,9 @@ export class TaskExecutor {
           ...(execution.attempt.number === 1
             ? runTimelineMetrics.convertMetricsToSpanAttributes()
             : {}),
-          ...(typeof this._isWarmStart === "boolean"
-            ? {
-                [SemanticInternalAttributes.STYLE_VARIANT]: this._isWarmStart
-                  ? WARM_VARIANT
-                  : COLD_VARIANT,
-              }
-            : {}),
+          [SemanticInternalAttributes.STYLE_VARIANT]: this._isWarmStart
+            ? WARM_VARIANT
+            : COLD_VARIANT,
           ...(typeof this._executionCount === "number"
             ? {
                 [SemanticInternalAttributes.ATTEMPT_EXECUTION_COUNT]: this._executionCount,
