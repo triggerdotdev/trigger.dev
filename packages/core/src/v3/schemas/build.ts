@@ -95,7 +95,7 @@ export const WorkerManifest = z.object({
   processKeepAlive: z
     .object({
       enabled: z.boolean(),
-      maxExecutionsPerProcess: z.number().optional(),
+      maxExecutionsPerProcess: z.number().int().positive().optional(),
     })
     .optional(),
 
