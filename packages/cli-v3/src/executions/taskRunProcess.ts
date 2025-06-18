@@ -170,6 +170,12 @@ export class TaskRunProcess {
 
     this._childPid = this._child?.pid;
 
+    logger.debug("initialized task run process", {
+      path: workerManifest.workerEntryPoint,
+      cwd,
+      pid: this._childPid,
+    });
+
     this._ipc = new ZodIpcConnection({
       listenSchema: ExecutorToWorkerMessageCatalog,
       emitSchema: WorkerToExecutorMessageCatalog,
@@ -303,7 +309,7 @@ export class TaskRunProcess {
   }
 
   async #handleExit(code: number | null, signal: NodeJS.Signals | null) {
-    logger.debug("handling child exit", { code, signal });
+    logger.debug("handling child exit", { code, signal, pid: this.pid });
 
     // Go through all the attempts currently pending and reject them
     for (const [id, status] of this._attemptStatuses.entries()) {
