@@ -29,6 +29,7 @@ export class ProdUsageManager implements UsageManager {
 
   reset(): void {
     this.delegageUsageManager.reset();
+    this._abortController?.abort();
     this._abortController = new AbortController();
     this._usageClient = undefined;
     this._measurement = undefined;
@@ -75,12 +76,18 @@ export class ProdUsageManager implements UsageManager {
 
     this._abortController = new AbortController();
 
-    for await (const _ of setInterval(this.options.heartbeatIntervalMs)) {
-      if (this._abortController.signal.aborted) {
-        break;
+    try {
+      for await (const _ of setInterval(this.options.heartbeatIntervalMs, undefined, {
+        signal: this._abortController.signal,
+      })) {
+        await this.#reportUsage();
+      }
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        return;
       }
 
-      await this.#reportUsage();
+      throw error;
     }
   }
 
