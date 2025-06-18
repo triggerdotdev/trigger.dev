@@ -163,84 +163,110 @@ async function loadWorkerManifest() {
   return WorkerManifest.parse(raw);
 }
 
+async function doBootstrap() {
+  return await runTimelineMetrics.measureMetric("trigger.dev/start", "bootstrap", {}, async () => {
+    log("Bootstrapping worker");
+
+    const workerManifest = await loadWorkerManifest();
+
+    resourceCatalog.registerWorkerManifest(workerManifest);
+
+    const { config, handleError } = await importConfig(workerManifest.configPath);
+
+    const tracingSDK = new TracingSDK({
+      url: env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://0.0.0.0:4318",
+      instrumentations: config.telemetry?.instrumentations ?? config.instrumentations ?? [],
+      exporters: config.telemetry?.exporters ?? [],
+      logExporters: config.telemetry?.logExporters ?? [],
+      diagLogLevel: (env.OTEL_LOG_LEVEL as TracingDiagnosticLogLevel) ?? "none",
+      forceFlushTimeoutMillis: 30_000,
+    });
+
+    const otelTracer: Tracer = tracingSDK.getTracer("trigger-dev-worker", VERSION);
+    const otelLogger: Logger = tracingSDK.getLogger("trigger-dev-worker", VERSION);
+
+    const tracer = new TriggerTracer({ tracer: otelTracer, logger: otelLogger });
+    const consoleInterceptor = new ConsoleInterceptor(
+      otelLogger,
+      typeof config.enableConsoleLogging === "boolean" ? config.enableConsoleLogging : true,
+      typeof config.disableConsoleInterceptor === "boolean"
+        ? config.disableConsoleInterceptor
+        : false
+    );
+
+    const configLogLevel = triggerLogLevel ?? config.logLevel ?? "info";
+
+    const otelTaskLogger = new OtelTaskLogger({
+      logger: otelLogger,
+      tracer: tracer,
+      level: logLevels.includes(configLogLevel as any) ? (configLogLevel as LogLevel) : "info",
+    });
+
+    logger.setGlobalTaskLogger(otelTaskLogger);
+
+    if (config.init) {
+      lifecycleHooks.registerGlobalInitHook({
+        id: "config",
+        fn: config.init as AnyOnInitHookFunction,
+      });
+    }
+
+    if (config.onStart) {
+      lifecycleHooks.registerGlobalStartHook({
+        id: "config",
+        fn: config.onStart as AnyOnStartHookFunction,
+      });
+    }
+
+    if (config.onSuccess) {
+      lifecycleHooks.registerGlobalSuccessHook({
+        id: "config",
+        fn: config.onSuccess as AnyOnSuccessHookFunction,
+      });
+    }
+
+    if (config.onFailure) {
+      lifecycleHooks.registerGlobalFailureHook({
+        id: "config",
+        fn: config.onFailure as AnyOnFailureHookFunction,
+      });
+    }
+
+    if (handleError) {
+      lifecycleHooks.registerGlobalCatchErrorHook({
+        id: "config",
+        fn: handleError as AnyOnCatchErrorHookFunction,
+      });
+    }
+
+    log("Bootstrapped worker");
+
+    return {
+      tracer,
+      tracingSDK,
+      consoleInterceptor,
+      config,
+      workerManifest,
+    };
+  });
+}
+
+let bootstrapCache:
+  | {
+      tracer: TriggerTracer;
+      tracingSDK: TracingSDK;
+      consoleInterceptor: ConsoleInterceptor;
+      config: TriggerConfig;
+      workerManifest: WorkerManifest;
+    }
+  | undefined;
+
 async function bootstrap() {
-  const workerManifest = await loadWorkerManifest();
-
-  resourceCatalog.registerWorkerManifest(workerManifest);
-
-  const { config, handleError } = await importConfig(workerManifest.configPath);
-
-  const tracingSDK = new TracingSDK({
-    url: env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://0.0.0.0:4318",
-    instrumentations: config.telemetry?.instrumentations ?? config.instrumentations ?? [],
-    exporters: config.telemetry?.exporters ?? [],
-    logExporters: config.telemetry?.logExporters ?? [],
-    diagLogLevel: (env.OTEL_LOG_LEVEL as TracingDiagnosticLogLevel) ?? "none",
-    forceFlushTimeoutMillis: 30_000,
-  });
-
-  const otelTracer: Tracer = tracingSDK.getTracer("trigger-dev-worker", VERSION);
-  const otelLogger: Logger = tracingSDK.getLogger("trigger-dev-worker", VERSION);
-
-  const tracer = new TriggerTracer({ tracer: otelTracer, logger: otelLogger });
-  const consoleInterceptor = new ConsoleInterceptor(
-    otelLogger,
-    typeof config.enableConsoleLogging === "boolean" ? config.enableConsoleLogging : true,
-    typeof config.disableConsoleInterceptor === "boolean" ? config.disableConsoleInterceptor : false
-  );
-
-  const configLogLevel = triggerLogLevel ?? config.logLevel ?? "info";
-
-  const otelTaskLogger = new OtelTaskLogger({
-    logger: otelLogger,
-    tracer: tracer,
-    level: logLevels.includes(configLogLevel as any) ? (configLogLevel as LogLevel) : "info",
-  });
-
-  logger.setGlobalTaskLogger(otelTaskLogger);
-
-  if (config.init) {
-    lifecycleHooks.registerGlobalInitHook({
-      id: "config",
-      fn: config.init as AnyOnInitHookFunction,
-    });
+  if (!bootstrapCache) {
+    bootstrapCache = await doBootstrap();
   }
 
-  if (config.onStart) {
-    lifecycleHooks.registerGlobalStartHook({
-      id: "config",
-      fn: config.onStart as AnyOnStartHookFunction,
-    });
-  }
-
-  if (config.onSuccess) {
-    lifecycleHooks.registerGlobalSuccessHook({
-      id: "config",
-      fn: config.onSuccess as AnyOnSuccessHookFunction,
-    });
-  }
-
-  if (config.onFailure) {
-    lifecycleHooks.registerGlobalFailureHook({
-      id: "config",
-      fn: config.onFailure as AnyOnFailureHookFunction,
-    });
-  }
-
-  if (handleError) {
-    lifecycleHooks.registerGlobalCatchErrorHook({
-      id: "config",
-      fn: handleError as AnyOnCatchErrorHookFunction,
-    });
-  }
-
-  return {
-    tracer,
-    tracingSDK,
-    consoleInterceptor,
-    config,
-    workerManifest,
-  };
+  return bootstrapCache;
 }
 
 let _execution: TaskRunExecution | undefined;
@@ -253,6 +279,7 @@ let _lastFlushPromise: Promise<void> | undefined;
 let _sharedWorkerRuntime: SharedRuntimeManager | undefined;
 
 let _lastEnv: Record<string, string> | undefined;
+let _executionCount = 0;
 
 function resetExecutionEnvironment() {
   _execution = undefined;
@@ -444,6 +471,7 @@ const zodIpc = new ZodIpcConnection({
         }
 
         runMetadataManager.runId = execution.run.id;
+        _executionCount++;
 
         const executor = new TaskExecutor(task, {
           tracer,
@@ -451,6 +479,7 @@ const zodIpc = new ZodIpcConnection({
           consoleInterceptor,
           retries: config.retries,
           isWarmStart,
+          executionCount: _executionCount,
         });
 
         try {
