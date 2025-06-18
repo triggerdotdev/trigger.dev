@@ -266,6 +266,8 @@ function resetExecutionEnvironment() {
   console.log(`[${new Date().toISOString()}] Reset execution environment`);
 }
 
+let _lastEnv: Record<string, string> | undefined;
+
 const zodIpc = new ZodIpcConnection({
   listenSchema: WorkerToExecutorMessageCatalog,
   emitSchema: ExecutorToWorkerMessageCatalog,
@@ -278,7 +280,10 @@ const zodIpc = new ZodIpcConnection({
       if (env) {
         populateEnv(env, {
           override: true,
+          previousEnv: _lastEnv,
         });
+
+        _lastEnv = env;
       }
 
       console.log(
