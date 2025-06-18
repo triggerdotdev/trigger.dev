@@ -66,7 +66,6 @@ RUN pnpm run build --filter=webapp...
 FROM ${NODE_IMAGE} AS runner
 RUN apt-get update && apt-get install -y openssl netcat-openbsd ca-certificates
 WORKDIR /triggerdotdev
-RUN corepack enable
 ENV NODE_ENV production
 
 COPY --from=base /usr/bin/dumb-init /usr/bin/dumb-init
@@ -94,5 +93,12 @@ ENV BUILD_APP_VERSION=${BUILD_APP_VERSION} \
 
 EXPOSE 3000
 
+# Add global pnpm shims and install pnpm during build (root user)
+RUN corepack enable && corepack prepare --activate
+
 USER node
+
+# Ensure pnpm is installed during build and not silently downloaded at runtime (node user)
+RUN corepack prepare --activate
+
 CMD ["./scripts/entrypoint.sh"]
