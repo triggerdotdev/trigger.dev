@@ -252,6 +252,8 @@ let _cancelController = new AbortController();
 let _lastFlushPromise: Promise<void> | undefined;
 let _sharedWorkerRuntime: SharedRuntimeManager | undefined;
 
+let _lastEnv: Record<string, string> | undefined;
+
 function resetExecutionEnvironment() {
   _execution = undefined;
   _isRunning = false;
@@ -285,7 +287,10 @@ const zodIpc = new ZodIpcConnection({
       if (env) {
         populateEnv(env, {
           override: true,
+          previousEnv: _lastEnv,
         });
+
+        _lastEnv = env;
       }
 
       log(`[${new Date().toISOString()}] Received EXECUTE_TASK_RUN`, execution);

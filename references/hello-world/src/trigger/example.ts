@@ -6,6 +6,9 @@ export const helloWorldTask = task({
   id: "hello-world",
   run: async (payload: any, { ctx }) => {
     logger.info("Hello, world from the init", { ctx, payload });
+    logger.info("env vars", {
+      env: process.env,
+    });
 
     logger.debug("debug: Hello, world!", { payload });
     logger.info("info: Hello, world!", { payload });
@@ -16,6 +19,8 @@ export const helloWorldTask = task({
     logger.trace("my trace", async (span) => {
       logger.debug("some log", { span });
     });
+
+    await setTimeout(payload.sleepFor ?? 180_000);
 
     logger.trace(
       "my trace",
