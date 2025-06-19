@@ -144,9 +144,7 @@ export class RunExecution {
   }
 
   private attachTaskRunProcessHandlers(taskRunProcess: TaskRunProcess): void {
-    taskRunProcess.onTaskRunHeartbeat.detach();
-    taskRunProcess.onSendDebugLog.detach();
-    taskRunProcess.onSetSuspendable.detach();
+    taskRunProcess.unsafeDetachEvtHandlers();
 
     taskRunProcess.onTaskRunHeartbeat.attach(async (runId) => {
       if (!this.runFriendlyId) {
@@ -234,7 +232,11 @@ export class RunExecution {
     if (this.currentAttemptNumber && this.currentAttemptNumber !== run.attemptNumber) {
       this.sendDebugLog("error: attempt number mismatch", snapshotMetadata);
       // This is a rogue execution, a new one will already have been created elsewhere
-      await this.exitTaskRunProcessWithoutFailingRun({ flush: false });
+      // TODO: keep this one, kill the process even if it's a keep-alive one
+      await this.exitTaskRunProcessWithoutFailingRun({
+        flush: false,
+        reason: "attempt number mismatch",
+      });
       return;
     }
 
@@ -248,7 +250,11 @@ export class RunExecution {
     if (deprecated) {
       this.sendDebugLog("run execution is deprecated", { incomingSnapshot: snapshot });
 
-      await this.exitTaskRunProcessWithoutFailingRun({ flush: false });
+      // TODO: keep this one, kill the process even if it's a keep-alive one
+      await this.exitTaskRunProcessWithoutFailingRun({
+        flush: false,
+        reason: "deprecated execution",
+      });
       return;
     }
 
@@ -271,13 +277,13 @@ export class RunExecution {
       case "QUEUED": {
         this.sendDebugLog("run was re-queued", snapshotMetadata);
 
-        await this.exitTaskRunProcessWithoutFailingRun({ flush: true });
+        await this.exitTaskRunProcessWithoutFailingRun({ flush: true, reason: "re-queued" });
         return;
       }
       case "FINISHED": {
         this.sendDebugLog("run is finished", snapshotMetadata);
 
-        await this.exitTaskRunProcessWithoutFailingRun({ flush: true });
+        // This can sometimes be called before the handleCompletionResult, so we don't need to do anything here
         return;
       }
       case "QUEUED_EXECUTING":
@@ -292,7 +298,7 @@ export class RunExecution {
 
         // This will kill the process and fail the execution with a SuspendedProcessError
         // We don't flush because we already did before suspending
-        await this.exitTaskRunProcessWithoutFailingRun({ flush: false });
+        await this.exitTaskRunProcessWithoutFailingRun({ flush: false, reason: "suspended" });
         return;
       }
       case "PENDING_EXECUTING": {
@@ -825,11 +831,17 @@ export class RunExecution {
     this.restoreCount++;
   }
 
-  private async exitTaskRunProcessWithoutFailingRun({ flush }: { flush: boolean }) {
-    await this.taskRunProcess?.suspend({ flush });
+  private async exitTaskRunProcessWithoutFailingRun({
+    flush,
+    reason,
+  }: {
+    flush: boolean;
+    reason: string;
+  }) {
+    await this.taskRunProcessProvider.suspendProcess(flush, this.taskRunProcess);
 
     // No services should be left running after this line - let's make sure of it
-    this.shutdown("exitTaskRunProcessWithoutFailingRun");
+    this.shutdown(`exitTaskRunProcessWithoutFailingRun: ${reason}`);
   }
 
   /**

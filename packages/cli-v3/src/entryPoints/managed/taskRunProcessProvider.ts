@@ -143,6 +143,52 @@ export class TaskRunProcessProvider {
     }
   }
 
+  async suspendProcess(flush: boolean, process?: TaskRunProcess): Promise<void> {
+    if (this.persistentProcess) {
+      if (process) {
+        if (this.persistentProcess.pid === process.pid) {
+          this.sendDebugLog("Suspending matching persistent TaskRunProcess (process provided)", {
+            pid: process.pid,
+            flush,
+          });
+
+          this.persistentProcess = null;
+          this.executionCount = 0;
+
+          await process.suspend({ flush });
+        } else {
+          this.sendDebugLog("Suspending TaskRunProcess (does not match persistent process)", {
+            pid: process.pid,
+            flush,
+          });
+
+          await process.suspend({ flush });
+        }
+      } else {
+        this.sendDebugLog("Suspending persistent TaskRunProcess (no process provided)", {
+          pid: this.persistentProcess.pid,
+          flush,
+        });
+
+        this.persistentProcess = null;
+        this.executionCount = 0;
+      }
+    } else {
+      if (process) {
+        this.sendDebugLog("Suspending non-persistent TaskRunProcess (process provided)", {
+          pid: process.pid,
+          flush,
+        });
+
+        await process.suspend({ flush });
+      } else {
+        this.sendDebugLog("Suspending non-persistent TaskRunProcess (no process provided)", {
+          flush,
+        });
+      }
+    }
+  }
+
   /**
    * Handles process abort/kill scenarios
    */
@@ -215,6 +261,13 @@ export class TaskRunProcessProvider {
   }
 
   private shouldReusePersistentProcess(): boolean {
+    this.sendDebugLog("Checking if persistent process should be reused", {
+      executionCount: this.executionCount,
+      maxExecutionCount: this.processKeepAliveMaxExecutionCount,
+      pid: this.persistentProcess?.pid ?? "unknown",
+      isBeingKilled: this.persistentProcess?.isBeingKilled ?? "unknown",
+    });
+
     return (
       !!this.persistentProcess &&
       this.executionCount < this.processKeepAliveMaxExecutionCount &&
@@ -230,7 +283,7 @@ export class TaskRunProcessProvider {
 
   private isProcessHealthy(process: TaskRunProcess): boolean {
     // Basic health check - TaskRunProcess will handle more detailed internal health checks
-    return process.isPreparedForNextRun || process.isPreparedForNextAttempt;
+    return !process.isBeingKilled && process.pid !== undefined;
   }
 
   private async cleanupProcess(taskRunProcess: TaskRunProcess): Promise<void> {
