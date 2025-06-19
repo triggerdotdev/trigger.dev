@@ -388,66 +388,74 @@ const zodIpc = new ZodIpcConnection({
           return;
         }
 
-        try {
-          await runTimelineMetrics.measureMetric(
-            "trigger.dev/start",
-            "import",
-            {
-              entryPoint: taskManifest.entryPoint,
-              file: taskManifest.filePath,
-            },
-            async () => {
-              const beforeImport = performance.now();
-              resourceCatalog.setCurrentFileContext(taskManifest.entryPoint, taskManifest.filePath);
-
-              // Load init file if it exists
-              if (workerManifest.initEntryPoint) {
-                try {
-                  await import(normalizeImportPath(workerManifest.initEntryPoint));
-                  console.log(`Loaded init file from ${workerManifest.initEntryPoint}`);
-                } catch (err) {
-                  console.error(`Failed to load init file`, err);
-                  throw err;
-                }
-              }
-
-              await import(normalizeImportPath(taskManifest.entryPoint));
-              resourceCatalog.clearCurrentFileContext();
-              const durationMs = performance.now() - beforeImport;
-
-              console.log(
-                `Imported task ${execution.task.id} [${taskManifest.entryPoint}] in ${durationMs}ms`
-              );
-            }
-          );
-        } catch (err) {
-          console.error(`Failed to import task ${execution.task.id}`, err);
-
-          await sender.send("TASK_RUN_COMPLETED", {
-            execution,
-            result: {
-              ok: false,
-              id: execution.run.id,
-              error: {
-                type: "INTERNAL_ERROR",
-                code: TaskRunErrorCodes.COULD_NOT_IMPORT_TASK,
-                message: err instanceof Error ? err.message : String(err),
-                stackTrace: err instanceof Error ? err.stack : undefined,
-              },
-              usage: {
-                durationMs: 0,
-              },
-              metadata: runMetadataManager.stopAndReturnLastFlush(),
-            },
-          });
-
-          return;
-        }
-
-        process.title = `trigger-dev-worker: ${execution.task.id} ${execution.run.id}`;
-
         // Import the task module
-        const task = resourceCatalog.getTask(execution.task.id);
+        let task = resourceCatalog.getTask(execution.task.id);
+
+        if (!task) {
+          try {
+            await runTimelineMetrics.measureMetric(
+              "trigger.dev/start",
+              "import",
+              {
+                entryPoint: taskManifest.entryPoint,
+                file: taskManifest.filePath,
+              },
+              async () => {
+                const beforeImport = performance.now();
+                resourceCatalog.setCurrentFileContext(
+                  taskManifest.entryPoint,
+                  taskManifest.filePath
+                );
+
+                // Load init file if it exists
+                if (workerManifest.initEntryPoint) {
+                  try {
+                    await import(normalizeImportPath(workerManifest.initEntryPoint));
+                    console.log(`Loaded init file from ${workerManifest.initEntryPoint}`);
+                  } catch (err) {
+                    console.error(`Failed to load init file`, err);
+                    throw err;
+                  }
+                }
+
+                await import(normalizeImportPath(taskManifest.entryPoint));
+                resourceCatalog.clearCurrentFileContext();
+                const durationMs = performance.now() - beforeImport;
+
+                console.log(
+                  `Imported task ${execution.task.id} [${taskManifest.entryPoint}] in ${durationMs}ms`
+                );
+              }
+            );
+          } catch (err) {
+            console.error(`Failed to import task ${execution.task.id}`, err);
+
+            await sender.send("TASK_RUN_COMPLETED", {
+              execution,
+              result: {
+                ok: false,
+                id: execution.run.id,
+                error: {
+                  type: "INTERNAL_ERROR",
+                  code: TaskRunErrorCodes.COULD_NOT_IMPORT_TASK,
+                  message: err instanceof Error ? err.message : String(err),
+                  stackTrace: err instanceof Error ? err.stack : undefined,
+                },
+                usage: {
+                  durationMs: 0,
+                },
+                metadata: runMetadataManager.stopAndReturnLastFlush(),
+              },
+            });
+
+            return;
+          }
+
+          process.title = `trigger-dev-worker: ${execution.task.id} ${execution.run.id}`;
+
+          // Now try and get the task again
+          task = resourceCatalog.getTask(execution.task.id);
+        }
 
         if (!task) {
           console.error(`Could not find task ${execution.task.id}`);

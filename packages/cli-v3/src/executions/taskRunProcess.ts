@@ -78,7 +78,6 @@ export class TaskRunProcess {
   public onTaskRunHeartbeat: Evt<string> = new Evt();
   public onExit: Evt<{ code: number | null; signal: NodeJS.Signals | null; pid?: number }> =
     new Evt();
-  public onIsBeingKilled: Evt<TaskRunProcess> = new Evt();
   public onSendDebugLog: Evt<OnSendDebugLogMessage> = new Evt();
   public onSetSuspendable: Evt<OnSetSuspendableMessage> = new Evt();
 
@@ -100,7 +99,6 @@ export class TaskRunProcess {
 
   unsafeDetachEvtHandlers() {
     this.onExit.detach();
-    this.onIsBeingKilled.detach();
     this.onSendDebugLog.detach();
     this.onSetSuspendable.detach();
     this.onTaskRunHeartbeat.detach();
@@ -408,8 +406,6 @@ export class TaskRunProcess {
     this._isBeingKilled = true;
 
     const killTimeout = this.onExit.waitFor(timeoutInMs);
-
-    this.onIsBeingKilled.post(this);
 
     try {
       this._child?.kill(signal);
