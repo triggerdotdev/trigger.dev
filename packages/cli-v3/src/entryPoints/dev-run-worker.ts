@@ -389,64 +389,74 @@ const zodIpc = new ZodIpcConnection({
           return;
         }
 
-        try {
-          await runTimelineMetrics.measureMetric(
-            "trigger.dev/start",
-            "import",
-            {
-              entryPoint: taskManifest.entryPoint,
-              file: taskManifest.filePath,
-            },
-            async () => {
-              const beforeImport = performance.now();
-              resourceCatalog.setCurrentFileContext(taskManifest.entryPoint, taskManifest.filePath);
+        // First attempt to get the task from the resource catalog
+        let task = resourceCatalog.getTask(execution.task.id);
 
-              // Load init file if it exists
-              if (workerManifest.initEntryPoint) {
-                try {
-                  await import(normalizeImportPath(workerManifest.initEntryPoint));
-                  log(`Loaded init file from ${workerManifest.initEntryPoint}`);
-                } catch (err) {
-                  logError(`Failed to load init file`, err);
-                  throw err;
+        if (!task) {
+          log(`Could not find task ${execution.task.id} in resource catalog, importing...`);
+
+          try {
+            await runTimelineMetrics.measureMetric(
+              "trigger.dev/start",
+              "import",
+              {
+                entryPoint: taskManifest.entryPoint,
+                file: taskManifest.filePath,
+              },
+              async () => {
+                const beforeImport = performance.now();
+                resourceCatalog.setCurrentFileContext(
+                  taskManifest.entryPoint,
+                  taskManifest.filePath
+                );
+
+                // Load init file if it exists
+                if (workerManifest.initEntryPoint) {
+                  try {
+                    await import(normalizeImportPath(workerManifest.initEntryPoint));
+                    log(`Loaded init file from ${workerManifest.initEntryPoint}`);
+                  } catch (err) {
+                    logError(`Failed to load init file`, err);
+                    throw err;
+                  }
                 }
+
+                await import(normalizeImportPath(taskManifest.entryPoint));
+                resourceCatalog.clearCurrentFileContext();
+                const durationMs = performance.now() - beforeImport;
+
+                log(
+                  `Imported task ${execution.task.id} [${taskManifest.entryPoint}] in ${durationMs}ms`
+                );
               }
+            );
+          } catch (err) {
+            logError(`Failed to import task ${execution.task.id}`, err);
 
-              await import(normalizeImportPath(taskManifest.entryPoint));
-              resourceCatalog.clearCurrentFileContext();
-              const durationMs = performance.now() - beforeImport;
-
-              log(
-                `Imported task ${execution.task.id} [${taskManifest.entryPoint}] in ${durationMs}ms`
-              );
-            }
-          );
-        } catch (err) {
-          logError(`Failed to import task ${execution.task.id}`, err);
-
-          await sender.send("TASK_RUN_COMPLETED", {
-            execution,
-            result: {
-              ok: false,
-              id: execution.run.id,
-              error: {
-                type: "INTERNAL_ERROR",
-                code: TaskRunErrorCodes.COULD_NOT_IMPORT_TASK,
-                message: err instanceof Error ? err.message : String(err),
-                stackTrace: err instanceof Error ? err.stack : undefined,
+            await sender.send("TASK_RUN_COMPLETED", {
+              execution,
+              result: {
+                ok: false,
+                id: execution.run.id,
+                error: {
+                  type: "INTERNAL_ERROR",
+                  code: TaskRunErrorCodes.COULD_NOT_IMPORT_TASK,
+                  message: err instanceof Error ? err.message : String(err),
+                  stackTrace: err instanceof Error ? err.stack : undefined,
+                },
+                usage: {
+                  durationMs: 0,
+                },
+                metadata: runMetadataManager.stopAndReturnLastFlush(),
               },
-              usage: {
-                durationMs: 0,
-              },
-              metadata: runMetadataManager.stopAndReturnLastFlush(),
-            },
-          });
+            });
 
-          return;
+            return;
+          }
+
+          // Now try and get the task again
+          task = resourceCatalog.getTask(execution.task.id);
         }
-
-        // Import the task module
-        const task = resourceCatalog.getTask(execution.task.id);
 
         if (!task) {
           logError(`Could not find task ${execution.task.id}`);
