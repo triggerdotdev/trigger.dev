@@ -33,7 +33,7 @@ import { logger } from "./logger.server";
 const workerCatalog = {
   // @deprecated, moved to commonWorker.server.ts
   scheduleEmail: DeliverEmailSchema,
-  // @deprecated, moved to commonWorker.server.ts
+  // @deprecated, but still used when resuming batch runs in a transaction
   "v3.resumeBatchRun": z.object({
     batchRunId: z.string(),
   }),
@@ -164,7 +164,7 @@ function getWorkerQueue() {
           await sendEmail(payload);
         },
       },
-      // @deprecated, moved to commonWorker.server.ts
+      // @deprecated, moved to commonWorker.server.ts but still used when resuming batch runs in a transaction
       "v3.resumeBatchRun": {
         priority: 0,
         maxAttempts: 5,
@@ -215,7 +215,7 @@ function getWorkerQueue() {
           });
         },
       },
-      // @deprecated, moved to commonWorker.server.ts
+      // @deprecated, moved to alertsWorker.server.ts
       "v3.performTaskRunAlerts": {
         priority: 0,
         maxAttempts: 3,
@@ -224,7 +224,7 @@ function getWorkerQueue() {
           return await service.call(payload.runId);
         },
       },
-      // @deprecated, moved to commonWorker.server.ts
+      // @deprecated, moved to alertsWorker.server.ts
       "v3.deliverAlert": {
         priority: 0,
         maxAttempts: 8,
@@ -234,7 +234,7 @@ function getWorkerQueue() {
           return await service.call(payload.alertId);
         },
       },
-      // @deprecated, moved to commonWorker.server.ts
+      // @deprecated, moved to alertsWorker.server.ts
       "v3.performDeploymentAlerts": {
         priority: 0,
         maxAttempts: 3,

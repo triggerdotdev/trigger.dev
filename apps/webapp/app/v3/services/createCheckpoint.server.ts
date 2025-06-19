@@ -392,11 +392,7 @@ export class CreateCheckpointService extends BaseService {
             checkpointEventId: checkpointEvent.id,
           });
 
-          await ResumeBatchRunService.enqueue(
-            batchRun.id,
-            batchRun.batchVersion === "v3",
-            this._prisma
-          );
+          await ResumeBatchRunService.enqueue(batchRun.id, batchRun.batchVersion === "v3");
 
           return {
             success: true,

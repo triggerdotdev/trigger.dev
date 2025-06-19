@@ -237,16 +237,19 @@ function initializeWorker() {
         const service = new RunEngineBatchTriggerService(payload.strategy);
         await service.processBatchTaskRun(payload);
       },
+      // @deprecated, moved to alertsWorker.server.ts
       "v3.deliverAlert": async ({ payload }) => {
         const service = new DeliverAlertService();
 
         await service.call(payload.alertId);
       },
+      // @deprecated, moved to alertsWorker.server.ts
       "v3.performDeploymentAlerts": async ({ payload }) => {
         const service = new PerformDeploymentAlertsService();
 
         await service.call(payload.deploymentId);
       },
+      // @deprecated, moved to alertsWorker.server.ts
       "v3.performTaskRunAlerts": async ({ payload }) => {
         const service = new PerformTaskRunAlertsService();
         await service.call(payload.runId);

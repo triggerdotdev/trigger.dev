@@ -1,6 +1,6 @@
 import { type Prisma, type ProjectAlertChannel } from "@trigger.dev/database";
 import { type prisma } from "~/db.server";
-import { commonWorker } from "~/v3/commonWorker.server";
+import { alertsWorker } from "~/v3/alertsWorker.server";
 import { BaseService } from "../baseService.server";
 import { DeliverAlertService } from "./deliverAlert.server";
 
@@ -62,7 +62,7 @@ export class PerformTaskRunAlertsService extends BaseService {
   }
 
   static async enqueue(runId: string, runAt?: Date) {
-    return await commonWorker.enqueue({
+    return await alertsWorker.enqueue({
       id: `performTaskRunAlerts:${runId}`,
       job: "v3.performTaskRunAlerts",
       payload: { runId },
