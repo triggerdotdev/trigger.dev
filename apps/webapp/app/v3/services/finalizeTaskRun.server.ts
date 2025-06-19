@@ -244,7 +244,7 @@ export class FinalizeTaskRunService extends BaseService {
 
         // This won't resume because this batch does not have a dependent task attempt ID
         // or is in development, but this service will mark the batch as completed
-        await ResumeBatchRunService.enqueue(item.batchTaskRunId, false, this._prisma);
+        await ResumeBatchRunService.enqueue(item.batchTaskRunId, false);
       }
     }
   }

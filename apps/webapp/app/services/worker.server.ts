@@ -33,7 +33,7 @@ import { logger } from "./logger.server";
 const workerCatalog = {
   // @deprecated, moved to commonWorker.server.ts
   scheduleEmail: DeliverEmailSchema,
-  // @deprecated, moved to commonWorker.server.ts
+  // @deprecated, but still used when resuming batch runs in a transaction
   "v3.resumeBatchRun": z.object({
     batchRunId: z.string(),
   }),
@@ -164,7 +164,7 @@ function getWorkerQueue() {
           await sendEmail(payload);
         },
       },
-      // @deprecated, moved to commonWorker.server.ts
+      // @deprecated, moved to commonWorker.server.ts but still used when resuming batch runs in a transaction
       "v3.resumeBatchRun": {
         priority: 0,
         maxAttempts: 5,

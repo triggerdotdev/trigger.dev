@@ -942,6 +942,15 @@ export async function completeBatchTaskRunItemV3(
 ) {
   const isRetry = retryAttempt !== undefined;
 
+  logger.debug("completeBatchTaskRunItemV3", {
+    itemId,
+    batchTaskRunId,
+    scheduleResumeOnComplete,
+    taskRunAttemptId,
+    retryAttempt,
+    isRetry,
+  });
+
   if (isRetry) {
     logger.debug("completeBatchTaskRunItemV3 retrying", {
       itemId,
