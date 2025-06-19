@@ -8,7 +8,7 @@ import {
   Tracer,
 } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
-import { PrismaClient } from "@trigger.dev/database";
+import { PrismaClient, TaskSchedule, TaskScheduleInstance } from "@trigger.dev/database";
 import { Worker, type JobHandlerParams } from "@trigger.dev/redis-worker";
 import { calculateDistributedExecutionTime } from "./distributedScheduling.js";
 import { calculateNextScheduledTimestamp, nextScheduledTimestamps } from "./scheduleCalculation.js";
@@ -643,6 +643,140 @@ export class ScheduleEngine {
         throw error;
       }
     });
+  }
+
+  public recoverSchedulesInEnvironment(projectId: string, environmentId: string) {
+    return startSpan(this.tracer, "recoverSchedulesInEnvironment", async (span) => {
+      this.logger.info("Recovering schedules in environment", {
+        environmentId,
+        projectId,
+      });
+
+      span.setAttribute("environmentId", environmentId);
+
+      const schedules = await this.prisma.taskSchedule.findMany({
+        where: {
+          projectId,
+          instances: {
+            some: {
+              environmentId,
+            },
+          },
+        },
+        select: {
+          id: true,
+          generatorExpression: true,
+          instances: {
+            select: {
+              id: true,
+              environmentId: true,
+              lastScheduledTimestamp: true,
+              nextScheduledTimestamp: true,
+            },
+          },
+        },
+      });
+
+      const instancesWithSchedule = schedules
+        .map((schedule) => ({
+          schedule,
+          instance: schedule.instances.find((instance) => instance.environmentId === environmentId),
+        }))
+        .filter((instance) => instance.instance) as Array<{
+        schedule: Omit<(typeof schedules)[number], "instances">;
+        instance: NonNullable<(typeof schedules)[number]["instances"][number]>;
+      }>;
+
+      if (instancesWithSchedule.length === 0) {
+        this.logger.info("No instances found for environment", {
+          environmentId,
+          projectId,
+        });
+
+        return {
+          recovered: [],
+          skipped: [],
+        };
+      }
+
+      const results = {
+        recovered: [],
+        skipped: [],
+      } as { recovered: string[]; skipped: string[] };
+
+      for (const { instance, schedule } of instancesWithSchedule) {
+        this.logger.info("Recovering schedule", {
+          schedule,
+          instance,
+        });
+
+        const [recoverError, result] = await tryCatch(
+          this.#recoverTaskScheduleInstance({ instance, schedule })
+        );
+
+        if (recoverError) {
+          this.logger.error("Error recovering schedule", {
+            error: recoverError instanceof Error ? recoverError.message : String(recoverError),
+          });
+
+          span.setAttribute("recover_error", true);
+          span.setAttribute(
+            "recover_error_message",
+            recoverError instanceof Error ? recoverError.message : String(recoverError)
+          );
+        } else {
+          span.setAttribute("recover_success", true);
+
+          if (result === "recovered") {
+            results.recovered.push(instance.id);
+          } else {
+            results.skipped.push(instance.id);
+          }
+        }
+      }
+
+      return results;
+    });
+  }
+
+  async #recoverTaskScheduleInstance({
+    instance,
+    schedule,
+  }: {
+    instance: {
+      id: string;
+      environmentId: string;
+      lastScheduledTimestamp: Date | null;
+      nextScheduledTimestamp: Date | null;
+    };
+    schedule: { id: string; generatorExpression: string };
+  }) {
+    // inspect the schedule worker to see if there is a job for this instance
+    const job = await this.worker.getJob(`scheduled-task-instance:${instance.id}`);
+
+    if (job) {
+      this.logger.info("Job already exists for instance", {
+        instanceId: instance.id,
+        job,
+        schedule,
+      });
+
+      return "skipped";
+    }
+
+    this.logger.info("No job found for instance, registering next run", {
+      instanceId: instance.id,
+      schedule,
+    });
+
+    // If the job does not exist, register the next run
+    await this.registerNextTaskScheduleInstance({ instanceId: instance.id });
+
+    return "recovered";
+  }
+
+  async getJob(id: string) {
+    return this.worker.getJob(id);
   }
 
   async quit() {

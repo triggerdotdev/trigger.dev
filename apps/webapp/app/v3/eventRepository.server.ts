@@ -970,7 +970,7 @@ export class EventRepository {
     const propagatedContext = extractContextFromCarrier(options.context ?? {});
 
     const start = process.hrtime.bigint();
-    const startTime = getNowInNanoseconds();
+    const startTime = options.startTime ?? getNowInNanoseconds();
 
     const traceId = options.spanParentAsLink
       ? this.generateTraceId()

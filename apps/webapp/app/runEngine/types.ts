@@ -21,6 +21,7 @@ export type TriggerTaskServiceOptions = {
   runFriendlyId?: string;
   skipChecks?: boolean;
   oneTimeUseToken?: string;
+  overrideCreatedAt?: Date;
 };
 
 // domain/triggerTask.ts

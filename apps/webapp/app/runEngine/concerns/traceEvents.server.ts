@@ -39,6 +39,9 @@ export class DefaultTraceEventsConcern implements TraceEventConcern {
         },
         incomplete: true,
         immediate: true,
+        startTime: request.options?.overrideCreatedAt
+          ? BigInt(request.options.overrideCreatedAt.getTime()) * BigInt(1000000)
+          : undefined,
       },
       async (event, traceContext, traceparent) => {
         return await callback({

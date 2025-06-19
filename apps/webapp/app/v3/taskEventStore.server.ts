@@ -82,17 +82,20 @@ export class TaskEventStore {
     let finalWhere: Prisma.TaskEventWhereInput = where;
 
     if (table === "taskEventPartitioned") {
-      // Add 1 minute to endCreatedAt to make sure we include all events in the range.
+      // Add buffer to start and end of the range to make sure we include all events in the range.
       const end = endCreatedAt
         ? new Date(endCreatedAt.getTime() + env.TASK_EVENT_PARTITIONED_WINDOW_IN_SECONDS * 1000)
         : new Date();
+      const startCreatedAtWithBuffer = new Date(
+        startCreatedAt.getTime() - env.TASK_EVENT_PARTITIONED_WINDOW_IN_SECONDS * 1000
+      );
 
       finalWhere = {
         AND: [
           where,
           {
             createdAt: {
-              gte: startCreatedAt,
+              gte: startCreatedAtWithBuffer,
               lt: end,
             },
           },
@@ -138,6 +141,11 @@ export class TaskEventStore {
       options?.includeDebugLogs === false || options?.includeDebugLogs === undefined;
 
     if (table === "taskEventPartitioned") {
+      const createdAtBufferInMillis = env.TASK_EVENT_PARTITIONED_WINDOW_IN_SECONDS * 1000;
+      const startCreatedAtWithBuffer = new Date(startCreatedAt.getTime() - createdAtBufferInMillis);
+      const $endCreatedAt = endCreatedAt ?? new Date();
+      const endCreatedAtWithBuffer = new Date($endCreatedAt.getTime() + createdAtBufferInMillis);
+
       return await this.readReplica.$queryRaw<TraceEvent[]>`
         SELECT
           "spanId",
@@ -158,11 +166,8 @@ export class TaskEventStore {
         FROM "TaskEventPartitioned"
         WHERE
           "traceId" = ${traceId}
-          AND "createdAt" >= ${startCreatedAt.toISOString()}::timestamp
-          AND "createdAt" < ${(endCreatedAt
-            ? new Date(endCreatedAt.getTime() + env.TASK_EVENT_PARTITIONED_WINDOW_IN_SECONDS * 1000)
-            : new Date()
-          ).toISOString()}::timestamp
+          AND "createdAt" >= ${startCreatedAtWithBuffer.toISOString()}::timestamp
+          AND "createdAt" < ${endCreatedAtWithBuffer.toISOString()}::timestamp
           ${
             filterDebug
               ? Prisma.sql`AND \"kind\" <> CAST('LOG'::text AS "public"."TaskEventKind")`
