@@ -207,7 +207,7 @@ describe("Schedule Recovery", () => {
         );
         expect(jobAfterRecovery).not.toBeNull();
         expect(jobAfterRecovery?.id).toBe(firstJobId);
-        expect(jobAfterRecovery?.deduplicationKey).toBe(taskSchedule.deduplicationKey);
+        expect(jobAfterRecovery?.deduplicationKey).toBe(jobAfterFirstRegistration.deduplicationKey);
       } finally {
         await engine.quit();
       }
