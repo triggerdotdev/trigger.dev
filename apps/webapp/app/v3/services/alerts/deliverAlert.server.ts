@@ -7,21 +7,22 @@ import {
   type WebAPIRequestError,
 } from "@slack/web-api";
 import {
-  Webhook,
-  TaskRunError,
   createJsonErrorObject,
-  type RunFailedWebhook,
   type DeploymentFailedWebhook,
   type DeploymentSuccessWebhook,
   isOOMRunError,
+  type RunFailedWebhook,
+  TaskRunError,
 } from "@trigger.dev/core/v3";
+import { type ProjectAlertChannelType, type ProjectAlertType } from "@trigger.dev/database";
 import assertNever from "assert-never";
 import { subtle } from "crypto";
+import { environmentTitle } from "~/components/environments/EnvironmentLabel";
 import { type Prisma, type prisma, type PrismaClientOrTransaction } from "~/db.server";
 import { env } from "~/env.server";
 import {
-  OrgIntegrationRepository,
   type OrganizationIntegrationForService,
+  OrgIntegrationRepository,
 } from "~/models/orgIntegration.server";
 import {
   ProjectAlertEmailProperties,
@@ -29,18 +30,16 @@ import {
   ProjectAlertSlackStorage,
   ProjectAlertWebhookProperties,
 } from "~/models/projectAlert.server";
+import { ApiRetrieveRunPresenter } from "~/presenters/v3/ApiRetrieveRunPresenter.server";
 import { DeploymentPresenter } from "~/presenters/v3/DeploymentPresenter.server";
 import { sendAlertEmail } from "~/services/email.server";
 import { logger } from "~/services/logger.server";
 import { decryptSecret } from "~/services/secrets/secretStore.server";
-import { commonWorker } from "~/v3/commonWorker.server";
-import { BaseService } from "../baseService.server";
-import { generateFriendlyId } from "~/v3/friendlyIdentifiers";
-import { type ProjectAlertChannelType, type ProjectAlertType } from "@trigger.dev/database";
-import { alertsRateLimiter } from "~/v3/alertsRateLimiter.server";
 import { v3RunPath } from "~/utils/pathBuilder";
-import { ApiRetrieveRunPresenter } from "~/presenters/v3/ApiRetrieveRunPresenter.server";
-import { environmentTitle } from "~/components/environments/EnvironmentLabel";
+import { alertsRateLimiter } from "~/v3/alertsRateLimiter.server";
+import { alertsWorker } from "~/v3/alertsWorker.server";
+import { generateFriendlyId } from "~/v3/friendlyIdentifiers";
+import { BaseService } from "../baseService.server";
 
 type FoundAlert = Prisma.Result<
   typeof prisma.projectAlert,
@@ -1044,7 +1043,7 @@ export class DeliverAlertService extends BaseService {
   }
 
   static async enqueue(alertId: string, runAt?: Date) {
-    return await commonWorker.enqueue({
+    return await alertsWorker.enqueue({
       id: `alert:${alertId}`,
       job: "v3.deliverAlert",
       payload: { alertId },
