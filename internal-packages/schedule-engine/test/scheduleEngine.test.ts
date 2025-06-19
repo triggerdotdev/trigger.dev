@@ -1,9 +1,9 @@
 import { containerTest } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
-import { describe, expect, vi } from "vitest";
-import { ScheduleEngine } from "../src/index.js";
 import { setTimeout } from "timers/promises";
+import { describe, expect, vi } from "vitest";
 import { TriggerScheduledTaskParams } from "../src/engine/types.js";
+import { ScheduleEngine } from "../src/index.js";
 
 describe("ScheduleEngine Integration", () => {
   containerTest(

@@ -312,6 +312,9 @@ export class TriggerTaskServiceV1 extends BaseService {
             },
             incomplete: true,
             immediate: true,
+            startTime: options.overrideCreatedAt
+              ? BigInt(options.overrideCreatedAt.getTime()) * BigInt(1000000)
+              : undefined,
           },
           async (event, traceContext, traceparent) => {
             const run = await autoIncrementCounter.incrementInTransaction(

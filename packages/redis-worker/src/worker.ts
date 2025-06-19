@@ -382,6 +382,10 @@ class Worker<TCatalog extends WorkerCatalog> {
     );
   }
 
+  async getJob(id: string) {
+    return this.queue.getJob(id);
+  }
+
   /**
    * The main loop that each worker runs. It repeatedly polls for items,
    * processes them, and then waits before the next iteration.

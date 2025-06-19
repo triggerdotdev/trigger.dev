@@ -76,6 +76,58 @@ describe("SimpleQueue", () => {
     }
   });
 
+  redisTest("getJob", { timeout: 20_000 }, async ({ redisContainer }) => {
+    const queue = new SimpleQueue({
+      name: "test-1",
+      schema: {
+        test: z.object({
+          value: z.number(),
+        }),
+      },
+      redisOptions: {
+        host: redisContainer.getHost(),
+        port: redisContainer.getPort(),
+        password: redisContainer.getPassword(),
+      },
+      logger: new Logger("test", "log"),
+    });
+
+    try {
+      await queue.enqueue({ id: "1", job: "test", item: { value: 1 }, visibilityTimeoutMs: 2000 });
+      const job1 = await queue.getJob("1");
+
+      expect(job1).toEqual(
+        expect.objectContaining({
+          id: "1",
+          job: "test",
+          item: { value: 1 },
+          visibilityTimeoutMs: 2000,
+          attempt: 0,
+          timestamp: expect.any(Date),
+        })
+      );
+
+      await queue.enqueue({ id: "2", job: "test", item: { value: 2 }, visibilityTimeoutMs: 2000 });
+      const job2 = await queue.getJob("2");
+
+      expect(job2).toEqual(
+        expect.objectContaining({
+          id: "2",
+          job: "test",
+          item: { value: 2 },
+          visibilityTimeoutMs: 2000,
+          attempt: 0,
+          timestamp: expect.any(Date),
+        })
+      );
+
+      const job3 = await queue.getJob("3");
+      expect(job3).toBeNull();
+    } finally {
+      await queue.close();
+    }
+  });
+
   redisTest("no items", { timeout: 20_000 }, async ({ redisContainer }) => {
     const queue = new SimpleQueue({
       name: "test-1",
