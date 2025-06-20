@@ -1,0 +1,122 @@
+---
+title: "Get a webpage's content using Lightpanda browser"
+sidebarTitle: "Lightpanda"
+description: "In these examples, we will show you how to crawl using Lightpanda browser and Trigger.dev."
+---
+
+## Overview
+
+Lightpanda is a purpose-built browser for AI and automation workflows. It is 10x faster, uses 10x less RAM than Chrome headless.
+
+You will find here are a couple of examples of how to use Lightpanda with Trigger.dev.
+
+<Warning>
+  When using Lightpanda, we recommend that you respect robots.txt files and avoid high frequency requesting websites.
+  DDOS could happen fast for small infrastructures.
+</Warning>
+
+## Prerequisites
+
+- A project with [Trigger.dev initialized](/quick-start)
+- A [Lightpanda](https://lightpanda.io/) cloud token (for the 1st example)
+
+## Example \#1 - Get links from a website using Lightpanda cloud & Puppeteer
+
+In this task, we use Lightpanda browser to get links from a provided URL.
+You will have to pass the URL as a payload when triggering the task.
+
+```ts trigger/lightpanda-cloud-puppeteer.ts
+import puppeteer from "puppeteer"
+
+export const lightpandaCloudPuppeteer = task({
+  id: "lightpanda-cloud-puppeteer",
+  run: async (payload: { url: string }) => {
+    const { url } = payload
+
+    const browser = await puppeteer.connect({
+      browserWSEndpoint: "wss://cloud.lightpanda.io/ws?browser=lightpanda&token=TOKEN",
+    })
+    const context = await browser.createBrowserContext()
+    const page = await context.newPage()
+
+    // Dump all the links from the page.
+    await page.goto(url)
+
+    const links = await page.evaluate(() => {
+      return Array.from(document.querySelectorAll('a')).map(row => {
+        return row.getAttribute('href')
+      })
+    })
+
+    await page.close()
+    await context.close()
+    await browser.disconnect()
+
+    return {
+      links,
+    }
+  },
+})
+```
+### Proxies
+
+Proxies can be used with your browser via the proxy query string parameter. By default, the proxy used is "datacenter" which is a pool of shared datacenter IPs.
+`datacenter` accepts an optional `country` query string parameter, an [ISO 3166-1 alpha-2](https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2) country code.
+
+_Example using a German IP :_
+
+```wss://cloud.lightpanda.io/ws?proxy=datacenter&country=de&token=TOKEN```
+
+
+
+### Session
+A session is alive until you close it or the connection is closed. The max time duration of a session is 15 min.
+
+
+## Example \#2 - Launch and use a Lightpanda CDP server
+
+This task initialises a Lightpanda CDP server to allow you to scrape directly via Trigger.dev.
+
+### Configuration
+
+To use this example, you will need to add these build settings to your `trigger.config.ts` file:
+
+```ts trigger.config.ts
+import { defineConfig } from "@trigger.dev/sdk/v3";
+import { lightpanda } from "@trigger.dev/build/extensions/lightpanda";
+
+export default defineConfig({
+  project: "<project ref>",
+  // Your other config settings...
+  build: {
+    // This is required to use the Puppeteer library
+    extensions: [lightpanda()],
+  },
+});
+```
+That will set a `LIGHTPANDA_BROWSER_PATH` env variable that will be needed to get access to the binary.
+
+### Task
+
+Your task will have to launch a child process in order to have the websocket available to scrape using Puppeteer.
+
+```ts trigger/lightpandaLaunch.ts
+import puppeteer from "puppeteer";
+
+export const lightpandaLaunch = task({
+  id: "lightpanda-launch",
+  run: async (payload: { url: string }) => {
+
+    // use browserWSEndpoint to pass the Lightpanda's CDP server address.
+    const browser = await puppeteer.connect({
+      browserWSEndpoint: "ws://127.0.0.1:9222",
+    })
+
+    const page = await browser.newPage();
+
+    return {
+      data: scrapeResult,
+    };
+  },
+});
+```

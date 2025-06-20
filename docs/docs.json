@@ -359,6 +359,7 @@
               "guides/examples/fal-ai-realtime",
               "guides/examples/ffmpeg-video-processing",
               "guides/examples/firecrawl-url-crawl",
+              "guides/examples/lightpanda",
               "guides/examples/libreoffice-pdf-conversion",
               "guides/examples/open-ai-with-retrying",
               "guides/examples/pdf-to-image",
