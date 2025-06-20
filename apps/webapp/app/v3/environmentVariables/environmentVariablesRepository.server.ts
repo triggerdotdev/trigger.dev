@@ -810,6 +810,7 @@ export const RuntimeEnvironmentForEnvRepoPayload = {
     apiKey: true,
     organizationId: true,
     branchName: true,
+    builtInEnvironmentVariableOverrides: true,
   },
 } as const;
 
@@ -1025,5 +1026,93 @@ async function resolveBuiltInProdVariables(
 async function resolveCommonBuiltInVariables(
   runtimeEnvironment: RuntimeEnvironmentForEnvRepo
 ): Promise<Array<EnvironmentVariable>> {
-  return [];
+  return [
+    {
+      key: "TRIGGER_OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT",
+      value: resolveBuiltInEnvironmentVariableOverrides(
+        "TRIGGER_OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT",
+        runtimeEnvironment,
+        String(env.TRIGGER_OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT)
+      ),
+    },
+    {
+      key: "TRIGGER_OTEL_LOG_ATTRIBUTE_COUNT_LIMIT",
+      value: resolveBuiltInEnvironmentVariableOverrides(
+        "TRIGGER_OTEL_LOG_ATTRIBUTE_COUNT_LIMIT",
+        runtimeEnvironment,
+        String(env.TRIGGER_OTEL_LOG_ATTRIBUTE_COUNT_LIMIT)
+      ),
+    },
+    {
+      key: "TRIGGER_OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT",
+      value: resolveBuiltInEnvironmentVariableOverrides(
+        "TRIGGER_OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT",
+        runtimeEnvironment,
+        String(env.TRIGGER_OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT)
+      ),
+    },
+    {
+      key: "TRIGGER_OTEL_LOG_ATTRIBUTE_VALUE_LENGTH_LIMIT",
+      value: resolveBuiltInEnvironmentVariableOverrides(
+        "TRIGGER_OTEL_LOG_ATTRIBUTE_VALUE_LENGTH_LIMIT",
+        runtimeEnvironment,
+        String(env.TRIGGER_OTEL_LOG_ATTRIBUTE_VALUE_LENGTH_LIMIT)
+      ),
+    },
+    {
+      key: "TRIGGER_OTEL_SPAN_EVENT_COUNT_LIMIT",
+      value: resolveBuiltInEnvironmentVariableOverrides(
+        "TRIGGER_OTEL_SPAN_EVENT_COUNT_LIMIT",
+        runtimeEnvironment,
+        String(env.TRIGGER_OTEL_SPAN_EVENT_COUNT_LIMIT)
+      ),
+    },
+    {
+      key: "TRIGGER_OTEL_LINK_COUNT_LIMIT",
+      value: resolveBuiltInEnvironmentVariableOverrides(
+        "TRIGGER_OTEL_LINK_COUNT_LIMIT",
+        runtimeEnvironment,
+        String(env.TRIGGER_OTEL_LINK_COUNT_LIMIT)
+      ),
+    },
+    {
+      key: "TRIGGER_OTEL_ATTRIBUTE_PER_LINK_COUNT_LIMIT",
+      value: resolveBuiltInEnvironmentVariableOverrides(
+        "TRIGGER_OTEL_ATTRIBUTE_PER_LINK_COUNT_LIMIT",
+        runtimeEnvironment,
+        String(env.TRIGGER_OTEL_ATTRIBUTE_PER_LINK_COUNT_LIMIT)
+      ),
+    },
+    {
+      key: "TRIGGER_OTEL_ATTRIBUTE_PER_EVENT_COUNT_LIMIT",
+      value: resolveBuiltInEnvironmentVariableOverrides(
+        "TRIGGER_OTEL_ATTRIBUTE_PER_EVENT_COUNT_LIMIT",
+        runtimeEnvironment,
+        String(env.TRIGGER_OTEL_ATTRIBUTE_PER_EVENT_COUNT_LIMIT)
+      ),
+    },
+  ];
+}
+
+function resolveBuiltInEnvironmentVariableOverrides(
+  key: string,
+  runtimeEnvironment: RuntimeEnvironmentForEnvRepo,
+  defaultValue: string
+) {
+  const overrides = runtimeEnvironment.builtInEnvironmentVariableOverrides;
+
+  if (!overrides) {
+    return defaultValue;
+  }
+
+  if (
+    !Array.isArray(overrides) &&
+    typeof overrides === "object" &&
+    key in overrides &&
+    typeof overrides[key] === "string"
+  ) {
+    return overrides[key];
+  }
+
+  return defaultValue;
 }
