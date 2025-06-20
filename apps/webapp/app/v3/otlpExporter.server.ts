@@ -451,11 +451,7 @@ function extractEventProperties(attributes: KeyValue[], prefix?: string) {
       prefix,
       SemanticInternalAttributes.ATTEMPT_NUMBER,
     ]),
-    taskSlug: extractStringAttribute(
-      attributes,
-      [prefix, SemanticInternalAttributes.TASK_SLUG],
-      "unknown"
-    ),
+    taskSlug: extractStringAttribute(attributes, [prefix, SemanticInternalAttributes.TASK_SLUG]),
     taskPath: extractStringAttribute(attributes, [prefix, SemanticInternalAttributes.TASK_PATH]),
     taskExportName: "@deprecated",
     workerId: extractStringAttribute(attributes, [prefix, SemanticInternalAttributes.WORKER_ID]),
