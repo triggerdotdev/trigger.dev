@@ -1,6 +1,8 @@
 import { Attributes } from "@opentelemetry/api";
+import { debug } from "node:util";
 
 export const NULL_SENTINEL = "$@null((";
+export const EMPTY_ARRAY_SENTINEL = "$@empty_array((";
 export const CIRCULAR_REFERENCE_SENTINEL = "$@circular((";
 
 export function flattenAttributes(
@@ -17,6 +19,11 @@ export function flattenAttributes(
 
   if (obj === null) {
     result[prefix || ""] = NULL_SENTINEL;
+    return result;
+  }
+
+  if (Array.isArray(obj) && obj.length === 0) {
+    result[prefix || ""] = EMPTY_ARRAY_SENTINEL;
     return result;
   }
 
@@ -66,6 +73,10 @@ export function flattenAttributes(
           }
         }
       }
+
+      if (!value.length) {
+        result[newPrefix] = EMPTY_ARRAY_SENTINEL;
+      }
     } else if (isRecord(value)) {
       // update null check here
       Object.assign(result, flattenAttributes(value, newPrefix, seen));
@@ -98,7 +109,7 @@ export function unflattenAttributes(
     Object.keys(obj).length === 1 &&
     Object.keys(obj)[0] === ""
   ) {
-    return rehydrateNull(obj[""]) as any;
+    return rehydrateEmptyValues(obj[""]) as any;
   }
 
   if (Object.keys(obj).length === 0) {
@@ -150,7 +161,7 @@ export function unflattenAttributes(
     const lastPart = parts[parts.length - 1];
 
     if (lastPart !== undefined) {
-      current[lastPart] = rehydrateNull(rehydrateCircular(value));
+      current[lastPart] = rehydrateEmptyValues(rehydrateCircular(value));
     }
   }
 
@@ -201,9 +212,13 @@ export function primitiveValueOrflattenedAttributes(
   return attributes;
 }
 
-function rehydrateNull(value: any): any {
+function rehydrateEmptyValues(value: any): any {
   if (value === NULL_SENTINEL) {
     return null;
+  }
+
+  if (value === EMPTY_ARRAY_SENTINEL) {
+    return [];
   }
 
   return value;
