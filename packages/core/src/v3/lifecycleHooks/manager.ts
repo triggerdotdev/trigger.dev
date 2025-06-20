@@ -69,17 +69,6 @@ export class StandardLifecycleHooksManager implements LifecycleHooksManager {
   private onCancelHookListeners: (() => Promise<void>)[] = [];
 
   reset(): void {
-    this.taskInitHooks.clear();
-    this.taskStartHooks.clear();
-    this.taskFailureHooks.clear();
-    this.taskSuccessHooks.clear();
-    this.taskCompleteHooks.clear();
-    this.taskResumeHooks.clear();
-    this.taskCatchErrorHooks.clear();
-    this.taskMiddlewareHooks.clear();
-    this.taskCleanupHooks.clear();
-    this.taskWaitHooks.clear();
-    this.taskCancelHooks.clear();
     this.onCancelHookListeners.length = 0;
     this.onWaitHookListeners.length = 0;
     this.onResumeHookListeners.length = 0;
