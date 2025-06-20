@@ -19,6 +19,7 @@ import { sanitizeEnvVars } from "../utilities/sanitizeEnvVars.js";
 import { join } from "node:path";
 import { BackgroundWorker } from "../dev/backgroundWorker.js";
 import { eventBus } from "../utilities/eventBus.js";
+import { TaskRunProcessPool } from "../dev/taskRunProcessPool.js";
 
 type DevRunControllerOptions = {
   runFriendlyId: string;
@@ -26,6 +27,7 @@ type DevRunControllerOptions = {
   httpClient: CliApiClient;
   logLevel: LogLevel;
   heartbeatIntervalSeconds?: number;
+  taskRunProcessPool: TaskRunProcessPool;
   onSubscribeToRunNotifications: (run: Run, snapshot: Snapshot) => void;
   onUnsubscribeFromRunNotifications: (run: Run, snapshot: Snapshot) => void;
   onFinished: () => void;
@@ -605,45 +607,58 @@ export class DevRunController {
 
     this.snapshotPoller.start();
 
-    this.taskRunProcess = new TaskRunProcess({
-      workerManifest: this.opts.worker.manifest,
-      env: {
-        ...sanitizeEnvVars(envVars ?? {}),
-        ...sanitizeEnvVars(this.opts.worker.params.env),
-        TRIGGER_WORKER_MANIFEST_PATH: join(this.opts.worker.build.outputPath, "index.json"),
-        RUN_WORKER_SHOW_LOGS: this.opts.logLevel === "debug" ? "true" : "false",
-        TRIGGER_PROJECT_REF: execution.project.ref,
-      },
-      serverWorker: {
+    // Get process from pool instead of creating new one
+    const { taskRunProcess, isReused } = await this.opts.taskRunProcessPool.getProcess(
+      this.opts.worker.manifest,
+      {
         id: "unmanaged",
         contentHash: this.opts.worker.build.contentHash,
         version: this.opts.worker.serverWorker?.version,
         engine: "V2",
       },
-      machineResources: execution.machine,
-    }).initialize();
+      execution.machine,
+      {
+        TRIGGER_WORKER_MANIFEST_PATH: join(this.opts.worker.build.outputPath, "index.json"),
+        RUN_WORKER_SHOW_LOGS: this.opts.logLevel === "debug" ? "true" : "false",
+        TRIGGER_WORKER_VERSION: this.opts.worker.serverWorker?.version,
+      }
+    );
 
-    logger.debug("executing task run process", {
+    this.taskRunProcess = taskRunProcess;
+
+    // Update the process environment for this specific run
+    // Note: We may need to enhance TaskRunProcess to support updating env vars
+    logger.debug("executing task run process from pool", {
       attemptNumber: execution.attempt.number,
       runId: execution.run.id,
     });
 
-    const completion = await this.taskRunProcess.execute({
-      payload: {
-        execution,
-        traceContext: execution.run.traceContext ?? {},
-        metrics,
+    const completion = await this.taskRunProcess.execute(
+      {
+        payload: {
+          execution,
+          traceContext: execution.run.traceContext ?? {},
+          metrics,
+        },
+        messageId: run.friendlyId,
+        env: {
+          ...sanitizeEnvVars(envVars ?? {}),
+          ...sanitizeEnvVars(this.opts.worker.params.env),
+          TRIGGER_PROJECT_REF: execution.project.ref,
+        },
       },
-      messageId: run.friendlyId,
-    });
+      isReused
+    );
 
     logger.debug("Completed run", completion);
 
+    // Return process to pool instead of killing it
     try {
-      await this.taskRunProcess.cleanup(true);
+      const version = this.opts.worker.serverWorker?.version || "unknown";
+      await this.opts.taskRunProcessPool.returnProcess(this.taskRunProcess, version);
       this.taskRunProcess = undefined;
     } catch (error) {
-      logger.debug("Failed to cleanup task run process, submitting completion anyway", {
+      logger.debug("Failed to return task run process to pool, submitting completion anyway", {
         error,
       });
     }
@@ -758,11 +773,15 @@ export class DevRunController {
   }
 
   private async runFinished() {
-    // Kill the run process
-    try {
-      await this.taskRunProcess?.kill("SIGKILL");
-    } catch (error) {
-      logger.debug("Failed to kill task run process", { error });
+    // Return the process to the pool instead of killing it directly
+    if (this.taskRunProcess) {
+      try {
+        const version = this.opts.worker.serverWorker?.version || "unknown";
+        await this.opts.taskRunProcessPool.returnProcess(this.taskRunProcess, version);
+        this.taskRunProcess = undefined;
+      } catch (error) {
+        logger.debug("Failed to return task run process to pool during runFinished", { error });
+      }
     }
 
     this.runHeartbeat.stop();
@@ -794,9 +813,11 @@ export class DevRunController {
 
     if (this.taskRunProcess && !this.taskRunProcess.isBeingKilled) {
       try {
-        await this.taskRunProcess.cleanup(true);
+        const version = this.opts.worker.serverWorker?.version || "unknown";
+        await this.opts.taskRunProcessPool.returnProcess(this.taskRunProcess, version);
+        this.taskRunProcess = undefined;
       } catch (error) {
-        logger.debug("Failed to cleanup task run process", { error });
+        logger.debug("Failed to return task run process to pool during stop", { error });
       }
     }
 

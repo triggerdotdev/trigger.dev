@@ -60,4 +60,5 @@ export const SemanticInternalAttributes = {
   METRIC_EVENTS: "$metrics.events",
   EXECUTION_ENVIRONMENT: "exec_env",
   WARM_START: "warm_start",
+  ATTEMPT_EXECUTION_COUNT: "$trigger.executionCount",
 };

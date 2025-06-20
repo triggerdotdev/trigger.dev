@@ -1,6 +1,7 @@
 export interface TimeoutManager {
   abortAfterTimeout: (timeoutInSeconds?: number) => AbortController;
   signal?: AbortSignal;
+  reset: () => void;
 }
 
 export class TaskRunExceededMaxDuration extends Error {

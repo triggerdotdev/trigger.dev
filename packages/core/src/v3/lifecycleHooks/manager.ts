@@ -68,6 +68,12 @@ export class StandardLifecycleHooksManager implements LifecycleHooksManager {
   private taskCancelHooks: Map<string, RegisteredHookFunction<AnyOnCancelHookFunction>> = new Map();
   private onCancelHookListeners: (() => Promise<void>)[] = [];
 
+  reset(): void {
+    this.onCancelHookListeners.length = 0;
+    this.onWaitHookListeners.length = 0;
+    this.onResumeHookListeners.length = 0;
+  }
+
   registerOnCancelHookListener(listener: () => Promise<void>): void {
     this.onCancelHookListeners.push(listener);
   }

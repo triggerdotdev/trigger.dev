@@ -48,6 +48,11 @@ export class UsageAPI implements UsageManager {
     return this.#getUsageManager().flush();
   }
 
+  public reset() {
+    this.#getUsageManager().reset();
+    this.disable();
+  }
+
   #getUsageManager(): UsageManager {
     return getGlobal(API_NAME) ?? NOOP_USAGE_MANAGER;
   }

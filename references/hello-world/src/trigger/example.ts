@@ -4,8 +4,20 @@ import { ResourceMonitor } from "../resourceMonitor.js";
 
 export const helloWorldTask = task({
   id: "hello-world",
+  retry: {
+    maxAttempts: 3,
+    minTimeoutInMs: 500,
+    maxTimeoutInMs: 1000,
+    factor: 1.5,
+  },
+  onStart: async ({ payload, ctx, init }) => {
+    logger.info("Hello, world from the onStart hook", { payload, init });
+  },
   run: async (payload: any, { ctx }) => {
     logger.info("Hello, world from the init", { ctx, payload });
+    logger.info("env vars", {
+      env: process.env,
+    });
 
     logger.debug("debug: Hello, world!", { payload });
     logger.info("info: Hello, world!", { payload });
@@ -16,6 +28,12 @@ export const helloWorldTask = task({
     logger.trace("my trace", async (span) => {
       logger.debug("some log", { span });
     });
+
+    await setTimeout(payload.sleepFor ?? 180_000);
+
+    if (payload.throwError) {
+      throw new Error("Forced error to cause a retry");
+    }
 
     logger.trace(
       "my trace",
