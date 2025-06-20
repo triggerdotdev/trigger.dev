@@ -76,7 +76,7 @@ describe("createTimelineSpanEventsFromSpanEvents", () => {
     expect(result.some((event) => event.name === "Dequeued")).toBe(true);
     expect(result.some((event) => event.name === "Launched")).toBe(true);
     expect(result.some((event) => event.name === "Attempt created")).toBe(true);
-    expect(result.some((event) => event.name === "Importing src/trigger/chat.ts")).toBe(true);
+    expect(result.some((event) => event.name === "Importing task file")).toBe(true);
   });
 
   test("should sort events by timestamp", () => {
@@ -86,7 +86,7 @@ describe("createTimelineSpanEventsFromSpanEvents", () => {
     expect(result[0].name).toBe("Dequeued");
     expect(result[1].name).toBe("Attempt created");
     expect(result[2].name).toBe("Launched");
-    expect(result[3].name).toBe("Importing src/trigger/chat.ts");
+    expect(result[3].name).toBe("Importing Importing task file");
   });
 
   test("should calculate offsets correctly from the first event", () => {
@@ -176,7 +176,7 @@ describe("createTimelineSpanEventsFromSpanEvents", () => {
     expect(result.find((e) => e.name === "Attempt created")?.helpText).toBe(
       "An attempt was created for the run"
     );
-    expect(result.find((e) => e.name === "Importing src/trigger/chat.ts")?.helpText).toBe(
+    expect(result.find((e) => e.name === "Importing task file")?.helpText).toBe(
       "A task file was imported"
     );
   });
@@ -187,7 +187,7 @@ describe("createTimelineSpanEventsFromSpanEvents", () => {
     expect(result.find((e) => e.name === "Dequeued")?.duration).toBe(0);
     expect(result.find((e) => e.name === "Launched")?.duration).toBe(127);
     expect(result.find((e) => e.name === "Attempt created")?.duration).toBe(56);
-    expect(result.find((e) => e.name === "Importing src/trigger/chat.ts")?.duration).toBe(67);
+    expect(result.find((e) => e.name === "Importing task file")?.duration).toBe(67);
   });
 
   test("should use fallback name for import event without file property", () => {
@@ -214,7 +214,7 @@ describe("createTimelineSpanEventsFromSpanEvents", () => {
     // Without fork event, import should also be visible for non-admins
     expect(result.length).toBe(2);
     expect(result.some((event) => event.name === "Dequeued")).toBe(true);
-    expect(result.some((event) => event.name === "Importing src/trigger/chat.ts")).toBe(true);
+    expect(result.some((event) => event.name === "Importing task file")).toBe(true);
 
     // create_attempt should still be admin-only
     expect(result.some((event) => event.name === "Attempt created")).toBe(false);

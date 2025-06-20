@@ -39,7 +39,8 @@ class OTLPExporter {
 
   constructor(
     private readonly _eventRepository: EventRepository,
-    private readonly _verbose: boolean
+    private readonly _verbose: boolean,
+    private readonly _spanAttributeValueLengthLimit: number
   ) {
     this._tracer = trace.getTracer("otlp-exporter");
   }
@@ -52,7 +53,7 @@ class OTLPExporter {
       this.#logExportTracesVerbose(request);
 
       const events = this.#filterResourceSpans(request.resourceSpans).flatMap((resourceSpan) => {
-        return convertSpansToCreateableEvents(resourceSpan);
+        return convertSpansToCreateableEvents(resourceSpan, this._spanAttributeValueLengthLimit);
       });
 
       const enrichedEvents = enrichCreatableEvents(events);
@@ -79,7 +80,7 @@ class OTLPExporter {
       this.#logExportLogsVerbose(request);
 
       const events = this.#filterResourceLogs(request.resourceLogs).flatMap((resourceLog) => {
-        return convertLogsToCreateableEvents(resourceLog);
+        return convertLogsToCreateableEvents(resourceLog, this._spanAttributeValueLengthLimit);
       });
 
       const enrichedEvents = enrichCreatableEvents(events);
@@ -180,7 +181,10 @@ class OTLPExporter {
   }
 }
 
-function convertLogsToCreateableEvents(resourceLog: ResourceLogs): Array<CreatableEvent> {
+function convertLogsToCreateableEvents(
+  resourceLog: ResourceLogs,
+  spanAttributeValueLengthLimit: number
+): Array<CreatableEvent> {
   const resourceAttributes = resourceLog.resource?.attributes ?? [];
 
   const resourceProperties = extractEventProperties(resourceAttributes);
@@ -213,10 +217,10 @@ function convertLogsToCreateableEvents(resourceLog: ResourceLogs): Array<Creatab
           status: logLevelToEventStatus(log.severityNumber),
           startTime: log.timeUnixNano,
           properties: {
-            ...convertKeyValueItemsToMap(log.attributes ?? [], [
-              SemanticInternalAttributes.SPAN_ID,
-              SemanticInternalAttributes.SPAN_PARTIAL,
-            ]),
+            ...convertKeyValueItemsToMap(
+              truncateAttributes(log.attributes ?? [], spanAttributeValueLengthLimit),
+              [SemanticInternalAttributes.SPAN_ID, SemanticInternalAttributes.SPAN_PARTIAL]
+            ),
           },
           style: convertKeyValueItemsToMap(
             pickAttributes(log.attributes ?? [], SemanticInternalAttributes.STYLE),
@@ -283,7 +287,10 @@ function convertLogsToCreateableEvents(resourceLog: ResourceLogs): Array<Creatab
   });
 }
 
-function convertSpansToCreateableEvents(resourceSpan: ResourceSpans): Array<CreatableEvent> {
+function convertSpansToCreateableEvents(
+  resourceSpan: ResourceSpans,
+  spanAttributeValueLengthLimit: number
+): Array<CreatableEvent> {
   const resourceAttributes = resourceSpan.resource?.attributes ?? [];
 
   const resourceProperties = extractEventProperties(resourceAttributes);
@@ -323,10 +330,10 @@ function convertSpansToCreateableEvents(resourceSpan: ResourceSpans): Array<Crea
           events: spanEventsToEventEvents(span.events ?? []),
           duration: span.endTimeUnixNano - span.startTimeUnixNano,
           properties: {
-            ...convertKeyValueItemsToMap(span.attributes ?? [], [
-              SemanticInternalAttributes.SPAN_ID,
-              SemanticInternalAttributes.SPAN_PARTIAL,
-            ]),
+            ...convertKeyValueItemsToMap(
+              truncateAttributes(span.attributes ?? [], spanAttributeValueLengthLimit),
+              [SemanticInternalAttributes.SPAN_ID, SemanticInternalAttributes.SPAN_PARTIAL]
+            ),
           },
           style: convertKeyValueItemsToMap(
             pickAttributes(span.attributes ?? [], SemanticInternalAttributes.STYLE),
@@ -852,7 +859,23 @@ function binaryToHex(buffer: Buffer | string | undefined): string | undefined {
   return Buffer.from(Array.from(buffer)).toString("hex");
 }
 
+function truncateAttributes(attributes: KeyValue[], maximumLength: number = 1024): KeyValue[] {
+  return attributes.map((attribute) => {
+    return isStringValue(attribute.value)
+      ? {
+          key: attribute.key,
+          value: {
+            stringValue: attribute.value.stringValue.slice(0, maximumLength),
+          },
+        }
+      : attribute;
+  });
+}
+
 export const otlpExporter = new OTLPExporter(
   eventRepository,
-  process.env.OTLP_EXPORTER_VERBOSE === "1"
+  process.env.OTLP_EXPORTER_VERBOSE === "1",
+  process.env.SERVER_OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT
+    ? parseInt(process.env.SERVER_OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT, 10)
+    : 8192
 );
