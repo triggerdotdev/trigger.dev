@@ -196,6 +196,13 @@ postgresql:
     []
     # - name: CUSTOM_VAR
     #   value: "custom-value"
+  # Extra command line arguments for PostgreSQL
+  extraArgs:
+    []
+    # - "-c"
+    # - "log_statement=all"
+    # - "-c"
+    # - "max_slot_wal_keep_size=1000000000"
 
 # Redis configuration
 redis:

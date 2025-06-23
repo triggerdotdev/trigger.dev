@@ -50,6 +50,9 @@ spec:
           args:
             - "-c"
             - "wal_level=logical"
+            {{- with .Values.postgresql.extraArgs }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
           livenessProbe:
             exec:
               command:
