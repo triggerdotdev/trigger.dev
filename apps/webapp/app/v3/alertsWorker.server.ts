@@ -61,7 +61,7 @@ function initializeWorker() {
     pollIntervalMs: env.ALERTS_WORKER_POLL_INTERVAL,
     immediatePollIntervalMs: env.ALERTS_WORKER_IMMEDIATE_POLL_INTERVAL,
     shutdownTimeoutMs: env.ALERTS_WORKER_SHUTDOWN_TIMEOUT_MS,
-    logger: new Logger("AlertsWorker", "debug"),
+    logger: new Logger("AlertsWorker", env.ALERTS_WORKER_LOG_LEVEL),
     jobs: {
       "v3.deliverAlert": async ({ payload }) => {
         const service = new DeliverAlertService();

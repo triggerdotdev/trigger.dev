@@ -196,7 +196,7 @@ function initializeWorker() {
     pollIntervalMs: env.COMMON_WORKER_POLL_INTERVAL,
     immediatePollIntervalMs: env.COMMON_WORKER_IMMEDIATE_POLL_INTERVAL,
     shutdownTimeoutMs: env.COMMON_WORKER_SHUTDOWN_TIMEOUT_MS,
-    logger: new Logger("CommonWorker", "debug"),
+    logger: new Logger("CommonWorker", env.COMMON_WORKER_LOG_LEVEL),
     jobs: {
       scheduleEmail: async ({ payload }) => {
         await sendEmail(payload);
