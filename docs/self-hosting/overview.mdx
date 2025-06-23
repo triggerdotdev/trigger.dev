@@ -19,7 +19,14 @@ Because we don't manage self-hosted instances, we cannot guarantee how Trigger.d
 
 For more details, carry on reading and follow our guides for instructions on setting up a self-hosted Trigger.dev instance. If you prefer a managed experience, you can [sign up](https://cloud.trigger.dev/login) for our Cloud offering instead - we have a generous [free tier](https://trigger.dev/pricing) for you to try it out.
 
-{/* TODO: Architecture section with updated diagram */}
+## Architecture
+
+The self-hosted version is a set of containers running on your own infrastructure. It's split into two parts that can be scaled independently:
+
+- **Webapp**: includes the dashboard and other services like Redis and Postgres.
+- **Worker**: includes the supervisor and the runners that execute your tasks.
+
+![Self-hosting architecture](./architecture.png)
 
 ## Feature comparison
 
