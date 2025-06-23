@@ -155,6 +155,38 @@ spec:
                 secretKeyRef:
                   name: {{ include "trigger-v4.fullname" . }}-secrets
                   key: object-store-secret-access-key
+            {{- if .Values.webapp.internal.otel.trace.exporterUrl }}
+            - name: INTERNAL_OTEL_TRACE_EXPORTER_URL
+              value: {{ .Values.webapp.internal.otel.trace.exporterUrl | quote }}
+            {{- end }}
+            {{- if .Values.webapp.internal.otel.trace.exporterAuthHeaders }}
+            - name: INTERNAL_OTEL_TRACE_EXPORTER_AUTH_HEADERS
+              value: {{ .Values.webapp.internal.otel.trace.exporterAuthHeaders | quote }}
+            {{- end }}
+            - name: INTERNAL_OTEL_TRACE_LOGGING_ENABLED
+              value: {{ .Values.webapp.internal.otel.trace.loggingEnabled | quote }}
+            - name: INTERNAL_OTEL_TRACE_SAMPLING_RATE
+              value: {{ .Values.webapp.internal.otel.trace.samplingRate | quote }}
+            - name: INTERNAL_OTEL_TRACE_INSTRUMENT_PRISMA_ENABLED
+              value: {{ .Values.webapp.internal.otel.trace.instrumentPrismaEnabled | quote }}
+            - name: INTERNAL_OTEL_TRACE_DISABLED
+              value: {{ .Values.webapp.internal.otel.trace.disabled | quote }}
+            {{- if .Values.webapp.internal.otel.log.exporterUrl }}
+            - name: INTERNAL_OTEL_LOG_EXPORTER_URL
+              value: {{ .Values.webapp.internal.otel.log.exporterUrl | quote }}
+            {{- end }}
+            {{- if .Values.webapp.internal.otel.metric.exporterUrl }}
+            - name: INTERNAL_OTEL_METRIC_EXPORTER_URL
+              value: {{ .Values.webapp.internal.otel.metric.exporterUrl | quote }}
+            {{- end }}
+            {{- if .Values.webapp.internal.otel.metric.exporterAuthHeaders }}
+            - name: INTERNAL_OTEL_METRIC_EXPORTER_AUTH_HEADERS
+              value: {{ .Values.webapp.internal.otel.metric.exporterAuthHeaders | quote }}
+            {{- end }}
+            - name: INTERNAL_OTEL_METRIC_EXPORTER_ENABLED
+              value: {{ .Values.webapp.internal.otel.metric.exporterEnabled | quote }}
+            - name: INTERNAL_OTEL_METRIC_EXPORTER_INTERVAL_MS
+              value: {{ .Values.webapp.internal.otel.metric.exporterIntervalMs | quote }}
             {{- with .Values.webapp.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
