@@ -118,22 +118,92 @@ This task initialises a Lightpanda CDP server to allow you to scrape directly vi
 ### Task
 Your task will have to launch a child process in order to have the websocket available to scrape using Puppeteer.
 
-```ts trigger/lightpandaLaunch.ts
-import puppeteer from "puppeteer"
+```ts trigger/lightpandaCDP.ts
+import { logger, task } from '@trigger.dev/sdk/v3'
+import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import puppeteer from 'puppeteer'
 
-export const lightpandaLaunch = task({
-  id: "lightpanda-launch",
-  run: async (payload: { url: string }) => {
+const spawnLightpanda = async (log: typeof logger) =>
+  new Promise<ChildProcessWithoutNullStreams>((resolve, reject) => {
+    const child = spawn(process.env.LIGHTPANDA_BROWSER_PATH as string, [
+      'serve',
+      '--host',
+      '127.0.0.1',
+      '--port',
+      '9222',
+      '--log_level',
+      'info',
+    ])
 
-    // use browserWSEndpoint to pass the Lightpanda's CDP server address.
-    const browser = await puppeteer.connect({
-      browserWSEndpoint: "ws://127.0.0.1:9222",
+    child.on('spawn', async () => {
+      log.info("Running Lightpanda's CDP server…", {
+        pid: child.pid,
+      })
+
+      await new Promise(resolve => setTimeout(resolve, 250))
+      resolve(child)
     })
+    child.on('error', e => reject(e))
+  })
 
-    const page = await browser.newPage()
+export const lightpandaCDP = task({
+  id: 'lightpanda-cdp',
+  machine: {
+    preset: 'micro',
+  },
+  run: async (payload: { url: string }, { ctx }) => {
+    logger.log("Lets get a page's links with Lightpanda!", { payload, ctx })
 
-    return {
-      data: scrapeResult,
+    if (!payload.url) {
+      logger.warn('Please define the payload url')
+      throw new Error('payload.url is undefined')
+    }
+
+    if (typeof process.env.LIGHTPANDA_BROWSER_PATH === 'undefined') {
+      logger.warn('Please define the env variable $LIGHTPANDA_BROWSER_PATH', {
+        env: process.env,
+      })
+
+      throw new Error('$LIGHTPANDA_BROWSER_PATH is undefined')
+    }
+
+    try {
+      // Launch Lightpanda's CDP server
+      const lpProcess = await spawnLightpanda(logger)
+
+      const browser = await puppeteer.connect({
+        browserWSEndpoint: 'ws://127.0.0.1:9222',
+      })
+      const context = await browser.createBrowserContext()
+      const page = await context.newPage()
+
+      // Dump all the links from the page.
+      await page.goto(payload.url)
+
+      const links = await page.evaluate(() => {
+        return Array.from(document.querySelectorAll('a')).map(row => {
+          return row.getAttribute('href')
+        })
+      })
+
+      logger.info('Processing done')
+      logger.info('Shutting down…')
+
+      // Close Puppeteer instance
+      await browser.close()
+
+      // Stop Lightpanda's CDP Server
+      lpProcess.stdout.destroy()
+      lpProcess.stderr.destroy()
+      lpProcess.kill()
+
+      logger.info('✅ Completed')
+
+      return {
+        links,
+      }
+    } catch (e: any) {
+      throw new Error(e)
     }
   },
 })
