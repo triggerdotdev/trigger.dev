@@ -1,4 +1,4 @@
-{{- if .Values.clickhouse.enabled }}
+{{- if and .Values.clickhouse.enabled (not .Values.clickhouse.external) }}
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -34,8 +34,11 @@ spec:
           image: "{{ .Values.clickhouse.image.registry }}/{{ .Values.clickhouse.image.repository }}:{{ .Values.clickhouse.image.tag }}"
           imagePullPolicy: {{ .Values.clickhouse.image.pullPolicy }}
           ports:
+            - name: native
+              containerPort: {{ .Values.clickhouse.service.ports.native }}
+              protocol: TCP
             - name: http
-              containerPort: {{ .Values.clickhouse.service.targetPort }}
+              containerPort: {{ .Values.clickhouse.service.ports.http }}
               protocol: TCP
           env:
             - name: CLICKHOUSE_ADMIN_USER
@@ -52,7 +55,7 @@ spec:
                 - --host
                 - localhost
                 - --port
-                - "9000"
+                - {{ .Values.clickhouse.service.ports.native | quote }}
                 - --user
                 - {{ .Values.clickhouse.auth.adminUser }}
                 - --password
@@ -70,7 +73,7 @@ spec:
                 - --host
                 - localhost
                 - --port
-                - "9000"
+                - {{ .Values.clickhouse.service.ports.native | quote }}
                 - --user
                 - {{ .Values.clickhouse.auth.adminUser }}
                 - --password
@@ -128,8 +131,12 @@ spec:
   type: ClusterIP
   clusterIP: None
   ports:
+    - name: native
+      port: {{ .Values.clickhouse.service.ports.native }}
+      targetPort: native
+      protocol: TCP
     - name: http
-      port: {{ .Values.clickhouse.service.port }}
+      port: {{ .Values.clickhouse.service.ports.http }}
       targetPort: http
       protocol: TCP
   selector:
@@ -145,8 +152,12 @@ metadata:
 spec:
   type: {{ .Values.clickhouse.service.type }}
   ports:
+    - name: native
+      port: {{ .Values.clickhouse.service.ports.native }}
+      targetPort: native
+      protocol: TCP
     - name: http
-      port: {{ .Values.clickhouse.service.port }}
+      port: {{ .Values.clickhouse.service.ports.http }}
       targetPort: http
       protocol: TCP
   selector:

@@ -187,6 +187,20 @@ spec:
               value: {{ .Values.webapp.internal.otel.metric.exporterEnabled | quote }}
             - name: INTERNAL_OTEL_METRIC_EXPORTER_INTERVAL_MS
               value: {{ .Values.webapp.internal.otel.metric.exporterIntervalMs | quote }}
+            {{- if .Values.webapp.clickhouse.enabled }}
+            - name: CLICKHOUSE_URL
+              value: {{ if .Values.clickhouse.external }}{{ .Values.clickhouse.externalConnection.httpUrl | quote }}{{ else }}"http://{{ .Values.clickhouse.auth.adminUser }}:{{ .Values.clickhouse.auth.adminPassword }}@{{ include "trigger-v4.fullname" . }}-clickhouse:{{ .Values.clickhouse.service.ports.http }}"{{ end }}
+            - name: CLICKHOUSE_LOG_LEVEL
+              value: {{ .Values.webapp.clickhouse.logLevel | quote }}
+            {{- end }}
+            {{- if .Values.webapp.runReplication.enabled }}
+            - name: RUN_REPLICATION_ENABLED
+              value: "1"
+            - name: RUN_REPLICATION_CLICKHOUSE_URL
+              value: {{ if .Values.clickhouse.external }}{{ .Values.clickhouse.externalConnection.httpUrl | quote }}{{ else }}"http://{{ .Values.clickhouse.auth.adminUser }}:{{ .Values.clickhouse.auth.adminPassword }}@{{ include "trigger-v4.fullname" . }}-clickhouse:{{ .Values.clickhouse.service.ports.http }}"{{ end }}
+            - name: RUN_REPLICATION_LOG_LEVEL
+              value: {{ .Values.webapp.runReplication.logLevel | quote }}
+            {{- end }}
             {{- with .Values.webapp.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
