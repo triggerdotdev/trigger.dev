@@ -46,6 +46,19 @@ webapp:
     requests:
       cpu: 1000m
       memory: 2Gi
+  # ClickHouse configuration (experimental)
+  extraEnv:
+    []
+    # - name: RUN_REPLICATION_CLICKHOUSE_URL
+    #   value: "http://clickhouse:9000"
+    # - name: RUN_REPLICATION_ENABLED
+    #   value: "1"
+    # - name: RUN_REPLICATION_LOG_LEVEL
+    #   value: "info"
+    # - name: CLICKHOUSE_URL
+    #   value: "http://clickhouse:9000"
+    # - name: CLICKHOUSE_LOG_LEVEL
+    #   value: "info"
 
 # Production PostgreSQL (or use external)
 postgres:
