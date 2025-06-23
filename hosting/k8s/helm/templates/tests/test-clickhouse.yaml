@@ -1,0 +1,21 @@
+{{- if .Values.clickhouse.enabled }}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ include "trigger-v4.fullname" . }}-test-clickhouse"
+  labels:
+    {{- include "trigger-v4.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+spec:
+  restartPolicy: Never
+  containers:
+    - name: test-clickhouse
+      image: curlimages/curl:latest
+      command: ['sh', '-c']
+      args:
+        - |
+          echo "Testing ClickHouse HTTP interface..."
+          curl -f "http://{{ .Values.clickhouse.auth.adminUser }}:{{ .Values.clickhouse.auth.adminPassword }}@{{ include "trigger-v4.fullname" . }}-clickhouse:{{ .Values.clickhouse.service.port }}/ping"
+          echo "ClickHouse test completed successfully"
+{{- end }}

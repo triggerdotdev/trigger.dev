@@ -1,0 +1,451 @@
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+  storageClass: ""
+
+nameOverride: ""
+fullnameOverride: ""
+
+ingress:
+  enabled: false
+  className: "traefik"
+  annotations: {}
+  certManager:
+    enabled: false
+    clusterIssuer: "letsencrypt-prod"
+  externalDns:
+    enabled: false
+    hostname: ""
+    ttl: "300"
+  hosts:
+    - host: trigger.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    []
+    # - secretName: trigger-tls
+    #   hosts:
+    #     - trigger.local
+
+# Webapp configuration
+webapp:
+  image:
+    registry: ghcr.io
+    repository: triggerdotdev/trigger.dev
+    tag: "" # Defaults to Chart.appVersion when empty
+    pullPolicy: IfNotPresent
+
+  replicaCount: 1
+
+  service:
+    type: ClusterIP
+    port: 3030
+    targetPort: 3000
+
+  podAnnotations: {}
+
+  # podSecurityContext:
+  #   fsGroup: 1000
+
+  # securityContext:
+  #   runAsNonRoot: true
+  #   runAsUser: 1000
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+  logLevel: "info"
+  gracefulShutdownTimeout: 1000
+
+  # Bootstrap configuration
+  bootstrap:
+    enabled: true
+    workerGroupName: "bootstrap"
+    workerTokenPath: "/home/node/shared/worker_token"
+
+  # Limits
+  limits:
+    taskPayloadOffloadThreshold: 524288 # 512KB
+    taskPayloadMaximumSize: 3145728 # 3MB
+    batchTaskPayloadMaximumSize: 1000000 # 1MB
+    taskRunMetadataMaximumSize: 262144 # 256KB
+    defaultEnvExecutionConcurrencyLimit: 100
+    defaultOrgExecutionConcurrencyLimit: 300
+
+  # Resources
+  resources:
+    {}
+    # Example resource configuration:
+    # limits:
+    #   cpu: 1000m
+    #   memory: 2Gi
+    # requests:
+    #   cpu: 500m
+    #   memory: 1Gi
+
+  # Extra environment variables for webapp
+  extraEnv:
+    []
+    # - name: CUSTOM_VAR
+    #   value: "custom-value"
+    # - name: SECRET_VAR
+    #   valueFrom:
+    #     secretKeyRef:
+    #       name: my-secret
+    #       key: secret-key
+
+  # ServiceMonitor for Prometheus monitoring
+  serviceMonitor:
+    enabled: false
+    interval: "30s"
+    path: "/metrics"
+    labels: {}
+    basicAuth: {}
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+# Shared application configuration (used by multiple services)
+config:
+  appOrigin: "http://localhost:3040"
+  loginOrigin: "http://localhost:3040"
+  apiOrigin: "http://localhost:3040"
+  electricOrigin: "http://electric:3000"
+
+# Secrets configuration
+# IMPORTANT: The default values below are for TESTING ONLY and should NOT be used in production
+# For production deployments:
+# 1. Generate new secrets using: openssl rand -hex 16
+# 2. Override these values in your values.yaml or use external secret management
+# 3. Each secret must be exactly 32 hex characters (16 bytes)
+secrets:
+  # Session secret for user authentication (32 hex chars)
+  sessionSecret: "2818143646516f6fffd707b36f334bbb"
+  # Magic link secret for passwordless login (32 hex chars)
+  magicLinkSecret: "44da78b7bbb0dfe709cf38931d25dcdd"
+  # Encryption key for sensitive data (32 hex chars)
+  encryptionKey: "f686147ab967943ebbe9ed3b496e465a"
+  # Worker secret for managed worker authentication (32 hex chars)
+  managedWorkerSecret: "447c29678f9eaf289e9c4b70d3dd8a7f"
+  # Object store credentials (change for production)
+  objectStore:
+    accessKeyId: "admin"
+    secretAccessKey: "very-safe-password"
+
+# PostgreSQL configuration
+postgresql:
+  enabled: true
+  external: false
+  image:
+    registry: docker.io
+    repository: postgres
+    tag: "14"
+    pullPolicy: IfNotPresent
+  auth:
+    postgresPassword: "postgres"
+    username: "postgres"
+    password: "postgres"
+    database: "main"
+
+  # podSecurityContext:
+  #   fsGroup: 1000
+
+  # securityContext:
+  #   runAsNonRoot: true
+  #   runAsUser: 1000
+
+  primary:
+    persistence:
+      enabled: true
+      size: 10Gi
+    service:
+      ports:
+        postgresql: 5432
+    resources: {}
+    configuration: |
+      wal_level = logical
+  # External PostgreSQL connection (when external: true)
+  externalConnection:
+    host: ""
+    port: 5432
+    database: ""
+    username: ""
+    password: ""
+  # Extra environment variables for PostgreSQL
+  extraEnv:
+    []
+    # - name: CUSTOM_VAR
+    #   value: "custom-value"
+
+# Redis configuration
+redis:
+  enabled: true
+  external: false
+  image:
+    registry: docker.io
+    repository: redis
+    tag: "7"
+    pullPolicy: IfNotPresent
+  auth:
+    enabled: false
+
+  # podSecurityContext:
+  #   fsGroup: 1000
+
+  # securityContext:
+  #   runAsNonRoot: true
+  #   runAsUser: 1000
+
+  master:
+    persistence:
+      enabled: true
+      size: 5Gi
+    service:
+      ports:
+        redis: 6379
+    resources: {}
+  # External Redis connection (when external: true)
+  externalConnection:
+    host: ""
+    port: 6379
+    password: ""
+  # Extra environment variables for Redis
+  extraEnv:
+    []
+    # - name: CUSTOM_VAR
+    #   value: "custom-value"
+
+# Electric configuration
+electric:
+  enabled: true
+  image:
+    registry: docker.io
+    repository: electricsql/electric
+    tag: "1.0.13"
+    pullPolicy: IfNotPresent
+  config:
+    insecure: true
+    usageReporting: false
+
+  # podSecurityContext:
+  #   fsGroup: 1000
+
+  # securityContext:
+  #   runAsNonRoot: true
+  #   runAsUser: 1000
+
+  service:
+    type: ClusterIP
+    port: 3000
+    targetPort: 3000
+  resources: {}
+  # Extra environment variables for Electric
+  extraEnv:
+    []
+    # - name: CUSTOM_VAR
+    #   value: "custom-value"
+
+# ClickHouse configuration
+clickhouse:
+  enabled: true
+  image:
+    registry: docker.io
+    repository: bitnami/clickhouse
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  auth:
+    adminUser: "default"
+    adminPassword: "password"
+
+  # podSecurityContext:
+  #   fsGroup: 1000
+
+  # securityContext:
+  #   runAsNonRoot: true
+  #   runAsUser: 1000
+
+  persistence:
+    enabled: true
+    size: 10Gi
+  service:
+    type: ClusterIP
+    port: 9000
+    targetPort: 9000
+  resources: {}
+  # Extra environment variables for ClickHouse
+  extraEnv:
+    []
+    # - name: CUSTOM_VAR
+    #   value: "custom-value"
+
+# MinIO configuration
+minio:
+  enabled: true
+  image:
+    registry: docker.io
+    repository: minio/minio
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  auth:
+    rootUser: "admin"
+    rootPassword: "very-safe-password"
+
+  # podSecurityContext:
+  #   fsGroup: 1000
+
+  # securityContext:
+  #   runAsNonRoot: true
+  #   runAsUser: 1000
+
+  persistence:
+    enabled: true
+    size: 10Gi
+  service:
+    type: ClusterIP
+    ports:
+      api: 9000
+      console: 9001
+  resources: {}
+  # Extra environment variables for MinIO
+  extraEnv:
+    []
+    # - name: CUSTOM_VAR
+    #   value: "custom-value"
+
+# Docker Registry configuration
+registry:
+  enabled: false # EXPERIMENTAL - requires proper TLS setup. Use external: true instead.
+  external: true
+  image:
+    registry: docker.io
+    repository: registry
+    tag: "2"
+    pullPolicy: IfNotPresent
+  auth:
+    enabled: true
+    username: "registry-user"
+    password: "very-secure-indeed"
+
+  # podSecurityContext:
+  #   fsGroup: 1000
+
+  # securityContext:
+  #   runAsNonRoot: true
+  #   runAsUser: 1000
+
+  persistence:
+    enabled: true
+    size: 10Gi
+  service:
+    type: ClusterIP
+    port: 5000
+    targetPort: 5000
+  resources: {}
+  # External Registry connection (when external: true)
+  externalConnection:
+    host: "localhost"
+    port: 5001
+    auth:
+      enabled: false
+      username: ""
+      password: ""
+  # Extra environment variables for Registry
+  extraEnv:
+    []
+    # - name: CUSTOM_VAR
+    #   value: "custom-value"
+
+# Supervisor configuration (Kubernetes worker orchestrator)
+supervisor:
+  enabled: true
+  image:
+    registry: ghcr.io
+    repository: triggerdotdev/supervisor
+    tag: "" # Defaults to Chart.appVersion when empty
+    pullPolicy: IfNotPresent
+
+  # podSecurityContext:
+  #   fsGroup: 1000
+
+  # securityContext:
+  #   runAsNonRoot: true
+  #   runAsUser: 1000
+
+  service:
+    type: ClusterIP
+    ports:
+      workload: 3000
+      metrics: 9088
+  resources: {}
+  config:
+    # Kubernetes mode configuration
+    kubernetesForceEnabled: true
+    kubernetesNamespace: "" # Default: uses release namespace
+    kubernetesWorkerNodetypeLabel: "" # When set, runs will only be scheduled on nodes with "nodetype=<label>"
+    kubernetesEphemeralStorageSizeLimit: "" # Default: 10Gi
+    kubernetesEphemeralStorageSizeRequest: "" # Default: 2Gi´
+    podCleanerEnabled: true
+    podCleanerBatchSize: 100
+    podCleanerIntervalMs: 10000 # 10 seconds´
+    failedPodHandlerEnabled: true
+    failedPodHandlerReconnectIntervalMs: 1000
+    # API configuration
+    workloadApiEnabled: true
+    workloadApiProtocol: "http"
+    workloadApiPortExternal: 3000
+    workloadApiPortInternal: 3000
+    workloadApiHostInternal: "0.0.0.0"
+    # Dequeue configuration
+    dequeueEnabled: true
+    dequeueIntervalMs: 250
+    dequeueMaxRunCount: 100
+    dequeueIdleIntervalMs: 500
+    # Heartbeat configuration
+    runnerHeartbeatIntervalSeconds: 30
+    runnerSnapshotPollIntervalSeconds: 30
+    # Metrics
+    metricsEnabled: true
+    metricsCollectDefaults: true
+    metricsHost: "0.0.0.0"
+    metricsPort: 9088
+    # Debug
+    debug: false
+  # RBAC configuration
+  serviceAccount:
+    create: true
+    name: ""
+    annotations: {}
+  rbac:
+    create: true
+    # Cluster-level permissions for pod management
+    clusterRole:
+      create: true
+      name: ""
+  # Extra environment variables for Supervisor
+  extraEnv:
+    []
+    # - name: CUSTOM_VAR
+    #   value: "custom-value"
+
+  # ServiceMonitor for Prometheus monitoring
+  serviceMonitor:
+    enabled: false
+    interval: "30s"
+    path: "/metrics"
+    labels: {}
+    basicAuth: {}
+
+# Shared persistent volumes
+persistence:
+  # This is used for the worker token file
+  shared:
+    enabled: true
+    size: 5Mi
+    accessMode: ReadWriteOnce
+    # accessMode: ReadWriteMany  # Use for cross-node deployment (requires compatible storage class)
+    storageClass: ""

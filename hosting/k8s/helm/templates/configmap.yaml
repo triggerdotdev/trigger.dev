@@ -1,0 +1,15 @@
+{{- if .Values.clickhouse.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "trigger-v4.fullname" . }}-clickhouse-config
+  labels:
+    {{- include "trigger-v4.labels" . | nindent 4 }}
+data:
+  override.xml: |
+    <clickhouse>
+      <logger>
+        <level>warning</level>
+      </logger>
+    </clickhouse>
+{{- end }}

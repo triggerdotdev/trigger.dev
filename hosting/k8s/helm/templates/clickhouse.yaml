@@ -1,0 +1,138 @@
+{{- if .Values.clickhouse.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "trigger-v4.fullname" . }}-clickhouse
+  labels:
+    {{- $component := "clickhouse" }}
+    {{- include "trigger-v4.componentLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "trigger-v4.componentSelectorLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "trigger-v4.componentSelectorLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 8 }}
+    spec:
+      {{- with .Values.clickhouse.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: clickhouse
+          {{- with .Values.clickhouse.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          image: "{{ .Values.clickhouse.image.registry }}/{{ .Values.clickhouse.image.repository }}:{{ .Values.clickhouse.image.tag }}"
+          imagePullPolicy: {{ .Values.clickhouse.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.clickhouse.service.targetPort }}
+              protocol: TCP
+          env:
+            - name: CLICKHOUSE_ADMIN_USER
+              value: {{ .Values.clickhouse.auth.adminUser | quote }}
+            - name: CLICKHOUSE_ADMIN_PASSWORD
+              value: {{ .Values.clickhouse.auth.adminPassword | quote }}
+            {{- with .Values.clickhouse.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          livenessProbe:
+            exec:
+              command:
+                - clickhouse-client
+                - --host
+                - localhost
+                - --port
+                - "9000"
+                - --user
+                - {{ .Values.clickhouse.auth.adminUser }}
+                - --password
+                - {{ .Values.clickhouse.auth.adminPassword }}
+                - --query
+                - "SELECT 1"
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 15
+            failureThreshold: 5
+          readinessProbe:
+            exec:
+              command:
+                - clickhouse-client
+                - --host
+                - localhost
+                - --port
+                - "9000"
+                - --user
+                - {{ .Values.clickhouse.auth.adminUser }}
+                - --password
+                - {{ .Values.clickhouse.auth.adminPassword }}
+                - --query
+                - "SELECT 1"
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 15
+            failureThreshold: 5
+          resources:
+            {{- toYaml .Values.clickhouse.resources | nindent 12 }}
+          volumeMounts:
+            - name: clickhouse-data
+              mountPath: /bitnami/clickhouse
+            - name: clickhouse-config
+              mountPath: /bitnami/clickhouse/etc/config.d/override.xml
+              subPath: override.xml
+              readOnly: true
+      volumes:
+        - name: clickhouse-data
+          {{- if .Values.clickhouse.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "trigger-v4.fullname" . }}-clickhouse
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: clickhouse-config
+          configMap:
+            name: {{ include "trigger-v4.fullname" . }}-clickhouse-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "trigger-v4.fullname" . }}-clickhouse
+  labels:
+    {{- $component := "clickhouse" }}
+    {{- include "trigger-v4.componentLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 4 }}
+spec:
+  type: {{ .Values.clickhouse.service.type }}
+  ports:
+    - name: http
+      port: {{ .Values.clickhouse.service.port }}
+      targetPort: http
+      protocol: TCP
+  selector:
+    {{- include "trigger-v4.componentSelectorLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 4 }}
+---
+{{- if .Values.clickhouse.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "trigger-v4.fullname" . }}-clickhouse
+  labels:
+    {{- $component := "clickhouse" }}
+    {{- include "trigger-v4.componentLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.clickhouse.persistence.size }}
+  {{- $storageClass := .Values.clickhouse.persistence.storageClass | default .Values.global.storageClass }}
+  {{- if $storageClass }}
+  storageClassName: {{ $storageClass | quote }}
+  {{- end }}
+{{- end }}
+{{- end }}

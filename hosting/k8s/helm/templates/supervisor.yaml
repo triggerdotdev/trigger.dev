@@ -1,0 +1,254 @@
+{{- if .Values.supervisor.enabled }}
+{{- if .Values.supervisor.serviceAccount.create }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "trigger-v4.supervisorServiceAccountName" . }}
+  labels:
+    {{- $component := "supervisor" }}
+    {{- include "trigger-v4.componentLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 4 }}
+  {{- with .Values.supervisor.serviceAccount.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}
+---
+{{- if .Values.supervisor.rbac.create }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "trigger-v4.supervisorClusterRoleName" . }}
+  labels:
+    {{- $component := "supervisor" }}
+    {{- include "trigger-v4.componentLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["create", "delete", "deletecollection", "get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "trigger-v4.supervisorClusterRoleName" . }}-binding
+  labels:
+    {{- $component := "supervisor" }}
+    {{- include "trigger-v4.componentLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "trigger-v4.supervisorServiceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  kind: ClusterRole
+  name: {{ include "trigger-v4.supervisorClusterRoleName" . }}
+  apiGroup: rbac.authorization.k8s.io
+{{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "trigger-v4.fullname" . }}-supervisor
+  labels:
+    {{- $component := "supervisor" }}
+    {{- include "trigger-v4.componentLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      {{- include "trigger-v4.componentSelectorLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "trigger-v4.componentSelectorLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 8 }}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "{{ .Values.supervisor.service.ports.metrics }}"
+        prometheus.io/path: "/metrics"
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "trigger-v4.supervisorServiceAccountName" . }}
+      {{- with .Values.supervisor.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        - name: init-shared
+          image: busybox:1.35
+          command: ['sh', '-c', 'mkdir -p /home/node/shared && chown 1000:1000 /home/node/shared']
+          securityContext:
+            runAsUser: 0
+          volumeMounts:
+            - name: shared
+              mountPath: /home/node/shared
+      containers:
+        - name: supervisor
+          image: {{ include "trigger-v4.supervisor.image" . }}
+          imagePullPolicy: {{ .Values.supervisor.image.pullPolicy }}
+          ports:
+            - name: workload
+              containerPort: {{ .Values.supervisor.service.ports.workload }}
+              protocol: TCP
+            - name: metrics
+              containerPort: {{ .Values.supervisor.service.ports.metrics }}
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: workload
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: workload
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.supervisor.resources | nindent 12 }}
+          env:
+            # Core configuration
+            - name: TRIGGER_API_URL
+              value: "http://{{ include "trigger-v4.fullname" . }}-webapp:{{ .Values.webapp.service.port }}"
+            - name: TRIGGER_WORKER_TOKEN
+              value: "file:///home/node/shared/worker_token"
+            - name: MANAGED_WORKER_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trigger-v4.fullname" . }}-secrets
+                  key: managed-worker-secret
+            # Worker instance configuration
+            - name: TRIGGER_WORKER_INSTANCE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            # Kubernetes configuration
+            - name: KUBERNETES_NAMESPACE
+              value: {{ default .Release.Namespace .Values.supervisor.config.kubernetesNamespace | quote }}
+            - name: KUBERNETES_FORCE_ENABLED
+              value: {{ .Values.supervisor.config.kubernetesForceEnabled | quote }}
+            - name: KUBERNETES_WORKER_NODETYPE_LABEL
+              value: {{ .Values.supervisor.config.kubernetesWorkerNodetypeLabel | quote }}
+            {{- if or (and .Values.registry.enabled .Values.registry.auth.enabled) (and .Values.registry.external .Values.registry.externalConnection.auth.enabled) }}
+            - name: KUBERNETES_IMAGE_PULL_SECRETS
+              value: "{{ include "trigger-v4.fullname" . }}-registry-secret"
+            {{- end }}
+            - name: KUBERNETES_EPHEMERAL_STORAGE_SIZE_LIMIT
+              value: {{ default "10Gi" .Values.supervisor.config.kubernetesEphemeralStorageSizeLimit | quote }}
+            - name: KUBERNETES_EPHEMERAL_STORAGE_SIZE_REQUEST
+              value: {{ default "2Gi" .Values.supervisor.config.kubernetesEphemeralStorageSizeRequest | quote }}
+            # Pod cleaner configuration
+            - name: POD_CLEANER_ENABLED
+              value: {{ .Values.supervisor.config.podCleanerEnabled | quote }}
+            - name: POD_CLEANER_BATCH_SIZE
+              value: {{ .Values.supervisor.config.podCleanerBatchSize | quote }}
+            - name: POD_CLEANER_INTERVAL_MS
+              value: {{ .Values.supervisor.config.podCleanerIntervalMs | quote }}
+            # Failed pod handler
+            - name: FAILED_POD_HANDLER_ENABLED
+              value: {{ .Values.supervisor.config.failedPodHandlerEnabled | quote }}
+            - name: FAILED_POD_HANDLER_RECONNECT_INTERVAL_MS
+              value: {{ .Values.supervisor.config.failedPodHandlerReconnectIntervalMs | quote }}
+            # Workload API configuration
+            - name: TRIGGER_WORKLOAD_API_PROTOCOL
+              value: {{ .Values.supervisor.config.workloadApiProtocol | quote }}
+            - name: TRIGGER_WORKLOAD_API_DOMAIN
+              value: "{{ include "trigger-v4.fullname" . }}-supervisor.{{ .Release.Namespace }}.svc.cluster.local"
+            - name: TRIGGER_WORKLOAD_API_PORT_EXTERNAL
+              value: {{ .Values.supervisor.config.workloadApiPortExternal | quote }}
+            - name: TRIGGER_WORKLOAD_API_PORT_INTERNAL
+              value: {{ .Values.supervisor.config.workloadApiPortInternal | quote }}
+            - name: TRIGGER_WORKLOAD_API_HOST_INTERNAL
+              value: {{ .Values.supervisor.config.workloadApiHostInternal | quote }}
+            - name: TRIGGER_WORKLOAD_API_ENABLED
+              value: {{ .Values.supervisor.config.workloadApiEnabled | quote }}
+            # Dequeue configuration
+            - name: TRIGGER_DEQUEUE_ENABLED
+              value: {{ .Values.supervisor.config.dequeueEnabled | quote }}
+            - name: TRIGGER_DEQUEUE_INTERVAL_MS
+              value: {{ .Values.supervisor.config.dequeueIntervalMs | quote }}
+            - name: TRIGGER_DEQUEUE_MAX_RUN_COUNT
+              value: {{ .Values.supervisor.config.dequeueMaxRunCount | quote }}
+            - name: TRIGGER_DEQUEUE_IDLE_INTERVAL_MS
+              value: {{ .Values.supervisor.config.dequeueIdleIntervalMs | quote }}
+            # Heartbeat configuration
+            - name: RUNNER_HEARTBEAT_INTERVAL_SECONDS
+              value: {{ .Values.supervisor.config.runnerHeartbeatIntervalSeconds | quote }}
+            - name: RUNNER_SNAPSHOT_POLL_INTERVAL_SECONDS
+              value: {{ .Values.supervisor.config.runnerSnapshotPollIntervalSeconds | quote }}
+            # Metrics configuration
+            - name: METRICS_ENABLED
+              value: {{ .Values.supervisor.config.metricsEnabled | quote }}
+            - name: METRICS_COLLECT_DEFAULTS
+              value: {{ .Values.supervisor.config.metricsCollectDefaults | quote }}
+            - name: METRICS_HOST
+              value: {{ .Values.supervisor.config.metricsHost | quote }}
+            - name: METRICS_PORT
+              value: {{ .Values.supervisor.config.metricsPort | quote }}
+            # Debug
+            - name: DEBUG
+              value: {{ .Values.supervisor.config.debug | quote }}
+            # OTEL
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://{{ include "trigger-v4.fullname" . }}-webapp:{{ .Values.webapp.service.port }}/otel"
+            {{- with .Values.supervisor.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          volumeMounts:
+            - name: shared
+              mountPath: /home/node/shared
+          {{- with .Values.supervisor.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: shared
+          {{- if .Values.persistence.shared.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "trigger-v4.fullname" . }}-shared
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "trigger-v4.fullname" . }}-supervisor
+  labels:
+    {{- $component := "supervisor" }}
+    {{- include "trigger-v4.componentLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 4 }}
+spec:
+  type: {{ .Values.supervisor.service.type }}
+  ports:
+    - port: {{ .Values.supervisor.service.ports.workload }}
+      targetPort: workload
+      protocol: TCP
+      name: workload
+    - port: {{ .Values.supervisor.service.ports.metrics }}
+      targetPort: metrics
+      protocol: TCP
+      name: metrics
+  selector:
+    {{- include "trigger-v4.componentSelectorLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 4 }}
+{{- end }}
