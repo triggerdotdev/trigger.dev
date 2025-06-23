@@ -92,6 +92,8 @@ export class ScheduleEngine {
       catalog: scheduleWorkerCatalog,
       concurrency: {
         limit: options.worker.concurrency,
+        workers: options.worker.workers,
+        tasksPerWorker: options.worker.tasksPerWorker,
       },
       pollIntervalMs: options.worker.pollIntervalMs,
       shutdownTimeoutMs: options.worker.shutdownTimeoutMs,
@@ -590,7 +592,8 @@ export class ScheduleEngine {
 
       const distributedExecutionTime = calculateDistributedExecutionTime(
         exactScheduleTime,
-        this.distributionWindowSeconds
+        this.distributionWindowSeconds,
+        instanceId
       );
 
       const distributionOffsetMs = exactScheduleTime.getTime() - distributedExecutionTime.getTime();

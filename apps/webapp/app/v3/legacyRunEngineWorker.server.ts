@@ -68,7 +68,7 @@ function initializeWorker() {
     pollIntervalMs: env.LEGACY_RUN_ENGINE_WORKER_POLL_INTERVAL,
     immediatePollIntervalMs: env.LEGACY_RUN_ENGINE_WORKER_IMMEDIATE_POLL_INTERVAL,
     shutdownTimeoutMs: env.LEGACY_RUN_ENGINE_WORKER_SHUTDOWN_TIMEOUT_MS,
-    logger: new Logger("LegacyRunEngineWorker", "debug"),
+    logger: new Logger("LegacyRunEngineWorker", env.LEGACY_RUN_ENGINE_WORKER_LOG_LEVEL),
     jobs: {
       runHeartbeat: async ({ payload }) => {
         const service = new TaskRunHeartbeatFailedService();

@@ -61,6 +61,8 @@ function createScheduleEngine() {
     },
     worker: {
       concurrency: env.SCHEDULE_WORKER_CONCURRENCY_LIMIT,
+      workers: env.SCHEDULE_WORKER_CONCURRENCY_WORKERS,
+      tasksPerWorker: env.SCHEDULE_WORKER_CONCURRENCY_TASKS_PER_WORKER,
       pollIntervalMs: env.SCHEDULE_WORKER_POLL_INTERVAL,
       shutdownTimeoutMs: env.SCHEDULE_WORKER_SHUTDOWN_TIMEOUT_MS,
       disabled: env.SCHEDULE_WORKER_ENABLED === "0",

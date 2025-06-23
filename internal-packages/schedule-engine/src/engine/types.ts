@@ -35,6 +35,8 @@ export interface ScheduleEngineOptions {
   redis: RedisOptions;
   worker: {
     concurrency: number;
+    workers?: number;
+    tasksPerWorker?: number;
     pollIntervalMs?: number;
     shutdownTimeoutMs?: number;
     disabled?: boolean;

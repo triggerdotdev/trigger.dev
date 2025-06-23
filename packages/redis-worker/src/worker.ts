@@ -206,7 +206,7 @@ class Worker<TCatalog extends WorkerCatalog> {
 
     // Launch a number of "worker loops" on the main thread.
     for (let i = 0; i < workers; i++) {
-      this.workerLoops.push(this.runWorkerLoop(`worker-${nanoid(12)}`, tasksPerWorker));
+      this.workerLoops.push(this.runWorkerLoop(`worker-${nanoid(12)}`, tasksPerWorker, i, workers));
     }
 
     this.setupShutdownHandlers();
@@ -390,14 +390,43 @@ class Worker<TCatalog extends WorkerCatalog> {
    * The main loop that each worker runs. It repeatedly polls for items,
    * processes them, and then waits before the next iteration.
    */
-  private async runWorkerLoop(workerId: string, taskCount: number): Promise<void> {
+  private async runWorkerLoop(
+    workerId: string,
+    taskCount: number,
+    workerIndex: number,
+    totalWorkers: number
+  ): Promise<void> {
     const pollIntervalMs = this.options.pollIntervalMs ?? 1000;
     const immediatePollIntervalMs = this.options.immediatePollIntervalMs ?? 100;
+
+    // Calculate the delay between starting each worker loop so that they don't all start at the same time.
+    const delayBetweenWorkers = this.options.pollIntervalMs ?? 1000;
+    const delay = delayBetweenWorkers * (totalWorkers - workerIndex);
+    await Worker.delay(delay);
+
+    this.logger.info("Starting worker loop", {
+      workerIndex,
+      totalWorkers,
+      delay,
+      workerId,
+      taskCount,
+      pollIntervalMs,
+      immediatePollIntervalMs,
+      concurrencyOptions: this.concurrency,
+    });
 
     while (!this.isShuttingDown) {
       // Check overall load. If at capacity, wait a bit before trying to dequeue more.
       if (this.limiter.activeCount + this.limiter.pendingCount >= this.concurrency.limit) {
+        this.logger.debug("Worker at capacity, waiting", {
+          workerId,
+          concurrencyOptions: this.concurrency,
+          activeCount: this.limiter.activeCount,
+          pendingCount: this.limiter.pendingCount,
+        });
+
         await Worker.delay(pollIntervalMs);
+
         continue;
       }
 
@@ -412,9 +441,24 @@ class Worker<TCatalog extends WorkerCatalog> {
         );
 
         if (items.length === 0) {
+          this.logger.debug("No items to dequeue", {
+            workerId,
+            concurrencyOptions: this.concurrency,
+            activeCount: this.limiter.activeCount,
+            pendingCount: this.limiter.pendingCount,
+          });
+
           await Worker.delay(pollIntervalMs);
           continue;
         }
+
+        this.logger.info("Dequeued items", {
+          workerId,
+          itemCount: items.length,
+          concurrencyOptions: this.concurrency,
+          activeCount: this.limiter.activeCount,
+          pendingCount: this.limiter.pendingCount,
+        });
 
         // Schedule each item using the limiter.
         for (const item of items) {
@@ -433,6 +477,8 @@ class Worker<TCatalog extends WorkerCatalog> {
       // Wait briefly before immediately polling again since we processed items
       await Worker.delay(immediatePollIntervalMs);
     }
+
+    this.logger.info("Worker loop finished", { workerId });
   }
 
   /**
