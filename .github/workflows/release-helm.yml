@@ -98,31 +98,38 @@ jobs:
           # Push to GHCR OCI registry
           helm push "$CHART_PACKAGE" "oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/charts"
 
-      - name: Print Helm Chart URL
+      - name: Create GitHub Release
+        id: release
+        uses: softprops/action-gh-release@v1
+        if: github.event_name == 'push'
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: "Helm Chart ${{ steps.version.outputs.version }}"
+          body: |
+            ## Helm Chart Release ${{ steps.version.outputs.version }}
+            
+            ### Installation
+            ```bash
+            helm upgrade --install trigger \
+              oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/charts/${{ env.CHART_NAME }} \
+              --version ${{ steps.version.outputs.version }}
+            ```
+            
+            ### Changes
+            See commit history for detailed changes in this release.
+          files: |
+            /tmp/${{ env.CHART_NAME }}-${{ steps.version.outputs.version }}.tgz
+          token: ${{ secrets.GITHUB_TOKEN }}
+          draft: true
+          prerelease: true
+
+      - name: Print Chart Location
         run: |
           echo "Chart successfully published to:"
           echo "oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/charts/${{ env.CHART_NAME }}"
 
-      # Experimental GitHub Release step - disabled for now
-      # - name: Create GitHub Release
-      #   uses: softprops/action-gh-release@v1
-      #   if: github.event_name == 'push'
-      #   with:
-      #     tag_name: ${{ github.ref_name }}
-      #     name: "Helm Chart ${{ steps.version.outputs.version }}"
-      #     body: |
-      #       ## Helm Chart Release ${{ steps.version.outputs.version }}
-            
-      #       ### Installation
-      #       ```bash
-      #       helm upgrade --install trigger \
-      #         oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/charts/${{ env.CHART_NAME }} \
-      #         --version ${{ steps.version.outputs.version }}
-      #       ```
-            
-      #       ### Changes
-      #       See commit history for detailed changes in this release.
-      #     files: |
-      #       /tmp/${{ env.CHART_NAME }}-${{ steps.version.outputs.version }}.tgz
-      #   env:
-      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Print Release URL
+        if: github.event_name == 'push'
+        run: |
+          echo "GitHub Release created at:"
+          echo "${{ steps.release.outputs.url }}"
