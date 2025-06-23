@@ -1990,22 +1990,27 @@ model BulkActionGroup {
   status BulkActionStatus @default(PENDING)
 
   /// The query that will be executed to get the runs to process (if null, we are passing run ids directly)
-  queryName      String?
+  queryName    String?
   /// The params that will be passed to the query
-  params         Json?
+  params       Json?
   /// The cursor that will be passed to the query (null for the first page)
-  cursor         Json?
-  /// The number of runs that have been processed
-  processedCount Int     @default(0)
+  cursor       Json?
+  /// The number of runs that have been processed successfully
+  successCount Int     @default(0)
+  /// The number of runs that have been failed
+  failureCount Int     @default(0)
   /// The total number of runs that will be processed
-  totalCount     Int     @default(0)
+  totalCount   Int     @default(0)
 
   /// The userId who did the bulk action
   user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull, onUpdate: Cascade)
   userId String?
 
-  /// Why the user did the bulk action
-  reason String?
+  /// The name of the bulk action
+  name String?
+
+  /// The time the bulk action was completed
+  completedAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2021,6 +2026,7 @@ enum BulkActionType {
 enum BulkActionStatus {
   PENDING
   COMPLETED
+  ABORTED
 }
 
 model BulkActionItem {
