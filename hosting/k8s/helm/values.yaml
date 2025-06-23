@@ -117,23 +117,23 @@ webapp:
     logLevel: "info" # one of: log, error, warn, info, debug
 
   # OpenTelemetry configuration
-  internal:
-    otel:
-      trace:
-        exporterUrl: ""
-        exporterAuthHeaders: ""
-        loggingEnabled: "1"
-        samplingRate: "20"
-        instrumentPrismaEnabled: "0"
-        disabled: "0"
-      log:
-        exporterUrl: ""
-        # Log auth headers are currently set to trace.exporterAuthHeaders
-      metric:
-        exporterUrl: ""
-        exporterAuthHeaders: ""
-        exporterEnabled: "0"
-        exporterIntervalMs: 30000
+  # internal:
+  #   otel:
+  #     trace:
+  #       exporterUrl: ""
+  #       exporterAuthHeaders: ""
+  #       loggingEnabled: "0"
+  #       samplingRate: "20"
+  #       instrumentPrismaEnabled: "0"
+  #       disabled: "0"
+  #     log:
+  #       exporterUrl: ""
+  #       # Log auth headers are currently set to trace.exporterAuthHeaders
+  #     metric:
+  #       exporterUrl: ""
+  #       exporterAuthHeaders: ""
+  #       exporterEnabled: "0"
+  #       exporterIntervalMs: 30000
 
 # Shared application configuration (used by multiple services)
 config:
