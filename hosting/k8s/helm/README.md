@@ -552,3 +552,4 @@ helm upgrade --install trigger . \
 
 - Documentation: https://trigger.dev/docs/self-hosting
 - GitHub Issues: https://github.com/triggerdotdev/trigger.dev/issues
+- Discord: https://discord.gg/untWVke9aH

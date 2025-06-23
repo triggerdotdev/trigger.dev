@@ -1,5 +1,3 @@
-values-test.yaml
 values-*.yaml
-!values.yaml
 !values-production-example.yaml
 *.tgz

@@ -1,0 +1,17 @@
+# Exclude version control
+.git/
+.gitignore
+.helmignore
+
+# Exclude OS files
+.DS_Store
+
+# Exclude CI/CD and scripts
+.github/
+scripts/
+
+# Exclude package files
+*.tgz
+
+# Exclude additional values files
+values-*.yaml
