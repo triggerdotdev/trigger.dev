@@ -155,6 +155,7 @@ spec:
                 secretKeyRef:
                   name: {{ include "trigger-v4.secretsName" . }}
                   key: object-store-secret-access-key
+            {{- if and .Values.webapp.internal .Values.webapp.internal.otel }}
             {{- if .Values.webapp.internal.otel.trace.exporterUrl }}
             - name: INTERNAL_OTEL_TRACE_EXPORTER_URL
               value: {{ .Values.webapp.internal.otel.trace.exporterUrl | quote }}
@@ -187,6 +188,7 @@ spec:
               value: {{ .Values.webapp.internal.otel.metric.exporterEnabled | quote }}
             - name: INTERNAL_OTEL_METRIC_EXPORTER_INTERVAL_MS
               value: {{ .Values.webapp.internal.otel.metric.exporterIntervalMs | quote }}
+            {{- end }}
             {{- if .Values.webapp.clickhouse.enabled }}
             - name: CLICKHOUSE_URL
               value: {{ if .Values.clickhouse.external }}{{ .Values.clickhouse.externalConnection.httpUrl | quote }}{{ else }}"http://{{ .Values.clickhouse.auth.adminUser }}:{{ .Values.clickhouse.auth.adminPassword }}@{{ include "trigger-v4.fullname" . }}-clickhouse:{{ .Values.clickhouse.service.ports.http }}"{{ end }}
