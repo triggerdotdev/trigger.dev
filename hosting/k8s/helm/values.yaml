@@ -148,6 +148,17 @@ config:
 # 2. Override these values in your values.yaml or use external secret management
 # 3. Each secret must be exactly 32 hex characters (16 bytes)
 secrets:
+  # Name of existing secret to use instead of creating one
+  # If empty, a secret will be created with the values below
+  # The secret must contain the following keys:
+  #   - session-secret
+  #   - magic-link-secret  
+  #   - encryption-key
+  #   - managed-worker-secret
+  #   - object-store-access-key-id
+  #   - object-store-secret-access-key
+  existingSecret: ""
+  
   # Session secret for user authentication (32 hex chars)
   sessionSecret: "2818143646516f6fffd707b36f334bbb"
   # Magic link secret for passwordless login (32 hex chars)

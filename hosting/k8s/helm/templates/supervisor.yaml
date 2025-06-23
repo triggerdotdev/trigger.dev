@@ -121,7 +121,7 @@ spec:
             - name: MANAGED_WORKER_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "trigger-v4.fullname" . }}-secrets
+                  name: {{ include "trigger-v4.secretsName" . }}
                   key: managed-worker-secret
             # Worker instance configuration
             - name: TRIGGER_WORKER_INSTANCE_NAME

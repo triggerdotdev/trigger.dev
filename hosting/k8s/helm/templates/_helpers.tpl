@@ -148,6 +148,17 @@ http://{{ include "trigger-v4.fullname" . }}-minio:{{ .Values.minio.service.port
 {{- end }}
 
 {{/*
+Get the secrets name - either existing secret or generated name
+*/}}
+{{- define "trigger-v4.secretsName" -}}
+{{- if .Values.secrets.existingSecret -}}
+{{ .Values.secrets.existingSecret }}
+{{- else -}}
+{{ include "trigger-v4.fullname" . }}-secrets
+{{- end -}}
+{{- end }}
+
+{{/*
 Registry connection details
 */}}
 {{- define "trigger-v4.registry.host" -}}
