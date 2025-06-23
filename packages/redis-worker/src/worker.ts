@@ -452,7 +452,7 @@ class Worker<TCatalog extends WorkerCatalog> {
           continue;
         }
 
-        this.logger.info("Dequeued items", {
+        this.logger.debug("Dequeued items", {
           workerId,
           itemCount: items.length,
           concurrencyOptions: this.concurrency,
