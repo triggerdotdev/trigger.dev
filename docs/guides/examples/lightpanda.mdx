@@ -68,40 +68,58 @@ _Example using a German IP :_
 ```wss://cloud.lightpanda.io/ws?proxy=datacenter&country=de&token=TOKEN```
 
 
-
 ### Session
 A session is alive until you close it or the connection is closed. The max time duration of a session is 15 min.
 
 
-## Example \#2 - Launch and use a Lightpanda CDP server
+## Example \#2 - Get a webpage using Lightpanda
+
+Using the Lightpanda binary we will dump the HTML for a provided URL.
+You will have to pass the URL as a payload when triggering the task.
+
+
+### Prerequisites
+- Setup the [Lightpanda build extension](/config/extensions/lightpanda)
+
+### Task
+```ts trigger/lightpanda-lightpanda-fetch.ts
+import { logger, task } from '@trigger.dev/sdk/v3'
+import { execSync } from 'node:child_process'
+
+export const lightpandaFetch = task({
+  id: 'lightpanda-fetch',
+  machine: {
+    preset: "micro",
+  },
+  run: async (payload: { url: string }, { ctx }) => {
+    logger.log("Lets get a page's content with Lightpanda!", { payload, ctx })
+
+    if (!payload.url) {
+      logger.warn('Please define the payload url')
+      throw new Error('payload.url is undefined')
+    }
+
+    const e = execSync(`${process.env.LIGHTPANDA_BROWSER_PATH} fetch --dump ${payload.url}`)
+
+    return {
+      message: e.toString(),
+    }
+  },
+})
+```
+
+## Example \#3 - Launch and use a Lightpanda CDP server
 
 This task initialises a Lightpanda CDP server to allow you to scrape directly via Trigger.dev.
 
-### Configuration
-
-To use this example, you will need to add these build settings to your `trigger.config.ts` file:
-
-```ts trigger.config.ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
-import { lightpanda } from "@trigger.dev/build/extensions/lightpanda";
-
-export default defineConfig({
-  project: "<project ref>",
-  // Your other config settings...
-  build: {
-    // This is required to use the Puppeteer library
-    extensions: [lightpanda()],
-  },
-});
-```
-That will set a `LIGHTPANDA_BROWSER_PATH` env variable that will be needed to get access to the binary.
+### Prerequisites
+- Setup the [Lightpanda build extension](/config/extensions/lightpanda)
 
 ### Task
-
 Your task will have to launch a child process in order to have the websocket available to scrape using Puppeteer.
 
 ```ts trigger/lightpandaLaunch.ts
-import puppeteer from "puppeteer";
+import puppeteer from "puppeteer"
 
 export const lightpandaLaunch = task({
   id: "lightpanda-launch",
@@ -112,11 +130,11 @@ export const lightpandaLaunch = task({
       browserWSEndpoint: "ws://127.0.0.1:9222",
     })
 
-    const page = await browser.newPage();
+    const page = await browser.newPage()
 
     return {
       data: scrapeResult,
-    };
+    }
   },
-});
+})
 ```
