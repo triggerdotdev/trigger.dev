@@ -119,7 +119,7 @@ Use external managed services instead of bundled components:
 
 ```yaml
 # External PostgreSQL
-postgresql:
+postgres:
   enabled: false
   external: true
   externalConnection:
@@ -180,7 +180,7 @@ resources:
       cpu: 1000m
       memory: 2Gi
 
-postgresql:
+postgres:
   primary:
     resources:
       limits:
@@ -212,7 +212,7 @@ All services support persistent storage and allow you to control the storage cla
 global:
   storageClass: "fast-ssd" # Default for all services
 
-postgresql:
+postgres:
   primary:
     persistence:
       enabled: true
@@ -331,7 +331,7 @@ kubectl get pods -l app.kubernetes.io/name=trigger.dev
 kubectl logs -l app.kubernetes.io/component=webapp
 
 # Database logs  
-kubectl logs -l app.kubernetes.io/component=postgresql
+kubectl logs -l app.kubernetes.io/component=postgres
 ```
 
 ### Run Tests
@@ -459,7 +459,7 @@ helm upgrade --install trigger . \
         cpu: 1000m
         memory: 2Gi
   
-  postgresql:
+  postgres:
     primary:
       resources:
         limits:
@@ -503,7 +503,7 @@ helm upgrade --install trigger . \
   global:
     storageClass: "fast-nvme" # Default for all services
 
-  postgresql:
+  postgres:
     persistence:
       primary:
         size: 500Gi

@@ -58,8 +58,8 @@ Bootstrap Mode is enabled:
 {{- end }}
 
 Configuration:
-{{- if .Values.postgresql.external }}
-- Using external PostgreSQL at {{ .Values.postgresql.externalConnection.host }}:{{ .Values.postgresql.externalConnection.port }}
+{{- if .Values.postgres.external }}
+- Using external PostgreSQL at {{ .Values.postgres.externalConnection.host }}:{{ .Values.postgres.externalConnection.port }}
 {{- else }}
 - Using internal PostgreSQL
 {{- end }}

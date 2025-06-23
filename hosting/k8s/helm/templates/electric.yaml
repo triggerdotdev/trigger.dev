@@ -38,7 +38,7 @@ spec:
               protocol: TCP
           env:
             - name: DATABASE_URL
-              value: {{ include "trigger-v4.postgresql.connectionString" . | quote }}
+              value: {{ include "trigger-v4.postgres.connectionString" . | quote }}
             - name: ELECTRIC_INSECURE
               value: {{ .Values.electric.config.insecure | quote }}
             - name: ELECTRIC_USAGE_REPORTING

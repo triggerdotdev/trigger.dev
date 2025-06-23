@@ -1,56 +1,56 @@
-{{- if and .Values.postgresql.enabled (not .Values.postgresql.external) }}
+{{- if and .Values.postgres.enabled (not .Values.postgres.external) }}
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: {{ include "trigger-v4.fullname" . }}-postgresql
+  name: {{ include "trigger-v4.fullname" . }}-postgres
   labels:
-    {{- $component := "postgresql" }}
+    {{- $component := "postgres" }}
     {{- include "trigger-v4.componentLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 4 }}
 spec:
   replicas: 1
-  serviceName: {{ include "trigger-v4.fullname" . }}-postgresql-headless
+  serviceName: {{ include "trigger-v4.fullname" . }}-postgres-headless
   selector:
     matchLabels:
       {{- include "trigger-v4.componentSelectorLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 6 }}
   template:
     metadata:
-      {{- with .Values.postgresql.podAnnotations }}
+      {{- with .Values.postgres.podAnnotations }}
       annotations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       labels:
         {{- include "trigger-v4.componentSelectorLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 8 }}
     spec:
-      {{- with .Values.postgresql.podSecurityContext }}
+      {{- with .Values.postgres.podSecurityContext }}
       securityContext:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       containers:
-        - name: postgresql
-          {{- with .Values.postgresql.securityContext }}
+        - name: postgres
+          {{- with .Values.postgres.securityContext }}
           securityContext:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          image: "{{ .Values.postgresql.image.registry }}/{{ .Values.postgresql.image.repository }}:{{ .Values.postgresql.image.tag }}"
-          imagePullPolicy: {{ .Values.postgresql.image.pullPolicy }}
+          image: "{{ .Values.postgres.image.registry }}/{{ .Values.postgres.image.repository }}:{{ .Values.postgres.image.tag }}"
+          imagePullPolicy: {{ .Values.postgres.image.pullPolicy }}
           ports:
-            - name: postgresql
-              containerPort: {{ .Values.postgresql.primary.service.ports.postgresql }}
+            - name: postgres
+              containerPort: {{ .Values.postgres.primary.service.ports.postgres }}
               protocol: TCP
           env:
             - name: POSTGRES_USER
-              value: {{ .Values.postgresql.auth.username | quote }}
+              value: {{ .Values.postgres.auth.username | quote }}
             - name: POSTGRES_PASSWORD
-              value: {{ .Values.postgresql.auth.password | quote }}
+              value: {{ .Values.postgres.auth.password | quote }}
             - name: POSTGRES_DB
-              value: {{ .Values.postgresql.auth.database | quote }}
-            {{- with .Values.postgresql.extraEnv }}
+              value: {{ .Values.postgres.auth.database | quote }}
+            {{- with .Values.postgres.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           args:
             - "-c"
             - "wal_level=logical"
-            {{- with .Values.postgresql.extraArgs }}
+            {{- with .Values.postgres.extraArgs }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           livenessProbe:
@@ -58,7 +58,7 @@ spec:
               command:
                 - pg_isready
                 - -U
-                - {{ .Values.postgresql.auth.username }}
+                - {{ .Values.postgres.auth.username }}
             initialDelaySeconds: 10
             periodSeconds: 10
             timeoutSeconds: 5
@@ -68,52 +68,52 @@ spec:
               command:
                 - pg_isready
                 - -U
-                - {{ .Values.postgresql.auth.username }}
+                - {{ .Values.postgres.auth.username }}
             initialDelaySeconds: 10
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 5
           resources:
-            {{- toYaml .Values.postgresql.primary.resources | nindent 12 }}
+            {{- toYaml .Values.postgres.primary.resources | nindent 12 }}
           volumeMounts:
-            - name: postgresql-data
+            - name: postgres-data
               mountPath: /var/lib/postgresql/data
-  {{- if .Values.postgresql.primary.persistence.enabled }}
+  {{- if .Values.postgres.primary.persistence.enabled }}
   volumeClaimTemplates:
     - metadata:
-        name: postgresql-data
+        name: postgres-data
         labels:
-          {{- $component := "postgresql" }}
+          {{- $component := "postgres" }}
           {{- include "trigger-v4.componentLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 10 }}
       spec:
         accessModes:
           - ReadWriteOnce
         resources:
           requests:
-            storage: {{ .Values.postgresql.primary.persistence.size }}
-        {{- $storageClass := .Values.postgresql.primary.persistence.storageClass | default .Values.global.storageClass }}
+            storage: {{ .Values.postgres.primary.persistence.size }}
+        {{- $storageClass := .Values.postgres.primary.persistence.storageClass | default .Values.global.storageClass }}
         {{- if $storageClass }}
         storageClassName: {{ $storageClass | quote }}
         {{- end }}
   {{- else }}
       volumes:
-        - name: postgresql-data
+        - name: postgres-data
           emptyDir: {}
   {{- end }}
-  {{- if .Values.postgresql.primary.persistence.enabled }}
+  {{- if .Values.postgres.primary.persistence.enabled }}
   volumeClaimTemplates:
     - metadata:
-        name: postgresql-data
+        name: postgres-data
         labels:
-          {{- $component := "postgresql" }}
+          {{- $component := "postgres" }}
           {{- include "trigger-v4.componentLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 10 }}
       spec:
         accessModes:
           - ReadWriteOnce
         resources:
           requests:
-            storage: {{ .Values.postgresql.primary.persistence.size }}
-        {{- $storageClass := .Values.postgresql.primary.persistence.storageClass | default .Values.global.storageClass }}
+            storage: {{ .Values.postgres.primary.persistence.size }}
+        {{- $storageClass := .Values.postgres.primary.persistence.storageClass | default .Values.global.storageClass }}
         {{- if $storageClass }}
         storageClassName: {{ $storageClass | quote }}
         {{- end }}
@@ -122,17 +122,17 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "trigger-v4.fullname" . }}-postgresql-headless
+  name: {{ include "trigger-v4.fullname" . }}-postgres-headless
   labels:
-    {{- $component := "postgresql" }}
+    {{- $component := "postgres" }}
     {{- include "trigger-v4.componentLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 4 }}
 spec:
   type: ClusterIP
   clusterIP: None
   ports:
-    - name: postgresql
-      port: {{ .Values.postgresql.primary.service.ports.postgresql }}
-      targetPort: postgresql
+    - name: postgres
+      port: {{ .Values.postgres.primary.service.ports.postgres }}
+      targetPort: postgres
       protocol: TCP
   selector:
     {{- include "trigger-v4.componentSelectorLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 4 }}
@@ -140,16 +140,16 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "trigger-v4.fullname" . }}-postgresql
+  name: {{ include "trigger-v4.fullname" . }}-postgres
   labels:
-    {{- $component := "postgresql" }}
+    {{- $component := "postgres" }}
     {{- include "trigger-v4.componentLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 4 }}
 spec:
   type: ClusterIP
   ports:
-    - name: postgresql
-      port: {{ .Values.postgresql.primary.service.ports.postgresql }}
-      targetPort: postgresql
+    - name: postgres
+      port: {{ .Values.postgres.primary.service.ports.postgres }}
+      targetPort: postgres
       protocol: TCP
   selector:
     {{- include "trigger-v4.componentSelectorLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 4 }}

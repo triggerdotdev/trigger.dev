@@ -48,7 +48,7 @@ webapp:
       memory: 2Gi
 
 # Production PostgreSQL (or use external)
-postgresql:
+postgres:
   primary:
     persistence:
       enabled: true
@@ -121,7 +121,7 @@ supervisor:
       cpu: 250m
       memory: 512Mi
 # Example: Use external PostgreSQL instead
-# postgresql:
+# postgres:
 #   enabled: false
 #   external: true
 #   externalConnection:

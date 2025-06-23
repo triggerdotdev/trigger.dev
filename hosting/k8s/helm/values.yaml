@@ -151,7 +151,7 @@ secrets:
     secretAccessKey: "very-safe-password"
 
 # PostgreSQL configuration
-postgresql:
+postgres:
   enabled: true
   external: false
   image:
@@ -180,7 +180,7 @@ postgresql:
       size: 10Gi
     service:
       ports:
-        postgresql: 5432
+        postgres: 5432
     resources: {}
     configuration: |
       wal_level = logical
