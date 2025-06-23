@@ -15,6 +15,9 @@ env:
   REGISTRY: ghcr.io
   CHART_NAME: trigger
 
+permissions:
+  contents: write # for gh-release
+
 jobs:
   lint-and-test:
     runs-on: ubuntu-latest
