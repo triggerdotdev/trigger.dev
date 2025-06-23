@@ -105,29 +105,23 @@ webapp:
     basicAuth: {}
 
   # OpenTelemetry configuration
-  # internal:
-  #   otel:
-  #     trace:
-  #       exporterUrl: ""
-  #       exporterAuthHeaders: ""
-  #       loggingEnabled: "1"
-  #       samplingRate: "20"
-  #       instrumentPrismaEnabled: "0"
-  #       disabled: "0"
-  #     log:
-  #       exporterUrl: ""
-  #       # Log auth headers are currently set to trace.exporterAuthHeaders
-  #     metric:
-  #       exporterUrl: ""
-  #       exporterAuthHeaders: ""
-  #       exporterEnabled: "0"
-  #       exporterIntervalMs: 30000
-
-nodeSelector: {}
-
-tolerations: []
-
-affinity: {}
+  internal:
+    otel:
+      trace:
+        exporterUrl: ""
+        exporterAuthHeaders: ""
+        loggingEnabled: "1"
+        samplingRate: "20"
+        instrumentPrismaEnabled: "0"
+        disabled: "0"
+      log:
+        exporterUrl: ""
+        # Log auth headers are currently set to trace.exporterAuthHeaders
+      metric:
+        exporterUrl: ""
+        exporterAuthHeaders: ""
+        exporterEnabled: "0"
+        exporterIntervalMs: 30000
 
 # Shared application configuration (used by multiple services)
 config:
@@ -171,6 +165,8 @@ postgresql:
     password: "postgres"
     database: "main"
 
+  podAnnotations: {}
+
   # podSecurityContext:
   #   fsGroup: 1000
 
@@ -213,6 +209,8 @@ redis:
   auth:
     enabled: false
 
+  podAnnotations: {}
+
   # podSecurityContext:
   #   fsGroup: 1000
 
@@ -251,6 +249,8 @@ electric:
     insecure: true
     usageReporting: false
 
+  podAnnotations: {}
+
   # podSecurityContext:
   #   fsGroup: 1000
 
@@ -280,6 +280,8 @@ clickhouse:
   auth:
     adminUser: "default"
     adminPassword: "password"
+
+  podAnnotations: {}
 
   # podSecurityContext:
   #   fsGroup: 1000
@@ -313,6 +315,8 @@ minio:
   auth:
     rootUser: "admin"
     rootPassword: "very-safe-password"
+
+  podAnnotations: {}
 
   # podSecurityContext:
   #   fsGroup: 1000
@@ -349,6 +353,8 @@ registry:
     enabled: true
     username: "registry-user"
     password: "very-secure-indeed"
+
+  podAnnotations: {}
 
   # podSecurityContext:
   #   fsGroup: 1000
@@ -387,6 +393,8 @@ supervisor:
     repository: triggerdotdev/supervisor
     tag: "" # Defaults to Chart.appVersion when empty
     pullPolicy: IfNotPresent
+
+  podAnnotations: {}
 
   # podSecurityContext:
   #   fsGroup: 1000
@@ -458,6 +466,10 @@ supervisor:
     path: "/metrics"
     labels: {}
     basicAuth: {}
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
 
 # Shared persistent volumes
 persistence:

@@ -14,6 +14,10 @@ spec:
       {{- include "trigger-v4.componentSelectorLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 6 }}
   template:
     metadata:
+      {{- with .Values.minio.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       labels:
         {{- include "trigger-v4.componentSelectorLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 8 }}
     spec:
