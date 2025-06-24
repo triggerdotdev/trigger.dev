@@ -125,14 +125,3 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           draft: true
           prerelease: true
-
-      - name: Print Chart Location
-        run: |
-          echo "Chart successfully published to:"
-          echo "oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/charts/${{ env.CHART_NAME }}"
-
-      - name: Print Release URL
-        if: github.event_name == 'push'
-        run: |
-          echo "GitHub Release created at:"
-          echo "${{ steps.release.outputs.url }}"
