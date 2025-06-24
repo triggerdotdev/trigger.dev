@@ -34,14 +34,17 @@ jobs:
         run: |
           helm lint ./hosting/k8s/helm/
 
-      - name: Template and Validate
+      - name: Render templates
         run: |
           helm template test-release ./hosting/k8s/helm/ \
             --values ./hosting/k8s/helm/values.yaml \
-            --output-dir /tmp/helm-output
-          
-          # Validate generated manifests
-          find /tmp/helm-output -name "*.yaml" -exec kubectl --dry-run=client apply -f {} \;
+            --output-dir ./helm-output
+
+      - name: Validate manifests
+        uses: docker://ghcr.io/yannh/kubeconform:v0.7.0
+        with:
+          entrypoint: '/kubeconform'
+          args: "-summary -output json ./helm-output"
 
   release:
     needs: lint-and-test
