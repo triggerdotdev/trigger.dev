@@ -172,6 +172,17 @@ localhost:5000
 {{- end }}
 
 {{/*
+PostgreSQL host (for wait-for-it script)
+*/}}
+{{- define "trigger-v4.postgres.host" -}}
+{{- if .Values.postgres.external -}}
+{{ .Values.postgres.externalConnection.host }}:{{ .Values.postgres.externalConnection.port }}
+{{- else -}}
+{{ include "trigger-v4.fullname" . }}-postgres:{{ .Values.postgres.primary.service.ports.postgres }}
+{{- end -}}
+{{- end }}
+
+{{/*
 Supervisor connection details
 */}}
 {{- define "trigger-v4.supervisor.url" -}}

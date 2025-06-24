@@ -77,6 +77,8 @@ spec:
               value: {{ include "trigger-v4.postgres.connectionString" . | quote }}
             - name: DIRECT_URL
               value: {{ include "trigger-v4.postgres.connectionString" . | quote }}
+            - name: DATABASE_HOST
+              value: {{ include "trigger-v4.postgres.host" . | quote }}
             - name: REDIS_HOST
               value: {{ include "trigger-v4.redis.host" . | quote }}
             - name: REDIS_PORT
