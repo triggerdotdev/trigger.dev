@@ -557,4 +557,32 @@ persistence:
     accessMode: ReadWriteOnce
     # accessMode: ReadWriteMany  # Use for cross-node deployment (requires compatible storage class)
     storageClass: ""
-    retain: true  # Prevents deletion on uninstall
+    retain: true # Prevents deletion on uninstall
+
+# Extra Kubernetes manifests
+# This allows you to add additional Kubernetes resources that will be deployed with the chart
+extraManifests:
+  []
+  # - apiVersion: v1
+  #   kind: ConfigMap
+  #   metadata:
+  #     name: my-config
+  #   data:
+  #     key: value
+  # - apiVersion: apps/v1
+  #   kind: Deployment
+  #   metadata:
+  #     name: my-app
+  #   spec:
+  #     replicas: 1
+  #     selector:
+  #       matchLabels:
+  #         app: my-app
+  #     template:
+  #       metadata:
+  #         labels:
+  #           app: my-app
+  #       spec:
+  #         containers:
+  #         - name: my-container
+  #           image: nginx:latest
