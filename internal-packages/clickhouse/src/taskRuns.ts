@@ -59,6 +59,7 @@ export function insertTaskRuns(ch: ClickhouseWriter, settings?: ClickHouseSettin
       async_insert_max_data_size: "1000000",
       async_insert_busy_timeout_ms: 1000,
       enable_json_type: 1,
+      type_json_skip_duplicated_paths: 1,
       ...settings,
     },
   });
@@ -83,6 +84,7 @@ export function insertRawTaskRunPayloads(ch: ClickhouseWriter, settings?: ClickH
       async_insert_max_data_size: "1000000",
       async_insert_busy_timeout_ms: 1000,
       enable_json_type: 1,
+      type_json_skip_duplicated_paths: 1,
       ...settings,
     },
   });
