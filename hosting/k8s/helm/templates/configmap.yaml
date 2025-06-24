@@ -7,25 +7,5 @@ metadata:
     {{- include "trigger-v4.labels" . | nindent 4 }}
 data:
   override.xml: |
-    <clickhouse>
-      <logger>
-        <level>warning</level>
-      </logger>
-      <!-- Memory optimization for resource-constrained environments -->
-      <max_memory_usage>1073741824</max_memory_usage> <!-- 1GB -->
-      <max_memory_usage_for_user>536870912</max_memory_usage_for_user> <!-- 512MB -->
-      <max_memory_usage_for_all_queries>1073741824</max_memory_usage_for_all_queries> <!-- 1GB -->
-      <max_server_memory_usage>1610612736</max_server_memory_usage> <!-- 1.5GB -->
-      <max_concurrent_queries>50</max_concurrent_queries>
-      <max_thread_pool_size>4</max_thread_pool_size>
-      <background_pool_size>2</background_pool_size>
-      <background_merges_mutations_concurrency_ratio>2</background_merges_mutations_concurrency_ratio>
-      <!-- Reduce cache sizes -->
-      <mark_cache_size>536870912</mark_cache_size> <!-- 512MB -->
-      <uncompressed_cache_size>134217728</uncompressed_cache_size> <!-- 128MB -->
-      <compiled_expression_cache_size>134217728</compiled_expression_cache_size> <!-- 128MB -->
-      <!-- Optimize merge settings -->
-      <merge_max_block_size>8192</merge_max_block_size>
-      <max_bytes_to_merge_at_max_space_in_pool>1073741824</max_bytes_to_merge_at_max_space_in_pool> <!-- 1GB -->
-    </clickhouse>
+{{ .Values.clickhouse.config.override | indent 4 }}
 {{- end }}

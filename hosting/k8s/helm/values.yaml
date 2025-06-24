@@ -345,6 +345,25 @@ clickhouse:
     # - name: CUSTOM_VAR
     #   value: "custom-value"
 
+  # ClickHouse configuration override
+  # You can provide your own override.xml content here
+  # These defaults are based on official recommendations for systems with <16GB RAM:
+  # https://clickhouse.com/docs/operations/tips
+  config:
+    override: |
+      <clickhouse>
+        <logger>
+          <level>warning</level>
+        </logger>
+        <!-- Official recommendations for systems with <16GB RAM -->
+        <mark_cache_size>524288000</mark_cache_size> <!-- 500MB -->
+        <max_thread_pool_size>1</max_thread_pool_size>
+        <max_block_size>8192</max_block_size>
+        <max_download_threads>1</max_download_threads>
+        <input_format_parallel_parsing>0</input_format_parallel_parsing>
+        <output_format_parallel_formatting>0</output_format_parallel_formatting>
+      </clickhouse>
+
 # MinIO configuration
 minio:
   enabled: true
