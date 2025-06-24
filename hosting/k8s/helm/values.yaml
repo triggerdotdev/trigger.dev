@@ -157,12 +157,12 @@ secrets:
   # Name of existing secret to use instead of creating one
   # If empty, a secret will be created with the values below
   # The secret must contain the following keys:
-  #   - session-secret
-  #   - magic-link-secret
-  #   - encryption-key
-  #   - managed-worker-secret
-  #   - object-store-access-key-id
-  #   - object-store-secret-access-key
+  #   - SESSION_SECRET
+  #   - MAGIC_LINK_SECRET
+  #   - ENCRYPTION_KEY
+  #   - MANAGED_WORKER_SECRET
+  #   - OBJECT_STORE_ACCESS_KEY_ID
+  #   - OBJECT_STORE_SECRET_ACCESS_KEY
   existingSecret: ""
 
   # Session secret for user authentication (32 hex chars)

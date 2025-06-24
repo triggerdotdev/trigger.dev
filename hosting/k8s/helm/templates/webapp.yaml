@@ -130,32 +130,32 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: {{ include "trigger-v4.secretsName" . }}
-                  key: session-secret
+                  key: SESSION_SECRET
             - name: MAGIC_LINK_SECRET
               valueFrom:
                 secretKeyRef:
                   name: {{ include "trigger-v4.secretsName" . }}
-                  key: magic-link-secret
+                  key: MAGIC_LINK_SECRET
             - name: ENCRYPTION_KEY
               valueFrom:
                 secretKeyRef:
                   name: {{ include "trigger-v4.secretsName" . }}
-                  key: encryption-key
+                  key: ENCRYPTION_KEY
             - name: MANAGED_WORKER_SECRET
               valueFrom:
                 secretKeyRef:
                   name: {{ include "trigger-v4.secretsName" . }}
-                  key: managed-worker-secret
+                  key: MANAGED_WORKER_SECRET
             - name: OBJECT_STORE_ACCESS_KEY_ID
               valueFrom:
                 secretKeyRef:
                   name: {{ include "trigger-v4.secretsName" . }}
-                  key: object-store-access-key-id
+                  key: OBJECT_STORE_ACCESS_KEY_ID
             - name: OBJECT_STORE_SECRET_ACCESS_KEY
               valueFrom:
                 secretKeyRef:
                   name: {{ include "trigger-v4.secretsName" . }}
-                  key: object-store-secret-access-key
+                  key: OBJECT_STORE_SECRET_ACCESS_KEY
             {{- end }}
             {{- if and .Values.webapp.internal .Values.webapp.internal.otel }}
             {{- if .Values.webapp.internal.otel.trace.exporterUrl }}
