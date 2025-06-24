@@ -109,8 +109,6 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: "Helm Chart ${{ steps.version.outputs.version }}"
           body: |
-            ## Helm Chart Release ${{ steps.version.outputs.version }}
-            
             ### Installation
             ```bash
             helm upgrade --install trigger \
