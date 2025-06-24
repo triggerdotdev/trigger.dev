@@ -256,6 +256,10 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: {{ include "trigger-v4.fullname" . }}-shared
+  {{- if .Values.persistence.shared.retain }}
+  annotations:
+    "helm.sh/resource-policy": keep
+  {{- end }}
   labels:
     {{- include "trigger-v4.labels" . | nindent 4 }}
 spec:
