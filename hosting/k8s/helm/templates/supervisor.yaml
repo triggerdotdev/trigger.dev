@@ -118,11 +118,13 @@ spec:
               value: "http://{{ include "trigger-v4.fullname" . }}-webapp:{{ .Values.webapp.service.port }}"
             - name: TRIGGER_WORKER_TOKEN
               value: "file:///home/node/shared/worker_token"
+            {{- if .Values.secrets.enabled }}
             - name: MANAGED_WORKER_SECRET
               valueFrom:
                 secretKeyRef:
                   name: {{ include "trigger-v4.secretsName" . }}
                   key: managed-worker-secret
+            {{- end }}
             # Worker instance configuration
             - name: TRIGGER_WORKER_INSTANCE_NAME
               valueFrom:

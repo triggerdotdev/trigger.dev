@@ -149,6 +149,11 @@ config:
 # 2. Override these values in your values.yaml or use external secret management
 # 3. Each secret must be exactly 32 hex characters (16 bytes)
 secrets:
+  # Enable/disable creation of secrets
+  # Set to false to use external secret management (Vault, Infisical, External Secrets, etc.)
+  # When disabled, use extraEnv and podAnnotations for secret injection
+  enabled: true
+
   # Name of existing secret to use instead of creating one
   # If empty, a secret will be created with the values below
   # The secret must contain the following keys:

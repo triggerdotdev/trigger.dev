@@ -125,6 +125,7 @@ spec:
             - name: DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT
               value: {{ .Values.webapp.limits.defaultOrgExecutionConcurrencyLimit | quote }}
             {{- end }}
+            {{- if .Values.secrets.enabled }}
             - name: SESSION_SECRET
               valueFrom:
                 secretKeyRef:
@@ -155,6 +156,7 @@ spec:
                 secretKeyRef:
                   name: {{ include "trigger-v4.secretsName" . }}
                   key: object-store-secret-access-key
+            {{- end }}
             {{- if and .Values.webapp.internal .Values.webapp.internal.otel }}
             {{- if .Values.webapp.internal.otel.trace.exporterUrl }}
             - name: INTERNAL_OTEL_TRACE_EXPORTER_URL
