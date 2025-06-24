@@ -531,6 +531,19 @@ supervisor:
     labels: {}
     basicAuth: {}
 
+  # Bootstrap configuration
+  # When enabled: reads token from shared file, otherwise uses workerToken config
+  bootstrap:
+    enabled: true
+    workerTokenPath: "/home/node/shared/worker_token"
+    workerToken:
+      # Direct value (not recommended for production)
+      value: ""
+      # Secret reference
+      secret:
+        name: ""
+        key: ""
+
   nodeSelector: {}
   tolerations: []
   affinity: {}

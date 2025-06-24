@@ -117,7 +117,16 @@ spec:
             - name: TRIGGER_API_URL
               value: "http://{{ include "trigger-v4.fullname" . }}-webapp:{{ .Values.webapp.service.port }}"
             - name: TRIGGER_WORKER_TOKEN
-              value: "file:///home/node/shared/worker_token"
+              {{- if .Values.supervisor.bootstrap.enabled }}
+              value: "file://{{ .Values.supervisor.bootstrap.workerTokenPath }}"
+              {{- else if .Values.supervisor.bootstrap.workerToken.secret.name }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.supervisor.bootstrap.workerToken.secret.name }}
+                  key: {{ .Values.supervisor.bootstrap.workerToken.secret.key }}
+              {{- else }}
+              value: {{ .Values.supervisor.bootstrap.workerToken.value | quote }}
+              {{- end }}
             {{- if .Values.secrets.enabled }}
             - name: MANAGED_WORKER_SECRET
               valueFrom:
