@@ -357,11 +357,15 @@ clickhouse:
         </logger>
         <!-- Official recommendations for systems with <16GB RAM -->
         <mark_cache_size>524288000</mark_cache_size> <!-- 500MB -->
-        <max_thread_pool_size>1</max_thread_pool_size>
-        <max_block_size>8192</max_block_size>
-        <max_download_threads>1</max_download_threads>
-        <input_format_parallel_parsing>0</input_format_parallel_parsing>
-        <output_format_parallel_formatting>0</output_format_parallel_formatting>
+        <concurrent_threads_soft_limit_num>1</concurrent_threads_soft_limit_num>
+        <profiles>
+          <default>
+            <max_block_size>8192</max_block_size>
+            <max_download_threads>1</max_download_threads>
+            <input_format_parallel_parsing>0</input_format_parallel_parsing>
+            <output_format_parallel_formatting>0</output_format_parallel_formatting>
+          </default>
+        </profiles>
       </clickhouse>
 
 # MinIO configuration
