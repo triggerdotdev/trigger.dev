@@ -141,6 +141,7 @@ services:
     restart: ${RESTART_POLICY:-unless-stopped}
     logging: *logging-config
     ports:
+      - ${CLICKHOUSE_PUBLISH_IP:-127.0.0.1}:9123:8123
       - ${CLICKHOUSE_PUBLISH_IP:-127.0.0.1}:9090:9000
     environment:
       CLICKHOUSE_ADMIN_USER: ${CLICKHOUSE_USER:-default}
