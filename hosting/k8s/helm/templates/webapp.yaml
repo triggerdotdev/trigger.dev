@@ -24,13 +24,16 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       securityContext:
-        {{- toYaml .Values.webapp.podSecurityContext | nindent 8 }}
+        fsGroup: 1000
+        {{- with .Values.webapp.podSecurityContext }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
       initContainers:
         - name: init-shared
           image: busybox:1.35
-          command: ['sh', '-c', 'mkdir -p /home/node/shared && chown 1000:1000 /home/node/shared']
+          command: ['sh', '-c', 'mkdir -p /home/node/shared']
           securityContext:
-            runAsUser: 0
+            runAsUser: 1000
           volumeMounts:
             - name: shared
               mountPath: /home/node/shared
