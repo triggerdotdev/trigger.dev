@@ -35,9 +35,9 @@ export const lightpanda = ({ arch = 'x86_64', version = 'nightly', disableTeleme
 
     /* Install Lightpanda */
     instructions.push(
-      `RUN curl -L -o lightpanda https://github.com/lightpanda-io/browser/releases/download/${version}/lightpanda-${arch}-linux`,
-      'RUN chmod a+x ./lightpanda',
-      'RUN mv ./lightpanda /usr/bin/lightpanda',
+      `RUN curl -L -o lightpanda https://github.com/lightpanda-io/browser/releases/download/${version}/lightpanda-${arch}-linux \
+        && chmod a+x ./lightpanda \
+        && mv ./lightpanda /usr/bin/lightpanda \
     )
 
     context.addLayer({
