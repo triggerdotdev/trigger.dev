@@ -1,0 +1,383 @@
+---
+title: "Kubernetes"
+description: "You can self-host Trigger.dev in Kubernetes using our official Helm chart."
+---
+
+The following instructions will help you deploy Trigger.dev to Kubernetes using our official Helm chart. Make sure to read the self-hosting [overview](/self-hosting/overview) first.
+
+As self-hosted deployments tend to have unique requirements and configurations, we don't provide specific advice for securing your deployment, scaling up, or improving reliability.
+
+Should the burden ever get too much, we'd be happy to see you on [Trigger.dev cloud](https://trigger.dev/pricing) where we deal with these concerns for you.
+
+**Warning:** This guide alone is unlikely to result in a production-ready deployment. Security, scaling, and reliability concerns are not fully addressed here.
+
+## Requirements
+
+### Prerequisites
+- Kubernetes cluster 1.19+
+- Helm 3.8+
+- Kubectl configured with cluster access
+
+### Resource requirements
+
+The following are minimum requirements for running the entire Trigger.dev stack on Kubernetes:
+
+**Cluster resources:**
+- 6+ vCPU total
+- 12+ GB RAM total
+- Persistent volume support
+
+**Individual components:**
+- **Webapp**: 1 vCPU, 2 GB RAM
+- **Supervisor**: 1 vCPU, 1 GB RAM
+- **PostgreSQL**: 1 vCPU, 2 GB RAM
+- **Redis**: 0.5 vCPU, 1 GB RAM
+- **ClickHouse**: 1 vCPU, 2 GB RAM
+- **Object Storage**: 0.5 vCPU, 1 GB RAM
+- **Workers**: Depending on concurrency and machine preset
+
+These requirements scale based on your task concurrency and can be adjusted via the `resources` section in your `values.yaml`. For example:
+
+```yaml
+webapp:
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 2000m
+      memory: 4Gi
+```
+
+## Installation
+
+### Quick start
+
+1. Install with default values (for testing only):
+
+```bash
+helm upgrade -n trigger --install trigger \
+  oci://ghcr.io/triggerdotdev/charts/trigger:4.0.0-beta.3 \
+  --create-namespace
+```
+
+2. Access the webapp:
+
+```bash
+kubectl port-forward svc/trigger-webapp 3040:3030 -n trigger
+```
+
+3. Open the dashboard: `http://localhost:3040`
+
+## Configuration
+
+The default installation uses insecure secrets and is only suitable for testing. You _will_ need to configure your own secrets as a bare minimum.
+
+Most values map directly to the environment variables documented in the [webapp](/self-hosting/env/webapp) and [supervisor](/self-hosting/env/supervisor) environment variable overview.
+
+**Naming convention:**
+- Environment variables use `UPPER_SNAKE_CASE`
+- Helm values use `camelCase`
+
+**Example mapping:**
+```bash
+# Environment variable
+APP_ORIGIN=https://trigger.example.com
+
+# Becomes Helm value
+config:
+  appOrigin: "https://trigger.example.com"
+```
+
+### Custom values
+
+Create a `values-custom.yaml` file. For example:
+
+```yaml
+# Required: Generate new secrets with `openssl rand -hex 16`
+secrets:
+  sessionSecret: "your-32-char-hex-secret-1"
+  magicLinkSecret: "your-32-char-hex-secret-2"
+  encryptionKey: "your-32-char-hex-secret-3"
+  managedWorkerSecret: "your-32-char-hex-secret-4"
+
+# Application URLs
+config:
+  appOrigin: "https://trigger.example.com"
+  loginOrigin: "https://trigger.example.com"
+  apiOrigin: "https://trigger.example.com"
+
+# Resource limits
+webapp:
+  resources:
+    requests:
+      cpu: 1000m
+      memory: 2Gi
+    limits:
+      cpu: 2000m
+      memory: 4Gi
+
+supervisor:
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+```
+
+Deploy with your custom values:
+
+```bash
+helm upgrade -n trigger --install trigger \
+  oci://ghcr.io/triggerdotdev/charts/trigger:4.0.0-beta.3 \
+  --create-namespace \
+  -f values-custom.yaml
+```
+
+### Extra env
+
+You can set extra environment variables on all services. For example:
+
+```yaml
+webapp:
+  extraEnv:
+    - name: EXTRA_ENV_VAR
+      value: "extra-value"
+```
+
+### Extra annotations
+
+You can set extra annotations on all services. For example:
+
+```yaml
+webapp:
+  podAnnotations:
+    "my-annotation": "my-value"
+```
+
+### External services
+
+You can disable the built-in services and use external services instead. For example:
+
+```yaml
+postgres:
+  enabled: false
+  external: true
+  externalConnection:
+    host: "my-postgres.example.com"
+    port: 5432
+    database: "my-database"
+    username: "my-username"
+    password: "my-password"
+```
+
+## Worker token
+
+When using the default bootstrap configuration, worker creation and authentication is handled automatically. The webapp generates a worker token and makes it available to the supervisor via a shared volume.
+
+### Bootstrap (default)
+
+```yaml
+webapp:
+  bootstrap:
+    enabled: true
+    workerGroupName: "bootstrap"
+```
+
+### Manual
+
+If you need to set up workers separately or use a custom token:
+
+1. Get the worker token from the webapp logs:
+
+```bash
+kubectl logs deployment/trigger-webapp -n trigger | grep -A15 "Worker Token"
+```
+
+2. Create a secret with the token:
+
+```bash
+kubectl create secret generic worker-token \
+  --from-literal=token=tr_wgt_your_token_here \
+  -n trigger
+```
+
+3. Configure the supervisor to use the secret:
+
+```yaml
+supervisor:
+  bootstrap:
+    enabled: false
+    workerToken:
+      secret:
+        name: "worker-token"
+        key: "token"
+```
+
+## Registry Setup
+
+See the [Docker registry setup](/self-hosting/docker#registry-setup) for conceptual information. The configuration is specified in your `values.yaml`:
+
+```yaml
+# Use external registry (recommended)
+registry:
+  external: true
+  # Part of deployment image ref, for example: your-registry.example.com/your-company/proj_123:20250625.1.prod
+  repositoryNamespace: "your-company"
+  externalConnection:
+    host: "your-registry.example.com"
+    port: 5000
+    auth:
+      enabled: true
+      username: "your-username"
+      password: "your-password"
+```
+
+<Note>
+The internal registry (`registry.external: false`) is experimental and requires proper TLS setup and additional cluster configuration. Use an external registry for production.
+</Note>
+
+## Object Storage
+
+See the [Docker object storage setup](/self-hosting/docker#object-storage) for conceptual information. The defaults will use built-in MinIO, but you can use an external S3-compatible storage. The configuration is specified in your `values.yaml`:
+
+```yaml
+# Use external S3-compatible storage
+minio:
+  enabled: false
+  external: true
+  externalConnection:
+    url: "https://s3.amazonaws.com"
+    # or: "https://your-minio.com:9000"
+
+# Configure credentials
+secrets:
+  objectStore:
+    accessKeyId: "admin"
+    secretAccessKey: "very-safe-password"
+```
+
+## Authentication
+
+Authentication options are identical to the [Docker-based installation](/self-hosting/docker#authentication). The configuration is specified in your `values.yaml`:
+
+**GitHub OAuth:**
+```yaml
+webapp:
+  extraEnv:
+    - name: AUTH_GITHUB_CLIENT_ID
+      value: "your-github-client-id"
+    - name: AUTH_GITHUB_CLIENT_SECRET
+      value: "your-github-client-secret"
+```
+
+**Email authentication (Resend):**
+```yaml
+webapp:
+  extraEnv:
+    - name: EMAIL_TRANSPORT
+      value: "resend"
+    - name: FROM_EMAIL
+      value: "noreply@yourdomain.com"
+    - name: REPLY_TO_EMAIL
+      value: "support@yourdomain.com"
+    - name: RESEND_API_KEY
+      value: "your-resend-api-key"
+```
+
+**Restricting access:**
+```yaml
+webapp:
+  extraEnv:
+    - name: WHITELISTED_EMAILS
+      value: "user1@company\\.com|user2@company\\.com"
+```
+
+## Version Locking
+
+You can lock versions in two ways:
+
+**Helm Chart Version (recommended):**
+```bash
+# Ensure specific chart version
+helm upgrade -n trigger --install trigger \
+  oci://ghcr.io/triggerdotdev/charts/trigger:4.0.0-beta.3 \
+  --version 4.0.0-beta.3
+```
+
+**Specific Image Tags:**
+```yaml
+webapp:
+  image:
+    tag: "v4.0.0-v4-beta.21"
+
+supervisor:
+  image:
+    tag: "v4.0.0-v4-beta.21"
+```
+
+The chart version's `appVersion` field determines the default image tags. Using chart versions ensures compatibility between all components. Newer image tags may be incompatible with older chart versions and vice versa.
+
+## Troubleshooting
+
+**Check logs:**
+```bash
+# Webapp logs
+kubectl logs deployment/trigger-webapp -n trigger -f 
+
+# Supervisor logs
+kubectl logs deployment/trigger-supervisor -n trigger -f 
+
+# All pods
+kubectl logs -l app.kubernetes.io/instance=trigger -n trigger -f 
+```
+
+**Check pod status:**
+```bash
+kubectl get pods -n trigger
+kubectl describe pod <pod-name> -n trigger
+```
+
+**Start from scratch:**
+```bash
+# Delete the release
+helm uninstall trigger -n trigger
+
+# Delete persistent volumes (if needed) - careful, this will delete all data
+kubectl delete pvc -l app.kubernetes.io/instance=trigger -n trigger
+
+# Delete the namespace (optional)
+kubectl delete namespace trigger
+```
+
+**Common issues:**
+- **Magic links not working**: Check webapp logs for email delivery errors
+- **Deploy fails**: Verify registry access and authentication
+- **Pods stuck pending**: Describe the pod and check the events
+- **Worker token issues**: Check webapp and supervisor logs for errors
+
+## CLI Usage
+
+See the [Docker CLI usage](/self-hosting/docker#cli-usage) section, the commands are identical regardless of deployment method.
+
+<Note>
+While v4 is in beta, always use `@v4-beta` instead of `@latest`. For example: `npx trigger.dev@v4-beta dev`
+</Note>
+
+## CI / GitHub Actions
+
+When running the CLI in a CI environment, your login profiles won't be available. Instead, you can use the `TRIGGER_API_URL` and `TRIGGER_ACCESS_TOKEN` environment 
+variables to point at your self-hosted instance and authenticate.
+
+For more detailed instructions, see the [GitHub Actions guide](/github-actions).
+
+## Telemetry
+
+By default, the Trigger.dev webapp sends telemetry data to our servers. This data is used to improve the product and is not shared with third parties. To disable telemetry, set in your `values.yaml`:
+
+```yaml
+telemetry:
+  enabled: false
+```
