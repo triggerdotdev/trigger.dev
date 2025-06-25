@@ -72,11 +72,19 @@ export function useSearchParams() {
     [location, search]
   );
 
+  const has = useCallback(
+    (param: string) => {
+      return search.has(param);
+    },
+    [location, search]
+  );
+
   return {
     value,
     values,
     set,
     replace,
     del,
+    has,
   };
 }
