@@ -11,7 +11,7 @@ spec:
   restartPolicy: Never
   containers:
     - name: test-minio
-      image: curlimages/curl:latest
+      image: curlimages/curl:8.14.1
       command: ['sh', '-c']
       args:
         - |

@@ -10,7 +10,7 @@ spec:
   restartPolicy: Never
   containers:
     - name: test-webapp
-      image: curlimages/curl:latest
+      image: curlimages/curl:8.14.1
       command: ['sh', '-c']
       args:
         - |
