@@ -142,6 +142,8 @@ MinIO connection details
 {{- define "trigger-v4.minio.url" -}}
 {{- if .Values.minio.enabled -}}
 http://{{ include "trigger-v4.fullname" . }}-minio:{{ .Values.minio.service.ports.api }}
+{{- else if .Values.minio.external -}}
+{{ .Values.minio.externalConnection.url }}
 {{- else -}}
 ""
 {{- end -}}

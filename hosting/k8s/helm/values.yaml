@@ -371,6 +371,7 @@ clickhouse:
 # MinIO configuration
 minio:
   enabled: true
+  external: false  # Set to true to use external S3-compatible storage
   image:
     registry: docker.io
     repository: minio/minio
@@ -398,6 +399,9 @@ minio:
       api: 9000
       console: 9001
   resources: {}
+  # External MinIO/S3 connection (when external: true)
+  externalConnection:
+    url: ""  # e.g., "https://s3.amazonaws.com" or "https://your-minio.com:9000"
   # Extra environment variables for MinIO
   extraEnv:
     []
