@@ -454,6 +454,9 @@ minio:
     repository: minio/minio
     tag: "latest"
     pullPolicy: IfNotPresent
+  # WARNING: This sets the root user and password on first startup and MUST be changed via the dashboard.
+  # - Don't forget to update secrets.objectStore if you intend to use the root credentials.
+  # - You should instead create a new non-root user and update the secrets.objectStore with the new credentials.
   auth:
     rootUser: "admin"
     rootPassword: "very-safe-password"
