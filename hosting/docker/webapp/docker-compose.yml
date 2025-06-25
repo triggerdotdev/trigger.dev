@@ -143,8 +143,8 @@ services:
     ports:
       - ${CLICKHOUSE_PUBLISH_IP:-127.0.0.1}:9090:9000
     environment:
-      CLICKHOUSE_ADMIN_USER: default
-      CLICKHOUSE_ADMIN_PASSWORD: password
+      CLICKHOUSE_ADMIN_USER: ${CLICKHOUSE_USER:-default}
+      CLICKHOUSE_ADMIN_PASSWORD: ${CLICKHOUSE_PASSWORD:-password}
     volumes:
       - clickhouse:/bitnami/clickhouse
       - ../clickhouse/override.xml:/bitnami/clickhouse/etc/config.d/override.xml:ro
