@@ -161,39 +161,39 @@ spec:
                   name: {{ include "trigger-v4.secretsName" . }}
                   key: OBJECT_STORE_SECRET_ACCESS_KEY
             {{- end }}
-            {{- if and .Values.webapp.internal .Values.webapp.internal.otel }}
-            {{- if .Values.webapp.internal.otel.trace.exporterUrl }}
+            {{- if .Values.webapp.observability }}
+            {{- if .Values.webapp.observability.tracing.exporterUrl }}
             - name: INTERNAL_OTEL_TRACE_EXPORTER_URL
-              value: {{ .Values.webapp.internal.otel.trace.exporterUrl | quote }}
+              value: {{ .Values.webapp.observability.tracing.exporterUrl | quote }}
             {{- end }}
-            {{- if .Values.webapp.internal.otel.trace.exporterAuthHeaders }}
+            {{- if .Values.webapp.observability.tracing.exporterAuthHeaders }}
             - name: INTERNAL_OTEL_TRACE_EXPORTER_AUTH_HEADERS
-              value: {{ .Values.webapp.internal.otel.trace.exporterAuthHeaders | quote }}
+              value: {{ .Values.webapp.observability.tracing.exporterAuthHeaders | quote }}
             {{- end }}
             - name: INTERNAL_OTEL_TRACE_LOGGING_ENABLED
-              value: {{ .Values.webapp.internal.otel.trace.loggingEnabled | quote }}
+              value: {{ .Values.webapp.observability.tracing.loggingEnabled | quote }}
             - name: INTERNAL_OTEL_TRACE_SAMPLING_RATE
-              value: {{ .Values.webapp.internal.otel.trace.samplingRate | quote }}
+              value: {{ .Values.webapp.observability.tracing.samplingRate | quote }}
             - name: INTERNAL_OTEL_TRACE_INSTRUMENT_PRISMA_ENABLED
-              value: {{ .Values.webapp.internal.otel.trace.instrumentPrismaEnabled | quote }}
+              value: {{ .Values.webapp.observability.tracing.instrumentPrismaEnabled | quote }}
             - name: INTERNAL_OTEL_TRACE_DISABLED
-              value: {{ .Values.webapp.internal.otel.trace.disabled | quote }}
-            {{- if .Values.webapp.internal.otel.log.exporterUrl }}
+              value: {{ .Values.webapp.observability.tracing.disabled | quote }}
+            {{- if .Values.webapp.observability.logging.exporterUrl }}
             - name: INTERNAL_OTEL_LOG_EXPORTER_URL
-              value: {{ .Values.webapp.internal.otel.log.exporterUrl | quote }}
+              value: {{ .Values.webapp.observability.logging.exporterUrl | quote }}
             {{- end }}
-            {{- if .Values.webapp.internal.otel.metric.exporterUrl }}
+            {{- if .Values.webapp.observability.metrics.exporterUrl }}
             - name: INTERNAL_OTEL_METRIC_EXPORTER_URL
-              value: {{ .Values.webapp.internal.otel.metric.exporterUrl | quote }}
+              value: {{ .Values.webapp.observability.metrics.exporterUrl | quote }}
             {{- end }}
-            {{- if .Values.webapp.internal.otel.metric.exporterAuthHeaders }}
+            {{- if .Values.webapp.observability.metrics.exporterAuthHeaders }}
             - name: INTERNAL_OTEL_METRIC_EXPORTER_AUTH_HEADERS
-              value: {{ .Values.webapp.internal.otel.metric.exporterAuthHeaders | quote }}
+              value: {{ .Values.webapp.observability.metrics.exporterAuthHeaders | quote }}
             {{- end }}
             - name: INTERNAL_OTEL_METRIC_EXPORTER_ENABLED
-              value: {{ .Values.webapp.internal.otel.metric.exporterEnabled | quote }}
+              value: {{ .Values.webapp.observability.metrics.exporterEnabled | quote }}
             - name: INTERNAL_OTEL_METRIC_EXPORTER_INTERVAL_MS
-              value: {{ .Values.webapp.internal.otel.metric.exporterIntervalMs | quote }}
+              value: {{ .Values.webapp.observability.metrics.exporterIntervalMs | quote }}
             {{- end }}
             {{- if .Values.webapp.clickhouse.enabled }}
             - name: CLICKHOUSE_URL

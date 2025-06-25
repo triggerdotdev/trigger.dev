@@ -141,67 +141,67 @@ spec:
                   fieldPath: spec.nodeName
             # Kubernetes configuration
             - name: KUBERNETES_NAMESPACE
-              value: {{ default .Release.Namespace .Values.supervisor.config.kubernetesNamespace | quote }}
+              value: {{ default .Release.Namespace .Values.supervisor.config.kubernetes.namespace | quote }}
             - name: KUBERNETES_FORCE_ENABLED
-              value: {{ .Values.supervisor.config.kubernetesForceEnabled | quote }}
+              value: {{ .Values.supervisor.config.kubernetes.forceEnabled | quote }}
             - name: KUBERNETES_WORKER_NODETYPE_LABEL
-              value: {{ .Values.supervisor.config.kubernetesWorkerNodetypeLabel | quote }}
+              value: {{ .Values.supervisor.config.kubernetes.workerNodetypeLabel | quote }}
             {{- if or (and .Values.registry.enabled .Values.registry.auth.enabled) (and .Values.registry.external .Values.registry.externalConnection.auth.enabled) }}
             - name: KUBERNETES_IMAGE_PULL_SECRETS
               value: "{{ include "trigger-v4.fullname" . }}-registry-secret"
             {{- end }}
             - name: KUBERNETES_EPHEMERAL_STORAGE_SIZE_LIMIT
-              value: {{ default "10Gi" .Values.supervisor.config.kubernetesEphemeralStorageSizeLimit | quote }}
+              value: {{ default "10Gi" .Values.supervisor.config.kubernetes.ephemeralStorageSizeLimit | quote }}
             - name: KUBERNETES_EPHEMERAL_STORAGE_SIZE_REQUEST
-              value: {{ default "2Gi" .Values.supervisor.config.kubernetesEphemeralStorageSizeRequest | quote }}
+              value: {{ default "2Gi" .Values.supervisor.config.kubernetes.ephemeralStorageSizeRequest | quote }}
             # Pod cleaner configuration
             - name: POD_CLEANER_ENABLED
-              value: {{ .Values.supervisor.config.podCleanerEnabled | quote }}
+              value: {{ .Values.supervisor.config.podCleaner.enabled | quote }}
             - name: POD_CLEANER_BATCH_SIZE
-              value: {{ .Values.supervisor.config.podCleanerBatchSize | quote }}
+              value: {{ .Values.supervisor.config.podCleaner.batchSize | quote }}
             - name: POD_CLEANER_INTERVAL_MS
-              value: {{ .Values.supervisor.config.podCleanerIntervalMs | quote }}
+              value: {{ .Values.supervisor.config.podCleaner.intervalMs | quote }}
             # Failed pod handler
             - name: FAILED_POD_HANDLER_ENABLED
-              value: {{ .Values.supervisor.config.failedPodHandlerEnabled | quote }}
+              value: {{ .Values.supervisor.config.failedPodHandler.enabled | quote }}
             - name: FAILED_POD_HANDLER_RECONNECT_INTERVAL_MS
-              value: {{ .Values.supervisor.config.failedPodHandlerReconnectIntervalMs | quote }}
+              value: {{ .Values.supervisor.config.failedPodHandler.reconnectIntervalMs | quote }}
             # Workload API configuration
             - name: TRIGGER_WORKLOAD_API_PROTOCOL
-              value: {{ .Values.supervisor.config.workloadApiProtocol | quote }}
+              value: {{ .Values.supervisor.config.workloadApi.protocol | quote }}
             - name: TRIGGER_WORKLOAD_API_DOMAIN
               value: "{{ include "trigger-v4.fullname" . }}-supervisor.{{ .Release.Namespace }}.svc.cluster.local"
             - name: TRIGGER_WORKLOAD_API_PORT_EXTERNAL
-              value: {{ .Values.supervisor.config.workloadApiPortExternal | quote }}
+              value: {{ .Values.supervisor.config.workloadApi.portExternal | quote }}
             - name: TRIGGER_WORKLOAD_API_PORT_INTERNAL
-              value: {{ .Values.supervisor.config.workloadApiPortInternal | quote }}
+              value: {{ .Values.supervisor.config.workloadApi.portInternal | quote }}
             - name: TRIGGER_WORKLOAD_API_HOST_INTERNAL
-              value: {{ .Values.supervisor.config.workloadApiHostInternal | quote }}
+              value: {{ .Values.supervisor.config.workloadApi.hostInternal | quote }}
             - name: TRIGGER_WORKLOAD_API_ENABLED
-              value: {{ .Values.supervisor.config.workloadApiEnabled | quote }}
+              value: {{ .Values.supervisor.config.workloadApi.enabled | quote }}
             # Dequeue configuration
             - name: TRIGGER_DEQUEUE_ENABLED
-              value: {{ .Values.supervisor.config.dequeueEnabled | quote }}
+              value: {{ .Values.supervisor.config.dequeue.enabled | quote }}
             - name: TRIGGER_DEQUEUE_INTERVAL_MS
-              value: {{ .Values.supervisor.config.dequeueIntervalMs | quote }}
+              value: {{ .Values.supervisor.config.dequeue.intervalMs | quote }}
             - name: TRIGGER_DEQUEUE_MAX_RUN_COUNT
-              value: {{ .Values.supervisor.config.dequeueMaxRunCount | quote }}
+              value: {{ .Values.supervisor.config.dequeue.maxRunCount | quote }}
             - name: TRIGGER_DEQUEUE_IDLE_INTERVAL_MS
-              value: {{ .Values.supervisor.config.dequeueIdleIntervalMs | quote }}
+              value: {{ .Values.supervisor.config.dequeue.idleIntervalMs | quote }}
             # Heartbeat configuration
             - name: RUNNER_HEARTBEAT_INTERVAL_SECONDS
-              value: {{ .Values.supervisor.config.runnerHeartbeatIntervalSeconds | quote }}
+              value: {{ .Values.supervisor.config.runner.heartbeatIntervalSeconds | quote }}
             - name: RUNNER_SNAPSHOT_POLL_INTERVAL_SECONDS
-              value: {{ .Values.supervisor.config.runnerSnapshotPollIntervalSeconds | quote }}
+              value: {{ .Values.supervisor.config.runner.snapshotPollIntervalSeconds | quote }}
             # Metrics configuration
             - name: METRICS_ENABLED
-              value: {{ .Values.supervisor.config.metricsEnabled | quote }}
+              value: {{ .Values.supervisor.config.metrics.enabled | quote }}
             - name: METRICS_COLLECT_DEFAULTS
-              value: {{ .Values.supervisor.config.metricsCollectDefaults | quote }}
+              value: {{ .Values.supervisor.config.metrics.collectDefaults | quote }}
             - name: METRICS_HOST
-              value: {{ .Values.supervisor.config.metricsHost | quote }}
+              value: {{ .Values.supervisor.config.metrics.host | quote }}
             - name: METRICS_PORT
-              value: {{ .Values.supervisor.config.metricsPort | quote }}
+              value: {{ .Values.supervisor.config.metrics.port | quote }}
             # Debug
             - name: DEBUG
               value: {{ .Values.supervisor.config.debug | quote }}

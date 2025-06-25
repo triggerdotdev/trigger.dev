@@ -6,27 +6,48 @@ global:
 nameOverride: ""
 fullnameOverride: ""
 
-ingress:
-  enabled: false
-  className: "traefik"
-  annotations: {}
-  certManager:
-    enabled: false
-    clusterIssuer: "letsencrypt-prod"
-  externalDns:
-    enabled: false
-    hostname: ""
-    ttl: "300"
-  hosts:
-    - host: trigger.local
-      paths:
-        - path: /
-          pathType: Prefix
-  tls:
-    []
-    # - secretName: trigger-tls
-    #   hosts:
-    #     - trigger.local
+# Shared application configuration (used by multiple services)
+config:
+  appOrigin: "http://localhost:3040"
+  loginOrigin: "http://localhost:3040"
+  apiOrigin: "http://localhost:3040"
+  electricOrigin: "http://electric:3000"
+
+# Secrets configuration
+# IMPORTANT: The default values below are for TESTING ONLY and should NOT be used in production
+# For production deployments:
+# 1. Generate new secrets using: openssl rand -hex 16
+# 2. Override these values in your values.yaml or use external secret management
+# 3. Each secret must be exactly 32 hex characters (16 bytes)
+secrets:
+  # Enable/disable creation of secrets
+  # Set to false to use external secret management (Vault, Infisical, External Secrets, etc.)
+  # When disabled, use extraEnv and podAnnotations for secret injection
+  enabled: true
+
+  # Name of existing secret to use instead of creating one
+  # If empty, a secret will be created with the values below
+  # The secret must contain the following keys:
+  #   - SESSION_SECRET
+  #   - MAGIC_LINK_SECRET
+  #   - ENCRYPTION_KEY
+  #   - MANAGED_WORKER_SECRET
+  #   - OBJECT_STORE_ACCESS_KEY_ID
+  #   - OBJECT_STORE_SECRET_ACCESS_KEY
+  existingSecret: ""
+
+  # Session secret for user authentication (32 hex chars)
+  sessionSecret: "2818143646516f6fffd707b36f334bbb"
+  # Magic link secret for passwordless login (32 hex chars)
+  magicLinkSecret: "44da78b7bbb0dfe709cf38931d25dcdd"
+  # Encryption key for sensitive data (32 hex chars)
+  encryptionKey: "f686147ab967943ebbe9ed3b496e465a"
+  # Worker secret for managed worker authentication (32 hex chars)
+  managedWorkerSecret: "447c29678f9eaf289e9c4b70d3dd8a7f"
+  # Object store credentials (change for production)
+  objectStore:
+    accessKeyId: "admin"
+    secretAccessKey: "very-safe-password"
 
 # Webapp configuration
 webapp:
@@ -116,67 +137,123 @@ webapp:
     enabled: true
     logLevel: "info" # one of: log, error, warn, info, debug
 
-  # OpenTelemetry configuration
-  internal:
-    otel:
-      trace:
-        exporterUrl: ""
-        exporterAuthHeaders: ""
-        loggingEnabled: "0"
-        samplingRate: "20"
-        instrumentPrismaEnabled: "0"
-        disabled: "0"
-      log:
-        exporterUrl: ""
-        # Log auth headers are currently set to trace.exporterAuthHeaders
-      metric:
-        exporterUrl: ""
-        exporterAuthHeaders: ""
-        exporterEnabled: "0"
-        exporterIntervalMs: 30000
+  # Observability configuration (OTel)
+  observability:
+    tracing:
+      exporterUrl: ""
+      exporterAuthHeaders: ""
+      loggingEnabled: "0"
+      samplingRate: "20"
+      instrumentPrismaEnabled: "0"
+      disabled: "0"
+    logging:
+      exporterUrl: ""
+      # Log auth headers are currently set to tracing.exporterAuthHeaders
+    metrics:
+      exporterUrl: ""
+      exporterAuthHeaders: ""
+      exporterEnabled: "0"
+      exporterIntervalMs: 30000
 
-# Shared application configuration (used by multiple services)
-config:
-  appOrigin: "http://localhost:3040"
-  loginOrigin: "http://localhost:3040"
-  apiOrigin: "http://localhost:3040"
-  electricOrigin: "http://electric:3000"
-
-# Secrets configuration
-# IMPORTANT: The default values below are for TESTING ONLY and should NOT be used in production
-# For production deployments:
-# 1. Generate new secrets using: openssl rand -hex 16
-# 2. Override these values in your values.yaml or use external secret management
-# 3. Each secret must be exactly 32 hex characters (16 bytes)
-secrets:
-  # Enable/disable creation of secrets
-  # Set to false to use external secret management (Vault, Infisical, External Secrets, etc.)
-  # When disabled, use extraEnv and podAnnotations for secret injection
+# Supervisor configuration
+supervisor:
   enabled: true
+  image:
+    registry: ghcr.io
+    repository: triggerdotdev/supervisor
+    tag: "" # Defaults to Chart.appVersion when empty
+    pullPolicy: IfNotPresent
 
-  # Name of existing secret to use instead of creating one
-  # If empty, a secret will be created with the values below
-  # The secret must contain the following keys:
-  #   - SESSION_SECRET
-  #   - MAGIC_LINK_SECRET
-  #   - ENCRYPTION_KEY
-  #   - MANAGED_WORKER_SECRET
-  #   - OBJECT_STORE_ACCESS_KEY_ID
-  #   - OBJECT_STORE_SECRET_ACCESS_KEY
-  existingSecret: ""
+  podAnnotations: {}
 
-  # Session secret for user authentication (32 hex chars)
-  sessionSecret: "2818143646516f6fffd707b36f334bbb"
-  # Magic link secret for passwordless login (32 hex chars)
-  magicLinkSecret: "44da78b7bbb0dfe709cf38931d25dcdd"
-  # Encryption key for sensitive data (32 hex chars)
-  encryptionKey: "f686147ab967943ebbe9ed3b496e465a"
-  # Worker secret for managed worker authentication (32 hex chars)
-  managedWorkerSecret: "447c29678f9eaf289e9c4b70d3dd8a7f"
-  # Object store credentials (change for production)
-  objectStore:
-    accessKeyId: "admin"
-    secretAccessKey: "very-safe-password"
+  # podSecurityContext:
+  #   fsGroup: 1000
+
+  # securityContext:
+  #   runAsNonRoot: true
+  #   runAsUser: 1000
+
+  service:
+    type: ClusterIP
+    ports:
+      workload: 3000
+      metrics: 9088
+  resources: {}
+  config:
+    kubernetes:
+      forceEnabled: true
+      namespace: "" # Default: uses release namespace
+      workerNodetypeLabel: "" # When set, runs will only be scheduled on nodes with "nodetype=<label>"
+      ephemeralStorageSizeLimit: "" # Default: 10Gi
+      ephemeralStorageSizeRequest: "" # Default: 2Gi´
+    podCleaner:
+      enabled: true
+      batchSize: 100
+      intervalMs: 10000 # 10 seconds´
+    failedPodHandler:
+      enabled: true
+      reconnectIntervalMs: 1000
+    workloadApi:
+      enabled: true
+      protocol: "http"
+      portExternal: 3000
+      portInternal: 3000
+      hostInternal: "0.0.0.0"
+    dequeue:
+      enabled: true
+      intervalMs: 250
+      maxRunCount: 100
+      idleIntervalMs: 500
+    runner:
+      heartbeatIntervalSeconds: 30
+      snapshotPollIntervalSeconds: 30
+    metrics:
+      enabled: true
+      collectDefaults: true
+      host: "0.0.0.0"
+      port: 9088
+    debug: false
+  # RBAC configuration
+  serviceAccount:
+    create: true
+    name: ""
+    annotations: {}
+  rbac:
+    create: true
+    # Cluster-level permissions for pod management
+    clusterRole:
+      create: true
+      name: ""
+  # Extra environment variables for Supervisor
+  extraEnv:
+    []
+    # - name: CUSTOM_VAR
+    #   value: "custom-value"
+
+  # ServiceMonitor for Prometheus monitoring
+  serviceMonitor:
+    enabled: false
+    interval: "30s"
+    path: "/metrics"
+    labels: {}
+    basicAuth: {}
+
+  # Bootstrap configuration
+  # When enabled: reads token from shared file, otherwise uses workerToken config
+  bootstrap:
+    enabled: true
+    workerTokenPath: "/home/node/shared/worker_token"
+    workerToken:
+      # Direct value (not recommended for production)
+      value: ""
+      # Secret reference
+      secret:
+        name: ""
+        key: ""
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
 
 # PostgreSQL configuration
 postgres:
@@ -371,7 +448,7 @@ clickhouse:
 # MinIO configuration
 minio:
   enabled: true
-  external: false  # Set to true to use external S3-compatible storage
+  external: false # Set to true to use external S3-compatible storage
   image:
     registry: docker.io
     repository: minio/minio
@@ -401,7 +478,7 @@ minio:
   resources: {}
   # External MinIO/S3 connection (when external: true)
   externalConnection:
-    url: ""  # e.g., "https://s3.amazonaws.com" or "https://your-minio.com:9000"
+    url: "" # e.g., "https://s3.amazonaws.com" or "https://your-minio.com:9000"
   # Extra environment variables for MinIO
   extraEnv:
     []
@@ -454,105 +531,6 @@ registry:
     # - name: CUSTOM_VAR
     #   value: "custom-value"
 
-# Supervisor configuration (Kubernetes worker orchestrator)
-supervisor:
-  enabled: true
-  image:
-    registry: ghcr.io
-    repository: triggerdotdev/supervisor
-    tag: "" # Defaults to Chart.appVersion when empty
-    pullPolicy: IfNotPresent
-
-  podAnnotations: {}
-
-  # podSecurityContext:
-  #   fsGroup: 1000
-
-  # securityContext:
-  #   runAsNonRoot: true
-  #   runAsUser: 1000
-
-  service:
-    type: ClusterIP
-    ports:
-      workload: 3000
-      metrics: 9088
-  resources: {}
-  config:
-    # Kubernetes mode configuration
-    kubernetesForceEnabled: true
-    kubernetesNamespace: "" # Default: uses release namespace
-    kubernetesWorkerNodetypeLabel: "" # When set, runs will only be scheduled on nodes with "nodetype=<label>"
-    kubernetesEphemeralStorageSizeLimit: "" # Default: 10Gi
-    kubernetesEphemeralStorageSizeRequest: "" # Default: 2Gi´
-    podCleanerEnabled: true
-    podCleanerBatchSize: 100
-    podCleanerIntervalMs: 10000 # 10 seconds´
-    failedPodHandlerEnabled: true
-    failedPodHandlerReconnectIntervalMs: 1000
-    # API configuration
-    workloadApiEnabled: true
-    workloadApiProtocol: "http"
-    workloadApiPortExternal: 3000
-    workloadApiPortInternal: 3000
-    workloadApiHostInternal: "0.0.0.0"
-    # Dequeue configuration
-    dequeueEnabled: true
-    dequeueIntervalMs: 250
-    dequeueMaxRunCount: 100
-    dequeueIdleIntervalMs: 500
-    # Heartbeat configuration
-    runnerHeartbeatIntervalSeconds: 30
-    runnerSnapshotPollIntervalSeconds: 30
-    # Metrics
-    metricsEnabled: true
-    metricsCollectDefaults: true
-    metricsHost: "0.0.0.0"
-    metricsPort: 9088
-    # Debug
-    debug: false
-  # RBAC configuration
-  serviceAccount:
-    create: true
-    name: ""
-    annotations: {}
-  rbac:
-    create: true
-    # Cluster-level permissions for pod management
-    clusterRole:
-      create: true
-      name: ""
-  # Extra environment variables for Supervisor
-  extraEnv:
-    []
-    # - name: CUSTOM_VAR
-    #   value: "custom-value"
-
-  # ServiceMonitor for Prometheus monitoring
-  serviceMonitor:
-    enabled: false
-    interval: "30s"
-    path: "/metrics"
-    labels: {}
-    basicAuth: {}
-
-  # Bootstrap configuration
-  # When enabled: reads token from shared file, otherwise uses workerToken config
-  bootstrap:
-    enabled: true
-    workerTokenPath: "/home/node/shared/worker_token"
-    workerToken:
-      # Direct value (not recommended for production)
-      value: ""
-      # Secret reference
-      secret:
-        name: ""
-        key: ""
-
-  nodeSelector: {}
-  tolerations: []
-  affinity: {}
-
 # Shared persistent volumes
 persistence:
   # This is used for the worker token file
@@ -563,6 +541,28 @@ persistence:
     # accessMode: ReadWriteMany  # Use for cross-node deployment (requires compatible storage class)
     storageClass: ""
     retain: true # Prevents deletion on uninstall
+
+ingress:
+  enabled: false
+  className: "traefik"
+  annotations: {}
+  certManager:
+    enabled: false
+    clusterIssuer: "letsencrypt-prod"
+  externalDns:
+    enabled: false
+    hostname: ""
+    ttl: "300"
+  hosts:
+    - host: trigger.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    []
+    # - secretName: trigger-tls
+    #   hosts:
+    #     - trigger.local
 
 # Telemetry configuration
 telemetry:
