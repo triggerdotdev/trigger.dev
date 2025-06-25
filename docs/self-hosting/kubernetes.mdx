@@ -105,12 +105,23 @@ config:
 Create a `values-custom.yaml` file. For example:
 
 ```yaml
-# Required: Generate new secrets with `openssl rand -hex 16`
+# Generate new secrets with `openssl rand -hex 16`
+# WARNING: You should probably use existingSecret instead of hardcoding here
 secrets:
   sessionSecret: "your-32-char-hex-secret-1"
   magicLinkSecret: "your-32-char-hex-secret-2"
-  encryptionKey: "your-32-char-hex-secret-3"
-  managedWorkerSecret: "your-32-char-hex-secret-4"
+  # ...
+
+# Recommended: Use existing secret - must contain at least the following keys:
+# - SESSION_SECRET
+# - MAGIC_LINK_SECRET
+# - ENCRYPTION_KEY
+# - MANAGED_WORKER_SECRET
+# - OBJECT_STORE_ACCESS_KEY_ID
+# - OBJECT_STORE_SECRET_ACCESS_KEY
+secrets:
+  enabled: false
+  existingSecret: "your-existing-secret"
 
 # Application URLs
 config:
