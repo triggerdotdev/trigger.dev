@@ -69,6 +69,17 @@ kubectl port-forward svc/trigger-webapp 3040:3030 -n trigger
 
 3. Open the dashboard: `http://localhost:3040`
 
+4. Login with the magic link:
+
+```bash
+# Check the webapp logs
+kubectl logs -n trigger deployment/trigger-webapp | grep -A1 "magic link"
+```
+
+<Note>
+While v4 is in beta, always use `@v4-beta` instead of `@latest`. For example: `npx trigger.dev@v4-beta dev`
+</Note>
+
 ## Configuration
 
 The default installation uses insecure secrets and is only suitable for testing. You _will_ need to configure your own secrets as a bare minimum.

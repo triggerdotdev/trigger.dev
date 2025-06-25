@@ -345,6 +345,10 @@ TRIGGER_IMAGE_TAG=v4.0.0-v4-beta.21
 
 This section highlights some of the CLI commands and options that are useful when self-hosting. Please check the [CLI reference](/cli-introduction) for more in-depth documentation.
 
+<Note>
+While v4 is in beta, always use `@v4-beta` instead of `@latest`. For example: `npx trigger.dev@v4-beta dev`
+</Note>
+
 ### Login
 
 To avoid being redirected to [Trigger.dev Cloud](https://cloud.trigger.dev) when using the CLI, you need to specify the URL of your self-hosted instance with the `--api-url` or `-a` flag. For example:
