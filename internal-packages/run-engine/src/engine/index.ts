@@ -152,7 +152,7 @@ export class RunEngine {
       pollIntervalMs: options.worker.pollIntervalMs,
       immediatePollIntervalMs: options.worker.immediatePollIntervalMs,
       shutdownTimeoutMs: options.worker.shutdownTimeoutMs,
-      logger: new Logger("RunEngineWorker", "debug"),
+      logger: new Logger("RunEngineWorker", options.logLevel ?? "info"),
       jobs: {
         finishWaitpoint: async ({ payload }) => {
           await this.waitpointSystem.completeWaitpoint({

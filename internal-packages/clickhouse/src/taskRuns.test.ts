@@ -344,4 +344,54 @@ describe("Task Runs V2", () => {
       expect(result2).toEqual([]);
     }
   );
+
+  clickhouseTest(
+    "should be able to insert payloads with a duplicate path",
+    async ({ clickhouseContainer }) => {
+      const client = new ClickhouseClient({
+        name: "test",
+        url: clickhouseContainer.getConnectionUrl(),
+      });
+
+      const insertPayloads = insertRawTaskRunPayloads(client, {
+        async_insert: 0, // turn off async insert for this test
+      });
+
+      const [insertPayloadsError, insertPayloadsResult] = await insertPayloads([
+        {
+          run_id: "run_1234",
+          created_at: Date.now(),
+          payload: {
+            data: {
+              title: {
+                id: "123",
+              },
+              "title.id": 123,
+            },
+          },
+        },
+      ]);
+
+      expect(insertPayloadsError).toBeNull();
+      expect(insertPayloadsResult).toEqual(expect.objectContaining({ executed: true }));
+      expect(insertPayloadsResult?.summary?.written_rows).toEqual("1");
+
+      const queryPayloads = client.query({
+        name: "query-raw-task-run-payloads",
+        query: "SELECT * FROM trigger_dev.raw_task_runs_payload_v1",
+        schema: z.object({
+          run_id: z.string(),
+          created_at: z.coerce.date(),
+          payload: z.unknown(),
+        }),
+      });
+
+      const [queryPayloadsError, resultPayloads] = await queryPayloads({ run_id: "run_1234" });
+
+      expect(queryPayloadsError).toBeNull();
+      expect(resultPayloads).toEqual(
+        expect.arrayContaining([expect.objectContaining({ run_id: "run_1234" })])
+      );
+    }
+  );
 });

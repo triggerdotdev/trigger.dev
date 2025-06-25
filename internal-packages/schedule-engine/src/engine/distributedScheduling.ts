@@ -5,21 +5,27 @@
  */
 export function calculateDistributedExecutionTime(
   exactScheduleTime: Date,
-  distributionWindowSeconds: number = 30
+  distributionWindowSeconds: number = 30,
+  instanceId?: string
 ): Date {
-  // Use the ISO string of the exact schedule time as the seed for consistency
-  const seed = exactScheduleTime.toISOString();
+  // Create seed by combining ISO timestamp with optional instanceId
+  // This ensures different instances get different distributions even with same schedule time
+  const timeSeed = exactScheduleTime.toISOString();
+  const seed = instanceId ? `${timeSeed}:${instanceId}` : timeSeed;
 
-  // Create a simple hash from the seed string
-  let hash = 0;
+  // Use a better hash function (FNV-1a variant) for more uniform distribution
+  let hash = 2166136261; // FNV offset basis (32-bit)
+
   for (let i = 0; i < seed.length; i++) {
-    const char = seed.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash = hash & hash; // Convert to 32-bit integer
+    hash ^= seed.charCodeAt(i);
+    hash *= 16777619; // FNV prime (32-bit)
+    // Keep it as 32-bit unsigned integer
+    hash = hash >>> 0;
   }
 
-  // Convert hash to a value between 0 and 1
-  const normalized = Math.abs(hash) / Math.pow(2, 31);
+  // Convert hash to a value between 0 and 1 using better normalization
+  // Use the full 32-bit range for better distribution
+  const normalized = hash / 0xffffffff;
 
   // Calculate offset in milliseconds (0 to distributionWindowSeconds * 1000)
   const offsetMs = Math.floor(normalized * distributionWindowSeconds * 1000);
