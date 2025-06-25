@@ -269,6 +269,9 @@ postgres:
     username: "postgres"
     password: "postgres"
     database: "main"
+  connection:
+    schema: "public"
+    sslMode: "disable" # Use "require" or "verify-full" for production
 
   podAnnotations: {}
 
@@ -296,6 +299,9 @@ postgres:
     database: ""
     username: ""
     password: ""
+    # Connection options
+    schema: "public"
+    sslMode: "require" # Options: disable, allow, prefer, require, verify-ca, verify-full
   # Extra environment variables for PostgreSQL
   extraEnv:
     []

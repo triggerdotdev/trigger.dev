@@ -131,6 +131,8 @@ supervisor:
 #     database: "trigger"
 #     username: "trigger_user"
 #     password: "your-db-password"
+#     schema: "public"
+#     sslMode: "require"  # Use 'require' or 'verify-full' for production
 
 # Example: Use external Redis instead
 # redis:

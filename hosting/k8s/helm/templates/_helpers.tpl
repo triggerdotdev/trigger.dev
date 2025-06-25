@@ -96,13 +96,13 @@ Get the full image name for supervisor
 {{- end }}
 
 {{/*
-PostgreSQL connection string for internal PostgreSQL
+PostgreSQL connection string
 */}}
 {{- define "trigger-v4.postgres.connectionString" -}}
 {{- if .Values.postgres.external -}}
-postgresql://{{ .Values.postgres.externalConnection.username }}:{{ .Values.postgres.externalConnection.password }}@{{ .Values.postgres.externalConnection.host }}:{{ .Values.postgres.externalConnection.port }}/{{ .Values.postgres.externalConnection.database }}?schema=public&sslmode=disable
+postgresql://{{ .Values.postgres.externalConnection.username }}:{{ .Values.postgres.externalConnection.password }}@{{ .Values.postgres.externalConnection.host }}:{{ .Values.postgres.externalConnection.port }}/{{ .Values.postgres.externalConnection.database }}?schema={{ .Values.postgres.externalConnection.schema | default "public" }}&sslmode={{ .Values.postgres.externalConnection.sslMode | default "prefer" }}
 {{- else -}}
-postgresql://{{ .Values.postgres.auth.username }}:{{ .Values.postgres.auth.password }}@{{ include "trigger-v4.fullname" . }}-postgres:{{ .Values.postgres.primary.service.ports.postgres }}/{{ .Values.postgres.auth.database }}?schema=public&sslmode=disable
+postgresql://{{ .Values.postgres.auth.username }}:{{ .Values.postgres.auth.password }}@{{ include "trigger-v4.fullname" . }}-postgres:{{ .Values.postgres.primary.service.ports.postgres }}/{{ .Values.postgres.auth.database }}?schema={{ .Values.postgres.connection.schema | default "public" }}&sslmode={{ .Values.postgres.connection.sslMode | default "prefer" }}
 {{- end -}}
 {{- end }}
 
