@@ -12,6 +12,8 @@ If you are using Prisma, you should use the prisma build extension.
 - Support for TypedSQL and multiple schema files
 - You can use `prismaSchemaFolder` to specify just the directory containing your schema file, instead of the full path
 - You can add the extension twice if you have multiple separate schemas in the same project (example below)
+- `schema` must be a path to your `*.prisma` file, not just the folder containing it
+- When using multiple Prisma generators, use `clientGenerator` to point to the generator ID of the `prisma-client-js` generator
 
 You can use it for a simple Prisma setup like this:
 
@@ -63,7 +65,7 @@ export default defineConfig({
 
 ### clientGenerator
 
-If you have multiple `generator` statements defined in your schema file, you can pass in the `clientGenerator` option to specify the `prisma-client-js` generator, which will prevent other generators from being generated. Some examples where you may need to do this include when using the `prisma-kysely` or `prisma-json-types-generator` generators.
+If you have multiple `generator` statements defined in your schema file, you can pass in the `clientGenerator` option to specify the `prisma-client-js` generator, which will prevent other generators from being generated. Use the **generator ID** from your schema (for example `client`), not the provider name (`prisma-client-js`). Some examples where you may need to do this include when using the `prisma-kysely` or `prisma-json-types-generator` generators.
 
 <CodeGroup>
 
@@ -155,3 +157,10 @@ prismaExtension({
   migrate: false,
 }),
 ```
+
+## Troubleshooting & Common Pitfalls
+
+- **"Prisma Client could not locate the Query Engine for runtime 'debian-openssl-3.0.x'"**
+
+  This usually means the Prisma extension wasn't added to your `trigger.config.ts` file. Ensure that `prismaExtension()` is present in your `build.extensions` array. You don't need to download any Prisma binaries manually—Trigger will handle that for you.
+
