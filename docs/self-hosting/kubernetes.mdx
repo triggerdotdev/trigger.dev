@@ -76,9 +76,9 @@ kubectl port-forward svc/trigger-webapp 3040:3030 -n trigger
 kubectl logs -n trigger deployment/trigger-webapp | grep -A1 "magic link"
 ```
 
-<Note>
+<Warning>
 While v4 is in beta, always use `@v4-beta` instead of `@latest`. For example: `npx trigger.dev@v4-beta dev`
-</Note>
+</Warning>
 
 ## Configuration
 
@@ -373,9 +373,9 @@ kubectl delete namespace trigger
 
 See the [Docker CLI usage](/self-hosting/docker#cli-usage) section, the commands are identical regardless of deployment method.
 
-<Note>
+<Warning>
 While v4 is in beta, always use `@v4-beta` instead of `@latest`. For example: `npx trigger.dev@v4-beta dev`
-</Note>
+</Warning>
 
 ## CI / GitHub Actions
 
