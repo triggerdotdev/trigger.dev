@@ -559,6 +559,10 @@ persistence:
     storageClass: ""
     retain: true # Prevents deletion on uninstall
 
+# Telemetry configuration
+telemetry:
+  enabled: true
+
 # Extra Kubernetes manifests
 # This allows you to add additional Kubernetes resources that will be deployed with the chart
 extraManifests:

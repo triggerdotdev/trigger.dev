@@ -207,6 +207,10 @@ spec:
             - name: RUN_REPLICATION_LOG_LEVEL
               value: {{ .Values.webapp.runReplication.logLevel | quote }}
             {{- end }}
+            {{- if not .Values.telemetry.enabled }}
+            - name: TRIGGER_TELEMETRY_DISABLED
+              value: "1"
+            {{- end }}
             {{- with .Values.webapp.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
