@@ -1,0 +1,21 @@
+{{- if and .Values.postgres.enabled (not .Values.postgres.external) }}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ include "trigger-v4.fullname" . }}-test-postgres"
+  labels:
+    {{- include "trigger-v4.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+spec:
+  restartPolicy: Never
+  containers:
+    - name: test-postgres
+      image: postgres:{{ .Values.postgres.image.tag }}
+      command: ['sh', '-c']
+      args:
+        - |
+          echo "Testing PostgreSQL connection..."
+          pg_isready -h {{ include "trigger-v4.fullname" . }}-postgres -p {{ .Values.postgres.primary.service.ports.postgres }} -U {{ .Values.postgres.auth.username }}
+          echo "PostgreSQL test completed successfully"
+{{- end }}

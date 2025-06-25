@@ -1,0 +1,284 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "trigger-v4.fullname" . }}-webapp
+  labels:
+    {{- $component := "webapp" }}
+    {{- include "trigger-v4.componentLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 4 }}
+spec:
+  replicas: {{ .Values.webapp.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "trigger-v4.componentSelectorLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.webapp.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "trigger-v4.componentSelectorLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 8 }}
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        fsGroup: 1000
+        {{- with .Values.webapp.podSecurityContext }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      initContainers:
+        - name: init-shared
+          image: busybox:1.35
+          command: ['sh', '-c', 'mkdir -p /home/node/shared']
+          securityContext:
+            runAsUser: 1000
+          volumeMounts:
+            - name: shared
+              mountPath: /home/node/shared
+      containers:
+        - name: webapp
+          securityContext:
+            {{- toYaml .Values.webapp.securityContext | nindent 12 }}
+          image: {{ include "trigger-v4.image" . }}
+          imagePullPolicy: {{ .Values.webapp.image.pullPolicy }}
+          command: 
+            - ./scripts/entrypoint.sh
+          ports:
+            - name: http
+              containerPort: {{ .Values.webapp.service.targetPort }}
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /healthcheck
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /healthcheck
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 5
+          resources:
+            {{- toYaml .Values.webapp.resources | nindent 12 }}
+          env:
+            - name: APP_ORIGIN
+              value: {{ .Values.config.appOrigin | quote }}
+            - name: LOGIN_ORIGIN
+              value: {{ .Values.config.loginOrigin | quote }}
+            - name: API_ORIGIN
+              value: {{ .Values.config.apiOrigin | quote }}
+            - name: ELECTRIC_ORIGIN
+              value: {{ include "trigger-v4.electric.url" . | quote }}
+            - name: DATABASE_URL
+              value: {{ include "trigger-v4.postgres.connectionString" . | quote }}
+            - name: DIRECT_URL
+              value: {{ include "trigger-v4.postgres.connectionString" . | quote }}
+            - name: DATABASE_HOST
+              value: {{ include "trigger-v4.postgres.host" . | quote }}
+            - name: REDIS_HOST
+              value: {{ include "trigger-v4.redis.host" . | quote }}
+            - name: REDIS_PORT
+              value: {{ include "trigger-v4.redis.port" . | quote }}
+            - name: REDIS_TLS_DISABLED
+              value: "true"
+            - name: APP_LOG_LEVEL
+              value: {{ .Values.webapp.logLevel | quote }}
+            - name: DEV_OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "{{ .Values.config.appOrigin }}/otel"
+            - name: DEPLOY_REGISTRY_HOST
+              value: {{ include "trigger-v4.registry.host" . | quote }}
+            - name: DEPLOY_REGISTRY_NAMESPACE
+              value: {{ .Values.registry.repositoryNamespace | quote }}
+            - name: OBJECT_STORE_BASE_URL
+              value: {{ include "trigger-v4.minio.url" . | quote }}
+            - name: GRACEFUL_SHUTDOWN_TIMEOUT
+              value: {{ .Values.webapp.gracefulShutdownTimeout | quote }}
+            {{- if .Values.webapp.bootstrap.enabled }}
+            - name: TRIGGER_BOOTSTRAP_ENABLED
+              value: "1"
+            - name: TRIGGER_BOOTSTRAP_WORKER_GROUP_NAME
+              value: {{ .Values.webapp.bootstrap.workerGroupName | quote }}
+            - name: TRIGGER_BOOTSTRAP_WORKER_TOKEN_PATH
+              value: {{ .Values.webapp.bootstrap.workerTokenPath | quote }}
+            {{- end }}
+            {{- if .Values.webapp.limits.taskPayloadOffloadThreshold }}
+            - name: TASK_PAYLOAD_OFFLOAD_THRESHOLD
+              value: {{ .Values.webapp.limits.taskPayloadOffloadThreshold | quote }}
+            {{- end }}
+            {{- if .Values.webapp.limits.taskPayloadMaximumSize }}
+            - name: TASK_PAYLOAD_MAXIMUM_SIZE
+              value: {{ .Values.webapp.limits.taskPayloadMaximumSize | quote }}
+            {{- end }}
+            {{- if .Values.webapp.limits.batchTaskPayloadMaximumSize }}
+            - name: BATCH_TASK_PAYLOAD_MAXIMUM_SIZE
+              value: {{ .Values.webapp.limits.batchTaskPayloadMaximumSize | quote }}
+            {{- end }}
+            {{- if .Values.webapp.limits.taskRunMetadataMaximumSize }}
+            - name: TASK_RUN_METADATA_MAXIMUM_SIZE
+              value: {{ .Values.webapp.limits.taskRunMetadataMaximumSize | quote }}
+            {{- end }}
+            {{- if .Values.webapp.limits.defaultEnvExecutionConcurrencyLimit }}
+            - name: DEFAULT_ENV_EXECUTION_CONCURRENCY_LIMIT
+              value: {{ .Values.webapp.limits.defaultEnvExecutionConcurrencyLimit | quote }}
+            {{- end }}
+            {{- if .Values.webapp.limits.defaultOrgExecutionConcurrencyLimit }}
+            - name: DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT
+              value: {{ .Values.webapp.limits.defaultOrgExecutionConcurrencyLimit | quote }}
+            {{- end }}
+            {{- if .Values.secrets.enabled }}
+            - name: SESSION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trigger-v4.secretsName" . }}
+                  key: SESSION_SECRET
+            - name: MAGIC_LINK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trigger-v4.secretsName" . }}
+                  key: MAGIC_LINK_SECRET
+            - name: ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trigger-v4.secretsName" . }}
+                  key: ENCRYPTION_KEY
+            - name: MANAGED_WORKER_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trigger-v4.secretsName" . }}
+                  key: MANAGED_WORKER_SECRET
+            - name: OBJECT_STORE_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trigger-v4.secretsName" . }}
+                  key: OBJECT_STORE_ACCESS_KEY_ID
+            - name: OBJECT_STORE_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trigger-v4.secretsName" . }}
+                  key: OBJECT_STORE_SECRET_ACCESS_KEY
+            {{- end }}
+            {{- if .Values.webapp.observability }}
+            {{- if .Values.webapp.observability.tracing.exporterUrl }}
+            - name: INTERNAL_OTEL_TRACE_EXPORTER_URL
+              value: {{ .Values.webapp.observability.tracing.exporterUrl | quote }}
+            {{- end }}
+            {{- if .Values.webapp.observability.tracing.exporterAuthHeaders }}
+            - name: INTERNAL_OTEL_TRACE_EXPORTER_AUTH_HEADERS
+              value: {{ .Values.webapp.observability.tracing.exporterAuthHeaders | quote }}
+            {{- end }}
+            - name: INTERNAL_OTEL_TRACE_LOGGING_ENABLED
+              value: {{ .Values.webapp.observability.tracing.loggingEnabled | quote }}
+            - name: INTERNAL_OTEL_TRACE_SAMPLING_RATE
+              value: {{ .Values.webapp.observability.tracing.samplingRate | quote }}
+            - name: INTERNAL_OTEL_TRACE_INSTRUMENT_PRISMA_ENABLED
+              value: {{ .Values.webapp.observability.tracing.instrumentPrismaEnabled | quote }}
+            - name: INTERNAL_OTEL_TRACE_DISABLED
+              value: {{ .Values.webapp.observability.tracing.disabled | quote }}
+            {{- if .Values.webapp.observability.logging.exporterUrl }}
+            - name: INTERNAL_OTEL_LOG_EXPORTER_URL
+              value: {{ .Values.webapp.observability.logging.exporterUrl | quote }}
+            {{- end }}
+            {{- if .Values.webapp.observability.metrics.exporterUrl }}
+            - name: INTERNAL_OTEL_METRIC_EXPORTER_URL
+              value: {{ .Values.webapp.observability.metrics.exporterUrl | quote }}
+            {{- end }}
+            {{- if .Values.webapp.observability.metrics.exporterAuthHeaders }}
+            - name: INTERNAL_OTEL_METRIC_EXPORTER_AUTH_HEADERS
+              value: {{ .Values.webapp.observability.metrics.exporterAuthHeaders | quote }}
+            {{- end }}
+            - name: INTERNAL_OTEL_METRIC_EXPORTER_ENABLED
+              value: {{ .Values.webapp.observability.metrics.exporterEnabled | quote }}
+            - name: INTERNAL_OTEL_METRIC_EXPORTER_INTERVAL_MS
+              value: {{ .Values.webapp.observability.metrics.exporterIntervalMs | quote }}
+            {{- end }}
+            {{- if .Values.webapp.clickhouse.enabled }}
+            - name: CLICKHOUSE_URL
+              value: {{ if .Values.clickhouse.external }}{{ .Values.clickhouse.externalConnection.httpUrl | quote }}{{ else }}"http://{{ .Values.clickhouse.auth.adminUser }}:{{ .Values.clickhouse.auth.adminPassword }}@{{ include "trigger-v4.fullname" . }}-clickhouse:{{ .Values.clickhouse.service.ports.http }}"{{ end }}
+            - name: CLICKHOUSE_LOG_LEVEL
+              value: {{ .Values.webapp.clickhouse.logLevel | quote }}
+            {{- end }}
+            {{- if .Values.webapp.runReplication.enabled }}
+            - name: RUN_REPLICATION_ENABLED
+              value: "1"
+            - name: RUN_REPLICATION_CLICKHOUSE_URL
+              value: {{ if .Values.clickhouse.external }}{{ .Values.clickhouse.externalConnection.httpUrl | quote }}{{ else }}"http://{{ .Values.clickhouse.auth.adminUser }}:{{ .Values.clickhouse.auth.adminPassword }}@{{ include "trigger-v4.fullname" . }}-clickhouse:{{ .Values.clickhouse.service.ports.http }}"{{ end }}
+            - name: RUN_REPLICATION_LOG_LEVEL
+              value: {{ .Values.webapp.runReplication.logLevel | quote }}
+            {{- end }}
+            {{- if not .Values.telemetry.enabled }}
+            - name: TRIGGER_TELEMETRY_DISABLED
+              value: "1"
+            {{- end }}
+            {{- with .Values.webapp.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          volumeMounts:
+            - name: shared
+              mountPath: /home/node/shared
+      volumes:
+        - name: shared
+          {{- if .Values.persistence.shared.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "trigger-v4.fullname" . }}-shared
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+      {{- with .Values.webapp.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.webapp.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.webapp.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "trigger-v4.fullname" . }}-webapp
+  labels:
+    {{- $component := "webapp" }}
+    {{- include "trigger-v4.componentLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 4 }}
+spec:
+  type: {{ .Values.webapp.service.type }}
+  ports:
+    - port: {{ .Values.webapp.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "trigger-v4.componentSelectorLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 4 }}
+---
+{{- if .Values.persistence.shared.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "trigger-v4.fullname" . }}-shared
+  {{- if .Values.persistence.shared.retain }}
+  annotations:
+    "helm.sh/resource-policy": keep
+  {{- end }}
+  labels:
+    {{- include "trigger-v4.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.persistence.shared.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.shared.size }}
+  {{- $storageClass := .Values.persistence.shared.storageClass | default .Values.global.storageClass }}
+  {{- if $storageClass }}
+  storageClassName: {{ $storageClass | quote }}
+  {{- end }}
+{{- end }}

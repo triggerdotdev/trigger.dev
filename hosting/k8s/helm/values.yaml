@@ -1,0 +1,611 @@
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+  storageClass: ""
+
+nameOverride: ""
+fullnameOverride: ""
+
+# Shared application configuration (used by multiple services)
+config:
+  appOrigin: "http://localhost:3040"
+  loginOrigin: "http://localhost:3040"
+  apiOrigin: "http://localhost:3040"
+  electricOrigin: "http://electric:3000"
+
+# Secrets configuration
+# IMPORTANT: The default values below are for TESTING ONLY and should NOT be used in production
+# For production deployments:
+# 1. Generate new secrets using: openssl rand -hex 16
+# 2. Override these values in your values.yaml or use external secret management
+# 3. Each secret must be exactly 32 hex characters (16 bytes)
+secrets:
+  # Enable/disable creation of secrets
+  # Set to false to use external secret management (Vault, Infisical, External Secrets, etc.)
+  # When disabled, use extraEnv and podAnnotations for secret injection
+  enabled: true
+
+  # Name of existing secret to use instead of creating one
+  # If empty, a secret will be created with the values below
+  # The secret must contain the following keys:
+  #   - SESSION_SECRET
+  #   - MAGIC_LINK_SECRET
+  #   - ENCRYPTION_KEY
+  #   - MANAGED_WORKER_SECRET
+  #   - OBJECT_STORE_ACCESS_KEY_ID
+  #   - OBJECT_STORE_SECRET_ACCESS_KEY
+  existingSecret: ""
+
+  # Session secret for user authentication (32 hex chars)
+  sessionSecret: "2818143646516f6fffd707b36f334bbb"
+  # Magic link secret for passwordless login (32 hex chars)
+  magicLinkSecret: "44da78b7bbb0dfe709cf38931d25dcdd"
+  # Encryption key for sensitive data (32 hex chars)
+  encryptionKey: "f686147ab967943ebbe9ed3b496e465a"
+  # Worker secret for managed worker authentication (32 hex chars)
+  managedWorkerSecret: "447c29678f9eaf289e9c4b70d3dd8a7f"
+  # Object store credentials (change for production)
+  objectStore:
+    accessKeyId: "admin"
+    secretAccessKey: "very-safe-password"
+
+# Webapp configuration
+webapp:
+  image:
+    registry: ghcr.io
+    repository: triggerdotdev/trigger.dev
+    tag: "" # Defaults to Chart.appVersion when empty
+    pullPolicy: IfNotPresent
+
+  replicaCount: 1
+
+  service:
+    type: ClusterIP
+    port: 3030
+    targetPort: 3000
+
+  podAnnotations: {}
+
+  # podSecurityContext:
+  #   fsGroup: 1000
+
+  # securityContext:
+  #   runAsNonRoot: true
+  #   runAsUser: 1000
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+  logLevel: "info"
+  gracefulShutdownTimeout: 1000
+
+  # Bootstrap configuration
+  bootstrap:
+    enabled: true
+    workerGroupName: "bootstrap"
+    workerTokenPath: "/home/node/shared/worker_token"
+
+  # Limits
+  limits:
+    taskPayloadOffloadThreshold: 524288 # 512KB
+    taskPayloadMaximumSize: 3145728 # 3MB
+    batchTaskPayloadMaximumSize: 1000000 # 1MB
+    taskRunMetadataMaximumSize: 262144 # 256KB
+    defaultEnvExecutionConcurrencyLimit: 100
+    defaultOrgExecutionConcurrencyLimit: 300
+
+  # Resources
+  resources:
+    {}
+    # Example resource configuration:
+    # limits:
+    #   cpu: 1000m
+    #   memory: 2Gi
+    # requests:
+    #   cpu: 500m
+    #   memory: 1Gi
+
+  # Extra environment variables for webapp
+  extraEnv:
+    []
+    # - name: CUSTOM_VAR
+    #   value: "custom-value"
+    # - name: SECRET_VAR
+    #   valueFrom:
+    #     secretKeyRef:
+    #       name: my-secret
+    #       key: secret-key
+
+  # ServiceMonitor for Prometheus monitoring
+  serviceMonitor:
+    enabled: false
+    interval: "30s"
+    path: "/metrics"
+    labels: {}
+    basicAuth: {}
+
+  # ClickHouse integration (experimental)
+  # Usage patterns:
+  #   1. Internal ClickHouse: Set clickhouse.enabled=true, clickhouse.external=false, webapp.clickhouse.enabled=true
+  #   2. External ClickHouse: Set clickhouse.enabled=true, clickhouse.external=true, configure externalConnection URLs, webapp.clickhouse.enabled=true
+  #   3. No ClickHouse: Leave webapp.clickhouse.enabled=false (default)
+  clickhouse:
+    enabled: true
+    logLevel: "info" # one of: log, error, warn, info, debug
+  runReplication:
+    enabled: true
+    logLevel: "info" # one of: log, error, warn, info, debug
+
+  # Observability configuration (OTel)
+  observability:
+    tracing:
+      exporterUrl: ""
+      exporterAuthHeaders: ""
+      loggingEnabled: "0"
+      samplingRate: "20"
+      instrumentPrismaEnabled: "0"
+      disabled: "0"
+    logging:
+      exporterUrl: ""
+      # Log auth headers are currently set to tracing.exporterAuthHeaders
+    metrics:
+      exporterUrl: ""
+      exporterAuthHeaders: ""
+      exporterEnabled: "0"
+      exporterIntervalMs: 30000
+
+# Supervisor configuration
+supervisor:
+  enabled: true
+  image:
+    registry: ghcr.io
+    repository: triggerdotdev/supervisor
+    tag: "" # Defaults to Chart.appVersion when empty
+    pullPolicy: IfNotPresent
+
+  podAnnotations: {}
+
+  # podSecurityContext:
+  #   fsGroup: 1000
+
+  # securityContext:
+  #   runAsNonRoot: true
+  #   runAsUser: 1000
+
+  service:
+    type: ClusterIP
+    ports:
+      workload: 3000
+      metrics: 9088
+  resources: {}
+  config:
+    kubernetes:
+      forceEnabled: true
+      namespace: "" # Default: uses release namespace
+      workerNodetypeLabel: "" # When set, runs will only be scheduled on nodes with "nodetype=<label>"
+      ephemeralStorageSizeLimit: "" # Default: 10Gi
+      ephemeralStorageSizeRequest: "" # Default: 2Gi´
+    podCleaner:
+      enabled: true
+      batchSize: 100
+      intervalMs: 10000 # 10 seconds´
+    failedPodHandler:
+      enabled: true
+      reconnectIntervalMs: 1000
+    workloadApi:
+      enabled: true
+      protocol: "http"
+      portExternal: 3000
+      portInternal: 3000
+      hostInternal: "0.0.0.0"
+    dequeue:
+      enabled: true
+      intervalMs: 250
+      maxRunCount: 100
+      idleIntervalMs: 500
+    runner:
+      heartbeatIntervalSeconds: 30
+      snapshotPollIntervalSeconds: 30
+    metrics:
+      enabled: true
+      collectDefaults: true
+      host: "0.0.0.0"
+      port: 9088
+    debug: false
+  # RBAC configuration
+  serviceAccount:
+    create: true
+    name: ""
+    annotations: {}
+  rbac:
+    create: true
+    # Cluster-level permissions for pod management
+    clusterRole:
+      create: true
+      name: ""
+  # Extra environment variables for Supervisor
+  extraEnv:
+    []
+    # - name: CUSTOM_VAR
+    #   value: "custom-value"
+
+  # ServiceMonitor for Prometheus monitoring
+  serviceMonitor:
+    enabled: false
+    interval: "30s"
+    path: "/metrics"
+    labels: {}
+    basicAuth: {}
+
+  # Bootstrap configuration
+  # When enabled: reads token from shared file, otherwise uses workerToken config
+  bootstrap:
+    enabled: true
+    workerTokenPath: "/home/node/shared/worker_token"
+    workerToken:
+      # Direct value (not recommended for production)
+      value: ""
+      # Secret reference
+      secret:
+        name: ""
+        key: ""
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# PostgreSQL configuration
+postgres:
+  enabled: true
+  external: false
+  image:
+    registry: docker.io
+    repository: postgres
+    tag: "14"
+    pullPolicy: IfNotPresent
+  auth:
+    postgresPassword: "postgres"
+    username: "postgres"
+    password: "postgres"
+    database: "main"
+  connection:
+    schema: "public"
+    sslMode: "disable" # Use "require" or "verify-full" for production
+
+  podAnnotations: {}
+
+  # podSecurityContext:
+  #   fsGroup: 1000
+
+  # securityContext:
+  #   runAsNonRoot: true
+  #   runAsUser: 1000
+
+  primary:
+    persistence:
+      enabled: true
+      size: 10Gi
+    service:
+      ports:
+        postgres: 5432
+    resources: {}
+    configuration: |
+      wal_level = logical
+  # External PostgreSQL connection (when external: true)
+  externalConnection:
+    host: ""
+    port: 5432
+    database: ""
+    username: ""
+    password: ""
+    # Connection options
+    schema: "public"
+    sslMode: "require" # Options: disable, allow, prefer, require, verify-ca, verify-full
+  # Extra environment variables for PostgreSQL
+  extraEnv:
+    []
+    # - name: CUSTOM_VAR
+    #   value: "custom-value"
+  # Extra command line arguments for PostgreSQL
+  extraArgs:
+    []
+    # - "-c"
+    # - "log_statement=all"
+    # - "-c"
+    # - "max_slot_wal_keep_size=1000000000"
+
+# Redis configuration
+redis:
+  enabled: true
+  external: false
+  image:
+    registry: docker.io
+    repository: redis
+    tag: "7"
+    pullPolicy: IfNotPresent
+  auth:
+    enabled: false
+
+  podAnnotations: {}
+
+  # podSecurityContext:
+  #   fsGroup: 1000
+
+  # securityContext:
+  #   runAsNonRoot: true
+  #   runAsUser: 1000
+
+  master:
+    persistence:
+      enabled: true
+      size: 5Gi
+    service:
+      ports:
+        redis: 6379
+    resources: {}
+  # External Redis connection (when external: true)
+  externalConnection:
+    host: ""
+    port: 6379
+    password: ""
+  # Extra environment variables for Redis
+  extraEnv:
+    []
+    # - name: CUSTOM_VAR
+    #   value: "custom-value"
+
+# Electric configuration
+electric:
+  enabled: true
+  image:
+    registry: docker.io
+    repository: electricsql/electric
+    tag: "1.0.13"
+    pullPolicy: IfNotPresent
+  config:
+    insecure: true
+    usageReporting: false
+
+  podAnnotations: {}
+
+  # podSecurityContext:
+  #   fsGroup: 1000
+
+  # securityContext:
+  #   runAsNonRoot: true
+  #   runAsUser: 1000
+
+  service:
+    type: ClusterIP
+    port: 3000
+    targetPort: 3000
+  resources: {}
+  # Extra environment variables for Electric
+  extraEnv:
+    []
+    # - name: CUSTOM_VAR
+    #   value: "custom-value"
+
+# ClickHouse configuration
+clickhouse:
+  enabled: true
+  external: false
+  image:
+    registry: docker.io
+    repository: bitnami/clickhouse
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  auth:
+    adminUser: "default"
+    adminPassword: "password"
+
+  podAnnotations: {}
+
+  # podSecurityContext:
+  #   fsGroup: 1000
+
+  # securityContext:
+  #   runAsNonRoot: true
+  #   runAsUser: 1000
+
+  persistence:
+    enabled: true
+    size: 10Gi
+  service:
+    type: ClusterIP
+    ports:
+      native: 9000
+      http: 8123
+  resources: {}
+  # External ClickHouse connection (when external: true)
+  externalConnection:
+    # HTTP interface URL (port 8123) - used by webapp for replication
+    httpUrl: ""
+  # Extra environment variables for ClickHouse
+  extraEnv:
+    []
+    # - name: CUSTOM_VAR
+    #   value: "custom-value"
+
+  # ClickHouse configuration override
+  # You can provide your own override.xml content here
+  # These defaults are based on official recommendations for systems with <16GB RAM:
+  # https://clickhouse.com/docs/operations/tips
+  config:
+    override: |
+      <clickhouse>
+        <logger>
+          <level>warning</level>
+        </logger>
+        <!-- Official recommendations for systems with <16GB RAM -->
+        <mark_cache_size>524288000</mark_cache_size> <!-- 500MB -->
+        <concurrent_threads_soft_limit_num>1</concurrent_threads_soft_limit_num>
+        <profiles>
+          <default>
+            <max_block_size>8192</max_block_size>
+            <max_download_threads>1</max_download_threads>
+            <input_format_parallel_parsing>0</input_format_parallel_parsing>
+            <output_format_parallel_formatting>0</output_format_parallel_formatting>
+          </default>
+        </profiles>
+      </clickhouse>
+
+# MinIO configuration
+minio:
+  enabled: true
+  external: false # Set to true to use external S3-compatible storage
+  image:
+    registry: docker.io
+    repository: minio/minio
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  # WARNING: This sets the root user and password on first startup and MUST be changed via the dashboard.
+  # - Don't forget to update secrets.objectStore if you intend to use the root credentials.
+  # - You should instead create a new non-root user and update the secrets.objectStore with the new credentials.
+  auth:
+    rootUser: "admin"
+    rootPassword: "very-safe-password"
+
+  podAnnotations: {}
+
+  # podSecurityContext:
+  #   fsGroup: 1000
+
+  # securityContext:
+  #   runAsNonRoot: true
+  #   runAsUser: 1000
+
+  persistence:
+    enabled: true
+    size: 10Gi
+  service:
+    type: ClusterIP
+    ports:
+      api: 9000
+      console: 9001
+  resources: {}
+  # External MinIO/S3 connection (when external: true)
+  externalConnection:
+    url: "" # e.g., "https://s3.amazonaws.com" or "https://your-minio.com:9000"
+  # Extra environment variables for MinIO
+  extraEnv:
+    []
+    # - name: CUSTOM_VAR
+    #   value: "custom-value"
+
+# Docker Registry configuration
+registry:
+  enabled: false # EXPERIMENTAL - requires proper TLS setup. Use external: true instead.
+  external: true
+  repositoryNamespace: "trigger" # Docker repository namespace for deployed images, will be part of the image ref
+  image:
+    registry: docker.io
+    repository: registry
+    tag: "2"
+    pullPolicy: IfNotPresent
+  auth:
+    enabled: true
+    username: "registry-user"
+    password: "very-secure-indeed"
+
+  podAnnotations: {}
+
+  # podSecurityContext:
+  #   fsGroup: 1000
+
+  # securityContext:
+  #   runAsNonRoot: true
+  #   runAsUser: 1000
+
+  persistence:
+    enabled: true
+    size: 10Gi
+  service:
+    type: ClusterIP
+    port: 5000
+    targetPort: 5000
+  resources: {}
+  # External Registry connection (when external: true)
+  externalConnection:
+    host: "localhost"
+    port: 5001
+    auth:
+      enabled: false
+      username: ""
+      password: ""
+  # Extra environment variables for Registry
+  extraEnv:
+    []
+    # - name: CUSTOM_VAR
+    #   value: "custom-value"
+
+# Shared persistent volumes
+persistence:
+  # This is used for the worker token file
+  shared:
+    enabled: true
+    size: 5Mi
+    accessMode: ReadWriteOnce
+    # accessMode: ReadWriteMany  # Use for cross-node deployment (requires compatible storage class)
+    storageClass: ""
+    retain: true # Prevents deletion on uninstall
+
+ingress:
+  enabled: false
+  className: "traefik"
+  # Custom annotations for the ingress resource
+  # Note: The following annotation keys are reserved and will be automatically set:
+  # - cert-manager.io/cluster-issuer (when certManager.enabled is true)
+  # - external-dns.alpha.kubernetes.io/hostname (when externalDns.enabled is true)
+  # - external-dns.alpha.kubernetes.io/ttl (when externalDns.enabled is true)
+  annotations: {}
+  certManager:
+    enabled: false
+    clusterIssuer: "letsencrypt-prod"
+  externalDns:
+    enabled: false
+    hostname: ""
+    ttl: "300"
+  hosts:
+    - host: trigger.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    []
+    # - secretName: trigger-tls
+    #   hosts:
+    #     - trigger.local
+
+# Telemetry configuration
+telemetry:
+  enabled: true
+
+# Extra Kubernetes manifests
+# This allows you to add additional Kubernetes resources that will be deployed with the chart
+extraManifests:
+  []
+  # - apiVersion: v1
+  #   kind: ConfigMap
+  #   metadata:
+  #     name: my-config
+  #   data:
+  #     key: value
+  # - apiVersion: apps/v1
+  #   kind: Deployment
+  #   metadata:
+  #     name: my-app
+  #   spec:
+  #     replicas: 1
+  #     selector:
+  #       matchLabels:
+  #         app: my-app
+  #     template:
+  #       metadata:
+  #         labels:
+  #           app: my-app
+  #       spec:
+  #         containers:
+  #         - name: my-container
+  #           image: nginx:latest
