@@ -86,7 +86,7 @@ describe("createTimelineSpanEventsFromSpanEvents", () => {
     expect(result[0].name).toBe("Dequeued");
     expect(result[1].name).toBe("Attempt created");
     expect(result[2].name).toBe("Launched");
-    expect(result[3].name).toBe("Importing Importing task file");
+    expect(result[3].name).toBe("Importing task file");
   });
 
   test("should calculate offsets correctly from the first event", () => {
