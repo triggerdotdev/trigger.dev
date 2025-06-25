@@ -16,11 +16,11 @@ Should the burden ever get too much, we'd be happy to see you on [Trigger.dev cl
 ### Prerequisites
 - Kubernetes cluster 1.19+
 - Helm 3.8+
-- Kubectl configured with cluster access
+- Kubectl with cluster access
 
-### Resource requirements
+### Resources
 
-The following are minimum requirements for running the entire Trigger.dev stack on Kubernetes:
+The following are minimum requirements for running the entire stack on Kubernetes:
 
 **Cluster resources:**
 - 6+ vCPU total
@@ -53,11 +53,15 @@ webapp:
 
 ### Quick start
 
+<Note>
+The examples in this guide do NOT use the latest chart version. Please check [this page](https://github.com/triggerdotdev/trigger.dev/pkgs/container/charts%2Ftrigger).
+</Note>
+
 1. Install with default values (for testing only):
 
 ```bash
 helm upgrade -n trigger --install trigger \
-  oci://ghcr.io/triggerdotdev/charts/trigger:4.0.0-beta.3 \
+  oci://ghcr.io/triggerdotdev/charts/trigger:4.0.0-beta.5 \
   --create-namespace
 ```
 
@@ -82,8 +86,6 @@ While v4 is in beta, always use `@v4-beta` instead of `@latest`. For example: `n
 
 ## Configuration
 
-The default installation uses insecure secrets and is only suitable for testing. You _will_ need to configure your own secrets as a bare minimum.
-
 Most values map directly to the environment variables documented in the [webapp](/self-hosting/env/webapp) and [supervisor](/self-hosting/env/supervisor) environment variable overview.
 
 **Naming convention:**
@@ -100,19 +102,28 @@ config:
   appOrigin: "https://trigger.example.com"
 ```
 
+### Default values
+
+The default values are insecure and are only suitable for testing. You _will_ need to configure your own secrets as a bare minimum. The following commands will display the default values:
+
+```bash
+helm show values oci://ghcr.io/triggerdotdev/charts/trigger:4.0.0-beta.5
+```
+
 ### Custom values
 
-Create a `values-custom.yaml` file. For example:
+Create a `values-custom.yaml` file to override the default values. For example:
 
 ```yaml
 # Generate new secrets with `openssl rand -hex 16`
-# WARNING: You should probably use existingSecret instead of hardcoding here
+# WARNING: You should probably use an existingSecret instead
 secrets:
+  enabled: true
   sessionSecret: "your-32-char-hex-secret-1"
   magicLinkSecret: "your-32-char-hex-secret-2"
   # ...
 
-# Recommended: Use existing secret - must contain at least the following keys:
+# Recommended: existingSecret, must contain at least the following keys:
 # - SESSION_SECRET
 # - MAGIC_LINK_SECRET
 # - ENCRYPTION_KEY
@@ -153,7 +164,7 @@ Deploy with your custom values:
 
 ```bash
 helm upgrade -n trigger --install trigger \
-  oci://ghcr.io/triggerdotdev/charts/trigger:4.0.0-beta.3 \
+  oci://ghcr.io/triggerdotdev/charts/trigger:4.0.0-beta.5 \
   --create-namespace \
   -f values-custom.yaml
 ```
@@ -238,7 +249,7 @@ supervisor:
         key: "token"
 ```
 
-## Registry Setup
+## Registry setup
 
 See the [Docker registry setup](/self-hosting/docker#registry-setup) for conceptual information. The configuration is specified in your `values.yaml`:
 
@@ -261,7 +272,7 @@ registry:
 The internal registry (`registry.external: false`) is experimental and requires proper TLS setup and additional cluster configuration. Use an external registry for production.
 </Note>
 
-## Object Storage
+## Object storage
 
 See the [Docker object storage setup](/self-hosting/docker#object-storage) for conceptual information. The defaults will use built-in MinIO, but you can use an external S3-compatible storage. The configuration is specified in your `values.yaml`:
 
@@ -317,19 +328,23 @@ webapp:
       value: "user1@company\\.com|user2@company\\.com"
 ```
 
-## Version Locking
+## Version locking
 
 You can lock versions in two ways:
 
-**Helm Chart Version (recommended):**
+**Helm chart version (recommended):**
 ```bash
 # Ensure specific chart version
 helm upgrade -n trigger --install trigger \
-  oci://ghcr.io/triggerdotdev/charts/trigger:4.0.0-beta.3 \
-  --version 4.0.0-beta.3
+  oci://ghcr.io/triggerdotdev/charts/trigger:4.0.0-beta.5 \
+  --version 4.0.0-beta.5
+
+# Check the appVersion, which will be different from the chart version
+helm show chart \
+  oci://ghcr.io/triggerdotdev/charts/trigger:4.0.0-beta.5 | grep appVersion
 ```
 
-**Specific Image Tags:**
+**Specific image tags:**
 ```yaml
 webapp:
   image:
@@ -367,7 +382,8 @@ kubectl describe pod <pod-name> -n trigger
 # Delete the release
 helm uninstall trigger -n trigger
 
-# Delete persistent volumes (if needed) - careful, this will delete all data
+# Delete persistent volumes (optional)
+# WARNING: This will delete all your data!
 kubectl delete pvc -l app.kubernetes.io/instance=trigger -n trigger
 
 # Delete the namespace (optional)
@@ -380,7 +396,7 @@ kubectl delete namespace trigger
 - **Pods stuck pending**: Describe the pod and check the events
 - **Worker token issues**: Check webapp and supervisor logs for errors
 
-## CLI Usage
+## CLI usage
 
 See the [Docker CLI usage](/self-hosting/docker#cli-usage) section, the commands are identical regardless of deployment method.
 
