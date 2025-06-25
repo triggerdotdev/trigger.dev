@@ -408,6 +408,7 @@ minio:
 registry:
   enabled: false # EXPERIMENTAL - requires proper TLS setup. Use external: true instead.
   external: true
+  repositoryNamespace: "trigger" # Docker repository namespace for deployed images, will be part of the image ref
   image:
     registry: docker.io
     repository: registry

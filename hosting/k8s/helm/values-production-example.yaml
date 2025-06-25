@@ -103,6 +103,7 @@ minio:
 
 # Production Registry
 registry:
+  repositoryNamespace: "mycompany" # Docker repository namespace for deployed images, will be part of the image ref
   auth:
     username: "registry-user"
     password: "your-strong-registry-password"

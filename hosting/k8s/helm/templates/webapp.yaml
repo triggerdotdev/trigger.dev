@@ -91,6 +91,8 @@ spec:
               value: "{{ .Values.config.appOrigin }}/otel"
             - name: DEPLOY_REGISTRY_HOST
               value: {{ include "trigger-v4.registry.host" . | quote }}
+            - name: DEPLOY_REGISTRY_NAMESPACE
+              value: {{ .Values.registry.repositoryNamespace | quote }}
             - name: OBJECT_STORE_BASE_URL
               value: {{ include "trigger-v4.minio.url" . | quote }}
             - name: GRACEFUL_SHUTDOWN_TIMEOUT
