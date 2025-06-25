@@ -53,15 +53,12 @@ webapp:
 
 ### Quick start
 
-<Note>
-The examples in this guide do NOT use the latest chart version. Please check [this page](https://github.com/triggerdotdev/trigger.dev/pkgs/container/charts%2Ftrigger).
-</Note>
-
 1. Install with default values (for testing only):
 
 ```bash
 helm upgrade -n trigger --install trigger \
-  oci://ghcr.io/triggerdotdev/charts/trigger:4.0.0-beta.5 \
+  oci://ghcr.io/triggerdotdev/charts/trigger \
+  --version ~4.0.0-beta \
   --create-namespace
 ```
 
@@ -107,7 +104,13 @@ config:
 The default values are insecure and are only suitable for testing. You _will_ need to configure your own secrets as a bare minimum. The following commands will display the default values:
 
 ```bash
-helm show values oci://ghcr.io/triggerdotdev/charts/trigger:4.0.0-beta.5
+# Specific version
+helm show values oci://ghcr.io/triggerdotdev/charts/trigger \
+  --version 4.0.0-beta.5
+
+# Latest v4 beta
+helm show values oci://ghcr.io/triggerdotdev/charts/trigger \
+  --version ~4.0.0-beta
 ```
 
 ### Custom values
@@ -164,7 +167,8 @@ Deploy with your custom values:
 
 ```bash
 helm upgrade -n trigger --install trigger \
-  oci://ghcr.io/triggerdotdev/charts/trigger:4.0.0-beta.5 \
+  oci://ghcr.io/triggerdotdev/charts/trigger \
+  --version ~4.0.0-beta \
   --create-namespace \
   -f values-custom.yaml
 ```
@@ -334,14 +338,17 @@ You can lock versions in two ways:
 
 **Helm chart version (recommended):**
 ```bash
-# Ensure specific chart version
+# Pin to a specific version for production
 helm upgrade -n trigger --install trigger \
-  oci://ghcr.io/triggerdotdev/charts/trigger:4.0.0-beta.5 \
+  oci://ghcr.io/triggerdotdev/charts/trigger \
   --version 4.0.0-beta.5
 
-# Check the appVersion, which will be different from the chart version
+# The app version will be different from the chart version
+# This is the version of the Trigger.dev webapp and supervisor
+# ..and should always match your Trigger.dev CLI version
 helm show chart \
-  oci://ghcr.io/triggerdotdev/charts/trigger:4.0.0-beta.5 | grep appVersion
+  oci://ghcr.io/triggerdotdev/charts/trigger \
+  --version 4.0.0-beta.5 | grep appVersion
 ```
 
 **Specific image tags:**
@@ -355,7 +362,7 @@ supervisor:
     tag: "v4.0.0-v4-beta.21"
 ```
 
-The chart version's `appVersion` field determines the default image tags. Using chart versions ensures compatibility between all components. Newer image tags may be incompatible with older chart versions and vice versa.
+The chart version's `appVersion` field determines the default image tags. Newer image tags may be incompatible with older chart versions and vice versa.
 
 ## Troubleshooting
 
