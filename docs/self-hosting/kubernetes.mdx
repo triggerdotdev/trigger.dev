@@ -101,7 +101,7 @@ config:
 
 ### Default values
 
-The default values are insecure and are only suitable for testing. You _will_ need to configure your own secrets as a bare minimum. The following commands will display the default values:
+The following commands will display the default values:
 
 ```bash
 # Specific version
@@ -115,7 +115,9 @@ helm show values oci://ghcr.io/triggerdotdev/charts/trigger \
 
 ### Custom values
 
-Create a `values-custom.yaml` file to override the default values. For example:
+The default values are insecure and are only suitable for testing. You will need to configure your own secrets as a bare minimum. 
+
+Create a `values-custom.yaml` file to override the defaults. For example:
 
 ```yaml
 # Generate new secrets with `openssl rand -hex 16`
@@ -402,6 +404,8 @@ kubectl delete namespace trigger
 - **Deploy fails**: Verify registry access and authentication
 - **Pods stuck pending**: Describe the pod and check the events
 - **Worker token issues**: Check webapp and supervisor logs for errors
+
+See the [Docker troubleshooting](/self-hosting/docker#troubleshooting) section for more information.
 
 ## CLI usage
 
