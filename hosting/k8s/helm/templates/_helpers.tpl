@@ -234,3 +234,21 @@ Generate docker config for image pull secret
 {{- end }}
 {{- end }}
 
+{{/*
+Merge ingress annotations to avoid duplicates
+*/}}
+{{- define "trigger-v4.ingress.annotations" -}}
+{{- $annotations := dict -}}
+{{- if .Values.ingress.annotations -}}
+{{- $annotations = .Values.ingress.annotations -}}
+{{- end -}}
+{{- if .Values.ingress.certManager.enabled -}}
+{{- $_ := set $annotations "cert-manager.io/cluster-issuer" .Values.ingress.certManager.clusterIssuer -}}
+{{- end -}}
+{{- if .Values.ingress.externalDns.enabled -}}
+{{- $_ := set $annotations "external-dns.alpha.kubernetes.io/hostname" .Values.ingress.externalDns.hostname -}}
+{{- $_ := set $annotations "external-dns.alpha.kubernetes.io/ttl" (.Values.ingress.externalDns.ttl | toString) -}}
+{{- end -}}
+{{- toYaml $annotations -}}
+{{- end }}
+

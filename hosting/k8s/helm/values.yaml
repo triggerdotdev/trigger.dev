@@ -548,6 +548,11 @@ persistence:
 ingress:
   enabled: false
   className: "traefik"
+  # Custom annotations for the ingress resource
+  # Note: The following annotation keys are reserved and will be automatically set:
+  # - cert-manager.io/cluster-issuer (when certManager.enabled is true)
+  # - external-dns.alpha.kubernetes.io/hostname (when externalDns.enabled is true)
+  # - external-dns.alpha.kubernetes.io/ttl (when externalDns.enabled is true)
   annotations: {}
   certManager:
     enabled: false

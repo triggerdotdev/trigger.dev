@@ -8,16 +8,7 @@ metadata:
   labels:
     {{- include "trigger-v4.labels" . | nindent 4 }}
   annotations:
-    {{- with .Values.ingress.annotations }}
-    {{- toYaml . | nindent 4 }}
-    {{- end }}
-    {{- if .Values.ingress.certManager.enabled }}
-    cert-manager.io/cluster-issuer: {{ .Values.ingress.certManager.clusterIssuer | quote }}
-    {{- end }}
-    {{- if .Values.ingress.externalDns.enabled }}
-    external-dns.alpha.kubernetes.io/hostname: {{ .Values.ingress.externalDns.hostname | quote }}
-    external-dns.alpha.kubernetes.io/ttl: {{ .Values.ingress.externalDns.ttl | quote }}
-    {{- end }}
+    {{- include "trigger-v4.ingress.annotations" . | nindent 4 }}
 spec:
   {{- if .Values.ingress.className }}
   ingressClassName: {{ .Values.ingress.className }}
