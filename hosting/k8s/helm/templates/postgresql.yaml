@@ -100,24 +100,6 @@ spec:
         - name: postgres-data
           emptyDir: {}
   {{- end }}
-  {{- if .Values.postgres.primary.persistence.enabled }}
-  volumeClaimTemplates:
-    - metadata:
-        name: postgres-data
-        labels:
-          {{- $component := "postgres" }}
-          {{- include "trigger-v4.componentLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 10 }}
-      spec:
-        accessModes:
-          - ReadWriteOnce
-        resources:
-          requests:
-            storage: {{ .Values.postgres.primary.persistence.size }}
-        {{- $storageClass := .Values.postgres.primary.persistence.storageClass | default .Values.global.storageClass }}
-        {{- if $storageClass }}
-        storageClassName: {{ $storageClass | quote }}
-        {{- end }}
-  {{- end }}
 ---
 apiVersion: v1
 kind: Service
