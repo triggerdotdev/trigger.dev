@@ -1,4 +1,4 @@
-import type { BuildExtension } from "@trigger.dev/core/v3/build";
+import type { BuildExtension } from "@trigger.dev/core/v3/build"
 
 const NAME = 'LightpandaExtension'
 
@@ -11,8 +11,8 @@ type LightpandaOpts = {
 export const lightpanda = ({ arch = 'x86_64', version = 'nightly', disableTelemetry = false }: LightpandaOpts = {}): BuildExtension => ({
   name: NAME,
   onBuildComplete: async (context) => {
-    context.logger.progress(`Running ${NAME} on ${context.target} env for arch ${arch}`);
-    context.logger.progress(`version: ${version}`);
+    context.logger.progress(`Running ${NAME} on ${context.target} env for arch ${arch}`)
+    context.logger.progress(`version: ${version}`)
 
     if (context.target === "dev") {
       return
@@ -35,9 +35,10 @@ export const lightpanda = ({ arch = 'x86_64', version = 'nightly', disableTeleme
 
     /* Install Lightpanda */
     instructions.push(
-      `RUN curl -L -o lightpanda https://github.com/lightpanda-io/browser/releases/download/${version}/lightpanda-${arch}-linux \
+      `RUN curl -L -f --retry 3 -o lightpanda https://github.com/lightpanda-io/browser/releases/download/${version}/lightpanda-${arch}-linux || (echo "Failed to download Lightpanda binary" && exit 1) \
         && chmod a+x ./lightpanda \
         && mv ./lightpanda /usr/bin/lightpanda \
+        && /usr/bin/lightpanda version || (echo "Downloaded binary is not functional" && exit 1)`,
     )
 
     context.addLayer({
