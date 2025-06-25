@@ -8,6 +8,7 @@ describe("Task Runs V2", () => {
     const client = new ClickhouseClient({
       name: "test",
       url: clickhouseContainer.getConnectionUrl(),
+      logLevel: "debug",
     });
 
     const insert = insertTaskRuns(client, {

@@ -29,7 +29,7 @@ function initializeRunsReplicationInstance() {
       enabled: env.RUN_REPLICATION_KEEP_ALIVE_ENABLED === "1",
       idleSocketTtl: env.RUN_REPLICATION_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
     },
-    logLevel: env.RUN_REPLICATION_LOG_LEVEL,
+    logLevel: env.RUN_REPLICATION_CLICKHOUSE_LOG_LEVEL,
     compression: {
       request: true,
     },
