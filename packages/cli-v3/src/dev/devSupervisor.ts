@@ -358,9 +358,6 @@ class DevSupervisor implements WorkerRuntime {
           httpClient: this.options.client,
           logLevel: this.options.args.logLevel,
           taskRunProcessPool: this.taskRunProcessPool,
-          cwd: this.options.config.experimental_devProcessCwdInBuildDir
-            ? worker.build.outputPath
-            : undefined,
           onFinished: () => {
             logger.debug("[DevSupervisor] Run finished", { runId: message.run.friendlyId });
 
