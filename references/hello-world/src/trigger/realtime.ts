@@ -1,32 +1,35 @@
-import { logger, runs, task } from "@trigger.dev/sdk";
+import { auth, logger, runs, task, tasks } from "@trigger.dev/sdk";
 import { helloWorldTask } from "./example.js";
 import { setTimeout } from "timers/promises";
 
 export const realtimeByTagsTask = task({
   id: "realtime-by-tags",
   run: async (payload: any, { ctx, signal }) => {
-    await helloWorldTask.trigger(
-      { hello: "world" },
-      {
-        tags: ["hello-world", "realtime"],
-      }
-    );
-
-    const timeoutSignal = AbortSignal.timeout(10000);
-
-    const $signal = AbortSignal.any([signal, timeoutSignal]);
-
-    $signal.addEventListener("abort", () => {
-      logger.info("signal aborted");
+    const triggerToken = await auth.createTriggerPublicToken("hello-world", {
+      expirationTime: "1h",
+      realtime: {
+        skipColumns: ["payload", "output"],
+      },
     });
 
-    for await (const run of runs.subscribeToRunsWithTag(
-      "hello-world",
-      { createdAt: "2m", skipColumns: ["payload", "output", "number"] },
-      { signal: $signal }
-    )) {
-      logger.info("run", { run });
-    }
+    logger.info("triggerToken", { triggerToken });
+
+    const handle = await auth.withAuth({ accessToken: triggerToken }, async () => {
+      return await tasks.trigger("hello-world", {
+        hello: "world",
+        sleepFor: 1000,
+      });
+    });
+
+    logger.info("handle token", {
+      publicAccessToken: handle.publicAccessToken,
+    });
+
+    await auth.withAuth({ accessToken: handle.publicAccessToken }, async () => {
+      for await (const run of runs.subscribeToRun(handle.id, { stopOnCompletion: true })) {
+        logger.info("run", { run });
+      }
+    });
 
     return {
       message: "Hello, world!",

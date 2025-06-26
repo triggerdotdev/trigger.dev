@@ -3,7 +3,7 @@ import { rscExtension } from "@trigger.dev/rsc";
 import { AISDKExporter } from "langsmith/vercel";
 
 export default defineConfig({
-  project: "proj_bzhdaqhlymtuhlrcgbqy",
+  project: process.env.TRIGGER_PROJECT_REF!,
   dirs: ["./src/trigger"],
   telemetry: {
     exporters: [new AISDKExporter()],
