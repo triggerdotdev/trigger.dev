@@ -91,6 +91,24 @@ export const TaskRunListSearchFilters = z.object({
 
 export type TaskRunListSearchFilters = z.infer<typeof TaskRunListSearchFilters>;
 
+export function getRunFiltersFromSearchParams(searchParams: URLSearchParams) {
+  return {
+    cursor: searchParams.get("cursor") ?? undefined,
+    direction: searchParams.get("direction") ?? undefined,
+    statuses: searchParams.getAll("statuses"),
+    tasks: searchParams.getAll("tasks"),
+    period: searchParams.get("period") ?? undefined,
+    bulkId: searchParams.get("bulkId") ?? undefined,
+    tags: searchParams.getAll("tags").map((t) => decodeURIComponent(t)),
+    from: searchParams.get("from") ?? undefined,
+    to: searchParams.get("to") ?? undefined,
+    rootOnly: searchParams.has("rootOnly") ? searchParams.get("rootOnly") === "true" : undefined,
+    runId: searchParams.get("runId") ?? undefined,
+    batchId: searchParams.get("batchId") ?? undefined,
+    scheduleId: searchParams.get("scheduleId") ?? undefined,
+  };
+}
+
 type RunFiltersProps = {
   possibleTasks: { slug: string; triggerSource: TaskTriggerSource }[];
   bulkActions: {

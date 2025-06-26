@@ -103,6 +103,17 @@ export function getTaskRunsQueryBuilder(ch: ClickhouseReader, settings?: ClickHo
   });
 }
 
+export function getTaskRunsCountQueryBuilder(ch: ClickhouseReader, settings?: ClickHouseSettings) {
+  return ch.queryBuilder({
+    name: "getTaskRunsCount",
+    baseQuery: "SELECT count() as count FROM trigger_dev.task_runs_v2 FINAL",
+    schema: z.object({
+      count: z.number().int(),
+    }),
+    settings,
+  });
+}
+
 export const TaskActivityQueryResult = z.object({
   task_identifier: z.string(),
   status: z.string(),
