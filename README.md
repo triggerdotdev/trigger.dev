@@ -1,93 +1,250 @@
-<div align="center">
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/a45d1fa2-0ae8-4a39-4409-f4f934bfae00/public">
-  <source media="(prefers-color-scheme: light)" srcset="https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/3f5ad4c1-c4c8-4277-b622-290e7f37bd00/public">
-  <img alt="Trigger.dev logo" src="https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/a45d1fa2-0ae8-4a39-4409-f4f934bfae00/public">
-</picture>
-  
-### Open source background jobs and AI infrastructure
+# Trigger.dev プロジェクト構成と技術解説
 
-[Discord](https://trigger.dev/discord) | [Website](https://trigger.dev) | [Issues](https://github.com/triggerdotdev/trigger.dev/issues) | [Docs](https://trigger.dev/docs)
+## 目次
+1. [プロジェクト概要](#プロジェクト概要)
+2. [システムアーキテクチャ](#システムアーキテクチャ)
+3. [マイクロサービス構成](#マイクロサービス構成)
+4. [パッケージ構成](#パッケージ構成)
+5. [技術スタック](#技術スタック)
+6. [主要な機能](#主要な機能)
+7. [拡張性と将来の発展](#拡張性と将来の発展)
 
-[![Twitter](https://img.shields.io/twitter/url/https/twitter.com/triggerdotdev.svg?style=social&label=Follow%20%40trigger.dev)](https://twitter.com/triggerdotdev)
+## プロジェクト概要
 
-</div>
+Trigger.devは、長時間実行されるバックグラウンドジョブとAIインフラストラクチャのためのオープンソースプラットフォームです。従来のサーバーレス環境やWebアプリケーションサーバーで直面するタイムアウトの問題を解決し、開発者が通常の非同期コードを書くだけで、スケーラブルで信頼性の高いバックグラウンドタスクを実行できるようにします。
 
-## About Trigger.dev
+### 主要な特徴
+- **タイムアウトなし**: 数時間から数日にわたるタスクも実行可能
+- **自動リトライ**: 指数バックオフによる堅牢なエラーハンドリング
+- **完全な可観測性**: 各タスクの詳細なトレースビューとログ
+- **スケーラビリティ**: 自動的にスケールアップ/ダウン
+- **マルチ環境対応**: 開発、ステージング、本番環境の分離
 
-Trigger.dev is an open source platform and SDK which allows you to create long-running background jobs. Write normal async code, deploy, and never hit a timeout.
+## システムアーキテクチャ
 
-### Key features:
+Trigger.devは、マイクロサービスアーキテクチャを採用しており、各サービスが特定の責任領域を持つことで、高い可用性とスケーラビリティを実現しています。
 
-- JavaScript and TypeScript SDK
-- No timeouts
-- Retries (with exponential backoff)
-- Queues and concurrency controls
-- Schedules and crons
-- Full Observability; logs, live trace views, advanced filtering
-- React hooks to interact with the Trigger API from your React app
-- Pipe LLM streams straight to your users through the Realtime API
-- Trigger tasks and display the run status and metadata anywhere in your app
-- Custom alerts, get notified by email, Slack or webhooks
-- No infrastructure to manage
-- Elastic (scaling)
-- Works with your existing tech stack
-
-## In your codebase
-
-Create tasks where they belong: in your codebase. Version control, localhost, test and review like you're already used to.
-
-```ts
-import { task } from "@trigger.dev/sdk/v3";
-
-//1. You need to export each task
-export const helloWorld = task({
-  //2. Use a unique id for each task
-  id: "hello-world",
-  //3. The run function is the main function of the task
-  run: async (payload: { message: string }) => {
-    //4. You can write code that runs for a long time here, there are no timeouts
-    console.log(payload.message);
-  },
-});
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         クライアント層                             │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐           │
+│  │ Web UI      │  │ CLI (v3)    │  │ SDK         │           │
+│  │ (Remix)     │  │             │  │ (TypeScript)│           │
+│  └─────────────┘  └─────────────┘  └─────────────┘           │
+└─────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                         アプリケーション層                          │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐           │
+│  │ Webapp      │  │ Coordinator │  │ Supervisor  │           │
+│  │ (API/UI)    │  │ (通信調整)   │  │ (ワーカー管理)│           │
+│  └─────────────┘  └─────────────┘  └─────────────┘           │
+└─────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      プロバイダー抽象化層                          │
+│  ┌─────────────────────┐  ┌─────────────────────┐            │
+│  │ Docker Provider      │  │ Kubernetes Provider │            │
+│  │                     │  │                     │            │
+│  └─────────────────────┘  └─────────────────────┘            │
+└─────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                         データ/実行層                             │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐    │
+│  │PostgreSQL│  │ClickHouse│  │ Redis    │  │ Container │    │
+│  │          │  │          │  │          │  │ Runtime   │    │
+│  └──────────┘  └──────────┘  └──────────┘  └──────────┘    │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-## Deployment
+## マイクロサービス構成
 
-Use our SDK to write tasks in your codebase. There's no infrastructure to manage, your tasks automatically scale and connect to our cloud. Or you can always self-host.
+### 1. Webapp (`/apps/webapp`)
+**役割**: メインのWebアプリケーションとAPIサーバー
+- **フレームワーク**: Remix (React SSR)
+- **主要機能**:
+  - ユーザー認証（GitHub OAuth、Magic Link）
+  - プロジェクト管理とダッシュボード
+  - タスク実行の監視とログ表示
+  - REST APIとWebSocket通信の提供
+  - OpenTelemetryによる分散トレーシング
 
-## Environments
+### 2. Coordinator (`/apps/coordinator`)
+**役割**: プラットフォームとタスク間の通信調整
+- **主要機能**:
+  - WebSocketベースのリアルタイム通信管理
+  - チェックポイント機能の提供
+  - タスクとプラットフォーム間のメッセージルーティング
+  - メトリクス収集（Prometheus形式）
 
-We support `Development`, `Staging`, and `Production` environments, allowing you to test your tasks before deploying them to production.
+### 3. Supervisor (`/apps/supervisor`)
+**役割**: ワーカーグループの管理とタスク実行の監視
+- **主要機能**:
+  - ワーカーグループの作成と管理
+  - プロジェクトへのワーカー割り当て
+  - DockerとKubernetesの両環境サポート
+  - 実行環境の監視とヘルスチェック
 
-## Full visibility of every job run
+### 4. Docker Provider (`/apps/docker-provider`)
+**役割**: Dockerコンテナでのタスク実行管理
+- **主要機能**:
+  - タスクアクションをDockerコマンドに変換
+  - コンテナのライフサイクル管理
+  - ローカル開発環境のサポート
 
-View every task in every run so you can tell exactly what happened. We provide a full trace view of every task run so you can see what happened at every step.
+### 5. Kubernetes Provider (`/apps/kubernetes-provider`)
+**役割**: Kubernetes環境でのタスク実行管理
+- **主要機能**:
+  - タスクアクションをKubernetesジョブに変換
+  - Pod管理とスケーリング
+  - 本番環境向けの高可用性実現
 
-![Trace view image](https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/7c1b347f-004c-4482-38a7-3f6fa9c00d00/public)
+## パッケージ構成
 
-# Getting started
+### 公開パッケージ (`/packages/*`)
 
-The quickest way to get started is to create an account and project in our [web app](https://cloud.trigger.dev), and follow the instructions in the onboarding. Build and deploy your first task in minutes.
+#### @trigger.dev/sdk
+- **概要**: 開発者が使用するメインSDK
+- **機能**: タスク定義、トリガー、AI統合、リアルタイム通信
 
-### Useful links:
+#### @trigger.dev/core
+- **概要**: プラットフォーム全体の共通ライブラリ
+- **機能**: スキーマ定義、API クライアント、認証、エラー処理
 
-- [Quick start](https://trigger.dev/docs/quick-start) - get up and running in minutes
-- [How it works](https://trigger.dev/docs/v3/how-it-works) - understand how Trigger.dev works under the hood
-- [Guides and examples](https://trigger.dev/docs/guides/introduction) - walk-through guides and code examples for popular frameworks and use cases
+#### trigger.dev (CLI)
+- **概要**: プロジェクト管理用CLIツール
+- **機能**: init、dev、deploy、login、MCPサーバー
 
-## Self-hosting
+#### @trigger.dev/react-hooks
+- **概要**: React統合用のカスタムフック集
+- **機能**: タスク状態管理、リアルタイム更新、SWR統合
 
-If you prefer to self-host Trigger.dev, you can follow our [self-hosting guide](https://trigger.dev/docs/v3/open-source-self-hosting#overview).
+### 内部パッケージ (`/internal-packages/*`)
 
-We also have a dedicated self-hosting channel in our [Discord server](https://trigger.dev/discord) for support.
+#### @trigger.dev/database
+- **概要**: Prismaベースのデータアクセスレイヤー
+- **機能**: マイグレーション管理、クライアント生成
 
-## Development
+#### @internal/run-engine
+- **概要**: タスク実行エンジンのコア
+- **機能**: キュー管理、チェックポイント、並行実行制御、実行状態管理
 
-To setup and develop locally or contribute to the open source project, follow our [development guide](./CONTRIBUTING.md).
+#### @internal/schedule-engine
+- **概要**: スケジュールタスク管理
+- **機能**: CRON解析、タイムゾーン対応、分散スケジューリング
 
-## Meet the Amazing People Behind This Project:
+#### @internal/clickhouse
+- **概要**: 分析用データベース統合
+- **機能**: ログ保存、メトリクス集計、大規模データ分析
 
-<a href="https://github.com/triggerdotdev/trigger.dev/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=triggerdotdev/trigger.dev" />
-</a>
+## 技術スタック
+
+### フロントエンド
+- **フレームワーク**: Remix (React SSR)
+- **UIライブラリ**: Tailwind CSS, Radix UI
+- **状態管理**: SWR, Zustand
+- **リアルタイム**: Socket.IO クライアント
+
+### バックエンド
+- **言語**: TypeScript (Node.js)
+- **フレームワーク**: Express (内部API)
+- **ORM**: Prisma
+- **キュー**: Graphile Worker, Redis
+- **リアルタイム**: Socket.IO
+
+### インフラストラクチャ
+- **コンテナ**: Docker, Kubernetes
+- **データベース**: PostgreSQL (メイン), ClickHouse (分析), Redis (キャッシュ/キュー)
+- **モニタリング**: OpenTelemetry, Prometheus
+- **ビルドツール**: Turbo, pnpm workspaces
+
+### 開発ツール
+- **モノレポ管理**: pnpm workspaces
+- **ビルドパイプライン**: Turborepo
+- **型チェック**: TypeScript
+- **テスト**: Vitest, Playwright
+- **CI/CD**: GitHub Actions
+
+## 主要な機能
+
+### 1. タスク実行機能
+- **長時間実行**: タイムアウトなしの実行環境
+- **チェックポイント**: 実行状態の保存と復元
+- **並行実行制御**: キューと同時実行数の管理
+- **自動リトライ**: 指数バックオフとカスタムリトライポリシー
+
+### 2. スケジューリング
+- **CRONジョブ**: 標準CRON形式のサポート
+- **タイムゾーン対応**: グローバルな実行時間管理
+- **分散実行**: 負荷分散のための実行時間の分散
+
+### 3. 可観測性
+- **トレースビュー**: 各タスクの詳細な実行履歴
+- **ログ管理**: 構造化ログとフルテキスト検索
+- **メトリクス**: Prometheus形式のメトリクス収集
+- **アラート**: カスタムアラートとWebhook通知
+
+### 4. 開発者体験
+- **ローカル開発**: CLIによる簡単なセットアップ
+- **ホットリロード**: コード変更の即時反映
+- **型安全**: TypeScript完全サポート
+- **バージョン管理**: コードベースでのタスク定義
+
+## 拡張性と将来の発展
+
+### 現在の拡張ポイント
+
+1. **プロバイダーの追加**
+   - 現在: Docker、Kubernetes
+   - 拡張可能: AWS ECS、Google Cloud Run、Azure Container Instances
+
+2. **言語サポートの拡張**
+   - 現在: TypeScript/JavaScript、Python (実験的)
+   - 拡張可能: Go、Rust、Java、Ruby
+
+3. **統合の追加**
+   - 現在: OpenAI、Slack、Plain.com
+   - 拡張可能: 他のAIプロバイダー、通知サービス、データベース
+
+4. **ストレージバックエンドの抽象化**
+   - 現在: PostgreSQL、ClickHouse、Redis
+   - 拡張可能: 他のデータベース、オブジェクトストレージ
+
+### 将来の発展可能性
+
+1. **エッジコンピューティング対応**
+   - エッジロケーションでのタスク実行
+   - 地理的分散による低レイテンシー実現
+
+2. **AI/ML パイプライン最適化**
+   - GPU対応タスクの実行
+   - モデルのバージョニングとA/Bテスト
+   - バッチ推論の最適化
+
+3. **イベントドリブンアーキテクチャの強化**
+   - より多くのイベントソースのサポート
+   - 複雑なイベントパターンマッチング
+   - イベントソーシング機能
+
+4. **マルチテナント機能の強化**
+   - リソース分離の改善
+   - カスタムランタイム環境
+   - 企業向けのコンプライアンス機能
+
+5. **パフォーマンス最適化**
+   - WebAssemblyランタイムのサポート
+   - ネイティブコンパイル対応
+   - より効率的なシリアライゼーション
+
+### アーキテクチャの強み
+
+1. **疎結合設計**: 各サービスが独立して開発・デプロイ可能
+2. **プロバイダー抽象化**: 実行環境の切り替えが容易
+3. **プラグイン可能**: 新機能の追加が既存システムに影響しない
+4. **水平スケーリング**: 各コンポーネントが独立してスケール可能
+
+Trigger.devは、モダンなマイクロサービスアーキテクチャと抽象化レイヤーにより、将来の技術変化に柔軟に対応できる設計となっています。コミュニティ主導の開発により、さらなる機能拡張と改善が期待されます。
