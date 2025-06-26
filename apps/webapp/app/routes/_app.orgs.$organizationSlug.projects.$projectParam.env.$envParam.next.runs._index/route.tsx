@@ -57,6 +57,15 @@ import {
   v3TestPath,
 } from "~/utils/pathBuilder";
 import { ListPagination } from "../../components/ListPagination";
+import { getRunFiltersFromRequest } from "~/presenters/RunFilters.server";
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "~/components/primitives/Resizable";
+import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
+import { useSearchParams } from "~/hooks/useSearchParam";
+import { CreateBulkActionInspector } from "../resources.orgs.$organizationId.projects.$projectId.environments.$environmentId.runs.bulkaction";
 
 export const meta: MetaFunction = () => {
   return [
@@ -70,15 +79,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const { projectParam, organizationSlug, envParam } = EnvironmentParamSchema.parse(params);
 
-  const url = new URL(request.url);
-
-  let rootOnlyValue = false;
-  if (url.searchParams.has("rootOnly")) {
-    rootOnlyValue = url.searchParams.get("rootOnly") === "true";
-  } else {
-    rootOnlyValue = await getRootOnlyFilterPreference(request);
-  }
-
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
   if (!project) {
     throw new Error("Project not found");
@@ -89,71 +89,27 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     throw new Error("Environment not found");
   }
 
-  const s = {
-    cursor: url.searchParams.get("cursor") ?? undefined,
-    direction: url.searchParams.get("direction") ?? undefined,
-    statuses: url.searchParams.getAll("statuses"),
-    environments: [environment.id],
-    tasks: url.searchParams.getAll("tasks"),
-    period: url.searchParams.get("period") ?? undefined,
-    bulkId: url.searchParams.get("bulkId") ?? undefined,
-    tags: url.searchParams.getAll("tags").map((t) => decodeURIComponent(t)),
-    from: url.searchParams.get("from") ?? undefined,
-    to: url.searchParams.get("to") ?? undefined,
-    rootOnly: rootOnlyValue,
-    runId: url.searchParams.get("runId") ?? undefined,
-    batchId: url.searchParams.get("batchId") ?? undefined,
-    scheduleId: url.searchParams.get("scheduleId") ?? undefined,
-  };
-  const {
-    tasks,
-    versions,
-    statuses,
-    environments,
-    tags,
-    period,
-    bulkId,
-    from,
-    to,
-    cursor,
-    direction,
-    rootOnly,
-    runId,
-    batchId,
-    scheduleId,
-  } = TaskRunListSearchFilters.parse(s);
-
   if (!clickhouseClient) {
     throw new Error("Clickhouse is not supported yet");
   }
+
+  const filters = await getRunFiltersFromRequest(request);
 
   const presenter = new NextRunListPresenter($replica, clickhouseClient);
   const list = presenter.call(project.organizationId, environment.id, {
     userId,
     projectId: project.id,
-    tasks,
-    versions,
-    statuses,
-    tags,
-    period,
-    bulkId,
-    from,
-    to,
-    batchId,
-    runIds: runId ? [runId] : undefined,
-    scheduleId,
-    rootOnly,
-    direction: direction,
-    cursor: cursor,
+    ...filters,
   });
 
-  const session = await setRootOnlyFilterPreference(rootOnlyValue, request);
+  const session = await setRootOnlyFilterPreference(filters.rootOnly, request);
   const cookieValue = await uiPreferencesStorage.commitSession(session);
 
   return typeddefer(
     {
       data: list,
-      rootOnlyDefault: rootOnlyValue,
+      rootOnlyDefault: filters.rootOnly,
+      filters,
     },
     {
       headers: {
@@ -164,12 +120,16 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 export default function Page() {
-  const { data, rootOnlyDefault } = useTypedLoaderData<typeof loader>();
+  const { data, rootOnlyDefault, filters } = useTypedLoaderData<typeof loader>();
   const navigation = useNavigation();
   const isLoading = navigation.state !== "idle";
   const { isConnected } = useDevPresence();
+  const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
+  const searchParams = useSearchParams();
+
+  const isShowingBulkActionInspector = searchParams.has("bulkInspector");
 
   return (
     <>
@@ -194,65 +154,77 @@ export default function Page() {
           maxSelectedItemCount={BULK_ACTION_RUN_LIMIT}
         >
           {({ selectedItems }) => (
-            <div
-              className={cn(
-                "grid h-full max-h-full overflow-hidden",
-                selectedItems.size === 0 ? "grid-rows-1" : "grid-rows-[1fr_auto]"
-              )}
-            >
-              <Suspense
-                fallback={
-                  <div className="flex items-center justify-center py-2">
-                    <div className="mx-auto flex items-center gap-2">
-                      <Spinner />
-                      <Paragraph variant="small">Loading runs</Paragraph>
-                    </div>
-                  </div>
-                }
-              >
-                <TypedAwait resolve={data}>
-                  {(list) => (
-                    <>
-                      {list.runs.length === 0 && !list.hasAnyRuns ? (
-                        list.possibleTasks.length === 0 ? (
-                          <CreateFirstTaskInstructions />
-                        ) : (
-                          <RunTaskInstructions />
-                        )
-                      ) : (
-                        <div
-                          className={cn(
-                            "grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden"
-                          )}
-                        >
-                          <div className="flex items-start justify-between gap-x-2 p-2">
-                            <RunsFilters
-                              possibleTasks={list.possibleTasks}
-                              bulkActions={list.bulkActions}
-                              hasFilters={list.hasFilters}
-                              rootOnlyDefault={rootOnlyDefault}
-                            />
-                            <div className="flex items-center justify-end gap-x-2">
-                              <ListPagination list={list} />
-                            </div>
-                          </div>
-
-                          <TaskRunsTable
-                            total={list.runs.length}
-                            hasFilters={list.hasFilters}
-                            filters={list.filters}
-                            runs={list.runs}
-                            isLoading={isLoading}
-                            allowSelection
-                          />
-                        </div>
-                      )}
-                    </>
+            <ResizablePanelGroup orientation="horizontal" className="max-h-full">
+              <ResizablePanel id="runs-main" min={"100px"}>
+                <div
+                  className={cn(
+                    "grid h-full max-h-full overflow-hidden",
+                    selectedItems.size === 0 ? "grid-rows-1" : "grid-rows-[1fr_auto]"
                   )}
-                </TypedAwait>
-              </Suspense>
-              <BulkActionBar />
-            </div>
+                >
+                  <Suspense
+                    fallback={
+                      <div className="flex items-center justify-center py-2">
+                        <div className="mx-auto flex items-center gap-2">
+                          <Spinner />
+                          <Paragraph variant="small">Loading runs</Paragraph>
+                        </div>
+                      </div>
+                    }
+                  >
+                    <TypedAwait resolve={data}>
+                      {(list) => (
+                        <>
+                          {list.runs.length === 0 && !list.hasAnyRuns ? (
+                            list.possibleTasks.length === 0 ? (
+                              <CreateFirstTaskInstructions />
+                            ) : (
+                              <RunTaskInstructions />
+                            )
+                          ) : (
+                            <div
+                              className={cn(
+                                "grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden"
+                              )}
+                            >
+                              <div className="flex items-start justify-between gap-x-2 p-2">
+                                <RunsFilters
+                                  possibleTasks={list.possibleTasks}
+                                  bulkActions={list.bulkActions}
+                                  hasFilters={list.hasFilters}
+                                  rootOnlyDefault={rootOnlyDefault}
+                                />
+                                <div className="flex items-center justify-end gap-x-2">
+                                  <ListPagination list={list} />
+                                </div>
+                              </div>
+
+                              <TaskRunsTable
+                                total={list.runs.length}
+                                hasFilters={list.hasFilters}
+                                filters={list.filters}
+                                runs={list.runs}
+                                isLoading={isLoading}
+                                allowSelection
+                              />
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </TypedAwait>
+                  </Suspense>
+                  <BulkActionBar />
+                </div>
+              </ResizablePanel>
+              {isShowingBulkActionInspector && (
+                <>
+                  <ResizableHandle id="runs-handle" />
+                  <ResizablePanel id="bulk-action-inspector" min="100px" default="450px">
+                    <CreateBulkActionInspector filters={filters} />
+                  </ResizablePanel>
+                </>
+              )}
+            </ResizablePanelGroup>
           )}
         </SelectedItemsProvider>
       </PageBody>

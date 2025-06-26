@@ -1,4 +1,5 @@
 import { type ClickHouse } from "@internal/clickhouse";
+import { ClickhouseQueryBuilder } from "@internal/clickhouse/dist/src/client/queryBuilder";
 import { type Tracer } from "@internal/tracing";
 import { type Logger, type LogLevel } from "@trigger.dev/core/logger";
 import { type TaskRunStatus } from "@trigger.dev/database";
@@ -12,7 +13,7 @@ export type RunsRepositoryOptions = {
   tracer?: Tracer;
 };
 
-export type ListRunsOptions = {
+export type FilterRunsOptions = {
   organizationId: string;
   projectId: string;
   environmentId: string;
@@ -30,7 +31,9 @@ export type ListRunsOptions = {
   batchId?: string;
   runFriendlyIds?: string[];
   runIds?: string[];
-  //pagination
+};
+
+export type ListRunsOptions = FilterRunsOptions & {
   page: {
     size: number;
     cursor?: string;
@@ -43,81 +46,7 @@ export class RunsRepository {
 
   async listRuns(options: ListRunsOptions) {
     const queryBuilder = this.options.clickhouse.taskRuns.queryBuilder();
-    queryBuilder
-      .where("organization_id = {organizationId: String}", {
-        organizationId: options.organizationId,
-      })
-      .where("project_id = {projectId: String}", {
-        projectId: options.projectId,
-      })
-      .where("environment_id = {environmentId: String}", {
-        environmentId: options.environmentId,
-      });
-
-    if (options.tasks && options.tasks.length > 0) {
-      queryBuilder.where("task_identifier IN {tasks: Array(String)}", { tasks: options.tasks });
-    }
-
-    if (options.versions && options.versions.length > 0) {
-      queryBuilder.where("task_version IN {versions: Array(String)}", {
-        versions: options.versions,
-      });
-    }
-
-    if (options.statuses && options.statuses.length > 0) {
-      queryBuilder.where("status IN {statuses: Array(String)}", { statuses: options.statuses });
-    }
-
-    if (options.tags && options.tags.length > 0) {
-      queryBuilder.where("hasAny(tags, {tags: Array(String)})", { tags: options.tags });
-    }
-
-    if (options.scheduleId) {
-      queryBuilder.where("schedule_id = {scheduleId: String}", { scheduleId: options.scheduleId });
-    }
-
-    // Period is a number of milliseconds duration
-    if (options.period) {
-      queryBuilder.where("created_at >= fromUnixTimestamp64Milli({period: Int64})", {
-        period: new Date(Date.now() - options.period).getTime(),
-      });
-    }
-
-    if (options.from) {
-      queryBuilder.where("created_at >= fromUnixTimestamp64Milli({from: Int64})", {
-        from: options.from,
-      });
-    }
-
-    if (options.to) {
-      queryBuilder.where("created_at <= fromUnixTimestamp64Milli({to: Int64})", { to: options.to });
-    } else {
-      queryBuilder.where("created_at <= fromUnixTimestamp64Milli({to: Int64})", {
-        to: Date.now(),
-      });
-    }
-
-    if (typeof options.isTest === "boolean") {
-      queryBuilder.where("is_test = {isTest: Boolean}", { isTest: options.isTest });
-    }
-
-    if (options.rootOnly) {
-      queryBuilder.where("root_run_id = ''");
-    }
-
-    if (options.batchId) {
-      queryBuilder.where("batch_id = {batchId: String}", { batchId: options.batchId });
-    }
-
-    if (options.runFriendlyIds && options.runFriendlyIds.length > 0) {
-      queryBuilder.where("friendly_id IN {runFriendlyIds: Array(String)}", {
-        runFriendlyIds: options.runFriendlyIds,
-      });
-    }
-
-    if (options.runIds && options.runIds.length > 0) {
-      queryBuilder.where("run_id IN {runIds: Array(String)}", { runIds: options.runIds });
-    }
+    applyRunFiltersToQueryBuilder(queryBuilder, options);
 
     if (options.page.cursor) {
       if (options.page.direction === "forward") {
@@ -225,5 +154,99 @@ export class RunsRepository {
         previousCursor,
       },
     };
+  }
+
+  async countRuns(options: FilterRunsOptions) {
+    const queryBuilder = this.options.clickhouse.taskRuns.countQueryBuilder();
+    applyRunFiltersToQueryBuilder(queryBuilder, options);
+
+    const [queryError, result] = await queryBuilder.execute();
+
+    if (queryError) {
+      throw queryError;
+    }
+
+    if (result.length === 0) {
+      throw new Error("No count rows returned");
+    }
+
+    return result[0].count;
+  }
+}
+
+function applyRunFiltersToQueryBuilder<T>(
+  queryBuilder: ClickhouseQueryBuilder<T>,
+  options: FilterRunsOptions
+) {
+  queryBuilder
+    .where("organization_id = {organizationId: String}", {
+      organizationId: options.organizationId,
+    })
+    .where("project_id = {projectId: String}", {
+      projectId: options.projectId,
+    })
+    .where("environment_id = {environmentId: String}", {
+      environmentId: options.environmentId,
+    });
+
+  if (options.tasks && options.tasks.length > 0) {
+    queryBuilder.where("task_identifier IN {tasks: Array(String)}", { tasks: options.tasks });
+  }
+
+  if (options.versions && options.versions.length > 0) {
+    queryBuilder.where("task_version IN {versions: Array(String)}", {
+      versions: options.versions,
+    });
+  }
+
+  if (options.statuses && options.statuses.length > 0) {
+    queryBuilder.where("status IN {statuses: Array(String)}", { statuses: options.statuses });
+  }
+
+  if (options.tags && options.tags.length > 0) {
+    queryBuilder.where("hasAny(tags, {tags: Array(String)})", { tags: options.tags });
+  }
+
+  if (options.scheduleId) {
+    queryBuilder.where("schedule_id = {scheduleId: String}", { scheduleId: options.scheduleId });
+  }
+
+  // Period is a number of milliseconds duration
+  if (options.period) {
+    queryBuilder.where("created_at >= fromUnixTimestamp64Milli({period: Int64})", {
+      period: new Date(Date.now() - options.period).getTime(),
+    });
+  }
+
+  if (options.from) {
+    queryBuilder.where("created_at >= fromUnixTimestamp64Milli({from: Int64})", {
+      from: options.from,
+    });
+  }
+
+  if (options.to) {
+    queryBuilder.where("created_at <= fromUnixTimestamp64Milli({to: Int64})", { to: options.to });
+  }
+
+  if (typeof options.isTest === "boolean") {
+    queryBuilder.where("is_test = {isTest: Boolean}", { isTest: options.isTest });
+  }
+
+  if (options.rootOnly) {
+    queryBuilder.where("root_run_id = ''");
+  }
+
+  if (options.batchId) {
+    queryBuilder.where("batch_id = {batchId: String}", { batchId: options.batchId });
+  }
+
+  if (options.runFriendlyIds && options.runFriendlyIds.length > 0) {
+    queryBuilder.where("friendly_id IN {runFriendlyIds: Array(String)}", {
+      runFriendlyIds: options.runFriendlyIds,
+    });
+  }
+
+  if (options.runIds && options.runIds.length > 0) {
+    queryBuilder.where("run_id IN {runIds: Array(String)}", { runIds: options.runIds });
   }
 }
