@@ -1959,8 +1959,6 @@ enum BulkActionType {
   CANCEL
   /// Replays existing runs. The original runs go as source runs, and the new runs go as destination runs.
   REPLAY
-  /// Cancel and replay runs. The original runs go as source runs, and the new runs go as destination runs.
-  CANCEL_THEN_REPLAY
 }
 
 enum BulkActionStatus {
