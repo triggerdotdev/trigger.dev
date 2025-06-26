@@ -205,6 +205,19 @@ export class TaskRunProcessProvider {
     await process.cleanup(true);
   }
 
+  async killProcess(process: TaskRunProcess): Promise<void> {
+    this.sendDebugLog("Killing process");
+
+    // If this was our persistent process, clear it
+    if (this.persistentProcess?.pid === process.pid) {
+      this.persistentProcess = null;
+      this.executionCount = 0;
+    }
+
+    // Kill the process
+    await this.cleanupProcess(process);
+  }
+
   /**
    * Forces cleanup of any persistent process
    */
@@ -287,7 +300,7 @@ export class TaskRunProcessProvider {
   }
 
   private async cleanupProcess(taskRunProcess: TaskRunProcess): Promise<void> {
-    if (taskRunProcess) {
+    if (taskRunProcess && taskRunProcess.pid !== undefined) {
       this.sendDebugLog("Cleaning up TaskRunProcess", { pid: taskRunProcess.pid });
 
       await taskRunProcess.kill("SIGKILL").catch(() => {});

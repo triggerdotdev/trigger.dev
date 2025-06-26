@@ -207,7 +207,15 @@ export class ManagedRunController {
           runId: runFriendlyId,
           message: "killing existing execution before starting new run",
         });
-        await this.currentExecution.kill().catch(() => {});
+
+        await this.currentExecution.shutdown().catch((error) => {
+          this.sendDebugLog({
+            runId: runFriendlyId,
+            message: "Error during execution shutdown",
+            properties: { error: error instanceof Error ? error.message : String(error) },
+          });
+        });
+
         this.currentExecution = null;
       }
 

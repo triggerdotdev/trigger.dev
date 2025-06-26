@@ -120,8 +120,16 @@ export class RunExecution {
     }
 
     if (exitExecution) {
-      this.shutdown("kill");
+      this.shutdownExecution("kill");
     }
+  }
+
+  public async shutdown() {
+    if (this.taskRunProcess) {
+      await this.taskRunProcessProvider.handleProcessAbort(this.taskRunProcess);
+    }
+
+    this.shutdownExecution("shutdown");
   }
 
   /**
@@ -232,7 +240,6 @@ export class RunExecution {
     if (this.currentAttemptNumber && this.currentAttemptNumber !== run.attemptNumber) {
       this.sendDebugLog("error: attempt number mismatch", snapshotMetadata);
       // This is a rogue execution, a new one will already have been created elsewhere
-      // TODO: keep this one, kill the process even if it's a keep-alive one
       await this.exitTaskRunProcessWithoutFailingRun({
         flush: false,
         reason: "attempt number mismatch",
@@ -250,7 +257,6 @@ export class RunExecution {
     if (deprecated) {
       this.sendDebugLog("run execution is deprecated", { incomingSnapshot: snapshot });
 
-      // TODO: keep this one, kill the process even if it's a keep-alive one
       await this.exitTaskRunProcessWithoutFailingRun({
         flush: false,
         reason: "deprecated execution",
@@ -469,7 +475,7 @@ export class RunExecution {
     if (startError) {
       this.sendDebugLog("failed to start attempt", { error: startError.message });
 
-      this.shutdown("failed to start attempt");
+      this.shutdownExecution("failed to start attempt");
       return;
     }
 
@@ -480,12 +486,12 @@ export class RunExecution {
     if (executeError) {
       this.sendDebugLog("failed to execute run", { error: executeError.message });
 
-      this.shutdown("failed to execute run");
+      this.shutdownExecution("failed to execute run");
       return;
     }
 
     // This is here for safety, but it
-    this.shutdown("execute call finished");
+    this.shutdownExecution("execute call finished");
   }
 
   private async executeRunWrapper({
@@ -786,7 +792,7 @@ export class RunExecution {
     if (startError) {
       this.sendDebugLog("failed to start attempt for retry", { error: startError.message });
 
-      this.shutdown("retryImmediately: failed to start attempt");
+      this.shutdownExecution("retryImmediately: failed to start attempt");
       return;
     }
 
@@ -797,7 +803,7 @@ export class RunExecution {
     if (executeError) {
       this.sendDebugLog("failed to execute run for retry", { error: executeError.message });
 
-      this.shutdown("retryImmediately: failed to execute run");
+      this.shutdownExecution("retryImmediately: failed to execute run");
       return;
     }
   }
@@ -841,7 +847,7 @@ export class RunExecution {
     await this.taskRunProcessProvider.suspendProcess(flush, this.taskRunProcess);
 
     // No services should be left running after this line - let's make sure of it
-    this.shutdown(`exitTaskRunProcessWithoutFailingRun: ${reason}`);
+    this.shutdownExecution(`exitTaskRunProcessWithoutFailingRun: ${reason}`);
   }
 
   /**
@@ -1012,10 +1018,10 @@ export class RunExecution {
     }
 
     this.executionAbortController.abort();
-    this.shutdown("abortExecution");
+    this.shutdownExecution("abortExecution");
   }
 
-  private shutdown(reason: string) {
+  private shutdownExecution(reason: string) {
     if (this.isShuttingDown) {
       this.sendDebugLog(`[shutdown] ${reason} (already shutting down)`, {
         firstShutdownReason: this.shutdownReason,
