@@ -265,6 +265,7 @@ export function runStatusTitle(status: TaskRunStatus): string {
     case "TIMED_OUT":
       return "Timed out";
     default: {
+      console.error("status", status);
       assertNever(status);
     }
   }

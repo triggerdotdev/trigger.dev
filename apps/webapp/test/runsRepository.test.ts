@@ -1063,7 +1063,7 @@ describe("RunsRepository", () => {
         projectId: project.id,
         environmentId: runtimeEnvironment.id,
         organizationId: organization.id,
-        runFriendlyIds: ["run_abc", "run_xyz"],
+        runIds: ["run_abc", "run_xyz"],
       });
 
       expect(runs).toHaveLength(2);
