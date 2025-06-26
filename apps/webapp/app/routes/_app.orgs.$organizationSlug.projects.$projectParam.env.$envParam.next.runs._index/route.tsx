@@ -67,6 +67,8 @@ import {
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { CreateBulkActionInspector } from "../resources.orgs.$organizationId.projects.$projectId.environments.$environmentId.runs.bulkaction";
+import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
+import { Badge } from "~/components/primitives/Badge";
 
 export const meta: MetaFunction = () => {
   return [
@@ -196,17 +198,26 @@ export default function Page() {
                                   rootOnlyDefault={rootOnlyDefault}
                                 />
                                 <div className="flex items-center justify-end gap-x-2">
-                                  <LinkButton
-                                    variant="tertiary/small"
-                                    to={v3CreateBulkActionPath(
-                                      organization,
-                                      project,
-                                      environment,
-                                      filters
-                                    )}
-                                  >
-                                    Bulk action
-                                  </LinkButton>
+                                  {!isShowingBulkActionInspector && (
+                                    <LinkButton
+                                      variant="tertiary/small"
+                                      to={v3CreateBulkActionPath(
+                                        organization,
+                                        project,
+                                        environment,
+                                        filters
+                                      )}
+                                      LeadingIcon={ListCheckedIcon}
+                                      className={selectedItems.size > 0 ? "pr-1" : undefined}
+                                    >
+                                      <span className="flex items-center gap-x-1">
+                                        <span>Bulk action</span>
+                                        {selectedItems.size > 0 && (
+                                          <Badge variant="rounded">{selectedItems.size}</Badge>
+                                        )}
+                                      </span>
+                                    </LinkButton>
+                                  )}
                                   <ListPagination list={list} />
                                 </div>
                               </div>
