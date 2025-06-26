@@ -8,7 +8,11 @@ import { TaskRun } from "@trigger.dev/database";
 import { z } from "zod";
 import { env } from "~/env.server";
 import { EngineServiceValidationError } from "~/runEngine/concerns/errors";
-import { AuthenticatedEnvironment, getOneTimeUseToken } from "~/services/apiAuth.server";
+import {
+  ApiAuthenticationResultSuccess,
+  AuthenticatedEnvironment,
+  getOneTimeUseToken,
+} from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
@@ -100,11 +104,7 @@ const { action, loader } = createActionApiRoute(
         return json({ error: "Task not found" }, { status: 404 });
       }
 
-      const $responseHeaders = await responseHeaders(
-        result.run,
-        authentication.environment,
-        triggerClient
-      );
+      const $responseHeaders = await responseHeaders(result.run, authentication, triggerClient);
 
       return json(
         {
@@ -133,12 +133,15 @@ const { action, loader } = createActionApiRoute(
 
 async function responseHeaders(
   run: TaskRun,
-  environment: AuthenticatedEnvironment,
+  authentication: ApiAuthenticationResultSuccess,
   triggerClient?: string | null
 ): Promise<Record<string, string>> {
+  const { environment, realtime } = authentication;
+
   const claimsHeader = JSON.stringify({
     sub: environment.id,
     pub: true,
+    realtime,
   });
 
   if (triggerClient === "browser") {
@@ -146,6 +149,7 @@ async function responseHeaders(
       sub: environment.id,
       pub: true,
       scopes: [`read:runs:${run.friendlyId}`],
+      realtime,
     };
 
     const jwt = await internal_generateJWT({

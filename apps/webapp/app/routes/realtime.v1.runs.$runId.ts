@@ -44,6 +44,7 @@ export const loader = createLoaderApiRoute(
       request.url,
       authentication.environment,
       run.id,
+      authentication.realtime,
       request.headers.get("x-trigger-electric-version") ?? undefined
     );
   }
