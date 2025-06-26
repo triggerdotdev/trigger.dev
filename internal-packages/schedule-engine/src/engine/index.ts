@@ -97,7 +97,7 @@ export class ScheduleEngine {
       },
       pollIntervalMs: options.worker.pollIntervalMs,
       shutdownTimeoutMs: options.worker.shutdownTimeoutMs,
-      logger: new Logger("ScheduleEngineWorker", "debug"),
+      logger: new Logger("ScheduleEngineWorker", (options.logLevel ?? "info") as any),
       jobs: {
         "schedule.triggerScheduledTask": this.#handleTriggerScheduledTaskJob.bind(this),
       },
