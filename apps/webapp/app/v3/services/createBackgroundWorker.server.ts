@@ -380,26 +380,36 @@ async function createWorkerQueue(
     prisma
   );
 
-  if (typeof concurrencyLimit === "number") {
-    logger.debug("createWorkerQueue: updating concurrency limit", {
-      workerId: worker.id,
-      taskQueue,
-      orgId: environment.organizationId,
-      projectId: environment.projectId,
-      environmentId: environment.id,
-      concurrencyLimit,
-    });
-    await updateQueueConcurrencyLimits(environment, taskQueue.name, concurrencyLimit);
+  if (!taskQueue.paused) {
+    if (typeof concurrencyLimit === "number") {
+      logger.debug("createWorkerQueue: updating concurrency limit", {
+        workerId: worker.id,
+        taskQueue,
+        orgId: environment.organizationId,
+        projectId: environment.projectId,
+        environmentId: environment.id,
+        concurrencyLimit,
+      });
+      await updateQueueConcurrencyLimits(environment, taskQueue.name, concurrencyLimit);
+    } else {
+      logger.debug("createWorkerQueue: removing concurrency limit", {
+        workerId: worker.id,
+        taskQueue,
+        orgId: environment.organizationId,
+        projectId: environment.projectId,
+        environmentId: environment.id,
+        concurrencyLimit,
+      });
+      await removeQueueConcurrencyLimits(environment, taskQueue.name);
+    }
   } else {
-    logger.debug("createWorkerQueue: removing concurrency limit", {
+    logger.debug("createWorkerQueue: queue is paused, not updating concurrency limit", {
       workerId: worker.id,
       taskQueue,
       orgId: environment.organizationId,
       projectId: environment.projectId,
       environmentId: environment.id,
-      concurrencyLimit,
     });
-    await removeQueueConcurrencyLimits(environment, taskQueue.name);
   }
 
   return taskQueue;
