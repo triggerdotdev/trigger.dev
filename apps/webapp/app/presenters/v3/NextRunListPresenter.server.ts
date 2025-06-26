@@ -122,69 +122,6 @@ export class NextRunListPresenter {
       throw new ServiceValidationError("No environment found");
     }
 
-    //we can restrict to specific runs using bulkId, or batchId
-    let restrictToRunIds: undefined | string[] = undefined;
-
-    //bulk id
-    if (bulkId) {
-      const bulkAction = await this.replica.bulkActionGroup.findFirst({
-        select: {
-          items: {
-            select: {
-              destinationRunId: true,
-            },
-          },
-        },
-        where: {
-          friendlyId: bulkId,
-        },
-      });
-
-      if (bulkAction) {
-        const runIds = bulkAction.items.map((item) => item.destinationRunId).filter(Boolean);
-        restrictToRunIds = runIds;
-      }
-    }
-
-    //batch id is a friendly id
-    if (batchId) {
-      const batch = await this.replica.batchTaskRun.findFirst({
-        select: {
-          id: true,
-        },
-        where: {
-          friendlyId: batchId,
-          runtimeEnvironmentId: environmentId,
-        },
-      });
-
-      if (batch) {
-        batchId = batch.id;
-      }
-    }
-
-    //scheduleId can be a friendlyId
-    if (scheduleId && scheduleId.startsWith("sched_")) {
-      const schedule = await this.replica.taskSchedule.findFirst({
-        select: {
-          id: true,
-        },
-        where: {
-          friendlyId: scheduleId,
-          projectId: projectId,
-        },
-      });
-
-      if (schedule) {
-        scheduleId = schedule?.id;
-      }
-    }
-
-    //show all runs if we are filtering by batchId or runId
-    if (batchId || runIds?.length || scheduleId || tasks?.length) {
-      rootOnly = false;
-    }
-
     const runsRepository = new RunsRepository({
       clickhouse: this.clickhouse,
       prisma: this.replica as PrismaClient,
@@ -199,14 +136,13 @@ export class NextRunListPresenter {
       statuses,
       tags,
       scheduleId,
-      period: periodMs ?? undefined,
+      period,
       from,
       to,
       isTest,
       rootOnly,
       batchId,
-      runFriendlyIds: runIds,
-      runIds: restrictToRunIds,
+      runIds,
       page: {
         size: pageSize,
         cursor,

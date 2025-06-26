@@ -54,31 +54,46 @@ import {
 } from "./TaskRunStatus";
 import { TaskTriggerSourceIcon } from "./TaskTriggerSource";
 
-export const TaskAttemptStatus = z.enum(allTaskRunStatuses);
+export const RunStatus = z.enum(allTaskRunStatuses);
+
+const StringOrStringArray = z.preprocess((value) => {
+  if (typeof value === "string") {
+    if (value.length > 0) {
+      return [value];
+    }
+
+    return undefined;
+  }
+
+  if (Array.isArray(value)) {
+    return value.filter((v) => typeof v === "string" && v.length > 0);
+  }
+
+  return undefined;
+}, z.string().array().optional());
 
 export const TaskRunListSearchFilters = z.object({
   cursor: z.string().optional(),
   direction: z.enum(["forward", "backward"]).optional(),
-  environments: z.preprocess(
-    (value) => (typeof value === "string" ? [value] : value),
-    z.string().array().optional()
-  ),
-  tasks: z.preprocess(
-    (value) => (typeof value === "string" ? [value] : value),
-    z.string().array().optional()
-  ),
-  versions: z.preprocess(
-    (value) => (typeof value === "string" ? [value] : value),
-    z.string().array().optional()
-  ),
-  statuses: z.preprocess(
-    (value) => (typeof value === "string" ? [value] : value),
-    TaskAttemptStatus.array().optional()
-  ),
-  tags: z.preprocess(
-    (value) => (typeof value === "string" ? [value] : value),
-    z.string().array().optional()
-  ),
+  environments: StringOrStringArray,
+  tasks: StringOrStringArray,
+  versions: StringOrStringArray,
+  statuses: z.preprocess((value) => {
+    if (typeof value === "string") {
+      if (value.length > 0) {
+        return [value];
+      }
+
+      return undefined;
+    }
+
+    if (Array.isArray(value)) {
+      return value.filter((v) => typeof v === "string" && v.length > 0);
+    }
+
+    return undefined;
+  }, RunStatus.array().optional()),
+  tags: StringOrStringArray,
   bulkId: z.string().optional(),
   period: z.preprocess((value) => (value === "all" ? undefined : value), z.string().optional()),
   from: z.coerce.number().optional(),
@@ -91,8 +106,10 @@ export const TaskRunListSearchFilters = z.object({
 
 export type TaskRunListSearchFilters = z.infer<typeof TaskRunListSearchFilters>;
 
-export function getRunFiltersFromSearchParams(searchParams: URLSearchParams) {
-  return {
+export function getRunFiltersFromSearchParams(
+  searchParams: URLSearchParams
+): TaskRunListSearchFilters {
+  const params = {
     cursor: searchParams.get("cursor") ?? undefined,
     direction: searchParams.get("direction") ?? undefined,
     statuses: searchParams.getAll("statuses"),
@@ -107,6 +124,14 @@ export function getRunFiltersFromSearchParams(searchParams: URLSearchParams) {
     batchId: searchParams.get("batchId") ?? undefined,
     scheduleId: searchParams.get("scheduleId") ?? undefined,
   };
+
+  const parsed = TaskRunListSearchFilters.safeParse(params);
+
+  if (!parsed.success) {
+    return {};
+  }
+
+  return parsed.data;
 }
 
 type RunFiltersProps = {
@@ -352,7 +377,7 @@ function AppliedStatusFilter() {
   const { values, del } = useSearchParams();
   const statuses = values("statuses");
 
-  if (statuses.length === 0) {
+  if (statuses.length === 0 || statuses.every((v) => v === "")) {
     return null;
   }
 
@@ -439,7 +464,7 @@ function TasksDropdown({
 function AppliedTaskFilter({ possibleTasks }: Pick<RunFiltersProps, "possibleTasks">) {
   const { values, del } = useSearchParams();
 
-  if (values("tasks").length === 0) {
+  if (values("tasks").length === 0 || values("tasks").every((v) => v === "")) {
     return null;
   }
 
@@ -580,11 +605,14 @@ function TagsDropdown({
   const handleChange = (values: string[]) => {
     clearSearchValue();
     replace({
-      tags: values,
+      tags: values.length > 0 ? values : undefined,
       cursor: undefined,
       direction: undefined,
     });
   };
+
+  const tagValues = values("tags").filter((v) => v !== "");
+  const selected = tagValues.length > 0 ? tagValues : undefined;
 
   const fetcher = useFetcher<typeof tagsLoader>();
 
@@ -599,7 +627,7 @@ function TagsDropdown({
   const filtered = useMemo(() => {
     let items: string[] = [];
     if (searchValue === "") {
-      items = values("tags");
+      items = selected ?? [];
     }
 
     if (fetcher.data === undefined) {
@@ -612,7 +640,7 @@ function TagsDropdown({
   }, [searchValue, fetcher.data]);
 
   return (
-    <SelectProvider value={values("tags")} setValue={handleChange} virtualFocus={true}>
+    <SelectProvider value={selected ?? []} setValue={handleChange} virtualFocus={true}>
       {trigger}
       <SelectPopover
         className="min-w-0 max-w-[min(240px,var(--popover-available-width))]"
@@ -656,7 +684,7 @@ function AppliedTagsFilter() {
 
   const tags = values("tags");
 
-  if (tags.length === 0) {
+  if (tags.length === 0 || tags.every((v) => v === "")) {
     return null;
   }
 
