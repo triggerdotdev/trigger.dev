@@ -104,31 +104,34 @@ class DevSupervisor implements WorkerRuntime {
     const enableProcessReuse =
       typeof this.options.config.experimental_processKeepAlive === "boolean"
         ? this.options.config.experimental_processKeepAlive
+        : typeof this.options.config.experimental_processKeepAlive === "object"
+        ? this.options.config.experimental_processKeepAlive.enabled
         : false;
+
+    const maxPoolSize =
+      typeof this.options.config.experimental_processKeepAlive === "object"
+        ? this.options.config.experimental_processKeepAlive.devMaxPoolSize ?? 25
+        : 25;
+
+    const maxExecutionsPerProcess =
+      typeof this.options.config.experimental_processKeepAlive === "object"
+        ? this.options.config.experimental_processKeepAlive.maxExecutionsPerProcess ?? 50
+        : 50;
 
     if (enableProcessReuse) {
       logger.debug("[DevSupervisor] Enabling process reuse", {
         enableProcessReuse,
+        maxPoolSize,
+        maxExecutionsPerProcess,
       });
     }
 
     this.taskRunProcessPool = new TaskRunProcessPool({
       env,
       cwd: this.options.config.workingDir,
-      enableProcessReuse:
-        typeof this.options.config.experimental_processKeepAlive === "boolean"
-          ? this.options.config.experimental_processKeepAlive
-          : typeof this.options.config.experimental_processKeepAlive === "object"
-          ? this.options.config.experimental_processKeepAlive.enabled
-          : false,
-      maxPoolSize:
-        typeof this.options.config.experimental_processKeepAlive === "object"
-          ? this.options.config.experimental_processKeepAlive.devMaxPoolSize ?? 25
-          : 25,
-      maxExecutionsPerProcess:
-        typeof this.options.config.experimental_processKeepAlive === "object"
-          ? this.options.config.experimental_processKeepAlive.maxExecutionsPerProcess ?? 50
-          : 50,
+      enableProcessReuse,
+      maxPoolSize,
+      maxExecutionsPerProcess,
     });
 
     this.socket = this.#createSocket();
@@ -355,6 +358,9 @@ class DevSupervisor implements WorkerRuntime {
           httpClient: this.options.client,
           logLevel: this.options.args.logLevel,
           taskRunProcessPool: this.taskRunProcessPool,
+          cwd: this.options.config.experimental_devProcessCwdInBuildDir
+            ? worker.build.outputPath
+            : undefined,
           onFinished: () => {
             logger.debug("[DevSupervisor] Run finished", { runId: message.run.friendlyId });
 
