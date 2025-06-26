@@ -7,6 +7,8 @@ import { typedjson, useTypedFetcher } from "remix-typedjson";
 import { z } from "zod";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { Fieldset } from "~/components/primitives/Fieldset";
+import { InputGroup } from "~/components/primitives/InputGroup";
 import { Header2 } from "~/components/primitives/Headers";
 import { type TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
 import { $replica, type PrismaClient } from "~/db.server";
@@ -21,7 +23,14 @@ import { clickhouseClient } from "~/services/clickhouseInstance.server";
 import { RunsRepository } from "~/services/runsRepository.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { v3RunsPath } from "~/utils/pathBuilder";
+import { v3RunsNextPath, v3RunsPath } from "~/utils/pathBuilder";
+import { Input } from "~/components/primitives/Input";
+import { Label } from "~/components/primitives/Label";
+import { Hint } from "~/components/primitives/Hint";
+import { RadioGroupItem, RadioGroup } from "~/components/primitives/RadioButton";
+import { formatNumber } from "~/utils/numberFormatter";
+import { SpinnerWhite } from "~/components/primitives/Spinner";
+import { formatDateTime } from "~/components/primitives/DateTime";
 
 const Params = z.object({
   organizationId: z.string(),
@@ -57,7 +66,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     organizationId,
     projectId,
     environmentId,
-    // ...filters,
+    ...filters,
   });
 
   return typedjson({
@@ -75,12 +84,17 @@ export async function action({ params, request }: ActionFunctionArgs) {
   return redirectWithSuccessMessage("/", request, "SORTED");
 }
 
-export function CreateBulkActionInspector({ filters }: { filters: TaskRunListSearchFilters }) {
+export function CreateBulkActionInspector({
+  filters,
+  selectedItems,
+}: {
+  filters: TaskRunListSearchFilters;
+  selectedItems: Set<string>;
+}) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
   const fetcher = useTypedFetcher<typeof loader>();
-  const lastSubmission = useActionData<typeof action>();
   const { value } = useSearchParams();
   const location = useOptimisticLocation();
 
@@ -90,81 +104,129 @@ export function CreateBulkActionInspector({ filters }: { filters: TaskRunListSea
     );
   }, [organization.id, project.id, environment.id, location.search]);
 
-  const mode = value("mode");
-  const action = value("action");
+  const mode = value("mode") ?? "filter";
+  const action = value("action") ?? "replay";
 
   const data = fetcher.data != null ? fetcher.data : undefined;
 
-  return (
-    <div className="grid h-full max-h-full grid-rows-[2.5rem_1fr_3.25rem] overflow-hidden bg-background-bright">
-      <div className="mx-3 flex items-center justify-between gap-2 border-b border-grid-dimmed">
-        <Header2 className="whitespace-nowrap">Create a bulk action</Header2>
-        <LinkButton
-          to={`${v3RunsPath(organization, project, environment)}${location.search}`}
-          variant="minimal/small"
-          TrailingIcon={ExitIcon}
-          shortcut={{ key: "esc" }}
-          shortcutPosition="before-trailing-icon"
-          className="pl-1"
-        />
-      </div>
-      <div className="overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-        <Form
-          method="post"
-          action={`/resources/orgs/${organization.id}/projects/${project.id}/environments/${environment.id}/runs/bulkaction${location.search}`}
-          className="w-full"
-        >
-          {data?.count}
-          <Button LeadingIcon={XCircleIcon} type="submit" variant="danger/medium">
-            Cancel X runs
-          </Button>
-        </Form>
-      </div>
-      <div className="flex items-center justify-end gap-2 border-t border-grid-dimmed px-2">
-        <Button
-          type="submit"
-          variant="tertiary/medium"
-          LeadingIcon={action === "replay" ? ArrowPathIcon : XCircleIcon}
-          leadingIconClassName={cn(
-            "w-[1.3rem] h-[1.3rem]",
-            action === "replay" ? "text-blue-400" : "text-error"
-          )}
-        >
-          {action === "replay" ? "Replay" : "Cancel"}
-        </Button>
-      </div>
-    </div>
-  );
+  const formattedFilteredRunsCount =
+    data?.count !== undefined ? (
+      `~${formatNumber(data.count)}`
+    ) : (
+      <SpinnerWhite className="mx-0.5 -mt-0.5 inline size-3" />
+    );
 
-  // return (
-  //   <Form method="post" action={`/resources/branches/archive${location.search}`} {...form.props} className="w-full">
-  //     <input value={environment.id} {...conform.input(environmentId, { type: "hidden" })} />
-  //     <input
-  //       value={`${location.pathname}${location.search}`}
-  //       {...conform.input(redirectPath, { type: "hidden" })}
-  //     />
-  //     <Paragraph spacing>
-  //       This will <span className="text-text-bright">permanently</span> make this branch{" "}
-  //       <span className="text-text-bright">read-only</span>. You won't be able to trigger runs,
-  //       execute runs, or use the API for this branch.
-  //     </Paragraph>
-  //     <Paragraph spacing>
-  //       You will still be able to view the branch and its associated runs.
-  //     </Paragraph>
-  //     <Paragraph spacing>Once archived you can create a new branch with the same name.</Paragraph>
-  //     <FormError>{form.error}</FormError>
-  //     <FormButtons
-  //       confirmButton={
-  //         <Button LeadingIcon={ArchiveIcon} type="submit" variant="danger/medium">
-  //           Archive branch
-  //         </Button>
-  //       }
-  //       cancelButton={
-  //         <DialogClose asChild>
-  //           <Button variant="tertiary/medium">Cancel</Button>
-  //         </DialogClose>
-  //       }
-  //     />
-  //   </Form>
-  // );
+  const closedSearchParams = new URLSearchParams(location.search);
+  closedSearchParams.delete("bulkInspector");
+
+  return (
+    <Form
+      method="post"
+      action={`/resources/orgs/${organization.id}/projects/${project.id}/environments/${environment.id}/runs/bulkaction${location.search}`}
+      className="h-full"
+    >
+      <div className="grid h-full max-h-full grid-rows-[2.5rem_1fr_3.25rem] overflow-hidden bg-background-bright">
+        <div className="mx-3 flex items-center justify-between gap-2 border-b border-grid-dimmed">
+          <Header2 className="whitespace-nowrap">Create a bulk action</Header2>
+          <LinkButton
+            to={`${v3RunsNextPath(
+              organization,
+              project,
+              environment
+            )}?${closedSearchParams.toString()}`}
+            variant="minimal/small"
+            TrailingIcon={ExitIcon}
+            shortcut={{ key: "esc" }}
+            shortcutPosition="before-trailing-icon"
+            className="pl-1"
+          />
+        </div>
+        <div className="overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+          <Fieldset className="p-3">
+            <InputGroup>
+              <Label htmlFor="mode">Select</Label>
+              <RadioGroup
+                name="mode"
+                className="flex flex-col items-start gap-2"
+                defaultValue={mode}
+              >
+                <RadioGroupItem
+                  id="mode-filter"
+                  label={<span>All {formattedFilteredRunsCount} runs matching your filters</span>}
+                  value={"filter"}
+                  variant="button/small"
+                />
+                <RadioGroupItem
+                  id="mode-selected"
+                  label={`${selectedItems.size} individually selected runs`}
+                  value={"selected"}
+                  variant="button/small"
+                  className="grow"
+                />
+              </RadioGroup>
+            </InputGroup>
+            <InputGroup>
+              <Label htmlFor="name">Name</Label>
+              <Input name="name" placeholder="A name for this bulk action" autoComplete="off" />
+              <Hint>Add a name to identify this bulk action (optional).</Hint>
+              {/* todo <FormError id={name.errorId}>{name.error}</FormError> */}
+            </InputGroup>
+            <InputGroup>
+              <Label htmlFor="action">Bulk action to perform</Label>
+              <RadioGroup
+                name="action"
+                className="flex flex-col items-start gap-2"
+                defaultValue={action}
+              >
+                <RadioGroupItem
+                  id="action-replay"
+                  label={
+                    <span className="inline-flex items-center gap-1">
+                      <ArrowPathIcon className="mb-0.5 size-4 text-blue-400" /> Replay runs
+                    </span>
+                  }
+                  description="Replays all selected runs, regardless of current status."
+                  value={"replay"}
+                  variant="description"
+                />
+                <RadioGroupItem
+                  id="action-cancel"
+                  label={
+                    <span className="inline-flex items-center gap-1">
+                      <XCircleIcon className="mb-0.5 size-4 text-error" /> Cancel runs
+                    </span>
+                  }
+                  description="Cancels all runs still in progress. Any finished runs won’t be canceled."
+                  value={"cancel"}
+                  variant="description"
+                />
+              </RadioGroup>
+            </InputGroup>
+          </Fieldset>
+        </div>
+        <div className="flex items-center justify-end gap-2 border-t border-grid-dimmed px-2">
+          <Button
+            type="submit"
+            variant="tertiary/medium"
+            LeadingIcon={action === "replay" ? ArrowPathIcon : XCircleIcon}
+            leadingIconClassName={cn(
+              "w-[1.3rem] h-[1.3rem]",
+              action === "replay" ? "text-blue-400" : "text-error"
+            )}
+            shortcut={{
+              modifiers: ["meta"],
+              key: "enter",
+              enabledOnInputElements: true,
+            }}
+          >
+            {action === "replay" ? (
+              <span className="text-text-bright">Replay {formattedFilteredRunsCount} runs…</span>
+            ) : (
+              <span className="text-text-bright">Cancel {formattedFilteredRunsCount} runs…</span>
+            )}
+          </Button>
+        </div>
+      </div>
+    </Form>
+  );
 }

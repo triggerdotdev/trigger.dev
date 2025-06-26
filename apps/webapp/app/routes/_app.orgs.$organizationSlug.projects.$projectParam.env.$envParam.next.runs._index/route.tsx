@@ -31,7 +31,7 @@ import {
 import { Spinner, SpinnerWhite } from "~/components/primitives/Spinner";
 import { StepNumber } from "~/components/primitives/StepNumber";
 import { TextLink } from "~/components/primitives/TextLink";
-import { RunsFilters, TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
+import { RunsFilters, getRunFiltersFromSearchParams } from "~/components/runs/v3/RunFilters";
 import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { BULK_ACTION_RUN_LIMIT } from "~/consts";
 import { $replica } from "~/db.server";
@@ -52,6 +52,7 @@ import { cn } from "~/utils/cn";
 import {
   docsPath,
   EnvironmentParamSchema,
+  v3CreateBulkActionPath,
   v3ProjectPath,
   v3RunsNextPath,
   v3TestPath,
@@ -195,6 +196,17 @@ export default function Page() {
                                   rootOnlyDefault={rootOnlyDefault}
                                 />
                                 <div className="flex items-center justify-end gap-x-2">
+                                  <LinkButton
+                                    variant="tertiary/small"
+                                    to={v3CreateBulkActionPath(
+                                      organization,
+                                      project,
+                                      environment,
+                                      filters
+                                    )}
+                                  >
+                                    Bulk action
+                                  </LinkButton>
                                   <ListPagination list={list} />
                                 </div>
                               </div>
@@ -220,7 +232,7 @@ export default function Page() {
                 <>
                   <ResizableHandle id="runs-handle" />
                   <ResizablePanel id="bulk-action-inspector" min="100px" default="450px">
-                    <CreateBulkActionInspector filters={filters} />
+                    <CreateBulkActionInspector filters={filters} selectedItems={selectedItems} />
                   </ResizablePanel>
                 </>
               )}

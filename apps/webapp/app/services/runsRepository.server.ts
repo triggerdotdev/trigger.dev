@@ -1,8 +1,10 @@
 import { type ClickHouse } from "@internal/clickhouse";
-import { ClickhouseQueryBuilder } from "@internal/clickhouse/dist/src/client/queryBuilder";
+import { type ClickhouseQueryBuilder } from "@internal/clickhouse/dist/src/client/queryBuilder";
 import { type Tracer } from "@internal/tracing";
 import { type Logger, type LogLevel } from "@trigger.dev/core/logger";
 import { type TaskRunStatus } from "@trigger.dev/database";
+import parseDuration from "parse-duration";
+import { timeFilters } from "~/components/runs/v3/SharedFilters";
 import { type PrismaClient } from "~/db.server";
 
 export type RunsRepositoryOptions = {
@@ -13,7 +15,27 @@ export type RunsRepositoryOptions = {
   tracer?: Tracer;
 };
 
-export type FilterRunsOptions = {
+type RunListInputOptions = {
+  organizationId: string;
+  projectId: string;
+  environmentId: string;
+  //filters
+  tasks?: string[];
+  versions?: string[];
+  statuses?: TaskRunStatus[];
+  tags?: string[];
+  scheduleId?: string;
+  period?: string;
+  bulkId?: string;
+  from?: number;
+  to?: number;
+  isTest?: boolean;
+  rootOnly?: boolean;
+  batchId?: string;
+  runIds?: string[];
+};
+
+type FilterRunsOptions = {
   organizationId: string;
   projectId: string;
   environmentId: string;
@@ -30,10 +52,9 @@ export type FilterRunsOptions = {
   rootOnly?: boolean;
   batchId?: string;
   runFriendlyIds?: string[];
-  runIds?: string[];
 };
 
-export type ListRunsOptions = FilterRunsOptions & {
+type Pagination = {
   page: {
     size: number;
     cursor?: string;
@@ -41,12 +62,17 @@ export type ListRunsOptions = FilterRunsOptions & {
   };
 };
 
+export type ListRunsOptions = RunListInputOptions & Pagination;
+
 export class RunsRepository {
   constructor(private readonly options: RunsRepositoryOptions) {}
 
-  async listRuns(options: ListRunsOptions) {
+  async listRunIds(options: ListRunsOptions) {
     const queryBuilder = this.options.clickhouse.taskRuns.queryBuilder();
-    applyRunFiltersToQueryBuilder(queryBuilder, options);
+    applyRunFiltersToQueryBuilder(
+      queryBuilder,
+      await this.#convertRunListInputOptionsToFilterRunsOptions(options)
+    );
 
     if (options.page.cursor) {
       if (options.page.direction === "forward") {
@@ -72,6 +98,11 @@ export class RunsRepository {
     }
 
     const runIds = result.map((row) => row.run_id);
+    return runIds;
+  }
+
+  async listRuns(options: ListRunsOptions) {
+    const runIds = await this.listRunIds(options);
 
     // If there are more runs than the page size, we need to fetch the next page
     const hasMore = runIds.length > options.page.size;
@@ -156,9 +187,12 @@ export class RunsRepository {
     };
   }
 
-  async countRuns(options: FilterRunsOptions) {
+  async countRuns(options: RunListInputOptions) {
     const queryBuilder = this.options.clickhouse.taskRuns.countQueryBuilder();
-    applyRunFiltersToQueryBuilder(queryBuilder, options);
+    applyRunFiltersToQueryBuilder(
+      queryBuilder,
+      await this.#convertRunListInputOptionsToFilterRunsOptions(options)
+    );
 
     const [queryError, result] = await queryBuilder.execute();
 
@@ -171,6 +205,64 @@ export class RunsRepository {
     }
 
     return result[0].count;
+  }
+
+  async #convertRunListInputOptionsToFilterRunsOptions(
+    options: RunListInputOptions
+  ): Promise<FilterRunsOptions> {
+    const convertedOptions: FilterRunsOptions = {
+      ...options,
+      period: undefined,
+    };
+
+    // Convert time period to ms
+    const time = timeFilters({
+      period: options.period,
+      from: options.from,
+      to: options.to,
+    });
+    convertedOptions.period = time.period ? parseDuration(time.period) ?? undefined : undefined;
+
+    // batch friendlyId to id
+    if (options.batchId && options.batchId.startsWith("batch_")) {
+      const batch = await this.options.prisma.batchTaskRun.findFirst({
+        select: {
+          id: true,
+        },
+        where: {
+          friendlyId: options.batchId,
+          runtimeEnvironmentId: options.environmentId,
+        },
+      });
+
+      if (batch) {
+        convertedOptions.batchId = batch.id;
+      }
+    }
+
+    // scheduleId can be a friendlyId
+    if (options.scheduleId && options.scheduleId.startsWith("sched_")) {
+      const schedule = await this.options.prisma.taskSchedule.findFirst({
+        select: {
+          id: true,
+        },
+        where: {
+          friendlyId: options.scheduleId,
+          projectId: options.projectId,
+        },
+      });
+
+      if (schedule) {
+        convertedOptions.scheduleId = schedule?.id;
+      }
+    }
+
+    // Show all runs if we are filtering by batchId or runId
+    if (options.batchId || options.runIds?.length || options.scheduleId || options.tasks?.length) {
+      convertedOptions.rootOnly = false;
+    }
+
+    return convertedOptions;
   }
 }
 
@@ -240,13 +332,11 @@ function applyRunFiltersToQueryBuilder<T>(
     queryBuilder.where("batch_id = {batchId: String}", { batchId: options.batchId });
   }
 
+  // TODO new bulk action filtering
+
   if (options.runFriendlyIds && options.runFriendlyIds.length > 0) {
     queryBuilder.where("friendly_id IN {runFriendlyIds: Array(String)}", {
       runFriendlyIds: options.runFriendlyIds,
     });
-  }
-
-  if (options.runIds && options.runIds.length > 0) {
-    queryBuilder.where("run_id IN {runIds: Array(String)}", { runIds: options.runIds });
   }
 }
