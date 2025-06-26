@@ -23,6 +23,11 @@ const ClaimsSchema = z.object({
   scopes: z.array(z.string()).optional(),
   // One-time use token
   otu: z.boolean().optional(),
+  realtime: z
+    .object({
+      skipColumns: z.array(z.string()).optional(),
+    })
+    .optional(),
 });
 
 type Optional<T, K extends keyof T> = Prettify<Omit<T, K> & Partial<Pick<T, K>>>;
@@ -43,6 +48,9 @@ export type ApiAuthenticationResultSuccess = {
   environment: AuthenticatedEnvironment;
   scopes?: string[];
   oneTimeUse?: boolean;
+  realtime?: {
+    skipColumns?: string[];
+  };
 };
 
 export type ApiAuthenticationResultFailure = {
@@ -151,6 +159,7 @@ export async function authenticateApiKey(
         environment: validationResults.environment,
         scopes: parsedClaims.success ? parsedClaims.data.scopes : [],
         oneTimeUse: parsedClaims.success ? parsedClaims.data.otu : false,
+        realtime: parsedClaims.success ? parsedClaims.data.realtime : undefined,
       };
     }
   }
@@ -233,6 +242,7 @@ async function authenticateApiKeyWithFailure(
         environment: validationResults.environment,
         scopes: parsedClaims.success ? parsedClaims.data.scopes : [],
         oneTimeUse: parsedClaims.success ? parsedClaims.data.otu : false,
+        realtime: parsedClaims.success ? parsedClaims.data.realtime : undefined,
       };
     }
   }

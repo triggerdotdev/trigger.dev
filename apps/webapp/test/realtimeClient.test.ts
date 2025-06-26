@@ -72,6 +72,7 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("RealtimeClient", () => {
         "http://localhost:3000?offset=-1",
         environment,
         run.id,
+        {},
         "0.8.1"
       );
 
@@ -81,6 +82,7 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("RealtimeClient", () => {
             "http://localhost:3000?offset=-1",
             environment,
             run.id,
+            {},
             "0.8.1"
           );
 
@@ -108,6 +110,7 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("RealtimeClient", () => {
         `http://localhost:3000?offset=0_0&live=true&handle=${shapeId}`,
         environment,
         run.id,
+        {},
         "0.8.1"
       );
 
@@ -117,6 +120,7 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("RealtimeClient", () => {
             `http://localhost:3000?offset=0_0&live=true&handle=${shapeId}`,
             environment,
             run.id,
+            {},
             "0.8.1"
           );
 
@@ -217,6 +221,7 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("RealtimeClient", () => {
         {
           tags: ["test:tag:1234"],
         },
+        {},
         "0.8.1"
       );
 
@@ -307,6 +312,7 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("RealtimeClient", () => {
             "http://localhost:3000?offset=-1",
             environment,
             run.id,
+            {},
             "0.8.1"
           );
 
