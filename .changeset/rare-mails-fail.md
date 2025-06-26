@@ -5,4 +5,4 @@
 "@trigger.dev/sdk": patch
 ---
 
-Adding Lightpanda extension
+Add Lightpanda extension

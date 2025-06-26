@@ -14,9 +14,7 @@ export const lightpandaFetch = task({
       throw new Error("payload.url is undefined");
     }
 
-    const e = execSync(
-      `${process.env.LIGHTPANDA_BROWSER_PATH} fetch --dump ${payload.url}`,
-    );
+    const e = execSync(`${process.env.LIGHTPANDA_BROWSER_PATH} fetch --dump ${payload.url}`);
 
     return {
       message: e.toString(),
