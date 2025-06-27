@@ -97,7 +97,7 @@ spec:
             - name: DEPLOY_REGISTRY_NAMESPACE
               value: {{ .Values.registry.repositoryNamespace | quote }}
             - name: OBJECT_STORE_BASE_URL
-              value: {{ include "trigger-v4.minio.url" . | quote }}
+              value: {{ include "trigger-v4.s3.url" . | quote }}
             - name: GRACEFUL_SHUTDOWN_TIMEOUT
               value: {{ .Values.webapp.gracefulShutdownTimeout | quote }}
             {{- if .Values.webapp.bootstrap.enabled }}

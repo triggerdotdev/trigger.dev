@@ -33,4 +33,5 @@ dependencies:
   - name: minio
     version: "17.0.9"
     repository: "oci://registry-1.docker.io/bitnamicharts"
-    condition: minio.deploy
+    condition: s3.deploy
+    alias: s3

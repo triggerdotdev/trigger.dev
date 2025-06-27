@@ -91,11 +91,11 @@ clickhouse:
       cpu: 500m
       memory: 1Gi
 
-# Production MinIO (or use external S3)
-minio:
+# Production S3-compatible object storage
+s3:
   auth:
     rootUser: "admin"
-    rootPassword: "your-strong-minio-password"
+    rootPassword: "your-strong-s3-password"
   persistence:
     enabled: true
     size: 500Gi

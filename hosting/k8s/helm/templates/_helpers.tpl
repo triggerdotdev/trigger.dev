@@ -177,21 +177,32 @@ http://{{ .Values.clickhouse.auth.username }}:{{ .Values.clickhouse.auth.passwor
 {{- end }}
 
 {{/*
-MinIO hostname
+S3 hostname
 */}}
-{{- define "trigger-v4.minio.hostname" -}}
-{{- if .Values.minio.endpoint }}
-{{- .Values.minio.endpoint }}
-{{- else if .Values.minio.deploy }}
+{{- define "trigger-v4.s3.hostname" -}}
+{{- if .Values.s3.external.endpoint }}
+{{- .Values.s3.external.endpoint }}
+{{- else if .Values.s3.deploy }}
 {{- printf "http://%s-minio:9000" .Release.Name }}
 {{- end }}
 {{- end }}
 
 {{/*
-MinIO connection details
+S3 connection details
 */}}
+{{- define "trigger-v4.s3.url" -}}
+{{- include "trigger-v4.s3.hostname" . }}
+{{- end }}
+
+{{/*
+Backward compatibility - MinIO helpers (deprecated)
+*/}}
+{{- define "trigger-v4.minio.hostname" -}}
+{{- include "trigger-v4.s3.hostname" . }}
+{{- end }}
+
 {{- define "trigger-v4.minio.url" -}}
-{{- include "trigger-v4.minio.hostname" . }}
+{{- include "trigger-v4.s3.url" . }}
 {{- end }}
 
 {{/*

@@ -20,9 +20,9 @@ This template will fail the Helm deployment if external config is missing for re
 {{- end }}
 {{- end }}
 
-{{- if not .Values.minio.deploy }}
-{{- if or (not .Values.minio.external.endpoint) (not .Values.minio.external.accessKeyId) }}
-{{- fail "MinIO external configuration is required when minio.deploy=false. Please provide minio.external.endpoint and minio.external.accessKeyId" }}
+{{- if not .Values.s3.deploy }}
+{{- if or (not .Values.s3.external.endpoint) (not .Values.s3.external.accessKeyId) }}
+{{- fail "S3 external configuration is required when s3.deploy=false. Please provide s3.external.endpoint and s3.external.accessKeyId" }}
 {{- end }}
 {{- end }}
 

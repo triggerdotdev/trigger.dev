@@ -391,14 +391,14 @@ clickhouse:
         </profiles>
       </clickhouse>
 
-# MinIO configuration
-minio:
-  deploy: true # Set to false to use external S3-compatible storage
+# S3-compatible object storage configuration
+s3:
+  # Set to false to use external S3-compatible storage
+  # Set to true to deploy internal MinIO (default)
+  deploy: true
 
   # Bitnami MinIO chart configuration (when deploy: true)
-  # WARNING: This sets the root user and password on first startup and MUST be changed via the dashboard.
-  # - Don't forget to update secrets.objectStore if you intend to use the root credentials.
-  # - You should instead create a new non-root user and update the secrets.objectStore with the new credentials.
+  # MinIO provides S3-compatible storage when deployed internally
   auth:
     rootUser: "admin"
     rootPassword: "very-safe-password"
@@ -408,7 +408,7 @@ minio:
     size: 10Gi
   resources: {}
 
-  # External MinIO/S3 connection (when deploy: false)
+  # External S3 connection (when deploy: false)
   external:
     endpoint: "" # e.g., "https://s3.amazonaws.com" or "https://your-minio.com:9000"
     accessKeyId: ""

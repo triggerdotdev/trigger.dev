@@ -78,10 +78,10 @@ Configuration:
 {{- else }}
 - Using external ClickHouse at {{ .Values.clickhouse.external.host }}:{{ .Values.clickhouse.external.httpPort | default 8123 }}
 {{- end }}
-{{- if .Values.minio.deploy }}
-- Using internal MinIO object storage
+{{- if .Values.s3.deploy }}
+- Using internal S3-compatible object storage (MinIO)
 {{- else }}
-- Using external MinIO object storage at {{ .Values.minio.external.endpoint }}
+- Using external S3-compatible object storage at {{ .Values.s3.external.endpoint }}
 {{- end }}
 {{- if .Values.registry.deploy }}
 - Using internal Docker registry

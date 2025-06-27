@@ -245,11 +245,11 @@ clickhouse:
     size: 10Gi
     storageClass: "analytics-hdd" # Optional: override for ClickHouse
 
-minio:
+s3:
   persistence:
     enabled: true
     size: 10Gi
-    storageClass: "objectstore-ssd" # Optional: override for MinIO
+    storageClass: "objectstore-ssd" # Optional: override for S3
 
 registry:
   persistence:
@@ -530,7 +530,7 @@ helm upgrade --install trigger . \
     persistence:
       size: 100Gi
 
-  minio:
+  s3:
     persistence:
       size: 200Gi
 
