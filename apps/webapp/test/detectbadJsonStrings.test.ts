@@ -97,7 +97,7 @@ describe("detectBadJsonStrings", () => {
     expect(goodOverhead / iterations).toBeLessThan(0.01); // Less than 10 microseconds per call
 
     // Bad JSON can be slower due to regex matching, but still reasonable
-    expect(badOverhead / iterations).toBeLessThan(0.02); // Less than 20 microseconds per call
+    expect(badOverhead / iterations).toBeLessThan(0.01); // Less than 20 microseconds per call
 
     // Total overhead for 100k calls should be reasonable
     expect(goodOverhead).toBeLessThan(1000); // Less than 1 second for 100k calls
@@ -126,6 +126,52 @@ describe("detectBadJsonStrings", () => {
       // Performance should scale reasonably with size
       expect(time / iterations).toBeLessThan(size / 1000); // Roughly linear scaling
     }
+  });
+
+  it("should show significant performance improvement with quick rejection", () => {
+    const longText = `hello world `.repeat(1_000);
+    const goodJson = `{"title": "hello", "text": "${longText}"}`;
+    const badJson = `{"title": "hello\\ud835", "text": "${longText}"}`;
+    const noUnicodeJson = `{"title": "hello", "text": "${longText}"}`;
+
+    const iterations = 100_000;
+
+    // Warm up
+    for (let i = 0; i < 1000; i++) {
+      detectBadJsonStrings(goodJson);
+      detectBadJsonStrings(badJson);
+      detectBadJsonStrings(noUnicodeJson);
+    }
+
+    // Test strings with no Unicode escapes (99.9% case)
+    const noUnicodeStart = performance.now();
+    for (let i = 0; i < iterations; i++) {
+      detectBadJsonStrings(noUnicodeJson);
+    }
+    const noUnicodeTime = performance.now() - noUnicodeStart;
+
+    // Test strings with Unicode escapes (0.1% case)
+    const withUnicodeStart = performance.now();
+    for (let i = 0; i < iterations; i++) {
+      detectBadJsonStrings(badJson);
+    }
+    const withUnicodeTime = performance.now() - withUnicodeStart;
+
+    console.log(
+      `No Unicode escapes (${iterations} iterations): ${noUnicodeTime.toFixed(2)}ms (${(
+        noUnicodeTime / iterations
+      ).toFixed(4)}ms per call)`
+    );
+    console.log(
+      `With Unicode escapes (${iterations} iterations): ${withUnicodeTime.toFixed(2)}ms (${(
+        withUnicodeTime / iterations
+      ).toFixed(4)}ms per call)`
+    );
+    console.log(
+      `Performance ratio: ${(withUnicodeTime / noUnicodeTime).toFixed(
+        2
+      )}x slower for Unicode strings`
+    );
   });
 });
 
