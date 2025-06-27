@@ -413,6 +413,9 @@ electric:
 clickhouse:
   deploy: true
 
+  # TLS/Secure connection configuration
+  secure: false # Set to true to use HTTPS and secure connections
+
   # Bitnami ClickHouse chart configuration (when deploy: true)
   auth:
     username: "default"
@@ -437,6 +440,7 @@ clickhouse:
     nativePort: 9000
     username: ""
     password: ""
+    secure: false # Set to true for external secure connections
 
   # ClickHouse configuration override
   # These defaults are based on official recommendations for systems with <16GB RAM:

@@ -166,13 +166,30 @@ ClickHouse hostname
 {{- end }}
 
 {{/*
-ClickHouse URL
+ClickHouse URL for application (with secure parameter)
 */}}
 {{- define "trigger-v4.clickhouse.url" -}}
-{{- if .Values.clickhouse.host -}}
-http://{{ .Values.clickhouse.username }}:{{ .Values.clickhouse.password }}@{{ .Values.clickhouse.host }}:{{ .Values.clickhouse.httpPort | default 8123 }}
-{{- else if .Values.clickhouse.deploy -}}
-http://{{ .Values.clickhouse.auth.username }}:{{ .Values.clickhouse.auth.password }}@{{ include "trigger-v4.clickhouse.hostname" . }}:8123
+{{- if .Values.clickhouse.deploy -}}
+{{- $protocol := ternary "https" "http" .Values.clickhouse.secure -}}
+{{- $secure := ternary "true" "false" .Values.clickhouse.secure -}}
+{{ $protocol }}://{{ .Values.clickhouse.auth.username }}:{{ .Values.clickhouse.auth.password }}@{{ include "trigger-v4.clickhouse.hostname" . }}:8123?secure={{ $secure }}
+{{- else if .Values.clickhouse.external.host -}}
+{{- $protocol := ternary "https" "http" .Values.clickhouse.external.secure -}}
+{{- $secure := ternary "true" "false" .Values.clickhouse.external.secure -}}
+{{ $protocol }}://{{ .Values.clickhouse.external.username }}:{{ .Values.clickhouse.external.password }}@{{ .Values.clickhouse.external.host }}:{{ .Values.clickhouse.external.httpPort | default 8123 }}?secure={{ $secure }}
+{{- end -}}
+{{- end }}
+
+{{/*
+ClickHouse URL for replication (without secure parameter)
+*/}}
+{{- define "trigger-v4.clickhouse.replication.url" -}}
+{{- if .Values.clickhouse.deploy -}}
+{{- $protocol := ternary "https" "http" .Values.clickhouse.secure -}}
+{{ $protocol }}://{{ .Values.clickhouse.auth.username }}:{{ .Values.clickhouse.auth.password }}@{{ include "trigger-v4.clickhouse.hostname" . }}:8123
+{{- else if .Values.clickhouse.external.host -}}
+{{- $protocol := ternary "https" "http" .Values.clickhouse.external.secure -}}
+{{ $protocol }}://{{ .Values.clickhouse.external.username }}:{{ .Values.clickhouse.external.password }}@{{ .Values.clickhouse.external.host }}:{{ .Values.clickhouse.external.httpPort | default 8123 }}
 {{- end -}}
 {{- end }}
 

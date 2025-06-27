@@ -79,6 +79,8 @@ redis:
 
 # Production ClickHouse
 clickhouse:
+  # Set to true to enable TLS/secure connections in production
+  secure: true
   persistence:
     enabled: true
     size: 100Gi
@@ -123,8 +125,7 @@ supervisor:
       memory: 512Mi
 # Example: Use external PostgreSQL instead
 # postgres:
-#   enabled: false
-#   external: true
+#   deploy: false
 #   external:
 #     host: "your-postgres-host.rds.amazonaws.com"
 #     port: 5432
@@ -136,9 +137,19 @@ supervisor:
 
 # Example: Use external Redis instead
 # redis:
-#   enabled: false
-#   external: true
+#   deploy: false
 #   external:
 #     host: "your-redis-cluster.cache.amazonaws.com"
 #     port: 6379
 #     password: "your-redis-password"
+
+# Example: Use external ClickHouse instead
+# clickhouse:
+#   deploy: false
+#   external:
+#     host: "your-clickhouse-host.cloud.provider.com"
+#     httpPort: 8443  # Use 8443 for HTTPS
+#     nativePort: 9440  # Use 9440 for secure native connections
+#     username: "trigger_user"
+#     password: "your-clickhouse-password"
+#     secure: true  # Use true for TLS/secure connections

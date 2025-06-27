@@ -1,4 +1,3 @@
-{{- if .Values.supervisor.deploy }}
 {{- if .Values.supervisor.serviceAccount.create }}
 apiVersion: v1
 kind: ServiceAccount
@@ -283,4 +282,3 @@ spec:
       name: metrics
   selector:
     {{- include "trigger-v4.componentSelectorLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 4 }}
-{{- end }}
