@@ -65,6 +65,10 @@ export type RealtimeRunsParams = {
   createdAt?: string;
 };
 
+export type RealtimeRequestOptions = {
+  skipColumns?: string[];
+};
+
 export class RealtimeClient {
   private redis: RedisClient;
   private expiryTimeInSeconds: number;
@@ -124,15 +128,17 @@ export class RealtimeClient {
     url: URL | string,
     environment: RealtimeEnvironment,
     runId: string,
+    requestOptions?: RealtimeRequestOptions,
     clientVersion?: string
   ) {
-    return this.#streamRunsWhere(url, environment, `id='${runId}'`, clientVersion);
+    return this.#streamRunsWhere(url, environment, `id='${runId}'`, requestOptions, clientVersion);
   }
 
   async streamBatch(
     url: URL | string,
     environment: RealtimeEnvironment,
     batchId: string,
+    requestOptions?: RealtimeRequestOptions,
     clientVersion?: string
   ) {
     const whereClauses: string[] = [
@@ -142,13 +148,14 @@ export class RealtimeClient {
 
     const whereClause = whereClauses.join(" AND ");
 
-    return this.#streamRunsWhere(url, environment, whereClause, clientVersion);
+    return this.#streamRunsWhere(url, environment, whereClause, requestOptions, clientVersion);
   }
 
   async streamRuns(
     url: URL | string,
     environment: RealtimeEnvironment,
     params: RealtimeRunsParams,
+    requestOptions?: RealtimeRequestOptions,
     clientVersion?: string
   ) {
     const whereClauses: string[] = [`"runtimeEnvironmentId"='${environment.id}'`];
@@ -165,7 +172,13 @@ export class RealtimeClient {
 
     const whereClause = whereClauses.join(" AND ");
 
-    const response = await this.#streamRunsWhere(url, environment, whereClause, clientVersion);
+    const response = await this.#streamRunsWhere(
+      url,
+      environment,
+      whereClause,
+      requestOptions,
+      clientVersion
+    );
 
     if (createdAtFilter) {
       const [setCreatedAtFilterError] = await tryCatch(
@@ -256,12 +269,14 @@ export class RealtimeClient {
     url: URL | string,
     environment: RealtimeEnvironment,
     whereClause: string,
+    requestOptions?: RealtimeRequestOptions,
     clientVersion?: string
   ) {
     const electricUrl = this.#constructRunsElectricUrl(
       url,
       environment,
       whereClause,
+      requestOptions,
       clientVersion
     );
 
@@ -272,6 +287,7 @@ export class RealtimeClient {
     url: URL | string,
     environment: RealtimeEnvironment,
     whereClause: string,
+    requestOptions?: RealtimeRequestOptions,
     clientVersion?: string
   ): URL {
     const $url = new URL(url.toString());
@@ -297,13 +313,10 @@ export class RealtimeClient {
       electricUrl.searchParams.set("handle", electricUrl.searchParams.get("shape_id") ?? "");
     }
 
-    const skipColumnsRaw = $url.searchParams.get("skipColumns");
+    let skipColumns = getSkipColumns($url.searchParams, requestOptions);
 
-    if (skipColumnsRaw) {
-      const skipColumns = skipColumnsRaw
-        .split(",")
-        .map((c) => c.trim())
-        .filter((c) => c !== "" && !RESERVED_COLUMNS.includes(c));
+    if (skipColumns.length > 0) {
+      skipColumns = skipColumns.filter((c) => c !== "" && !RESERVED_COLUMNS.includes(c));
 
       electricUrl.searchParams.set(
         "columns",
@@ -542,4 +555,18 @@ declare module "ioredis" {
       callback?: Callback<number>
     ): Result<number, Context>;
   }
+}
+
+function getSkipColumns(searchParams: URLSearchParams, requestOptions?: RealtimeRequestOptions) {
+  if (requestOptions?.skipColumns) {
+    return requestOptions.skipColumns;
+  }
+
+  const skipColumnsRaw = searchParams.get("skipColumns");
+
+  if (skipColumnsRaw) {
+    return skipColumnsRaw.split(",").map((c) => c.trim());
+  }
+
+  return [];
 }

@@ -318,6 +318,12 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
 
   async moveToDeadLetterQueue(id: string, errorMessage: string): Promise<void> {
     try {
+      this.logger.debug(`SimpleQueue ${this.name}.moveToDeadLetterQueue(): moving item to DLQ`, {
+        queue: this.name,
+        id,
+        errorMessage,
+      });
+
       const result = await this.redis.moveToDeadLetterQueue(
         `queue`,
         `items`,

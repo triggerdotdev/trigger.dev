@@ -1,0 +1,144 @@
+# Production values example for Trigger.dev v4 Helm chart
+# Copy this file and customize for your production deployment
+
+# REQUIRED: Generate your own secrets using: openssl rand -hex 16
+secrets:
+  sessionSecret: "YOUR_32_CHAR_HEX_SECRET_HERE_001"
+  magicLinkSecret: "YOUR_32_CHAR_HEX_SECRET_HERE_002"
+  encryptionKey: "YOUR_32_CHAR_HEX_SECRET_HERE_003"
+  managedWorkerSecret: "YOUR_32_CHAR_HEX_SECRET_HERE_004"
+  # Object store credentials (customize for your setup)
+  objectStore:
+    accessKeyId: "your-access-key"
+    secretAccessKey: "your-secret-key"
+
+# Production configuration
+config:
+  appOrigin: "https://trigger.example.com"
+  loginOrigin: "https://trigger.example.com"
+  apiOrigin: "https://trigger.example.com"
+
+# Production ingress
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  hosts:
+    - host: trigger.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: trigger-tls
+      hosts:
+        - trigger.example.com
+
+# Production webapp configuration
+webapp:
+  bootstrap:
+    enabled: false # Usually disabled in production
+  resources:
+    limits:
+      cpu: 2000m
+      memory: 4Gi
+    requests:
+      cpu: 1000m
+      memory: 2Gi
+
+# Production PostgreSQL (or use external)
+postgres:
+  primary:
+    persistence:
+      enabled: true
+      size: 100Gi
+      storageClass: "fast-ssd"
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+      requests:
+        cpu: 500m
+        memory: 1Gi
+
+# Production Redis (or use external)
+redis:
+  master:
+    persistence:
+      enabled: true
+      size: 20Gi
+      storageClass: "fast-ssd"
+    resources:
+      limits:
+        cpu: 500m
+        memory: 1Gi
+      requests:
+        cpu: 250m
+        memory: 512Mi
+
+# Production ClickHouse
+clickhouse:
+  persistence:
+    enabled: true
+    size: 100Gi
+    storageClass: "fast-ssd"
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+    requests:
+      cpu: 500m
+      memory: 1Gi
+
+# Production MinIO (or use external S3)
+minio:
+  auth:
+    rootUser: "admin"
+    rootPassword: "your-strong-minio-password"
+  persistence:
+    enabled: true
+    size: 500Gi
+    storageClass: "standard"
+
+# Production Registry
+registry:
+  repositoryNamespace: "mycompany" # Docker repository namespace for deployed images, will be part of the image ref
+  auth:
+    username: "registry-user"
+    password: "your-strong-registry-password"
+  persistence:
+    enabled: true
+    size: 100Gi
+    storageClass: "standard"
+
+# Production Supervisor (Kubernetes worker orchestrator)
+supervisor:
+  resources:
+    limits:
+      cpu: 500m
+      memory: 1Gi
+    requests:
+      cpu: 250m
+      memory: 512Mi
+# Example: Use external PostgreSQL instead
+# postgres:
+#   enabled: false
+#   external: true
+#   externalConnection:
+#     host: "your-postgres-host.rds.amazonaws.com"
+#     port: 5432
+#     database: "trigger"
+#     username: "trigger_user"
+#     password: "your-db-password"
+#     schema: "public"
+#     sslMode: "require"  # Use 'require' or 'verify-full' for production
+
+# Example: Use external Redis instead
+# redis:
+#   enabled: false
+#   external: true
+#   externalConnection:
+#     host: "your-redis-cluster.cache.amazonaws.com"
+#     port: 6379
+#     password: "your-redis-password"

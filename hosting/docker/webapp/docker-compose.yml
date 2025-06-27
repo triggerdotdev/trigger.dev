@@ -17,6 +17,7 @@ services:
     depends_on:
       - postgres
       - redis
+      - clickhouse
     networks:
       - webapp
       - supervisor
@@ -58,6 +59,13 @@ services:
       TRIGGER_BOOTSTRAP_ENABLED: 1
       TRIGGER_BOOTSTRAP_WORKER_GROUP_NAME: bootstrap
       TRIGGER_BOOTSTRAP_WORKER_TOKEN_PATH: /home/node/shared/worker_token
+      # ClickHouse configuration
+      CLICKHOUSE_URL: ${CLICKHOUSE_URL:-http://default:password@clickhouse:8123?secure=false}
+      CLICKHOUSE_LOG_LEVEL: ${CLICKHOUSE_LOG_LEVEL:-info}
+      # Run replication
+      RUN_REPLICATION_ENABLED: ${RUN_REPLICATION_ENABLED:-1}
+      RUN_REPLICATION_CLICKHOUSE_URL: ${RUN_REPLICATION_CLICKHOUSE_URL:-http://default:password@clickhouse:8123}
+      RUN_REPLICATION_LOG_LEVEL: ${RUN_REPLICATION_LOG_LEVEL:-info}
       # Limits
       # TASK_PAYLOAD_OFFLOAD_THRESHOLD: 524288 # 512KB
       # TASK_PAYLOAD_MAXIMUM_SIZE: 3145728 # 3MB
@@ -65,6 +73,8 @@ services:
       # TASK_RUN_METADATA_MAXIMUM_SIZE: 262144 # 256KB
       # DEFAULT_ENV_EXECUTION_CONCURRENCY_LIMIT: 100
       # DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT: 100
+      # Internal OTEL configuration
+      INTERNAL_OTEL_TRACE_LOGGING_ENABLED: ${INTERNAL_OTEL_TRACE_LOGGING_ENABLED:-0}
 
   postgres:
     image: postgres:${POSTGRES_IMAGE_TAG:-14}
@@ -131,10 +141,11 @@ services:
     restart: ${RESTART_POLICY:-unless-stopped}
     logging: *logging-config
     ports:
+      - ${CLICKHOUSE_PUBLISH_IP:-127.0.0.1}:9123:8123
       - ${CLICKHOUSE_PUBLISH_IP:-127.0.0.1}:9090:9000
     environment:
-      CLICKHOUSE_ADMIN_USER: default
-      CLICKHOUSE_ADMIN_PASSWORD: password
+      CLICKHOUSE_ADMIN_USER: ${CLICKHOUSE_USER:-default}
+      CLICKHOUSE_ADMIN_PASSWORD: ${CLICKHOUSE_PASSWORD:-password}
     volumes:
       - clickhouse:/bitnami/clickhouse
       - ../clickhouse/override.xml:/bitnami/clickhouse/etc/config.d/override.xml:ro

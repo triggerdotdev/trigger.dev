@@ -56,7 +56,7 @@ export class ClickHouse {
   private _splitClients: boolean;
 
   constructor(config: ClickHouseConfig) {
-    this.logger = config.logger ?? new Logger("ClickHouse", "debug");
+    this.logger = config.logger ?? new Logger("ClickHouse", config.logLevel ?? "debug");
 
     if (config.url) {
       const url = new URL(config.url);

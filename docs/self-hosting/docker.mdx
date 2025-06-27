@@ -42,8 +42,8 @@ To run the webapp and worker components, you will need:
 
 This machine will host the webapp, postgres, redis, and related services.
 
-- 2+ vCPU
-- 4+ GB RAM
+- 3+ vCPU
+- 6+ GB RAM
 
 ### Worker
 
@@ -344,6 +344,10 @@ TRIGGER_IMAGE_TAG=v4.0.0-v4-beta.21
 ## CLI usage
 
 This section highlights some of the CLI commands and options that are useful when self-hosting. Please check the [CLI reference](/cli-introduction) for more in-depth documentation.
+
+<Warning>
+While v4 is in beta, always use `@v4-beta` instead of `@latest`. For example: `npx trigger.dev@v4-beta dev`
+</Warning>
 
 ### Login
 
