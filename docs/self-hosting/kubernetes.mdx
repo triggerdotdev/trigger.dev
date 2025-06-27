@@ -202,9 +202,8 @@ You can disable the built-in services and use external services instead. For exa
 
 ```yaml
 postgres:
-  enabled: false
-  external: true
-  externalConnection:
+  deploy: false
+  external:
     host: "my-postgres.example.com"
     port: 5432
     database: "my-database"
@@ -262,10 +261,10 @@ See the [Docker registry setup](/self-hosting/docker#registry-setup) for concept
 ```yaml
 # Use external registry (recommended)
 registry:
-  external: true
+  deploy: false
   # Part of deployment image ref, for example: your-registry.example.com/your-company/proj_123:20250625.1.prod
   repositoryNamespace: "your-company"
-  externalConnection:
+  external:
     host: "your-registry.example.com"
     port: 5000
     auth:
@@ -285,9 +284,8 @@ See the [Docker object storage setup](/self-hosting/docker#object-storage) for c
 ```yaml
 # Use external S3-compatible storage
 minio:
-  enabled: false
-  external: true
-  externalConnection:
+  deploy: false
+  external:
     url: "https://s3.amazonaws.com"
     # or: "https://your-minio.com:9000"
 
