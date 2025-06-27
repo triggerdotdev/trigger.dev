@@ -2,7 +2,7 @@ import { confirm, intro, isCancel, log, outro } from "@clack/prompts";
 import { Command } from "commander";
 import { detectPackageManager, installDependencies } from "nypm";
 import { basename, dirname, resolve } from "path";
-import { PackageJson, readPackageJSON, resolvePackageJSON } from "pkg-types";
+import { PackageJson, readPackageJSON, type ResolveOptions, resolvePackageJSON } from "pkg-types";
 import { z } from "zod";
 import { CommonCommandOptions, OutroCommandError, wrapCommandAction } from "../cli/common.js";
 import { chalkError, prettyError, prettyWarning } from "../utilities/cliOutput.js";
@@ -339,8 +339,20 @@ async function tryResolveTriggerPackageVersion(
 
     logger.debug(`Resolved ${name} package version path`, { name, resolvedPath });
 
-    // IMPORTANT: keep the two dirname calls, as the first one resolves the nested package.json inside dist/commonjs or dist/esm
-    const { packageJson } = await getPackageJson(dirname(dirname(resolvedPath)));
+    const { packageJson } = await getPackageJson(dirname(resolvedPath), {
+      test: (filePath) => {
+        // We need to skip any type-marker files
+        if (filePath.includes("dist/commonjs")) {
+          return false;
+        }
+
+        if (filePath.includes("dist/esm")) {
+          return false;
+        }
+
+        return true;
+      },
+    });
 
     if (packageJson.version) {
       logger.debug(`Resolved ${name} package version`, { name, version: packageJson.version });
@@ -398,8 +410,8 @@ async function updateConfirmation(depsToUpdate: Dependency[], targetVersion: str
   });
 }
 
-export async function getPackageJson(absoluteProjectPath: string) {
-  const packageJsonPath = await resolvePackageJSON(absoluteProjectPath);
+export async function getPackageJson(absoluteProjectPath: string, options?: ResolveOptions) {
+  const packageJsonPath = await resolvePackageJSON(absoluteProjectPath, options);
   const readonlyPackageJson = await readPackageJSON(packageJsonPath);
 
   const packageJson = structuredClone(readonlyPackageJson);
