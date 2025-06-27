@@ -8,7 +8,7 @@ import {
   Tracer,
 } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
-import { PrismaClient, TaskSchedule, TaskScheduleInstance } from "@trigger.dev/database";
+import { PrismaClient } from "@trigger.dev/database";
 import { Worker, type JobHandlerParams } from "@trigger.dev/redis-worker";
 import { calculateDistributedExecutionTime } from "./distributedScheduling.js";
 import { calculateNextScheduledTimestamp, nextScheduledTimestamps } from "./scheduleCalculation.js";
@@ -121,6 +121,19 @@ export class ScheduleEngine {
   async registerNextTaskScheduleInstance(params: RegisterScheduleInstanceParams) {
     return startSpan(this.tracer, "registerNextTaskScheduleInstance", async (span) => {
       const startTime = Date.now();
+
+      if (this.options.onRegisterScheduleInstance) {
+        const [registerError] = await tryCatch(
+          this.options.onRegisterScheduleInstance(params.instanceId)
+        );
+
+        if (registerError) {
+          this.logger.error("Error calling the onRegisterScheduleInstance callback", {
+            instanceId: params.instanceId,
+            error: registerError,
+          });
+        }
+      }
 
       span.setAttribute("instanceId", params.instanceId);
 
@@ -382,10 +395,11 @@ export class ScheduleEngine {
           span.setAttribute("skip_reason", skipReason);
         }
 
-        if (shouldTrigger) {
-          const scheduleTimestamp =
-            params.exactScheduleTime ?? instance.nextScheduledTimestamp ?? new Date();
+        // Calculate the schedule timestamp that will be used (regardless of whether we trigger or not)
+        const scheduleTimestamp =
+          params.exactScheduleTime ?? instance.nextScheduledTimestamp ?? new Date();
 
+        if (shouldTrigger) {
           const payload = {
             scheduleId: instance.taskSchedule.friendlyId,
             type: instance.taskSchedule.type as "DECLARATIVE" | "IMPERATIVE",
@@ -427,7 +441,7 @@ export class ScheduleEngine {
               payload,
               scheduleInstanceId: instance.id,
               scheduleId: instance.taskSchedule.id,
-              exactScheduleTime: params.exactScheduleTime,
+              exactScheduleTime: scheduleTimestamp,
             })
           );
 
@@ -523,7 +537,7 @@ export class ScheduleEngine {
             id: params.instanceId,
           },
           data: {
-            lastScheduledTimestamp: instance.nextScheduledTimestamp,
+            lastScheduledTimestamp: scheduleTimestamp,
           },
         });
 
