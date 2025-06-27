@@ -112,11 +112,20 @@ export function getRunFiltersFromSearchParams(
   const params = {
     cursor: searchParams.get("cursor") ?? undefined,
     direction: searchParams.get("direction") ?? undefined,
-    statuses: searchParams.getAll("statuses"),
-    tasks: searchParams.getAll("tasks"),
+    statuses:
+      searchParams.getAll("statuses").filter((v) => v.length > 0).length > 0
+        ? searchParams.getAll("statuses")
+        : undefined,
+    tasks:
+      searchParams.getAll("tasks").filter((v) => v.length > 0).length > 0
+        ? searchParams.getAll("tasks")
+        : undefined,
     period: searchParams.get("period") ?? undefined,
     bulkId: searchParams.get("bulkId") ?? undefined,
-    tags: searchParams.getAll("tags").map((t) => decodeURIComponent(t)),
+    tags:
+      searchParams.getAll("tags").filter((v) => v.length > 0).length > 0
+        ? searchParams.getAll("tags").map((t) => decodeURIComponent(t))
+        : undefined,
     from: searchParams.get("from") ?? undefined,
     to: searchParams.get("to") ?? undefined,
     rootOnly: searchParams.has("rootOnly") ? searchParams.get("rootOnly") === "true" : undefined,
