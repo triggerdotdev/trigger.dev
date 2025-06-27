@@ -439,9 +439,33 @@ registry:
   #   runAsNonRoot: true
   #   runAsUser: 1000
 
+  # Persistence configuration (Bitnami-style)
   persistence:
     enabled: true
+    # Name to assign the volume
+    volumeName: "data"
+    # Name of an existing PVC to use
+    existingClaim: ""
+    # The path the volume will be mounted at
+    mountPath: "/var/lib/registry"
+    # The subdirectory of the volume to mount to
+    subPath: ""
+    # PVC Storage Class for Registry data volume
+    storageClass: ""
+    # PVC Access Mode for Registry volume
+    accessModes:
+      - "ReadWriteOnce"
+    # PVC Storage Request for Registry volume
     size: 10Gi
+    # Annotations for the PVC
+    annotations: {}
+    # Labels for the PVC
+    labels: {}
+    # Selector to match an existing Persistent Volume
+    selector: {}
+    # Custom PVC data source
+    dataSource: {}
+
   service:
     type: ClusterIP
     port: 5000

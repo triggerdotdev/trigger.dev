@@ -219,12 +219,15 @@ postgres:
 
 ## Persistence
 
-All services support persistent storage and allow you to control the storage class globally or per service:
+All services support persistent storage and allow you to control the storage class globally or per service. Our internal services (Registry) now support the full Bitnami persistence configuration pattern:
+
+### Basic Persistence Configuration
 
 ```yaml
 global:
   storageClass: "fast-ssd" # Default for all services
 
+# Bitnami chart services (simplified configuration)
 postgres:
   primary:
     persistence:
@@ -250,22 +253,66 @@ s3:
     enabled: true
     size: 10Gi
     storageClass: "objectstore-ssd" # Optional: override for S3
+```
 
+### Internal Services - Full Bitnami-Style Configuration
+
+Our internal services (Registry) support the complete Bitnami persistence configuration pattern:
+
+```yaml
+# Registry - Full persistence configuration options
 registry:
   persistence:
     enabled: true
+    # Name to assign the volume
+    volumeName: "data"
+    # Name of an existing PVC to use
+    existingClaim: ""
+    # The path the volume will be mounted at
+    mountPath: "/var/lib/registry"
+    # The subdirectory of the volume to mount to
+    subPath: ""
+    # PVC Storage Class for Registry data volume
+    storageClass: "registry-ssd"
+    # PVC Access Mode for Registry volume
+    accessModes:
+      - "ReadWriteOnce"
+    # PVC Storage Request for Registry volume
     size: 10Gi
-    storageClass: "registry-ssd" # Optional: override for Registry
+    # Annotations for the PVC
+    annotations:
+      backup.velero.io/backup-volumes: "data"
+    # Labels for the PVC
+    labels:
+      app.kubernetes.io/component: "storage"
+    # Selector to match an existing Persistent Volume
+    selector:
+      matchLabels:
+        tier: "registry"
+    # Custom PVC data source
+    dataSource:
+      name: "registry-snapshot"
+      kind: "VolumeSnapshot"
+      apiGroup: "snapshot.storage.k8s.io"
 
 # Shared persistent volume for worker token file
 persistence:
   shared:
     enabled: true
     size: 5Mi
+    accessMode: ReadWriteOnce
+    # accessMode: ReadWriteMany  # Use for cross-node deployment
+    storageClass: ""
+    retain: true # Prevents deletion on uninstall
 ```
 
-- If a per-service `storageClass` is set, it overrides the global value for that service only.
-- If neither is set, the cluster's default StorageClass is used.
+### Persistence Configuration Rules
+
+- **Service-level storageClass** overrides the global value for that service only
+- **Global storageClass** applies to all services that don't specify their own
+- **Cluster default** is used if neither global nor service-level storageClass is set
+- **Internal services** (Registry) support full Bitnami-style configuration
+- **Bitnami chart services** use their respective chart's configuration patterns
 
 ## Monitoring
 
@@ -517,13 +564,13 @@ helm upgrade --install trigger . \
     storageClass: "fast-nvme" # Default for all services
 
   postgres:
-    persistence:
-      primary:
+    primary:
+      persistence:
         size: 500Gi
 
   redis:
-    persistence:
-      master:
+    master:
+      persistence:
         size: 20Gi
 
   clickhouse:
@@ -534,9 +581,14 @@ helm upgrade --install trigger . \
     persistence:
       size: 200Gi
 
+  # Internal services support full Bitnami-style configuration
   registry:
     persistence:
+      enabled: true
       size: 100Gi
+      storageClass: "registry-ssd"
+      annotations:
+        backup.velero.io/backup-volumes: "data"
   ```
 
 ### 🏗️ High Availability (RECOMMENDED)
