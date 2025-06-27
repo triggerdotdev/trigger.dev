@@ -16,6 +16,7 @@ import {
   Prisma,
   PrismaClient,
   PrismaClientOrTransaction,
+  PrismaReplicaClient,
   TaskRun,
   TaskRunExecutionSnapshot,
   Waitpoint,
@@ -50,6 +51,7 @@ import { TtlSystem } from "./systems/ttlSystem.js";
 import { WaitpointSystem } from "./systems/waitpointSystem.js";
 import { EngineWorker, HeartbeatTimeouts, RunEngineOptions, TriggerParams } from "./types.js";
 import { workerCatalog } from "./workerCatalog.js";
+import { getFinalRunStatuses, isFinalRunStatus } from "./statuses.js";
 
 export class RunEngine {
   private runLockRedis: Redis;
@@ -61,6 +63,7 @@ export class RunEngine {
   private heartbeatTimeouts: HeartbeatTimeouts;
 
   prisma: PrismaClient;
+  readOnlyPrisma: PrismaReplicaClient;
   runQueue: RunQueue;
   eventBus: EventBus = new EventEmitter<EventBusEvents>();
   executionSnapshotSystem: ExecutionSnapshotSystem;
@@ -79,6 +82,7 @@ export class RunEngine {
   constructor(private readonly options: RunEngineOptions) {
     this.logger = options.logger ?? new Logger("RunEngine", this.options.logLevel ?? "info");
     this.prisma = options.prisma;
+    this.readOnlyPrisma = options.readOnlyPrisma ?? this.prisma;
     this.runLockRedis = createRedisClient(
       {
         ...options.runLock.redis,
@@ -123,7 +127,7 @@ export class RunEngine {
         defaultEnvConcurrencyLimit: options.queue?.defaultEnvConcurrency ?? 10,
       }),
       defaultEnvConcurrency: options.queue?.defaultEnvConcurrency ?? 10,
-      logger: new Logger("RunQueue", this.options.logLevel ?? "info"),
+      logger: new Logger("RunQueue", options.queue?.logLevel ?? "info"),
       redis: { ...options.queue.redis, keyPrefix: `${options.queue.redis.keyPrefix}runqueue:` },
       retryOptions: options.queue?.retryOptions,
       workerOptions: {
@@ -132,6 +136,14 @@ export class RunEngine {
         pollIntervalMs: options.worker.pollIntervalMs,
         immediatePollIntervalMs: options.worker.immediatePollIntervalMs,
         shutdownTimeoutMs: options.worker.shutdownTimeoutMs,
+      },
+      concurrencySweeper: {
+        enabled: !options.worker.disabled,
+        scanIntervalMs: options.queue?.concurrencySweeper?.scanIntervalMs ?? 60_000,
+        processMarkedIntervalMs:
+          options.queue?.concurrencySweeper?.processMarkedIntervalMs ?? 5_000,
+        logLevel: options.queue?.concurrencySweeper?.logLevel ?? options.queue?.logLevel,
+        callback: this.#concurrencySweeperCallback.bind(this),
       },
       shardCount: options.queue?.shardCount,
       masterQueueConsumersDisabled: options.queue?.masterQueueConsumersDisabled,
@@ -1328,5 +1340,45 @@ export class RunEngine {
         }
       }
     });
+  }
+
+  async #concurrencySweeperCallback(
+    runIds: string[]
+  ): Promise<Array<{ id: string; orgId: string }>> {
+    const runs = await this.readOnlyPrisma.taskRun.findMany({
+      where: {
+        id: { in: runIds },
+        completedAt: {
+          lte: new Date(Date.now() - 1000 * 60 * 10), // This only finds runs that were completed more than 10 minutes ago
+        },
+        organizationId: {
+          not: null,
+        },
+        status: {
+          in: getFinalRunStatuses(),
+        },
+      },
+      select: {
+        id: true,
+        status: true,
+        organizationId: true,
+      },
+    });
+
+    // Log the finished runs
+    for (const run of runs) {
+      this.logger.info("Concurrency sweeper callback found finished run", {
+        runId: run.id,
+        orgId: run.organizationId,
+        status: run.status,
+      });
+    }
+
+    return runs
+      .filter((run) => !!run.organizationId)
+      .map((run) => ({
+        id: run.id,
+        orgId: run.organizationId!,
+      }));
   }
 }
