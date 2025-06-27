@@ -131,7 +131,7 @@ jobs:
             ```bash
             helm upgrade --install trigger \
               oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/charts/${{ env.CHART_NAME }} \
-              --version ${{ steps.version.outputs.version }}
+              --version "${{ steps.version.outputs.version }}"
             ```
             
             ### Changes
