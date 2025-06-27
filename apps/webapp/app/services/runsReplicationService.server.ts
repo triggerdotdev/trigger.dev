@@ -476,6 +476,7 @@ export class RunsReplicationService {
         this.logger.error("Error inserting task run inserts", {
           error: taskRunError,
           flushId,
+          runIds: taskRunInserts.map((r) => r.run_id),
         });
         recordSpanError(span, taskRunError);
       }
@@ -484,6 +485,7 @@ export class RunsReplicationService {
         this.logger.error("Error inserting payload inserts", {
           error: payloadError,
           flushId,
+          runIds: payloadInserts.map((r) => r.run_id),
         });
         recordSpanError(span, payloadError);
       }
