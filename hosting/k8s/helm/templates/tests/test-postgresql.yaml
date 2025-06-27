@@ -11,7 +11,7 @@ spec:
   restartPolicy: Never
   containers:
     - name: test-postgres
-      image: postgres:{{ .Values.postgres.image.tag }}
+      image: {{ .Values.postgres.image.registry }}/{{ .Values.postgres.image.repository }}:{{ .Values.postgres.image.tag }}
       command: ['sh', '-c']
       args:
         - |

@@ -11,7 +11,7 @@ spec:
   restartPolicy: Never
   containers:
     - name: test-redis
-      image: redis:{{ .Values.redis.image.tag }}
+      image: {{ .Values.redis.image.registry }}/{{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }}
       command: ['sh', '-c']
       args:
         - |
