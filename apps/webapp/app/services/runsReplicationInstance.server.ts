@@ -62,6 +62,9 @@ function initializeRunsReplicationInstance() {
     logLevel: env.RUN_REPLICATION_LOG_LEVEL,
     waitForAsyncInsert: env.RUN_REPLICATION_WAIT_FOR_ASYNC_INSERT === "1",
     tracer: provider.getTracer("runs-replication-service"),
+    insertMaxRetries: env.RUN_REPLICATION_INSERT_MAX_RETRIES,
+    insertBaseDelayMs: env.RUN_REPLICATION_INSERT_BASE_DELAY_MS,
+    insertMaxDelayMs: env.RUN_REPLICATION_INSERT_MAX_DELAY_MS,
   });
 
   if (env.RUN_REPLICATION_ENABLED === "1") {

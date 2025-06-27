@@ -51,6 +51,10 @@ export type RunsReplicationServiceOptions = {
   logLevel?: LogLevel;
   tracer?: Tracer;
   waitForAsyncInsert?: boolean;
+  // Retry configuration for insert operations
+  insertMaxRetries?: number;
+  insertBaseDelayMs?: number;
+  insertMaxDelayMs?: number;
 };
 
 type TaskRunInsert = { _version: bigint; run: TaskRun; event: "insert" | "update" | "delete" };
@@ -80,6 +84,10 @@ export class RunsReplicationService {
   private _latestCommitEndLsn: string | null = null;
   private _lastAcknowledgedLsn: string | null = null;
   private _acknowledgeInterval: NodeJS.Timeout | null = null;
+  // Retry configuration
+  private _insertMaxRetries: number;
+  private _insertBaseDelayMs: number;
+  private _insertMaxDelayMs: number;
 
   public readonly events: EventEmitter<RunsReplicationServiceEvents>;
 
@@ -151,6 +159,11 @@ export class RunsReplicationService {
     this._replicationClient.events.on("leaderElection", (isLeader) => {
       this.logger.info("Leader election", { isLeader });
     });
+
+    // Initialize retry configuration
+    this._insertMaxRetries = options.insertMaxRetries ?? 3;
+    this._insertBaseDelayMs = options.insertBaseDelayMs ?? 100;
+    this._insertMaxDelayMs = options.insertMaxDelayMs ?? 2000;
   }
 
   public async shutdown() {
@@ -487,12 +500,11 @@ export class RunsReplicationService {
   async #insertWithRetry<T>(
     insertFn: () => Promise<T>,
     operationName: string,
-    flushId: string,
-    maxRetries: number = 3
+    flushId: string
   ): Promise<[Error | null, T | null]> {
     let lastError: Error | null = null;
 
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    for (let attempt = 1; attempt <= this._insertMaxRetries; attempt++) {
       try {
         const result = await insertFn();
         return [null, result];
@@ -500,13 +512,13 @@ export class RunsReplicationService {
         lastError = error instanceof Error ? error : new Error(String(error));
 
         // Check if this is a retryable connection error
-        if (this.#isRetryableConnectionError(lastError) && attempt < maxRetries) {
+        if (this.#isRetryableConnectionError(lastError) && attempt < this._insertMaxRetries) {
           const delay = this.#calculateConnectionRetryDelay(attempt);
 
           this.logger.warn(`Retrying ${operationName} due to connection error`, {
             flushId,
             attempt,
-            maxRetries,
+            maxRetries: this._insertMaxRetries,
             error: lastError.message,
             delay,
           });
@@ -540,10 +552,11 @@ export class RunsReplicationService {
 
   // New method to calculate retry delay for connection errors
   #calculateConnectionRetryDelay(attempt: number): number {
-    // Exponential backoff: 100ms, 200ms, 400ms
-    const baseDelay = 100;
-    const maxDelay = 2000;
-    const delay = Math.min(baseDelay * Math.pow(2, attempt - 1), maxDelay);
+    // Exponential backoff: baseDelay, baseDelay*2, baseDelay*4, etc.
+    const delay = Math.min(
+      this._insertBaseDelayMs * Math.pow(2, attempt - 1),
+      this._insertMaxDelayMs
+    );
 
     // Add some jitter to prevent thundering herd
     const jitter = Math.random() * 100;
