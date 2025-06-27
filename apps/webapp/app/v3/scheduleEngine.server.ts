@@ -7,6 +7,7 @@ import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
 import { TriggerTaskService } from "./services/triggerTask.server";
 import { meter, tracer } from "./tracer.server";
+import { workerQueue } from "~/services/worker.server";
 
 export const scheduleEngine = singleton("ScheduleEngine", createScheduleEngine);
 
@@ -117,7 +118,24 @@ function createScheduleEngine() {
       }
     },
     isDevEnvironmentConnectedHandler: isDevEnvironmentConnectedHandler,
+    onRegisterScheduleInstance: removeDeprecatedWorkerQueueItem,
   });
 
   return engine;
+}
+
+async function removeDeprecatedWorkerQueueItem(instanceId: string) {
+  // We need to dequeue the instance from the existing workerQueue
+  try {
+    await workerQueue.dequeue(`scheduled-task-instance:${instanceId}`);
+
+    logger.debug("Removed deprecated worker queue item", {
+      instanceId,
+    });
+  } catch (error) {
+    logger.error("Error dequeuing scheduled task instance from deprecated queue", {
+      instanceId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 }

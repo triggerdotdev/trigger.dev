@@ -48,6 +48,7 @@ export interface ScheduleEngineOptions {
   meter?: Meter;
   onTriggerScheduledTask: TriggerScheduledTaskCallback;
   isDevEnvironmentConnectedHandler: (environmentId: string) => Promise<boolean>;
+  onRegisterScheduleInstance?: (instanceId: string) => Promise<void>;
 }
 
 export interface UpsertScheduleParams {
