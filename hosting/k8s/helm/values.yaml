@@ -21,7 +21,7 @@ config:
 secrets:
   # Enable/disable creation of secrets
   # Set to false to use external secret management (Vault, Infisical, External Secrets, etc.)
-  # When disabled, use extraEnv and podAnnotations for secret injection
+  # When disabled, use extraEnvVars and podAnnotations for secret injection
   enabled: true
 
   # Name of existing secret to use instead of creating one
@@ -106,7 +106,7 @@ webapp:
     #   memory: 1Gi
 
   # Extra environment variables for webapp
-  extraEnv:
+  extraEnvVars:
     []
     # - name: CUSTOM_VAR
     #   value: "custom-value"
@@ -216,7 +216,7 @@ supervisor:
       create: true
       name: ""
   # Extra environment variables for Supervisor
-  extraEnv:
+  extraEnvVars:
     []
     # - name: CUSTOM_VAR
     #   value: "custom-value"
@@ -335,7 +335,7 @@ electric:
     url: "" # For example: "http://electric:3000"
 
   # Extra environment variables for Electric
-  extraEnv:
+  extraEnvVars:
     []
     # - name: CUSTOM_VAR
     #   value: "custom-value"
@@ -458,7 +458,7 @@ registry:
       password: ""
 
   # Extra environment variables for Registry
-  extraEnv:
+  extraEnvVars:
     []
     # - name: CUSTOM_VAR
     #   value: "custom-value"

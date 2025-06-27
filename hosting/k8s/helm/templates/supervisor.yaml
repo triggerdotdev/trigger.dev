@@ -215,7 +215,7 @@ spec:
             # OTEL
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: "http://{{ include "trigger-v4.fullname" . }}-webapp:{{ .Values.webapp.service.port }}/otel"
-            {{- with .Values.supervisor.extraEnv }}
+            {{- with .Values.supervisor.extraEnvVars }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           volumeMounts:

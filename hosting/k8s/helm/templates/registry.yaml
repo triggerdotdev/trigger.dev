@@ -37,7 +37,7 @@ spec:
             - name: http
               containerPort: {{ .Values.registry.service.targetPort }}
               protocol: TCP
-          {{- if or .Values.registry.auth.enabled .Values.registry.extraEnv }}
+          {{- if or .Values.registry.auth.enabled .Values.registry.extraEnvVars }}
           env:
             {{- if .Values.registry.auth.enabled }}
             - name: REGISTRY_AUTH
@@ -47,7 +47,7 @@ spec:
             - name: REGISTRY_AUTH_HTPASSWD_PATH
               value: "/auth/htpasswd"
             {{- end }}
-            {{- with .Values.registry.extraEnv }}
+            {{- with .Values.registry.extraEnvVars }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           {{- end }}

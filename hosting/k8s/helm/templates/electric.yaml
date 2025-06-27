@@ -43,7 +43,7 @@ spec:
               value: {{ .Values.electric.config.insecure | quote }}
             - name: ELECTRIC_USAGE_REPORTING
               value: {{ .Values.electric.config.usageReporting | quote }}
-            {{- with .Values.electric.extraEnv }}
+            {{- with .Values.electric.extraEnvVars }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           livenessProbe:

@@ -212,7 +212,7 @@ spec:
             - name: TRIGGER_TELEMETRY_DISABLED
               value: "1"
             {{- end }}
-            {{- with .Values.webapp.extraEnv }}
+            {{- with .Values.webapp.extraEnvVars }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           volumeMounts:

@@ -181,7 +181,7 @@ You can set extra environment variables on all services. For example:
 
 ```yaml
 webapp:
-  extraEnv:
+  extraEnvVars:
     - name: EXTRA_ENV_VAR
       value: "extra-value"
 ```
@@ -305,7 +305,7 @@ Authentication options are identical to the [Docker-based installation](/self-ho
 **GitHub OAuth:**
 ```yaml
 webapp:
-  extraEnv:
+  extraEnvVars:
     - name: AUTH_GITHUB_CLIENT_ID
       value: "your-github-client-id"
     - name: AUTH_GITHUB_CLIENT_SECRET
@@ -315,7 +315,7 @@ webapp:
 **Email authentication (Resend):**
 ```yaml
 webapp:
-  extraEnv:
+  extraEnvVars:
     - name: EMAIL_TRANSPORT
       value: "resend"
     - name: FROM_EMAIL
@@ -329,7 +329,7 @@ webapp:
 **Restricting access:**
 ```yaml
 webapp:
-  extraEnv:
+  extraEnvVars:
     - name: WHITELISTED_EMAILS
       value: "user1@company\\.com|user2@company\\.com"
 ```
