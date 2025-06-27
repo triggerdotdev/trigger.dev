@@ -1,4 +1,4 @@
-{{- if and .Values.redis.enabled (not .Values.redis.external) }}
+{{- if .Values.redis.deploy }}
 apiVersion: v1
 kind: Pod
 metadata:

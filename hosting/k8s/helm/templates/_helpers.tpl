@@ -96,32 +96,50 @@ Get the full image name for supervisor
 {{- end }}
 
 {{/*
+PostgreSQL hostname
+*/}}
+{{- define "trigger-v4.postgres.hostname" -}}
+{{- if .Values.postgres.host }}
+{{- .Values.postgres.host }}
+{{- else if .Values.postgres.deploy }}
+{{- printf "%s-postgres" .Release.Name }}
+{{- end }}
+{{- end }}
+
+{{/*
 PostgreSQL connection string
 */}}
 {{- define "trigger-v4.postgres.connectionString" -}}
-{{- if .Values.postgres.external -}}
-postgresql://{{ .Values.postgres.externalConnection.username }}:{{ .Values.postgres.externalConnection.password }}@{{ .Values.postgres.externalConnection.host }}:{{ .Values.postgres.externalConnection.port }}/{{ .Values.postgres.externalConnection.database }}?schema={{ .Values.postgres.externalConnection.schema | default "public" }}&sslmode={{ .Values.postgres.externalConnection.sslMode | default "prefer" }}
-{{- else -}}
-postgresql://{{ .Values.postgres.auth.username }}:{{ .Values.postgres.auth.password }}@{{ include "trigger-v4.fullname" . }}-postgres:{{ .Values.postgres.primary.service.ports.postgres }}/{{ .Values.postgres.auth.database }}?schema={{ .Values.postgres.connection.schema | default "public" }}&sslmode={{ .Values.postgres.connection.sslMode | default "prefer" }}
+{{- if .Values.postgres.host -}}
+postgresql://{{ .Values.postgres.username }}:{{ .Values.postgres.password }}@{{ .Values.postgres.host }}:{{ .Values.postgres.port | default 5432 }}/{{ .Values.postgres.database }}?schema={{ .Values.postgres.schema | default "public" }}&sslmode={{ .Values.postgres.sslMode | default "prefer" }}
+{{- else if .Values.postgres.deploy -}}
+postgresql://{{ .Values.postgres.auth.username }}:{{ .Values.postgres.auth.password }}@{{ include "trigger-v4.postgres.hostname" . }}:5432/{{ .Values.postgres.auth.database }}?schema={{ .Values.postgres.connection.schema | default "public" }}&sslmode={{ .Values.postgres.connection.sslMode | default "prefer" }}
 {{- end -}}
+{{- end }}
+
+{{/*
+Redis hostname
+*/}}
+{{- define "trigger-v4.redis.hostname" -}}
+{{- if .Values.redis.host }}
+{{- .Values.redis.host }}
+{{- else if .Values.redis.deploy }}
+{{- printf "%s-redis-master" .Release.Name }}
+{{- end }}
 {{- end }}
 
 {{/*
 Redis connection details
 */}}
 {{- define "trigger-v4.redis.host" -}}
-{{- if .Values.redis.external -}}
-{{ .Values.redis.externalConnection.host }}
-{{- else -}}
-{{ include "trigger-v4.fullname" . }}-redis-master
-{{- end -}}
+{{- include "trigger-v4.redis.hostname" . }}
 {{- end }}
 
 {{- define "trigger-v4.redis.port" -}}
-{{- if .Values.redis.external -}}
-{{ .Values.redis.externalConnection.port }}
-{{- else -}}
-{{ .Values.redis.master.service.ports.redis }}
+{{- if .Values.redis.host -}}
+{{ .Values.redis.port | default 6379 }}
+{{- else if .Values.redis.deploy -}}
+6379
 {{- end -}}
 {{- end }}
 
@@ -129,24 +147,51 @@ Redis connection details
 Electric service URL
 */}}
 {{- define "trigger-v4.electric.url" -}}
-{{- if .Values.electric.enabled -}}
+{{- if .Values.electric.deploy -}}
 http://{{ include "trigger-v4.fullname" . }}-electric:{{ .Values.electric.service.port }}
 {{- else -}}
-{{ .Values.config.electricOrigin }}
+{{ .Values.electric.external.url }}
 {{- end -}}
+{{- end }}
+
+{{/*
+ClickHouse hostname
+*/}}
+{{- define "trigger-v4.clickhouse.hostname" -}}
+{{- if .Values.clickhouse.host }}
+{{- .Values.clickhouse.host }}
+{{- else if .Values.clickhouse.deploy }}
+{{- printf "%s-clickhouse" .Release.Name }}
+{{- end }}
+{{- end }}
+
+{{/*
+ClickHouse URL
+*/}}
+{{- define "trigger-v4.clickhouse.url" -}}
+{{- if .Values.clickhouse.host -}}
+http://{{ .Values.clickhouse.username }}:{{ .Values.clickhouse.password }}@{{ .Values.clickhouse.host }}:{{ .Values.clickhouse.httpPort | default 8123 }}
+{{- else if .Values.clickhouse.deploy -}}
+http://{{ .Values.clickhouse.auth.username }}:{{ .Values.clickhouse.auth.password }}@{{ include "trigger-v4.clickhouse.hostname" . }}:8123
+{{- end -}}
+{{- end }}
+
+{{/*
+MinIO hostname
+*/}}
+{{- define "trigger-v4.minio.hostname" -}}
+{{- if .Values.minio.endpoint }}
+{{- .Values.minio.endpoint }}
+{{- else if .Values.minio.deploy }}
+{{- printf "http://%s-minio:9000" .Release.Name }}
+{{- end }}
 {{- end }}
 
 {{/*
 MinIO connection details
 */}}
 {{- define "trigger-v4.minio.url" -}}
-{{- if .Values.minio.enabled -}}
-http://{{ include "trigger-v4.fullname" . }}-minio:{{ .Values.minio.service.ports.api }}
-{{- else if .Values.minio.external -}}
-{{ .Values.minio.externalConnection.url }}
-{{- else -}}
-""
-{{- end -}}
+{{- include "trigger-v4.minio.hostname" . }}
 {{- end }}
 
 {{/*
@@ -164,12 +209,10 @@ Get the secrets name - either existing secret or generated name
 Registry connection details
 */}}
 {{- define "trigger-v4.registry.host" -}}
-{{- if .Values.registry.external -}}
-{{ .Values.registry.externalConnection.host }}:{{ .Values.registry.externalConnection.port }}
-{{- else if .Values.registry.enabled -}}
+{{- if .Values.registry.deploy -}}
 {{ include "trigger-v4.fullname" . }}-registry:{{ .Values.registry.service.port }}
 {{- else -}}
-localhost:5000
+{{ .Values.registry.external.host }}:{{ .Values.registry.external.port }}
 {{- end -}}
 {{- end }}
 
@@ -177,10 +220,10 @@ localhost:5000
 PostgreSQL host (for wait-for-it script)
 */}}
 {{- define "trigger-v4.postgres.host" -}}
-{{- if .Values.postgres.external -}}
-{{ .Values.postgres.externalConnection.host }}:{{ .Values.postgres.externalConnection.port }}
-{{- else -}}
-{{ include "trigger-v4.fullname" . }}-postgres:{{ .Values.postgres.primary.service.ports.postgres }}
+{{- if .Values.postgres.host -}}
+{{ .Values.postgres.host }}:{{ .Values.postgres.port | default 5432 }}
+{{- else if .Values.postgres.deploy -}}
+{{ include "trigger-v4.postgres.hostname" . }}:5432
 {{- end -}}
 {{- end }}
 
@@ -217,17 +260,17 @@ Create the name of the supervisor cluster role to use
 Generate docker config for image pull secret
 */}}
 {{- define "trigger-v4.imagePullSecret" }}
-{{- if and .Values.registry.enabled .Values.registry.auth.enabled }}
+{{- if and .Values.registry.deploy .Values.registry.auth.enabled }}
 {{- $registryHost := include "trigger-v4.registry.host" . }}
 {{- $username := .Values.registry.auth.username }}
 {{- $password := .Values.registry.auth.password }}
 {{- $auth := printf "%s:%s" $username $password | b64enc }}
 {{- $config := dict "auths" (dict $registryHost (dict "username" $username "password" $password "auth" $auth)) }}
 {{- $config | toJson }}
-{{- else if and .Values.registry.external .Values.registry.externalConnection.auth.enabled }}
-{{- $registryHost := .Values.registry.externalConnection.host }}
-{{- $username := .Values.registry.externalConnection.auth.username }}
-{{- $password := .Values.registry.externalConnection.auth.password }}
+{{- else if and (not .Values.registry.deploy) .Values.registry.external.auth.enabled }}
+{{- $registryHost := .Values.registry.external.host }}
+{{- $username := .Values.registry.external.auth.username }}
+{{- $password := .Values.registry.external.auth.password }}
 {{- $auth := printf "%s:%s" $username $password | b64enc }}
 {{- $config := dict "auths" (dict $registryHost (dict "username" $username "password" $password "auth" $auth)) }}
 {{- $config | toJson }}

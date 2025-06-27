@@ -1,4 +1,4 @@
-{{- if .Values.supervisor.enabled }}
+{{- if .Values.supervisor.deploy }}
 {{- if .Values.supervisor.serviceAccount.create }}
 apiVersion: v1
 kind: ServiceAccount
@@ -147,7 +147,13 @@ spec:
               value: {{ .Values.supervisor.config.kubernetes.forceEnabled | quote }}
             - name: KUBERNETES_WORKER_NODETYPE_LABEL
               value: {{ .Values.supervisor.config.kubernetes.workerNodetypeLabel | quote }}
-            {{- if or (and .Values.registry.enabled .Values.registry.auth.enabled) (and .Values.registry.external .Values.registry.externalConnection.auth.enabled) }}
+            {{- $registryAuthEnabled := false }}
+            {{- if .Values.registry.deploy }}
+              {{- $registryAuthEnabled = .Values.registry.auth.enabled }}
+            {{- else }}
+              {{- $registryAuthEnabled = .Values.registry.external.auth.enabled }}
+            {{- end }}
+            {{- if $registryAuthEnabled }}
             - name: KUBERNETES_IMAGE_PULL_SECRETS
               value: "{{ include "trigger-v4.fullname" . }}-registry-secret"
             {{- end }}

@@ -4,6 +4,19 @@ This Helm chart deploys Trigger.dev v4 self-hosting stack to Kubernetes.
 
 ## Quick Start
 
+### Prerequisites
+
+```bash
+# Build Helm dependencies (required for Bitnami charts)
+helm dependency build
+
+# Extract dependency charts for local template testing
+for file in ./charts/*.tgz; do echo "Extracting $file"; tar -xzf "$file" -C ./charts; done
+
+# Alternative: Use --dependency-update flag for template testing
+helm template trigger . --dependency-update
+```
+
 ### Installation
 
 ```bash
@@ -122,7 +135,7 @@ Use external managed services instead of bundled components:
 postgres:
   enabled: false
   external: true
-  externalConnection:
+  external:
     host: "your-postgres.rds.amazonaws.com"
     port: 5432
     database: "trigger"
@@ -133,7 +146,7 @@ postgres:
 redis:
   enabled: false
   external: true
-  externalConnection:
+  external:
     host: "your-redis.cache.amazonaws.com"
     port: 6379
     password: "your-password"
@@ -142,7 +155,7 @@ redis:
 registry:
   enabled: true
   external: true
-  externalConnection:
+  external:
     host: "localhost"
     port: 5001
     username: ""

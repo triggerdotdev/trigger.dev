@@ -1,4 +1,4 @@
-{{- if and .Values.postgres.enabled (not .Values.postgres.external) }}
+{{- if .Values.postgres.deploy }}
 apiVersion: v1
 kind: Pod
 metadata:

@@ -125,7 +125,7 @@ supervisor:
 # postgres:
 #   enabled: false
 #   external: true
-#   externalConnection:
+#   external:
 #     host: "your-postgres-host.rds.amazonaws.com"
 #     port: 5432
 #     database: "trigger"
@@ -138,7 +138,7 @@ supervisor:
 # redis:
 #   enabled: false
 #   external: true
-#   externalConnection:
+#   external:
 #     host: "your-redis-cluster.cache.amazonaws.com"
 #     port: 6379
 #     password: "your-redis-password"

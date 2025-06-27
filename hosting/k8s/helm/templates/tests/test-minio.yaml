@@ -1,4 +1,4 @@
-{{- if .Values.minio.enabled }}
+{{- if .Values.minio.deploy }}
 apiVersion: v1
 kind: Pod
 metadata:
