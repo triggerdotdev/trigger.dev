@@ -29,8 +29,13 @@ jobs:
         with:
           version: "3.18.3"
 
-      - name: Update dependencies
-        run: helm dependency update ./hosting/k8s/helm/
+      - name: Build dependencies
+        run: helm dependency build ./hosting/k8s/helm/
+
+      - name: Extract dependency charts
+        run: |
+          cd ./hosting/k8s/helm/
+          for file in ./charts/*.tgz; do echo "Extracting $file"; tar -xzf "$file" -C ./charts; done
 
       - name: Lint Helm Chart
         run: |
@@ -63,8 +68,13 @@ jobs:
         with:
           version: "3.18.3"
 
-      - name: Update dependencies
-        run: helm dependency update ./hosting/k8s/helm/
+      - name: Build dependencies
+        run: helm dependency build ./hosting/k8s/helm/
+
+      - name: Extract dependency charts
+        run: |
+          cd ./hosting/k8s/helm/
+          for file in ./charts/*.tgz; do echo "Extracting $file"; tar -xzf "$file" -C ./charts; done
 
       - name: Log in to Container Registry
         uses: docker/login-action@v3
