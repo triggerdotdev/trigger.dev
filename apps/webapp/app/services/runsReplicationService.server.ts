@@ -15,6 +15,8 @@ import { TaskRun } from "@trigger.dev/database";
 import { nanoid } from "nanoid";
 import EventEmitter from "node:events";
 import pLimit from "p-limit";
+import { logger } from "./logger.server";
+import { detectBadJsonStrings } from "~/utils/detectBadJsonStrings";
 
 interface TransactionEvent<T = any> {
   tag: "insert" | "update" | "delete";
@@ -737,6 +739,14 @@ export class RunsReplicationService {
     }
 
     if (dataType !== "application/json" && dataType !== "application/super+json") {
+      return { data: undefined };
+    }
+
+    if (detectBadJsonStrings(data)) {
+      this.logger.warn("Detected bad JSON strings", {
+        data,
+        dataType,
+      });
       return { data: undefined };
     }
 
