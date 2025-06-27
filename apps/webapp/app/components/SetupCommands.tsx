@@ -1,6 +1,7 @@
 import { createContext, useContext, useState } from "react";
 import { useAppOrigin } from "~/hooks/useAppOrigin";
 import { useProject } from "~/hooks/useProject";
+import { useTriggerCliTag } from "~/hooks/useTriggerCliTag";
 import {
   ClientTabs,
   ClientTabsContent,
@@ -35,8 +36,6 @@ function usePackageManager() {
   return context;
 }
 
-const v3PackageTag = "latest";
-
 function getApiUrlArg() {
   const appOrigin = useAppOrigin();
 
@@ -69,8 +68,9 @@ export function InitCommandV3({ title }: TabsProps) {
   const project = useProject();
   const projectRef = project.externalRef;
   const apiUrlArg = getApiUrlArg();
+  const triggerCliTag = useTriggerCliTag();
 
-  const initCommandParts = [`trigger.dev@${v3PackageTag}`, "init", `-p ${projectRef}`, apiUrlArg];
+  const initCommandParts = [`trigger.dev@${triggerCliTag}`, "init", `-p ${projectRef}`, apiUrlArg];
   const initCommand = initCommandParts.filter(Boolean).join(" ");
 
   const { activePackageManager, setActivePackageManager } = usePackageManager();
@@ -118,6 +118,7 @@ export function InitCommandV3({ title }: TabsProps) {
 }
 
 export function TriggerDevStepV3({ title }: TabsProps) {
+  const triggerCliTag = useTriggerCliTag();
   const { activePackageManager, setActivePackageManager } = usePackageManager();
 
   return (
@@ -139,7 +140,7 @@ export function TriggerDevStepV3({ title }: TabsProps) {
           variant="secondary/medium"
           iconButton
           className="mb-4"
-          value={`npx trigger.dev@${v3PackageTag} dev`}
+          value={`npx trigger.dev@${triggerCliTag} dev`}
         />
       </ClientTabsContent>
       <ClientTabsContent value={"pnpm"}>
@@ -147,7 +148,7 @@ export function TriggerDevStepV3({ title }: TabsProps) {
           variant="secondary/medium"
           iconButton
           className="mb-4"
-          value={`pnpm dlx trigger.dev@${v3PackageTag} dev`}
+          value={`pnpm dlx trigger.dev@${triggerCliTag} dev`}
         />
       </ClientTabsContent>
       <ClientTabsContent value={"yarn"}>
@@ -155,7 +156,7 @@ export function TriggerDevStepV3({ title }: TabsProps) {
           variant="secondary/medium"
           iconButton
           className="mb-4"
-          value={`yarn dlx trigger.dev@${v3PackageTag} dev`}
+          value={`yarn dlx trigger.dev@${triggerCliTag} dev`}
         />
       </ClientTabsContent>
     </ClientTabs>
@@ -163,6 +164,7 @@ export function TriggerDevStepV3({ title }: TabsProps) {
 }
 
 export function TriggerLoginStepV3({ title }: TabsProps) {
+  const triggerCliTag = useTriggerCliTag();
   const { activePackageManager, setActivePackageManager } = usePackageManager();
 
   return (
@@ -184,7 +186,7 @@ export function TriggerLoginStepV3({ title }: TabsProps) {
           variant="secondary/medium"
           iconButton
           className="mb-4"
-          value={`npx trigger.dev@${v3PackageTag} login`}
+          value={`npx trigger.dev@${triggerCliTag} login`}
         />
       </ClientTabsContent>
       <ClientTabsContent value={"pnpm"}>
@@ -192,7 +194,7 @@ export function TriggerLoginStepV3({ title }: TabsProps) {
           variant="secondary/medium"
           iconButton
           className="mb-4"
-          value={`pnpm dlx trigger.dev@${v3PackageTag} login`}
+          value={`pnpm dlx trigger.dev@${triggerCliTag} login`}
         />
       </ClientTabsContent>
       <ClientTabsContent value={"yarn"}>
@@ -200,7 +202,7 @@ export function TriggerLoginStepV3({ title }: TabsProps) {
           variant="secondary/medium"
           iconButton
           className="mb-4"
-          value={`yarn dlx trigger.dev@${v3PackageTag} login`}
+          value={`yarn dlx trigger.dev@${triggerCliTag} login`}
         />
       </ClientTabsContent>
     </ClientTabs>

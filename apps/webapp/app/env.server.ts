@@ -856,6 +856,9 @@ const EnvironmentSchema = z.object({
 
   // Machine presets
   MACHINE_PRESETS_OVERRIDE_PATH: z.string().optional(),
+
+  // CLI package tag (e.g. "latest", "v4-beta", "4.0.0") - used for setup commands
+  TRIGGER_CLI_TAG: z.string().default("latest"),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;
