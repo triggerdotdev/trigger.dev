@@ -840,6 +840,10 @@ const EnvironmentSchema = z.object({
   RUN_REPLICATION_KEEP_ALIVE_ENABLED: z.string().default("1"),
   RUN_REPLICATION_KEEP_ALIVE_IDLE_SOCKET_TTL_MS: z.coerce.number().int().optional(),
   RUN_REPLICATION_MAX_OPEN_CONNECTIONS: z.coerce.number().int().default(10),
+  // Retry configuration for insert operations
+  RUN_REPLICATION_INSERT_MAX_RETRIES: z.coerce.number().int().default(3),
+  RUN_REPLICATION_INSERT_BASE_DELAY_MS: z.coerce.number().int().default(100),
+  RUN_REPLICATION_INSERT_MAX_DELAY_MS: z.coerce.number().int().default(2000),
 
   // Clickhouse
   CLICKHOUSE_URL: z.string().optional(),
