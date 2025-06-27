@@ -172,6 +172,13 @@ describe("detectBadJsonStrings", () => {
         2
       )}x slower for Unicode strings`
     );
+
+    // Both cases should be extremely fast (under 1 microsecond per call)
+    expect(noUnicodeTime / iterations).toBeLessThan(0.001); // Less than 1 microsecond
+    expect(withUnicodeTime / iterations).toBeLessThan(0.001); // Less than 1 microsecond
+
+    // The difference should be reasonable (not more than 5x)
+    expect(noUnicodeTime / withUnicodeTime).toBeLessThan(5);
   });
 });
 
