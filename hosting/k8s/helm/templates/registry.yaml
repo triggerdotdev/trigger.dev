@@ -51,22 +51,39 @@ spec:
             {{- toYaml . | nindent 12 }}
             {{- end }}
           {{- end }}
+          {{- if .Values.registry.livenessProbe.enabled }}
           livenessProbe:
             httpGet:
               path: /
               port: http
-            initialDelaySeconds: 10
-            periodSeconds: 10
-            timeoutSeconds: 5
-            failureThreshold: 5
+            initialDelaySeconds: {{ .Values.registry.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.registry.livenessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.registry.livenessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.registry.livenessProbe.failureThreshold }}
+            successThreshold: {{ .Values.registry.livenessProbe.successThreshold }}
+          {{- end }}
+          {{- if .Values.registry.readinessProbe.enabled }}
           readinessProbe:
             httpGet:
               path: /
               port: http
-            initialDelaySeconds: 10
-            periodSeconds: 10
-            timeoutSeconds: 5
-            failureThreshold: 5
+            initialDelaySeconds: {{ .Values.registry.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.registry.readinessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.registry.readinessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.registry.readinessProbe.failureThreshold }}
+            successThreshold: {{ .Values.registry.readinessProbe.successThreshold }}
+          {{- end }}
+          {{- if .Values.registry.startupProbe.enabled }}
+          startupProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: {{ .Values.registry.startupProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.registry.startupProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.registry.startupProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.registry.startupProbe.failureThreshold }}
+            successThreshold: {{ .Values.registry.startupProbe.successThreshold }}
+          {{- end }}
           resources:
             {{- toYaml .Values.registry.resources | nindent 12 }}
           volumeMounts:

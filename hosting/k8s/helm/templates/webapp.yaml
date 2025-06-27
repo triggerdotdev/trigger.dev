@@ -49,22 +49,39 @@ spec:
             - name: http
               containerPort: {{ .Values.webapp.service.targetPort }}
               protocol: TCP
+          {{- if .Values.webapp.livenessProbe.enabled }}
           livenessProbe:
             httpGet:
               path: /healthcheck
               port: http
-            initialDelaySeconds: 10
-            periodSeconds: 30
-            timeoutSeconds: 10
-            failureThreshold: 5
+            initialDelaySeconds: {{ .Values.webapp.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.webapp.livenessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.webapp.livenessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.webapp.livenessProbe.failureThreshold }}
+            successThreshold: {{ .Values.webapp.livenessProbe.successThreshold }}
+          {{- end }}
+          {{- if .Values.webapp.readinessProbe.enabled }}
           readinessProbe:
             httpGet:
               path: /healthcheck
               port: http
-            initialDelaySeconds: 10
-            periodSeconds: 30
-            timeoutSeconds: 10
-            failureThreshold: 5
+            initialDelaySeconds: {{ .Values.webapp.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.webapp.readinessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.webapp.readinessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.webapp.readinessProbe.failureThreshold }}
+            successThreshold: {{ .Values.webapp.readinessProbe.successThreshold }}
+          {{- end }}
+          {{- if .Values.webapp.startupProbe.enabled }}
+          startupProbe:
+            httpGet:
+              path: /healthcheck
+              port: http
+            initialDelaySeconds: {{ .Values.webapp.startupProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.webapp.startupProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.webapp.startupProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.webapp.startupProbe.failureThreshold }}
+            successThreshold: {{ .Values.webapp.startupProbe.successThreshold }}
+          {{- end }}
           resources:
             {{- toYaml .Values.webapp.resources | nindent 12 }}
           env:
