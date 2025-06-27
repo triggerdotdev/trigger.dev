@@ -445,8 +445,35 @@ export class RunsReplicationService {
         payloadInserts: payloadInserts.length,
       });
 
-      await this.#insertTaskRunInserts(taskRunInserts);
-      await this.#insertPayloadInserts(payloadInserts);
+      // Insert task runs and payloads with retry logic for connection errors
+      const [taskRunError, taskRunResult] = await this.#insertWithRetry(
+        () => this.#insertTaskRunInserts(taskRunInserts),
+        "task run inserts",
+        flushId
+      );
+
+      const [payloadError, payloadResult] = await this.#insertWithRetry(
+        () => this.#insertPayloadInserts(payloadInserts),
+        "payload inserts",
+        flushId
+      );
+
+      // Log any errors that occurred
+      if (taskRunError) {
+        this.logger.error("Error inserting task run inserts", {
+          error: taskRunError,
+          flushId,
+        });
+        recordSpanError(span, taskRunError);
+      }
+
+      if (payloadError) {
+        this.logger.error("Error inserting payload inserts", {
+          error: payloadError,
+          flushId,
+        });
+        recordSpanError(span, payloadError);
+      }
 
       this.logger.debug("Flushed inserts", {
         flushId,
@@ -454,6 +481,73 @@ export class RunsReplicationService {
         payloadInserts: payloadInserts.length,
       });
     });
+  }
+
+  // New method to handle inserts with retry logic for connection errors
+  async #insertWithRetry<T>(
+    insertFn: () => Promise<T>,
+    operationName: string,
+    flushId: string,
+    maxRetries: number = 3
+  ): Promise<[Error | null, T | null]> {
+    let lastError: Error | null = null;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const result = await insertFn();
+        return [null, result];
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+
+        // Check if this is a retryable connection error
+        if (this.#isRetryableConnectionError(lastError) && attempt < maxRetries) {
+          const delay = this.#calculateConnectionRetryDelay(attempt);
+
+          this.logger.warn(`Retrying ${operationName} due to connection error`, {
+            flushId,
+            attempt,
+            maxRetries,
+            error: lastError.message,
+            delay,
+          });
+
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          continue;
+        }
+        break;
+      }
+    }
+
+    return [lastError, null];
+  }
+
+  // New method to check if an error is a retryable connection error
+  #isRetryableConnectionError(error: Error): boolean {
+    const errorMessage = error.message.toLowerCase();
+    const retryableConnectionPatterns = [
+      "socket hang up",
+      "econnreset",
+      "connection reset",
+      "connection refused",
+      "connection timeout",
+      "network error",
+      "read econnreset",
+      "write econnreset",
+    ];
+
+    return retryableConnectionPatterns.some((pattern) => errorMessage.includes(pattern));
+  }
+
+  // New method to calculate retry delay for connection errors
+  #calculateConnectionRetryDelay(attempt: number): number {
+    // Exponential backoff: 100ms, 200ms, 400ms
+    const baseDelay = 100;
+    const maxDelay = 2000;
+    const delay = Math.min(baseDelay * Math.pow(2, attempt - 1), maxDelay);
+
+    // Add some jitter to prevent thundering herd
+    const jitter = Math.random() * 100;
+    return delay + jitter;
   }
 
   async #insertTaskRunInserts(taskRunInserts: TaskRunV2[]) {
