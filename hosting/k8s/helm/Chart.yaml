@@ -16,3 +16,21 @@ keywords:
   - automation
 annotations:
   category: Development
+dependencies:
+  - name: postgresql
+    version: "16.7.14"
+    repository: "oci://registry-1.docker.io/bitnamicharts"
+    condition: postgres.enabled
+    alias: postgres
+  - name: redis
+    version: "21.2.6"
+    repository: "oci://registry-1.docker.io/bitnamicharts"
+    condition: redis.enabled
+  - name: clickhouse
+    version: "9.3.7"
+    repository: "oci://registry-1.docker.io/bitnamicharts"
+    condition: clickhouse.enabled
+  - name: minio
+    version: "17.0.9"
+    repository: "oci://registry-1.docker.io/bitnamicharts"
+    condition: minio.enabled
