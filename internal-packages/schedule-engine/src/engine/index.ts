@@ -123,7 +123,16 @@ export class ScheduleEngine {
       const startTime = Date.now();
 
       if (this.options.onRegisterScheduleInstance) {
-        await this.options.onRegisterScheduleInstance(params.instanceId);
+        const [registerError] = await tryCatch(
+          this.options.onRegisterScheduleInstance(params.instanceId)
+        );
+
+        if (registerError) {
+          this.logger.error("Error calling the onRegisterScheduleInstance callback", {
+            instanceId: params.instanceId,
+            error: registerError,
+          });
+        }
       }
 
       span.setAttribute("instanceId", params.instanceId);
