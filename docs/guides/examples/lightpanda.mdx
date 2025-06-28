@@ -1,0 +1,245 @@
+---
+title: "Get a webpage's content using Lightpanda browser"
+sidebarTitle: "Lightpanda"
+description: "In these examples, we will show you how to crawl using Lightpanda browser and Trigger.dev."
+tag: "v4"
+---
+
+## Overview
+
+Lightpanda is a purpose-built browser for AI and automation workflows. It is 10x faster, uses 10x less RAM than Chrome headless.
+
+You will find here are a couple of examples of how to use Lightpanda with Trigger.dev.
+
+<Warning>
+  When using Lightpanda, we recommend that you respect robots.txt files and avoid high frequency requesting websites.
+  DDOS could happen fast for small infrastructures.
+</Warning>
+
+## Prerequisites
+
+- A project with [Trigger.dev initialized](/quick-start)
+- A [Lightpanda](https://lightpanda.io/) cloud token (for the 1st example)
+
+## Example \#1 - Get links from a website using Lightpanda cloud & Puppeteer
+
+In this task, we use Lightpanda browser to get links from a provided URL.
+You will have to pass the URL as a payload when triggering the task.
+
+Make sure to add `$LIGHTPANDA_TOKEN` to your Trigger.dev dashboard on the Environment Variables page:
+```bash
+LIGHTPANDA_TOKEN: "<your-token>",
+```
+
+```ts trigger/lightpanda-cloud-puppeteer.ts
+import { logger, task } from '@trigger.dev/sdk/v3'
+import puppeteer from 'puppeteer'
+
+export const lightpandaCloudPuppeteer = task({
+  id: 'lightpanda-cloud-puppeteer',
+  machine: {
+    preset: 'micro',
+  },
+  run: async (payload: { url: string }, { ctx }) => {
+    logger.log("Lets get a page's links with Lightpanda!", { payload, ctx })
+    if (!payload.url) {
+      logger.warn('Please define the payload url')
+      throw new Error('payload.url is undefined')
+    }
+
+    if (typeof process.env.LIGHTPANDA_TOKEN === 'undefined') {
+      logger.warn('Please define the env variable $LIGHTPANDA_TOKEN', {
+        env: process.env,
+      })
+      throw new Error('$LIGHTPANDA_TOKEN is undefined')
+    }
+
+    // Connect to Lightpanda's cloud
+    const browser = await puppeteer.connect({
+      browserWSEndpoint: `wss://cloud.lightpanda.io/ws?browser=lightpanda&token=${process.env.LIGHTPANDA_TOKEN}`,
+    })
+    const context = await browser.createBrowserContext()
+    const page = await context.newPage()
+
+    // Dump all the links from the page.
+    await page.goto(payload.url)
+
+    const links = await page.evaluate(() => {
+      return Array.from(document.querySelectorAll('a')).map(row => {
+        return row.getAttribute('href')
+      })
+    })
+
+    logger.info('Processing done')
+    logger.info('Shutting down…')
+
+    await page.close()
+    await context.close()
+    await browser.disconnect()
+
+    logger.info('✅ Completed')
+
+    return {
+      links,
+    }
+  },
+})
+```
+### Proxies
+
+Proxies can be used with your browser via the proxy query string parameter. By default, the proxy used is "datacenter" which is a pool of shared datacenter IPs.
+`datacenter` accepts an optional `country` query string parameter, an [ISO 3166-1 alpha-2](https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2) country code.
+
+_Example using a German IP :_
+
+```wss://cloud.lightpanda.io/ws?proxy=datacenter&country=de&token=TOKEN```
+
+
+### Session
+A session is alive until you close it or the connection is closed. The max time duration of a session is 15 min.
+
+
+## Example \#2 - Get a webpage using Lightpanda
+
+Using the Lightpanda binary we will dump the HTML for a provided URL.
+You will have to pass the URL as a payload when triggering the task.
+
+
+### Prerequisites
+- Setup the [Lightpanda build extension](/config/extensions/lightpanda)
+
+### Task
+```ts trigger/lightpanda-lightpanda-fetch.ts
+import { logger, task } from '@trigger.dev/sdk/v3'
+import { execSync } from 'node:child_process'
+
+export const lightpandaFetch = task({
+  id: 'lightpanda-fetch',
+  machine: {
+    preset: "micro",
+  },
+  run: async (payload: { url: string }, { ctx }) => {
+    logger.log("Lets get a page's content with Lightpanda!", { payload, ctx })
+
+    if (!payload.url) {
+      logger.warn('Please define the payload url')
+      throw new Error('payload.url is undefined')
+    }
+
+    if (typeof process.env.LIGHTPANDA_BROWSER_PATH === 'undefined') {
+      logger.warn('Please define the env variable $LIGHTPANDA_BROWSER_PATH', {
+        env: process.env,
+      })
+      throw new Error('$LIGHTPANDA_BROWSER_PATH is undefined')
+    }
+
+    const e = execSync(`${process.env.LIGHTPANDA_BROWSER_PATH} fetch --dump ${payload.url}`)
+
+    logger.info('✅ Completed')
+
+    return {
+      message: e.toString(),
+    }
+  },
+})
+```
+
+## Example \#3 - Launch and use a Lightpanda CDP server
+
+This task initialises a Lightpanda CDP server to allow you to scrape directly via Trigger.dev.
+
+### Prerequisites
+- Setup the [Lightpanda build extension](/config/extensions/lightpanda)
+
+### Task
+Your task will have to launch a child process in order to have the websocket available to scrape using Puppeteer.
+
+```ts trigger/lightpandaCDP.ts
+import { logger, task } from '@trigger.dev/sdk/v3'
+import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import puppeteer from 'puppeteer'
+
+const spawnLightpanda = async (log: typeof logger) =>
+  new Promise<ChildProcessWithoutNullStreams>((resolve, reject) => {
+    const child = spawn(process.env.LIGHTPANDA_BROWSER_PATH as string, [
+      'serve',
+      '--host',
+      '127.0.0.1',
+      '--port',
+      '9222',
+      '--log_level',
+      'info',
+    ])
+
+    child.on('spawn', async () => {
+      log.info("Running Lightpanda's CDP server…", {
+        pid: child.pid,
+      })
+
+      await new Promise(resolve => setTimeout(resolve, 250))
+      resolve(child)
+    })
+    child.on('error', e => reject(e))
+  })
+
+export const lightpandaCDP = task({
+  id: 'lightpanda-cdp',
+  machine: {
+    preset: 'micro',
+  },
+  run: async (payload: { url: string }, { ctx }) => {
+    logger.log("Lets get a page's links with Lightpanda!", { payload, ctx })
+
+    if (!payload.url) {
+      logger.warn('Please define the payload url')
+      throw new Error('payload.url is undefined')
+    }
+
+    if (typeof process.env.LIGHTPANDA_BROWSER_PATH === 'undefined') {
+      logger.warn('Please define the env variable $LIGHTPANDA_BROWSER_PATH', {
+        env: process.env,
+      })
+      throw new Error('$LIGHTPANDA_BROWSER_PATH is undefined')
+    }
+
+    try {
+      // Launch Lightpanda's CDP server
+      const lpProcess = await spawnLightpanda(logger)
+
+      const browser = await puppeteer.connect({
+        browserWSEndpoint: 'ws://127.0.0.1:9222',
+      })
+      const context = await browser.createBrowserContext()
+      const page = await context.newPage()
+
+      // Dump all the links from the page.
+      await page.goto(payload.url)
+
+      const links = await page.evaluate(() => {
+        return Array.from(document.querySelectorAll('a')).map(row => {
+          return row.getAttribute('href')
+        })
+      })
+
+      logger.info('Processing done')
+      logger.info('Shutting down…')
+
+      // Close Puppeteer instance
+      await browser.close()
+
+      // Stop Lightpanda's CDP Server
+      lpProcess.stdout.destroy()
+      lpProcess.stderr.destroy()
+      lpProcess.kill()
+
+      logger.info('✅ Completed')
+
+      return {
+        links,
+      }
+    } catch (e: any) {
+      throw new Error(e)
+    }
+  },
+})
+```
