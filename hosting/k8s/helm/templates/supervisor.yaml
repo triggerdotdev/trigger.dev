@@ -74,6 +74,7 @@ spec:
         {{- with .Values.supervisor.podSecurityContext }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
+      {{- if not .Values.webapp.bootstrap.enabled }}
       initContainers:
         - name: init-shared
           image: busybox:1.35
@@ -83,6 +84,7 @@ spec:
           volumeMounts:
             - name: shared
               mountPath: /home/node/shared
+      {{- end }}
       containers:
         - name: supervisor
           image: {{ include "trigger-v4.supervisor.image" . }}
@@ -134,8 +136,11 @@ spec:
             - name: TRIGGER_API_URL
               value: "http://{{ include "trigger-v4.fullname" . }}-webapp:{{ .Values.webapp.service.port }}"
             - name: TRIGGER_WORKER_TOKEN
-              {{- if .Values.supervisor.bootstrap.enabled }}
-              value: "file://{{ .Values.supervisor.bootstrap.workerTokenPath }}"
+              {{- if .Values.webapp.bootstrap.enabled }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trigger-v4.fullname" . }}-worker-token
+                  key: token
               {{- else if .Values.supervisor.bootstrap.workerToken.secret.name }}
               valueFrom:
                 secretKeyRef:
@@ -234,13 +239,16 @@ spec:
             {{- with .Values.supervisor.extraEnvVars }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
+          {{- if not .Values.webapp.bootstrap.enabled }}
           volumeMounts:
             - name: shared
               mountPath: /home/node/shared
+          {{- end }}
           {{- with .Values.supervisor.securityContext }}
           securityContext:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+      {{- if not .Values.webapp.bootstrap.enabled }}
       volumes:
         - name: shared
           {{- if .Values.persistence.shared.enabled }}
@@ -249,6 +257,7 @@ spec:
           {{- else }}
           emptyDir: {}
           {{- end }}
+      {{- end }}
       {{- with .Values.supervisor.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
