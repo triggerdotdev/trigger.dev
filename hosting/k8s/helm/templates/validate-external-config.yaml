@@ -1,0 +1,56 @@
+{{/*
+Validation template to ensure external service configurations are provided when deploy: false
+This template will fail the Helm deployment if external config is missing for required services
+*/}}
+{{- if not .Values.postgres.deploy }}
+{{- if or (not .Values.postgres.external.host) (not .Values.postgres.external.database) (not .Values.postgres.external.username) }}
+{{- fail "PostgreSQL external configuration is required when postgres.deploy=false. Please provide postgres.external.host, postgres.external.database, and postgres.external.username" }}
+{{- end }}
+{{- end }}
+
+{{- if not .Values.redis.deploy }}
+{{- if not .Values.redis.external.host }}
+{{- fail "Redis external configuration is required when redis.deploy=false. Please provide redis.external.host" }}
+{{- end }}
+{{- end }}
+
+{{- if not .Values.clickhouse.deploy }}
+{{- if or (not .Values.clickhouse.external.host) (not .Values.clickhouse.external.username) }}
+{{- fail "ClickHouse external configuration is required when clickhouse.deploy=false. Please provide clickhouse.external.host and clickhouse.external.username" }}
+{{- end }}
+{{- end }}
+
+{{- if not .Values.s3.deploy }}
+{{- if or (not .Values.s3.external.endpoint) (not .Values.s3.external.accessKeyId) }}
+{{- fail "S3 external configuration is required when s3.deploy=false. Please provide s3.external.endpoint and s3.external.accessKeyId" }}
+{{- end }}
+{{- end }}
+
+{{- if not .Values.electric.deploy }}
+{{- if not .Values.electric.external.url }}
+{{- fail "Electric external configuration is required when electric.deploy=false. Please provide electric.external.url" }}
+{{- end }}
+{{- end }}
+
+{{- if not .Values.registry.deploy }}
+{{- if or (not .Values.registry.external.host) (not .Values.registry.external.port) }}
+{{- fail "Registry external configuration is required when registry.deploy=false. Please provide registry.external.host and registry.external.port" }}
+{{- end }}
+{{- end }}
+
+{{/*
+This template produces no output but will fail the deployment if validation fails
+*/}}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "trigger-v4.fullname" . }}-external-config-validation
+  labels:
+    {{- include "trigger-v4.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-10"
+    helm.sh/hook-delete-policy: before-hook-creation
+data:
+  validation: "completed"

@@ -11,7 +11,6 @@ config:
   appOrigin: "http://localhost:3040"
   loginOrigin: "http://localhost:3040"
   apiOrigin: "http://localhost:3040"
-  electricOrigin: "http://electric:3000"
 
 # Secrets configuration
 # IMPORTANT: The default values below are for TESTING ONLY and should NOT be used in production
@@ -22,7 +21,7 @@ config:
 secrets:
   # Enable/disable creation of secrets
   # Set to false to use external secret management (Vault, Infisical, External Secrets, etc.)
-  # When disabled, use extraEnv and podAnnotations for secret injection
+  # When disabled, use extraEnvVars and podAnnotations for secret injection
   enabled: true
 
   # Name of existing secret to use instead of creating one
@@ -107,7 +106,7 @@ webapp:
     #   memory: 1Gi
 
   # Extra environment variables for webapp
-  extraEnv:
+  extraEnvVars:
     []
     # - name: CUSTOM_VAR
     #   value: "custom-value"
@@ -125,16 +124,32 @@ webapp:
     labels: {}
     basicAuth: {}
 
-  # ClickHouse integration (experimental)
-  # Usage patterns:
-  #   1. Internal ClickHouse: Set clickhouse.enabled=true, clickhouse.external=false, webapp.clickhouse.enabled=true
-  #   2. External ClickHouse: Set clickhouse.enabled=true, clickhouse.external=true, configure externalConnection URLs, webapp.clickhouse.enabled=true
-  #   3. No ClickHouse: Leave webapp.clickhouse.enabled=false (default)
-  clickhouse:
+  # Health probe configuration
+  livenessProbe:
     enabled: true
+    initialDelaySeconds: 10
+    periodSeconds: 30
+    timeoutSeconds: 10
+    failureThreshold: 5
+    successThreshold: 1
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 10
+    periodSeconds: 30
+    timeoutSeconds: 10
+    failureThreshold: 5
+    successThreshold: 1
+  startupProbe:
+    enabled: false
+    initialDelaySeconds: 0
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 60
+    successThreshold: 1
+
+  clickhouse:
     logLevel: "info" # one of: log, error, warn, info, debug
   runReplication:
-    enabled: true
     logLevel: "info" # one of: log, error, warn, info, debug
 
   # Observability configuration (OTel)
@@ -157,7 +172,6 @@ webapp:
 
 # Supervisor configuration
 supervisor:
-  enabled: true
   image:
     registry: ghcr.io
     repository: triggerdotdev/supervisor
@@ -225,7 +239,7 @@ supervisor:
       create: true
       name: ""
   # Extra environment variables for Supervisor
-  extraEnv:
+  extraEnvVars:
     []
     # - name: CUSTOM_VAR
     #   value: "custom-value"
@@ -237,6 +251,29 @@ supervisor:
     path: "/metrics"
     labels: {}
     basicAuth: {}
+
+  # Health probe configuration
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+    successThreshold: 1
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 15
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+    successThreshold: 1
+  startupProbe:
+    enabled: false
+    initialDelaySeconds: 0
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 60
+    successThreshold: 1
 
   # Bootstrap configuration
   # When enabled: reads token from shared file, otherwise uses workerToken config
@@ -257,107 +294,64 @@ supervisor:
 
 # PostgreSQL configuration
 postgres:
-  enabled: true
-  external: false
-  image:
-    registry: docker.io
-    repository: postgres
-    tag: "14"
-    pullPolicy: IfNotPresent
+  deploy: true
+
+  # Bitnami PostgreSQL chart configuration (when deploy: true)
   auth:
+    enablePostgresUser: true
     postgresPassword: "postgres"
     username: "postgres"
     password: "postgres"
     database: "main"
-  connection:
-    schema: "public"
-    sslMode: "disable" # Use "require" or "verify-full" for production
-
-  podAnnotations: {}
-
-  # podSecurityContext:
-  #   fsGroup: 1000
-
-  # securityContext:
-  #   runAsNonRoot: true
-  #   runAsUser: 1000
 
   primary:
     persistence:
       enabled: true
       size: 10Gi
-    service:
-      ports:
-        postgres: 5432
     resources: {}
     configuration: |
+      listen_addresses = '*'
       wal_level = logical
-  # External PostgreSQL connection (when external: true)
-  externalConnection:
+
+  # Custom connection settings
+  connection:
+    schema: "public"
+    sslMode: "disable" # Use "require" or "verify-full" for production
+
+    # External PostgreSQL connection (when deploy: false)
+  external:
     host: ""
     port: 5432
     database: ""
     username: ""
     password: ""
-    # Connection options
-    schema: "public"
-    sslMode: "require" # Options: disable, allow, prefer, require, verify-ca, verify-full
-  # Extra environment variables for PostgreSQL
-  extraEnv:
-    []
-    # - name: CUSTOM_VAR
-    #   value: "custom-value"
-  # Extra command line arguments for PostgreSQL
-  extraArgs:
-    []
-    # - "-c"
-    # - "log_statement=all"
-    # - "-c"
-    # - "max_slot_wal_keep_size=1000000000"
 
 # Redis configuration
 redis:
-  enabled: true
-  external: false
-  image:
-    registry: docker.io
-    repository: redis
-    tag: "7"
-    pullPolicy: IfNotPresent
+  deploy: true
+
+  # Bitnami Redis chart configuration (when deploy: true)
   auth:
     enabled: false
 
-  podAnnotations: {}
-
-  # podSecurityContext:
-  #   fsGroup: 1000
-
-  # securityContext:
-  #   runAsNonRoot: true
-  #   runAsUser: 1000
+  # Single-node configuration (disable replica)
+  architecture: standalone
 
   master:
     persistence:
       enabled: true
       size: 5Gi
-    service:
-      ports:
-        redis: 6379
     resources: {}
-  # External Redis connection (when external: true)
-  externalConnection:
+
+  # External Redis connection (when deploy: false)
+  external:
     host: ""
     port: 6379
     password: ""
-  # Extra environment variables for Redis
-  extraEnv:
-    []
-    # - name: CUSTOM_VAR
-    #   value: "custom-value"
 
 # Electric configuration
 electric:
-  enabled: true
+  deploy: true
   image:
     registry: docker.io
     repository: electricsql/electric
@@ -381,59 +375,78 @@ electric:
     port: 3000
     targetPort: 3000
   resources: {}
+
+  # Health probe configuration
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 5
+    successThreshold: 1
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 5
+    successThreshold: 1
+  startupProbe:
+    enabled: false
+    initialDelaySeconds: 0
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 60
+    successThreshold: 1
+
+  # External Electric connection (when deploy: false)
+  external:
+    url: "" # For example: "http://electric:3000"
+
   # Extra environment variables for Electric
-  extraEnv:
+  extraEnvVars:
     []
     # - name: CUSTOM_VAR
     #   value: "custom-value"
 
 # ClickHouse configuration
 clickhouse:
-  enabled: true
-  external: false
-  image:
-    registry: docker.io
-    repository: bitnami/clickhouse
-    tag: "latest"
-    pullPolicy: IfNotPresent
+  deploy: true
+
+  # TLS/Secure connection configuration
+  secure: false # Set to true to use HTTPS and secure connections
+
+  # Bitnami ClickHouse chart configuration (when deploy: true)
   auth:
-    adminUser: "default"
-    adminPassword: "password"
+    username: "default"
+    password: "password"
 
-  podAnnotations: {}
+  # Single-node configuration (disable clustering for dev/test)
+  keeper:
+    enabled: false
 
-  # podSecurityContext:
-  #   fsGroup: 1000
-
-  # securityContext:
-  #   runAsNonRoot: true
-  #   runAsUser: 1000
+  shards: 1
+  replicaCount: 1
 
   persistence:
     enabled: true
     size: 10Gi
-  service:
-    type: ClusterIP
-    ports:
-      native: 9000
-      http: 8123
   resources: {}
-  # External ClickHouse connection (when external: true)
-  externalConnection:
-    # HTTP interface URL (port 8123) - used by webapp for replication
-    httpUrl: ""
-  # Extra environment variables for ClickHouse
-  extraEnv:
-    []
-    # - name: CUSTOM_VAR
-    #   value: "custom-value"
+
+  # External ClickHouse connection (when deploy: false)
+  external:
+    host: ""
+    httpPort: 8123
+    nativePort: 9000
+    username: ""
+    password: ""
+    secure: false # Set to true for external secure connections
 
   # ClickHouse configuration override
-  # You can provide your own override.xml content here
   # These defaults are based on official recommendations for systems with <16GB RAM:
   # https://clickhouse.com/docs/operations/tips
-  config:
-    override: |
+  configdFiles:
+    override.xml: |
       <clickhouse>
         <logger>
           <level>warning</level>
@@ -451,53 +464,34 @@ clickhouse:
         </profiles>
       </clickhouse>
 
-# MinIO configuration
-minio:
-  enabled: true
-  external: false # Set to true to use external S3-compatible storage
-  image:
-    registry: docker.io
-    repository: minio/minio
-    tag: "latest"
-    pullPolicy: IfNotPresent
-  # WARNING: This sets the root user and password on first startup and MUST be changed via the dashboard.
-  # - Don't forget to update secrets.objectStore if you intend to use the root credentials.
-  # - You should instead create a new non-root user and update the secrets.objectStore with the new credentials.
+# S3-compatible object storage configuration
+s3:
+  # Set to false to use external S3-compatible storage
+  # Set to true to deploy internal MinIO (default)
+  deploy: true
+
+  # Bitnami MinIO chart configuration (when deploy: true)
+  # MinIO provides S3-compatible storage when deployed internally
   auth:
     rootUser: "admin"
     rootPassword: "very-safe-password"
 
-  podAnnotations: {}
-
-  # podSecurityContext:
-  #   fsGroup: 1000
-
-  # securityContext:
-  #   runAsNonRoot: true
-  #   runAsUser: 1000
-
   persistence:
     enabled: true
     size: 10Gi
-  service:
-    type: ClusterIP
-    ports:
-      api: 9000
-      console: 9001
   resources: {}
-  # External MinIO/S3 connection (when external: true)
-  externalConnection:
-    url: "" # e.g., "https://s3.amazonaws.com" or "https://your-minio.com:9000"
-  # Extra environment variables for MinIO
-  extraEnv:
-    []
-    # - name: CUSTOM_VAR
-    #   value: "custom-value"
+
+  # External S3 connection (when deploy: false)
+  external:
+    endpoint: "" # e.g., "https://s3.amazonaws.com" or "https://your-minio.com:9000"
+    accessKeyId: ""
+    secretAccessKey: ""
 
 # Docker Registry configuration
 registry:
-  enabled: false # EXPERIMENTAL - requires proper TLS setup. Use external: true instead.
-  external: true
+  # EXPERIMENTAL - requires TLS setup or additional cluster configuration. Configure `external` details instead.
+  deploy: false
+
   repositoryNamespace: "trigger" # Docker repository namespace for deployed images, will be part of the image ref
   image:
     registry: docker.io
@@ -518,24 +512,73 @@ registry:
   #   runAsNonRoot: true
   #   runAsUser: 1000
 
+  # Persistence configuration (Bitnami-style)
   persistence:
     enabled: true
+    # Name to assign the volume
+    volumeName: "data"
+    # Name of an existing PVC to use
+    existingClaim: ""
+    # The path the volume will be mounted at
+    mountPath: "/var/lib/registry"
+    # The subdirectory of the volume to mount to
+    subPath: ""
+    # PVC Storage Class for Registry data volume
+    storageClass: ""
+    # PVC Access Mode for Registry volume
+    accessModes:
+      - "ReadWriteOnce"
+    # PVC Storage Request for Registry volume
     size: 10Gi
+    # Annotations for the PVC
+    annotations: {}
+    # Labels for the PVC
+    labels: {}
+    # Selector to match an existing Persistent Volume
+    selector: {}
+    # Custom PVC data source
+    dataSource: {}
+
   service:
     type: ClusterIP
     port: 5000
     targetPort: 5000
   resources: {}
-  # External Registry connection (when external: true)
-  externalConnection:
+
+  # Health probe configuration
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 5
+    successThreshold: 1
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 5
+    successThreshold: 1
+  startupProbe:
+    enabled: false
+    initialDelaySeconds: 0
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 60
+    successThreshold: 1
+
+  # External Registry connection (when deploy: false)
+  external:
     host: "localhost"
     port: 5001
     auth:
       enabled: false
       username: ""
       password: ""
+
   # Extra environment variables for Registry
-  extraEnv:
+  extraEnvVars:
     []
     # - name: CUSTOM_VAR
     #   value: "custom-value"

@@ -1,4 +1,4 @@
-{{- if and .Values.clickhouse.enabled (not .Values.clickhouse.external) }}
+{{- if .Values.clickhouse.deploy }}
 apiVersion: v1
 kind: Pod
 metadata:

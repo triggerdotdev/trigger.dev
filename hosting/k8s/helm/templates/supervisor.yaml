@@ -1,4 +1,3 @@
-{{- if .Values.supervisor.enabled }}
 {{- if .Values.supervisor.serviceAccount.create }}
 apiVersion: v1
 kind: ServiceAccount
@@ -95,22 +94,39 @@ spec:
             - name: metrics
               containerPort: {{ .Values.supervisor.service.ports.metrics }}
               protocol: TCP
+          {{- if .Values.supervisor.livenessProbe.enabled }}
           livenessProbe:
             httpGet:
               path: /health
               port: workload
-            initialDelaySeconds: 30
-            periodSeconds: 10
-            timeoutSeconds: 5
-            failureThreshold: 3
+            initialDelaySeconds: {{ .Values.supervisor.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.supervisor.livenessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.supervisor.livenessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.supervisor.livenessProbe.failureThreshold }}
+            successThreshold: {{ .Values.supervisor.livenessProbe.successThreshold }}
+          {{- end }}
+          {{- if .Values.supervisor.readinessProbe.enabled }}
           readinessProbe:
             httpGet:
               path: /health
               port: workload
-            initialDelaySeconds: 15
-            periodSeconds: 10
-            timeoutSeconds: 5
-            failureThreshold: 3
+            initialDelaySeconds: {{ .Values.supervisor.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.supervisor.readinessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.supervisor.readinessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.supervisor.readinessProbe.failureThreshold }}
+            successThreshold: {{ .Values.supervisor.readinessProbe.successThreshold }}
+          {{- end }}
+          {{- if .Values.supervisor.startupProbe.enabled }}
+          startupProbe:
+            httpGet:
+              path: /health
+              port: workload
+            initialDelaySeconds: {{ .Values.supervisor.startupProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.supervisor.startupProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.supervisor.startupProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.supervisor.startupProbe.failureThreshold }}
+            successThreshold: {{ .Values.supervisor.startupProbe.successThreshold }}
+          {{- end }}
           resources:
             {{- toYaml .Values.supervisor.resources | nindent 12 }}
           env:
@@ -147,7 +163,13 @@ spec:
               value: {{ .Values.supervisor.config.kubernetes.forceEnabled | quote }}
             - name: KUBERNETES_WORKER_NODETYPE_LABEL
               value: {{ .Values.supervisor.config.kubernetes.workerNodetypeLabel | quote }}
-            {{- if or (and .Values.registry.enabled .Values.registry.auth.enabled) (and .Values.registry.external .Values.registry.externalConnection.auth.enabled) }}
+            {{- $registryAuthEnabled := false }}
+            {{- if .Values.registry.deploy }}
+              {{- $registryAuthEnabled = .Values.registry.auth.enabled }}
+            {{- else }}
+              {{- $registryAuthEnabled = .Values.registry.external.auth.enabled }}
+            {{- end }}
+            {{- if $registryAuthEnabled }}
             - name: KUBERNETES_IMAGE_PULL_SECRETS
               value: "{{ include "trigger-v4.fullname" . }}-registry-secret"
             {{- end }}
@@ -209,7 +231,7 @@ spec:
             # OTEL
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: "http://{{ include "trigger-v4.fullname" . }}-webapp:{{ .Values.webapp.service.port }}/otel"
-            {{- with .Values.supervisor.extraEnv }}
+            {{- with .Values.supervisor.extraEnvVars }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           volumeMounts:
@@ -260,4 +282,3 @@ spec:
       name: metrics
   selector:
     {{- include "trigger-v4.componentSelectorLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 4 }}
-{{- end }}

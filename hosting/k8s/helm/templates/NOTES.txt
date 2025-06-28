@@ -58,25 +58,39 @@ Bootstrap Mode is enabled:
 {{- end }}
 
 Configuration:
-{{- if .Values.postgres.external }}
-- Using external PostgreSQL at {{ .Values.postgres.externalConnection.host }}:{{ .Values.postgres.externalConnection.port }}
-{{- else }}
+{{- if .Values.postgres.deploy }}
 - Using internal PostgreSQL
-{{- end }}
-{{- if .Values.redis.external }}
-- Using external Redis at {{ .Values.redis.externalConnection.host }}:{{ .Values.redis.externalConnection.port }}
 {{- else }}
+- Using external PostgreSQL at {{ .Values.postgres.external.host }}:{{ .Values.postgres.external.port | default 5432 }}
+{{- end }}
+{{- if .Values.redis.deploy }}
 - Using internal Redis
+{{- else }}
+- Using external Redis at {{ .Values.redis.external.host }}:{{ .Values.redis.external.port | default 6379 }}
 {{- end }}
-{{- if .Values.electric.enabled }}
-- Electric sync service enabled
+{{- if .Values.electric.deploy }}
+- Using internal Electric sync service
+{{- else }}
+- Using external Electric sync service at {{ .Values.electric.external.url }}
 {{- end }}
-{{- if .Values.clickhouse.enabled }}
-- ClickHouse analytics database enabled
+{{- if .Values.clickhouse.deploy }}
+- Using internal ClickHouse
+{{- else }}
+- Using external ClickHouse at {{ .Values.clickhouse.external.host }}:{{ .Values.clickhouse.external.httpPort | default 8123 }}
 {{- end }}
-{{- if .Values.minio.enabled }}
-- MinIO object storage enabled
+{{- if .Values.s3.deploy }}
+- Using internal S3-compatible object storage (MinIO)
+{{- else }}
+- Using external S3-compatible object storage at {{ .Values.s3.external.endpoint }}
 {{- end }}
-{{- if .Values.registry.enabled }}
-- Docker registry enabled
+{{- if .Values.registry.deploy }}
+- Using internal Docker registry
+{{- else }}
+- Using external Docker registry at {{ .Values.registry.external.host }}:{{ .Values.registry.external.port }}
+{{- if eq .Values.registry.external.host "localhost" }}
+
+⚠️  Registry Warning:
+   Using localhost for registry. Deployments will only work when testing locally in kind or minikube.
+   Please ensure registry.external is properly configured to point at an external registry.
+{{- end }}
 {{- end }}

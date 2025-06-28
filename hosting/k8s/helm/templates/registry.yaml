@@ -1,4 +1,4 @@
-{{- if and .Values.registry.enabled (not .Values.registry.external) }}
+{{- if .Values.registry.deploy }}
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -37,7 +37,7 @@ spec:
             - name: http
               containerPort: {{ .Values.registry.service.targetPort }}
               protocol: TCP
-          {{- if or .Values.registry.auth.enabled .Values.registry.extraEnv }}
+          {{- if or .Values.registry.auth.enabled .Values.registry.extraEnvVars }}
           env:
             {{- if .Values.registry.auth.enabled }}
             - name: REGISTRY_AUTH
@@ -47,31 +47,51 @@ spec:
             - name: REGISTRY_AUTH_HTPASSWD_PATH
               value: "/auth/htpasswd"
             {{- end }}
-            {{- with .Values.registry.extraEnv }}
+            {{- with .Values.registry.extraEnvVars }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           {{- end }}
+          {{- if .Values.registry.livenessProbe.enabled }}
           livenessProbe:
             httpGet:
               path: /
               port: http
-            initialDelaySeconds: 10
-            periodSeconds: 10
-            timeoutSeconds: 5
-            failureThreshold: 5
+            initialDelaySeconds: {{ .Values.registry.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.registry.livenessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.registry.livenessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.registry.livenessProbe.failureThreshold }}
+            successThreshold: {{ .Values.registry.livenessProbe.successThreshold }}
+          {{- end }}
+          {{- if .Values.registry.readinessProbe.enabled }}
           readinessProbe:
             httpGet:
               path: /
               port: http
-            initialDelaySeconds: 10
-            periodSeconds: 10
-            timeoutSeconds: 5
-            failureThreshold: 5
+            initialDelaySeconds: {{ .Values.registry.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.registry.readinessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.registry.readinessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.registry.readinessProbe.failureThreshold }}
+            successThreshold: {{ .Values.registry.readinessProbe.successThreshold }}
+          {{- end }}
+          {{- if .Values.registry.startupProbe.enabled }}
+          startupProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: {{ .Values.registry.startupProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.registry.startupProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.registry.startupProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.registry.startupProbe.failureThreshold }}
+            successThreshold: {{ .Values.registry.startupProbe.successThreshold }}
+          {{- end }}
           resources:
             {{- toYaml .Values.registry.resources | nindent 12 }}
           volumeMounts:
-            - name: registry-data
-              mountPath: /var/lib/registry
+            - name: {{ .Values.registry.persistence.volumeName }}
+              mountPath: {{ .Values.registry.persistence.mountPath }}
+              {{- if .Values.registry.persistence.subPath }}
+              subPath: {{ .Values.registry.persistence.subPath }}
+              {{- end }}
             {{- if .Values.registry.auth.enabled }}
             - name: registry-auth
               mountPath: /auth
@@ -84,25 +104,44 @@ spec:
             secretName: {{ include "trigger-v4.fullname" . }}-registry-auth
         {{- end }}
         {{- if not .Values.registry.persistence.enabled }}
-        - name: registry-data
+        - name: {{ .Values.registry.persistence.volumeName }}
           emptyDir: {}
+        {{- else if .Values.registry.persistence.existingClaim }}
+        - name: {{ .Values.registry.persistence.volumeName }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.registry.persistence.existingClaim }}
         {{- end }}
   {{- if .Values.registry.persistence.enabled }}
   volumeClaimTemplates:
     - metadata:
-        name: registry-data
+        name: {{ .Values.registry.persistence.volumeName }}
+        {{- with .Values.registry.persistence.annotations }}
+        annotations:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
         labels:
           {{- $component := "registry" }}
           {{- include "trigger-v4.componentLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 10 }}
+          {{- with .Values.registry.persistence.labels }}
+          {{- toYaml . | nindent 10 }}
+          {{- end }}
       spec:
         accessModes:
-          - ReadWriteOnce
+          {{- toYaml .Values.registry.persistence.accessModes | nindent 10 }}
         resources:
           requests:
             storage: {{ .Values.registry.persistence.size }}
         {{- $storageClass := .Values.registry.persistence.storageClass | default .Values.global.storageClass }}
         {{- if $storageClass }}
         storageClassName: {{ $storageClass | quote }}
+        {{- end }}
+        {{- with .Values.registry.persistence.selector }}
+        selector:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with .Values.registry.persistence.dataSource }}
+        dataSource:
+          {{- toYaml . | nindent 10 }}
         {{- end }}
   {{- end }}
 ---
