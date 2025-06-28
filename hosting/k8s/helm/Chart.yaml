@@ -2,7 +2,7 @@ apiVersion: v2
 name: trigger
 description: The official Trigger.dev Helm chart
 type: application
-version: 4.0.0-beta.8
+version: 4.0.0-beta.9
 appVersion: trigger-helm-rc.1
 home: https://trigger.dev
 sources:
