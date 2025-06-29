@@ -476,6 +476,9 @@ s3:
     rootUser: "admin"
     rootPassword: "very-safe-password"
 
+  # The required "packets" bucket is created by default.
+  defaultBuckets: "packets"
+
   persistence:
     enabled: true
     size: 10Gi

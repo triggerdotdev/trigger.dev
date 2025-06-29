@@ -1,3 +1,39 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "trigger-v4.fullname" . }}-webapp
+  labels:
+    {{- $component := "webapp" }}
+    {{- include "trigger-v4.componentLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "trigger-v4.fullname" . }}-webapp-token-syncer
+  labels:
+    {{- $component := "webapp" }}
+    {{- include "trigger-v4.componentLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create", "get", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "trigger-v4.fullname" . }}-webapp-token-syncer
+  labels:
+    {{- $component := "webapp" }}
+    {{- include "trigger-v4.componentLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "trigger-v4.fullname" . }}-webapp
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  kind: Role
+  name: {{ include "trigger-v4.fullname" . }}-webapp-token-syncer
+  apiGroup: rbac.authorization.k8s.io
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -19,6 +55,7 @@ spec:
       labels:
         {{- include "trigger-v4.componentSelectorLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 8 }}
     spec:
+      serviceAccountName: {{ include "trigger-v4.fullname" . }}-webapp
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -38,6 +75,55 @@ spec:
             - name: shared
               mountPath: /home/node/shared
       containers:
+        - name: token-syncer
+          image: bitnami/kubectl:1.28
+          securityContext:
+            runAsUser: 1000
+            runAsNonRoot: true
+          command:
+            - /bin/bash
+            - -c
+            - |
+              TOKEN_FILE="/home/node/shared/worker_token"
+              SECRET_NAME="{{ include "trigger-v4.fullname" . }}-worker-token"
+              NAMESPACE="{{ .Release.Namespace }}"
+              
+              echo "Token syncer starting..."
+              echo "Monitoring: $TOKEN_FILE"
+              echo "Target secret: $SECRET_NAME"
+              
+              while true; do
+                if [ -f "$TOKEN_FILE" ]; then
+                  TOKEN=$(cat "$TOKEN_FILE")
+                  if [ ! -z "$TOKEN" ]; then
+                    echo "Token file found, creating/updating secret..."
+                    
+                    # Create or update the secret
+                    kubectl create secret generic "$SECRET_NAME" \
+                      --from-literal=token="$TOKEN" \
+                      --namespace="$NAMESPACE" \
+                      --dry-run=client -o yaml | kubectl apply -f -
+                    
+                    if [ $? -eq 0 ]; then
+                      echo "Secret successfully created/updated"
+                      # Continue monitoring for updates
+                      sleep 30
+                    else
+                      echo "Failed to create/update secret, retrying in 5s..."
+                      sleep 5
+                    fi
+                  else
+                    echo "Token file exists but is empty, waiting..."
+                    sleep 2
+                  fi
+                else
+                  echo "Waiting for token file..."
+                  sleep 2
+                fi
+              done
+          volumeMounts:
+            - name: shared
+              mountPath: /home/node/shared
         - name: webapp
           securityContext:
             {{- toYaml .Values.webapp.securityContext | nindent 12 }}
