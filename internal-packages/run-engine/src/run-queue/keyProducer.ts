@@ -219,9 +219,16 @@ export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
     }
   }
   deadLetterQueueKeyFromQueue(queue: string): string {
-    const descriptor = this.descriptorFromQueue(queue);
+    const { orgId, projectId, envId } = this.descriptorFromQueue(queue);
+    return this.deadLetterQueueKey({ orgId, projectId, envId });
+  }
 
-    return this.deadLetterQueueKey(descriptor);
+  markedForAckKey(): string {
+    return "markedForAck";
+  }
+
+  currentConcurrencySetKeyScanPattern(): string {
+    return `*:${constants.ENV_PART}:*:queue:*:${constants.CURRENT_CONCURRENCY_PART}`;
   }
 
   descriptorFromQueue(queue: string): QueueDescriptor {
