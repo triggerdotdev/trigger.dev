@@ -1,11 +1,11 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { BeakerIcon } from "@heroicons/react/20/solid";
-import { Form, useActionData, useSubmit } from "@remix-run/react";
-import { type ActionFunction, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
+import { Form, useSubmit } from "@remix-run/react";
+import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { type TaskRunStatus } from "@trigger.dev/database";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { typedjson, useTypedActionData, useTypedLoaderData } from "remix-typedjson";
 import { JSONEditor } from "~/components/code/JSONEditor";
 import { EnvironmentCombo, EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { Button } from "~/components/primitives/Buttons";
@@ -53,6 +53,7 @@ import { docsPath, v3RunSpanPath, v3TaskParamsSchema, v3TestPath } from "~/utils
 import { TestTaskService } from "~/v3/services/testTask.server";
 import { OutOfEntitlementError } from "~/v3/services/triggerTask.server";
 import { TestTaskData } from "~/v3/testTask";
+import { isSubmissionResult } from "~/utils/conformTo";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -93,7 +94,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 };
 
-export const action: ActionFunction = async ({ request, params }) => {
+export const action = async ({ request, params }: ActionFunctionArgs) => {
   const userId = await requireUserId(request);
   const { organizationSlug, projectParam, envParam, taskParam } = v3TaskParamsSchema.parse(params);
 
@@ -101,7 +102,7 @@ export const action: ActionFunction = async ({ request, params }) => {
   const submission = parse(formData, { schema: TestTaskData });
 
   if (!submission.value) {
-    return json(submission);
+    return typedjson(submission);
   }
 
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
@@ -190,7 +191,8 @@ function StandardTaskForm({ task, runs }: { task: TestTask["task"]; runs: Standa
 
   //form submission
   const submit = useSubmit();
-  const lastSubmission = useActionData();
+  const _lastSubmission = useTypedActionData<typeof action>();
+  const lastSubmission = isSubmissionResult(_lastSubmission) ? _lastSubmission : undefined;
 
   //recent runs
   const [selectedCodeSampleId, setSelectedCodeSampleId] = useState(runs.at(0)?.id);
@@ -238,8 +240,7 @@ function StandardTaskForm({ task, runs }: { task: TestTask["task"]; runs: Standa
 
   const [form, { environmentId, payload }] = useForm({
     id: "test-task",
-    // TODO: type this
-    lastSubmission: lastSubmission as any,
+    lastSubmission,
     onValidate({ formData }) {
       return parse(formData, { schema: TestTaskData });
     },
@@ -365,7 +366,8 @@ function ScheduledTaskForm({
   possibleTimezones: string[];
 }) {
   const environment = useEnvironment();
-  const lastSubmission = useActionData();
+  const _lastSubmission = useTypedActionData<typeof action>();
+  const lastSubmission = isSubmissionResult(_lastSubmission) ? _lastSubmission : undefined;
   const [selectedCodeSampleId, setSelectedCodeSampleId] = useState(runs.at(0)?.id);
   const [timestampValue, setTimestampValue] = useState<Date | undefined>();
   const [lastTimestampValue, setLastTimestampValue] = useState<Date | undefined>();
@@ -399,8 +401,7 @@ function ScheduledTaskForm({
     },
   ] = useForm({
     id: "test-task-scheduled",
-    // TODO: type this
-    lastSubmission: lastSubmission as any,
+    lastSubmission,
     onValidate({ formData }) {
       return parse(formData, { schema: TestTaskData });
     },

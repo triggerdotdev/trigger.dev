@@ -1,10 +1,9 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { FolderIcon } from "@heroicons/react/20/solid";
-import type { ActionFunction, LoaderFunctionArgs } from "@remix-run/node";
-import { json } from "@remix-run/node";
-import { Form, useActionData, useNavigation } from "@remix-run/react";
-import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
+import { Form, useNavigation } from "@remix-run/react";
+import { redirect, typedjson, useTypedActionData, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { z } from "zod";
 import { MainCenteredContainer } from "~/components/layout/AppLayout";
@@ -30,6 +29,7 @@ import {
   v3ProjectPath,
   selectPlanPath,
 } from "~/utils/pathBuilder";
+import { isSubmissionResult } from "~/utils/conformTo";
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   const userId = await requireUserId(request);
@@ -89,7 +89,7 @@ const schema = z.object({
   projectVersion: z.enum(["v2", "v3"]),
 });
 
-export const action: ActionFunction = async ({ request, params }) => {
+export const action = async ({ request, params }: ActionFunctionArgs) => {
   const userId = await requireUserId(request);
   const { organizationSlug } = params;
   invariant(organizationSlug, "organizationSlug is required");
@@ -98,7 +98,7 @@ export const action: ActionFunction = async ({ request, params }) => {
   const submission = parse(formData, { schema });
 
   if (!submission.value || submission.intent !== "submit") {
-    return json(submission);
+    return typedjson(submission);
   }
 
   try {
@@ -115,20 +115,21 @@ export const action: ActionFunction = async ({ request, params }) => {
       `${submission.value.projectName} created`
     );
   } catch (error: any) {
-    return json({ errors: { body: error.message } }, { status: 400 });
+    return typedjson({ errors: { body: error.message } }, { status: 400 });
   }
 };
 
 export default function Page() {
   const { organization, message } = useTypedLoaderData<typeof loader>();
-  const lastSubmission = useActionData();
+
+  const _lastSubmission = useTypedActionData<typeof action>();
+  const lastSubmission = isSubmissionResult(_lastSubmission) ? _lastSubmission : undefined;
 
   const canCreateV3Projects = organization.v3Enabled;
 
   const [form, { projectName, projectVersion }] = useForm({
     id: "create-project",
-    // TODO: type this
-    lastSubmission: lastSubmission as any,
+    lastSubmission,
     onValidate({ formData }) {
       return parse(formData, { schema });
     },

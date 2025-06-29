@@ -2,10 +2,10 @@ import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { BuildingOffice2Icon } from "@heroicons/react/20/solid";
 import { RadioGroup } from "@radix-ui/react-radio-group";
-import type { ActionFunction, LoaderFunctionArgs } from "@remix-run/node";
-import { json, redirect } from "@remix-run/node";
-import { Form, useActionData, useNavigation } from "@remix-run/react";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
+import { redirect } from "@remix-run/node";
+import { Form, useNavigation } from "@remix-run/react";
+import { typedjson, useTypedActionData, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { MainCenteredContainer } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
@@ -25,6 +25,7 @@ import { NewOrganizationPresenter } from "~/presenters/NewOrganizationPresenter.
 import { requireUser, requireUserId } from "~/services/session.server";
 import { sendNewOrgMessage } from "~/services/slack.server";
 import { organizationPath, rootPath } from "~/utils/pathBuilder";
+import { isSubmissionResult } from "~/utils/conformTo";
 
 const schema = z.object({
   orgName: z.string().min(3).max(50),
@@ -42,13 +43,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   });
 };
 
-export const action: ActionFunction = async ({ request }) => {
+export const action = async ({ request }: ActionFunctionArgs) => {
   const user = await requireUser(request);
   const formData = await request.formData();
   const submission = parse(formData, { schema });
 
   if (!submission.value || submission.intent !== "submit") {
-    return json(submission);
+    return typedjson(submission);
   }
 
   try {
@@ -70,20 +71,20 @@ export const action: ActionFunction = async ({ request }) => {
 
     return redirect(organizationPath(organization));
   } catch (error: any) {
-    return json({ errors: { body: error.message } }, { status: 400 });
+    return typedjson({ errors: { body: error.message } }, { status: 400 });
   }
 };
 
 export default function NewOrganizationPage() {
   const { hasOrganizations } = useTypedLoaderData<typeof loader>();
-  const lastSubmission = useActionData();
+  const _lastSubmission = useTypedActionData<typeof action>();
+  const lastSubmission = isSubmissionResult(_lastSubmission) ? _lastSubmission : undefined;
   const { isManagedCloud } = useFeatures();
   const navigation = useNavigation();
 
   const [form, { orgName }] = useForm({
     id: "create-organization",
-    // TODO: type this
-    lastSubmission: lastSubmission as any,
+    lastSubmission,
     onValidate({ formData }) {
       return parse(formData, { schema });
     },

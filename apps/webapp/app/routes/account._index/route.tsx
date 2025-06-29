@@ -1,8 +1,9 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { EnvelopeIcon, UserCircleIcon } from "@heroicons/react/20/solid";
-import { Form, type MetaFunction, useActionData } from "@remix-run/react";
-import { type ActionFunction, json } from "@remix-run/server-runtime";
+import { Form, type MetaFunction } from "@remix-run/react";
+import { type ActionFunctionArgs } from "@remix-run/server-runtime";
+import { typedjson, useTypedActionData } from "remix-typedjson";
 import { z } from "zod";
 import { UserProfilePhoto } from "~/components/UserProfilePhoto";
 import {
@@ -28,6 +29,7 @@ import { redirectWithSuccessMessage } from "~/models/message.server";
 import { updateUser } from "~/models/user.server";
 import { requireUserId } from "~/services/session.server";
 import { accountPath } from "~/utils/pathBuilder";
+import { isSubmissionResult } from "~/utils/conformTo";
 
 export const meta: MetaFunction = () => {
   return [
@@ -75,7 +77,7 @@ function createSchema(
   });
 }
 
-export const action: ActionFunction = async ({ request }) => {
+export const action = async ({ request }: ActionFunctionArgs) => {
   const userId = await requireUserId(request);
 
   const formData = await request.formData();
@@ -103,7 +105,7 @@ export const action: ActionFunction = async ({ request }) => {
   const submission = await parse(formData, { schema: formSchema, async: true });
 
   if (!submission.value || submission.intent !== "submit") {
-    return json(submission);
+    return typedjson(submission);
   }
 
   try {
@@ -120,18 +122,18 @@ export const action: ActionFunction = async ({ request }) => {
       "Your account profile has been updated."
     );
   } catch (error: any) {
-    return json({ errors: { body: error.message } }, { status: 400 });
+    return typedjson({ errors: { body: error.message } }, { status: 400 });
   }
 };
 
 export default function Page() {
   const user = useUser();
-  const lastSubmission = useActionData();
+  const _lastSubmission = useTypedActionData<typeof action>();
+  const lastSubmission = isSubmissionResult(_lastSubmission) ? _lastSubmission : undefined;
 
   const [form, { name, email, marketingEmails }] = useForm({
     id: "account",
-    // TODO: type this
-    lastSubmission: lastSubmission as any,
+    lastSubmission,
     onValidate({ formData }) {
       return parse(formData, { schema: createSchema() });
     },

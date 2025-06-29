@@ -1,10 +1,15 @@
 import { useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { EnvelopeIcon, LockOpenIcon, TrashIcon, UserPlusIcon } from "@heroicons/react/20/solid";
-import { Form, type MetaFunction, useActionData } from "@remix-run/react";
-import { type ActionFunction, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
+import { Form, type MetaFunction } from "@remix-run/react";
+import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { useState } from "react";
-import { type UseDataFunctionReturn, typedjson, useTypedLoaderData } from "remix-typedjson";
+import {
+  type UseDataFunctionReturn,
+  typedjson,
+  useTypedActionData,
+  useTypedLoaderData,
+} from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { z } from "zod";
 import { UserAvatar } from "~/components/UserProfilePhoto";
@@ -46,6 +51,7 @@ import {
   revokeInvitePath,
   v3BillingPath,
 } from "~/utils/pathBuilder";
+import { isSubmissionResult } from "~/utils/conformTo";
 
 export const meta: MetaFunction = () => {
   return [
@@ -89,7 +95,7 @@ const schema = z.object({
   memberId: z.string(),
 });
 
-export const action: ActionFunction = async ({ request, params }) => {
+export const action = async ({ request, params }: ActionFunctionArgs) => {
   const userId = await requireUserId(request);
   const { organizationSlug } = params;
   invariant(organizationSlug, "organizationSlug not found");
@@ -98,7 +104,7 @@ export const action: ActionFunction = async ({ request, params }) => {
   const submission = parse(formData, { schema });
 
   if (!submission.value || submission.intent !== "submit") {
-    return json(submission);
+    return typedjson(submission);
   }
 
   try {
@@ -118,7 +124,7 @@ export const action: ActionFunction = async ({ request, params }) => {
       `Removed ${deletedMember.user.name ?? "member"} from team`
     );
   } catch (error: any) {
-    return json({ errors: { body: error.message } }, { status: 400 });
+    return typedjson({ errors: { body: error.message } }, { status: 400 });
   }
 };
 
@@ -318,12 +324,12 @@ function LeaveTeamModal({
   actionText: string;
 }) {
   const [open, setOpen] = useState(false);
-  const lastSubmission = useActionData();
+  const _lastSubmission = useTypedActionData<typeof action>();
+  const lastSubmission = isSubmissionResult(_lastSubmission) ? _lastSubmission : undefined;
 
   const [form, { memberId }] = useForm({
     id: "remove-member",
-    // TODO: type this
-    lastSubmission: lastSubmission as any,
+    lastSubmission,
     onValidate({ formData }) {
       return parse(formData, { schema });
     },

@@ -10,12 +10,12 @@ import {
   PlusIcon,
   TrashIcon,
 } from "@heroicons/react/20/solid";
-import { Form, type MetaFunction, Outlet, useActionData, useNavigation } from "@remix-run/react";
-import { type ActionFunctionArgs, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
+import { Form, type MetaFunction, Outlet, useNavigation } from "@remix-run/react";
+import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { SlackIcon } from "@trigger.dev/companyicons";
 import { type ProjectAlertChannelType, type ProjectAlertType } from "@trigger.dev/database";
 import assertNever from "assert-never";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { typedjson, useTypedActionData, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { AlertsNoneDev, AlertsNoneDeployed } from "~/components/BlankStatePanels";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
@@ -63,6 +63,7 @@ import {
   v3NewProjectAlertPath,
   v3ProjectAlertsPath,
 } from "~/utils/pathBuilder";
+import { isSubmissionResult } from "~/utils/conformTo";
 
 export const meta: MetaFunction = () => {
   return [
@@ -116,14 +117,14 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const submission = parse(formData, { schema });
 
   if (!submission.value) {
-    return json(submission);
+    return typedjson(submission);
   }
 
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
 
   if (!project) {
     submission.error.key = ["Project not found"];
-    return json(submission);
+    return typedjson(submission);
   }
 
   switch (submission.value.action) {
@@ -355,7 +356,9 @@ export default function Page() {
 }
 
 function DeleteAlertChannelButton(props: { id: string }) {
-  const lastSubmission = useActionData();
+  const _lastSubmission = useTypedActionData<typeof action>();
+  const lastSubmission = isSubmissionResult(_lastSubmission) ? _lastSubmission : undefined;
+
   const navigation = useNavigation();
 
   const isLoading =
@@ -365,8 +368,7 @@ function DeleteAlertChannelButton(props: { id: string }) {
 
   const [form, { id }] = useForm({
     id: "delete-alert-channel",
-    // TODO: type this
-    lastSubmission: lastSubmission as any,
+    lastSubmission,
     onValidate({ formData }) {
       return parse(formData, { schema });
     },
@@ -394,7 +396,9 @@ function DeleteAlertChannelButton(props: { id: string }) {
 }
 
 function DisableAlertChannelButton(props: { id: string }) {
-  const lastSubmission = useActionData();
+  const _lastSubmission = useTypedActionData<typeof action>();
+  const lastSubmission = isSubmissionResult(_lastSubmission) ? _lastSubmission : undefined;
+
   const navigation = useNavigation();
 
   const isLoading =
@@ -404,8 +408,7 @@ function DisableAlertChannelButton(props: { id: string }) {
 
   const [form, { id }] = useForm({
     id: "disable-alert-channel",
-    // TODO: type this
-    lastSubmission: lastSubmission as any,
+    lastSubmission: lastSubmission,
     onValidate({ formData }) {
       return parse(formData, { schema });
     },
@@ -434,7 +437,9 @@ function DisableAlertChannelButton(props: { id: string }) {
 }
 
 function EnableAlertChannelButton(props: { id: string }) {
-  const lastSubmission = useActionData();
+  const _lastSubmission = useTypedActionData<typeof action>();
+  const lastSubmission = isSubmissionResult(_lastSubmission) ? _lastSubmission : undefined;
+
   const navigation = useNavigation();
 
   const isLoading =
@@ -444,8 +449,7 @@ function EnableAlertChannelButton(props: { id: string }) {
 
   const [form, { id }] = useForm({
     id: "enable-alert-channel",
-    // TODO: type this
-    lastSubmission: lastSubmission as any,
+    lastSubmission,
     onValidate({ formData }) {
       return parse(formData, { schema });
     },
