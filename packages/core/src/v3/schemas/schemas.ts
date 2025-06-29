@@ -163,7 +163,7 @@ export const QueueManifest = z.object({
   /** An optional property that specifies the maximum number of concurrent run executions.
    *
    * If this property is omitted, the task can potentially use up the full concurrency of an environment */
-  concurrencyLimit: z.number().int().min(0).max(1000).optional().nullable(),
+  concurrencyLimit: z.number().int().min(0).max(100000).optional().nullable(),
   /** An optional property that specifies whether to release concurrency on waitpoint.
    *
    * If this property is omitted, the task will not release concurrency on waitpoint.

@@ -159,6 +159,12 @@ await sendMessageInCatalog(
       loaderEntryPoint: buildManifest.loaderEntryPoint,
       customConditions: buildManifest.customConditions,
       initEntryPoint: buildManifest.initEntryPoint,
+      processKeepAlive:
+        typeof config.experimental_processKeepAlive === "object"
+          ? config.experimental_processKeepAlive
+          : typeof config.experimental_processKeepAlive === "boolean"
+          ? { enabled: config.experimental_processKeepAlive }
+          : undefined,
       timings,
     },
     importErrors,

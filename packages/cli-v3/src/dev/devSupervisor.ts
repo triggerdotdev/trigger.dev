@@ -25,6 +25,8 @@ import {
 import pLimit from "p-limit";
 import { resolveLocalEnvVars } from "../utilities/localEnvVars.js";
 import type { Metafile } from "esbuild";
+import { TaskRunProcessPool } from "./taskRunProcessPool.js";
+import { tryCatch } from "@trigger.dev/core/utils";
 
 export type WorkerRuntimeOptions = {
   name: string | undefined;
@@ -67,6 +69,7 @@ class DevSupervisor implements WorkerRuntime {
   private socketConnections = new Set<string>();
 
   private runLimiter?: ReturnType<typeof pLimit>;
+  private taskRunProcessPool?: TaskRunProcessPool;
 
   constructor(public readonly options: WorkerRuntimeOptions) {}
 
@@ -95,6 +98,42 @@ class DevSupervisor implements WorkerRuntime {
 
     this.runLimiter = pLimit(maxConcurrentRuns);
 
+    // Initialize the task run process pool
+    const env = await this.#getEnvVars();
+
+    const enableProcessReuse =
+      typeof this.options.config.experimental_processKeepAlive === "boolean"
+        ? this.options.config.experimental_processKeepAlive
+        : typeof this.options.config.experimental_processKeepAlive === "object"
+        ? this.options.config.experimental_processKeepAlive.enabled
+        : false;
+
+    const maxPoolSize =
+      typeof this.options.config.experimental_processKeepAlive === "object"
+        ? this.options.config.experimental_processKeepAlive.devMaxPoolSize ?? 25
+        : 25;
+
+    const maxExecutionsPerProcess =
+      typeof this.options.config.experimental_processKeepAlive === "object"
+        ? this.options.config.experimental_processKeepAlive.maxExecutionsPerProcess ?? 50
+        : 50;
+
+    if (enableProcessReuse) {
+      logger.debug("[DevSupervisor] Enabling process reuse", {
+        enableProcessReuse,
+        maxPoolSize,
+        maxExecutionsPerProcess,
+      });
+    }
+
+    this.taskRunProcessPool = new TaskRunProcessPool({
+      env,
+      cwd: this.options.config.workingDir,
+      enableProcessReuse,
+      maxPoolSize,
+      maxExecutionsPerProcess,
+    });
+
     this.socket = this.#createSocket();
 
     //start an SSE connection for presence
@@ -110,6 +149,17 @@ class DevSupervisor implements WorkerRuntime {
       this.socket?.close();
     } catch (error) {
       logger.debug("[DevSupervisor] shutdown, socket failed to close", { error });
+    }
+
+    // Shutdown the task run process pool
+    if (this.taskRunProcessPool) {
+      const [shutdownError] = await tryCatch(this.taskRunProcessPool.shutdown());
+
+      if (shutdownError) {
+        logger.debug("[DevSupervisor] shutdown, task run process pool failed to shutdown", {
+          error: shutdownError,
+        });
+      }
     }
   }
 
@@ -293,12 +343,21 @@ class DevSupervisor implements WorkerRuntime {
           continue;
         }
 
+        if (!this.taskRunProcessPool) {
+          logger.debug(`[DevSupervisor] dequeueRuns. No task run process pool`, {
+            run: message.run.friendlyId,
+            worker,
+          });
+          continue;
+        }
+
         //new run
         runController = new DevRunController({
           runFriendlyId: message.run.friendlyId,
           worker: worker,
           httpClient: this.options.client,
           logLevel: this.options.args.logLevel,
+          taskRunProcessPool: this.taskRunProcessPool,
           onFinished: () => {
             logger.debug("[DevSupervisor] Run finished", { runId: message.run.friendlyId });
 
@@ -572,6 +631,10 @@ class DevSupervisor implements WorkerRuntime {
     const worker = this.workers.get(friendlyId);
     if (!worker) {
       return;
+    }
+
+    if (worker.serverWorker?.version) {
+      this.taskRunProcessPool?.deprecateVersion(worker.serverWorker?.version);
     }
 
     if (this.#workerHasInProgressRuns(friendlyId)) {

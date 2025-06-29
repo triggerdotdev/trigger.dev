@@ -19,13 +19,7 @@ export class TaskContextSpanProcessor implements SpanProcessor {
   onStart(span: Span, parentContext: Context): void {
     if (taskContext.ctx) {
       span.setAttributes(
-        flattenAttributes(
-          {
-            [SemanticInternalAttributes.ATTEMPT_ID]: taskContext.ctx.attempt.id,
-            [SemanticInternalAttributes.ATTEMPT_NUMBER]: taskContext.ctx.attempt.number,
-          },
-          SemanticInternalAttributes.METADATA
-        )
+        flattenAttributes(taskContext.attributes, SemanticInternalAttributes.METADATA)
       );
     }
 
@@ -75,13 +69,7 @@ function createPartialSpan(tracer: Tracer, span: Span, parentContext: Context) {
 
   if (taskContext.ctx) {
     partialSpan.setAttributes(
-      flattenAttributes(
-        {
-          [SemanticInternalAttributes.ATTEMPT_ID]: taskContext.ctx.attempt.id,
-          [SemanticInternalAttributes.ATTEMPT_NUMBER]: taskContext.ctx.attempt.number,
-        },
-        SemanticInternalAttributes.METADATA
-      )
+      flattenAttributes(taskContext.attributes, SemanticInternalAttributes.METADATA)
     );
   }
 
@@ -107,13 +95,7 @@ export class TaskContextLogProcessor implements LogRecordProcessor {
     // Adds in the context attributes to the log record
     if (taskContext.ctx) {
       logRecord.setAttributes(
-        flattenAttributes(
-          {
-            [SemanticInternalAttributes.ATTEMPT_ID]: taskContext.ctx.attempt.id,
-            [SemanticInternalAttributes.ATTEMPT_NUMBER]: taskContext.ctx.attempt.number,
-          },
-          SemanticInternalAttributes.METADATA
-        )
+        flattenAttributes(taskContext.attributes, SemanticInternalAttributes.METADATA)
       );
     }
 

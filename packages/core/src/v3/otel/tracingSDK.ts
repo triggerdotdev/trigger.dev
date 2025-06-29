@@ -57,6 +57,10 @@ class AsyncResourceDetector implements DetectorSync {
     });
   }
 
+  get isResolved() {
+    return this._resolved;
+  }
+
   detect(_config?: ResourceDetectionConfig): Resource {
     return new Resource({}, this._promise);
   }
@@ -123,6 +127,8 @@ export class TracingSDK {
             getEnvVar("OTEL_SERVICE_NAME") ?? "trigger.dev",
           [SemanticInternalAttributes.TRIGGER]: true,
           [SemanticInternalAttributes.CLI_VERSION]: VERSION,
+          [SemanticInternalAttributes.SDK_VERSION]: VERSION,
+          [SemanticInternalAttributes.SDK_LANGUAGE]: "typescript",
         })
       )
       .merge(config.resource ?? new Resource({}))

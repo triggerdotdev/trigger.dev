@@ -5,7 +5,7 @@ import {
   type WorkloadManagerOptions,
 } from "./types.js";
 import { env } from "../env.js";
-import { getDockerHostDomain, getRunnerId } from "../util.js";
+import { getDockerHostDomain, getRunnerId, normalizeDockerHostUrl } from "../util.js";
 import Docker from "dockerode";
 import { tryCatch } from "@trigger.dev/core";
 
@@ -78,7 +78,7 @@ export class DockerWorkloadManager implements WorkloadManager {
     ];
 
     if (this.opts.warmStartUrl) {
-      envVars.push(`TRIGGER_WARM_START_URL=${this.opts.warmStartUrl}`);
+      envVars.push(`TRIGGER_WARM_START_URL=${normalizeDockerHostUrl(this.opts.warmStartUrl)}`);
     }
 
     if (this.opts.metadataUrl) {
