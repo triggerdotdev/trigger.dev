@@ -1,5 +1,13 @@
 # @trigger.dev/sdk
 
+## 4.0.0-v4-beta.22
+
+### Patch Changes
+
+- Provide realtime skipColumns option via untamperable public access tokens ([#2201](https://github.com/triggerdotdev/trigger.dev/pull/2201))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.22`
+
 ## 4.0.0-v4-beta.21
 
 ### Patch Changes
