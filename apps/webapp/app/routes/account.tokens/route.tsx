@@ -3,9 +3,14 @@ import { parse } from "@conform-to/zod";
 import { BookOpenIcon, ShieldCheckIcon, TrashIcon } from "@heroicons/react/20/solid";
 import { ShieldExclamationIcon } from "@heroicons/react/24/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
-import { Form, MetaFunction, useActionData, useFetcher } from "@remix-run/react";
-import { ActionFunction, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { Form, MetaFunction } from "@remix-run/react";
+import { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
+import {
+  typedjson,
+  useTypedActionData,
+  useTypedFetcher,
+  useTypedLoaderData,
+} from "remix-typedjson";
 import { z } from "zod";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
@@ -44,6 +49,7 @@ import {
 } from "~/services/personalAccessToken.server";
 import { requireUserId } from "~/services/session.server";
 import { docsPath, personalAccessTokensPath } from "~/utils/pathBuilder";
+import { isSubmissionResult } from "~/utils/conformTo";
 
 export const meta: MetaFunction = () => {
   return [
@@ -89,13 +95,13 @@ const CreateTokenSchema = z.discriminatedUnion("action", [
   }),
 ]);
 
-export const action: ActionFunction = async ({ request }) => {
+export const action = async ({ request }: ActionFunctionArgs) => {
   const userId = await requireUserId(request);
   const formData = await request.formData();
   const submission = parse(formData, { schema: CreateTokenSchema });
 
   if (!submission.value) {
-    return json(submission);
+    return typedjson(submission);
   }
 
   switch (submission.value.action) {
@@ -106,9 +112,9 @@ export const action: ActionFunction = async ({ request }) => {
           userId,
         });
 
-        return json({ ...submission, payload: { token: tokenResult } });
+        return typedjson({ ...submission, payload: { token: tokenResult } });
       } catch (error: any) {
-        return json({ errors: { body: error.message } }, { status: 400 });
+        return typedjson({ errors: { body: error.message } }, { status: 400 });
       }
     }
     case "revoke": {
@@ -121,11 +127,11 @@ export const action: ActionFunction = async ({ request }) => {
           "Personal Access Token revoked"
         );
       } catch (error: any) {
-        return json({ errors: { body: error.message } }, { status: 400 });
+        return typedjson({ errors: { body: error.message } }, { status: 400 });
       }
     }
     default: {
-      return json({ errors: { body: "Invalid action" } }, { status: 400 });
+      return typedjson({ errors: { body: "Invalid action" } }, { status: 400 });
     }
   }
 };
@@ -212,13 +218,12 @@ export default function Page() {
 }
 
 function CreatePersonalAccessToken() {
-  const fetcher = useFetcher<typeof action>();
-  const lastSubmission = fetcher.data as any;
+  const fetcher = useTypedFetcher<typeof action>();
+  const lastSubmission = isSubmissionResult(fetcher.data) ? fetcher.data : undefined;
 
   const [form, { tokenName }] = useForm({
     id: "create-personal-access-token",
-    // TODO: type this
-    lastSubmission: lastSubmission as any,
+    lastSubmission,
     onValidate({ formData }) {
       return parse(formData, { schema: CreateTokenSchema });
     },
@@ -286,12 +291,12 @@ function CreatePersonalAccessToken() {
 }
 
 function RevokePersonalAccessToken({ token }: { token: ObfuscatedPersonalAccessToken }) {
-  const lastSubmission = useActionData();
+  const _lastSubmission = useTypedActionData<typeof action>();
+  const lastSubmission = isSubmissionResult(_lastSubmission) ? _lastSubmission : undefined;
 
   const [form, { tokenId }] = useForm({
     id: "revoke-personal-access-token",
-    // TODO: type this
-    lastSubmission: lastSubmission as any,
+    lastSubmission,
     onValidate({ formData }) {
       return parse(formData, { schema: CreateTokenSchema });
     },

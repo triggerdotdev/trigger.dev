@@ -1,8 +1,8 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { CheckIcon, XMarkIcon } from "@heroicons/react/20/solid";
-import { Form, useActionData, useLocation, useNavigation } from "@remix-run/react";
-import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
+import { Form, useLocation, useNavigation } from "@remix-run/react";
+import { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { parseExpression } from "cron-parser";
 import cronstrue from "cronstrue";
@@ -54,6 +54,8 @@ import { logger } from "~/services/logger.server";
 import { Spinner } from "~/components/primitives/Spinner";
 import { cond } from "effect/STM";
 import { useEnvironment } from "~/hooks/useEnvironment";
+import { typedjson, useTypedActionData } from "remix-typedjson";
+import { isSubmissionResult } from "~/utils/conformTo";
 
 const cronFormat = `*    *    *    *    *
 ┬    ┬    ┬    ┬    ┬
@@ -72,7 +74,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const submission = parse(formData, { schema: UpsertSchedule });
 
   if (!submission.value) {
-    return json(submission);
+    return typedjson(submission);
   }
 
   try {
@@ -132,7 +134,8 @@ export function UpsertScheduleForm({
   possibleTimezones,
   showGenerateField,
 }: EditableScheduleElements & { showGenerateField: boolean }) {
-  const lastSubmission = useActionData();
+  const _lastSubmission = useTypedActionData<typeof action>();
+  const lastSubmission = isSubmissionResult(_lastSubmission) ? _lastSubmission : undefined;
   const [selectedTimezone, setSelectedTimezone] = useState<string>(schedule?.timezone ?? "UTC");
   const isUtc = selectedTimezone === "UTC";
   const [cronPattern, setCronPattern] = useState<string>(schedule?.cron ?? "");
@@ -146,8 +149,7 @@ export function UpsertScheduleForm({
   const [form, { taskIdentifier, cron, timezone, externalId, environments, deduplicationKey }] =
     useForm({
       id: "create-schedule",
-      // TODO: type this
-      lastSubmission: lastSubmission as any,
+      lastSubmission,
       shouldRevalidate: "onSubmit",
       onValidate({ formData }) {
         return parse(formData, { schema: UpsertSchedule });

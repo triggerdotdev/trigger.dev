@@ -1,8 +1,8 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { ActionFunction, LoaderFunctionArgs, json, redirect } from "@remix-run/node";
-import { Form, useActionData } from "@remix-run/react";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { ActionFunctionArgs, LoaderFunctionArgs, redirect } from "@remix-run/node";
+import { Form } from "@remix-run/react";
+import { typedjson, useTypedActionData, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import simplur from "simplur";
 import { AppContainer, MainCenteredContainer } from "~/components/layout/AppLayout";
@@ -17,6 +17,7 @@ import { redirectWithSuccessMessage } from "~/models/message.server";
 import { requireUser, requireUserId } from "~/services/session.server";
 import { invitesPath, rootPath } from "~/utils/pathBuilder";
 import { EnvelopeIcon } from "@heroicons/react/20/solid";
+import { isSubmissionResult } from "../utils/conformTo";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
@@ -34,14 +35,14 @@ const schema = z.object({
   inviteId: z.string(),
 });
 
-export const action: ActionFunction = async ({ request }) => {
+export const action = async ({ request }: ActionFunctionArgs) => {
   const userId = await requireUserId(request);
 
   const formData = await request.formData();
   const submission = parse(formData, { schema });
 
   if (!submission.value) {
-    return json(submission);
+    return typedjson(submission);
   }
 
   try {
@@ -80,18 +81,19 @@ export const action: ActionFunction = async ({ request }) => {
       }
     }
   } catch (error: any) {
-    return json({ errors: { body: error.message } }, { status: 400 });
+    return typedjson({ errors: { body: error.message } }, { status: 400 });
   }
 };
 
 export default function Page() {
   const { invites } = useTypedLoaderData<typeof loader>();
-  const lastSubmission = useActionData();
+
+  const _lastSubmission = useTypedActionData<typeof action>();
+  const lastSubmission = isSubmissionResult(_lastSubmission) ? _lastSubmission : undefined;
 
   const [form, { inviteId }] = useForm({
     id: "accept-invite",
-    // TODO: type this
-    lastSubmission: lastSubmission as any,
+    lastSubmission,
     onValidate({ formData }) {
       return parse(formData, { schema });
     },

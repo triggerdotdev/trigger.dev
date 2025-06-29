@@ -2,10 +2,11 @@ import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { ArrowRightIcon, EnvelopeIcon, HeartIcon, UserIcon } from "@heroicons/react/20/solid";
 import { HandRaisedIcon } from "@heroicons/react/24/solid";
-import { ActionFunction, json } from "@remix-run/node";
-import { Form, useActionData } from "@remix-run/react";
+import { ActionFunctionArgs } from "@remix-run/node";
+import { Form } from "@remix-run/react";
 import { motion } from "framer-motion";
 import { forwardRef, useState } from "react";
+import { typedjson, useTypedActionData } from "remix-typedjson";
 import { z } from "zod";
 import { AppContainer, MainCenteredContainer } from "~/components/layout/AppLayout";
 import { Button } from "~/components/primitives/Buttons";
@@ -24,6 +25,7 @@ import { redirectWithSuccessMessage } from "~/models/message.server";
 import { updateUser } from "~/models/user.server";
 import { requireUserId } from "~/services/session.server";
 import { rootPath } from "~/utils/pathBuilder";
+import { isSubmissionResult } from "../utils/conformTo";
 
 function createSchema(
   constraints: {
@@ -66,7 +68,7 @@ function createSchema(
     });
 }
 
-export const action: ActionFunction = async ({ request }) => {
+export const action = async ({ request }: ActionFunctionArgs) => {
   const userId = await requireUserId(request);
   const formData = await request.formData();
 
@@ -93,7 +95,7 @@ export const action: ActionFunction = async ({ request }) => {
   const submission = await parse(formData, { schema: formSchema, async: true });
 
   if (!submission.value) {
-    return json(submission);
+    return typedjson(submission);
   }
 
   try {
@@ -106,7 +108,7 @@ export const action: ActionFunction = async ({ request }) => {
 
     return redirectWithSuccessMessage(rootPath(), request, "Your details have been updated.");
   } catch (error: any) {
-    return json({ errors: { body: error.message } }, { status: 400 });
+    return typedjson({ errors: { body: error.message } }, { status: 400 });
   }
 };
 
@@ -121,14 +123,16 @@ const MotionHand = motion(HandIcon);
 
 export default function Page() {
   const user = useUser();
-  const lastSubmission = useActionData();
+
+  const _lastSubmission = useTypedActionData<typeof action>();
+  const lastSubmission = isSubmissionResult(_lastSubmission) ? _lastSubmission : undefined;
+
   const [enteredEmail, setEnteredEmail] = useState<string>(user.email ?? "");
   const { isManagedCloud } = useFeatures();
 
   const [form, { name, email, confirmEmail, referralSource }] = useForm({
     id: "confirm-basic-details",
-    // TODO: type this
-    lastSubmission: lastSubmission as any,
+    lastSubmission,
     onValidate({ formData }) {
       return parse(formData, { schema: createSchema() });
     },

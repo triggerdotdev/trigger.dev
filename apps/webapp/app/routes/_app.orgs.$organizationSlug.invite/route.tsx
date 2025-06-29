@@ -1,11 +1,10 @@
 import { conform, list, requestIntent, useFieldList, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { EnvelopeIcon, LockOpenIcon, UserPlusIcon } from "@heroicons/react/20/solid";
-import type { ActionFunction, LoaderFunctionArgs } from "@remix-run/node";
-import { json } from "@remix-run/node";
-import { Form, useActionData } from "@remix-run/react";
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
+import { Form } from "@remix-run/react";
 import { Fragment, useRef, useState } from "react";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { typedjson, useTypedActionData, useTypedLoaderData } from "remix-typedjson";
 import simplur from "simplur";
 import invariant from "tiny-invariant";
 import { z } from "zod";
@@ -29,6 +28,7 @@ import { TeamPresenter } from "~/presenters/TeamPresenter.server";
 import { scheduleEmail } from "~/services/email.server";
 import { requireUserId } from "~/services/session.server";
 import { acceptInvitePath, organizationTeamPath, v3BillingPath } from "~/utils/pathBuilder";
+import { isSubmissionResult } from "~/utils/conformTo";
 
 const Params = z.object({
   organizationSlug: z.string(),
@@ -76,7 +76,7 @@ const schema = z.object({
   }, z.string().email().array().nonempty("At least one email is required")),
 });
 
-export const action: ActionFunction = async ({ request, params }) => {
+export const action = async ({ request, params }: ActionFunctionArgs) => {
   const userId = await requireUserId(request);
   const { organizationSlug } = params;
   invariant(organizationSlug, "organizationSlug is required");
@@ -85,7 +85,7 @@ export const action: ActionFunction = async ({ request, params }) => {
   const submission = parse(formData, { schema });
 
   if (!submission.value || submission.intent !== "submit") {
-    return json(submission);
+    return typedjson(submission);
   }
 
   try {
@@ -117,7 +117,7 @@ export const action: ActionFunction = async ({ request, params }) => {
       simplur`${submission.value.emails.length} member[|s] invited`
     );
   } catch (error: any) {
-    return json({ errors: { body: error.message } }, { status: 400 });
+    return typedjson({ errors: { body: error.message } }, { status: 400 });
   }
 };
 
@@ -125,12 +125,13 @@ export default function Page() {
   const { limits } = useTypedLoaderData<typeof loader>();
   const [total, setTotal] = useState(limits.used);
   const organization = useOrganization();
-  const lastSubmission = useActionData();
+
+  const _lastSubmission = useTypedActionData<typeof action>();
+  const lastSubmission = isSubmissionResult(_lastSubmission) ? _lastSubmission : undefined;
 
   const [form, { emails }] = useForm({
     id: "invite-members",
-    // TODO: type this
-    lastSubmission: lastSubmission as any,
+    lastSubmission,
     onValidate({ formData }) {
       return parse(formData, { schema });
     },
