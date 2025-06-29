@@ -761,7 +761,7 @@ You can also now control whether concurrency is released when performing a wait:
 
 ```ts
 // This will prevent the run from being released back into the queue when the wait starts
-await wait.for({ seconds: 10 }, { releaseConcurrency: false });
+await wait.for({ seconds: 10, releaseConcurrency: false });
 ```
 
 The new default behavior allows you to ensure that you can control the number of executing & waiting runs on a queue, and guarantee runs will resume once they are meant to be resumed.
