@@ -5,130 +5,140 @@ sidebarTitle: "Webapp"
 mode: "wide"
 ---
 
-| Name                                           | Required | Default               | Description                                                                                               |
-| :--------------------------------------------- | :------- | :-------------------- | :-------------------------------------------------------------------------------------------------------- |
-| **Secrets**                                    |          |                       |                                                                                                           |
-| `SESSION_SECRET`                               | Yes      | —                     | Session encryption secret. Run: `openssl rand -hex 16`                                                    |
-| `MAGIC_LINK_SECRET`                            | Yes      | —                     | Magic link encryption secret. Run: `openssl rand -hex 16`                                                 |
-| `ENCRYPTION_KEY`                               | Yes      | —                     | Secret store encryption key. Run: `openssl rand -hex 16`                                                  |
-| `MANAGED_WORKER_SECRET`                        | No       | managed-secret        | Managed worker secret. Should be changed and match supervisor.                                            |
-| **Domains & ports**                            |          |                       |                                                                                                           |
-| `REMIX_APP_PORT`                               | No       | 3030                  | Remix app port.                                                                                           |
-| `APP_ORIGIN`                                   | Yes      | http://localhost:3030 | App origin URL.                                                                                           |
-| `LOGIN_ORIGIN`                                 | Yes      | http://localhost:3030 | Login origin URL. Most likely the same as `APP_ORIGIN`.                                                   |
-| `API_ORIGIN`                                   | No       | `APP_ORIGIN`          | API origin URL.                                                                                           |
-| `STREAM_ORIGIN`                                | No       | `APP_ORIGIN`          | Realtime stream origin URL.                                                                               |
-| `ELECTRIC_ORIGIN`                              | No       | http://localhost:3060 | Electric origin URL.                                                                                      |
-| **Postgres**                                   |          |                       |                                                                                                           |
-| `DATABASE_URL`                                 | Yes      | —                     | PostgreSQL connection string.                                                                             |
-| `DIRECT_URL`                                   | Yes      | —                     | Direct DB connection string used for migrations etc.                                                      |
-| `DATABASE_CONNECTION_LIMIT`                    | No       | 10                    | Max DB connections.                                                                                       |
-| `DATABASE_POOL_TIMEOUT`                        | No       | 60                    | DB pool timeout (s).                                                                                      |
-| `DATABASE_CONNECTION_TIMEOUT`                  | No       | 20                    | DB connect timeout (s).                                                                                   |
-| `DATABASE_READ_REPLICA_URL`                    | No       | `DATABASE_URL`        | Read-replica DB string.                                                                                   |
-| **Redis**                                      |          |                       |                                                                                                           |
-| `REDIS_HOST`                                   | Yes      | —                     | Redis host.                                                                                               |
-| `REDIS_PORT`                                   | Yes      | —                     | Redis port.                                                                                               |
-| `REDIS_READER_HOST`                            | No       | `REDIS_HOST`          | Redis reader host.                                                                                        |
-| `REDIS_READER_PORT`                            | No       | `REDIS_PORT`          | Redis reader port.                                                                                        |
-| `REDIS_USERNAME`                               | No       | —                     | Redis username.                                                                                           |
-| `REDIS_PASSWORD`                               | No       | —                     | Redis password.                                                                                           |
-| `REDIS_TLS_DISABLED`                           | No       | —                     | Disable Redis TLS.                                                                                        |
-| **Auth**                                       |          |                       |                                                                                                           |
-| `WHITELISTED_EMAILS`                           | No       | —                     | Whitelisted emails regex.                                                                                 |
-| `AUTH_GITHUB_CLIENT_ID`                        | No       | —                     | GitHub client ID.                                                                                         |
-| `AUTH_GITHUB_CLIENT_SECRET`                    | No       | —                     | GitHub client secret.                                                                                     |
-| **Email**                                      |          |                       |                                                                                                           |
-| `EMAIL_TRANSPORT`                              | No       | —                     | Email transport type. One of `resend`, `smtp`, `aws-ses`.                                                 |
-| `FROM_EMAIL`                                   | No       | —                     | From email address.                                                                                       |
-| `REPLY_TO_EMAIL`                               | No       | —                     | Reply-to email address.                                                                                   |
-| `RESEND_API_KEY`                               | No       | —                     | Resend API key.                                                                                           |
-| `SMTP_HOST`                                    | No       | —                     | SMTP host.                                                                                                |
-| `SMTP_PORT`                                    | No       | —                     | SMTP port.                                                                                                |
-| `SMTP_SECURE`                                  | No       | —                     | SMTP secure flag.                                                                                         |
-| `SMTP_USER`                                    | No       | —                     | SMTP user.                                                                                                |
-| `SMTP_PASSWORD`                                | No       | —                     | SMTP password.                                                                                            |
-| `AWS_REGION`                                   | No       | —                     | AWS region for SES.                                                                                       |
-| `AWS_ACCESS_KEY_ID`                            | No       | —                     | AWS access key ID for SES.                                                                                |
-| `AWS_SECRET_ACCESS_KEY`                        | No       | —                     | AWS secret access key for SES.                                                                            |
-| **Graphile & Redis worker**                    |          |                       |                                                                                                           |
-| `WORKER_CONCURRENCY`                           | No       | 10                    | Redis worker concurrency.                                                                                 |
-| `WORKER_POLL_INTERVAL`                         | No       | 1000                  | Redis worker poll interval (ms).                                                                          |
-| `WORKER_SCHEMA`                                | No       | graphile_worker       | Graphile worker schema.                                                                                   |
-| `GRACEFUL_SHUTDOWN_TIMEOUT`                    | No       | 60000 (1m)            | Graphile graceful shutdown timeout (ms). Affects shutdown time.                                           |
-| **Concurrency limits**                         |          |                       |                                                                                                           |
-| `DEFAULT_ENV_EXECUTION_CONCURRENCY_LIMIT`      | No       | 100                   | Default env execution concurrency.                                                                        |
-| `DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT`      | No       | 300                   | Default org execution concurrency, needs to be 3x env concurrency.                                        |
-| **Dev**                                        |          |                       |                                                                                                           |
-| `DEV_MAX_CONCURRENT_RUNS`                      | No       | 25                    | Sets the max concurrency for dev runs via the CLI.                                                        |
-| `DEV_OTEL_EXPORTER_OTLP_ENDPOINT`              | No       | `APP_ORIGIN/otel`     | OTel endpoint for dev runs.                                                                               |
-| **Rate limiting**                              |          |                       |                                                                                                           |
-| `API_RATE_LIMIT_REFILL_INTERVAL`               | No       | 10s                   | API rate limit refill interval.                                                                           |
-| `API_RATE_LIMIT_MAX`                           | No       | 750                   | API rate limit max.                                                                                       |
-| `API_RATE_LIMIT_REFILL_RATE`                   | No       | 250                   | API rate limit refill rate.                                                                               |
-| `API_RATE_LIMIT_REQUEST_LOGS_ENABLED`          | No       | 0                     | API rate limit request logs.                                                                              |
-| `API_RATE_LIMIT_REJECTION_LOGS_ENABLED`        | No       | 1                     | API rate limit rejection logs.                                                                            |
-| `API_RATE_LIMIT_LIMITER_LOGS_ENABLED`          | No       | 0                     | API rate limit limiter logs.                                                                              |
-| `API_RATE_LIMIT_JWT_WINDOW`                    | No       | 1m                    | API rate limit JWT window.                                                                                |
-| `API_RATE_LIMIT_JWT_TOKENS`                    | No       | 60                    | API rate limit JWT tokens.                                                                                |
-| **Deploy & Registry**                          |          |                       |                                                                                                           |
-| `DEPLOY_REGISTRY_HOST`                         | Yes      | —                     | Deploy registry host.                                                                                     |
-| `DEPLOY_REGISTRY_USERNAME`                     | No       | —                     | Deploy registry username.                                                                                 |
-| `DEPLOY_REGISTRY_PASSWORD`                     | No       | —                     | Deploy registry password.                                                                                 |
-| `DEPLOY_REGISTRY_NAMESPACE`                    | No       | trigger               | Deploy registry namespace.                                                                                |
-| `DEPLOY_IMAGE_PLATFORM`                        | No       | linux/amd64           | Deploy image platform, same values as docker `--platform` flag.                                           |
-| `DEPLOY_TIMEOUT_MS`                            | No       | 480000 (8m)           | Deploy timeout (ms).                                                                                      |
-| **Object store (S3)**                          |          |                       |                                                                                                           |
-| `OBJECT_STORE_BASE_URL`                        | No       | —                     | Object store base URL.                                                                                    |
-| `OBJECT_STORE_ACCESS_KEY_ID`                   | No       | —                     | Object store access key.                                                                                  |
-| `OBJECT_STORE_SECRET_ACCESS_KEY`               | No       | —                     | Object store secret key.                                                                                  |
-| `OBJECT_STORE_REGION`                          | No       | —                     | Object store region.                                                                                      |
-| `OBJECT_STORE_SERVICE`                         | No       | s3                    | Object store service.                                                                                     |
-| **Alerts**                                     |          |                       |                                                                                                           |
-| `ORG_SLACK_INTEGRATION_CLIENT_ID`              | No       | —                     | Slack client ID. Required for Slack alerts.                                                               |
-| `ORG_SLACK_INTEGRATION_CLIENT_SECRET`          | No       | —                     | Slack client secret. Required for Slack alerts.                                                           |
-| `ALERT_EMAIL_TRANSPORT`                        | No       | —                     | Alert email transport.                                                                                    |
-| `ALERT_FROM_EMAIL`                             | No       | —                     | Alert from email.                                                                                         |
-| `ALERT_REPLY_TO_EMAIL`                         | No       | —                     | Alert reply-to email.                                                                                     |
-| `ALERT_RESEND_API_KEY`                         | No       | —                     | Alert Resend API key.                                                                                     |
-| `ALERT_SMTP_HOST`                              | No       | —                     | Alert SMTP host.                                                                                          |
-| `ALERT_SMTP_PORT`                              | No       | —                     | Alert SMTP port.                                                                                          |
-| `ALERT_SMTP_SECURE`                            | No       | —                     | Alert SMTP secure.                                                                                        |
-| `ALERT_SMTP_USER`                              | No       | —                     | Alert SMTP user.                                                                                          |
-| `ALERT_SMTP_PASSWORD`                          | No       | —                     | Alert SMTP password.                                                                                      |
-| **Limits**                                     |          |                       |                                                                                                           |
-| `TASK_PAYLOAD_OFFLOAD_THRESHOLD`               | No       | 524288 (512KB)        | Max task payload size before offloading to S3.                                                            |
-| `TASK_PAYLOAD_MAXIMUM_SIZE`                    | No       | 3145728 (3MB)         | Max task payload size.                                                                                    |
-| `BATCH_TASK_PAYLOAD_MAXIMUM_SIZE`              | No       | 1000000 (1MB)         | Max batch payload size.                                                                                   |
-| `TASK_RUN_METADATA_MAXIMUM_SIZE`               | No       | 262144 (256KB)        | Max metadata size.                                                                                        |
-| `MAX_BATCH_V2_TRIGGER_ITEMS`                   | No       | 500                   | Max batch size.                                                                                           |
-| `MAXIMUM_DEV_QUEUE_SIZE`                       | No       | —                     | Max dev queue size.                                                                                       |
-| `MAXIMUM_DEPLOYED_QUEUE_SIZE`                  | No       | —                     | Max deployed queue size.                                                                                  |
-| **Realtime**                                   |          |                       |                                                                                                           |
-| `REALTIME_STREAM_MAX_LENGTH`                   | No       | 1000                  | Realtime stream max length.                                                                               |
-| `REALTIME_STREAM_TTL`                          | No       | 86400 (1d)            | Realtime stream TTL (s).                                                                                  |
-| **Bootstrap**                                  |          |                       |                                                                                                           |
-| `TRIGGER_BOOTSTRAP_ENABLED`                    | No       | 0                     | Trigger bootstrap enabled.                                                                                |
-| `TRIGGER_BOOTSTRAP_WORKER_GROUP_NAME`          | No       | —                     | Trigger bootstrap worker group name.                                                                      |
-| `TRIGGER_BOOTSTRAP_WORKER_TOKEN_PATH`          | No       | —                     | Trigger bootstrap worker token path.                                                                      |
-| **Run engine**                                 |          |                       |                                                                                                           |
-| `RUN_ENGINE_WORKER_COUNT`                      | No       | 4                     | Run engine worker count.                                                                                  |
-| `RUN_ENGINE_TASKS_PER_WORKER`                  | No       | 10                    | Run engine tasks per worker.                                                                              |
-| `RUN_ENGINE_WORKER_CONCURRENCY_LIMIT`          | No       | 10                    | Run engine worker concurrency limit.                                                                      |
-| `RUN_ENGINE_WORKER_POLL_INTERVAL`              | No       | 100                   | Run engine worker poll interval (ms).                                                                     |
-| `RUN_ENGINE_WORKER_IMMEDIATE_POLL_INTERVAL`    | No       | 100                   | Run engine worker immediate poll interval (ms).                                                           |
-| `RUN_ENGINE_WORKER_SHUTDOWN_TIMEOUT_MS`        | No       | 60000 (1m)            | Run engine worker shutdown timeout (ms).                                                                  |
-| `RUN_ENGINE_RATE_LIMIT_REFILL_INTERVAL`        | No       | 10s                   | Run engine rate limit refill interval.                                                                    |
-| `RUN_ENGINE_RATE_LIMIT_MAX`                    | No       | 1200                  | Run engine rate limit max.                                                                                |
-| `RUN_ENGINE_RATE_LIMIT_REFILL_RATE`            | No       | 400                   | Run engine rate limit refill rate.                                                                        |
-| `RUN_ENGINE_RATE_LIMIT_REQUEST_LOGS_ENABLED`   | No       | 0                     | Run engine rate limit request logs.                                                                       |
-| `RUN_ENGINE_RATE_LIMIT_REJECTION_LOGS_ENABLED` | No       | 1                     | Run engine rate limit rejection logs.                                                                     |
-| `RUN_ENGINE_RATE_LIMIT_LIMITER_LOGS_ENABLED`   | No       | 0                     | Run engine rate limit limiter logs.                                                                       |
-| **Misc**                                       |          |                       |                                                                                                           |
-| `TRIGGER_TELEMETRY_DISABLED`                   | No       | —                     | Disable telemetry.                                                                                        |
-| `NODE_MAX_OLD_SPACE_SIZE`                      | No       | 8192                  | Maximum memory allocation for Node.js heap in MiB (e.g. "4096" for 4GB).                                  |
-| `OPENAI_API_KEY`                               | No       | —                     | OpenAI API key.                                                                                           |
-| `MACHINE_PRESETS_OVERRIDE_PATH`                | No       | —                     | Path to machine presets override file. See [machine overrides](/self-hosting/overview#machine-overrides). |
-| `APP_ENV`                                      | No       | `NODE_ENV`            | App environment. Used for things like the title tag.                                                      |
-| `ADMIN_EMAILS`                                 | No       | —                     | Regex of user emails to automatically promote to admin.                                                   |
-| `EVENT_LOOP_MONITOR_ENABLED`                   | No       | 1                     | Node.js event loop lag monitor.                                                                           |
+| Name                                             | Required | Default               | Description                                                                                               |
+| :----------------------------------------------- | :------- | :-------------------- | :-------------------------------------------------------------------------------------------------------- |
+| **Secrets**                                      |          |                       |                                                                                                           |
+| `SESSION_SECRET`                                 | Yes      | —                     | Session encryption secret. Run: `openssl rand -hex 16`                                                    |
+| `MAGIC_LINK_SECRET`                              | Yes      | —                     | Magic link encryption secret. Run: `openssl rand -hex 16`                                                 |
+| `ENCRYPTION_KEY`                                 | Yes      | —                     | Secret store encryption key. Run: `openssl rand -hex 16`                                                  |
+| `MANAGED_WORKER_SECRET`                          | No       | managed-secret        | Managed worker secret. Should be changed and match supervisor.                                            |
+| **Domains & ports**                              |          |                       |                                                                                                           |
+| `REMIX_APP_PORT`                                 | No       | 3030                  | Remix app port.                                                                                           |
+| `APP_ORIGIN`                                     | Yes      | http://localhost:3030 | App origin URL.                                                                                           |
+| `LOGIN_ORIGIN`                                   | Yes      | http://localhost:3030 | Login origin URL. Most likely the same as `APP_ORIGIN`.                                                   |
+| `API_ORIGIN`                                     | No       | `APP_ORIGIN`          | API origin URL.                                                                                           |
+| `STREAM_ORIGIN`                                  | No       | `APP_ORIGIN`          | Realtime stream origin URL.                                                                               |
+| `ELECTRIC_ORIGIN`                                | No       | http://localhost:3060 | Electric origin URL.                                                                                      |
+| **Postgres**                                     |          |                       |                                                                                                           |
+| `DATABASE_URL`                                   | Yes      | —                     | PostgreSQL connection string.                                                                             |
+| `DIRECT_URL`                                     | Yes      | —                     | Direct DB connection string used for migrations etc.                                                      |
+| `DATABASE_CONNECTION_LIMIT`                      | No       | 10                    | Max DB connections.                                                                                       |
+| `DATABASE_POOL_TIMEOUT`                          | No       | 60                    | DB pool timeout (s).                                                                                      |
+| `DATABASE_CONNECTION_TIMEOUT`                    | No       | 20                    | DB connect timeout (s).                                                                                   |
+| `DATABASE_READ_REPLICA_URL`                      | No       | `DATABASE_URL`        | Read-replica DB string.                                                                                   |
+| **Redis**                                        |          |                       |                                                                                                           |
+| `REDIS_HOST`                                     | Yes      | —                     | Redis host.                                                                                               |
+| `REDIS_PORT`                                     | Yes      | —                     | Redis port.                                                                                               |
+| `REDIS_READER_HOST`                              | No       | `REDIS_HOST`          | Redis reader host.                                                                                        |
+| `REDIS_READER_PORT`                              | No       | `REDIS_PORT`          | Redis reader port.                                                                                        |
+| `REDIS_USERNAME`                                 | No       | —                     | Redis username.                                                                                           |
+| `REDIS_PASSWORD`                                 | No       | —                     | Redis password.                                                                                           |
+| `REDIS_TLS_DISABLED`                             | No       | —                     | Disable Redis TLS.                                                                                        |
+| **Auth**                                         |          |                       |                                                                                                           |
+| `WHITELISTED_EMAILS`                             | No       | —                     | Whitelisted emails regex.                                                                                 |
+| `AUTH_GITHUB_CLIENT_ID`                          | No       | —                     | GitHub client ID.                                                                                         |
+| `AUTH_GITHUB_CLIENT_SECRET`                      | No       | —                     | GitHub client secret.                                                                                     |
+| **Email**                                        |          |                       |                                                                                                           |
+| `EMAIL_TRANSPORT`                                | No       | —                     | Email transport type. One of `resend`, `smtp`, `aws-ses`.                                                 |
+| `FROM_EMAIL`                                     | No       | —                     | From email address.                                                                                       |
+| `REPLY_TO_EMAIL`                                 | No       | —                     | Reply-to email address.                                                                                   |
+| `RESEND_API_KEY`                                 | No       | —                     | Resend API key.                                                                                           |
+| `SMTP_HOST`                                      | No       | —                     | SMTP host.                                                                                                |
+| `SMTP_PORT`                                      | No       | —                     | SMTP port.                                                                                                |
+| `SMTP_SECURE`                                    | No       | —                     | SMTP secure flag.                                                                                         |
+| `SMTP_USER`                                      | No       | —                     | SMTP user.                                                                                                |
+| `SMTP_PASSWORD`                                  | No       | —                     | SMTP password.                                                                                            |
+| `AWS_REGION`                                     | No       | —                     | AWS region for SES.                                                                                       |
+| `AWS_ACCESS_KEY_ID`                              | No       | —                     | AWS access key ID for SES.                                                                                |
+| `AWS_SECRET_ACCESS_KEY`                          | No       | —                     | AWS secret access key for SES.                                                                            |
+| **Graphile & Redis worker**                      |          |                       |                                                                                                           |
+| `WORKER_CONCURRENCY`                             | No       | 10                    | Redis worker concurrency.                                                                                 |
+| `WORKER_POLL_INTERVAL`                           | No       | 1000                  | Redis worker poll interval (ms).                                                                          |
+| `WORKER_SCHEMA`                                  | No       | graphile_worker       | Graphile worker schema.                                                                                   |
+| `GRACEFUL_SHUTDOWN_TIMEOUT`                      | No       | 60000 (1m)            | Graphile graceful shutdown timeout (ms). Affects shutdown time.                                           |
+| **Concurrency limits**                           |          |                       |                                                                                                           |
+| `DEFAULT_ENV_EXECUTION_CONCURRENCY_LIMIT`        | No       | 100                   | Default env execution concurrency.                                                                        |
+| `DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT`        | No       | 300                   | Default org execution concurrency, needs to be 3x env concurrency.                                        |
+| **Dev**                                          |          |                       |                                                                                                           |
+| `DEV_MAX_CONCURRENT_RUNS`                        | No       | 25                    | Sets the max concurrency for dev runs via the CLI.                                                        |
+| `DEV_OTEL_EXPORTER_OTLP_ENDPOINT`                | No       | `APP_ORIGIN/otel`     | OTel endpoint for dev runs.                                                                               |
+| **Rate limiting**                                |          |                       |                                                                                                           |
+| `API_RATE_LIMIT_REFILL_INTERVAL`                 | No       | 10s                   | API rate limit refill interval.                                                                           |
+| `API_RATE_LIMIT_MAX`                             | No       | 750                   | API rate limit max.                                                                                       |
+| `API_RATE_LIMIT_REFILL_RATE`                     | No       | 250                   | API rate limit refill rate.                                                                               |
+| `API_RATE_LIMIT_REQUEST_LOGS_ENABLED`            | No       | 0                     | API rate limit request logs.                                                                              |
+| `API_RATE_LIMIT_REJECTION_LOGS_ENABLED`          | No       | 1                     | API rate limit rejection logs.                                                                            |
+| `API_RATE_LIMIT_LIMITER_LOGS_ENABLED`            | No       | 0                     | API rate limit limiter logs.                                                                              |
+| `API_RATE_LIMIT_JWT_WINDOW`                      | No       | 1m                    | API rate limit JWT window.                                                                                |
+| `API_RATE_LIMIT_JWT_TOKENS`                      | No       | 60                    | API rate limit JWT tokens.                                                                                |
+| **Deploy & Registry**                            |          |                       |                                                                                                           |
+| `DEPLOY_REGISTRY_HOST`                           | Yes      | —                     | Deploy registry host.                                                                                     |
+| `DEPLOY_REGISTRY_USERNAME`                       | No       | —                     | Deploy registry username.                                                                                 |
+| `DEPLOY_REGISTRY_PASSWORD`                       | No       | —                     | Deploy registry password.                                                                                 |
+| `DEPLOY_REGISTRY_NAMESPACE`                      | No       | trigger               | Deploy registry namespace.                                                                                |
+| `DEPLOY_IMAGE_PLATFORM`                          | No       | linux/amd64           | Deploy image platform, same values as docker `--platform` flag.                                           |
+| `DEPLOY_TIMEOUT_MS`                              | No       | 480000 (8m)           | Deploy timeout (ms).                                                                                      |
+| **Object store (S3)**                            |          |                       |                                                                                                           |
+| `OBJECT_STORE_BASE_URL`                          | No       | —                     | Object store base URL.                                                                                    |
+| `OBJECT_STORE_ACCESS_KEY_ID`                     | No       | —                     | Object store access key.                                                                                  |
+| `OBJECT_STORE_SECRET_ACCESS_KEY`                 | No       | —                     | Object store secret key.                                                                                  |
+| `OBJECT_STORE_REGION`                            | No       | —                     | Object store region.                                                                                      |
+| `OBJECT_STORE_SERVICE`                           | No       | s3                    | Object store service.                                                                                     |
+| **Alerts**                                       |          |                       |                                                                                                           |
+| `ORG_SLACK_INTEGRATION_CLIENT_ID`                | No       | —                     | Slack client ID. Required for Slack alerts.                                                               |
+| `ORG_SLACK_INTEGRATION_CLIENT_SECRET`            | No       | —                     | Slack client secret. Required for Slack alerts.                                                           |
+| `ALERT_EMAIL_TRANSPORT`                          | No       | —                     | Alert email transport.                                                                                    |
+| `ALERT_FROM_EMAIL`                               | No       | —                     | Alert from email.                                                                                         |
+| `ALERT_REPLY_TO_EMAIL`                           | No       | —                     | Alert reply-to email.                                                                                     |
+| `ALERT_RESEND_API_KEY`                           | No       | —                     | Alert Resend API key.                                                                                     |
+| `ALERT_SMTP_HOST`                                | No       | —                     | Alert SMTP host.                                                                                          |
+| `ALERT_SMTP_PORT`                                | No       | —                     | Alert SMTP port.                                                                                          |
+| `ALERT_SMTP_SECURE`                              | No       | —                     | Alert SMTP secure.                                                                                        |
+| `ALERT_SMTP_USER`                                | No       | —                     | Alert SMTP user.                                                                                          |
+| `ALERT_SMTP_PASSWORD`                            | No       | —                     | Alert SMTP password.                                                                                      |
+| **Limits**                                       |          |                       |                                                                                                           |
+| `TASK_PAYLOAD_OFFLOAD_THRESHOLD`                 | No       | 524288 (512KB)        | Max task payload size before offloading to S3.                                                            |
+| `TASK_PAYLOAD_MAXIMUM_SIZE`                      | No       | 3145728 (3MB)         | Max task payload size.                                                                                    |
+| `BATCH_TASK_PAYLOAD_MAXIMUM_SIZE`                | No       | 1000000 (1MB)         | Max batch payload size.                                                                                   |
+| `TASK_RUN_METADATA_MAXIMUM_SIZE`                 | No       | 262144 (256KB)        | Max metadata size.                                                                                        |
+| `MAX_BATCH_V2_TRIGGER_ITEMS`                     | No       | 500                   | Max batch size.                                                                                           |
+| `MAXIMUM_DEV_QUEUE_SIZE`                         | No       | —                     | Max dev queue size.                                                                                       |
+| `MAXIMUM_DEPLOYED_QUEUE_SIZE`                    | No       | —                     | Max deployed queue size.                                                                                  |
+| **OTel limits**                                  |          |                       |                                                                                                           |
+| `TRIGGER_OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT`        | No       | 256                   | OTel span attribute count limit.                                                                          |
+| `TRIGGER_OTEL_LOG_ATTRIBUTE_COUNT_LIMIT`         | No       | 256                   | OTel log attribute count limit.                                                                           |
+| `TRIGGER_OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT` | No       | 131072                | OTel span attribute value length limit.                                                                   |
+| `TRIGGER_OTEL_LOG_ATTRIBUTE_VALUE_LENGTH_LIMIT`  | No       | 131072                | OTel log attribute value length limit.                                                                    |
+| `TRIGGER_OTEL_SPAN_EVENT_COUNT_LIMIT`            | No       | 10                    | OTel span event count limit.                                                                              |
+| `TRIGGER_OTEL_LINK_COUNT_LIMIT`                  | No       | 2                     | OTel link count limit.                                                                                    |
+| `TRIGGER_OTEL_ATTRIBUTE_PER_LINK_COUNT_LIMIT`    | No       | 10                    | OTel attribute per link count limit.                                                                      |
+| `TRIGGER_OTEL_ATTRIBUTE_PER_EVENT_COUNT_LIMIT`   | No       | 10                    | OTel attribute per event count limit.                                                                     |
+| `SERVER_OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT`  | No       | 8192                  | OTel span attribute value length limit.                                                                   |
+| **Realtime**                                     |          |                       |                                                                                                           |
+| `REALTIME_STREAM_MAX_LENGTH`                     | No       | 1000                  | Realtime stream max length.                                                                               |
+| `REALTIME_STREAM_TTL`                            | No       | 86400 (1d)            | Realtime stream TTL (s).                                                                                  |
+| **Bootstrap**                                    |          |                       |                                                                                                           |
+| `TRIGGER_BOOTSTRAP_ENABLED`                      | No       | 0                     | Trigger bootstrap enabled.                                                                                |
+| `TRIGGER_BOOTSTRAP_WORKER_GROUP_NAME`            | No       | —                     | Trigger bootstrap worker group name.                                                                      |
+| `TRIGGER_BOOTSTRAP_WORKER_TOKEN_PATH`            | No       | —                     | Trigger bootstrap worker token path.                                                                      |
+| **Run engine**                                   |          |                       |                                                                                                           |
+| `RUN_ENGINE_WORKER_COUNT`                        | No       | 4                     | Run engine worker count.                                                                                  |
+| `RUN_ENGINE_TASKS_PER_WORKER`                    | No       | 10                    | Run engine tasks per worker.                                                                              |
+| `RUN_ENGINE_WORKER_CONCURRENCY_LIMIT`            | No       | 10                    | Run engine worker concurrency limit.                                                                      |
+| `RUN_ENGINE_WORKER_POLL_INTERVAL`                | No       | 100                   | Run engine worker poll interval (ms).                                                                     |
+| `RUN_ENGINE_WORKER_IMMEDIATE_POLL_INTERVAL`      | No       | 100                   | Run engine worker immediate poll interval (ms).                                                           |
+| `RUN_ENGINE_WORKER_SHUTDOWN_TIMEOUT_MS`          | No       | 60000 (1m)            | Run engine worker shutdown timeout (ms).                                                                  |
+| `RUN_ENGINE_RATE_LIMIT_REFILL_INTERVAL`          | No       | 10s                   | Run engine rate limit refill interval.                                                                    |
+| `RUN_ENGINE_RATE_LIMIT_MAX`                      | No       | 1200                  | Run engine rate limit max.                                                                                |
+| `RUN_ENGINE_RATE_LIMIT_REFILL_RATE`              | No       | 400                   | Run engine rate limit refill rate.                                                                        |
+| `RUN_ENGINE_RATE_LIMIT_REQUEST_LOGS_ENABLED`     | No       | 0                     | Run engine rate limit request logs.                                                                       |
+| `RUN_ENGINE_RATE_LIMIT_REJECTION_LOGS_ENABLED`   | No       | 1                     | Run engine rate limit rejection logs.                                                                     |
+| `RUN_ENGINE_RATE_LIMIT_LIMITER_LOGS_ENABLED`     | No       | 0                     | Run engine rate limit limiter logs.                                                                       |
+| **Misc**                                         |          |                       |                                                                                                           |
+| `TRIGGER_TELEMETRY_DISABLED`                     | No       | —                     | Disable telemetry.                                                                                        |
+| `NODE_MAX_OLD_SPACE_SIZE`                        | No       | 8192                  | Maximum memory allocation for Node.js heap in MiB (e.g. "4096" for 4GB).                                  |
+| `OPENAI_API_KEY`                                 | No       | —                     | OpenAI API key.                                                                                           |
+| `MACHINE_PRESETS_OVERRIDE_PATH`                  | No       | —                     | Path to machine presets override file. See [machine overrides](/self-hosting/overview#machine-overrides). |
+| `APP_ENV`                                        | No       | `NODE_ENV`            | App environment. Used for things like the title tag.                                                      |
+| `ADMIN_EMAILS`                                   | No       | —                     | Regex of user emails to automatically promote to admin.                                                   |
+| `EVENT_LOOP_MONITOR_ENABLED`                     | No       | 1                     | Node.js event loop lag monitor.                                                                           |
