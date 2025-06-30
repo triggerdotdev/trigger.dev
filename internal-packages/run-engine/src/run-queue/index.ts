@@ -42,6 +42,7 @@ import { nanoid } from "nanoid";
 import { CronSchema, Worker, type WorkerConcurrencyOptions } from "@trigger.dev/redis-worker";
 import { z } from "zod";
 import { Readable } from "node:stream";
+import { setTimeout } from "node:timers/promises";
 
 const SemanticAttributes = {
   QUEUE: "runqueue.queue",
@@ -1823,7 +1824,7 @@ export class RunQueue {
       const deduplicatedRunIds = Array.from(new Set(runIds));
 
       const [processError] = await tryCatch(
-        this.processCurrencyConcurrencyRunIds(concurrencyKey, deduplicatedRunIds)
+        this.processCurrentConcurrencyRunIds(concurrencyKey, deduplicatedRunIds)
       );
 
       if (processError) {
@@ -1840,7 +1841,7 @@ export class RunQueue {
     return promise;
   }
 
-  private async processCurrencyConcurrencyRunIds(concurrencyKey: string, runIds: string[]) {
+  private async processCurrentConcurrencyRunIds(concurrencyKey: string, runIds: string[]) {
     this.logger.debug(`Processing concurrency set with ${runIds.length} runs`, {
       concurrencyKey,
       runIds: runIds.slice(0, 5), // Log first 5 for debugging
@@ -1872,18 +1873,18 @@ export class RunQueue {
     const markedForAckKey = this.keys.markedForAckKey();
 
     // Prepare arguments: alternating orgId, messageId pairs
-    const args: string[] = [];
+    const args: Array<number | string> = [];
     for (const run of completedRuns) {
       this.logger.info("Marking run for acknowledgment", {
         orgId: run.orgId,
         runId: run.id,
       });
 
-      args.push(run.orgId);
-      args.push(run.id);
+      args.push(Date.now());
+      args.push(`${run.orgId}:${run.id}`);
     }
 
-    const count = await this.redis.markCompletedRunsForAck(markedForAckKey, ...args);
+    const count = await this.redis.zadd(markedForAckKey, ...args);
 
     this.logger.debug(`Marked ${count} runs for acknowledgment`, {
       markedForAckKey,
@@ -1899,7 +1900,7 @@ export class RunQueue {
 
     try {
       const markedForAckKey = this.keys.markedForAckKey();
-      const results = await this.redis.getMarkedRunsForAck(markedForAckKey, "10");
+      const results = await this.redis.getMarkedRunsForAck(markedForAckKey, "100");
 
       if (results.length === 0) {
         return;
@@ -1920,18 +1921,24 @@ export class RunQueue {
         markedRuns: markedRuns, // Log first 3 for debugging
       });
 
-      // Acknowledge each marked run
-      await Promise.allSettled(
-        markedRuns.map((run) =>
-          this.processMarkedRun(run).catch((error) => {
-            this.logger.error("Error acknowledging marked run", {
-              error,
-              orgId: run.orgId,
-              messageId: run.messageId,
-            });
-          })
-        )
-      );
+      for (const run of markedRuns) {
+        const [processError] = await tryCatch(this.processMarkedRun(run));
+
+        if (processError) {
+          this.logger.error("Error processing marked run", {
+            error: processError,
+            orgId: run.orgId,
+            messageId: run.messageId,
+          });
+        }
+      }
+
+      const shouldProcessMoreRuns = (await this.redis.zcard(markedForAckKey)) > 0;
+
+      if (shouldProcessMoreRuns) {
+        await setTimeout(1000);
+        await this.processMarkedRuns();
+      }
     } catch (error) {
       this.logger.error("Error processing marked runs", { error });
     }
@@ -2514,8 +2521,6 @@ declare module "@internal/redis" {
       keyPrefix: string,
       ...queueNames: string[]
     ): Result<void, Context>;
-
-    markCompletedRunsForAck(markedForAckKey: string, ...args: string[]): Result<number, Context>;
 
     getMarkedRunsForAck(
       markedForAckKey: string,
