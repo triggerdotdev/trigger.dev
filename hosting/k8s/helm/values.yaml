@@ -6,12 +6,6 @@ global:
 nameOverride: ""
 fullnameOverride: ""
 
-# Shared application configuration (used by multiple services)
-config:
-  appOrigin: "http://localhost:3040"
-  loginOrigin: "http://localhost:3040"
-  apiOrigin: "http://localhost:3040"
-
 # Secrets configuration
 # IMPORTANT: The default values below are for TESTING ONLY and should NOT be used in production
 # For production deployments:
@@ -55,6 +49,11 @@ webapp:
     repository: triggerdotdev/trigger.dev
     tag: "" # Defaults to Chart.appVersion when empty
     pullPolicy: IfNotPresent
+
+  # Origin configuration
+  appOrigin: "http://localhost:3040"
+  loginOrigin: "http://localhost:3040"
+  apiOrigin: "http://localhost:3040"
 
   replicaCount: 1
 
@@ -169,6 +168,34 @@ webapp:
       exporterAuthHeaders: ""
       exporterEnabled: "0"
       exporterIntervalMs: 30000
+
+  # Webapp ingress configuration
+  ingress:
+    enabled: false
+    className: "traefik"
+    # Custom annotations for the ingress resource
+    # Note: The following annotation keys are reserved and will be automatically set:
+    # - cert-manager.io/cluster-issuer (when certManager.enabled is true)
+    # - external-dns.alpha.kubernetes.io/hostname (when externalDns.enabled is true)
+    # - external-dns.alpha.kubernetes.io/ttl (when externalDns.enabled is true)
+    annotations: {}
+    certManager:
+      enabled: false
+      clusterIssuer: "letsencrypt-prod"
+    externalDns:
+      enabled: false
+      hostname: ""
+      ttl: "300"
+    hosts:
+      - host: trigger.local
+        paths:
+          - path: /
+            pathType: Prefix
+    tls:
+      []
+      # - secretName: trigger-tls
+      #   hosts:
+      #     - trigger.local
 
 # Supervisor configuration
 supervisor:
@@ -591,6 +618,34 @@ registry:
     # - name: CUSTOM_VAR
     #   value: "custom-value"
 
+  # Registry ingress configuration
+  ingress:
+    enabled: false
+    className: "traefik"
+    # Custom annotations for the ingress resource
+    # Note: The following annotation keys are reserved and will be automatically set:
+    # - cert-manager.io/cluster-issuer (when certManager.enabled is true)
+    # - external-dns.alpha.kubernetes.io/hostname (when externalDns.enabled is true)
+    # - external-dns.alpha.kubernetes.io/ttl (when externalDns.enabled is true)
+    annotations: {}
+    certManager:
+      enabled: false
+      clusterIssuer: "letsencrypt-prod"
+    externalDns:
+      enabled: false
+      hostname: ""
+      ttl: "300"
+    hosts:
+      - host: registry.local
+        paths:
+          - path: /
+            pathType: Prefix
+    tls:
+      []
+      # - secretName: registry-tls
+      #   hosts:
+      #     - registry.local
+
 # Shared persistent volumes
 persistence:
   # This is used for the worker token file
@@ -602,32 +657,6 @@ persistence:
     storageClass: ""
     retain: true # Prevents deletion on uninstall
 
-ingress:
-  enabled: false
-  className: "traefik"
-  # Custom annotations for the ingress resource
-  # Note: The following annotation keys are reserved and will be automatically set:
-  # - cert-manager.io/cluster-issuer (when certManager.enabled is true)
-  # - external-dns.alpha.kubernetes.io/hostname (when externalDns.enabled is true)
-  # - external-dns.alpha.kubernetes.io/ttl (when externalDns.enabled is true)
-  annotations: {}
-  certManager:
-    enabled: false
-    clusterIssuer: "letsencrypt-prod"
-  externalDns:
-    enabled: false
-    hostname: ""
-    ttl: "300"
-  hosts:
-    - host: trigger.local
-      paths:
-        - path: /
-          pathType: Prefix
-  tls:
-    []
-    # - secretName: trigger-tls
-    #   hosts:
-    #     - trigger.local
 
 # Telemetry configuration
 telemetry:

@@ -24,10 +24,10 @@ To get started:
    kubectl get pods --namespace {{ .Release.Namespace }} -w
 
 2. Access the webapp:
-{{- if .Values.ingress.enabled }}
-{{- range $host := .Values.ingress.hosts }}
+{{- if .Values.webapp.ingress.enabled }}
+{{- range $host := .Values.webapp.ingress.hosts }}
   {{- range .paths }}
-   http{{ if $.Values.ingress.tls }}s{{ end }}://{{ $host.host }}{{ .path }}
+   http{{ if $.Values.webapp.ingress.tls }}s{{ end }}://{{ $host.host }}{{ .path }}
   {{- end }}
 {{- end }}
 {{- else if contains "NodePort" .Values.webapp.service.type }}

@@ -306,20 +306,37 @@ Generate docker config for image pull secret
 {{- end }}
 
 {{/*
-Merge ingress annotations to avoid duplicates
+Merge webapp ingress annotations to avoid duplicates
 */}}
-{{- define "trigger-v4.ingress.annotations" -}}
+{{- define "trigger-v4.webapp.ingress.annotations" -}}
 {{- $annotations := dict -}}
-{{- if .Values.ingress.annotations -}}
-{{- $annotations = .Values.ingress.annotations -}}
+{{- if .Values.webapp.ingress.annotations -}}
+{{- $annotations = .Values.webapp.ingress.annotations -}}
 {{- end -}}
-{{- if .Values.ingress.certManager.enabled -}}
-{{- $_ := set $annotations "cert-manager.io/cluster-issuer" .Values.ingress.certManager.clusterIssuer -}}
+{{- if .Values.webapp.ingress.certManager.enabled -}}
+{{- $_ := set $annotations "cert-manager.io/cluster-issuer" .Values.webapp.ingress.certManager.clusterIssuer -}}
 {{- end -}}
-{{- if .Values.ingress.externalDns.enabled -}}
-{{- $_ := set $annotations "external-dns.alpha.kubernetes.io/hostname" .Values.ingress.externalDns.hostname -}}
-{{- $_ := set $annotations "external-dns.alpha.kubernetes.io/ttl" (.Values.ingress.externalDns.ttl | toString) -}}
+{{- if .Values.webapp.ingress.externalDns.enabled -}}
+{{- $_ := set $annotations "external-dns.alpha.kubernetes.io/hostname" .Values.webapp.ingress.externalDns.hostname -}}
+{{- $_ := set $annotations "external-dns.alpha.kubernetes.io/ttl" (.Values.webapp.ingress.externalDns.ttl | toString) -}}
 {{- end -}}
 {{- toYaml $annotations -}}
 {{- end }}
 
+{{/*
+Merge registry ingress annotations to avoid duplicates
+*/}}
+{{- define "trigger-v4.registry.ingress.annotations" -}}
+{{- $annotations := dict -}}
+{{- if .Values.registry.ingress.annotations -}}
+{{- $annotations = .Values.registry.ingress.annotations -}}
+{{- end -}}
+{{- if .Values.registry.ingress.certManager.enabled -}}
+{{- $_ := set $annotations "cert-manager.io/cluster-issuer" .Values.registry.ingress.certManager.clusterIssuer -}}
+{{- end -}}
+{{- if .Values.registry.ingress.externalDns.enabled -}}
+{{- $_ := set $annotations "external-dns.alpha.kubernetes.io/hostname" .Values.registry.ingress.externalDns.hostname -}}
+{{- $_ := set $annotations "external-dns.alpha.kubernetes.io/ttl" (.Values.registry.ingress.externalDns.ttl | toString) -}}
+{{- end -}}
+{{- toYaml $annotations -}}
+{{- end }}
