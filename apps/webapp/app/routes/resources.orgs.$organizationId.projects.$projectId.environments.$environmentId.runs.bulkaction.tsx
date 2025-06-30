@@ -1,6 +1,6 @@
 import { ArrowPathIcon } from "@heroicons/react/20/solid";
 import { XCircleIcon } from "@heroicons/react/24/outline";
-import { Form, useActionData, useFetcher } from "@remix-run/react";
+import { Form } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/router";
 import { useEffect } from "react";
 import { typedjson, useTypedFetcher } from "remix-typedjson";
@@ -8,8 +8,13 @@ import { z } from "zod";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Fieldset } from "~/components/primitives/Fieldset";
-import { InputGroup } from "~/components/primitives/InputGroup";
 import { Header2 } from "~/components/primitives/Headers";
+import { Hint } from "~/components/primitives/Hint";
+import { Input } from "~/components/primitives/Input";
+import { InputGroup } from "~/components/primitives/InputGroup";
+import { Label } from "~/components/primitives/Label";
+import { RadioGroup, RadioGroupItem } from "~/components/primitives/RadioButton";
+import { SpinnerWhite } from "~/components/primitives/Spinner";
 import { type TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
 import { $replica, type PrismaClient } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
@@ -23,14 +28,8 @@ import { clickhouseClient } from "~/services/clickhouseInstance.server";
 import { RunsRepository } from "~/services/runsRepository.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { v3RunsNextPath, v3RunsPath } from "~/utils/pathBuilder";
-import { Input } from "~/components/primitives/Input";
-import { Label } from "~/components/primitives/Label";
-import { Hint } from "~/components/primitives/Hint";
-import { RadioGroupItem, RadioGroup } from "~/components/primitives/RadioButton";
 import { formatNumber } from "~/utils/numberFormatter";
-import { SpinnerWhite } from "~/components/primitives/Spinner";
-import { formatDateTime } from "~/components/primitives/DateTime";
+import { v3RunsPath } from "~/utils/pathBuilder";
 
 const Params = z.object({
   organizationId: z.string(),
@@ -129,7 +128,7 @@ export function CreateBulkActionInspector({
         <div className="mx-3 flex items-center justify-between gap-2 border-b border-grid-dimmed">
           <Header2 className="whitespace-nowrap">Create a bulk action</Header2>
           <LinkButton
-            to={`${v3RunsNextPath(
+            to={`${v3RunsPath(
               organization,
               project,
               environment
