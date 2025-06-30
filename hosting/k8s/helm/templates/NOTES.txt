@@ -24,10 +24,10 @@ To get started:
    kubectl get pods --namespace {{ .Release.Namespace }} -w
 
 2. Access the webapp:
-{{- if .Values.ingress.enabled }}
-{{- range $host := .Values.ingress.hosts }}
+{{- if .Values.webapp.ingress.enabled }}
+{{- range $host := .Values.webapp.ingress.hosts }}
   {{- range .paths }}
-   http{{ if $.Values.ingress.tls }}s{{ end }}://{{ $host.host }}{{ .path }}
+   http{{ if $.Values.webapp.ingress.tls }}s{{ end }}://{{ $host.host }}{{ .path }}
   {{- end }}
 {{- end }}
 {{- else if contains "NodePort" .Values.webapp.service.type }}
@@ -86,8 +86,8 @@ Configuration:
 {{- if .Values.registry.deploy }}
 - Using internal Docker registry
 {{- else }}
-- Using external Docker registry at {{ .Values.registry.external.host }}:{{ .Values.registry.external.port }}
-{{- if eq .Values.registry.external.host "localhost" }}
+- Using external Docker registry at {{ .Values.registry.external.host }}
+{{- if hasPrefix "localhost" .Values.registry.external.host }}
 
 ⚠️  Registry Warning:
    Using localhost for registry. Deployments will only work when testing locally in kind or minikube.

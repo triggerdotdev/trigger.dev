@@ -12,33 +12,30 @@ secrets:
     accessKeyId: "your-access-key"
     secretAccessKey: "your-secret-key"
 
-# Production configuration
-config:
+# Production webapp configuration
+webapp:
+  # Origin configuration
   appOrigin: "https://trigger.example.com"
   loginOrigin: "https://trigger.example.com"
   apiOrigin: "https://trigger.example.com"
 
-# Production ingress
-ingress:
-  enabled: true
-  className: "nginx"
-  annotations:
-    cert-manager.io/cluster-issuer: "letsencrypt-prod"
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
-  hosts:
-    - host: trigger.example.com
-      paths:
-        - path: /
-          pathType: Prefix
-  tls:
-    - secretName: trigger-tls
-      hosts:
-        - trigger.example.com
+  # Production ingress
+  ingress:
+    enabled: true
+    className: "nginx"
+    annotations:
+      cert-manager.io/cluster-issuer: "letsencrypt-prod"
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    hosts:
+      - host: trigger.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+    tls:
+      - secretName: trigger-tls
+        hosts:
+          - trigger.example.com
 
-# Production webapp configuration
-webapp:
-  bootstrap:
-    enabled: false # Usually disabled in production
   resources:
     limits:
       cpu: 2000m
@@ -113,6 +110,23 @@ registry:
     enabled: true
     size: 100Gi
     storageClass: "standard"
+
+  # Production ingress
+  ingress:
+    enabled: true
+    className: "nginx"
+    annotations:
+      cert-manager.io/cluster-issuer: "letsencrypt-prod"
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    hosts:
+      - host: registry.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+    tls:
+      - secretName: registry-tls
+        hosts:
+          - registry.example.com
 
 # Production Supervisor (Kubernetes worker orchestrator)
 supervisor:

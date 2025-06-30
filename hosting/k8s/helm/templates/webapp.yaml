@@ -172,11 +172,11 @@ spec:
             {{- toYaml .Values.webapp.resources | nindent 12 }}
           env:
             - name: APP_ORIGIN
-              value: {{ .Values.config.appOrigin | quote }}
+              value: {{ .Values.webapp.appOrigin | quote }}
             - name: LOGIN_ORIGIN
-              value: {{ .Values.config.loginOrigin | quote }}
+              value: {{ .Values.webapp.loginOrigin | quote }}
             - name: API_ORIGIN
-              value: {{ .Values.config.apiOrigin | quote }}
+              value: {{ .Values.webapp.apiOrigin | quote }}
             - name: ELECTRIC_ORIGIN
               value: {{ include "trigger-v4.electric.url" . | quote }}
             - name: DATABASE_URL
@@ -194,7 +194,7 @@ spec:
             - name: APP_LOG_LEVEL
               value: {{ .Values.webapp.logLevel | quote }}
             - name: DEV_OTEL_EXPORTER_OTLP_ENDPOINT
-              value: "{{ .Values.config.appOrigin }}/otel"
+              value: "{{ .Values.webapp.appOrigin }}/otel"
             - name: DEPLOY_REGISTRY_HOST
               value: {{ include "trigger-v4.registry.host" . | quote }}
             - name: DEPLOY_REGISTRY_NAMESPACE

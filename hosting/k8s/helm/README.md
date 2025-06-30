@@ -113,14 +113,13 @@ This chart deploys the following components:
 ### Basic Configuration
 
 ```yaml
-# Application URLs
-config:
+webapp:
+  # Application URLs
   appOrigin: "https://trigger.example.com"
   loginOrigin: "https://trigger.example.com" 
   apiOrigin: "https://trigger.example.com"
 
-# Bootstrap mode (auto-creates worker group)
-config:
+  # Bootstrap mode (auto-creates worker group)
   bootstrap:
     enabled: true  # Enable for combined setups
     workerGroupName: "bootstrap"
@@ -133,8 +132,7 @@ Use external managed services instead of bundled components:
 ```yaml
 # External PostgreSQL
 postgres:
-  enabled: false
-  external: true
+  deploy: false
   external:
     host: "your-postgres.rds.amazonaws.com"
     port: 5432
@@ -144,8 +142,7 @@ postgres:
 
 # External Redis  
 redis:
-  enabled: false
-  external: true
+  deploy: false
   external:
     host: "your-redis.cache.amazonaws.com"
     port: 6379
@@ -153,8 +150,7 @@ redis:
 
 # External Docker Registry (e.g., Kind local registry)
 registry:
-  enabled: true
-  external: true
+  deploy: true
   external:
     host: "localhost"
     port: 5001
@@ -165,20 +161,39 @@ registry:
 ### Ingress Configuration
 
 ```yaml
-ingress:
-  enabled: true
-  className: "nginx"
-  annotations:
-    cert-manager.io/cluster-issuer: "letsencrypt-prod"
-  hosts:
-    - host: trigger.example.com
-      paths:
-        - path: /
-          pathType: Prefix
-  tls:
-    - secretName: trigger-tls
-      hosts:
-        - trigger.example.com
+# Webapp ingress
+webapp:
+  ingress:
+    enabled: true
+    className: "nginx"
+    annotations:
+      cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    hosts:
+      - host: trigger.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+    tls:
+      - secretName: trigger-tls
+        hosts:
+          - trigger.example.com
+
+# Registry ingress
+registry:
+  ingress:
+    enabled: true
+    className: "nginx"
+    annotations:
+      cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    hosts:
+      - host: registry.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+    tls:
+      - secretName: registry-tls
+        hosts:
+          - registry.example.com
 ```
 
 ### Resource Configuration
