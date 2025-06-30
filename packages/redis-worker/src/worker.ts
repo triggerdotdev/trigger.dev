@@ -590,7 +590,13 @@ class Worker<TCatalog extends WorkerCatalog> {
             attempt: newAttempt,
             errorMessage,
           });
+
           await this.queue.moveToDeadLetterQueue(id, errorMessage);
+
+          if (catalogItem.cron) {
+            await this.rescheduleCronJob(job, catalogItem, item);
+          }
+
           return;
         }
 
