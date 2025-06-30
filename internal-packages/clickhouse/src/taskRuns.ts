@@ -42,6 +42,8 @@ export const TaskRunV2 = z.object({
   idempotency_key: z.string(),
   expiration_ttl: z.string(),
   is_test: z.boolean().default(false),
+  concurrency_key: z.string().default(""),
+  bulk_action_group_ids: z.array(z.string()).default([]),
   _version: z.string(),
   _is_deleted: z.number().int().default(0),
 });

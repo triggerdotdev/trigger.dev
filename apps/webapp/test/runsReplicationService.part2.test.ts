@@ -1,12 +1,11 @@
 import { ClickHouse } from "@internal/clickhouse";
 import { containerTest } from "@internal/testcontainers";
 import { Logger } from "@trigger.dev/core/logger";
+import { readFile } from "node:fs/promises";
 import { setTimeout } from "node:timers/promises";
 import { z } from "zod";
-import { TaskRunStatus } from "~/database-types";
 import { RunsReplicationService } from "~/services/runsReplicationService.server";
-import { createInMemoryTracing } from "./utils/tracing";
-import superjson from "superjson";
+import { detectBadJsonStrings } from "~/utils/detectBadJsonStrings";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -610,5 +609,178 @@ describe("RunsReplicationService (part 2/2)", () => {
       await runsReplicationService.stop();
     },
     { timeout: 60_000 * 5 }
+  );
+
+  containerTest(
+    "should insert TaskRuns even if there are incomplete Unicode escape sequences in the JSON",
+    async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
+      await prisma.$executeRawUnsafe(`ALTER TABLE public."TaskRun" REPLICA IDENTITY FULL;`);
+
+      const clickhouse = new ClickHouse({
+        url: clickhouseContainer.getConnectionUrl(),
+        name: "runs-replication-stress-bulk-insert",
+      });
+
+      const runsReplicationService = new RunsReplicationService({
+        clickhouse,
+        pgConnectionUrl: postgresContainer.getConnectionUri(),
+        serviceName: "runs-replication-stress-bulk-insert",
+        slotName: "task_runs_to_clickhouse_v1",
+        publicationName: "task_runs_to_clickhouse_v1_publication",
+        redisOptions,
+        maxFlushConcurrency: 10,
+        flushIntervalMs: 100,
+        flushBatchSize: 50,
+        leaderLockTimeoutMs: 5000,
+        leaderLockExtendIntervalMs: 1000,
+        ackIntervalSeconds: 5,
+        logger: new Logger("runs-replication-stress-bulk-insert", "info"),
+      });
+
+      await runsReplicationService.start();
+
+      const organization = await prisma.organization.create({
+        data: {
+          title: "test-stress-bulk-insert",
+          slug: "test-stress-bulk-insert",
+        },
+      });
+
+      const project = await prisma.project.create({
+        data: {
+          name: "test-stress-bulk-insert",
+          slug: "test-stress-bulk-insert",
+          organizationId: organization.id,
+          externalRef: "test-stress-bulk-insert",
+        },
+      });
+
+      const runtimeEnvironment = await prisma.runtimeEnvironment.create({
+        data: {
+          slug: "test-stress-bulk-insert",
+          type: "DEVELOPMENT",
+          projectId: project.id,
+          organizationId: organization.id,
+          apiKey: "test-stress-bulk-insert",
+          pkApiKey: "test-stress-bulk-insert",
+          shortcode: "test-stress-bulk-insert",
+        },
+      });
+
+      // Prepare 9 unique TaskRuns
+      const now = Date.now();
+      const runsData = Array.from({ length: 9 }, (_, i) => ({
+        friendlyId: `run_bulk_${now}_${i}`,
+        taskIdentifier: `my-task-bulk`,
+        payload: `{"title": "hello"}`,
+        payloadType: "application/json",
+        traceId: `bulk-${i}`,
+        spanId: `bulk-${i}`,
+        queue: "test-stress-bulk-insert",
+        runtimeEnvironmentId: runtimeEnvironment.id,
+        projectId: project.id,
+        organizationId: organization.id,
+        environmentType: "DEVELOPMENT" as const,
+        engine: "V2" as const,
+        status: "PENDING" as const,
+        attemptNumber: 1,
+        createdAt: new Date(now + i),
+        updatedAt: new Date(now + i),
+      }));
+
+      //add a run with incomplete Unicode escape sequences
+      const badPayload = await readFile(`${__dirname}/bad-clickhouse-output.json`, "utf-8");
+      const hasProblems = detectBadJsonStrings(badPayload);
+      expect(hasProblems).toBe(true);
+
+      runsData.push({
+        friendlyId: `run_bulk_${now}_10`,
+        taskIdentifier: `my-task-bulk`,
+        payload: badPayload,
+        payloadType: "application/json",
+        traceId: `bulk-10`,
+        spanId: `bulk-10`,
+        queue: "test-stress-bulk-insert",
+        runtimeEnvironmentId: runtimeEnvironment.id,
+        projectId: project.id,
+        organizationId: organization.id,
+        environmentType: "DEVELOPMENT" as const,
+        engine: "V2" as const,
+        status: "PENDING" as const,
+        attemptNumber: 1,
+        createdAt: new Date(now + 10),
+        updatedAt: new Date(now + 10),
+      });
+
+      // Bulk insert
+      const created = await prisma.taskRun.createMany({ data: runsData });
+      expect(created.count).toBe(10);
+
+      // Update the runs (not the 10th one)
+      await prisma.taskRun.updateMany({
+        where: {
+          spanId: { not: "bulk-10" },
+        },
+        data: {
+          status: "COMPLETED_SUCCESSFULLY",
+          output: `{"foo":"bar"}`,
+          outputType: "application/json",
+        },
+      });
+
+      // Give the 10th one a bad payload
+      await prisma.taskRun.updateMany({
+        where: {
+          spanId: "bulk-10",
+        },
+        data: {
+          status: "COMPLETED_SUCCESSFULLY",
+          output: badPayload,
+          outputType: "application/json",
+        },
+      });
+
+      // Wait for replication
+      await setTimeout(5000);
+
+      // Query ClickHouse for all runs using FINAL
+      const queryRuns = clickhouse.reader.query({
+        name: "runs-replication-stress-bulk-insert",
+        query: `SELECT * FROM trigger_dev.task_runs_v2 FINAL`,
+        schema: z.any(),
+      });
+
+      const [queryError, result] = await queryRuns({});
+      expect(queryError).toBeNull();
+      expect(result?.length).toBe(10);
+
+      console.log("Data", {
+        runsData,
+        result,
+      });
+
+      // Check a few random runs for correctness
+      for (let i = 0; i < 9; i++) {
+        const expected = runsData[i];
+        const found = result?.find((r: any) => r.friendly_id === expected.friendlyId);
+        expect(found).toBeDefined();
+        expect(found).toEqual(
+          expect.objectContaining({
+            friendly_id: expected.friendlyId,
+            trace_id: expected.traceId,
+            task_identifier: expected.taskIdentifier,
+            status: "COMPLETED_SUCCESSFULLY",
+          })
+        );
+        expect(found?.output).toBeDefined();
+      }
+
+      // Check the run with the bad JSON
+      const foundBad = result?.find((r: any) => r.span_id === "bulk-10");
+      expect(foundBad).toBeDefined();
+      expect(foundBad?.output).toStrictEqual({});
+
+      await runsReplicationService.stop();
+    }
   );
 });
