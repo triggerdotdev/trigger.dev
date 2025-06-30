@@ -492,19 +492,33 @@ s3:
 
 # Docker Registry configuration
 registry:
-  # EXPERIMENTAL - requires TLS setup or additional cluster configuration. Configure `external` details instead.
+  # EXPERIMENTAL - requires ingress/TLS setup or additional cluster configuration. Configure `external` details instead.
   deploy: false
 
-  repositoryNamespace: "trigger" # Docker repository namespace for deployed images, will be part of the image ref
+  # This will be used when deploy: true
+  host: "registry.example.com"
+
+  # Docker repository namespace for deployed images, will be part of the image ref
+  repositoryNamespace: "trigger"
+
   image:
     registry: docker.io
     repository: registry
     tag: "2"
     pullPolicy: IfNotPresent
+
   auth:
     enabled: true
     username: "registry-user"
     password: "very-secure-indeed"
+
+  # External Registry connection (when deploy: false)
+  external:
+    host: "localhost:5001"
+    auth:
+      enabled: false
+      username: ""
+      password: ""
 
   podAnnotations: {}
 
@@ -570,15 +584,6 @@ registry:
     timeoutSeconds: 5
     failureThreshold: 60
     successThreshold: 1
-
-  # External Registry connection (when deploy: false)
-  external:
-    host: "localhost"
-    port: 5001
-    auth:
-      enabled: false
-      username: ""
-      password: ""
 
   # Extra environment variables for Registry
   extraEnvVars:

@@ -238,9 +238,9 @@ Registry connection details
 */}}
 {{- define "trigger-v4.registry.host" -}}
 {{- if .Values.registry.deploy -}}
-{{ include "trigger-v4.fullname" . }}-registry:{{ .Values.registry.service.port }}
+{{ .Values.registry.host }}
 {{- else -}}
-{{ .Values.registry.external.host }}:{{ .Values.registry.external.port }}
+{{ .Values.registry.external.host }}
 {{- end -}}
 {{- end }}
 
