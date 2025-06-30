@@ -715,6 +715,7 @@ export class RunsReplicationService {
       idempotency_key: run.idempotencyKey ?? "",
       expiration_ttl: run.ttl ?? "",
       output,
+      concurrency_key: run.concurrencyKey ?? "",
       _version: _version.toString(),
       _is_deleted: event === "delete" ? 1 : 0,
     };
