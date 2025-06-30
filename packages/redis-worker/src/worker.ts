@@ -19,14 +19,27 @@ import { nanoid } from "nanoid";
 import pLimit from "p-limit";
 import { z } from "zod";
 import { AnyQueueItem, SimpleQueue } from "./queue.js";
+import { parseExpression } from "cron-parser";
+
+export const CronSchema = z.object({
+  cron: z.string(),
+  lastTimestamp: z.number().optional(),
+  timestamp: z.number(),
+});
+
+export type CronSchema = z.infer<typeof CronSchema>;
 
 export type WorkerCatalog = {
   [key: string]: {
     schema: z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;
     visibilityTimeoutMs: number;
     retry?: RetryOptions;
+    cron?: string;
+    jitter?: number;
   };
 };
+
+type WorkerCatalogItem = WorkerCatalog[keyof WorkerCatalog];
 
 type QueueCatalogFromWorkerCatalog<Catalog extends WorkerCatalog> = {
   [K in keyof Catalog]: Catalog[K]["schema"];
@@ -204,6 +217,12 @@ class Worker<TCatalog extends WorkerCatalog> {
   public start() {
     const { workers, tasksPerWorker } = this.concurrency;
 
+    this.logger.info("Starting worker", {
+      workers,
+      tasksPerWorker,
+      concurrency: this.concurrency,
+    });
+
     // Launch a number of "worker loops" on the main thread.
     for (let i = 0; i < workers; i++) {
       this.workerLoops.push(this.runWorkerLoop(`worker-${nanoid(12)}`, tasksPerWorker, i, workers));
@@ -219,7 +238,9 @@ class Worker<TCatalog extends WorkerCatalog> {
         });
       },
     });
+
     this.setupSubscriber();
+    this.setupCron();
 
     return this;
   }
@@ -496,6 +517,11 @@ class Worker<TCatalog extends WorkerCatalog> {
       return;
     }
 
+    if (!catalogItem) {
+      this.logger.error(`No catalog item found for job type: ${job}`);
+      return;
+    }
+
     await startSpan(
       this.tracer,
       "processItem",
@@ -513,6 +539,10 @@ class Worker<TCatalog extends WorkerCatalog> {
 
         // On success, acknowledge the item.
         await this.queue.ack(id, deduplicationKey);
+
+        if (catalogItem.cron) {
+          await this.rescheduleCronJob(job, catalogItem, item);
+        }
       },
       {
         kind: SpanKind.CONSUMER,
@@ -620,6 +650,108 @@ class Worker<TCatalog extends WorkerCatalog> {
   // A simple helper to delay for a given number of milliseconds.
   private static delay(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  private setupCron() {
+    const cronJobs = Object.entries(this.options.catalog).filter(([_, value]) => value.cron);
+
+    if (cronJobs.length === 0) {
+      return;
+    }
+
+    this.logger.info("Setting up cron jobs", {
+      cronJobs: cronJobs.map(([job, value]) => ({
+        job,
+        cron: value.cron,
+        jitter: value.jitter,
+      })),
+    });
+
+    // For each cron job, we need to try and enqueue a job with the next timestamp of the cron job.
+    const enqueuePromises = cronJobs.map(([job, value]) =>
+      this.enqueueCronJob(value.cron!, job, value.jitter)
+    );
+
+    Promise.allSettled(enqueuePromises).then((results) => {
+      results.forEach((result) => {
+        if (result.status === "fulfilled") {
+          this.logger.info("Enqueued cron job", { result: result.value });
+        } else {
+          this.logger.error("Failed to enqueue cron job", { reason: result.reason });
+        }
+      });
+    });
+  }
+
+  private async enqueueCronJob(cron: string, job: string, jitter?: number, lastTimestamp?: Date) {
+    const scheduledAt = this.calculateNextScheduledAt(cron, lastTimestamp);
+    const identifier = [job, this.timestampIdentifier(scheduledAt)].join(":");
+    // Calculate the availableAt date by calculating a random number between -jitter/2 and jitter/2 and adding it to the scheduledAt
+    const availableAt = jitter
+      ? new Date(scheduledAt.getTime() + Math.random() * jitter - jitter / 2)
+      : scheduledAt;
+
+    const enqueued = await this.enqueueOnce({
+      id: identifier,
+      job,
+      payload: {
+        timestamp: scheduledAt.getTime(),
+        lastTimestamp: lastTimestamp?.getTime(),
+        cron,
+      },
+      availableAt,
+    });
+
+    this.logger.info("Enqueued cron job", {
+      identifier,
+      cron,
+      job,
+      scheduledAt,
+      enqueued,
+      availableAt,
+    });
+
+    return {
+      identifier,
+      cron,
+      job,
+      scheduledAt,
+      enqueued,
+    };
+  }
+
+  private async rescheduleCronJob(job: string, catalogItem: WorkerCatalogItem, item: CronSchema) {
+    if (!catalogItem.cron) {
+      return;
+    }
+
+    return this.enqueueCronJob(catalogItem.cron, job, catalogItem.jitter, new Date(item.timestamp));
+  }
+
+  private calculateNextScheduledAt(cron: string, lastTimestamp?: Date): Date {
+    const scheduledAt = parseExpression(cron, {
+      currentDate: lastTimestamp,
+    })
+      .next()
+      .toDate();
+
+    // If scheduledAt is in the past, we should just calculate the next one based on the current time
+    if (scheduledAt < new Date()) {
+      return this.calculateNextScheduledAt(cron);
+    }
+
+    return scheduledAt;
+  }
+
+  private timestampIdentifier(timestamp: Date) {
+    const year = timestamp.getUTCFullYear();
+    const month = timestamp.getUTCMonth();
+    const day = timestamp.getUTCDate();
+    const hour = timestamp.getUTCHours();
+    const minute = timestamp.getUTCMinutes();
+    const second = timestamp.getUTCSeconds();
+
+    return `${year}-${month}-${day}-${hour}-${minute}-${second}`;
   }
 
   private setupSubscriber() {

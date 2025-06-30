@@ -138,11 +138,10 @@ export class RunEngine {
         shutdownTimeoutMs: options.worker.shutdownTimeoutMs,
       },
       concurrencySweeper: {
-        enabled: !options.worker.disabled,
-        scanIntervalMs: options.queue?.concurrencySweeper?.scanIntervalMs ?? 60_000,
-        processMarkedIntervalMs:
-          options.queue?.concurrencySweeper?.processMarkedIntervalMs ?? 5_000,
-        logLevel: options.queue?.concurrencySweeper?.logLevel ?? options.queue?.logLevel,
+        scanSchedule: options.queue?.concurrencySweeper?.scanSchedule,
+        processMarkedSchedule: options.queue?.concurrencySweeper?.processMarkedSchedule,
+        scanJitter: options.queue?.concurrencySweeper?.scanJitter,
+        processMarkedJitter: options.queue?.concurrencySweeper?.processMarkedJitter,
         callback: this.#concurrencySweeperCallback.bind(this),
       },
       shardCount: options.queue?.shardCount,

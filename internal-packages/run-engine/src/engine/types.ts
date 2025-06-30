@@ -46,9 +46,10 @@ export type RunEngineOptions = {
     >;
     dequeueBlockingTimeoutSeconds?: number;
     concurrencySweeper?: {
-      scanIntervalMs?: number;
-      processMarkedIntervalMs?: number;
-      logLevel?: LogLevel;
+      scanSchedule?: string;
+      processMarkedSchedule?: string;
+      scanJitter?: number;
+      processMarkedJitter?: number;
     };
   };
   runLock: {

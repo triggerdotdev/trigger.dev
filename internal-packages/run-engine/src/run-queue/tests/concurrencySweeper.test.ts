@@ -73,10 +73,10 @@ describe("RunQueue Concurrency Sweeper", () => {
           port: redisContainer.getPort(),
         },
         concurrencySweeper: {
-          enabled: true,
-          logLevel: "debug",
-          scanIntervalMs: 500,
-          processMarkedIntervalMs: 100,
+          scanSchedule: "* * * * * *", // Every second
+          scanJitter: 5,
+          processMarkedSchedule: "* * * * * *", // Every second
+          processMarkedJitter: 5,
           callback: async (runIds) => {
             if (!enableConcurrencySweeper) {
               return [];
@@ -151,7 +151,7 @@ describe("RunQueue Concurrency Sweeper", () => {
 
         enableConcurrencySweeper = true;
 
-        await setTimeout(1000); // Now a run is "completed" and should be removed from the concurrency set
+        await setTimeout(3_000); // Now a run is "completed" and should be removed from the concurrency set
 
         // queue concurrency should be 0
         const queueConcurrency3 = await queue.currentConcurrencyOfQueue(

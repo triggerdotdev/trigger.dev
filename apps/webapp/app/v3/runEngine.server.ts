@@ -67,9 +67,10 @@ function createRunEngine() {
       masterQueueConsumersIntervalMs: env.RUN_ENGINE_MASTER_QUEUE_CONSUMERS_INTERVAL_MS,
       masterQueueConsumersDisabled: env.RUN_ENGINE_WORKER_ENABLED === "0",
       concurrencySweeper: {
-        scanIntervalMs: env.RUN_ENGINE_CONCURRENCY_SWEEPER_SCAN_INTERVAL_MS,
-        processMarkedIntervalMs: env.RUN_ENGINE_CONCURRENCY_SWEEPER_PROCESS_MARKED_INTERVAL_MS,
-        logLevel: env.RUN_ENGINE_CONCURRENCY_SWEEPER_LOG_LEVEL,
+        scanSchedule: env.RUN_ENGINE_CONCURRENCY_SWEEPER_SCAN_SCHEDULE,
+        processMarkedSchedule: env.RUN_ENGINE_CONCURRENCY_SWEEPER_PROCESS_MARKED_SCHEDULE,
+        scanJitter: env.RUN_ENGINE_CONCURRENCY_SWEEPER_SCAN_JITTER,
+        processMarkedJitter: env.RUN_ENGINE_CONCURRENCY_SWEEPER_PROCESS_MARKED_JITTER,
       },
     },
     runLock: {

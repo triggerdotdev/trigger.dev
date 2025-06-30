@@ -428,11 +428,10 @@ const EnvironmentSchema = z.object({
   RUN_ENGINE_PROCESS_WORKER_QUEUE_DEBOUNCE_MS: z.coerce.number().int().default(200),
   RUN_ENGINE_DEQUEUE_BLOCKING_TIMEOUT_SECONDS: z.coerce.number().int().default(10),
   RUN_ENGINE_MASTER_QUEUE_CONSUMERS_INTERVAL_MS: z.coerce.number().int().default(500),
-  RUN_ENGINE_CONCURRENCY_SWEEPER_SCAN_INTERVAL_MS: z.coerce.number().int().default(60_000),
-  RUN_ENGINE_CONCURRENCY_SWEEPER_PROCESS_MARKED_INTERVAL_MS: z.coerce.number().int().default(5_000),
-  RUN_ENGINE_CONCURRENCY_SWEEPER_LOG_LEVEL: z
-    .enum(["log", "error", "warn", "info", "debug"])
-    .default("info"),
+  RUN_ENGINE_CONCURRENCY_SWEEPER_SCAN_SCHEDULE: z.string().optional(),
+  RUN_ENGINE_CONCURRENCY_SWEEPER_PROCESS_MARKED_SCHEDULE: z.string().optional(),
+  RUN_ENGINE_CONCURRENCY_SWEEPER_SCAN_JITTER: z.coerce.number().int().optional(),
+  RUN_ENGINE_CONCURRENCY_SWEEPER_PROCESS_MARKED_JITTER: z.coerce.number().int().optional(),
 
   RUN_ENGINE_RUN_LOCK_DURATION: z.coerce.number().int().default(5000),
   RUN_ENGINE_RUN_LOCK_AUTOMATIC_EXTENSION_THRESHOLD: z.coerce.number().int().default(1000),

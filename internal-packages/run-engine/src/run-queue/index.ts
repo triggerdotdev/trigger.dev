@@ -39,7 +39,7 @@ import { MessageNotFoundError } from "./errors.js";
 import { promiseWithResolvers, tryCatch } from "@trigger.dev/core";
 import { setInterval } from "node:timers/promises";
 import { nanoid } from "nanoid";
-import { Worker, type WorkerConcurrencyOptions } from "@trigger.dev/redis-worker";
+import { CronSchema, Worker, type WorkerConcurrencyOptions } from "@trigger.dev/redis-worker";
 import { z } from "zod";
 import { Readable } from "node:stream";
 
@@ -80,10 +80,10 @@ export type RunQueueOptions = {
   meter?: Meter;
   dequeueBlockingTimeoutSeconds?: number;
   concurrencySweeper?: {
-    enabled?: boolean;
-    scanIntervalMs?: number;
-    processMarkedIntervalMs?: number;
-    logLevel?: LogLevel;
+    scanSchedule?: string;
+    scanJitter?: number;
+    processMarkedSchedule?: string;
+    processMarkedJitter?: number;
     callback: ConcurrencySweeperCallback;
   };
 };
@@ -96,6 +96,12 @@ type DequeuedMessage = {
   messageId: string;
   messageScore: string;
   message: OutputPayload;
+};
+
+type MarkedRun = {
+  orgId: string;
+  messageId: string;
+  score: number;
 };
 
 const defaultRetrySettings = {
@@ -114,27 +120,22 @@ const workerCatalog = {
     }),
     visibilityTimeoutMs: 30_000,
   },
+  scanConcurrencySets: {
+    schema: CronSchema,
+    visibilityTimeoutMs: 60_000 * 5,
+    cron: "*/10 * * * *",
+    jitter: 60_000,
+  },
+  processMarkedRuns: {
+    schema: CronSchema,
+    visibilityTimeoutMs: 60_000 * 5,
+    cron: "*/5 * * * *",
+    jitter: 30_000,
+  },
 };
 
 /**
  * RunQueue – the queue that's used to process runs
- *
- * @example
- * // Enable concurrency sweeper
- * const runQueue = new RunQueue({
- *   name: "my-queue",
- *   // ... other options
- *   concurrencySweeper: {
- *     enabled: true,
- *     scanIntervalMs: 30_000, // Scan every 30 seconds
- *     processMarkedIntervalMs: 5_000, // Process marked runs every 5 seconds
- *     callback: async (runIds) => {
- *       // Your logic to determine which runs are completed
- *       const completedRuns = await yourDatabase.findCompletedRuns(runIds);
- *       return completedRuns.map(run => ({ id: run.id, orgId: run.orgId }));
- *     }
- *   }
- * });
  */
 export class RunQueue {
   private retryOptions: RetryOptions;
@@ -149,7 +150,6 @@ export class RunQueue {
   private worker: Worker<typeof workerCatalog>;
   private _observableWorkerQueues: Set<string> = new Set();
   private _meter: Meter;
-  private _concurrencySweeper?: ConcurrencySweeper;
 
   constructor(public readonly options: RunQueueOptions) {
     this.shardCount = options.shardCount ?? 2;
@@ -200,32 +200,44 @@ export class RunQueue {
         ...options.redis,
         keyPrefix: `${options.redis.keyPrefix}:worker`,
       },
-      catalog: workerCatalog,
+      catalog: {
+        ...workerCatalog,
+        scanConcurrencySets: {
+          ...workerCatalog.scanConcurrencySets,
+          cron: options.concurrencySweeper?.scanSchedule ?? workerCatalog.scanConcurrencySets.cron,
+          jitter:
+            options.concurrencySweeper?.scanJitter ?? workerCatalog.scanConcurrencySets.jitter,
+        },
+        processMarkedRuns: {
+          ...workerCatalog.processMarkedRuns,
+          cron:
+            options.concurrencySweeper?.processMarkedSchedule ??
+            workerCatalog.processMarkedRuns.cron,
+          jitter:
+            options.concurrencySweeper?.processMarkedJitter ??
+            workerCatalog.processMarkedRuns.jitter,
+        },
+      },
       concurrency: options.workerOptions?.concurrency,
       pollIntervalMs: options.workerOptions?.pollIntervalMs ?? 1000,
       immediatePollIntervalMs: options.workerOptions?.immediatePollIntervalMs ?? 100,
       shutdownTimeoutMs: options.workerOptions?.shutdownTimeoutMs ?? 10_000,
-      logger: new Logger("RunQueueWorker", options.logLevel ?? "log"),
+      logger: new Logger("RunQueueWorker", options.logLevel ?? "info"),
       jobs: {
         processQueueForWorkerQueue: async (job) => {
           await this.#processQueueForWorkerQueue(job.payload.queueKey, job.payload.environmentId);
+        },
+        scanConcurrencySets: async (job) => {
+          await this.scanConcurrencySets();
+        },
+        processMarkedRuns: async (job) => {
+          await this.processMarkedRuns();
         },
       },
     });
 
     if (!options.workerOptions?.disabled) {
       this.worker.start();
-    }
-
-    // Initialize concurrency sweeper if enabled
-    if (options.concurrencySweeper?.enabled !== false && options.concurrencySweeper?.callback) {
-      this.logger.info("Initializing concurrency sweeper", {
-        enabled: options.concurrencySweeper.enabled,
-        callback: options.concurrencySweeper.callback,
-      });
-
-      this._concurrencySweeper = new ConcurrencySweeper(this, options.concurrencySweeper);
-      this._concurrencySweeper.start();
     }
 
     this.#setupSubscriber();
@@ -903,7 +915,6 @@ export class RunQueue {
       this.subscriber.quit(),
       this.luaDebugSubscriber.quit(),
       this.worker.stop(),
-      this._concurrencySweeper?.stop(),
     ]);
 
     await this.redis.quit();
@@ -1701,6 +1712,243 @@ export class RunQueue {
     return blockingClient;
   }
 
+  // Call this every 10 minutes
+  private async scanConcurrencySets() {
+    if (this.abortController.signal.aborted) {
+      return;
+    }
+
+    this.logger.debug("Scanning concurrency sets for completed runs");
+
+    const stats = {
+      streamCallbacks: 0,
+      processedKeys: 0,
+    };
+
+    const { promise, resolve, reject } = promiseWithResolvers<typeof stats>();
+
+    const { stream, redis } = this.currentConcurrencyScanStream(
+      10,
+      () => {
+        this.logger.debug("Concurrency scan stream closed", { stats });
+
+        resolve(stats);
+      },
+      (error) => {
+        this.logger.error("Concurrency scan stream error", {
+          stats,
+          error: {
+            name: error.name,
+            message: error.message,
+            stack: error.stack,
+          },
+        });
+
+        reject(error);
+      }
+    );
+
+    stream.on("data", async (keys: string[]) => {
+      if (!keys || keys.length === 0) {
+        return;
+      }
+
+      stream.pause();
+
+      if (this.abortController.signal.aborted) {
+        stream.destroy();
+        return;
+      }
+
+      stats.streamCallbacks++;
+
+      const uniqueKeys = Array.from(new Set<string>(keys)).map((key) =>
+        key.replace(redis.options.keyPrefix ?? "", "")
+      );
+
+      if (uniqueKeys.length === 0) {
+        stream.resume();
+        return;
+      }
+
+      this.logger.debug("Processing concurrency keys from stream", {
+        keys: uniqueKeys,
+      });
+
+      stats.processedKeys += uniqueKeys.length;
+
+      await Promise.allSettled(uniqueKeys.map((key) => this.processConcurrencySet(key))).finally(
+        () => {
+          stream.resume();
+        }
+      );
+    });
+
+    return promise;
+  }
+
+  private async processConcurrencySet(concurrencyKey: string) {
+    const stream = this.redis.sscanStream(concurrencyKey, {
+      count: 100,
+    });
+
+    const { promise, resolve, reject } = promiseWithResolvers<void>();
+
+    stream.on("end", () => {
+      resolve();
+    });
+
+    stream.on("error", (error) => {
+      this.logger.error("Error in sscanStream for concurrency set", {
+        concurrencyKey,
+        error,
+      });
+
+      reject(error);
+    });
+
+    stream.on("data", async (runIds: string[]) => {
+      stream.pause();
+
+      if (this.abortController.signal.aborted) {
+        stream.destroy();
+        return;
+      }
+
+      if (!runIds || runIds.length === 0) {
+        stream.resume();
+        return;
+      }
+
+      const deduplicatedRunIds = Array.from(new Set(runIds));
+
+      const [processError] = await tryCatch(
+        this.processCurrencyConcurrencyRunIds(concurrencyKey, deduplicatedRunIds)
+      );
+
+      if (processError) {
+        this.logger.error("Error processing concurrency set", {
+          concurrencyKey,
+          runIds,
+          error: processError,
+        });
+      }
+
+      stream.resume();
+    });
+
+    return promise;
+  }
+
+  private async processCurrencyConcurrencyRunIds(concurrencyKey: string, runIds: string[]) {
+    this.logger.debug(`Processing concurrency set with ${runIds.length} runs`, {
+      concurrencyKey,
+      runIds: runIds.slice(0, 5), // Log first 5 for debugging
+    });
+
+    // Call the callback to determine which runs are completed
+    const completedRuns = await this.options.concurrencySweeper?.callback(runIds);
+
+    if (!completedRuns) {
+      this.logger.debug("No completed runs found in concurrency set", { concurrencyKey });
+      return;
+    }
+
+    if (completedRuns.length === 0) {
+      this.logger.debug("No completed runs found in concurrency set", { concurrencyKey });
+      return;
+    }
+
+    this.logger.debug(`Found ${completedRuns.length} completed runs to mark for ack`, {
+      concurrencyKey,
+      completedRunIds: completedRuns.map((r) => r.id).slice(0, 5),
+    });
+
+    // Mark the completed runs for acknowledgment
+    await this.markRunsForAck(completedRuns);
+  }
+
+  private async markRunsForAck(completedRuns: Array<{ id: string; orgId: string }>) {
+    const markedForAckKey = this.keys.markedForAckKey();
+
+    // Prepare arguments: alternating orgId, messageId pairs
+    const args: string[] = [];
+    for (const run of completedRuns) {
+      this.logger.info("Marking run for acknowledgment", {
+        orgId: run.orgId,
+        runId: run.id,
+      });
+
+      args.push(run.orgId);
+      args.push(run.id);
+    }
+
+    const count = await this.redis.markCompletedRunsForAck(markedForAckKey, ...args);
+
+    this.logger.debug(`Marked ${count} runs for acknowledgment`, {
+      markedForAckKey,
+      count,
+    });
+  }
+
+  // Call this every 5 minutes
+  private async processMarkedRuns() {
+    if (this.abortController.signal.aborted) {
+      return;
+    }
+
+    try {
+      const markedForAckKey = this.keys.markedForAckKey();
+      const results = await this.redis.getMarkedRunsForAck(markedForAckKey, "10");
+
+      if (results.length === 0) {
+        return;
+      }
+
+      const markedRuns: MarkedRun[] = [];
+
+      // Parse results: [orgId1, messageId1, score1, orgId2, messageId2, score2, ...]
+      for (let i = 0; i < results.length; i += 3) {
+        markedRuns.push({
+          orgId: results[i],
+          messageId: results[i + 1],
+          score: Number(results[i + 2]),
+        });
+      }
+
+      this.logger.debug(`Processing ${markedRuns.length} marked runs for acknowledgment`, {
+        markedRuns: markedRuns, // Log first 3 for debugging
+      });
+
+      // Acknowledge each marked run
+      await Promise.allSettled(
+        markedRuns.map((run) =>
+          this.processMarkedRun(run).catch((error) => {
+            this.logger.error("Error acknowledging marked run", {
+              error,
+              orgId: run.orgId,
+              messageId: run.messageId,
+            });
+          })
+        )
+      );
+    } catch (error) {
+      this.logger.error("Error processing marked runs", { error });
+    }
+  }
+
+  async processMarkedRun(run: MarkedRun) {
+    this.logger.info("Acknowledging marked run", {
+      orgId: run.orgId,
+      messageId: run.messageId,
+    });
+
+    await this.acknowledgeMessage(run.orgId, run.messageId, {
+      skipDequeueProcessing: true,
+      removeFromWorkerQueue: false,
+    });
+  }
+
   #registerCommands() {
     this.redis.defineCommand("migrateLegacyMasterQueues", {
       numberOfKeys: 1,
@@ -2132,337 +2380,6 @@ end
 
 return results
       `,
-    });
-  }
-}
-
-type ConcurrencySweeperOptions = {
-  enabled?: boolean;
-  scanIntervalMs?: number;
-  processMarkedIntervalMs?: number;
-  logLevel?: LogLevel;
-  callback: ConcurrencySweeperCallback;
-};
-
-type MarkedRun = {
-  orgId: string;
-  messageId: string;
-  score: number;
-};
-
-class ConcurrencySweeper {
-  private logger: Logger;
-  private abortController: AbortController;
-  private _scanInterval?: NodeJS.Timeout;
-  private _processInterval?: NodeJS.Timeout;
-
-  constructor(
-    private runQueue: RunQueue,
-    private options: ConcurrencySweeperOptions
-  ) {
-    this.logger = new Logger("ConcurrencySweeper", options.logLevel ?? "info");
-    this.abortController = new AbortController();
-  }
-
-  get redis() {
-    return this.runQueue.redis;
-  }
-
-  get keys() {
-    return this.runQueue.keys;
-  }
-
-  start() {
-    this.logger.info("Starting concurrency sweeper");
-
-    // Start the scanning process
-    this._scanInterval = setTimeout(() => {
-      const scanLoop = () => {
-        if (this.abortController.signal.aborted) return;
-
-        const start = performance.now();
-
-        this.scanConcurrencySets()
-          .then((stats) => {
-            const duration = performance.now() - start;
-
-            this.logger.info("Concurrency scan completed", { stats, duration });
-          })
-          .catch((error) => {
-            this.logger.error("Error in concurrency scan", { error });
-          })
-          .finally(() => {
-            if (!this.abortController.signal.aborted) {
-              this._scanInterval = setTimeout(scanLoop, this.options.scanIntervalMs ?? 30_000);
-            }
-          });
-      };
-      scanLoop();
-    }, 0);
-
-    // Start the marked runs processing
-    this._processInterval = setTimeout(() => {
-      const processLoop = () => {
-        if (this.abortController.signal.aborted) return;
-
-        this.processMarkedRuns()
-          .catch((error) => {
-            this.logger.error("Error processing marked runs", { error });
-          })
-          .finally(() => {
-            if (!this.abortController.signal.aborted) {
-              this._processInterval = setTimeout(
-                processLoop,
-                this.options.processMarkedIntervalMs ?? 5_000
-              );
-            }
-          });
-      };
-      processLoop();
-    }, 0);
-  }
-
-  async stop() {
-    this.logger.debug("Stopping concurrency sweeper");
-
-    this.abortController.abort();
-
-    if (this._scanInterval) {
-      clearTimeout(this._scanInterval);
-    }
-
-    if (this._processInterval) {
-      clearTimeout(this._processInterval);
-    }
-  }
-
-  private async scanConcurrencySets() {
-    if (this.abortController.signal.aborted) {
-      return;
-    }
-
-    this.logger.debug("Scanning concurrency sets for completed runs");
-
-    const stats = {
-      streamCallbacks: 0,
-      processedKeys: 0,
-    };
-
-    const { promise, resolve, reject } = promiseWithResolvers<typeof stats>();
-
-    const { stream, redis } = this.runQueue.currentConcurrencyScanStream(
-      10,
-      () => {
-        this.logger.debug("Concurrency scan stream closed", { stats });
-
-        resolve(stats);
-      },
-      (error) => {
-        this.logger.error("Concurrency scan stream error", {
-          stats,
-          error: {
-            name: error.name,
-            message: error.message,
-            stack: error.stack,
-          },
-        });
-
-        reject(error);
-      }
-    );
-
-    stream.on("data", async (keys: string[]) => {
-      if (!keys || keys.length === 0) {
-        return;
-      }
-
-      stream.pause();
-
-      if (this.abortController.signal.aborted) {
-        stream.destroy();
-        return;
-      }
-
-      stats.streamCallbacks++;
-
-      const uniqueKeys = Array.from(new Set<string>(keys)).map((key) =>
-        key.replace(redis.options.keyPrefix ?? "", "")
-      );
-
-      if (uniqueKeys.length === 0) {
-        stream.resume();
-        return;
-      }
-
-      this.logger.debug("Processing concurrency keys from stream", {
-        keys: uniqueKeys,
-      });
-
-      stats.processedKeys += uniqueKeys.length;
-
-      await Promise.allSettled(uniqueKeys.map((key) => this.processConcurrencySet(key))).finally(
-        () => {
-          stream.resume();
-        }
-      );
-    });
-
-    return promise;
-  }
-
-  private async processConcurrencySet(concurrencyKey: string) {
-    const stream = this.redis.sscanStream(concurrencyKey, {
-      count: 100,
-    });
-
-    const { promise, resolve, reject } = promiseWithResolvers<void>();
-
-    stream.on("end", () => {
-      resolve();
-    });
-
-    stream.on("error", (error) => {
-      this.logger.error("Error in sscanStream for concurrency set", {
-        concurrencyKey,
-        error,
-      });
-
-      reject(error);
-    });
-
-    stream.on("data", async (runIds: string[]) => {
-      stream.pause();
-
-      if (this.abortController.signal.aborted) {
-        stream.destroy();
-        return;
-      }
-
-      if (!runIds || runIds.length === 0) {
-        stream.resume();
-        return;
-      }
-
-      const deduplicatedRunIds = Array.from(new Set(runIds));
-
-      const [processError] = await tryCatch(
-        this.processCurrencyConcurrencyRunIds(concurrencyKey, deduplicatedRunIds)
-      );
-
-      if (processError) {
-        this.logger.error("Error processing concurrency set", {
-          concurrencyKey,
-          runIds,
-          error: processError,
-        });
-      }
-
-      stream.resume();
-    });
-
-    return promise;
-  }
-
-  private async processCurrencyConcurrencyRunIds(concurrencyKey: string, runIds: string[]) {
-    this.logger.debug(`Processing concurrency set with ${runIds.length} runs`, {
-      concurrencyKey,
-      runIds: runIds.slice(0, 5), // Log first 5 for debugging
-    });
-
-    // Call the callback to determine which runs are completed
-    const completedRuns = await this.options.callback(runIds);
-
-    if (completedRuns.length === 0) {
-      this.logger.debug("No completed runs found in concurrency set", { concurrencyKey });
-      return;
-    }
-
-    this.logger.debug(`Found ${completedRuns.length} completed runs to mark for ack`, {
-      concurrencyKey,
-      completedRunIds: completedRuns.map((r) => r.id).slice(0, 5),
-    });
-
-    // Mark the completed runs for acknowledgment
-    await this.markRunsForAck(completedRuns);
-  }
-
-  private async markRunsForAck(completedRuns: Array<{ id: string; orgId: string }>) {
-    const markedForAckKey = this.keys.markedForAckKey();
-
-    // Prepare arguments: alternating orgId, messageId pairs
-    const args: string[] = [];
-    for (const run of completedRuns) {
-      this.logger.info("Marking run for acknowledgment", {
-        orgId: run.orgId,
-        runId: run.id,
-      });
-
-      args.push(run.orgId);
-      args.push(run.id);
-    }
-
-    const count = await this.redis.markCompletedRunsForAck(markedForAckKey, ...args);
-
-    this.logger.debug(`Marked ${count} runs for acknowledgment`, {
-      markedForAckKey,
-      count,
-    });
-  }
-
-  private async processMarkedRuns() {
-    if (this.abortController.signal.aborted) {
-      return;
-    }
-
-    try {
-      const markedForAckKey = this.keys.markedForAckKey();
-      const results = await this.redis.getMarkedRunsForAck(markedForAckKey, "10");
-
-      if (results.length === 0) {
-        return;
-      }
-
-      const markedRuns: MarkedRun[] = [];
-
-      // Parse results: [orgId1, messageId1, score1, orgId2, messageId2, score2, ...]
-      for (let i = 0; i < results.length; i += 3) {
-        markedRuns.push({
-          orgId: results[i],
-          messageId: results[i + 1],
-          score: Number(results[i + 2]),
-        });
-      }
-
-      this.logger.debug(`Processing ${markedRuns.length} marked runs for acknowledgment`, {
-        markedRuns: markedRuns, // Log first 3 for debugging
-      });
-
-      // Acknowledge each marked run
-      await Promise.allSettled(
-        markedRuns.map((run) =>
-          this.processMarkedRun(run).catch((error) => {
-            this.logger.error("Error acknowledging marked run", {
-              error,
-              orgId: run.orgId,
-              messageId: run.messageId,
-            });
-          })
-        )
-      );
-    } catch (error) {
-      this.logger.error("Error processing marked runs", { error });
-    }
-  }
-
-  async processMarkedRun(run: MarkedRun) {
-    this.logger.info("Acknowledging marked run", {
-      orgId: run.orgId,
-      messageId: run.messageId,
-    });
-
-    await this.runQueue.acknowledgeMessage(run.orgId, run.messageId, {
-      skipDequeueProcessing: true,
-      removeFromWorkerQueue: false,
     });
   }
 }
