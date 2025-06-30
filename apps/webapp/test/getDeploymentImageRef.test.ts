@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { getDeploymentImageRef, getEcrRegion } from "../app/v3/getDeploymentImageRef.server";
+import {
+  getDeploymentImageRef,
+  getEcrAuthToken,
+  getEcrRegion,
+} from "../app/v3/getDeploymentImageRef.server";
 import { ECRClient, DeleteRepositoryCommand } from "@aws-sdk/client-ecr";
 
 describe.skipIf(process.env.RUN_REGISTRY_TESTS !== "1")("getDeploymentImageRef", () => {
@@ -99,5 +103,37 @@ describe.skipIf(process.env.RUN_REGISTRY_TESTS !== "1")("getDeploymentImageRef",
         registryTags,
       })
     ).rejects.toThrow("Invalid ECR registry host: invalid.ecr.amazonaws.com");
+  });
+});
+
+describe.skipIf(process.env.RUN_REGISTRY_AUTH_TESTS !== "1")("getEcrAuthToken", () => {
+  const registryId = process.env.DEPLOY_REGISTRY_ID;
+  const testHost = "123456789012.dkr.ecr.us-east-1.amazonaws.com";
+
+  it("should return valid ECR credentials", async () => {
+    const auth = await getEcrAuthToken({
+      registryHost: testHost,
+      registryId,
+    });
+
+    // Check the structure and basic validation of the returned credentials
+    expect(auth).toHaveProperty("username");
+    expect(auth).toHaveProperty("password");
+    expect(auth.username).toBe("AWS");
+    expect(typeof auth.password).toBe("string");
+    expect(auth.password.length).toBeGreaterThan(0);
+
+    // Verify the token format (should be a base64-encoded string)
+    const base64Regex = /^[A-Za-z0-9+/=]+$/;
+    expect(base64Regex.test(auth.password)).toBe(true);
+  });
+
+  it("should throw error for invalid region", async () => {
+    await expect(
+      getEcrAuthToken({
+        registryHost: "invalid.ecr.amazonaws.com",
+        registryId,
+      })
+    ).rejects.toThrow();
   });
 });

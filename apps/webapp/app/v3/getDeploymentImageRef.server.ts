@@ -5,6 +5,7 @@ import {
   type Repository,
   type Tag,
   RepositoryNotFoundException,
+  GetAuthorizationTokenCommand,
 } from "@aws-sdk/client-ecr";
 import { tryCatch } from "@trigger.dev/core";
 import { logger } from "~/services/logger.server";
@@ -58,7 +59,7 @@ export async function getDeploymentImageRef({
   };
 }
 
-function isEcrRegistry(registryHost: string) {
+export function isEcrRegistry(registryHost: string) {
   return registryHost.includes("amazonaws.com");
 }
 
@@ -195,4 +196,40 @@ async function ensureEcrRepositoryExists({
   }
 
   return newRepo;
+}
+
+export async function getEcrAuthToken({
+  registryHost,
+  registryId,
+}: {
+  registryHost: string;
+  registryId?: string;
+}): Promise<{ username: string; password: string }> {
+  const region = getEcrRegion(registryHost);
+  if (!region) {
+    logger.error("Invalid ECR registry host", { registryHost });
+    throw new Error("Invalid ECR registry host");
+  }
+
+  const ecr = new ECRClient({ region });
+  const response = await ecr.send(
+    new GetAuthorizationTokenCommand({
+      registryIds: registryId ? [registryId] : undefined,
+    })
+  );
+
+  if (!response.authorizationData) {
+    throw new Error("Failed to get ECR authorization token");
+  }
+
+  const authData = response.authorizationData[0];
+
+  if (!authData.authorizationToken) {
+    throw new Error("No authorization token returned from ECR");
+  }
+
+  const authToken = Buffer.from(authData.authorizationToken, "base64").toString();
+  const [username, password] = authToken.split(":");
+
+  return { username, password };
 }
