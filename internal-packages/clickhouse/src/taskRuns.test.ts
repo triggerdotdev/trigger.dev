@@ -2,7 +2,6 @@ import { clickhouseTest } from "@internal/testcontainers";
 import { z } from "zod";
 import { ClickhouseClient } from "./client/client.js";
 import { getTaskRunsQueryBuilder, insertRawTaskRunPayloads, insertTaskRuns } from "./taskRuns.js";
-import { readFile } from "node:fs/promises";
 
 describe("Task Runs V2", () => {
   clickhouseTest("should be able to insert task runs", async ({ clickhouseContainer }) => {
@@ -62,6 +61,8 @@ describe("Task Runs V2", () => {
         root_run_id: "root_run_1234",
         parent_run_id: "parent_run_1234",
         depth: 1,
+        concurrency_key: "concurrency_key_1234",
+        bulk_action_group_ids: ["bulk_action_group_id_1234", "bulk_action_group_id_1235"],
         _version: "1",
       },
     ]);
@@ -76,6 +77,8 @@ describe("Task Runs V2", () => {
       schema: z.object({
         environment_id: z.string(),
         run_id: z.string(),
+        concurrency_key: z.string(),
+        bulk_action_group_ids: z.array(z.string()),
       }),
       params: z.object({
         run_id: z.string(),
@@ -90,6 +93,8 @@ describe("Task Runs V2", () => {
         expect.objectContaining({
           environment_id: "env_1234",
           run_id: "run_1234",
+          concurrency_key: "concurrency_key_1234",
+          bulk_action_group_ids: ["bulk_action_group_id_1234", "bulk_action_group_id_1235"],
         }),
       ])
     );
