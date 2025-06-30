@@ -233,17 +233,6 @@ export function v3RunsPath(
   return `${v3EnvironmentPath(organization, project, environment)}/runs${query}`;
 }
 
-export function v3RunsNextPath(
-  organization: OrgForPath,
-  project: ProjectForPath,
-  environment: EnvironmentForPath,
-  filters?: TaskRunListSearchFilters
-) {
-  const searchParams = objectToSearchParams(filters);
-  const query = searchParams ? `?${searchParams.toString()}` : "";
-  return `${v3EnvironmentPath(organization, project, environment)}/next/runs${query}`;
-}
-
 export function v3CreateBulkActionPath(
   organization: OrgForPath,
   project: ProjectForPath,
@@ -253,7 +242,7 @@ export function v3CreateBulkActionPath(
   const searchParams = objectToSearchParams(filters) ?? new URLSearchParams();
   searchParams.set("bulkInspector", "show");
   const query = `?${searchParams.toString()}`;
-  return `${v3RunsNextPath(organization, project, environment)}${query}`;
+  return `${v3RunsPath(organization, project, environment)}${query}`;
 }
 
 export function v3RunPath(
