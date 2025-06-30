@@ -8,7 +8,7 @@ import {
   RetryOptions,
   RunChainState,
 } from "@trigger.dev/core/v3";
-import { PrismaClient } from "@trigger.dev/database";
+import { PrismaClient, PrismaReplicaClient } from "@trigger.dev/database";
 import { FairQueueSelectionStrategyOptions } from "../run-queue/fairQueueSelectionStrategy.js";
 import { MinimalAuthenticatedEnvironment } from "../shared/index.js";
 import { workerCatalog } from "./workerCatalog.js";
@@ -17,6 +17,7 @@ import { LockRetryConfig } from "./locking.js";
 
 export type RunEngineOptions = {
   prisma: PrismaClient;
+  readOnlyPrisma?: PrismaReplicaClient;
   worker: {
     disabled?: boolean;
     redis: RedisOptions;
@@ -38,11 +39,18 @@ export type RunEngineOptions = {
     workerOptions?: WorkerConcurrencyOptions;
     retryOptions?: RetryOptions;
     defaultEnvConcurrency?: number;
+    logLevel?: LogLevel;
     queueSelectionStrategyOptions?: Pick<
       FairQueueSelectionStrategyOptions,
       "parentQueueLimit" | "tracer" | "biases" | "reuseSnapshotCount" | "maximumEnvCount"
     >;
     dequeueBlockingTimeoutSeconds?: number;
+    concurrencySweeper?: {
+      scanSchedule?: string;
+      processMarkedSchedule?: string;
+      scanJitterInMs?: number;
+      processMarkedJitterInMs?: number;
+    };
   };
   runLock: {
     redis: RedisOptions;

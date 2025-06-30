@@ -36,11 +36,13 @@ import {
   type Result,
 } from "@internal/redis";
 import { MessageNotFoundError } from "./errors.js";
-import { tryCatch } from "@trigger.dev/core";
+import { promiseWithResolvers, tryCatch } from "@trigger.dev/core";
 import { setInterval } from "node:timers/promises";
 import { nanoid } from "nanoid";
-import { Worker, type WorkerConcurrencyOptions } from "@trigger.dev/redis-worker";
+import { CronSchema, Worker, type WorkerConcurrencyOptions } from "@trigger.dev/redis-worker";
 import { z } from "zod";
+import { Readable } from "node:stream";
+import { setTimeout } from "node:timers/promises";
 
 const SemanticAttributes = {
   QUEUE: "runqueue.queue",
@@ -78,12 +80,29 @@ export type RunQueueOptions = {
   };
   meter?: Meter;
   dequeueBlockingTimeoutSeconds?: number;
+  concurrencySweeper?: {
+    scanSchedule?: string;
+    scanJitterInMs?: number;
+    processMarkedSchedule?: string;
+    processMarkedJitterInMs?: number;
+    callback: ConcurrencySweeperCallback;
+  };
 };
+
+export interface ConcurrencySweeperCallback {
+  (runIds: string[]): Promise<Array<{ id: string; orgId: string }>>;
+}
 
 type DequeuedMessage = {
   messageId: string;
   messageScore: string;
   message: OutputPayload;
+};
+
+type MarkedRun = {
+  orgId: string;
+  messageId: string;
+  score: number;
 };
 
 const defaultRetrySettings = {
@@ -102,6 +121,24 @@ const workerCatalog = {
     }),
     visibilityTimeoutMs: 30_000,
   },
+  scanConcurrencySets: {
+    schema: CronSchema,
+    visibilityTimeoutMs: 60_000 * 5,
+    cron: "*/10 * * * *",
+    jitterInMs: 60_000,
+    retry: {
+      maxAttempts: 1,
+    },
+  },
+  processMarkedRuns: {
+    schema: CronSchema,
+    visibilityTimeoutMs: 60_000 * 5,
+    cron: "*/5 * * * *",
+    jitterInMs: 30_000,
+    retry: {
+      maxAttempts: 1,
+    },
+  },
 };
 
 /**
@@ -112,7 +149,7 @@ export class RunQueue {
   private subscriber: Redis;
   private luaDebugSubscriber: Redis;
   private logger: Logger;
-  private redis: Redis;
+  public redis: Redis;
   public keys: RunQueueKeyProducer;
   private queueSelectionStrategy: RunQueueSelectionStrategy;
   private shardCount: number;
@@ -121,7 +158,7 @@ export class RunQueue {
   private _observableWorkerQueues: Set<string> = new Set();
   private _meter: Meter;
 
-  constructor(private readonly options: RunQueueOptions) {
+  constructor(public readonly options: RunQueueOptions) {
     this.shardCount = options.shardCount ?? 2;
     this.retryOptions = options.retryOptions ?? defaultRetrySettings;
     this.redis = createRedisClient(options.redis, {
@@ -170,15 +207,39 @@ export class RunQueue {
         ...options.redis,
         keyPrefix: `${options.redis.keyPrefix}:worker`,
       },
-      catalog: workerCatalog,
+      catalog: {
+        ...workerCatalog,
+        scanConcurrencySets: {
+          ...workerCatalog.scanConcurrencySets,
+          cron: options.concurrencySweeper?.scanSchedule ?? workerCatalog.scanConcurrencySets.cron,
+          jitter:
+            options.concurrencySweeper?.scanJitterInMs ??
+            workerCatalog.scanConcurrencySets.jitterInMs,
+        },
+        processMarkedRuns: {
+          ...workerCatalog.processMarkedRuns,
+          cron:
+            options.concurrencySweeper?.processMarkedSchedule ??
+            workerCatalog.processMarkedRuns.cron,
+          jitterInMs:
+            options.concurrencySweeper?.processMarkedJitterInMs ??
+            workerCatalog.processMarkedRuns.jitterInMs,
+        },
+      },
       concurrency: options.workerOptions?.concurrency,
       pollIntervalMs: options.workerOptions?.pollIntervalMs ?? 1000,
       immediatePollIntervalMs: options.workerOptions?.immediatePollIntervalMs ?? 100,
       shutdownTimeoutMs: options.workerOptions?.shutdownTimeoutMs ?? 10_000,
-      logger: new Logger("RunQueueWorker", options.logLevel ?? "log"),
+      logger: new Logger("RunQueueWorker", options.logLevel ?? "info"),
       jobs: {
         processQueueForWorkerQueue: async (job) => {
           await this.#processQueueForWorkerQueue(job.payload.queueKey, job.payload.environmentId);
+        },
+        scanConcurrencySets: async (job) => {
+          await this.scanConcurrencySets();
+        },
+        processMarkedRuns: async (job) => {
+          await this.processMarkedRuns();
         },
       },
     });
@@ -404,38 +465,7 @@ export class RunQueue {
   }
 
   public async readMessage(orgId: string, messageId: string) {
-    return this.#trace(
-      "readMessage",
-      async (span) => {
-        const rawMessage = await this.redis.get(this.keys.messageKey(orgId, messageId));
-
-        if (!rawMessage) {
-          return;
-        }
-
-        const message = OutputPayload.safeParse(JSON.parse(rawMessage));
-
-        if (!message.success) {
-          this.logger.error(`[${this.name}] Failed to parse message`, {
-            messageId,
-            error: message.error,
-            service: this.name,
-          });
-
-          return;
-        }
-
-        return message.data;
-      },
-      {
-        attributes: {
-          [SEMATTRS_MESSAGING_OPERATION]: "receive",
-          [SEMATTRS_MESSAGE_ID]: messageId,
-          [SEMATTRS_MESSAGING_SYSTEM]: "marqs",
-          [SemanticAttributes.RUN_ID]: messageId,
-        },
-      }
-    );
+    return this.readMessageFromKey(this.keys.messageKey(orgId, messageId));
   }
 
   public async readMessageFromKey(messageKey: string) {
@@ -448,24 +478,34 @@ export class RunQueue {
           return;
         }
 
-        const message = OutputPayload.safeParse(JSON.parse(rawMessage));
+        const deserializedMessage = safeJsonParse(rawMessage);
+
+        const message = OutputPayload.safeParse(deserializedMessage);
 
         if (!message.success) {
           this.logger.error(`[${this.name}] Failed to parse message`, {
             messageKey,
             error: message.error,
             service: this.name,
+            deserializedMessage,
           });
 
-          return;
+          return deserializedMessage as OutputPayload;
         }
+
+        span.setAttributes({
+          [SemanticAttributes.QUEUE]: message.data.queue,
+          [SemanticAttributes.RUN_ID]: message.data.runId,
+          [SemanticAttributes.CONCURRENCY_KEY]: message.data.concurrencyKey,
+          [SemanticAttributes.WORKER_QUEUE]: this.#getWorkerQueueFromMessage(message.data),
+        });
 
         return message.data;
       },
       {
         attributes: {
           [SEMATTRS_MESSAGING_OPERATION]: "receive",
-          [SEMATTRS_MESSAGING_SYSTEM]: "marqs",
+          [SEMATTRS_MESSAGING_SYSTEM]: "runqueue",
         },
       }
     );
@@ -894,6 +934,35 @@ export class RunQueue {
   async peekAllOnWorkerQueue(workerQueue: string) {
     const workerQueueKey = this.keys.workerQueueKey(workerQueue);
     return await this.redis.lrange(workerQueueKey, 0, -1);
+  }
+
+  /**
+   * Create a scan stream for queue current concurrency keys
+   */
+  public currentConcurrencyScanStream(
+    count: number = 10,
+    onEnd?: () => void,
+    onError?: (error: Error) => void
+  ): { stream: Readable; redis: Redis } {
+    const pattern = this.keys.currentConcurrencySetKeyScanPattern();
+    const stream = this.redis.scanStream({
+      match: pattern,
+      count,
+      type: "set",
+    });
+
+    if (onEnd) {
+      stream.on("end", onEnd);
+    }
+
+    if (onError) {
+      stream.on("error", onError);
+    }
+
+    return {
+      stream,
+      redis: this.redis,
+    };
   }
 
   private async handleRedriveMessage(channel: string, message: string) {
@@ -1651,6 +1720,249 @@ export class RunQueue {
     return blockingClient;
   }
 
+  // Call this every 10 minutes
+  private async scanConcurrencySets() {
+    if (this.abortController.signal.aborted) {
+      return;
+    }
+
+    this.logger.debug("Scanning concurrency sets for completed runs");
+
+    const stats = {
+      streamCallbacks: 0,
+      processedKeys: 0,
+    };
+
+    const { promise, resolve, reject } = promiseWithResolvers<typeof stats>();
+
+    const { stream, redis } = this.currentConcurrencyScanStream(
+      10,
+      () => {
+        this.logger.debug("Concurrency scan stream closed", { stats });
+
+        resolve(stats);
+      },
+      (error) => {
+        this.logger.error("Concurrency scan stream error", {
+          stats,
+          error: {
+            name: error.name,
+            message: error.message,
+            stack: error.stack,
+          },
+        });
+
+        reject(error);
+      }
+    );
+
+    stream.on("data", async (keys: string[]) => {
+      if (!keys || keys.length === 0) {
+        return;
+      }
+
+      stream.pause();
+
+      if (this.abortController.signal.aborted) {
+        stream.destroy();
+        return;
+      }
+
+      stats.streamCallbacks++;
+
+      const uniqueKeys = Array.from(new Set<string>(keys)).map((key) =>
+        key.replace(redis.options.keyPrefix ?? "", "")
+      );
+
+      if (uniqueKeys.length === 0) {
+        stream.resume();
+        return;
+      }
+
+      this.logger.debug("Processing concurrency keys from stream", {
+        keys: uniqueKeys,
+      });
+
+      stats.processedKeys += uniqueKeys.length;
+
+      await Promise.allSettled(uniqueKeys.map((key) => this.processConcurrencySet(key))).finally(
+        () => {
+          stream.resume();
+        }
+      );
+    });
+
+    return promise;
+  }
+
+  private async processConcurrencySet(concurrencyKey: string) {
+    const stream = this.redis.sscanStream(concurrencyKey, {
+      count: 100,
+    });
+
+    const { promise, resolve, reject } = promiseWithResolvers<void>();
+
+    stream.on("end", () => {
+      resolve();
+    });
+
+    stream.on("error", (error) => {
+      this.logger.error("Error in sscanStream for concurrency set", {
+        concurrencyKey,
+        error,
+      });
+
+      reject(error);
+    });
+
+    stream.on("data", async (runIds: string[]) => {
+      stream.pause();
+
+      if (this.abortController.signal.aborted) {
+        stream.destroy();
+        return;
+      }
+
+      if (!runIds || runIds.length === 0) {
+        stream.resume();
+        return;
+      }
+
+      const deduplicatedRunIds = Array.from(new Set(runIds));
+
+      const [processError] = await tryCatch(
+        this.processCurrentConcurrencyRunIds(concurrencyKey, deduplicatedRunIds)
+      );
+
+      if (processError) {
+        this.logger.error("Error processing concurrency set", {
+          concurrencyKey,
+          runIds,
+          error: processError,
+        });
+      }
+
+      stream.resume();
+    });
+
+    return promise;
+  }
+
+  private async processCurrentConcurrencyRunIds(concurrencyKey: string, runIds: string[]) {
+    this.logger.debug(`Processing concurrency set with ${runIds.length} runs`, {
+      concurrencyKey,
+      runIds: runIds.slice(0, 5), // Log first 5 for debugging
+    });
+
+    // Call the callback to determine which runs are completed
+    const completedRuns = await this.options.concurrencySweeper?.callback(runIds);
+
+    if (!completedRuns) {
+      this.logger.debug("No completed runs found in concurrency set", { concurrencyKey });
+      return;
+    }
+
+    if (completedRuns.length === 0) {
+      this.logger.debug("No completed runs found in concurrency set", { concurrencyKey });
+      return;
+    }
+
+    this.logger.debug(`Found ${completedRuns.length} completed runs to mark for ack`, {
+      concurrencyKey,
+      completedRunIds: completedRuns.map((r) => r.id).slice(0, 5),
+    });
+
+    // Mark the completed runs for acknowledgment
+    await this.markRunsForAck(completedRuns);
+  }
+
+  private async markRunsForAck(completedRuns: Array<{ id: string; orgId: string }>) {
+    const markedForAckKey = this.keys.markedForAckKey();
+
+    // Prepare arguments: alternating orgId, messageId pairs
+    const args: Array<number | string> = [];
+    for (const run of completedRuns) {
+      this.logger.info("Marking run for acknowledgment", {
+        orgId: run.orgId,
+        runId: run.id,
+      });
+
+      args.push(Date.now());
+      args.push(`${run.orgId}:${run.id}`);
+    }
+
+    const count = await this.redis.zadd(markedForAckKey, ...args);
+
+    this.logger.debug(`Marked ${count} runs for acknowledgment`, {
+      markedForAckKey,
+      count,
+    });
+  }
+
+  // Call this every 5 minutes
+  private async processMarkedRuns() {
+    if (this.abortController.signal.aborted) {
+      return;
+    }
+
+    try {
+      const markedForAckKey = this.keys.markedForAckKey();
+      const results = await this.redis.getMarkedRunsForAck(markedForAckKey, "100");
+
+      if (results.length === 0) {
+        return;
+      }
+
+      const markedRuns: MarkedRun[] = [];
+
+      // Parse results: [orgId1, messageId1, score1, orgId2, messageId2, score2, ...]
+      for (let i = 0; i < results.length; i += 3) {
+        markedRuns.push({
+          orgId: results[i],
+          messageId: results[i + 1],
+          score: Number(results[i + 2]),
+        });
+      }
+
+      this.logger.debug(`Processing ${markedRuns.length} marked runs for acknowledgment`, {
+        markedRuns: markedRuns, // Log first 3 for debugging
+      });
+
+      for (const run of markedRuns) {
+        const [processError] = await tryCatch(this.processMarkedRun(run));
+
+        if (processError) {
+          this.logger.error("Error processing marked run", {
+            error: processError,
+            orgId: run.orgId,
+            messageId: run.messageId,
+          });
+        }
+      }
+
+      const shouldProcessMoreRuns = (await this.redis.zcard(markedForAckKey)) > 0;
+
+      if (shouldProcessMoreRuns) {
+        await setTimeout(1000);
+        await this.processMarkedRuns();
+      }
+    } catch (error) {
+      this.logger.error("Error processing marked runs", { error });
+    }
+  }
+
+  async processMarkedRun(run: MarkedRun) {
+    this.logger.info("Acknowledging marked run", {
+      orgId: run.orgId,
+      messageId: run.messageId,
+    });
+
+    await this.acknowledgeMessage(run.orgId, run.messageId, {
+      skipDequeueProcessing: true,
+      removeFromWorkerQueue: false,
+    });
+  }
+
   #registerCommands() {
     this.redis.defineCommand("migrateLegacyMasterQueues", {
       numberOfKeys: 1,
@@ -2020,6 +2332,77 @@ local envConcurrencyLimit = ARGV[1]
 redis.call('SET', envConcurrencyLimitKey, envConcurrencyLimit)
       `,
     });
+
+    this.redis.defineCommand("markCompletedRunsForAck", {
+      numberOfKeys: 1,
+      lua: `
+-- Keys:
+local markedForAckKey = KEYS[1]
+
+-- Args: alternating orgId, messageId pairs
+local currentTime = tonumber(redis.call('TIME')[1]) * 1000
+
+for i = 1, #ARGV, 2 do
+    local orgId = ARGV[i]
+    local messageId = ARGV[i + 1]
+    local markedValue = orgId .. ':' .. messageId
+    
+    redis.call('ZADD', markedForAckKey, currentTime, markedValue)
+end
+
+return #ARGV / 2
+      `,
+    });
+
+    this.redis.defineCommand("getMarkedRunsForAck", {
+      numberOfKeys: 1,
+      lua: `
+-- Keys:
+local markedForAckKey = KEYS[1]
+
+-- Args:
+local maxCount = tonumber(ARGV[1] or '10')
+
+-- Get the oldest marked runs
+local markedRuns = redis.call('ZRANGE', markedForAckKey, 0, maxCount - 1, 'WITHSCORES')
+
+local results = {}
+for i = 1, #markedRuns, 2 do
+    local markedValue = markedRuns[i]
+    local score = markedRuns[i + 1]
+    
+    -- Parse orgId:messageId
+    local colonIndex = string.find(markedValue, ':')
+    if colonIndex then
+        local orgId = string.sub(markedValue, 1, colonIndex - 1)
+        local messageId = string.sub(markedValue, colonIndex + 1)
+        
+        table.insert(results, orgId)
+        table.insert(results, messageId)
+        table.insert(results, score)
+    end
+end
+
+-- Remove the processed items
+if #results > 0 then
+    local itemsToRemove = {}
+    for i = 1, #markedRuns, 2 do
+        table.insert(itemsToRemove, markedRuns[i])
+    end
+    redis.call('ZREM', markedForAckKey, unpack(itemsToRemove))
+end
+
+return results
+      `,
+    });
+  }
+}
+
+function safeJsonParse(rawMessage: string): unknown {
+  try {
+    return JSON.parse(rawMessage);
+  } catch (e) {
+    return undefined;
   }
 }
 
@@ -2145,5 +2528,11 @@ declare module "@internal/redis" {
       keyPrefix: string,
       ...queueNames: string[]
     ): Result<void, Context>;
+
+    getMarkedRunsForAck(
+      markedForAckKey: string,
+      maxCount: string,
+      callback?: Callback<string[]>
+    ): Result<string[], Context>;
   }
 }
