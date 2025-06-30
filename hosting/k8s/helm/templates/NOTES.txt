@@ -86,7 +86,7 @@ Configuration:
 {{- if .Values.registry.deploy }}
 - Using internal Docker registry
 {{- else }}
-- Using external Docker registry at {{ .Values.registry.external.host }}:{{ .Values.registry.external.port }}
+- Using external Docker registry at {{ .Values.registry.external.host }}
 {{- if eq .Values.registry.external.host "localhost" }}
 
 ⚠️  Registry Warning:

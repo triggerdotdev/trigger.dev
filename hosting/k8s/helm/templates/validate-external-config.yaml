@@ -33,8 +33,8 @@ This template will fail the Helm deployment if external config is missing for re
 {{- end }}
 
 {{- if not .Values.registry.deploy }}
-{{- if or (not .Values.registry.external.host) (not .Values.registry.external.port) }}
-{{- fail "Registry external configuration is required when registry.deploy=false. Please provide registry.external.host and registry.external.port" }}
+{{- if or (not .Values.registry.external.host) }}
+{{- fail "Registry external configuration is required when registry.deploy=false. Please provide registry.external.host" }}
 {{- end }}
 {{- end }}
 
