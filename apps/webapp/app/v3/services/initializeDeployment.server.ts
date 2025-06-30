@@ -1,5 +1,4 @@
 import { type InitializeDeploymentRequestBody } from "@trigger.dev/core/v3";
-import { WorkerDeploymentType } from "@trigger.dev/database";
 import { customAlphabet } from "nanoid";
 import { env } from "~/env.server";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
@@ -9,6 +8,8 @@ import { createRemoteImageBuild, remoteBuildsEnabled } from "../remoteImageBuild
 import { calculateNextBuildVersion } from "../utils/calculateNextBuildVersion";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
+import { getDeploymentImageRef } from "../getDeploymentImageRef.server";
+import { tryCatch } from "@trigger.dev/core";
 
 const nanoid = customAlphabet("1234567890abcdefghijklmnopqrstuvwxyz", 8);
 
@@ -68,11 +69,31 @@ export class InitializeDeploymentService extends BaseService {
           })
         : undefined;
 
-      const imageRef = [
-        env.DEPLOY_REGISTRY_HOST,
-        env.DEPLOY_REGISTRY_NAMESPACE,
-        `${environment.project.externalRef}:${nextVersion}.${environment.slug}`,
-      ].join("/");
+      const [imageRefError, imageRefResult] = await tryCatch(
+        getDeploymentImageRef({
+          host: env.DEPLOY_REGISTRY_HOST,
+          namespace: env.DEPLOY_REGISTRY_NAMESPACE,
+          projectRef: environment.project.externalRef,
+          nextVersion,
+          environmentSlug: environment.slug,
+          registryId: env.DEPLOY_REGISTRY_ID,
+          registryTags: env.DEPLOY_REGISTRY_TAGS,
+        })
+      );
+
+      if (imageRefError) {
+        logger.error("Failed to get deployment image ref", {
+          environmentId: environment.id,
+          projectId: environment.projectId,
+          version: nextVersion,
+          triggeredById: triggeredBy?.id,
+          type: payload.type,
+          cause: imageRefError.message,
+        });
+        throw new ServiceValidationError("Failed to get deployment image ref");
+      }
+
+      const { imageRef, isEcr } = imageRefResult;
 
       logger.debug("Creating deployment", {
         environmentId: environment.id,
@@ -81,6 +102,7 @@ export class InitializeDeploymentService extends BaseService {
         triggeredById: triggeredBy?.id,
         type: payload.type,
         imageRef,
+        isEcr,
       });
 
       const deployment = await this._prisma.workerDeployment.create({

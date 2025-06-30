@@ -232,6 +232,8 @@ const EnvironmentSchema = z.object({
   DEPLOY_REGISTRY_USERNAME: z.string().optional(),
   DEPLOY_REGISTRY_PASSWORD: z.string().optional(),
   DEPLOY_REGISTRY_NAMESPACE: z.string().min(1).default("trigger"),
+  DEPLOY_REGISTRY_ID: z.string().optional(),
+  DEPLOY_REGISTRY_TAGS: z.string().optional(), // csv, for example: "key1=value1,key2=value2"
   DEPLOY_IMAGE_PLATFORM: z.string().default("linux/amd64"),
   DEPLOY_TIMEOUT_MS: z.coerce
     .number()
