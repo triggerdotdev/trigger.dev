@@ -87,7 +87,7 @@ Configuration:
 - Using internal Docker registry
 {{- else }}
 - Using external Docker registry at {{ .Values.registry.external.host }}
-{{- if eq .Values.registry.external.host "localhost" }}
+{{- if hasPrefix "localhost" .Values.registry.external.host }}
 
 ⚠️  Registry Warning:
    Using localhost for registry. Deployments will only work when testing locally in kind or minikube.
