@@ -5,7 +5,7 @@ export default defineConfig({
   compatibilityFlags: ["run_engine_v2"],
   project: "proj_rrkpdguyagvsoktglnod",
   logLevel: "log",
-  maxDuration: 60,
+  maxDuration: 3600,
   retries: {
     enabledInDev: true,
     default: {

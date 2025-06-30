@@ -3,6 +3,7 @@ import { describe, expect, vi } from "vitest";
 // Mock the db prisma client
 vi.mock("~/db.server", () => ({
   prisma: {},
+  $replica: {},
 }));
 
 vi.mock("~/services/platform.v3.server", async (importOriginal) => {

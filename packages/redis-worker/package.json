@@ -27,7 +27,8 @@
     "lodash.omit": "^4.5.0",
     "nanoid": "^5.0.7",
     "p-limit": "^6.2.0",
-    "zod": "3.23.8"
+    "zod": "3.23.8",
+    "cron-parser": "^4.9.0"
   },
   "devDependencies": {
     "@internal/redis": "workspace:*",
