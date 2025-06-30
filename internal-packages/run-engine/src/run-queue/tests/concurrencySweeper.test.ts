@@ -74,9 +74,9 @@ describe("RunQueue Concurrency Sweeper", () => {
         },
         concurrencySweeper: {
           scanSchedule: "* * * * * *", // Every second
-          scanJitter: 5,
+          scanJitterInMs: 5,
           processMarkedSchedule: "* * * * * *", // Every second
-          processMarkedJitter: 5,
+          processMarkedJitterInMs: 5,
           callback: async (runIds) => {
             if (!enableConcurrencySweeper) {
               return [];
@@ -151,9 +151,9 @@ describe("RunQueue Concurrency Sweeper", () => {
 
         enableConcurrencySweeper = true;
 
-        await setTimeout(3_000); // Now a run is "completed" and should be removed from the concurrency set
+        await setTimeout(5_000); // Now a run is "completed" and should be removed from the concurrency set
 
-        // queue concurrency should be 0
+        // queue concurrency should be 1
         const queueConcurrency3 = await queue.currentConcurrencyOfQueue(
           authenticatedEnvDev,
           messageDev.queue
