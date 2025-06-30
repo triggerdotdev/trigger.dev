@@ -82,9 +82,9 @@ export type RunQueueOptions = {
   dequeueBlockingTimeoutSeconds?: number;
   concurrencySweeper?: {
     scanSchedule?: string;
-    scanJitter?: number;
+    scanJitterInMs?: number;
     processMarkedSchedule?: string;
-    processMarkedJitter?: number;
+    processMarkedJitterInMs?: number;
     callback: ConcurrencySweeperCallback;
   };
 };
@@ -125,13 +125,19 @@ const workerCatalog = {
     schema: CronSchema,
     visibilityTimeoutMs: 60_000 * 5,
     cron: "*/10 * * * *",
-    jitter: 60_000,
+    jitterInMs: 60_000,
+    retry: {
+      maxAttempts: 1,
+    },
   },
   processMarkedRuns: {
     schema: CronSchema,
     visibilityTimeoutMs: 60_000 * 5,
     cron: "*/5 * * * *",
-    jitter: 30_000,
+    jitterInMs: 30_000,
+    retry: {
+      maxAttempts: 1,
+    },
   },
 };
 
@@ -207,16 +213,17 @@ export class RunQueue {
           ...workerCatalog.scanConcurrencySets,
           cron: options.concurrencySweeper?.scanSchedule ?? workerCatalog.scanConcurrencySets.cron,
           jitter:
-            options.concurrencySweeper?.scanJitter ?? workerCatalog.scanConcurrencySets.jitter,
+            options.concurrencySweeper?.scanJitterInMs ??
+            workerCatalog.scanConcurrencySets.jitterInMs,
         },
         processMarkedRuns: {
           ...workerCatalog.processMarkedRuns,
           cron:
             options.concurrencySweeper?.processMarkedSchedule ??
             workerCatalog.processMarkedRuns.cron,
-          jitter:
-            options.concurrencySweeper?.processMarkedJitter ??
-            workerCatalog.processMarkedRuns.jitter,
+          jitterInMs:
+            options.concurrencySweeper?.processMarkedJitterInMs ??
+            workerCatalog.processMarkedRuns.jitterInMs,
         },
       },
       concurrency: options.workerOptions?.concurrency,

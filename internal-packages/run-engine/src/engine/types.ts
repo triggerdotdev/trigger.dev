@@ -48,8 +48,8 @@ export type RunEngineOptions = {
     concurrencySweeper?: {
       scanSchedule?: string;
       processMarkedSchedule?: string;
-      scanJitter?: number;
-      processMarkedJitter?: number;
+      scanJitterInMs?: number;
+      processMarkedJitterInMs?: number;
     };
   };
   runLock: {

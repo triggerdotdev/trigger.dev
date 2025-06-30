@@ -140,8 +140,8 @@ export class RunEngine {
       concurrencySweeper: {
         scanSchedule: options.queue?.concurrencySweeper?.scanSchedule,
         processMarkedSchedule: options.queue?.concurrencySweeper?.processMarkedSchedule,
-        scanJitter: options.queue?.concurrencySweeper?.scanJitter,
-        processMarkedJitter: options.queue?.concurrencySweeper?.processMarkedJitter,
+        scanJitterInMs: options.queue?.concurrencySweeper?.scanJitterInMs,
+        processMarkedJitterInMs: options.queue?.concurrencySweeper?.processMarkedJitterInMs,
         callback: this.#concurrencySweeperCallback.bind(this),
       },
       shardCount: options.queue?.shardCount,

@@ -430,8 +430,8 @@ const EnvironmentSchema = z.object({
   RUN_ENGINE_MASTER_QUEUE_CONSUMERS_INTERVAL_MS: z.coerce.number().int().default(500),
   RUN_ENGINE_CONCURRENCY_SWEEPER_SCAN_SCHEDULE: z.string().optional(),
   RUN_ENGINE_CONCURRENCY_SWEEPER_PROCESS_MARKED_SCHEDULE: z.string().optional(),
-  RUN_ENGINE_CONCURRENCY_SWEEPER_SCAN_JITTER: z.coerce.number().int().optional(),
-  RUN_ENGINE_CONCURRENCY_SWEEPER_PROCESS_MARKED_JITTER: z.coerce.number().int().optional(),
+  RUN_ENGINE_CONCURRENCY_SWEEPER_SCAN_JITTER_IN_MS: z.coerce.number().int().optional(),
+  RUN_ENGINE_CONCURRENCY_SWEEPER_PROCESS_MARKED_JITTER_IN_MS: z.coerce.number().int().optional(),
 
   RUN_ENGINE_RUN_LOCK_DURATION: z.coerce.number().int().default(5000),
   RUN_ENGINE_RUN_LOCK_AUTOMATIC_EXTENSION_THRESHOLD: z.coerce.number().int().default(1000),

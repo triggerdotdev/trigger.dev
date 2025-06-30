@@ -69,8 +69,8 @@ function createRunEngine() {
       concurrencySweeper: {
         scanSchedule: env.RUN_ENGINE_CONCURRENCY_SWEEPER_SCAN_SCHEDULE,
         processMarkedSchedule: env.RUN_ENGINE_CONCURRENCY_SWEEPER_PROCESS_MARKED_SCHEDULE,
-        scanJitter: env.RUN_ENGINE_CONCURRENCY_SWEEPER_SCAN_JITTER,
-        processMarkedJitter: env.RUN_ENGINE_CONCURRENCY_SWEEPER_PROCESS_MARKED_JITTER,
+        scanJitterInMs: env.RUN_ENGINE_CONCURRENCY_SWEEPER_SCAN_JITTER_IN_MS,
+        processMarkedJitterInMs: env.RUN_ENGINE_CONCURRENCY_SWEEPER_PROCESS_MARKED_JITTER_IN_MS,
       },
     },
     runLock: {

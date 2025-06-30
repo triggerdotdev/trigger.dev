@@ -35,7 +35,7 @@ export type WorkerCatalog = {
     visibilityTimeoutMs: number;
     retry?: RetryOptions;
     cron?: string;
-    jitter?: number;
+    jitterInMs?: number;
   };
 };
 
@@ -669,13 +669,13 @@ class Worker<TCatalog extends WorkerCatalog> {
       cronJobs: cronJobs.map(([job, value]) => ({
         job,
         cron: value.cron,
-        jitter: value.jitter,
+        jitterInMs: value.jitterInMs,
       })),
     });
 
     // For each cron job, we need to try and enqueue a job with the next timestamp of the cron job.
     const enqueuePromises = cronJobs.map(([job, value]) =>
-      this.enqueueCronJob(value.cron!, job, value.jitter)
+      this.enqueueCronJob(value.cron!, job, value.jitterInMs)
     );
 
     Promise.allSettled(enqueuePromises).then((results) => {
@@ -731,7 +731,12 @@ class Worker<TCatalog extends WorkerCatalog> {
       return;
     }
 
-    return this.enqueueCronJob(catalogItem.cron, job, catalogItem.jitter, new Date(item.timestamp));
+    return this.enqueueCronJob(
+      catalogItem.cron,
+      job,
+      catalogItem.jitterInMs,
+      new Date(item.timestamp)
+    );
   }
 
   private calculateNextScheduledAt(cron: string, lastTimestamp?: Date): Date {

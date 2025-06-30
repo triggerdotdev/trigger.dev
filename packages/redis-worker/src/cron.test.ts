@@ -24,7 +24,7 @@ describe("Worker with cron", () => {
             schema: CronSchema,
             visibilityTimeoutMs: 5000,
             retry: { maxAttempts: 3 },
-            jitter: 100,
+            jitterInMs: 100,
           },
         },
         jobs: {
@@ -83,7 +83,7 @@ describe("Worker with cron", () => {
             schema: CronSchema,
             visibilityTimeoutMs: 5000,
             retry: { maxAttempts: 1 }, // Only try once to fail faster
-            jitter: 100,
+            jitterInMs: 100,
           },
         },
         jobs: {
