@@ -1,19 +1,16 @@
 import { ClickHouse } from "@internal/clickhouse";
 import { containerTest } from "@internal/testcontainers";
 import { Logger } from "@trigger.dev/core/logger";
+import { readFile } from "node:fs/promises";
 import { setTimeout } from "node:timers/promises";
 import { z } from "zod";
-import { TaskRunStatus } from "~/database-types";
 import { RunsReplicationService } from "~/services/runsReplicationService.server";
-import { createInMemoryTracing } from "./utils/tracing";
-import superjson from "superjson";
-import { readFile } from "node:fs/promises";
 import { detectBadJsonStrings } from "~/utils/detectBadJsonStrings";
 
 vi.setConfig({ testTimeout: 60_000 });
 
 describe("RunsReplicationService (part 2/2)", () => {
-  containerTest.skip(
+  containerTest(
     "should handover leadership to a second service, and the second service should be able to extend the leader lock",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
       await prisma.$executeRawUnsafe(`ALTER TABLE public."TaskRun" REPLICA IDENTITY FULL;`);
@@ -142,7 +139,7 @@ describe("RunsReplicationService (part 2/2)", () => {
     }
   );
 
-  containerTest.skip(
+  containerTest(
     "should replicate all 1,000 TaskRuns inserted in bulk to ClickHouse",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
       await prisma.$executeRawUnsafe(`ALTER TABLE public."TaskRun" REPLICA IDENTITY FULL;`);
@@ -256,7 +253,7 @@ describe("RunsReplicationService (part 2/2)", () => {
     }
   );
 
-  containerTest.skip(
+  containerTest(
     "should replicate all 1,000 TaskRuns inserted in bulk to ClickHouse with updates",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
       await prisma.$executeRawUnsafe(`ALTER TABLE public."TaskRun" REPLICA IDENTITY FULL;`);
@@ -376,7 +373,7 @@ describe("RunsReplicationService (part 2/2)", () => {
     }
   );
 
-  containerTest.skip(
+  containerTest(
     "should replicate all events in a single transaction (insert, update)",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
       await prisma.$executeRawUnsafe(`ALTER TABLE public."TaskRun" REPLICA IDENTITY FULL;`);
