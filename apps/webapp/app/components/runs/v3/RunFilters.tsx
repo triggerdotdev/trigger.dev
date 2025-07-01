@@ -106,6 +106,41 @@ export const TaskRunListSearchFilters = z.object({
 
 export type TaskRunListSearchFilters = z.infer<typeof TaskRunListSearchFilters>;
 
+type FilterKey = keyof TaskRunListSearchFilters;
+
+export function filterTitle(filterKey: string) {
+  switch (filterKey) {
+    case "cursor":
+      return "Cursor";
+    case "direction":
+      return "Direction";
+    case "statuses":
+      return "Status";
+    case "tasks":
+      return "Tasks";
+    case "tags":
+      return "Tags";
+    case "bulkId":
+      return "Bulk action";
+    case "period":
+      return "Period";
+    case "from":
+      return "From";
+    case "to":
+      return "To";
+    case "rootOnly":
+      return "Root only";
+    case "batchId":
+      return "Batch ID";
+    case "runId":
+      return "Run ID";
+    case "scheduleId":
+      return "Schedule ID";
+    default:
+      return filterKey;
+  }
+}
+
 export function getRunFiltersFromSearchParams(
   searchParams: URLSearchParams
 ): TaskRunListSearchFilters {
