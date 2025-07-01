@@ -15,6 +15,7 @@ import { EnqueueSystem } from "./enqueueSystem.js";
 import { ExecutionSnapshotSystem, getLatestExecutionSnapshot } from "./executionSnapshotSystem.js";
 import { SystemResources } from "./systems.js";
 import { ReleaseConcurrencySystem } from "./releaseConcurrencySystem.js";
+import { assertNever } from "assert-never";
 
 export type WaitpointSystemOptions = {
   resources: SystemResources;
@@ -719,9 +720,7 @@ export class WaitpointSystem {
           break;
         }
         default: {
-          throw new Error(
-            `continueRunIfUnblocked: invalid execution status: ${snapshot.executionStatus}`
-          );
+          assertNever(snapshot.executionStatus);
         }
       }
 
