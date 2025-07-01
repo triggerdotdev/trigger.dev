@@ -1,4 +1,5 @@
-import { ArrowPathIcon } from "@heroicons/react/20/solid";
+import simplur from "simplur";
+import { ArrowPathIcon, CheckIcon } from "@heroicons/react/20/solid";
 import { XCircleIcon } from "@heroicons/react/24/outline";
 import { Form } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/router";
@@ -6,6 +7,7 @@ import { useEffect } from "react";
 import { typedjson, useTypedFetcher } from "remix-typedjson";
 import { z } from "zod";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
+import { AppliedFilter } from "~/components/primitives/AppliedFilter";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { Header2 } from "~/components/primitives/Headers";
@@ -13,9 +15,11 @@ import { Hint } from "~/components/primitives/Hint";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
+import { Paragraph } from "~/components/primitives/Paragraph";
 import { RadioGroup, RadioGroupItem } from "~/components/primitives/RadioButton";
 import { SpinnerWhite } from "~/components/primitives/Spinner";
-import { type TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
+import { filterTitle, type TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
+import { appliedSummary } from "~/components/runs/v3/SharedFilters";
 import { $replica, type PrismaClient } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
@@ -37,9 +41,14 @@ const Params = z.object({
   environmentId: z.string(),
 });
 
+const BulkActionMode = z.union([z.literal("selected"), z.literal("filter")]);
+type BulkActionMode = z.infer<typeof BulkActionMode>;
+const BulkActionAction = z.union([z.literal("cancel"), z.literal("replay")]);
+type BulkActionAction = z.infer<typeof BulkActionAction>;
+
 const searchParams = z.object({
-  mode: z.union([z.literal("selected"), z.literal("filter")]).default("filter"),
-  action: z.union([z.literal("cancel"), z.literal("replay")]).default("cancel"),
+  mode: BulkActionMode.default("filter"),
+  action: BulkActionAction.default("cancel"),
 });
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
@@ -94,7 +103,7 @@ export function CreateBulkActionInspector({
   const project = useProject();
   const environment = useEnvironment();
   const fetcher = useTypedFetcher<typeof loader>();
-  const { value } = useSearchParams();
+  const { value, replace } = useSearchParams();
   const location = useOptimisticLocation();
 
   useEffect(() => {
@@ -108,15 +117,11 @@ export function CreateBulkActionInspector({
 
   const data = fetcher.data != null ? fetcher.data : undefined;
 
-  const formattedFilteredRunsCount =
-    data?.count !== undefined ? (
-      `~${formatNumber(data.count)}`
-    ) : (
-      <SpinnerWhite className="mx-0.5 -mt-0.5 inline size-3" />
-    );
-
   const closedSearchParams = new URLSearchParams(location.search);
   closedSearchParams.delete("bulkInspector");
+
+  const impactedCount =
+    mode === "selected" ? selectedItems.size : <EstimatedCount count={data?.count} />;
 
   return (
     <Form
@@ -148,16 +153,23 @@ export function CreateBulkActionInspector({
                 name="mode"
                 className="flex flex-col items-start gap-2"
                 defaultValue={mode}
+                onValueChange={(value) => {
+                  replace({ mode: value });
+                }}
               >
                 <RadioGroupItem
                   id="mode-filter"
-                  label={<span>All {formattedFilteredRunsCount} runs matching your filters</span>}
+                  label={
+                    <span>
+                      All <EstimatedCount count={data?.count} /> runs matching your filters
+                    </span>
+                  }
                   value={"filter"}
                   variant="button/small"
                 />
                 <RadioGroupItem
                   id="mode-selected"
-                  label={`${selectedItems.size} individually selected runs`}
+                  label={simplur`${selectedItems.size} individually selected run[|s]`}
                   value={"selected"}
                   variant="button/small"
                   className="grow"
@@ -176,6 +188,9 @@ export function CreateBulkActionInspector({
                 name="action"
                 className="flex flex-col items-start gap-2"
                 defaultValue={action}
+                onValueChange={(value) => {
+                  replace({ action: value });
+                }}
               >
                 <RadioGroupItem
                   id="action-replay"
@@ -201,6 +216,15 @@ export function CreateBulkActionInspector({
                 />
               </RadioGroup>
             </InputGroup>
+            <InputGroup>
+              <Label>Preview</Label>
+              <BulkActionPreview
+                selected={mode === "selected" ? selectedItems.size : data?.count}
+                mode={mode as BulkActionMode}
+                action={action as BulkActionAction}
+                filters={filters}
+              />
+            </InputGroup>
           </Fieldset>
         </div>
         <div className="flex items-center justify-end gap-2 border-t border-grid-dimmed px-2">
@@ -217,15 +241,105 @@ export function CreateBulkActionInspector({
               key: "enter",
               enabledOnInputElements: true,
             }}
+            disabled={impactedCount === 0}
           >
             {action === "replay" ? (
-              <span className="text-text-bright">Replay {formattedFilteredRunsCount} runs…</span>
+              <span className="text-text-bright">Replay {impactedCount} runs…</span>
             ) : (
-              <span className="text-text-bright">Cancel {formattedFilteredRunsCount} runs…</span>
+              <span className="text-text-bright">Cancel {impactedCount} runs…</span>
             )}
           </Button>
         </div>
       </div>
     </Form>
   );
+}
+
+function BulkActionPreview({
+  selected,
+  mode,
+  action,
+  filters,
+}: {
+  selected?: number;
+  mode: BulkActionMode;
+  action: BulkActionAction;
+  filters: TaskRunListSearchFilters;
+}) {
+  switch (mode) {
+    case "selected":
+      return (
+        <Paragraph variant="small">
+          You have individually selected {simplur`${selected} run[|s]`} to be{" "}
+          <Action action={action} />.
+        </Paragraph>
+      );
+    case "filter":
+      return (
+        <div className="flex flex-col gap-1">
+          <Paragraph variant="small">
+            You have selected <EstimatedCount count={selected} /> runs to be{" "}
+            <Action action={action} /> using these filters:
+          </Paragraph>
+          <div className="flex flex-col gap-1">
+            {Object.entries(filters).map(([key, value]) => {
+              if (!value) {
+                return null;
+              }
+
+              const title = filterTitle(key);
+              const valueString =
+                typeof value === "boolean" ? (
+                  value ? (
+                    <CheckIcon className="size-4" />
+                  ) : (
+                    "No"
+                  )
+                ) : Array.isArray(value) ? (
+                  appliedSummary(value)
+                ) : (
+                  value
+                );
+
+              return (
+                <AppliedFilter
+                  variant="minimal/small"
+                  key={key}
+                  label={title}
+                  value={valueString}
+                  removable={false}
+                />
+              );
+            })}
+          </div>
+        </div>
+      );
+  }
+}
+
+function Action({ action }: { action: BulkActionAction }) {
+  switch (action) {
+    case "cancel":
+      return (
+        <>
+          <XCircleIcon className="mb-0.5 inline-block size-4 text-error" />
+          <span className="ml-0.5 text-text-bright">Canceled</span>
+        </>
+      );
+    case "replay":
+      return (
+        <>
+          <ArrowPathIcon className="mb-0.5 inline-block size-4 text-blue-400" />
+          <span className="ml-0.5 text-text-bright">Replayed</span>
+        </>
+      );
+  }
+}
+
+function EstimatedCount({ count }: { count?: number }) {
+  if (typeof count === "number") {
+    return <>~{formatNumber(count)}</>;
+  }
+
+  return <SpinnerWhite className="mx-0.5 -mt-0.5 inline size-3" />;
 }
