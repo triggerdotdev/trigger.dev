@@ -7,8 +7,90 @@ import {
   RepositoryNotFoundException,
   GetAuthorizationTokenCommand,
 } from "@aws-sdk/client-ecr";
+import { STSClient, AssumeRoleCommand } from "@aws-sdk/client-sts";
 import { tryCatch } from "@trigger.dev/core";
 import { logger } from "~/services/logger.server";
+
+// Optional configuration for cross-account access
+export type CrossAccountConfig = {
+  assumeRole: boolean;
+  roleName: string;
+};
+
+const DEFAULT_CROSS_ACCOUNT_CONFIG: CrossAccountConfig = {
+  assumeRole: false,
+  roleName: "OrganizationAccountAccessRole",
+};
+
+async function getAssumedRoleCredentials(
+  region: string,
+  accountId: string,
+  config: CrossAccountConfig
+): Promise<{
+  accessKeyId: string;
+  secretAccessKey: string;
+  sessionToken: string;
+}> {
+  const sts = new STSClient({ region });
+  const roleArn = `arn:aws:iam::${accountId}:role/${config.roleName}`;
+
+  // Generate a unique session name using timestamp and random string
+  // This helps with debugging but doesn't affect concurrent sessions
+  const timestamp = Date.now();
+  const randomSuffix = Math.random().toString(36).substring(2, 8);
+  const sessionName = `TriggerWebappECRAccess_${timestamp}_${randomSuffix}`;
+
+  try {
+    const response = await sts.send(
+      new AssumeRoleCommand({
+        RoleArn: roleArn,
+        RoleSessionName: sessionName,
+        // Sessions automatically expire after 1 hour
+        // AWS allows 5000 concurrent sessions by default
+        DurationSeconds: 3600,
+      })
+    );
+
+    if (!response.Credentials) {
+      throw new Error("STS: No credentials returned from assumed role");
+    }
+
+    if (
+      !response.Credentials.AccessKeyId ||
+      !response.Credentials.SecretAccessKey ||
+      !response.Credentials.SessionToken
+    ) {
+      throw new Error("STS: Invalid credentials returned from assumed role");
+    }
+
+    return {
+      accessKeyId: response.Credentials.AccessKeyId,
+      secretAccessKey: response.Credentials.SecretAccessKey,
+      sessionToken: response.Credentials.SessionToken,
+    };
+  } catch (error) {
+    logger.error("Failed to assume role", { roleArn, sessionName, error });
+    throw error;
+  }
+}
+
+async function createEcrClient(
+  region: string,
+  registryId?: string,
+  crossAccountConfig: CrossAccountConfig = DEFAULT_CROSS_ACCOUNT_CONFIG
+) {
+  // If no registryId or role assumption is disabled, use default credentials
+  if (!registryId || !crossAccountConfig.assumeRole) {
+    return new ECRClient({ region });
+  }
+
+  // Get credentials for cross-account access
+  const credentials = await getAssumedRoleCredentials(region, registryId, crossAccountConfig);
+  return new ECRClient({
+    region,
+    credentials,
+  });
+}
 
 export async function getDeploymentImageRef({
   host,
@@ -18,6 +100,7 @@ export async function getDeploymentImageRef({
   environmentSlug,
   registryId,
   registryTags,
+  crossAccountConfig,
 }: {
   host: string;
   namespace: string;
@@ -26,6 +109,7 @@ export async function getDeploymentImageRef({
   environmentSlug: string;
   registryId?: string;
   registryTags?: string;
+  crossAccountConfig?: CrossAccountConfig;
 }): Promise<{
   imageRef: string;
   isEcr: boolean;
@@ -41,7 +125,13 @@ export async function getDeploymentImageRef({
   }
 
   const [ecrRepoError] = await tryCatch(
-    ensureEcrRepositoryExists({ repositoryName, registryHost: host, registryId, registryTags })
+    ensureEcrRepositoryExists({
+      repositoryName,
+      registryHost: host,
+      registryId,
+      registryTags,
+      crossAccountConfig,
+    })
   );
 
   if (ecrRepoError) {
@@ -75,13 +165,15 @@ async function createEcrRepository({
   region,
   registryId,
   registryTags,
+  crossAccountConfig,
 }: {
   repositoryName: string;
   region: string;
   registryId?: string;
   registryTags?: string;
+  crossAccountConfig?: CrossAccountConfig;
 }): Promise<Repository> {
-  const ecr = new ECRClient({ region });
+  const ecr = await createEcrClient(region, registryId, crossAccountConfig);
 
   const result = await ecr.send(
     new CreateRepositoryCommand({
@@ -107,12 +199,14 @@ async function getEcrRepository({
   repositoryName,
   region,
   registryId,
+  crossAccountConfig,
 }: {
   repositoryName: string;
   region: string;
   registryId?: string;
+  crossAccountConfig?: CrossAccountConfig;
 }): Promise<Repository | undefined> {
-  const ecr = new ECRClient({ region });
+  const ecr = await createEcrClient(region, registryId, crossAccountConfig);
 
   try {
     const result = await ecr.send(
@@ -153,11 +247,13 @@ async function ensureEcrRepositoryExists({
   registryHost,
   registryId,
   registryTags,
+  crossAccountConfig,
 }: {
   repositoryName: string;
   registryHost: string;
   registryId?: string;
   registryTags?: string;
+  crossAccountConfig?: CrossAccountConfig;
 }): Promise<Repository> {
   const region = getEcrRegion(registryHost);
 
@@ -166,7 +262,7 @@ async function ensureEcrRepositoryExists({
   }
 
   const [getRepoError, existingRepo] = await tryCatch(
-    getEcrRepository({ repositoryName, region, registryId })
+    getEcrRepository({ repositoryName, region, registryId, crossAccountConfig })
   );
 
   if (getRepoError) {
@@ -180,7 +276,7 @@ async function ensureEcrRepositoryExists({
   }
 
   const [createRepoError, newRepo] = await tryCatch(
-    createEcrRepository({ repositoryName, region, registryId, registryTags })
+    createEcrRepository({ repositoryName, region, registryId, registryTags, crossAccountConfig })
   );
 
   if (createRepoError) {
@@ -201,9 +297,11 @@ async function ensureEcrRepositoryExists({
 export async function getEcrAuthToken({
   registryHost,
   registryId,
+  crossAccountConfig,
 }: {
   registryHost: string;
   registryId?: string;
+  crossAccountConfig?: CrossAccountConfig;
 }): Promise<{ username: string; password: string }> {
   const region = getEcrRegion(registryHost);
   if (!region) {
@@ -211,7 +309,7 @@ export async function getEcrAuthToken({
     throw new Error("Invalid ECR registry host");
   }
 
-  const ecr = new ECRClient({ region });
+  const ecr = await createEcrClient(region, registryId, crossAccountConfig);
   const response = await ecr.send(
     new GetAuthorizationTokenCommand({
       registryIds: registryId ? [registryId] : undefined,

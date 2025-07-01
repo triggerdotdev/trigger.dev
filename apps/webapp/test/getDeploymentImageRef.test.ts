@@ -14,6 +14,13 @@ describe.skipIf(process.env.RUN_REGISTRY_TESTS !== "1")("getDeploymentImageRef",
   const registryId = process.env.DEPLOY_REGISTRY_ID;
   const registryTags = "test=test,test2=test2";
 
+  const assumeRole = process.env.ASSUME_ROLE === "1";
+
+  const crossAccountConfig = {
+    assumeRole,
+    roleName: "OrganizationAccountAccessRole",
+  };
+
   // Clean up test repository after tests
   afterAll(async () => {
     if (!registryId) {
@@ -65,6 +72,7 @@ describe.skipIf(process.env.RUN_REGISTRY_TESTS !== "1")("getDeploymentImageRef",
       environmentSlug: "test",
       registryId,
       registryTags,
+      crossAccountConfig,
     });
 
     expect(imageRef.imageRef).toBe(
@@ -83,6 +91,7 @@ describe.skipIf(process.env.RUN_REGISTRY_TESTS !== "1")("getDeploymentImageRef",
       environmentSlug: "prod",
       registryId,
       registryTags,
+      crossAccountConfig,
     });
 
     expect(imageRef.imageRef).toBe(
