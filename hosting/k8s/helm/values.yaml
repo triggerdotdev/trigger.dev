@@ -281,9 +281,8 @@ supervisor:
     annotations: {}
   rbac:
     create: true
-    # Cluster-level permissions for pod management
-    clusterRole:
-      create: true
+    # Namespace-scoped permissions for pod management  
+    role:
       name: ""
   # Extra environment variables for Supervisor
   extraEnvVars:
