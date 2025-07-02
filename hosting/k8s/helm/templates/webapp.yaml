@@ -324,6 +324,9 @@ spec:
           volumeMounts:
             - name: shared
               mountPath: /home/node/shared
+            {{- with .Values.webapp.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
       volumes:
         - name: shared
           {{- if .Values.persistence.shared.enabled }}
@@ -332,6 +335,9 @@ spec:
           {{- else }}
           emptyDir: {}
           {{- end }}
+        {{- with .Values.webapp.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
       {{- with .Values.webapp.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
