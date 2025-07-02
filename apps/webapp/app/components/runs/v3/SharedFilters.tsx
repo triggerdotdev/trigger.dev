@@ -266,16 +266,16 @@ export function TimeDropdown({
   }, [fromValue, toValue, replace]);
 
   const handlePeriodClick = useCallback((period: string) => {
-    setFromValue(undefined);
-    setToValue(undefined);
-
     replace({
-      period: period,
+      period,
       cursor: undefined,
       direction: undefined,
       from: undefined,
       to: undefined,
     });
+
+    setFromValue(undefined);
+    setToValue(undefined);
 
     setOpen(false);
   }, []);
@@ -302,8 +302,12 @@ export function TimeDropdown({
                       ? "border-indigo-500 group-hover/button:border-indigo-500"
                       : undefined
                   }
-                  onClick={() => handlePeriodClick(p.value)}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    handlePeriodClick(p.value);
+                  }}
                   fullWidth
+                  type="button"
                 >
                   {p.label}
                 </Button>
@@ -343,11 +347,13 @@ export function TimeDropdown({
             <div className="flex justify-between gap-1 border-t border-grid-bright pt-3">
               <Button
                 variant="tertiary/small"
-                onClick={() => {
+                onClick={(e) => {
+                  e.preventDefault();
                   setFromValue(from);
                   setToValue(to);
                   setOpen(false);
                 }}
+                type="button"
               >
                 Cancel
               </Button>
@@ -359,7 +365,11 @@ export function TimeDropdown({
                   enabledOnInputElements: true,
                 }}
                 disabled={!fromValue && !toValue}
-                onClick={() => apply()}
+                onClick={(e) => {
+                  e.preventDefault();
+                  apply();
+                }}
+                type="button"
               >
                 Apply
               </Button>
