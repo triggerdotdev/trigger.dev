@@ -12,33 +12,30 @@ secrets:
     accessKeyId: "your-access-key"
     secretAccessKey: "your-secret-key"
 
-# Production configuration
-config:
+# Production webapp configuration
+webapp:
+  # Origin configuration
   appOrigin: "https://trigger.example.com"
   loginOrigin: "https://trigger.example.com"
   apiOrigin: "https://trigger.example.com"
 
-# Production ingress
-ingress:
-  enabled: true
-  className: "nginx"
-  annotations:
-    cert-manager.io/cluster-issuer: "letsencrypt-prod"
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
-  hosts:
-    - host: trigger.example.com
-      paths:
-        - path: /
-          pathType: Prefix
-  tls:
-    - secretName: trigger-tls
-      hosts:
-        - trigger.example.com
+  # Production ingress
+  ingress:
+    enabled: true
+    className: "nginx"
+    annotations:
+      cert-manager.io/cluster-issuer: "letsencrypt-prod"
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    hosts:
+      - host: trigger.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+    tls:
+      - secretName: trigger-tls
+        hosts:
+          - trigger.example.com
 
-# Production webapp configuration
-webapp:
-  bootstrap:
-    enabled: false # Usually disabled in production
   resources:
     limits:
       cpu: 2000m
@@ -79,6 +76,8 @@ redis:
 
 # Production ClickHouse
 clickhouse:
+  # Set to true to enable TLS/secure connections in production
+  secure: true
   persistence:
     enabled: true
     size: 100Gi
@@ -91,11 +90,11 @@ clickhouse:
       cpu: 500m
       memory: 1Gi
 
-# Production MinIO (or use external S3)
-minio:
+# Production S3-compatible object storage
+s3:
   auth:
     rootUser: "admin"
-    rootPassword: "your-strong-minio-password"
+    rootPassword: "your-strong-s3-password"
   persistence:
     enabled: true
     size: 500Gi
@@ -112,6 +111,23 @@ registry:
     size: 100Gi
     storageClass: "standard"
 
+  # Production ingress
+  ingress:
+    enabled: true
+    className: "nginx"
+    annotations:
+      cert-manager.io/cluster-issuer: "letsencrypt-prod"
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    hosts:
+      - host: registry.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+    tls:
+      - secretName: registry-tls
+        hosts:
+          - registry.example.com
+
 # Production Supervisor (Kubernetes worker orchestrator)
 supervisor:
   resources:
@@ -123,9 +139,8 @@ supervisor:
       memory: 512Mi
 # Example: Use external PostgreSQL instead
 # postgres:
-#   enabled: false
-#   external: true
-#   externalConnection:
+#   deploy: false
+#   external:
 #     host: "your-postgres-host.rds.amazonaws.com"
 #     port: 5432
 #     database: "trigger"
@@ -136,9 +151,19 @@ supervisor:
 
 # Example: Use external Redis instead
 # redis:
-#   enabled: false
-#   external: true
-#   externalConnection:
+#   deploy: false
+#   external:
 #     host: "your-redis-cluster.cache.amazonaws.com"
 #     port: 6379
 #     password: "your-redis-password"
+
+# Example: Use external ClickHouse instead
+# clickhouse:
+#   deploy: false
+#   external:
+#     host: "your-clickhouse-host.cloud.provider.com"
+#     httpPort: 8443  # Use 8443 for HTTPS
+#     nativePort: 9440  # Use 9440 for secure native connections
+#     username: "trigger_user"
+#     password: "your-clickhouse-password"
+#     secure: true  # Use true for TLS/secure connections

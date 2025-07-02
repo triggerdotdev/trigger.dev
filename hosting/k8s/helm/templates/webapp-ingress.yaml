@@ -1,21 +1,22 @@
-{{- if .Values.ingress.enabled -}}
+{{- if .Values.webapp.ingress.enabled -}}
 {{- $fullName := include "trigger-v4.fullname" . -}}
 {{- $svcPort := .Values.webapp.service.port -}}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: {{ $fullName }}
+  name: {{ $fullName }}-webapp
   labels:
-    {{- include "trigger-v4.labels" . | nindent 4 }}
+    {{- $component := "webapp" }}
+    {{- include "trigger-v4.componentLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 4 }}
   annotations:
-    {{- include "trigger-v4.ingress.annotations" . | nindent 4 }}
+    {{- include "trigger-v4.webapp.ingress.annotations" . | nindent 4 }}
 spec:
-  {{- if .Values.ingress.className }}
-  ingressClassName: {{ .Values.ingress.className }}
+  {{- if .Values.webapp.ingress.className }}
+  ingressClassName: {{ .Values.webapp.ingress.className }}
   {{- end }}
-  {{- if .Values.ingress.tls }}
+  {{- if .Values.webapp.ingress.tls }}
   tls:
-    {{- range .Values.ingress.tls }}
+    {{- range .Values.webapp.ingress.tls }}
     - hosts:
         {{- range .hosts }}
         - {{ . | quote }}
@@ -24,7 +25,7 @@ spec:
     {{- end }}
   {{- end }}
   rules:
-    {{- range .Values.ingress.hosts }}
+    {{- range .Values.webapp.ingress.hosts }}
     - host: {{ .host | quote }}
       http:
         paths:

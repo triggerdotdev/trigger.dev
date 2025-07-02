@@ -4,6 +4,19 @@ This Helm chart deploys Trigger.dev v4 self-hosting stack to Kubernetes.
 
 ## Quick Start
 
+### Prerequisites
+
+```bash
+# Build Helm dependencies (required for Bitnami charts)
+helm dependency build
+
+# Extract dependency charts for local template testing
+for file in ./charts/*.tgz; do echo "Extracting $file"; tar -xzf "$file" -C ./charts; done
+
+# Alternative: Use --dependency-update flag for template testing
+helm template trigger . --dependency-update
+```
+
 ### Installation
 
 ```bash
@@ -100,14 +113,13 @@ This chart deploys the following components:
 ### Basic Configuration
 
 ```yaml
-# Application URLs
-config:
+webapp:
+  # Application URLs
   appOrigin: "https://trigger.example.com"
   loginOrigin: "https://trigger.example.com" 
   apiOrigin: "https://trigger.example.com"
 
-# Bootstrap mode (auto-creates worker group)
-config:
+  # Bootstrap mode (auto-creates worker group)
   bootstrap:
     enabled: true  # Enable for combined setups
     workerGroupName: "bootstrap"
@@ -120,9 +132,8 @@ Use external managed services instead of bundled components:
 ```yaml
 # External PostgreSQL
 postgres:
-  enabled: false
-  external: true
-  externalConnection:
+  deploy: false
+  external:
     host: "your-postgres.rds.amazonaws.com"
     port: 5432
     database: "trigger"
@@ -131,18 +142,16 @@ postgres:
 
 # External Redis  
 redis:
-  enabled: false
-  external: true
-  externalConnection:
+  deploy: false
+  external:
     host: "your-redis.cache.amazonaws.com"
     port: 6379
     password: "your-password"
 
 # External Docker Registry (e.g., Kind local registry)
 registry:
-  enabled: true
-  external: true
-  externalConnection:
+  deploy: true
+  external:
     host: "localhost"
     port: 5001
     username: ""
@@ -152,20 +161,39 @@ registry:
 ### Ingress Configuration
 
 ```yaml
-ingress:
-  enabled: true
-  className: "nginx"
-  annotations:
-    cert-manager.io/cluster-issuer: "letsencrypt-prod"
-  hosts:
-    - host: trigger.example.com
-      paths:
-        - path: /
-          pathType: Prefix
-  tls:
-    - secretName: trigger-tls
-      hosts:
-        - trigger.example.com
+# Webapp ingress
+webapp:
+  ingress:
+    enabled: true
+    className: "nginx"
+    annotations:
+      cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    hosts:
+      - host: trigger.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+    tls:
+      - secretName: trigger-tls
+        hosts:
+          - trigger.example.com
+
+# Registry ingress
+registry:
+  ingress:
+    enabled: true
+    className: "nginx"
+    annotations:
+      cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    hosts:
+      - host: registry.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+    tls:
+      - secretName: registry-tls
+        hosts:
+          - registry.example.com
 ```
 
 ### Resource Configuration
@@ -206,12 +234,15 @@ postgres:
 
 ## Persistence
 
-All services support persistent storage and allow you to control the storage class globally or per service:
+All services support persistent storage and allow you to control the storage class globally or per service. Our internal services (Registry) now support the full Bitnami persistence configuration pattern:
+
+### Basic Persistence Configuration
 
 ```yaml
 global:
   storageClass: "fast-ssd" # Default for all services
 
+# Bitnami chart services (simplified configuration)
 postgres:
   primary:
     persistence:
@@ -232,27 +263,71 @@ clickhouse:
     size: 10Gi
     storageClass: "analytics-hdd" # Optional: override for ClickHouse
 
-minio:
+s3:
   persistence:
     enabled: true
     size: 10Gi
-    storageClass: "objectstore-ssd" # Optional: override for MinIO
+    storageClass: "objectstore-ssd" # Optional: override for S3
+```
 
+### Internal Services - Full Bitnami-Style Configuration
+
+Our internal services (Registry) support the complete Bitnami persistence configuration pattern:
+
+```yaml
+# Registry - Full persistence configuration options
 registry:
   persistence:
     enabled: true
+    # Name to assign the volume
+    volumeName: "data"
+    # Name of an existing PVC to use
+    existingClaim: ""
+    # The path the volume will be mounted at
+    mountPath: "/var/lib/registry"
+    # The subdirectory of the volume to mount to
+    subPath: ""
+    # PVC Storage Class for Registry data volume
+    storageClass: "registry-ssd"
+    # PVC Access Mode for Registry volume
+    accessModes:
+      - "ReadWriteOnce"
+    # PVC Storage Request for Registry volume
     size: 10Gi
-    storageClass: "registry-ssd" # Optional: override for Registry
+    # Annotations for the PVC
+    annotations:
+      backup.velero.io/backup-volumes: "data"
+    # Labels for the PVC
+    labels:
+      app.kubernetes.io/component: "storage"
+    # Selector to match an existing Persistent Volume
+    selector:
+      matchLabels:
+        tier: "registry"
+    # Custom PVC data source
+    dataSource:
+      name: "registry-snapshot"
+      kind: "VolumeSnapshot"
+      apiGroup: "snapshot.storage.k8s.io"
 
 # Shared persistent volume for worker token file
 persistence:
   shared:
     enabled: true
     size: 5Mi
+    accessMode: ReadWriteOnce
+    # accessMode: ReadWriteMany  # Use for cross-node deployment
+    storageClass: ""
+    retain: true # Prevents deletion on uninstall
 ```
 
-- If a per-service `storageClass` is set, it overrides the global value for that service only.
-- If neither is set, the cluster's default StorageClass is used.
+### Persistence Configuration Rules
+
+- **Service-level storageClass** overrides the global value for that service only
+- **Global storageClass** applies to all services that don't specify their own
+- **Cluster default** is used if neither global nor service-level storageClass is set
+- **Internal services** (Registry) support full Bitnami-style configuration
+- **Bitnami chart services** use their respective chart's configuration patterns
 
 ## Monitoring
 
@@ -262,6 +337,108 @@ Health checks are configured for all services:
 - HTTP endpoints for web services
 - Database connection tests
 - Readiness and liveness probes
+
+### Health Probe Configuration
+
+All non-Bitnami services support configurable health probes:
+
+```yaml
+# Webapp health probes
+webapp:
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 5
+    failureThreshold: 5
+    successThreshold: 1
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 1
+    failureThreshold: 5
+    successThreshold: 1
+  startupProbe:
+    enabled: false
+    initialDelaySeconds: 0
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 60
+    successThreshold: 1
+
+# Supervisor health probes
+supervisor:
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 5
+    failureThreshold: 5
+    successThreshold: 1
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 1
+    failureThreshold: 5
+    successThreshold: 1
+  startupProbe:
+    enabled: false
+    initialDelaySeconds: 0
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 60
+    successThreshold: 1
+
+# Electric health probes
+electric:
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 5
+    failureThreshold: 5
+    successThreshold: 1
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 1
+    failureThreshold: 5
+    successThreshold: 1
+  startupProbe:
+    enabled: false
+    initialDelaySeconds: 0
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 60
+    successThreshold: 1
+
+# Registry health probes
+registry:
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 5
+    failureThreshold: 5
+    successThreshold: 1
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 1
+    failureThreshold: 5
+    successThreshold: 1
+  startupProbe:
+    enabled: false
+    initialDelaySeconds: 0
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 60
+    successThreshold: 1
+```
 
 ### Prometheus Integration
 
@@ -504,26 +681,31 @@ helm upgrade --install trigger . \
     storageClass: "fast-nvme" # Default for all services
 
   postgres:
-    persistence:
-      primary:
+    primary:
+      persistence:
         size: 500Gi
 
   redis:
-    persistence:
-      master:
+    master:
+      persistence:
         size: 20Gi
 
   clickhouse:
     persistence:
       size: 100Gi
 
-  minio:
+  s3:
     persistence:
       size: 200Gi
 
+  # Internal services support full Bitnami-style configuration
   registry:
     persistence:
+      enabled: true
       size: 100Gi
+      storageClass: "registry-ssd"
+      annotations:
+        backup.velero.io/backup-volumes: "data"
   ```
 
 ### 🏗️ High Availability (RECOMMENDED)

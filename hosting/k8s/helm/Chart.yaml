@@ -2,8 +2,8 @@ apiVersion: v2
 name: trigger
 description: The official Trigger.dev Helm chart
 type: application
-version: 4.0.0-beta.5
-appVersion: v4.0.0-v4-beta.21
+version: 4.0.0-beta.14
+appVersion: trigger-helm-rc.1
 home: https://trigger.dev
 sources:
   - https://github.com/triggerdotdev/trigger.dev
@@ -16,3 +16,22 @@ keywords:
   - automation
 annotations:
   category: Development
+dependencies:
+  - name: postgresql
+    version: "16.7.14"
+    repository: "oci://registry-1.docker.io/bitnamicharts"
+    condition: postgres.deploy
+    alias: postgres
+  - name: redis
+    version: "21.2.6"
+    repository: "oci://registry-1.docker.io/bitnamicharts"
+    condition: redis.deploy
+  - name: clickhouse
+    version: "9.3.7"
+    repository: "oci://registry-1.docker.io/bitnamicharts"
+    condition: clickhouse.deploy
+  - name: minio
+    version: "17.0.9"
+    repository: "oci://registry-1.docker.io/bitnamicharts"
+    condition: s3.deploy
+    alias: s3

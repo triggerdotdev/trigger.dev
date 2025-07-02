@@ -181,7 +181,7 @@ services:
       start_period: 10s
 
   minio:
-    image: minio/minio:${MINIO_IMAGE_TAG:-latest}
+    image: bitnami/minio:${MINIO_IMAGE_TAG:-latest}
     restart: ${RESTART_POLICY:-unless-stopped}
     logging: *logging-config
     ports:
@@ -190,11 +190,12 @@ services:
     networks:
       - webapp
     volumes:
-      - minio:/data
+      - minio:/bitnami/minio/data
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-admin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-very-safe-password}
-    command: server --console-address ":9001" /data
+      MINIO_DEFAULT_BUCKETS: packets
+      MINIO_BROWSER: "on"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 5s

@@ -1,4 +1,4 @@
-{{- if .Values.electric.enabled }}
+{{- if .Values.electric.deploy }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -43,25 +43,42 @@ spec:
               value: {{ .Values.electric.config.insecure | quote }}
             - name: ELECTRIC_USAGE_REPORTING
               value: {{ .Values.electric.config.usageReporting | quote }}
-            {{- with .Values.electric.extraEnv }}
+            {{- with .Values.electric.extraEnvVars }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
+          {{- if .Values.electric.livenessProbe.enabled }}
           livenessProbe:
             httpGet:
               path: /v1/health
               port: http
-            initialDelaySeconds: 10
-            periodSeconds: 10
-            timeoutSeconds: 5
-            failureThreshold: 5
+            initialDelaySeconds: {{ .Values.electric.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.electric.livenessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.electric.livenessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.electric.livenessProbe.failureThreshold }}
+            successThreshold: {{ .Values.electric.livenessProbe.successThreshold }}
+          {{- end }}
+          {{- if .Values.electric.readinessProbe.enabled }}
           readinessProbe:
             httpGet:
               path: /v1/health
               port: http
-            initialDelaySeconds: 10
-            periodSeconds: 10
-            timeoutSeconds: 5
-            failureThreshold: 5
+            initialDelaySeconds: {{ .Values.electric.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.electric.readinessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.electric.readinessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.electric.readinessProbe.failureThreshold }}
+            successThreshold: {{ .Values.electric.readinessProbe.successThreshold }}
+          {{- end }}
+          {{- if .Values.electric.startupProbe.enabled }}
+          startupProbe:
+            httpGet:
+              path: /v1/health
+              port: http
+            initialDelaySeconds: {{ .Values.electric.startupProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.electric.startupProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.electric.startupProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.electric.startupProbe.failureThreshold }}
+            successThreshold: {{ .Values.electric.startupProbe.successThreshold }}
+          {{- end }}
           resources:
             {{- toYaml .Values.electric.resources | nindent 12 }}
 ---

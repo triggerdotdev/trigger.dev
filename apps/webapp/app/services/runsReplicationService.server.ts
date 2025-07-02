@@ -15,6 +15,8 @@ import { TaskRun } from "@trigger.dev/database";
 import { nanoid } from "nanoid";
 import EventEmitter from "node:events";
 import pLimit from "p-limit";
+import { logger } from "./logger.server";
+import { detectBadJsonStrings } from "~/utils/detectBadJsonStrings";
 
 interface TransactionEvent<T = any> {
   tag: "insert" | "update" | "delete";
@@ -51,6 +53,10 @@ export type RunsReplicationServiceOptions = {
   logLevel?: LogLevel;
   tracer?: Tracer;
   waitForAsyncInsert?: boolean;
+  // Retry configuration for insert operations
+  insertMaxRetries?: number;
+  insertBaseDelayMs?: number;
+  insertMaxDelayMs?: number;
 };
 
 type TaskRunInsert = { _version: bigint; run: TaskRun; event: "insert" | "update" | "delete" };
@@ -80,6 +86,10 @@ export class RunsReplicationService {
   private _latestCommitEndLsn: string | null = null;
   private _lastAcknowledgedLsn: string | null = null;
   private _acknowledgeInterval: NodeJS.Timeout | null = null;
+  // Retry configuration
+  private _insertMaxRetries: number;
+  private _insertBaseDelayMs: number;
+  private _insertMaxDelayMs: number;
 
   public readonly events: EventEmitter<RunsReplicationServiceEvents>;
 
@@ -151,6 +161,11 @@ export class RunsReplicationService {
     this._replicationClient.events.on("leaderElection", (isLeader) => {
       this.logger.info("Leader election", { isLeader });
     });
+
+    // Initialize retry configuration
+    this._insertMaxRetries = options.insertMaxRetries ?? 3;
+    this._insertBaseDelayMs = options.insertBaseDelayMs ?? 100;
+    this._insertMaxDelayMs = options.insertMaxDelayMs ?? 2000;
   }
 
   public async shutdown() {
@@ -445,8 +460,37 @@ export class RunsReplicationService {
         payloadInserts: payloadInserts.length,
       });
 
-      await this.#insertTaskRunInserts(taskRunInserts);
-      await this.#insertPayloadInserts(payloadInserts);
+      // Insert task runs and payloads with retry logic for connection errors
+      const [taskRunError, taskRunResult] = await this.#insertWithRetry(
+        (attempt) => this.#insertTaskRunInserts(taskRunInserts, attempt),
+        "task run inserts",
+        flushId
+      );
+
+      const [payloadError, payloadResult] = await this.#insertWithRetry(
+        (attempt) => this.#insertPayloadInserts(payloadInserts, attempt),
+        "payload inserts",
+        flushId
+      );
+
+      // Log any errors that occurred
+      if (taskRunError) {
+        this.logger.error("Error inserting task run inserts", {
+          error: taskRunError,
+          flushId,
+          runIds: taskRunInserts.map((r) => r.run_id),
+        });
+        recordSpanError(span, taskRunError);
+      }
+
+      if (payloadError) {
+        this.logger.error("Error inserting payload inserts", {
+          error: payloadError,
+          flushId,
+          runIds: payloadInserts.map((r) => r.run_id),
+        });
+        recordSpanError(span, payloadError);
+      }
 
       this.logger.debug("Flushed inserts", {
         flushId,
@@ -456,7 +500,75 @@ export class RunsReplicationService {
     });
   }
 
-  async #insertTaskRunInserts(taskRunInserts: TaskRunV2[]) {
+  // New method to handle inserts with retry logic for connection errors
+  async #insertWithRetry<T>(
+    insertFn: (attempt: number) => Promise<T>,
+    operationName: string,
+    flushId: string
+  ): Promise<[Error | null, T | null]> {
+    let lastError: Error | null = null;
+
+    for (let attempt = 1; attempt <= this._insertMaxRetries; attempt++) {
+      try {
+        const result = await insertFn(attempt);
+        return [null, result];
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+
+        // Check if this is a retryable connection error
+        if (this.#isRetryableConnectionError(lastError)) {
+          const delay = this.#calculateConnectionRetryDelay(attempt);
+
+          this.logger.warn(`Retrying RunReplication insert due to connection error`, {
+            operationName,
+            flushId,
+            attempt,
+            maxRetries: this._insertMaxRetries,
+            error: lastError.message,
+            delay,
+          });
+
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          continue;
+        }
+        break;
+      }
+    }
+
+    return [lastError, null];
+  }
+
+  // New method to check if an error is a retryable connection error
+  #isRetryableConnectionError(error: Error): boolean {
+    const errorMessage = error.message.toLowerCase();
+    const retryableConnectionPatterns = [
+      "socket hang up",
+      "econnreset",
+      "connection reset",
+      "connection refused",
+      "connection timeout",
+      "network error",
+      "read econnreset",
+      "write econnreset",
+    ];
+
+    return retryableConnectionPatterns.some((pattern) => errorMessage.includes(pattern));
+  }
+
+  // New method to calculate retry delay for connection errors
+  #calculateConnectionRetryDelay(attempt: number): number {
+    // Exponential backoff: baseDelay, baseDelay*2, baseDelay*4, etc.
+    const delay = Math.min(
+      this._insertBaseDelayMs * Math.pow(2, attempt - 1),
+      this._insertMaxDelayMs
+    );
+
+    // Add some jitter to prevent thundering herd
+    const jitter = Math.random() * 100;
+    return delay + jitter;
+  }
+
+  async #insertTaskRunInserts(taskRunInserts: TaskRunV2[], attempt: number) {
     return await startSpan(this._tracer, "insertTaskRunsInserts", async (span) => {
       const [insertError, insertResult] = await this.options.clickhouse.taskRuns.insert(
         taskRunInserts,
@@ -470,18 +582,20 @@ export class RunsReplicationService {
       );
 
       if (insertError) {
-        this.logger.error("Error inserting task run inserts", {
+        this.logger.error("Error inserting task run inserts attempt", {
           error: insertError,
+          attempt,
         });
 
         recordSpanError(span, insertError);
+        throw insertError;
       }
 
       return insertResult;
     });
   }
 
-  async #insertPayloadInserts(payloadInserts: RawTaskRunPayloadV1[]) {
+  async #insertPayloadInserts(payloadInserts: RawTaskRunPayloadV1[], attempt: number) {
     return await startSpan(this._tracer, "insertPayloadInserts", async (span) => {
       const [insertError, insertResult] = await this.options.clickhouse.taskRuns.insertPayloads(
         payloadInserts,
@@ -495,11 +609,13 @@ export class RunsReplicationService {
       );
 
       if (insertError) {
-        this.logger.error("Error inserting payload inserts", {
+        this.logger.error("Error inserting payload inserts attempt", {
           error: insertError,
+          attempt,
         });
 
         recordSpanError(span, insertError);
+        throw insertError;
       }
 
       return insertResult;
@@ -604,6 +720,7 @@ export class RunsReplicationService {
       idempotency_key: run.idempotencyKey ?? "",
       expiration_ttl: run.ttl ?? "",
       output,
+      concurrency_key: run.concurrencyKey ?? "",
       _version: _version.toString(),
       _is_deleted: event === "delete" ? 1 : 0,
     };
@@ -628,6 +745,14 @@ export class RunsReplicationService {
     }
 
     if (dataType !== "application/json" && dataType !== "application/super+json") {
+      return { data: undefined };
+    }
+
+    if (detectBadJsonStrings(data)) {
+      this.logger.warn("Detected bad JSON strings", {
+        data,
+        dataType,
+      });
       return { data: undefined };
     }
 

@@ -3,9 +3,15 @@ title: "Upgrading to v4"
 description: "What's new in v4, how to upgrade, and breaking changes."
 ---
 
+import NodeVersions from "/snippets/node-versions.mdx";
+
 ## What's new in v4?
 
 [Read our blog post](https://trigger.dev/blog/v4-beta-launch) for an overview of the new features.
+
+### Node.js support
+
+<NodeVersions />
 
 ### Wait tokens
 
@@ -761,7 +767,7 @@ You can also now control whether concurrency is released when performing a wait:
 
 ```ts
 // This will prevent the run from being released back into the queue when the wait starts
-await wait.for({ seconds: 10 }, { releaseConcurrency: false });
+await wait.for({ seconds: 10, releaseConcurrency: false });
 ```
 
 The new default behavior allows you to ensure that you can control the number of executing & waiting runs on a queue, and guarantee runs will resume once they are meant to be resumed.

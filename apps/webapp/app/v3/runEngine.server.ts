@@ -1,10 +1,10 @@
 import { RunEngine } from "@internal/run-engine";
-import { defaultMachine } from "~/services/platform.v3.server";
-import { prisma } from "~/db.server";
+import { $replica, prisma } from "~/db.server";
 import { env } from "~/env.server";
+import { defaultMachine } from "~/services/platform.v3.server";
 import { singleton } from "~/utils/singleton";
 import { allMachines } from "./machinePresets.server";
-import { tracer, meter } from "./tracer.server";
+import { meter, tracer } from "./tracer.server";
 
 export const engine = singleton("RunEngine", createRunEngine);
 
@@ -13,6 +13,7 @@ export type { RunEngine };
 function createRunEngine() {
   const engine = new RunEngine({
     prisma,
+    readOnlyPrisma: $replica,
     logLevel: env.RUN_ENGINE_WORKER_LOG_LEVEL,
     worker: {
       disabled: env.RUN_ENGINE_WORKER_ENABLED === "0",
@@ -39,6 +40,7 @@ function createRunEngine() {
     },
     queue: {
       defaultEnvConcurrency: env.DEFAULT_ENV_EXECUTION_CONCURRENCY_LIMIT,
+      logLevel: env.RUN_ENGINE_RUN_QUEUE_LOG_LEVEL,
       redis: {
         keyPrefix: "engine:",
         port: env.RUN_ENGINE_RUN_QUEUE_REDIS_PORT ?? undefined,
@@ -64,6 +66,12 @@ function createRunEngine() {
       dequeueBlockingTimeoutSeconds: env.RUN_ENGINE_DEQUEUE_BLOCKING_TIMEOUT_SECONDS,
       masterQueueConsumersIntervalMs: env.RUN_ENGINE_MASTER_QUEUE_CONSUMERS_INTERVAL_MS,
       masterQueueConsumersDisabled: env.RUN_ENGINE_WORKER_ENABLED === "0",
+      concurrencySweeper: {
+        scanSchedule: env.RUN_ENGINE_CONCURRENCY_SWEEPER_SCAN_SCHEDULE,
+        processMarkedSchedule: env.RUN_ENGINE_CONCURRENCY_SWEEPER_PROCESS_MARKED_SCHEDULE,
+        scanJitterInMs: env.RUN_ENGINE_CONCURRENCY_SWEEPER_SCAN_JITTER_IN_MS,
+        processMarkedJitterInMs: env.RUN_ENGINE_CONCURRENCY_SWEEPER_PROCESS_MARKED_JITTER_IN_MS,
+      },
     },
     runLock: {
       redis: {

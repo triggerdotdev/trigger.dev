@@ -2,6 +2,7 @@ import { z } from "zod";
 import { isValidDatabaseUrl } from "./utils/db";
 import { isValidRegex } from "./utils/regex";
 import { BoolEnv } from "./utils/boolEnv";
+import { OTEL_ATTRIBUTE_PER_LINK_COUNT_LIMIT, OTEL_LINK_COUNT_LIMIT } from "@trigger.dev/core/v3";
 
 const EnvironmentSchema = z.object({
   NODE_ENV: z.union([z.literal("development"), z.literal("production"), z.literal("test")]),
@@ -276,6 +277,15 @@ const EnvironmentSchema = z.object({
   PROD_OTEL_LOG_EXPORT_TIMEOUT_MILLIS: z.string().default("30000"),
   PROD_OTEL_LOG_MAX_QUEUE_SIZE: z.string().default("512"),
 
+  TRIGGER_OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT: z.string().default("256"),
+  TRIGGER_OTEL_LOG_ATTRIBUTE_COUNT_LIMIT: z.string().default("256"),
+  TRIGGER_OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT: z.string().default("131072"),
+  TRIGGER_OTEL_LOG_ATTRIBUTE_VALUE_LENGTH_LIMIT: z.string().default("131072"),
+  TRIGGER_OTEL_SPAN_EVENT_COUNT_LIMIT: z.string().default("10"),
+  TRIGGER_OTEL_LINK_COUNT_LIMIT: z.string().default("2"),
+  TRIGGER_OTEL_ATTRIBUTE_PER_LINK_COUNT_LIMIT: z.string().default("10"),
+  TRIGGER_OTEL_ATTRIBUTE_PER_EVENT_COUNT_LIMIT: z.string().default("10"),
+
   CHECKPOINT_THRESHOLD_IN_MS: z.coerce.number().int().default(30000),
 
   // Internal OTEL environment variables
@@ -428,6 +438,10 @@ const EnvironmentSchema = z.object({
   RUN_ENGINE_PROCESS_WORKER_QUEUE_DEBOUNCE_MS: z.coerce.number().int().default(200),
   RUN_ENGINE_DEQUEUE_BLOCKING_TIMEOUT_SECONDS: z.coerce.number().int().default(10),
   RUN_ENGINE_MASTER_QUEUE_CONSUMERS_INTERVAL_MS: z.coerce.number().int().default(500),
+  RUN_ENGINE_CONCURRENCY_SWEEPER_SCAN_SCHEDULE: z.string().optional(),
+  RUN_ENGINE_CONCURRENCY_SWEEPER_PROCESS_MARKED_SCHEDULE: z.string().optional(),
+  RUN_ENGINE_CONCURRENCY_SWEEPER_SCAN_JITTER_IN_MS: z.coerce.number().int().optional(),
+  RUN_ENGINE_CONCURRENCY_SWEEPER_PROCESS_MARKED_JITTER_IN_MS: z.coerce.number().int().optional(),
 
   RUN_ENGINE_RUN_LOCK_DURATION: z.coerce.number().int().default(5000),
   RUN_ENGINE_RUN_LOCK_AUTOMATIC_EXTENSION_THRESHOLD: z.coerce.number().int().default(1000),
@@ -593,6 +607,7 @@ const EnvironmentSchema = z.object({
 
   RUN_ENGINE_WORKER_ENABLED: z.string().default("1"),
   RUN_ENGINE_WORKER_LOG_LEVEL: z.enum(["log", "error", "warn", "info", "debug"]).default("info"),
+  RUN_ENGINE_RUN_QUEUE_LOG_LEVEL: z.enum(["log", "error", "warn", "info", "debug"]).default("info"),
 
   /** How long should the presence ttl last */
   DEV_PRESENCE_SSE_TIMEOUT: z.coerce.number().int().default(30_000),
@@ -837,9 +852,13 @@ const EnvironmentSchema = z.object({
   RUN_REPLICATION_LEADER_LOCK_ADDITIONAL_TIME_MS: z.coerce.number().int().default(10_000),
   RUN_REPLICATION_LEADER_LOCK_RETRY_INTERVAL_MS: z.coerce.number().int().default(500),
   RUN_REPLICATION_WAIT_FOR_ASYNC_INSERT: z.string().default("0"),
-  RUN_REPLICATION_KEEP_ALIVE_ENABLED: z.string().default("1"),
+  RUN_REPLICATION_KEEP_ALIVE_ENABLED: z.string().default("0"),
   RUN_REPLICATION_KEEP_ALIVE_IDLE_SOCKET_TTL_MS: z.coerce.number().int().optional(),
   RUN_REPLICATION_MAX_OPEN_CONNECTIONS: z.coerce.number().int().default(10),
+  // Retry configuration for insert operations
+  RUN_REPLICATION_INSERT_MAX_RETRIES: z.coerce.number().int().default(3),
+  RUN_REPLICATION_INSERT_BASE_DELAY_MS: z.coerce.number().int().default(100),
+  RUN_REPLICATION_INSERT_MAX_DELAY_MS: z.coerce.number().int().default(2000),
 
   // Clickhouse
   CLICKHOUSE_URL: z.string().optional(),
@@ -856,6 +875,9 @@ const EnvironmentSchema = z.object({
 
   // Machine presets
   MACHINE_PRESETS_OVERRIDE_PATH: z.string().optional(),
+
+  // CLI package tag (e.g. "latest", "v4-beta", "4.0.0") - used for setup commands
+  TRIGGER_CLI_TAG: z.string().default("latest"),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

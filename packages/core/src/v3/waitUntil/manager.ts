@@ -3,6 +3,10 @@ import { MaybeDeferredPromise, WaitUntilManager } from "./types.js";
 export class StandardWaitUntilManager implements WaitUntilManager {
   private maybeDeferredPromises: Set<MaybeDeferredPromise> = new Set();
 
+  reset(): void {
+    this.maybeDeferredPromises.clear();
+  }
+
   register(promise: MaybeDeferredPromise): void {
     this.maybeDeferredPromises.add(promise);
   }

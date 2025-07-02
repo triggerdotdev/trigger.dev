@@ -1660,6 +1660,9 @@ importers:
       '@trigger.dev/core':
         specifier: workspace:4.0.0-v4-beta.21
         version: link:../core
+      cron-parser:
+        specifier: ^4.9.0
+        version: 4.9.0
       lodash.omit:
         specifier: ^4.5.0
         version: 4.5.0

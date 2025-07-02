@@ -29,6 +29,14 @@ jobs:
         with:
           version: "3.18.3"
 
+      - name: Build dependencies
+        run: helm dependency build ./hosting/k8s/helm/
+
+      - name: Extract dependency charts
+        run: |
+          cd ./hosting/k8s/helm/
+          for file in ./charts/*.tgz; do echo "Extracting $file"; tar -xzf "$file" -C ./charts; done
+
       - name: Lint Helm Chart
         run: |
           helm lint ./hosting/k8s/helm/
@@ -59,6 +67,14 @@ jobs:
         uses: azure/setup-helm@v4
         with:
           version: "3.18.3"
+
+      - name: Build dependencies
+        run: helm dependency build ./hosting/k8s/helm/
+
+      - name: Extract dependency charts
+        run: |
+          cd ./hosting/k8s/helm/
+          for file in ./charts/*.tgz; do echo "Extracting $file"; tar -xzf "$file" -C ./charts; done
 
       - name: Log in to Container Registry
         uses: docker/login-action@v3
@@ -115,7 +131,7 @@ jobs:
             ```bash
             helm upgrade --install trigger \
               oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/charts/${{ env.CHART_NAME }} \
-              --version ${{ steps.version.outputs.version }}
+              --version "${{ steps.version.outputs.version }}"
             ```
             
             ### Changes

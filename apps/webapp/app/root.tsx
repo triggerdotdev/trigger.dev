@@ -56,6 +56,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       features,
       appEnv: env.APP_ENV,
       appOrigin: env.APP_ORIGIN,
+      triggerCliTag: env.TRIGGER_CLI_TAG,
       kapa,
     },
     { headers: { "Set-Cookie": await commitSession(session) } }

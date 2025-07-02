@@ -1,4 +1,4 @@
-{{- if .Values.supervisor.enabled }}
+{{- if .Values.supervisor.deploy }}
 apiVersion: v1
 kind: Pod
 metadata:
