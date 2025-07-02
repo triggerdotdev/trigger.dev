@@ -149,7 +149,12 @@ export async function getDeploymentImageRef({
 }
 
 export function isEcrRegistry(registryHost: string) {
-  return registryHost.includes("amazonaws.com");
+  try {
+    parseEcrRegistryDomain(registryHost);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function parseRegistryTags(tags: string): Tag[] {
