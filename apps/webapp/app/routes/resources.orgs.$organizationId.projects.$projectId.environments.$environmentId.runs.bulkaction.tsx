@@ -296,7 +296,7 @@ function BulkActionPreview({
       });
 
       return (
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-2">
           <Paragraph variant="small">
             You have selected{" "}
             <span className="text-text-bright">
@@ -304,7 +304,7 @@ function BulkActionPreview({
             </span>{" "}
             runs to be <Action action={action} /> using these filters:
           </Paragraph>
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-2">
             <AppliedFilter
               variant="minimal/medium"
               label={label}
@@ -463,17 +463,17 @@ function Action({ action }: { action: BulkActionAction }) {
   switch (action) {
     case "cancel":
       return (
-        <>
+        <span>
           <XCircleIcon className="mb-0.5 inline-block size-4 text-error" />
           <span className="ml-0.5 text-text-bright">Canceled</span>
-        </>
+        </span>
       );
     case "replay":
       return (
-        <>
+        <span>
           <ArrowPathIcon className="mb-0.5 inline-block size-4 text-blue-400" />
           <span className="ml-0.5 text-text-bright">Replayed</span>
-        </>
+        </span>
       );
   }
 }
