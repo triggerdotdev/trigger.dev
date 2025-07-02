@@ -8,8 +8,8 @@ import { ECRClient, DeleteRepositoryCommand } from "@aws-sdk/client-ecr";
 
 describe.skipIf(process.env.RUN_REGISTRY_TESTS !== "1")("getDeploymentImageRef", () => {
   const testHost = "123456789012.dkr.ecr.us-east-1.amazonaws.com";
-  const testNamespace = "test-namespace";
-  const testProjectRef = "test-project-" + Math.random().toString(36).substring(7);
+  const testNamespace = process.env.DEPLOY_REGISTRY_NAMESPACE || "test-namespace";
+  const testProjectRef = "proj_test_" + Math.random().toString(36).substring(7);
 
   const registryId = process.env.DEPLOY_REGISTRY_ID;
   const registryTags = "test=test,test2=test2";
