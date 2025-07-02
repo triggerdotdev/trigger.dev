@@ -115,6 +115,26 @@ webapp:
     #       name: my-secret
     #       key: secret-key
 
+  # Extra volumes for the webapp pod
+  extraVolumes:
+    []
+    # - name: config-volume
+    #   configMap:
+    #     name: my-config
+    # - name: secret-volume
+    #   secret:
+    #     secretName: my-secret
+
+  # Extra volume mounts for the webapp container
+  extraVolumeMounts:
+    []
+    # - name: config-volume
+    #   mountPath: /etc/config
+    #   readOnly: true
+    # - name: secret-volume
+    #   mountPath: /etc/secrets
+    #   readOnly: true
+
   # ServiceMonitor for Prometheus monitoring
   serviceMonitor:
     enabled: false
@@ -335,6 +355,7 @@ postgres:
     persistence:
       enabled: true
       size: 10Gi
+    resourcesPreset: "small"
     resources: {}
     configuration: |
       listen_addresses = '*'
@@ -656,7 +677,6 @@ persistence:
     # accessMode: ReadWriteMany  # Use for cross-node deployment (requires compatible storage class)
     storageClass: ""
     retain: true # Prevents deletion on uninstall
-
 
 # Telemetry configuration
 telemetry:

@@ -22,6 +22,7 @@ import { randomBytes } from "node:crypto";
 import { SnapshotManager, SnapshotState } from "./snapshot.js";
 import type { SupervisorSocket } from "./controller.js";
 import { RunNotifier } from "./notifier.js";
+import { TaskRunProcessProvider } from "./taskRunProcessProvider.js";
 
 class ExecutionAbortError extends Error {
   constructor(message: string) {
@@ -36,6 +37,7 @@ type RunExecutionOptions = {
   httpClient: WorkloadHttpClient;
   logger: RunLogger;
   supervisorSocket: SupervisorSocket;
+  taskRunProcessProvider: TaskRunProcessProvider;
 };
 
 type RunExecutionPrepareOptions = {
@@ -77,6 +79,7 @@ export class RunExecution {
   private supervisorSocket: SupervisorSocket;
   private notifier?: RunNotifier;
   private metadataClient?: MetadataClient;
+  private taskRunProcessProvider: TaskRunProcessProvider;
 
   constructor(opts: RunExecutionOptions) {
     this.id = randomBytes(4).toString("hex");
@@ -85,6 +88,7 @@ export class RunExecution {
     this.httpClient = opts.httpClient;
     this.logger = opts.logger;
     this.supervisorSocket = opts.supervisorSocket;
+    this.taskRunProcessProvider = opts.taskRunProcessProvider;
 
     this.restoreCount = 0;
     this.executionAbortController = new AbortController();
@@ -111,18 +115,28 @@ export class RunExecution {
    * Kills the current execution.
    */
   public async kill({ exitExecution = true }: { exitExecution?: boolean } = {}) {
-    await this.taskRunProcess?.kill("SIGKILL");
+    if (this.taskRunProcess) {
+      await this.taskRunProcessProvider.handleProcessAbort(this.taskRunProcess);
+    }
 
     if (exitExecution) {
-      this.shutdown("kill");
+      this.shutdownExecution("kill");
     }
+  }
+
+  public async shutdown() {
+    if (this.taskRunProcess) {
+      await this.taskRunProcessProvider.handleProcessAbort(this.taskRunProcess);
+    }
+
+    this.shutdownExecution("shutdown");
   }
 
   /**
    * Prepares the execution with task run environment variables.
    * This should be called before executing, typically after a successful run to prepare for the next one.
    */
-  public prepareForExecution(opts: RunExecutionPrepareOptions): this {
+  public async prepareForExecution(opts: RunExecutionPrepareOptions) {
     if (this.isShuttingDown) {
       throw new Error("prepareForExecution called after execution shut down");
     }
@@ -131,40 +145,14 @@ export class RunExecution {
       throw new Error("prepareForExecution called after process was already created");
     }
 
-    this.taskRunProcess = this.createTaskRunProcess({
-      envVars: opts.taskRunEnv,
+    this.taskRunProcess = await this.taskRunProcessProvider.getProcess({
+      taskRunEnv: opts.taskRunEnv,
       isWarmStart: true,
     });
-
-    return this;
   }
 
-  private createTaskRunProcess({
-    envVars,
-    isWarmStart,
-  }: {
-    envVars: Record<string, string>;
-    isWarmStart?: boolean;
-  }) {
-    const taskRunProcess = new TaskRunProcess({
-      workerManifest: this.workerManifest,
-      env: {
-        ...envVars,
-        ...this.env.gatherProcessEnv(),
-        HEARTBEAT_INTERVAL_MS: String(this.env.TRIGGER_HEARTBEAT_INTERVAL_SECONDS * 1000),
-      },
-      serverWorker: {
-        id: "managed",
-        contentHash: this.env.TRIGGER_CONTENT_HASH,
-        version: this.env.TRIGGER_DEPLOYMENT_VERSION,
-        engine: "V2",
-      },
-      machineResources: {
-        cpu: Number(this.env.TRIGGER_MACHINE_CPU),
-        memory: Number(this.env.TRIGGER_MACHINE_MEMORY),
-      },
-      isWarmStart,
-    }).initialize();
+  private attachTaskRunProcessHandlers(taskRunProcess: TaskRunProcess): void {
+    taskRunProcess.unsafeDetachEvtHandlers();
 
     taskRunProcess.onTaskRunHeartbeat.attach(async (runId) => {
       if (!this.runFriendlyId) {
@@ -194,20 +182,23 @@ export class RunExecution {
     taskRunProcess.onSetSuspendable.attach(async ({ suspendable }) => {
       this.suspendable = suspendable;
     });
-
-    return taskRunProcess;
   }
 
   /**
-   * Returns true if no run has been started yet and the process is prepared for the next run.
+   * Returns true if no run has been started yet and we're prepared for the next run.
    */
   get canExecute(): boolean {
+    if (this.taskRunProcessProvider.hasPersistentProcess) {
+      return true;
+    }
+
     // If we've ever had a run ID, this execution can't be reused
     if (this._runFriendlyId) {
       return false;
     }
 
-    return !!this.taskRunProcess?.isPreparedForNextRun;
+    // We can execute if we have the task run environment ready
+    return !!this.currentTaskRunEnv;
   }
 
   /**
@@ -249,7 +240,10 @@ export class RunExecution {
     if (this.currentAttemptNumber && this.currentAttemptNumber !== run.attemptNumber) {
       this.sendDebugLog("error: attempt number mismatch", snapshotMetadata);
       // This is a rogue execution, a new one will already have been created elsewhere
-      await this.exitTaskRunProcessWithoutFailingRun({ flush: false });
+      await this.exitTaskRunProcessWithoutFailingRun({
+        flush: false,
+        reason: "attempt number mismatch",
+      });
       return;
     }
 
@@ -263,7 +257,10 @@ export class RunExecution {
     if (deprecated) {
       this.sendDebugLog("run execution is deprecated", { incomingSnapshot: snapshot });
 
-      await this.exitTaskRunProcessWithoutFailingRun({ flush: false });
+      await this.exitTaskRunProcessWithoutFailingRun({
+        flush: false,
+        reason: "deprecated execution",
+      });
       return;
     }
 
@@ -286,13 +283,13 @@ export class RunExecution {
       case "QUEUED": {
         this.sendDebugLog("run was re-queued", snapshotMetadata);
 
-        await this.exitTaskRunProcessWithoutFailingRun({ flush: true });
+        await this.exitTaskRunProcessWithoutFailingRun({ flush: true, reason: "re-queued" });
         return;
       }
       case "FINISHED": {
         this.sendDebugLog("run is finished", snapshotMetadata);
 
-        await this.exitTaskRunProcessWithoutFailingRun({ flush: true });
+        // This can sometimes be called before the handleCompletionResult, so we don't need to do anything here
         return;
       }
       case "QUEUED_EXECUTING":
@@ -307,7 +304,7 @@ export class RunExecution {
 
         // This will kill the process and fail the execution with a SuspendedProcessError
         // We don't flush because we already did before suspending
-        await this.exitTaskRunProcessWithoutFailingRun({ flush: false });
+        await this.exitTaskRunProcessWithoutFailingRun({ flush: false, reason: "suspended" });
         return;
       }
       case "PENDING_EXECUTING": {
@@ -377,7 +374,7 @@ export class RunExecution {
       throw new Error("Cannot start attempt: missing run or snapshot manager");
     }
 
-    this.sendDebugLog("starting attempt");
+    this.sendDebugLog("starting attempt", { isWarmStart: String(isWarmStart) });
 
     const attemptStartedAt = Date.now();
 
@@ -422,7 +419,7 @@ export class RunExecution {
       podScheduledAt: this.podScheduledAt?.getTime(),
     });
 
-    this.sendDebugLog("started attempt");
+    this.sendDebugLog("started attempt", { start: start.data });
 
     return { ...start.data, metrics };
   }
@@ -478,21 +475,23 @@ export class RunExecution {
     if (startError) {
       this.sendDebugLog("failed to start attempt", { error: startError.message });
 
-      this.shutdown("failed to start attempt");
+      this.shutdownExecution("failed to start attempt");
       return;
     }
 
-    const [executeError] = await tryCatch(this.executeRunWrapper(start));
+    const [executeError] = await tryCatch(
+      this.executeRunWrapper({ ...start, isWarmStart: runOpts.isWarmStart })
+    );
 
     if (executeError) {
       this.sendDebugLog("failed to execute run", { error: executeError.message });
 
-      this.shutdown("failed to execute run");
+      this.shutdownExecution("failed to execute run");
       return;
     }
 
     // This is here for safety, but it
-    this.shutdown("execute call finished");
+    this.shutdownExecution("execute call finished");
   }
 
   private async executeRunWrapper({
@@ -502,9 +501,11 @@ export class RunExecution {
     execution,
     metrics,
     isWarmStart,
+    isImmediateRetry,
   }: WorkloadRunAttemptStartResponseBody & {
     metrics: TaskRunExecutionMetrics;
     isWarmStart?: boolean;
+    isImmediateRetry?: boolean;
   }) {
     this.currentTaskRunEnv = envVars;
 
@@ -516,6 +517,7 @@ export class RunExecution {
         execution,
         metrics,
         isWarmStart,
+        isImmediateRetry,
       })
     );
 
@@ -570,38 +572,39 @@ export class RunExecution {
     execution,
     metrics,
     isWarmStart,
+    isImmediateRetry,
   }: WorkloadRunAttemptStartResponseBody & {
     metrics: TaskRunExecutionMetrics;
     isWarmStart?: boolean;
+    isImmediateRetry?: boolean;
   }) {
-    // For immediate retries, we need to ensure the task run process is prepared for the next attempt
-    if (
-      this.runFriendlyId &&
-      this.taskRunProcess &&
-      !this.taskRunProcess.isPreparedForNextAttempt
-    ) {
-      this.sendDebugLog("killing existing task run process before executing next attempt");
-      await this.kill({ exitExecution: false }).catch(() => {});
+    if (isImmediateRetry) {
+      await this.taskRunProcessProvider.handleImmediateRetry();
     }
 
-    // To skip this step and eagerly create the task run process, run prepareForExecution first
-    if (!this.taskRunProcess || !this.taskRunProcess.isPreparedForNextRun) {
-      this.taskRunProcess = this.createTaskRunProcess({
-        envVars: { ...envVars, TRIGGER_PROJECT_REF: execution.project.ref },
-        isWarmStart,
-      });
-    }
+    const taskRunEnv = this.currentTaskRunEnv ?? envVars;
+
+    this.taskRunProcess = await this.taskRunProcessProvider.getProcess({
+      taskRunEnv: { ...taskRunEnv, TRIGGER_PROJECT_REF: execution.project.ref },
+      isWarmStart,
+    });
+
+    this.attachTaskRunProcessHandlers(this.taskRunProcess);
 
     this.sendDebugLog("executing task run process", { runId: execution.run.id });
 
-    // Set up an abort handler that will cleanup the task run process
-    this.executionAbortController.signal.addEventListener("abort", async () => {
+    const abortHandler = async () => {
       this.sendDebugLog("execution aborted during task run, cleaning up process", {
         runId: execution.run.id,
       });
 
-      await this.taskRunProcess?.cleanup(true);
-    });
+      if (this.taskRunProcess) {
+        await this.taskRunProcessProvider.handleProcessAbort(this.taskRunProcess);
+      }
+    };
+
+    // Set up an abort handler that will cleanup the task run process
+    this.executionAbortController.signal.addEventListener("abort", abortHandler);
 
     const completion = await this.taskRunProcess.execute(
       {
@@ -616,15 +619,19 @@ export class RunExecution {
       isWarmStart
     );
 
+    this.executionAbortController.signal.removeEventListener("abort", abortHandler);
+
     // If we get here, the task completed normally
     this.sendDebugLog("completed run attempt", { attemptSuccess: completion.ok });
 
-    // The execution has finished, so we can cleanup the task run process. Killing it should be safe.
-    const [error] = await tryCatch(this.taskRunProcess.cleanup(true));
+    // Return the process to the provider - this handles all cleanup logic
+    const [returnError] = await tryCatch(
+      this.taskRunProcessProvider.returnProcess(this.taskRunProcess)
+    );
 
-    if (error) {
-      this.sendDebugLog("failed to cleanup task run process, submitting completion anyway", {
-        error: error.message,
+    if (returnError) {
+      this.sendDebugLog("failed to return task run process, submitting completion anyway", {
+        error: returnError.message,
       });
     }
 
@@ -785,16 +792,18 @@ export class RunExecution {
     if (startError) {
       this.sendDebugLog("failed to start attempt for retry", { error: startError.message });
 
-      this.shutdown("retryImmediately: failed to start attempt");
+      this.shutdownExecution("retryImmediately: failed to start attempt");
       return;
     }
 
-    const [executeError] = await tryCatch(this.executeRunWrapper({ ...start, isWarmStart: true }));
+    const [executeError] = await tryCatch(
+      this.executeRunWrapper({ ...start, isWarmStart: true, isImmediateRetry: true })
+    );
 
     if (executeError) {
       this.sendDebugLog("failed to execute run for retry", { error: executeError.message });
 
-      this.shutdown("retryImmediately: failed to execute run");
+      this.shutdownExecution("retryImmediately: failed to execute run");
       return;
     }
   }
@@ -828,11 +837,17 @@ export class RunExecution {
     this.restoreCount++;
   }
 
-  private async exitTaskRunProcessWithoutFailingRun({ flush }: { flush: boolean }) {
-    await this.taskRunProcess?.suspend({ flush });
+  private async exitTaskRunProcessWithoutFailingRun({
+    flush,
+    reason,
+  }: {
+    flush: boolean;
+    reason: string;
+  }) {
+    await this.taskRunProcessProvider.suspendProcess(flush, this.taskRunProcess);
 
     // No services should be left running after this line - let's make sure of it
-    this.shutdown("exitTaskRunProcessWithoutFailingRun");
+    this.shutdownExecution(`exitTaskRunProcessWithoutFailingRun: ${reason}`);
   }
 
   /**
@@ -1003,10 +1018,10 @@ export class RunExecution {
     }
 
     this.executionAbortController.abort();
-    this.shutdown("abortExecution");
+    this.shutdownExecution("abortExecution");
   }
 
-  private shutdown(reason: string) {
+  private shutdownExecution(reason: string) {
     if (this.isShuttingDown) {
       this.sendDebugLog(`[shutdown] ${reason} (already shutting down)`, {
         firstShutdownReason: this.shutdownReason,

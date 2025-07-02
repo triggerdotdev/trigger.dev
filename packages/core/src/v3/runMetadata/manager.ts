@@ -7,6 +7,7 @@ import { MetadataStream } from "./metadataStream.js";
 import { applyMetadataOperations, collapseOperations } from "./operations.js";
 import { RunMetadataManager, RunMetadataUpdater } from "./types.js";
 import { AsyncIterableStream } from "../streams/asyncIterableStream.js";
+import { IOPacket, stringifyIO } from "../utils/ioSerialization.js";
 
 const MAXIMUM_ACTIVE_STREAMS = 5;
 const MAXIMUM_TOTAL_STREAMS = 10;
@@ -29,6 +30,22 @@ export class StandardMetadataManager implements RunMetadataManager {
     private streamsBaseUrl: string,
     private streamsVersion: "v1" | "v2" = "v1"
   ) {}
+
+  reset(): void {
+    this.queuedOperations.clear();
+    this.queuedParentOperations.clear();
+    this.queuedRootOperations.clear();
+    this.activeStreams.clear();
+    this.store = undefined;
+    this.runId = undefined;
+
+    if (this.flushTimeoutId) {
+      clearTimeout(this.flushTimeoutId);
+      this.flushTimeoutId = null;
+    }
+
+    this.isFlushing = false;
+  }
 
   get parent(): RunMetadataUpdater {
     // Store a reference to 'this' to ensure proper context
@@ -406,23 +423,27 @@ export class StandardMetadataManager implements RunMetadataManager {
     }
   }
 
-  stopAndReturnLastFlush(): FlushedRunMetadata | undefined {
+  async stopAndReturnLastFlush(): Promise<IOPacket> {
     this.stopPeriodicFlush();
     this.isFlushing = true;
 
     if (!this.#needsFlush()) {
-      return;
+      return { dataType: "application/json" };
     }
 
     const operations = Array.from(this.queuedOperations);
     const parentOperations = Array.from(this.queuedParentOperations);
     const rootOperations = Array.from(this.queuedRootOperations);
 
-    return {
+    const data = {
       operations: collapseOperations(operations),
       parentOperations: collapseOperations(parentOperations),
       rootOperations: collapseOperations(rootOperations),
     };
+
+    const packet = await stringifyIO(data);
+
+    return packet;
   }
 
   #needsFlush(): boolean {

@@ -235,6 +235,31 @@ export type TriggerConfig = {
   };
 
   /**
+   * @default false
+   * @description Keep the process alive after the task has finished running so the next task doesn't have to wait for the process to start up again.
+   *
+   * Note that the process could be killed at any time, and we don't make any guarantees about the process being alive for a certain amount of time
+   */
+  experimental_processKeepAlive?:
+    | boolean
+    | {
+        enabled: boolean;
+        /**
+         * The maximum number of executions per process. If the process has run more than this number of times, it will be killed.
+         *
+         * @default 50
+         */
+        maxExecutionsPerProcess?: number;
+
+        /**
+         * The maximum number of processes to keep alive in dev.
+         *
+         * @default 25
+         */
+        devMaxPoolSize?: number;
+      };
+
+  /**
    * @deprecated Use `dirs` instead
    */
   triggerDirectories?: string[];

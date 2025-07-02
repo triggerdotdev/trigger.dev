@@ -14,4 +14,5 @@ export interface UsageManager {
   sample(): UsageSample | undefined;
   pauseAsync<T>(cb: () => Promise<T>): Promise<T>;
   flush(): Promise<void>;
+  reset(): void;
 }

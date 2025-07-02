@@ -2,6 +2,7 @@ import { z } from "zod";
 import { isValidDatabaseUrl } from "./utils/db";
 import { isValidRegex } from "./utils/regex";
 import { BoolEnv } from "./utils/boolEnv";
+import { OTEL_ATTRIBUTE_PER_LINK_COUNT_LIMIT, OTEL_LINK_COUNT_LIMIT } from "@trigger.dev/core/v3";
 
 const EnvironmentSchema = z.object({
   NODE_ENV: z.union([z.literal("development"), z.literal("production"), z.literal("test")]),
@@ -281,6 +282,15 @@ const EnvironmentSchema = z.object({
   PROD_OTEL_LOG_SCHEDULED_DELAY_MILLIS: z.string().default("200"),
   PROD_OTEL_LOG_EXPORT_TIMEOUT_MILLIS: z.string().default("30000"),
   PROD_OTEL_LOG_MAX_QUEUE_SIZE: z.string().default("512"),
+
+  TRIGGER_OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT: z.string().default("256"),
+  TRIGGER_OTEL_LOG_ATTRIBUTE_COUNT_LIMIT: z.string().default("256"),
+  TRIGGER_OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT: z.string().default("131072"),
+  TRIGGER_OTEL_LOG_ATTRIBUTE_VALUE_LENGTH_LIMIT: z.string().default("131072"),
+  TRIGGER_OTEL_SPAN_EVENT_COUNT_LIMIT: z.string().default("10"),
+  TRIGGER_OTEL_LINK_COUNT_LIMIT: z.string().default("2"),
+  TRIGGER_OTEL_ATTRIBUTE_PER_LINK_COUNT_LIMIT: z.string().default("10"),
+  TRIGGER_OTEL_ATTRIBUTE_PER_EVENT_COUNT_LIMIT: z.string().default("10"),
 
   CHECKPOINT_THRESHOLD_IN_MS: z.coerce.number().int().default(30000),
 

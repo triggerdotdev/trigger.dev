@@ -2,6 +2,7 @@ import { startSpan } from "@internal/tracing";
 import {
   CompleteRunAttemptResult,
   ExecutionResult,
+  FlushedRunMetadata,
   GitMeta,
   StartRunAttemptResult,
   TaskRunError,
@@ -35,6 +36,7 @@ import {
 import { ReleaseConcurrencySystem } from "./releaseConcurrencySystem.js";
 import { SystemResources } from "./systems.js";
 import { WaitpointSystem } from "./waitpointSystem.js";
+import { tryCatch } from "@trigger.dev/core/utils";
 
 export type RunAttemptSystemOptions = {
   resources: SystemResources;
@@ -386,15 +388,7 @@ export class RunAttemptSystem {
     workerId?: string;
     runnerId?: string;
   }): Promise<CompleteRunAttemptResult> {
-    if (completion.metadata) {
-      this.$.eventBus.emit("runMetadataUpdated", {
-        time: new Date(),
-        run: {
-          id: runId,
-          metadata: completion.metadata,
-        },
-      });
-    }
+    await this.#notifyMetadataUpdated(runId, completion);
 
     switch (completion.ok) {
       case true: {
@@ -1313,5 +1307,57 @@ export class RunAttemptSystem {
     }
 
     return taskRun?.runtimeEnvironment;
+  }
+
+  async #notifyMetadataUpdated(runId: string, completion: TaskRunExecutionResult) {
+    if (completion.metadata) {
+      this.$.eventBus.emit("runMetadataUpdated", {
+        time: new Date(),
+        run: {
+          id: runId,
+          metadata: completion.metadata,
+        },
+      });
+
+      return;
+    }
+
+    if (completion.flushedMetadata) {
+      const [packetError, packet] = await tryCatch(parsePacket(completion.flushedMetadata));
+
+      if (!packet) {
+        return;
+      }
+
+      if (packetError) {
+        this.$.logger.error("RunEngine.completeRunAttempt(): failed to parse flushed metadata", {
+          runId,
+          flushedMetadata: completion.flushedMetadata,
+          error: packetError,
+        });
+
+        return;
+      }
+
+      const metadata = FlushedRunMetadata.safeParse(packet);
+
+      if (!metadata.success) {
+        this.$.logger.error("RunEngine.completeRunAttempt(): failed to parse flushed metadata", {
+          runId,
+          flushedMetadata: completion.flushedMetadata,
+          error: metadata.error,
+        });
+
+        return;
+      }
+
+      this.$.eventBus.emit("runMetadataUpdated", {
+        time: new Date(),
+        run: {
+          id: runId,
+          metadata: metadata.data,
+        },
+      });
+    }
   }
 }
